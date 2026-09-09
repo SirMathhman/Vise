@@ -8,7 +8,7 @@
     "apps/server"
   ],
   "scripts": {
-    "dev": "npm run dev --workspaces",
+    "dev": "node scripts/dev.mjs",
     "build": "npm run build -w web",
     "start": "npm run start -w server",
     "preview": "npm run preview -w web",
