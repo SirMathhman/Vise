@@ -66,7 +66,7 @@ p {
 }
 
 #app {
-  width: 720px;
+  width: 1100px;
   max-width: 100%;
   margin: 0 auto;
   min-height: 100svh;
@@ -80,6 +80,16 @@ p {
 
 .page {
   text-align: left;
+}
+
+.layout {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+
+  @media (max-width: 1024px) {
+    flex-direction: column;
+  }
 }
 
 .status {
@@ -96,6 +106,83 @@ p {
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
+  flex: 0 0 320px;
+  max-height: calc(100svh - 160px);
+  overflow-y: auto;
+
+  @media (max-width: 1024px) {
+    flex: none;
+    width: 100%;
+    max-height: none;
+  }
+}
+
+.file-viewer {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100svh - 160px);
+
+  @media (max-width: 1024px) {
+    max-height: none;
+  }
+
+  .file-viewer-header {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--text);
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--code-bg);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .file-viewer-content {
+    margin: 0;
+    padding: 8px 0;
+    overflow: auto;
+    flex: 1;
+    font-family: var(--mono);
+    font-size: 14px;
+    line-height: 1.5;
+    tab-size: 2;
+
+    code {
+      display: block;
+      font-family: inherit;
+      white-space: pre;
+    }
+
+    .placeholder {
+      color: var(--text);
+      padding: 0 12px;
+    }
+
+    .line {
+      display: flex;
+    }
+
+    .line-num {
+      flex: 0 0 3.5em;
+      text-align: right;
+      padding-right: 12px;
+      color: var(--text);
+      opacity: 0.5;
+      user-select: none;
+    }
+
+    .line-code {
+      flex: 1;
+      padding-right: 12px;
+      color: var(--text-h);
+    }
+  }
 }
 
 .tree {
@@ -146,6 +233,14 @@ p {
     &.dir > .label {
       color: var(--accent);
       font-weight: 500;
+    }
+
+    &.file {
+      cursor: pointer;
+
+      &:hover {
+        background: var(--accent-bg);
+      }
     }
   }
 

@@ -1,11 +1,17 @@
 /**
- * Renders the page shell (heading + tree container) into the app element.
+ * Renders the page shell (heading + tree + file viewer) into the app element.
  */
 export function renderApp(appEl) {
   appEl.innerHTML = `
   <main class="page">
     <h1>Files &amp; directories</h1>
-    <div id="tree" class="tree-container"></div>
+    <div class="layout">
+      <div id="tree" class="tree-container"></div>
+      <div id="file-viewer" class="file-viewer">
+        <div class="file-viewer-header"></div>
+        <pre class="file-viewer-content"><code class="placeholder">Select a file to view</code></pre>
+      </div>
+    </div>
   </main>
 `;
 }
@@ -60,6 +66,7 @@ function createEntryEl(entry, path) {
     li.append(toggle, label);
   } else {
     li.className = "entry file";
+    li.dataset.path = childPath;
 
     const spacer = document.createElement("span");
     spacer.className = "toggle-spacer";

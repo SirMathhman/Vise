@@ -1,4 +1,4 @@
-import { readdir } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 
@@ -19,4 +19,16 @@ export async function getListing(dir = repoRoot) {
   return entries
     .map((entry) => ({ name: entry.name, isDirectory: entry.isDirectory() }))
     .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Returns the text content of a file at the given absolute path.
+ * Throws if the path is not a regular file.
+ * @param {string} filePath - Absolute path to the file.
+ * @returns {Promise<string>} The file's text content.
+ */
+export async function getFileContent(filePath) {
+  const info = await stat(filePath);
+  if (!info.isFile()) throw new Error("Not a file");
+  return readFile(filePath, "utf8");
 }
