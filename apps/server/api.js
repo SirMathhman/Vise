@@ -1,5 +1,5 @@
 import { getListing, repoRoot } from "./listing.js";
-import { resolve } from "node:path";
+import { resolveWithin } from "./pathGuard.js";
 
 /**
  * Handles API requests. Currently supports:
@@ -12,9 +12,8 @@ export async function handleApi(req, res) {
   if (req.method === "GET" && url.pathname === "/api/listing") {
     try {
       const relPath = url.searchParams.get("path") ?? "";
-      const dir = resolve(repoRoot, relPath);
-      // Guard against path traversal outside the repo root
-      if (!dir.startsWith(repoRoot)) {
+      const dir = resolveWithin(repoRoot, relPath);
+      if (!dir) {
         res.writeHead(400, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "Invalid path" }));
         return;

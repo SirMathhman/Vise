@@ -3,7 +3,12 @@ import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 
 // Repo root: three levels up from the file (apps/server/listing.js → repo root)
-export const repoRoot = resolve(fileURLToPath(import.meta.url), "..", "..", "..");
+export const repoRoot = resolve(
+  fileURLToPath(import.meta.url),
+  "..",
+  "..",
+  "..",
+);
 
 /**
  * Returns the entries (name + isDirectory) of a directory,

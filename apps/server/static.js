@@ -1,5 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
-import { extname, join, normalize, resolve } from "node:path";
+import { extname, join } from "node:path";
+import { resolveWithin } from "./pathGuard.js";
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -25,14 +26,9 @@ const MIME_TYPES = {
  * Guards against path traversal outside of `rootDir`.
  */
 export async function serveFile(req, res, rootDir, reqPath) {
-  const root = resolve(rootDir);
-  const rel = normalize(decodeURIComponent(reqPath)).replace(/^([/\\])+/, "");
-  const filePath = resolve(join(root, rel));
+  const filePath = resolveWithin(rootDir, decodeURIComponent(reqPath));
 
-  if (
-    filePath !== root &&
-    !filePath.startsWith(root + (root.endsWith("\\") ? "" : "\\"))
-  ) {
+  if (!filePath) {
     res.writeHead(403, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "Forbidden" }));
     return true;

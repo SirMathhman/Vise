@@ -8,7 +8,9 @@ export async function loadListing(targetEl, path = "") {
   targetEl.innerHTML = '<p class="status">Loading…</p>';
 
   try {
-    const url = path ? `/api/listing?path=${encodeURIComponent(path)}` : "/api/listing";
+    const url = path
+      ? `/api/listing?path=${encodeURIComponent(path)}`
+      : "/api/listing";
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Request failed: ${res.status}`);
     const entries = await res.json();
