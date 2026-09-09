@@ -12,6 +12,22 @@ export function renderApp(appEl) {
         <pre class="file-viewer-content"><code class="placeholder">Select a file to view</code></pre>
       </div>
     </div>
+    <section class="chat">
+      <h2>Ask the model</h2>
+      <form id="chat-form" class="chat-form">
+        <input
+          id="chat-input"
+          class="chat-input"
+          type="text"
+          placeholder="Type a message…"
+          autocomplete="off"
+        />
+        <button type="submit" class="chat-send">Send</button>
+      </form>
+      <div id="chat-response" class="chat-response">
+        <pre class="chat-response-content"><code class="placeholder">Your reply will appear here</code></pre>
+      </div>
+    </section>
   </main>
 `;
 }
