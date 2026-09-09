@@ -24,8 +24,8 @@ export function renderApp(appEl) {
         />
         <button type="submit" class="chat-send">Send</button>
       </form>
-      <div id="chat-response" class="chat-response">
-        <pre class="chat-response-content"><code class="placeholder">Your reply will appear here</code></pre>
+      <div id="chat-messages" class="chat-messages">
+        <p class="chat-placeholder">Your conversation will appear here</p>
       </div>
     </section>
   </main>

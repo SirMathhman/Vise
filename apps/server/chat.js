@@ -7,12 +7,12 @@ const LLM_API_KEY =
   "S6677k5w355Nw9ErxCZWYCMiW4ItldmzXBLUElpnLsdE8gBj5A";
 
 /**
- * Sends a single user message to the OpenAI-compatible chat endpoint and
- * returns the assistant's reply text.
- * @param {string} message - The user's message.
+ * Sends a conversation to the OpenAI-compatible chat endpoint and returns
+ * the assistant's reply text.
+ * @param {Array<{role: string, content: string}>} messages - The conversation.
  * @returns {Promise<string>} The model's reply.
  */
-export async function sendChatMessage(message) {
+export async function sendChatMessages(messages) {
   const res = await fetch(`${LLM_BASE_URL}/v1/chat/completions`, {
     method: "POST",
     headers: {
@@ -22,7 +22,7 @@ export async function sendChatMessage(message) {
     body: JSON.stringify({
       model: LLM_MODEL,
       stream: false,
-      messages: [{ role: "user", content: message }],
+      messages,
     }),
   });
 

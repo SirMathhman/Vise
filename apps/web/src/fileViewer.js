@@ -1,18 +1,4 @@
-/**
- * Fetches the text content of a file from the backend.
- * @param {string} path - The file's relative path.
- * @returns {Promise<string>} The file's text content.
- */
-export async function fetchFileContent(path) {
-  const url = `/api/file?path=${encodeURIComponent(path)}`;
-  const res = await fetch(url);
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error ?? `Request failed: ${res.status}`);
-  }
-  const data = await res.json();
-  return data.content;
-}
+import { fetchFileContent } from "./api.js";
 
 /**
  * Sets up the file viewer: attaches the click handler for file entries and

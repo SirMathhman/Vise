@@ -1,12 +1,12 @@
 import { getListing, getFileContent, repoRoot } from "./listing.js";
 import { resolveWithin } from "./pathGuard.js";
-import { sendChatMessage } from "./chat.js";
+import { sendChatMessages } from "./chat.js";
 
 /**
  * Handles API requests and writes the JSON response directly. Supports:
  *   GET  /api/listing[?path=relative/path] -> JSON array of entries (name, isDirectory).
  *   GET  /api/file?path=relative/path      -> JSON { content: string }.
- *   POST /api/chat { message }             -> JSON { reply: string }.
+ *   POST /api/chat { messages }            -> JSON { reply: string }.
  */
 export async function handleApi(req, res) {
   const url = new URL(req.url, "http://localhost");
@@ -33,10 +33,9 @@ export async function handleApi(req, res) {
   if (req.method === "POST" && url.pathname === "/api/chat") {
     return run(res, async () => {
       const body = await readJsonBody(req);
-      const message =
-        typeof body.message === "string" ? body.message.trim() : "";
-      if (!message) return sendJson(res, 400, { error: "Missing message" });
-      return sendJson(res, 200, { reply: await sendChatMessage(message) });
+      const messages = normalizeMessages(body.messages);
+      if (!messages) return sendJson(res, 400, { error: "Missing messages" });
+      return sendJson(res, 200, { reply: await sendChatMessages(messages) });
     });
   }
 
@@ -78,4 +77,23 @@ async function readJsonBody(req) {
   const raw = Buffer.concat(chunks).toString("utf8");
   if (!raw) return {};
   return JSON.parse(raw);
+}
+
+/**
+ * Validates and sanitizes a conversation into a list of { role, content }.
+ * Returns null if it is not a non-empty array of valid messages.
+ * @param {unknown} value - The raw `messages` value from the request body.
+ * @returns {Array<{role: string, content: string}> | null}
+ */
+function normalizeMessages(value) {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  const messages = value
+    .filter(
+      (m) =>
+        m &&
+        (m.role === "user" || m.role === "assistant") &&
+        typeof m.content === "string",
+    )
+    .map((m) => ({ role: m.role, content: m.content }));
+  return messages.length ? messages : null;
 }

@@ -1,18 +1,5 @@
 import { renderTree, renderChildren } from "./render.js";
-
-/**
- * Fetches directory entries for a given path from the backend.
- * @param {string} path - The relative path to list.
- * @returns {Promise<Array<{name: string, isDirectory: boolean}>>}
- */
-export async function fetchEntries(path = "") {
-  const url = path
-    ? `/api/listing?path=${encodeURIComponent(path)}`
-    : "/api/listing";
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Request failed: ${res.status}`);
-  return res.json();
-}
+import { fetchEntries } from "./api.js";
 
 /**
  * Sets up the tree: attaches the expand/collapse click handler and loads
