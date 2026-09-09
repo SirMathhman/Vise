@@ -1,17 +1,18 @@
 import { renderListing } from "./render.js";
 
 /**
- * Fetches the top-level file/directory listing from the backend and renders it
- * into the provided element.
+ * Fetches the file/directory listing for a given path from the backend and
+ * renders it into the provided element.
  */
-export async function loadListing(targetEl) {
+export async function loadListing(targetEl, path = "") {
   targetEl.innerHTML = '<p class="status">Loading…</p>';
 
   try {
-    const res = await fetch("/api/listing");
+    const url = path ? `/api/listing?path=${encodeURIComponent(path)}` : "/api/listing";
+    const res = await fetch(url);
     if (!res.ok) throw new Error(`Request failed: ${res.status}`);
-    const names = await res.json();
-    renderListing(targetEl, names);
+    const entries = await res.json();
+    renderListing(targetEl, entries, path);
   } catch (err) {
     targetEl.innerHTML = `<p class="status error">Could not load listing: ${err.message}</p>`;
   }

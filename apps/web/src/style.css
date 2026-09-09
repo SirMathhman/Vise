@@ -92,6 +92,27 @@ p {
   }
 }
 
+.breadcrumb {
+  font-family: var(--mono);
+  font-size: 14px;
+  margin-bottom: 16px;
+  color: var(--text);
+
+  a {
+    color: var(--accent);
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  .sep {
+    margin: 0 4px;
+    color: var(--text);
+  }
+}
+
 .listing {
   list-style: none;
   margin: 0;
@@ -113,6 +134,16 @@ p {
 
     &:nth-child(odd) {
       background: var(--code-bg);
+    }
+
+    &.dir a {
+      color: var(--accent);
+      text-decoration: none;
+      cursor: pointer;
+
+      &:hover {
+        text-decoration: underline;
+      }
     }
   }
 }
