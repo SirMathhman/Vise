@@ -1,6 +1,7 @@
 import { getListing, getFileContent, repoRoot } from "./listing.js";
 import { resolveWithin } from "./pathGuard.js";
 import { sendChatMessages } from "./chat.js";
+import { TOOLS } from "./tools.js";
 
 /**
  * Handles API requests and writes the JSON response directly. Supports:
@@ -35,7 +36,9 @@ export async function handleApi(req, res) {
       const body = await readJsonBody(req);
       const messages = normalizeMessages(body.messages);
       if (!messages) return sendJson(res, 400, { error: "Missing messages" });
-      return sendJson(res, 200, { reply: await sendChatMessages(messages) });
+      return sendJson(res, 200, {
+        reply: await sendChatMessages(messages, TOOLS),
+      });
     });
   }
 
