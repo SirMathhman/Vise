@@ -1,60 +1,75 @@
 /**
- * Renders the page shell (heading + breadcrumb + listing container) into the app element.
+ * Renders the page shell (heading + tree container) into the app element.
  */
 export function renderApp(appEl) {
   appEl.innerHTML = `
   <main class="page">
     <h1>Files &amp; directories</h1>
-    <nav id="breadcrumb" class="breadcrumb"></nav>
-    <div id="listing" class="listing-container"></div>
+    <div id="tree" class="tree-container"></div>
   </main>
 `;
 }
 
 /**
- * Renders the breadcrumb navigation for the current path.
- * @param {HTMLElement} targetEl - The breadcrumb nav element.
- * @param {string} path - The current relative path (e.g. "apps/server").
- */
-export function renderBreadcrumb(targetEl, path) {
-  const parts = path ? path.split("/") : [];
-  let html = `<a href="#" data-path="">root</a>`;
-  let accumulated = "";
-  for (const part of parts) {
-    accumulated += (accumulated ? "/" : "") + part;
-    html += `<span class="sep">/</span><a href="#" data-path="${escapeHtml(accumulated)}">${escapeHtml(part)}</a>`;
-  }
-  targetEl.innerHTML = html;
-}
-
-/**
- * Renders the file/directory listing into the provided element.
- * @param {HTMLElement} targetEl - The listing container element.
+ * Renders a list of entries as a tree into the provided element.
+ * @param {HTMLElement} targetEl - The tree container element.
  * @param {Array<{name: string, isDirectory: boolean}>} entries - Directory entries.
  * @param {string} path - The current relative path (for building child paths).
  */
-export function renderListing(targetEl, entries, path = "") {
-  if (!entries.length) {
-    targetEl.innerHTML = '<p class="status">No entries found.</p>';
-    return;
+export function renderTree(targetEl, entries, path = "") {
+  const ul = document.createElement("ul");
+  ul.className = "tree";
+  for (const entry of entries) {
+    ul.appendChild(createEntryEl(entry, path));
   }
-  const items = entries
-    .map((entry) => {
-      const childPath = path ? `${path}/${entry.name}` : entry.name;
-      if (entry.isDirectory) {
-        return `<li class="entry dir"><a href="#" data-path="${escapeHtml(childPath)}">${escapeHtml(entry.name)}/</a></li>`;
-      }
-      return `<li class="entry file">${escapeHtml(entry.name)}</li>`;
-    })
-    .join("");
-  targetEl.innerHTML = `<ul class="listing">${items}</ul>`;
+  targetEl.replaceChildren(ul);
 }
 
-function escapeHtml(value) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
+/**
+ * Renders children into a directory's <li> element.
+ * @param {HTMLElement} li - The directory <li> element.
+ * @param {Array<{name: string, isDirectory: boolean}>} entries - Child entries.
+ * @param {string} path - The directory's relative path.
+ */
+export function renderChildren(li, entries, path) {
+  const ul = document.createElement("ul");
+  ul.className = "tree children";
+  for (const entry of entries) {
+    ul.appendChild(createEntryEl(entry, path));
+  }
+  li.appendChild(ul);
+}
+
+function createEntryEl(entry, path) {
+  const li = document.createElement("li");
+  const childPath = path ? `${path}/${entry.name}` : entry.name;
+
+  if (entry.isDirectory) {
+    li.className = "entry dir";
+    li.dataset.path = childPath;
+
+    const toggle = document.createElement("button");
+    toggle.className = "toggle";
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.textContent = "▸";
+
+    const label = document.createElement("span");
+    label.className = "label";
+    label.textContent = entry.name;
+
+    li.append(toggle, label);
+  } else {
+    li.className = "entry file";
+
+    const spacer = document.createElement("span");
+    spacer.className = "toggle-spacer";
+
+    const label = document.createElement("span");
+    label.className = "label";
+    label.textContent = entry.name;
+
+    li.append(spacer, label);
+  }
+
+  return li;
 }

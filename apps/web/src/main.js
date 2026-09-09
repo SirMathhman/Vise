@@ -1,24 +1,44 @@
 import "./style.css";
-import { renderApp, renderBreadcrumb } from "./render.js";
-import { loadListing } from "./listing.js";
+import { renderApp, renderChildren } from "./render.js";
+import { fetchEntries, loadRoot } from "./listing.js";
 
 const appEl = document.querySelector("#app");
 renderApp(appEl);
 
-const listingEl = document.querySelector("#listing");
-const breadcrumbEl = document.querySelector("#breadcrumb");
+const treeEl = document.querySelector("#tree");
 
-function navigate(path) {
-  renderBreadcrumb(breadcrumbEl, path);
-  loadListing(listingEl, path);
-}
-
-// Delegate clicks on directory links and breadcrumb links
-appEl.addEventListener("click", (e) => {
-  const link = e.target.closest("a[data-path]");
-  if (!link) return;
+// Delegate clicks on directory toggles
+appEl.addEventListener("click", async (e) => {
+  const toggle = e.target.closest(".toggle");
+  if (!toggle) return;
   e.preventDefault();
-  navigate(link.dataset.path);
+
+  const li = toggle.closest("li.dir");
+  const path = li.dataset.path;
+  const expanded = toggle.getAttribute("aria-expanded") === "true";
+
+  if (expanded) {
+    // Collapse: remove children
+    const children = li.querySelector(":scope > ul.children");
+    if (children) children.remove();
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.textContent = "▸";
+  } else {
+    // Expand: load children if not already present
+    let children = li.querySelector(":scope > ul.children");
+    if (!children) {
+      toggle.textContent = "…";
+      try {
+        const entries = await fetchEntries(path);
+        renderChildren(li, entries, path);
+      } catch (err) {
+        toggle.textContent = "✕";
+        return;
+      }
+    }
+    toggle.setAttribute("aria-expanded", "true");
+    toggle.textContent = "▾";
+  }
 });
 
-navigate("");
+loadRoot(treeEl);

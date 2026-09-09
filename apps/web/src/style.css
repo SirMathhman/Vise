@@ -92,58 +92,65 @@ p {
   }
 }
 
-.breadcrumb {
-  font-family: var(--mono);
-  font-size: 14px;
-  margin-bottom: 16px;
-  color: var(--text);
-
-  a {
-    color: var(--accent);
-    text-decoration: none;
-
-    &:hover {
-      text-decoration: underline;
-    }
-  }
-
-  .sep {
-    margin: 0 4px;
-    color: var(--text);
-  }
-}
-
-.listing {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.tree-container {
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
+}
+
+.tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
 
   .entry {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     font-family: var(--mono);
     font-size: 15px;
     color: var(--text-h);
-    padding: 10px 16px;
+    padding: 8px 12px;
     border-bottom: 1px solid var(--border);
 
     &:last-child {
       border-bottom: none;
     }
 
-    &:nth-child(odd) {
-      background: var(--code-bg);
-    }
-
-    &.dir a {
-      color: var(--accent);
-      text-decoration: none;
+    .toggle {
+      all: unset;
+      box-sizing: border-box;
+      width: 20px;
+      text-align: center;
       cursor: pointer;
+      color: var(--accent);
+      flex-shrink: 0;
+      user-select: none;
 
       &:hover {
-        text-decoration: underline;
+        opacity: 0.7;
       }
     }
+
+    .toggle-spacer {
+      width: 20px;
+      flex-shrink: 0;
+    }
+
+    .label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    &.dir > .label {
+      color: var(--accent);
+      font-weight: 500;
+    }
+  }
+
+  .children {
+    border-left: 1px solid var(--border);
+    margin-left: 20px;
   }
 }
