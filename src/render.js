@@ -1,6 +1,6 @@
-import heroImg from './assets/hero.png'
-import javascriptLogo from './assets/javascript.svg'
-import viteLogo from './assets/vite.svg'
+import heroImg from "./assets/hero.png";
+import javascriptLogo from "./assets/javascript.svg";
+import viteLogo from "./assets/vite.svg";
 
 export function renderApp(appEl) {
   appEl.innerHTML = `
@@ -54,5 +54,5 @@ export function renderApp(appEl) {
 
 <div class="ticks"></div>
 <section id="spacer"></section>
-`
+`;
 }

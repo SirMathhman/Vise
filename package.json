@@ -6,7 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "lint:all": "npm run lint:pmd:cpd:js && npm run lint:pmd:cpd:css && npm run lint:pmd:cpd:html",
+    "lint:pmd:cpd:js": "pmd cpd --dir src --language ecmascript --minimum-tokens 50 --ignore-identifiers --ignore-literals",
+    "lint:pmd:cpd:css": "pmd cpd --dir src --language css --minimum-tokens 50 --ignore-identifiers --ignore-literals",
+    "lint:pmd:cpd:html": "pmd cpd index.html --dir src --language css --minimum-tokens 50 --ignore-identifiers --ignore-literals"
   },
   "devDependencies": {
     "vite": "^8.2.2"
