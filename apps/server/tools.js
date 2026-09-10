@@ -1,4 +1,4 @@
-import { writeFile, mkdir } from "node:fs/promises";
+import { writeFile, mkdir, stat } from "node:fs/promises";
 import { dirname } from "node:path";
 import { getListing, getFileContent, repoRoot } from "./listing.js";
 import { resolveWithin } from "./pathGuard.js";
@@ -85,6 +85,95 @@ const readFile = {
   },
 };
 
+const createFile = {
+  name: "create_file",
+  definition: {
+    type: "function",
+    function: {
+      name: "create_file",
+      description:
+        "Create a new file in the repository. " +
+        "Fails if the file already exists. Parent directories are created automatically.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description:
+              'File path relative to the repository root (e.g. "apps/server/chat.js").',
+          },
+          content: {
+            type: "string",
+            description: "The content to write to the new file.",
+          },
+        },
+        required: ["path", "content"],
+      },
+    },
+  },
+  async execute(args) {
+    const file = resolveWithin(repoRoot, args?.path ?? "");
+    if (!file) return "Invalid path (must be within the repository).";
+    if (typeof args?.content !== "string")
+      return "Missing required parameter: content.";
+    try {
+      await stat(file);
+      return `File already exists: ${args.path}`;
+    } catch (err) {
+      if (err.code !== "ENOENT") return `Could not create file: ${err.message}`;
+    }
+    try {
+      await mkdir(dirname(file), { recursive: true });
+      await writeFile(file, args.content, "utf8");
+      return `Created ${args.path} (${args.content.length} characters).`;
+    } catch (err) {
+      return `Could not create file: ${err.message}`;
+    }
+  },
+};
+
+const createDirectory = {
+  name: "create_directory",
+  definition: {
+    type: "function",
+    function: {
+      name: "create_directory",
+      description:
+        "Create a new directory in the repository. " +
+        "Fails if the path already exists.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description:
+              'Directory path relative to the repository root (e.g. "apps/server/utils").',
+          },
+        },
+        required: ["path"],
+      },
+    },
+  },
+  async execute(args) {
+    const dir = resolveWithin(repoRoot, args?.path ?? "");
+    if (!dir) return "Invalid path (must be within the repository).";
+    try {
+      const info = await stat(dir);
+      if (info.isDirectory()) return `Directory already exists: ${args.path}`;
+      return `A file with this name already exists: ${args.path}`;
+    } catch (err) {
+      if (err.code !== "ENOENT")
+        return `Could not create directory: ${err.message}`;
+    }
+    try {
+      await mkdir(dir, { recursive: true });
+      return `Created directory ${args.path}.`;
+    } catch (err) {
+      return `Could not create directory: ${err.message}`;
+    }
+  },
+};
+
 const editFile = {
   name: "edit_file",
   definition: {
@@ -92,8 +181,8 @@ const editFile = {
     function: {
       name: "edit_file",
       description:
-        "Write the full content of a file in the repository. " +
-        "Use this to create or modify a file. Read the file first if it already exists.",
+        "Modify an existing file in the repository. " +
+        "Fails if the file does not exist. Read the file first to see its current content.",
       parameters: {
         type: "object",
         properties: {
@@ -117,11 +206,13 @@ const editFile = {
     if (typeof args?.content !== "string")
       return "Missing required parameter: content.";
     try {
-      await mkdir(dirname(file), { recursive: true });
+      const info = await stat(file);
+      if (!info.isFile()) return `File does not exist: ${args.path}`;
       await writeFile(file, args.content, "utf8");
-      return `Wrote ${args.content.length} characters to ${args.path}.`;
+      return `Edited ${args.path} (${args.content.length} characters).`;
     } catch (err) {
-      return `Could not write file: ${err.message}`;
+      if (err.code === "ENOENT") return `File does not exist: ${args.path}`;
+      return `Could not edit file: ${err.message}`;
     }
   },
 };
@@ -129,4 +220,10 @@ const editFile = {
 /**
  * The registry of tools available to the model.
  */
-export const TOOLS = [listDirectory, readFile, editFile];
+export const TOOLS = [
+  listDirectory,
+  readFile,
+  createFile,
+  createDirectory,
+  editFile,
+];
