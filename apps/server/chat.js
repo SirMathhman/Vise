@@ -40,7 +40,7 @@ export async function sendChatMessages(messages, tools) {
       const result = tool
         ? await tool.execute(args)
         : `Unknown tool: ${call.function?.name}`;
-      toolCalls.push({ name: call.function?.name, args });
+      toolCalls.push({ name: call.function?.name, label: tool?.label, args });
       convo.push({
         role: "tool",
         tool_call_id: call.id,

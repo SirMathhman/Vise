@@ -105,8 +105,10 @@ export function renderMessages(container, messages) {
       for (const call of msg.toolCalls) {
         const badge = document.createElement("span");
         badge.className = "chat-msg-tool";
+        const label = call.label ?? call.name;
+        const path = call.args?.path;
         badge.title = `${call.name}(${JSON.stringify(call.args)})`;
-        badge.textContent = `${TOOL_ICONS[call.name] ?? "🔧"} ${call.name}`;
+        badge.textContent = `${TOOL_ICONS[call.name] ?? "🔧"} ${label}${path ? ` ${path}` : ""}`;
         badges.appendChild(badge);
       }
       wrap.append(role, badges);
