@@ -64,14 +64,6 @@ export function renderChildren(li, entries, path) {
   li.appendChild(ul);
 }
 
-const TOOL_ICONS = {
-  list_directory: "📁",
-  read_file: "📄",
-  create_file: "📝",
-  create_directory: "📂",
-  edit_file: "✏️",
-};
-
 /**
  * Renders the conversation into the messages container.
  * @param {HTMLElement} container - The messages container element.
@@ -108,7 +100,7 @@ export function renderMessages(container, messages) {
         const label = call.label ?? call.name;
         const path = call.args?.path;
         badge.title = `${call.name}(${JSON.stringify(call.args)})`;
-        badge.textContent = `${TOOL_ICONS[call.name] ?? "🔧"} ${label}${path ? ` ${path}` : ""}`;
+        badge.textContent = `${call.icon ?? "🔧"} ${label}${path ? ` ${path}` : ""}`;
         badges.appendChild(badge);
       }
       wrap.append(role, badges);

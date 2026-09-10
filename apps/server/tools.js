@@ -11,6 +11,7 @@ import { resolveWithin } from "./pathGuard.js";
 const listDirectory = {
   name: "list_directory",
   label: "List directory",
+  icon: "📁",
   definition: {
     type: "function",
     function: {
@@ -48,6 +49,7 @@ const listDirectory = {
 const readFile = {
   name: "read_file",
   label: "Read file",
+  icon: "📄",
   definition: {
     type: "function",
     function: {
@@ -90,6 +92,7 @@ const readFile = {
 const createFile = {
   name: "create_file",
   label: "Create file",
+  icon: "📝",
   definition: {
     type: "function",
     function: {
@@ -138,6 +141,7 @@ const createFile = {
 const createDirectory = {
   name: "create_directory",
   label: "Create directory",
+  icon: "📂",
   definition: {
     type: "function",
     function: {
@@ -181,6 +185,7 @@ const createDirectory = {
 const editFile = {
   name: "edit_file",
   label: "Edit file",
+  icon: "✏️",
   definition: {
     type: "function",
     function: {
