@@ -11,23 +11,23 @@ export function renderApp(appEl) {
         <div class="file-viewer-header"></div>
         <pre class="file-viewer-content"><code class="placeholder">Select a file to view</code></pre>
       </div>
+      <section class="chat">
+        <h2>Ask the model</h2>
+        <form id="chat-form" class="chat-form">
+          <input
+            id="chat-input"
+            class="chat-input"
+            type="text"
+            placeholder="Type a message…"
+            autocomplete="off"
+          />
+          <button type="submit" class="chat-send">Send</button>
+        </form>
+        <div id="chat-messages" class="chat-messages">
+          <p class="chat-placeholder">Your conversation will appear here</p>
+        </div>
+      </section>
     </div>
-    <section class="chat">
-      <h2>Ask the model</h2>
-      <form id="chat-form" class="chat-form">
-        <input
-          id="chat-input"
-          class="chat-input"
-          type="text"
-          placeholder="Type a message…"
-          autocomplete="off"
-        />
-        <button type="submit" class="chat-send">Send</button>
-      </form>
-      <div id="chat-messages" class="chat-messages">
-        <p class="chat-placeholder">Your conversation will appear here</p>
-      </div>
-    </section>
   </main>
 `;
 }

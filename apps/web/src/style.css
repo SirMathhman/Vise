@@ -259,14 +259,18 @@ p {
 }
 
 .chat {
-  margin-top: 24px;
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
-  flex: 1;
+  flex: 0 0 320px;
   min-height: 0;
   display: flex;
   flex-direction: column;
+
+  @media (max-width: 1024px) {
+    flex: 1 1 0;
+    width: 100%;
+  }
 
   h2 {
     font-family: var(--heading);
