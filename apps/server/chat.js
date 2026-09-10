@@ -12,18 +12,21 @@ const MAX_TOOL_ROUNDS = 5;
 
 /**
  * Sends a conversation to the OpenAI-compatible chat endpoint, letting the
- * model call tools until it produces a final reply.
+ * model call tools until it produces a final reply. Content deltas from the
+ * streamed response are forwarded to `onDelta` as they arrive, so the client
+ * can render the reply character by character.
  * @param {Array<{role: string, content: string}>} messages - The conversation.
  * @param {Array<{name: string, definition: object, execute: (args: object) => Promise<string>}>} tools - The tools the model may call.
+ * @param {(delta: string) => void} [onDelta] - Optional callback invoked with each content chunk as it streams in.
  * @returns {Promise<{reply: string, toolCalls: Array<{name: string, args: object}>}>} The model's reply and the tool calls made.
  */
-export async function sendChatMessages(messages, tools) {
+export async function sendChatMessages(messages, tools, onDelta) {
   const byName = new Map(tools.map((t) => [t.name, t]));
   const convo = [...messages];
   const toolCalls = [];
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    const message = await requestCompletion(convo, tools);
+    const message = await requestCompletion(convo, tools, onDelta);
 
     const calls = message.tool_calls ?? [];
     if (calls.length === 0) {
@@ -55,7 +58,7 @@ export async function sendChatMessages(messages, tools) {
   }
 
   // Out of tool rounds: ask for a final answer without further tools.
-  const final = await requestCompletion(convo, tools);
+  const final = await requestCompletion(convo, tools, onDelta);
   return {
     reply: typeof final.content === "string" ? final.content : "",
     toolCalls,
@@ -63,12 +66,15 @@ export async function sendChatMessages(messages, tools) {
 }
 
 /**
- * Performs a single chat-completions request and returns the assistant message.
+ * Performs a single streaming chat-completions request and returns the
+ * accumulated assistant message. Content chunks are forwarded to `onDelta`
+ * as they arrive.
  * @param {Array<object>} convo - The conversation to send.
  * @param {Array<object>} tools - The tools to offer the model.
+ * @param {(delta: string) => void} [onDelta] - Optional callback for streamed content.
  * @returns {Promise<object>} The assistant message (content and/or tool_calls).
  */
-async function requestCompletion(convo, tools) {
+async function requestCompletion(convo, tools, onDelta) {
   const res = await fetch(`${LLM_BASE_URL}/v1/chat/completions`, {
     method: "POST",
     headers: {
@@ -77,7 +83,7 @@ async function requestCompletion(convo, tools) {
     },
     body: JSON.stringify({
       model: LLM_MODEL,
-      stream: false,
+      stream: true,
       messages: convo,
       tools: tools.map((t) => t.definition),
     }),
@@ -90,12 +96,80 @@ async function requestCompletion(convo, tools) {
     );
   }
 
-  const data = await res.json();
-  const message = data?.choices?.[0]?.message;
+  const message = await parseStream(res, onDelta);
   if (!message || typeof message !== "object") {
     throw new Error("Unexpected response from LLM endpoint");
   }
   return message;
+}
+
+/**
+ * Reads an OpenAI-compatible SSE stream, forwarding content deltas to
+ * `onDelta`, and accumulates the full assistant message.
+ * @param {Response} res - The streaming response from the LLM endpoint.
+ * @param {(delta: string) => void} [onDelta] - Optional callback for streamed content.
+ * @returns {Promise<object>} The accumulated assistant message.
+ */
+async function parseStream(res, onDelta) {
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let content = "";
+  const calls = []; // accumulated tool calls, indexed by stream position
+
+  const handleChunk = (chunk) => {
+    const delta = chunk?.choices?.[0]?.delta;
+    if (!delta) return;
+    if (typeof delta.content === "string" && delta.content) {
+      content += delta.content;
+      onDelta?.(delta.content);
+    }
+    if (Array.isArray(delta.tool_calls)) {
+      for (const tc of delta.tool_calls) {
+        const idx = tc.index ?? 0;
+        if (!calls[idx]) {
+          calls[idx] = {
+            type: "function",
+            id: "",
+            function: { name: "", arguments: "" },
+          };
+        }
+        const acc = calls[idx];
+        if (tc.id) acc.id = tc.id;
+        if (tc.function?.name) acc.function.name += tc.function.name;
+        if (typeof tc.function?.arguments === "string") {
+          acc.function.arguments += tc.function.arguments;
+        }
+      }
+    }
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let newlineIdx;
+    while ((newlineIdx = buffer.indexOf("\n")) !== -1) {
+      const line = buffer.slice(0, newlineIdx);
+      buffer = buffer.slice(newlineIdx + 1);
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("data:")) continue;
+      const payload = trimmed.slice(5).trim();
+      if (payload === "[DONE]") continue;
+      try {
+        handleChunk(JSON.parse(payload));
+      } catch {
+        // Ignore malformed keep-alive chunks.
+      }
+    }
+  }
+
+  const toolCalls = calls.filter(Boolean);
+  return {
+    role: "assistant",
+    content,
+    tool_calls: toolCalls.length ? toolCalls : undefined,
+  };
 }
 
 /**

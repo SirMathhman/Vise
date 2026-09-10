@@ -5,20 +5,60 @@
  */
 
 /**
- * Sends the conversation to the LLM via the backend and returns the reply
- * and any tool calls the model made.
+ * Sends the conversation to the LLM via the backend and streams the reply
+ * back. Content deltas are forwarded to `onDelta` as they arrive; the
+ * resolved value carries the complete reply and any tool calls the model
+ * made.
  * @param {Array<{role: string, content: string}>} messages - The conversation.
+ * @param {(delta: string) => void} [onDelta] - Optional callback for streamed content.
  * @returns {Promise<{reply: string, toolCalls: Array<{name: string, args: object}>}>}
  */
-export async function sendChat(messages) {
+export async function sendChat(messages, onDelta) {
   const res = await fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ messages }),
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error ?? `Request failed: ${res.status}`);
-  return { reply: data.reply, toolCalls: data.toolCalls ?? [] };
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error ?? `Request failed: ${res.status}`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let reply = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let sepIdx;
+    while ((sepIdx = buffer.indexOf("\n\n")) !== -1) {
+      const block = buffer.slice(0, sepIdx);
+      buffer = buffer.slice(sepIdx + 2);
+      let event = "message";
+      let data = "";
+      for (const line of block.split("\n")) {
+        if (line.startsWith("event:")) event = line.slice(6).trim();
+        else if (line.startsWith("data:")) data += line.slice(5).trim();
+      }
+      const parsed = data ? JSON.parse(data) : {};
+      if (event === "delta") {
+        reply += parsed.delta ?? "";
+        onDelta?.(parsed.delta ?? "");
+      } else if (event === "done") {
+        return {
+          reply: parsed.reply ?? reply,
+          toolCalls: parsed.toolCalls ?? [],
+        };
+      } else if (event === "error") {
+        throw new Error(parsed.error ?? "Request failed");
+      }
+    }
+  }
+
+  return { reply, toolCalls: [] };
 }
 
 /**

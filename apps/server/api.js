@@ -36,8 +36,7 @@ export async function handleApi(req, res) {
       const body = await readJsonBody(req);
       const messages = normalizeMessages(body.messages);
       if (!messages) return sendJson(res, 400, { error: "Missing messages" });
-      const { reply, toolCalls } = await sendChatMessages(messages, TOOLS);
-      return sendJson(res, 200, { reply, toolCalls });
+      await streamChat(res, messages);
     });
   }
 
@@ -53,6 +52,36 @@ export async function handleApi(req, res) {
 function sendJson(res, status, payload) {
   res.writeHead(status, { "Content-Type": "application/json" });
   res.end(JSON.stringify(payload));
+}
+
+/**
+ * Streams a chat reply to the client as Server-Sent Events. Content deltas
+ * are sent as they arrive from the LLM; the final event carries the complete
+ * reply and any tool calls the model made.
+ * @param {import("node:http").ServerResponse} res - The response.
+ * @param {Array<{role: string, content: string}>} messages - The conversation.
+ */
+async function streamChat(res, messages) {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  });
+
+  const send = (event, data) =>
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+
+  try {
+    const { reply, toolCalls } = await sendChatMessages(
+      messages,
+      TOOLS,
+      (delta) => send("delta", { delta }),
+    );
+    send("done", { reply, toolCalls });
+  } catch (err) {
+    send("error", { error: err.message });
+  }
+  res.end();
 }
 
 /**

@@ -51,15 +51,29 @@ export function setupChat(appEl) {
 
     sent.push({ role: "user", content: message });
     display.push({ role: "user", content: message });
+    display.push({ role: "assistant", content: "" }); // placeholder, filled as it streams
     renderMessages(messagesEl, display);
     if (follow) messagesEl.scrollTop = messagesEl.scrollHeight;
 
+    // Reference the streaming message's content element so we can update it
+    // in place as deltas arrive, without rebuilding the whole list.
+    const streamingEl =
+      messagesEl.lastElementChild?.querySelector(".chat-msg-content") ?? null;
+
     try {
-      const { reply, toolCalls } = await sendChat(sent);
+      const { reply, toolCalls } = await sendChat(sent, (delta) => {
+        const last = display[display.length - 1];
+        last.content += delta;
+        if (streamingEl) streamingEl.textContent = last.content;
+        if (follow) messagesEl.scrollTop = messagesEl.scrollHeight;
+      });
       sent.push({ role: "assistant", content: reply });
-      display.push({ role: "assistant", content: reply, toolCalls });
+      const last = display[display.length - 1];
+      last.content = reply;
+      last.toolCalls = toolCalls;
     } catch (err) {
       sent.pop(); // undo so the failed turn isn't re-sent
+      display.pop(); // drop the placeholder
       display.push({ role: "error", content: err.message });
     } finally {
       button.disabled = false;
