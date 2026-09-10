@@ -27,6 +27,14 @@ const server = createServer(async (req, res) => {
   res.end("Not found. Build the frontend first: npm run build -w web");
 });
 
+server.on("error", (err) => {
+  if (err.code === "EADDRINUSE") {
+    console.error(`Port ${PORT} is already in use. Free it or set PORT to a different value.`);
+    process.exit(1);
+  }
+  throw err;
+});
+
 server.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);
 });
