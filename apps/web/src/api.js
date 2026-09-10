@@ -7,6 +7,7 @@
 // SSE event names for the chat stream protocol. The server in
 // apps/server/api.js mirrors these; keep them in sync.
 const SSE_DELTA = "delta";
+const SSE_REASONING = "reasoning";
 const SSE_DONE = "done";
 const SSE_ERROR = "error";
 
@@ -17,9 +18,10 @@ const SSE_ERROR = "error";
  * made.
  * @param {Array<{role: string, content: string}>} messages - The conversation.
  * @param {(delta: string) => void} [onDelta] - Optional callback for streamed content.
- * @returns {Promise<{reply: string, toolCalls: Array<{name: string, args: object}>}>}
+ * @param {(delta: string) => void} [onReasoning] - Optional callback for streamed reasoning (thinking).
+ * @returns {Promise<{reply: string, reasoning: string, toolCalls: Array<{name: string, args: object}>}>}
  */
-export async function sendChat(messages, onDelta) {
+export async function sendChat(messages, onDelta, onReasoning) {
   const res = await fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -34,6 +36,7 @@ export async function sendChat(messages, onDelta) {
   const decoder = new TextDecoder();
   let buffer = "";
   let reply = "";
+  let reasoning = "";
 
   while (true) {
     const { done, value } = await reader.read();
@@ -53,9 +56,13 @@ export async function sendChat(messages, onDelta) {
       if (event === SSE_DELTA) {
         reply += parsed.delta ?? "";
         onDelta?.(parsed.delta ?? "");
+      } else if (event === SSE_REASONING) {
+        reasoning += parsed.delta ?? "";
+        onReasoning?.(parsed.delta ?? "");
       } else if (event === SSE_DONE) {
         return {
           reply: parsed.reply ?? reply,
+          reasoning: parsed.reasoning ?? reasoning,
           toolCalls: parsed.toolCalls ?? [],
         };
       } else if (event === SSE_ERROR) {
@@ -64,7 +71,7 @@ export async function sendChat(messages, onDelta) {
     }
   }
 
-  return { reply, toolCalls: [] };
+  return { reply, reasoning, toolCalls: [] };
 }
 
 /**

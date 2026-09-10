@@ -51,25 +51,46 @@ export function setupChat(appEl) {
 
     sent.push({ role: "user", content: message });
     display.push({ role: "user", content: message });
-    display.push({ role: "assistant", content: "" }); // placeholder, filled as it streams
+    display.push({
+      role: "assistant",
+      content: "",
+      reasoning: "",
+    }); // placeholder, filled as it streams
     renderMessages(messagesEl, display);
     if (follow) messagesEl.scrollTop = messagesEl.scrollHeight;
 
-    // Reference the streaming message's content element so we can update it
-    // in place as deltas arrive, without rebuilding the whole list.
-    const streamingEl =
-      messagesEl.lastElementChild?.querySelector(".chat-msg-content") ?? null;
+    // Reference the streaming message's elements so we can update them in
+    // place as deltas arrive, without rebuilding the whole list.
+    const lastEl = messagesEl.lastElementChild;
+    const streamingEl = lastEl?.querySelector(".chat-msg-content") ?? null;
+    const reasoningEl = lastEl?.querySelector(".chat-msg-reasoning") ?? null;
 
     try {
-      const { reply, toolCalls } = await sendChat(sent, (delta) => {
-        const last = display[display.length - 1];
-        last.content += delta;
-        if (streamingEl) streamingEl.textContent = last.content;
-        if (follow) messagesEl.scrollTop = messagesEl.scrollHeight;
-      });
+      const { reply, reasoning, toolCalls } = await sendChat(
+        sent,
+        (delta) => {
+          const last = display[display.length - 1];
+          last.content += delta;
+          if (streamingEl) streamingEl.textContent = last.content;
+          if (follow) messagesEl.scrollTop = messagesEl.scrollHeight;
+        },
+        (delta) => {
+          const last = display[display.length - 1];
+          last.reasoning += delta;
+          if (reasoningEl) {
+            reasoningEl.hidden = false;
+            const contentEl = reasoningEl.querySelector(
+              ".chat-msg-reasoning-content",
+            );
+            if (contentEl) contentEl.textContent = last.reasoning;
+          }
+          if (follow) messagesEl.scrollTop = messagesEl.scrollHeight;
+        },
+      );
       sent.push({ role: "assistant", content: reply });
       const last = display[display.length - 1];
       last.content = reply;
+      last.reasoning = reasoning;
       last.toolCalls = toolCalls;
     } catch (err) {
       sent.pop(); // undo so the failed turn isn't re-sent

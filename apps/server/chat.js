@@ -13,27 +13,33 @@ const MAX_TOOL_ROUNDS = 5;
 /**
  * Sends a conversation to the OpenAI-compatible chat endpoint, letting the
  * model call tools until it produces a final reply. Content deltas from the
- * streamed response are forwarded to `onDelta` as they arrive, so the client
- * can render the reply character by character.
+ * streamed response are forwarded to `onDelta` (and reasoning deltas to
+ * `onReasoning`) as they arrive, so the client can render the reply
+ * character by character, including the model's thinking.
  * @param {Array<{role: string, content: string}>} messages - The conversation.
  * @param {Array<{name: string, definition: object, execute: (args: object) => Promise<string>}>} tools - The tools the model may call.
  * @param {(delta: string) => void} [onDelta] - Optional callback invoked with each content chunk as it streams in.
- * @returns {Promise<{reply: string, toolCalls: Array<{name: string, args: object}>}>} The model's reply and the tool calls made.
+ * @param {(delta: string) => void} [onReasoning] - Optional callback invoked with each reasoning (thinking) chunk as it streams in.
+ * @returns {Promise<{reply: string, reasoning: string, toolCalls: Array<{name: string, args: object}>}>} The model's reply, its thinking, and the tool calls made.
  */
-export async function sendChatMessages(messages, tools, onDelta) {
+export async function sendChatMessages(messages, tools, onDelta, onReasoning) {
   const byName = new Map(tools.map((t) => [t.name, t]));
   const convo = [...messages];
   const toolCalls = [];
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    const message = await requestCompletion(convo, tools, onDelta);
+    const message = await requestCompletion(convo, tools, onDelta, onReasoning);
 
     const calls = message.tool_calls ?? [];
     if (calls.length === 0) {
       if (typeof message.content !== "string") {
         throw new Error("Unexpected response from LLM endpoint");
       }
-      return { reply: message.content, toolCalls };
+      return {
+        reply: message.content,
+        reasoning: message.reasoning,
+        toolCalls,
+      };
     }
 
     convo.push(message);
@@ -58,9 +64,10 @@ export async function sendChatMessages(messages, tools, onDelta) {
   }
 
   // Out of tool rounds: ask for a final answer without further tools.
-  const final = await requestCompletion(convo, tools, onDelta);
+  const final = await requestCompletion(convo, tools, onDelta, onReasoning);
   return {
     reply: typeof final.content === "string" ? final.content : "",
+    reasoning: final.reasoning,
     toolCalls,
   };
 }
@@ -68,13 +75,14 @@ export async function sendChatMessages(messages, tools, onDelta) {
 /**
  * Performs a single streaming chat-completions request and returns the
  * accumulated assistant message. Content chunks are forwarded to `onDelta`
- * as they arrive.
+ * and reasoning chunks to `onReasoning` as they arrive.
  * @param {Array<object>} convo - The conversation to send.
  * @param {Array<object>} tools - The tools to offer the model.
  * @param {(delta: string) => void} [onDelta] - Optional callback for streamed content.
- * @returns {Promise<object>} The assistant message (content and/or tool_calls).
+ * @param {(delta: string) => void} [onReasoning] - Optional callback for streamed reasoning (thinking).
+ * @returns {Promise<object>} The assistant message (content, reasoning, and/or tool_calls).
  */
-async function requestCompletion(convo, tools, onDelta) {
+async function requestCompletion(convo, tools, onDelta, onReasoning) {
   const res = await fetch(`${LLM_BASE_URL}/v1/chat/completions`, {
     method: "POST",
     headers: {
@@ -96,7 +104,7 @@ async function requestCompletion(convo, tools, onDelta) {
     );
   }
 
-  const message = await parseStream(res, onDelta);
+  const message = await parseStream(res, onDelta, onReasoning);
   if (!message || typeof message !== "object") {
     throw new Error("Unexpected response from LLM endpoint");
   }
@@ -105,16 +113,19 @@ async function requestCompletion(convo, tools, onDelta) {
 
 /**
  * Reads an OpenAI-compatible SSE stream, forwarding content deltas to
- * `onDelta`, and accumulates the full assistant message.
+ * `onDelta` and reasoning (thinking) deltas to `onReasoning`, and
+ * accumulates the full assistant message.
  * @param {Response} res - The streaming response from the LLM endpoint.
  * @param {(delta: string) => void} [onDelta] - Optional callback for streamed content.
+ * @param {(delta: string) => void} [onReasoning] - Optional callback for streamed reasoning (thinking).
  * @returns {Promise<object>} The accumulated assistant message.
  */
-async function parseStream(res, onDelta) {
+async function parseStream(res, onDelta, onReasoning) {
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   let content = "";
+  let reasoning = "";
   const calls = []; // accumulated tool calls, indexed by stream position
 
   const handleChunk = (chunk) => {
@@ -123,6 +134,13 @@ async function parseStream(res, onDelta) {
     if (typeof delta.content === "string" && delta.content) {
       content += delta.content;
       onDelta?.(delta.content);
+    }
+    if (
+      typeof delta.reasoning_content === "string" &&
+      delta.reasoning_content
+    ) {
+      reasoning += delta.reasoning_content;
+      onReasoning?.(delta.reasoning_content);
     }
     if (Array.isArray(delta.tool_calls)) {
       for (const tc of delta.tool_calls) {
@@ -168,6 +186,7 @@ async function parseStream(res, onDelta) {
   return {
     role: "assistant",
     content,
+    reasoning,
     tool_calls: toolCalls.length ? toolCalls : undefined,
   };
 }

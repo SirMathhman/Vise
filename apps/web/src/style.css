@@ -449,6 +449,35 @@ p {
       padding: 8px 12px;
     }
 
+    .chat-msg-reasoning {
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: var(--text);
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent-border);
+      border-radius: 6px;
+      padding: 6px 12px;
+
+      summary {
+        font-size: 11px;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--text);
+        cursor: pointer;
+        list-style: none;
+        margin-bottom: 4px;
+      }
+
+      .chat-msg-reasoning-content {
+        font-style: italic;
+      }
+    }
+
     &.chat-msg-user {
       align-self: flex-end;
       align-items: flex-end;

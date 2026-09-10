@@ -57,6 +57,7 @@ function sendJson(res, status, payload) {
 // SSE event names for the chat stream protocol. The client in
 // apps/web/src/api.js mirrors these; keep them in sync.
 const SSE_DELTA = "delta";
+const SSE_REASONING = "reasoning";
 const SSE_DONE = "done";
 const SSE_ERROR = "error";
 
@@ -78,12 +79,13 @@ async function streamChat(res, messages) {
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 
   try {
-    const { reply, toolCalls } = await sendChatMessages(
+    const { reply, reasoning, toolCalls } = await sendChatMessages(
       messages,
       TOOLS,
       (delta) => send(SSE_DELTA, { delta }),
+      (delta) => send(SSE_REASONING, { delta }),
     );
-    send(SSE_DONE, { reply, toolCalls });
+    send(SSE_DONE, { reply, reasoning, toolCalls });
   } catch (err) {
     send(SSE_ERROR, { error: err.message });
   }
