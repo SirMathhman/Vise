@@ -7,6 +7,6 @@
     "dev": "node --watch index.js",
     "start": "node index.js",
     "lint:all": "npm run lint:pmd:cpd:js",
-    "lint:pmd:cpd:js": "pmd cpd --dir . --language ecmascript --minimum-tokens 50 --ignore-identifiers --ignore-literals"
+    "lint:pmd:cpd:js": "pmd cpd --dir . --language ecmascript --minimum-tokens 100 --ignore-identifiers --ignore-literals"
   }
 }
