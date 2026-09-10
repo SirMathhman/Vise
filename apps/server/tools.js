@@ -1,4 +1,5 @@
-import { writeFile } from "node:fs/promises";
+import { writeFile, mkdir } from "node:fs/promises";
+import { dirname } from "node:path";
 import { getListing, getFileContent, repoRoot } from "./listing.js";
 import { resolveWithin } from "./pathGuard.js";
 
@@ -116,6 +117,7 @@ const editFile = {
     if (typeof args?.content !== "string")
       return "Missing required parameter: content.";
     try {
+      await mkdir(dirname(file), { recursive: true });
       await writeFile(file, args.content, "utf8");
       return `Wrote ${args.content.length} characters to ${args.path}.`;
     } catch (err) {
