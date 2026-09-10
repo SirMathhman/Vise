@@ -1,3 +1,4 @@
+import { writeFile } from "node:fs/promises";
 import { getListing, getFileContent, repoRoot } from "./listing.js";
 import { resolveWithin } from "./pathGuard.js";
 
@@ -83,7 +84,47 @@ const readFile = {
   },
 };
 
+const editFile = {
+  name: "edit_file",
+  definition: {
+    type: "function",
+    function: {
+      name: "edit_file",
+      description:
+        "Write the full content of a file in the repository. " +
+        "Use this to create or modify a file. Read the file first if it already exists.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description:
+              'File path relative to the repository root (e.g. "apps/server/chat.js").',
+          },
+          content: {
+            type: "string",
+            description: "The full new content to write to the file.",
+          },
+        },
+        required: ["path", "content"],
+      },
+    },
+  },
+  async execute(args) {
+    const file = resolveWithin(repoRoot, args?.path ?? "");
+    if (!file) return "Invalid path (must be within the repository).";
+    if (typeof args?.content !== "string")
+      return "Missing required parameter: content.";
+    try {
+      await writeFile(file, args.content, "utf8");
+      return `Wrote ${args.content.length} characters to ${args.path}.`;
+    } catch (err) {
+      return `Could not write file: ${err.message}`;
+    }
+  },
+};
+
 /**
  * The registry of tools available to the model.
  */
-export const TOOLS = [listDirectory, readFile];
+export const TOOLS = [listDirectory, readFile, editFile];
