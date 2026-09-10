@@ -1,5 +1,6 @@
 import { fetchFileContent } from "./api.js";
 import { renderLines } from "./render.js";
+import { setOpenFilePath } from "./state.js";
 
 /**
  * Sets up the file viewer: attaches the click handler for file entries and
@@ -18,7 +19,7 @@ export function setupFileViewer(appEl) {
     const codeEl = viewerEl.querySelector(".file-viewer-content code");
 
     headerEl.textContent = path;
-    viewerEl.dataset.path = path; // machine-readable open file path
+    setOpenFilePath(path);
     codeEl.textContent = "Loading…";
 
     try {

@@ -1,5 +1,6 @@
 import { sendChat } from "./api.js";
 import { renderMessages } from "./render.js";
+import { getOpenFilePath } from "./state.js";
 
 /**
  * Wires up the chat form: on submit, sends the conversation and appends the
@@ -52,7 +53,7 @@ export function setupChat(appEl) {
     // Append context about the currently open file so the model can answer
     // questions like "what file do I have open?". Kept out of the displayed
     // message so the user's bubble shows only what they typed.
-    const openPath = appEl.querySelector("#file-viewer").dataset.path;
+    const openPath = getOpenFilePath();
     const context = openPath
       ? `\n\n[Context: the file currently open in the viewer is "${openPath}".]`
       : "\n\n[Context: no file is currently open in the viewer.]";
