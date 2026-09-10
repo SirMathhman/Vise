@@ -7,10 +7,12 @@ export function renderApp(appEl) {
     <h1>Files &amp; directories</h1>
     <div class="layout">
       <div id="tree" class="tree-container"></div>
+      <div class="divider" data-target="tree"></div>
       <div id="file-viewer" class="file-viewer">
         <div class="file-viewer-header"></div>
         <pre class="file-viewer-content"><code class="placeholder">Select a file to view</code></pre>
       </div>
+      <div class="divider" data-target="chat"></div>
       <section class="chat">
         <h2>Ask the model</h2>
         <form id="chat-form" class="chat-form">

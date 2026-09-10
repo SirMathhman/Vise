@@ -92,12 +92,29 @@ p {
 
 .layout {
   display: flex;
-  gap: 16px;
   flex: 1;
   min-height: 0;
 
   @media (max-width: 1024px) {
     flex-direction: column;
+  }
+}
+
+.divider {
+  flex: 0 0 6px;
+  margin: 0 5px;
+  cursor: col-resize;
+  border-radius: 3px;
+  background: transparent;
+  transition: background 0.15s;
+
+  &:hover,
+  &:active {
+    background: var(--accent-border);
+  }
+
+  @media (max-width: 1024px) {
+    display: none;
   }
 }
 
@@ -115,7 +132,7 @@ p {
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
-  flex: 0 0 320px;
+  flex: 0 0 var(--tree-width, 320px);
   min-height: 0;
   overflow-y: auto;
 
@@ -262,7 +279,7 @@ p {
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
-  flex: 0 0 320px;
+  flex: 0 0 var(--chat-width, 320px);
   min-height: 0;
   display: flex;
   flex-direction: column;
