@@ -33,5 +33,27 @@ export function setupDividers(appEl) {
       document.addEventListener("mouseup", onUp);
       document.body.style.cursor = "col-resize";
     });
+
+    divider.addEventListener("keydown", (e) => {
+      const isTree = divider.dataset.target === "tree";
+      const prop = isTree ? "--tree-width" : "--chat-width";
+      const colEl = isTree ? treeEl : chatEl;
+      const current = colEl.getBoundingClientRect().width;
+      const step = e.shiftKey ? 40 : 10;
+      const delta =
+        e.key === "ArrowLeft"
+          ? isTree
+            ? -step
+            : step
+          : e.key === "ArrowRight"
+            ? isTree
+              ? step
+              : -step
+            : 0;
+      if (delta === 0) return;
+      e.preventDefault();
+      const newWidth = Math.max(150, Math.min(600, current + delta));
+      layout.style.setProperty(prop, `${newWidth}px`);
+    });
   }
 }
