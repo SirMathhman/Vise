@@ -41,11 +41,11 @@ There is **no test runner or formatter** configured. `npm run lint:all` runs **P
 - **Composition root:** `src/main.js` is a thin wiring module — it imports the render layer and behavior modules, then calls them. Keep it small; do not add rendering or feature logic here.
 - **Rendering:** `src/render.js` exports `renderApp(appEl)` (page shell), `renderTree(el, entries, path)`, and `renderChildren(li, entries, path)`, building DOM via `createElement`/`replaceChildren`. Add new markup here, not in `main.js`.
 - **Network layer:** `src/api.js` owns **all** `fetch('/api/*')` calls (`fetchEntries`, `fetchFileContent`, `sendChat`). Keep network I/O here, not in behavior modules.
-- **Behavior modules:** each feature is a `setup*(appEl)` module that attaches event listeners (via delegation on `appEl`) and delegates rendering to `render.js`:
+- **Behavior modules:** each feature is a `setup*(appEl)` module that attaches event listeners (delegation on `appEl` for tree/file viewer; a direct `submit` listener on the form for chat) and builds its own DOM via private render helpers:
   - `src/listing.js` — `setupTree`: expand/collapse the directory tree, lazy-loading children.
   - `src/fileViewer.js` — `setupFileViewer`: click a file → fetch content → render with line numbers.
   - `src/chat.js` — `setupChat`: submit the form → send the conversation → append the reply.
-- **Dependency direction:** one-way only — `main.js → {render, listing, fileViewer, chat}`; `listing/fileViewer/chat → {render, api}`. `api.js` and `render.js` are leaves and must not import behavior modules or `main.js`.
+- **Dependency direction:** one-way only — `main.js → {render, listing, fileViewer, chat}`; `listing → {render, api}`; `fileViewer/chat → {api}`. `api.js` and `render.js` are leaves and must not import behavior modules or `main.js`.
 - **API access:** the frontend calls **relative** `/api/*` paths. In dev, Vite proxies `/api` to the backend (see `vite.config.js`); in production the backend serves both. Do not hardcode backend host/port in frontend code.
 - **Styling:** `src/style.css` uses **native CSS nesting**, CSS custom properties (design tokens in `:root`), and `prefers-color-scheme` for dark mode. Follow the existing token-based approach (`var(--accent)`, etc.) rather than hardcoding colors.
 - **Static assets:**
