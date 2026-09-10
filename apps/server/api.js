@@ -58,6 +58,7 @@ function sendJson(res, status, payload) {
 // apps/web/src/api.js mirrors these; keep them in sync.
 const SSE_DELTA = "delta";
 const SSE_REASONING = "reasoning";
+const SSE_FILE_EDIT = "file_edit";
 const SSE_DONE = "done";
 const SSE_ERROR = "error";
 
@@ -84,6 +85,7 @@ async function streamChat(res, messages) {
       TOOLS,
       (delta) => send(SSE_DELTA, { delta }),
       (delta) => send(SSE_REASONING, { delta }),
+      (file) => send(SSE_FILE_EDIT, file),
     );
     send(SSE_DONE, { reply, reasoning, toolCalls });
   } catch (err) {

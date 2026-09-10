@@ -20,9 +20,16 @@ const MAX_TOOL_ROUNDS = 5;
  * @param {Array<{name: string, definition: object, execute: (args: object) => Promise<string>}>} tools - The tools the model may call.
  * @param {(delta: string) => void} [onDelta] - Optional callback invoked with each content chunk as it streams in.
  * @param {(delta: string) => void} [onReasoning] - Optional callback invoked with each reasoning (thinking) chunk as it streams in.
+ * @param {(file: {path: string, content: string}) => void} [onFileEdit] - Optional callback invoked when a file-writing tool succeeds, with the file's path and new content.
  * @returns {Promise<{reply: string, reasoning: string, toolCalls: Array<{name: string, args: object}>}>} The model's reply, its thinking, and the tool calls made.
  */
-export async function sendChatMessages(messages, tools, onDelta, onReasoning) {
+export async function sendChatMessages(
+  messages,
+  tools,
+  onDelta,
+  onReasoning,
+  onFileEdit,
+) {
   const byName = new Map(tools.map((t) => [t.name, t]));
   const convo = [...messages];
   const toolCalls = [];
@@ -46,9 +53,12 @@ export async function sendChatMessages(messages, tools, onDelta, onReasoning) {
     for (const call of calls) {
       const args = parseArgs(call.function?.arguments);
       const tool = byName.get(call.function?.name);
-      const result = tool
+      const raw = tool
         ? await tool.execute(args)
         : `Unknown tool: ${call.function?.name}`;
+      // File-writing tools return { result, file? }; others return a string.
+      const result = typeof raw === "string" ? raw : raw.result;
+      if (tool?.writesFile && raw?.file) onFileEdit?.(raw.file);
       toolCalls.push({
         name: call.function?.name,
         label: tool?.label,

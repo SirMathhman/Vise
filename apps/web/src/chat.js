@@ -109,6 +109,11 @@ export function setupChat(appEl) {
           }
           if (follow) messagesEl.scrollTop = messagesEl.scrollHeight;
         },
+        (file) => {
+          // The model wrote a file; let the file viewer animate it in if it's
+          // the file currently open.
+          appEl.dispatchEvent(new CustomEvent("file-edit", { detail: file }));
+        },
       );
       sent.push({ role: "assistant", content: reply });
       const last = display[display.length - 1];

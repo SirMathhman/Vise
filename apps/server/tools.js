@@ -93,6 +93,7 @@ const createFile = {
   name: "create_file",
   label: "Create file",
   icon: "📝",
+  writesFile: true,
   definition: {
     type: "function",
     function: {
@@ -119,21 +120,26 @@ const createFile = {
   },
   async execute(args) {
     const file = resolveWithin(repoRoot, args?.path ?? "");
-    if (!file) return "Invalid path (must be within the repository).";
+    if (!file)
+      return { result: "Invalid path (must be within the repository)." };
     if (typeof args?.content !== "string")
-      return "Missing required parameter: content.";
+      return { result: "Missing required parameter: content." };
     try {
       await stat(file);
-      return `File already exists: ${args.path}`;
+      return { result: `File already exists: ${args.path}` };
     } catch (err) {
-      if (err.code !== "ENOENT") return `Could not create file: ${err.message}`;
+      if (err.code !== "ENOENT")
+        return { result: `Could not create file: ${err.message}` };
     }
     try {
       await mkdir(dirname(file), { recursive: true });
       await writeFile(file, args.content, "utf8");
-      return `Created ${args.path} (${args.content.length} characters).`;
+      return {
+        result: `Created ${args.path} (${args.content.length} characters).`,
+        file: { path: args.path, content: args.content },
+      };
     } catch (err) {
-      return `Could not create file: ${err.message}`;
+      return { result: `Could not create file: ${err.message}` };
     }
   },
 };
@@ -186,6 +192,7 @@ const editFile = {
   name: "edit_file",
   label: "Edit file",
   icon: "✏️",
+  writesFile: true,
   definition: {
     type: "function",
     function: {
@@ -212,17 +219,23 @@ const editFile = {
   },
   async execute(args) {
     const file = resolveWithin(repoRoot, args?.path ?? "");
-    if (!file) return "Invalid path (must be within the repository).";
+    if (!file)
+      return { result: "Invalid path (must be within the repository)." };
     if (typeof args?.content !== "string")
-      return "Missing required parameter: content.";
+      return { result: "Missing required parameter: content." };
     try {
       const info = await stat(file);
-      if (!info.isFile()) return `File does not exist: ${args.path}`;
+      if (!info.isFile())
+        return { result: `File does not exist: ${args.path}` };
       await writeFile(file, args.content, "utf8");
-      return `Edited ${args.path} (${args.content.length} characters).`;
+      return {
+        result: `Edited ${args.path} (${args.content.length} characters).`,
+        file: { path: args.path, content: args.content },
+      };
     } catch (err) {
-      if (err.code === "ENOENT") return `File does not exist: ${args.path}`;
-      return `Could not edit file: ${err.message}`;
+      if (err.code === "ENOENT")
+        return { result: `File does not exist: ${args.path}` };
+      return { result: `Could not edit file: ${err.message}` };
     }
   },
 };

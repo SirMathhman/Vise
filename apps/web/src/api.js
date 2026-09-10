@@ -8,6 +8,7 @@
 // apps/server/api.js mirrors these; keep them in sync.
 const SSE_DELTA = "delta";
 const SSE_REASONING = "reasoning";
+const SSE_FILE_EDIT = "file_edit";
 const SSE_DONE = "done";
 const SSE_ERROR = "error";
 
@@ -19,9 +20,10 @@ const SSE_ERROR = "error";
  * @param {Array<{role: string, content: string}>} messages - The conversation.
  * @param {(delta: string) => void} [onDelta] - Optional callback for streamed content.
  * @param {(delta: string) => void} [onReasoning] - Optional callback for streamed reasoning (thinking).
+ * @param {(file: {path: string, content: string}) => void} [onFileEdit] - Optional callback invoked when the model writes a file, with the file's path and new content.
  * @returns {Promise<{reply: string, reasoning: string, toolCalls: Array<{name: string, args: object}>}>}
  */
-export async function sendChat(messages, onDelta, onReasoning) {
+export async function sendChat(messages, onDelta, onReasoning, onFileEdit) {
   const res = await fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -59,6 +61,8 @@ export async function sendChat(messages, onDelta, onReasoning) {
       } else if (event === SSE_REASONING) {
         reasoning += parsed.delta ?? "";
         onReasoning?.(parsed.delta ?? "");
+      } else if (event === SSE_FILE_EDIT) {
+        onFileEdit?.(parsed);
       } else if (event === SSE_DONE) {
         return {
           reply: parsed.reply ?? reply,
