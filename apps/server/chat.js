@@ -1,7 +1,8 @@
 // OpenAI-compatible endpoint (llama.cpp) base URL, model name, and API key.
 const LLM_BASE_URL = process.env.LLM_BASE_URL || "http://localhost:8080";
 const LLM_MODEL =
-  process.env.LLM_MODEL || "orcarouter/Qwen3.8-27B-Uncensored-GGUF:Q4_K_M";
+  process.env.LLM_MODEL ||
+  "RentedNoodle/Qwen3.8-27B-OrcaRouter-GSQ-RCO-IQ3_XXS-Uncensored:0";
 const LLM_API_KEY =
   process.env.LLM_API_KEY ||
   "S6677k5w355Nw9ErxCZWYCMiW4ItldmzXBLUElpnLsdE8gBj5A";
