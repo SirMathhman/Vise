@@ -29,7 +29,9 @@ const server = createServer(async (req, res) => {
 
 server.on("error", (err) => {
   if (err.code === "EADDRINUSE") {
-    console.error(`Port ${PORT} is already in use. Free it or set PORT to a different value.`);
+    console.error(
+      `Port ${PORT} is already in use. Free it or set PORT to a different value.`,
+    );
     process.exit(1);
   }
   throw err;
