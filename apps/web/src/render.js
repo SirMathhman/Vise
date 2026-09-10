@@ -14,7 +14,18 @@ export function renderApp(appEl) {
       </div>
       <div class="divider" data-target="chat" tabindex="0" role="separator" aria-orientation="vertical" aria-label="Resize chat column"></div>
       <section class="chat">
-        <h2>Ask the model</h2>
+        <div class="chat-header">
+          <h2>Ask the model</h2>
+          <button
+            id="chat-follow"
+            class="chat-follow"
+            type="button"
+            aria-pressed="true"
+            title="Automatically scroll to the latest message"
+          >
+            Follow
+          </button>
+        </div>
         <form id="chat-form" class="chat-form">
           <input
             id="chat-input"
