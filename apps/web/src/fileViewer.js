@@ -1,4 +1,5 @@
 import { fetchFileContent } from "./api.js";
+import { renderLines } from "./render.js";
 
 /**
  * Sets up the file viewer: attaches the click handler for file entries and
@@ -28,31 +29,4 @@ export function setupFileViewer(appEl) {
   });
 }
 
-/**
- * Renders file content with line numbers into a <code> element.
- * @param {HTMLElement} codeEl - The <code> element to fill.
- * @param {string} text - The file's text content.
- */
-function renderLines(codeEl, text) {
-  const lines = text.split("\n");
-  if (lines[lines.length - 1] === "") lines.pop();
 
-  codeEl.replaceChildren();
-  const frag = document.createDocumentFragment();
-  for (let i = 0; i < lines.length; i++) {
-    const row = document.createElement("span");
-    row.className = "line";
-
-    const num = document.createElement("span");
-    num.className = "line-num";
-    num.textContent = String(i + 1);
-
-    const code = document.createElement("span");
-    code.className = "line-code";
-    code.textContent = lines[i];
-
-    row.append(num, code);
-    frag.appendChild(row);
-  }
-  codeEl.appendChild(frag);
-}

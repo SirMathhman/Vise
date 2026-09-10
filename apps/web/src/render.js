@@ -62,6 +62,35 @@ export function renderChildren(li, entries, path) {
   li.appendChild(ul);
 }
 
+/**
+ * Renders file content with line numbers into a <code> element.
+ * @param {HTMLElement} codeEl - The <code> element to fill.
+ * @param {string} text - The file's text content.
+ */
+export function renderLines(codeEl, text) {
+  const lines = text.split("\n");
+  if (lines[lines.length - 1] === "") lines.pop();
+
+  codeEl.replaceChildren();
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < lines.length; i++) {
+    const row = document.createElement("span");
+    row.className = "line";
+
+    const num = document.createElement("span");
+    num.className = "line-num";
+    num.textContent = String(i + 1);
+
+    const code = document.createElement("span");
+    code.className = "line-code";
+    code.textContent = lines[i];
+
+    row.append(num, code);
+    frag.appendChild(row);
+  }
+  codeEl.appendChild(frag);
+}
+
 function createEntryEl(entry, path) {
   const li = document.createElement("li");
   const childPath = path ? `${path}/${entry.name}` : entry.name;
