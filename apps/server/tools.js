@@ -1,4 +1,4 @@
-import { getListing, repoRoot } from "./listing.js";
+import { getListing, getFileContent, repoRoot } from "./listing.js";
 import { resolveWithin } from "./pathGuard.js";
 
 /**
@@ -42,7 +42,40 @@ const listDirectory = {
   },
 };
 
+const readFile = {
+  name: "read_file",
+  definition: {
+    type: "function",
+    function: {
+      name: "read_file",
+      description:
+        "Read the text content of a file in the repository. " +
+        "Use this to answer questions about what a file contains.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description:
+              'File path relative to the repository root (e.g. "apps/server/chat.js").',
+          },
+        },
+        required: ["path"],
+      },
+    },
+  },
+  async execute(args) {
+    const file = resolveWithin(repoRoot, args?.path ?? "");
+    if (!file) return "Invalid path (must be within the repository).";
+    try {
+      return await getFileContent(file);
+    } catch (err) {
+      return `Could not read file: ${err.message}`;
+    }
+  },
+};
+
 /**
  * The registry of tools available to the model.
  */
-export const TOOLS = [listDirectory];
+export const TOOLS = [listDirectory, readFile];
