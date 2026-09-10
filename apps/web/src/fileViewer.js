@@ -49,6 +49,9 @@ export function setupFileViewer(appEl) {
       streamTimer = null;
     }
     viewerEl.classList.remove("editing");
+    viewerEl
+      .querySelector(".file-viewer-content code")
+      ?.classList.remove("streaming");
   }
 
   function streamLines(codeEl, content) {
