@@ -18,6 +18,7 @@ export function setupFileViewer(appEl) {
     const codeEl = viewerEl.querySelector(".file-viewer-content code");
 
     headerEl.textContent = path;
+    viewerEl.dataset.path = path; // machine-readable open file path
     codeEl.textContent = "Loading…";
 
     try {

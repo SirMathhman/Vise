@@ -49,7 +49,15 @@ export function setupChat(appEl) {
     button.disabled = true;
     prevScrollTop = messagesEl.scrollTop;
 
-    sent.push({ role: "user", content: message });
+    // Append context about the currently open file so the model can answer
+    // questions like "what file do I have open?". Kept out of the displayed
+    // message so the user's bubble shows only what they typed.
+    const openPath = appEl.querySelector("#file-viewer").dataset.path;
+    const context = openPath
+      ? `\n\n[Context: the file currently open in the viewer is "${openPath}".]`
+      : "\n\n[Context: no file is currently open in the viewer.]";
+
+    sent.push({ role: "user", content: message + context });
     display.push({ role: "user", content: message });
     display.push({
       role: "assistant",
@@ -64,8 +72,7 @@ export function setupChat(appEl) {
     let streamingEl =
       messagesEl.lastElementChild?.querySelector(".chat-msg-content") ?? null;
     let reasoningEl =
-      messagesEl.lastElementChild?.querySelector(".chat-msg-reasoning") ??
-      null;
+      messagesEl.lastElementChild?.querySelector(".chat-msg-reasoning") ?? null;
 
     // Re-fetch the element references after a re-render (the DOM is rebuilt).
     const refreshRefs = () => {
