@@ -68,7 +68,15 @@ const readFile = {
     const file = resolveWithin(repoRoot, args?.path ?? "");
     if (!file) return "Invalid path (must be within the repository).";
     try {
-      return await getFileContent(file);
+      const content = await getFileContent(file);
+      const MAX_CHARS = 100_000;
+      if (content.length > MAX_CHARS) {
+        return (
+          content.slice(0, MAX_CHARS) +
+          `\n\n[truncated: file is ${content.length} characters, showing first ${MAX_CHARS}]`
+        );
+      }
+      return content;
     } catch (err) {
       return `Could not read file: ${err.message}`;
     }
