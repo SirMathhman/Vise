@@ -54,6 +54,12 @@ function sendJson(res, status, payload) {
   res.end(JSON.stringify(payload));
 }
 
+// SSE event names for the chat stream protocol. The client in
+// apps/web/src/api.js mirrors these; keep them in sync.
+const SSE_DELTA = "delta";
+const SSE_DONE = "done";
+const SSE_ERROR = "error";
+
 /**
  * Streams a chat reply to the client as Server-Sent Events. Content deltas
  * are sent as they arrive from the LLM; the final event carries the complete
@@ -75,11 +81,11 @@ async function streamChat(res, messages) {
     const { reply, toolCalls } = await sendChatMessages(
       messages,
       TOOLS,
-      (delta) => send("delta", { delta }),
+      (delta) => send(SSE_DELTA, { delta }),
     );
-    send("done", { reply, toolCalls });
+    send(SSE_DONE, { reply, toolCalls });
   } catch (err) {
-    send("error", { error: err.message });
+    send(SSE_ERROR, { error: err.message });
   }
   res.end();
 }

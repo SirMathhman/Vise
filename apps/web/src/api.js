@@ -4,6 +4,12 @@
  * rendering, and makes the API surface easy to test without a DOM.
  */
 
+// SSE event names for the chat stream protocol. The server in
+// apps/server/api.js mirrors these; keep them in sync.
+const SSE_DELTA = "delta";
+const SSE_DONE = "done";
+const SSE_ERROR = "error";
+
 /**
  * Sends the conversation to the LLM via the backend and streams the reply
  * back. Content deltas are forwarded to `onDelta` as they arrive; the
@@ -44,15 +50,15 @@ export async function sendChat(messages, onDelta) {
         else if (line.startsWith("data:")) data += line.slice(5).trim();
       }
       const parsed = data ? JSON.parse(data) : {};
-      if (event === "delta") {
+      if (event === SSE_DELTA) {
         reply += parsed.delta ?? "";
         onDelta?.(parsed.delta ?? "");
-      } else if (event === "done") {
+      } else if (event === SSE_DONE) {
         return {
           reply: parsed.reply ?? reply,
           toolCalls: parsed.toolCalls ?? [],
         };
-      } else if (event === "error") {
+      } else if (event === SSE_ERROR) {
         throw new Error(parsed.error ?? "Request failed");
       }
     }
