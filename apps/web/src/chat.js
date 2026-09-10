@@ -61,9 +61,18 @@ export function setupChat(appEl) {
 
     // Reference the streaming message's elements so we can update them in
     // place as deltas arrive, without rebuilding the whole list.
-    const lastEl = messagesEl.lastElementChild;
-    const streamingEl = lastEl?.querySelector(".chat-msg-content") ?? null;
-    const reasoningEl = lastEl?.querySelector(".chat-msg-reasoning") ?? null;
+    let streamingEl =
+      messagesEl.lastElementChild?.querySelector(".chat-msg-content") ?? null;
+    let reasoningEl =
+      messagesEl.lastElementChild?.querySelector(".chat-msg-reasoning") ??
+      null;
+
+    // Re-fetch the element references after a re-render (the DOM is rebuilt).
+    const refreshRefs = () => {
+      const lastEl = messagesEl.lastElementChild;
+      streamingEl = lastEl?.querySelector(".chat-msg-content") ?? null;
+      reasoningEl = lastEl?.querySelector(".chat-msg-reasoning") ?? null;
+    };
 
     try {
       const { reply, reasoning, toolCalls } = await sendChat(
@@ -77,8 +86,14 @@ export function setupChat(appEl) {
         (delta) => {
           const last = display[display.length - 1];
           last.reasoning += delta;
+          if (!reasoningEl) {
+            // First reasoning chunk: the reasoning block doesn't exist yet
+            // (renderMessages only creates it once reasoning is non-empty),
+            // so re-render to create it and refresh the element references.
+            renderMessages(messagesEl, display);
+            refreshRefs();
+          }
           if (reasoningEl) {
-            reasoningEl.hidden = false;
             const contentEl = reasoningEl.querySelector(
               ".chat-msg-reasoning-content",
             );

@@ -120,13 +120,12 @@ export function renderMessages(container, messages) {
     }
 
     // The model's thinking, shown in a collapsible block above the reply.
-    // Always rendered for assistant messages so the streaming handler can
-    // update it in place; hidden until reasoning has arrived.
-    if (msg.role === "assistant") {
+    // Rendered only when present; the streaming handler creates it on the
+    // first reasoning chunk by re-rendering.
+    if (msg.role === "assistant" && msg.reasoning) {
       const reasoning = document.createElement("details");
       reasoning.className = "chat-msg-reasoning";
       reasoning.open = true;
-      if (!msg.reasoning) reasoning.hidden = true;
 
       const summary = document.createElement("summary");
       summary.textContent = "Thinking";
@@ -134,7 +133,7 @@ export function renderMessages(container, messages) {
 
       const reasoningContent = document.createElement("div");
       reasoningContent.className = "chat-msg-reasoning-content";
-      reasoningContent.textContent = msg.reasoning ?? "";
+      reasoningContent.textContent = msg.reasoning;
       reasoning.appendChild(reasoningContent);
 
       wrap.append(reasoning);
