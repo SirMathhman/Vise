@@ -15,11 +15,12 @@ const MAX_TOOL_ROUNDS = 5;
  * model call tools until it produces a final reply.
  * @param {Array<{role: string, content: string}>} messages - The conversation.
  * @param {Array<{name: string, definition: object, execute: (args: object) => Promise<string>}>} tools - The tools the model may call.
- * @returns {Promise<string>} The model's reply.
+ * @returns {Promise<{reply: string, toolCalls: Array<{name: string, args: object}>}>} The model's reply and the tool calls made.
  */
 export async function sendChatMessages(messages, tools) {
   const byName = new Map(tools.map((t) => [t.name, t]));
   const convo = [...messages];
+  const toolCalls = [];
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     const message = await requestCompletion(convo, tools);
@@ -29,7 +30,7 @@ export async function sendChatMessages(messages, tools) {
       if (typeof message.content !== "string") {
         throw new Error("Unexpected response from LLM endpoint");
       }
-      return message.content;
+      return { reply: message.content, toolCalls };
     }
 
     convo.push(message);
@@ -39,6 +40,7 @@ export async function sendChatMessages(messages, tools) {
       const result = tool
         ? await tool.execute(args)
         : `Unknown tool: ${call.function?.name}`;
+      toolCalls.push({ name: call.function?.name, args });
       convo.push({
         role: "tool",
         tool_call_id: call.id,
@@ -49,7 +51,10 @@ export async function sendChatMessages(messages, tools) {
 
   // Out of tool rounds: ask for a final answer without further tools.
   const final = await requestCompletion(convo, tools);
-  return typeof final.content === "string" ? final.content : "";
+  return {
+    reply: typeof final.content === "string" ? final.content : "",
+    toolCalls,
+  };
 }
 
 /**

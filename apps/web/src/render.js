@@ -64,10 +64,18 @@ export function renderChildren(li, entries, path) {
   li.appendChild(ul);
 }
 
+const TOOL_ICONS = {
+  list_directory: "📁",
+  read_file: "📄",
+  create_file: "📝",
+  create_directory: "📂",
+  edit_file: "✏️",
+};
+
 /**
  * Renders the conversation into the messages container.
  * @param {HTMLElement} container - The messages container element.
- * @param {Array<{role: string, content: string}>} messages - Messages to show.
+ * @param {Array<{role: string, content: string, toolCalls?: Array<{name: string, args: object}>}>} messages - Messages to show.
  */
 export function renderMessages(container, messages) {
   container.replaceChildren();
@@ -91,11 +99,26 @@ export function renderMessages(container, messages) {
           ? "Model"
           : "Error";
 
+    if (msg.toolCalls?.length) {
+      const badges = document.createElement("div");
+      badges.className = "chat-msg-tools";
+      for (const call of msg.toolCalls) {
+        const badge = document.createElement("span");
+        badge.className = "chat-msg-tool";
+        badge.title = `${call.name}(${JSON.stringify(call.args)})`;
+        badge.textContent = `${TOOL_ICONS[call.name] ?? "🔧"} ${call.name}`;
+        badges.appendChild(badge);
+      }
+      wrap.append(role, badges);
+    } else {
+      wrap.append(role);
+    }
+
     const content = document.createElement("div");
     content.className = "chat-msg-content";
     content.textContent = msg.content;
 
-    wrap.append(role, content);
+    wrap.append(content);
     container.appendChild(wrap);
   }
 }

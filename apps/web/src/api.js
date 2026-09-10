@@ -5,9 +5,10 @@
  */
 
 /**
- * Sends the conversation to the LLM via the backend and returns the reply.
+ * Sends the conversation to the LLM via the backend and returns the reply
+ * and any tool calls the model made.
  * @param {Array<{role: string, content: string}>} messages - The conversation.
- * @returns {Promise<string>} The model's reply.
+ * @returns {Promise<{reply: string, toolCalls: Array<{name: string, args: object}>}>}
  */
 export async function sendChat(messages) {
   const res = await fetch("/api/chat", {
@@ -17,7 +18,7 @@ export async function sendChat(messages) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error ?? `Request failed: ${res.status}`);
-  return data.reply;
+  return { reply: data.reply, toolCalls: data.toolCalls ?? [] };
 }
 
 /**

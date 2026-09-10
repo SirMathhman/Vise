@@ -36,9 +36,8 @@ export async function handleApi(req, res) {
       const body = await readJsonBody(req);
       const messages = normalizeMessages(body.messages);
       if (!messages) return sendJson(res, 400, { error: "Missing messages" });
-      return sendJson(res, 200, {
-        reply: await sendChatMessages(messages, TOOLS),
-      });
+      const { reply, toolCalls } = await sendChatMessages(messages, TOOLS);
+      return sendJson(res, 200, { reply, toolCalls });
     });
   }
 

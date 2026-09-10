@@ -388,6 +388,23 @@ p {
       color: var(--text);
     }
 
+    .chat-msg-tools {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+
+    .chat-msg-tool {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text);
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 2px 6px;
+      cursor: default;
+    }
+
     .chat-msg-content {
       font-family: var(--mono);
       font-size: 14px;

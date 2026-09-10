@@ -28,9 +28,9 @@ export function setupChat(appEl) {
     renderMessages(messagesEl, display);
 
     try {
-      const reply = await sendChat(sent);
+      const { reply, toolCalls } = await sendChat(sent);
       sent.push({ role: "assistant", content: reply });
-      display.push({ role: "assistant", content: reply });
+      display.push({ role: "assistant", content: reply, toolCalls });
     } catch (err) {
       sent.pop(); // undo so the failed turn isn't re-sent
       display.push({ role: "error", content: err.message });
