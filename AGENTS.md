@@ -38,19 +38,21 @@ There is **no test runner or formatter** configured. `npm run lint:all` runs **P
 ### Frontend (`apps/web`)
 
 - **Entry point:** `index.html` loads `/src/main.js` as a module.
-- **Composition root:** `src/main.js` is a thin wiring module — it imports the render layer and behavior modules, then calls them. Keep it small; do not add rendering or feature logic here.
-- **Rendering:** `src/render.js` exports `renderApp(appEl)` (page shell), `renderTree(el, entries, path)`, and `renderChildren(li, entries, path)`, building DOM via `createElement`/`replaceChildren`. Add new markup here, not in `main.js`.
-- **Network layer:** `src/api.js` owns **all** `fetch('/api/*')` calls (`fetchEntries`, `fetchFileContent`, `sendChat`). Keep network I/O here, not in behavior modules.
+- **Composition root:** `src/main.js` is a thin wiring module — it imports the render layer and the behavior modules, then calls them (`renderApp`, `setupTree`, `setupFileViewer`, `setupChat`, `setupDividers`). Keep it small; do not add rendering or feature logic here.
+- **Rendering:** `src/render.js` is the pure DOM-building layer (no imports). It exports `renderApp(appEl)` (page shell), `renderTree(el, entries, path)`, `renderChildren(li, entries, path)`, `renderMessages(container, messages)` (chat transcript), and `renderLines(codeEl, text)` (file content with line numbers), all built via `createElement`/`replaceChildren`. Add new markup here, not in `main.js`.
+- **Network layer:** `src/api.js` owns **all** `fetch('/api/*')` calls. It exports `fetchEntries(path)`, `fetchFileContent(path)`, and `sendChat(messages, onDelta, onReasoning, onFileEdit)` — the chat call consumes the SSE stream from the backend and forwards deltas to the three callbacks. Keep network I/O here, not in behavior modules.
+- **Shared state:** `src/state.js` is a tiny module (`setOpenFilePath`/`getOpenFilePath`) holding the path of the file currently shown in the viewer. Sibling behavior modules read/write it instead of reading each other's DOM. It is a leaf module.
 - **Behavior modules:** each feature is a `setup*(appEl)` module that attaches event listeners (delegation on `appEl` for tree/file viewer; a direct `submit` listener on the form for chat) and builds its own DOM via private render helpers:
   - `src/listing.js` — `setupTree`: expand/collapse the directory tree, lazy-loading children.
-  - `src/fileViewer.js` — `setupFileViewer`: click a file → fetch content → render with line numbers.
-  - `src/chat.js` — `setupChat`: submit the form → send the conversation → append the reply.
-- **Dependency direction:** one-way only — `main.js → {render, listing, fileViewer, chat}`; `listing → {render, api}`; `fileViewer/chat → {api}`. `api.js` and `render.js` are leaves and must not import behavior modules or `main.js`.
+  - `src/fileViewer.js` — `setupFileViewer`: click a file → fetch content → render with line numbers; also listens for the `file-edit` CustomEvent and animates the new content in line-by-line when the open file was edited.
+  - `src/chat.js` — `setupChat`: submit the form → send the conversation (streaming) → append the reply; dispatches a `file-edit` CustomEvent when the model writes a file, and injects a `[Context: ...]` note about the currently-open file.
+  - `src/dividers.js` — `setupDividers`: makes the `.divider` elements mouse-draggable and keyboard-resizable, writing `--tree-width`/`--chat-width` CSS custom properties onto `.layout` (clamped).
+- **Dependency direction:** one-way only — `main.js → {render, listing, fileViewer, chat, dividers}`; `listing → {render, api}`; `fileViewer/chat → {api, render, state}`; `dividers → {}` (no local imports). `api.js`, `render.js`, and `state.js` are leaves and must not import behavior modules or `main.js`.
 - **API access:** the frontend calls **relative** `/api/*` paths. In dev, Vite proxies `/api` to the backend (see `vite.config.js`); in production the backend serves both. Do not hardcode backend host/port in frontend code.
-- **Styling:** `src/style.css` uses **native CSS nesting**, CSS custom properties (design tokens in `:root`), and `prefers-color-scheme` for dark mode. Follow the existing token-based approach (`var(--accent)`, etc.) rather than hardcoding colors.
+- **Styling:** `src/style.css` uses **native CSS nesting**, CSS custom properties (design tokens in `:root`, including `--tree-width`/`--chat-width` for the resizable columns), and `prefers-color-scheme` for dark mode. Follow the existing token-based approach (`var(--accent)`, etc.) rather than hardcoding colors.
 - **Static assets:**
   - `public/` — served as-is at the site root (e.g. `/favicon.svg`). Reference with an absolute `/` path.
-  - `src/assets/` — imported in JS so Vite processes/hashes them.
+  - `src/assets/` — if you add JS-imported assets here, Vite processes/hashes them (this folder is not yet present).
 
 ### Backend (`apps/server`)
 
@@ -59,9 +61,10 @@ There is **no test runner or formatter** configured. `npm run lint:all` runs **P
 - **API handlers:** `api.js` maps routes to handlers:
   - `GET /api/listing[?path=rel]` — directory entries (logic in `listing.js`).
   - `GET /api/file?path=rel` — file text content (logic in `listing.js`).
-  - `POST /api/chat { messages }` — LLM reply (logic in `chat.js`).
+  - `POST /api/chat { messages }` — **SSE stream** of LLM events (logic in `chat.js`).
 - **Path safety:** `pathGuard.js` exports `resolveWithin(root, rel)` — the single path-traversal guard used by both `api.js` and `static.js`. Use it for any new path-based route.
-- **LLM proxy + tools:** `chat.js` calls an OpenAI-compatible endpoint (env vars `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY`, with hardcoded defaults) and runs a **function-calling loop**: the model may call the `list_directory` tool to inspect the repository. Tools live in `tools.js` — each tool's _definition_ (schema) and _executor_ are co-located in one registry entry, so adding a tool is a single-file change. `api.js` passes the `TOOLS` registry to `chat.js`; `chat.js` stays tool-agnostic.
+- **LLM proxy + tools:** `chat.js` calls an OpenAI-compatible endpoint (env vars `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY`, with hardcoded defaults) and runs a **function-calling loop** (capped at `MAX_TOOL_ROUNDS`): the model may call tools to inspect or edit the repository. Tools live in `tools.js` — each tool's _definition_ (OpenAI function schema) and _executor_ are co-located in one registry entry, so adding a tool is a single-file change. `api.js` passes the `TOOLS` registry to `chat.js`; `chat.js` stays tool-agnostic. Current tools: `list_directory`, `read_file`, `create_file`, `create_directory`, `edit_file` (the `writesFile` ones emit file-edit events so the UI can live-update the open file).
+- **SSE streaming:** the chat response is streamed as Server-Sent Events. `api.js` (server) emits the events `delta`, `reasoning`, `file_edit`, `done`, `error`; the frontend `src/api.js` mirrors these event names when parsing the stream. Keep the two sides in sync if you change event names.
 - **Static serving:** `static.js` serves files with correct MIME types and guards against path traversal.
 - **Dependency direction:** one-way only — `index.js → {api, static}`; `api.js → {listing, pathGuard, chat, tools}`; `tools.js → {listing, pathGuard}`; `static.js → pathGuard`. Leaf modules (`listing.js`, `pathGuard.js`, `chat.js`, `tools.js`) must not import `index.js` or `api.js`.
 - **No dependencies:** use Node built-ins (`node:http`, `node:fs/promises`, `node:path`, `node:url`). Do not add Express or other frameworks without explicit request.
