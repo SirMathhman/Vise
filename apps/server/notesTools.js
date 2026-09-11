@@ -1,4 +1,4 @@
-import { upsertNote, searchNotes, listNotes } from "./notes.js";
+import { upsertNote, updateNote, searchNotes, listNotes } from "./notes.js";
 
 /**
  * Per-domain tool module: the note-taking tools. Their definitions and
@@ -66,6 +66,86 @@ const takeNote = {
   },
 };
 
+const updateNoteTool = {
+  name: "update_note",
+  label: "Update note",
+  icon: "✏️",
+  summary: (args) => args?.title ?? "",
+  definition: {
+    type: "function",
+    function: {
+      name: "update_note",
+      description:
+        "Update an existing note by replacing one exact substring of its " +
+        "content with a new one. This is a precise in-place edit: every part " +
+        "of the note except the given previous string is preserved. Use this " +
+        "when a stored note needs a small correction or refinement rather " +
+        "than a full rewrite (take_note rewrites a note in place by title; " +
+        "use update_note for a targeted change). The note must already exist " +
+        "— recall it first to see its exact current content. The previous " +
+        "string must appear in the note's content exactly once; if it is " +
+        "ambiguous or missing, nothing is changed and a reason is returned. " +
+        "A previous string with an empty replacement deletes that text.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: {
+            type: "string",
+            description:
+              "The exact title of the note to update (matched " +
+              "case-insensitively).",
+          },
+          old_string: {
+            type: "string",
+            description:
+              "The exact text currently in the note to replace. Must match " +
+              "character-for-character, including whitespace, and must appear " +
+              "exactly once in the note's content. Include enough surrounding " +
+              "context to make it unique.",
+          },
+          new_string: {
+            type: "string",
+            description:
+              "The exact text to replace old_string with. An empty string " +
+              "deletes old_string. Must be different from old_string.",
+          },
+        },
+        required: ["title", "old_string", "new_string"],
+      },
+    },
+  },
+  async execute(args) {
+    if (typeof args?.title !== "string" || args.title.trim() === "") {
+      return "Missing required parameter: title.";
+    }
+    if (typeof args?.old_string !== "string") {
+      return "Missing required parameter: old_string.";
+    }
+    if (typeof args?.new_string !== "string") {
+      return "Missing required parameter: new_string.";
+    }
+    if (args.old_string === "") {
+      return "old_string must not be empty.";
+    }
+    if (args.old_string === args.new_string) {
+      return "new_string is identical to old_string; nothing to update.";
+    }
+    try {
+      const { ok, note, occurrences, reason } = await updateNote(
+        args.title,
+        args.old_string,
+        args.new_string,
+      );
+      if (!ok) {
+        return reason;
+      }
+      return `Updated note: ${note.title} (${note.content.length} characters).`;
+    } catch (err) {
+      return `Could not update note: ${err.message}`;
+    }
+  },
+};
+
 const recallNotes = {
   name: "recall_notes",
   label: "Recall notes",
@@ -129,4 +209,4 @@ const recallNotes = {
   },
 };
 
-export { takeNote, recallNotes };
+export { takeNote, updateNoteTool, recallNotes };

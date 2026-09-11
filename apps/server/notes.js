@@ -62,6 +62,80 @@ export async function upsertNote(title, content) {
 }
 
 /**
+ * Counts how many times a string occurs in a string, counting overlapping
+ * occurrences (e.g. "aa" in "aaa" is 2). Returns 0 for an empty needle.
+ * @param {string} haystack - The string to search within.
+ * @param {string} needle - The non-empty substring to count.
+ * @returns {number}
+ */
+function countOccurrences(haystack, needle) {
+  if (needle === "") return 0;
+  let count = 0;
+  let start = 0;
+  while (true) {
+    const index = haystack.indexOf(needle, start);
+    if (index === -1) break;
+    count += 1;
+    start = index + 1;
+  }
+  return count;
+}
+
+/**
+ * Performs a literal (exact, case-sensitive) string replacement in a single
+ * note's content, by title. Unlike upsertNote, this preserves every part of
+ * the note except the exact `oldString` (replaced by `newString`) — it is how
+ * the agent amends a note with a precise edit rather than rewriting it.
+ *
+ * The note must already exist (look it up with recall_notes). `oldString`
+ * must appear in the note's content exactly once — if it appears more than
+ * once, nothing is changed and a message reports the ambiguity; if it does
+ * not appear, nothing is changed and a message reports that. An empty
+ * `newString` deletes `oldString`. A zero-length `newString` is a no-op when
+ * `oldString` is empty.
+ *
+ * @param {string} title - The note's title (case-insensitive).
+ * @param {string} oldString - The exact text to replace.
+ * @param {string} newString - The exact text to replace it with.
+ * @returns {Promise<{ok: boolean, note: {title: string, content: string, updatedAt: string}|null, occurrences: number, reason?: string}>}
+ */
+export async function updateNote(title, oldString, newString) {
+  const notes = await loadNotes();
+  const key = title.toLowerCase();
+  const note = notes.find((n) => n.title.toLowerCase() === key);
+  if (!note) {
+    return {
+      ok: false,
+      note: null,
+      occurrences: 0,
+      reason: `No note titled "${title}" exists. Use recall_notes to find the exact title, or take_note to create it.`,
+    };
+  }
+  const occurrences = countOccurrences(note.content, oldString);
+  if (occurrences === 0) {
+    return {
+      ok: false,
+      note,
+      occurrences: 0,
+      reason: `No occurrence of the previous string in note "${note.title}". Recall the note to see its exact current content.`,
+    };
+  }
+  if (occurrences > 1) {
+    return {
+      ok: false,
+      note,
+      occurrences,
+      reason: `The previous string appears ${occurrences} times in note "${note.title}". Add more surrounding context to old_string to make it unique, or take_note with a fresh title.`,
+    };
+  }
+  const newContent = note.content.replace(oldString, newString);
+  note.content = newContent;
+  note.updatedAt = new Date().toISOString();
+  await saveNotes(notes);
+  return { ok: true, note, occurrences: 1 };
+}
+
+/**
  * Returns every stored note whose title or content matches a case-insensitive
  * regex.
  * @param {RegExp} re - The regex to match against each note's title and content.
