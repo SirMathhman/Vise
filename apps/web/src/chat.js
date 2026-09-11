@@ -1,4 +1,13 @@
-import { sendChat, fetchNotesSnapshot } from "./api.js";
+import { fetchNotesSnapshot, sendChat } from "./api.js";
+import {
+  addConversation,
+  conversations,
+  getCurrentIndex,
+  load,
+  saveActive,
+  setActiveIndex,
+  titleFor,
+} from "./conversations.js";
 import { renderMessages } from "./render.js";
 import { getOpenFilePath } from "./state.js";
 
@@ -28,88 +37,13 @@ export function setupChat(appEl) {
   let conversationId = crypto.randomUUID();
   let notesSnapshot = "";
 
-  // Multi-conversation persistence. Every conversation the user has started
-  // is kept in localStorage so they can close out of one and reopen another.
-  // Each entry: { id, sent, display, notesSnapshot }. The title is derived
-  // from the first user message (truncated) and not stored separately.
-  const STORAGE_KEY = "vise-chat";
-  const conversations = [];
-  let currentIndex = 0;
-
-  const titleFor = (conv) => {
-    const first = conv.sent?.find((m) => m.role === "user");
-    if (!first) return "New conversation";
-    const text = first.content.replace(/\n+\[Context:.*\]$/, "", "s").trim();
-    return text.length > 40 ? text.slice(0, 40) + "…" : text;
-  };
-
-  const serialize = () => {
-    try {
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({ conversations, currentIndex }),
-      );
-    } catch {
-      // Ignore quota or privacy-mode failures.
-    }
-  };
-
-  const save = () => {
-    // Sync the live state into the in-memory array, then serialize.
-    conversations[currentIndex] = {
-      id: conversationId,
-      sent: [...sent],
-      display: [...display],
-      notesSnapshot,
-    };
-    serialize();
-  };
-
-  // Load conversations from localStorage, migrating from the old single-
-  // conversation format if needed.
-  const load = () => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw === null) return null;
-      const parsed = JSON.parse(raw);
-      // New format: { conversations, currentIndex }
-      if (
-        parsed &&
-        Array.isArray(parsed.conversations) &&
-        typeof parsed.currentIndex === "number"
-      ) {
-        return {
-          conversations: parsed.conversations,
-          currentIndex: parsed.currentIndex,
-        };
-      }
-      // New format (legacy array): an array of conversation objects.
-      if (Array.isArray(parsed)) {
-        return { conversations: parsed, currentIndex: 0 };
-      }
-      // Legacy format: a single conversation object, not an array.
-      if (
-        parsed &&
-        Array.isArray(parsed.sent) &&
-        Array.isArray(parsed.display)
-      ) {
-        return {
-          conversations: [
-            {
-              id: parsed.conversationId ?? crypto.randomUUID(),
-              sent: parsed.sent,
-              display: parsed.display,
-              notesSnapshot: parsed.notesSnapshot ?? "",
-            },
-          ],
-          currentIndex: 0,
-        };
-      }
-    } catch {
-      // Ignore corrupt storage.
-    }
-    return null;
-  };
+  // The active conversation's live working set (sent/display/notesSnapshot)
+  // lives here in chat.js; the full list of conversations, which one is
+  // active, and the persistence/migration logic live in conversations.js.
+  // After any change to the live state we call saveActive to sync it into the
+  // active slot and serialize to localStorage.
+  const save = () =>
+    saveActive({ id: conversationId, sent, display, notesSnapshot });
 
   const restore = (conv) => {
     conversationId = conv.id;
@@ -132,20 +66,14 @@ export function setupChat(appEl) {
     renderMessages(messagesEl, display);
     // Append a fresh entry so Clear genuinely starts a new conversation the
     // user can switch back to later (and so the live state has a home).
-    conversations.push({
-      id: conversationId,
-      sent: [],
-      display: [],
-      notesSnapshot: "",
-    });
-    currentIndex = conversations.length - 1;
+    addConversation(conversationId);
     save();
     updateConvoBtn();
   };
 
   const updateConvoBtn = () => {
     const span = convoBtn.querySelector(".chat-convo-title");
-    if (span) span.textContent = titleFor(conversations[currentIndex]);
+    if (span) span.textContent = titleFor(conversations[getCurrentIndex()]);
   };
 
   const isAtBottom = () =>
@@ -166,23 +94,14 @@ export function setupChat(appEl) {
     newConversation();
   });
 
-  // Initialize: load persisted conversations or start fresh.
-  const loaded = load();
-  if (loaded) {
-    conversations.push(...loaded.conversations);
-    currentIndex = Math.min(
-      loaded.currentIndex,
-      loaded.conversations.length - 1,
-    );
-    restore(conversations[currentIndex]);
+  // Initialize: load() reads and migrates the persisted conversation list and
+  // sets the active index, returning the active conversation, or null when
+  // there is nothing to restore — in which case start a fresh conversation.
+  const active = load();
+  if (active) {
+    restore(active);
   } else {
-    conversations.push({
-      id: conversationId,
-      sent: [],
-      display: [],
-      notesSnapshot: "",
-    });
-    currentIndex = 0;
+    addConversation(conversationId);
   }
 
   // Dropdown: click the button to open/close; click a conversation to switch.
@@ -194,7 +113,7 @@ export function setupChat(appEl) {
         const li = document.createElement("li");
         li.textContent = titleFor(conversations[i]);
         li.dataset.index = String(i);
-        if (i === currentIndex) li.classList.add("chat-convo-active");
+        if (i === getCurrentIndex()) li.classList.add("chat-convo-active");
         convoList.appendChild(li);
       }
       convoList.hidden = false;
@@ -221,7 +140,7 @@ export function setupChat(appEl) {
     const idx = Number(li.dataset.index);
     if (Number.isInteger(idx) && idx >= 0 && idx < conversations.length) {
       generation++;
-      currentIndex = idx;
+      setActiveIndex(idx);
       restore(conversations[idx]);
       save();
       closeDropdown();
