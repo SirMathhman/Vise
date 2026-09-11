@@ -194,7 +194,10 @@ function createEntryEl(entry, path) {
     label.className = "label";
     label.textContent = entry.name;
 
-    li.append(toggle, label);
+    const row = document.createElement("span");
+    row.className = "row";
+    row.append(toggle, label);
+    li.append(row);
   } else {
     li.className = "entry file";
     li.dataset.path = childPath;
@@ -206,7 +209,10 @@ function createEntryEl(entry, path) {
     label.className = "label";
     label.textContent = entry.name;
 
-    li.append(spacer, label);
+    const row = document.createElement("span");
+    row.className = "row";
+    row.append(spacer, label);
+    li.append(row);
   }
 
   return li;
