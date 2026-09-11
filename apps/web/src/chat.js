@@ -4,7 +4,9 @@ import { getOpenFilePath } from "./state.js";
 
 /**
  * Wires up the chat form: on submit, sends the conversation and appends the
- * model's reply to the thread.
+ * model's reply to the thread. Also manages multiple conversations via a
+ * dropdown in the chat header — the user can switch between them, and Clear
+ * starts a new one.
  * @param {HTMLElement} appEl - The app root element.
  */
 export function setupChat(appEl) {
@@ -14,6 +16,8 @@ export function setupChat(appEl) {
   const messagesEl = appEl.querySelector("#chat-messages");
   const followBtn = appEl.querySelector("#chat-follow");
   const clearBtn = appEl.querySelector("#chat-clear");
+  const convoBtn = appEl.querySelector("#chat-convo-btn");
+  const convoList = appEl.querySelector("#chat-convo-list");
 
   const sent = []; // conversation sent to the model (user/assistant pairs)
   const display = []; // everything shown in the UI (incl. errors)
@@ -21,49 +25,128 @@ export function setupChat(appEl) {
   let follow = true; // pin the view to the latest message
   let prevScrollTop = 0; // restore scroll when follow is off
   let generation = 0; // bumped on clear so a stale stream can't touch state
-  // Identifies the current conversation to the backend. Fresh per
-  // conversation; reset on clear so the backend takes a new notes snapshot.
   let conversationId = crypto.randomUUID();
-  // Snapshot of the notes store at conversation start, sent to the backend
-  // on every request so a resumed conversation reuses the same snapshot
-  // the model's prior replies saw. Fetched lazily on first send of a new
-  // conversation and persisted alongside the conversation.
   let notesSnapshot = "";
 
-  // Persist the conversation across reloads. sent/display/conversationId are
-  // the load-bearing state; follow/scroll are transient UI and not saved.
+  // Multi-conversation persistence. Every conversation the user has started
+  // is kept in localStorage so they can close out of one and reopen another.
+  // Each entry: { id, sent, display, notesSnapshot }. The title is derived
+  // from the first user message (truncated) and not stored separately.
   const STORAGE_KEY = "vise-chat";
-  const save = () => {
+  const conversations = [];
+  let currentIndex = 0;
+
+  const titleFor = (conv) => {
+    const first = conv.sent?.find((m) => m.role === "user");
+    if (!first) return "New conversation";
+    const text = first.content.replace(/\n+\[Context:.*\]$/, "", "s").trim();
+    return text.length > 40 ? text.slice(0, 40) + "…" : text;
+  };
+
+  const serialize = () => {
     try {
       localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ conversationId, sent, display, notesSnapshot }),
+        JSON.stringify({ conversations, currentIndex }),
       );
     } catch {
       // Ignore quota or privacy-mode failures.
     }
   };
 
-  // Restore a previous conversation if one was saved, then render it so the
-  // transcript and the model's context survive a page reload. Also restore
-  // the notes snapshot so a resumed conversation after a backend restart
-  // reuses the same snapshot the model's prior replies saw.
-  try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (saved && Array.isArray(saved.sent) && Array.isArray(saved.display)) {
-      sent.push(...saved.sent);
-      display.push(...saved.display);
-      if (typeof saved.conversationId === "string" && saved.conversationId) {
-        conversationId = saved.conversationId;
+  const save = () => {
+    // Sync the live state into the in-memory array, then serialize.
+    conversations[currentIndex] = {
+      id: conversationId,
+      sent: [...sent],
+      display: [...display],
+      notesSnapshot,
+    };
+    serialize();
+  };
+
+  // Load conversations from localStorage, migrating from the old single-
+  // conversation format if needed.
+  const load = () => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw === null) return null;
+      const parsed = JSON.parse(raw);
+      // New format: { conversations, currentIndex }
+      if (
+        parsed &&
+        Array.isArray(parsed.conversations) &&
+        typeof parsed.currentIndex === "number"
+      ) {
+        return {
+          conversations: parsed.conversations,
+          currentIndex: parsed.currentIndex,
+        };
       }
-      if (typeof saved.notesSnapshot === "string") {
-        notesSnapshot = saved.notesSnapshot;
+      // New format (legacy array): an array of conversation objects.
+      if (Array.isArray(parsed)) {
+        return { conversations: parsed, currentIndex: 0 };
       }
+      // Legacy format: a single conversation object, not an array.
+      if (
+        parsed &&
+        Array.isArray(parsed.sent) &&
+        Array.isArray(parsed.display)
+      ) {
+        return {
+          conversations: [
+            {
+              id: parsed.conversationId ?? crypto.randomUUID(),
+              sent: parsed.sent,
+              display: parsed.display,
+              notesSnapshot: parsed.notesSnapshot ?? "",
+            },
+          ],
+          currentIndex: 0,
+        };
+      }
+    } catch {
+      // Ignore corrupt storage.
     }
-  } catch {
-    // Ignore corrupt storage.
-  }
-  renderMessages(messagesEl, display);
+    return null;
+  };
+
+  const restore = (conv) => {
+    conversationId = conv.id;
+    sent.length = 0;
+    sent.push(...conv.sent);
+    display.length = 0;
+    display.push(...conv.display);
+    notesSnapshot = conv.notesSnapshot ?? "";
+    setFollow(true);
+    renderMessages(messagesEl, display);
+  };
+
+  const newConversation = () => {
+    generation++;
+    conversationId = crypto.randomUUID();
+    notesSnapshot = "";
+    sent.length = 0;
+    display.length = 0;
+    setFollow(true);
+    renderMessages(messagesEl, display);
+    // Append a fresh entry so Clear genuinely starts a new conversation the
+    // user can switch back to later (and so the live state has a home).
+    conversations.push({
+      id: conversationId,
+      sent: [],
+      display: [],
+      notesSnapshot: "",
+    });
+    currentIndex = conversations.length - 1;
+    save();
+    updateConvoBtn();
+  };
+
+  const updateConvoBtn = () => {
+    const span = convoBtn.querySelector(".chat-convo-title");
+    if (span) span.textContent = titleFor(conversations[currentIndex]);
+  };
 
   const isAtBottom = () =>
     messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight <
@@ -80,15 +163,83 @@ export function setupChat(appEl) {
   });
 
   clearBtn.addEventListener("click", () => {
-    generation++;
-    conversationId = crypto.randomUUID();
-    notesSnapshot = "";
-    sent.length = 0;
-    display.length = 0;
-    setFollow(true);
-    renderMessages(messagesEl, display);
-    save();
+    newConversation();
   });
+
+  // Initialize: load persisted conversations or start fresh.
+  const loaded = load();
+  if (loaded) {
+    conversations.push(...loaded.conversations);
+    currentIndex = Math.min(
+      loaded.currentIndex,
+      loaded.conversations.length - 1,
+    );
+    restore(conversations[currentIndex]);
+  } else {
+    conversations.push({
+      id: conversationId,
+      sent: [],
+      display: [],
+      notesSnapshot: "",
+    });
+    currentIndex = 0;
+  }
+
+  // Dropdown: click the button to open/close; click a conversation to switch.
+  const toggleDropdown = () => {
+    const hidden = convoList.hidden;
+    if (hidden) {
+      // Populate the list with all conversations.
+      for (let i = 0; i < conversations.length; i++) {
+        const li = document.createElement("li");
+        li.textContent = titleFor(conversations[i]);
+        li.dataset.index = String(i);
+        if (i === currentIndex) li.classList.add("chat-convo-active");
+        convoList.appendChild(li);
+      }
+      convoList.hidden = false;
+      convoBtn.setAttribute("aria-expanded", "true");
+    } else {
+      closeDropdown();
+    }
+  };
+
+  const closeDropdown = () => {
+    convoList.replaceChildren();
+    convoList.hidden = true;
+    convoBtn.setAttribute("aria-expanded", "false");
+  };
+
+  convoBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleDropdown();
+  });
+
+  convoList.addEventListener("click", (e) => {
+    const li = e.target.closest("li");
+    if (!li || !convoList.contains(li)) return;
+    const idx = Number(li.dataset.index);
+    if (Number.isInteger(idx) && idx >= 0 && idx < conversations.length) {
+      generation++;
+      currentIndex = idx;
+      restore(conversations[idx]);
+      save();
+      closeDropdown();
+      updateConvoBtn();
+    }
+  });
+
+  // Close the dropdown on outside click or Escape.
+  document.addEventListener("click", (e) => {
+    if (convoList.hidden) return;
+    if (e.target.closest(".chat-convo-dropdown")) return;
+    closeDropdown();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !convoList.hidden) closeDropdown();
+  });
+
+  updateConvoBtn();
 
   // Scrolling up away from the bottom turns follow off; reaching the bottom
   // turns it back on.
@@ -211,6 +362,7 @@ export function setupChat(appEl) {
       save();
       if (generation === gen) {
         renderMessages(messagesEl, display);
+        updateConvoBtn();
         if (follow) messagesEl.scrollTop = messagesEl.scrollHeight;
         else messagesEl.scrollTop = prevScrollTop;
       }

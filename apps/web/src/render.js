@@ -17,6 +17,20 @@ export function renderApp(appEl) {
         <div class="chat-header">
           <h2>Ask the model</h2>
           <div class="chat-header-actions">
+            <div class="chat-convo-dropdown">
+              <button
+                id="chat-convo-btn"
+                class="chat-convo-btn"
+                type="button"
+                aria-haspopup="true"
+                aria-expanded="false"
+                title="Switch conversations"
+              >
+                <span class="chat-convo-title">New conversation</span>
+                <span class="chat-convo-arrow">▾</span>
+              </button>
+              <ul id="chat-convo-list" class="chat-convo-list" hidden></ul>
+            </div>
             <button
               id="chat-clear"
               class="chat-clear"
