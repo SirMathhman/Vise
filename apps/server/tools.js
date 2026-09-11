@@ -378,14 +378,18 @@ const searchFiles = {
         {
           cwd: repoRoot,
           maxBuffer: 1024 * 1024,
+          timeout: 30_000,
           windowsHide: true,
         },
         (error, stdout) => {
           if (error) {
-            const suffix =
-              typeof error.code !== "number"
-                ? `[could not run git: ${error.code}]`
-                : `\n[exit code: ${error.code}]`;
+            // A timeout (e.g. a held git index lock) gives killed = true, a
+            // spawn failure (git not on PATH) gives a non-numeric code.
+            const suffix = error.killed
+              ? " [timed out after 30s]"
+              : typeof error.code !== "number"
+                ? ` [could not run git: ${error.code}]`
+                : ` [exit code: ${error.code}]`;
             return resolve(`Could not search files${suffix}`);
           }
           const paths = String(stdout).split("\0").filter(Boolean);
