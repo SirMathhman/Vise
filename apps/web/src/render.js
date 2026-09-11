@@ -112,7 +112,7 @@ export function renderMessages(container, messages) {
         // The server computes the short human-readable detail (e.g. the path or
         // command) via each tool's summary(), so the render layer stays
         // tool-agnostic. Full args stay in the title tooltip.
-        const detail = call.detail || (call.args?.command ?? call.args?.path);
+        const detail = call.detail;
         badge.title = detail
           ? `${label}: ${detail}`
           : `${call.name}(${JSON.stringify(call.args)})`;
