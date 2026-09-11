@@ -3,7 +3,12 @@ import { dirname } from "node:path";
 import { execFile } from "node:child_process";
 import { getListing, getFileContent, repoRoot } from "./listing.js";
 import { resolveWithin } from "./pathGuard.js";
-import { takeNote, updateNoteTool, recallNotes } from "./notesTools.js";
+import {
+  takeNote,
+  updateNoteTool,
+  deleteNoteTool,
+  recallNotes,
+} from "./notesTools.js";
 
 /**
  * A tool the model can call. Its definition (sent to the LLM) and executor
@@ -427,5 +432,6 @@ export const TOOLS = [
   searchFiles,
   takeNote,
   updateNoteTool,
+  deleteNoteTool,
   recallNotes,
 ];

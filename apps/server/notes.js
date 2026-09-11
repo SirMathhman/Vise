@@ -136,6 +136,30 @@ export async function updateNote(title, oldString, newString) {
 }
 
 /**
+ * Deletes a note by title (case-insensitive). The note must already exist —
+ * recall it first to confirm the exact title. Returns a Result-style object:
+ * on success `ok` is true and the note is gone from the store; on failure
+ * `ok` is false and `reason` explains why (e.g. no such note).
+ *
+ * @param {string} title - The note's title (case-insensitive).
+ * @returns {Promise<{ok: boolean, reason?: string}>}
+ */
+export async function deleteNote(title) {
+  const notes = await loadNotes();
+  const key = title.toLowerCase();
+  const index = notes.findIndex((n) => n.title.toLowerCase() === key);
+  if (index === -1) {
+    return {
+      ok: false,
+      reason: `No note titled "${title}" exists. Use recall_notes to find the exact title.`,
+    };
+  }
+  notes.splice(index, 1);
+  await saveNotes(notes);
+  return { ok: true };
+}
+
+/**
  * Returns every stored note whose title or content matches a case-insensitive
  * regex.
  * @param {RegExp} re - The regex to match against each note's title and content.

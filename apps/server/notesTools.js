@@ -1,4 +1,10 @@
-import { upsertNote, updateNote, searchNotes, listNotes } from "./notes.js";
+import {
+  upsertNote,
+  updateNote,
+  deleteNote,
+  searchNotes,
+  listNotes,
+} from "./notes.js";
 
 /**
  * Per-domain tool module: the note-taking tools. Their definitions and
@@ -146,6 +152,52 @@ const updateNoteTool = {
   },
 };
 
+const deleteNoteTool = {
+  name: "delete_note",
+  label: "Delete note",
+  icon: "🗑️",
+  summary: (args) => args?.title ?? "",
+  definition: {
+    type: "function",
+    function: {
+      name: "delete_note",
+      description:
+        "Delete a note from the agent's persistent notes store, by title. " +
+        "This is irreversible: the note's content is removed and will not be " +
+        "restored. Use this when the user asks to forget, clear, or delete a " +
+        "note, or when a note is no longer accurate or relevant. Recall the " +
+        "note first to confirm the exact title and that it is the right note " +
+        "before deleting. The title is matched case-insensitively.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: {
+            type: "string",
+            description:
+              "The exact title of the note to delete (matched " +
+              "case-insensitively).",
+          },
+        },
+        required: ["title"],
+      },
+    },
+  },
+  async execute(args) {
+    if (typeof args?.title !== "string" || args.title.trim() === "") {
+      return "Missing required parameter: title.";
+    }
+    try {
+      const { ok, reason } = await deleteNote(args.title);
+      if (!ok) {
+        return reason;
+      }
+      return `Deleted note: ${args.title}.`;
+    } catch (err) {
+      return `Could not delete note: ${err.message}`;
+    }
+  },
+};
+
 const recallNotes = {
   name: "recall_notes",
   label: "Recall notes",
@@ -209,4 +261,4 @@ const recallNotes = {
   },
 };
 
-export { takeNote, updateNoteTool, recallNotes };
+export { takeNote, updateNoteTool, deleteNoteTool, recallNotes };
