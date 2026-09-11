@@ -1,6 +1,7 @@
 import { getListing, getFileContent, repoRoot } from "./listing.js";
 import { resolveWithin } from "./pathGuard.js";
 import { sendChatMessages } from "./chat.js";
+import { getNotesContext } from "./notesContext.js";
 import { TOOLS } from "./tools.js";
 
 /**
@@ -36,7 +37,14 @@ export async function handleApi(req, res) {
       const body = await readJsonBody(req);
       const messages = normalizeMessages(body.messages);
       if (!messages) return sendJson(res, 400, { error: "Missing messages" });
-      await streamChat(res, messages);
+      // A stable conversation id gets a cached, conversation-frozen notes
+      // snapshot; an absent id is one-shot (fresh snapshot each call, never
+      // shared across conversations).
+      const conversationId =
+        typeof body.conversationId === "string" ? body.conversationId : "";
+      const notesSystem = await getNotesContext(conversationId);
+      const convo = [{ role: "system", content: notesSystem }, ...messages];
+      await streamChat(res, convo);
     });
   }
 

@@ -21,6 +21,9 @@ export function setupChat(appEl) {
   let follow = true; // pin the view to the latest message
   let prevScrollTop = 0; // restore scroll when follow is off
   let generation = 0; // bumped on clear so a stale stream can't touch state
+  // Identifies the current conversation to the backend. Fresh per
+  // conversation; reset on clear so the backend takes a new notes snapshot.
+  let conversationId = crypto.randomUUID();
 
   const isAtBottom = () =>
     messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight <
@@ -38,6 +41,7 @@ export function setupChat(appEl) {
 
   clearBtn.addEventListener("click", () => {
     generation++;
+    conversationId = crypto.randomUUID();
     sent.length = 0;
     display.length = 0;
     setFollow(true);
@@ -100,6 +104,7 @@ export function setupChat(appEl) {
     try {
       const { reply, reasoning, toolCalls } = await sendChat(
         sent,
+        conversationId,
         (delta) => {
           if (generation !== gen) return;
           const last = display[display.length - 1];

@@ -18,16 +18,23 @@ const SSE_ERROR = "error";
  * resolved value carries the complete reply and any tool calls the model
  * made.
  * @param {Array<{role: string, content: string}>} messages - The conversation.
+ * @param {string} conversationId - Stable id for the current conversation (the backend snapshots the notes store per conversation).
  * @param {(delta: string) => void} [onDelta] - Optional callback for streamed content.
  * @param {(delta: string) => void} [onReasoning] - Optional callback for streamed reasoning (thinking).
  * @param {(file: {path: string, content: string}) => void} [onFileEdit] - Optional callback invoked when the model writes a file, with the file's path and new content.
  * @returns {Promise<{reply: string, reasoning: string, toolCalls: Array<{name: string, args: object}>}>}
  */
-export async function sendChat(messages, onDelta, onReasoning, onFileEdit) {
+export async function sendChat(
+  messages,
+  conversationId,
+  onDelta,
+  onReasoning,
+  onFileEdit,
+) {
   const res = await fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify({ messages, conversationId }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
