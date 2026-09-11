@@ -1,5 +1,3 @@
-import { drainFileEdits } from "./evalTools.js";
-
 // OpenAI-compatible endpoint (llama.cpp) base URL, model name, and API key.
 const LLM_BASE_URL = process.env.LLM_BASE_URL || "http://localhost:8080";
 const LLM_MODEL =
@@ -19,7 +17,7 @@ const MAX_TOOL_ROUNDS = 5;
  * `onReasoning`) as they arrive, so the client can render the reply
  * character by character, including the model's thinking.
  * @param {Array<{role: string, content: string}>} messages - The conversation.
- * @param {Array<{name: string, definition: object, execute: (args: object) => Promise<string>}>} tools - The tools the model may call.
+ * @param {Array<{name: string, definition: object, execute: (args: object) => Promise<string>, drain?: () => Array<{path: string, content: string}>}>} tools - The tools the model may call. A tool with side effects (e.g. file writes) may optionally provide `drain()`, returning any pending side-effect records since the last call; the loop forwards each to `onFileEdit`.
  * @param {(delta: string) => void} [onDelta] - Optional callback invoked with each content chunk as it streams in.
  * @param {(delta: string) => void} [onReasoning] - Optional callback invoked with each reasoning (thinking) chunk as it streams in.
  * @param {(file: {path: string, content: string}) => void} [onFileEdit] - Optional callback invoked when a file-writing tool succeeds, with the file's path and new content.
@@ -58,9 +56,10 @@ export async function sendChatMessages(
       const raw = tool
         ? await tool.execute(args)
         : `Unknown tool: ${call.function?.name}`;
-      // The eval tool records any file writes it performs in a module-level
-      // buffer; drain them here so the client live-updates the open file.
-      for (const file of drainFileEdits()) onFileEdit?.(file);
+      // Tools with side effects (e.g. eval's file writes) advertise a `drain`
+      // function that returns the pending records; forward each to the client
+      // so it can live-update the open file.
+      for (const file of tool?.drain?.() ?? []) onFileEdit?.(file);
       const result = typeof raw === "string" ? raw : raw.result;
       toolCalls.push({
         name: call.function?.name,

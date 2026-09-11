@@ -237,6 +237,12 @@ export const evalExpression = {
   label: "Eval",
   icon: "🧮",
   summary: (args) => (args?.expression ? `"${args.expression}"` : ""),
+  // Tools with side effects (file writes) advertise a `drain` function that
+  // returns any pending side-effect records since the last call. The tool
+  // loop in chat.js calls `tool.drain?.()` after each tool runs and forwards
+  // each record to the client, so the loop stays tool-agnostic and the
+  // side-effect contract lives on the tool entry, not in chat.js.
+  drain: drainFileEdits,
   definition: {
     type: "function",
     function: {
