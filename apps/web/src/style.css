@@ -340,29 +340,36 @@ p {
       letter-spacing: -0.4px;
       margin: 0;
     }
-  }
 
-  .chat-follow {
-    font-family: var(--sans);
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text);
-    background: transparent;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 4px 10px;
-    cursor: pointer;
-    flex-shrink: 0;
+    .chat-header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
 
-    &:hover {
-      background: var(--accent-bg);
-      border-color: var(--accent-border);
-    }
+      button {
+        font-family: var(--sans);
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text);
+        background: transparent;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 4px 10px;
+        cursor: pointer;
+        flex-shrink: 0;
 
-    &[aria-pressed="true"] {
-      color: var(--accent);
-      border-color: var(--accent-border);
-      background: var(--accent-bg);
+        &:hover {
+          background: var(--accent-bg);
+          border-color: var(--accent-border);
+        }
+
+        &[aria-pressed="true"] {
+          color: var(--accent);
+          border-color: var(--accent-border);
+          background: var(--accent-bg);
+        }
+      }
     }
   }
 }

@@ -13,12 +13,14 @@ export function setupChat(appEl) {
   const button = form.querySelector("button[type=submit]");
   const messagesEl = appEl.querySelector("#chat-messages");
   const followBtn = appEl.querySelector("#chat-follow");
+  const clearBtn = appEl.querySelector("#chat-clear");
 
   const sent = []; // conversation sent to the model (user/assistant pairs)
   const display = []; // everything shown in the UI (incl. errors)
 
   let follow = true; // pin the view to the latest message
   let prevScrollTop = 0; // restore scroll when follow is off
+  let generation = 0; // bumped on clear so a stale stream can't touch state
 
   const isAtBottom = () =>
     messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight <
@@ -32,6 +34,14 @@ export function setupChat(appEl) {
   followBtn.addEventListener("click", () => {
     setFollow(!follow);
     if (follow) messagesEl.scrollTop = messagesEl.scrollHeight;
+  });
+
+  clearBtn.addEventListener("click", () => {
+    generation++;
+    sent.length = 0;
+    display.length = 0;
+    setFollow(true);
+    renderMessages(messagesEl, display);
   });
 
   // Scrolling up away from the bottom turns follow off; reaching the bottom
@@ -82,16 +92,23 @@ export function setupChat(appEl) {
       reasoningEl = lastEl?.querySelector(".chat-msg-reasoning") ?? null;
     };
 
+    // If the user clears while this turn is streaming, the stale stream's
+    // callbacks must not touch sent/display (they'd be empty). The captured
+    // generation is compared against the live counter on every mutation.
+    const gen = generation;
+
     try {
       const { reply, reasoning, toolCalls } = await sendChat(
         sent,
         (delta) => {
+          if (generation !== gen) return;
           const last = display[display.length - 1];
           last.content += delta;
           if (streamingEl) streamingEl.textContent = last.content;
           if (follow) messagesEl.scrollTop = messagesEl.scrollHeight;
         },
         (delta) => {
+          if (generation !== gen) return;
           const last = display[display.length - 1];
           last.reasoning += delta;
           if (!reasoningEl) {
@@ -115,20 +132,26 @@ export function setupChat(appEl) {
           appEl.dispatchEvent(new CustomEvent("file-edit", { detail: file }));
         },
       );
-      sent.push({ role: "assistant", content: reply });
-      const last = display[display.length - 1];
-      last.content = reply;
-      last.reasoning = reasoning;
-      last.toolCalls = toolCalls;
+      if (generation === gen) {
+        sent.push({ role: "assistant", content: reply });
+        const last = display[display.length - 1];
+        last.content = reply;
+        last.reasoning = reasoning;
+        last.toolCalls = toolCalls;
+      }
     } catch (err) {
-      sent.pop(); // undo so the failed turn isn't re-sent
-      display.pop(); // drop the placeholder
-      display.push({ role: "error", content: err.message });
+      if (generation === gen) {
+        sent.pop(); // undo so the failed turn isn't re-sent
+        display.pop(); // drop the placeholder
+        display.push({ role: "error", content: err.message });
+      }
     } finally {
       button.disabled = false;
-      renderMessages(messagesEl, display);
-      if (follow) messagesEl.scrollTop = messagesEl.scrollHeight;
-      else messagesEl.scrollTop = prevScrollTop;
+      if (generation === gen) {
+        renderMessages(messagesEl, display);
+        if (follow) messagesEl.scrollTop = messagesEl.scrollHeight;
+        else messagesEl.scrollTop = prevScrollTop;
+      }
     }
   });
 }

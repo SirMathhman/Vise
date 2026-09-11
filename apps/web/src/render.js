@@ -16,15 +16,25 @@ export function renderApp(appEl) {
       <section class="chat">
         <div class="chat-header">
           <h2>Ask the model</h2>
-          <button
-            id="chat-follow"
-            class="chat-follow"
-            type="button"
-            aria-pressed="true"
-            title="Automatically scroll to the latest message"
-          >
-            Follow
-          </button>
+          <div class="chat-header-actions">
+            <button
+              id="chat-clear"
+              class="chat-clear"
+              type="button"
+              title="Clear the conversation"
+            >
+              Clear
+            </button>
+            <button
+              id="chat-follow"
+              class="chat-follow"
+              type="button"
+              aria-pressed="true"
+              title="Automatically scroll to the latest message"
+            >
+              Follow
+            </button>
+          </div>
         </div>
         <form id="chat-form" class="chat-form">
           <input
