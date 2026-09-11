@@ -2,6 +2,7 @@ import { fetchNotesSnapshot, sendChat } from "./api.js";
 import {
   addConversation,
   conversations,
+  deleteConversation,
   getCurrentIndex,
   load,
   saveActive,
@@ -111,8 +112,16 @@ export function setupChat(appEl) {
       // Populate the list with all conversations.
       for (let i = 0; i < conversations.length; i++) {
         const li = document.createElement("li");
-        li.textContent = titleFor(conversations[i]);
         li.dataset.index = String(i);
+        const title = document.createElement("span");
+        title.className = "chat-convo-item-title";
+        title.textContent = titleFor(conversations[i]);
+        const del = document.createElement("button");
+        del.className = "chat-convo-delete";
+        del.type = "button";
+        del.textContent = "\u00d7";
+        del.setAttribute("aria-label", "Delete conversation");
+        li.append(title, del);
         if (i === getCurrentIndex()) li.classList.add("chat-convo-active");
         convoList.appendChild(li);
       }
@@ -135,6 +144,23 @@ export function setupChat(appEl) {
   });
 
   convoList.addEventListener("click", (e) => {
+    // Delete: remove the conversation and restore the new active one
+    // (or start a fresh conversation if none remain).
+    if (e.target.closest(".chat-convo-delete")) {
+      const li = e.target.closest("li");
+      const idx = Number(li.dataset.index);
+      deleteConversation(idx);
+      closeDropdown();
+      if (conversations.length === 0) {
+        newConversation();
+      } else {
+        generation++;
+        restore(conversations[getCurrentIndex()]);
+        save();
+        updateConvoBtn();
+      }
+      return;
+    }
     const li = e.target.closest("li");
     if (!li || !convoList.contains(li)) return;
     const idx = Number(li.dataset.index);

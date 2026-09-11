@@ -128,6 +128,28 @@ export const setActiveIndex = (idx) => {
 };
 
 /**
+ * Remove the conversation at `idx` and persist. The active index is adjusted
+ * so it always points to a valid entry: when the removed entry is before the
+ * active one, the active index is decremented; when it is the active one, the
+ * active index is clamped to the last remaining entry (so deleting the active
+ * conversation lands on the next one, or the previous if it was last). If the
+ * list becomes empty, the active index is set to -1 and the caller should
+ * start a fresh conversation.
+ * @param {number} idx - The index in `conversations` to remove.
+ */
+export const deleteConversation = (idx) => {
+  conversations.splice(idx, 1);
+  if (conversations.length === 0) {
+    currentIndex = -1;
+  } else if (idx < currentIndex) {
+    currentIndex -= 1;
+  } else if (idx === currentIndex) {
+    currentIndex = Math.min(currentIndex, conversations.length - 1);
+  }
+  serialize();
+};
+
+/**
  * Read the index of the active conversation. Exported as a getter (not a live
  * binding) so the chat module can read the value without being able to
  * reassign it; mutations go through `setActiveIndex` / `addConversation`.
