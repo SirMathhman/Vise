@@ -453,6 +453,11 @@ p {
 
           .chat-convo-delete {
             flex-shrink: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 24px;
+            min-height: 24px;
             opacity: 0;
             background: none;
             border: none;
