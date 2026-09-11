@@ -17,6 +17,20 @@ export function renderApp(appEl) {
         <div class="chat-header">
           <h2>Ask the model</h2>
           <div class="chat-header-actions">
+            <div class="chat-tools-dropdown">
+              <button
+                id="chat-tools-btn"
+                class="chat-tools-btn"
+                type="button"
+                aria-haspopup="true"
+                aria-expanded="false"
+                title="Tools the model can use"
+              >
+                <span class="chat-tools-btn-label">Tools</span>
+                <span class="chat-tools-count" id="chat-tools-count" hidden></span>
+              </button>
+              <ul id="chat-tools-list" class="chat-tools-list" hidden></ul>
+            </div>
             <div class="chat-convo-dropdown">
               <button
                 id="chat-convo-btn"

@@ -88,6 +88,21 @@ export async function sendChat(
 }
 
 /**
+ * Fetches the list of tools the model can call, from the backend's TOOLS
+ * registry (the single source of truth).
+ * @returns {Promise<Array<{name: string, label: string, icon: string, description: string}>>}
+ */
+export async function fetchTools() {
+  const res = await fetch("/api/tools");
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error ?? `Request failed: ${res.status}`);
+  }
+  const data = await res.json();
+  return data.tools ?? [];
+}
+
+/**
  * Fetches a fresh notes snapshot from the backend, used to seed the
  * frontend's stored snapshot when a new conversation starts.
  * @returns {Promise<string>} The snapshot text.

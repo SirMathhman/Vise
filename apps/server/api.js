@@ -39,6 +39,22 @@ export async function handleApi(req, res) {
     });
   }
 
+  if (req.method === "GET" && url.pathname === "/api/tools") {
+    return run(res, async () => {
+      // The TOOLS registry is the single source of truth for which tools the
+      // model can call; expose each one's display metadata (icon/label) and
+      // its definition's description so the frontend can show what is
+      // available without hardcoding a second copy of the tool list.
+      const tools = TOOLS.map((t) => ({
+        name: t.name,
+        label: t.label,
+        icon: t.icon,
+        description: t.definition.function.description,
+      }));
+      return sendJson(res, 200, { tools });
+    });
+  }
+
   if (req.method === "POST" && url.pathname === "/api/chat") {
     return run(res, async () => {
       const body = await readJsonBody(req);
