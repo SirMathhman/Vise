@@ -3,6 +3,7 @@ import { resolveWithin } from "./pathGuard.js";
 import { sendChatMessages } from "./chat.js";
 import { getNotesContext, buildSnapshot } from "./notesContext.js";
 import { TOOLS } from "./tools.js";
+import { getEvalFunctions } from "./evalTools.js";
 
 /**
  * Handles API requests and writes the JSON response directly. Supports:
@@ -52,6 +53,17 @@ export async function handleApi(req, res) {
         description: t.definition.function.description,
       }));
       return sendJson(res, 200, { tools });
+    });
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/eval-functions") {
+    return run(res, async () => {
+      // The eval sandbox's functions (built-in file I/O / directory functions
+      // plus any the model defined via create_function) are the source of
+      // truth for what an eval expression can call. Expose them so the UI's
+      // eval-functions reference never hardcodes a second copy of the list.
+      const functions = getEvalFunctions();
+      return sendJson(res, 200, { functions });
     });
   }
 

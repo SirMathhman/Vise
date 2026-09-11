@@ -103,6 +103,23 @@ export async function fetchTools() {
 }
 
 /**
+ * Fetches the functions that can be executed inside an eval expression
+ * (built-in file I/O / directory functions plus any the model defined via
+ * create_function), from the backend's eval sandbox (the single source of
+ * truth).
+ * @returns {Promise<Array<{name: string, description: string, builtin: boolean}>>}
+ */
+export async function fetchEvalFunctions() {
+  const res = await fetch("/api/eval-functions");
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error ?? `Request failed: ${res.status}`);
+  }
+  const data = await res.json();
+  return data.functions ?? [];
+}
+
+/**
  * Fetches a fresh notes snapshot from the backend, used to seed the
  * frontend's stored snapshot when a new conversation starts.
  * @returns {Promise<string>} The snapshot text.

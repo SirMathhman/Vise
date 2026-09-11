@@ -84,8 +84,7 @@ const readFile = (path) => {
 const writeFile = (path, content) => {
   const file = resolveWithin(repoRoot, path);
   if (!file) throw new Error("Invalid path (must be within the repository)");
-  if (typeof content !== "string")
-    throw new Error("content must be a string");
+  if (typeof content !== "string") throw new Error("content must be a string");
   let info;
   try {
     info = fsStat(file);
@@ -113,8 +112,7 @@ const writeFile = (path, content) => {
 const editFile = (path, content) => {
   const file = resolveWithin(repoRoot, path);
   if (!file) throw new Error("Invalid path (must be within the repository)");
-  if (typeof content !== "string")
-    throw new Error("content must be a string");
+  if (typeof content !== "string") throw new Error("content must be a string");
   let info;
   try {
     info = fsStat(file);
@@ -143,7 +141,8 @@ const createDirectory = (path) => {
   let info;
   try {
     info = fsStat(dir);
-    if (info.isFile()) throw new Error(`A file with this name already exists: ${path}`);
+    if (info.isFile())
+      throw new Error(`A file with this name already exists: ${path}`);
   } catch (err) {
     if (err.code !== "ENOENT") throw err;
   }
@@ -168,6 +167,67 @@ const fileEdits = [];
 export const drainFileEdits = () => {
   return fileEdits.splice(0);
 };
+
+/**
+ * The built-in functions exposed in the eval sandbox. Each entry's `name` is
+ * what the sandbox exposes and what an eval expression calls, `fn` is the
+ * implementation wired into the sandbox, and `description` is the short
+ * human-readable blurb shown in the UI's eval-functions reference. Defined
+ * here as the single source of truth so the sandbox wiring and the UI listing
+ * can never drift apart.
+ */
+const EVAL_BUILTINS = [
+  {
+    name: "listDirectory",
+    fn: listDirectory,
+    description:
+      'Lists a repository directory ("" for the root); returns { name, isDirectory } entries.',
+  },
+  {
+    name: "readFile",
+    fn: readFile,
+    description:
+      "Reads a file's text content (truncated at 100,000 characters).",
+  },
+  {
+    name: "writeFile",
+    fn: writeFile,
+    description:
+      "Creates a new file, making parent directories; fails if the file already exists.",
+  },
+  {
+    name: "editFile",
+    fn: editFile,
+    description: "Overwrites the full content of an existing file.",
+  },
+  {
+    name: "createDirectory",
+    fn: createDirectory,
+    description: "Creates a directory, making parent directories.",
+  },
+];
+
+/**
+ * Lists every function that can be executed inside an eval expression: the
+ * built-in file I/O / directory functions plus any functions the model has
+ * defined via create_function (live from the in-memory store). Used by the
+ * /api/eval-functions endpoint so the UI can show what eval can call without
+ * hardcoding a second copy of the list.
+ * @returns {Array<{name: string, description: string, builtin: boolean}>}
+ */
+export function getEvalFunctions() {
+  const builtins = EVAL_BUILTINS.map(({ name, description }) => ({
+    name,
+    description,
+    builtin: true,
+  }));
+  const created = [...functionStore.entries()].map(([name, code]) => ({
+    name,
+    description: code,
+    builtin: false,
+  }));
+  return [...builtins, ...created];
+}
 
 export const createFunction = {
   name: "create_function",
@@ -252,7 +312,7 @@ export const evalExpression = {
         'to compute or transform values, e.g. eval("1 + 2") => 3. The ' +
         "expression runs in a sandbox with a 2 second timeout. Built-in " +
         "functions available in the sandbox: listDirectory(path) (lists a " +
-        "repository directory, \"\" for the root), readFile(path) (reads a " +
+        'repository directory, "" for the root), readFile(path) (reads a ' +
         "file's text content), writeFile(path, content) (creates a new file, " +
         "creating parent directories), editFile(path, content) (overwrites an " +
         "existing file), and createDirectory(path) (creates a directory, " +
@@ -281,11 +341,9 @@ export const evalExpression = {
       // Build a sandbox context pre-populated with the built-in file I/O
       // functions and all stored functions.
       const sandbox = createContext();
-      sandbox.listDirectory = listDirectory;
-      sandbox.readFile = readFile;
-      sandbox.writeFile = writeFile;
-      sandbox.editFile = editFile;
-      sandbox.createDirectory = createDirectory;
+      for (const { name, fn } of EVAL_BUILTINS) {
+        sandbox[name] = fn;
+      }
       for (const [name, code] of functionStore) {
         const wrapped = `(${code})`;
         sandbox[name] = new Script(wrapped).runInNewContext(sandbox, {
