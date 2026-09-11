@@ -1,5 +1,6 @@
 import { writeFile, mkdir, stat } from "node:fs/promises";
 import { dirname } from "node:path";
+import { execFile } from "node:child_process";
 import { getListing, getFileContent, repoRoot } from "./listing.js";
 import { resolveWithin } from "./pathGuard.js";
 
@@ -240,6 +241,70 @@ const editFile = {
   },
 };
 
+const runPowershell = {
+  name: "run_powershell",
+  label: "Run PowerShell",
+  icon: "⚡",
+  definition: {
+    type: "function",
+    function: {
+      name: "run_powershell",
+      description:
+        "Run a PowerShell command in the repository and return its output. " +
+        "The working directory is the repository root. Use this to run scripts, " +
+        "list or process files, check system state, or any task PowerShell handles. " +
+        "Returns the command's output plus its exit code.",
+      parameters: {
+        type: "object",
+        properties: {
+          command: {
+            type: "string",
+            description:
+              "The PowerShell command or script to run (e.g. \"Get-ChildItem src\" or \"npm run lint:all\").",
+          },
+        },
+        required: ["command"],
+      },
+    },
+  },
+  async execute(args) {
+    if (typeof args?.command !== "string" || args.command.trim() === "") {
+      return "Missing required parameter: command.";
+    }
+    return new Promise((resolve) => {
+      execFile(
+        "pwsh",
+        ["-NoProfile", "-NoLogo", "-Command", args.command],
+        {
+          cwd: repoRoot,
+          timeout: 120_000,
+          maxBuffer: 1024 * 1024,
+          windowsHide: true,
+        },
+        (error, stdout, stderr) => {
+          const MAX_CHARS = 50_000;
+          const out = (stdout || "").trim();
+          const errOut = (stderr || "").trim();
+          const exitCode = error ? error.code ?? 1 : 0;
+          const parts = [];
+          if (out) parts.push(out);
+          if (errOut) parts.push(`[stderr]\n${errOut}`);
+          if (!parts.length) parts.push("(no output)");
+          const output = parts.join("\n");
+          const body =
+            output.length > MAX_CHARS
+              ? output.slice(0, MAX_CHARS) +
+                `
+
+[truncated: output is ${output.length} characters, showing first ${MAX_CHARS}]`
+              : output;
+          resolve(exitCode === 0 ? body : `${body}\n[exit code: ${exitCode}]`);
+        },
+      );
+    });
+  },
+};
+
 /**
  * The registry of tools available to the model.
  */
@@ -249,4 +314,5 @@ export const TOOLS = [
   createFile,
   createDirectory,
   editFile,
+  runPowershell,
 ];
