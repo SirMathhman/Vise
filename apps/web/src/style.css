@@ -454,6 +454,9 @@ p {
     }
 
     .chat-msg-tool {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
       font-family: var(--mono);
       font-size: 11px;
       color: var(--text);
@@ -462,6 +465,15 @@ p {
       border-radius: 4px;
       padding: 2px 6px;
       cursor: default;
+      max-width: 100%;
+    }
+
+    .chat-msg-tool-detail {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 280px;
+      color: var(--text-h);
     }
 
     .chat-msg-content {

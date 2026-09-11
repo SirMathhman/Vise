@@ -109,9 +109,19 @@ export function renderMessages(container, messages) {
         const badge = document.createElement("span");
         badge.className = "chat-msg-tool";
         const label = call.label ?? call.name;
-        const path = call.args?.path;
-        badge.title = `${call.name}(${JSON.stringify(call.args)})`;
-        badge.textContent = `${call.icon ?? "🔧"} ${label}${path ? ` ${path}` : ""}`;
+        // Show the meaningful argument inline: the command for run_powershell,
+        // the path for file tools. Full args stay in the title tooltip.
+        const detail = call.args?.command ?? call.args?.path;
+        badge.title = detail
+          ? `${label}: ${detail}`
+          : `${call.name}(${JSON.stringify(call.args)})`;
+        badge.append(`${call.icon ?? "🔧"} ${label}`);
+        if (detail) {
+          const detailEl = document.createElement("span");
+          detailEl.className = "chat-msg-tool-detail";
+          detailEl.textContent = detail;
+          badge.append(detailEl);
+        }
         badges.appendChild(badge);
       }
       wrap.append(role, badges);
