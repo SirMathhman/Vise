@@ -325,6 +325,88 @@ const runPowershell = {
   },
 };
 
+const searchFiles = {
+  name: "search_files",
+  label: "Search files",
+  icon: "🔍",
+  summary: (args) => args?.pattern ?? "",
+  definition: {
+    type: "function",
+    function: {
+      name: "search_files",
+      description:
+        "Search the repository's file names by regular expression, returning " +
+        "the relative path of every matching file that is not ignored by " +
+        ".gitignore (i.e. files git tracks plus untracked-but-not-ignored " +
+        "files). The regex is matched case-insensitively against each file's " +
+        "full relative path. Use this to find files by name without listing " +
+        "every directory, then read the ones you need. For example, the " +
+        'pattern "chat" matches apps/server/chat.js and apps/web/src/chat.js.',
+      parameters: {
+        type: "object",
+        properties: {
+          pattern: {
+            type: "string",
+            description:
+              "A regular expression matched against each file's relative " +
+              'path (case-insensitive), e.g. "chat" or ' +
+              '"^apps/server/.*\\.js$".',
+          },
+        },
+        required: ["pattern"],
+      },
+    },
+  },
+  async execute(args) {
+    if (typeof args?.pattern !== "string" || args.pattern === "") {
+      return "Missing required parameter: pattern.";
+    }
+    let re;
+    try {
+      re = new RegExp(args.pattern, "i");
+    } catch (err) {
+      return `Invalid regex: ${err.message}`;
+    }
+    // `git ls-files -co --exclude-standard` lists tracked files plus
+    // untracked files that are not ignored, pruning .gitignored directories
+    // so it stays fast even with node_modules present. -z gives
+    // null-delimited paths so names with spaces/newlines are safe.
+    return new Promise((resolve) => {
+      execFile(
+        "git",
+        ["ls-files", "-co", "-z", "--exclude-standard"],
+        {
+          cwd: repoRoot,
+          maxBuffer: 1024 * 1024,
+          windowsHide: true,
+        },
+        (error, stdout) => {
+          if (error) {
+            const suffix =
+              typeof error.code !== "number"
+                ? `[could not run git: ${error.code}]`
+                : `\n[exit code: ${error.code}]`;
+            return resolve(`Could not search files${suffix}`);
+          }
+          const paths = String(stdout).split("\0").filter(Boolean);
+          const matches = paths.filter((p) => re.test(p));
+          const MAX_RESULTS = 200;
+          let body;
+          if (matches.length === 0) {
+            body = `No files match /${args.pattern}/i.`;
+          } else {
+            body = matches.slice(0, MAX_RESULTS).join("\n");
+            if (matches.length > MAX_RESULTS) {
+              body += `\n\n[truncated: ${matches.length} matches, showing first ${MAX_RESULTS}]`;
+            }
+          }
+          resolve(body);
+        },
+      );
+    });
+  },
+};
+
 /**
  * The registry of tools available to the model.
  */
@@ -335,4 +417,5 @@ export const TOOLS = [
   createDirectory,
   editFile,
   runPowershell,
+  searchFiles,
 ];
