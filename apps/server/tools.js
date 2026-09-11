@@ -13,6 +13,7 @@ const listDirectory = {
   name: "list_directory",
   label: "List directory",
   icon: "📁",
+  summary: (args) => args?.path ?? "",
   definition: {
     type: "function",
     function: {
@@ -51,6 +52,7 @@ const readFile = {
   name: "read_file",
   label: "Read file",
   icon: "📄",
+  summary: (args) => args?.path ?? "",
   definition: {
     type: "function",
     function: {
@@ -95,6 +97,7 @@ const createFile = {
   label: "Create file",
   icon: "📝",
   writesFile: true,
+  summary: (args) => args?.path ?? "",
   definition: {
     type: "function",
     function: {
@@ -149,6 +152,7 @@ const createDirectory = {
   name: "create_directory",
   label: "Create directory",
   icon: "📂",
+  summary: (args) => args?.path ?? "",
   definition: {
     type: "function",
     function: {
@@ -194,6 +198,7 @@ const editFile = {
   label: "Edit file",
   icon: "✏️",
   writesFile: true,
+  summary: (args) => args?.path ?? "",
   definition: {
     type: "function",
     function: {
@@ -245,6 +250,7 @@ const runPowershell = {
   name: "run_powershell",
   label: "Run PowerShell",
   icon: "⚡",
+  summary: (args) => args?.command ?? "",
   definition: {
     type: "function",
     function: {

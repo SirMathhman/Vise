@@ -63,6 +63,7 @@ export async function sendChatMessages(
         name: call.function?.name,
         label: tool?.label,
         icon: tool?.icon,
+        detail: tool?.summary?.(args) ?? "",
         args,
       });
       convo.push({

@@ -466,13 +466,14 @@ p {
       padding: 2px 6px;
       cursor: default;
       max-width: 100%;
+      white-space: nowrap;
     }
 
     .chat-msg-tool-detail {
+      min-width: 0;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      max-width: 280px;
       color: var(--text-h);
     }
 
