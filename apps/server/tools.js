@@ -260,7 +260,7 @@ const runPowershell = {
           command: {
             type: "string",
             description:
-              "The PowerShell command or script to run (e.g. \"Get-ChildItem src\" or \"npm run lint:all\").",
+              'The PowerShell command or script to run (e.g. "Get-ChildItem src" or "npm run lint:all").',
           },
         },
         required: ["command"],
@@ -285,7 +285,6 @@ const runPowershell = {
           const MAX_CHARS = 50_000;
           const out = (stdout || "").trim();
           const errOut = (stderr || "").trim();
-          const exitCode = error ? error.code ?? 1 : 0;
           const parts = [];
           if (out) parts.push(out);
           if (errOut) parts.push(`[stderr]\n${errOut}`);
@@ -298,7 +297,22 @@ const runPowershell = {
 
 [truncated: output is ${output.length} characters, showing first ${MAX_CHARS}]`
               : output;
-          resolve(exitCode === 0 ? body : `${body}\n[exit code: ${exitCode}]`);
+          // execFile's `error.code` is a number only for a real non-zero exit:
+          // a timeout gives `code = null, killed = true`, a spawn failure
+          // (e.g. pwsh not on PATH) gives `code = "ENOENT"`. Report each
+          // distinctly so the model can tell "killed" / "couldn't run" from a
+          // genuine failure exit code.
+          let suffix = "";
+          if (error) {
+            if (error.killed) {
+              suffix = "\n[timed out after 120s]";
+            } else if (typeof error.code !== "number") {
+              suffix = `\n[could not run pwsh: ${error.code}]`;
+            } else {
+              suffix = `\n[exit code: ${error.code}]`;
+            }
+          }
+          resolve(body + suffix);
         },
       );
     });
