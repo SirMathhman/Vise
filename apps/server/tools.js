@@ -1,8 +1,9 @@
 import { writeFile, mkdir, stat } from "node:fs/promises";
-import { dirname } from "node:path";
+import { readdirSync } from "node:fs";
+import { dirname, sep } from "node:path";
 import { execFile } from "node:child_process";
 import { Script, createContext } from "node:vm";
-import { getListing, getFileContent, repoRoot } from "./listing.js";
+import { getFileContent, repoRoot } from "./listing.js";
 import { resolveWithin } from "./pathGuard.js";
 import {
   takeNote,
@@ -16,43 +17,35 @@ import {
  * (run server-side) live together so the tool contract is defined exactly
  * once. Adding a tool is a single-file change.
  */
-const listDirectory = {
-  name: "list_directory",
-  label: "List directory",
-  icon: "📁",
-  summary: (args) => args?.path ?? "",
-  definition: {
-    type: "function",
-    function: {
-      name: "list_directory",
-      description:
-        "List the files and subdirectories in a directory of the repository. " +
-        "Use an empty path to list the repository root.",
-      parameters: {
-        type: "object",
-        properties: {
-          path: {
-            type: "string",
-            description:
-              'Directory path relative to the repository root (e.g. "apps/server"). Empty string for the root.',
-          },
-        },
-        required: ["path"],
-      },
-    },
-  },
-  async execute(args) {
-    const dir = resolveWithin(repoRoot, args?.path ?? "");
-    if (!dir) return "Invalid path (must be within the repository).";
-    try {
-      const entries = await getListing(dir);
-      return entries
-        .map((e) => `${e.isDirectory ? "dir " : "file"} ${e.name}`)
-        .join("\n");
-    } catch (err) {
-      return `Could not list directory: ${err.message}`;
-    }
-  },
+/**
+ * Built-in `listDirectory` available inside `eval` expressions. Lists a
+ * directory of the repository (path relative to the repository root; omit it
+ * or pass "" for the root) and returns an array of `{ name, isDirectory }`
+ * entries, sorted alphabetically; directory names carry a trailing path
+ * separator so they are visually distinguishable from files. Throws a
+ * descriptive error on an invalid path or a directory that does not exist.
+ * Synchronous, so it can be called directly from an eval expression.
+ * @param {string} [path] - Directory path relative to the repository root.
+ * @returns {Array<{name: string, isDirectory: boolean}>}
+ */
+const listDirectory = (path = "") => {
+  const dir = resolveWithin(repoRoot, path);
+  if (!dir) throw new Error("Invalid path (must be within the repository)");
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch (err) {
+    if (err.code === "ENOENT")
+      throw new Error(`No such directory: ${path}`);
+    throw err;
+  }
+  return entries
+    .filter((e) => e.isDirectory() || e.isFile())
+    .map((e) => ({
+      name: e.name + (e.isDirectory() ? sep : ""),
+      isDirectory: e.isDirectory(),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 };
 
 const readFile = {
@@ -500,8 +493,10 @@ const evalExpression = {
       description:
         "Evaluate a JavaScript expression and return its value. Use this " +
         'to compute or transform values, e.g. eval("1 + 2") => 3. The ' +
-        "expression runs in a sandbox with a 2 second timeout. Any " +
-        "functions previously defined with create_function are available " +
+        "expression runs in a sandbox with a 2 second timeout. The built-in " +
+        "listDirectory(path) function lists a repository directory (\"\" for " +
+        "the root), returning an array of { name, isDirectory } entries. Any " +
+        "functions previously defined with create_function are also available " +
         "by name. Only the value of the final expression is returned, like " +
         'a REPL: use eval("1 + 2") => 3, or after create_function with ' +
         'name "add" and code "(a,b) => a+b", use eval("add(2,3)") => 5.',
@@ -524,8 +519,10 @@ const evalExpression = {
       return "Missing required parameter: expression.";
     }
     try {
-      // Build a sandbox context pre-populated with all stored functions.
+      // Build a sandbox context pre-populated with the built-in listDirectory
+      // function and all stored functions.
       const sandbox = createContext();
+      sandbox.listDirectory = listDirectory;
       for (const [name, code] of functionStore) {
         const wrapped = `(${code})`;
         sandbox[name] = new Script(wrapped).runInNewContext(sandbox, {
@@ -574,7 +571,6 @@ const evalExpression = {
  * LLM sees a single registry.
  */
 export const TOOLS = [
-  listDirectory,
   readFile,
   createFile,
   createDirectory,
