@@ -1,5 +1,11 @@
-import { readdirSync } from "node:fs";
-import { sep } from "node:path";
+import {
+  readdirSync,
+  readFileSync as fsReadFile,
+  writeFileSync as fsWriteFile,
+  statSync as fsStat,
+  mkdirSync as fsMkdir,
+} from "node:fs";
+import { sep, dirname } from "node:path";
 import { Script, createContext } from "node:vm";
 import { repoRoot } from "./listing.js";
 import { resolveWithin } from "./pathGuard.js";
@@ -35,11 +41,133 @@ const listDirectory = (path = "") => {
 };
 
 /**
+ * Built-in `readFile` available inside `eval` expressions. Reads the text
+ * content of a file in the repository (path relative to the repository root).
+ * Throws a descriptive error if the file does not exist or is not a regular
+ * file. Returns the file's content, truncated at 100,000 characters.
+ * Synchronous, so it can be called directly from an eval expression.
+ * @param {string} path - File path relative to the repository root.
+ * @returns {string}
+ */
+const readFile = (path) => {
+  const file = resolveWithin(repoRoot, path);
+  if (!file) throw new Error("Invalid path (must be within the repository)");
+  let info;
+  try {
+    info = fsStat(file);
+  } catch {
+    throw new Error(`No such file: ${path}`);
+  }
+  if (!info.isFile()) throw new Error(`Not a file: ${path}`);
+  const content = fsReadFile(file, "utf8");
+  const MAX_CHARS = 100_000;
+  if (content.length > MAX_CHARS) {
+    return (
+      content.slice(0, MAX_CHARS) +
+      `\n\n[truncated: file is ${content.length} characters, showing first ${MAX_CHARS}]`
+    );
+  }
+  return content;
+};
+
+/**
+ * Built-in `writeFile` available inside `eval` expressions. Writes a file to
+ * the repository (path relative to the repository root). Creates parent
+ * directories automatically. Throws if the path is not a string, the file
+ * already exists, or the write fails. Records the write in the module-level
+ * `fileEdits` array so the caller can pick it up after eval finishes.
+ * Returns a confirmation string with the path and character count.
+ * @param {string} path - File path relative to the repository root.
+ * @param {string} content - The content to write to the new file.
+ * @returns {string}
+ */
+const writeFile = (path, content) => {
+  const file = resolveWithin(repoRoot, path);
+  if (!file) throw new Error("Invalid path (must be within the repository)");
+  if (typeof content !== "string")
+    throw new Error("content must be a string");
+  let info;
+  try {
+    info = fsStat(file);
+    if (info.isFile()) throw new Error(`File already exists: ${path}`);
+  } catch (err) {
+    if (err.code !== "ENOENT") throw err;
+  }
+  fsMkdir(dirname(file), { recursive: true });
+  fsWriteFile(file, content, "utf8");
+  fileEdits.push({ path, content });
+  return `Created ${path} (${content.length} characters).`;
+};
+
+/**
+ * Built-in `editFile` available inside `eval` expressions. Overwrites an
+ * existing file in the repository (path relative to the repository root).
+ * Throws if the path is not a string, the file does not exist, or the write
+ * fails. Records the write in the module-level `fileEdits` array so the
+ * caller can pick it up after eval finishes.
+ * Returns a confirmation string with the path and character count.
+ * @param {string} path - File path relative to the repository root.
+ * @param {string} content - The full new content to write to the file.
+ * @returns {string}
+ */
+const editFile = (path, content) => {
+  const file = resolveWithin(repoRoot, path);
+  if (!file) throw new Error("Invalid path (must be within the repository)");
+  if (typeof content !== "string")
+    throw new Error("content must be a string");
+  let info;
+  try {
+    info = fsStat(file);
+  } catch {
+    throw new Error(`File does not exist: ${path}`);
+  }
+  if (!info.isFile()) throw new Error(`Not a file: ${path}`);
+  fsWriteFile(file, content, "utf8");
+  fileEdits.push({ path, content });
+  return `Edited ${path} (${content.length} characters).`;
+};
+
+/**
+ * Built-in `createDirectory` available inside `eval` expressions. Creates a
+ * directory in the repository (path relative to the repository root).
+ * Parent directories are created automatically. Throws if the path is
+ * not a string, the path is invalid, a file already exists at that path,
+ * or the creation fails.
+ * Returns a confirmation string with the path.
+ * @param {string} path - Directory path relative to the repository root.
+ * @returns {string}
+ */
+const createDirectory = (path) => {
+  const dir = resolveWithin(repoRoot, path);
+  if (!dir) throw new Error("Invalid path (must be within the repository)");
+  let info;
+  try {
+    info = fsStat(dir);
+    if (info.isFile()) throw new Error(`A file with this name already exists: ${path}`);
+  } catch (err) {
+    if (err.code !== "ENOENT") throw err;
+  }
+  fsMkdir(dir, { recursive: true });
+  return `Created directory ${path}.`;
+};
+
+/**
  * In-memory store of functions the model defines via create_function.
  * Keyed by function name; values are the raw source code. Lives for the
  * process lifetime (cleared on backend restart).
  */
 const functionStore = new Map();
+
+/**
+ * File writes made during the current chat turn, so the caller can pick them
+ * up after `eval` finishes and forward them to the client (for live file-viewer
+ * updates). Drained by `drainFileEdits` after each eval call.
+ */
+const fileEdits = [];
+
+export const drainFileEdits = () => {
+  return fileEdits.splice(0);
+};
 
 export const createFunction = {
   name: "create_function",
@@ -116,13 +244,15 @@ export const evalExpression = {
       description:
         "Evaluate a JavaScript expression and return its value. Use this " +
         'to compute or transform values, e.g. eval("1 + 2") => 3. The ' +
-        "expression runs in a sandbox with a 2 second timeout. The built-in " +
-        'listDirectory(path) function lists a repository directory ("" for ' +
-        "the root), returning an array of { name, isDirectory } entries. Any " +
-        "functions previously defined with create_function are also available " +
-        "by name. Only the value of the final expression is returned, like " +
-        'a REPL: use eval("1 + 2") => 3, or after create_function with ' +
-        'name "add" and code "(a,b) => a+b", use eval("add(2,3)") => 5.',
+        "expression runs in a sandbox with a 2 second timeout. Built-in " +
+        "functions available in the sandbox: listDirectory(path) (lists a " +
+        "repository directory, \"\" for the root), readFile(path) (reads a " +
+        "file's text content), writeFile(path, content) (creates a new file, " +
+        "creating parent directories), editFile(path, content) (overwrites an " +
+        "existing file), and createDirectory(path) (creates a directory, " +
+        "creating parent directories). Any functions previously defined with " +
+        "create_function are also available by name. Only the value of the " +
+        'final expression is returned, like a REPL: use eval("1 + 2") => 3.',
       parameters: {
         type: "object",
         properties: {
@@ -142,10 +272,14 @@ export const evalExpression = {
       return "Missing required parameter: expression.";
     }
     try {
-      // Build a sandbox context pre-populated with the built-in listDirectory
-      // function and all stored functions.
+      // Build a sandbox context pre-populated with the built-in file I/O
+      // functions and all stored functions.
       const sandbox = createContext();
       sandbox.listDirectory = listDirectory;
+      sandbox.readFile = readFile;
+      sandbox.writeFile = writeFile;
+      sandbox.editFile = editFile;
+      sandbox.createDirectory = createDirectory;
       for (const [name, code] of functionStore) {
         const wrapped = `(${code})`;
         sandbox[name] = new Script(wrapped).runInNewContext(sandbox, {

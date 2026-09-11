@@ -1,3 +1,5 @@
+import { drainFileEdits } from "./evalTools.js";
+
 // OpenAI-compatible endpoint (llama.cpp) base URL, model name, and API key.
 const LLM_BASE_URL = process.env.LLM_BASE_URL || "http://localhost:8080";
 const LLM_MODEL =
@@ -56,9 +58,10 @@ export async function sendChatMessages(
       const raw = tool
         ? await tool.execute(args)
         : `Unknown tool: ${call.function?.name}`;
-      // File-writing tools return { result, file? }; others return a string.
+      // The eval tool records any file writes it performs in a module-level
+      // buffer; drain them here so the client live-updates the open file.
+      for (const file of drainFileEdits()) onFileEdit?.(file);
       const result = typeof raw === "string" ? raw : raw.result;
-      if (tool?.writesFile && raw?.file) onFileEdit?.(raw.file);
       toolCalls.push({
         name: call.function?.name,
         label: tool?.label,
