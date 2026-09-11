@@ -1,4 +1,4 @@
-import { fetchNotesSnapshot, fetchTools, sendChat } from "./api.js";
+import { fetchNotesSnapshot, sendChat } from "./api.js";
 import {
   addConversation,
   conversations,
@@ -27,9 +27,6 @@ export function setupChat(appEl) {
   const clearBtn = appEl.querySelector("#chat-clear");
   const convoBtn = appEl.querySelector("#chat-convo-btn");
   const convoList = appEl.querySelector("#chat-convo-list");
-  const toolsBtn = appEl.querySelector("#chat-tools-btn");
-  const toolsList = appEl.querySelector("#chat-tools-list");
-  const toolsCount = appEl.querySelector("#chat-tools-count");
 
   const sent = []; // conversation sent to the model (user/assistant pairs)
   const display = []; // everything shown in the UI (incl. errors)
@@ -159,74 +156,9 @@ export function setupChat(appEl) {
   });
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !convoList.hidden) closeDropdown();
-    if (e.key === "Escape" && !toolsList.hidden) closeToolsDropdown();
   });
 
   updateConvoBtn();
-
-  // Tools dropdown: shows the tools the model can call. Populated lazily from
-  // the backend's TOOLS registry (the single source of truth) so the UI never
-  // hardcodes a second copy of the tool list.
-  const openToolsDropdown = async () => {
-    toolsBtn.setAttribute("aria-expanded", "true");
-    if (!toolsList.childElementCount) {
-      try {
-        const tools = await fetchTools();
-        for (const tool of tools) {
-          const li = document.createElement("li");
-          li.className = "chat-tools-item";
-          li.title = tool.description;
-
-          const icon = document.createElement("span");
-          icon.className = "chat-tools-item-icon";
-          icon.textContent = tool.icon ?? "🔧";
-          li.appendChild(icon);
-
-          const body = document.createElement("span");
-          body.className = "chat-tools-item-body";
-
-          const label = document.createElement("span");
-          label.className = "chat-tools-item-label";
-          label.textContent = tool.label ?? tool.name;
-          body.appendChild(label);
-
-          const desc = document.createElement("span");
-          desc.className = "chat-tools-item-desc";
-          desc.textContent = tool.description;
-          body.appendChild(desc);
-
-          li.appendChild(body);
-
-          toolsList.appendChild(li);
-        }
-        toolsCount.textContent = String(tools.length);
-        toolsCount.hidden = tools.length === 0;
-      } catch {
-        // Leave the list empty; the badge stays hidden. The user can retry
-        // by closing and reopening.
-      }
-    }
-    toolsList.hidden = false;
-  };
-
-  const closeToolsDropdown = () => {
-    toolsList.hidden = true;
-    toolsBtn.setAttribute("aria-expanded", "false");
-  };
-
-  toolsBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    if (toolsList.hidden) openToolsDropdown();
-    else closeToolsDropdown();
-  });
-
-  // The tools list is static (fetched once), so no Escape handling is needed
-  // for it; the conversation dropdown below owns Escape.
-  document.addEventListener("click", (e) => {
-    if (toolsList.hidden) return;
-    if (e.target.closest(".chat-tools-dropdown")) return;
-    closeToolsDropdown();
-  });
 
   // Scrolling up away from the bottom turns follow off; reaching the bottom
   // turns it back on.
