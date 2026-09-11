@@ -229,6 +229,37 @@ export function getEvalFunctions() {
   return [...builtins, ...created];
 }
 
+export const listEvalFunctions = {
+  name: "list_eval_functions",
+  label: "List eval functions",
+  icon: "📋",
+  summary: () => "",
+  definition: {
+    type: "function",
+    function: {
+      name: "list_eval_functions",
+      description:
+        "Lists every function that can be called inside an eval expression: " +
+        "the built-in file I/O and directory functions plus any functions " +
+        "previously defined via create_function. Use this when the user asks " +
+        "what functions are available, what they can call with eval, or which " +
+        "functions are defined.",
+      parameters: {
+        type: "object",
+        properties: {},
+      },
+    },
+  },
+  async execute() {
+    const functions = getEvalFunctions();
+    const lines = functions.map((fn) => {
+      const source = fn.builtin ? "built-in" : "create_function";
+      return `  ${fn.name} (${source}) — ${fn.description}`;
+    });
+    return `Functions available in eval:\n${lines.join("\n")}`;
+  },
+};
+
 export const createFunction = {
   name: "create_function",
   label: "Create function",

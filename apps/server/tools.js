@@ -1,6 +1,10 @@
 import { execFile } from "node:child_process";
 import { repoRoot } from "./listing.js";
-import { createFunction, evalExpression } from "./evalTools.js";
+import {
+  createFunction,
+  evalExpression,
+  listEvalFunctions,
+} from "./evalTools.js";
 import {
   takeNote,
   updateNoteTool,
@@ -188,6 +192,7 @@ export const TOOLS = [
   searchFiles,
   createFunction,
   evalExpression,
+  listEvalFunctions,
   takeNote,
   updateNoteTool,
   deleteNoteTool,
