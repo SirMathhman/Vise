@@ -2,6 +2,13 @@
 
 Guidance for AI coding agents working in this repository.
 
+> **Start here.** For deeper architecture context — design invariants, known
+> potential problems, and the "future work" roadmap — read the canonical
+> architecture doc in repository memory at `/memories/repo/architecture.md`
+> (use the `memory` tool with `command: "view"`). It describes where the code
+> is _heading_, not just what it is today; keep it ahead of the code. This file
+> (AGENTS.md) is the working guide; that doc is the reference.
+
 ## Project Overview
 
 A **frontend + backend** monorepo (npm workspaces) using **vanilla JavaScript** (no framework) and **Node's built-in `http`** module (no Express).
