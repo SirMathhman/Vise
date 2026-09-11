@@ -1,6 +1,7 @@
 import { writeFile, mkdir, stat } from "node:fs/promises";
 import { dirname } from "node:path";
 import { execFile } from "node:child_process";
+import { Script, createContext } from "node:vm";
 import { getListing, getFileContent, repoRoot } from "./listing.js";
 import { resolveWithin } from "./pathGuard.js";
 import {
@@ -417,6 +418,80 @@ const searchFiles = {
   },
 };
 
+const evalExpression = {
+  name: "eval",
+  label: "Eval",
+  icon: "🧮",
+  summary: (args) => (args?.expression ? `"${args.expression}"` : ""),
+  definition: {
+    type: "function",
+    function: {
+      name: "eval",
+      description:
+        "Evaluate a JavaScript expression and return its value. Use this " +
+        'to compute or transform values, e.g. eval("1 + 2") => 3. The ' +
+        "expression runs in a fresh empty sandbox (no access to process, " +
+        "require, or globals) with a 2 second timeout, so keep it pure and " +
+        "bounded. Only the value of the final expression is returned, like " +
+        'a REPL: use eval("1 + 2") => 3 or ' +
+        'eval("[1,2,3].map(x => x * 2)") => [2,4,6].',
+      parameters: {
+        type: "object",
+        properties: {
+          expression: {
+            type: "string",
+            description:
+              'A JavaScript expression to evaluate (e.g. "1 + 2", ' +
+              '"(3 ** 2) + 1", or "[1, 2, 3].map((x) => x * 2)").',
+          },
+        },
+        required: ["expression"],
+      },
+    },
+  },
+  async execute(args) {
+    if (typeof args?.expression !== "string" || args.expression === "") {
+      return "Missing required parameter: expression.";
+    }
+    try {
+      const script = new Script(args.expression);
+      const value = script.runInNewContext(createContext(), {
+        timeout: 2000,
+      });
+      let text;
+      if (value === null || value === undefined) {
+        text = String(value);
+      } else if (
+        typeof value === "string" ||
+        typeof value === "number" ||
+        typeof value === "boolean"
+      ) {
+        text = String(value);
+      } else {
+        try {
+          text = JSON.stringify(value);
+        } catch {
+          text = String(value);
+        }
+        if (text === undefined) text = String(value);
+      }
+      const MAX_CHARS = 10_000;
+      if (text.length > MAX_CHARS) {
+        return (
+          text.slice(0, MAX_CHARS) +
+          `\n\n[truncated: result is ${text.length} characters, showing first ${MAX_CHARS}]`
+        );
+      }
+      return text;
+    } catch (err) {
+      if (err && /timed out/i.test(err.message)) {
+        return "Evaluation timed out after 2s.";
+      }
+      return `Could not evaluate: ${err.message}`;
+    }
+  },
+};
+
 /**
  * The registry of tools available to the model. The note tools live in
  * notesTools.js (a per-domain tool module) and are re-exported here so the
@@ -430,6 +505,7 @@ export const TOOLS = [
   editFile,
   runPowershell,
   searchFiles,
+  evalExpression,
   takeNote,
   updateNoteTool,
   deleteNoteTool,
