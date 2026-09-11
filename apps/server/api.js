@@ -1,7 +1,7 @@
 import { getListing, getFileContent, repoRoot } from "./listing.js";
 import { resolveWithin } from "./pathGuard.js";
 import { sendChatMessages } from "./chat.js";
-import { getNotesContext } from "./notesContext.js";
+import { getNotesContext, buildSnapshot } from "./notesContext.js";
 import { TOOLS } from "./tools.js";
 
 /**
@@ -32,6 +32,13 @@ export async function handleApi(req, res) {
     });
   }
 
+  if (req.method === "GET" && url.pathname === "/api/notes-snapshot") {
+    return run(res, async () => {
+      const snapshot = await buildSnapshot();
+      return sendJson(res, 200, { snapshot });
+    });
+  }
+
   if (req.method === "POST" && url.pathname === "/api/chat") {
     return run(res, async () => {
       const body = await readJsonBody(req);
@@ -39,10 +46,14 @@ export async function handleApi(req, res) {
       if (!messages) return sendJson(res, 400, { error: "Missing messages" });
       // A stable conversation id gets a cached, conversation-frozen notes
       // snapshot; an absent id is one-shot (fresh snapshot each call, never
-      // shared across conversations).
+      // shared across conversations). The frontend may supply the snapshot it
+      // stored at conversation start so a resumed conversation after a backend
+      // restart reuses the same snapshot the model's prior replies saw.
       const conversationId =
         typeof body.conversationId === "string" ? body.conversationId : "";
-      const notesSystem = await getNotesContext(conversationId);
+      const storedSnapshot =
+        typeof body.notesSnapshot === "string" ? body.notesSnapshot : "";
+      const notesSystem = await getNotesContext(conversationId, storedSnapshot);
       const convo = [{ role: "system", content: notesSystem }, ...messages];
       await streamChat(res, convo);
     });

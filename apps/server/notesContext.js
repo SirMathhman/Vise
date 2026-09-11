@@ -11,30 +11,47 @@ const notesSnapshots = new Map();
 
 /**
  * Returns the notes snapshot for a conversation, taking one on first contact.
+ * If the conversation is resumed (backend restarted since the conversation
+ * started) and the frontend provides the snapshot it stored at conversation
+ * start, that snapshot is used instead of building a fresh one, keeping the
+ * system message consistent with the model's prior replies.
  * @param {string} conversationId - Stable id identifying the conversation. When absent (empty/undefined), a fresh snapshot is computed and not cached.
+ * @param {string} [storedSnapshot] - Snapshot text stored by the frontend at conversation start, used to seed the cache on resume.
  * @returns {Promise<string>} The system message describing the notes at the start of this conversation.
  */
-export async function getNotesContext(conversationId) {
+export async function getNotesContext(conversationId, storedSnapshot) {
   const key =
     typeof conversationId === "string" && conversationId
       ? conversationId
       : undefined;
 
   if (key !== undefined) {
-    const snapshot = notesSnapshots.get(key);
-    if (snapshot !== undefined) return snapshot;
+    const cached = notesSnapshots.get(key);
+    if (cached !== undefined) return cached;
   }
 
-  const snapshot = await buildSnapshot();
+  let snapshot;
+  if (
+    key !== undefined &&
+    typeof storedSnapshot === "string" &&
+    storedSnapshot
+  ) {
+    snapshot = storedSnapshot;
+  } else {
+    snapshot = await buildSnapshot();
+  }
+
   if (key !== undefined) notesSnapshots.set(key, snapshot);
   return snapshot;
 }
 
 /**
- * Builds the system message from the current notes store.
+ * Builds a fresh snapshot from the current notes store without caching.
+ * Used by the /api/notes-snapshot endpoint to seed the frontend's stored
+ * snapshot when a conversation starts.
  * @returns {Promise<string>} The snapshot text.
  */
-async function buildSnapshot() {
+export async function buildSnapshot() {
   const notes = await listNotes();
   if (notes.length === 0) {
     return (

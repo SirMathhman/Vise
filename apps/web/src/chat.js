@@ -1,4 +1,4 @@
-import { sendChat } from "./api.js";
+import { sendChat, fetchNotesSnapshot } from "./api.js";
 import { renderMessages } from "./render.js";
 import { getOpenFilePath } from "./state.js";
 
@@ -24,6 +24,46 @@ export function setupChat(appEl) {
   // Identifies the current conversation to the backend. Fresh per
   // conversation; reset on clear so the backend takes a new notes snapshot.
   let conversationId = crypto.randomUUID();
+  // Snapshot of the notes store at conversation start, sent to the backend
+  // on every request so a resumed conversation reuses the same snapshot
+  // the model's prior replies saw. Fetched lazily on first send of a new
+  // conversation and persisted alongside the conversation.
+  let notesSnapshot = "";
+
+  // Persist the conversation across reloads. sent/display/conversationId are
+  // the load-bearing state; follow/scroll are transient UI and not saved.
+  const STORAGE_KEY = "vise-chat";
+  const save = () => {
+    try {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ conversationId, sent, display, notesSnapshot }),
+      );
+    } catch {
+      // Ignore quota or privacy-mode failures.
+    }
+  };
+
+  // Restore a previous conversation if one was saved, then render it so the
+  // transcript and the model's context survive a page reload. Also restore
+  // the notes snapshot so a resumed conversation after a backend restart
+  // reuses the same snapshot the model's prior replies saw.
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (saved && Array.isArray(saved.sent) && Array.isArray(saved.display)) {
+      sent.push(...saved.sent);
+      display.push(...saved.display);
+      if (typeof saved.conversationId === "string" && saved.conversationId) {
+        conversationId = saved.conversationId;
+      }
+      if (typeof saved.notesSnapshot === "string") {
+        notesSnapshot = saved.notesSnapshot;
+      }
+    }
+  } catch {
+    // Ignore corrupt storage.
+  }
+  renderMessages(messagesEl, display);
 
   const isAtBottom = () =>
     messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight <
@@ -42,10 +82,12 @@ export function setupChat(appEl) {
   clearBtn.addEventListener("click", () => {
     generation++;
     conversationId = crypto.randomUUID();
+    notesSnapshot = "";
     sent.length = 0;
     display.length = 0;
     setFollow(true);
     renderMessages(messagesEl, display);
+    save();
   });
 
   // Scrolling up away from the bottom turns follow off; reaching the bottom
@@ -71,6 +113,19 @@ export function setupChat(appEl) {
     const context = openPath
       ? `\n\n[Context: the file currently open in the viewer is "${openPath}".]`
       : "\n\n[Context: no file is currently open in the viewer.]";
+
+    // Fetch the notes snapshot lazily on the first send of a new
+    // conversation. On restore, notesSnapshot is already set from
+    // localStorage, so this is skipped.
+    if (!notesSnapshot) {
+      try {
+        notesSnapshot = await fetchNotesSnapshot();
+      } catch {
+        // If the snapshot fetch fails, send an empty snapshot — the backend
+        // will build a fresh one, which is the existing behavior.
+        notesSnapshot = "";
+      }
+    }
 
     sent.push({ role: "user", content: message + context });
     display.push({ role: "user", content: message });
@@ -105,6 +160,7 @@ export function setupChat(appEl) {
       const { reply, reasoning, toolCalls } = await sendChat(
         sent,
         conversationId,
+        notesSnapshot,
         (delta) => {
           if (generation !== gen) return;
           const last = display[display.length - 1];
@@ -152,6 +208,7 @@ export function setupChat(appEl) {
       }
     } finally {
       button.disabled = false;
+      save();
       if (generation === gen) {
         renderMessages(messagesEl, display);
         if (follow) messagesEl.scrollTop = messagesEl.scrollHeight;

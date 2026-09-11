@@ -19,6 +19,7 @@ const SSE_ERROR = "error";
  * made.
  * @param {Array<{role: string, content: string}>} messages - The conversation.
  * @param {string} conversationId - Stable id for the current conversation (the backend snapshots the notes store per conversation).
+ * @param {string} [notesSnapshot] - Snapshot text the frontend stored at conversation start, so a resumed conversation reuses the same snapshot the model's prior replies saw.
  * @param {(delta: string) => void} [onDelta] - Optional callback for streamed content.
  * @param {(delta: string) => void} [onReasoning] - Optional callback for streamed reasoning (thinking).
  * @param {(file: {path: string, content: string}) => void} [onFileEdit] - Optional callback invoked when the model writes a file, with the file's path and new content.
@@ -27,6 +28,7 @@ const SSE_ERROR = "error";
 export async function sendChat(
   messages,
   conversationId,
+  notesSnapshot,
   onDelta,
   onReasoning,
   onFileEdit,
@@ -34,7 +36,7 @@ export async function sendChat(
   const res = await fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ messages, conversationId }),
+    body: JSON.stringify({ messages, conversationId, notesSnapshot }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
@@ -82,7 +84,22 @@ export async function sendChat(
     }
   }
 
-  return { reply, reasoning, toolCalls: [] };
+  throw new Error("Stream ended without done event");
+}
+
+/**
+ * Fetches a fresh notes snapshot from the backend, used to seed the
+ * frontend's stored snapshot when a new conversation starts.
+ * @returns {Promise<string>} The snapshot text.
+ */
+export async function fetchNotesSnapshot() {
+  const res = await fetch("/api/notes-snapshot");
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error ?? `Request failed: ${res.status}`);
+  }
+  const data = await res.json();
+  return data.snapshot ?? "";
 }
 
 /**
