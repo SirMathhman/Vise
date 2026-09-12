@@ -344,6 +344,50 @@ export const createFunction = {
   },
 };
 
+export const deleteFunction = {
+  name: "delete_function",
+  label: "Delete function",
+  icon: "🗑️",
+  summary: (args) => args?.name ?? "",
+  definition: {
+    type: "function",
+    function: {
+      name: "delete_function",
+      description:
+        "Remove a function that was previously defined via create_function so " +
+        "it can no longer be called by name in eval expressions. Use this to " +
+        "clean up a function that is no longer needed. Built-in functions " +
+        "(such as readFile, writeFile, listDirectory, runPowershell, and " +
+        "searchFiles) are not stored in the function store and cannot be " +
+        "deleted. If the name does not match a previously created function, " +
+        "this tool reports that no such function exists.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: {
+            type: "string",
+            description:
+              "The name of the function to delete (a name previously " +
+              'defined via create_function, e.g. "add").',
+          },
+        },
+        required: ["name"],
+      },
+    },
+  },
+  async execute(args) {
+    const name = args?.name;
+    if (typeof name !== "string" || name.trim() === "") {
+      return "Missing required parameter: name.";
+    }
+    if (!functionStore.has(name)) {
+      return `No such function to delete: ${name} (only functions defined via create_function can be deleted; built-ins cannot).`;
+    }
+    functionStore.delete(name);
+    return `Deleted function: ${name}`;
+  },
+};
+
 export const evalExpression = {
   name: "eval",
   label: "Eval",

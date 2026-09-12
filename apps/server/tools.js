@@ -1,5 +1,6 @@
 import {
   createFunction,
+  deleteFunction,
   evalExpression,
   listEvalFunctions,
 } from "./evalTools.js";
@@ -28,6 +29,7 @@ import {
  */
 export const TOOLS = [
   createFunction,
+  deleteFunction,
   evalExpression,
   listEvalFunctions,
   takeNote,
