@@ -339,6 +339,8 @@ p {
       font-size: 20px;
       letter-spacing: -0.4px;
       margin: 0;
+      white-space: nowrap;
+      flex-shrink: 0;
     }
 
     .chat-header-actions {
