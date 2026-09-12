@@ -2,6 +2,8 @@ import {
   createFunction,
   evalExpression,
   listEvalFunctions,
+  runPowershell,
+  searchFiles,
 } from "./evalTools.js";
 import {
   takeNote,
@@ -9,7 +11,6 @@ import {
   deleteNoteTool,
   recallNotes,
 } from "./notesTools.js";
-import { runPowershell, searchFiles } from "./processTools.js";
 
 /**
  * A tool the model can call. Its definition (sent to the LLM) and executor
@@ -17,10 +18,9 @@ import { runPowershell, searchFiles } from "./processTools.js";
  * once. Adding a tool is a single-file change.
  */
 
-
 /**
  * The registry of tools available to the model. Per-domain tool modules
- * (processTools.js, evalTools.js, notesTools.js) are re-exported here so
+ * (evalTools.js, notesTools.js) are re-exported here so
  * the LLM sees a single registry.
  */
 export const TOOLS = [
