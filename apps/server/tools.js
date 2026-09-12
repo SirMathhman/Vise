@@ -2,8 +2,6 @@ import {
   createFunction,
   evalExpression,
   listEvalFunctions,
-  runPowershell,
-  searchFiles,
 } from "./evalTools.js";
 import {
   takeNote,
@@ -16,6 +14,11 @@ import {
  * A tool the model can call. Its definition (sent to the LLM) and executor
  * (run server-side) live together so the tool contract is defined exactly
  * once. Adding a tool is a single-file change.
+ *
+ * Note: `run_powershell` and `search_files` are not standalone tools. They are
+ * exposed only as built-in functions inside the eval sandbox (see
+ * `EVAL_BUILTINS` in evalTools.js) and are listed under "eval functions" in
+ * the UI.
  */
 
 /**
@@ -24,8 +27,6 @@ import {
  * the LLM sees a single registry.
  */
 export const TOOLS = [
-  runPowershell,
-  searchFiles,
   createFunction,
   evalExpression,
   listEvalFunctions,
