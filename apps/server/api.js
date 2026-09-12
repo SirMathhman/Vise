@@ -4,12 +4,16 @@ import { sendChatMessages } from "./chat.js";
 import { getNotesContext, buildSnapshot } from "./notesContext.js";
 import { TOOLS } from "./tools.js";
 import { getEvalFunctions } from "./evalTools.js";
+import { listProfiles, upsertProfile, deleteProfile } from "./profiles.js";
 
 /**
  * Handles API requests and writes the JSON response directly. Supports:
  *   GET  /api/listing[?path=relative/path] -> JSON array of entries (name, isDirectory).
  *   GET  /api/file?path=relative/path      -> JSON { content: string }.
  *   POST /api/chat { messages }            -> JSON { reply: string }.
+ *   GET  /api/profiles                     -> JSON { profiles: [{name, instructions}] }.
+ *   POST /api/profiles { name, instructions } -> JSON { profile } (add or update).
+ *   DELETE /api/profiles?name=X            -> JSON { ok } (404 if no such profile).
  */
 export async function handleApi(req, res) {
   const url = new URL(req.url, "http://localhost");
@@ -67,6 +71,42 @@ export async function handleApi(req, res) {
     });
   }
 
+  if (url.pathname === "/api/profiles") {
+    if (req.method === "GET") {
+      return run(res, async () => {
+        const profiles = await listProfiles();
+        return sendJson(res, 200, { profiles });
+      });
+    }
+    if (req.method === "POST") {
+      return run(res, async () => {
+        const body = await readJsonBody(req);
+        const name = typeof body.name === "string" ? body.name.trim() : "";
+        const instructions =
+          typeof body.instructions === "string" ? body.instructions : "";
+        if (name === "") {
+          return sendJson(res, 400, { error: "Missing profile name" });
+        }
+        const profile = await upsertProfile(name, instructions);
+        return sendJson(res, 200, { profile });
+      });
+    }
+    if (req.method === "DELETE") {
+      return run(res, async () => {
+        const name = url.searchParams.get("name") ?? "";
+        if (name === "") {
+          return sendJson(res, 400, { error: "Missing profile name" });
+        }
+        const result = await deleteProfile(name);
+        if (!result.ok) {
+          return sendJson(res, 404, { error: result.reason ?? "Not found" });
+        }
+        return sendJson(res, 200, { ok: true });
+      });
+    }
+    return sendJson(res, 404, { error: "Not found" });
+  }
+
   if (req.method === "POST" && url.pathname === "/api/chat") {
     return run(res, async () => {
       const body = await readJsonBody(req);
@@ -82,7 +122,27 @@ export async function handleApi(req, res) {
       const storedSnapshot =
         typeof body.notesSnapshot === "string" ? body.notesSnapshot : "";
       const notesSystem = await getNotesContext(conversationId, storedSnapshot);
-      const convo = [{ role: "system", content: notesSystem }, ...messages];
+      // The profile instructions are frozen per conversation by the frontend
+      // (it stores the selected profile's instructions at conversation start
+      // and re-sends them with every request, exactly like notesSnapshot). An
+      // empty/absent value means "no profile" — no extra system message, which
+      // is the pre-profile behavior.
+      const profileInstructions =
+        typeof body.profileInstructions === "string"
+          ? body.profileInstructions
+          : "";
+      const systemMessages = [notesSystem];
+      if (profileInstructions) {
+        systemMessages.push(
+          `You are operating under the following user-defined profile ` +
+            `instructions. Follow them throughout this conversation in ` +
+            `addition to your normal instructions:\n\n${profileInstructions}`,
+        );
+      }
+      const convo = [
+        { role: "system", content: systemMessages.join("\n\n") },
+        ...messages,
+      ];
       await streamChat(res, convo);
     });
   }

@@ -4,8 +4,14 @@
  * is active, so the user can close out of a conversation, start a new one, and
  * reopen an old one.
  *
- * Each conversation is `{ id, sent, display, notesSnapshot }`. The title is
- * derived from the first user message (truncated) and not stored separately.
+ * Each conversation is `{ id, sent, display, notesSnapshot, profileName,
+ * profileInstructions }`. The title is derived from the first user message
+ * (truncated) and not stored separately. `profileName` is the profile the
+ * conversation started with (used to re-sync the profile dropdown's UI when
+ * switching conversations); `profileInstructions` is that profile's frozen
+ * instructions text, sent to the backend with every request (exactly like
+ * `notesSnapshot`) so a conversation keeps the instructions it started with
+ * even if the profile is later edited or deleted.
  *
  * `conversations` and `currentIndex` are exported as live bindings so the
  * chat behavior module can read them without a getter. All mutations go
@@ -88,6 +94,8 @@ export const load = () => {
           sent: parsed.sent,
           display: parsed.display,
           notesSnapshot: parsed.notesSnapshot ?? "",
+          profileName: "",
+          profileInstructions: "",
         },
       ];
       index = 0;
@@ -109,10 +117,17 @@ export const load = () => {
  * clears (which now starts a new conversation rather than wiping history) and
  * on first load when there is nothing to restore.
  * @param {string} id - The new conversation's id (a UUID the caller minted).
- * @returns {{ id: string, sent: Array, display: Array, notesSnapshot: string }} The new entry.
+ * @returns {{ id: string, sent: Array, display: Array, notesSnapshot: string, profileName: string, profileInstructions: string }} The new entry.
  */
 export const addConversation = (id) => {
-  conversations.push({ id, sent: [], display: [], notesSnapshot: "" });
+  conversations.push({
+    id,
+    sent: [],
+    display: [],
+    notesSnapshot: "",
+    profileName: "",
+    profileInstructions: "",
+  });
   currentIndex = conversations.length - 1;
   return conversations[currentIndex];
 };
@@ -170,6 +185,8 @@ export const saveActive = (snapshot) => {
     sent: [...snapshot.sent],
     display: [...snapshot.display],
     notesSnapshot: snapshot.notesSnapshot,
+    profileName: snapshot.profileName ?? "",
+    profileInstructions: snapshot.profileInstructions ?? "",
   };
   serialize();
 };

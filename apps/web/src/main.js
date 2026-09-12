@@ -5,6 +5,7 @@ import { setupFileViewer } from "./fileViewer.js";
 import { setupChat } from "./chat.js";
 import { setupDividers } from "./dividers.js";
 import { setupTools } from "./tools.js";
+import { setupProfiles } from "./profiles.js";
 
 const appEl = document.querySelector("#app");
 renderApp(appEl);
@@ -13,3 +14,4 @@ setupFileViewer(appEl);
 setupChat(appEl);
 setupDividers(appEl);
 setupTools(appEl);
+setupProfiles(appEl);

@@ -12,6 +12,11 @@ import {
 import { renderMessages } from "./render.js";
 import { getOpenFilePath } from "./state.js";
 import { setupKeyboardMenu } from "./menu.js";
+import {
+  getSelectedProfileName,
+  getSelectedProfileInstructions,
+  setSelectedProfile,
+} from "./profiles.js";
 
 /**
  * Wires up the chat form: on submit, sends the conversation and appends the
@@ -38,14 +43,28 @@ export function setupChat(appEl) {
   let generation = 0; // bumped on clear so a stale stream can't touch state
   let conversationId = crypto.randomUUID();
   let notesSnapshot = "";
+  // The profile the active conversation was started with. Frozen on the
+  // conversation's first send (like notesSnapshot) so a resumed conversation
+  // keeps the instructions it started with even if the profile is later
+  // edited or deleted. `profileName` drives the dropdown UI; the instructions
+  // are what get sent to the backend.
+  let profileName = "";
+  let profileInstructions = "";
 
-  // The active conversation's live working set (sent/display/notesSnapshot)
-  // lives here in chat.js; the full list of conversations, which one is
-  // active, and the persistence/migration logic live in conversations.js.
-  // After any change to the live state we call saveActive to sync it into the
-  // active slot and serialize to localStorage.
+  // The active conversation's live working set (sent/display/notesSnapshot/
+  // profileName/profileInstructions) lives here in chat.js; the full list of
+  // conversations, which one is active, and the persistence/migration logic
+  // live in conversations.js. After any change to the live state we call
+  // saveActive to sync it into the active slot and serialize to localStorage.
   const save = () =>
-    saveActive({ id: conversationId, sent, display, notesSnapshot });
+    saveActive({
+      id: conversationId,
+      sent,
+      display,
+      notesSnapshot,
+      profileName,
+      profileInstructions,
+    });
 
   const restore = (conv) => {
     conversationId = conv.id;
@@ -54,6 +73,15 @@ export function setupChat(appEl) {
     display.length = 0;
     display.push(...conv.display);
     notesSnapshot = conv.notesSnapshot ?? "";
+    profileName = conv.profileName ?? "";
+    profileInstructions = conv.profileInstructions ?? "";
+    // A conversation that has messages (or a frozen profile from a send that
+    // later failed) has already fixed its profile — sync the dropdown to
+    // reflect that choice. A brand-new, never-sent conversation keeps the
+    // user's current selection, which it will freeze on its first send.
+    if (profileName || sent.length > 0) {
+      setSelectedProfile(profileName, profileInstructions);
+    }
     setFollow(true);
     renderMessages(messagesEl, display);
   };
@@ -62,6 +90,8 @@ export function setupChat(appEl) {
     generation++;
     conversationId = crypto.randomUUID();
     notesSnapshot = "";
+    profileName = "";
+    profileInstructions = "";
     sent.length = 0;
     display.length = 0;
     setFollow(true);
@@ -117,15 +147,15 @@ export function setupChat(appEl) {
         li.setAttribute("role", "menuitem");
         li.setAttribute("tabindex", "-1");
         const title = document.createElement("span");
-        title.className = "chat-convo-item-title";
+        title.className = "chat-dropdown-item-title";
         title.textContent = titleFor(conversations[i]);
         const del = document.createElement("button");
-        del.className = "chat-convo-delete";
+        del.className = "chat-dropdown-delete";
         del.type = "button";
         del.textContent = "\u00d7";
         del.setAttribute("aria-label", "Delete conversation");
         li.append(title, del);
-        if (i === getCurrentIndex()) li.classList.add("chat-convo-active");
+        if (i === getCurrentIndex()) li.classList.add("chat-dropdown-active");
         convoList.appendChild(li);
       }
       convoList.hidden = false;
@@ -166,7 +196,7 @@ export function setupChat(appEl) {
   convoList.addEventListener("click", (e) => {
     // Delete: remove the conversation and restore the new active one
     // (or start a fresh conversation if none remain).
-    if (e.target.closest(".chat-convo-delete")) {
+    if (e.target.closest(".chat-dropdown-delete")) {
       const li = e.target.closest("li");
       const idx = Number(li.dataset.index);
       deleteConversation(idx);
@@ -246,6 +276,16 @@ export function setupChat(appEl) {
       }
     }
 
+    // Freeze the profile on the conversation's first send (before the first
+    // user message is appended), exactly like the notes snapshot: later sends
+    // and a resumed conversation reuse these instructions even if the profile
+    // is later edited or deleted.
+    if (sent.length === 0) {
+      profileName = getSelectedProfileName();
+      profileInstructions = getSelectedProfileInstructions();
+      save();
+    }
+
     sent.push({ role: "user", content: message + context });
     display.push({ role: "user", content: message });
     display.push({
@@ -280,6 +320,7 @@ export function setupChat(appEl) {
         sent,
         conversationId,
         notesSnapshot,
+        profileInstructions,
         (delta) => {
           if (generation !== gen) return;
           const last = display[display.length - 1];

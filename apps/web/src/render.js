@@ -17,6 +17,25 @@ export function renderApp(appEl) {
         <div class="chat-header">
           <h2>Ask the model</h2>
           <div class="chat-header-actions">
+            <div class="chat-profile-dropdown">
+              <button
+                id="chat-profile-btn"
+                class="chat-dropdown-btn"
+                type="button"
+                aria-haspopup="true"
+                aria-expanded="false"
+                title="Profile instructions (custom agent)"
+              >
+                <span class="chat-dropdown-btn-title chat-profile-title">No instructions</span>
+                <span class="chat-dropdown-btn-arrow">▾</span>
+              </button>
+              <ul
+                id="chat-profile-list"
+                class="chat-dropdown-list chat-profile-list"
+                role="menu"
+                hidden
+              ></ul>
+            </div>
             <div class="chat-tools-dropdown">
               <button
                 id="chat-tools-btn"
@@ -39,18 +58,18 @@ export function renderApp(appEl) {
             <div class="chat-convo-dropdown">
               <button
                 id="chat-convo-btn"
-                class="chat-convo-btn"
+                class="chat-dropdown-btn"
                 type="button"
                 aria-haspopup="true"
                 aria-expanded="false"
                 title="Switch conversations"
               >
-                <span class="chat-convo-title">New conversation</span>
-                <span class="chat-convo-arrow">▾</span>
+                <span class="chat-dropdown-btn-title chat-convo-title">New conversation</span>
+                <span class="chat-dropdown-btn-arrow">▾</span>
               </button>
               <ul
                 id="chat-convo-list"
-                class="chat-convo-list"
+                class="chat-dropdown-list chat-convo-list"
                 role="menu"
                 hidden
               ></ul>

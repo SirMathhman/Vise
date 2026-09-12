@@ -20,6 +20,7 @@ const SSE_ERROR = "error";
  * @param {Array<{role: string, content: string}>} messages - The conversation.
  * @param {string} conversationId - Stable id for the current conversation (the backend snapshots the notes store per conversation).
  * @param {string} [notesSnapshot] - Snapshot text the frontend stored at conversation start, so a resumed conversation reuses the same snapshot the model's prior replies saw.
+ * @param {string} [profileInstructions] - Frozen per-conversation profile instructions (the selected profile's instructions, captured on the conversation's first send); `""` sends no profile system message.
  * @param {(delta: string) => void} [onDelta] - Optional callback for streamed content.
  * @param {(delta: string) => void} [onReasoning] - Optional callback for streamed reasoning (thinking).
  * @param {(file: {path: string, content: string}) => void} [onFileEdit] - Optional callback invoked when the model writes a file, with the file's path and new content.
@@ -29,6 +30,7 @@ export async function sendChat(
   messages,
   conversationId,
   notesSnapshot,
+  profileInstructions,
   onDelta,
   onReasoning,
   onFileEdit,
@@ -36,7 +38,12 @@ export async function sendChat(
   const res = await fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ messages, conversationId, notesSnapshot }),
+    body: JSON.stringify({
+      messages,
+      conversationId,
+      notesSnapshot,
+      profileInstructions,
+    }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
@@ -162,4 +169,51 @@ export async function fetchEntries(path = "") {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Request failed: ${res.status}`);
   return res.json();
+}
+
+/**
+ * Fetches the user's profiles from the backend.
+ * @returns {Promise<Array<{name: string, instructions: string}>>}
+ */
+export async function fetchProfiles() {
+  const res = await fetch("/api/profiles");
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error ?? `Request failed: ${res.status}`);
+  }
+  const data = await res.json();
+  return data.profiles ?? [];
+}
+
+/**
+ * Adds or updates a profile by name (the backend upserts case-insensitively).
+ * @param {string} name
+ * @param {string} instructions
+ * @returns {Promise<{name: string, instructions: string}>}
+ */
+export async function saveProfile(name, instructions) {
+  const res = await fetch("/api/profiles", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, instructions }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error ?? `Request failed: ${res.status}`);
+  }
+  const data = await res.json();
+  return data.profile;
+}
+
+/**
+ * Deletes a profile by name (404 if it does not exist).
+ * @param {string} name
+ */
+export async function deleteProfile(name) {
+  const url = `/api/profiles?name=${encodeURIComponent(name)}`;
+  const res = await fetch(url, { method: "DELETE" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error ?? `Request failed: ${res.status}`);
+  }
 }
