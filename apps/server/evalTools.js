@@ -170,6 +170,15 @@ export const drainFileEdits = () => {
 };
 
 /**
+ * Sandbox wrappers for the process tools, so they can be called directly
+ * from eval expressions (e.g. eval("runPowershell('dir')")). These delegate
+ * to the tool executors defined below (the tools are hoisted as `const`
+ * exports, but by the time an eval expression runs they are initialized).
+ */
+const runPowershellFn = (command) => runPowershell.execute({ command });
+const searchFilesFn = (pattern) => searchFiles.execute({ pattern });
+
+/**
  * The built-in functions exposed in the eval sandbox. Each entry's `name` is
  * what the sandbox exposes and what an eval expression calls, `fn` is the
  * implementation wired into the sandbox, and `description` is the short
@@ -205,6 +214,18 @@ const EVAL_BUILTINS = [
     name: "createDirectory",
     fn: createDirectory,
     description: "Creates a directory, making parent directories.",
+  },
+  {
+    name: "runPowershell",
+    fn: runPowershellFn,
+    description:
+      "Runs a PowerShell command in the repo root (async); returns output + exit code.",
+  },
+  {
+    name: "searchFiles",
+    fn: searchFilesFn,
+    description:
+      "Searches repo file names by regex (async); returns matching relative paths.",
   },
 ];
 
@@ -512,10 +533,14 @@ export const evalExpression = {
         'repository directory, "" for the root), readFile(path) (reads a ' +
         "file's text content), writeFile(path, content) (creates a new file, " +
         "creating parent directories), editFile(path, content) (overwrites an " +
-        "existing file), and createDirectory(path) (creates a directory, " +
-        "creating parent directories). Any functions previously defined with " +
-        "create_function are also available by name. Only the value of the " +
-        'final expression is returned, like a REPL: use eval("1 + 2") => 3.',
+        "existing file), createDirectory(path) (creates a directory, " +
+        "creating parent directories), runPowershell(command) (runs a " +
+        "PowerShell command in the repo root, async), and searchFiles(pattern) " +
+        "(searches repo file names by regex, async). Any functions previously " +
+        "defined with create_function are also available by name. Only the " +
+        "value of the final expression is returned, like a REPL: use " +
+        'eval("1 + 2") => 3. Note that runPowershell and searchFiles are ' +
+        "async: if you call them, await their result.",
       parameters: {
         type: "object",
         properties: {
