@@ -35,6 +35,10 @@ export function setupKeyboardMenu({ listEl, activate }) {
     const list = items();
     if (!list.length) return;
     const focused = list.indexOf(e.target);
+    // Only handle keys when focus is on a menu item. A menu may embed other
+    // focusable controls (e.g. the profiles editor's inputs/textarea/button);
+    // those must keep their own key handling (arrow keys move the caret, etc.).
+    if (focused < 0) return;
     const key = e.key;
     const isArrow =
       key === "ArrowDown" ||

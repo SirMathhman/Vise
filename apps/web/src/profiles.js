@@ -1,4 +1,5 @@
 import { fetchProfiles, saveProfile, deleteProfile } from "./api.js";
+import { setupKeyboardMenu } from "./menu.js";
 
 /**
  * Wires up the "Profiles" dropdown in the chat header: a selector for the
@@ -41,6 +42,15 @@ export function setupProfiles(appEl) {
   profileLabel = profileBtn.querySelector(".chat-profile-title");
   const profileList = appEl.querySelector("#chat-profile-list");
 
+  // Shared keyboard-menu contract (menu.js): items carry role="menuitem" +
+  // tabindex="-1"; the menu handles arrow/Home/End navigation and calls
+  // `activate` on Enter/Space. Activation reuses each item's click handler
+  // (which selects the profile), so keyboard and mouse behave identically.
+  const profileMenu = setupKeyboardMenu({
+    listEl: profileList,
+    activate: (li) => li.click(),
+  });
+
   const openProfileDropdown = async () => {
     profileBtn.setAttribute("aria-expanded", "true");
     profileList.hidden = false;
@@ -50,6 +60,7 @@ export function setupProfiles(appEl) {
     } catch {
       renderProfileList([]);
     }
+    profileMenu.open();
   };
 
   const closeProfileDropdown = () => {
@@ -86,7 +97,7 @@ export function setupProfiles(appEl) {
     li.className = "chat-profile-item chat-profile-item-default";
     li.dataset.name = "";
     li.setAttribute("role", "menuitem");
-    li.setAttribute("tabindex", "0");
+    li.setAttribute("tabindex", "-1");
     li.textContent = "No instructions";
     if (selectedName === "") li.classList.add("chat-dropdown-active");
     li.addEventListener("click", () => {
@@ -117,7 +128,7 @@ export function setupProfiles(appEl) {
     li.className = "chat-profile-item";
     li.dataset.name = profile.name;
     li.setAttribute("role", "menuitem");
-    li.setAttribute("tabindex", "0");
+    li.setAttribute("tabindex", "-1");
     li.title = profile.instructions || "(no instructions)";
     if (selectedName === profile.name) {
       li.classList.add("chat-dropdown-active");
