@@ -323,6 +323,7 @@ p {
   }
 
   .chat-header {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -588,7 +589,6 @@ p {
       }
 
       .chat-tools-dropdown {
-        position: relative;
         flex-shrink: 0;
 
         .chat-tools-btn {
@@ -624,8 +624,8 @@ p {
         .chat-tools-list {
           position: absolute;
           top: calc(100% + 4px);
+          left: 0;
           right: 0;
-          width: 320px;
           max-width: calc(100vw - 24px);
           max-height: 360px;
           overflow-y: auto;
