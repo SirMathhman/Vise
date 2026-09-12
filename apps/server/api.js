@@ -3,7 +3,7 @@ import { resolveWithin } from "./pathGuard.js";
 import { sendChatMessages } from "./chat.js";
 import { getNotesContext, buildSnapshot } from "./notesContext.js";
 import { TOOLS } from "./tools.js";
-import { getEvalFunctions } from "./evalTools.js";
+import { getEvalFunctions } from "./functionTools.js";
 import { listProfiles, upsertProfile, deleteProfile } from "./profiles.js";
 
 /**

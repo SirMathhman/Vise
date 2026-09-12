@@ -1,9 +1,9 @@
+import { evalExpression } from "./evalTools.js";
 import {
   createFunction,
   deleteFunction,
-  evalExpression,
   listEvalFunctions,
-} from "./evalTools.js";
+} from "./functionTools.js";
 import {
   takeNote,
   updateNoteTool,
