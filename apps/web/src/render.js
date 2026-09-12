@@ -29,7 +29,12 @@ export function renderApp(appEl) {
                 <span class="chat-tools-btn-label">Tools</span>
                 <span class="chat-tools-count" id="chat-tools-count" hidden></span>
               </button>
-              <ul id="chat-tools-list" class="chat-tools-list" hidden></ul>
+              <ul
+                id="chat-tools-list"
+                class="chat-tools-list"
+                role="menu"
+                hidden
+              ></ul>
             </div>
             <div class="chat-convo-dropdown">
               <button
@@ -43,7 +48,12 @@ export function renderApp(appEl) {
                 <span class="chat-convo-title">New conversation</span>
                 <span class="chat-convo-arrow">▾</span>
               </button>
-              <ul id="chat-convo-list" class="chat-convo-list" hidden></ul>
+              <ul
+                id="chat-convo-list"
+                class="chat-convo-list"
+                role="menu"
+                hidden
+              ></ul>
             </div>
             <button
               id="chat-clear"

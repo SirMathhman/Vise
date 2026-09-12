@@ -11,6 +11,7 @@ import {
 } from "./conversations.js";
 import { renderMessages } from "./render.js";
 import { getOpenFilePath } from "./state.js";
+import { setupKeyboardMenu } from "./menu.js";
 
 /**
  * Wires up the chat form: on submit, sends the conversation and appends the
@@ -113,6 +114,8 @@ export function setupChat(appEl) {
       for (let i = 0; i < conversations.length; i++) {
         const li = document.createElement("li");
         li.dataset.index = String(i);
+        li.setAttribute("role", "menuitem");
+        li.setAttribute("tabindex", "-1");
         const title = document.createElement("span");
         title.className = "chat-convo-item-title";
         title.textContent = titleFor(conversations[i]);
@@ -127,6 +130,7 @@ export function setupChat(appEl) {
       }
       convoList.hidden = false;
       convoBtn.setAttribute("aria-expanded", "true");
+      convoMenu.open();
     } else {
       closeDropdown();
     }
@@ -137,6 +141,22 @@ export function setupChat(appEl) {
     convoList.hidden = true;
     convoBtn.setAttribute("aria-expanded", "false");
   };
+
+  const convoMenu = setupKeyboardMenu({
+    listEl: convoList,
+    activate: (li) => {
+      const idx = Number(li.dataset.index);
+      if (Number.isInteger(idx) && idx >= 0 && idx < conversations.length) {
+        generation++;
+        setActiveIndex(idx);
+        restore(conversations[idx]);
+        save();
+        closeDropdown();
+        updateConvoBtn();
+        convoBtn.focus();
+      }
+    },
+  });
 
   convoBtn.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -181,7 +201,10 @@ export function setupChat(appEl) {
     closeDropdown();
   });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !convoList.hidden) closeDropdown();
+    if (e.key === "Escape" && !convoList.hidden) {
+      closeDropdown();
+      convoBtn.focus();
+    }
   });
 
   updateConvoBtn();

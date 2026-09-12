@@ -1,4 +1,5 @@
 import { fetchEvalFunctions, fetchTools } from "./api.js";
+import { setupKeyboardMenu } from "./menu.js";
 
 /**
  * Wires up the "Tools" dropdown in the chat header: a read-only list of the
@@ -12,6 +13,8 @@ export function setupTools(appEl) {
   const toolsBtn = appEl.querySelector("#chat-tools-btn");
   const toolsList = appEl.querySelector("#chat-tools-list");
   const toolsCount = appEl.querySelector("#chat-tools-count");
+
+  const toolsMenu = setupKeyboardMenu({ listEl: toolsList });
 
   const openToolsDropdown = async () => {
     toolsBtn.setAttribute("aria-expanded", "true");
@@ -31,6 +34,7 @@ export function setupTools(appEl) {
         // by closing and reopening.
       }
     }
+    toolsMenu.open();
   };
 
   const closeToolsDropdown = () => {
@@ -51,7 +55,10 @@ export function setupTools(appEl) {
     closeToolsDropdown();
   });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !toolsList.hidden) closeToolsDropdown();
+    if (e.key === "Escape" && !toolsList.hidden) {
+      closeToolsDropdown();
+      toolsBtn.focus();
+    }
   });
 }
 
@@ -66,6 +73,8 @@ function createToolItem(tool) {
   const li = document.createElement("li");
   li.className = "chat-tools-item";
   li.title = tool.description;
+  li.setAttribute("role", "menuitem");
+  li.setAttribute("tabindex", "-1");
 
   const icon = document.createElement("span");
   icon.className = "chat-tools-item-icon";
@@ -100,6 +109,8 @@ function createToolItem(tool) {
 function createEvalFunctionsSection(functions) {
   const section = document.createElement("li");
   section.className = "chat-tools-eval-section";
+  section.setAttribute("role", "menuitem");
+  section.setAttribute("tabindex", "-1");
 
   const heading = document.createElement("div");
   heading.className = "chat-tools-eval-heading";
