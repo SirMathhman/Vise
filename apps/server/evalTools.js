@@ -572,8 +572,12 @@ export const evalExpression = {
           timeout: 1000,
         });
       }
-      const script = new Script(args.expression);
-      const value = script.runInContext(sandbox, { timeout: 2000 });
+      // Wrap the expression in an async IIFE so top-level `await` works
+      // (vm.Script does not support top-level await). Awaiting the returned
+      // Promise auto-flattens a forgotten `await` and passes sync values
+      // through unchanged.
+      const script = new Script(`(async () => (${args.expression}))()`);
+      const value = await script.runInContext(sandbox, { timeout: 2000 });
       let text;
       if (value === null || value === undefined) {
         text = String(value);
