@@ -24,9 +24,13 @@ pnpm dev
 
 The Vite dev server proxies `/api` to the backend, so the frontend can call `/api/...` directly.
 
-## Build / Typecheck
+## Build / Typecheck / Lint
 
 ```
 pnpm build
 pnpm typecheck
+pnpm lint
+pnpm format
 ```
+
+Linting and formatting are handled by [Biome](https://biomejs.dev) at the repo root (`biome.json`). A single intentional warning is expected: the `ctx` parameter of `createApp` is currently unused (forward-looking dependency container).

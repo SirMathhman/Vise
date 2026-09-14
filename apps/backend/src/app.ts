@@ -20,7 +20,7 @@ interface Route {
     req: IncomingMessage,
     res: ServerResponse,
     params: Record<string, string>,
-    body: unknown,
+    body: unknown
   ) => Promise<void> | void;
 }
 
@@ -84,7 +84,7 @@ export function createApp(ctx: AppContext) {
   return {
     listen(port: number, host = "0.0.0.0"): Promise<void> {
       return new Promise((resolve) =>
-        server.listen(port, host, () => resolve()),
+        server.listen(port, host, () => resolve())
       );
     },
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),
@@ -94,7 +94,7 @@ export function createApp(ctx: AppContext) {
 function matchRoute(
   routes: Route[],
   method: string,
-  path: string,
+  path: string
 ): { route: Route; params: Record<string, string> } | null {
   for (const route of routes) {
     if (route.method !== method) continue;
@@ -106,7 +106,7 @@ function matchRoute(
 
 function matchPattern(
   pattern: string,
-  path: string,
+  path: string
 ): Record<string, string> | null {
   const patternParts = pattern.split("/").filter(Boolean);
   const pathParts = path.split("/").filter(Boolean);
@@ -127,7 +127,7 @@ function matchPattern(
 export function sendJson(
   res: ServerResponse,
   status: number,
-  body: unknown,
+  body: unknown
 ): void {
   const data = JSON.stringify(body);
   res.writeHead(status, {
