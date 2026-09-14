@@ -67,6 +67,12 @@
   font-size: 0.8rem;
 }
 
+#app #viewer-actions .unsaved {
+  color: var(--gold-dim);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+}
+
 #app #viewer-body .editor {
   width: 100%;
   height: 100%;

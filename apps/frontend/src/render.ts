@@ -69,6 +69,12 @@ export async function render(root: HTMLElement): Promise<void> {
     title: viewerTitle,
     actions: viewerActions,
   };
+  window.addEventListener("beforeunload", (e: BeforeUnloadEvent) => {
+    if (viewer.dirty) {
+      e.preventDefault();
+      e.returnValue = "";
+    }
+  });
   await renderListing(list, lsPath, "", viewer);
 }
 
@@ -78,6 +84,7 @@ interface Viewer {
   actions: HTMLElement;
   content?: string;
   rel?: string;
+  dirty?: boolean;
 }
 
 async function fetchListing(rel: string): Promise<LsResponse> {
@@ -175,6 +182,11 @@ function makeButton(label: string, onClick: () => void): HTMLButtonElement {
 }
 
 async function viewFile(rel: string, viewer: Viewer): Promise<void> {
+  if (viewer.dirty) {
+    const ok = window.confirm("Discard unsaved changes?");
+    if (!ok) return;
+    viewer.dirty = false;
+  }
   viewer.title.textContent = rel;
   viewer.actions.innerHTML = "";
   setHint(viewer.body, "Loading\u2026", "loading");
@@ -201,22 +213,42 @@ async function viewFile(rel: string, viewer: Viewer): Promise<void> {
 }
 
 function renderReadonly(viewer: Viewer): void {
+  viewer.dirty = false;
   viewer.actions.innerHTML = "";
   viewer.actions.append(makeButton("Edit", () => renderEditor(viewer)));
   renderHighlighted(viewer.body, viewer.content ?? "");
 }
 
-function renderEditor(viewer: Viewer): void {
+function renderEditor(viewer: Viewer, value?: string): void {
+  viewer.dirty = false;
   viewer.actions.innerHTML = "";
-  viewer.actions.append(makeButton("Cancel", () => renderReadonly(viewer)));
+  viewer.actions.append(
+    makeButton("Cancel", () => {
+      if (viewer.dirty) {
+        const ok = window.confirm("Discard unsaved changes?");
+        if (!ok) return;
+      }
+      renderReadonly(viewer);
+    })
+  );
   viewer.actions.append(makeButton("Save", () => void saveFile(viewer)));
+  const unsaved = document.createElement("span");
+  unsaved.className = "unsaved";
+  unsaved.textContent = "\u25CF unsaved";
+  viewer.actions.append(unsaved);
 
   viewer.body.innerHTML = "";
   const ta = document.createElement("textarea");
   ta.className = "editor";
   ta.spellcheck = false;
   ta.setAttribute("aria-label", "file contents");
-  ta.value = viewer.content ?? "";
+  ta.value = value ?? viewer.content ?? "";
+  viewer.dirty = ta.value !== (viewer.content ?? "");
+  unsaved.hidden = !viewer.dirty;
+  ta.addEventListener("input", () => {
+    viewer.dirty = ta.value !== (viewer.content ?? "");
+    unsaved.hidden = !viewer.dirty;
+  });
   viewer.body.append(ta);
 }
 
@@ -262,7 +294,7 @@ async function saveFile(viewer: Viewer): Promise<void> {
     renderReadonly(viewer);
   } catch (err) {
     viewer.content = original;
-    renderEditor(viewer);
+    renderEditor(viewer, next);
     setSaveError(viewer, (err as Error).message);
   }
 }
