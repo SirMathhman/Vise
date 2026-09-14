@@ -147,7 +147,7 @@ async function viewFile(rel: string, viewer: Viewer): Promise<void> {
     }
     const data = (await res.json()) as FileResponse;
     viewer.title.textContent = data.path;
-    viewer.body.textContent = data.content;
+    renderFileContent(viewer.body, data.content);
   } catch (err) {
     viewer.body.innerHTML = "";
     const span = document.createElement("span");
@@ -155,6 +155,25 @@ async function viewFile(rel: string, viewer: Viewer): Promise<void> {
     span.textContent = `Failed to load: ${(err as Error).message}`;
     viewer.body.append(span);
   }
+}
+
+function renderFileContent(body: HTMLPreElement, content: string): void {
+  body.innerHTML = "";
+  const lines = content.split("\n");
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < lines.length; i++) {
+    const line = document.createElement("div");
+    line.className = "line";
+    const no = document.createElement("span");
+    no.className = "line-no";
+    no.textContent = String(i + 1);
+    const text = document.createElement("span");
+    text.className = "line-text";
+    text.textContent = lines[i];
+    line.append(no, text);
+    frag.append(line);
+  }
+  body.append(frag);
 }
 
 async function expandDir(

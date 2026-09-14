@@ -31,3 +31,24 @@
 #app #viewer-body .viewer-error {
   color: var(--danger);
 }
+
+#app #viewer-body .line {
+  display: flex;
+}
+
+#app #viewer-body .line-no {
+  flex: 0 0 auto;
+  min-width: 2.5ch;
+  margin-right: 1.25ch;
+  padding-right: 1ch;
+  border-right: 1px solid var(--border);
+  text-align: right;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+#app #viewer-body .line-text {
+  flex: 1 1 auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
