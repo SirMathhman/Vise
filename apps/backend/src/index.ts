@@ -1,0 +1,9 @@
+import { createApp, ctx } from "./app.js";
+
+const port = Number(process.env.PORT ?? 3001);
+const app = createApp(ctx);
+
+void app.listen(port).then(() => {
+  // eslint-disable-next-line no-console
+  console.log(`[vise/backend] listening on http://localhost:${port}`);
+});
