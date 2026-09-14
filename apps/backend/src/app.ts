@@ -10,6 +10,7 @@ import {
 } from "./errors.js";
 import { readJsonBody } from "./json.js";
 import { matchRoute } from "./router.js";
+import { createRoutes } from "./routes/create.js";
 import { echoRoutes } from "./routes/echo.js";
 import { fileRoutes } from "./routes/file.js";
 import { healthRoutes } from "./routes/health.js";
@@ -22,6 +23,7 @@ const routeGroups = [
   echoRoutes,
   lsRoutes,
   fileRoutes,
+  createRoutes,
 ];
 
 export function createApp(ctx: AppContext) {

@@ -16,7 +16,7 @@ function looksBinary(buf: Buffer): boolean {
   return buf.subarray(0, end).includes(0);
 }
 
-function mapFsError(rel: string, err: unknown): AppError {
+export function mapFsError(rel: string, err: unknown): AppError {
   const code = (err as NodeJS.ErrnoException).code;
   if (code === "ENOENT" || code === "ENOTDIR") {
     return new AppError(404, "not_found", `file not found: ${rel}`);
