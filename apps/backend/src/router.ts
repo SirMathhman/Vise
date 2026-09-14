@@ -7,14 +7,14 @@ export interface Route {
     req: IncomingMessage,
     res: ServerResponse,
     params: Record<string, string>,
-    body: unknown,
+    body: unknown
   ) => Promise<void> | void;
 }
 
 export function matchRoute(
   routes: Route[],
   method: string,
-  path: string,
+  path: string
 ): { route: Route; params: Record<string, string> } | null {
   for (const route of routes) {
     if (route.method !== method) continue;
@@ -26,7 +26,7 @@ export function matchRoute(
 
 function matchPattern(
   pattern: string,
-  path: string,
+  path: string
 ): Record<string, string> | null {
   const patternParts = pattern.split("/").filter(Boolean);
   const pathParts = path.split("/").filter(Boolean);
@@ -46,7 +46,7 @@ function matchPattern(
         return null;
       }
     }
-    params["rest"] = pathParts
+    params.rest = pathParts
       .slice(patternParts.length - 1)
       .map(decodeURIComponent)
       .join("/");

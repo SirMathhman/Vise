@@ -60,7 +60,7 @@ export function createApp(ctx: AppContext) {
   return {
     listen(port: number, host = "0.0.0.0"): Promise<void> {
       return new Promise((resolve) =>
-        server.listen(port, host, () => resolve()),
+        server.listen(port, host, () => resolve())
       );
     },
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),

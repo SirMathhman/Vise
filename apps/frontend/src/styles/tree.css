@@ -43,6 +43,13 @@
   background: #221908;
 }
 
+#app .name {
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  word-break: break-all;
+  transition: color 0.15s ease;
+}
+
 #app .row:hover .name {
   color: var(--gold-bright);
 }
@@ -90,13 +97,6 @@
   color: var(--text-muted);
   border-color: var(--border);
   background: transparent;
-}
-
-#app .name {
-  font-family: var(--font-mono);
-  font-size: 0.9rem;
-  word-break: break-all;
-  transition: color 0.15s ease;
 }
 
 #app li.error > .row,

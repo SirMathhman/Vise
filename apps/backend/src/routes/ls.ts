@@ -1,10 +1,10 @@
 import { readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { AppContext } from "../context.js";
-import { sendJson } from "../http.js";
-import { resolveWithinRoot } from "../fs.js";
-import type { Route } from "../router.js";
 import { AppError, badRequest } from "../errors.js";
+import { resolveWithinRoot } from "../fs.js";
+import { sendJson } from "../http.js";
+import type { Route } from "../router.js";
 
 export interface DirEntry {
   name: string;
@@ -22,7 +22,7 @@ export async function listDir(path: string): Promise<DirEntry[]> {
       ? a.name.localeCompare(b.name)
       : a.kind === "directory"
         ? -1
-        : 1,
+        : 1
   );
   return items;
 }
@@ -34,7 +34,7 @@ export function lsRoutes(ctx: AppContext): Route[] {
       method: "GET",
       pattern: "/api/ls/*",
       handler: async (_req, res, params) => {
-        const rel = params["rest"] ?? "";
+        const rel = params.rest ?? "";
         try {
           const dir = await resolveWithinRoot(root, rel);
           const items = await listDir(dir);
