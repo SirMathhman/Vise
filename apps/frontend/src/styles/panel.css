@@ -1,0 +1,70 @@
+/* ── Layout & panel chrome (stepped deco frame) ───────────── */
+
+#app .layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(0, 2fr);
+  gap: 20px;
+  align-items: stretch;
+}
+
+#app section {
+  position: relative;
+  min-width: 0;
+  padding: 22px 20px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-gold);
+  outline: 1px solid var(--border);
+  outline-offset: -6px;
+}
+
+#app section::before,
+#app section::after {
+  content: "";
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-color: var(--gold);
+  border-style: solid;
+}
+
+#app section::before {
+  top: 8px;
+  left: 8px;
+  border-width: 1px 0 0 1px;
+}
+
+#app section::after {
+  bottom: 8px;
+  right: 8px;
+  border-width: 0 1px 1px 0;
+}
+
+#app h2 {
+  margin: 0 0 16px;
+  padding-bottom: 10px;
+  font-family: var(--font-heading);
+  font-weight: 400;
+  font-size: 1rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--gold-bright);
+  border-bottom: 1px solid var(--border-gold);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#app h2::before {
+  content: "◆";
+  font-size: 0.6rem;
+  color: var(--gold);
+}
+
+#app code#ls-path {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-muted);
+  word-break: break-all;
+}

@@ -1,0 +1,92 @@
+/* ── Masthead ─────────────────────────────────────────────── */
+
+#app h1 {
+  margin: 0;
+  text-align: center;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 3.4rem;
+  letter-spacing: 0.28em;
+  padding-left: 0.28em;
+  background: linear-gradient(180deg, var(--gold-bright), var(--gold-dim));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+#app h1::before,
+#app h1::after {
+  content: "✦";
+  color: var(--gold);
+  font-size: 1.2rem;
+  vertical-align: 0.42em;
+  margin: 0 0.5em;
+}
+
+#app .tagline {
+  text-align: center;
+  font-family: var(--font-heading);
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin: -6px 0 0;
+}
+
+/* Decorative double rule flanking the masthead */
+#app main > .status-row {
+  position: relative;
+  text-align: center;
+}
+
+#app main > .status-row::before,
+#app main > .status-row::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 30%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border-gold));
+}
+
+#app main > .status-row::before {
+  left: 0;
+}
+
+#app main > .status-row::after {
+  right: 0;
+  background: linear-gradient(90deg, var(--border-gold), transparent);
+}
+
+#app p#status {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+  padding: 8px 18px;
+  font-family: var(--font-heading);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  color: var(--text);
+  border: 1px solid var(--border-gold);
+  outline: 1px solid var(--border);
+  outline-offset: 3px;
+  background: var(--bg-panel);
+}
+
+#app p#status::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  transform: rotate(45deg);
+  background: var(--text-muted);
+}
+
+#app p#status.ok::before {
+  background: var(--success);
+}
+
+#app p#status.err::before {
+  background: var(--danger);
+}

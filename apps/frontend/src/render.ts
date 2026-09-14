@@ -18,8 +18,10 @@ export async function render(root: HTMLElement): Promise<void> {
   root.innerHTML = `
     <main>
       <h1>Vise</h1>
-      <p>Vanilla TypeScript frontend powered by Vite.</p>
-      <p id="status">Fetching backend status&hellip;</p>
+      <p class="tagline">File &amp; Directory Viewer</p>
+      <div class="status-row">
+        <p id="status">Fetching backend status&hellip;</p>
+      </div>
       <div class="layout">
         <section id="listing">
           <h2>Contents of <code id="ls-path"></code></h2>

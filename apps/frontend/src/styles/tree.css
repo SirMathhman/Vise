@@ -1,0 +1,105 @@
+/* ── Tree ─────────────────────────────────────────────────── */
+
+#app ul#ls-items,
+#app ul.children {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+#app ul.children {
+  margin-left: 14px;
+  padding-left: 12px;
+  border-left: 1px solid var(--border);
+}
+
+#app li {
+  display: block;
+}
+
+#app .row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  cursor: default;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+#app li.directory > .row,
+#app .row.clickable {
+  cursor: pointer;
+}
+
+#app .row:hover {
+  border-color: var(--gold);
+  background: #221908;
+}
+
+#app .row:hover .name {
+  color: var(--gold-bright);
+}
+
+#app .toggle {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--border-gold);
+  background: transparent;
+  color: var(--gold);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+#app .toggle:hover {
+  background: var(--gold);
+  color: var(--bg);
+}
+
+#app .badge {
+  flex: none;
+  font-family: var(--font-heading);
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border: 1px solid var(--border-gold);
+}
+
+#app li.directory .badge {
+  color: var(--gold-bright);
+  border-color: var(--gold);
+  background: rgba(217, 164, 65, 0.1);
+}
+
+#app li.file .badge {
+  color: var(--text-muted);
+  border-color: var(--border);
+  background: transparent;
+}
+
+#app .name {
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  word-break: break-all;
+  transition: color 0.15s ease;
+}
+
+#app li.error > .row,
+#app li.error {
+  color: var(--danger);
+}
