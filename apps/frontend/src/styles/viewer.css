@@ -33,6 +33,57 @@
   color: var(--danger);
 }
 
+#app #viewer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  min-height: 30px;
+}
+
+#app #viewer-actions .btn {
+  font-family: var(--font-heading);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gold-bright);
+  background: transparent;
+  border: 1px solid var(--border-gold);
+  border-radius: 2px;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+#app #viewer-actions .btn:hover {
+  background: var(--gold-dim);
+  color: var(--text);
+}
+
+#app #viewer-actions .viewer-error {
+  color: var(--danger);
+  font-size: 0.8rem;
+}
+
+#app #viewer-body .editor {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 1.6;
+  border: none;
+  outline: none;
+  resize: none;
+  white-space: pre;
+  overflow: auto;
+}
+
 #app #viewer-body .line {
   display: flex;
 }

@@ -31,6 +31,7 @@ export async function render(root: HTMLElement): Promise<void> {
         </section>
         <section id="viewer">
           <h2 id="viewer-title">File contents</h2>
+          <div id="viewer-actions"></div>
           <pre id="viewer-body"><span class="viewer-hint">Select a file to view its contents.</span></pre>
         </section>
       </div>
@@ -41,7 +42,16 @@ export async function render(root: HTMLElement): Promise<void> {
   const list = root.querySelector<HTMLUListElement>("#ls-items");
   const viewerBody = root.querySelector<HTMLPreElement>("#viewer-body");
   const viewerTitle = root.querySelector<HTMLHeadingElement>("#viewer-title");
-  if (!status || !lsPath || !list || !viewerBody || !viewerTitle) return;
+  const viewerActions = root.querySelector<HTMLElement>("#viewer-actions");
+  if (
+    !status ||
+    !lsPath ||
+    !list ||
+    !viewerBody ||
+    !viewerTitle ||
+    !viewerActions
+  )
+    return;
 
   try {
     const res = await fetch("/api/health");
@@ -54,13 +64,20 @@ export async function render(root: HTMLElement): Promise<void> {
     status.classList.add("err");
   }
 
-  const viewer: Viewer = { body: viewerBody, title: viewerTitle };
+  const viewer: Viewer = {
+    body: viewerBody,
+    title: viewerTitle,
+    actions: viewerActions,
+  };
   await renderListing(list, lsPath, "", viewer);
 }
 
 interface Viewer {
   body: HTMLPreElement;
   title: HTMLHeadingElement;
+  actions: HTMLElement;
+  content?: string;
+  rel?: string;
 }
 
 async function fetchListing(rel: string): Promise<LsResponse> {
@@ -136,9 +153,31 @@ function renderEntry(
   return li;
 }
 
+function setHint(
+  body: HTMLPreElement,
+  text: string,
+  cls = "viewer-hint"
+): void {
+  body.innerHTML = "";
+  const span = document.createElement("span");
+  span.className = cls;
+  span.textContent = text;
+  body.append(span);
+}
+
+function makeButton(label: string, onClick: () => void): HTMLButtonElement {
+  const btn = document.createElement("button");
+  btn.className = "btn";
+  btn.type = "button";
+  btn.textContent = label;
+  btn.addEventListener("click", onClick);
+  return btn;
+}
+
 async function viewFile(rel: string, viewer: Viewer): Promise<void> {
   viewer.title.textContent = rel;
-  viewer.body.innerHTML = `<span class="loading">Loading&hellip;</span>`;
+  viewer.actions.innerHTML = "";
+  setHint(viewer.body, "Loading\u2026", "loading");
   try {
     const res = await fetch(`/api/file/${encodeRel(rel)}`);
     if (!res.ok) {
@@ -149,17 +188,39 @@ async function viewFile(rel: string, viewer: Viewer): Promise<void> {
     }
     const data = (await res.json()) as FileResponse;
     viewer.title.textContent = data.path;
-    renderFileContent(viewer.body, data.content);
+    viewer.content = data.content;
+    viewer.rel = rel;
+    renderReadonly(viewer);
   } catch (err) {
-    viewer.body.innerHTML = "";
-    const span = document.createElement("span");
-    span.className = "viewer-error";
-    span.textContent = `Failed to load: ${(err as Error).message}`;
-    viewer.body.append(span);
+    setHint(
+      viewer.body,
+      `Failed to load: ${(err as Error).message}`,
+      "viewer-error"
+    );
   }
 }
 
-function renderFileContent(body: HTMLPreElement, content: string): void {
+function renderReadonly(viewer: Viewer): void {
+  viewer.actions.innerHTML = "";
+  viewer.actions.append(makeButton("Edit", () => renderEditor(viewer)));
+  renderHighlighted(viewer.body, viewer.content ?? "");
+}
+
+function renderEditor(viewer: Viewer): void {
+  viewer.actions.innerHTML = "";
+  viewer.actions.append(makeButton("Cancel", () => renderReadonly(viewer)));
+  viewer.actions.append(makeButton("Save", () => void saveFile(viewer)));
+
+  viewer.body.innerHTML = "";
+  const ta = document.createElement("textarea");
+  ta.className = "editor";
+  ta.spellcheck = false;
+  ta.setAttribute("aria-label", "file contents");
+  ta.value = viewer.content ?? "";
+  viewer.body.append(ta);
+}
+
+function renderHighlighted(body: HTMLPreElement, content: string): void {
   body.innerHTML = "";
   const lines = content.split(/\r?\n/);
   const frag = document.createDocumentFragment();
@@ -176,6 +237,41 @@ function renderFileContent(body: HTMLPreElement, content: string): void {
     frag.append(line);
   }
   body.append(frag);
+}
+
+async function saveFile(viewer: Viewer): Promise<void> {
+  const ta = viewer.body.querySelector<HTMLTextAreaElement>(".editor");
+  if (!ta || !viewer.rel) return;
+  const original = viewer.content ?? "";
+  const next = ta.value;
+  viewer.actions.innerHTML = "";
+  viewer.actions.append(makeButton("Saving\u2026", () => {}));
+  try {
+    const res = await fetch(`/api/file/${encodeRel(viewer.rel)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: next }),
+    });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => null)) as {
+        message?: string;
+      } | null;
+      throw new Error(data?.message ?? `HTTP ${res.status}`);
+    }
+    viewer.content = next;
+    renderReadonly(viewer);
+  } catch (err) {
+    viewer.content = original;
+    renderEditor(viewer);
+    setSaveError(viewer, (err as Error).message);
+  }
+}
+
+function setSaveError(viewer: Viewer, message: string): void {
+  const span = document.createElement("span");
+  span.className = "viewer-error";
+  span.textContent = `Save failed: ${message}`;
+  viewer.actions.append(span);
 }
 
 async function expandDir(
