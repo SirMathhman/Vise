@@ -13,8 +13,9 @@ import { matchRoute } from "./router.js";
 import { echoRoutes } from "./routes/echo.js";
 import { healthRoutes } from "./routes/health.js";
 import { helloRoutes } from "./routes/hello.js";
+import { lsRoutes } from "./routes/ls.js";
 
-const routeGroups = [healthRoutes, helloRoutes, echoRoutes];
+const routeGroups = [healthRoutes, helloRoutes, echoRoutes, lsRoutes];
 
 export function createApp(ctx: AppContext) {
   const routes = routeGroups.flatMap((group) => group(ctx));
@@ -52,7 +53,7 @@ export function createApp(ctx: AppContext) {
   return {
     listen(port: number, host = "0.0.0.0"): Promise<void> {
       return new Promise((resolve) =>
-        server.listen(port, host, () => resolve())
+        server.listen(port, host, () => resolve()),
       );
     },
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),
