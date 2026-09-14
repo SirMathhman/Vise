@@ -1,20 +1,20 @@
 import { readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { AppContext } from "../context.js";
-import { AppError, badRequest, notFound } from "../errors.js";
+import { AppError, badRequest, forbidden, notFound } from "../errors.js";
 import { resolveWithinRoot } from "../fs.js";
 import { sendJson } from "../http.js";
 import type { Route } from "../router.js";
 
 const MAX_BYTES = 1024 * 1024; // 1 MB
 
-const MISSING_CODES = new Set([
-  "ENOENT",
-  "ENOTDIR",
-  "EISDIR",
-  "EACCES",
-  "EPERM",
-]);
+// A NUL byte in the leading window means the content is binary, not text.
+const BINARY_SNIFF_BYTES = 8 * 1024;
+
+function looksBinary(buf: Buffer): boolean {
+  const end = Math.min(buf.length, BINARY_SNIFF_BYTES);
+  return buf.subarray(0, end).includes(0);
+}
 
 export function fileRoutes(ctx: AppContext): Route[] {
   const root = resolve(ctx.rootPath);
@@ -34,16 +34,28 @@ export function fileRoutes(ctx: AppContext): Route[] {
               `file too large to preview: ${info.size} bytes (max ${MAX_BYTES})`
             );
           }
-          const content = await readFile(target, "utf-8");
-          sendJson(res, 200, { path: target, size: info.size, content });
+          const buf = await readFile(target);
+          if (looksBinary(buf)) {
+            throw badRequest(
+              `cannot preview binary file: ${rel} (${info.size} bytes)`
+            );
+          }
+          sendJson(res, 200, {
+            path: target,
+            size: info.size,
+            content: buf.toString("utf-8"),
+          });
         } catch (err) {
           if (err instanceof AppError) throw err;
-          if (
-            err instanceof Error &&
-            "code" in err &&
-            MISSING_CODES.has(err.code as string)
-          ) {
-            throw notFound();
+          if (err instanceof Error && "code" in err) {
+            const code = err.code as string;
+            if (code === "ENOENT" || code === "ENOTDIR") throw notFound();
+            if (code === "EACCES" || code === "EPERM") {
+              throw forbidden(`no permission to read: ${rel}`);
+            }
+            if (code === "EISDIR") {
+              throw badRequest(`expected a file, got a directory: ${rel}`);
+            }
           }
           throw badRequest(`cannot read file: ${(err as Error).message}`);
         }

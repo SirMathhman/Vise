@@ -20,6 +20,10 @@ export function badRequest(message: string): AppError {
   return new AppError(400, "bad_request", message);
 }
 
+export function forbidden(message: string): AppError {
+  return new AppError(403, "forbidden", message);
+}
+
 export function internal(message = "internal server error"): AppError {
   return new AppError(500, "internal_error", message);
 }
