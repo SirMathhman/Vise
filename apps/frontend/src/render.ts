@@ -14,7 +14,9 @@ export async function render(root: HTMLElement): Promise<void> {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = (await res.json()) as { status: string };
     status.textContent = `Backend: ${data.status}`;
+    status.classList.add("ok");
   } catch (err) {
     status.textContent = `Backend: unreachable (${(err as Error).message})`;
+    status.classList.add("err");
   }
 }
