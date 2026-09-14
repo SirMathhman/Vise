@@ -1,3 +1,6 @@
+import { makeContextMenu, showMenu } from "./components/contextMenu.js";
+import { showCreateForm } from "./components/createDialog.js";
+import { makeButton } from "./dom.js";
 import { appendHighlighted } from "./highlight.js";
 
 interface DirEntry {
@@ -85,11 +88,18 @@ export async function render(root: HTMLElement): Promise<void> {
     showMenu(viewer.menu, e.clientX, e.clientY, [
       {
         label: "New File",
-        onClick: () => showCreateForm(viewer, "file", "", null),
+        onClick: () =>
+          showCreateForm("file", "", (name) => {
+            void refreshDir(viewer, "", null);
+            void viewFile(name, viewer);
+          }),
       },
       {
         label: "New Directory",
-        onClick: () => showCreateForm(viewer, "directory", "", null),
+        onClick: () =>
+          showCreateForm("directory", "", () => {
+            void refreshDir(viewer, "", null);
+          }),
       },
     ]);
   });
@@ -176,11 +186,18 @@ function renderEntry(
       showMenu(viewer.menu, e.clientX, e.clientY, [
         {
           label: "New File",
-          onClick: () => showCreateForm(viewer, "file", childRel, li),
+          onClick: () =>
+            showCreateForm("file", childRel, (name) => {
+              void refreshDir(viewer, childRel, li);
+              void viewFile(childRel ? `${childRel}/${name}` : name, viewer);
+            }),
         },
         {
           label: "New Directory",
-          onClick: () => showCreateForm(viewer, "directory", childRel, li),
+          onClick: () =>
+            showCreateForm("directory", childRel, () => {
+              void refreshDir(viewer, childRel, li);
+            }),
         },
       ]);
     });
@@ -205,15 +222,6 @@ function setHint(
   span.className = cls;
   span.textContent = text;
   body.append(span);
-}
-
-function makeButton(label: string, onClick: () => void): HTMLButtonElement {
-  const btn = document.createElement("button");
-  btn.className = "btn";
-  btn.type = "button";
-  btn.textContent = label;
-  btn.addEventListener("click", onClick);
-  return btn;
 }
 
 async function viewFile(rel: string, viewer: Viewer): Promise<void> {
@@ -369,176 +377,6 @@ async function expandDir(
   childList.setAttribute("aria-label", `${rel} contents`);
   li.append(childList);
   await renderListing(childList, li, rel, viewer);
-}
-
-interface MenuItem {
-  label: string;
-  onClick: () => void;
-}
-
-function makeContextMenu(): HTMLDivElement {
-  const menu = document.createElement("div");
-  menu.id = "context-menu";
-  menu.setAttribute("role", "menu");
-  menu.hidden = true;
-  document.body.append(menu);
-  document.addEventListener("click", () => hideMenu(menu));
-  document.addEventListener("contextmenu", () => hideMenu(menu));
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") hideMenu(menu);
-  });
-  window.addEventListener("blur", () => hideMenu(menu));
-  window.addEventListener("resize", () => hideMenu(menu));
-  menu.addEventListener("contextmenu", (e) => e.preventDefault());
-  return menu;
-}
-
-function hideMenu(menu: HTMLDivElement): void {
-  menu.hidden = true;
-}
-
-function showMenu(
-  menu: HTMLDivElement,
-  x: number,
-  y: number,
-  items: MenuItem[]
-): void {
-  menu.innerHTML = "";
-  for (const item of items) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "menu-item";
-    btn.setAttribute("role", "menuitem");
-    btn.textContent = item.label;
-    btn.addEventListener("click", () => {
-      hideMenu(menu);
-      item.onClick();
-    });
-    menu.append(btn);
-  }
-  menu.hidden = false;
-  const rect = menu.getBoundingClientRect();
-  const px = Math.min(x, window.innerWidth - rect.width - 6);
-  const py = Math.min(y, window.innerHeight - rect.height - 6);
-  menu.style.left = `${Math.max(6, px)}px`;
-  menu.style.top = `${Math.max(6, py)}px`;
-}
-
-function showCreateForm(
-  viewer: Viewer,
-  kind: "file" | "directory",
-  parentRel: string,
-  targetLi: HTMLLIElement | null
-): void {
-  const overlay = document.createElement("div");
-  overlay.className = "create-overlay";
-  overlay.setAttribute("role", "dialog");
-  overlay.setAttribute("aria-modal", "true");
-
-  const form = document.createElement("form");
-  form.className = "create-form";
-
-  const title = document.createElement("h3");
-  title.textContent = kind === "directory" ? "New directory" : "New file";
-
-  const where = document.createElement("p");
-  where.className = "create-where";
-  where.textContent = `Create in: ${parentRel || "(root)"}`;
-
-  const input = document.createElement("input");
-  input.type = "text";
-  input.className = "create-input";
-  input.placeholder = "name";
-  input.autocomplete = "off";
-
-  const error = document.createElement("p");
-  error.className = "create-error";
-  error.hidden = true;
-
-  const row = document.createElement("div");
-  row.className = "create-row";
-  const cancel = makeButton("Cancel", () => overlay.remove());
-  const create = makeButton("Create", () => {
-    void submit();
-  });
-  row.append(cancel, create);
-
-  form.append(title, where, input, error, row);
-  overlay.append(form);
-  document.body.append(overlay);
-  input.focus();
-  input.select();
-
-  async function submit(): Promise<void> {
-    const name = input.value.trim();
-    if (!name) {
-      showError("Please enter a name.");
-      input.focus();
-      return;
-    }
-    if (name.includes("/") || name.includes("\\")) {
-      showError("The name cannot contain a slash.");
-      input.focus();
-      return;
-    }
-    create.disabled = true;
-    try {
-      await createEntry(kind, parentRel, name, () => {
-        overlay.remove();
-        void refreshDir(viewer, parentRel, targetLi);
-        if (kind === "file")
-          void viewFile(`${parentRel ? `${parentRel}/${name}` : name}`, viewer);
-      });
-    } catch (err) {
-      create.disabled = false;
-      showError((err as Error).message);
-      input.focus();
-    }
-  }
-
-  function showError(msg: string): void {
-    error.textContent = msg;
-    error.hidden = false;
-  }
-
-  form.addEventListener("submit", (e) => {
-    e.preventDefault();
-    void submit();
-  });
-  overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) overlay.remove();
-  });
-  document.addEventListener(
-    "keydown",
-    (e) => {
-      if (e.key === "Escape") overlay.remove();
-    },
-    { once: true }
-  );
-}
-
-async function createEntry(
-  kind: "file" | "directory",
-  parentRel: string,
-  name: string,
-  onSuccess: () => void
-): Promise<void> {
-  const rel = parentRel ? `${parentRel}/${name}` : name;
-  const endpoint = kind === "directory" ? "/api/dir" : "/api/file";
-  const payload =
-    kind === "directory" ? { path: rel } : { path: rel, content: "" };
-  const res = await fetch(endpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    const data = (await res.json().catch(() => null)) as {
-      message?: string;
-    } | null;
-    throw new Error(data?.message ?? `HTTP ${res.status}`);
-  }
-  onSuccess();
 }
 
 async function refreshDir(
