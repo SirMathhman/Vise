@@ -53,3 +53,21 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* ── Syntax highlighting tokens ──────────────────────────── */
+#app #viewer-body .tok-comment {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+#app #viewer-body .tok-string {
+  color: var(--success);
+}
+
+#app #viewer-body .tok-number {
+  color: var(--gold);
+}
+
+#app #viewer-body .tok-keyword {
+  color: var(--gold-bright);
+}

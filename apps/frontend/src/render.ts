@@ -1,3 +1,5 @@
+import { appendHighlighted } from "./highlight.js";
+
 interface DirEntry {
   name: string;
   kind: "file" | "directory";
@@ -75,7 +77,7 @@ async function renderListing(
   list: HTMLUListElement,
   lsPath: HTMLElement,
   rel: string,
-  viewer: Viewer
+  viewer: Viewer,
 ): Promise<void> {
   try {
     const data = await fetchListing(rel);
@@ -96,7 +98,7 @@ async function renderListing(
 function renderEntry(
   item: DirEntry,
   parentRel: string,
-  viewer: Viewer
+  viewer: Viewer,
 ): HTMLLIElement {
   const li = document.createElement("li");
   li.className = item.kind;
@@ -121,7 +123,7 @@ function renderEntry(
     toggle.textContent = "▸";
     toggle.addEventListener(
       "click",
-      () => void expandDir(toggle, li, childRel, viewer)
+      () => void expandDir(toggle, li, childRel, viewer),
     );
     row.append(toggle, badge, name);
   } else {
@@ -169,7 +171,7 @@ function renderFileContent(body: HTMLPreElement, content: string): void {
     no.textContent = String(i + 1);
     const text = document.createElement("span");
     text.className = "line-text";
-    text.textContent = lines[i];
+    appendHighlighted(text, lines[i]);
     line.append(no, text);
     frag.append(line);
   }
@@ -180,7 +182,7 @@ async function expandDir(
   toggle: HTMLButtonElement,
   li: HTMLLIElement,
   rel: string,
-  viewer: Viewer
+  viewer: Viewer,
 ): Promise<void> {
   const expanded = toggle.getAttribute("aria-expanded") === "true";
   if (expanded) {
