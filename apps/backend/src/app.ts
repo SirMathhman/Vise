@@ -11,11 +11,18 @@ import {
 import { readJsonBody } from "./json.js";
 import { matchRoute } from "./router.js";
 import { echoRoutes } from "./routes/echo.js";
+import { fileRoutes } from "./routes/file.js";
 import { healthRoutes } from "./routes/health.js";
 import { helloRoutes } from "./routes/hello.js";
 import { lsRoutes } from "./routes/ls.js";
 
-const routeGroups = [healthRoutes, helloRoutes, echoRoutes, lsRoutes];
+const routeGroups = [
+  healthRoutes,
+  helloRoutes,
+  echoRoutes,
+  lsRoutes,
+  fileRoutes,
+];
 
 export function createApp(ctx: AppContext) {
   const routes = routeGroups.flatMap((group) => group(ctx));
@@ -29,21 +36,21 @@ export function createApp(ctx: AppContext) {
       return;
     }
 
-    const match = matchRoute(routes, req.method ?? "GET", path);
-    if (!match) {
-      toResponse(res, notFound());
-      return;
-    }
-
-    let body: unknown;
     try {
-      body = await readJsonBody(req);
-    } catch (err) {
-      toResponse(res, badRequest((err as Error).message));
-      return;
-    }
+      const match = matchRoute(routes, req.method ?? "GET", path);
+      if (!match) {
+        toResponse(res, notFound());
+        return;
+      }
 
-    try {
+      let body: unknown;
+      try {
+        body = await readJsonBody(req);
+      } catch (err) {
+        toResponse(res, badRequest((err as Error).message));
+        return;
+      }
+
       await match.route.handler(req, res, match.params, body);
     } catch (err) {
       toResponse(res, err instanceof AppError ? err : internal());
