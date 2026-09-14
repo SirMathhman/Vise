@@ -1,4 +1,4 @@
-import { readFile, stat, writeFile } from "node:fs/promises";
+import { readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { AppContext } from "../context.js";
 import { AppError, badRequest, forbidden, notFound } from "../errors.js";
@@ -93,6 +93,24 @@ export function fileRoutes(ctx: AppContext): Route[] {
           }
           await writeFile(target, buf);
           sendJson(res, 200, { path: target, size: buf.length });
+        } catch (err) {
+          if (err instanceof AppError) throw err;
+          throw mapFsError(rel, err);
+        }
+      },
+    },
+    {
+      method: "DELETE",
+      pattern: "/api/file/*",
+      handler: async (_req, res, params) => {
+        const rel = params.rest ?? "";
+        if (!rel) throw notFound();
+        try {
+          const target = await resolveWithinRoot(root, rel);
+          const info = await stat(target);
+          if (!info.isFile()) throw notFound();
+          await unlink(target);
+          sendJson(res, 200, { path: target, deleted: true });
         } catch (err) {
           if (err instanceof AppError) throw err;
           throw mapFsError(rel, err);

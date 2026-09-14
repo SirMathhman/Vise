@@ -205,11 +205,59 @@ function renderEntry(
   } else {
     row.classList.add("clickable");
     row.addEventListener("click", () => void viewFile(childRel, viewer));
+    row.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      showMenu(viewer.menu, e.clientX, e.clientY, [
+        {
+          label: "Delete",
+          onClick: () => void deleteFile(childRel, parentRel, li, viewer),
+        },
+      ]);
+    });
     row.append(badge, name);
   }
 
   li.append(row);
   return li;
+}
+
+async function deleteFile(
+  rel: string,
+  parentRel: string,
+  li: HTMLLIElement,
+  viewer: Viewer
+): Promise<void> {
+  const name = rel.split("/").pop() ?? rel;
+  const ok = window.confirm(`Delete "${name}"? This cannot be undone.`);
+  if (!ok) return;
+  try {
+    const res = await fetch(`/api/file/${encodeRel(rel)}`, {
+      method: "DELETE",
+    });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => null)) as {
+        message?: string;
+      } | null;
+      throw new Error(data?.message ?? `HTTP ${res.status}`);
+    }
+    if (parentRel === "") {
+      await renderListing(viewer.list, viewer.lsPath, "", viewer);
+    } else {
+      const parentLi = li.parentElement?.parentElement;
+      if (parentLi instanceof HTMLLIElement) {
+        await refreshDir(viewer, parentRel, parentLi);
+      }
+    }
+    viewer.dirty = false;
+    setHint(viewer.body, `Deleted "${name}".`, "viewer-hint");
+  } catch (err) {
+    setHint(
+      viewer.body,
+      `Delete failed: ${(err as Error).message}`,
+      "viewer-error"
+    );
+  }
 }
 
 function setHint(
