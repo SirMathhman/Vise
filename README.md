@@ -6,9 +6,11 @@ A pnpm-workspaces monorepo with a vanilla TypeScript backend (raw Node `http`) a
 
 ```
 apps/
-  backend/   Node http server, compiled with tsc (CommonJS)
+  backend/   Node http server, compiled with tsc (ESM)
   frontend/  Vite + vanilla TS SPA
 ```
+
+The backend is layered: `router.ts` (pure matching), `http.ts` (response), `errors.ts` (structured errors), `context.ts` (deps), `routes/*.ts` (handlers), composed by `app.ts`.
 
 ## Setup
 
@@ -33,4 +35,4 @@ pnpm lint
 pnpm format
 ```
 
-Linting and formatting are handled by [Biome](https://biomejs.dev) at the repo root (`biome.json`). A single intentional warning is expected: the `ctx` parameter of `createApp` is currently unused (forward-looking dependency container).
+Linting and formatting are handled by [Biome](https://biomejs.dev) at the repo root (`biome.json`).
