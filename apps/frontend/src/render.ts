@@ -1,23 +1,15 @@
+import {
+  deleteFile as apiDelete,
+  type DirEntry,
+  getFile,
+  health,
+  listDir,
+  putFile,
+} from "./api/client.js";
 import { makeContextMenu, showMenu } from "./components/contextMenu.js";
 import { showCreateForm } from "./components/createDialog.js";
 import { makeButton } from "./dom.js";
 import { appendHighlighted } from "./highlight.js";
-
-interface DirEntry {
-  name: string;
-  kind: "file" | "directory";
-}
-
-interface LsResponse {
-  path: string;
-  items: DirEntry[];
-}
-
-interface FileResponse {
-  path: string;
-  size: number;
-  content: string;
-}
 
 export async function render(root: HTMLElement): Promise<void> {
   root.innerHTML = `
@@ -57,10 +49,8 @@ export async function render(root: HTMLElement): Promise<void> {
     return;
 
   try {
-    const res = await fetch("/api/health");
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = (await res.json()) as { status: string };
-    status.textContent = `Backend: ${data.status}`;
+    const st = await health();
+    status.textContent = `Backend: ${st}`;
     status.classList.add("ok");
   } catch (err) {
     status.textContent = `Backend: unreachable (${(err as Error).message})`;
@@ -118,16 +108,6 @@ interface Viewer {
   dirty?: boolean;
 }
 
-async function fetchListing(rel: string): Promise<LsResponse> {
-  const res = await fetch(`/api/ls/${encodeRel(rel)}`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return (await res.json()) as LsResponse;
-}
-
-function encodeRel(rel: string): string {
-  return rel.split("/").filter(Boolean).map(encodeURIComponent).join("/");
-}
-
 async function renderListing(
   list: HTMLUListElement,
   lsPath: HTMLElement,
@@ -135,7 +115,7 @@ async function renderListing(
   viewer: Viewer
 ): Promise<void> {
   try {
-    const data = await fetchListing(rel);
+    const data = await listDir(rel);
     if (rel === "") lsPath.textContent = data.path;
     list.innerHTML = "";
     for (const item of data.items) {
@@ -232,15 +212,7 @@ async function deleteFile(
   const ok = window.confirm(`Delete "${name}"? This cannot be undone.`);
   if (!ok) return;
   try {
-    const res = await fetch(`/api/file/${encodeRel(rel)}`, {
-      method: "DELETE",
-    });
-    if (!res.ok) {
-      const data = (await res.json().catch(() => null)) as {
-        message?: string;
-      } | null;
-      throw new Error(data?.message ?? `HTTP ${res.status}`);
-    }
+    await apiDelete(rel);
     if (parentRel === "") {
       await renderListing(viewer.list, viewer.lsPath, "", viewer);
     } else {
@@ -282,14 +254,7 @@ async function viewFile(rel: string, viewer: Viewer): Promise<void> {
   viewer.actions.innerHTML = "";
   setHint(viewer.body, "Loading\u2026", "loading");
   try {
-    const res = await fetch(`/api/file/${encodeRel(rel)}`);
-    if (!res.ok) {
-      const data = (await res.json().catch(() => null)) as {
-        message?: string;
-      } | null;
-      throw new Error(data?.message ?? `HTTP ${res.status}`);
-    }
-    const data = (await res.json()) as FileResponse;
+    const data = await getFile(rel);
     viewer.title.textContent = data.path;
     viewer.content = data.content;
     viewer.rel = rel;
@@ -370,17 +335,7 @@ async function saveFile(viewer: Viewer): Promise<void> {
   viewer.actions.innerHTML = "";
   viewer.actions.append(makeButton("Saving\u2026", () => {}));
   try {
-    const res = await fetch(`/api/file/${encodeRel(viewer.rel)}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: next }),
-    });
-    if (!res.ok) {
-      const data = (await res.json().catch(() => null)) as {
-        message?: string;
-      } | null;
-      throw new Error(data?.message ?? `HTTP ${res.status}`);
-    }
+    await putFile(viewer.rel, next);
     viewer.content = next;
     renderReadonly(viewer);
   } catch (err) {

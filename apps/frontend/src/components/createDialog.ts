@@ -1,28 +1,4 @@
-/**
- * POST a create request for the given kind in `parentRel`. Throws on failure
- * so the caller can surface the error.
- */
-async function createEntry(
-  kind: "file" | "directory",
-  parentRel: string,
-  name: string
-): Promise<void> {
-  const rel = parentRel ? `${parentRel}/${name}` : name;
-  const endpoint = kind === "directory" ? "/api/dir" : "/api/file";
-  const payload =
-    kind === "directory" ? { path: rel } : { path: rel, content: "" };
-  const res = await fetch(endpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    const data = (await res.json().catch(() => null)) as {
-      message?: string;
-    } | null;
-    throw new Error(data?.message ?? `HTTP ${res.status}`);
-  }
-}
+import { createEntry } from "../api/client.js";
 
 /**
  * Show an inline modal form for naming a new entry. The overlay is dismissed
