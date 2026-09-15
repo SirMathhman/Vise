@@ -69,9 +69,14 @@ function newId(): string {
 
 /**
  * Derive a short display title from a conversation: the first user message,
- * trimmed and truncated. Falls back to a generic label for empty ones.
+ * trimmed and truncated. For an empty conversation, falls back to a generic
+ * label; when `idSuffix` is given (a fragment of the conversation's id) it is
+ * appended so several empty conversations stay distinguishable in the list.
  */
-export function deriveTitle(messages: ChatMessage[]): string {
+export function deriveTitle(
+  messages: ChatMessage[],
+  idSuffix?: string
+): string {
   for (const m of messages) {
     if (
       m.role === "user" &&
@@ -82,7 +87,7 @@ export function deriveTitle(messages: ChatMessage[]): string {
       return t.length > 48 ? `${t.slice(0, 47)}…` : t;
     }
   }
-  return "New conversation";
+  return idSuffix ? `New conversation · ${idSuffix}` : "New conversation";
 }
 
 /** Persist every conversation and the active id across page reloads. */
@@ -195,8 +200,9 @@ export function createConversationStore(): ConversationStore {
   // Always keep at least one conversation so getActive() is total: seed a
   // fresh empty one on first run.
   if (convs.length === 0) {
+    const id = newId();
     convs = [
-      { id: newId(), title: "New conversation", model: "", messages: [] },
+      { id, title: deriveTitle([], id.slice(0, 4)), model: "", messages: [] },
     ];
   }
   // Pick the active conversation: a stored id if it still exists, else the
@@ -226,12 +232,13 @@ export function createConversationStore(): ConversationStore {
       contextWindow.set(model, n);
     },
     newConversation(model) {
+      const id = newId();
       convs = [
-        { id: newId(), title: "New conversation", model, messages: [] },
+        { id, title: deriveTitle([], id.slice(0, 4)), model, messages: [] },
         ...convs,
       ];
-      activeId = convs[0].id;
-      promptTokens.delete(activeId);
+      activeId = id;
+      promptTokens.delete(id);
     },
     switchTo(id) {
       if (convs.some((c) => c.id === id)) activeId = id;
