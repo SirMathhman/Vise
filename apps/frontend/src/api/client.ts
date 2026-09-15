@@ -149,30 +149,6 @@ export interface LlmTool {
   };
 }
 
-/**
- * Lets the model inspect the file tree so it can answer "what's in this
- * directory" from live data. Paths are relative to the workspace root.
- */
-export const listDirectoryTool: LlmTool = {
-  type: "function",
-  function: {
-    name: "list_directory",
-    description:
-      'List the files and subdirectories in a directory. Use this to answer questions about what files or folders exist. The path is relative to the workspace root; use an empty string ("") for the root.',
-    parameters: {
-      type: "object",
-      properties: {
-        path: {
-          type: "string",
-          description:
-            'Directory path relative to the workspace root. Use "" for the root.',
-        },
-      },
-      required: ["path"],
-    },
-  },
-};
-
 /** POST a chat completion and return the assistant's reply (text and/or tool calls). */
 export async function sendLlmMessage(
   messages: LlmMessage[],

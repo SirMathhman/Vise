@@ -1,11 +1,10 @@
 import {
   type LlmMessage,
   type LlmToolCall,
-  listDir,
-  listDirectoryTool,
   listLlmModels,
   sendLlmMessage,
 } from "../api/client.js";
+import { executeLlmTool, llmToolDefinitions } from "../llm/tools.js";
 
 /** localStorage keys for the persisted conversation and model choice. */
 const STORAGE_HISTORY = "vise:llm:history";
@@ -175,7 +174,7 @@ async function runTurn(
         { role: "system", content: SYSTEM_PROMPT },
         ...history,
       ];
-      const reply = await sendLlmMessage(messages, model, [listDirectoryTool]);
+      const reply = await sendLlmMessage(messages, model, llmToolDefinitions);
       if (reply.tool_calls && reply.tool_calls.length > 0) {
         history.push({
           role: "assistant",
@@ -186,7 +185,7 @@ async function runTurn(
           renderToolCall(response, toolCallLabel(tc));
         }
         for (const tc of reply.tool_calls) {
-          const result = await executeTool(tc);
+          const result = await executeLlmTool(tc);
           history.push({
             role: "tool",
             content: result,
@@ -210,29 +209,6 @@ async function runTurn(
       response.lastElementChild?.remove();
     }
     throw err;
-  }
-}
-
-/** Execute a tool call. Only `list_directory` is wired up; anything else
- *  returns an error string the model can read. */
-async function executeTool(tc: LlmToolCall): Promise<string> {
-  if (tc.function.name !== "list_directory") {
-    return `Error: unknown tool "${tc.function.name}".`;
-  }
-  try {
-    const args = JSON.parse(tc.function.arguments || "{}") as {
-      path?: unknown;
-    };
-    const path = typeof args.path === "string" ? args.path : "";
-    const data = await listDir(path);
-    const lines = data.items.map((item) =>
-      item.kind === "directory"
-        ? `  [dir]  ${item.name}`
-        : `  [file] ${item.name}`
-    );
-    return `Directory "${data.path}" contains:\n${lines.join("\n")}`;
-  } catch (e) {
-    return `Error listing directory: ${e instanceof Error ? e.message : e}`;
   }
 }
 
