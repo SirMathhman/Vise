@@ -7,159 +7,7 @@ import {
   sendLlmMessage,
 } from "../api/client.js";
 import { llmToolDefinitions } from "../llm/tools.js";
-
-/** localStorage keys for the persisted conversations and the active one. */
-const STORAGE_CONVS = "vise:llm:conversations";
-const STORAGE_ACTIVE = "vise:llm:active";
-/** Legacy single-conversation keys, read once for migration then ignored. */
-const LEGACY_HISTORY = "vise:llm:history";
-const LEGACY_MODEL = "vise:llm:model";
-
-/**
- * A chat message. The optional `compaction` flag marks a model-generated
- * summary that stands in for all turns before it: when a compaction is
- * present, only that summary and the turns after it are sent to the model.
- * The message array is append-only — nothing before a summary is ever removed
- * from it, only bypassed in the outgoing prompt.
- */
-type ChatMessage = LlmMessage & { compaction?: true };
-
-/**
- * A conversation is a self-contained chat: its message history plus the model
- * choice that belongs to it. Conversations are independent of one another and
- * are listed in the panel so the user can start new ones and reopen old ones.
- */
-interface Conversation {
-  id: string;
-  title: string;
-  model: string;
-  messages: ChatMessage[];
-}
-
-/** True when `value` is a structurally valid persisted message. */
-function isValidMessage(value: unknown): value is LlmMessage {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    (value as LlmMessage).role in { user: true, assistant: true, tool: true } &&
-    (typeof (value as LlmMessage).content === "string" ||
-      (value as LlmMessage).content === null)
-  );
-}
-
-/** True when `value` is a structurally valid persisted conversation. */
-function isValidConversation(value: unknown): value is Conversation {
-  if (typeof value !== "object" || value === null) return false;
-  const c = value as Record<string, unknown>;
-  return (
-    typeof c.id === "string" &&
-    typeof c.title === "string" &&
-    typeof c.model === "string" &&
-    Array.isArray(c.messages) &&
-    (c.messages as unknown[]).every(isValidMessage)
-  );
-}
-
-/** Generate a unique id for a new conversation. */
-function newId(): string {
-  try {
-    if (
-      typeof crypto !== "undefined" &&
-      typeof crypto.randomUUID === "function"
-    ) {
-      return crypto.randomUUID();
-    }
-  } catch {
-    // Fall through to the timestamp id.
-  }
-  return `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-}
-
-/**
- * Derive a short display title from a conversation: the first user message,
- * trimmed and truncated. Falls back to a generic label for empty ones.
- */
-function deriveTitle(messages: ChatMessage[]): string {
-  for (const m of messages) {
-    if (
-      m.role === "user" &&
-      typeof m.content === "string" &&
-      m.content.trim()
-    ) {
-      const t = m.content.trim().replace(/\s+/g, " ");
-      return t.length > 48 ? `${t.slice(0, 47)}…` : t;
-    }
-  }
-  return "New conversation";
-}
-
-/** Persist every conversation and the active id across page reloads. */
-function saveConversations(convs: Conversation[], activeId: string): void {
-  try {
-    localStorage.setItem(STORAGE_CONVS, JSON.stringify(convs));
-    localStorage.setItem(STORAGE_ACTIVE, activeId);
-  } catch {
-    // Storage may be unavailable (private mode, quota); persistence is a
-    // best-effort enhancement, so failures are ignored.
-  }
-}
-
-/** Read the legacy single-conversation history, if any. */
-function loadLegacyHistory(): ChatMessage[] {
-  try {
-    const raw = localStorage.getItem(LEGACY_HISTORY);
-    if (!raw) return [];
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isValidMessage);
-  } catch {
-    return [];
-  }
-}
-
-/**
- * Restore the persisted conversations. When none exist (first run) it
- * migrates the legacy single conversation into a one-item list, and returns
- * an empty list only when there is genuinely nothing to restore.
- */
-function loadConversations(): Conversation[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_CONVS);
-    if (raw) {
-      const parsed: unknown = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        const convs = parsed.filter(isValidConversation);
-        if (convs.length > 0) return convs;
-      }
-    }
-    const legacy = loadLegacyHistory();
-    if (legacy.length > 0) {
-      return [
-        {
-          id: newId(),
-          title: deriveTitle(legacy),
-          model: safeGetItem(LEGACY_MODEL) ?? "",
-          messages: legacy,
-        },
-      ];
-    }
-  } catch {
-    return [];
-  }
-  return [];
-}
-
-function safeGetItem(key: string): string | null {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function loadActiveId(): string | null {
-  return safeGetItem(STORAGE_ACTIVE);
-}
+import { type ChatMessage, createConversationStore } from "./conversations.js";
 
 /**
  * Wire up the LLM panel. Manages a list of conversations (each with its own
@@ -184,63 +32,20 @@ export function setupLlm(root: HTMLElement): void {
   const tools = root.querySelector<HTMLElement>("#llm-tools");
   if (tools) renderToolList(tools);
 
-  /** All conversations, restored (with legacy migration) on load. */
-  let convs: Conversation[] = loadConversations();
-  /** Id of the conversation currently shown. */
-  let activeId: string | null = loadActiveId();
+  const store = createConversationStore();
 
-  // Always keep at least one conversation so getActive() is total: seed a
-  // fresh empty one on first run.
-  if (convs.length === 0) {
-    convs = [
-      { id: newId(), title: "New conversation", model: "", messages: [] },
-    ];
-  }
-  // Pick the active conversation: a stored id if it still exists, else the
-  // first restored one.
-  if (!convs.some((c) => c.id === activeId)) {
-    activeId = convs[0].id;
-  }
-  const getActive = (): Conversation =>
-    convs.find((c) => c.id === activeId) ?? convs[0];
+  const renderContext = () => renderContextText(context, model, store);
 
-  /** Per-conversation token usage, so each resumed chat shows its own %. */
-  const promptTokens = new Map<string, number>();
-  /** Context window (n_ctx) for each model id, as reported by the proxy. */
-  const contextWindow = new Map<string, number>();
-
-  const renderContext = () => {
-    const conv = getActive();
-    const cap = contextWindow.get(model.value);
-    const tokens = promptTokens.get(conv.id);
-    if (tokens === undefined || !cap) {
-      context.textContent = "";
-      return;
-    }
-    const pct = (tokens / cap) * 100;
-    context.textContent = `Context: ${tokens.toLocaleString()} / ${cap.toLocaleString()} tokens (${pct.toFixed(1)}%)`;
-    context.title =
-      "Tokens sent to the model in the latest call, over the model's " +
-      "context window.";
-  };
-
-  const persist = () => saveConversations(convs, activeId ?? "");
-
-  /** Render the conversation dropdown (titles) and select the active one. */
   const renderConversationList = () => {
-    conversation.innerHTML = convs
+    conversation.innerHTML = store
+      .getConversations()
       .map((c) => `<option value="${c.id}">${escapeHtml(c.title)}</option>`)
       .join("");
-    if (activeId) conversation.value = activeId;
+    conversation.value = store.activeId();
   };
 
-  /**
-   * Render the active conversation's messages into the response region.
-   * Replaces the static hint from the markup with the conversation (or a
-   * "start" hint when it has no messages yet).
-   */
   const renderActiveMessages = () => {
-    const conv = getActive();
+    const conv = store.getActive();
     response.innerHTML = "";
     if (conv.messages.length === 0) {
       setLlmHint(response, "Start a conversation.");
@@ -251,17 +56,112 @@ export function setupLlm(root: HTMLElement): void {
 
   const showActive = () => {
     renderConversationList();
-    const conv = getActive();
-    // Restore the active conversation's model choice (falling back to the
-    // proxy's default once the model list has loaded).
-    model.value = conv.model;
+    model.value = store.getActive().model;
     renderActiveMessages();
     renderContext();
   };
 
-  // Initial paint: the active conversation's messages and model.
   showActive();
 
+  loadModelList(model, response, store);
+
+  const submit = () => {
+    const text = prompt.value.trim();
+    const m = model.value;
+    if (!text || !m) return;
+    const conv = store.getActive();
+    prompt.value = "";
+    send.disabled = true;
+    setLlmHint(response, "Thinking…");
+    void runTurn(
+      conv.messages,
+      m,
+      response,
+      text,
+      store.getContextWindow(m),
+      store.getPromptTokens(conv.id)
+    )
+      .then((result) => {
+        removeHint(response);
+        renderMessage(response, "assistant", result.text);
+        if (result.usage)
+          store.setPromptTokens(conv.id, result.usage.promptTokens);
+        store.retitleActive();
+        showActive();
+        store.persist();
+      })
+      .catch((e: unknown) =>
+        setLlmError(
+          response,
+          `Request failed: ${e instanceof Error ? e.message : e}`
+        )
+      )
+      .finally(() => {
+        send.disabled = false;
+      });
+  };
+
+  const doNew = () => {
+    // The previous conversation stays in the list so it can be reopened.
+    store.newConversation(model.value);
+    showActive();
+    store.persist();
+    prompt.focus();
+  };
+
+  const switchConversation = (id: string) => {
+    store.switchTo(id);
+    showActive();
+    store.persist();
+  };
+
+  send.addEventListener("click", submit);
+  newBtn?.addEventListener("click", doNew);
+  conversation.addEventListener("change", () =>
+    switchConversation(conversation.value)
+  );
+  model.addEventListener("change", () => {
+    store.setActiveModel(model.value);
+    store.persist();
+  });
+  prompt.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") submit();
+  });
+}
+
+/**
+ * Render the active conversation's context usage (tokens over the model's
+ * window) into the context element; blank when there is nothing to show.
+ */
+function renderContextText(
+  context: HTMLElement,
+  model: HTMLSelectElement,
+  store: ReturnType<typeof createConversationStore>
+): void {
+  const conv = store.getActive();
+  const cap = store.getContextWindow(model.value);
+  const tokens = store.getPromptTokens(conv.id);
+  if (tokens === undefined || !cap) {
+    context.textContent = "";
+    return;
+  }
+  const pct = (tokens / cap) * 100;
+  context.textContent = `Context: ${tokens.toLocaleString()} / ${cap.toLocaleString()} tokens (${pct.toFixed(1)}%)`;
+  context.title =
+    "Tokens sent to the model in the latest call, over the model's " +
+    "context window.";
+}
+
+/**
+ * Load the model list from the proxy and populate the dropdown, recording each
+ * model's context window for the usage meter. Restores the active
+ * conversation's saved choice when the proxy still serves it.
+ */
+function loadModelList(
+  model: HTMLSelectElement,
+  response: HTMLElement,
+  store: ReturnType<typeof createConversationStore>
+): void {
   listLlmModels()
     .then((models) => {
       if (models.length === 0) {
@@ -272,11 +172,9 @@ export function setupLlm(root: HTMLElement): void {
         .map((m) => `<option value="${m.id}">${m.id}</option>`)
         .join("");
       for (const m of models) {
-        if (m.context) contextWindow.set(m.id, m.context);
+        if (m.context) store.setContextWindow(m.id, m.context);
       }
-      // Restore the active conversation's saved choice if the proxy still
-      // serves it; otherwise fall back to the proxy's default (first option).
-      const conv = getActive();
+      const conv = store.getActive();
       if (conv.model && models.some((m) => m.id === conv.model)) {
         model.value = conv.model;
       }
@@ -284,86 +182,9 @@ export function setupLlm(root: HTMLElement): void {
     .catch((e: unknown) =>
       setLlmError(
         response,
-        `Failed to load models: ${e instanceof Error ? e.message : e}`,
-      ),
+        `Failed to load models: ${e instanceof Error ? e.message : e}`
+      )
     );
-
-  const submit = () => {
-    const text = prompt.value.trim();
-    const m = model.value;
-    if (!text || !m) return;
-    const conv = getActive();
-    prompt.value = "";
-    send.disabled = true;
-    setLlmHint(response, "Thinking…");
-    void runTurn(
-      conv.messages,
-      m,
-      response,
-      text,
-      contextWindow.get(m),
-      promptTokens.get(conv.id),
-    )
-      .then((result) => {
-        removeHint(response);
-        renderMessage(response, "assistant", result.text);
-        if (result.usage) {
-          promptTokens.set(conv.id, result.usage.promptTokens);
-        }
-        // Retitle the conversation from its first user message now that one
-        // exists, so the dropdown reflects what the chat is about.
-        conv.title = deriveTitle(conv.messages);
-        renderContext();
-        showActive();
-        persist();
-      })
-      .catch((e: unknown) => {
-        setLlmError(
-          response,
-          `Request failed: ${e instanceof Error ? e.message : e}`,
-        );
-      })
-      .finally(() => {
-        send.disabled = false;
-      });
-  };
-
-  const doNew = () => {
-    // A new empty conversation; the previous one stays in the list so it can
-    // be reopened. It inherits no model, so the proxy default applies.
-    const conv: Conversation = {
-      id: newId(),
-      title: "New conversation",
-      model: model.value,
-      messages: [],
-    };
-    convs = [conv, ...convs];
-    activeId = conv.id;
-    promptTokens.delete(conv.id);
-    showActive();
-    persist();
-    prompt.focus();
-  };
-
-  const switchConversation = (id: string) => {
-    if (!convs.some((c) => c.id === id)) return;
-    activeId = id;
-    showActive();
-    persist();
-  };
-
-  send.addEventListener("click", submit);
-  newBtn?.addEventListener("click", doNew);
-  conversation.addEventListener("change", () =>
-    switchConversation(conversation.value),
-  );
-  model.addEventListener("change", () => {
-    getActive().model = model.value;
-    persist();
-  });
-  prompt.addEventListener("keydown", (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") submit();
-  });
 }
 
 /** Escape a string for safe interpolation into an <option>'s label. */
@@ -410,7 +231,7 @@ async function runTurn(
   response: HTMLElement,
   userText: string,
   cap: number | undefined,
-  lastPromptTokens: number | undefined,
+  lastPromptTokens: number | undefined
 ): Promise<TurnResult> {
   const preLength = history.length;
   const domBefore = response.childElementCount;
@@ -513,7 +334,7 @@ function buildMessages(history: ChatMessage[]): LlmMessage[] {
  */
 async function summarizeConversation(
   history: ChatMessage[],
-  model: string,
+  model: string
 ): Promise<string> {
   // Reuse the compacted conversation so the rescue call isn't itself larger
   // than the prompt that just measured >= 80% of the window; only the system
@@ -605,7 +426,7 @@ function renderToolResult(response: HTMLElement, text: string): void {
 function renderMessage(
   response: HTMLElement,
   role: "user" | "assistant",
-  content: string,
+  content: string
 ): void {
   const block = document.createElement("div");
   block.className = `llm-msg llm-msg-${role}`;
