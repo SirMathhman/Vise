@@ -188,6 +188,13 @@ export interface ConversationStore {
   setActiveModel(model: string): void;
   /** Retitle the active conversation from its first user message. */
   retitleActive(): void;
+  /**
+   * Atomically commit a completed chat turn: record the turn's prompt-token
+   * count, retitle the conversation from its first user message, and persist.
+   * The single gate the panel uses after a successful turn, so the store's
+   * retitle/persist/token invariants can't be forgotten by a caller.
+   */
+  commitTurn(usage?: { promptTokens: number }): void;
   /** Persist the store. */
   persist(): void;
 }
@@ -249,6 +256,12 @@ export function createConversationStore(): ConversationStore {
     retitleActive() {
       const active = getActive();
       active.title = deriveTitle(active.messages);
+    },
+    commitTurn(usage) {
+      if (usage) promptTokens.set(activeId, usage.promptTokens);
+      const active = getActive();
+      active.title = deriveTitle(active.messages);
+      saveConversations(convs, activeId);
     },
     persist() {
       saveConversations(convs, activeId);

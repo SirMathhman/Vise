@@ -84,11 +84,8 @@ export function setupLlm(root: HTMLElement): void {
       .then((result) => {
         removeHint(response);
         renderMessage(response, "assistant", result.text);
-        if (result.usage)
-          store.setPromptTokens(conv.id, result.usage.promptTokens);
-        store.retitleActive();
+        store.commitTurn(result.usage);
         showActive();
-        store.persist();
       })
       .catch((e: unknown) =>
         setLlmError(
