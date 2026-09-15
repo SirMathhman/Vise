@@ -43,6 +43,7 @@ export async function render(root: HTMLElement): Promise<void> {
               Clear
             </button>
           </div>
+          <div id="llm-tools" aria-label="available tools"></div>
           <textarea
             id="llm-prompt"
             aria-label="message"

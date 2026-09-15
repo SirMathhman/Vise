@@ -70,6 +70,9 @@ export function setupLlm(root: HTMLElement): void {
   const clear = root.querySelector<HTMLButtonElement>("#llm-clear");
   if (!model || !prompt || !response || !send) return;
 
+  const tools = root.querySelector<HTMLElement>("#llm-tools");
+  if (tools) renderToolList(tools);
+
   const history: LlmMessage[] = loadHistory();
   const savedModel = loadModel();
   if (history.length === 0) {
@@ -215,6 +218,27 @@ async function runTurn(
 
 function toolCallLabel(tc: LlmToolCall): string {
   return `${tc.function.name}(${tc.function.arguments})`;
+}
+
+/** Render the available tools (name + description) into the panel. */
+function renderToolList(container: HTMLElement): void {
+  const title = document.createElement("h3");
+  title.className = "llm-tools-title";
+  title.textContent = "Tools";
+  const list = document.createElement("ul");
+  list.className = "llm-tools-list";
+  for (const tool of llmToolDefinitions) {
+    const li = document.createElement("li");
+    const name = document.createElement("code");
+    name.className = "llm-tool-name";
+    name.textContent = tool.function.name;
+    const desc = document.createElement("span");
+    desc.className = "llm-tool-desc";
+    desc.textContent = tool.function.description;
+    li.append(name, desc);
+    list.append(li);
+  }
+  container.append(title, list);
 }
 
 function renderHistoryMessage(response: HTMLElement, m: LlmMessage): void {
