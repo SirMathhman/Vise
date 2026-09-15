@@ -158,6 +158,31 @@ const createFile: LlmTool = {
   },
 };
 
+/**
+ * Run a PowerShell command in the workspace root (root-scoped). The command's
+ * output and exit status are returned as text. Use for builds, git, typecheck,
+ * package installs, and other shell operations that file tools can't do.
+ */
+const runCommand: LlmTool = {
+  type: "function",
+  function: {
+    name: "run_command",
+    description:
+      "Run a PowerShell command in the workspace root and return its combined output and exit status. Use this for builds, git, typecheck, package installs, and other shell operations that the file tools cannot do. The command runs non-interactively with a 30-second timeout; if it hangs or exceeds the timeout it is reported as timed out. Prefer read-only commands first (e.g. git status, pnpm typecheck) before making changes.",
+    parameters: {
+      type: "object",
+      properties: {
+        command: {
+          type: "string",
+          description:
+            'The PowerShell command to run (e.g. "pnpm typecheck" or "git status"). Runs in the workspace root.',
+        },
+      },
+      required: ["command"],
+    },
+  },
+};
+
 /** All tool definitions available to the model, in a stable order. */
 export const llmToolDefinitions: LlmTool[] = [
   listDirectory,
@@ -165,4 +190,5 @@ export const llmToolDefinitions: LlmTool[] = [
   editFile,
   createDirectory,
   createFile,
+  runCommand,
 ];

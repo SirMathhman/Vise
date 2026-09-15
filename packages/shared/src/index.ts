@@ -10,6 +10,7 @@ export const LLM_TOOL_NAMES = [
   "edit_file",
   "create_directory",
   "create_file",
+  "run_command",
 ] as const;
 
 /** The set of tool names the model may call. */

@@ -165,7 +165,10 @@ const SYSTEM_PROMPT =
   "path, a 1-based line range (start_line inclusive, end_line exclusive), and " +
   "the replacement content; always read_file first so you know the exact lines " +
   "to replace. To create new files or directories, call create_file or " +
-  "create_directory. Base your answer on the tools' results.";
+  "create_directory. To run a PowerShell command (builds, git, typecheck, " +
+  "file operations, etc.), call run_command with the command; it runs in the " +
+  "workspace root and returns its output and exit status. Base your answer " +
+  "on the tools' results.";
 
 async function runTurn(
   history: LlmMessage[],

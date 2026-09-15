@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { readFile, stat, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { LlmToolName } from "@vise/shared";
@@ -25,6 +26,12 @@ const MAX_LINES_PER_EDIT = 300;
 
 /** The maximum file size (bytes) an edit_file call may produce. */
 const MAX_BYTES = 1024 * 1024; // 1 MB
+
+/** The maximum combined output (bytes) a run_command call may return. */
+const MAX_OUTPUT_BYTES = 1024 * 1024; // 1 MB
+
+/** How long a run_command call may run before it is killed as hung. */
+const COMMAND_TIMEOUT_MS = 30_000; // 30 seconds
 
 /**
  * True when the model-supplied name is one of the tools we expose. Derived from
@@ -199,6 +206,79 @@ const createFile: LlmToolHandler = async (args, root) => {
 };
 
 /**
+ * Run a PowerShell command in the workspace root and return its combined
+ * output and exit status as model-readable text. The command runs
+ * non-interactively: it is spawned in its own process, given a hard timeout
+ * (killed as hung when exceeded), and its stdout/stderr are capped at
+ * MAX_OUTPUT_BYTES so a chatty command can't flood the model's context. The
+ * working directory is the workspace root, matching the file tools, so
+ * relative paths in the command resolve against it.
+ */
+const runCommand: LlmToolHandler = (args, root) => {
+  const command = typeof args.command === "string" ? args.command : "";
+  if (!command) throw badRequest("command is required");
+
+  return new Promise<string>((resolvePromise, reject) => {
+    // -NoProfile keeps it fast and free of the user's profile side effects;
+    // -NonInteractive prevents any prompt from blocking the process.
+    const child = spawn(
+      "powershell.exe",
+      ["-NoProfile", "-NonInteractive", "-Command", command],
+      { cwd: root }
+    );
+
+    let stdout = "";
+    let stderr = "";
+    let truncated = false;
+    let timedOut = false;
+
+    const onChunk = (chunk: Buffer, target: "out" | "err") => {
+      if (truncated) return;
+      const text = chunk.toString("utf-8");
+      if (target === "out") stdout += text;
+      else stderr += text;
+      if (stdout.length + stderr.length > MAX_OUTPUT_BYTES) {
+        truncated = true;
+      }
+    };
+    child.stdout.on("data", (c) => onChunk(c, "out"));
+    child.stderr.on("data", (c) => onChunk(c, "err"));
+
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill();
+    }, COMMAND_TIMEOUT_MS);
+
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      reject(
+        new AppError(
+          500,
+          "spawn_error",
+          `failed to run command: ${err.message}`
+        )
+      );
+    });
+
+    child.on("close", (code, signal) => {
+      clearTimeout(timer);
+      const combined = `${stdout}${stderr ? `\n${stderr}` : ""}`.trimEnd();
+      const body = truncated
+        ? `${combined.slice(0, MAX_OUTPUT_BYTES)}\n… (output capped at ${MAX_OUTPUT_BYTES} bytes)`
+        : combined;
+      const status = signal != null ? `signal ${signal}` : `exit ${code ?? 0}`;
+      if (timedOut) {
+        resolvePromise(
+          `$ ${command}\ntimed out after ${COMMAND_TIMEOUT_MS / 1000}s\n${body}`
+        );
+      } else {
+        resolvePromise(`$ ${command}\n${status}\n${body}`.trimEnd());
+      }
+    });
+  });
+};
+
+/**
  * The tools available to the model, keyed by the name the model uses. The keys
  * are checked against the shared LlmToolName union, so a renamed or misspelled
  * tool name here is a compile error.
@@ -209,6 +289,7 @@ const tools: Record<LlmToolName, LlmToolHandler> = {
   edit_file: editFileRange,
   create_directory: createDirectory,
   create_file: createFile,
+  run_command: runCommand,
 };
 
 /**
