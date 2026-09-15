@@ -1,4 +1,4 @@
-import { mkdir, readFile, stat } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { AppContext } from "../context.js";
 import { AppError, badRequest, notFound } from "../errors.js";
@@ -124,11 +124,24 @@ const createDirectory: LlmToolHandler = async (args, root) => {
   return `Created directory "${rel}".`;
 };
 
+/** Create a file in the workspace (root-scoped; parent must exist). */
+const createFile: LlmToolHandler = async (args, root) => {
+  const rel = typeof args.path === "string" ? args.path : "";
+  if (!rel) throw badRequest("path is required");
+  const content = typeof args.content === "string" ? args.content : "";
+  validatePath(rel);
+  const target = await resolveForCreate(root, rel);
+  if (await exists(target)) throw badRequest(`already exists: ${rel}`);
+  await writeFile(target, content, "utf-8");
+  return `Created file "${rel}".`;
+};
+
 /** The tools available to the model, keyed by the name the model uses. */
 const tools: Record<string, LlmToolHandler> = {
   list_directory: listDirectory,
   read_file: readFileRange,
   create_directory: createDirectory,
+  create_file: createFile,
 };
 
 /**
