@@ -116,28 +116,91 @@ export async function listLlmModels(): Promise<LlmModel[]> {
   return (data.data ?? []).map((m) => ({ id: m.id }));
 }
 
-/** A single turn in a chat conversation. */
+/** A single turn in a chat conversation, in OpenAI-compatible wire format. */
 export interface LlmMessage {
-  role: "user" | "assistant";
-  content: string;
+  role: "system" | "user" | "assistant" | "tool";
+  content: string | null;
+  /** Present on assistant messages that request tool invocations. */
+  tool_calls?: LlmToolCall[];
+  /** On `tool` messages, the id of the call this result answers. */
+  tool_call_id?: string;
 }
 
-/** POST a chat completion and return the assistant's reply text. */
+/** A function call the model asked to run. */
+export interface LlmToolCall {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+}
+
+/** The model's reply for one turn: either text or a set of tool calls. */
+export interface LlmAssistantMessage {
+  content: string | null;
+  tool_calls?: LlmToolCall[];
+}
+
+/** An OpenAI-compatible tool definition. */
+export interface LlmTool {
+  type: "function";
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+}
+
+/**
+ * Lets the model inspect the file tree so it can answer "what's in this
+ * directory" from live data. Paths are relative to the workspace root.
+ */
+export const listDirectoryTool: LlmTool = {
+  type: "function",
+  function: {
+    name: "list_directory",
+    description:
+      'List the files and subdirectories in a directory. Use this to answer questions about what files or folders exist. The path is relative to the workspace root; use an empty string ("") for the root.',
+    parameters: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description:
+            'Directory path relative to the workspace root. Use "" for the root.',
+        },
+      },
+      required: ["path"],
+    },
+  },
+};
+
+/** POST a chat completion and return the assistant's reply (text and/or tool calls). */
 export async function sendLlmMessage(
   messages: LlmMessage[],
-  model: string
-): Promise<string> {
+  model: string,
+  tools?: LlmTool[]
+): Promise<LlmAssistantMessage> {
+  const body: Record<string, unknown> = { model, messages };
+  if (tools && tools.length > 0) body.tools = tools;
   const res = await fetch("/llm/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${LLM_API_KEY}`,
     },
-    body: JSON.stringify({ model, messages }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) return fail(res);
   const data = (await res.json()) as {
-    choices?: { message?: { content?: string } }[];
+    choices?: {
+      message?: {
+        content?: string | null;
+        tool_calls?: LlmToolCall[];
+      };
+    }[];
   };
-  return data.choices?.[0]?.message?.content ?? "";
+  const message = data.choices?.[0]?.message;
+  return {
+    content: message?.content ?? null,
+    tool_calls: message?.tool_calls,
+  };
 }

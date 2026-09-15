@@ -1,5 +1,8 @@
 import {
   type LlmMessage,
+  type LlmToolCall,
+  listDir,
+  listDirectoryTool,
   listLlmModels,
   sendLlmMessage,
 } from "../api/client.js";
@@ -30,8 +33,14 @@ function loadHistory(): LlmMessage[] {
       (m): m is LlmMessage =>
         typeof m === "object" &&
         m !== null &&
-        (m as LlmMessage).role in { user: true, assistant: true } &&
-        typeof (m as LlmMessage).content === "string"
+        (m as LlmMessage).role in
+          {
+            user: true,
+            assistant: true,
+            tool: true,
+          } &&
+        (typeof (m as LlmMessage).content === "string" ||
+          (m as LlmMessage).content === null)
     );
   } catch {
     return [];
@@ -70,7 +79,7 @@ export function setupLlm(root: HTMLElement): void {
     // re-render the restored conversation.
     response.innerHTML = "";
     for (const m of history) {
-      renderMessage(response, m.role, m.content);
+      renderHistoryMessage(response, m);
     }
   }
 
@@ -100,21 +109,16 @@ export function setupLlm(root: HTMLElement): void {
     const text = prompt.value.trim();
     const m = model.value;
     if (!text || !m) return;
-    history.push({ role: "user", content: text });
-    renderMessage(response, "user", text);
     prompt.value = "";
-    saveState(history, m);
     send.disabled = true;
     setLlmHint(response, "Thinking…");
-    sendLlmMessage(history, m)
+    void runTurn(history, m, response, text)
       .then((reply) => {
-        history.push({ role: "assistant", content: reply });
         removeHint(response);
         renderMessage(response, "assistant", reply);
         saveState(history, model.value);
       })
       .catch((e: unknown) => {
-        history.pop();
         setLlmError(
           response,
           `Request failed: ${e instanceof Error ? e.message : e}`
@@ -138,6 +142,136 @@ export function setupLlm(root: HTMLElement): void {
   prompt.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") submit();
   });
+}
+
+/**
+ * Run a full turn: push the user message, then loop on the model. Each time the
+ * model requests tool calls, execute them against the file tree and feed the
+ * results back; stop when it returns a plain text reply, which is returned to
+ * the caller for rendering and persistence. On failure the history is rolled
+ * back so the conversation stays consistent.
+ */
+const MAX_TOOL_TURNS = 5;
+
+const SYSTEM_PROMPT =
+  "You are a helpful assistant that can inspect a file tree. To answer " +
+  "questions about what files or directories exist, call the list_directory " +
+  'tool with the directory path relative to the root (use "" for the root), ' +
+  "and base your answer on the tool's result.";
+
+async function runTurn(
+  history: LlmMessage[],
+  model: string,
+  response: HTMLElement,
+  userText: string
+): Promise<string> {
+  const preLength = history.length;
+  const domBefore = response.childElementCount;
+  try {
+    history.push({ role: "user", content: userText });
+    renderMessage(response, "user", userText);
+    for (let i = 0; i < MAX_TOOL_TURNS; i++) {
+      const messages: LlmMessage[] = [
+        { role: "system", content: SYSTEM_PROMPT },
+        ...history,
+      ];
+      const reply = await sendLlmMessage(messages, model, [listDirectoryTool]);
+      if (reply.tool_calls && reply.tool_calls.length > 0) {
+        history.push({
+          role: "assistant",
+          content: reply.content,
+          tool_calls: reply.tool_calls,
+        });
+        for (const tc of reply.tool_calls) {
+          renderToolCall(response, toolCallLabel(tc));
+        }
+        for (const tc of reply.tool_calls) {
+          const result = await executeTool(tc);
+          history.push({
+            role: "tool",
+            content: result,
+            tool_call_id: tc.id,
+          });
+          renderToolResult(response, result);
+        }
+        continue;
+      }
+      const text = reply.content ?? "";
+      history.push({ role: "assistant", content: text });
+      return text;
+    }
+    const text =
+      "I stopped after several directory lookups without a final answer.";
+    history.push({ role: "assistant", content: text });
+    return text;
+  } catch (err) {
+    history.length = preLength;
+    while (response.childElementCount > domBefore) {
+      response.lastElementChild?.remove();
+    }
+    throw err;
+  }
+}
+
+/** Execute a tool call. Only `list_directory` is wired up; anything else
+ *  returns an error string the model can read. */
+async function executeTool(tc: LlmToolCall): Promise<string> {
+  if (tc.function.name !== "list_directory") {
+    return `Error: unknown tool "${tc.function.name}".`;
+  }
+  try {
+    const args = JSON.parse(tc.function.arguments || "{}") as {
+      path?: unknown;
+    };
+    const path = typeof args.path === "string" ? args.path : "";
+    const data = await listDir(path);
+    const lines = data.items.map((item) =>
+      item.kind === "directory"
+        ? `  [dir]  ${item.name}`
+        : `  [file] ${item.name}`
+    );
+    return `Directory "${data.path}" contains:\n${lines.join("\n")}`;
+  } catch (e) {
+    return `Error listing directory: ${e instanceof Error ? e.message : e}`;
+  }
+}
+
+function toolCallLabel(tc: LlmToolCall): string {
+  return `${tc.function.name}(${tc.function.arguments})`;
+}
+
+function renderHistoryMessage(response: HTMLElement, m: LlmMessage): void {
+  if (m.role === "tool") {
+    renderToolResult(response, m.content ?? "");
+    return;
+  }
+  if (m.role === "assistant" && m.tool_calls && m.tool_calls.length > 0) {
+    for (const tc of m.tool_calls) renderToolCall(response, toolCallLabel(tc));
+    if (m.content) renderMessage(response, "assistant", m.content);
+    return;
+  }
+  if (m.role === "user" || m.role === "assistant") {
+    renderMessage(response, m.role, m.content ?? "");
+  }
+}
+
+function renderToolCall(response: HTMLElement, label: string): void {
+  const block = document.createElement("div");
+  block.className = "llm-tool";
+  const text = document.createElement("span");
+  text.className = "llm-tool-label";
+  text.textContent = label;
+  block.append(text);
+  response.append(block);
+  response.scrollTop = response.scrollHeight;
+}
+
+function renderToolResult(response: HTMLElement, text: string): void {
+  const block = document.createElement("div");
+  block.className = "llm-tool-result";
+  block.textContent = text;
+  response.append(block);
+  response.scrollTop = response.scrollHeight;
 }
 
 function renderMessage(

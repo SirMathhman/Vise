@@ -120,6 +120,36 @@
   word-break: break-word;
 }
 
+#app #llm-response .llm-tool {
+  margin: 4px 0 4px 10px;
+  padding: 6px 8px;
+  border-left: 2px solid var(--gold);
+  background: color-mix(in srgb, var(--gold) 8%, transparent);
+  border-radius: 0 2px 2px 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--gold-bright);
+}
+
+#app #llm-response .llm-tool-label {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+#app #llm-response .llm-tool-result {
+  margin: 0 0 10px 10px;
+  padding: 6px 8px;
+  border-left: 2px solid var(--border);
+  background: var(--bg-elevated);
+  border-radius: 0 2px 2px 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 #app #llm-response .llm-hint,
 #app #llm-response .llm-loading {
   font-family: var(--font-heading);

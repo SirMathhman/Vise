@@ -46,7 +46,7 @@ export async function render(root: HTMLElement): Promise<void> {
           <textarea
             id="llm-prompt"
             aria-label="message"
-            placeholder="Type a message&hellip;"
+            placeholder="Ask about the files, e.g. what's in apps/backend"
           ></textarea>
           <div id="llm-response">
             <span class="llm-hint">Start a conversation.</span>
