@@ -85,7 +85,7 @@ function isLlmToolName(value: string): value is LlmToolName {
  */
 type LlmToolHandler = (
   args: Record<string, unknown>,
-  root: string,
+  root: string
 ) => Promise<string>;
 
 /** List the contents of a directory in the workspace (root-scoped). */
@@ -96,7 +96,7 @@ const listDirectory: LlmToolHandler = async (args, root) => {
   const lines = items.map((item) =>
     item.kind === "directory"
       ? `  [dir]  ${item.name}`
-      : `  [file] ${item.name}`,
+      : `  [file] ${item.name}`
   );
   return `Directory "${dir}" contains:\n${lines.join("\n")}`;
 };
@@ -124,7 +124,7 @@ const readFileRange: LlmToolHandler = async (args, root) => {
   const cap = endLine ?? startLine + MAX_LINES_PER_READ;
   if (cap - startLine > MAX_LINES_PER_READ) {
     throw badRequest(
-      `range too large: ${cap - startLine} lines (max ${MAX_LINES_PER_READ})`,
+      `range too large: ${cap - startLine} lines (max ${MAX_LINES_PER_READ})`
     );
   }
 
@@ -179,7 +179,7 @@ const editFileRange: LlmToolHandler = async (args, root) => {
   if (!info.isFile()) throw notFound();
   if (info.size > MAX_BYTES) {
     throw badRequest(
-      `file too large to edit: ${info.size} bytes (max ${MAX_BYTES})`,
+      `file too large to edit: ${info.size} bytes (max ${MAX_BYTES})`
     );
   }
   const buf = await readFile(target);
@@ -197,7 +197,7 @@ const editFileRange: LlmToolHandler = async (args, root) => {
   const clampEnd = Math.min(endLine, lines.length + 1);
   if (clampEnd - startLine > MAX_LINES_PER_EDIT) {
     throw badRequest(
-      `range too large: ${clampEnd - startLine} lines (max ${MAX_LINES_PER_EDIT})`,
+      `range too large: ${clampEnd - startLine} lines (max ${MAX_LINES_PER_EDIT})`
     );
   }
   // An empty content deletes the range; otherwise the content's lines replace
@@ -211,7 +211,7 @@ const editFileRange: LlmToolHandler = async (args, root) => {
   const resultBuf = Buffer.from(result.join(eol), "utf-8");
   if (resultBuf.length > MAX_BYTES) {
     throw badRequest(
-      `result too large to save: ${resultBuf.length} bytes (max ${MAX_BYTES})`,
+      `result too large to save: ${resultBuf.length} bytes (max ${MAX_BYTES})`
     );
   }
   await writeFile(target, resultBuf);
@@ -302,7 +302,7 @@ const runCommand: LlmToolHandler = (args, root) => {
       child = spawn(
         "powershell.exe",
         ["-NoProfile", "-NonInteractive", "-Command", command],
-        { cwd: root },
+        { cwd: root }
       );
     } catch (err) {
       commandInFlight = false;
@@ -310,8 +310,8 @@ const runCommand: LlmToolHandler = (args, root) => {
         new AppError(
           500,
           "spawn_error",
-          `failed to run command: ${err instanceof Error ? err.message : String(err)}`,
-        ),
+          `failed to run command: ${err instanceof Error ? err.message : String(err)}`
+        )
       );
       return;
     }
@@ -353,8 +353,8 @@ const runCommand: LlmToolHandler = (args, root) => {
         new AppError(
           500,
           "spawn_error",
-          `failed to run command: ${err.message}`,
-        ),
+          `failed to run command: ${err.message}`
+        )
       );
     });
 
@@ -370,7 +370,7 @@ const runCommand: LlmToolHandler = (args, root) => {
       const status = signal != null ? `signal ${signal}` : `exit ${code ?? 0}`;
       if (timedOut) {
         resolvePromise(
-          `$ ${command}\ntimed out after ${COMMAND_TIMEOUT_MS / 1000}s\n${body}`,
+          `$ ${command}\ntimed out after ${COMMAND_TIMEOUT_MS / 1000}s\n${body}`
         );
       } else {
         resolvePromise(`$ ${command}\n${status}\n${body}`.trimEnd());

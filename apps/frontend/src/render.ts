@@ -32,15 +32,20 @@ export async function render(root: HTMLElement): Promise<void> {
         <section id="llm">
           <h2>Model</h2>
           <div class="llm-controls">
+            <select
+              id="llm-conversation"
+              aria-label="conversation"
+              title="Switch conversation"
+            ></select>
             <select id="llm-model" aria-label="model"></select>
             <button id="llm-send" class="btn" type="button">Send</button>
             <button
-              id="llm-clear"
+              id="llm-new"
               class="btn btn-ghost"
               type="button"
               title="Start a new conversation"
             >
-              Clear
+              New
             </button>
           </div>
           <p id="llm-context" class="llm-context" aria-label="context usage"></p>

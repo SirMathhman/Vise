@@ -18,6 +18,12 @@
   padding: 8px 10px;
 }
 
+/* Cap the conversation picker so the model picker keeps enough room. */
+#app #llm #llm-conversation {
+  flex: 0 1 46%;
+  max-width: 46%;
+}
+
 #app #llm .llm-context {
   margin: 0 0 12px;
   font-family: var(--font-mono);
