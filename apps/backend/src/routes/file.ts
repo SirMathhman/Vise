@@ -45,13 +45,13 @@ export function fileRoutes(ctx: AppContext): Route[] {
           if (!info.isFile()) throw notFound();
           if (info.size > MAX_BYTES) {
             throw badRequest(
-              `file too large to preview: ${info.size} bytes (max ${MAX_BYTES})`
+              `file too large to preview: ${info.size} bytes (max ${MAX_BYTES})`,
             );
           }
           const buf = await readFile(target);
           if (looksBinary(buf)) {
             throw badRequest(
-              `cannot preview binary file: ${rel} (${info.size} bytes)`
+              `cannot preview binary file: ${rel} (${info.size} bytes)`,
             );
           }
           sendJson(res, 200, {
@@ -81,7 +81,7 @@ export function fileRoutes(ctx: AppContext): Route[] {
         const buf = Buffer.from(content, "utf-8");
         if (buf.length > MAX_BYTES) {
           throw badRequest(
-            `file too large to save: ${buf.length} bytes (max ${MAX_BYTES})`
+            `file too large to save: ${buf.length} bytes (max ${MAX_BYTES})`,
           );
         }
         try {

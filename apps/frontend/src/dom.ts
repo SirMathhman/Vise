@@ -1,6 +1,6 @@
 export function makeButton(
   label: string,
-  onClick: () => void
+  onClick: () => void,
 ): HTMLButtonElement {
   const btn = document.createElement("button");
   btn.className = "btn";

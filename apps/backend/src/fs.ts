@@ -10,7 +10,7 @@ import { badRequest } from "./errors.js";
  */
 export async function resolveWithinRoot(
   root: string,
-  rel: string
+  rel: string,
 ): Promise<string> {
   const realRoot = await realpath(root);
   const target = resolve(realRoot, rel);
@@ -32,7 +32,7 @@ export async function resolveWithinRoot(
  */
 export async function resolveForCreate(
   root: string,
-  rel: string
+  rel: string,
 ): Promise<string> {
   const parentRel = dirname(rel);
   const leaf = basename(rel);
