@@ -8,7 +8,6 @@ import {
 } from "./api/client.js";
 import { makeContextMenu, showMenu } from "./components/contextMenu.js";
 import { showCreateForm } from "./components/createDialog.js";
-import { makeButton } from "./dom.js";
 import { appendHighlighted } from "./highlight.js";
 
 export async function render(root: HTMLElement): Promise<void> {
@@ -106,6 +105,7 @@ interface Viewer {
   content?: string;
   rel?: string;
   dirty?: boolean;
+  saveTimer?: number;
 }
 
 async function renderListing(
@@ -245,10 +245,11 @@ function setHint(
 }
 
 async function viewFile(rel: string, viewer: Viewer): Promise<void> {
+  clearSaveTimer(viewer);
+  await flushSave(viewer);
   if (viewer.dirty) {
-    const ok = window.confirm("Discard unsaved changes?");
-    if (!ok) return;
-    viewer.dirty = false;
+    // The pending save failed; abort so edits are not lost.
+    return;
   }
   viewer.title.textContent = rel;
   viewer.actions.innerHTML = "";
@@ -258,7 +259,7 @@ async function viewFile(rel: string, viewer: Viewer): Promise<void> {
     viewer.title.textContent = data.path;
     viewer.content = data.content;
     viewer.rel = rel;
-    renderReadonly(viewer);
+    renderEditor(viewer);
   } catch (err) {
     setHint(
       viewer.body,
@@ -268,34 +269,10 @@ async function viewFile(rel: string, viewer: Viewer): Promise<void> {
   }
 }
 
-function renderReadonly(viewer: Viewer): void {
-  viewer.dirty = false;
-  // Leaving edit mode: restore #viewer-body as the scroller again.
-  viewer.body.style.overflow = "";
+function renderEditor(viewer: Viewer): void {
+  clearSaveTimer(viewer);
   viewer.actions.innerHTML = "";
-  viewer.actions.append(makeButton("Edit", () => renderEditor(viewer)));
-  renderHighlighted(viewer.body, viewer.content ?? "");
-}
-
-function renderEditor(viewer: Viewer, value?: string): void {
-  viewer.dirty = false;
-  viewer.actions.innerHTML = "";
-  viewer.actions.append(
-    makeButton("Cancel", () => {
-      if (viewer.dirty) {
-        const ok = window.confirm("Discard unsaved changes?");
-        if (!ok) return;
-      }
-      renderReadonly(viewer);
-    })
-  );
-  viewer.actions.append(makeButton("Save", () => void saveFile(viewer)));
-  const unsaved = document.createElement("span");
-  unsaved.className = "unsaved";
-  unsaved.textContent = "\u25CF unsaved";
-  viewer.actions.append(unsaved);
-
-  const text = value ?? viewer.content ?? "";
+  const text = viewer.content ?? "";
 
   // A transparent-text textarea sits on top of a live-highlighted backdrop.
   // Both share identical font metrics (inherited from .editor-scroll) and
@@ -341,12 +318,12 @@ function renderEditor(viewer: Viewer, value?: string): void {
 
   ta.value = text;
   paint();
-  viewer.dirty = text !== (viewer.content ?? "");
-  unsaved.hidden = !viewer.dirty;
+  viewer.dirty = false;
   ta.addEventListener("input", () => {
     paint();
-    viewer.dirty = ta.value !== (viewer.content ?? "");
-    unsaved.hidden = !viewer.dirty;
+    viewer.dirty = true;
+    setSaveState(viewer, "unsaved");
+    scheduleAutoSave(viewer);
   });
 
   code.append(backdrop, ta);
@@ -363,48 +340,80 @@ function renderEditor(viewer: Viewer, value?: string): void {
   ta.focus();
 }
 
-function renderHighlighted(body: HTMLPreElement, content: string): void {
-  body.innerHTML = "";
-  const lines = content.split(/\r?\n/);
-  const frag = document.createDocumentFragment();
-  for (let i = 0; i < lines.length; i++) {
-    const line = document.createElement("div");
-    line.className = "line";
-    const no = document.createElement("span");
-    no.className = "line-no";
-    no.textContent = String(i + 1);
-    const text = document.createElement("span");
-    text.className = "line-text";
-    appendHighlighted(text, lines[i]);
-    line.append(no, text);
-    frag.append(line);
-  }
-  body.append(frag);
+const AUTOSAVE_MS = 1000;
+
+function scheduleAutoSave(viewer: Viewer): void {
+  clearSaveTimer(viewer);
+  viewer.saveTimer = window.setTimeout(() => {
+    viewer.saveTimer = undefined;
+    void saveFile(viewer);
+  }, AUTOSAVE_MS);
 }
 
-async function saveFile(viewer: Viewer): Promise<void> {
+function clearSaveTimer(viewer: Viewer): void {
+  if (viewer.saveTimer !== undefined) {
+    window.clearTimeout(viewer.saveTimer);
+    viewer.saveTimer = undefined;
+  }
+}
+
+async function flushSave(viewer: Viewer): Promise<void> {
+  clearSaveTimer(viewer);
+  if (!viewer.dirty || !viewer.rel) return;
   const ta = viewer.body.querySelector<HTMLTextAreaElement>(".editor-input");
-  if (!ta || !viewer.rel) return;
-  const original = viewer.content ?? "";
-  const next = ta.value;
-  viewer.actions.innerHTML = "";
-  viewer.actions.append(makeButton("Saving\u2026", () => {}));
+  const next = ta?.value;
+  if (next === undefined) return;
   try {
     await putFile(viewer.rel, next);
     viewer.content = next;
-    renderReadonly(viewer);
-  } catch (err) {
-    viewer.content = original;
-    renderEditor(viewer, next);
-    setSaveError(viewer, (err as Error).message);
+    viewer.dirty = false;
+  } catch {
+    // Keep dirty so the caller aborts and beforeunload fires.
   }
 }
 
-function setSaveError(viewer: Viewer, message: string): void {
-  const span = document.createElement("span");
-  span.className = "viewer-error";
-  span.textContent = `Save failed: ${message}`;
-  viewer.actions.append(span);
+async function saveFile(viewer: Viewer): Promise<void> {
+  clearSaveTimer(viewer);
+  const ta = viewer.body.querySelector<HTMLTextAreaElement>(".editor-input");
+  if (!ta || !viewer.rel) return;
+  const next = ta.value;
+  if (next === (viewer.content ?? "")) {
+    viewer.dirty = false;
+    setSaveState(viewer, "saved");
+    return;
+  }
+  setSaveState(viewer, "saving");
+  try {
+    await putFile(viewer.rel, next);
+    viewer.content = next;
+    viewer.dirty = false;
+    setSaveState(viewer, "saved");
+  } catch (err) {
+    viewer.dirty = true;
+    setSaveState(viewer, "error", (err as Error).message);
+  }
+}
+
+function setSaveState(
+  viewer: Viewer,
+  state: "unsaved" | "saving" | "saved" | "error",
+  message?: string
+): void {
+  let span = viewer.actions.querySelector<HTMLElement>(".save-status");
+  if (!span) {
+    span = document.createElement("span");
+    span.className = "save-status";
+    viewer.actions.append(span);
+  }
+  span.className = `save-status save-status-${state}`;
+  span.textContent =
+    state === "unsaved"
+      ? "\u25CF unsaved"
+      : state === "saving"
+        ? "saving\u2026"
+        : state === "saved"
+          ? "saved"
+          : `save failed${message ? `: ${message}` : ""}`;
 }
 
 async function expandDir(

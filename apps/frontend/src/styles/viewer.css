@@ -67,10 +67,22 @@
   font-size: 0.8rem;
 }
 
-#app #viewer-actions .unsaved {
-  color: var(--gold-dim);
+#app #viewer-actions .save-status {
   font-size: 0.75rem;
   letter-spacing: 0.06em;
+}
+
+#app #viewer-actions .save-status-unsaved,
+#app #viewer-actions .save-status-saving {
+  color: var(--gold-dim);
+}
+
+#app #viewer-actions .save-status-saved {
+  color: var(--success);
+}
+
+#app #viewer-actions .save-status-error {
+  color: var(--danger);
 }
 
 /* Shared line primitives, used by the read-only view and (with the
@@ -143,7 +155,8 @@
 /* .editor-gutter already carries the width, gap and rule that separate the
    numbers from the code. These spans also match the generic .line-no rule,
    so without this reset that spacing is applied twice and edit mode indents
-   further than the read-only view. */
+   further than the read-only view. The reset keeps the gutter the same width
+   as the read-only .line-no, so both modes line up exactly. */
 #app #viewer-body .editor-gutter .line-no {
   display: block;
   min-width: 0;
