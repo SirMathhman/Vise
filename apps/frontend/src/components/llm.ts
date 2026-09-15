@@ -12,6 +12,15 @@ import { llmToolDefinitions } from "../llm/tools.js";
 const STORAGE_HISTORY = "vise:llm:history";
 const STORAGE_MODEL = "vise:llm:model";
 
+/**
+ * A chat message. The optional `compaction` flag marks a model-generated
+ * summary that stands in for all turns before it: when a compaction is
+ * present, only that summary and the turns after it are sent to the model.
+ * The history array is append-only — nothing before a summary is ever removed
+ * from it, only bypassed in the outgoing prompt.
+ */
+type ChatMessage = LlmMessage & { compaction?: true };
+
 /** Persist the conversation and the selected model across page reloads. */
 function saveState(history: LlmMessage[], model: string): void {
   try {
@@ -24,7 +33,7 @@ function saveState(history: LlmMessage[], model: string): void {
 }
 
 /** Restore the persisted conversation, or an empty one on failure. */
-function loadHistory(): LlmMessage[] {
+function loadHistory(): ChatMessage[] {
   try {
     const raw = localStorage.getItem(STORAGE_HISTORY);
     if (!raw) return [];
@@ -75,7 +84,7 @@ export function setupLlm(root: HTMLElement): void {
   const tools = root.querySelector<HTMLElement>("#llm-tools");
   if (tools) renderToolList(tools);
 
-  const history: LlmMessage[] = loadHistory();
+  const history: ChatMessage[] = loadHistory();
   const savedModel = loadModel();
 
   /** Context window (n_ctx) for each model id, as reported by the proxy. */
@@ -137,7 +146,14 @@ export function setupLlm(root: HTMLElement): void {
     prompt.value = "";
     send.disabled = true;
     setLlmHint(response, "Thinking…");
-    void runTurn(history, m, response, text)
+    void runTurn(
+      history,
+      m,
+      response,
+      text,
+      contextWindow.get(m),
+      lastPromptTokens
+    )
       .then((result) => {
         removeHint(response);
         renderMessage(response, "assistant", result.text);
@@ -203,22 +219,37 @@ export interface TurnResult {
 }
 
 async function runTurn(
-  history: LlmMessage[],
+  history: ChatMessage[],
   model: string,
   response: HTMLElement,
-  userText: string
+  userText: string,
+  cap: number | undefined,
+  lastPromptTokens: number | undefined
 ): Promise<TurnResult> {
   const preLength = history.length;
   const domBefore = response.childElementCount;
   let lastUsage: LlmUsage | undefined;
   try {
+    // If the previous call already used 80% of the window, summarize the
+    // conversation and append a compaction marker before this turn's calls, so
+    // the outgoing prompt drops the pre-summary history (append-only: nothing
+    // is ever removed from `history`).
+    if (
+      cap !== undefined &&
+      cap > 0 &&
+      lastPromptTokens !== undefined &&
+      lastPromptTokens / cap >= COMPACT_THRESHOLD
+    ) {
+      const summary = await summarizeConversation(history, model);
+      if (summary) {
+        history.push({ role: "user", content: summary, compaction: true });
+        renderCompactionNote(response);
+      }
+    }
     history.push({ role: "user", content: userText });
     renderMessage(response, "user", userText);
     for (let i = 0; i < MAX_TOOL_TURNS; i++) {
-      const messages: LlmMessage[] = [
-        { role: "system", content: SYSTEM_PROMPT },
-        ...history,
-      ];
+      const messages = buildMessages(history);
       const reply = await sendLlmMessage(messages, model, llmToolDefinitions);
       lastUsage = reply.usage ?? lastUsage;
       if (reply.tool_calls && reply.tool_calls.length > 0) {
@@ -258,6 +289,63 @@ async function runTurn(
   }
 }
 
+/** Fraction of the context window (of the latest call) that triggers a compaction. */
+const COMPACT_THRESHOLD = 0.8;
+
+const SUMMARY_PROMPT =
+  "Summarize the entire conversation above into a concise brief that " +
+  "preserves the key facts, decisions, and any in-progress task, so the " +
+  "conversation can continue from your summary alone. Reply with only the " +
+  "summary text, with no preamble.";
+
+/**
+ * Build the outgoing prompt: the system prompt, then the latest compaction
+ * summary (if any) in place of the pre-summary history, then the turns after
+ * it. Without a compaction the full history is sent.
+ */
+function buildMessages(history: ChatMessage[]): LlmMessage[] {
+  let cut = -1;
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (history[i].compaction) {
+      cut = i;
+      break;
+    }
+  }
+  const messages: LlmMessage[] = [{ role: "system", content: SYSTEM_PROMPT }];
+  if (cut >= 0) {
+    messages.push({ role: "user", content: history[cut].content ?? "" });
+    for (let i = cut + 1; i < history.length; i++) messages.push(history[i]);
+  } else {
+    for (const m of history) messages.push(m);
+  }
+  return messages;
+}
+
+/**
+ * Ask the model to summarize the conversation so far; the result becomes the
+ * compaction message. Returns "" if no usable summary came back.
+ */
+async function summarizeConversation(
+  history: ChatMessage[],
+  model: string
+): Promise<string> {
+  const messages: LlmMessage[] = [
+    { role: "system", content: SUMMARY_PROMPT },
+    ...history,
+  ];
+  const reply = await sendLlmMessage(messages, model);
+  return (reply.content ?? "").trim();
+}
+
+/** Render the subtle separator shown where a compaction marker lands. */
+function renderCompactionNote(response: HTMLElement): void {
+  const note = document.createElement("div");
+  note.className = "llm-compaction";
+  note.textContent = "— conversation compacted —";
+  response.append(note);
+  response.scrollTop = response.scrollHeight;
+}
+
 function toolCallLabel(tc: LlmToolCall): string {
   return `${tc.function.name}(${tc.function.arguments})`;
 }
@@ -286,7 +374,11 @@ function renderToolList(container: HTMLElement): void {
   container.append(details);
 }
 
-function renderHistoryMessage(response: HTMLElement, m: LlmMessage): void {
+function renderHistoryMessage(response: HTMLElement, m: ChatMessage): void {
+  if (m.compaction) {
+    renderCompactionNote(response);
+    return;
+  }
   if (m.role === "tool") {
     renderToolResult(response, m.content ?? "");
     return;

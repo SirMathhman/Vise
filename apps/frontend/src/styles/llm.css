@@ -26,6 +26,14 @@
   min-height: 1em;
 }
 
+#app #llm .llm-compaction {
+  margin: 8px 0;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  text-align: center;
+  color: var(--text-muted);
+}
+
 #app #llm .btn {
   flex: 0 0 auto;
   font-family: var(--font-heading);
