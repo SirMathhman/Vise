@@ -1,10 +1,11 @@
 import {
+  executeLlmTool,
   type LlmMessage,
   type LlmToolCall,
   listLlmModels,
   sendLlmMessage,
 } from "../api/client.js";
-import { executeLlmTool, llmToolDefinitions } from "../llm/tools.js";
+import { llmToolDefinitions } from "../llm/tools.js";
 
 /** localStorage keys for the persisted conversation and model choice. */
 const STORAGE_HISTORY = "vise:llm:history";

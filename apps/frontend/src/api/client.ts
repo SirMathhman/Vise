@@ -180,3 +180,22 @@ export async function sendLlmMessage(
     tool_calls: message?.tool_calls,
   };
 }
+
+/**
+ * Execute a tool call on the backend and return the model-readable result
+ * string. Errors come back as text (the backend resolves them to a string) so
+ * the tool loop can feed them straight back to the model.
+ */
+export async function executeLlmTool(tc: LlmToolCall): Promise<string> {
+  const res = await fetch("/api/llm/tool", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: tc.function.name,
+      arguments: tc.function.arguments,
+    }),
+  });
+  if (!res.ok) return fail(res);
+  const data = (await res.json()) as { result: string };
+  return data.result;
+}

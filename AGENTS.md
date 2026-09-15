@@ -37,12 +37,26 @@ To add an endpoint: create/extend a `routes/*.ts` factory returning `Route[]`, t
 - `render.ts` — builds UI (template string + DOM), wires events.
 - `api/client.ts` — **the only place that calls `fetch`**. Typed wrappers (`health`, `listDir`, `getFile`, `putFile`, `deleteFile`, `createEntry`); each returns parsed data or throws a normalized `Error`.
 - `dom.ts` — small DOM helpers (e.g. `makeButton`).
-- `components/` — `contextMenu.ts`, `createDialog.ts`.
+- `highlight.ts` — dependency-free, single-line syntax highlighter (no cross-line state, no language detection).
+- `components/` — `contextMenu.ts`, `createDialog.ts`, `llm.ts` (the LLM panel, wired in from `render.ts`).
+- `llm/tools.ts` — OpenAI-style tool **definitions** (`llmToolDefinitions`) sent with each chat request.
 - `styles.css` imports per-area CSS in `styles/`.
 
 Views call functions from `api/client.ts` — never `fetch` directly.
 
-The Vite dev server proxies `/api` → `localhost:3001` (see `vite.config.ts`), so the frontend calls `/api/...` directly.
+The Vite dev server proxies `/api` → `localhost:3001` and `/llm` → `localhost:8080` (see `vite.config.ts`).
+
+### LLM panel (`apps/frontend/src/components/llm.ts` + `routes/llm.ts`)
+
+A chat panel that talks to an **OpenAI-compatible proxy** (llama.cpp at `:8080`) through the Vite `/llm` proxy (which rewrites `/llm/*` → `/*`). The flow is a client-side tool loop:
+
+1. `sendLlmMessage` posts messages + `llmToolDefinitions` to `/llm/v1/chat/completions`.
+2. If the reply contains `tool_calls`, the panel calls `executeLlmTool` for each → `POST /api/llm/tool` on the **backend**.
+3. The backend runs the tool (`routes/llm.ts`: `list_directory`, `read_file`), returns a text result, and the loop feeds it back as a `tool` message until the model produces plain text.
+
+**Adding a tool = one definition in `llm/tools.ts` + one handler in `routes/llm.ts`.** Neither side hardcodes tool names beyond that shared list. Tool results are always plain strings; backend errors are resolved to `200` + an `Error: …` string so the model can read and adapt rather than the loop crashing.
+
+A bearer token (`LLM_API_KEY`) is hardcoded in `api/client.ts` — a local-use key, since the proxy only forwards to `127.0.0.1`.
 
 ## Conventions
 
