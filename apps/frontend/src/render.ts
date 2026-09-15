@@ -112,7 +112,7 @@ async function renderListing(
   list: HTMLUListElement,
   lsPath: HTMLElement,
   rel: string,
-  viewer: Viewer,
+  viewer: Viewer
 ): Promise<void> {
   try {
     const data = await listDir(rel);
@@ -133,7 +133,7 @@ async function renderListing(
 function renderEntry(
   item: DirEntry,
   parentRel: string,
-  viewer: Viewer,
+  viewer: Viewer
 ): HTMLLIElement {
   const li = document.createElement("li");
   li.className = item.kind;
@@ -158,7 +158,7 @@ function renderEntry(
     toggle.textContent = "▸";
     toggle.addEventListener(
       "click",
-      () => void expandDir(toggle, li, childRel, viewer),
+      () => void expandDir(toggle, li, childRel, viewer)
     );
     row.addEventListener("contextmenu", (e) => {
       e.preventDefault();
@@ -206,7 +206,7 @@ async function deleteFile(
   rel: string,
   parentRel: string,
   li: HTMLLIElement,
-  viewer: Viewer,
+  viewer: Viewer
 ): Promise<void> {
   const name = rel.split("/").pop() ?? rel;
   const ok = window.confirm(`Delete "${name}"? This cannot be undone.`);
@@ -227,7 +227,7 @@ async function deleteFile(
     setHint(
       viewer.body,
       `Delete failed: ${(err as Error).message}`,
-      "viewer-error",
+      "viewer-error"
     );
   }
 }
@@ -235,7 +235,7 @@ async function deleteFile(
 function setHint(
   body: HTMLPreElement,
   text: string,
-  cls = "viewer-hint",
+  cls = "viewer-hint"
 ): void {
   body.innerHTML = "";
   const span = document.createElement("span");
@@ -263,13 +263,15 @@ async function viewFile(rel: string, viewer: Viewer): Promise<void> {
     setHint(
       viewer.body,
       `Failed to load: ${(err as Error).message}`,
-      "viewer-error",
+      "viewer-error"
     );
   }
 }
 
 function renderReadonly(viewer: Viewer): void {
   viewer.dirty = false;
+  // Leaving edit mode: restore #viewer-body as the scroller again.
+  viewer.body.style.overflow = "";
   viewer.actions.innerHTML = "";
   viewer.actions.append(makeButton("Edit", () => renderEditor(viewer)));
   renderHighlighted(viewer.body, viewer.content ?? "");
@@ -285,7 +287,7 @@ function renderEditor(viewer: Viewer, value?: string): void {
         if (!ok) return;
       }
       renderReadonly(viewer);
-    }),
+    })
   );
   viewer.actions.append(makeButton("Save", () => void saveFile(viewer)));
   const unsaved = document.createElement("span");
@@ -350,6 +352,9 @@ function renderEditor(viewer: Viewer, value?: string): void {
   code.append(backdrop, ta);
   grid.append(gutter, code);
   scroller.append(grid);
+  // .editor-scroll is the sole scroller in edit mode; suppress the
+  // #viewer-body scroll so only one scrollbar shows.
+  viewer.body.style.overflow = "hidden";
   viewer.body.append(scroller);
   ta.focus();
 }
@@ -402,7 +407,7 @@ async function expandDir(
   toggle: HTMLButtonElement,
   li: HTMLLIElement,
   rel: string,
-  viewer: Viewer,
+  viewer: Viewer
 ): Promise<void> {
   const expanded = toggle.getAttribute("aria-expanded") === "true";
   if (expanded) {
@@ -431,7 +436,7 @@ async function expandDir(
 async function refreshDir(
   viewer: Viewer,
   rel: string,
-  targetLi: HTMLLIElement | null,
+  targetLi: HTMLLIElement | null
 ): Promise<void> {
   if (!targetLi) {
     await renderListing(viewer.list, viewer.lsPath, "", viewer);
