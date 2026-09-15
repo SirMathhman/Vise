@@ -1,8 +1,12 @@
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { AppContext } from "../context.js";
 import { AppError, badRequest, notFound } from "../errors.js";
-import { resolveForCreate, resolveWithinRoot } from "../fs.js";
+import {
+  createDir,
+  createFile as createFileCore,
+  resolveWithinRoot,
+} from "../fs.js";
 import { sendJson } from "../http.js";
 import type { Route } from "../router.js";
 import { listDir } from "./ls.js";
@@ -87,40 +91,11 @@ const readFileRange: LlmToolHandler = async (args, root) => {
   return `File "${rel}", lines ${startLine}-${endInclusive}:\n${numbered}${more}`;
 };
 
-/**
- * Reject path segments the create route also rejects: empty segments, dot
- * segments, and backslashes. The leaf is additionally vetted by
- * resolveForCreate, so a hostile path cannot escape the root.
- */
-function validatePath(rel: string): void {
-  for (const seg of rel.split("/")) {
-    if (!seg) throw badRequest(`empty path segment in: ${rel}`);
-    if (seg === "." || seg === "..")
-      throw badRequest(`invalid path segment: ${seg}`);
-    if (seg.includes("\\"))
-      throw badRequest(`name cannot contain a backslash: ${seg}`);
-  }
-}
-
-/** True if `target` exists; false on ENOENT, rethrow on any other error. */
-async function exists(target: string): Promise<boolean> {
-  try {
-    await stat(target);
-    return true;
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
-    throw err;
-  }
-}
-
 /** Create a directory in the workspace (root-scoped; parent must exist). */
 const createDirectory: LlmToolHandler = async (args, root) => {
   const rel = typeof args.path === "string" ? args.path : "";
   if (!rel) throw badRequest("path is required");
-  validatePath(rel);
-  const target = await resolveForCreate(root, rel);
-  if (await exists(target)) throw badRequest(`already exists: ${rel}`);
-  await mkdir(target);
+  await createDir(root, rel);
   return `Created directory "${rel}".`;
 };
 
@@ -129,10 +104,7 @@ const createFile: LlmToolHandler = async (args, root) => {
   const rel = typeof args.path === "string" ? args.path : "";
   if (!rel) throw badRequest("path is required");
   const content = typeof args.content === "string" ? args.content : "";
-  validatePath(rel);
-  const target = await resolveForCreate(root, rel);
-  if (await exists(target)) throw badRequest(`already exists: ${rel}`);
-  await writeFile(target, content, "utf-8");
+  await createFileCore(root, rel, content);
   return `Created file "${rel}".`;
 };
 
