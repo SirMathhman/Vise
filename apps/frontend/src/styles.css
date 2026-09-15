@@ -4,6 +4,7 @@
 @import "./styles/panel.css";
 @import "./styles/tree.css";
 @import "./styles/viewer.css";
+@import "./styles/llm.css";
 @import "./styles/contextmenu.css";
 
 @media (max-width: 800px) {

@@ -21,6 +21,11 @@ export interface FileResponse {
   content: string;
 }
 
+/** A model id served by the LLM proxy (see `/llm/v1/models`). */
+export interface LlmModel {
+  id: string;
+}
+
 /** GET the backend health status. */
 export async function health(): Promise<string> {
   const res = await fetch("/api/health");
@@ -92,4 +97,44 @@ export async function createEntry(
     body: JSON.stringify(payload),
   });
   if (!res.ok) return fail(res);
+}
+
+/**
+ * The LLM proxy (llama.cpp at :8080) requires a bearer token. This is a
+ * local-use key: the Vite dev proxy forwards to 127.0.0.1, so the key never
+ * leaves the machine.
+ */
+const LLM_API_KEY = "S6677k5w355Nw9ErxCZWYCMiW4ItldmzXBLUElpnLsdE8gBj5A";
+
+/** GET the models served by the LLM proxy. */
+export async function listLlmModels(): Promise<LlmModel[]> {
+  const res = await fetch("/llm/v1/models", {
+    headers: { Authorization: `Bearer ${LLM_API_KEY}` },
+  });
+  if (!res.ok) return fail(res);
+  const data = (await res.json()) as { data?: { id: string }[] };
+  return (data.data ?? []).map((m) => ({ id: m.id }));
+}
+
+/** POST a single chat completion and return the assistant's reply text. */
+export async function sendLlmMessage(
+  prompt: string,
+  model: string
+): Promise<string> {
+  const res = await fetch("/llm/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${LLM_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+  if (!res.ok) return fail(res);
+  const data = (await res.json()) as {
+    choices?: { message?: { content?: string } }[];
+  };
+  return data.choices?.[0]?.message?.content ?? "";
 }
