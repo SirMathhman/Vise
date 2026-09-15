@@ -116,9 +116,15 @@ export async function listLlmModels(): Promise<LlmModel[]> {
   return (data.data ?? []).map((m) => ({ id: m.id }));
 }
 
-/** POST a single chat completion and return the assistant's reply text. */
+/** A single turn in a chat conversation. */
+export interface LlmMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+/** POST a chat completion and return the assistant's reply text. */
 export async function sendLlmMessage(
-  prompt: string,
+  messages: LlmMessage[],
   model: string
 ): Promise<string> {
   const res = await fetch("/llm/v1/chat/completions", {
@@ -127,10 +133,7 @@ export async function sendLlmMessage(
       "Content-Type": "application/json",
       Authorization: `Bearer ${LLM_API_KEY}`,
     },
-    body: JSON.stringify({
-      model,
-      messages: [{ role: "user", content: prompt }],
-    }),
+    body: JSON.stringify({ model, messages }),
   });
   if (!res.ok) return fail(res);
   const data = (await res.json()) as {

@@ -34,13 +34,23 @@ export async function render(root: HTMLElement): Promise<void> {
           <div class="llm-controls">
             <select id="llm-model" aria-label="model"></select>
             <button id="llm-send" class="btn" type="button">Send</button>
+            <button
+              id="llm-clear"
+              class="btn btn-ghost"
+              type="button"
+              title="Start a new conversation"
+            >
+              Clear
+            </button>
           </div>
           <textarea
             id="llm-prompt"
             aria-label="message"
             placeholder="Type a message&hellip;"
           ></textarea>
-          <pre id="llm-response"><span class="llm-hint">Response will appear here.</span></pre>
+          <div id="llm-response">
+            <span class="llm-hint">Start a conversation.</span>
+          </div>
         </section>
       </div>
     </main>

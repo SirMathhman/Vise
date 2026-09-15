@@ -45,6 +45,17 @@
   cursor: default;
 }
 
+#app #llm .btn-ghost {
+  color: var(--text-muted);
+  border-color: var(--border);
+}
+
+#app #llm .btn-ghost:hover:not(:disabled) {
+  background: transparent;
+  color: var(--text);
+  border-color: var(--border-gold);
+}
+
 #app #llm textarea {
   flex: 0 0 auto;
   height: 96px;
@@ -74,13 +85,39 @@
   font-family: var(--font-mono);
   font-size: 0.85rem;
   line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-word;
   color: var(--text);
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: 2px;
   padding: 10px 12px;
+}
+
+#app #llm-response .llm-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+
+#app #llm-response .llm-msg:last-child {
+  margin-bottom: 0;
+}
+
+#app #llm-response .llm-msg-role {
+  font-family: var(--font-heading);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
+#app #llm-response .llm-msg-user .llm-msg-role {
+  color: var(--gold);
+}
+
+#app #llm-response .llm-msg-text {
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 #app #llm-response .llm-hint,
