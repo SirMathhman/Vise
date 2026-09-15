@@ -367,8 +367,10 @@ async function flushSave(viewer: Viewer): Promise<void> {
     await putFile(viewer.rel, next);
     viewer.content = next;
     viewer.dirty = false;
-  } catch {
-    // Keep dirty so the caller aborts and beforeunload fires.
+  } catch (err) {
+    // Keep dirty so the caller aborts and beforeunload fires; surface the
+    // failure so the user knows why navigation is blocked.
+    setSaveState(viewer, "error", (err as Error).message);
   }
 }
 
