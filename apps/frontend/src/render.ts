@@ -355,6 +355,10 @@ function renderEditor(viewer: Viewer, value?: string): void {
   // .editor-scroll is the sole scroller in edit mode; suppress the
   // #viewer-body scroll so only one scrollbar shows.
   viewer.body.style.overflow = "hidden";
+  // Drop the read-only rendering first: the editor is absolutely
+  // positioned over #viewer-body, so anything left behind shows through
+  // as a second, misaligned copy of the text.
+  viewer.body.innerHTML = "";
   viewer.body.append(scroller);
   ta.focus();
 }

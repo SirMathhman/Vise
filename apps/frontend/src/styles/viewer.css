@@ -73,6 +73,30 @@
   letter-spacing: 0.06em;
 }
 
+/* Shared line primitives, used by the read-only view and (with the
+   overrides below) by the editor backdrop. Declared first so the more
+   specific editor rules that follow win on source order too. */
+#app #viewer-body .line {
+  display: flex;
+}
+
+#app #viewer-body .line-no {
+  flex: 0 0 auto;
+  min-width: 2.5ch;
+  margin-right: 1.25ch;
+  padding-right: 1ch;
+  border-right: 1px solid var(--border);
+  text-align: right;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+#app #viewer-body .line-text {
+  flex: 1 1 auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* Editable view: a transparent-text textarea overlaid on a live
    syntax-highlighted backdrop, with a sticky line-number gutter. The
    textarea and the backdrop share identical font metrics (inherited from
@@ -89,6 +113,8 @@
   font-family: var(--font-mono);
   font-size: 0.85rem;
   line-height: 1.6;
+  /* Inherited by both layers so a tab advances by the same width in each. */
+  tab-size: 8;
 }
 
 #app #viewer-body .editor-grid {
@@ -109,10 +135,21 @@
   user-select: none;
   position: sticky;
   left: 0;
+  /* .editor-code is positioned and comes later in DOM order, so without
+     this the code scrolls *over* the pinned gutter instead of under it. */
+  z-index: 1;
 }
 
+/* .editor-gutter already carries the width, gap and rule that separate the
+   numbers from the code. These spans also match the generic .line-no rule,
+   so without this reset that spacing is applied twice and edit mode indents
+   further than the read-only view. */
 #app #viewer-body .editor-gutter .line-no {
   display: block;
+  min-width: 0;
+  margin-right: 0;
+  padding-right: 0;
+  border-right: 0;
 }
 
 #app #viewer-body .editor-code {
@@ -130,6 +167,18 @@
 
 #app #viewer-body .editor-backdrop .line {
   display: block;
+  /* A blank line has no content box of its own; without this the backdrop
+     would be one line shorter than the textarea and drift out of sync. */
+  min-height: 1lh;
+}
+
+/* The textarea never wraps (white-space: pre), so the backdrop must not
+   either -- otherwise a long line pushes the colored text down a row. */
+#app #viewer-body .editor-backdrop .line-text {
+  display: inline;
+  white-space: pre;
+  word-break: normal;
+  overflow-wrap: normal;
 }
 
 #app #viewer-body .editor-input {
@@ -148,28 +197,8 @@
   font: inherit;
   line-height: inherit;
   white-space: pre;
-  tab-size: 8;
-}
-
-#app #viewer-body .line {
-  display: flex;
-}
-
-#app #viewer-body .line-no {
-  flex: 0 0 auto;
-  min-width: 2.5ch;
-  margin-right: 1.25ch;
-  padding-right: 1ch;
-  border-right: 1px solid var(--border);
-  text-align: right;
-  color: var(--text-muted);
-  user-select: none;
-}
-
-#app #viewer-body .line-text {
-  flex: 1 1 auto;
-  white-space: pre-wrap;
-  word-break: break-word;
+  word-break: normal;
+  overflow-wrap: normal;
 }
 
 /* ── Syntax highlighting tokens ──────────────────────────── */
