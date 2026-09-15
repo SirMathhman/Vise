@@ -254,11 +254,27 @@ const runCommand: LlmToolHandler = (args, root) => {
     // -NoProfile keeps it fast and free of the user's profile side effects;
     // -NonInteractive prevents any prompt from blocking the process.
     commandInFlight = true;
-    const child = spawn(
-      "powershell.exe",
-      ["-NoProfile", "-NonInteractive", "-Command", command],
-      { cwd: root }
-    );
+    // spawn can throw synchronously (e.g. a bad cwd, or a NUL byte in the
+    // command); in that case no child is created so the close/error handlers
+    // below never fire — reset the flag here or it wedges run_command forever.
+    let child: ChildProcess;
+    try {
+      child = spawn(
+        "powershell.exe",
+        ["-NoProfile", "-NonInteractive", "-Command", command],
+        { cwd: root }
+      );
+    } catch (err) {
+      commandInFlight = false;
+      reject(
+        new AppError(
+          500,
+          "spawn_error",
+          `failed to run command: ${err instanceof Error ? err.message : String(err)}`
+        )
+      );
+      return;
+    }
 
     const out: Buffer[] = [];
     const err: Buffer[] = [];
