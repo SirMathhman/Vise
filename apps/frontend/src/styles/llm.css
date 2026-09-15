@@ -58,23 +58,31 @@
 
 #app #llm #llm-tools {
   margin-bottom: 12px;
-  padding: 8px 10px;
+}
+
+#app #llm .llm-tools {
   border: 1px solid var(--border);
   border-radius: 2px;
   background: var(--bg-elevated);
+  padding: 8px 10px;
 }
 
 #app #llm .llm-tools-title {
-  margin: 0 0 6px;
+  cursor: pointer;
   font-family: var(--font-heading);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   font-size: 0.68rem;
   color: var(--text-muted);
+  transition: color 0.15s ease;
+}
+
+#app #llm .llm-tools-title:hover {
+  color: var(--text);
 }
 
 #app #llm .llm-tools-list {
-  margin: 0;
+  margin: 8px 0 0;
   padding: 0;
   list-style: none;
   display: flex;

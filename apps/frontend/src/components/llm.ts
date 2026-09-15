@@ -222,7 +222,9 @@ function toolCallLabel(tc: LlmToolCall): string {
 
 /** Render the available tools (name + description) into the panel. */
 function renderToolList(container: HTMLElement): void {
-  const title = document.createElement("h3");
+  const details = document.createElement("details");
+  details.className = "llm-tools";
+  const title = document.createElement("summary");
   title.className = "llm-tools-title";
   title.textContent = "Tools";
   const list = document.createElement("ul");
@@ -238,7 +240,8 @@ function renderToolList(container: HTMLElement): void {
     li.append(name, desc);
     list.append(li);
   }
-  container.append(title, list);
+  details.append(title, list);
+  container.append(details);
 }
 
 function renderHistoryMessage(response: HTMLElement, m: LlmMessage): void {
