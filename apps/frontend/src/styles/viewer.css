@@ -73,21 +73,78 @@
   letter-spacing: 0.06em;
 }
 
-#app #viewer-body .editor {
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  padding: 0;
-  background: transparent;
-  color: var(--text);
+/* Editable view: a transparent-text textarea overlaid on a live
+   syntax-highlighted backdrop, with a sticky line-number gutter. The
+   textarea and the backdrop share identical font metrics (inherited from
+   .editor-scroll) and no wrapping, so the highlighted text lines up
+   exactly with the characters the user is editing. */
+#app #viewer-body {
+  position: relative;
+}
+
+#app #viewer-body .editor-scroll {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
   font-family: var(--font-mono);
   font-size: 0.85rem;
   line-height: 1.6;
-  border: none;
-  outline: none;
+}
+
+#app #viewer-body .editor-grid {
+  display: flex;
+  min-width: 100%;
+  min-height: 100%;
+}
+
+#app #viewer-body .editor-gutter {
+  flex: 0 0 auto;
+  min-width: 2.5ch;
+  margin-right: 1.25ch;
+  padding-right: 1ch;
+  border-right: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--text-muted);
+  text-align: right;
+  user-select: none;
+  position: sticky;
+  left: 0;
+}
+
+#app #viewer-body .editor-gutter .line-no {
+  display: block;
+}
+
+#app #viewer-body .editor-code {
+  position: relative;
+  flex: 1 1 auto;
+}
+
+#app #viewer-body .editor-backdrop {
+  margin: 0;
+}
+
+#app #viewer-body .editor-backdrop .line {
+  display: block;
+}
+
+#app #viewer-body .editor-input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--text);
   resize: none;
+  outline: none;
+  overflow: hidden;
+  box-sizing: border-box;
+  font: inherit;
+  line-height: inherit;
   white-space: pre;
-  overflow: auto;
+  tab-size: 8;
 }
 
 #app #viewer-body .line {

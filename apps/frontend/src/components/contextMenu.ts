@@ -37,7 +37,7 @@ export function showMenu(
   menu: HTMLDivElement,
   x: number,
   y: number,
-  items: MenuItem[],
+  items: MenuItem[]
 ): void {
   menu.innerHTML = "";
   for (const item of items) {

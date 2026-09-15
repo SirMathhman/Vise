@@ -293,19 +293,65 @@ function renderEditor(viewer: Viewer, value?: string): void {
   unsaved.textContent = "\u25CF unsaved";
   viewer.actions.append(unsaved);
 
-  viewer.body.innerHTML = "";
+  const text = value ?? viewer.content ?? "";
+
+  // A transparent-text textarea sits on top of a live-highlighted backdrop.
+  // Both share identical font metrics (inherited from .editor-scroll) and
+  // no wrapping, so the colored text lines up exactly with the edited text.
+  const scroller = document.createElement("div");
+  scroller.className = "editor-scroll";
+  const grid = document.createElement("div");
+  grid.className = "editor-grid";
+  const gutter = document.createElement("div");
+  gutter.className = "editor-gutter";
+  gutter.setAttribute("aria-hidden", "true");
+  const code = document.createElement("div");
+  code.className = "editor-code";
+  const backdrop = document.createElement("pre");
+  backdrop.className = "editor-backdrop";
   const ta = document.createElement("textarea");
-  ta.className = "editor";
+  ta.className = "editor-input";
   ta.spellcheck = false;
   ta.setAttribute("aria-label", "file contents");
-  ta.value = value ?? viewer.content ?? "";
-  viewer.dirty = ta.value !== (viewer.content ?? "");
+
+  const paint = (): void => {
+    const lines = ta.value.split(/\r?\n/);
+    const gut = document.createDocumentFragment();
+    const back = document.createDocumentFragment();
+    for (let i = 0; i < lines.length; i++) {
+      const no = document.createElement("span");
+      no.className = "line-no";
+      no.textContent = String(i + 1);
+      gut.append(no);
+      const line = document.createElement("div");
+      line.className = "line";
+      const lineText = document.createElement("span");
+      lineText.className = "line-text";
+      appendHighlighted(lineText, lines[i]);
+      line.append(lineText);
+      back.append(line);
+    }
+    gutter.textContent = "";
+    gutter.append(gut);
+    backdrop.textContent = "";
+    backdrop.append(back);
+  };
+
+  ta.value = text;
+  paint();
+  viewer.dirty = text !== (viewer.content ?? "");
   unsaved.hidden = !viewer.dirty;
   ta.addEventListener("input", () => {
+    paint();
     viewer.dirty = ta.value !== (viewer.content ?? "");
     unsaved.hidden = !viewer.dirty;
   });
-  viewer.body.append(ta);
+
+  code.append(backdrop, ta);
+  grid.append(gutter, code);
+  scroller.append(grid);
+  viewer.body.append(scroller);
+  ta.focus();
 }
 
 function renderHighlighted(body: HTMLPreElement, content: string): void {
@@ -328,7 +374,7 @@ function renderHighlighted(body: HTMLPreElement, content: string): void {
 }
 
 async function saveFile(viewer: Viewer): Promise<void> {
-  const ta = viewer.body.querySelector<HTMLTextAreaElement>(".editor");
+  const ta = viewer.body.querySelector<HTMLTextAreaElement>(".editor-input");
   if (!ta || !viewer.rel) return;
   const original = viewer.content ?? "";
   const next = ta.value;

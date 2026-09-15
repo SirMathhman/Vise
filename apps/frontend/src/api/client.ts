@@ -80,7 +80,7 @@ export async function deleteFile(rel: string): Promise<void> {
 export async function createEntry(
   kind: "file" | "directory",
   parentRel: string,
-  name: string,
+  name: string
 ): Promise<void> {
   const rel = parentRel ? `${parentRel}/${name}` : name;
   const endpoint = kind === "directory" ? "/api/dir" : "/api/file";

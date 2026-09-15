@@ -8,7 +8,7 @@ import { createEntry } from "../api/client.js";
 export function showCreateForm(
   kind: "file" | "directory",
   parentRel: string,
-  onCreated: (name: string) => void,
+  onCreated: (name: string) => void
 ): void {
   const overlay = document.createElement("div");
   overlay.className = "create-overlay";
@@ -98,6 +98,6 @@ export function showCreateForm(
     (e) => {
       if (e.key === "Escape") overlay.remove();
     },
-    { once: true },
+    { once: true }
   );
 }
