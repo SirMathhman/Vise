@@ -1,6 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
-import { LLM_TOOL_NAMES, type LlmToolName } from "@vise/shared";
+import type { LlmToolName } from "@vise/shared";
 import type { AppContext } from "../context.js";
 import { AppError, badRequest, notFound } from "../errors.js";
 import {
@@ -16,9 +16,13 @@ import { listDir } from "./ls.js";
 /** The maximum number of lines a single read_file call may return. */
 const MAX_LINES_PER_READ = 300;
 
-/** True when the model-supplied name is one of the tools we expose. */
+/**
+ * True when the model-supplied name is one of the tools we expose. Derived from
+ * the handler record above, so the shared package is used type-only here and
+ * the backend stays free of runtime dependencies.
+ */
 function isLlmToolName(value: string): value is LlmToolName {
-  return (LLM_TOOL_NAMES as readonly string[]).includes(value);
+  return value in tools;
 }
 
 /**
