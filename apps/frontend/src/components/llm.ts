@@ -2,6 +2,7 @@ import {
   executeLlmTool,
   type LlmMessage,
   type LlmToolCall,
+  type LlmUsage,
   listLlmModels,
   sendLlmMessage,
 } from "../api/client.js";
@@ -68,13 +69,31 @@ export function setupLlm(root: HTMLElement): void {
   const response = root.querySelector<HTMLElement>("#llm-response");
   const send = root.querySelector<HTMLButtonElement>("#llm-send");
   const clear = root.querySelector<HTMLButtonElement>("#llm-clear");
-  if (!model || !prompt || !response || !send) return;
+  const context = root.querySelector<HTMLElement>("#llm-context");
+  if (!model || !prompt || !response || !send || !context) return;
 
   const tools = root.querySelector<HTMLElement>("#llm-tools");
   if (tools) renderToolList(tools);
 
   const history: LlmMessage[] = loadHistory();
   const savedModel = loadModel();
+
+  /** Context window (n_ctx) for each model id, as reported by the proxy. */
+  const contextWindow = new Map<string, number>();
+  let lastPromptTokens: number | undefined;
+  const renderContext = () => {
+    const cap = contextWindow.get(model.value);
+    if (lastPromptTokens === undefined || !cap) {
+      context.textContent = "";
+      return;
+    }
+    const pct = (lastPromptTokens / cap) * 100;
+    context.textContent = `Context: ${lastPromptTokens.toLocaleString()} / ${cap.toLocaleString()} tokens (${pct.toFixed(1)}%)`;
+    context.title =
+      "Tokens sent to the model in the latest call, over the model's " +
+      "context window.";
+  };
+  renderContext();
   if (history.length === 0) {
     setLlmHint(response, "Start a conversation.");
   } else {
@@ -95,6 +114,9 @@ export function setupLlm(root: HTMLElement): void {
       model.innerHTML = models
         .map((m) => `<option value="${m.id}">${m.id}</option>`)
         .join("");
+      for (const m of models) {
+        if (m.context) contextWindow.set(m.id, m.context);
+      }
       // Restore the saved choice if the proxy still serves it; otherwise
       // fall back to the proxy's default (first option).
       if (savedModel && models.some((m) => m.id === savedModel)) {
@@ -116,9 +138,11 @@ export function setupLlm(root: HTMLElement): void {
     send.disabled = true;
     setLlmHint(response, "Thinking…");
     void runTurn(history, m, response, text)
-      .then((reply) => {
+      .then((result) => {
         removeHint(response);
-        renderMessage(response, "assistant", reply);
+        renderMessage(response, "assistant", result.text);
+        if (result.usage) lastPromptTokens = result.usage.promptTokens;
+        renderContext();
         saveState(history, model.value);
       })
       .catch((e: unknown) => {
@@ -134,8 +158,10 @@ export function setupLlm(root: HTMLElement): void {
 
   const doClear = () => {
     history.length = 0;
+    lastPromptTokens = undefined;
     response.innerHTML = "";
     setLlmHint(response, "Start a conversation.");
+    renderContext();
     saveState(history, model.value);
   };
 
@@ -170,14 +196,21 @@ const SYSTEM_PROMPT =
   "workspace root and returns its output and exit status. Base your answer " +
   "on the tools' results.";
 
+/** The outcome of a turn: the assistant text and its final token usage. */
+export interface TurnResult {
+  text: string;
+  usage?: LlmUsage;
+}
+
 async function runTurn(
   history: LlmMessage[],
   model: string,
   response: HTMLElement,
   userText: string
-): Promise<string> {
+): Promise<TurnResult> {
   const preLength = history.length;
   const domBefore = response.childElementCount;
+  let lastUsage: LlmUsage | undefined;
   try {
     history.push({ role: "user", content: userText });
     renderMessage(response, "user", userText);
@@ -187,6 +220,7 @@ async function runTurn(
         ...history,
       ];
       const reply = await sendLlmMessage(messages, model, llmToolDefinitions);
+      lastUsage = reply.usage ?? lastUsage;
       if (reply.tool_calls && reply.tool_calls.length > 0) {
         history.push({
           role: "assistant",
@@ -209,12 +243,12 @@ async function runTurn(
       }
       const text = reply.content ?? "";
       history.push({ role: "assistant", content: text });
-      return text;
+      return { text, usage: lastUsage };
     }
     const text =
       "I stopped after several directory lookups without a final answer.";
     history.push({ role: "assistant", content: text });
-    return text;
+    return { text, usage: lastUsage };
   } catch (err) {
     history.length = preLength;
     while (response.childElementCount > domBefore) {

@@ -18,6 +18,14 @@
   padding: 8px 10px;
 }
 
+#app #llm .llm-context {
+  margin: 0 0 12px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  min-height: 1em;
+}
+
 #app #llm .btn {
   flex: 0 0 auto;
   font-family: var(--font-heading);

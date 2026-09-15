@@ -22,9 +22,11 @@ export interface FileResponse {
   content: string;
 }
 
-/** A model id served by the LLM proxy (see `/llm/v1/models`). */
+/** A model served by the LLM proxy (see `/llm/v1/models`). */
 export interface LlmModel {
   id: string;
+  /** The model's context window in tokens, if the proxy reports it. */
+  context?: number;
 }
 
 /** GET the backend health status. */
@@ -113,8 +115,13 @@ export async function listLlmModels(): Promise<LlmModel[]> {
     headers: { Authorization: `Bearer ${LLM_API_KEY}` },
   });
   if (!res.ok) return fail(res);
-  const data = (await res.json()) as { data?: { id: string }[] };
-  return (data.data ?? []).map((m) => ({ id: m.id }));
+  const data = (await res.json()) as {
+    data?: { id: string; meta?: { n_ctx?: number } }[];
+  };
+  return (data.data ?? []).map((m) => ({
+    id: m.id,
+    context: m.meta?.n_ctx,
+  }));
 }
 
 /** A single turn in a chat conversation, in OpenAI-compatible wire format. */
@@ -134,10 +141,19 @@ export interface LlmToolCall {
   function: { name: string; arguments: string };
 }
 
+/** Token accounting for a single completion, as reported by the proxy. */
+export interface LlmUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
 /** The model's reply for one turn: either text or a set of tool calls. */
 export interface LlmAssistantMessage {
   content: string | null;
   tool_calls?: LlmToolCall[];
+  /** Tokens consumed by the last completion (the prompt that was sent). */
+  usage?: LlmUsage;
 }
 
 /** An OpenAI-compatible tool definition. */
@@ -175,11 +191,23 @@ export async function sendLlmMessage(
         tool_calls?: LlmToolCall[];
       };
     }[];
+    usage?: {
+      prompt_tokens?: number;
+      completion_tokens?: number;
+      total_tokens?: number;
+    };
   };
   const message = data.choices?.[0]?.message;
   return {
     content: message?.content ?? null,
     tool_calls: message?.tool_calls,
+    usage: data.usage
+      ? {
+          promptTokens: data.usage.prompt_tokens ?? 0,
+          completionTokens: data.usage.completion_tokens ?? 0,
+          totalTokens: data.usage.total_tokens ?? 0,
+        }
+      : undefined,
   };
 }
 
