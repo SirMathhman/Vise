@@ -147,8 +147,11 @@ const editFileRange: LlmToolHandler = async (args, root) => {
   // startLine .. (endLine - 1). In 0-based terms the replacement spans
   // [startLine - 1, endLine - 1), so the "after" segment starts at index
   // endLine - 1. clampEnd allows endLine to reach lines.length + 1 (replace
-  // through the last line) and clamps anything beyond.
+  // through the last line) and clamps anything beyond. Preserve the file's
+  // dominant line ending so a one-line edit doesn't re-normalize the whole
+  // file to LF.
   const lines = buf.toString("utf-8").split(/\r?\n/);
+  const eol = buf.includes("\r\n") ? "\r\n" : "\n";
   const clampEnd = Math.min(endLine, lines.length + 1);
   if (clampEnd - startLine > MAX_LINES_PER_EDIT) {
     throw badRequest(
@@ -163,7 +166,7 @@ const editFileRange: LlmToolHandler = async (args, root) => {
     ...newLines,
     ...lines.slice(clampEnd - 1),
   ];
-  const resultBuf = Buffer.from(result.join("\n"), "utf-8");
+  const resultBuf = Buffer.from(result.join(eol), "utf-8");
   if (resultBuf.length > MAX_BYTES) {
     throw badRequest(
       `result too large to save: ${resultBuf.length} bytes (max ${MAX_BYTES})`
