@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { type ChildProcess, execSync, spawn } from "node:child_process";
 import { readFile, stat, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { LlmToolName } from "@vise/shared";
@@ -34,6 +34,34 @@ const MAX_OUTPUT_BYTES = 1024 * 1024; // 1 MB
 const COMMAND_TIMEOUT_MS = 30_000; // 30 seconds
 
 /**
+ * Kills a spawned process and its entire process tree. On Windows,
+ * `child.kill()` signals only the top-level process (e.g. powershell.exe);
+ * any descendants (node, pnpm, git, …) survive and keep running. We kill the
+ * tree with `taskkill /T /F` so a hung command (and its children) die together.
+ */
+function killProcessTree(child: ChildProcess): void {
+  const pid = child.pid;
+  if (pid === undefined) {
+    child.kill();
+    return;
+  }
+  try {
+    execSync(`taskkill /PID ${pid} /T /F`, { stdio: "ignore" });
+  } catch {
+    // The process may already have exited; fall back to a plain kill.
+    child.kill();
+  }
+}
+
+/**
+ * Concurrency guard: at most one command runs at a time. A single model reply
+ * can contain multiple tool_calls, and overlapping turns must not pile up
+ * parallel shells. Returns false (so the caller can reject) when a command is
+ * already in flight.
+ */
+let commandInFlight = false;
+
+/**
  * True when the model-supplied name is one of the tools we expose. Derived from
  * the handler record above, so the shared package is used type-only here and
  * the backend stays free of runtime dependencies.
@@ -50,7 +78,7 @@ function isLlmToolName(value: string): value is LlmToolName {
  */
 type LlmToolHandler = (
   args: Record<string, unknown>,
-  root: string
+  root: string,
 ) => Promise<string>;
 
 /** List the contents of a directory in the workspace (root-scoped). */
@@ -61,7 +89,7 @@ const listDirectory: LlmToolHandler = async (args, root) => {
   const lines = items.map((item) =>
     item.kind === "directory"
       ? `  [dir]  ${item.name}`
-      : `  [file] ${item.name}`
+      : `  [file] ${item.name}`,
   );
   return `Directory "${dir}" contains:\n${lines.join("\n")}`;
 };
@@ -89,7 +117,7 @@ const readFileRange: LlmToolHandler = async (args, root) => {
   const cap = endLine ?? startLine + MAX_LINES_PER_READ;
   if (cap - startLine > MAX_LINES_PER_READ) {
     throw badRequest(
-      `range too large: ${cap - startLine} lines (max ${MAX_LINES_PER_READ})`
+      `range too large: ${cap - startLine} lines (max ${MAX_LINES_PER_READ})`,
     );
   }
 
@@ -144,7 +172,7 @@ const editFileRange: LlmToolHandler = async (args, root) => {
   if (!info.isFile()) throw notFound();
   if (info.size > MAX_BYTES) {
     throw badRequest(
-      `file too large to edit: ${info.size} bytes (max ${MAX_BYTES})`
+      `file too large to edit: ${info.size} bytes (max ${MAX_BYTES})`,
     );
   }
   const buf = await readFile(target);
@@ -162,7 +190,7 @@ const editFileRange: LlmToolHandler = async (args, root) => {
   const clampEnd = Math.min(endLine, lines.length + 1);
   if (clampEnd - startLine > MAX_LINES_PER_EDIT) {
     throw badRequest(
-      `range too large: ${clampEnd - startLine} lines (max ${MAX_LINES_PER_EDIT})`
+      `range too large: ${clampEnd - startLine} lines (max ${MAX_LINES_PER_EDIT})`,
     );
   }
   // An empty content deletes the range; otherwise the content's lines replace
@@ -176,7 +204,7 @@ const editFileRange: LlmToolHandler = async (args, root) => {
   const resultBuf = Buffer.from(result.join(eol), "utf-8");
   if (resultBuf.length > MAX_BYTES) {
     throw badRequest(
-      `result too large to save: ${resultBuf.length} bytes (max ${MAX_BYTES})`
+      `result too large to save: ${resultBuf.length} bytes (max ${MAX_BYTES})`,
     );
   }
   await writeFile(target, resultBuf);
@@ -209,67 +237,84 @@ const createFile: LlmToolHandler = async (args, root) => {
  * Run a PowerShell command in the workspace root and return its combined
  * output and exit status as model-readable text. The command runs
  * non-interactively: it is spawned in its own process, given a hard timeout
- * (killed as hung when exceeded), and its stdout/stderr are capped at
- * MAX_OUTPUT_BYTES so a chatty command can't flood the model's context. The
- * working directory is the workspace root, matching the file tools, so
- * relative paths in the command resolve against it.
+ * (killed as hung when exceeded, along with its whole process tree), and its
+ * stdout/stderr are capped at MAX_OUTPUT_BYTES so a chatty command can't flood
+ * the model's context. stdout and stderr are kept distinct in the result so the
+ * model can tell a failure's diagnostics apart from normal output. At most one
+ * command runs at a time. The working directory is the workspace root, matching
+ * the file tools, so relative paths in the command resolve against it.
  */
 const runCommand: LlmToolHandler = (args, root) => {
   const command = typeof args.command === "string" ? args.command : "";
   if (!command) throw badRequest("command is required");
+  if (commandInFlight)
+    throw badRequest("a command is already running; wait for it to finish");
 
   return new Promise<string>((resolvePromise, reject) => {
     // -NoProfile keeps it fast and free of the user's profile side effects;
     // -NonInteractive prevents any prompt from blocking the process.
+    commandInFlight = true;
     const child = spawn(
       "powershell.exe",
       ["-NoProfile", "-NonInteractive", "-Command", command],
-      { cwd: root }
+      { cwd: root },
     );
 
-    let stdout = "";
-    let stderr = "";
+    const out: Buffer[] = [];
+    const err: Buffer[] = [];
+    let outBytes = 0;
+    let errBytes = 0;
     let truncated = false;
     let timedOut = false;
 
     const onChunk = (chunk: Buffer, target: "out" | "err") => {
       if (truncated) return;
-      const text = chunk.toString("utf-8");
-      if (target === "out") stdout += text;
-      else stderr += text;
-      if (stdout.length + stderr.length > MAX_OUTPUT_BYTES) {
-        truncated = true;
+      if (target === "out") {
+        out.push(chunk);
+        outBytes += chunk.length;
+      } else {
+        err.push(chunk);
+        errBytes += chunk.length;
       }
+      if (outBytes + errBytes > MAX_OUTPUT_BYTES) truncated = true;
     };
-    child.stdout.on("data", (c) => onChunk(c, "out"));
-    child.stderr.on("data", (c) => onChunk(c, "err"));
+    child.stdout?.on("data", (c: Buffer) => onChunk(c, "out"));
+    child.stderr?.on("data", (c: Buffer) => onChunk(c, "err"));
 
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill();
+      killProcessTree(child);
     }, COMMAND_TIMEOUT_MS);
+
+    const finish = () => {
+      commandInFlight = false;
+    };
 
     child.on("error", (err) => {
       clearTimeout(timer);
+      finish();
       reject(
         new AppError(
           500,
           "spawn_error",
-          `failed to run command: ${err.message}`
-        )
+          `failed to run command: ${err.message}`,
+        ),
       );
     });
 
     child.on("close", (code, signal) => {
       clearTimeout(timer);
-      const combined = `${stdout}${stderr ? `\n${stderr}` : ""}`.trimEnd();
+      finish();
+      const stdout = Buffer.concat(out).toString("utf-8").trimEnd();
+      const stderr = Buffer.concat(err).toString("utf-8").trimEnd();
+      const combined = stderr ? `${stdout}\n[stderr]\n${stderr}` : stdout;
       const body = truncated
         ? `${combined.slice(0, MAX_OUTPUT_BYTES)}\n… (output capped at ${MAX_OUTPUT_BYTES} bytes)`
         : combined;
       const status = signal != null ? `signal ${signal}` : `exit ${code ?? 0}`;
       if (timedOut) {
         resolvePromise(
-          `$ ${command}\ntimed out after ${COMMAND_TIMEOUT_MS / 1000}s\n${body}`
+          `$ ${command}\ntimed out after ${COMMAND_TIMEOUT_MS / 1000}s\n${body}`,
         );
       } else {
         resolvePromise(`$ ${command}\n${status}\n${body}`.trimEnd());
