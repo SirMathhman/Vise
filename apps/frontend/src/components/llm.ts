@@ -4,10 +4,54 @@ import {
   sendLlmMessage,
 } from "../api/client.js";
 
+/** localStorage keys for the persisted conversation and model choice. */
+const STORAGE_HISTORY = "vise:llm:history";
+const STORAGE_MODEL = "vise:llm:model";
+
+/** Persist the conversation and the selected model across page reloads. */
+function saveState(history: LlmMessage[], model: string): void {
+  try {
+    localStorage.setItem(STORAGE_HISTORY, JSON.stringify(history));
+    localStorage.setItem(STORAGE_MODEL, model);
+  } catch {
+    // Storage may be unavailable (private mode, quota); persistence is a
+    // best-effort enhancement, so failures are ignored.
+  }
+}
+
+/** Restore the persisted conversation, or an empty one on failure. */
+function loadHistory(): LlmMessage[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_HISTORY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (m): m is LlmMessage =>
+        typeof m === "object" &&
+        m !== null &&
+        (m as LlmMessage).role in { user: true, assistant: true } &&
+        typeof (m as LlmMessage).content === "string"
+    );
+  } catch {
+    return [];
+  }
+}
+
+function loadModel(): string {
+  try {
+    return localStorage.getItem(STORAGE_MODEL) ?? "";
+  } catch {
+    return "";
+  }
+}
+
 /**
  * Wire up the LLM panel. Loads the model list into the selector and connects
  * the Send button (and Ctrl/Cmd+Enter) to a chat completion that renders the
- * full conversation into the response list. Clear resets the history.
+ * full conversation into the response list. Clear resets the history. The
+ * conversation and selected model persist across page reloads via
+ * localStorage.
  */
 export function setupLlm(root: HTMLElement): void {
   const model = root.querySelector<HTMLSelectElement>("#llm-model");
@@ -17,7 +61,18 @@ export function setupLlm(root: HTMLElement): void {
   const clear = root.querySelector<HTMLButtonElement>("#llm-clear");
   if (!model || !prompt || !response || !send) return;
 
-  const history: LlmMessage[] = [];
+  const history: LlmMessage[] = loadHistory();
+  const savedModel = loadModel();
+  if (history.length === 0) {
+    setLlmHint(response, "Start a conversation.");
+  } else {
+    // Drop the static "Start a conversation." hint from the markup, then
+    // re-render the restored conversation.
+    response.innerHTML = "";
+    for (const m of history) {
+      renderMessage(response, m.role, m.content);
+    }
+  }
 
   listLlmModels()
     .then((models) => {
@@ -28,6 +83,11 @@ export function setupLlm(root: HTMLElement): void {
       model.innerHTML = models
         .map((m) => `<option value="${m.id}">${m.id}</option>`)
         .join("");
+      // Restore the saved choice if the proxy still serves it; otherwise
+      // fall back to the proxy's default (first option).
+      if (savedModel && models.some((m) => m.id === savedModel)) {
+        model.value = savedModel;
+      }
     })
     .catch((e: unknown) =>
       setLlmError(
@@ -43,6 +103,7 @@ export function setupLlm(root: HTMLElement): void {
     history.push({ role: "user", content: text });
     renderMessage(response, "user", text);
     prompt.value = "";
+    saveState(history, m);
     send.disabled = true;
     setLlmHint(response, "Thinking…");
     sendLlmMessage(history, m)
@@ -50,6 +111,7 @@ export function setupLlm(root: HTMLElement): void {
         history.push({ role: "assistant", content: reply });
         removeHint(response);
         renderMessage(response, "assistant", reply);
+        saveState(history, model.value);
       })
       .catch((e: unknown) => {
         history.pop();
@@ -67,10 +129,12 @@ export function setupLlm(root: HTMLElement): void {
     history.length = 0;
     response.innerHTML = "";
     setLlmHint(response, "Start a conversation.");
+    saveState(history, model.value);
   };
 
   send.addEventListener("click", submit);
   clear?.addEventListener("click", doClear);
+  model.addEventListener("change", () => saveState(history, model.value));
   prompt.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") submit();
   });
