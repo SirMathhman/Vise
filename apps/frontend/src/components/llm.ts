@@ -329,9 +329,13 @@ async function summarizeConversation(
   history: ChatMessage[],
   model: string
 ): Promise<string> {
+  // Reuse the compacted conversation so the rescue call isn't itself larger
+  // than the prompt that just measured >= 80% of the window; only the system
+  // prompt differs (the summary brief instead of the tool instructions).
+  const compacted = buildMessages(history);
   const messages: LlmMessage[] = [
     { role: "system", content: SUMMARY_PROMPT },
-    ...history,
+    ...compacted.slice(1),
   ];
   const reply = await sendLlmMessage(messages, model);
   return (reply.content ?? "").trim();
