@@ -1,75 +1,68 @@
 /**
- * Registry of the tools the LLM panel exposes to the model. Each entry pairs
- * the OpenAI tool definition (sent with every request) with its executor (run
- * in the browser through the sandboxed `/api` wrappers). Adding a tool means
- * adding one entry here — the panel maps over this list for both the tool
- * definitions and the dispatch, so it never hardcodes tool names.
+ * Definitions of the tools the LLM panel exposes to the model. Each entry is
+ * the OpenAI tool definition sent with every chat request. Execution happens
+ * on the backend (see /api/llm/tool); the panel only forwards the model's
+ * calls and renders the results. Adding a tool means adding one definition
+ * here and one handler on the backend — neither side hardcodes tool names
+ * beyond this shared list.
  */
-import { type LlmTool, type LlmToolCall, listDir } from "../api/client.js";
+import type { LlmTool } from "../api/client.js";
 
-/** A runnable tool: the OpenAI definition paired with its executor. */
-export interface LlmToolDef {
-  definition: LlmTool;
-  /** Run the tool and return a text result the model can read (errors included). */
-  run: (args: Record<string, unknown>) => Promise<string>;
-}
-
-/** List the contents of a directory in the workspace (root-scoped via /api/ls). */
-const listDirectory: LlmToolDef = {
-  definition: {
-    type: "function",
-    function: {
-      name: "list_directory",
-      description:
-        'List the files and subdirectories in a directory. Use this to answer questions about what files or folders exist. The path is relative to the workspace root; use an empty string ("") for the root.',
-      parameters: {
-        type: "object",
-        properties: {
-          path: {
-            type: "string",
-            description:
-              'Directory path relative to the workspace root. Use "" for the root.',
-          },
+/** List the contents of a directory in the workspace (root-scoped). */
+const listDirectory: LlmTool = {
+  type: "function",
+  function: {
+    name: "list_directory",
+    description:
+      'List the files and subdirectories in a directory. Use this to answer questions about what files or folders exist. The path is relative to the workspace root; use an empty string ("") for the root.',
+    parameters: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description:
+            'Directory path relative to the workspace root. Use "" for the root.',
         },
-        required: ["path"],
       },
+      required: ["path"],
     },
-  },
-  run: async (args) => {
-    const path = typeof args.path === "string" ? args.path : "";
-    const data = await listDir(path);
-    const lines = data.items.map((item) =>
-      item.kind === "directory"
-        ? `  [dir]  ${item.name}`
-        : `  [file] ${item.name}`
-    );
-    return `Directory "${data.path}" contains:\n${lines.join("\n")}`;
   },
 };
 
-/** All tools available to the model, in a stable order. */
-export const llmTools: LlmToolDef[] = [listDirectory];
-
-/** The OpenAI tool definitions to send with each chat request. */
-export const llmToolDefinitions: LlmTool[] = llmTools.map((t) => t.definition);
-
 /**
- * Execute a single tool call by name and return a model-readable string.
- * Unknown tools and thrown errors are returned as text so the model can read
- * the problem and adapt, rather than the tool loop crashing.
+ * Read a range of lines from a file in the workspace (root-scoped). Lines are
+ * 1-based: start_line is inclusive, end_line is exclusive. At most 300 lines
+ * are returned per call, so long files are read one window at a time.
  */
-export async function executeLlmTool(tc: LlmToolCall): Promise<string> {
-  const tool = llmTools.find(
-    (t) => t.definition.function.name === tc.function.name
-  );
-  if (!tool) return `Error: unknown tool "${tc.function.name}".`;
-  try {
-    const args = JSON.parse(tc.function.arguments || "{}") as Record<
-      string,
-      unknown
-    >;
-    return await tool.run(args);
-  } catch (e) {
-    return `Error: ${e instanceof Error ? e.message : e}`;
-  }
-}
+const readFile: LlmTool = {
+  type: "function",
+  function: {
+    name: "read_file",
+    description:
+      "Read a range of lines from a file and return them. Use this to answer questions about a file's content. The path is relative to the workspace root. Lines are 1-based: start_line is inclusive, end_line is exclusive. At most 300 lines are returned per call; to read a long file, call this repeatedly with advancing start_line values.",
+    parameters: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description:
+            'File path relative to the workspace root (e.g. "src/main.ts").',
+        },
+        start_line: {
+          type: "number",
+          description:
+            "First line to read, 1-based and inclusive. Defaults to 1.",
+        },
+        end_line: {
+          type: "number",
+          description:
+            "Line to stop before, 1-based and exclusive. Defaults to start_line + 300. Must be greater than start_line and within 300 lines of it.",
+        },
+      },
+      required: ["path"],
+    },
+  },
+};
+
+/** All tool definitions available to the model, in a stable order. */
+export const llmToolDefinitions: LlmTool[] = [listDirectory, readFile];
