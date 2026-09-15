@@ -1,5 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
+import { LLM_TOOL_NAMES, type LlmToolName } from "@vise/shared";
 import type { AppContext } from "../context.js";
 import { AppError, badRequest, notFound } from "../errors.js";
 import {
@@ -14,6 +15,11 @@ import { listDir } from "./ls.js";
 
 /** The maximum number of lines a single read_file call may return. */
 const MAX_LINES_PER_READ = 300;
+
+/** True when the model-supplied name is one of the tools we expose. */
+function isLlmToolName(value: string): value is LlmToolName {
+  return (LLM_TOOL_NAMES as readonly string[]).includes(value);
+}
 
 /**
  * A tool the LLM can run against the workspace. The model calls these through
@@ -101,8 +107,12 @@ const createFile: LlmToolHandler = async (args, root) => {
   return `Created file "${rel}".`;
 };
 
-/** The tools available to the model, keyed by the name the model uses. */
-const tools: Record<string, LlmToolHandler> = {
+/**
+ * The tools available to the model, keyed by the name the model uses. The keys
+ * are checked against the shared LlmToolName union, so a renamed or misspelled
+ * tool name here is a compile error.
+ */
+const tools: Record<LlmToolName, LlmToolHandler> = {
   list_directory: listDirectory,
   read_file: readFileRange,
   create_directory: createDirectory,
@@ -139,7 +149,7 @@ export function llmToolRoutes(ctx: AppContext): Route[] {
           }
         }
 
-        const tool = tools[name];
+        const tool = isLlmToolName(name) ? tools[name] : undefined;
         if (!tool) {
           sendJson(res, 200, { result: `Error: unknown tool "${name}".` });
           return;

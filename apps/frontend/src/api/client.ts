@@ -4,6 +4,7 @@
  * HTTP status). Views call these instead of `fetch` directly so that JSON
  * parsing and error normalization live in one place.
  */
+import type { LlmToolName } from "@vise/shared";
 
 export interface DirEntry {
   name: string;
@@ -143,7 +144,8 @@ export interface LlmAssistantMessage {
 export interface LlmTool {
   type: "function";
   function: {
-    name: string;
+    /** One of the shared LLM tool names; checked against the backend. */
+    name: LlmToolName;
     description: string;
     parameters: Record<string, unknown>;
   };
