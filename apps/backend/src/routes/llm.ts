@@ -33,7 +33,7 @@ function isLlmToolName(value: string): value is LlmToolName {
  */
 type LlmToolHandler = (
   args: Record<string, unknown>,
-  root: string
+  root: string,
 ) => Promise<string>;
 
 /** List the contents of a directory in the workspace (root-scoped). */
@@ -44,7 +44,7 @@ const listDirectory: LlmToolHandler = async (args, root) => {
   const lines = items.map((item) =>
     item.kind === "directory"
       ? `  [dir]  ${item.name}`
-      : `  [file] ${item.name}`
+      : `  [file] ${item.name}`,
   );
   return `Directory "${dir}" contains:\n${lines.join("\n")}`;
 };
@@ -72,7 +72,7 @@ const readFileRange: LlmToolHandler = async (args, root) => {
   const cap = endLine ?? startLine + MAX_LINES_PER_READ;
   if (cap - startLine > MAX_LINES_PER_READ) {
     throw badRequest(
-      `range too large: ${cap - startLine} lines (max ${MAX_LINES_PER_READ})`
+      `range too large: ${cap - startLine} lines (max ${MAX_LINES_PER_READ})`,
     );
   }
 
