@@ -4,12 +4,11 @@ import {
   getFile,
   health,
   listDir,
-  listLlmModels,
   putFile,
-  sendLlmMessage,
 } from "./api/client.js";
 import { makeContextMenu, showMenu } from "./components/contextMenu.js";
 import { showCreateForm } from "./components/createDialog.js";
+import { setupLlm } from "./components/llm.js";
 import { appendHighlighted } from "./highlight.js";
 
 export async function render(root: HTMLElement): Promise<void> {
@@ -52,10 +51,6 @@ export async function render(root: HTMLElement): Promise<void> {
   const viewerBody = root.querySelector<HTMLPreElement>("#viewer-body");
   const viewerTitle = root.querySelector<HTMLHeadingElement>("#viewer-title");
   const viewerActions = root.querySelector<HTMLElement>("#viewer-actions");
-  const llmModel = root.querySelector<HTMLSelectElement>("#llm-model");
-  const llmPrompt = root.querySelector<HTMLTextAreaElement>("#llm-prompt");
-  const llmResponse = root.querySelector<HTMLPreElement>("#llm-response");
-  const llmSend = root.querySelector<HTMLButtonElement>("#llm-send");
   if (
     !status ||
     !lsPath ||
@@ -112,77 +107,7 @@ export async function render(root: HTMLElement): Promise<void> {
     ]);
   });
   await renderListing(list, lsPath, "", viewer);
-  if (llmModel && llmPrompt && llmResponse && llmSend) {
-    setupLlm(llmModel, llmPrompt, llmResponse, llmSend);
-  }
-}
-
-function setupLlm(
-  model: HTMLSelectElement,
-  prompt: HTMLTextAreaElement,
-  response: HTMLPreElement,
-  send: HTMLButtonElement
-): void {
-  setLlmHint(response, "Loading models\u2026", "llm-hint");
-  void listLlmModels()
-    .then((models) => {
-      if (models.length === 0) {
-        setLlmHint(response, "No models served by the proxy.", "llm-error");
-        return;
-      }
-      model.innerHTML = "";
-      for (const m of models) {
-        const opt = document.createElement("option");
-        opt.value = m.id;
-        opt.textContent = m.id;
-        model.append(opt);
-      }
-      setLlmHint(response, "Type a message and press Send.", "llm-hint");
-    })
-    .catch((err) => {
-      setLlmHint(
-        response,
-        `Failed to load models: ${(err as Error).message}`,
-        "llm-error"
-      );
-    });
-
-  const submit = (): void => {
-    const text = prompt.value.trim();
-    if (!text || model.value === "") return;
-    send.disabled = true;
-    setLlmHint(response, "Thinking\u2026", "llm-loading");
-    void sendLlmMessage(text, model.value)
-      .then((reply) => {
-        response.textContent = reply;
-      })
-      .catch((err) => {
-        setLlmHint(
-          response,
-          `Request failed: ${(err as Error).message}`,
-          "llm-error"
-        );
-      })
-      .finally(() => {
-        send.disabled = false;
-      });
-  };
-
-  send.addEventListener("click", submit);
-  prompt.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault();
-      submit();
-    }
-  });
-}
-
-function setLlmHint(response: HTMLPreElement, text: string, cls: string): void {
-  response.innerHTML = "";
-  const span = document.createElement("span");
-  span.className = cls;
-  span.textContent = text;
-  response.append(span);
+  setupLlm(root);
 }
 
 interface Viewer {
