@@ -1,4 +1,4 @@
-import { readFile, stat } from "node:fs/promises";
+import { readFile, stat, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { LlmToolName } from "@vise/shared";
 import type { AppContext } from "../context.js";
@@ -17,6 +17,16 @@ import { listDir } from "./ls.js";
 const MAX_LINES_PER_READ = 300;
 
 /**
+ * The maximum number of lines an edit_file call may span (the range being
+ * replaced). Keeps a single edit bounded and cheap for the model to reason
+ * about; larger changes are made by reading in windows and editing each.
+ */
+const MAX_LINES_PER_EDIT = 300;
+
+/** The maximum file size (bytes) an edit_file call may produce. */
+const MAX_BYTES = 1024 * 1024; // 1 MB
+
+/**
  * True when the model-supplied name is one of the tools we expose. Derived from
  * the handler record above, so the shared package is used type-only here and
  * the backend stays free of runtime dependencies.
@@ -33,7 +43,7 @@ function isLlmToolName(value: string): value is LlmToolName {
  */
 type LlmToolHandler = (
   args: Record<string, unknown>,
-  root: string,
+  root: string
 ) => Promise<string>;
 
 /** List the contents of a directory in the workspace (root-scoped). */
@@ -44,7 +54,7 @@ const listDirectory: LlmToolHandler = async (args, root) => {
   const lines = items.map((item) =>
     item.kind === "directory"
       ? `  [dir]  ${item.name}`
-      : `  [file] ${item.name}`,
+      : `  [file] ${item.name}`
   );
   return `Directory "${dir}" contains:\n${lines.join("\n")}`;
 };
@@ -72,7 +82,7 @@ const readFileRange: LlmToolHandler = async (args, root) => {
   const cap = endLine ?? startLine + MAX_LINES_PER_READ;
   if (cap - startLine > MAX_LINES_PER_READ) {
     throw badRequest(
-      `range too large: ${cap - startLine} lines (max ${MAX_LINES_PER_READ})`,
+      `range too large: ${cap - startLine} lines (max ${MAX_LINES_PER_READ})`
     );
   }
 
@@ -92,6 +102,80 @@ const readFileRange: LlmToolHandler = async (args, root) => {
   const more =
     endInclusive < lines.length ? `\n… (more lines beyond ${cap})` : "";
   return `File "${rel}", lines ${startLine}-${endInclusive}:\n${numbered}${more}`;
+};
+
+/**
+ * Replace a range of lines in an existing file in the workspace. Lines are
+ * 1-based: `start_line` is inclusive, `end_line` is exclusive. When
+ * `end_line` equals `start_line`, `content` is inserted before that line
+ * without deleting anything; when `end_line` exceeds the file's length it is
+ * clamped to the last line so the edit can extend through the end. The target
+ * must already exist, be a regular file, be non-binary, and the result must
+ * stay under the size cap. The model is expected to have read the file first
+ * (via `read_file`) to know the exact lines to replace.
+ */
+const editFileRange: LlmToolHandler = async (args, root) => {
+  const rel = typeof args.path === "string" ? args.path : "";
+  if (!rel) throw badRequest("path is required");
+  if (typeof args.content !== "string") {
+    throw badRequest("content is required");
+  }
+  const content = args.content;
+
+  const startLine =
+    typeof args.start_line === "number" ? Math.trunc(args.start_line) : 1;
+  const endLine =
+    typeof args.end_line === "number" ? Math.trunc(args.end_line) : startLine;
+
+  if (startLine < 1) throw badRequest("start_line must be >= 1");
+  if (endLine < startLine) {
+    throw badRequest("end_line must be >= start_line");
+  }
+
+  const target = await resolveWithinRoot(root, rel);
+  const info = await stat(target);
+  if (!info.isFile()) throw notFound();
+  if (info.size > MAX_BYTES) {
+    throw badRequest(
+      `file too large to edit: ${info.size} bytes (max ${MAX_BYTES})`
+    );
+  }
+  const buf = await readFile(target);
+  if (looksBinary(buf)) throw badRequest(`cannot edit binary file: ${rel}`);
+
+  // Lines are 1-based with an exclusive end: the replaced 1-based range is
+  // startLine .. (endLine - 1). In 0-based terms the replacement spans
+  // [startLine - 1, endLine - 1), so the "after" segment starts at index
+  // endLine - 1. clampEnd allows endLine to reach lines.length + 1 (replace
+  // through the last line) and clamps anything beyond.
+  const lines = buf.toString("utf-8").split(/\r?\n/);
+  const clampEnd = Math.min(endLine, lines.length + 1);
+  if (clampEnd - startLine > MAX_LINES_PER_EDIT) {
+    throw badRequest(
+      `range too large: ${clampEnd - startLine} lines (max ${MAX_LINES_PER_EDIT})`
+    );
+  }
+  // An empty content deletes the range; otherwise the content's lines replace
+  // it. (Splitting "" would yield a single blank line, which we don't want.)
+  const newLines = content === "" ? [] : content.split(/\r?\n/);
+  const result = [
+    ...lines.slice(0, startLine - 1),
+    ...newLines,
+    ...lines.slice(clampEnd - 1),
+  ];
+  const resultBuf = Buffer.from(result.join("\n"), "utf-8");
+  if (resultBuf.length > MAX_BYTES) {
+    throw badRequest(
+      `result too large to save: ${resultBuf.length} bytes (max ${MAX_BYTES})`
+    );
+  }
+  await writeFile(target, resultBuf);
+  const replaced = clampEnd - startLine;
+  const rangeDesc =
+    replaced === 0
+      ? `inserted at line ${startLine}`
+      : `replaced lines ${startLine}-${clampEnd - 1}`;
+  return `Edited "${rel}": ${rangeDesc} with ${newLines.length} line(s).`;
 };
 
 /** Create a directory in the workspace (root-scoped; parent must exist). */
@@ -119,6 +203,7 @@ const createFile: LlmToolHandler = async (args, root) => {
 const tools: Record<LlmToolName, LlmToolHandler> = {
   list_directory: listDirectory,
   read_file: readFileRange,
+  edit_file: editFileRange,
   create_directory: createDirectory,
   create_file: createFile,
 };

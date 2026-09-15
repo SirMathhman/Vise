@@ -157,10 +157,15 @@ export function setupLlm(root: HTMLElement): void {
 const MAX_TOOL_TURNS = 5;
 
 const SYSTEM_PROMPT =
-  "You are a helpful assistant that can inspect a file tree. To answer " +
-  "questions about what files or directories exist, call the list_directory " +
-  'tool with the directory path relative to the root (use "" for the root), ' +
-  "and base your answer on the tool's result.";
+  "You are a helpful assistant that can inspect and modify files in a " +
+  "workspace. To see what exists, call list_directory with the directory " +
+  'path relative to the root (use "" for the root). To read a file, call ' +
+  "read_file with the path and a 1-based line range (start_line inclusive, " +
+  "end_line exclusive). To edit an existing file, call edit_file with the " +
+  "path, a 1-based line range (start_line inclusive, end_line exclusive), and " +
+  "the replacement content; always read_file first so you know the exact lines " +
+  "to replace. To create new files or directories, call create_file or " +
+  "create_directory. Base your answer on the tools' results.";
 
 async function runTurn(
   history: LlmMessage[],

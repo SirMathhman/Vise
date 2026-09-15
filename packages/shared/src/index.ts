@@ -7,6 +7,7 @@
 export const LLM_TOOL_NAMES = [
   "list_directory",
   "read_file",
+  "edit_file",
   "create_directory",
   "create_file",
 ] as const;

@@ -65,6 +65,47 @@ const readFile: LlmTool = {
 };
 
 /**
+ * Replace a range of lines in an existing file in the workspace (root-scoped).
+ * Lines are 1-based: start_line is inclusive, end_line is exclusive. When
+ * end_line equals start_line, the content is inserted before that line without
+ * deleting anything. The target must be an existing, non-binary text file.
+ */
+const editFile: LlmTool = {
+  type: "function",
+  function: {
+    name: "edit_file",
+    description:
+      "Replace a range of lines in an existing file. The path is relative to the workspace root. Lines are 1-based: start_line is inclusive, end_line is exclusive. To insert lines without deleting any, set end_line equal to start_line. To append to the end, set end_line past the file's last line. The target must already exist and be a text file. Use this to modify existing content; use create_file for new files.",
+    parameters: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description:
+            'File path relative to the workspace root (e.g. "src/main.ts"). Must already exist.',
+        },
+        start_line: {
+          type: "number",
+          description:
+            "First line to replace, 1-based and inclusive. Defaults to 1.",
+        },
+        end_line: {
+          type: "number",
+          description:
+            "Line to stop before, 1-based and exclusive. Must be >= start_line. To insert, set it equal to start_line; to append, set it past the last line. Must be within 300 lines of start_line.",
+        },
+        content: {
+          type: "string",
+          description:
+            "The text that replaces the lines in the range. An empty string deletes the range.",
+        },
+      },
+      required: ["path", "content"],
+    },
+  },
+};
+
+/**
  * Create a directory in the workspace (root-scoped). The parent directory
  * must already exist; the path is relative to the workspace root.
  */
@@ -121,6 +162,7 @@ const createFile: LlmTool = {
 export const llmToolDefinitions: LlmTool[] = [
   listDirectory,
   readFile,
+  editFile,
   createDirectory,
   createFile,
 ];
