@@ -1,8 +1,8 @@
-import { readFile, stat } from "node:fs/promises";
+import { mkdir, readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { AppContext } from "../context.js";
 import { AppError, badRequest, notFound } from "../errors.js";
-import { resolveWithinRoot } from "../fs.js";
+import { resolveForCreate, resolveWithinRoot } from "../fs.js";
 import { sendJson } from "../http.js";
 import type { Route } from "../router.js";
 import { listDir } from "./ls.js";
@@ -26,7 +26,7 @@ function looksBinary(buf: Buffer): boolean {
  */
 type LlmToolHandler = (
   args: Record<string, unknown>,
-  root: string
+  root: string,
 ) => Promise<string>;
 
 /** List the contents of a directory in the workspace (root-scoped). */
@@ -37,7 +37,7 @@ const listDirectory: LlmToolHandler = async (args, root) => {
   const lines = items.map((item) =>
     item.kind === "directory"
       ? `  [dir]  ${item.name}`
-      : `  [file] ${item.name}`
+      : `  [file] ${item.name}`,
   );
   return `Directory "${dir}" contains:\n${lines.join("\n")}`;
 };
@@ -65,7 +65,7 @@ const readFileRange: LlmToolHandler = async (args, root) => {
   const cap = endLine ?? startLine + MAX_LINES_PER_READ;
   if (cap - startLine > MAX_LINES_PER_READ) {
     throw badRequest(
-      `range too large: ${cap - startLine} lines (max ${MAX_LINES_PER_READ})`
+      `range too large: ${cap - startLine} lines (max ${MAX_LINES_PER_READ})`,
     );
   }
 
@@ -87,10 +87,48 @@ const readFileRange: LlmToolHandler = async (args, root) => {
   return `File "${rel}", lines ${startLine}-${endInclusive}:\n${numbered}${more}`;
 };
 
+/**
+ * Reject path segments the create route also rejects: empty segments, dot
+ * segments, and backslashes. The leaf is additionally vetted by
+ * resolveForCreate, so a hostile path cannot escape the root.
+ */
+function validatePath(rel: string): void {
+  for (const seg of rel.split("/")) {
+    if (!seg) throw badRequest(`empty path segment in: ${rel}`);
+    if (seg === "." || seg === "..")
+      throw badRequest(`invalid path segment: ${seg}`);
+    if (seg.includes("\\"))
+      throw badRequest(`name cannot contain a backslash: ${seg}`);
+  }
+}
+
+/** True if `target` exists; false on ENOENT, rethrow on any other error. */
+async function exists(target: string): Promise<boolean> {
+  try {
+    await stat(target);
+    return true;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw err;
+  }
+}
+
+/** Create a directory in the workspace (root-scoped; parent must exist). */
+const createDirectory: LlmToolHandler = async (args, root) => {
+  const rel = typeof args.path === "string" ? args.path : "";
+  if (!rel) throw badRequest("path is required");
+  validatePath(rel);
+  const target = await resolveForCreate(root, rel);
+  if (await exists(target)) throw badRequest(`already exists: ${rel}`);
+  await mkdir(target);
+  return `Created directory "${rel}".`;
+};
+
 /** The tools available to the model, keyed by the name the model uses. */
 const tools: Record<string, LlmToolHandler> = {
   list_directory: listDirectory,
   read_file: readFileRange,
+  create_directory: createDirectory,
 };
 
 /**

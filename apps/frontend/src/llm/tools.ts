@@ -64,5 +64,33 @@ const readFile: LlmTool = {
   },
 };
 
+/**
+ * Create a directory in the workspace (root-scoped). The parent directory
+ * must already exist; the path is relative to the workspace root.
+ */
+const createDirectory: LlmTool = {
+  type: "function",
+  function: {
+    name: "create_directory",
+    description:
+      "Create a new directory in the workspace. Use this to make a folder for new files. The path is relative to the workspace root; the parent directory must already exist.",
+    parameters: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description:
+            'Directory path relative to the workspace root (e.g. "src/utils"). The parent must already exist.',
+        },
+      },
+      required: ["path"],
+    },
+  },
+};
+
 /** All tool definitions available to the model, in a stable order. */
-export const llmToolDefinitions: LlmTool[] = [listDirectory, readFile];
+export const llmToolDefinitions: LlmTool[] = [
+  listDirectory,
+  readFile,
+  createDirectory,
+];
