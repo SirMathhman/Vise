@@ -7,7 +7,11 @@ import {
   sendLlmMessage,
 } from "../api/client.js";
 import { llmToolDefinitions } from "../llm/tools.js";
-import { type ChatMessage, createConversationStore } from "./conversations.js";
+import {
+  type ChatMessage,
+  type ConversationStore,
+  createConversationStore,
+} from "./conversations.js";
 
 /**
  * Wire up the LLM panel. Manages a list of conversations (each with its own
@@ -74,7 +78,7 @@ export function setupLlm(root: HTMLElement): void {
     send.disabled = true;
     setLlmHint(response, "Thinking…");
     void runTurn(
-      conv.messages,
+      store,
       m,
       response,
       text,
@@ -223,13 +227,14 @@ export interface TurnResult {
 }
 
 async function runTurn(
-  history: ChatMessage[],
+  store: ConversationStore,
   model: string,
   response: HTMLElement,
   userText: string,
   cap: number | undefined,
   lastPromptTokens: number | undefined
 ): Promise<TurnResult> {
+  const history = store.getActive().messages;
   const preLength = history.length;
   const domBefore = response.childElementCount;
   let lastUsage: LlmUsage | undefined;
@@ -246,18 +251,22 @@ async function runTurn(
     ) {
       const summary = await summarizeConversation(history, model);
       if (summary) {
-        history.push({ role: "user", content: summary, compaction: true });
+        store.appendMessage({
+          role: "user",
+          content: summary,
+          compaction: true,
+        });
         renderCompactionNote(response);
       }
     }
-    history.push({ role: "user", content: userText });
+    store.appendMessage({ role: "user", content: userText });
     renderMessage(response, "user", userText);
     for (let i = 0; i < MAX_TOOL_TURNS; i++) {
       const messages = buildMessages(history);
       const reply = await sendLlmMessage(messages, model, llmToolDefinitions);
       lastUsage = reply.usage ?? lastUsage;
       if (reply.tool_calls && reply.tool_calls.length > 0) {
-        history.push({
+        store.appendMessage({
           role: "assistant",
           content: reply.content,
           tool_calls: reply.tool_calls,
@@ -267,7 +276,7 @@ async function runTurn(
         }
         for (const tc of reply.tool_calls) {
           const result = await executeLlmTool(tc);
-          history.push({
+          store.appendMessage({
             role: "tool",
             content: result,
             tool_call_id: tc.id,
@@ -277,15 +286,15 @@ async function runTurn(
         continue;
       }
       const text = reply.content ?? "";
-      history.push({ role: "assistant", content: text });
+      store.appendMessage({ role: "assistant", content: text });
       return { text, usage: lastUsage };
     }
     const text =
       "I stopped after several directory lookups without a final answer.";
-    history.push({ role: "assistant", content: text });
+    store.appendMessage({ role: "assistant", content: text });
     return { text, usage: lastUsage };
   } catch (err) {
-    history.length = preLength;
+    store.rollbackTo(preLength);
     while (response.childElementCount > domBefore) {
       response.lastElementChild?.remove();
     }

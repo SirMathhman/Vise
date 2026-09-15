@@ -188,6 +188,10 @@ export interface ConversationStore {
   setActiveModel(model: string): void;
   /** Retitle the active conversation from its first user message. */
   retitleActive(): void;
+  /** Append a message to the active conversation (the single append point). */
+  appendMessage(msg: ChatMessage): void;
+  /** Truncate the active history back to `n` messages (failure rollback). */
+  rollbackTo(n: number): void;
   /**
    * Atomically commit a completed chat turn: record the turn's prompt-token
    * count, retitle the conversation from its first user message, and persist.
@@ -256,6 +260,12 @@ export function createConversationStore(): ConversationStore {
     retitleActive() {
       const active = getActive();
       active.title = deriveTitle(active.messages);
+    },
+    appendMessage(msg) {
+      getActive().messages.push(msg);
+    },
+    rollbackTo(n) {
+      getActive().messages.length = n;
     },
     commitTurn(usage) {
       if (usage) promptTokens.set(activeId, usage.promptTokens);
