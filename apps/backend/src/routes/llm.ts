@@ -5,6 +5,7 @@ import { AppError, badRequest, notFound } from "../errors.js";
 import {
   createDir,
   createFile as createFileCore,
+  looksBinary,
   resolveWithinRoot,
 } from "../fs.js";
 import { sendJson } from "../http.js";
@@ -13,14 +14,6 @@ import { listDir } from "./ls.js";
 
 /** The maximum number of lines a single read_file call may return. */
 const MAX_LINES_PER_READ = 300;
-
-// A NUL byte in the leading window means the content is binary, not text.
-const BINARY_SNIFF_BYTES = 8 * 1024;
-
-function looksBinary(buf: Buffer): boolean {
-  const end = Math.min(buf.length, BINARY_SNIFF_BYTES);
-  return buf.subarray(0, end).includes(0);
-}
 
 /**
  * A tool the LLM can run against the workspace. The model calls these through

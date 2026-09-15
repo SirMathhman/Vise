@@ -1,10 +1,9 @@
 import { resolve } from "node:path";
 import type { AppContext } from "../context.js";
 import { AppError, badRequest } from "../errors.js";
-import { createDir, createFile } from "../fs.js";
+import { createDir, createFile, mapFsError } from "../fs.js";
 import { sendJson } from "../http.js";
 import type { Route } from "../router.js";
-import { mapFsError } from "./file.js";
 
 export function createRoutes(ctx: AppContext): Route[] {
   const root = resolve(ctx.rootPath);

@@ -1,34 +1,12 @@
 import { readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { AppContext } from "../context.js";
-import { AppError, badRequest, forbidden, notFound } from "../errors.js";
-import { resolveWithinRoot } from "../fs.js";
+import { AppError, badRequest, notFound } from "../errors.js";
+import { looksBinary, mapFsError, resolveWithinRoot } from "../fs.js";
 import { sendJson } from "../http.js";
 import type { Route } from "../router.js";
 
 const MAX_BYTES = 1024 * 1024; // 1 MB
-
-// A NUL byte in the leading window means the content is binary, not text.
-const BINARY_SNIFF_BYTES = 8 * 1024;
-
-function looksBinary(buf: Buffer): boolean {
-  const end = Math.min(buf.length, BINARY_SNIFF_BYTES);
-  return buf.subarray(0, end).includes(0);
-}
-
-export function mapFsError(rel: string, err: unknown): AppError {
-  const code = (err as NodeJS.ErrnoException).code;
-  if (code === "ENOENT" || code === "ENOTDIR") {
-    return new AppError(404, "not_found", `file not found: ${rel}`);
-  }
-  if (code === "EACCES" || code === "EPERM") {
-    return forbidden(`cannot access: ${rel}`);
-  }
-  if (code === "EISDIR") {
-    return badRequest(`is a directory, not a file: ${rel}`);
-  }
-  return badRequest((err as Error).message);
-}
 
 export function fileRoutes(ctx: AppContext): Route[] {
   const root = resolve(ctx.rootPath);

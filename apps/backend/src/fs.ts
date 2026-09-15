@@ -1,6 +1,33 @@
 import { mkdir, realpath, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve, sep } from "node:path";
-import { AppError, badRequest } from "./errors.js";
+import { AppError, badRequest, forbidden } from "./errors.js";
+
+// A NUL byte in the leading window means the content is binary, not text.
+const BINARY_SNIFF_BYTES = 8 * 1024;
+
+/** True if the leading window of `buf` contains a NUL byte (i.e. it's binary). */
+export function looksBinary(buf: Buffer): boolean {
+  const end = Math.min(buf.length, BINARY_SNIFF_BYTES);
+  return buf.subarray(0, end).includes(0);
+}
+
+/**
+ * Map a raw filesystem error to an AppError with an appropriate status code:
+ * ENOENT/ENOTDIR→404, EACCES/EPERM→403, EISDIR→400, everything else 400.
+ */
+export function mapFsError(rel: string, err: unknown): AppError {
+  const code = (err as NodeJS.ErrnoException).code;
+  if (code === "ENOENT" || code === "ENOTDIR") {
+    return new AppError(404, "not_found", `file not found: ${rel}`);
+  }
+  if (code === "EACCES" || code === "EPERM") {
+    return forbidden(`cannot access: ${rel}`);
+  }
+  if (code === "EISDIR") {
+    return badRequest(`is a directory, not a file: ${rel}`);
+  }
+  return badRequest((err as Error).message);
+}
 
 /**
  * Resolve a relative path against the root and guarantee it stays within it,
