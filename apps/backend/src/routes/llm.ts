@@ -1,5 +1,5 @@
 import { type ChildProcess, execSync, spawn } from "node:child_process";
-import { readFile, stat, writeFile } from "node:fs/promises";
+import { readFile, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { LlmToolName } from "@vise/shared";
 import type { AppContext } from "../context.js";
@@ -233,6 +233,28 @@ const createFile: LlmToolHandler = async (args, root) => {
   return `Created file "${rel}".`;
 };
 
+/** Delete a file in the workspace (root-scoped). Permanent. */
+const deleteFile: LlmToolHandler = async (args, root) => {
+  const rel = typeof args.path === "string" ? args.path : "";
+  if (!rel) throw badRequest("path is required");
+  const target = await resolveWithinRoot(root, rel);
+  const info = await stat(target);
+  if (!info.isFile()) throw notFound();
+  await unlink(target);
+  return `Deleted file "${rel}".`;
+};
+
+/** Delete a directory and its contents in the workspace (root-scoped). */
+const deleteDirectory: LlmToolHandler = async (args, root) => {
+  const rel = typeof args.path === "string" ? args.path : "";
+  if (!rel) throw badRequest("path is required");
+  const target = await resolveWithinRoot(root, rel);
+  const info = await stat(target);
+  if (!info.isDirectory()) throw notFound();
+  await rm(target, { recursive: true });
+  return `Deleted directory "${rel}" and its contents.`;
+};
+
 /**
  * Run a PowerShell command in the workspace root and return its combined
  * output and exit status as model-readable text. The command runs
@@ -350,6 +372,8 @@ const tools: Record<LlmToolName, LlmToolHandler> = {
   edit_file: editFileRange,
   create_directory: createDirectory,
   create_file: createFile,
+  delete_file: deleteFile,
+  delete_directory: deleteDirectory,
   run_command: runCommand,
 };
 

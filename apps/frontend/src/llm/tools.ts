@@ -159,6 +159,55 @@ const createFile: LlmTool = {
 };
 
 /**
+ * Delete a file in the workspace (root-scoped). The path is relative to the
+ * workspace root. This is permanent and cannot be undone.
+ */
+const deleteFile: LlmTool = {
+  type: "function",
+  function: {
+    name: "delete_file",
+    description:
+      "Delete a file in the workspace. The path is relative to the workspace root. This is permanent and cannot be undone; only use it when the user has explicitly asked to delete a file.",
+    parameters: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description:
+            'File path relative to the workspace root (e.g. "src/old.ts"). Must be an existing file.',
+        },
+      },
+      required: ["path"],
+    },
+  },
+};
+
+/**
+ * Delete a directory and its entire contents in the workspace (root-scoped).
+ * The path is relative to the workspace root. This is permanent and cannot be
+ * undone.
+ */
+const deleteDirectory: LlmTool = {
+  type: "function",
+  function: {
+    name: "delete_directory",
+    description:
+      "Delete a directory and everything inside it. The path is relative to the workspace root. This is permanent and cannot be undone; only use it when the user has explicitly asked to delete a directory.",
+    parameters: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description:
+            'Directory path relative to the workspace root (e.g. "src/old"). Must be an existing directory.',
+        },
+      },
+      required: ["path"],
+    },
+  },
+};
+
+/**
  * Run a PowerShell command in the workspace root (root-scoped). The command's
  * output and exit status are returned as text. Use for builds, git, typecheck,
  * package installs, and other shell operations that file tools can't do.
@@ -190,5 +239,7 @@ export const llmToolDefinitions: LlmTool[] = [
   editFile,
   createDirectory,
   createFile,
+  deleteFile,
+  deleteDirectory,
   runCommand,
 ];
