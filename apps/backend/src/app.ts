@@ -33,6 +33,10 @@ const routeGroups = [
 export function createApp(ctx: AppContext) {
   const routes = routeGroups.flatMap((group) => group(ctx));
 
+  // The app owns the filesystem watcher's lifecycle: start it with the app
+  // and close it on shutdown so it doesn't keep the event loop alive.
+  ctx.fileWatcher.start();
+
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
     const path = url.pathname;
@@ -69,7 +73,13 @@ export function createApp(ctx: AppContext) {
         server.listen(port, host, () => resolve())
       );
     },
-    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+    close: () =>
+      new Promise<void>((resolve) =>
+        server.close(() => {
+          ctx.fileWatcher.close();
+          resolve();
+        })
+      ),
   };
 }
 

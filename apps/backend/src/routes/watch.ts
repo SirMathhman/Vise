@@ -1,21 +1,6 @@
 import type { ServerResponse } from "node:http";
 import type { AppContext } from "../context.js";
 import type { Route } from "../router.js";
-import { createFileWatcher } from "../watch.js";
-
-/**
- * A single app-wide watcher, created once for the app's root. Kept at module
- * scope so all concurrent SSE subscribers share one set of fs watchers.
- */
-let sharedWatcher: ReturnType<typeof createFileWatcher> | undefined;
-
-function getWatcher(rootPath: string) {
-  if (!sharedWatcher) {
-    sharedWatcher = createFileWatcher(rootPath);
-    sharedWatcher.start();
-  }
-  return sharedWatcher;
-}
 
 function writeSseHeaders(res: ServerResponse): void {
   res.writeHead(200, {
@@ -39,10 +24,9 @@ export function watchRoutes(ctx: AppContext): Route[] {
       method: "GET",
       pattern: "/api/watch",
       handler: (_req, res) => {
-        const watcher = getWatcher(ctx.rootPath);
         writeSseHeaders(res);
 
-        const unsubscribe = watcher.subscribe((e) => {
+        const unsubscribe = ctx.fileWatcher.subscribe((e) => {
           res.write(`data: ${JSON.stringify(e)}\n\n`);
         });
 
