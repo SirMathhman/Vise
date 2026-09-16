@@ -4,6 +4,7 @@ import {
   getFile,
   listDir,
   putFile,
+  subscribeToChanges,
 } from "../api/client.js";
 import { appendHighlighted } from "../highlight.js";
 import { makeContextMenu, showMenu } from "./contextMenu.js";
@@ -40,6 +41,7 @@ export async function setupFileViewer(root: HTMLElement): Promise<void> {
     list,
     lsPath,
     store,
+    expandedDirs: new Set<string>(),
   };
   window.addEventListener("beforeunload", (e: BeforeUnloadEvent) => {
     if (store.isDirty()) {
@@ -69,6 +71,86 @@ export async function setupFileViewer(root: HTMLElement): Promise<void> {
     ]);
   });
   await renderListing(list, lsPath, "", viewer);
+  subscribeToChanges((e) => scheduleLiveRefresh(viewer, e));
+}
+
+/**
+ * Debounced live-refresh: on a filesystem change, refresh the root plus every
+ * expanded directory, and reload the open file in the viewer (only when its
+ * buffer is clean, so a user mid-edit is never clobbered). A short timer
+ * collapses the burst of events a single edit typically produces.
+ */
+let liveRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+function scheduleLiveRefresh(viewer: Viewer, e: { path: string }): void {
+  if (liveRefreshTimer !== undefined) clearTimeout(liveRefreshTimer);
+  liveRefreshTimer = setTimeout(() => {
+    liveRefreshTimer = undefined;
+    void liveRefresh(viewer, e.path);
+  }, 80);
+}
+
+async function liveRefresh(viewer: Viewer, rel: string): Promise<void> {
+  await refreshDir(viewer, "", null);
+  // Re-locate expanded dirs: their `li` nodes may have been recreated by the
+  // refresh above, so look them up fresh in the current DOM. Refresh ancestors
+  // first (shortest rel first) so a nested dir is re-located on the node its
+  // parent's re-render just created.
+  const dirs = [...viewer.expandedDirs].sort(
+    (a, b) => a.split("/").length - b.split("/").length
+  );
+  for (const dirRel of dirs) {
+    const li = findDirLi(viewer.list, dirRel);
+    if (li) await refreshDir(viewer, dirRel, li);
+  }
+
+  const openRel = viewer.store.getRel();
+  if (!openRel) return;
+  if (rel === openRel && !viewer.store.isDirty()) {
+    // The open file changed on disk and we have no unsaved edits: reload it.
+    await loadIntoViewer(viewer, openRel);
+  } else if (rel === openRel) {
+    // Changed on disk but the buffer has unsaved edits: keep them, just tell
+    // the user the file is out of date so they can decide to reload.
+    viewer.title.textContent = `${openRel} (out of date)`;
+  }
+}
+
+/** Locate the `<li>` for a directory (by rel) in the current tree DOM. */
+function findDirLi(list: HTMLUListElement, rel: string): HTMLLIElement | null {
+  const parts = rel.split("/");
+  let current: HTMLUListElement | null = list;
+  let found: HTMLLIElement | null = null;
+  for (const part of parts) {
+    if (!current) return null;
+    found =
+      (Array.from(current.children).find(
+        (el) =>
+          el instanceof HTMLLIElement &&
+          el.classList.contains("directory") &&
+          el.querySelector(".name")?.textContent === part
+      ) as HTMLLIElement | undefined) ?? null;
+    if (!found) return null;
+    current = found.querySelector(":scope > ul");
+  }
+  return found;
+}
+
+/**
+ * Load a file straight into the viewer without a navigation flush — used by the
+ * live-refresh path, where the buffer is known clean and there is no pending
+ * save to preserve.
+ */
+async function loadIntoViewer(viewer: Viewer, rel: string): Promise<void> {
+  viewer.title.textContent = rel;
+  try {
+    const data = await getFile(rel);
+    viewer.title.textContent = data.path;
+    viewer.store.beginLoad(rel, data.content);
+    renderEditor(viewer);
+  } catch {
+    // If the file vanished between the event and the read, leave the viewer as
+    // is; the next successful refresh will settle it.
+  }
 }
 
 interface Viewer {
@@ -79,6 +161,8 @@ interface Viewer {
   list: HTMLUListElement;
   lsPath: HTMLElement;
   store: FileStateStore;
+  /** Rel paths of directories currently expanded in the tree. */
+  expandedDirs: Set<string>;
 }
 
 async function renderListing(
@@ -343,6 +427,7 @@ async function expandDir(
   if (expanded) {
     toggle.textContent = "▸";
     toggle.setAttribute("aria-expanded", "false");
+    viewer.expandedDirs.delete(rel);
     const existing = li.querySelector(":scope > ul");
     if (existing) existing.remove();
     return;
@@ -350,6 +435,7 @@ async function expandDir(
 
   toggle.textContent = "▾";
   toggle.setAttribute("aria-expanded", "true");
+  viewer.expandedDirs.add(rel);
   const existing = li.querySelector(":scope > ul");
   if (existing) {
     existing.remove();
@@ -372,6 +458,7 @@ async function refreshDir(
     await renderListing(viewer.list, viewer.lsPath, "", viewer);
     return;
   }
+  viewer.expandedDirs.add(rel);
   const toggle = targetLi.querySelector<HTMLButtonElement>(".toggle");
   if (toggle) {
     toggle.textContent = "▾";

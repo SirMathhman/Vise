@@ -49,6 +49,33 @@ async function fail(res: Response): Promise<never> {
   throw new Error(data?.message ?? `HTTP ${res.status}`);
 }
 
+/** A debounced filesystem change pushed over the watch stream. */
+export interface WatchEvent {
+  /** Relative path from the root, forward-slash separated. */
+  path: string;
+  /** The raw fs event kind that produced it. */
+  event: "change" | "rename";
+}
+
+/**
+ * Subscribe to live filesystem changes via the SSE stream at `/api/watch`.
+ * Returns an unsubscribe function that closes the stream. `EventSource`
+ * auto-reconnects, so transient drops heal without caller help.
+ */
+export function subscribeToChanges(
+  onEvent: (e: WatchEvent) => void
+): () => void {
+  const source = new EventSource("/api/watch");
+  source.onmessage = (msg) => {
+    try {
+      onEvent(JSON.parse(msg.data) as WatchEvent);
+    } catch {
+      // Ignore malformed frames; the stream keeps going.
+    }
+  };
+  return () => source.close();
+}
+
 /** GET the listing for a directory ("" = root). */
 export async function listDir(rel: string): Promise<LsResponse> {
   const res = await fetch(`/api/ls/${encodeRel(rel)}`);

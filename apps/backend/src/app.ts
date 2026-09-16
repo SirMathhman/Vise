@@ -17,6 +17,7 @@ import { healthRoutes } from "./routes/health.js";
 import { helloRoutes } from "./routes/hello.js";
 import { llmToolRoutes } from "./routes/llm.js";
 import { lsRoutes } from "./routes/ls.js";
+import { watchRoutes } from "./routes/watch.js";
 
 const routeGroups = [
   healthRoutes,
@@ -26,6 +27,7 @@ const routeGroups = [
   fileRoutes,
   createRoutes,
   llmToolRoutes,
+  watchRoutes,
 ];
 
 export function createApp(ctx: AppContext) {
