@@ -74,12 +74,17 @@ export function createApp(ctx: AppContext) {
       );
     },
     close: () =>
-      new Promise<void>((resolve) =>
+      new Promise<void>((resolve) => {
+        // server.close() only stops NEW connections; existing ones (notably an
+        // open /api/watch SSE stream) keep it open until they drain, so the
+        // close callback — and the watcher teardown — would never run. Force
+        // them to terminate so shutdown completes.
+        server.closeAllConnections();
         server.close(() => {
           ctx.fileWatcher.close();
           resolve();
-        })
-      ),
+        });
+      }),
   };
 }
 
