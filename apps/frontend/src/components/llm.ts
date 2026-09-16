@@ -1,7 +1,6 @@
 import {
   executeLlmTool,
   type LlmMessage,
-  type LlmToolCall,
   type LlmUsage,
   listLlmModels,
   sendLlmMessage,
@@ -12,6 +11,7 @@ import {
   type ConversationStore,
   createConversationStore,
 } from "./conversations.js";
+import { MessageView, toolCallLabel } from "./messageView.js";
 
 /**
  * Wire up the LLM panel. Manages a list of conversations (each with its own
@@ -38,6 +38,8 @@ export function setupLlm(root: HTMLElement): void {
   if (tools) renderToolList(tools);
 
   const store = createConversationStore();
+  const view = new MessageView(response);
+  window.addEventListener("resize", () => view.refresh());
 
   const renderContext = () => renderContextText(context, model, store);
 
@@ -51,12 +53,11 @@ export function setupLlm(root: HTMLElement): void {
 
   const renderActiveMessages = () => {
     const conv = store.getActive();
-    response.innerHTML = "";
     if (conv.messages.length === 0) {
-      setLlmHint(response, "Start a conversation.");
+      view.setNotice("hint", "Start a conversation.");
       return;
     }
-    for (const m of conv.messages) renderHistoryMessage(response, m);
+    view.setMessages(conv.messages);
   };
 
   const showActive = () => {
@@ -68,7 +69,7 @@ export function setupLlm(root: HTMLElement): void {
 
   showActive();
 
-  loadModelList(model, response, store);
+  loadModelList(model, view, store);
 
   const submit = () => {
     const text = prompt.value.trim();
@@ -77,24 +78,24 @@ export function setupLlm(root: HTMLElement): void {
     const conv = store.getActive();
     prompt.value = "";
     send.disabled = true;
-    setLlmHint(response, "Thinking…");
+    view.setNotice("loading", "Thinking…");
     void runTurn(
       store,
       m,
-      response,
+      view,
       text,
       store.getContextWindow(m),
       store.getPromptTokens(conv.id)
     )
       .then((result) => {
-        removeHint(response);
-        renderMessage(response, "assistant", result.text);
+        view.clearNotice();
+        view.appendMessage({ role: "assistant", content: result.text });
         store.commitTurn(result.usage);
         showActive();
       })
       .catch((e: unknown) =>
-        setLlmError(
-          response,
+        view.setNotice(
+          "error",
           `Request failed: ${e instanceof Error ? e.message : e}`
         )
       )
@@ -169,13 +170,13 @@ function renderContextText(
  */
 function loadModelList(
   model: HTMLSelectElement,
-  response: HTMLElement,
+  view: MessageView,
   store: ReturnType<typeof createConversationStore>
 ): void {
   listLlmModels()
     .then((models) => {
       if (models.length === 0) {
-        setLlmHint(response, "No models served.");
+        view.setNotice("hint", "No models served.");
         return;
       }
       model.innerHTML = models
@@ -190,8 +191,8 @@ function loadModelList(
       }
     })
     .catch((e: unknown) =>
-      setLlmError(
-        response,
+      view.setNotice(
+        "error",
         `Failed to load models: ${e instanceof Error ? e.message : e}`
       )
     );
@@ -238,14 +239,13 @@ export interface TurnResult {
 async function runTurn(
   store: ConversationStore,
   model: string,
-  response: HTMLElement,
+  view: MessageView,
   userText: string,
   cap: number | undefined,
   lastPromptTokens: number | undefined
 ): Promise<TurnResult> {
   const history = store.getActive().messages;
   const preLength = history.length;
-  const domBefore = response.childElementCount;
   let lastUsage: LlmUsage | undefined;
   try {
     // If the previous call already used 80% of the window, summarize the
@@ -265,11 +265,11 @@ async function runTurn(
           content: summary,
           compaction: true,
         });
-        renderCompactionNote(response);
+        view.appendCompaction();
       }
     }
     store.appendMessage({ role: "user", content: userText });
-    renderMessage(response, "user", userText);
+    view.appendMessage({ role: "user", content: userText });
     for (let i = 0; i < MAX_TOOL_TURNS; i++) {
       const messages = buildMessages(history);
       const reply = await sendLlmMessage(messages, model, llmToolDefinitions);
@@ -281,7 +281,7 @@ async function runTurn(
           tool_calls: reply.tool_calls,
         });
         for (const tc of reply.tool_calls) {
-          renderToolCall(response, toolCallLabel(tc));
+          view.appendToolCall(toolCallLabel(tc));
         }
         for (const tc of reply.tool_calls) {
           const result = await executeLlmTool(tc);
@@ -290,7 +290,7 @@ async function runTurn(
             content: result,
             tool_call_id: tc.id,
           });
-          renderToolResult(response, result);
+          view.appendToolResult(result);
         }
         continue;
       }
@@ -304,9 +304,7 @@ async function runTurn(
     return { text, usage: lastUsage };
   } catch (err) {
     store.rollbackTo(preLength);
-    while (response.childElementCount > domBefore) {
-      response.lastElementChild?.remove();
-    }
+    view.setMessages(store.getActive().messages);
     throw err;
   }
 }
@@ -363,19 +361,6 @@ async function summarizeConversation(
   return (reply.content ?? "").trim();
 }
 
-/** Render the subtle separator shown where a compaction marker lands. */
-function renderCompactionNote(response: HTMLElement): void {
-  const note = document.createElement("div");
-  note.className = "llm-compaction";
-  note.textContent = "— conversation compacted —";
-  response.append(note);
-  response.scrollTop = response.scrollHeight;
-}
-
-function toolCallLabel(tc: LlmToolCall): string {
-  return `${tc.function.name}(${tc.function.arguments})`;
-}
-
 /** Render the available tools (name + description) into the panel. */
 function renderToolList(container: HTMLElement): void {
   const details = document.createElement("details");
@@ -398,84 +383,4 @@ function renderToolList(container: HTMLElement): void {
   }
   details.append(title, list);
   container.append(details);
-}
-
-function renderHistoryMessage(response: HTMLElement, m: ChatMessage): void {
-  if (m.compaction) {
-    renderCompactionNote(response);
-    return;
-  }
-  if (m.role === "tool") {
-    renderToolResult(response, m.content ?? "");
-    return;
-  }
-  if (m.role === "assistant" && m.tool_calls && m.tool_calls.length > 0) {
-    for (const tc of m.tool_calls) renderToolCall(response, toolCallLabel(tc));
-    if (m.content) renderMessage(response, "assistant", m.content);
-    return;
-  }
-  if (m.role === "user" || m.role === "assistant") {
-    renderMessage(response, m.role, m.content ?? "");
-  }
-}
-
-function renderToolCall(response: HTMLElement, label: string): void {
-  const block = document.createElement("div");
-  block.className = "llm-tool";
-  const text = document.createElement("span");
-  text.className = "llm-tool-label";
-  text.textContent = label;
-  block.append(text);
-  response.append(block);
-  response.scrollTop = response.scrollHeight;
-}
-
-function renderToolResult(response: HTMLElement, text: string): void {
-  const block = document.createElement("div");
-  block.className = "llm-tool-result";
-  block.textContent = text;
-  response.append(block);
-  response.scrollTop = response.scrollHeight;
-}
-
-function renderMessage(
-  response: HTMLElement,
-  role: "user" | "assistant",
-  content: string
-): void {
-  const block = document.createElement("div");
-  block.className = `llm-msg llm-msg-${role}`;
-  const who = document.createElement("span");
-  who.className = "llm-msg-role";
-  who.textContent = role === "user" ? "You" : "Model";
-  const text = document.createElement("span");
-  text.className = "llm-msg-text";
-  text.textContent = content;
-  block.append(who, text);
-  response.append(block);
-  response.scrollTop = response.scrollHeight;
-}
-
-function removeHint(response: HTMLElement): void {
-  response
-    .querySelectorAll(".llm-hint, .llm-loading, .llm-error")
-    .forEach((el) => {
-      el.remove();
-    });
-}
-
-function setLlmHint(response: HTMLElement, text: string): void {
-  removeHint(response);
-  const span = document.createElement("span");
-  span.className = text === "Thinking…" ? "llm-loading" : "llm-hint";
-  span.textContent = text;
-  response.append(span);
-}
-
-function setLlmError(response: HTMLElement, text: string): void {
-  removeHint(response);
-  const span = document.createElement("span");
-  span.className = "llm-error";
-  span.textContent = text;
-  response.append(span);
 }

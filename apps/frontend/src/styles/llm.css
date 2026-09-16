@@ -166,6 +166,19 @@
   padding: 10px 12px;
 }
 
+/* Virtualized conversation: a tall spacer whose height equals the whole
+   conversation, with only the visible blocks kept live and positioned
+   absolutely inside it (top set inline by the view). */
+#app #llm-response .llm-virtual {
+  position: relative;
+}
+
+#app #llm-response .llm-virtual > * {
+  position: absolute;
+  left: 0;
+  right: 0;
+}
+
 #app #llm-response .llm-msg {
   display: flex;
   flex-direction: column;
