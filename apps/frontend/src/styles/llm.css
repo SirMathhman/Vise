@@ -298,6 +298,51 @@
   word-break: break-word;
 }
 
+#app #llm-response .llm-follow {
+  position: sticky;
+  z-index: 5;
+  bottom: 10px;
+  width: fit-content;
+  margin: 8px 10px 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-heading);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gold-bright);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-gold);
+  border-radius: 999px;
+  padding: 6px 12px;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+#app #llm-response .llm-follow:hover {
+  border-color: var(--gold);
+}
+
+#app #llm-response .llm-follow-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--gold);
+}
+
+#app #llm-response .llm-follow-off {
+  color: var(--text-muted);
+  border-color: var(--border);
+}
+
+#app #llm-response .llm-follow-off .llm-follow-dot {
+  background: var(--text-muted);
+}
+
 #app #llm-response .llm-hint,
 #app #llm-response .llm-loading {
   font-family: var(--font-heading);

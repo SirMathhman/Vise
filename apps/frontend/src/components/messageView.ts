@@ -37,6 +37,8 @@ const BUFFER = 4;
 const ESTIMATED = 48;
 /** Max layout passes to chase a measured-height change before settling. */
 const MAX_PASSES = 3;
+/** Max distance (px) from the true bottom still counted as "at the bottom" for follow auto-toggle. */
+const FOLLOW_THRESHOLD = 4;
 
 /** Format a tool call as its display label: `name(args)`. */
 export function toolCallLabel(tc: LlmToolCall): string {
@@ -205,9 +207,26 @@ class VirtualList {
     this.layout();
   }
 
-  /** Scroll the container to the bottom of the (virtual) conversation. */
+  /**
+   * Scroll the container to the bottom of the (virtual) conversation. Jumping
+   * near the bottom brings previously off-screen (estimated-height) blocks
+   * into view; measuring them can grow the total height, leaving the target
+   * short of the true bottom. Re-measure and re-target after each jump until
+   * the height agrees with the previous pass, so a long conversation still
+   * lands exactly at the bottom instead of stopping a bit short.
+   */
   scrollToBottom(): void {
-    this.scroll.scrollTop = this.scroll.scrollHeight - this.scroll.clientHeight;
+    let prevTarget = -1;
+    for (let i = 0; i < MAX_PASSES + 2; i++) {
+      const target = Math.max(
+        0,
+        this.scroll.scrollHeight - this.scroll.clientHeight
+      );
+      if (target === prevTarget) return;
+      this.scroll.scrollTop = target;
+      prevTarget = target;
+      this.layout();
+    }
   }
 
   /** Compute top offsets for every block from measured/estimated heights. */
@@ -288,6 +307,14 @@ export class MessageView {
   private items: VisualItem[] = [];
   private notice: HTMLElement | null = null;
   private scroll: HTMLElement;
+  /**
+   * Whether new content should auto-scroll the view to the bottom. Toggled
+   * explicitly by the follow button, and implicitly by scrolling: moving away
+   * from the bottom turns it off, scrolling back to the bottom turns it back
+   * on — the same "scroll lock" convention as most chat UIs.
+   */
+  private follow = true;
+  private followBtn: HTMLButtonElement;
 
   constructor(scroll: HTMLElement) {
     this.scroll = scroll;
@@ -302,58 +329,97 @@ export class MessageView {
       (_i, item) => renderItemDom(item),
       () => this.items
     );
+    this.followBtn = this.createFollowButton();
+    scroll.append(this.followBtn);
+    scroll.addEventListener("scroll", this.onScroll, { passive: true });
+  }
+
+  /** Build the floating follow-toggle button, sticky in the transcript's bottom-right corner. */
+  private createFollowButton(): HTMLButtonElement {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "llm-follow";
+    btn.title = "Auto-scroll to the latest message";
+    const dot = document.createElement("span");
+    dot.className = "llm-follow-dot";
+    btn.append(dot, document.createTextNode("Follow"));
+    btn.addEventListener("click", () => {
+      this.setFollow(!this.follow);
+      if (this.follow) this.list.scrollToBottom();
+    });
+    return btn;
+  }
+
+  /** Track scroll position: at the bottom re-enables follow, away from it disables it. */
+  private onScroll = (): void => {
+    const { scrollTop, scrollHeight, clientHeight } = this.scroll;
+    const atBottom =
+      scrollHeight - scrollTop - clientHeight <= FOLLOW_THRESHOLD;
+    if (atBottom !== this.follow) this.setFollow(atBottom);
+  };
+
+  /** Update follow state and reflect it on the button. */
+  private setFollow(follow: boolean): void {
+    this.follow = follow;
+    this.followBtn.classList.toggle("llm-follow-off", !follow);
+    this.followBtn.setAttribute("aria-pressed", String(follow));
   }
 
   /** Dispose the view and its nodes. */
   destroy(): void {
     this.list.destroy();
     this.clearNotice();
+    this.scroll.removeEventListener("scroll", this.onScroll);
+    this.followBtn.remove();
   }
 
   /**
    * Replace the visible list with `messages`, re-rendering the window. Used on
    * conversation switch, and after a failed turn to roll the DOM back into
-   * sync with the store (which already dropped the appended messages).
+   * sync with the store (which already dropped the appended messages). Always
+   * re-enables follow, so opening a conversation shows its latest messages.
    */
   setMessages(messages: ChatMessage[]): void {
     this.items = expandMessages(messages);
+    this.setFollow(true);
     this.list.refresh();
     this.list.scrollToBottom();
   }
 
-  /** Append the blocks for one message and follow the new content. */
+  /** Append the blocks for one message and follow the new content, if following. */
   appendMessage(msg: ChatMessage): void {
     this.items.push(...expandMessage(msg));
     this.list.refresh();
-    this.list.scrollToBottom();
+    if (this.follow) this.list.scrollToBottom();
   }
 
-  /** Append a single tool-call label block and follow it. */
+  /** Append a single tool-call label block and follow it, if following. */
   appendToolCall(label: string): void {
     this.items.push({ kind: "tool-call", label });
     this.list.refresh();
-    this.list.scrollToBottom();
+    if (this.follow) this.list.scrollToBottom();
   }
 
-  /** Append a single tool-result block and follow it. */
+  /** Append a single tool-result block and follow it, if following. */
   appendToolResult(text: string): void {
     this.items.push({ kind: "tool-result", text });
     this.list.refresh();
-    this.list.scrollToBottom();
+    if (this.follow) this.list.scrollToBottom();
   }
 
-  /** Append a compaction note and follow it. */
+  /** Append a compaction note and follow it, if following. */
   appendCompaction(): void {
     this.items.push({ kind: "compaction" });
     this.list.refresh();
-    this.list.scrollToBottom();
+    if (this.follow) this.list.scrollToBottom();
   }
 
   /**
    * Append a completed subagent run as a collapsed nested block (task, its own
-   * tool trace, and final result) and follow it. The trace is not part of the
-   * persisted conversation — only the parent tool call and its plain-text
-   * result are — so it renders only for the session that ran it.
+   * tool trace, and final result) and follow it, if following. The trace is
+   * not part of the persisted conversation — only the parent tool call and
+   * its plain-text result are — so it renders only for the session that ran
+   * it.
    */
   appendSubagentResult(
     task: string,
@@ -362,7 +428,7 @@ export class MessageView {
   ): void {
     this.items.push({ kind: "subagent", task, steps, result });
     this.list.refresh();
-    this.list.scrollToBottom();
+    if (this.follow) this.list.scrollToBottom();
   }
 
   /**

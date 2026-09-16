@@ -137,6 +137,11 @@ apps/frontend/src/
                     #   exception to "pure view over ChatMessage[]": a subagent's run is never
                     #   persisted, so its collapsed <details> block (task + tool trace + result)
                     #   is pushed straight from llm.ts's live call, not derived from history.
+                    #   Owns a `follow` flag (a sticky bottom-right pill button) that gates every
+                    #   append's auto-scroll: on by default and on every conversation load/switch,
+                    #   off automatically when the user scrolls away from the bottom, back on when
+                    #   they scroll back to it (or click the pill) — the same scroll-lock
+                    #   convention most chat UIs use.
     conversations.ts #   DOM-free conversation store: owns convs, activeId, per-conversation
                     #   promptTokens, and per-model contextWindow. Persists a list of
                     #   {id,title,model,messages} to vise:llm:conversations (+ vise:llm:active);
