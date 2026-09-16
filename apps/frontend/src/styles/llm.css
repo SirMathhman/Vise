@@ -258,6 +258,46 @@
   word-break: break-word;
 }
 
+#app #llm-response .llm-subagent {
+  margin: 4px 0 10px 10px;
+  padding: 6px 8px;
+  border-left: 2px solid var(--gold);
+  background: color-mix(in srgb, var(--gold) 5%, transparent);
+  border-radius: 0 2px 2px 0;
+}
+
+#app #llm-response .llm-subagent-summary {
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--gold-bright);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+#app #llm-response .llm-subagent-body {
+  margin-top: 6px;
+}
+
+#app #llm-response .llm-subagent-body .llm-tool,
+#app #llm-response .llm-subagent-body .llm-tool-result {
+  margin-left: 0;
+}
+
+#app #llm-response .llm-subagent-result {
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-left: 2px solid var(--border);
+  background: var(--bg-elevated);
+  border-radius: 0 2px 2px 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 #app #llm-response .llm-hint,
 #app #llm-response .llm-loading {
   font-family: var(--font-heading);

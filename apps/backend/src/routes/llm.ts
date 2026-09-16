@@ -430,6 +430,20 @@ const findFiles: LlmToolHandler = async (args, root) => {
 };
 
 /**
+ * create_subagent spawns a nested chat-completion loop, which only the panel
+ * can do (it alone talks to the LLM proxy) — so it is fully handled and
+ * intercepted client-side and never forwarded to this route. This handler
+ * exists only to satisfy the Record<LlmToolName, LlmToolHandler>
+ * exhaustiveness check below; reaching it means the panel's interception was
+ * bypassed, which is itself a bug worth surfacing to the model.
+ */
+const createSubagent: LlmToolHandler = async () => {
+  throw badRequest(
+    "create_subagent must be handled by the panel and never reaches the backend"
+  );
+};
+
+/**
  * The tools available to the model, keyed by the name the model uses. The keys
  * are checked against the shared LlmToolName union, so a renamed or misspelled
  * tool name here is a compile error.
@@ -444,6 +458,7 @@ const tools: Record<LlmToolName, LlmToolHandler> = {
   delete_file: deleteFile,
   delete_directory: deleteDirectory,
   run_command: runCommand,
+  create_subagent: createSubagent,
 };
 
 /**

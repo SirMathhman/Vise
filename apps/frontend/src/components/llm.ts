@@ -1,6 +1,8 @@
 import {
   executeLlmTool,
   type LlmMessage,
+  type LlmTool,
+  type LlmToolCall,
   type LlmUsage,
   listLlmModels,
   sendLlmMessage,
@@ -11,7 +13,11 @@ import {
   type ConversationStore,
   createConversationStore,
 } from "./conversations.js";
-import { MessageView, toolCallLabel } from "./messageView.js";
+import {
+  MessageView,
+  type SubagentStep,
+  toolCallLabel,
+} from "./messageView.js";
 
 /**
  * Wire up the LLM panel. Manages a list of conversations (each with its own
@@ -86,7 +92,7 @@ export function setupLlm(root: HTMLElement): void {
       view,
       text,
       store.getContextWindow(m),
-      store.getPromptTokens(conv.id),
+      store.getPromptTokens(conv.id)
     )
       .then((result) => {
         view.clearNotice();
@@ -97,8 +103,8 @@ export function setupLlm(root: HTMLElement): void {
       .catch((e: unknown) =>
         view.setNotice(
           "error",
-          `Request failed: ${e instanceof Error ? e.message : e}`,
-        ),
+          `Request failed: ${e instanceof Error ? e.message : e}`
+        )
       )
       .finally(() => {
         send.disabled = false;
@@ -130,7 +136,7 @@ export function setupLlm(root: HTMLElement): void {
   newBtn?.addEventListener("click", doNew);
   deleteBtn?.addEventListener("click", doDelete);
   conversation.addEventListener("change", () =>
-    switchConversation(conversation.value),
+    switchConversation(conversation.value)
   );
   model.addEventListener("change", () => {
     store.setActiveModel(model.value);
@@ -148,7 +154,7 @@ export function setupLlm(root: HTMLElement): void {
 function renderContextText(
   context: HTMLElement,
   model: HTMLSelectElement,
-  store: ReturnType<typeof createConversationStore>,
+  store: ReturnType<typeof createConversationStore>
 ): void {
   const conv = store.getActive();
   const cap = store.getContextWindow(model.value);
@@ -172,7 +178,7 @@ function renderContextText(
 function loadModelList(
   model: HTMLSelectElement,
   view: MessageView,
-  store: ReturnType<typeof createConversationStore>,
+  store: ReturnType<typeof createConversationStore>
 ): void {
   listLlmModels()
     .then((models) => {
@@ -194,8 +200,8 @@ function loadModelList(
     .catch((e: unknown) =>
       view.setNotice(
         "error",
-        `Failed to load models: ${e instanceof Error ? e.message : e}`,
-      ),
+        `Failed to load models: ${e instanceof Error ? e.message : e}`
+      )
     );
 }
 
@@ -228,8 +234,11 @@ const SYSTEM_PROMPT =
   "to replace. To create new files or directories, call create_file or " +
   "create_directory. To run a PowerShell command (builds, git, typecheck, " +
   "file operations, etc.), call run_command with the command; it runs in the " +
-  "workspace root and returns its output and exit status. Base your answer " +
-  "on the tools' results.";
+  "workspace root and returns its output and exit status. To delegate a " +
+  "self-contained sub-task to an independent helper (e.g. a focused search or " +
+  "fix that doesn't need this conversation's context), call create_subagent " +
+  "with a clear task description; it returns the helper's final answer. Base " +
+  "your answer on the tools' results.";
 
 /**
  * The system prompt, with a note appended when the user has disabled some
@@ -254,6 +263,115 @@ function disabledToolResult(name: string): string {
   );
 }
 
+/** Maximum tool-call rounds a subagent may run before it must give a final answer. */
+const SUBAGENT_MAX_TOOL_TURNS = 5;
+
+const SUBAGENT_SYSTEM_PROMPT =
+  "You are a helper agent given a single, self-contained task by another " +
+  "assistant. You have no memory of any other conversation — only the task " +
+  "below. Use the available tools to complete it, then reply with plain text " +
+  "stating the outcome; that text is the only thing the calling assistant " +
+  "will see.";
+
+/**
+ * The tools available to a subagent: every tool the parent conversation has
+ * (respecting its disabled list, checked separately in runSubagent) except
+ * create_subagent itself, so a subagent cannot spawn further subagents.
+ */
+function subagentTools(): LlmTool[] {
+  return llmToolDefinitions.filter(
+    (t) => t.function.name !== "create_subagent"
+  );
+}
+
+/** Parse the `task` argument out of a create_subagent tool call. */
+function parseSubagentTask(tc: LlmToolCall): string {
+  try {
+    const args = JSON.parse(tc.function.arguments) as { task?: unknown };
+    return typeof args.task === "string" ? args.task : "";
+  } catch {
+    return "";
+  }
+}
+
+/** The outcome of resolving one model tool call. */
+interface ToolCallOutcome {
+  result: string;
+  /** Present only for a create_subagent call: its internal trace, for the collapsed transcript block. */
+  steps?: SubagentStep[];
+  /** Present only for a create_subagent call: the task it was given. */
+  task?: string;
+}
+
+/**
+ * Resolve a single tool call to its model-readable result. Disabled tools are
+ * short-circuited client-side; create_subagent runs its own nested loop
+ * (see runSubagent); everything else is forwarded to the backend.
+ */
+async function resolveToolCall(
+  tc: LlmToolCall,
+  model: string,
+  disabled: string[]
+): Promise<ToolCallOutcome> {
+  const name = tc.function.name;
+  if (disabled.includes(name)) return { result: disabledToolResult(name) };
+  if (name === "create_subagent") {
+    const task = parseSubagentTask(tc);
+    const { result, steps } = await runSubagent(task, model, disabled);
+    return { result, steps, task };
+  }
+  return { result: await executeLlmTool(tc) };
+}
+
+/**
+ * Run an independent, bounded tool-calling loop for a single delegated task.
+ * The subagent gets its own message history (just the task, not the parent
+ * conversation) and the same tool-enablement the parent has, minus
+ * create_subagent itself (so nesting stops at one level). Nothing here is
+ * persisted to the conversation store; only the final result and the step
+ * trace (for the collapsed transcript block) are returned to the caller.
+ */
+async function runSubagent(
+  task: string,
+  model: string,
+  disabled: string[]
+): Promise<{ result: string; steps: SubagentStep[] }> {
+  const tools = subagentTools();
+  const steps: SubagentStep[] = [];
+  const messages: LlmMessage[] = [
+    { role: "system", content: SUBAGENT_SYSTEM_PROMPT },
+    { role: "user", content: task },
+  ];
+  for (let i = 0; i < SUBAGENT_MAX_TOOL_TURNS; i++) {
+    const reply = await sendLlmMessage(messages, model, tools);
+    if (reply.tool_calls && reply.tool_calls.length > 0) {
+      messages.push({
+        role: "assistant",
+        content: reply.content,
+        tool_calls: reply.tool_calls,
+      });
+      for (const tc of reply.tool_calls) {
+        steps.push({ kind: "tool-call", text: toolCallLabel(tc) });
+      }
+      for (const tc of reply.tool_calls) {
+        const name = tc.function.name;
+        const result = disabled.includes(name)
+          ? disabledToolResult(name)
+          : await executeLlmTool(tc);
+        messages.push({ role: "tool", content: result, tool_call_id: tc.id });
+        steps.push({ kind: "tool-result", text: result });
+      }
+      continue;
+    }
+    return { result: reply.content ?? "", steps };
+  }
+  return {
+    result:
+      "The subagent stopped after several tool calls without a final answer.",
+    steps,
+  };
+}
+
 /** The outcome of a turn: the assistant text and its final token usage. */
 export interface TurnResult {
   text: string;
@@ -266,7 +384,7 @@ async function runTurn(
   view: MessageView,
   userText: string,
   cap: number | undefined,
-  lastPromptTokens: number | undefined,
+  lastPromptTokens: number | undefined
 ): Promise<TurnResult> {
   const history = store.getActive().messages;
   const preLength = history.length;
@@ -309,16 +427,21 @@ async function runTurn(
           view.appendToolCall(toolCallLabel(tc));
         }
         for (const tc of reply.tool_calls) {
-          const name = tc.function.name;
-          const result = disabled.includes(name)
-            ? disabledToolResult(name)
-            : await executeLlmTool(tc);
+          const outcome = await resolveToolCall(tc, model, disabled);
           store.appendMessage({
             role: "tool",
-            content: result,
+            content: outcome.result,
             tool_call_id: tc.id,
           });
-          view.appendToolResult(result);
+          if (outcome.steps) {
+            view.appendSubagentResult(
+              outcome.task ?? "",
+              outcome.steps,
+              outcome.result
+            );
+          } else {
+            view.appendToolResult(outcome.result);
+          }
         }
         continue;
       }
@@ -353,7 +476,7 @@ const SUMMARY_PROMPT =
  */
 function buildMessages(
   history: ChatMessage[],
-  disabled: string[] = [],
+  disabled: string[] = []
 ): LlmMessage[] {
   let cut = -1;
   for (let i = history.length - 1; i >= 0; i--) {
@@ -380,7 +503,7 @@ function buildMessages(
  */
 async function summarizeConversation(
   history: ChatMessage[],
-  model: string,
+  model: string
 ): Promise<string> {
   // Reuse the compacted conversation so the rescue call isn't itself larger
   // than the prompt that just measured >= 80% of the window; only the system
@@ -401,7 +524,7 @@ async function summarizeConversation(
  */
 function renderToolList(
   container: HTMLElement,
-  store: ConversationStore,
+  store: ConversationStore
 ): void {
   const details = document.createElement("details");
   details.className = "llm-tools";

@@ -14,6 +14,7 @@ export const LLM_TOOL_NAMES = [
   "delete_file",
   "delete_directory",
   "run_command",
+  "create_subagent",
 ] as const;
 
 /** The set of tool names the model may call. */

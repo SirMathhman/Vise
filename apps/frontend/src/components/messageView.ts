@@ -15,12 +15,19 @@ import type { ChatMessage } from "./conversations.js";
  * talks to the network; it only renders.
  */
 
+/** One step recorded inside a subagent's own tool-calling loop. */
+export interface SubagentStep {
+  kind: "tool-call" | "tool-result";
+  text: string;
+}
+
 /** One rendered block. A single chat message expands into one or more of these. */
 type VisualItem =
   | { kind: "message"; role: "user" | "assistant"; content: string }
   | { kind: "tool-call"; label: string }
   | { kind: "tool-result"; text: string }
-  | { kind: "compaction" };
+  | { kind: "compaction" }
+  | { kind: "subagent"; task: string; steps: SubagentStep[]; result: string };
 
 /** Vertical gap applied after each block, mirroring the pre-wrap margin rhythm. */
 const GAP = 10;
@@ -100,7 +107,51 @@ function renderItemDom(item: VisualItem): HTMLElement {
       block.append(who, text);
       return block;
     }
+    case "subagent":
+      return renderSubagentDom(item);
   }
+}
+
+/**
+ * Render a completed subagent run as a collapsed <details> block: its task in
+ * the summary, its own tool-call/tool-result trace inside, closed out by its
+ * final result. Collapsed by default so a delegated sub-task doesn't dominate
+ * the main transcript.
+ */
+function renderSubagentDom(item: {
+  task: string;
+  steps: SubagentStep[];
+  result: string;
+}): HTMLElement {
+  const details = document.createElement("details");
+  details.className = "llm-subagent";
+  const summary = document.createElement("summary");
+  summary.className = "llm-subagent-summary";
+  summary.textContent = `Subagent: ${item.task}`;
+  details.append(summary);
+
+  const body = document.createElement("div");
+  body.className = "llm-subagent-body";
+  for (const step of item.steps) {
+    const stepEl = document.createElement("div");
+    if (step.kind === "tool-call") {
+      stepEl.className = "llm-tool";
+      const label = document.createElement("span");
+      label.className = "llm-tool-label";
+      label.textContent = step.text;
+      stepEl.append(label);
+    } else {
+      stepEl.className = "llm-tool-result";
+      stepEl.textContent = step.text;
+    }
+    body.append(stepEl);
+  }
+  const result = document.createElement("div");
+  result.className = "llm-subagent-result";
+  result.textContent = item.result;
+  body.append(result);
+  details.append(body);
+  return details;
 }
 
 /**
@@ -294,6 +345,22 @@ export class MessageView {
   /** Append a compaction note and follow it. */
   appendCompaction(): void {
     this.items.push({ kind: "compaction" });
+    this.list.refresh();
+    this.list.scrollToBottom();
+  }
+
+  /**
+   * Append a completed subagent run as a collapsed nested block (task, its own
+   * tool trace, and final result) and follow it. The trace is not part of the
+   * persisted conversation — only the parent tool call and its plain-text
+   * result are — so it renders only for the session that ran it.
+   */
+  appendSubagentResult(
+    task: string,
+    steps: SubagentStep[],
+    result: string
+  ): void {
+    this.items.push({ kind: "subagent", task, steps, result });
     this.list.refresh();
     this.list.scrollToBottom();
   }

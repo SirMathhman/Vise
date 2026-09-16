@@ -257,6 +257,33 @@ const findFiles: LlmTool = {
   },
 };
 
+/**
+ * Delegate a self-contained sub-task to an independent helper agent. Handled
+ * entirely client-side (see components/llm.ts's runSubagent): the panel runs
+ * a nested tool-calling loop with its own message history (just the task, not
+ * this conversation) and the same tools available here minus this one, so a
+ * subagent cannot spawn further subagents.
+ */
+const createSubagent: LlmTool = {
+  type: "function",
+  function: {
+    name: "create_subagent",
+    description:
+      'Delegate a self-contained sub-task to an independent helper agent. The helper does not see this conversation — only the task description you give it — and works through it using the same file/shell tools available to you (except this one; it cannot spawn further subagents). Its final answer becomes this call\'s result. Use it to offload a focused, well-scoped piece of work (e.g. "find every call site of X and list them" or "fix the failing test in Y") without spending this conversation\'s own tool-call budget or context on the intermediate steps.',
+    parameters: {
+      type: "object",
+      properties: {
+        task: {
+          type: "string",
+          description:
+            "A clear, self-contained description of the sub-task, including all context the helper needs — it cannot see this conversation.",
+        },
+      },
+      required: ["task"],
+    },
+  },
+};
+
 /** All tool definitions available to the model, in a stable order. */
 export const llmToolDefinitions: LlmTool[] = [
   listDirectory,
@@ -268,4 +295,5 @@ export const llmToolDefinitions: LlmTool[] = [
   deleteFile,
   deleteDirectory,
   runCommand,
+  createSubagent,
 ];
