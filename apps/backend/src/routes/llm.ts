@@ -40,6 +40,9 @@ const MAX_OUTPUT_BYTES = 1024 * 1024; // 1 MB
 /** How long a run_command call may run before it is killed as hung. */
 const COMMAND_TIMEOUT_MS = 30_000; // 30 seconds
 
+/** The maximum number of matches a find_files call may return. */
+const MAX_FILE_MATCHES = 500;
+
 /**
  * Kills a spawned process and its entire process tree. On Windows,
  * `child.kill()` signals only the top-level process (e.g. powershell.exe);
@@ -380,12 +383,60 @@ const runCommand: LlmToolHandler = (args, root) => {
 };
 
 /**
+ * Search for file names matching a regular expression across the workspace,
+ * excluding anything git ignores. Uses `git ls-files --cached --others
+ * --exclude-standard`, which lists every file git would consider (tracked plus
+ * untracked) while honoring .gitignore, nested .gitignore files, and
+ * .git/info/exclude. The pattern is matched against each file's base name.
+ * At most MAX_FILE_MATCHES results are returned.
+ */
+const findFiles: LlmToolHandler = async (args, root) => {
+  const pattern = typeof args.pattern === "string" ? args.pattern : "";
+  if (!pattern) throw badRequest("pattern is required");
+  let re: RegExp;
+  try {
+    re = new RegExp(pattern);
+  } catch (err) {
+    throw badRequest(`invalid pattern: ${(err as Error).message}`);
+  }
+
+  // -z yields NUL-separated entries so paths with spaces are safe; git
+  // exits non-zero (e.g. not a repo) and throws, which the route turns into a
+  // readable error string for the model.
+  const raw = execSync("git ls-files --cached --others --exclude-standard -z", {
+    cwd: root,
+    maxBuffer: 10 * 1024 * 1024,
+  });
+  const files = raw.toString("utf-8").split("\0").filter(Boolean);
+
+  const matches: string[] = [];
+  for (const rel of files) {
+    const base = rel.split("/").pop() ?? rel;
+    if (re.test(base)) {
+      matches.push(rel);
+      if (matches.length >= MAX_FILE_MATCHES) break;
+    }
+  }
+
+  if (matches.length === 0) {
+    return `No files match /${pattern}/.`;
+  }
+  const lines = matches.join("\n");
+  const more =
+    matches.length >= MAX_FILE_MATCHES
+      ? `\n… (results capped at ${MAX_FILE_MATCHES})`
+      : "";
+  return `Found ${matches.length} file(s) matching /${pattern}/:\n${lines}${more}`;
+};
+
+/**
  * The tools available to the model, keyed by the name the model uses. The keys
  * are checked against the shared LlmToolName union, so a renamed or misspelled
  * tool name here is a compile error.
  */
 const tools: Record<LlmToolName, LlmToolHandler> = {
   list_directory: listDirectory,
+  find_files: findFiles,
   read_file: readFileRange,
   edit_file: editFileRange,
   create_directory: createDirectory,

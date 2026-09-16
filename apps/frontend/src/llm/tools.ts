@@ -232,9 +232,35 @@ const runCommand: LlmTool = {
   },
 };
 
+/**
+ * Search for file names matching a regular expression across the workspace,
+ * excluding files and directories git ignores. Matches the file's base name
+ * (the file name without its directory).
+ */
+const findFiles: LlmTool = {
+  type: "function",
+  function: {
+    name: "find_files",
+    description:
+      "Search for file names that match a regular expression, across the whole workspace, excluding files and directories that git ignores (anything in .gitignore, nested .gitignore files, or .git/info/exclude). The pattern is matched against each file's base name (the file name without its directory). Use this to find files by name without listing every directory first.",
+    parameters: {
+      type: "object",
+      properties: {
+        pattern: {
+          type: "string",
+          description:
+            'A regular expression matched against each file\'s base name (e.g. ".*\\.test\\.ts$" to find test files).',
+        },
+      },
+      required: ["pattern"],
+    },
+  },
+};
+
 /** All tool definitions available to the model, in a stable order. */
 export const llmToolDefinitions: LlmTool[] = [
   listDirectory,
+  findFiles,
   readFile,
   editFile,
   createDirectory,
