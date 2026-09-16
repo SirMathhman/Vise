@@ -26,6 +26,14 @@ export interface Conversation {
   title: string;
   model: string;
   messages: ChatMessage[];
+  /**
+   * Tool names the user has disabled for this conversation. A disabled tool
+   * is still sent to the model (the tool definitions are unchanged, so the KV
+   * cache prefix is preserved) but the model is told it is off via a note
+   * appended to the system prompt, and any call to it is short-circuited to a
+   * model-readable "disabled" result. Empty when nothing is disabled.
+   */
+  disabledTools: string[];
 }
 
 /** True when `value` is a structurally valid persisted message. */
@@ -48,7 +56,12 @@ function isValidConversation(value: unknown): value is Conversation {
     typeof c.title === "string" &&
     typeof c.model === "string" &&
     Array.isArray(c.messages) &&
-    (c.messages as unknown[]).every(isValidMessage)
+    (c.messages as unknown[]).every(isValidMessage) &&
+    // `disabledTools` is optional in persisted data (conversations saved before
+    // it existed); a missing field means "none disabled".
+    (c.disabledTools === undefined ||
+      (Array.isArray(c.disabledTools) &&
+        (c.disabledTools as unknown[]).every((v) => typeof v === "string")))
   );
 }
 
@@ -137,7 +150,9 @@ function loadConversations(): Conversation[] {
     if (raw) {
       const parsed: unknown = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        const convs = parsed.filter(isValidConversation);
+        const convs = parsed
+          .filter(isValidConversation)
+          .map((c) => ({ ...c, disabledTools: c.disabledTools ?? [] }));
         if (convs.length > 0) return convs;
       }
     }
@@ -149,6 +164,7 @@ function loadConversations(): Conversation[] {
           title: deriveTitle(legacy),
           model: safeGetItem(LEGACY_MODEL) ?? "",
           messages: legacy,
+          disabledTools: [],
         },
       ];
     }
@@ -190,6 +206,10 @@ export interface ConversationStore {
    * fresh empty conversation is seeded so the store keeps at least one.
    */
   deleteConversation(id: string): void;
+  /** The active conversation's disabled tool names (empty = all enabled). */
+  getDisabledTools(): string[];
+  /** Set a tool's enabled/disabled state on the active conversation. */
+  setToolEnabled(name: string, enabled: boolean): void;
   /** Set the active conversation's model choice. */
   setActiveModel(model: string): void;
   /** Retitle the active conversation from its first user message. */
@@ -219,7 +239,13 @@ export function createConversationStore(): ConversationStore {
   if (convs.length === 0) {
     const id = newId();
     convs = [
-      { id, title: deriveTitle([], id.slice(0, 4)), model: "", messages: [] },
+      {
+        id,
+        title: deriveTitle([], id.slice(0, 4)),
+        model: "",
+        messages: [],
+        disabledTools: [],
+      },
     ];
   }
   // Pick the active conversation: a stored id if it still exists, else the
@@ -251,7 +277,13 @@ export function createConversationStore(): ConversationStore {
     newConversation(model) {
       const id = newId();
       convs = [
-        { id, title: deriveTitle([], id.slice(0, 4)), model, messages: [] },
+        {
+          id,
+          title: deriveTitle([], id.slice(0, 4)),
+          model,
+          messages: [],
+          disabledTools: [],
+        },
         ...convs,
       ];
       activeId = id;
@@ -272,11 +304,24 @@ export function createConversationStore(): ConversationStore {
             title: deriveTitle([], fresh.slice(0, 4)),
             model: "",
             messages: [],
+            disabledTools: [],
           },
         ];
         activeId = fresh;
       } else if (activeId === id) {
         activeId = convs[0].id;
+      }
+    },
+    getDisabledTools() {
+      return getActive().disabledTools;
+    },
+    setToolEnabled(name, enabled) {
+      const active = getActive();
+      const has = active.disabledTools.includes(name);
+      if (enabled && has) {
+        active.disabledTools = active.disabledTools.filter((t) => t !== name);
+      } else if (!enabled && !has) {
+        active.disabledTools = [...active.disabledTools, name];
       }
     },
     setActiveModel(model) {

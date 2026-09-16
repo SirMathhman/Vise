@@ -115,6 +115,23 @@
   scrollbar-width: thin;
 }
 
+#app #llm .llm-tool {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+#app #llm .llm-tool-toggle {
+  flex: 0 0 auto;
+  margin: 4px 0 0;
+  accent-color: var(--gold);
+}
+
+#app #llm .llm-tool-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 #app #llm .llm-tool-name {
   font-family: var(--font-mono);
   font-size: 0.75rem;
@@ -128,6 +145,10 @@
   font-size: 0.78rem;
   line-height: 1.4;
   color: var(--text-muted);
+}
+
+#app #llm .llm-tool-disabled {
+  opacity: 0.5;
 }
 
 #app #llm textarea {

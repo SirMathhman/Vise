@@ -34,12 +34,12 @@ export function setupLlm(root: HTMLElement): void {
     return;
   }
 
-  const tools = root.querySelector<HTMLElement>("#llm-tools");
-  if (tools) renderToolList(tools);
-
   const store = createConversationStore();
   const view = new MessageView(response);
   window.addEventListener("resize", () => view.refresh());
+
+  const tools = root.querySelector<HTMLElement>("#llm-tools");
+  if (tools) renderToolList(tools, store);
 
   const renderContext = () => renderContextText(context, model, store);
 
@@ -65,6 +65,7 @@ export function setupLlm(root: HTMLElement): void {
     model.value = store.getActive().model;
     renderActiveMessages();
     renderContext();
+    if (tools) syncToolList(tools, store);
   };
 
   showActive();
@@ -230,6 +231,29 @@ const SYSTEM_PROMPT =
   "workspace root and returns its output and exit status. Base your answer " +
   "on the tools' results.";
 
+/**
+ * The system prompt, with a note appended when the user has disabled some
+ * tools. With no tools disabled it is exactly SYSTEM_PROMPT, so the request's
+ * prefix (and thus the KV cache) is unchanged for unaffected conversations.
+ */
+function systemPrompt(disabled: string[]): string {
+  if (disabled.length === 0) return SYSTEM_PROMPT;
+  return (
+    SYSTEM_PROMPT +
+    ` The following tools are disabled by the user and must not be called: ` +
+    `${disabled.join(", ")}. If a task needs one of them, tell the user it ` +
+    "is disabled and ask them to enable it in the Tools list."
+  );
+}
+
+/** Model-readable result returned when the model calls a disabled tool. */
+function disabledToolResult(name: string): string {
+  return (
+    `${name} is disabled by the user. Do not call it; if you need its ` +
+    "capability, tell the user it is disabled and ask them to enable it."
+  );
+}
+
 /** The outcome of a turn: the assistant text and its final token usage. */
 export interface TurnResult {
   text: string;
@@ -246,6 +270,7 @@ async function runTurn(
 ): Promise<TurnResult> {
   const history = store.getActive().messages;
   const preLength = history.length;
+  const disabled = store.getDisabledTools();
   let lastUsage: LlmUsage | undefined;
   try {
     // If the previous call already used 80% of the window, summarize the
@@ -271,7 +296,7 @@ async function runTurn(
     store.appendMessage({ role: "user", content: userText });
     view.appendMessage({ role: "user", content: userText });
     for (let i = 0; i < MAX_TOOL_TURNS; i++) {
-      const messages = buildMessages(history);
+      const messages = buildMessages(history, disabled);
       const reply = await sendLlmMessage(messages, model, llmToolDefinitions);
       lastUsage = reply.usage ?? lastUsage;
       if (reply.tool_calls && reply.tool_calls.length > 0) {
@@ -284,7 +309,10 @@ async function runTurn(
           view.appendToolCall(toolCallLabel(tc));
         }
         for (const tc of reply.tool_calls) {
-          const result = await executeLlmTool(tc);
+          const name = tc.function.name;
+          const result = disabled.includes(name)
+            ? disabledToolResult(name)
+            : await executeLlmTool(tc);
           store.appendMessage({
             role: "tool",
             content: result,
@@ -323,7 +351,10 @@ const SUMMARY_PROMPT =
  * summary (if any) in place of the pre-summary history, then the turns after
  * it. Without a compaction the full history is sent.
  */
-function buildMessages(history: ChatMessage[]): LlmMessage[] {
+function buildMessages(
+  history: ChatMessage[],
+  disabled: string[] = []
+): LlmMessage[] {
   let cut = -1;
   for (let i = history.length - 1; i >= 0; i--) {
     if (history[i].compaction) {
@@ -331,7 +362,9 @@ function buildMessages(history: ChatMessage[]): LlmMessage[] {
       break;
     }
   }
-  const messages: LlmMessage[] = [{ role: "system", content: SYSTEM_PROMPT }];
+  const messages: LlmMessage[] = [
+    { role: "system", content: systemPrompt(disabled) },
+  ];
   if (cut >= 0) {
     messages.push({ role: "user", content: history[cut].content ?? "" });
     for (let i = cut + 1; i < history.length; i++) messages.push(history[i]);
@@ -361,8 +394,15 @@ async function summarizeConversation(
   return (reply.content ?? "").trim();
 }
 
-/** Render the available tools (name + description) into the panel. */
-function renderToolList(container: HTMLElement): void {
+/**
+ * Render the available tools into the panel, each with an enable/disable
+ * checkbox. A disabled tool is dimmed; its state is per-conversation (see the
+ * store) and is forwarded to the model via the system prompt.
+ */
+function renderToolList(
+  container: HTMLElement,
+  store: ConversationStore
+): void {
   const details = document.createElement("details");
   details.className = "llm-tools";
   const title = document.createElement("summary");
@@ -371,16 +411,51 @@ function renderToolList(container: HTMLElement): void {
   const list = document.createElement("ul");
   list.className = "llm-tools-list";
   for (const tool of llmToolDefinitions) {
+    const name = tool.function.name;
     const li = document.createElement("li");
-    const name = document.createElement("code");
-    name.className = "llm-tool-name";
-    name.textContent = tool.function.name;
+    li.className = "llm-tool";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.className = "llm-tool-toggle";
+    cb.value = name;
+    cb.checked = !store.getDisabledTools().includes(name);
+    cb.addEventListener("change", () => {
+      store.setToolEnabled(name, cb.checked);
+      store.persist();
+      setToolRow(li, cb.checked);
+    });
+    const body = document.createElement("div");
+    body.className = "llm-tool-body";
+    const codeEl = document.createElement("code");
+    codeEl.className = "llm-tool-name";
+    codeEl.textContent = name;
     const desc = document.createElement("span");
     desc.className = "llm-tool-desc";
     desc.textContent = tool.function.description;
-    li.append(name, desc);
+    body.append(codeEl, desc);
+    li.append(cb, body);
     list.append(li);
   }
   details.append(title, list);
   container.append(details);
+}
+
+/** Dim a tool row when disabled, and un-dim it when enabled. */
+function setToolRow(li: HTMLElement, enabled: boolean): void {
+  li.classList.toggle("llm-tool-disabled", !enabled);
+}
+
+/**
+ * Re-sync every tool checkbox to the active conversation's disabled set; used
+ * when switching conversations so each one shows its own tool state.
+ */
+function syncToolList(container: HTMLElement, store: ConversationStore): void {
+  const disabled = store.getDisabledTools();
+  container
+    .querySelectorAll<HTMLInputElement>(".llm-tool-toggle")
+    .forEach((cb) => {
+      const off = disabled.includes(cb.value);
+      cb.checked = !off;
+      cb.closest(".llm-tool")?.classList.toggle("llm-tool-disabled", off);
+    });
 }
