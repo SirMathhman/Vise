@@ -44,14 +44,7 @@ function makeStore(
   };
 }
 
-describe("fileState store", () => {
-  beforeEach(() => {
-    jest.useFakeTimers();
-  });
-  afterEach(() => {
-    jest.useRealTimers();
-  });
-
+describe("fileState store: buffer and dirty state", () => {
   it("tracks dirty state via markDirty / resetDirty", () => {
     const { store } = makeStore("x");
     expect(store.isDirty()).toBe(false);
@@ -69,8 +62,10 @@ describe("fileState store", () => {
     expect(store.getContent()).toBe("abc");
     expect(store.isDirty()).toBe(false);
   });
+});
 
-  it("save() is a no-op when the buffer is unchanged", async () => {
+describe("fileState store: save", () => {
+  it("is a no-op when the buffer is unchanged", async () => {
     const { store, statuses, calls } = makeStore("abc");
     store.beginLoad("a.txt", "abc");
     await store.save();
@@ -78,7 +73,7 @@ describe("fileState store", () => {
     expect(statuses).toEqual([{ state: "saved" }]);
   });
 
-  it("save() persists changes and reports saving -> saved", async () => {
+  it("persists changes and reports saving -> saved", async () => {
     const { store, statuses, calls, setReaderValue } = makeStore("abc");
     store.beginLoad("a.txt", "abc");
     setReaderValue("abc edited");
@@ -89,7 +84,7 @@ describe("fileState store", () => {
     expect(store.isDirty()).toBe(false);
   });
 
-  it("save() keeps dirty and reports error when persist fails", async () => {
+  it("keeps dirty and reports error when persist fails", async () => {
     const { store, statuses, setReject, setReaderValue } = makeStore("abc");
     store.beginLoad("a.txt", "abc");
     setReaderValue("abc edited");
@@ -100,14 +95,16 @@ describe("fileState store", () => {
     expect(store.getContent()).toBe("abc");
     expect(statuses.at(-1)).toEqual({ state: "error", message: "boom" });
   });
+});
 
-  it("flush() resolves true when clean", async () => {
+describe("fileState store: flush", () => {
+  it("resolves true when clean", async () => {
     const { store } = makeStore("abc");
     store.beginLoad("a.txt", "abc");
     expect(await store.flush()).toBe(true);
   });
 
-  it("flush() persists a dirty buffer and resolves true", async () => {
+  it("persists a dirty buffer and resolves true", async () => {
     const { store, calls, setReaderValue } = makeStore("abc");
     store.beginLoad("a.txt", "abc");
     setReaderValue("abc saved");
@@ -117,7 +114,7 @@ describe("fileState store", () => {
     expect(store.isDirty()).toBe(false);
   });
 
-  it("flush() resolves false, keeps dirty, and reports error on failure", async () => {
+  it("resolves false, keeps dirty, and reports error on failure", async () => {
     const { store, statuses, setReject, setReaderValue } = makeStore("abc");
     store.beginLoad("a.txt", "abc");
     setReaderValue("abc saved");
@@ -129,6 +126,15 @@ describe("fileState store", () => {
       state: "error",
       message: "network down",
     });
+  });
+});
+
+describe("fileState store: scheduling", () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it("beginLoad clears a pending scheduled save", () => {
