@@ -184,6 +184,12 @@ export interface ConversationStore {
   newConversation(model: string): void;
   /** Switch the active conversation to the one with this id. */
   switchTo(id: string): void;
+  /**
+   * Delete the conversation with this id (and its history). If it was active,
+   * the first remaining conversation becomes active; if it was the only one, a
+   * fresh empty conversation is seeded so the store keeps at least one.
+   */
+  deleteConversation(id: string): void;
   /** Set the active conversation's model choice. */
   setActiveModel(model: string): void;
   /** Retitle the active conversation from its first user message. */
@@ -253,6 +259,25 @@ export function createConversationStore(): ConversationStore {
     },
     switchTo(id) {
       if (convs.some((c) => c.id === id)) activeId = id;
+    },
+    deleteConversation(id) {
+      if (!convs.some((c) => c.id === id)) return;
+      promptTokens.delete(id);
+      convs = convs.filter((c) => c.id !== id);
+      if (convs.length === 0) {
+        const fresh = newId();
+        convs = [
+          {
+            id: fresh,
+            title: deriveTitle([], fresh.slice(0, 4)),
+            model: "",
+            messages: [],
+          },
+        ];
+        activeId = fresh;
+      } else if (activeId === id) {
+        activeId = convs[0].id;
+      }
     },
     setActiveModel(model) {
       getActive().model = model;

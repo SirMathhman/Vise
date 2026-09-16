@@ -47,6 +47,14 @@ export async function render(root: HTMLElement): Promise<void> {
             >
               New
             </button>
+            <button
+              id="llm-delete"
+              class="btn btn-ghost"
+              type="button"
+              title="Delete the selected conversation"
+            >
+              Delete
+            </button>
           </div>
           <p id="llm-context" class="llm-context" aria-label="context usage"></p>
           <div id="llm-tools" aria-label="available tools"></div>

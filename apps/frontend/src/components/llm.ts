@@ -28,6 +28,7 @@ export function setupLlm(root: HTMLElement): void {
   const response = root.querySelector<HTMLElement>("#llm-response");
   const send = root.querySelector<HTMLButtonElement>("#llm-send");
   const newBtn = root.querySelector<HTMLButtonElement>("#llm-new");
+  const deleteBtn = root.querySelector<HTMLButtonElement>("#llm-delete");
   const context = root.querySelector<HTMLElement>("#llm-context");
   if (!conversation || !model || !prompt || !response || !send || !context) {
     return;
@@ -110,6 +111,13 @@ export function setupLlm(root: HTMLElement): void {
     prompt.focus();
   };
 
+  const doDelete = () => {
+    store.deleteConversation(store.activeId());
+    showActive();
+    store.persist();
+    prompt.focus();
+  };
+
   const switchConversation = (id: string) => {
     store.switchTo(id);
     showActive();
@@ -118,6 +126,7 @@ export function setupLlm(root: HTMLElement): void {
 
   send.addEventListener("click", submit);
   newBtn?.addEventListener("click", doNew);
+  deleteBtn?.addEventListener("click", doDelete);
   conversation.addEventListener("change", () =>
     switchConversation(conversation.value)
   );
