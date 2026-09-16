@@ -53,11 +53,11 @@ export function setupLlm(root: HTMLElement): void {
 
   const renderActiveMessages = () => {
     const conv = store.getActive();
+    view.clearNotice();
+    view.setMessages(conv.messages);
     if (conv.messages.length === 0) {
       view.setNotice("hint", "Start a conversation.");
-      return;
     }
-    view.setMessages(conv.messages);
   };
 
   const showActive = () => {
