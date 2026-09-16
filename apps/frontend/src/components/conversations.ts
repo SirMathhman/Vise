@@ -88,7 +88,7 @@ function newId(): string {
  */
 export function deriveTitle(
   messages: ChatMessage[],
-  idSuffix?: string
+  idSuffix?: string,
 ): string {
   for (const m of messages) {
     if (

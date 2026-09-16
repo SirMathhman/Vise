@@ -86,7 +86,7 @@ export function setupLlm(root: HTMLElement): void {
       view,
       text,
       store.getContextWindow(m),
-      store.getPromptTokens(conv.id)
+      store.getPromptTokens(conv.id),
     )
       .then((result) => {
         view.clearNotice();
@@ -97,8 +97,8 @@ export function setupLlm(root: HTMLElement): void {
       .catch((e: unknown) =>
         view.setNotice(
           "error",
-          `Request failed: ${e instanceof Error ? e.message : e}`
-        )
+          `Request failed: ${e instanceof Error ? e.message : e}`,
+        ),
       )
       .finally(() => {
         send.disabled = false;
@@ -130,7 +130,7 @@ export function setupLlm(root: HTMLElement): void {
   newBtn?.addEventListener("click", doNew);
   deleteBtn?.addEventListener("click", doDelete);
   conversation.addEventListener("change", () =>
-    switchConversation(conversation.value)
+    switchConversation(conversation.value),
   );
   model.addEventListener("change", () => {
     store.setActiveModel(model.value);
@@ -148,7 +148,7 @@ export function setupLlm(root: HTMLElement): void {
 function renderContextText(
   context: HTMLElement,
   model: HTMLSelectElement,
-  store: ReturnType<typeof createConversationStore>
+  store: ReturnType<typeof createConversationStore>,
 ): void {
   const conv = store.getActive();
   const cap = store.getContextWindow(model.value);
@@ -172,7 +172,7 @@ function renderContextText(
 function loadModelList(
   model: HTMLSelectElement,
   view: MessageView,
-  store: ReturnType<typeof createConversationStore>
+  store: ReturnType<typeof createConversationStore>,
 ): void {
   listLlmModels()
     .then((models) => {
@@ -194,8 +194,8 @@ function loadModelList(
     .catch((e: unknown) =>
       view.setNotice(
         "error",
-        `Failed to load models: ${e instanceof Error ? e.message : e}`
-      )
+        `Failed to load models: ${e instanceof Error ? e.message : e}`,
+      ),
     );
 }
 
@@ -266,7 +266,7 @@ async function runTurn(
   view: MessageView,
   userText: string,
   cap: number | undefined,
-  lastPromptTokens: number | undefined
+  lastPromptTokens: number | undefined,
 ): Promise<TurnResult> {
   const history = store.getActive().messages;
   const preLength = history.length;
@@ -353,7 +353,7 @@ const SUMMARY_PROMPT =
  */
 function buildMessages(
   history: ChatMessage[],
-  disabled: string[] = []
+  disabled: string[] = [],
 ): LlmMessage[] {
   let cut = -1;
   for (let i = history.length - 1; i >= 0; i--) {
@@ -380,7 +380,7 @@ function buildMessages(
  */
 async function summarizeConversation(
   history: ChatMessage[],
-  model: string
+  model: string,
 ): Promise<string> {
   // Reuse the compacted conversation so the rescue call isn't itself larger
   // than the prompt that just measured >= 80% of the window; only the system
@@ -401,7 +401,7 @@ async function summarizeConversation(
  */
 function renderToolList(
   container: HTMLElement,
-  store: ConversationStore
+  store: ConversationStore,
 ): void {
   const details = document.createElement("details");
   details.className = "llm-tools";
