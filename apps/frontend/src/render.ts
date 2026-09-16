@@ -49,6 +49,22 @@ export async function render(root: HTMLElement): Promise<void> {
           </div>
           <p id="llm-context" class="llm-context" aria-label="context usage"></p>
           <div id="llm-tools" aria-label="available tools"></div>
+          <input
+            id="llm-hook"
+            class="llm-hook"
+            type="text"
+            aria-label="startup command"
+            placeholder="Startup command (optional, PowerShell — runs once before your first message)"
+            title="Runs once, before this conversation's first message, via the same run_command tool the model uses. Its output is added to the model's context but never shown in the transcript."
+          />
+          <input
+            id="llm-turn-hook"
+            class="llm-hook"
+            type="text"
+            aria-label="turn command"
+            placeholder="Turn command (optional, PowerShell — runs fresh before every turn)"
+            title="Runs fresh before every turn (not just the first), via the same run_command tool the model uses. Its output is added to that turn's context but never shown in the transcript, and is never cached between turns."
+          />
           <textarea
             id="llm-prompt"
             aria-label="message"

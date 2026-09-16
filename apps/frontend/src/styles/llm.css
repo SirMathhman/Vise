@@ -151,6 +151,30 @@
   opacity: 0.5;
 }
 
+#app #llm .llm-hook {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 7px 10px;
+  margin-bottom: 12px;
+}
+
+#app #llm .llm-hook:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+#app #llm .llm-hook:focus {
+  outline: 1px solid var(--gold);
+  outline-offset: 1px;
+}
+
 #app #llm textarea {
   flex: 0 0 auto;
   height: 96px;

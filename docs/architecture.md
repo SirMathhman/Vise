@@ -122,7 +122,15 @@ apps/frontend/src/
                     #   create_subagent runs its own nested loop (runSubagent — its own
                     #   message history, the parent's tools minus create_subagent itself,
                     #   capped at SUBAGENT_MAX_TOOL_TURNS), everything else forwards to the
-                    #   backend as before.
+                    #   backend as before. Startup hook: on the first Send of an empty
+                    #   conversation with a hookCommand set, runs it once via the same
+                    #   run_command tool (executeLlmTool + a synthetic tool call) and caches
+                    #   the output as hookOutput, which systemPrompt()/buildMessages() then
+                    #   append to every turn's system prompt for that conversation. Turn
+                    #   hook: a second, uncached hookCommand-alike (turnCommand) that runs
+                    #   before every turn via the same mechanism; its output (turnOutput)
+                    #   is threaded through runTurn -> buildMessages -> systemPrompt for
+                    #   that turn only and is never persisted on the conversation.
     messageView.ts  #   VIRTUALIZED LLM transcript view (DOM, no store knowledge): renders the
                     #   active conversation's messages as a bounded, windowed list. A general
                     #   `VirtualList` keeps a spacer as tall as the whole conversation and
@@ -144,8 +152,9 @@ apps/frontend/src/
                     #   convention most chat UIs use.
     conversations.ts #   DOM-free conversation store: owns convs, activeId, per-conversation
                     #   promptTokens, and per-model contextWindow. Persists a list of
-                    #   {id,title,model,messages} to vise:llm:conversations (+ vise:llm:active);
-                    #   exposes getActive/new/switch/delete/persist + title derivation. The store
+                    #   {id,title,model,messages,hookCommand,hookOutput?,turnCommand} to
+                    #   vise:llm:conversations (+ vise:llm:active); exposes
+                    #   getActive/new/switch/delete/persist + title derivation. The store
                     #   always keeps >=1 conversation (deleteConversation reseeds a fresh empty one
                     #   when the last is removed, and reassigns activeId to the first remaining).
                     #   Legacy single-conversation keys (vise:llm:history/model) migrate once.

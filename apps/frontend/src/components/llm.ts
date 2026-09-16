@@ -36,7 +36,18 @@ export function setupLlm(root: HTMLElement): void {
   const newBtn = root.querySelector<HTMLButtonElement>("#llm-new");
   const deleteBtn = root.querySelector<HTMLButtonElement>("#llm-delete");
   const context = root.querySelector<HTMLElement>("#llm-context");
-  if (!conversation || !model || !prompt || !response || !send || !context) {
+  const hook = root.querySelector<HTMLInputElement>("#llm-hook");
+  const turnHook = root.querySelector<HTMLInputElement>("#llm-turn-hook");
+  if (
+    !conversation ||
+    !model ||
+    !prompt ||
+    !response ||
+    !send ||
+    !context ||
+    !hook ||
+    !turnHook
+  ) {
     return;
   }
 
@@ -68,7 +79,13 @@ export function setupLlm(root: HTMLElement): void {
 
   const showActive = () => {
     renderConversationList();
-    model.value = store.getActive().model;
+    const conv = store.getActive();
+    model.value = conv.model;
+    hook.value = conv.hookCommand;
+    // Once the conversation has started, the hook (if any) has already run
+    // (or never will), so the field is shown read-only for reference.
+    hook.disabled = conv.messages.length > 0;
+    turnHook.value = conv.turnCommand;
     renderActiveMessages();
     renderContext();
     if (tools) syncToolList(tools, store);
@@ -82,33 +99,8 @@ export function setupLlm(root: HTMLElement): void {
     const text = prompt.value.trim();
     const m = model.value;
     if (!text || !m) return;
-    const conv = store.getActive();
     prompt.value = "";
-    send.disabled = true;
-    view.setNotice("loading", "Thinking…");
-    void runTurn(
-      store,
-      m,
-      view,
-      text,
-      store.getContextWindow(m),
-      store.getPromptTokens(conv.id)
-    )
-      .then((result) => {
-        view.clearNotice();
-        view.appendMessage({ role: "assistant", content: result.text });
-        store.commitTurn(result.usage);
-        showActive();
-      })
-      .catch((e: unknown) =>
-        view.setNotice(
-          "error",
-          `Request failed: ${e instanceof Error ? e.message : e}`
-        )
-      )
-      .finally(() => {
-        send.disabled = false;
-      });
+    void submitTurn(store, view, send, m, text, showActive);
   };
 
   const doNew = () => {
@@ -140,6 +132,14 @@ export function setupLlm(root: HTMLElement): void {
   );
   model.addEventListener("change", () => {
     store.setActiveModel(model.value);
+    store.persist();
+  });
+  hook.addEventListener("change", () => {
+    store.setHookCommand(hook.value);
+    store.persist();
+  });
+  turnHook.addEventListener("change", () => {
+    store.setTurnCommand(turnHook.value);
     store.persist();
   });
   prompt.addEventListener("keydown", (e) => {
@@ -242,17 +242,47 @@ const SYSTEM_PROMPT =
 
 /**
  * The system prompt, with a note appended when the user has disabled some
- * tools. With no tools disabled it is exactly SYSTEM_PROMPT, so the request's
- * prefix (and thus the KV cache) is unchanged for unaffected conversations.
+ * tools, and/or the startup hook's (cached) output, and/or this turn's hook
+ * output appended. With none of these, it is exactly SYSTEM_PROMPT, so the
+ * request's prefix (and thus the KV cache) is unchanged for unaffected
+ * conversations.
  */
-function systemPrompt(disabled: string[]): string {
-  if (disabled.length === 0) return SYSTEM_PROMPT;
-  return (
-    SYSTEM_PROMPT +
-    ` The following tools are disabled by the user and must not be called: ` +
-    `${disabled.join(", ")}. If a task needs one of them, tell the user it ` +
-    "is disabled and ask them to enable it in the Tools list."
-  );
+function systemPrompt(
+  disabled: string[],
+  hookOutput?: string,
+  turnOutput?: string
+): string {
+  let text = SYSTEM_PROMPT;
+  if (disabled.length > 0) {
+    text +=
+      ` The following tools are disabled by the user and must not be called: ` +
+      `${disabled.join(", ")}. If a task needs one of them, tell the user it ` +
+      "is disabled and ask them to enable it in the Tools list.";
+  }
+  if (hookOutput) {
+    text +=
+      "\n\nBefore this conversation began, the following startup command " +
+      `was run in the workspace and produced this output:\n${hookOutput}`;
+  }
+  if (turnOutput) {
+    text +=
+      "\n\nJust before this turn, the following turn command was run in " +
+      `the workspace and produced this output:\n${turnOutput}`;
+  }
+  return text;
+}
+
+/**
+ * Run a conversation's startup hook command through the same run_command
+ * tool the model uses, and return its output (including error text — the
+ * backend resolves failures to an "Error: …" string rather than throwing).
+ */
+async function runHookCommand(command: string): Promise<string> {
+  return executeLlmTool({
+    id: "hook",
+    type: "function",
+    function: { name: "run_command", arguments: JSON.stringify({ command }) },
+  });
 }
 
 /** Model-readable result returned when the model calls a disabled tool. */
@@ -378,17 +408,77 @@ export interface TurnResult {
   usage?: LlmUsage;
 }
 
+/**
+ * Run one submit end to end: the conversation's startup hook (first message
+ * only, cached), then its per-turn hook (every turn, run fresh and never
+ * cached), then the model turn — updating the view/store/send-button state
+ * throughout. Extracted out of `setupLlm` so that closure stays a thin
+ * wiring function.
+ */
+async function submitTurn(
+  store: ConversationStore,
+  view: MessageView,
+  send: HTMLButtonElement,
+  model: string,
+  text: string,
+  showActive: () => void
+): Promise<void> {
+  const conv = store.getActive();
+  const hookCommand = conv.hookCommand.trim();
+  const needsHook =
+    conv.messages.length === 0 &&
+    hookCommand !== "" &&
+    conv.hookOutput === undefined;
+  const turnCommand = conv.turnCommand.trim();
+  send.disabled = true;
+  try {
+    if (needsHook) {
+      view.setNotice("loading", "Running startup command…");
+      store.setHookOutput(await runHookCommand(hookCommand));
+      store.persist();
+    }
+    let turnOutput: string | undefined;
+    if (turnCommand !== "") {
+      view.setNotice("loading", "Running turn command…");
+      turnOutput = await runHookCommand(turnCommand);
+    }
+    view.setNotice("loading", "Thinking…");
+    const result = await runTurn(
+      store,
+      model,
+      view,
+      text,
+      store.getContextWindow(model),
+      store.getPromptTokens(conv.id),
+      turnOutput
+    );
+    view.clearNotice();
+    view.appendMessage({ role: "assistant", content: result.text });
+    store.commitTurn(result.usage);
+    showActive();
+  } catch (e) {
+    view.setNotice(
+      "error",
+      `Request failed: ${e instanceof Error ? e.message : e}`
+    );
+  } finally {
+    send.disabled = false;
+  }
+}
+
 async function runTurn(
   store: ConversationStore,
   model: string,
   view: MessageView,
   userText: string,
   cap: number | undefined,
-  lastPromptTokens: number | undefined
+  lastPromptTokens: number | undefined,
+  turnOutput?: string
 ): Promise<TurnResult> {
   const history = store.getActive().messages;
   const preLength = history.length;
   const disabled = store.getDisabledTools();
+  const hookOutput = store.getActive().hookOutput;
   let lastUsage: LlmUsage | undefined;
   try {
     // If the previous call already used 80% of the window, summarize the
@@ -414,7 +504,7 @@ async function runTurn(
     store.appendMessage({ role: "user", content: userText });
     view.appendMessage({ role: "user", content: userText });
     for (let i = 0; i < MAX_TOOL_TURNS; i++) {
-      const messages = buildMessages(history, disabled);
+      const messages = buildMessages(history, disabled, hookOutput, turnOutput);
       const reply = await sendLlmMessage(messages, model, llmToolDefinitions);
       lastUsage = reply.usage ?? lastUsage;
       if (reply.tool_calls && reply.tool_calls.length > 0) {
@@ -476,7 +566,9 @@ const SUMMARY_PROMPT =
  */
 function buildMessages(
   history: ChatMessage[],
-  disabled: string[] = []
+  disabled: string[] = [],
+  hookOutput?: string,
+  turnOutput?: string
 ): LlmMessage[] {
   let cut = -1;
   for (let i = history.length - 1; i >= 0; i--) {
@@ -486,7 +578,7 @@ function buildMessages(
     }
   }
   const messages: LlmMessage[] = [
-    { role: "system", content: systemPrompt(disabled) },
+    { role: "system", content: systemPrompt(disabled, hookOutput, turnOutput) },
   ];
   if (cut >= 0) {
     messages.push({ role: "user", content: history[cut].content ?? "" });

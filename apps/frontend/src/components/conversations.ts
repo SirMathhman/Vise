@@ -34,6 +34,26 @@ export interface Conversation {
    * model-readable "disabled" result. Empty when nothing is disabled.
    */
   disabledTools: string[];
+  /**
+   * A PowerShell command run once, through the same run_command tool the
+   * model uses, right before this conversation's first message is sent.
+   * Empty string means no hook.
+   */
+  hookCommand: string;
+  /**
+   * The hook command's output, captured the first time it runs. Undefined
+   * means it hasn't run yet (or there is no hook command); once set, it is
+   * reused for every later turn's system prompt instead of re-running the
+   * command.
+   */
+  hookOutput?: string;
+  /**
+   * A PowerShell command run fresh before every turn (not just the first),
+   * through the same run_command tool the model uses. Unlike hookCommand its
+   * output is never cached — it re-runs and is resent each turn. Empty
+   * string means no turn hook.
+   */
+  turnCommand: string;
 }
 
 /** True when `value` is a structurally valid persisted message. */
@@ -61,7 +81,10 @@ function isValidConversation(value: unknown): value is Conversation {
     // it existed); a missing field means "none disabled".
     (c.disabledTools === undefined ||
       (Array.isArray(c.disabledTools) &&
-        (c.disabledTools as unknown[]).every((v) => typeof v === "string")))
+        (c.disabledTools as unknown[]).every((v) => typeof v === "string"))) &&
+    (c.hookCommand === undefined || typeof c.hookCommand === "string") &&
+    (c.hookOutput === undefined || typeof c.hookOutput === "string") &&
+    (c.turnCommand === undefined || typeof c.turnCommand === "string")
   );
 }
 
@@ -150,9 +173,12 @@ function loadConversations(): Conversation[] {
     if (raw) {
       const parsed: unknown = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        const convs = parsed
-          .filter(isValidConversation)
-          .map((c) => ({ ...c, disabledTools: c.disabledTools ?? [] }));
+        const convs = parsed.filter(isValidConversation).map((c) => ({
+          ...c,
+          disabledTools: c.disabledTools ?? [],
+          hookCommand: c.hookCommand ?? "",
+          turnCommand: c.turnCommand ?? "",
+        }));
         if (convs.length > 0) return convs;
       }
     }
@@ -165,6 +191,8 @@ function loadConversations(): Conversation[] {
           model: safeGetItem(LEGACY_MODEL) ?? "",
           messages: legacy,
           disabledTools: [],
+          hookCommand: "",
+          turnCommand: "",
         },
       ];
     }
@@ -212,6 +240,19 @@ export interface ConversationStore {
   setToolEnabled(name: string, enabled: boolean): void;
   /** Set the active conversation's model choice. */
   setActiveModel(model: string): void;
+  /** Set the active conversation's startup hook command (empty = none). */
+  setHookCommand(cmd: string): void;
+  /**
+   * Record the active conversation's hook output after it has run, so later
+   * turns reuse it instead of re-running the command.
+   */
+  setHookOutput(output: string): void;
+  /**
+   * Set the active conversation's per-turn hook command (empty = none). Runs
+   * fresh before every turn — unlike the startup hook, its output is never
+   * cached on the conversation.
+   */
+  setTurnCommand(cmd: string): void;
   /** Retitle the active conversation from its first user message. */
   retitleActive(): void;
   /** Append a message to the active conversation (the single append point). */
@@ -245,6 +286,8 @@ export function createConversationStore(): ConversationStore {
         model: "",
         messages: [],
         disabledTools: [],
+        hookCommand: "",
+        turnCommand: "",
       },
     ];
   }
@@ -283,6 +326,8 @@ export function createConversationStore(): ConversationStore {
           model,
           messages: [],
           disabledTools: [],
+          hookCommand: "",
+          turnCommand: "",
         },
         ...convs,
       ];
@@ -305,6 +350,8 @@ export function createConversationStore(): ConversationStore {
             model: "",
             messages: [],
             disabledTools: [],
+            hookCommand: "",
+            turnCommand: "",
           },
         ];
         activeId = fresh;
@@ -326,6 +373,15 @@ export function createConversationStore(): ConversationStore {
     },
     setActiveModel(model) {
       getActive().model = model;
+    },
+    setHookCommand(cmd) {
+      getActive().hookCommand = cmd;
+    },
+    setHookOutput(output) {
+      getActive().hookOutput = output;
+    },
+    setTurnCommand(cmd) {
+      getActive().turnCommand = cmd;
     },
     retitleActive() {
       const active = getActive();
