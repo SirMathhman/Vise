@@ -8,6 +8,7 @@ import {
 import { appendHighlighted } from "../highlight.js";
 import { makeContextMenu, showMenu } from "./contextMenu.js";
 import { showCreateForm } from "./createDialog.js";
+import { createFileStateStore, type FileStateStore } from "./fileState.js";
 
 /**
  * Wire up the file tree/listing and the editor/viewer panels. This is the
@@ -27,6 +28,10 @@ export async function setupFileViewer(root: HTMLElement): Promise<void> {
   }
 
   const menu = makeContextMenu();
+  const store = createFileStateStore(
+    (rel, value) => putFile(rel, value),
+    (state, message) => setSaveState(viewerActions, state, message)
+  );
   const viewer: Viewer = {
     body: viewerBody,
     title: viewerTitle,
@@ -34,9 +39,10 @@ export async function setupFileViewer(root: HTMLElement): Promise<void> {
     menu,
     list,
     lsPath,
+    store,
   };
   window.addEventListener("beforeunload", (e: BeforeUnloadEvent) => {
-    if (viewer.dirty) {
+    if (store.isDirty()) {
       e.preventDefault();
       e.returnValue = "";
     }
@@ -72,10 +78,7 @@ interface Viewer {
   menu: HTMLDivElement;
   list: HTMLUListElement;
   lsPath: HTMLElement;
-  content?: string;
-  rel?: string;
-  dirty?: boolean;
-  saveTimer?: number;
+  store: FileStateStore;
 }
 
 async function renderListing(
@@ -191,7 +194,7 @@ async function deleteFile(
         await refreshDir(viewer, parentRel, parentLi);
       }
     }
-    viewer.dirty = false;
+    viewer.store.resetDirty();
     setHint(viewer.body, `Deleted "${name}".`, "viewer-hint");
   } catch (err) {
     setHint(
@@ -215,9 +218,8 @@ function setHint(
 }
 
 async function viewFile(rel: string, viewer: Viewer): Promise<void> {
-  clearSaveTimer(viewer);
-  await flushSave(viewer);
-  if (viewer.dirty) {
+  const saved = await viewer.store.flush();
+  if (!saved) {
     // The pending save failed; abort so edits are not lost.
     return;
   }
@@ -227,8 +229,7 @@ async function viewFile(rel: string, viewer: Viewer): Promise<void> {
   try {
     const data = await getFile(rel);
     viewer.title.textContent = data.path;
-    viewer.content = data.content;
-    viewer.rel = rel;
+    viewer.store.beginLoad(rel, data.content);
     renderEditor(viewer);
   } catch (err) {
     setHint(
@@ -240,9 +241,9 @@ async function viewFile(rel: string, viewer: Viewer): Promise<void> {
 }
 
 function renderEditor(viewer: Viewer): void {
-  clearSaveTimer(viewer);
+  viewer.store.clearTimer();
   viewer.actions.innerHTML = "";
-  const text = viewer.content ?? "";
+  const text = viewer.store.getContent() ?? "";
 
   // A transparent-text textarea sits on top of a live-highlighted backdrop.
   // Both share identical font metrics (inherited from .editor-scroll) and
@@ -288,12 +289,12 @@ function renderEditor(viewer: Viewer): void {
 
   ta.value = text;
   paint();
-  viewer.dirty = false;
+  viewer.store.setReader(() => ta.value);
   ta.addEventListener("input", () => {
     paint();
-    viewer.dirty = true;
-    setSaveState(viewer, "unsaved");
-    scheduleAutoSave(viewer);
+    viewer.store.markDirty();
+    setSaveState(viewer.actions, "unsaved");
+    viewer.store.scheduleSave();
   });
 
   code.append(backdrop, ta);
@@ -310,72 +311,16 @@ function renderEditor(viewer: Viewer): void {
   ta.focus();
 }
 
-const AUTOSAVE_MS = 1000;
-
-function scheduleAutoSave(viewer: Viewer): void {
-  clearSaveTimer(viewer);
-  viewer.saveTimer = window.setTimeout(() => {
-    viewer.saveTimer = undefined;
-    void saveFile(viewer);
-  }, AUTOSAVE_MS);
-}
-
-function clearSaveTimer(viewer: Viewer): void {
-  if (viewer.saveTimer !== undefined) {
-    window.clearTimeout(viewer.saveTimer);
-    viewer.saveTimer = undefined;
-  }
-}
-
-async function flushSave(viewer: Viewer): Promise<void> {
-  clearSaveTimer(viewer);
-  if (!viewer.dirty || !viewer.rel) return;
-  const ta = viewer.body.querySelector<HTMLTextAreaElement>(".editor-input");
-  const next = ta?.value;
-  if (next === undefined) return;
-  try {
-    await putFile(viewer.rel, next);
-    viewer.content = next;
-    viewer.dirty = false;
-  } catch (err) {
-    // Keep dirty so the caller aborts and beforeunload fires; surface the
-    // failure so the user knows why navigation is blocked.
-    setSaveState(viewer, "error", (err as Error).message);
-  }
-}
-
-async function saveFile(viewer: Viewer): Promise<void> {
-  clearSaveTimer(viewer);
-  const ta = viewer.body.querySelector<HTMLTextAreaElement>(".editor-input");
-  if (!ta || !viewer.rel) return;
-  const next = ta.value;
-  if (next === (viewer.content ?? "")) {
-    viewer.dirty = false;
-    setSaveState(viewer, "saved");
-    return;
-  }
-  setSaveState(viewer, "saving");
-  try {
-    await putFile(viewer.rel, next);
-    viewer.content = next;
-    viewer.dirty = false;
-    setSaveState(viewer, "saved");
-  } catch (err) {
-    viewer.dirty = true;
-    setSaveState(viewer, "error", (err as Error).message);
-  }
-}
-
 function setSaveState(
-  viewer: Viewer,
+  actions: HTMLElement,
   state: "unsaved" | "saving" | "saved" | "error",
   message?: string
 ): void {
-  let span = viewer.actions.querySelector<HTMLElement>(".save-status");
+  let span = actions.querySelector<HTMLElement>(".save-status");
   if (!span) {
     span = document.createElement("span");
     span.className = "save-status";
-    viewer.actions.append(span);
+    actions.append(span);
   }
   span.className = `save-status save-status-${state}`;
   span.textContent =
