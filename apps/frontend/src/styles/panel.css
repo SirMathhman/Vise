@@ -20,12 +20,17 @@
   border: 1px solid var(--border-gold);
   outline: 1px solid var(--border);
   outline-offset: -6px;
-  /* A panel is the scroll boundary, not the page (html/body clip entirely —
-     see base.css): if a panel's own content grows past its allotted height
-     (e.g. the LLM panel's Profiles editor expanding), it scrolls here
-     instead of leaking out and growing the whole document past 100vh. */
-  overflow-y: auto;
-  overflow-x: hidden;
+  /* A panel is never itself a scroll region — only its one designated inner
+     region is (#ls-items, #viewer-body, #llm-response), via flex: 1 1 0;
+     min-height: 0 down the chain, so there is never more than one scrollbar
+     active per panel. `hidden` here is a backstop, not a scroll boundary: it
+     guards against a panel's *static* chrome (headers, controls, inputs)
+     somehow outgrowing the panel on an extreme viewport, which would
+     otherwise grow the whole document past 100vh (see base.css) — anything
+     that can legitimately grow without bound (a long chat, a long file
+     listing, a long profile form) must live in its own scrollable region or
+     an overlay (see .llm-profiles-overlay), never rely on this clipping. */
+  overflow: hidden;
 }
 
 #app section::before,

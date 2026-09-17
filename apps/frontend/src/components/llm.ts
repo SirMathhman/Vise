@@ -34,8 +34,10 @@ import {
  * profiles.ts), both persisted across page reloads. The user can start new
  * conversations (New), switch back to old ones via the conversation
  * dropdown, assign a conversation's profile via the profile dropdown, and
- * create/edit/delete profiles in the Profiles panel. The Send button (and
- * Ctrl/Cmd+Enter) runs a chat completion for the active conversation.
+ * create/edit/delete profiles in the Profiles modal (opened via the
+ * "Profiles" button, its own single scroll region — never nested inside the
+ * panel's own scroll). The Send button (and Ctrl/Cmd+Enter) runs a chat
+ * completion for the active conversation.
  */
 export function setupLlm(root: HTMLElement): void {
   const conversation =
@@ -48,6 +50,14 @@ export function setupLlm(root: HTMLElement): void {
   const newBtn = root.querySelector<HTMLButtonElement>("#llm-new");
   const deleteBtn = root.querySelector<HTMLButtonElement>("#llm-delete");
   const context = root.querySelector<HTMLElement>("#llm-context");
+  const profilesOverlay = root.querySelector<HTMLElement>(
+    "#llm-profiles-overlay"
+  );
+  const profilesOpenBtn =
+    root.querySelector<HTMLButtonElement>("#llm-profiles-open");
+  const profilesCloseBtn = root.querySelector<HTMLButtonElement>(
+    "#llm-profiles-close"
+  );
   const profileEditor = root.querySelector<HTMLSelectElement>(
     "#llm-profile-editor"
   );
@@ -76,6 +86,9 @@ export function setupLlm(root: HTMLElement): void {
     !response ||
     !send ||
     !context ||
+    !profilesOverlay ||
+    !profilesOpenBtn ||
+    !profilesCloseBtn ||
     !profileEditor ||
     !profileNewBtn ||
     !profileDeleteBtn ||
@@ -163,8 +176,18 @@ export function setupLlm(root: HTMLElement): void {
     loadProfileEditorFields();
   };
 
+  /** Open the Profiles modal, loading the editor fields fresh each time. */
+  const openProfiles = () => {
+    showProfileEditor();
+    profilesOverlay.hidden = false;
+    profileName.focus();
+  };
+
+  const closeProfiles = () => {
+    profilesOverlay.hidden = true;
+  };
+
   showActive();
-  showProfileEditor();
 
   loadModelList(model, view, store);
 
@@ -233,6 +256,14 @@ export function setupLlm(root: HTMLElement): void {
   profileSelect.addEventListener("change", () => {
     store.setActiveProfile(profileSelect.value);
     store.persist();
+  });
+  profilesOpenBtn.addEventListener("click", openProfiles);
+  profilesCloseBtn.addEventListener("click", closeProfiles);
+  profilesOverlay.addEventListener("click", (e) => {
+    if (e.target === profilesOverlay) closeProfiles();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !profilesOverlay.hidden) closeProfiles();
   });
   profileEditor.addEventListener("change", loadProfileEditorFields);
   profileNewBtn.addEventListener("click", doNewProfile);

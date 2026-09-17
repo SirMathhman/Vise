@@ -89,26 +89,51 @@
   border-color: var(--border-gold);
 }
 
-#app #llm .llm-profiles {
-  margin-bottom: 12px;
-  border: 1px solid var(--border);
-  border-radius: 2px;
-  background: var(--bg-elevated);
-  padding: 8px 10px;
+/* Profiles are edited in a modal (not inline in the panel's normal flow) so
+   the panel never needs a second, nested scrollbar alongside the transcript
+   (#llm-response) — the modal's own overflow-y is the only scroll region
+   its content can ever need, however tall the form inside it gets. */
+#app .llm-profiles-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(10, 7, 3, 0.72);
 }
 
-#app #llm .llm-profiles-title {
-  cursor: pointer;
+#app .llm-profiles-overlay[hidden] {
+  display: none;
+}
+
+#app .llm-profiles-modal {
+  width: min(560px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-gold);
+  border-radius: 2px;
+  padding: 20px;
+}
+
+#app .llm-profiles-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+#app .llm-profiles-modal-header h3 {
+  margin: 0;
   font-family: var(--font-heading);
+  font-weight: 400;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  font-size: 0.68rem;
-  color: var(--text-muted);
-  transition: color 0.15s ease;
-}
-
-#app #llm .llm-profiles-title:hover {
-  color: var(--text);
+  font-size: 0.85rem;
+  color: var(--gold-bright);
 }
 
 #app #llm .llm-profiles-editor-row {
@@ -135,10 +160,9 @@
   margin-bottom: 12px;
 }
 
-#app #llm .llm-tools-title:hover {
-  color: var(--text);
-}
-
+/* No max-height/overflow here on purpose: this list flows as normal content
+   inside .llm-profiles-modal, which is the one scroll region for the whole
+   form — a second, nested scrollbar here would defeat that. */
 #app #llm .llm-tools-list {
   margin: 8px 0 0;
   padding: 0 4px 0 0;
@@ -146,9 +170,6 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 160px;
-  overflow-y: auto;
-  scrollbar-width: thin;
 }
 
 #app #llm .llm-tool {
