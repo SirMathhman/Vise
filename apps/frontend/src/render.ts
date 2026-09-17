@@ -5,14 +5,17 @@ import { setupLlm } from "./components/llm.js";
 export async function render(root: HTMLElement): Promise<void> {
   root.innerHTML = `
     <main>
-      <h1>Vise</h1>
-      <p class="tagline">File &amp; Directory Viewer</p>
-      <div class="status-row">
+      <header class="masthead">
+        <div class="brand">
+          <h1>Vise</h1>
+          <p class="tagline">File &amp; Directory Viewer</p>
+        </div>
         <p id="status">Fetching backend status&hellip;</p>
-      </div>
+      </header>
       <div class="layout">
         <section id="listing">
-          <h2>Contents of <code id="ls-path"></code></h2>
+          <h2>Contents</h2>
+          <code id="ls-path"></code>
           <ul id="ls-items" aria-label="files and directories"></ul>
         </section>
         <section id="viewer">
@@ -22,15 +25,12 @@ export async function render(root: HTMLElement): Promise<void> {
         </section>
         <section id="llm">
           <h2>Model</h2>
-          <div class="llm-follow-row"></div>
           <div class="llm-controls">
             <select
               id="llm-conversation"
               aria-label="conversation"
               title="Switch conversation"
             ></select>
-            <select id="llm-model" aria-label="model"></select>
-            <button id="llm-send" class="btn" type="button">Send</button>
             <button
               id="llm-new"
               class="btn btn-ghost"
@@ -48,7 +48,8 @@ export async function render(root: HTMLElement): Promise<void> {
               Delete
             </button>
           </div>
-          <div class="llm-profile-row">
+          <div class="llm-controls">
+            <select id="llm-model" aria-label="model"></select>
             <select
               id="llm-profile"
               aria-label="profile"
@@ -63,7 +64,21 @@ export async function render(root: HTMLElement): Promise<void> {
               Profiles
             </button>
           </div>
-          <p id="llm-context" class="llm-context" aria-label="context usage"></p>
+          <div class="llm-transcript-head">
+            <p id="llm-context" class="llm-context" aria-label="context usage"></p>
+            <div class="llm-follow-row"></div>
+          </div>
+          <div id="llm-response">
+            <span class="llm-hint">Start a conversation.</span>
+          </div>
+          <div class="llm-composer">
+            <textarea
+              id="llm-prompt"
+              aria-label="message"
+              placeholder="Ask about the files, e.g. what's in apps/backend"
+            ></textarea>
+            <button id="llm-send" class="btn" type="button">Send</button>
+          </div>
           <div id="llm-profiles-overlay" class="llm-profiles-overlay" hidden>
             <div
               class="llm-profiles-modal"
@@ -136,14 +151,6 @@ export async function render(root: HTMLElement): Promise<void> {
                 title="Runs after every reply. Its stdout/stderr are shown in the transcript (truncated). If it writes to stderr, the reply is not accepted: the model sees the output and must try again."
               />
             </div>
-          </div>
-          <textarea
-            id="llm-prompt"
-            aria-label="message"
-            placeholder="Ask about the files, e.g. what's in apps/backend"
-          ></textarea>
-          <div id="llm-response">
-            <span class="llm-hint">Start a conversation.</span>
           </div>
         </section>
       </div>

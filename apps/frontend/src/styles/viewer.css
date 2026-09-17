@@ -41,6 +41,33 @@
   min-height: 30px;
 }
 
+/* With no file open this bar holds nothing, but it still reserved its 30px
+   + margin and left a blank band under the heading, so collapse it while
+   it is empty. */
+#app #viewer-actions:empty {
+  margin: 0;
+  min-height: 0;
+}
+
+/* ...except once a file is open. The bar's only ever occupant is the save
+   status, which first appears on the keystroke that dirties the buffer — if
+   the bar were still collapsed at that point it would expand under the
+   cursor and shove the code down 40px mid-edit. The editor's presence is
+   the signal to hold the space open for it. */
+#app #viewer:has(.editor-scroll) #viewer-actions:empty {
+  margin: 0 0 10px;
+  min-height: 30px;
+}
+
+/* A deep absolute path wrapped this heading onto two or three lines, which
+   both pushed the editor down and knocked the three panel headings out of
+   alignment. The path is shown relative to the workspace root (whose
+   absolute path the listing panel already carries), so one line is enough;
+   the full path stays available as the element's tooltip. */
+#app #viewer-title {
+  word-break: break-all;
+}
+
 #app #viewer-actions .btn {
   font-family: var(--font-heading);
   font-size: 0.78rem;

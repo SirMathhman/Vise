@@ -144,7 +144,12 @@ async function loadIntoViewer(viewer: Viewer, rel: string): Promise<void> {
   viewer.title.textContent = rel;
   try {
     const data = await getFile(rel);
-    viewer.title.textContent = data.path;
+    // The heading shows the path relative to the workspace root, not the
+    // absolute one: the absolute path wrapped the heading onto several
+    // lines, and its root half is already displayed by the listing panel.
+    // The full path stays reachable as the heading's tooltip.
+    viewer.title.textContent = rel;
+    viewer.title.title = data.path;
     viewer.store.beginLoad(rel, data.content);
     renderEditor(viewer);
   } catch {
@@ -312,7 +317,12 @@ async function viewFile(rel: string, viewer: Viewer): Promise<void> {
   setHint(viewer.body, "Loading\u2026", "loading");
   try {
     const data = await getFile(rel);
-    viewer.title.textContent = data.path;
+    // The heading shows the path relative to the workspace root, not the
+    // absolute one: the absolute path wrapped the heading onto several
+    // lines, and its root half is already displayed by the listing panel.
+    // The full path stays reachable as the heading's tooltip.
+    viewer.title.textContent = rel;
+    viewer.title.title = data.path;
     viewer.store.beginLoad(rel, data.content);
     renderEditor(viewer);
   } catch (err) {

@@ -1,9 +1,15 @@
 /* ── LLM panel ────────────────────────────────────────────── */
 
+/* Two of these rows carry the panel's chrome: conversation + New/Delete,
+   then model + profile + Profiles. Splitting them this way (rather than
+   packing every select and button into one row) is what keeps each select
+   wide enough to read — five controls on one line truncated all three
+   dropdowns to a few characters each. */
 #app #llm .llm-controls {
   display: flex;
+  align-items: center;
   gap: 10px;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 #app #llm select {
@@ -18,29 +24,34 @@
   padding: 8px 10px;
 }
 
-/* Cap the conversation picker so the model picker keeps enough room. */
-#app #llm #llm-conversation {
-  flex: 0 1 46%;
-  max-width: 46%;
+/* The model and profile pickers share the second row, so neither may claim
+   its full intrinsic width — both names are long enough to push the other
+   out of the row entirely. `flex: 1 1 0` splits the leftover space evenly
+   instead. */
+#app #llm .llm-controls select {
+  flex: 1 1 0;
 }
 
-/* Its own row so it doesn't compete with the conversation/model selects for
-   space in .llm-controls — a third flex:1 1 auto select there truncated all
-   three (conversation, model, and profile names) to a few characters. */
-#app #llm .llm-profile-row {
-  margin-bottom: 12px;
-}
-
-#app #llm .llm-profile-row select {
-  width: 100%;
+/* One thin strip between the chrome and the transcript, carrying the token
+   readout on the left and the follow toggle on the right. They were two
+   separate full-width rows (the follow row pinned above the controls, the
+   context line below them), which cost ~50px of transcript height to show
+   two short, related status values. */
+#app #llm .llm-transcript-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  min-height: 26px;
 }
 
 #app #llm .llm-context {
-  margin: 0 0 12px;
+  margin: 0;
   font-family: var(--font-mono);
   font-size: 0.72rem;
   color: var(--text-muted);
-  min-height: 1em;
+  min-width: 0;
 }
 
 #app #llm .llm-compaction {
@@ -118,7 +129,13 @@
    pair. */
 #app .llm-profiles-modal {
   width: min(560px, 100%);
-  max-height: calc(100vh - 48px);
+  /* An explicit target height, not just a cap. The system-prompt textarea
+     is the one child that flex-grows, so with a purely content-sized modal
+     it could never be taller than its own min-height however much room the
+     viewport had — the space freed by laying the tools out in columns just
+     went unused. A concrete height gives it something to grow into, still
+     bounded by the viewport on a short screen. */
+  height: min(760px, calc(100vh - 48px));
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -171,14 +188,22 @@
 
 /* No max-height/overflow here on purpose: this list flows as normal content
    inside .llm-profiles-modal, which is the one scroll region for the whole
-   form — a second, nested scrollbar here would defeat that. */
+   form — a second, nested scrollbar here would defeat that.
+
+   Laid out in columns rather than one tall stack: ten tools in a single
+   column made this the tallest block in the modal, and since the
+   system-prompt textarea below it is the one element that flex-grows into
+   the leftover height, every row here came straight out of the field people
+   actually edit. `align-items: start` keeps a row from stretching when the
+   tool beside it has its description expanded. */
 #app #llm .llm-tools-list {
   margin: 8px 0 0;
   padding: 0 4px 0 0;
   list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  align-items: start;
+  gap: 8px 16px;
 }
 
 #app #llm .llm-tool {
@@ -279,6 +304,27 @@
   outline-offset: 1px;
 }
 
+/* The composer sits *below* the transcript, with Send beside the textarea
+   rather than up in the chrome. Previously the prompt box was stacked above
+   #llm-response and Send was three rows further up among the conversation
+   controls, so the two halves of one action were at opposite ends of the
+   panel and the transcript was pushed into the bottom third of it. */
+#app #llm .llm-composer {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+#app #llm .llm-composer #llm-prompt {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  height: 84px;
+  margin-bottom: 0;
+}
+
 /* Flex-grows to fill whatever vertical space the modal has left after its
    fixed-height chrome (header, selects, name input, tools list, hook
    inputs). No fixed height: a fixed 220px here is what forced the rest of
@@ -288,12 +334,14 @@
   min-height: 120px;
 }
 
-/* A thin row pinned to the top of the LLM panel, above the transcript and
-   above the Send button, holding the follow toggle. */
+/* Holds the follow toggle at the right end of .llm-transcript-head.
+   `flex: none` so it takes only the pill's width and the token readout
+   beside it keeps the rest. MessageView finds this element by class to
+   mount the pill into, so it has to stay reachable from inside #llm. */
 #app #llm .llm-follow-row {
+  flex: none;
   display: flex;
   justify-content: flex-end;
-  margin-bottom: 12px;
 }
 
 #app #llm-response {

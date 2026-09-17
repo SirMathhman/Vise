@@ -341,16 +341,16 @@ export class MessageView {
       () => this.items,
     );
     this.followBtn = this.createFollowButton();
-    // The follow toggle lives in its own row above the transcript (sibling of
-    // #llm-response, positioned above the Send button), not inside the scroll
-    // area — so it never scrolls or overlaps the conversation.
+    // The follow toggle lives in the thin .llm-transcript-head strip just
+    // above the transcript (alongside the token readout), not inside the
+    // scroll area — so it never scrolls or overlaps the conversation.
     const followRow =
       scroll.parentElement?.querySelector<HTMLElement>(".llm-follow-row");
     (followRow ?? scroll).append(this.followBtn);
     scroll.addEventListener("scroll", this.onScroll, { passive: true });
   }
 
-  /** Build the follow-toggle button, pinned to the top of the transcript in its own row above the Send button. */
+  /** Build the follow-toggle button, pinned to the strip just above the transcript. */
   private createFollowButton(): HTMLButtonElement {
     const btn = document.createElement("button");
     btn.type = "button";
