@@ -70,6 +70,7 @@ export async function render(root: HTMLElement): Promise<void> {
                 Delete
               </button>
             </div>
+            <p class="llm-profiles-hint">Rename the selected profile:</p>
             <input
               id="llm-profile-name"
               class="llm-hook"

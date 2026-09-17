@@ -121,6 +121,16 @@
   flex: 1 1 auto;
 }
 
+/* Clarifies that the name input just below repeats (editably) the same
+   profile the select above it picked, rather than being a second, unrelated
+   field that happens to show the same text. */
+#app #llm .llm-profiles-hint {
+  margin: 0 0 4px;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
 #app #llm #llm-profile-tools {
   margin-bottom: 12px;
 }
