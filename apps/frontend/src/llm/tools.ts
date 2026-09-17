@@ -290,6 +290,58 @@ const createSubagent: LlmTool = {
   },
 };
 
+/**
+ * Ask the user one or more questions and wait for their answers. Handled
+ * entirely client-side (see components/llm.ts's askQuestions): the panel
+ * renders an interactive question card in the transcript, pauses the turn,
+ * and feeds the user's answers back to the model as the tool result. The
+ * model can supply predefined options for each question and/or allow
+ * free-form text. Subagents cannot call this — only the main conversation
+ * loop can ask questions.
+ */
+const askQuestions: LlmTool = {
+  type: "function",
+  function: {
+    name: "ask_questions",
+    description:
+      'Ask the user one or more questions and wait for their answers. Each question has a prompt string, optional predefined answer options, and an optional multi_select flag (allowing multiple options to be selected). Free-form text input is always available alongside any options. Use this to clarify ambiguous requirements, gather preferences, or resolve genuine ambiguities before proceeding. The answers are returned as "Q1: answer1\\nQ2: answer2" so you can tell which answer corresponds to which question.',
+    parameters: {
+      type: "object",
+      properties: {
+        questions: {
+          type: "array",
+          description: "One or more questions to ask.",
+          items: {
+            type: "object",
+            properties: {
+              question: {
+                type: "string",
+                description: "The question text to show to the user.",
+              },
+              options: {
+                type: "array",
+                description:
+                  "Optional predefined answer options. Omit for free-form only.",
+                items: {
+                  type: "string",
+                  description: "An option the user can select.",
+                },
+              },
+              multi_select: {
+                type: "boolean",
+                description:
+                  "Allow selecting multiple options. Defaults to false.",
+              },
+            },
+            required: ["question"],
+          },
+        },
+      },
+      required: ["questions"],
+    },
+  },
+};
+
 /** All tool definitions available to the model, in a stable order. */
 export const llmToolDefinitions: LlmTool[] = [
   listDirectory,
@@ -302,4 +354,5 @@ export const llmToolDefinitions: LlmTool[] = [
   deleteDirectory,
   runCommand,
   createSubagent,
+  askQuestions,
 ];

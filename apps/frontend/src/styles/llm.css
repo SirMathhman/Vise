@@ -541,3 +541,115 @@
   font-family: var(--font-mono);
   font-size: 0.8rem;
 }
+
+/* ── ask_questions card (ephemeral, not part of the persisted conversation) ── */
+
+/* The card is appended as a direct child of the scroll container, after
+   .llm-virtual, so it sits at the end of the conversation and scrolls with
+   it. It must NOT be a child of .llm-virtual (whose > * are absolutely
+   positioned over the conversation), hence a sibling that flows normally. */
+#app #llm-response .llm-ask {
+  margin: 4px 0 10px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border-gold);
+  border-radius: 2px;
+  background: var(--bg-elevated);
+}
+
+#app #llm-response .llm-ask-label {
+  display: block;
+  font-family: var(--font-heading);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-size: 0.68rem;
+  color: var(--gold-bright);
+  margin-bottom: 8px;
+}
+
+#app #llm-response .llm-ask-question {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+#app #llm-response .llm-ask-question:last-of-type {
+  margin-bottom: 6px;
+}
+
+#app #llm-response .llm-ask-text {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+#app #llm-response .llm-ask-options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+#app #llm-response .llm-ask-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text);
+  cursor: pointer;
+}
+
+#app #llm-response .llm-ask-option input {
+  accent-color: var(--gold);
+}
+
+#app #llm-response .llm-ask-input {
+  width: 100%;
+  box-sizing: border-box;
+  resize: none;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 6px 8px;
+}
+
+#app #llm-response .llm-ask-input:focus {
+  outline: 1px solid var(--gold);
+  outline-offset: 1px;
+}
+
+#app #llm-response .llm-ask-answer {
+  align-self: flex-start;
+  font-family: var(--font-heading);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  color: var(--gold-bright);
+  background: transparent;
+  border: 1px solid var(--border-gold);
+  border-radius: 2px;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+
+#app #llm-response .llm-ask-answer:hover:not(:disabled) {
+  border-color: var(--gold);
+}
+
+#app #llm-response .llm-ask-answer:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+#app #llm-response .llm-ask-resolved-note {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}

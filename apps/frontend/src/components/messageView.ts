@@ -490,4 +490,27 @@ export class MessageView {
   refresh(): void {
     this.list.refresh();
   }
+
+  /**
+   * The transcript's scroll container. Exposed so the panel can append an
+   * ephemeral block (e.g. the ask_questions card) that is not part of the
+   * virtualized conversation list — it must live as a direct child of this
+   * element, outside .llm-virtual, so it isn't absolutely positioned over
+   * the conversation.
+   */
+  get scrollElement(): HTMLElement {
+    return this.scroll;
+  }
+
+  /**
+   * Re-layout after an ephemeral block was appended directly to the scroll
+   * container (outside the virtual list), so its height is accounted for and
+   * it scrolls into view when following. The ask_questions card uses this:
+   * the block is not a `VisualItem`, so the list has no idea the container
+   * grew.
+   */
+  notifyExternalContent(): void {
+    this.list.refresh();
+    if (this.follow) this.list.scrollToBottom();
+  }
 }

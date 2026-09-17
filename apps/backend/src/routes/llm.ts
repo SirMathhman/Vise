@@ -467,6 +467,20 @@ const createSubagent: LlmToolHandler = async () => {
 };
 
 /**
+ * ask_questions is fully handled client-side by the panel (it renders an
+ * interactive question card and waits for the user's answer), so it is never
+ * forwarded to this route. This handler exists only to satisfy the
+ * Record<LlmToolName, LlmToolHandler> exhaustiveness check below; reaching it
+ * means the panel's interception was bypassed, which is itself a bug worth
+ * surfacing to the model.
+ */
+const askQuestions: LlmToolHandler = async () => {
+  throw badRequest(
+    "ask_questions must be handled by the panel and never reaches the backend"
+  );
+};
+
+/**
  * The tools available to the model, keyed by the name the model uses. The keys
  * are checked against the shared LlmToolName union, so a renamed or misspelled
  * tool name here is a compile error.
@@ -482,6 +496,7 @@ const tools: Record<LlmToolName, LlmToolHandler> = {
   delete_directory: deleteDirectory,
   run_command: runCommand,
   create_subagent: createSubagent,
+  ask_questions: askQuestions,
 };
 
 /**

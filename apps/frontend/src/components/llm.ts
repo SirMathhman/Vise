@@ -11,6 +11,11 @@ import {
 } from "../api/client.js";
 import { llmToolDefinitions } from "../llm/tools.js";
 import {
+  type AskCardHandle,
+  type AskQuestion,
+  renderAskQuestionsCard,
+} from "./askQuestionsCard.js";
+import {
   type ChatMessage,
   type ConversationStore,
   createConversationStore,
@@ -21,15 +26,15 @@ import {
   toolCallLabel,
 } from "./messageView.js";
 import {
+  renderProfileToolList,
+  renderSubagentProfileList,
+} from "./profileLists.js";
+import {
   createProfileStore,
   DEFAULT_PROFILE_ID,
   type Profile,
   type ProfileStore,
 } from "./profiles.js";
-import {
-  renderProfileToolList,
-  renderSubagentProfileList,
-} from "./profileLists.js";
 
 /**
  * Wire up the LLM panel. Manages a list of conversations (each with its own
@@ -219,6 +224,7 @@ export function setupLlm(root: HTMLElement): void {
   };
 
   const doNew = () => {
+    resolvePendingAsk();
     // The previous conversation stays in the list so it can be reopened.
     store.newConversation(model.value);
     showActive();
@@ -227,6 +233,7 @@ export function setupLlm(root: HTMLElement): void {
   };
 
   const doDelete = () => {
+    resolvePendingAsk();
     store.deleteConversation(store.activeId());
     showActive();
     store.persist();
@@ -234,6 +241,7 @@ export function setupLlm(root: HTMLElement): void {
   };
 
   const switchConversation = (id: string) => {
+    resolvePendingAsk();
     store.switchTo(id);
     showActive();
     store.persist();
@@ -571,14 +579,18 @@ const SUBAGENT_MAX_TOOL_TURNS = 5;
 
 /**
  * The tool definitions offered to a subagent: llmToolDefinitions filtered to
- * the given profile's allowedTools, always excluding create_subagent itself
- * so a subagent can never spawn further subagents (regardless of what a
- * profile's own allowedTools happens to list).
+ * the given profile's allowedTools, always excluding the two client-executed
+ * tools that a headless subagent cannot fulfil — create_subagent (so a
+ * subagent can never spawn further subagents) and ask_questions (its
+ * collapsed transcript has no room for an interactive card, and its loop has
+ * no way to pause for a user). Both are excluded regardless of what a
+ * profile's own allowedTools happens to list.
  */
 function subagentToolDefs(profile: Profile): LlmTool[] {
   return llmToolDefinitions.filter(
     (t) =>
       t.function.name !== "create_subagent" &&
+      t.function.name !== "ask_questions" &&
       profile.allowedTools.includes(t.function.name)
   );
 }
@@ -622,6 +634,35 @@ function parseSubagentArgs(tc: LlmToolCall): {
   }
 }
 
+/** Parse the `questions` argument out of an ask_questions tool call. */
+function parseAskQuestionsArgs(tc: LlmToolCall): AskQuestion[] {
+  try {
+    const args = JSON.parse(tc.function.arguments) as {
+      questions?: unknown;
+    };
+    if (!Array.isArray(args.questions)) return [];
+    const out: AskQuestion[] = [];
+    for (const q of args.questions) {
+      if (typeof q !== "object" || q === null) continue;
+      const o = q as Record<string, unknown>;
+      if (typeof o.question !== "string") continue;
+      const item: AskQuestion = { question: o.question };
+      if (Array.isArray(o.options)) {
+        item.options = (o.options as unknown[]).filter(
+          (v): v is string => typeof v === "string"
+        );
+      }
+      if (typeof o.multi_select === "boolean") {
+        item.multiSelect = o.multi_select;
+      }
+      out.push(item);
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 /** The outcome of resolving one model tool call. */
 interface ToolCallOutcome {
   result: string;
@@ -642,12 +683,25 @@ async function resolveToolCall(
   tc: LlmToolCall,
   model: string,
   profile: Profile,
-  profiles: ProfileStore
+  profiles: ProfileStore,
+  view: MessageView
 ): Promise<ToolCallOutcome> {
   const name = tc.function.name;
   const disabled = disabledFromAllowed(profile.allowedTools);
   if (disabled.includes(name)) {
     return { result: disabledToolResult(name, profile.name) };
+  }
+  if (name === "ask_questions") {
+    const questions = parseAskQuestionsArgs(tc);
+    if (questions.length === 0) {
+      return {
+        result:
+          "ask_questions requires a `questions` argument: an array of one or " +
+          "more {question, options?, multi_select?} objects.",
+      };
+    }
+    const result = await askQuestions(view, questions);
+    return { result };
   }
   if (name === "create_subagent") {
     const { task, profile: profileName } = parseSubagentArgs(tc);
@@ -762,6 +816,69 @@ export interface TurnResult {
 }
 
 /**
+ * Module-level state for the pending ask_questions card. At most one
+ * ask_questions is in flight at a time (the turn loop is single-threaded per
+ * conversation, and the user can only answer the active conversation's
+ * question). `pendingAsk` holds the questions, the card handle, and a unique
+ * id so `onAnswer` can ignore stale callbacks if a newer question replaced
+ * the card before the user answered.
+ */
+let pendingAsk:
+  | {
+      id: number;
+      questions: AskQuestion[];
+      handle: AskCardHandle;
+      resolve: (result: string) => void;
+    }
+  | undefined;
+let pendingAskSeq = 0;
+
+/**
+ * Clear the pending ask_questions, if any: mark the card as not answered,
+ * remove it from the DOM, and resolve its promise with the "not answered"
+ * result. Called when the user starts a new turn, starts a new conversation,
+ * or deletes one — in all three cases the pending question is abandoned and
+ * the model gets a "not answered" tool result so it can adapt.
+ */
+function resolvePendingAsk(): void {
+  if (!pendingAsk) return;
+  const result = pendingAsk.handle.resolveNotAnswered(pendingAsk.questions);
+  pendingAsk.resolve(result);
+  pendingAsk = undefined;
+}
+
+/**
+ * Ask the user questions and wait for their answers. Renders an interactive
+ * card in the transcript (ephemeral — not part of the persisted conversation
+ * history), pauses the turn, and resolves with the model-readable result
+ * string ("Q1: answer1\nQ2: answer2"). If the pending question is abandoned
+ * (new turn, new conversation, etc.), it resolves with a "not answered"
+ * result so the model can adapt.
+ */
+async function askQuestions(
+  view: MessageView,
+  questions: AskQuestion[]
+): Promise<string> {
+  const id = ++pendingAskSeq;
+  return new Promise<string>((resolve) => {
+    const handle = renderAskQuestionsCard(
+      view.scrollElement,
+      questions,
+      (result) => {
+        // Guard against a stale callback: if a newer question replaced the
+        // card before the user answered this one, ignore the old callback.
+        if (pendingAsk?.id !== id) return;
+        pendingAsk = undefined;
+        view.notifyExternalContent();
+        resolve(result);
+      }
+    );
+    view.notifyExternalContent();
+    pendingAsk = { id, questions, handle, resolve };
+  });
+}
+
+/**
  * Run one submit end to end: the active profile's startup hook (first
  * message only, cached), then its per-turn hook (every turn, run fresh and
  * never cached), then the model turn — updating the view/store/send-button
@@ -786,6 +903,7 @@ async function submitTurn(
     conv.hookOutput === undefined;
   const turnCommand = profile.turnCommand.trim();
   send.disabled = true;
+  resolvePendingAsk();
   try {
     if (needsHook) {
       view.setNotice("loading", "Running startup command…");
@@ -886,7 +1004,13 @@ async function runTurn(
           view.appendToolCall(toolCallLabel(tc));
         }
         for (const tc of reply.tool_calls) {
-          const outcome = await resolveToolCall(tc, model, profile, profiles);
+          const outcome = await resolveToolCall(
+            tc,
+            model,
+            profile,
+            profiles,
+            view
+          );
           store.appendMessage({
             role: "tool",
             content: outcome.result,
