@@ -24,6 +24,17 @@
   max-width: 46%;
 }
 
+/* Its own row so it doesn't compete with the conversation/model selects for
+   space in .llm-controls — a third flex:1 1 auto select there truncated all
+   three (conversation, model, and profile names) to a few characters. */
+#app #llm .llm-profile-row {
+  margin-bottom: 12px;
+}
+
+#app #llm .llm-profile-row select {
+  width: 100%;
+}
+
 #app #llm .llm-context {
   margin: 0 0 12px;
   font-family: var(--font-mono);

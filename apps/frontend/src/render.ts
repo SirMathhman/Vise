@@ -29,11 +29,6 @@ export async function render(root: HTMLElement): Promise<void> {
               title="Switch conversation"
             ></select>
             <select id="llm-model" aria-label="model"></select>
-            <select
-              id="llm-profile"
-              aria-label="profile"
-              title="The profile this conversation runs under (system prompt, allowed tools, hooks)"
-            ></select>
             <button id="llm-send" class="btn" type="button">Send</button>
             <button
               id="llm-new"
@@ -51,6 +46,13 @@ export async function render(root: HTMLElement): Promise<void> {
             >
               Delete
             </button>
+          </div>
+          <div class="llm-profile-row">
+            <select
+              id="llm-profile"
+              aria-label="profile"
+              title="The profile this conversation runs under (system prompt, allowed tools, hooks)"
+            ></select>
           </div>
           <p id="llm-context" class="llm-context" aria-label="context usage"></p>
           <details id="llm-profiles" class="llm-profiles">
