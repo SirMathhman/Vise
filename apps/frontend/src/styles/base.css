@@ -5,7 +5,13 @@
 html,
 body {
   margin: 0;
-  height: 100%;
+  width: 100vw;
+  height: 100vh;
+  /* The page itself must never scroll — every panel below owns its own
+     internal scroll region instead, so content that grows past its
+     panel's height (e.g. the Profiles editor expanding) stays contained
+     there rather than pushing the whole document taller than the viewport. */
+  overflow: hidden;
 }
 
 body {

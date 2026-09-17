@@ -20,6 +20,12 @@
   border: 1px solid var(--border-gold);
   outline: 1px solid var(--border);
   outline-offset: -6px;
+  /* A panel is the scroll boundary, not the page (html/body clip entirely —
+     see base.css): if a panel's own content grows past its allotted height
+     (e.g. the LLM panel's Profiles editor expanding), it scrolls here
+     instead of leaking out and growing the whole document past 100vh. */
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 #app section::before,
