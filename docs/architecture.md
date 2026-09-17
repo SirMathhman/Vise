@@ -75,7 +75,14 @@ apps/backend/src/
                   #   create_subagent's entry is a throwing stub (only exists for the
                   #   Record<LlmToolName, ...> exhaustiveness check) — the frontend
                   #   intercepts and runs it itself, never reaching this route.
-                  #   Errors resolve to 200 + "Error: …" so the model adapts)
+                  #   Errors resolve to 200 + "Error: …" so the model adapts);
+                  #   POST /api/llm/hook-command (a second, non-tool route: runs a
+                  #   command through the same runShellCommand core as run_command but
+                  #   returns {stdout, stderr, truncated, timedOut} structured JSON
+                  #   instead of one formatted string, since the panel's end-of-turn
+                  #   hook must tell stdout from stderr apart. Errors are thrown
+                  #   AppErrors like every other JSON route, not caught into a 200 —
+                  #   unlike /api/llm/tool this isn't model-facing)
     watch.ts      #   GET /api/watch (SSE: subscribes the shared watcher, streams WatchEvent
                   #   frames, unsubscribes on res close). The one non-JSON route; owns res.
   errors.ts       # error model: AppError type/enum, toResponse mapping
@@ -130,7 +137,16 @@ apps/frontend/src/
                     #   hook: a second, uncached hookCommand-alike (turnCommand) that runs
                     #   before every turn via the same mechanism; its output (turnOutput)
                     #   is threaded through runTurn -> buildMessages -> systemPrompt for
-                    #   that turn only and is never persisted on the conversation.
+                    #   that turn only and is never persisted on the conversation. End
+                    #   hook: a third per-conversation command (endCommand) that runs after
+                    #   every reply, via runShellCommand (api/client.ts) -> POST
+                    #   /api/llm/hook-command, which — unlike run_command — returns stdout
+                    #   and stderr separately so runTurn can gate on stderr alone. Its
+                    #   output is always shown via MessageView.appendEndHookResult
+                    #   (ephemeral); a non-empty stderr additionally appends a persisted,
+                    #   protocol-valid role:"user" retry message (ChatMessage's endHook
+                    #   flag) and loops the turn (same MAX_TOOL_TURNS budget as tool
+                    #   calls) instead of returning the reply as final.
     messageView.ts  #   VIRTUALIZED LLM transcript view (DOM, no store knowledge): renders the
                     #   active conversation's messages as a bounded, windowed list. A general
                     #   `VirtualList` keeps a spacer as tall as the whole conversation and
@@ -145,6 +161,11 @@ apps/frontend/src/
                     #   exception to "pure view over ChatMessage[]": a subagent's run is never
                     #   persisted, so its collapsed <details> block (task + tool trace + result)
                     #   is pushed straight from llm.ts's live call, not derived from history.
+                    #   `appendEndHookResult` is a second such exception: the end-of-turn hook's
+                    #   stdout/stderr display is always ephemeral (pushed live, not derived from
+                    #   history), even on a blocking check — the *persisted* record of a block is
+                    #   a separate, protocol-valid ChatMessage (endHook-flagged), which
+                    #   expandMessage renders as its own "end-of-turn check" block kind.
                     #   Owns a `follow` flag (a sticky bottom-right pill button) that gates every
                     #   append's auto-scroll: on by default and on every conversation load/switch,
                     #   off automatically when the user scrolls away from the bottom, back on when
@@ -152,8 +173,8 @@ apps/frontend/src/
                     #   convention most chat UIs use.
     conversations.ts #   DOM-free conversation store: owns convs, activeId, per-conversation
                     #   promptTokens, and per-model contextWindow. Persists a list of
-                    #   {id,title,model,messages,hookCommand,hookOutput?,turnCommand} to
-                    #   vise:llm:conversations (+ vise:llm:active); exposes
+                    #   {id,title,model,messages,hookCommand,hookOutput?,turnCommand,
+                    #   endCommand} to vise:llm:conversations (+ vise:llm:active); exposes
                     #   getActive/new/switch/delete/persist + title derivation. The store
                     #   always keeps >=1 conversation (deleteConversation reseeds a fresh empty one
                     #   when the last is removed, and reassigns activeId to the first remaining).

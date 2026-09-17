@@ -276,24 +276,38 @@ const deleteDirectory: LlmToolHandler = async (args, root) => {
   return `Deleted directory "${rel}" and its contents.`;
 };
 
-/**
- * Run a PowerShell command in the workspace root and return its combined
- * output and exit status as model-readable text. The command runs
- * non-interactively: it is spawned in its own process, given a hard timeout
- * (killed as hung when exceeded, along with its whole process tree), and its
- * stdout/stderr are capped at MAX_OUTPUT_BYTES so a chatty command can't flood
- * the model's context. stdout and stderr are kept distinct in the result so the
- * model can tell a failure's diagnostics apart from normal output. At most one
- * command runs at a time. The working directory is the workspace root, matching
- * the file tools, so relative paths in the command resolve against it.
- */
-const runCommand: LlmToolHandler = (args, root) => {
-  const command = typeof args.command === "string" ? args.command : "";
-  if (!command) throw badRequest("command is required");
-  if (commandInFlight)
-    throw badRequest("a command is already running; wait for it to finish");
+/** The structured result of running a bounded PowerShell command. */
+interface CommandResult {
+  stdout: string;
+  stderr: string;
+  /** True when combined output hit MAX_OUTPUT_BYTES and was cut off. */
+  truncated: boolean;
+  /** True when the command was killed for exceeding COMMAND_TIMEOUT_MS. */
+  timedOut: boolean;
+  /** "exit N" or "signal X"; meaningless (the process never exited normally) when timedOut. */
+  status: string;
+}
 
-  return new Promise<string>((resolvePromise, reject) => {
+/**
+ * Run a PowerShell command in the workspace root and resolve its stdout,
+ * stderr, and exit status, kept distinct so a caller can tell a failure's
+ * diagnostics apart from normal output. The command runs non-interactively:
+ * it is spawned in its own process, given a hard timeout (killed as hung when
+ * exceeded, along with its whole process tree), and its stdout/stderr are
+ * capped at MAX_OUTPUT_BYTES so a chatty command can't flood the caller. At
+ * most one command runs at a time (across every caller — the LLM tool and any
+ * hook). The working directory is the workspace root, matching the file
+ * tools, so relative paths in the command resolve against it.
+ */
+function runShellCommand(
+  command: string,
+  root: string
+): Promise<CommandResult> {
+  if (commandInFlight) {
+    throw badRequest("a command is already running; wait for it to finish");
+  }
+
+  return new Promise<CommandResult>((resolvePromise, reject) => {
     // -NoProfile keeps it fast and free of the user's profile side effects;
     // -NonInteractive prevents any prompt from blocking the process.
     commandInFlight = true;
@@ -366,20 +380,29 @@ const runCommand: LlmToolHandler = (args, root) => {
       finish();
       const stdout = Buffer.concat(out).toString("utf-8").trimEnd();
       const stderr = Buffer.concat(err).toString("utf-8").trimEnd();
-      const combined = stderr ? `${stdout}\n[stderr]\n${stderr}` : stdout;
-      const body = truncated
-        ? `${combined.slice(0, MAX_OUTPUT_BYTES)}\n… (output capped at ${MAX_OUTPUT_BYTES} bytes)`
-        : combined;
       const status = signal != null ? `signal ${signal}` : `exit ${code ?? 0}`;
-      if (timedOut) {
-        resolvePromise(
-          `$ ${command}\ntimed out after ${COMMAND_TIMEOUT_MS / 1000}s\n${body}`
-        );
-      } else {
-        resolvePromise(`$ ${command}\n${status}\n${body}`.trimEnd());
-      }
+      resolvePromise({ stdout, stderr, truncated, timedOut, status });
     });
   });
+}
+
+/**
+ * Run a PowerShell command in the workspace root and return its combined
+ * output and exit status as model-readable text (see runShellCommand for the
+ * execution details this formats).
+ */
+const runCommand: LlmToolHandler = async (args, root) => {
+  const command = typeof args.command === "string" ? args.command : "";
+  if (!command) throw badRequest("command is required");
+  const r = await runShellCommand(command, root);
+  const combined = r.stderr ? `${r.stdout}\n[stderr]\n${r.stderr}` : r.stdout;
+  const body = r.truncated
+    ? `${combined.slice(0, MAX_OUTPUT_BYTES)}\n… (output capped at ${MAX_OUTPUT_BYTES} bytes)`
+    : combined;
+  if (r.timedOut) {
+    return `$ ${command}\ntimed out after ${COMMAND_TIMEOUT_MS / 1000}s\n${body}`;
+  }
+  return `$ ${command}\n${r.status}\n${body}`.trimEnd();
 };
 
 /**
@@ -504,6 +527,31 @@ export function llmToolRoutes(ctx: AppContext): Route[] {
             err instanceof AppError ? err.message : (err as Error).message;
           sendJson(res, 200, { result: `Error: ${message}` });
         }
+      },
+    },
+    {
+      // Runs a command and returns its stdout/stderr separately, unlike
+      // /api/llm/tool's run_command (which formats them into one
+      // model-readable string). Not part of the model tool surface — used by
+      // the panel's own hooks (e.g. the end-of-turn check, which must tell
+      // stdout from stderr to decide whether to block the turn), so unlike
+      // /api/llm/tool it does not catch errors into a 200 response: a bad
+      // request or a spawn failure surfaces as a normal thrown AppError, the
+      // same as every other non-tool route.
+      method: "POST",
+      pattern: "/api/llm/hook-command",
+      handler: async (_req, res, _params, body) => {
+        const payload = (body ?? {}) as { command?: unknown };
+        const command =
+          typeof payload.command === "string" ? payload.command : "";
+        if (!command) throw badRequest("command is required");
+        const r = await runShellCommand(command, root);
+        sendJson(res, 200, {
+          stdout: r.stdout,
+          stderr: r.stderr,
+          truncated: r.truncated,
+          timedOut: r.timedOut,
+        });
       },
     },
   ];

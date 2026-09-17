@@ -261,3 +261,56 @@ describe("conversation store - turn hook", () => {
     expect(store.getActive().turnCommand).toBe("");
   });
 });
+
+describe("conversation store - end hook", () => {
+  let storage: MemoryLocalStorage;
+
+  beforeEach(() => {
+    storage = new MemoryLocalStorage();
+    (globalThis as Record<string, unknown>).localStorage = storage;
+  });
+  afterEach(() => {
+    delete (globalThis as Record<string, unknown>).localStorage;
+  });
+
+  it("a fresh conversation has no end command", () => {
+    const store = createConversationStore();
+    expect(store.getActive().endCommand).toBe("");
+  });
+
+  it("setEndCommand mutates and persists the active conversation", () => {
+    const store = createConversationStore();
+    store.setEndCommand("pnpm lint");
+    store.persist();
+
+    expect(store.getActive().endCommand).toBe("pnpm lint");
+
+    const raw = storage.getItem("vise:llm:conversations");
+    const parsed = JSON.parse(raw as string);
+    expect(parsed[0].endCommand).toBe("pnpm lint");
+  });
+
+  it("endCommand round-trips across a new store", () => {
+    const first = createConversationStore();
+    first.setEndCommand("pnpm typecheck");
+    first.persist();
+    const activeId = first.activeId();
+
+    const second = createConversationStore();
+    const restored = second.getConversations().find((c) => c.id === activeId);
+    expect(restored?.endCommand).toBe("pnpm typecheck");
+  });
+
+  it("loads pre-end-hook persisted conversations with endCommand defaulted to empty", () => {
+    storage.setItem(
+      "vise:llm:conversations",
+      JSON.stringify([
+        { id: "c1", title: "old", model: "m", messages: [user("hi")] },
+      ])
+    );
+    storage.setItem("vise:llm:active", "c1");
+
+    const store = createConversationStore();
+    expect(store.getActive().endCommand).toBe("");
+  });
+});

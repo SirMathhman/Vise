@@ -27,7 +27,8 @@ type VisualItem =
   | { kind: "tool-call"; label: string }
   | { kind: "tool-result"; text: string }
   | { kind: "compaction" }
-  | { kind: "subagent"; task: string; steps: SubagentStep[]; result: string };
+  | { kind: "subagent"; task: string; steps: SubagentStep[]; result: string }
+  | { kind: "end-hook"; text: string };
 
 /** Vertical gap applied after each block, mirroring the pre-wrap margin rhythm. */
 const GAP = 10;
@@ -48,6 +49,7 @@ export function toolCallLabel(tc: LlmToolCall): string {
 /** Expand one chat message into the visual blocks it should render as. */
 function expandMessage(m: ChatMessage): VisualItem[] {
   if (m.compaction) return [{ kind: "compaction" }];
+  if (m.endHook) return [{ kind: "end-hook", text: m.content ?? "" }];
   if (m.role === "tool")
     return [{ kind: "tool-result", text: m.content ?? "" }];
   if (m.role === "assistant" && m.tool_calls && m.tool_calls.length > 0) {
@@ -111,6 +113,12 @@ function renderItemDom(item: VisualItem): HTMLElement {
     }
     case "subagent":
       return renderSubagentDom(item);
+    case "end-hook": {
+      const block = document.createElement("div");
+      block.className = "llm-end-hook";
+      block.textContent = item.text;
+      return block;
+    }
   }
 }
 
@@ -403,6 +411,19 @@ export class MessageView {
   /** Append a single tool-result block and follow it, if following. */
   appendToolResult(text: string): void {
     this.items.push({ kind: "tool-result", text });
+    this.list.refresh();
+    if (this.follow) this.list.scrollToBottom();
+  }
+
+  /**
+   * Append an end-of-turn hook's check output and follow it, if following.
+   * Ephemeral: shown for every check (pass or block) as it runs, but only a
+   * *blocking* check is also persisted (as an `endHook`-flagged message, via
+   * the normal `appendMessage`) — a passing check leaves nothing behind for a
+   * later reload, the same way a subagent's live trace doesn't.
+   */
+  appendEndHookResult(text: string): void {
+    this.items.push({ kind: "end-hook", text });
     this.list.refresh();
     if (this.follow) this.list.scrollToBottom();
   }

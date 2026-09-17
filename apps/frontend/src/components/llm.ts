@@ -5,6 +5,8 @@ import {
   type LlmToolCall,
   type LlmUsage,
   listLlmModels,
+  runShellCommand,
+  type ShellCommandResult,
   sendLlmMessage,
 } from "../api/client.js";
 import { llmToolDefinitions } from "../llm/tools.js";
@@ -38,6 +40,7 @@ export function setupLlm(root: HTMLElement): void {
   const context = root.querySelector<HTMLElement>("#llm-context");
   const hook = root.querySelector<HTMLInputElement>("#llm-hook");
   const turnHook = root.querySelector<HTMLInputElement>("#llm-turn-hook");
+  const endHook = root.querySelector<HTMLInputElement>("#llm-end-hook");
   if (
     !conversation ||
     !model ||
@@ -46,7 +49,8 @@ export function setupLlm(root: HTMLElement): void {
     !send ||
     !context ||
     !hook ||
-    !turnHook
+    !turnHook ||
+    !endHook
   ) {
     return;
   }
@@ -86,6 +90,7 @@ export function setupLlm(root: HTMLElement): void {
     // (or never will), so the field is shown read-only for reference.
     hook.disabled = conv.messages.length > 0;
     turnHook.value = conv.turnCommand;
+    endHook.value = conv.endCommand;
     renderActiveMessages();
     renderContext();
     if (tools) syncToolList(tools, store);
@@ -140,6 +145,10 @@ export function setupLlm(root: HTMLElement): void {
   });
   turnHook.addEventListener("change", () => {
     store.setTurnCommand(turnHook.value);
+    store.persist();
+  });
+  endHook.addEventListener("change", () => {
+    store.setEndCommand(endHook.value);
     store.persist();
   });
   prompt.addEventListener("keydown", (e) => {
@@ -283,6 +292,48 @@ async function runHookCommand(command: string): Promise<string> {
     type: "function",
     function: { name: "run_command", arguments: JSON.stringify({ command }) },
   });
+}
+
+/** Max characters of an end-hook command's combined stdout+stderr shown/sent. */
+const END_HOOK_OUTPUT_CHARS = 500;
+
+/**
+ * Combine and truncate an end-of-turn hook command's stdout/stderr for
+ * display (and, when it blocks a turn, for the message sent back to the
+ * model — the two share one truncation policy rather than maintaining two).
+ */
+function formatEndHookOutput(
+  command: string,
+  result: ShellCommandResult
+): string {
+  const combined = result.stderr
+    ? `${result.stdout}\n[stderr]\n${result.stderr}`
+    : result.stdout;
+  const body =
+    combined.length > END_HOOK_OUTPUT_CHARS
+      ? `${combined.slice(0, END_HOOK_OUTPUT_CHARS)}\n… (truncated)`
+      : combined;
+  const status = result.timedOut
+    ? "timed out"
+    : result.stderr
+      ? "stderr present"
+      : "ok";
+  return `End-of-turn check: $ ${command}\n${status}\n${body}`.trimEnd();
+}
+
+/**
+ * The message fed back to the model when the end-of-turn hook blocks a turn
+ * (its command wrote to stderr): the model sees why and gets another attempt.
+ */
+function endHookRetryMessage(
+  command: string,
+  result: ShellCommandResult
+): string {
+  return (
+    "The end-of-turn check command wrote to stderr, so this reply was not " +
+    "accepted. Review the output below, fix the issue, and reply again.\n\n" +
+    formatEndHookOutput(command, result)
+  );
 }
 
 /** Model-readable result returned when the model calls a disabled tool. */
@@ -430,6 +481,7 @@ async function submitTurn(
     hookCommand !== "" &&
     conv.hookOutput === undefined;
   const turnCommand = conv.turnCommand.trim();
+  const endCommand = conv.endCommand.trim();
   send.disabled = true;
   try {
     if (needsHook) {
@@ -450,7 +502,8 @@ async function submitTurn(
       text,
       store.getContextWindow(model),
       store.getPromptTokens(conv.id),
-      turnOutput
+      turnOutput,
+      endCommand
     );
     view.clearNotice();
     view.appendMessage({ role: "assistant", content: result.text });
@@ -473,7 +526,8 @@ async function runTurn(
   userText: string,
   cap: number | undefined,
   lastPromptTokens: number | undefined,
-  turnOutput?: string
+  turnOutput?: string,
+  endCommand?: string
 ): Promise<TurnResult> {
   const history = store.getActive().messages;
   const preLength = history.length;
@@ -537,6 +591,24 @@ async function runTurn(
       }
       const text = reply.content ?? "";
       store.appendMessage({ role: "assistant", content: text });
+      if (endCommand) {
+        const check = await runShellCommand(endCommand);
+        const summary = formatEndHookOutput(endCommand, check);
+        if (check.stderr) {
+          // This reply is rejected: show it and the check's output now (it
+          // will never be rendered as the turn's final answer), record a
+          // protocol-valid retry turn so the model sees why, and loop.
+          view.appendMessage({ role: "assistant", content: text });
+          view.appendEndHookResult(summary);
+          store.appendMessage({
+            role: "user",
+            content: endHookRetryMessage(endCommand, check),
+            endHook: true,
+          });
+          continue;
+        }
+        view.appendEndHookResult(summary);
+      }
       return { text, usage: lastUsage };
     }
     const text =

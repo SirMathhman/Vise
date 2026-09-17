@@ -282,6 +282,20 @@
   word-break: break-word;
 }
 
+#app #llm-response .llm-end-hook {
+  margin: 4px 0 10px 10px;
+  padding: 6px 8px;
+  border-left: 2px solid var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  border-radius: 0 2px 2px 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 #app #llm-response .llm-subagent {
   margin: 4px 0 10px 10px;
   padding: 6px 8px;

@@ -256,3 +256,30 @@ export async function executeLlmTool(tc: LlmToolCall): Promise<string> {
   const data = (await res.json()) as { result: string };
   return data.result;
 }
+
+/** stdout/stderr kept separate, unlike run_command's combined model text. */
+export interface ShellCommandResult {
+  stdout: string;
+  stderr: string;
+  truncated: boolean;
+  timedOut: boolean;
+}
+
+/**
+ * Run a PowerShell command in the workspace root and return its stdout and
+ * stderr separately. Used by the panel's end-of-turn hook, which needs to
+ * tell the two apart to decide whether to block the turn — unlike the
+ * run_command LLM tool (`executeLlmTool`), which returns one combined,
+ * model-formatted string.
+ */
+export async function runShellCommand(
+  command: string
+): Promise<ShellCommandResult> {
+  const res = await fetch("/api/llm/hook-command", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ command }),
+  });
+  if (!res.ok) return fail(res);
+  return (await res.json()) as ShellCommandResult;
+}

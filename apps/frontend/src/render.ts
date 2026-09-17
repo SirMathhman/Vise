@@ -65,6 +65,14 @@ export async function render(root: HTMLElement): Promise<void> {
             placeholder="Turn command (optional, PowerShell — runs fresh before every turn)"
             title="Runs fresh before every turn (not just the first), via the same run_command tool the model uses. Its output is added to that turn's context but never shown in the transcript, and is never cached between turns."
           />
+          <input
+            id="llm-end-hook"
+            class="llm-hook"
+            type="text"
+            aria-label="end-of-turn check command"
+            placeholder="End command (optional, PowerShell — runs after every reply; blocks on stderr)"
+            title="Runs after every reply. Its stdout/stderr are shown in the transcript (truncated). If it writes to stderr, the reply is not accepted: the model sees the output and must try again."
+          />
           <textarea
             id="llm-prompt"
             aria-label="message"
