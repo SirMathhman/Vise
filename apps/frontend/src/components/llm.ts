@@ -592,7 +592,29 @@ async function runTurn(
       const text = reply.content ?? "";
       store.appendMessage({ role: "assistant", content: text });
       if (endCommand) {
-        const check = await runShellCommand(endCommand);
+        // A thrown failure here (spawn error, or the backend's single-flight
+        // guard colliding with another in-flight command) is an
+        // infrastructure problem, not the checked command's own stderr — it
+        // must not fall through to this turn's outer catch, which would roll
+        // back the whole turn's persisted history (including any file
+        // mutations the model's own tool calls already made, which the
+        // rollback cannot undo). Treat it the same as a blocking check: show
+        // it, tell the model, and loop.
+        let check: ShellCommandResult;
+        try {
+          check = await runShellCommand(endCommand);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          const summary = `End-of-turn check: $ ${endCommand}\ncould not run: ${message}`;
+          view.appendMessage({ role: "assistant", content: text });
+          view.appendEndHookResult(summary);
+          store.appendMessage({
+            role: "user",
+            content: `The end-of-turn check command could not be run (${message}). Reply again.`,
+            endHook: true,
+          });
+          continue;
+        }
         const summary = formatEndHookOutput(endCommand, check);
         if (check.stderr) {
           // This reply is rejected: show it and the check's output now (it
