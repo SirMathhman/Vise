@@ -22,6 +22,7 @@ export async function render(root: HTMLElement): Promise<void> {
         </section>
         <section id="llm">
           <h2>Model</h2>
+          <div class="llm-follow-row"></div>
           <div class="llm-controls">
             <select
               id="llm-conversation"

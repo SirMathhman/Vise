@@ -1013,6 +1013,12 @@ function renderProfileToolList(
     const desc = document.createElement("span");
     desc.className = "llm-tool-desc";
     desc.textContent = tool.function.description;
+    // Click the tool name to expand/collapse its description (collapsed by
+    // default so the whole list stays compact and the modal never needs an
+    // outer scrollbar).
+    codeEl.addEventListener("click", () =>
+      desc.classList.toggle("llm-tool-desc-expanded")
+    );
     body.append(codeEl, desc);
     li.append(cb, body);
     list.append(li);

@@ -32,7 +32,13 @@
         "noConsole": "off"
       },
       "style": {
-        "noNonNullAssertion": "off"
+        "noNonNullAssertion": "off",
+        "noExcessiveLinesPerFile": {
+          "level": "warn",
+          "options": {
+            "maxLines": 500
+          }
+        }
       }
     }
   },

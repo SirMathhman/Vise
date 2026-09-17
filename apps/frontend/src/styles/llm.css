@@ -108,11 +108,20 @@
   display: none;
 }
 
+/* No max-height / overflow here: the modal is not itself a scroll region.
+   Its content (a fixed-size header, a compact tools list — descriptions
+   collapsed by default, see .llm-tool-desc — and a flex-growing system-prompt
+   textarea) is designed to fit within the viewport, so the modal never
+   needs its own outer scrollbar. The only scroll region that can appear is
+   the textarea's internal one, when a single prompt overflows the
+   textarea's (flex-allocated) height — that's one scrollbar, not a nested
+   pair. */
 #app .llm-profiles-modal {
   width: min(560px, 100%);
-  max-height: 100%;
-  overflow-y: auto;
-  overflow-x: hidden;
+  max-height: calc(100vh - 48px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   background: var(--bg-panel);
   border: 1px solid var(--border-gold);
   border-radius: 2px;
@@ -193,15 +202,26 @@
   font-family: var(--font-mono);
   font-size: 0.75rem;
   color: var(--gold-bright);
+  /* Clickable: toggles the .llm-tool-desc below (collapsed by default so
+     the whole tools list stays compact and the modal never needs an
+     outer scrollbar). */
+  cursor: pointer;
 }
 
+/* Collapsed by default (display:none) — the whole tools list stays a
+   compact, non-scrolling block. Expanded on click (see .llm-tool-desc
+   toggle in llm.ts). */
 #app #llm .llm-tool-desc {
-  display: block;
+  display: none;
   margin-top: 2px;
   font-family: var(--font-sans);
   font-size: 0.78rem;
   line-height: 1.4;
   color: var(--text-muted);
+}
+
+#app #llm .llm-tool-desc.llm-tool-desc-expanded {
+  display: block;
 }
 
 #app #llm .llm-tool-disabled {
@@ -259,10 +279,21 @@
   outline-offset: 1px;
 }
 
-/* A system prompt runs several paragraphs longer than a chat message;
-   the generic 96px textarea height leaves only ~4 lines visible. */
+/* Flex-grows to fill whatever vertical space the modal has left after its
+   fixed-height chrome (header, selects, name input, tools list, hook
+   inputs). No fixed height: a fixed 220px here is what forced the rest of
+   the form to overflow the modal and create its outer scrollbar. */
 #app #llm #llm-profile-prompt {
-  height: 220px;
+  flex: 1 1 auto;
+  min-height: 120px;
+}
+
+/* A thin row pinned to the top of the LLM panel, above the transcript and
+   above the Send button, holding the follow toggle. */
+#app #llm .llm-follow-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
 }
 
 #app #llm-response {
@@ -405,12 +436,7 @@
   word-break: break-word;
 }
 
-#app #llm-response .llm-follow {
-  position: sticky;
-  z-index: 5;
-  bottom: 10px;
-  width: fit-content;
-  margin: 8px 10px 0 auto;
+#app #llm .llm-follow {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -419,34 +445,33 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--gold-bright);
-  background: var(--bg-elevated);
+  background: transparent;
   border: 1px solid var(--border-gold);
   border-radius: 999px;
-  padding: 6px 12px;
+  padding: 5px 12px;
   cursor: pointer;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
   transition:
     color 0.15s ease,
     border-color 0.15s ease;
 }
 
-#app #llm-response .llm-follow:hover {
+#app #llm .llm-follow:hover {
   border-color: var(--gold);
 }
 
-#app #llm-response .llm-follow-dot {
+#app #llm .llm-follow-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: var(--gold);
 }
 
-#app #llm-response .llm-follow-off {
+#app #llm .llm-follow-off {
   color: var(--text-muted);
   border-color: var(--border);
 }
 
-#app #llm-response .llm-follow-off .llm-follow-dot {
+#app #llm .llm-follow-off .llm-follow-dot {
   background: var(--text-muted);
 }
 

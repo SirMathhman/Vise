@@ -185,7 +185,7 @@ class VirtualList {
   constructor(
     scroll: HTMLElement,
     renderItem: (index: number, item: VisualItem) => HTMLElement,
-    getItems: () => VisualItem[]
+    getItems: () => VisualItem[],
   ) {
     this.scroll = scroll;
     this.renderItem = renderItem;
@@ -231,7 +231,7 @@ class VirtualList {
     for (let i = 0; i < MAX_PASSES + 2; i++) {
       const target = Math.max(
         0,
-        this.scroll.scrollHeight - this.scroll.clientHeight
+        this.scroll.scrollHeight - this.scroll.clientHeight,
       );
       if (target === prevTarget) return;
       this.scroll.scrollTop = target;
@@ -338,14 +338,19 @@ export class MessageView {
     this.list = new VirtualList(
       scroll,
       (_i, item) => renderItemDom(item),
-      () => this.items
+      () => this.items,
     );
     this.followBtn = this.createFollowButton();
-    scroll.append(this.followBtn);
+    // The follow toggle lives in its own row above the transcript (sibling of
+    // #llm-response, positioned above the Send button), not inside the scroll
+    // area — so it never scrolls or overlaps the conversation.
+    const followRow =
+      scroll.parentElement?.querySelector<HTMLElement>(".llm-follow-row");
+    (followRow ?? scroll).append(this.followBtn);
     scroll.addEventListener("scroll", this.onScroll, { passive: true });
   }
 
-  /** Build the floating follow-toggle button, sticky in the transcript's bottom-right corner. */
+  /** Build the follow-toggle button, pinned to the top of the transcript in its own row above the Send button. */
   private createFollowButton(): HTMLButtonElement {
     const btn = document.createElement("button");
     btn.type = "button";
@@ -448,7 +453,7 @@ export class MessageView {
   appendSubagentResult(
     task: string,
     steps: SubagentStep[],
-    result: string
+    result: string,
   ): void {
     this.items.push({ kind: "subagent", task, steps, result });
     this.list.refresh();
