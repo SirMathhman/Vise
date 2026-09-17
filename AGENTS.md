@@ -1,6 +1,6 @@
 # Vise — Agent Instructions
 
-A pnpm-workspaces monorepo: a **vanilla TypeScript backend** (raw Node `http`, no framework) and a **vanilla TypeScript frontend** (Vite, no framework). It's a local file browser/editor with an LLM panel that gives a model live, sandboxed read/write/shell access to the workspace. See [README](README.md) for setup and layout, and [docs/architecture.md](docs/architecture.md) for the ideal architecture, design invariants, known risks, and future work.
+A pnpm-workspaces monorepo: a **vanilla TypeScript backend** (raw Node `http`, no framework) and a **vanilla TypeScript frontend** (Vite, no framework). It's a local file browser/editor with an LLM panel that gives a model live, sandboxed read/write/shell access to the workspace. See [README](README.md) for setup and layout, and [architecture doc](./docs/architecture.md) for the ideal architecture, design invariants, known risks, and future work.
 
 ## Commands (run from repo root)
 
