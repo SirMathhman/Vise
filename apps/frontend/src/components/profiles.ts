@@ -32,17 +32,25 @@ export const DEFAULT_SYSTEM_PROMPT =
 /**
  * A named, reusable bundle of everything that shapes how the model behaves:
  * its system prompt, which tools it may call (an allowlist — anything not
- * listed is unavailable), and its three hook commands (startup/turn/end, the
- * same semantics as a conversation's used to have). A conversation picks one
- * profile as its sole source of truth for tools and hooks; create_subagent
- * can also name a profile to delegate under, instead of the built-in helper
- * defaults.
+ * listed is unavailable), which other profiles subagents spawned under it
+ * may run under (an allowlist of profile ids — empty means unrestricted,
+ * so existing profiles keep working until explicitly restricted), and its
+ * three hook commands (startup/turn/end, the same semantics as a conversation's
+ * used to have). A conversation picks one profile as its sole source of truth
+ * for tools and hooks; create_subagent can also name a profile to delegate
+ * under, subject to the parent profile's allowedSubagentProfiles.
  */
 export interface Profile {
   id: string;
   name: string;
   systemPrompt: string;
   allowedTools: string[];
+  /**
+   * Ids of profiles that subagents spawned under this profile may run under.
+   * Empty (the default) means unrestricted — every profile is allowed, and
+   * the profile's own id is always a valid entry.
+   */
+  allowedSubagentProfiles: string[];
   /** Runs once before the first message/task under this profile. Empty = none. */
   hookCommand: string;
   /** Runs fresh before every turn/iteration. Empty = none. */
@@ -51,13 +59,14 @@ export interface Profile {
   endCommand: string;
 }
 
-/** Build the seeded default profile: all tools allowed, no hooks. */
+/** Build the seeded default profile: all tools allowed, no hooks, no subagent restrictions. */
 function makeDefaultProfile(): Profile {
   return {
     id: DEFAULT_PROFILE_ID,
     name: "Default",
     systemPrompt: DEFAULT_SYSTEM_PROMPT,
     allowedTools: [...LLM_TOOL_NAMES],
+    allowedSubagentProfiles: [],
     hookCommand: "",
     turnCommand: "",
     endCommand: "",
@@ -89,6 +98,13 @@ function isValidProfile(value: unknown): value is Profile {
     typeof p.systemPrompt === "string" &&
     Array.isArray(p.allowedTools) &&
     (p.allowedTools as unknown[]).every((v) => typeof v === "string") &&
+    // allowedSubagentProfiles is optional on disk (missing in old data);
+    // loadProfiles normalizes it to [] when absent.
+    (p.allowedSubagentProfiles === undefined ||
+      (Array.isArray(p.allowedSubagentProfiles) &&
+        (p.allowedSubagentProfiles as unknown[]).every(
+          (v) => typeof v === "string"
+        ))) &&
     typeof p.hookCommand === "string" &&
     typeof p.turnCommand === "string" &&
     typeof p.endCommand === "string"
@@ -108,7 +124,12 @@ function loadProfiles(): Profile[] {
     if (raw) {
       const parsed: unknown = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        const profiles = parsed.filter(isValidProfile);
+        // Normalize allowedSubagentProfiles: old persisted data lacks the
+        // field entirely, and missing means unrestricted ([]).
+        const profiles = parsed.filter(isValidProfile).map((p) => ({
+          ...p,
+          allowedSubagentProfiles: p.allowedSubagentProfiles ?? [],
+        }));
         if (profiles.some((p) => p.id === DEFAULT_PROFILE_ID)) {
           return profiles;
         }
@@ -174,6 +195,7 @@ export function createProfileStore(): ProfileStore {
         name,
         systemPrompt: "",
         allowedTools: [...LLM_TOOL_NAMES],
+        allowedSubagentProfiles: [],
         hookCommand: "",
         turnCommand: "",
         endCommand: "",

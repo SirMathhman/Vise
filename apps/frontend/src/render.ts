@@ -126,6 +126,13 @@ export async function render(root: HTMLElement): Promise<void> {
                 id="llm-profile-tools"
                 aria-label="profile allowed tools"
               ></div>
+              <p class="llm-profiles-hint">
+                Subagents spawned under this profile may run under:
+              </p>
+              <div
+                id="llm-profile-subagent-profiles"
+                aria-label="profile allowed subagent profiles"
+              ></div>
               <input
                 id="llm-profile-hook"
                 class="llm-hook"

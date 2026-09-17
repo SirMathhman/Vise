@@ -186,6 +186,10 @@
   margin-bottom: 12px;
 }
 
+#app #llm #llm-profile-subagent-profiles {
+  margin-bottom: 12px;
+}
+
 /* No max-height/overflow here on purpose: this list flows as normal content
    inside .llm-profiles-modal, which is the one scroll region for the whole
    form — a second, nested scrollbar here would defeat that.

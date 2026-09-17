@@ -47,7 +47,7 @@ describe("profile store", () => {
     expect(def.endCommand).toBe("");
   });
 
-  it("createProfile adds a new profile with every tool allowed and no hooks", () => {
+  it("createProfile adds a new profile with every tool allowed and no subagent restrictions", () => {
     const store = createProfileStore();
     const p = store.createProfile("Reviewer");
     expect(store.getProfiles()).toHaveLength(2);
@@ -55,6 +55,22 @@ describe("profile store", () => {
     expect(p.name).toBe("Reviewer");
     expect(p.systemPrompt).toBe("");
     expect(p.allowedTools.sort()).toEqual([...LLM_TOOL_NAMES].sort());
+    expect(p.allowedSubagentProfiles).toEqual([]);
+  });
+
+  it("updateProfile persists allowedSubagentProfiles, and the field survives a reload", () => {
+    const store = createProfileStore();
+    const p = store.createProfile("Reviewer");
+    store.updateProfile(p.id, { allowedSubagentProfiles: [p.id] });
+    store.persist();
+
+    const updated = store.getProfile(p.id);
+    expect(updated?.allowedSubagentProfiles).toEqual([p.id]);
+
+    // A fresh store (simulating a page reload) must load the restriction
+    // verbatim — it's part of the persisted shape now.
+    const reloaded = createProfileStore();
+    expect(reloaded.getProfile(p.id)?.allowedSubagentProfiles).toEqual([p.id]);
   });
 
   it("updateProfile merges a patch into the profile with that id", () => {
@@ -130,5 +146,58 @@ describe("profile store", () => {
     expect(store.getProfiles()).toHaveLength(2);
     expect(store.getProfile(DEFAULT_PROFILE_ID)).toBeDefined();
     expect(store.getProfile("custom")).toBeDefined();
+  });
+
+  it("normalizes old persisted profiles (no allowedSubagentProfiles) to unrestricted", () => {
+    storage.setItem(
+      "vise:llm:profiles",
+      JSON.stringify([
+        {
+          id: "old",
+          name: "Old",
+          systemPrompt: "",
+          allowedTools: ["read_file"],
+          hookCommand: "",
+          turnCommand: "",
+          endCommand: "",
+        },
+      ])
+    );
+
+    const store = createProfileStore();
+    expect(store.getProfile("old")?.allowedSubagentProfiles).toEqual([]);
+  });
+
+  it("loads a persisted allowedSubagentProfiles restriction verbatim", () => {
+    storage.setItem(
+      "vise:llm:profiles",
+      JSON.stringify([
+        {
+          id: "parent",
+          name: "Parent",
+          systemPrompt: "",
+          allowedTools: ["read_file"],
+          allowedSubagentProfiles: ["helper"],
+          hookCommand: "",
+          turnCommand: "",
+          endCommand: "",
+        },
+        {
+          id: "helper",
+          name: "Helper",
+          systemPrompt: "",
+          allowedTools: ["read_file"],
+          allowedSubagentProfiles: [],
+          hookCommand: "",
+          turnCommand: "",
+          endCommand: "",
+        },
+      ])
+    );
+
+    const store = createProfileStore();
+    expect(store.getProfile("parent")?.allowedSubagentProfiles).toEqual([
+      "helper",
+    ]);
   });
 });
