@@ -17,7 +17,7 @@ import type { ChatMessage } from "./conversations.js";
 
 /** One step recorded inside a subagent's own tool-calling loop. */
 export interface SubagentStep {
-  kind: "tool-call" | "tool-result";
+  kind: "tool-call" | "tool-result" | "end-hook";
   text: string;
 }
 
@@ -150,6 +150,9 @@ function renderSubagentDom(item: {
       label.className = "llm-tool-label";
       label.textContent = step.text;
       stepEl.append(label);
+    } else if (step.kind === "end-hook") {
+      stepEl.className = "llm-end-hook";
+      stepEl.textContent = step.text;
     } else {
       stepEl.className = "llm-tool-result";
       stepEl.textContent = step.text;

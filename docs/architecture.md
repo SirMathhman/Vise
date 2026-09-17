@@ -22,7 +22,7 @@ changelog; progress lives in the git log.
 - **Invariant — file reads and writes are bounded and text-safe**: a file is only read *or written* when (a) its size is ≤ the size cap, and (b) the bytes are decodable as UTF-8 text. Binary files and over-cap files are rejected with a structured 400 — never read as mojibake, and never overwritten. Writes go through the same root-scoped, symlink-safe guard as reads (`fs.ts`), so a write cannot escape the root any more than a read can. The guard and the binary/size checks live in one shared place (not per route), so read and write stay consistent.
 - **Invariant — LLM API keys are not source code.** No secret is committed to the repo. The llama.cpp key is provided at build time via a gitignored `.env` (or `.env.local`) file consumed through Vite's `import.meta.env.VITE_*` variables, with an explicit "proxy unreachable / key missing" empty state in the UI when it is absent.
 - **Invariant — LLM tools reach the filesystem only through the sandboxed API.** The model's file tools (`list_directory`, `find_files`, `read_file`, `edit_file`, `create_directory`, `create_file`, and the destructive `delete_file`/`delete_directory`) are executed **on the backend** (`routes/llm.ts`); every file-tool handler reaches the filesystem only through the sandboxed resolvers in `fs.ts` (`resolveWithinRoot`), so a tool inherits the root-scoped, symlink-safe guard and adds no new filesystem attack surface. (`find_files` is the read-only exception: it shells out to `git ls-files` to list git-tracked/ignored names and returns git-relative paths, so it does not touch the sandboxed `fs` — safe because it only *reads* names, never contents, and never writes.) The browser panel only forwards the model's calls to `POST /api/llm/tool` and renders the returned string — it never joins paths or reads files itself. Adding a tool = one name in `@vise/shared`'s `LLM_TOOL_NAMES` + one definition in `llm/tools.ts` + one handler in `routes/llm.ts`, and a file tool must keep routing through `fs.ts`. `create_subagent` is the one declared exception to "executed on the backend" — see the invariant below.
-- **Invariant — `create_subagent` is the sole client-executed LLM tool, and a subagent cannot itself spawn subagents.** Every other tool call goes `panel -> POST /api/llm/tool -> backend handler`. `create_subagent` cannot, because fulfilling it means running another chat-completion loop, and only the browser panel holds the LLM proxy connection — so `runTurn`'s tool dispatch (`resolveToolCall` in `llm.ts`) intercepts it before the network hop and runs `runSubagent` locally: a bounded (`SUBAGENT_MAX_TOOL_TURNS = 5`) loop with its own message history (just the task text — never the parent conversation) and the parent's tool set minus `create_subagent` itself (nesting stops at one level) and minus whatever the parent has disabled. The backend's `tools` record still carries a `create_subagent` entry — a stub that throws — purely so `Record<LlmToolName, LlmToolHandler>` stays exhaustive; it existing and being reachable would itself signal the client-side interception was bypassed. Nothing about a subagent run is persisted (`ConversationStore` only ever sees the ordinary `tool_calls`/`tool` message pair the parent's call produces); the live session renders the run as a collapsed block via `MessageView.appendSubagentResult` so its internal trace is inspectable without being saved.
+- **Invariant — `create_subagent` is the sole client-executed LLM tool, and a subagent cannot itself spawn subagents.** Every other tool call goes `panel -> POST /api/llm/tool -> backend handler`. `create_subagent` cannot, because fulfilling it means running another chat-completion loop, and only the browser panel holds the LLM proxy connection — so `runTurn`'s tool dispatch (`resolveToolCall` in `llm.ts`) intercepts it before the network hop and runs `runSubagent` locally: a bounded (`SUBAGENT_MAX_TOOL_TURNS = 5`) loop with its own message history (just the task text — never the parent conversation), under either a named Profile the model passed as the call's `profile` argument (its own system prompt, allowed tools, and hooks — see profiles.ts) or, by default, `defaultSubagentProfile`: the built-in `SUBAGENT_SYSTEM_PROMPT` and the caller's own profile's allowed tools minus `create_subagent` itself (nesting stops at one level regardless of what a named profile's own `allowedTools` lists — `subagentToolDefs` excludes it unconditionally). The backend's `tools` record still carries a `create_subagent` entry — a stub that throws — purely so `Record<LlmToolName, LlmToolHandler>` stays exhaustive; it existing and being reachable would itself signal the client-side interception was bypassed. Nothing about a subagent run is persisted (`ConversationStore` only ever sees the ordinary `tool_calls`/`tool` message pair the parent's call produces); the live session renders the run as a collapsed block via `MessageView.appendSubagentResult` so its internal trace (including any end-hook checks) is inspectable without being saved.
 - **Invariant — command execution is bounded and human-confirmed.** `run_command` is the one tool that reaches the OS shell rather than the sandboxed fs, so it must stay a *bounded, confirmable* capability, not an unrestricted shell. Its ideal shape: (a) a hard timeout that kills the *whole process tree* (a spawned `pnpm`/`node` must not outlive the timeout); (b) a bounded, capped output (≤ 1 MB) so a chatty command cannot flood the model's context; (c) a **vetted-command allowlist** (e.g. only `pnpm`, `git`, `node` with checked sub-args) so the model cannot run arbitrary PowerShell; and (d) a **UI confirmation gate** in the panel before the command is dispatched, since a single model turn (or prompt-injection via a file it reads) can otherwise trigger destructive/exfiltrating commands. (a), (b), and the process-tree kill + single-flight guard are implemented (the tree kill is Windows-only: `taskkill /T /F`); (c)+(d) remain, and until the confirm gate is in place this tool is the app's largest attack surface — tolerable only as a single-user, local-only, trusted-model setting.
 - **Invariant — file edits preserve every byte outside the replaced range.** A line-range edit rewrites only the replaced lines; everything else — line endings, trailing newline, untouched lines — must stay byte-identical. In particular an edit to a CRLF file must not re-encode the whole file to LF (and vice versa), because a single-line change showing up as a whole-file line-ending diff is surprising and destroys information the user did not ask to change.
 - **Invariant — the UI fills the viewport and scrolls internally**: the SPA spans the full viewport (100dvh) with no page-level scroll; the three panels (tree, viewer, LLM chat) stretch to fill the remaining height and their *content* scrolls within its own region (`overflow: auto` + `flex: 1 1 0; min-height: 0` down the flex chain). Resizing (including narrow/mobile widths, where the grid stacks to one column) must never introduce a horizontal page scrollbar.
@@ -116,37 +116,48 @@ apps/frontend/src/
                     #   Mirrors conversations.ts so the auto-save data-safety invariant is
                     #   unit-testable without a DOM; fileTree.ts then only paints and forwards
                     #   user actions, keeping the controller under the 500-line cap.
-    llm.ts          #   LLM chat panel: a thin DOM controller over the conversation store.
-                    #   Queries elements, builds the store, wires render fns + events. Runs a
-                    #   bounded tool-call loop (list_directory, read_file, edit_file,
+    llm.ts          #   LLM chat panel: a thin DOM controller over the conversation AND
+                    #   profile stores. Queries elements, builds both stores, wires render
+                    #   fns + events (including the Profiles editor panel: profile
+                    #   create/rename/delete, its allowed-tools checklist via
+                    #   renderProfileToolList, and its three hook inputs). Runs a bounded
+                    #   tool-call loop (list_directory, read_file, edit_file,
                     #   create_directory, create_file, run_command — which must surface a
                     #   confirm-before-run gate) and forwards each model call to the backend
                     #   /api/llm/tool route. Holds the turn loop (runTurn), prompt builder
                     #   (buildMessages), and compaction (summarizeConversation). It owns only
                     #   the turn loop and store wiring — the transcript's rendering is delegated
-                    #   to messageView.ts so the controller stays lean. `resolveToolCall`
-                    #   dispatches each model call: disabled tools short-circuit locally,
-                    #   create_subagent runs its own nested loop (runSubagent — its own
-                    #   message history, the parent's tools minus create_subagent itself,
-                    #   capped at SUBAGENT_MAX_TOOL_TURNS), everything else forwards to the
-                    #   backend as before. Startup hook: on the first Send of an empty
-                    #   conversation with a hookCommand set, runs it once via the same
-                    #   run_command tool (executeLlmTool + a synthetic tool call) and caches
-                    #   the output as hookOutput, which systemPrompt()/buildMessages() then
-                    #   append to every turn's system prompt for that conversation. Turn
-                    #   hook: a second, uncached hookCommand-alike (turnCommand) that runs
-                    #   before every turn via the same mechanism; its output (turnOutput)
-                    #   is threaded through runTurn -> buildMessages -> systemPrompt for
-                    #   that turn only and is never persisted on the conversation. End
-                    #   hook: a third per-conversation command (endCommand) that runs after
-                    #   every reply, via runShellCommand (api/client.ts) -> POST
-                    #   /api/llm/hook-command, which — unlike run_command — returns stdout
-                    #   and stderr separately so runTurn can gate on stderr alone. Its
-                    #   output is always shown via MessageView.appendEndHookResult
-                    #   (ephemeral); a non-empty stderr additionally appends a persisted,
-                    #   protocol-valid role:"user" retry message (ChatMessage's endHook
-                    #   flag) and loops the turn (same MAX_TOOL_TURNS budget as tool
-                    #   calls) instead of returning the reply as final.
+                    #   to messageView.ts so the controller stays lean (though at ~1000 lines it
+                    #   has badly outgrown that goal — see Future Work). `resolveToolCall`
+                    #   dispatches each model call against the active conversation's profile:
+                    #   tools outside profile.allowedTools (disabledFromAllowed) short-circuit
+                    #   locally; create_subagent runs its own nested loop (runSubagent) under
+                    #   either a named profile passed as the call's `profile` argument, or the
+                    #   built-in default (defaultSubagentProfile: SUBAGENT_SYSTEM_PROMPT + the
+                    #   caller's own allowed tools minus create_subagent, capped at
+                    #   SUBAGENT_MAX_TOOL_TURNS); everything else forwards to the backend as
+                    #   before. Startup hook: on the first Send of an empty conversation whose
+                    #   profile has a hookCommand set, runs it once via the same run_command
+                    #   tool (executeLlmTool + a synthetic tool call) and caches the output as
+                    #   hookOutput **on the conversation** (not the profile), which
+                    #   systemPrompt()/buildMessages() then append to every turn's system
+                    #   prompt for that conversation; switching a conversation's profile clears
+                    #   this cache (ConversationStore.setActiveProfile). Turn hook: a profile's
+                    #   uncached turnCommand, run fresh before every turn via the same
+                    #   mechanism; its output (turnOutput) is threaded through runTurn ->
+                    #   buildMessages -> systemPrompt for that turn only. End hook: a profile's
+                    #   endCommand, run after every reply via runShellCommand (api/client.ts)
+                    #   -> POST /api/llm/hook-command, which — unlike run_command — returns
+                    #   stdout and stderr separately so the shared checkEndHook helper can gate
+                    #   on stderr alone (and treat the check's own execution failure as
+                    #   blocking, not a turn-rollback trigger). Its output is always shown via
+                    #   MessageView.appendEndHookResult (ephemeral); a blocking result
+                    #   additionally appends a persisted, protocol-valid role:"user" retry
+                    #   message (ChatMessage's endHook flag) and loops the turn (same
+                    #   MAX_TOOL_TURNS budget as tool calls) instead of returning the reply as
+                    #   final. runSubagent applies a named profile's hooks with the same
+                    #   checkEndHook/runHookCommand helpers runTurn uses, so a subagent's
+                    #   startup/turn/end-hook behavior mirrors the main loop exactly.
     messageView.ts  #   VIRTUALIZED LLM transcript view (DOM, no store knowledge): renders the
                     #   active conversation's messages as a bounded, windowed list. A general
                     #   `VirtualList` keeps a spacer as tall as the whole conversation and
@@ -173,17 +184,32 @@ apps/frontend/src/
                     #   convention most chat UIs use.
     conversations.ts #   DOM-free conversation store: owns convs, activeId, per-conversation
                     #   promptTokens, and per-model contextWindow. Persists a list of
-                    #   {id,title,model,messages,hookCommand,hookOutput?,turnCommand,
-                    #   endCommand} to vise:llm:conversations (+ vise:llm:active); exposes
-                    #   getActive/new/switch/delete/persist + title derivation. The store
-                    #   always keeps >=1 conversation (deleteConversation reseeds a fresh empty one
-                    #   when the last is removed, and reassigns activeId to the first remaining).
-                    #   Legacy single-conversation keys (vise:llm:history/model) migrate once.
-                    #   Context compaction: when the last call's prompt tokens reached 80% of
-                    #   the model's n_ctx (from the proxy's model list), one extra tool-free
-                    #   call summarizes the conversation and the summary is appended as a
-                    #   compaction marker; buildMessages() then bypasses the pre-marker history
-                    #   in every outgoing prompt of the turn (see append-only invariant)
+                    #   {id,title,model,messages,profileId,hookOutput?} to
+                    #   vise:llm:conversations (+ vise:llm:active); exposes
+                    #   getActive/new/switch/delete/persist + title derivation, plus
+                    #   setActiveProfile (assigns profileId, clears the stale hookOutput cache)
+                    #   and reassignProfile(fromId,toId) (used when profiles.ts deletes a
+                    #   profile, so the two stores stay decoupled — llm.ts coordinates both).
+                    #   The store always keeps >=1 conversation (deleteConversation reseeds a
+                    #   fresh empty one when the last is removed, and reassigns activeId to the
+                    #   first remaining). Legacy single-conversation keys (vise:llm:history/model)
+                    #   migrate once. Context compaction: when the last call's prompt tokens
+                    #   reached 80% of the model's n_ctx (from the proxy's model list), one
+                    #   extra tool-free call summarizes the conversation and the summary is
+                    #   appended as a compaction marker; buildMessages() then bypasses the
+                    #   pre-marker history in every outgoing prompt of the turn (see
+                    #   append-only invariant)
+    profiles.ts     #   DOM-free profile store: owns the list of Profiles, each
+                    #   {id,name,systemPrompt,allowedTools,hookCommand,turnCommand,endCommand}
+                    #   — a profile is the sole source of truth for a conversation's (or a
+                    #   named subagent delegation's) system prompt, tool allowlist, and hook
+                    #   commands. Persists to vise:llm:profiles. The always-present
+                    #   DEFAULT_PROFILE_ID ("default") profile is seeded with every known tool
+                    #   allowed and the app's original system prompt, so an untouched
+                    #   conversation behaves exactly as it did before profiles existed;
+                    #   deleteProfile refuses to remove it. Mirrors conversations.ts's shape
+                    #   (getProfiles/getProfile/createProfile/updateProfile/deleteProfile/
+                    #   persist) so it reads as the same kind of store.
   styles/         # CSS: design tokens + theme (present as a single src/styles.css; split into a styles/ dir as it grows)
 ```
 
@@ -196,7 +222,7 @@ Target invariants (implemented in the backend):
 - **Invariant — file content is rendered as text, never as HTML.** `highlight.ts` tokenizes one line into runs and `render.ts` inserts every run via `textContent`/`createTextNode`. File content must never reach the DOM through `innerHTML`/`insertAdjacentHTML`, so arbitrary (attacker- or binary-) file bytes cannot inject markup/scripts. Keep the tokenizer pure (a line in, `Token[]` out) so it stays trivially testable and split-free, and keep the DOM-appending as a thin separate function.
 - **Invariant — the always-edit overlay keeps both text layers on identical font metrics.** Every file opens in the editor: a transparent-text `<textarea>` (`color: transparent`, `white-space: pre`, no wrap) absolutely positioned over a live re-highlighted `<pre>` backdrop, with a sticky line-number gutter. The two layers only align pixel-perfectly if `font-family`/`font-size`/`line-height`/`tab-size`/`padding`/`margin` are identical on both. Because a `<pre>`'s UA stylesheet forces `font-family: monospace` (overriding inheritance), the backdrop must set the exact mono stack explicitly — relying on inheritance re-introduces ghosted/doubled text. The overlay container (`.editor-scroll`) is the sole scroller; `#viewer-body` is `overflow: hidden` so exactly one scrollbar shows.
 - **Invariant — auto-save lifecycle is loss-free on navigation.** The editor debounces saves (`AUTOSAVE_MS`). `viewer.dirty` is the single source of truth for "unsaved work exists"; the `.save-status` span reflects it (`unsaved`/`saving`/`saved`/`error`). Before switching files (`viewFile`) and on `beforeunload`, `flushSave` clears any pending timer and persists a dirty buffer. If that flush **fails**, navigation must be aborted (no re-render) so the in-memory edit is never discarded — the current edit stays in the textarea and `dirty` remains true.
-- **Invariant — disabling an LLM tool never changes the tool `definitions` array (KV-cache preserving).** A per-conversation `disabledTools: string[]` (in `conversations.ts`, back-compat via `?? []` on load) drives the disable state. The `llmToolDefinitions` array is always sent **unchanged** to `sendLlmMessage`, so the request prefix (and the server's KV cache) is stable. Disabling a tool only (a) **appends** a note to `SYSTEM_PROMPT` (`systemPrompt(disabled)` — byte-identical to `SYSTEM_PROMPT` when nothing is disabled) and (b) **short-circuits** the client-side execution of a disabled tool with a model-readable result (`disabledToolResult`), so no backend call is made. Do **not** filter the definitions array to drop disabled tools — that is the exact thing the feature is designed to avoid.
+- **Invariant — a profile's tool allowlist never changes the *main conversation's* tool `definitions` array (KV-cache preserving).** Each Profile (`profiles.ts`) carries `allowedTools: string[]` — an allowlist, not the old per-conversation `disabledTools` denylist it replaced, but the mechanism is unchanged: `llmToolDefinitions` is always sent **unchanged** to `sendLlmMessage` for the main loop, so the request prefix (and the server's KV cache) is stable. `disabledFromAllowed(profile.allowedTools)` derives the complement once per turn; disallowing a tool only (a) **appends** a note to the profile's own system prompt (`systemPrompt(ctx)` — byte-identical to `ctx.base` when nothing is disallowed) and (b) **short-circuits** the client-side execution of a disallowed tool with a model-readable result (`disabledToolResult`), so no backend call is made. Do **not** filter the definitions array in the main loop to drop disallowed tools — that is the exact thing the feature is designed to avoid. A **subagent's** offered tool list is the one deliberate exception: it *is* filtered to `profile.allowedTools` (`subagentToolDefs`), because it already excluded `create_subagent` before profiles existed — each subagent run is a fresh, single-shot conversation with the model anyway, so there is no ongoing per-conversation KV cache to preserve across turns the way there is for the main loop.
 
 **Why the layering matters (recursion):** router (pure), response (I/O), and routes (handlers) are separated so dependency edges point one direction. This keeps the code splittable: any future split of a file cannot introduce a circular import, because the pure core never imports the I/O or handler layers.
 
@@ -233,7 +259,7 @@ Target invariants (implemented in the backend):
 - Bound filesystem listing: cap entry count (and/or paginate), so a huge directory cannot stall a worker or balloon memory.
 - Add a focus trap to the create dialog (and any future modal): Tab should cycle within the dialog, not the whole page.
 - **The editor's save-state now lives in a DOM-free `fileState.ts` (done).** The buffer (`content`/`rel`), the `dirty` flag, the debounced save timer, and the save/flush decision logic (incl. the loss-free "abort navigation on a failed flush" rule) are owned by `createFileStateStore(persist, onStatus)` — the exact shape of `conversations.ts`. It injects the network write (`persist`) and the status renderer (`onStatus`), so it is free of both DOM and `api/client.ts`; `fileTree.ts` is now a thin painter that forwards user actions and renders the store's state. The invariant "no unsaved edit is ever silently discarded" is now unit-testable in Node — the highest-leverage first target for the test suite below.
-- **Test suite: the two store suites are in (done); the backend + client suites remain (in Jest, ts-jest, CommonJS transform).** The loss-free auto-save lifecycle (`fileState.test.ts`) and the append-only commit/persistence invariant (`conversations.test.ts`) are now covered, and `pnpm test` runs them at the root. Next: the pure `router.ts` (matching incl. wildcard + malformed-encoding), the per-resource `routes/*.ts` handlers (via the `AppError`/`toResponse` path), and the `api/client.ts` normalization — the pure `router.ts` and per-resource `routes/*.ts` modules make this straightforward.
+- **Test suite: three store suites are in (done); the backend + client suites remain (in Jest, ts-jest, CommonJS transform).** The loss-free auto-save lifecycle (`fileState.test.ts`), the append-only commit/persistence invariant (`conversations.test.ts`), and the profile CRUD/default-seeding invariants (`profiles.test.ts`) are now covered, and `pnpm test` runs them at the root. Next: the pure `router.ts` (matching incl. wildcard + malformed-encoding), the per-resource `routes/*.ts` handlers (via the `AppError`/`toResponse` path), and the `api/client.ts` normalization — the pure `router.ts` and per-resource `routes/*.ts` modules make this straightforward.
 - **The lint gate must stay green in the test suite as in production.** `pnpm lint` (Biome) is an automated gate per `AGENTS.md`, and it enforces the reviewer limits (`noExcessiveLinesPerFunction` ≤ 100 as a warning, plus the formatter) on `*.test.ts` too. A test file is not exempt from the 500-line / 100-line function / format rules; keep `describe` blocks nested (per-behavior groups) so a growing suite never outgrows the function cap, and run `pnpm format` before committing.
 - **Finish the live-reflection shutdown (top priority).** The watcher's lifecycle owner is done (context member, `start()` in `createApp`, closed in `close()`, `SIGINT`/`SIGTERM` in `index.ts`). What remains: (1) **make `close()` terminate in-flight SSE streams** — call `server.closeAllConnections()` in `app.ts` so the close callback (and the watcher teardown + `process.exit`) actually run while a `/api/watch` stream is open; today `server.close()` waits on the never-draining SSE connection and Ctrl-C hangs. (2) **Give the dispatch loop a streaming-route kind** — skip the JSON body read + `toResponse` for `GET /api/watch` and let the handler own `res`, so the SSE exception is explicit rather than accidental. (See the matching Potential Problems.)
 - **Surface the degraded (non-recursive) watch mode** so a stale tree on Linux is explainable, and add a lightweight SSE keep-alive (`:ping` every ~15s) so idle-connection drops are invisible.
@@ -243,7 +269,7 @@ Target invariants (implemented in the backend):
 - **Finish `run_command` at its bounded, confirmable ideal.** The practical core is done: timeout, process-tree kill, single-flight guard, and separated `Buffer`-accumulated stdout/stderr with a `[stderr]` marker. What remains: (1) **a UI confirmation gate** in the panel — the single highest-value item, and the one that makes the tool truly "human-confirmed" per the invariant (removes the unattended / prompt-injection path); (2) **make the tree kill platform-portable** — the current `taskkill` is Windows-only; (3) make the output cap measured and sliced in the same unit (bytes, not bytes-then-chars). The command allowlist stays optional; add it only if the tool is ever exposed beyond a trusted single user.
 - Move the LLM key out of source (gitignored `.env` + `import.meta.env`), and give the LLM panel a production story (reverse proxy or backend forwarding) when it is ever deployed. The LLM call is a single non-streamed round-trip with a full "Thinking…" wait; add streaming (SSE) and strip the model's `/<…>/think>` reasoning block from the response when the chat becomes a regular feature.
 - Give the viewer a size/line strategy: it renders every line as a DOM node. Once files near the 1 MB cap (thousands of lines) are shown, consider virtualization or a "show first N lines / open full" affordance so the scroll region stays responsive. (The LLM transcript was virtualized first — `messageView.ts`/`VirtualList` is the working windowed-list reference; the viewer is the remaining application of the same pattern.)
-- **Extract the subagent runner out of `components/llm.ts` before the file-size cap forces it.** `create_subagent` landed its entire independent tool-calling loop — `SUBAGENT_SYSTEM_PROMPT`, `SUBAGENT_MAX_TOOL_TURNS`, `subagentTools`, `parseSubagentTask`, `ToolCallOutcome`, `resolveToolCall`, `runSubagent` (~115 code lines) — inside `llm.ts`, which the Structure section above already scopes to "only the turn loop and store wiring." That cluster is a self-contained unit (its own system prompt, its own tool filtering, its own bounded loop) whose only shared dependency on the rest of the file is `disabledToolResult`, so it should move to its own `components/subagent.ts` (taking `disabledToolResult` with it, or accepting it as a parameter) the next time a tool or turn-loop feature touches this area — `llm.ts` is already close to the 500-line file cap, and bolting further features onto it risks crossing that limit with two responsibilities still tangled together. `runTurn` would then import `resolveToolCall` from `subagent.ts` the same way it already imports `toolCallLabel` from `messageView.ts`: turn loop → subagent runner → tool execution, one direction, no back-edge.
+- **Extract `components/llm.ts` before its size actively hurts (now urgent — the file has crossed 500 lines and kept growing).** `create_subagent` landed its entire independent tool-calling loop — `SUBAGENT_SYSTEM_PROMPT`, `SUBAGENT_MAX_TOOL_TURNS`, `subagentToolDefs`, `defaultSubagentProfile`, `parseSubagentArgs`, `ToolCallOutcome`, `resolveToolCall`, `runSubagent` — inside `llm.ts`, and the Profiles feature added a second self-contained cluster on top (the Profiles editor's DOM wiring in `setupLlm`, plus `renderProfileToolList`, `checkEndHook`, `formatEndHookOutput`/`endHookRetryMessage`, `disabledFromAllowed`), which the Structure section above already scopes to "only the turn loop and store wiring." Both clusters are self-contained units (their own system prompt/tool filtering/bounded loop for the subagent runner; their own DOM elements/render functions for the Profiles panel) whose only shared dependencies on the rest of the file are a handful of functions (`disabledToolResult`, `checkEndHook`, `runHookCommand`, `systemPrompt`), so they should move to their own modules (`components/subagent.ts`, and perhaps `components/profilePanel.ts` for the editor wiring) the next time a tool or turn-loop feature touches this area. `setupLlm` itself is also now a `noExcessiveLinesPerFunction` warning (~200 lines) from the Profiles panel's event wiring alone — a natural first split is pulling that wiring into a `setupProfilesPanel(root, profiles, store, onProfileChange)`-shaped helper alongside the file extraction. `runTurn` would then import `resolveToolCall` from `subagent.ts` the same way it already imports `toolCallLabel` from `messageView.ts`: turn loop → subagent runner → tool execution, one direction, no back-edge.
 
 ## Performance (obvious concerns only — profile before optimizing)
 

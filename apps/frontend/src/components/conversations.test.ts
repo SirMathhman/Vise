@@ -3,6 +3,7 @@ import {
   createConversationStore,
   deriveTitle,
 } from "./conversations.js";
+import { DEFAULT_PROFILE_ID } from "./profiles.js";
 
 /** A minimal in-memory localStorage backed by a plain Map. */
 class MemoryLocalStorage {
@@ -149,7 +150,7 @@ describe("conversation store", () => {
   });
 });
 
-describe("conversation store - startup hook", () => {
+describe("conversation store - hook output cache", () => {
   let storage: MemoryLocalStorage;
 
   beforeEach(() => {
@@ -160,95 +161,77 @@ describe("conversation store - startup hook", () => {
     delete (globalThis as Record<string, unknown>).localStorage;
   });
 
-  it("a fresh conversation has no hook command and no hook output", () => {
+  it("a fresh conversation has no cached hook output", () => {
     const store = createConversationStore();
-    expect(store.getActive().hookCommand).toBe("");
     expect(store.getActive().hookOutput).toBeUndefined();
   });
 
-  it("setHookCommand and setHookOutput mutate and persist the active conversation", () => {
+  it("setHookOutput mutates and persists the active conversation", () => {
     const store = createConversationStore();
-    store.setHookCommand("git status");
     store.setHookOutput("On branch main");
     store.persist();
 
-    expect(store.getActive().hookCommand).toBe("git status");
     expect(store.getActive().hookOutput).toBe("On branch main");
 
     const raw = storage.getItem("vise:llm:conversations");
     const parsed = JSON.parse(raw as string);
-    expect(parsed[0].hookCommand).toBe("git status");
     expect(parsed[0].hookOutput).toBe("On branch main");
   });
 
-  it("hookCommand/hookOutput round-trip across a new store", () => {
+  it("hookOutput round-trips across a new store", () => {
     const first = createConversationStore();
-    first.setHookCommand("pnpm typecheck");
     first.setHookOutput("no errors");
     first.persist();
     const activeId = first.activeId();
 
     const second = createConversationStore();
     const restored = second.getConversations().find((c) => c.id === activeId);
-    expect(restored?.hookCommand).toBe("pnpm typecheck");
     expect(restored?.hookOutput).toBe("no errors");
   });
+});
 
-  it("loads pre-hook persisted conversations with hookCommand defaulted to empty", () => {
-    storage.setItem(
-      "vise:llm:conversations",
-      JSON.stringify([
-        { id: "c1", title: "old", model: "m", messages: [user("hi")] },
-      ])
-    );
-    storage.setItem("vise:llm:active", "c1");
+describe("conversation store - profiles", () => {
+  let storage: MemoryLocalStorage;
 
+  beforeEach(() => {
+    storage = new MemoryLocalStorage();
+    (globalThis as Record<string, unknown>).localStorage = storage;
+  });
+  afterEach(() => {
+    delete (globalThis as Record<string, unknown>).localStorage;
+  });
+
+  it("a fresh conversation is assigned the default profile", () => {
     const store = createConversationStore();
-    expect(store.getActive().hookCommand).toBe("");
+    expect(store.getActive().profileId).toBe(DEFAULT_PROFILE_ID);
+  });
+
+  it("setActiveProfile mutates, persists, and clears any cached hook output", () => {
+    const store = createConversationStore();
+    store.setHookOutput("stale output");
+    store.setActiveProfile("custom");
+    store.persist();
+
+    expect(store.getActive().profileId).toBe("custom");
     expect(store.getActive().hookOutput).toBeUndefined();
-  });
-});
-
-describe("conversation store - turn hook", () => {
-  let storage: MemoryLocalStorage;
-
-  beforeEach(() => {
-    storage = new MemoryLocalStorage();
-    (globalThis as Record<string, unknown>).localStorage = storage;
-  });
-  afterEach(() => {
-    delete (globalThis as Record<string, unknown>).localStorage;
-  });
-
-  it("a fresh conversation has no turn command", () => {
-    const store = createConversationStore();
-    expect(store.getActive().turnCommand).toBe("");
-  });
-
-  it("setTurnCommand mutates and persists the active conversation", () => {
-    const store = createConversationStore();
-    store.setTurnCommand("date");
-    store.persist();
-
-    expect(store.getActive().turnCommand).toBe("date");
 
     const raw = storage.getItem("vise:llm:conversations");
     const parsed = JSON.parse(raw as string);
-    expect(parsed[0].turnCommand).toBe("date");
+    expect(parsed[0].profileId).toBe("custom");
   });
 
-  it("turnCommand round-trips across a new store", () => {
+  it("profileId round-trips across a new store", () => {
     const first = createConversationStore();
-    first.setTurnCommand("git status");
+    first.setActiveProfile("custom");
     first.persist();
     const activeId = first.activeId();
 
     const second = createConversationStore();
     const restored = second.getConversations().find((c) => c.id === activeId);
-    expect(restored?.turnCommand).toBe("git status");
+    expect(restored?.profileId).toBe("custom");
   });
 
-  it("loads pre-turn-hook persisted conversations with turnCommand defaulted to empty", () => {
+  it("loads pre-profile persisted conversations with profileId defaulted", () => {
     storage.setItem(
       "vise:llm:conversations",
       JSON.stringify([
@@ -258,59 +241,24 @@ describe("conversation store - turn hook", () => {
     storage.setItem("vise:llm:active", "c1");
 
     const store = createConversationStore();
-    expect(store.getActive().turnCommand).toBe("");
-  });
-});
-
-describe("conversation store - end hook", () => {
-  let storage: MemoryLocalStorage;
-
-  beforeEach(() => {
-    storage = new MemoryLocalStorage();
-    (globalThis as Record<string, unknown>).localStorage = storage;
-  });
-  afterEach(() => {
-    delete (globalThis as Record<string, unknown>).localStorage;
+    expect(store.getActive().profileId).toBe(DEFAULT_PROFILE_ID);
   });
 
-  it("a fresh conversation has no end command", () => {
+  it("reassignProfile repoints every conversation on the old profile", () => {
     const store = createConversationStore();
-    expect(store.getActive().endCommand).toBe("");
-  });
+    store.setActiveProfile("custom");
+    store.newConversation("m");
+    store.setActiveProfile("custom");
+    store.newConversation("m");
+    store.setActiveProfile("other");
 
-  it("setEndCommand mutates and persists the active conversation", () => {
-    const store = createConversationStore();
-    store.setEndCommand("pnpm lint");
-    store.persist();
+    store.reassignProfile("custom", DEFAULT_PROFILE_ID);
 
-    expect(store.getActive().endCommand).toBe("pnpm lint");
-
-    const raw = storage.getItem("vise:llm:conversations");
-    const parsed = JSON.parse(raw as string);
-    expect(parsed[0].endCommand).toBe("pnpm lint");
-  });
-
-  it("endCommand round-trips across a new store", () => {
-    const first = createConversationStore();
-    first.setEndCommand("pnpm typecheck");
-    first.persist();
-    const activeId = first.activeId();
-
-    const second = createConversationStore();
-    const restored = second.getConversations().find((c) => c.id === activeId);
-    expect(restored?.endCommand).toBe("pnpm typecheck");
-  });
-
-  it("loads pre-end-hook persisted conversations with endCommand defaulted to empty", () => {
-    storage.setItem(
-      "vise:llm:conversations",
-      JSON.stringify([
-        { id: "c1", title: "old", model: "m", messages: [user("hi")] },
-      ])
-    );
-    storage.setItem("vise:llm:active", "c1");
-
-    const store = createConversationStore();
-    expect(store.getActive().endCommand).toBe("");
+    const profileIds = store.getConversations().map((c) => c.profileId);
+    expect(profileIds).toEqual([
+      "other",
+      DEFAULT_PROFILE_ID,
+      DEFAULT_PROFILE_ID,
+    ]);
   });
 });

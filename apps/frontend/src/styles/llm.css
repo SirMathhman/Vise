@@ -78,18 +78,15 @@
   border-color: var(--border-gold);
 }
 
-#app #llm #llm-tools {
+#app #llm .llm-profiles {
   margin-bottom: 12px;
-}
-
-#app #llm .llm-tools {
   border: 1px solid var(--border);
   border-radius: 2px;
   background: var(--bg-elevated);
   padding: 8px 10px;
 }
 
-#app #llm .llm-tools-title {
+#app #llm .llm-profiles-title {
   cursor: pointer;
   font-family: var(--font-heading);
   letter-spacing: 0.14em;
@@ -97,6 +94,24 @@
   font-size: 0.68rem;
   color: var(--text-muted);
   transition: color 0.15s ease;
+}
+
+#app #llm .llm-profiles-title:hover {
+  color: var(--text);
+}
+
+#app #llm .llm-profiles-editor-row {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+#app #llm .llm-profiles-editor-row select {
+  flex: 1 1 auto;
+}
+
+#app #llm #llm-profile-tools {
+  margin-bottom: 12px;
 }
 
 #app #llm .llm-tools-title:hover {

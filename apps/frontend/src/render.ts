@@ -29,6 +29,11 @@ export async function render(root: HTMLElement): Promise<void> {
               title="Switch conversation"
             ></select>
             <select id="llm-model" aria-label="model"></select>
+            <select
+              id="llm-profile"
+              aria-label="profile"
+              title="The profile this conversation runs under (system prompt, allowed tools, hooks)"
+            ></select>
             <button id="llm-send" class="btn" type="button">Send</button>
             <button
               id="llm-new"
@@ -48,31 +53,62 @@ export async function render(root: HTMLElement): Promise<void> {
             </button>
           </div>
           <p id="llm-context" class="llm-context" aria-label="context usage"></p>
-          <div id="llm-tools" aria-label="available tools"></div>
-          <input
-            id="llm-hook"
-            class="llm-hook"
-            type="text"
-            aria-label="startup command"
-            placeholder="Startup command (optional, PowerShell — runs once before your first message)"
-            title="Runs once, before this conversation's first message, via the same run_command tool the model uses. Its output is added to the model's context but never shown in the transcript."
-          />
-          <input
-            id="llm-turn-hook"
-            class="llm-hook"
-            type="text"
-            aria-label="turn command"
-            placeholder="Turn command (optional, PowerShell — runs fresh before every turn)"
-            title="Runs fresh before every turn (not just the first), via the same run_command tool the model uses. Its output is added to that turn's context but never shown in the transcript, and is never cached between turns."
-          />
-          <input
-            id="llm-end-hook"
-            class="llm-hook"
-            type="text"
-            aria-label="end-of-turn check command"
-            placeholder="End command (optional, PowerShell — runs after every reply; blocks on stderr)"
-            title="Runs after every reply. Its stdout/stderr are shown in the transcript (truncated). If it writes to stderr, the reply is not accepted: the model sees the output and must try again."
-          />
+          <details id="llm-profiles" class="llm-profiles">
+            <summary class="llm-profiles-title">Profiles</summary>
+            <div class="llm-profiles-editor-row">
+              <select id="llm-profile-editor" aria-label="profile to edit"></select>
+              <button id="llm-profile-new" class="btn btn-ghost" type="button">
+                New
+              </button>
+              <button
+                id="llm-profile-delete"
+                class="btn btn-ghost"
+                type="button"
+              >
+                Delete
+              </button>
+            </div>
+            <input
+              id="llm-profile-name"
+              class="llm-hook"
+              type="text"
+              aria-label="profile name"
+              placeholder="Profile name"
+            />
+            <textarea
+              id="llm-profile-prompt"
+              aria-label="profile system prompt"
+              placeholder="System prompt"
+            ></textarea>
+            <div
+              id="llm-profile-tools"
+              aria-label="profile allowed tools"
+            ></div>
+            <input
+              id="llm-profile-hook"
+              class="llm-hook"
+              type="text"
+              aria-label="profile startup command"
+              placeholder="Startup command (optional, PowerShell — runs once before the first message/task)"
+              title="Runs once, before the first message/task under this profile, via the same run_command tool the model uses. Its output is added to the model's context but never shown in the transcript."
+            />
+            <input
+              id="llm-profile-turn-hook"
+              class="llm-hook"
+              type="text"
+              aria-label="profile turn command"
+              placeholder="Turn command (optional, PowerShell — runs fresh before every turn)"
+              title="Runs fresh before every turn (not just the first), via the same run_command tool the model uses. Its output is added to that turn's context but never shown in the transcript, and is never cached between turns."
+            />
+            <input
+              id="llm-profile-end-hook"
+              class="llm-hook"
+              type="text"
+              aria-label="profile end-of-turn check command"
+              placeholder="End command (optional, PowerShell — runs after every reply; blocks on stderr)"
+              title="Runs after every reply. Its stdout/stderr are shown in the transcript (truncated). If it writes to stderr, the reply is not accepted: the model sees the output and must try again."
+            />
+          </details>
           <textarea
             id="llm-prompt"
             aria-label="message"

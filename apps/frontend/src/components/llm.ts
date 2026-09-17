@@ -20,47 +20,79 @@ import {
   type SubagentStep,
   toolCallLabel,
 } from "./messageView.js";
+import {
+  createProfileStore,
+  DEFAULT_PROFILE_ID,
+  type Profile,
+  type ProfileStore,
+} from "./profiles.js";
 
 /**
  * Wire up the LLM panel. Manages a list of conversations (each with its own
- * message history and model choice) that persist across page reloads: the
- * user can start a new conversation (New), switch back to an old one via the
- * conversation dropdown, and continue each of them. The Send button (and
+ * message history, model choice, and profile) and a list of profiles (each a
+ * reusable bundle of system prompt, allowed tools, and hooks — see
+ * profiles.ts), both persisted across page reloads. The user can start new
+ * conversations (New), switch back to old ones via the conversation
+ * dropdown, assign a conversation's profile via the profile dropdown, and
+ * create/edit/delete profiles in the Profiles panel. The Send button (and
  * Ctrl/Cmd+Enter) runs a chat completion for the active conversation.
  */
 export function setupLlm(root: HTMLElement): void {
   const conversation =
     root.querySelector<HTMLSelectElement>("#llm-conversation");
   const model = root.querySelector<HTMLSelectElement>("#llm-model");
+  const profileSelect = root.querySelector<HTMLSelectElement>("#llm-profile");
   const prompt = root.querySelector<HTMLTextAreaElement>("#llm-prompt");
   const response = root.querySelector<HTMLElement>("#llm-response");
   const send = root.querySelector<HTMLButtonElement>("#llm-send");
   const newBtn = root.querySelector<HTMLButtonElement>("#llm-new");
   const deleteBtn = root.querySelector<HTMLButtonElement>("#llm-delete");
   const context = root.querySelector<HTMLElement>("#llm-context");
-  const hook = root.querySelector<HTMLInputElement>("#llm-hook");
-  const turnHook = root.querySelector<HTMLInputElement>("#llm-turn-hook");
-  const endHook = root.querySelector<HTMLInputElement>("#llm-end-hook");
+  const profileEditor = root.querySelector<HTMLSelectElement>(
+    "#llm-profile-editor"
+  );
+  const profileNewBtn =
+    root.querySelector<HTMLButtonElement>("#llm-profile-new");
+  const profileDeleteBtn = root.querySelector<HTMLButtonElement>(
+    "#llm-profile-delete"
+  );
+  const profileName = root.querySelector<HTMLInputElement>("#llm-profile-name");
+  const profilePrompt = root.querySelector<HTMLTextAreaElement>(
+    "#llm-profile-prompt"
+  );
+  const profileTools = root.querySelector<HTMLElement>("#llm-profile-tools");
+  const profileHook = root.querySelector<HTMLInputElement>("#llm-profile-hook");
+  const profileTurnHook = root.querySelector<HTMLInputElement>(
+    "#llm-profile-turn-hook"
+  );
+  const profileEndHook = root.querySelector<HTMLInputElement>(
+    "#llm-profile-end-hook"
+  );
   if (
     !conversation ||
     !model ||
+    !profileSelect ||
     !prompt ||
     !response ||
     !send ||
     !context ||
-    !hook ||
-    !turnHook ||
-    !endHook
+    !profileEditor ||
+    !profileNewBtn ||
+    !profileDeleteBtn ||
+    !profileName ||
+    !profilePrompt ||
+    !profileTools ||
+    !profileHook ||
+    !profileTurnHook ||
+    !profileEndHook
   ) {
     return;
   }
 
   const store = createConversationStore();
+  const profiles = createProfileStore();
   const view = new MessageView(response);
   window.addEventListener("resize", () => view.refresh());
-
-  const tools = root.querySelector<HTMLElement>("#llm-tools");
-  if (tools) renderToolList(tools, store);
 
   const renderContext = () => renderContextText(context, model, store);
 
@@ -70,6 +102,24 @@ export function setupLlm(root: HTMLElement): void {
       .map((c) => `<option value="${c.id}">${escapeHtml(c.title)}</option>`)
       .join("");
     conversation.value = store.activeId();
+  };
+
+  /**
+   * Rebuild both profile <select>s (the conversation's assignment picker and
+   * the Profiles panel's editing target) from the current profile list,
+   * preserving each one's own current selection across the rebuild (setting
+   * innerHTML clears a <select>'s value).
+   */
+  const refreshProfileSelects = () => {
+    const editingId = profileEditor.value || profiles.getDefault().id;
+    const options = profiles
+      .getProfiles()
+      .map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`)
+      .join("");
+    profileSelect.innerHTML = options;
+    profileEditor.innerHTML = options;
+    profileSelect.value = store.getActive().profileId;
+    profileEditor.value = editingId;
   };
 
   const renderActiveMessages = () => {
@@ -85,18 +135,36 @@ export function setupLlm(root: HTMLElement): void {
     renderConversationList();
     const conv = store.getActive();
     model.value = conv.model;
-    hook.value = conv.hookCommand;
-    // Once the conversation has started, the hook (if any) has already run
-    // (or never will), so the field is shown read-only for reference.
-    hook.disabled = conv.messages.length > 0;
-    turnHook.value = conv.turnCommand;
-    endHook.value = conv.endCommand;
+    refreshProfileSelects();
     renderActiveMessages();
     renderContext();
-    if (tools) syncToolList(tools, store);
+  };
+
+  /** Load the profile currently selected in the editor into its fields. */
+  const loadProfileEditorFields = () => {
+    const id = profileEditor.value || profiles.getDefault().id;
+    const profile = profiles.getProfile(id) ?? profiles.getDefault();
+    const isDefault = profile.id === DEFAULT_PROFILE_ID;
+    profileName.value = profile.name;
+    profileName.disabled = isDefault;
+    profilePrompt.value = profile.systemPrompt;
+    profileHook.value = profile.hookCommand;
+    profileTurnHook.value = profile.turnCommand;
+    profileEndHook.value = profile.endCommand;
+    profileDeleteBtn.disabled = isDefault;
+    renderProfileToolList(profileTools, profile, (allowed) => {
+      profiles.updateProfile(profile.id, { allowedTools: allowed });
+      profiles.persist();
+    });
+  };
+
+  const showProfileEditor = () => {
+    refreshProfileSelects();
+    loadProfileEditorFields();
   };
 
   showActive();
+  showProfileEditor();
 
   loadModelList(model, view, store);
 
@@ -105,7 +173,7 @@ export function setupLlm(root: HTMLElement): void {
     const m = model.value;
     if (!text || !m) return;
     prompt.value = "";
-    void submitTurn(store, view, send, m, text, showActive);
+    void submitTurn(store, profiles, view, send, m, text, showActive);
   };
 
   const doNew = () => {
@@ -129,6 +197,29 @@ export function setupLlm(root: HTMLElement): void {
     store.persist();
   };
 
+  const doNewProfile = () => {
+    const p = profiles.createProfile("New profile");
+    profiles.persist();
+    // Setting a <select>'s value to an id with no matching <option> yet
+    // silently no-ops, so the new profile's option must exist before it can
+    // be selected — refresh first, then select it, then load its fields.
+    refreshProfileSelects();
+    profileEditor.value = p.id;
+    loadProfileEditorFields();
+    profileName.focus();
+  };
+
+  const doDeleteProfile = () => {
+    const id = profileEditor.value;
+    if (!profiles.deleteProfile(id)) return;
+    store.reassignProfile(id, DEFAULT_PROFILE_ID);
+    profiles.persist();
+    store.persist();
+    profileEditor.value = DEFAULT_PROFILE_ID;
+    showProfileEditor();
+    showActive();
+  };
+
   send.addEventListener("click", submit);
   newBtn?.addEventListener("click", doNew);
   deleteBtn?.addEventListener("click", doDelete);
@@ -139,17 +230,41 @@ export function setupLlm(root: HTMLElement): void {
     store.setActiveModel(model.value);
     store.persist();
   });
-  hook.addEventListener("change", () => {
-    store.setHookCommand(hook.value);
+  profileSelect.addEventListener("change", () => {
+    store.setActiveProfile(profileSelect.value);
     store.persist();
   });
-  turnHook.addEventListener("change", () => {
-    store.setTurnCommand(turnHook.value);
-    store.persist();
+  profileEditor.addEventListener("change", loadProfileEditorFields);
+  profileNewBtn.addEventListener("click", doNewProfile);
+  profileDeleteBtn.addEventListener("click", doDeleteProfile);
+  profileName.addEventListener("change", () => {
+    profiles.updateProfile(profileEditor.value, { name: profileName.value });
+    profiles.persist();
+    refreshProfileSelects();
   });
-  endHook.addEventListener("change", () => {
-    store.setEndCommand(endHook.value);
-    store.persist();
+  profilePrompt.addEventListener("change", () => {
+    profiles.updateProfile(profileEditor.value, {
+      systemPrompt: profilePrompt.value,
+    });
+    profiles.persist();
+  });
+  profileHook.addEventListener("change", () => {
+    profiles.updateProfile(profileEditor.value, {
+      hookCommand: profileHook.value,
+    });
+    profiles.persist();
+  });
+  profileTurnHook.addEventListener("change", () => {
+    profiles.updateProfile(profileEditor.value, {
+      turnCommand: profileTurnHook.value,
+    });
+    profiles.persist();
+  });
+  profileEndHook.addEventListener("change", () => {
+    profiles.updateProfile(profileEditor.value, {
+      endCommand: profileEndHook.value,
+    });
+    profiles.persist();
   });
   prompt.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") submit();
@@ -232,59 +347,61 @@ function escapeHtml(text: string): string {
  */
 const MAX_TOOL_TURNS = 5;
 
-const SYSTEM_PROMPT =
-  "You are a helpful assistant that can inspect and modify files in a " +
-  "workspace. To see what exists, call list_directory with the directory " +
-  'path relative to the root (use "" for the root). To read a file, call ' +
-  "read_file with the path and a 1-based line range (start_line inclusive, " +
-  "end_line exclusive). To edit an existing file, call edit_file with the " +
-  "path, a 1-based line range (start_line inclusive, end_line exclusive), and " +
-  "the replacement content; always read_file first so you know the exact lines " +
-  "to replace. To create new files or directories, call create_file or " +
-  "create_directory. To run a PowerShell command (builds, git, typecheck, " +
-  "file operations, etc.), call run_command with the command; it runs in the " +
-  "workspace root and returns its output and exit status. To delegate a " +
-  "self-contained sub-task to an independent helper (e.g. a focused search or " +
-  "fix that doesn't need this conversation's context), call create_subagent " +
-  "with a clear task description; it returns the helper's final answer. Base " +
-  "your answer on the tools' results.";
+/** Everything systemPrompt()/buildMessages() need to build one turn's outgoing prompt. */
+interface PromptContext {
+  /** The active profile's own system prompt text. */
+  base: string;
+  /** Tool names not allowed under the active profile. */
+  disabled: string[];
+  /** The startup hook's cached output, if any. */
+  hookOutput?: string;
+  /** This turn's fresh turn-hook output, if any. */
+  turnOutput?: string;
+  /** Other profile names to mention for create_subagent delegation (omitted for a subagent's own loop, which cannot nest). */
+  profileNames?: string[];
+}
 
 /**
- * The system prompt, with a note appended when the user has disabled some
- * tools, and/or the startup hook's (cached) output, and/or this turn's hook
- * output appended. With none of these, it is exactly SYSTEM_PROMPT, so the
- * request's prefix (and thus the KV cache) is unchanged for unaffected
- * conversations.
+ * The system prompt for one turn: the active profile's own base text, with a
+ * note appended for any tools the profile doesn't allow, the startup hook's
+ * (cached) output, this turn's fresh hook output, and the names of other
+ * profiles available for create_subagent delegation — each only when
+ * present, so a profile with none of these produces a prompt byte-identical
+ * to its own base text (the request's prefix, and thus the KV cache, is
+ * unchanged for an unaffected profile).
  */
-function systemPrompt(
-  disabled: string[],
-  hookOutput?: string,
-  turnOutput?: string
-): string {
-  let text = SYSTEM_PROMPT;
-  if (disabled.length > 0) {
+function systemPrompt(ctx: PromptContext): string {
+  let text = ctx.base;
+  if (ctx.disabled.length > 0) {
     text +=
-      ` The following tools are disabled by the user and must not be called: ` +
-      `${disabled.join(", ")}. If a task needs one of them, tell the user it ` +
-      "is disabled and ask them to enable it in the Tools list.";
+      ` The following tools are not available in the current profile and ` +
+      `must not be called: ${ctx.disabled.join(", ")}. If a task needs one ` +
+      "of them, tell the user it isn't available and ask them to add it to " +
+      "the profile's allowed tools.";
   }
-  if (hookOutput) {
+  if (ctx.hookOutput) {
     text +=
       "\n\nBefore this conversation began, the following startup command " +
-      `was run in the workspace and produced this output:\n${hookOutput}`;
+      `was run in the workspace and produced this output:\n${ctx.hookOutput}`;
   }
-  if (turnOutput) {
+  if (ctx.turnOutput) {
     text +=
       "\n\nJust before this turn, the following turn command was run in " +
-      `the workspace and produced this output:\n${turnOutput}`;
+      `the workspace and produced this output:\n${ctx.turnOutput}`;
+  }
+  if (ctx.profileNames && ctx.profileNames.length > 0) {
+    text +=
+      "\n\nWhen delegating with create_subagent, you may pass `profile` " +
+      "set to one of these profile names to run the helper under that " +
+      `profile's own system prompt, tools, and hooks: ${ctx.profileNames.join(", ")}.`;
   }
   return text;
 }
 
 /**
- * Run a conversation's startup hook command through the same run_command
- * tool the model uses, and return its output (including error text — the
- * backend resolves failures to an "Error: …" string rather than throwing).
+ * Run a hook command through the same run_command tool the model uses, and
+ * return its output (including error text — the backend resolves failures to
+ * an "Error: …" string rather than throwing).
  */
 async function runHookCommand(command: string): Promise<string> {
   return executeLlmTool({
@@ -336,17 +453,76 @@ function endHookRetryMessage(
   );
 }
 
-/** Model-readable result returned when the model calls a disabled tool. */
-function disabledToolResult(name: string): string {
+/** The outcome of an end-hook check on a candidate reply. */
+interface EndHookOutcome {
+  /**
+   * True when the reply is rejected — stderr present, or the check itself
+   * failed to run — and the caller should retry instead of accepting the
+   * candidate text.
+   */
+  blocked: boolean;
+  /** The check's (possibly truncated) display text, for the transcript. */
+  summary: string;
+  /** Present only when blocked: the message to feed back to the model as a retry turn. */
+  retryMessage?: string;
+}
+
+/**
+ * Run a profile's end-of-turn check command against a candidate reply.
+ * Shared by runTurn (the main conversation loop) and runSubagent (a
+ * delegated helper's loop) so both gate a reply on stderr identically,
+ * including treating the check's own execution failure (a spawn error, or a
+ * single-flight collision with another in-flight command) as blocking rather
+ * than silently accepting the reply or throwing into the caller's own
+ * failure handling (which, for runTurn, would otherwise roll back the whole
+ * turn's persisted history — see the architecture doc).
+ */
+async function checkEndHook(command: string): Promise<EndHookOutcome> {
+  let check: ShellCommandResult;
+  try {
+    check = await runShellCommand(command);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      blocked: true,
+      summary: `End-of-turn check: $ ${command}\ncould not run: ${message}`,
+      retryMessage: `The end-of-turn check command could not be run (${message}). Reply again.`,
+    };
+  }
+  const summary = formatEndHookOutput(command, check);
+  if (check.stderr) {
+    return {
+      blocked: true,
+      summary,
+      retryMessage: endHookRetryMessage(command, check),
+    };
+  }
+  return { blocked: false, summary };
+}
+
+/** Model-readable result returned when the active profile doesn't allow a tool. */
+function disabledToolResult(name: string, profileName: string): string {
   return (
-    `${name} is disabled by the user. Do not call it; if you need its ` +
-    "capability, tell the user it is disabled and ask them to enable it."
+    `${name} is not available in the "${profileName}" profile. Do not call ` +
+    "it; if you need its capability, tell the user to add it to the " +
+    "profile's allowed tools."
   );
+}
+
+/** Every known tool name that `allowed` does not include. */
+function disabledFromAllowed(allowed: string[]): string[] {
+  return llmToolDefinitions
+    .map((t) => t.function.name)
+    .filter((name) => !allowed.includes(name));
 }
 
 /** Maximum tool-call rounds a subagent may run before it must give a final answer. */
 const SUBAGENT_MAX_TOOL_TURNS = 5;
 
+/**
+ * The default helper prompt, used when create_subagent is called without a
+ * `profile` argument (or with one that doesn't match a stored profile).
+ */
 const SUBAGENT_SYSTEM_PROMPT =
   "You are a helper agent given a single, self-contained task by another " +
   "assistant. You have no memory of any other conversation — only the task " +
@@ -355,23 +531,54 @@ const SUBAGENT_SYSTEM_PROMPT =
   "will see.";
 
 /**
- * The tools available to a subagent: every tool the parent conversation has
- * (respecting its disabled list, checked separately in runSubagent) except
- * create_subagent itself, so a subagent cannot spawn further subagents.
+ * The tool definitions offered to a subagent: llmToolDefinitions filtered to
+ * the given profile's allowedTools, always excluding create_subagent itself
+ * so a subagent can never spawn further subagents (regardless of what a
+ * profile's own allowedTools happens to list).
  */
-function subagentTools(): LlmTool[] {
+function subagentToolDefs(profile: Profile): LlmTool[] {
   return llmToolDefinitions.filter(
-    (t) => t.function.name !== "create_subagent"
+    (t) =>
+      t.function.name !== "create_subagent" &&
+      profile.allowedTools.includes(t.function.name)
   );
 }
 
-/** Parse the `task` argument out of a create_subagent tool call. */
-function parseSubagentTask(tc: LlmToolCall): string {
+/**
+ * The synthetic "profile" used when create_subagent is called without a
+ * `profile` argument (or with one that doesn't match a stored profile): the
+ * app's built-in helper prompt, every tool the calling conversation's own
+ * profile allows (minus create_subagent, so nesting stops at one level), and
+ * no hooks — the app's original, pre-profile default subagent behavior.
+ */
+function defaultSubagentProfile(caller: Profile): Profile {
+  return {
+    id: "",
+    name: "",
+    systemPrompt: SUBAGENT_SYSTEM_PROMPT,
+    allowedTools: caller.allowedTools.filter((n) => n !== "create_subagent"),
+    hookCommand: "",
+    turnCommand: "",
+    endCommand: "",
+  };
+}
+
+/** Parse the `task`/`profile` arguments out of a create_subagent tool call. */
+function parseSubagentArgs(tc: LlmToolCall): {
+  task: string;
+  profile: string;
+} {
   try {
-    const args = JSON.parse(tc.function.arguments) as { task?: unknown };
-    return typeof args.task === "string" ? args.task : "";
+    const args = JSON.parse(tc.function.arguments) as {
+      task?: unknown;
+      profile?: unknown;
+    };
+    return {
+      task: typeof args.task === "string" ? args.task : "",
+      profile: typeof args.profile === "string" ? args.profile : "",
+    };
   } catch {
-    return "";
+    return { task: "", profile: "" };
   }
 }
 
@@ -385,45 +592,78 @@ interface ToolCallOutcome {
 }
 
 /**
- * Resolve a single tool call to its model-readable result. Disabled tools are
- * short-circuited client-side; create_subagent runs its own nested loop
- * (see runSubagent); everything else is forwarded to the backend.
+ * Resolve a single tool call to its model-readable result. Tools the active
+ * profile doesn't allow are short-circuited client-side; create_subagent
+ * runs its own nested loop under either a named profile (see
+ * defaultSubagentProfile) or the built-in default helper; everything else is
+ * forwarded to the backend.
  */
 async function resolveToolCall(
   tc: LlmToolCall,
   model: string,
-  disabled: string[]
+  profile: Profile,
+  profiles: ProfileStore
 ): Promise<ToolCallOutcome> {
   const name = tc.function.name;
-  if (disabled.includes(name)) return { result: disabledToolResult(name) };
+  const disabled = disabledFromAllowed(profile.allowedTools);
+  if (disabled.includes(name)) {
+    return { result: disabledToolResult(name, profile.name) };
+  }
   if (name === "create_subagent") {
-    const task = parseSubagentTask(tc);
-    const { result, steps } = await runSubagent(task, model, disabled);
+    const { task, profile: profileName } = parseSubagentArgs(tc);
+    const target = profileName
+      ? profiles.getProfiles().find((p) => p.name === profileName)
+      : undefined;
+    const { result, steps } = await runSubagent(
+      task,
+      model,
+      target ?? defaultSubagentProfile(profile)
+    );
     return { result, steps, task };
   }
   return { result: await executeLlmTool(tc) };
 }
 
 /**
- * Run an independent, bounded tool-calling loop for a single delegated task.
- * The subagent gets its own message history (just the task, not the parent
- * conversation) and the same tool-enablement the parent has, minus
- * create_subagent itself (so nesting stops at one level). Nothing here is
+ * Run an independent, bounded tool-calling loop for a single delegated task,
+ * under `profile` (either a named profile the model chose, or the built-in
+ * default — see defaultSubagentProfile). The subagent gets its own message
+ * history (just the task, not the parent conversation). Nothing here is
  * persisted to the conversation store; only the final result and the step
  * trace (for the collapsed transcript block) are returned to the caller.
+ * Mirrors runTurn's hook orchestration: the profile's startup hook runs once
+ * before the loop, its turn hook runs fresh before every iteration, and its
+ * end hook gates each candidate final answer on stderr, looping (within the
+ * same bounded budget) instead of accepting a rejected reply.
  */
 async function runSubagent(
   task: string,
   model: string,
-  disabled: string[]
+  profile: Profile
 ): Promise<{ result: string; steps: SubagentStep[] }> {
-  const tools = subagentTools();
+  const tools = subagentToolDefs(profile);
+  const disabled = disabledFromAllowed(profile.allowedTools);
   const steps: SubagentStep[] = [];
   const messages: LlmMessage[] = [
-    { role: "system", content: SUBAGENT_SYSTEM_PROMPT },
+    { role: "system", content: profile.systemPrompt },
     { role: "user", content: task },
   ];
+  const hookOutput = profile.hookCommand
+    ? await runHookCommand(profile.hookCommand)
+    : undefined;
   for (let i = 0; i < SUBAGENT_MAX_TOOL_TURNS; i++) {
+    const turnOutput = profile.turnCommand
+      ? await runHookCommand(profile.turnCommand)
+      : undefined;
+    messages[0] = {
+      role: "system",
+      content: systemPrompt({
+        base: profile.systemPrompt,
+        disabled,
+        hookOutput,
+        turnOutput,
+      }),
+    };
     const reply = await sendLlmMessage(messages, model, tools);
     if (reply.tool_calls && reply.tool_calls.length > 0) {
       messages.push({
@@ -437,14 +677,24 @@ async function runSubagent(
       for (const tc of reply.tool_calls) {
         const name = tc.function.name;
         const result = disabled.includes(name)
-          ? disabledToolResult(name)
+          ? disabledToolResult(name, profile.name)
           : await executeLlmTool(tc);
         messages.push({ role: "tool", content: result, tool_call_id: tc.id });
         steps.push({ kind: "tool-result", text: result });
       }
       continue;
     }
-    return { result: reply.content ?? "", steps };
+    const text = reply.content ?? "";
+    if (profile.endCommand) {
+      const outcome = await checkEndHook(profile.endCommand);
+      steps.push({ kind: "end-hook", text: outcome.summary });
+      if (outcome.blocked) {
+        messages.push({ role: "assistant", content: text });
+        messages.push({ role: "user", content: outcome.retryMessage ?? "" });
+        continue;
+      }
+    }
+    return { result: text, steps };
   }
   return {
     result:
@@ -460,14 +710,15 @@ export interface TurnResult {
 }
 
 /**
- * Run one submit end to end: the conversation's startup hook (first message
- * only, cached), then its per-turn hook (every turn, run fresh and never
- * cached), then the model turn — updating the view/store/send-button state
- * throughout. Extracted out of `setupLlm` so that closure stays a thin
+ * Run one submit end to end: the active profile's startup hook (first
+ * message only, cached), then its per-turn hook (every turn, run fresh and
+ * never cached), then the model turn — updating the view/store/send-button
+ * state throughout. Extracted out of `setupLlm` so that closure stays a thin
  * wiring function.
  */
 async function submitTurn(
   store: ConversationStore,
+  profiles: ProfileStore,
   view: MessageView,
   send: HTMLButtonElement,
   model: string,
@@ -475,13 +726,13 @@ async function submitTurn(
   showActive: () => void
 ): Promise<void> {
   const conv = store.getActive();
-  const hookCommand = conv.hookCommand.trim();
+  const profile = profiles.getProfile(conv.profileId) ?? profiles.getDefault();
+  const hookCommand = profile.hookCommand.trim();
   const needsHook =
     conv.messages.length === 0 &&
     hookCommand !== "" &&
     conv.hookOutput === undefined;
-  const turnCommand = conv.turnCommand.trim();
-  const endCommand = conv.endCommand.trim();
+  const turnCommand = profile.turnCommand.trim();
   send.disabled = true;
   try {
     if (needsHook) {
@@ -497,13 +748,14 @@ async function submitTurn(
     view.setNotice("loading", "Thinking…");
     const result = await runTurn(
       store,
+      profiles,
+      profile,
       model,
       view,
       text,
       store.getContextWindow(model),
       store.getPromptTokens(conv.id),
-      turnOutput,
-      endCommand
+      turnOutput
     );
     view.clearNotice();
     view.appendMessage({ role: "assistant", content: result.text });
@@ -521,18 +773,23 @@ async function submitTurn(
 
 async function runTurn(
   store: ConversationStore,
+  profiles: ProfileStore,
+  profile: Profile,
   model: string,
   view: MessageView,
   userText: string,
   cap: number | undefined,
   lastPromptTokens: number | undefined,
-  turnOutput?: string,
-  endCommand?: string
+  turnOutput?: string
 ): Promise<TurnResult> {
   const history = store.getActive().messages;
   const preLength = history.length;
-  const disabled = store.getDisabledTools();
+  const disabled = disabledFromAllowed(profile.allowedTools);
   const hookOutput = store.getActive().hookOutput;
+  const endCommand = profile.endCommand.trim();
+  const profileNames = disabled.includes("create_subagent")
+    ? undefined
+    : profiles.getProfiles().map((p) => p.name);
   let lastUsage: LlmUsage | undefined;
   try {
     // If the previous call already used 80% of the window, summarize the
@@ -558,7 +815,13 @@ async function runTurn(
     store.appendMessage({ role: "user", content: userText });
     view.appendMessage({ role: "user", content: userText });
     for (let i = 0; i < MAX_TOOL_TURNS; i++) {
-      const messages = buildMessages(history, disabled, hookOutput, turnOutput);
+      const messages = buildMessages(history, {
+        base: profile.systemPrompt,
+        disabled,
+        hookOutput,
+        turnOutput,
+        profileNames,
+      });
       const reply = await sendLlmMessage(messages, model, llmToolDefinitions);
       lastUsage = reply.usage ?? lastUsage;
       if (reply.tool_calls && reply.tool_calls.length > 0) {
@@ -571,7 +834,7 @@ async function runTurn(
           view.appendToolCall(toolCallLabel(tc));
         }
         for (const tc of reply.tool_calls) {
-          const outcome = await resolveToolCall(tc, model, disabled);
+          const outcome = await resolveToolCall(tc, model, profile, profiles);
           store.appendMessage({
             role: "tool",
             content: outcome.result,
@@ -592,44 +855,21 @@ async function runTurn(
       const text = reply.content ?? "";
       store.appendMessage({ role: "assistant", content: text });
       if (endCommand) {
-        // A thrown failure here (spawn error, or the backend's single-flight
-        // guard colliding with another in-flight command) is an
-        // infrastructure problem, not the checked command's own stderr — it
-        // must not fall through to this turn's outer catch, which would roll
-        // back the whole turn's persisted history (including any file
-        // mutations the model's own tool calls already made, which the
-        // rollback cannot undo). Treat it the same as a blocking check: show
-        // it, tell the model, and loop.
-        let check: ShellCommandResult;
-        try {
-          check = await runShellCommand(endCommand);
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          const summary = `End-of-turn check: $ ${endCommand}\ncould not run: ${message}`;
-          view.appendMessage({ role: "assistant", content: text });
-          view.appendEndHookResult(summary);
-          store.appendMessage({
-            role: "user",
-            content: `The end-of-turn check command could not be run (${message}). Reply again.`,
-            endHook: true,
-          });
-          continue;
-        }
-        const summary = formatEndHookOutput(endCommand, check);
-        if (check.stderr) {
+        const outcome = await checkEndHook(endCommand);
+        if (outcome.blocked) {
           // This reply is rejected: show it and the check's output now (it
           // will never be rendered as the turn's final answer), record a
           // protocol-valid retry turn so the model sees why, and loop.
           view.appendMessage({ role: "assistant", content: text });
-          view.appendEndHookResult(summary);
+          view.appendEndHookResult(outcome.summary);
           store.appendMessage({
             role: "user",
-            content: endHookRetryMessage(endCommand, check),
+            content: outcome.retryMessage ?? "",
             endHook: true,
           });
           continue;
         }
-        view.appendEndHookResult(summary);
+        view.appendEndHookResult(outcome.summary);
       }
       return { text, usage: lastUsage };
     }
@@ -660,9 +900,7 @@ const SUMMARY_PROMPT =
  */
 function buildMessages(
   history: ChatMessage[],
-  disabled: string[] = [],
-  hookOutput?: string,
-  turnOutput?: string
+  ctx: PromptContext
 ): LlmMessage[] {
   let cut = -1;
   for (let i = history.length - 1; i >= 0; i--) {
@@ -672,7 +910,7 @@ function buildMessages(
     }
   }
   const messages: LlmMessage[] = [
-    { role: "system", content: systemPrompt(disabled, hookOutput, turnOutput) },
+    { role: "system", content: systemPrompt(ctx) },
   ];
   if (cut >= 0) {
     messages.push({ role: "user", content: history[cut].content ?? "" });
@@ -693,8 +931,10 @@ async function summarizeConversation(
 ): Promise<string> {
   // Reuse the compacted conversation so the rescue call isn't itself larger
   // than the prompt that just measured >= 80% of the window; only the system
-  // prompt differs (the summary brief instead of the tool instructions).
-  const compacted = buildMessages(history);
+  // prompt differs (the summary brief instead of the tool instructions), and
+  // that first message is dropped below anyway, so the ctx passed here is a
+  // placeholder.
+  const compacted = buildMessages(history, { base: "", disabled: [] });
   const messages: LlmMessage[] = [
     { role: "system", content: SUMMARY_PROMPT },
     ...compacted.slice(1),
@@ -704,34 +944,35 @@ async function summarizeConversation(
 }
 
 /**
- * Render the available tools into the panel, each with an enable/disable
- * checkbox. A disabled tool is dimmed; its state is per-conversation (see the
- * store) and is forwarded to the model via the system prompt.
+ * Render a profile's allowed-tools checklist into `container`, replacing any
+ * previous content. Checking a box calls `onChange` with the full new
+ * allowed-tools list; the caller (the Profiles panel) owns persisting it.
  */
-function renderToolList(
+function renderProfileToolList(
   container: HTMLElement,
-  store: ConversationStore
+  profile: Profile,
+  onChange: (allowed: string[]) => void
 ): void {
-  const details = document.createElement("details");
-  details.className = "llm-tools";
-  const title = document.createElement("summary");
-  title.className = "llm-tools-title";
-  title.textContent = "Tools";
+  container.innerHTML = "";
+  let allowed = [...profile.allowedTools];
   const list = document.createElement("ul");
   list.className = "llm-tools-list";
   for (const tool of llmToolDefinitions) {
     const name = tool.function.name;
     const li = document.createElement("li");
     li.className = "llm-tool";
+    li.classList.toggle("llm-tool-disabled", !allowed.includes(name));
     const cb = document.createElement("input");
     cb.type = "checkbox";
     cb.className = "llm-tool-toggle";
     cb.value = name;
-    cb.checked = !store.getDisabledTools().includes(name);
+    cb.checked = allowed.includes(name);
     cb.addEventListener("change", () => {
-      store.setToolEnabled(name, cb.checked);
-      store.persist();
-      setToolRow(li, cb.checked);
+      allowed = cb.checked
+        ? [...allowed, name]
+        : allowed.filter((n) => n !== name);
+      li.classList.toggle("llm-tool-disabled", !cb.checked);
+      onChange(allowed);
     });
     const body = document.createElement("div");
     body.className = "llm-tool-body";
@@ -745,26 +986,5 @@ function renderToolList(
     li.append(cb, body);
     list.append(li);
   }
-  details.append(title, list);
-  container.append(details);
-}
-
-/** Dim a tool row when disabled, and un-dim it when enabled. */
-function setToolRow(li: HTMLElement, enabled: boolean): void {
-  li.classList.toggle("llm-tool-disabled", !enabled);
-}
-
-/**
- * Re-sync every tool checkbox to the active conversation's disabled set; used
- * when switching conversations so each one shows its own tool state.
- */
-function syncToolList(container: HTMLElement, store: ConversationStore): void {
-  const disabled = store.getDisabledTools();
-  container
-    .querySelectorAll<HTMLInputElement>(".llm-tool-toggle")
-    .forEach((cb) => {
-      const off = disabled.includes(cb.value);
-      cb.checked = !off;
-      cb.closest(".llm-tool")?.classList.toggle("llm-tool-disabled", off);
-    });
+  container.append(list);
 }
