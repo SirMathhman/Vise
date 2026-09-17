@@ -232,6 +232,12 @@
   outline-offset: 1px;
 }
 
+/* A system prompt runs several paragraphs longer than a chat message;
+   the generic 96px textarea height leaves only ~4 lines visible. */
+#app #llm #llm-profile-prompt {
+  height: 220px;
+}
+
 #app #llm-response {
   margin: 0;
   flex: 1 1 0;
