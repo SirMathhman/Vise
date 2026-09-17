@@ -90,6 +90,29 @@ describe("conversation store", () => {
     expect(store.getActive().messages[1]).toEqual(assistant("a1"));
   });
 
+  it("messages arrays are stable across conversation switches", () => {
+    const store = createConversationStore();
+    store.appendMessage(user("hello"));
+    const convAId = store.activeId();
+    const historyA = store.getActive().messages;
+
+    store.newConversation("model-x");
+    const convBId = store.activeId();
+    expect(convBId).not.toBe(convAId);
+
+    // Simulate runTurn: push to the captured array (not the active conversation).
+    historyA.push(assistant("reply"));
+
+    // Switch back to A: the push landed there, not in B.
+    store.switchTo(convAId);
+    expect(store.getActive().messages).toHaveLength(2);
+    expect(store.getActive().messages[1]).toEqual(assistant("reply"));
+
+    // B is unaffected.
+    store.switchTo(convBId);
+    expect(store.getActive().messages).toHaveLength(0);
+  });
+
   it("commitTurn records promptTokens, retitles, and persists", () => {
     const store = createConversationStore();
     store.appendMessage(user("my question"));

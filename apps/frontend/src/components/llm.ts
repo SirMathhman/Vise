@@ -932,10 +932,15 @@ async function submitTurn(
     store.commitTurn(result.usage);
     showActive();
   } catch (e) {
-    view.setNotice(
-      "error",
-      `Request failed: ${e instanceof Error ? e.message : e}`
-    );
+    if (e instanceof DOMException && e.name === "AbortError") {
+      // The user switched conversations mid-turn; the view already shows
+      // the new conversation, so no error notice is needed.
+    } else {
+      view.setNotice(
+        "error",
+        `Request failed: ${e instanceof Error ? e.message : e}`
+      );
+    }
   } finally {
     send.disabled = false;
   }
@@ -952,6 +957,7 @@ async function runTurn(
   lastPromptTokens: number | undefined,
   turnOutput?: string
 ): Promise<TurnResult> {
+  const turnConvId = store.activeId();
   const history = store.getActive().messages;
   const preLength = history.length;
   const disabled = disabledFromAllowed(profile.allowedTools);
@@ -961,6 +967,15 @@ async function runTurn(
     ? undefined
     : availableSubagentProfiles(profile, profiles).map((p) => p.name);
   let lastUsage: LlmUsage | undefined;
+  const abortIfSwitched = (): void => {
+    if (store.activeId() !== turnConvId) {
+      history.length = preLength;
+      throw new DOMException(
+        "Turn aborted: conversation switched",
+        "AbortError"
+      );
+    }
+  };
   try {
     // If the previous call already used 80% of the window, summarize the
     // conversation and append a compaction marker before this turn's calls, so
@@ -973,8 +988,9 @@ async function runTurn(
       lastPromptTokens / cap >= COMPACT_THRESHOLD
     ) {
       const summary = await summarizeConversation(history, model);
+      abortIfSwitched();
       if (summary) {
-        store.appendMessage({
+        history.push({
           role: "user",
           content: summary,
           compaction: true,
@@ -982,7 +998,7 @@ async function runTurn(
         view.appendCompaction();
       }
     }
-    store.appendMessage({ role: "user", content: userText });
+    history.push({ role: "user", content: userText });
     view.appendMessage({ role: "user", content: userText });
     for (let i = 0; i < MAX_TOOL_TURNS; i++) {
       const messages = buildMessages(history, {
@@ -994,8 +1010,9 @@ async function runTurn(
       });
       const reply = await sendLlmMessage(messages, model, llmToolDefinitions);
       lastUsage = reply.usage ?? lastUsage;
+      abortIfSwitched();
       if (reply.tool_calls && reply.tool_calls.length > 0) {
-        store.appendMessage({
+        history.push({
           role: "assistant",
           content: reply.content,
           tool_calls: reply.tool_calls,
@@ -1011,7 +1028,8 @@ async function runTurn(
             profiles,
             view
           );
-          store.appendMessage({
+          abortIfSwitched();
+          history.push({
             role: "tool",
             content: outcome.result,
             tool_call_id: tc.id,
@@ -1029,16 +1047,17 @@ async function runTurn(
         continue;
       }
       const text = reply.content ?? "";
-      store.appendMessage({ role: "assistant", content: text });
+      history.push({ role: "assistant", content: text });
       if (endCommand) {
         const outcome = await checkEndHook(endCommand);
+        abortIfSwitched();
         if (outcome.blocked) {
           // This reply is rejected: show it and the check's output now (it
           // will never be rendered as the turn's final answer), record a
           // protocol-valid retry turn so the model sees why, and loop.
           view.appendMessage({ role: "assistant", content: text });
           view.appendEndHookResult(outcome.summary);
-          store.appendMessage({
+          history.push({
             role: "user",
             content: outcome.retryMessage ?? "",
             endHook: true,
@@ -1051,10 +1070,13 @@ async function runTurn(
     }
     const text =
       "I stopped after several directory lookups without a final answer.";
-    store.appendMessage({ role: "assistant", content: text });
+    history.push({ role: "assistant", content: text });
     return { text, usage: lastUsage };
   } catch (err) {
-    store.rollbackTo(preLength);
+    history.length = preLength;
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw err;
+    }
     view.setMessages(store.getActive().messages);
     throw err;
   }
