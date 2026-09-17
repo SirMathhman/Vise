@@ -261,18 +261,16 @@ const findFiles: LlmTool = {
  * Delegate a self-contained sub-task to an independent helper agent. Handled
  * entirely client-side (see components/llm.ts's runSubagent): the panel runs
  * a nested tool-calling loop with its own message history (just the task, not
- * this conversation) and, by default, the same tools available here minus
- * this one, so a subagent cannot spawn further subagents. Passing `profile`
- * runs the helper under a named Profile instead (its own system prompt, tool
- * allowlist, and hooks — see components/profiles.ts) rather than the default
- * helper behavior.
+ * this conversation) under the named profile passed in `profile` (its system
+ * prompt, tool allowlist, and hooks — see components/profiles.ts). A
+ * subagent cannot spawn further subagents.
  */
 const createSubagent: LlmTool = {
   type: "function",
   function: {
     name: "create_subagent",
     description:
-      'Delegate a self-contained sub-task to an independent helper agent. The helper does not see this conversation — only the task description you give it — and by default works through it using the same file/shell tools available to you (except this one; it cannot spawn further subagents). Its final answer becomes this call\'s result. Use it to offload a focused, well-scoped piece of work (e.g. "find every call site of X and list them" or "fix the failing test in Y") without spending this conversation\'s own tool-call budget or context on the intermediate steps. Optionally pass `profile` set to one of the available profile names (see the system prompt) to run the helper under that profile\'s own system prompt, tool allowlist, and hooks instead of the default helper behavior.',
+      'Delegate a self-contained sub-task to an independent helper agent. The helper does not see this conversation — only the task description you give it — and works through it under the profile named by the required `profile` argument (that profile\'s own system prompt, tool allowlist, and hooks; see the profile names listed in the system prompt). It cannot spawn further subagents. Its final answer becomes this call\'s result. Use it to offload a focused, well-scoped piece of work (e.g. "find every call site of X and list them" or "fix the failing test in Y") without spending this conversation\'s own tool-call budget or context on the intermediate steps.',
     parameters: {
       type: "object",
       properties: {
@@ -284,10 +282,10 @@ const createSubagent: LlmTool = {
         profile: {
           type: "string",
           description:
-            "Optional: the name of a profile to run this subagent under. If omitted or unrecognized, the default helper behavior is used.",
+            "The name of the profile to run this subagent under. Required: it must be one of the profile names listed in the system prompt.",
         },
       },
-      required: ["task"],
+      required: ["task", "profile"],
     },
   },
 };
