@@ -12,7 +12,7 @@ export interface WatchEvent {
 type Listener = (e: WatchEvent) => void;
 
 /** Coalesce bursty fs events per path before emitting, to keep the stream calm. */
-const DEBOUNCE_MS = 100;
+const DEBOUNCE_MS = 1000;
 
 /**
  * A dependency-free recursive filesystem watcher. It collapses the many raw
