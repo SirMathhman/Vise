@@ -42,6 +42,7 @@ import {
   type Profile,
   type ProfileStore,
 } from "./profiles.js";
+import { createSkillStore, type SkillStore } from "./skills.js";
 
 /**
  * Wire up the LLM panel. Manages a list of conversations (each with its own
@@ -100,6 +101,21 @@ export function setupLlm(
   const profileEndHook = root.querySelector<HTMLInputElement>(
     "#llm-profile-end-hook"
   );
+  const skillsOverlay = root.querySelector<HTMLElement>("#llm-skills-overlay");
+  const skillsOpenBtn =
+    root.querySelector<HTMLButtonElement>("#llm-skills-open");
+  const skillsCloseBtn =
+    root.querySelector<HTMLButtonElement>("#llm-skills-close");
+  const skillEditor =
+    root.querySelector<HTMLSelectElement>("#llm-skill-editor");
+  const skillNewBtn = root.querySelector<HTMLButtonElement>("#llm-skill-new");
+  const skillDeleteBtn =
+    root.querySelector<HTMLButtonElement>("#llm-skill-delete");
+  const skillName = root.querySelector<HTMLInputElement>("#llm-skill-name");
+  const skillSummary =
+    root.querySelector<HTMLInputElement>("#llm-skill-summary");
+  const skillContent =
+    root.querySelector<HTMLTextAreaElement>("#llm-skill-content");
   if (
     !conversation ||
     !model ||
@@ -120,13 +136,23 @@ export function setupLlm(
     !profileSubagentProfiles ||
     !profileHook ||
     !profileTurnHook ||
-    !profileEndHook
+    !profileEndHook ||
+    !skillsOverlay ||
+    !skillsOpenBtn ||
+    !skillsCloseBtn ||
+    !skillEditor ||
+    !skillNewBtn ||
+    !skillDeleteBtn ||
+    !skillName ||
+    !skillSummary ||
+    !skillContent
   ) {
     return;
   }
 
   const store = createConversationStore();
   const profiles = createProfileStore();
+  const skills = createSkillStore();
   const view = new MessageView(response);
   window.addEventListener("resize", () => view.refresh());
 
@@ -222,6 +248,44 @@ export function setupLlm(
     profilesOverlay.hidden = true;
   };
 
+  /** Rebuild the skill <select> from the current skill list, preserving the current selection. */
+  const refreshSkillSelect = () => {
+    const editingName = skillEditor.value;
+    const options = skills
+      .getSkills()
+      .map(
+        (s) =>
+          `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`
+      )
+      .join("");
+    skillEditor.innerHTML = options;
+    skillEditor.value = editingName;
+    if (!skillEditor.value)
+      skillEditor.disabled = skills.getSkills().length === 0;
+  };
+
+  /** Load the skill currently selected in the editor into its fields. */
+  const loadSkillEditorFields = () => {
+    const name = skillEditor.value;
+    const skill = skills.getSkill(name);
+    skillName.value = skill?.name ?? "";
+    skillSummary.value = skill?.summary ?? "";
+    skillContent.value = skill?.content ?? "";
+    skillDeleteBtn.disabled = !skill;
+  };
+
+  /** Open the Skills modal, loading the editor fields fresh each time. */
+  const openSkills = () => {
+    refreshSkillSelect();
+    loadSkillEditorFields();
+    skillsOverlay.hidden = false;
+    skillSummary.focus();
+  };
+
+  const closeSkills = () => {
+    skillsOverlay.hidden = true;
+  };
+
   showActive();
 
   loadModelList(model, view, store);
@@ -250,7 +314,8 @@ export function setupLlm(
       m,
       text,
       showActive,
-      controller.signal
+      controller.signal,
+      skills
     ).finally(() => {
       if (activeTurn === controller) activeTurn = null;
     });
@@ -371,6 +436,56 @@ export function setupLlm(
     });
     profiles.persist();
   });
+
+  const doNewSkill = () => {
+    const name = skillName.value.trim();
+    if (!name) return;
+    // createSkill returns undefined when a skill with that name already
+    // exists (the name is the uniqueness key and is fixed after creation);
+    // a no-op in that case, so clicking New twice with the same name is safe.
+    if (skills.createSkill(name) === undefined) return;
+    skills.persist();
+    // Select the new skill in the dropdown and load its (empty) fields; the
+    // name input now reflects the new skill's fixed name.
+    refreshSkillSelect();
+    skillEditor.value = name;
+    loadSkillEditorFields();
+    skillSummary.focus();
+  };
+
+  const doDeleteSkill = () => {
+    const name = skillEditor.value;
+    if (!name || !skills.deleteSkill(name)) return;
+    skills.persist();
+    refreshSkillSelect();
+    loadSkillEditorFields();
+  };
+
+  skillsOpenBtn.addEventListener("click", openSkills);
+  skillsCloseBtn.addEventListener("click", closeSkills);
+  skillsOverlay.addEventListener("click", (e) => {
+    if (e.target === skillsOverlay) closeSkills();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !skillsOverlay.hidden) closeSkills();
+  });
+  skillEditor.addEventListener("change", loadSkillEditorFields);
+  skillNewBtn.addEventListener("click", doNewSkill);
+  skillDeleteBtn.addEventListener("click", doDeleteSkill);
+  skillSummary.addEventListener("change", () => {
+    const name = skillEditor.value;
+    if (name) {
+      skills.updateSkill(name, { summary: skillSummary.value });
+      skills.persist();
+    }
+  });
+  skillContent.addEventListener("change", () => {
+    const name = skillEditor.value;
+    if (name) {
+      skills.updateSkill(name, { content: skillContent.value });
+      skills.persist();
+    }
+  });
   prompt.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") submit();
   });
@@ -466,6 +581,8 @@ interface PromptContext {
   profileNames?: string[];
   /** The workspace's cached AGENTS.md text, if present. */
   agentsMd?: string;
+  /** The available skills' "name: summary" lines, if any. */
+  skillSummaries?: string[];
 }
 
 /**
@@ -542,6 +659,16 @@ function systemPrompt(ctx: PromptContext): string {
   }
   if (ctx.agentsMd) {
     text += formatAgentsMd(ctx.agentsMd);
+  }
+  if (ctx.skillSummaries && ctx.skillSummaries.length > 0) {
+    text +=
+      "\n\nThe following skills are available. Each is a named block of " +
+      "domain instructions that can be loaded into context with the " +
+      "use_skill tool, passing the skill's name as the `name` argument. " +
+      "Call use_skill when a task clearly falls within a skill's stated " +
+      "purpose; do not call it otherwise. The name is what you pass to " +
+      "use_skill — the summary describes when to use it:\n" +
+      ctx.skillSummaries.map((s) => `- ${s}`).join("\n");
   }
   return text;
 }
@@ -669,18 +796,21 @@ const SUBAGENT_MAX_TOOL_TURNS = 5;
 
 /**
  * The tool definitions offered to a subagent: llmToolDefinitions filtered to
- * the given profile's allowedTools, always excluding the two client-executed
+ * the given profile's allowedTools, always excluding the three client-executed
  * tools that a headless subagent cannot fulfil — create_subagent (so a
- * subagent can never spawn further subagents) and ask_questions (its
+ * subagent can never spawn further subagents), ask_questions (its
  * collapsed transcript has no room for an interactive card, and its loop has
- * no way to pause for a user). Both are excluded regardless of what a
- * profile's own allowedTools happens to list.
+ * no way to pause for a user), and use_skill (the skill store is a panel
+ * concern; a subagent's loop has no way to look one up, since it calls
+ * executeLlmTool directly rather than resolveToolCall). All three are
+ * excluded regardless of what a profile's own allowedTools happens to list.
  */
 function subagentToolDefs(profile: Profile): LlmTool[] {
   return llmToolDefinitions.filter(
     (t) =>
       t.function.name !== "create_subagent" &&
       t.function.name !== "ask_questions" &&
+      t.function.name !== "use_skill" &&
       profile.allowedTools.includes(t.function.name)
   );
 }
@@ -721,6 +851,18 @@ function parseSubagentArgs(tc: LlmToolCall): {
     };
   } catch {
     return { task: "", profile: "" };
+  }
+}
+
+/** Parse the `name` argument out of a use_skill tool call. */
+function parseUseSkillArgs(tc: LlmToolCall): string | undefined {
+  try {
+    const args = JSON.parse(tc.function.arguments) as { name?: unknown };
+    return typeof args.name === "string" && args.name !== ""
+      ? args.name
+      : undefined;
+  } catch {
+    return undefined;
   }
 }
 
@@ -767,7 +909,9 @@ interface ToolCallOutcome {
  * profile doesn't allow are short-circuited client-side; create_subagent
  * runs its own nested loop under the named profile its `profile` argument
  * refers to (a missing or unrecognized profile is a model-readable error);
- * everything else is forwarded to the backend.
+ * use_skill looks up a named skill in the skill store and returns its
+ * content (a missing skill is a model-readable error listing the available
+ * names); everything else is forwarded to the backend.
  */
 async function resolveToolCall(
   tc: LlmToolCall,
@@ -775,12 +919,34 @@ async function resolveToolCall(
   profile: Profile,
   profiles: ProfileStore,
   view: MessageView,
-  agentsMd: string | undefined
+  agentsMd: string | undefined,
+  skills: SkillStore
 ): Promise<ToolCallOutcome> {
   const name = tc.function.name;
   const disabled = disabledFromAllowed(profile.allowedTools);
   if (disabled.includes(name)) {
     return { result: disabledToolResult(name, profile.name) };
+  }
+  if (name === "use_skill") {
+    const args = parseUseSkillArgs(tc);
+    if (args === undefined) {
+      return {
+        result:
+          "use_skill requires a `name` argument: the exact name of the " +
+          "skill to load, as listed in the system prompt.",
+      };
+    }
+    const skill = skills.getSkill(args);
+    if (!skill) {
+      const available = skills.getSkills().map((s) => s.name);
+      return {
+        result:
+          `No skill named "${args}". Available skills: ` +
+          (available.length > 0 ? available.join(", ") : "(none)") +
+          ". Pass one of those exact names to use_skill.",
+      };
+    }
+    return { result: skill.content };
   }
   if (name === "ask_questions") {
     const questions = parseAskQuestionsArgs(tc);
@@ -1001,7 +1167,8 @@ async function submitTurn(
   model: string,
   text: string,
   showActive: () => void,
-  signal: AbortSignal
+  signal: AbortSignal,
+  skills: SkillStore
 ): Promise<void> {
   const conv = store.getActive();
   const profile = profiles.getProfile(conv.profileId) ?? profiles.getDefault();
@@ -1051,6 +1218,7 @@ async function submitTurn(
       store.getContextWindow(model),
       store.getPromptTokens(conv.id),
       signal,
+      skills,
       turnOutput,
       agentsMd
     );
@@ -1186,6 +1354,7 @@ async function runTurn(
   cap: number | undefined,
   lastPromptTokens: number | undefined,
   signal: AbortSignal,
+  skills: SkillStore,
   turnOutput?: string,
   agentsMd?: string
 ): Promise<TurnResult> {
@@ -1232,6 +1401,10 @@ async function runTurn(
     }
     history.push({ role: "user", content: userText });
     view.appendMessage({ role: "user", content: userText });
+    const skillSummaries = skills
+      .getSkills()
+      .filter((s) => s.summary !== "")
+      .map((s) => `${s.name}: ${s.summary}`);
     for (let i = 0; i < MAX_TOOL_TURNS; i++) {
       const messages = buildMessages(history, {
         base: profile.systemPrompt,
@@ -1240,6 +1413,7 @@ async function runTurn(
         turnOutput,
         profileNames,
         agentsMd,
+        skillSummaries,
       });
       let streamingStarted = false;
       const ensureStreamingStarted = (): void => {
@@ -1342,7 +1516,8 @@ async function runTurn(
             profile,
             profiles,
             view,
-            agentsMd
+            agentsMd,
+            skills
           );
           abortIfSwitched();
           history.push({

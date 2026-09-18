@@ -368,6 +368,38 @@ const askQuestions: LlmTool = {
   },
 };
 
+/**
+ * Load a named skill's full content into context. Handled entirely
+ * client-side (see components/llm.ts's resolveToolCall): the panel looks up
+ * the skill by name in the skill store (components/skills.ts) and returns its
+ * content, or a model-readable error listing the available skill names. The
+ * model sees each skill's name and one-line summary in the system prompt's
+ * available-skills list (see components/llm.ts's systemPrompt) and calls this
+ * tool when it decides a skill's full instructions are relevant. A subagent
+ * cannot call this — its offered tool list excludes use_skill unconditionally
+ * (see subagentToolDefs), since the store is a panel concern the headless
+ * loop doesn't own.
+ */
+const useSkill: LlmTool = {
+  type: "function",
+  function: {
+    name: "use_skill",
+    description:
+      "Load a named skill's full instructions into context. Each available skill is listed in the system prompt with its name and a one-line summary. Call this with the `name` of the skill whose full instructions you need (for example, when the task clearly falls within a skill's stated purpose). The skill's content is returned verbatim as this call's result, to be followed for the rest of the task. If no skill is relevant, do not call this. Only the skill names listed in the system prompt exist.",
+    parameters: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description:
+            "The exact name of the skill to load, as listed in the system prompt.",
+        },
+      },
+      required: ["name"],
+    },
+  },
+};
+
 /** All tool definitions available to the model, in a stable order. */
 export const llmToolDefinitions: LlmTool[] = [
   listDirectory,
@@ -382,4 +414,5 @@ export const llmToolDefinitions: LlmTool[] = [
   runCommand,
   createSubagent,
   askQuestions,
+  useSkill,
 ];

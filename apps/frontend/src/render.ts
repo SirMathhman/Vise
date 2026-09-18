@@ -63,6 +63,14 @@ export async function render(root: HTMLElement): Promise<void> {
             >
               Profiles
             </button>
+            <button
+              id="llm-skills-open"
+              class="btn btn-ghost"
+              type="button"
+              title="Create, edit, or delete skills"
+            >
+              Skills
+            </button>
           </div>
           <div class="llm-transcript-head">
             <p id="llm-context" class="llm-context" aria-label="context usage"></p>
@@ -157,6 +165,70 @@ export async function render(root: HTMLElement): Promise<void> {
                 placeholder="End command (optional, PowerShell — runs after every reply; blocks on stderr)"
                 title="Runs after every reply. Its stdout/stderr are shown in the transcript (truncated). If it writes to stderr, the reply is not accepted: the model sees the output and must try again."
               />
+            </div>
+          </div>
+          <div id="llm-skills-overlay" class="llm-profiles-overlay" hidden>
+            <div
+              class="llm-profiles-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Manage skills"
+            >
+              <div class="llm-profiles-modal-header">
+                <h3>Skills</h3>
+                <button
+                  id="llm-skills-close"
+                  class="btn btn-ghost"
+                  type="button"
+                >
+                  Close
+                </button>
+              </div>
+              <div class="llm-profiles-editor-row">
+                <select
+                  id="llm-skill-editor"
+                  aria-label="skill to edit"
+                ></select>
+                <button
+                  id="llm-skill-new"
+                  class="btn btn-ghost"
+                  type="button"
+                >
+                  New
+                </button>
+                <button
+                  id="llm-skill-delete"
+                  class="btn btn-ghost"
+                  type="button"
+                >
+                  Delete
+                </button>
+              </div>
+              <p class="llm-profiles-hint">
+                Name a new skill (unique, fixed after creation):
+              </p>
+              <input
+                id="llm-skill-name"
+                class="llm-hook"
+                type="text"
+                aria-label="new skill name"
+                placeholder="skill-name"
+              />
+              <p class="llm-profiles-hint">
+                Edit the selected skill:
+              </p>
+              <input
+                id="llm-skill-summary"
+                class="llm-hook"
+                type="text"
+                aria-label="skill summary"
+                placeholder="One-line summary shown to the model (why to use this skill)"
+              />
+              <textarea
+                id="llm-skill-content"
+                aria-label="skill content"
+                placeholder="Full instructions loaded into context when the model calls use_skill with this skill's name"
+              ></textarea>
             </div>
           </div>
         </section>

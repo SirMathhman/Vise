@@ -55,6 +55,20 @@ const askQuestions: LlmToolHandler = async () => {
 };
 
 /**
+ * use_skill is fully handled client-side by the panel (it looks up a named
+ * skill's content in the browser's skill store and returns it), so it is
+ * never forwarded to this route. This handler exists only to satisfy the
+ * Record<LlmToolName, LlmToolHandler> exhaustiveness check below; reaching
+ * it means the panel's interception was bypassed, which is itself a bug
+ * worth surfacing to the model.
+ */
+const useSkill: LlmToolHandler = async () => {
+  throw badRequest(
+    "use_skill must be handled by the panel and never reaches the backend"
+  );
+};
+
+/**
  * The tools available to the model, keyed by the name the model uses. The keys
  * are checked against the shared LlmToolName union, so a renamed or misspelled
  * tool name here is a compile error. The handlers themselves live in sibling
@@ -75,6 +89,7 @@ const tools: Record<LlmToolName, LlmToolHandler> = {
   run_command: runCommand,
   create_subagent: createSubagent,
   ask_questions: askQuestions,
+  use_skill: useSkill,
 };
 
 /**
