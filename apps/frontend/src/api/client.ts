@@ -239,6 +239,123 @@ export async function sendLlmMessage(
 }
 
 /**
+ * POST a streaming chat completion and call `onTextChunk` with the cumulative
+ * text each time a new text delta arrives. Returns the complete assistant
+ * reply (text and/or tool calls) when the stream ends. Unlike `sendLlmMessage`,
+ * this sends `stream: true` and parses the SSE response incrementally.
+ */
+export async function streamLlmMessage(
+  messages: LlmMessage[],
+  model: string,
+  tools: LlmTool[] | undefined,
+  onTextChunk: (text: string) => void
+): Promise<LlmAssistantMessage> {
+  const body: Record<string, unknown> = { model, messages, stream: true };
+  if (tools && tools.length > 0) body.tools = tools;
+  const res = await fetch("/llm/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${LLM_API_KEY}`,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) return fail(res);
+  if (!res.body) {
+    // No readable body (e.g. a proxy that stripped the stream); fall back to
+    // the non-streaming path so the caller still gets a complete reply.
+    return sendLlmMessage(messages, model, tools);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let content = "";
+  const toolCalls: LlmToolCall[] = [];
+  let lastUsage: LlmUsage | undefined;
+
+  const handleChunk = (json: Record<string, unknown>): void => {
+    const choice = (
+      json.choices as
+        | {
+            delta?: {
+              content?: string;
+              tool_calls?: LlmToolCall[];
+            };
+          }[]
+        | undefined
+    )?.[0];
+    const delta = choice?.delta;
+    if (delta?.content) {
+      content += delta.content;
+      onTextChunk(content);
+    }
+    if (delta?.tool_calls) {
+      for (const tc of delta.tool_calls) {
+        const idx = (tc as { index?: number }).index ?? 0;
+        if (!toolCalls[idx]) {
+          toolCalls[idx] = {
+            id: tc.id ?? "",
+            type: "function",
+            function: { name: "", arguments: "" },
+          };
+        }
+        const existing = toolCalls[idx];
+        if (tc.id) existing.id = tc.id;
+        if (tc.function?.name) existing.function.name += tc.function.name;
+        if (tc.function?.arguments)
+          existing.function.arguments += tc.function.arguments;
+      }
+    }
+    const usage = json.usage as
+      | {
+          prompt_tokens?: number;
+          completion_tokens?: number;
+          total_tokens?: number;
+        }
+      | undefined;
+    if (usage) {
+      lastUsage = {
+        promptTokens: usage.prompt_tokens ?? 0,
+        completionTokens: usage.completion_tokens ?? 0,
+        totalTokens: usage.total_tokens ?? 0,
+      };
+    }
+  };
+
+  const processBuffer = (): void => {
+    for (;;) {
+      const sep = buffer.indexOf("\n\n");
+      if (sep < 0) break;
+      const frame = buffer.slice(0, sep);
+      buffer = buffer.slice(sep + 2);
+      const line = frame.trim();
+      if (!line.startsWith("data:")) continue;
+      const payload = line.slice(5).trim();
+      if (payload === "[DONE]") continue;
+      try {
+        handleChunk(JSON.parse(payload) as Record<string, unknown>);
+      } catch {
+        // Skip malformed frames; the stream keeps going.
+      }
+    }
+  };
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    processBuffer();
+  }
+  processBuffer();
+  const calls = toolCalls.filter((t) => t.id !== "");
+  return {
+    content: content || null,
+    tool_calls: calls.length > 0 ? calls : undefined,
+    usage: lastUsage,
+  };
+}
+
+/**
  * Execute a tool call on the backend and return the model-readable result
  * string. Errors come back as text (the backend resolves them to a string) so
  * the tool loop can feed them straight back to the model.

@@ -326,6 +326,8 @@ export class MessageView {
    */
   private follow = true;
   private followBtn: HTMLButtonElement;
+  private streamEl: HTMLElement | null = null;
+  private streamTextEl: HTMLSpanElement | null = null;
 
   constructor(scroll: HTMLElement) {
     this.scroll = scroll;
@@ -512,5 +514,43 @@ export class MessageView {
   notifyExternalContent(): void {
     this.list.refresh();
     if (this.follow) this.list.scrollToBottom();
+  }
+
+  /**
+   * Begin streaming the model's reply: append an ephemeral assistant block
+   * (outside the virtual list, like the ask_questions card) and return a
+   * handle so the caller can update its text on each chunk and end the
+   * stream. The block is never persisted — only the final text becomes a
+   * ChatMessage.
+   */
+  beginStreaming(): void {
+    this.endStreaming();
+    const block = document.createElement("div");
+    block.className = "llm-msg llm-msg-assistant";
+    const who = document.createElement("span");
+    who.className = "llm-msg-role";
+    who.textContent = "Model";
+    const text = document.createElement("span");
+    text.className = "llm-msg-text";
+    block.append(who, text);
+    this.scroll.append(block);
+    this.streamEl = block;
+    this.streamTextEl = text;
+    this.notifyExternalContent();
+  }
+
+  /** Update the streaming block's text with the cumulative reply so far. */
+  updateStreaming(text: string): void {
+    if (this.streamTextEl) this.streamTextEl.textContent = text;
+    if (this.follow) this.list.scrollToBottom();
+  }
+
+  /** Remove the streaming block, if any. Safe to call repeatedly. */
+  endStreaming(): void {
+    if (this.streamEl) {
+      this.streamEl.remove();
+      this.streamEl = null;
+      this.streamTextEl = null;
+    }
   }
 }

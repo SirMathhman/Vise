@@ -8,6 +8,7 @@ import {
   runShellCommand,
   type ShellCommandResult,
   sendLlmMessage,
+  streamLlmMessage,
 } from "../api/client.js";
 import { llmToolDefinitions } from "../llm/tools.js";
 import {
@@ -60,35 +61,35 @@ export function setupLlm(root: HTMLElement): void {
   const deleteBtn = root.querySelector<HTMLButtonElement>("#llm-delete");
   const context = root.querySelector<HTMLElement>("#llm-context");
   const profilesOverlay = root.querySelector<HTMLElement>(
-    "#llm-profiles-overlay"
+    "#llm-profiles-overlay",
   );
   const profilesOpenBtn =
     root.querySelector<HTMLButtonElement>("#llm-profiles-open");
   const profilesCloseBtn = root.querySelector<HTMLButtonElement>(
-    "#llm-profiles-close"
+    "#llm-profiles-close",
   );
   const profileEditor = root.querySelector<HTMLSelectElement>(
-    "#llm-profile-editor"
+    "#llm-profile-editor",
   );
   const profileNewBtn =
     root.querySelector<HTMLButtonElement>("#llm-profile-new");
   const profileDeleteBtn = root.querySelector<HTMLButtonElement>(
-    "#llm-profile-delete"
+    "#llm-profile-delete",
   );
   const profileName = root.querySelector<HTMLInputElement>("#llm-profile-name");
   const profilePrompt = root.querySelector<HTMLTextAreaElement>(
-    "#llm-profile-prompt"
+    "#llm-profile-prompt",
   );
   const profileTools = root.querySelector<HTMLElement>("#llm-profile-tools");
   const profileSubagentProfiles = root.querySelector<HTMLElement>(
-    "#llm-profile-subagent-profiles"
+    "#llm-profile-subagent-profiles",
   );
   const profileHook = root.querySelector<HTMLInputElement>("#llm-profile-hook");
   const profileTurnHook = root.querySelector<HTMLInputElement>(
-    "#llm-profile-turn-hook"
+    "#llm-profile-turn-hook",
   );
   const profileEndHook = root.querySelector<HTMLInputElement>(
-    "#llm-profile-end-hook"
+    "#llm-profile-end-hook",
   );
   if (
     !conversation ||
@@ -151,6 +152,7 @@ export function setupLlm(root: HTMLElement): void {
   const renderActiveMessages = () => {
     const conv = store.getActive();
     view.clearNotice();
+    view.endStreaming();
     view.setMessages(conv.messages);
     if (conv.messages.length === 0) {
       view.setNotice("hint", "Start a conversation.");
@@ -191,7 +193,7 @@ export function setupLlm(root: HTMLElement): void {
           allowedSubagentProfiles: allowed,
         });
         profiles.persist();
-      }
+      },
     );
   };
 
@@ -274,7 +276,7 @@ export function setupLlm(root: HTMLElement): void {
   newBtn?.addEventListener("click", doNew);
   deleteBtn?.addEventListener("click", doDelete);
   conversation.addEventListener("change", () =>
-    switchConversation(conversation.value)
+    switchConversation(conversation.value),
   );
   model.addEventListener("change", () => {
     store.setActiveModel(model.value);
@@ -336,7 +338,7 @@ export function setupLlm(root: HTMLElement): void {
 function renderContextText(
   context: HTMLElement,
   model: HTMLSelectElement,
-  store: ReturnType<typeof createConversationStore>
+  store: ReturnType<typeof createConversationStore>,
 ): void {
   const conv = store.getActive();
   const cap = store.getContextWindow(model.value);
@@ -360,7 +362,7 @@ function renderContextText(
 function loadModelList(
   model: HTMLSelectElement,
   view: MessageView,
-  store: ReturnType<typeof createConversationStore>
+  store: ReturnType<typeof createConversationStore>,
 ): void {
   listLlmModels()
     .then((models) => {
@@ -382,8 +384,8 @@ function loadModelList(
     .catch((e: unknown) =>
       view.setNotice(
         "error",
-        `Failed to load models: ${e instanceof Error ? e.message : e}`
-      )
+        `Failed to load models: ${e instanceof Error ? e.message : e}`,
+      ),
     );
 }
 
@@ -479,7 +481,7 @@ const END_HOOK_OUTPUT_CHARS = 500;
  */
 function formatEndHookOutput(
   command: string,
-  result: ShellCommandResult
+  result: ShellCommandResult,
 ): string {
   const combined = result.stderr
     ? `${result.stdout}\n[stderr]\n${result.stderr}`
@@ -502,7 +504,7 @@ function formatEndHookOutput(
  */
 function endHookRetryMessage(
   command: string,
-  result: ShellCommandResult
+  result: ShellCommandResult,
 ): string {
   return (
     "The end-of-turn check command wrote to stderr, so this reply was not " +
@@ -591,7 +593,7 @@ function subagentToolDefs(profile: Profile): LlmTool[] {
     (t) =>
       t.function.name !== "create_subagent" &&
       t.function.name !== "ask_questions" &&
-      profile.allowedTools.includes(t.function.name)
+      profile.allowedTools.includes(t.function.name),
   );
 }
 
@@ -603,7 +605,7 @@ function subagentToolDefs(profile: Profile): LlmTool[] {
  */
 function availableSubagentProfiles(
   profile: Profile,
-  profiles: ProfileStore
+  profiles: ProfileStore,
 ): Profile[] {
   return profiles
     .getProfiles()
@@ -611,7 +613,7 @@ function availableSubagentProfiles(
       (p) =>
         p.id === profile.id ||
         profile.allowedSubagentProfiles.length === 0 ||
-        profile.allowedSubagentProfiles.includes(p.id)
+        profile.allowedSubagentProfiles.includes(p.id),
     );
 }
 
@@ -649,7 +651,7 @@ function parseAskQuestionsArgs(tc: LlmToolCall): AskQuestion[] {
       const item: AskQuestion = { question: o.question };
       if (Array.isArray(o.options)) {
         item.options = (o.options as unknown[]).filter(
-          (v): v is string => typeof v === "string"
+          (v): v is string => typeof v === "string",
         );
       }
       if (typeof o.multi_select === "boolean") {
@@ -684,7 +686,7 @@ async function resolveToolCall(
   model: string,
   profile: Profile,
   profiles: ProfileStore,
-  view: MessageView
+  view: MessageView,
 ): Promise<ToolCallOutcome> {
   const name = tc.function.name;
   const disabled = disabledFromAllowed(profile.allowedTools);
@@ -745,7 +747,7 @@ async function resolveToolCall(
 async function runSubagent(
   task: string,
   model: string,
-  profile: Profile
+  profile: Profile,
 ): Promise<{ result: string; steps: SubagentStep[] }> {
   const tools = subagentToolDefs(profile);
   const disabled = disabledFromAllowed(profile.allowedTools);
@@ -857,7 +859,7 @@ function resolvePendingAsk(): void {
  */
 async function askQuestions(
   view: MessageView,
-  questions: AskQuestion[]
+  questions: AskQuestion[],
 ): Promise<string> {
   const id = ++pendingAskSeq;
   return new Promise<string>((resolve) => {
@@ -871,7 +873,7 @@ async function askQuestions(
         pendingAsk = undefined;
         view.notifyExternalContent();
         resolve(result);
-      }
+      },
     );
     view.notifyExternalContent();
     pendingAsk = { id, questions, handle, resolve };
@@ -892,7 +894,7 @@ async function submitTurn(
   send: HTMLButtonElement,
   model: string,
   text: string,
-  showActive: () => void
+  showActive: () => void,
 ): Promise<void> {
   const conv = store.getActive();
   const profile = profiles.getProfile(conv.profileId) ?? profiles.getDefault();
@@ -925,7 +927,7 @@ async function submitTurn(
       text,
       store.getContextWindow(model),
       store.getPromptTokens(conv.id),
-      turnOutput
+      turnOutput,
     );
     view.clearNotice();
     view.appendMessage({ role: "assistant", content: result.text });
@@ -938,7 +940,7 @@ async function submitTurn(
     } else {
       view.setNotice(
         "error",
-        `Request failed: ${e instanceof Error ? e.message : e}`
+        `Request failed: ${e instanceof Error ? e.message : e}`,
       );
     }
   } finally {
@@ -955,7 +957,7 @@ async function runTurn(
   userText: string,
   cap: number | undefined,
   lastPromptTokens: number | undefined,
-  turnOutput?: string
+  turnOutput?: string,
 ): Promise<TurnResult> {
   const turnConvId = store.activeId();
   const history = store.getActive().messages;
@@ -972,7 +974,7 @@ async function runTurn(
       history.length = preLength;
       throw new DOMException(
         "Turn aborted: conversation switched",
-        "AbortError"
+        "AbortError",
       );
     }
   };
@@ -1008,10 +1010,28 @@ async function runTurn(
         turnOutput,
         profileNames,
       });
-      const reply = await sendLlmMessage(messages, model, llmToolDefinitions);
+      let streamingStarted = false;
+      const reply = await streamLlmMessage(
+        messages,
+        model,
+        llmToolDefinitions,
+        (text) => {
+          if (!streamingStarted) {
+            view.beginStreaming();
+            streamingStarted = true;
+          }
+          view.updateStreaming(text);
+        },
+      );
       lastUsage = reply.usage ?? lastUsage;
       abortIfSwitched();
       if (reply.tool_calls && reply.tool_calls.length > 0) {
+        // The reply is tool calls, not text: drop the ephemeral streaming
+        // block (it may hold partial text the model generated alongside the
+        // calls) so only the tool-call labels are shown, matching the
+        // non-streaming behavior where tool-call content is not rendered as
+        // a separate message block.
+        view.endStreaming();
         history.push({
           role: "assistant",
           content: reply.content,
@@ -1026,7 +1046,7 @@ async function runTurn(
             model,
             profile,
             profiles,
-            view
+            view,
           );
           abortIfSwitched();
           history.push({
@@ -1038,7 +1058,7 @@ async function runTurn(
             view.appendSubagentResult(
               outcome.task ?? "",
               outcome.steps,
-              outcome.result
+              outcome.result,
             );
           } else {
             view.appendToolResult(outcome.result);
@@ -1047,6 +1067,7 @@ async function runTurn(
         continue;
       }
       const text = reply.content ?? "";
+      view.endStreaming();
       history.push({ role: "assistant", content: text });
       if (endCommand) {
         const outcome = await checkEndHook(endCommand);
@@ -1074,6 +1095,7 @@ async function runTurn(
     return { text, usage: lastUsage };
   } catch (err) {
     history.length = preLength;
+    view.endStreaming();
     if (err instanceof DOMException && err.name === "AbortError") {
       throw err;
     }
@@ -1098,7 +1120,7 @@ const SUMMARY_PROMPT =
  */
 function buildMessages(
   history: ChatMessage[],
-  ctx: PromptContext
+  ctx: PromptContext,
 ): LlmMessage[] {
   let cut = -1;
   for (let i = history.length - 1; i >= 0; i--) {
@@ -1125,7 +1147,7 @@ function buildMessages(
  */
 async function summarizeConversation(
   history: ChatMessage[],
-  model: string
+  model: string,
 ): Promise<string> {
   // Reuse the compacted conversation so the rescue call isn't itself larger
   // than the prompt that just measured >= 80% of the window; only the system
