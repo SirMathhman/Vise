@@ -60,6 +60,16 @@ export interface Conversation {
    * conversations sharing a profile at different times shouldn't share.
    */
   hookOutput?: string;
+  /**
+   * The workspace root's AGENTS.md text, loaded once per conversation and
+   * cached here so later turns (and any subagents delegated from this
+   * conversation) reuse it instead of re-fetching the file every turn.
+   * Undefined until the first turn loads it (which also covers
+   * conversations created before this field existed), and stays undefined if
+   * the file is missing or empty — a falsy value, so it contributes nothing
+   * to the prompt.
+   */
+  agentsMd?: string;
 }
 
 /** True when `value` is a structurally valid persisted message. */
@@ -113,7 +123,7 @@ function newId(): string {
  */
 export function deriveTitle(
   messages: ChatMessage[],
-  idSuffix?: string,
+  idSuffix?: string
 ): string {
   for (const m of messages) {
     if (

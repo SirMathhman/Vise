@@ -1,5 +1,6 @@
 import {
   executeLlmTool,
+  getFile,
   type LlmMessage,
   type LlmTool,
   type LlmToolCall,
@@ -463,16 +464,56 @@ interface PromptContext {
   turnOutput?: string;
   /** Other profile names to mention for create_subagent delegation (omitted for a subagent's own loop, which cannot nest). */
   profileNames?: string[];
+  /** The workspace's cached AGENTS.md text, if present. */
+  agentsMd?: string;
+}
+
+/**
+ * The workspace root's AGENTS.md path (relative), the file whose content is
+ * auto-loaded into every profile's system prompt.
+ */
+const AGENTS_MD_PATH = "AGENTS.md";
+
+/**
+ * Load the workspace's AGENTS.md, or undefined when the file is missing or
+ * can't be read — a missing or unreadable file simply contributes nothing
+ * to the prompt. Callers cache the result on the conversation and only call
+ * this when that cache is empty, so it runs once per conversation (a
+ * switched-to conversation reuses its cached copy; a fresh one fetches its
+ * own).
+ */
+async function loadAgentsMd(): Promise<string | undefined> {
+  try {
+    const file = await getFile(AGENTS_MD_PATH);
+    const text = file.content.trim();
+    return text === "" ? undefined : text;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Format the cached AGENTS.md text for the system prompt: a fixed lead-in
+ * marking it as the project's own agent instructions, followed by the file's
+ * content verbatim.
+ */
+function formatAgentsMd(text: string): string {
+  return (
+    "\n\nThe workspace root contains an AGENTS.md file with the " +
+    "project's own agent instructions (setup, conventions, commands, and " +
+    `pitfalls). Follow it:\n\n${text}`
+  );
 }
 
 /**
  * The system prompt for one turn: the active profile's own base text, with a
  * note appended for any tools the profile doesn't allow, the startup hook's
- * (cached) output, this turn's fresh hook output, and the names of other
- * profiles available for create_subagent delegation — each only when
- * present, so a profile with none of these produces a prompt byte-identical
- * to its own base text (the request's prefix, and thus the KV cache, is
- * unchanged for an unaffected profile).
+ * (cached) output, this turn's fresh hook output, the names of other profiles
+ * available for create_subagent delegation, and the workspace's cached
+ * AGENTS.md instructions — each only when present, so a profile with none of
+ * these produces a prompt byte-identical to its own base text (the
+ * request's prefix, and thus the KV cache, is unchanged for an unaffected
+ * profile).
  */
 function systemPrompt(ctx: PromptContext): string {
   let text = ctx.base;
@@ -498,6 +539,9 @@ function systemPrompt(ctx: PromptContext): string {
       "\n\nWhen delegating with create_subagent, pass `profile` set to one " +
       "of these profile names; the helper runs under that profile's own " +
       `system prompt, tools, and hooks: ${ctx.profileNames.join(", ")}.`;
+  }
+  if (ctx.agentsMd) {
+    text += formatAgentsMd(ctx.agentsMd);
   }
   return text;
 }
@@ -730,7 +774,8 @@ async function resolveToolCall(
   model: string,
   profile: Profile,
   profiles: ProfileStore,
-  view: MessageView
+  view: MessageView,
+  agentsMd: string | undefined
 ): Promise<ToolCallOutcome> {
   const name = tc.function.name;
   const disabled = disabledFromAllowed(profile.allowedTools);
@@ -771,7 +816,7 @@ async function resolveToolCall(
           ".",
       };
     }
-    const { result, steps } = await runSubagent(task, model, target);
+    const { result, steps } = await runSubagent(task, model, target, agentsMd);
     return { result, steps, task };
   }
   return { result: await executeLlmTool(tc) };
@@ -791,7 +836,8 @@ async function resolveToolCall(
 async function runSubagent(
   task: string,
   model: string,
-  profile: Profile
+  profile: Profile,
+  agentsMd?: string
 ): Promise<{ result: string; steps: SubagentStep[] }> {
   const tools = subagentToolDefs(profile);
   const disabled = disabledFromAllowed(profile.allowedTools);
@@ -814,6 +860,7 @@ async function runSubagent(
         disabled,
         hookOutput,
         turnOutput,
+        agentsMd,
       }),
     };
     const reply = await sendLlmMessage(messages, model, tools);
@@ -958,6 +1005,11 @@ async function submitTurn(
 ): Promise<void> {
   const conv = store.getActive();
   const profile = profiles.getProfile(conv.profileId) ?? profiles.getDefault();
+  // The workspace's AGENTS.md, loaded once per conversation and cached on the
+  // conversation itself (a switched-to conversation reuses its cached copy;
+  // a fresh one fetches its own). Undefined when the file is missing.
+  if (conv.agentsMd === undefined) conv.agentsMd = await loadAgentsMd();
+  const agentsMd = conv.agentsMd;
   const hookCommand = profile.hookCommand.trim();
   const needsHook =
     conv.messages.length === 0 &&
@@ -991,7 +1043,8 @@ async function submitTurn(
       store.getContextWindow(model),
       store.getPromptTokens(conv.id),
       signal,
-      turnOutput
+      turnOutput,
+      agentsMd
     );
     view.clearNotice();
     view.appendMessage({
@@ -1125,7 +1178,8 @@ async function runTurn(
   cap: number | undefined,
   lastPromptTokens: number | undefined,
   signal: AbortSignal,
-  turnOutput?: string
+  turnOutput?: string,
+  agentsMd?: string
 ): Promise<TurnResult> {
   const turnConvId = store.activeId();
   const history = store.getActive().messages;
@@ -1177,6 +1231,7 @@ async function runTurn(
         hookOutput,
         turnOutput,
         profileNames,
+        agentsMd,
       });
       let streamingStarted = false;
       const ensureStreamingStarted = (): void => {
@@ -1278,7 +1333,8 @@ async function runTurn(
             model,
             profile,
             profiles,
-            view
+            view,
+            agentsMd
           );
           abortIfSwitched();
           history.push({
