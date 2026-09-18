@@ -258,6 +258,32 @@ const findFiles: LlmTool = {
 };
 
 /**
+ * Search the text content of files for a regular expression, across the
+ * whole workspace, excluding files and directories git ignores. Unlike
+ * find_files (which matches file *names*), this matches each line of a
+ * file's *content*. Binary and oversized files are skipped.
+ */
+const searchFiles: LlmTool = {
+  type: "function",
+  function: {
+    name: "search_files",
+    description:
+      "Search the text content of files for a regular expression, across the whole workspace, excluding files and directories that git ignores (anything in .gitignore, nested .gitignore files, or .git/info/exclude). Unlike find_files, which matches file names, this matches each line of a file's content and returns every matching line with its file path and line number. Binary files and files over the size cap are skipped. Use this to find where a symbol, string, or pattern occurs before reading the surrounding lines with read_file.",
+    parameters: {
+      type: "object",
+      properties: {
+        pattern: {
+          type: "string",
+          description:
+            'A regular expression matched against each line\'s text (e.g. "function\\s+runTurn" to find a function definition).',
+        },
+      },
+      required: ["pattern"],
+    },
+  },
+};
+
+/**
  * Delegate a self-contained sub-task to an independent helper agent. Handled
  * entirely client-side (see components/llm.ts's runSubagent): the panel runs
  * a nested tool-calling loop with its own message history (just the task, not
@@ -346,6 +372,7 @@ const askQuestions: LlmTool = {
 export const llmToolDefinitions: LlmTool[] = [
   listDirectory,
   findFiles,
+  searchFiles,
   readFile,
   editFile,
   createDirectory,

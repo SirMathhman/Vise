@@ -43,6 +43,12 @@ const COMMAND_TIMEOUT_MS = 30_000; // 30 seconds
 /** The maximum number of matches a find_files call may return. */
 const MAX_FILE_MATCHES = 500;
 
+/** The maximum number of matching lines a search_files call may return, across all files. */
+const MAX_CONTENT_MATCHES = 200;
+
+/** The maximum number of matching lines a single file may contribute to a search_files call. */
+const MAX_MATCHES_PER_FILE = 50;
+
 /**
  * Kills a spawned process and its entire process tree. On Windows,
  * `child.kill()` signals only the top-level process (e.g. powershell.exe);
@@ -406,31 +412,41 @@ const runCommand: LlmToolHandler = async (args, root) => {
 };
 
 /**
- * Search for file names matching a regular expression across the workspace,
- * excluding anything git ignores. Uses `git ls-files --cached --others
- * --exclude-standard`, which lists every file git would consider (tracked plus
- * untracked) while honoring .gitignore, nested .gitignore files, and
- * .git/info/exclude. The pattern is matched against each file's base name.
- * At most MAX_FILE_MATCHES results are returned.
+ * List every file git would consider part of the workspace (tracked plus
+ * untracked), honoring .gitignore, nested .gitignore files, and
+ * .git/info/exclude — the shared listing behind find_files and search_files.
+ * -z yields NUL-separated entries so paths with spaces are safe; git exits
+ * non-zero (e.g. not a repo), which propagates and is turned into a readable
+ * error string for the model by the route's catch.
  */
-const findFiles: LlmToolHandler = async (args, root) => {
-  const pattern = typeof args.pattern === "string" ? args.pattern : "";
-  if (!pattern) throw badRequest("pattern is required");
-  let re: RegExp;
-  try {
-    re = new RegExp(pattern);
-  } catch (err) {
-    throw badRequest(`invalid pattern: ${(err as Error).message}`);
-  }
-
-  // -z yields NUL-separated entries so paths with spaces are safe; git
-  // exits non-zero (e.g. not a repo) and throws, which the route turns into a
-  // readable error string for the model.
+function listWorkspaceFiles(root: string): string[] {
   const raw = execSync("git ls-files --cached --others --exclude-standard -z", {
     cwd: root,
     maxBuffer: 10 * 1024 * 1024,
   });
-  const files = raw.toString("utf-8").split("\0").filter(Boolean);
+  return raw.toString("utf-8").split("\0").filter(Boolean);
+}
+
+/** Parse and validate a tool call's regular-expression `pattern` argument. */
+function requirePattern(args: Record<string, unknown>): RegExp {
+  const pattern = typeof args.pattern === "string" ? args.pattern : "";
+  if (!pattern) throw badRequest("pattern is required");
+  try {
+    return new RegExp(pattern);
+  } catch (err) {
+    throw badRequest(`invalid pattern: ${(err as Error).message}`);
+  }
+}
+
+/**
+ * Search for file names matching a regular expression across the workspace,
+ * excluding anything git ignores. The pattern is matched against each file's
+ * base name. At most MAX_FILE_MATCHES results are returned.
+ */
+const findFiles: LlmToolHandler = async (args, root) => {
+  const pattern = typeof args.pattern === "string" ? args.pattern : "";
+  const re = requirePattern(args);
+  const files = listWorkspaceFiles(root);
 
   const matches: string[] = [];
   for (const rel of files) {
@@ -450,6 +466,66 @@ const findFiles: LlmToolHandler = async (args, root) => {
       ? `\n… (results capped at ${MAX_FILE_MATCHES})`
       : "";
   return `Found ${matches.length} file(s) matching /${pattern}/:\n${lines}${more}`;
+};
+
+/**
+ * Search the text content of files for a regular expression, across the
+ * workspace, excluding anything git ignores (see listWorkspaceFiles). Each
+ * file is read once and tested line by line; binary files (NUL-sniffed) and
+ * files over MAX_BYTES are skipped rather than erroring the whole search, and
+ * a file that vanishes between listing and reading (a benign race) is
+ * likewise skipped. Results are capped per file (MAX_MATCHES_PER_FILE) and in
+ * total (MAX_CONTENT_MATCHES) so one match-heavy file can't crowd out others.
+ */
+const searchFiles: LlmToolHandler = async (args, root) => {
+  const pattern = typeof args.pattern === "string" ? args.pattern : "";
+  const re = requirePattern(args);
+  const files = listWorkspaceFiles(root);
+
+  const results: string[] = [];
+  let totalMatches = 0;
+  let filesWithMatches = 0;
+  for (const rel of files) {
+    if (totalMatches >= MAX_CONTENT_MATCHES) break;
+    let buf: Buffer;
+    try {
+      const target = await resolveWithinRoot(root, rel);
+      const info = await stat(target);
+      if (!info.isFile() || info.size > MAX_BYTES) continue;
+      buf = await readFile(target);
+    } catch {
+      continue;
+    }
+    if (looksBinary(buf)) continue;
+
+    const lines = buf.toString("utf-8").split(/\r?\n/);
+    let fileMatches = 0;
+    for (let i = 0; i < lines.length; i++) {
+      if (!re.test(lines[i])) continue;
+      results.push(`${rel}:${i + 1}: ${lines[i]}`);
+      totalMatches++;
+      fileMatches++;
+      if (
+        fileMatches >= MAX_MATCHES_PER_FILE ||
+        totalMatches >= MAX_CONTENT_MATCHES
+      ) {
+        break;
+      }
+    }
+    if (fileMatches > 0) filesWithMatches++;
+  }
+
+  if (results.length === 0) {
+    return `No matches for /${pattern}/.`;
+  }
+  const more =
+    totalMatches >= MAX_CONTENT_MATCHES
+      ? `\n… (results capped at ${MAX_CONTENT_MATCHES})`
+      : "";
+  return (
+    `Found ${totalMatches} match(es) in ${filesWithMatches} file(s) for ` +
+    `/${pattern}/:\n${results.join("\n")}${more}`
+  );
 };
 
 /**
@@ -488,6 +564,7 @@ const askQuestions: LlmToolHandler = async () => {
 const tools: Record<LlmToolName, LlmToolHandler> = {
   list_directory: listDirectory,
   find_files: findFiles,
+  search_files: searchFiles,
   read_file: readFileRange,
   edit_file: editFileRange,
   create_directory: createDirectory,

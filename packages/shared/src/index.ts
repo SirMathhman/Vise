@@ -7,6 +7,7 @@
 export const LLM_TOOL_NAMES = [
   "list_directory",
   "find_files",
+  "search_files",
   "read_file",
   "edit_file",
   "create_directory",
