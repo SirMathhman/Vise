@@ -166,6 +166,19 @@ async function liveRefresh(viewer: Viewer, rel: string): Promise<void> {
     if (li) await refreshDir(viewer, dirRel, li);
   }
 
+  if (viewer.activeDiff?.rel === rel) {
+    // A live edit_file diff preview is showing for the very file that just
+    // changed on disk — almost always the preview's own write, landing
+    // ~100-200ms after the tool call resolves, well before a human reacts.
+    // `beginEditDiff` never touches `viewer.store` (there is no plain-editor
+    // buffer while a diff is up), so the checks below have no idea a diff is
+    // showing and would otherwise reload right over it via the same
+    // `openRel` match a manually-open file gets — silently defeating
+    // endEditDiff's "wait for the user's own OK click" behavior in the most
+    // common case (the file being edited is usually the one already open).
+    // Leave it exactly as endEditDiff left it.
+    return;
+  }
   const openRel = viewer.store.getRel();
   if (!openRel) return;
   if (rel === openRel && !viewer.store.isDirty()) {
