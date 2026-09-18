@@ -165,6 +165,16 @@ export async function render(root: HTMLElement): Promise<void> {
                 placeholder="End command (optional, PowerShell — runs after every reply; blocks on stderr)"
                 title="Runs after every reply. Its stdout/stderr are shown in the transcript (truncated). If it writes to stderr, the reply is not accepted: the model sees the output and must try again."
               />
+              <input
+                id="llm-profile-max-tool-turns"
+                class="llm-hook"
+                type="number"
+                aria-label="profile max tool turns"
+                min="1"
+                step="1"
+                placeholder="Max tool turns (default 100)"
+                title="The maximum number of model-call rounds (tool iterations) a single turn may run before it must produce a final answer. When the cap is hit, you are asked whether to allow more rounds. Subagents under this profile use the same number as their own cap."
+              />
             </div>
           </div>
           <div id="llm-skills-overlay" class="llm-profiles-overlay" hidden>

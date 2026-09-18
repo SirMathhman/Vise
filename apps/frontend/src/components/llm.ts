@@ -101,6 +101,9 @@ export function setupLlm(
   const profileEndHook = root.querySelector<HTMLInputElement>(
     "#llm-profile-end-hook"
   );
+  const profileMaxToolTurns = root.querySelector<HTMLInputElement>(
+    "#llm-profile-max-tool-turns"
+  );
   const skillsOverlay = root.querySelector<HTMLElement>("#llm-skills-overlay");
   const skillsOpenBtn =
     root.querySelector<HTMLButtonElement>("#llm-skills-open");
@@ -137,6 +140,7 @@ export function setupLlm(
     !profileHook ||
     !profileTurnHook ||
     !profileEndHook ||
+    !profileMaxToolTurns ||
     !skillsOverlay ||
     !skillsOpenBtn ||
     !skillsCloseBtn ||
@@ -214,6 +218,7 @@ export function setupLlm(
     profileHook.value = profile.hookCommand;
     profileTurnHook.value = profile.turnCommand;
     profileEndHook.value = profile.endCommand;
+    profileMaxToolTurns.value = String(profile.maxToolTurns);
     profileDeleteBtn.disabled = isDefault;
     renderProfileToolList(profileTools, profile, (allowed) => {
       profiles.updateProfile(profile.id, { allowedTools: allowed });
@@ -323,6 +328,7 @@ export function setupLlm(
 
   const doNew = () => {
     resolvePendingAsk();
+    resolvePendingApproval();
     activeTurn?.abort();
     // The previous conversation stays in the list so it can be reopened.
     store.newConversation(model.value);
@@ -333,6 +339,7 @@ export function setupLlm(
 
   const doDelete = () => {
     resolvePendingAsk();
+    resolvePendingApproval();
     activeTurn?.abort();
     store.deleteConversation(store.activeId());
     showActive();
@@ -342,6 +349,7 @@ export function setupLlm(
 
   const switchConversation = (id: string) => {
     resolvePendingAsk();
+    resolvePendingApproval();
     activeTurn?.abort();
     store.switchTo(id);
     showActive();
@@ -378,6 +386,7 @@ export function setupLlm(
       // way doNew/doDelete/switchConversation do, or the abort is a silent
       // no-op until the user answers the card themselves.
       resolvePendingAsk();
+      resolvePendingApproval();
       activeTurn?.abort();
       return;
     }
@@ -434,6 +443,11 @@ export function setupLlm(
     profiles.updateProfile(profileEditor.value, {
       endCommand: profileEndHook.value,
     });
+    profiles.persist();
+  });
+  profileMaxToolTurns.addEventListener("change", () => {
+    const n = Math.max(1, Math.trunc(Number(profileMaxToolTurns.value) || 100));
+    profiles.updateProfile(profileEditor.value, { maxToolTurns: n });
     profiles.persist();
   });
 
@@ -565,7 +579,78 @@ function escapeHtml(text: string): string {
  * the caller for rendering and persistence. On failure the history is rolled
  * back so the conversation stays consistent.
  */
-const MAX_TOOL_TURNS = 5;
+/**
+ * Fallback tool-turn cap for a profile missing maxToolTurns (e.g. pre-
+ * profiles persisted data). Profiles carry their own cap; this is only the
+ * safety net when the field is absent. 100 — see Profile.maxToolTurns for
+ * why 5 (the original hard cap) was far too few for local models doing file
+ * exploration.
+ */
+const MAX_TOOL_TURNS = 100;
+
+/**
+ * Module-level state for the pending "allow more rounds" approval. At most
+ * one approval is in flight at a time (the turn loop is single-threaded per
+ * conversation). Holds the Yes/No card handle and the unique id so the
+ * onAnswer callback can ignore a stale card if a newer turn replaced it
+ * before the user answered. The user's answer decides whether runTurn's loop
+ * keeps going past its configured cap.
+ */
+let pendingApproval:
+  | {
+      id: number;
+      handle: AskCardHandle;
+      resolve: (approved: boolean) => void;
+    }
+  | undefined;
+let pendingApprovalSeq = 0;
+
+/**
+ * Clear the pending more-rounds approval, if any: remove the card from the
+ * DOM and resolve its promise with false ("not approved") so the turn loop
+ * exits. Called when the user starts a new turn, switches conversation, or
+ * deletes one — the in-flight approval is abandoned and the turn ends.
+ */
+function resolvePendingApproval(): void {
+  if (!pendingApproval) return;
+  pendingApproval.handle.resolveNotAnswered([]);
+  pendingApproval.resolve(false);
+  pendingApproval = undefined;
+}
+
+/**
+ * Ask the user, via a Yes/No card in the transcript, whether to allow more
+ * tool rounds. Pauses the turn until they answer (or the card is abandoned,
+ * which counts as "no"). Returns true only when they approved.
+ */
+function requestMoreRounds(view: MessageView): Promise<boolean> {
+  const id = ++pendingApprovalSeq;
+  return new Promise<boolean>((resolve) => {
+    const handle = renderAskQuestionsCard(
+      view.scrollElement,
+      [
+        {
+          question:
+            "The model used up its tool budget without a final answer. " +
+            "Allow more rounds so it can keep working?",
+          options: ["Yes", "No"],
+        },
+      ],
+      (result) => {
+        // Guard against a stale callback: if a newer turn replaced the card
+        // before the user answered this one, ignore it.
+        if (pendingApproval?.id !== id) return;
+        pendingApproval = undefined;
+        view.notifyExternalContent();
+        // Approve only on an explicit "yes" (any casing); a "no" or free
+        // text that isn't a yes counts as not approved.
+        resolve(result.toLowerCase().includes("yes"));
+      }
+    );
+    view.notifyExternalContent();
+    pendingApproval = { id, handle, resolve: (b: boolean) => resolve(b) };
+  });
+}
 
 /** Everything systemPrompt()/buildMessages() need to build one turn's outgoing prompt. */
 interface PromptContext {
@@ -1015,7 +1100,12 @@ async function runSubagent(
   const hookOutput = profile.hookCommand
     ? await runHookCommand(profile.hookCommand)
     : undefined;
-  for (let i = 0; i < SUBAGENT_MAX_TOOL_TURNS; i++) {
+  // A subagent runs under the same tool-turn budget as its profile's main
+  // loop, but headless: it has no user to ask for more rounds, so it simply
+  // stops at the cap (falling back to SUBAGENT_MAX_TOOL_TURNS only when the
+  // profile predates the field).
+  const maxToolTurns = profile.maxToolTurns ?? SUBAGENT_MAX_TOOL_TURNS;
+  for (let i = 0; i < maxToolTurns; i++) {
     const turnOutput = profile.turnCommand
       ? await runHookCommand(profile.turnCommand)
       : undefined;
@@ -1195,6 +1285,7 @@ async function submitTurn(
   send.textContent = "Stop";
   send.title = "Stop the model's reply";
   resolvePendingAsk();
+  resolvePendingApproval();
   try {
     if (needsHook) {
       view.setNotice("loading", "Running startup command…");
@@ -1401,11 +1492,27 @@ async function runTurn(
     }
     history.push({ role: "user", content: userText });
     view.appendMessage({ role: "user", content: userText });
+    // The per-profile tool-turn budget. When the loop reaches it, the user is
+    // asked whether to allow more rounds; each approval extends the budget by
+    // the same amount, so a turn that keeps working runs until the user
+    // declines or the model produces a final answer.
+    const maxToolTurns = profile.maxToolTurns ?? MAX_TOOL_TURNS;
     const skillSummaries = skills
       .getSkills()
       .filter((s) => s.summary !== "")
       .map((s) => `${s.name}: ${s.summary}`);
-    for (let i = 0; i < MAX_TOOL_TURNS; i++) {
+    for (let i = 0; ; i++) {
+      // The model used up its budget (maxToolTurns rounds) without producing
+      // a final answer. We reach here at the start of each new budget segment
+      // (i = maxToolTurns, 2*maxToolTurns, …) after the previous segment
+      // ended on tool calls. Ask whether to allow more rounds; a "yes" lets
+      // the loop continue for another full segment, a "no" — or an abandoned
+      // card, which counts as a "no" — falls off the loop to the dead-end
+      // message below. (i > 0 skips the first segment, which runs without
+      // asking.)
+      if (i > 0 && i % maxToolTurns === 0 && !(await requestMoreRounds(view))) {
+        break;
+      }
       const messages = buildMessages(history, {
         base: profile.systemPrompt,
         disabled,

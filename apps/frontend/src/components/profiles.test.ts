@@ -45,6 +45,7 @@ describe("profile store", () => {
     expect(def.hookCommand).toBe("");
     expect(def.turnCommand).toBe("");
     expect(def.endCommand).toBe("");
+    expect(def.maxToolTurns).toBe(100);
   });
 
   it("createProfile adds a new profile with every tool allowed and no subagent restrictions", () => {
@@ -56,6 +57,7 @@ describe("profile store", () => {
     expect(p.systemPrompt).toBe("");
     expect(p.allowedTools.sort()).toEqual([...LLM_TOOL_NAMES].sort());
     expect(p.allowedSubagentProfiles).toEqual([]);
+    expect(p.maxToolTurns).toBe(100);
   });
 
   it("updateProfile persists allowedSubagentProfiles, and the field survives a reload", () => {
@@ -146,6 +148,39 @@ describe("profile store", () => {
     expect(store.getProfiles()).toHaveLength(2);
     expect(store.getProfile(DEFAULT_PROFILE_ID)).toBeDefined();
     expect(store.getProfile("custom")).toBeDefined();
+  });
+
+  it("updateProfile persists maxToolTurns, and the field survives a reload", () => {
+    const store = createProfileStore();
+    const p = store.createProfile("Reviewer");
+    store.updateProfile(p.id, { maxToolTurns: 25 });
+    store.persist();
+
+    expect(store.getProfile(p.id)?.maxToolTurns).toBe(25);
+
+    // A fresh store (simulating a page reload) must load the value verbatim.
+    const reloaded = createProfileStore();
+    expect(reloaded.getProfile(p.id)?.maxToolTurns).toBe(25);
+  });
+
+  it("normalizes old persisted profiles (no maxToolTurns) to the default", () => {
+    storage.setItem(
+      "vise:llm:profiles",
+      JSON.stringify([
+        {
+          id: "old",
+          name: "Old",
+          systemPrompt: "",
+          allowedTools: ["read_file"],
+          hookCommand: "",
+          turnCommand: "",
+          endCommand: "",
+        },
+      ])
+    );
+
+    const store = createProfileStore();
+    expect(store.getProfile("old")?.maxToolTurns).toBe(100);
   });
 
   it("normalizes old persisted profiles (no allowedSubagentProfiles) to unrestricted", () => {

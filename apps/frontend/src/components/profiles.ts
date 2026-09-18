@@ -57,6 +57,15 @@ export interface Profile {
   turnCommand: string;
   /** Runs after every reply; blocks on stderr. Empty = none. */
   endCommand: string;
+  /**
+   * The maximum number of model-call rounds (tool iterations) a single turn
+   * may run before it must produce a final answer. When the cap is hit, the
+   * user is asked whether to allow more rounds. 100 is the default — a local
+   * model doing file exploration can easily need several rounds, and 5 (the
+   * original hard cap) was far too few. Subagents under this profile use the
+   * same number as their own cap.
+   */
+  maxToolTurns: number;
 }
 
 /** Build the seeded default profile: all tools allowed, no hooks, no subagent restrictions. */
@@ -70,6 +79,7 @@ function makeDefaultProfile(): Profile {
     hookCommand: "",
     turnCommand: "",
     endCommand: "",
+    maxToolTurns: 100,
   };
 }
 
@@ -107,7 +117,13 @@ function isValidProfile(value: unknown): value is Profile {
         ))) &&
     typeof p.hookCommand === "string" &&
     typeof p.turnCommand === "string" &&
-    typeof p.endCommand === "string"
+    typeof p.endCommand === "string" &&
+    // maxToolTurns is optional on disk (missing in old data); loadProfiles
+    // normalizes it to the default when absent.
+    (p.maxToolTurns === undefined ||
+      (typeof p.maxToolTurns === "number" &&
+        Number.isFinite(p.maxToolTurns) &&
+        p.maxToolTurns > 0))
   );
 }
 
@@ -129,6 +145,7 @@ function loadProfiles(): Profile[] {
         const profiles = parsed.filter(isValidProfile).map((p) => ({
           ...p,
           allowedSubagentProfiles: p.allowedSubagentProfiles ?? [],
+          maxToolTurns: p.maxToolTurns ?? 100,
         }));
         if (profiles.some((p) => p.id === DEFAULT_PROFILE_ID)) {
           return profiles;
@@ -199,6 +216,7 @@ export function createProfileStore(): ProfileStore {
         hookCommand: "",
         turnCommand: "",
         endCommand: "",
+        maxToolTurns: 100,
       };
       profiles = [...profiles, profile];
       return profile;
