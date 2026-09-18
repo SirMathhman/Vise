@@ -64,34 +64,46 @@ apps/backend/src/
                   #   DELETE /api/file/* (root-scoped unlink, files only; 404 for dirs/missing)
     create.ts     #   POST /api/file, POST /api/dir (root-scoped creation via the
                   #   fs.ts createDir/createFile cores; HTTP semantics only)
-    llm.ts        #   POST /api/llm/tool (LLM tool execution: a `tools` name→handler
-                  #   registry — list_directory, find_files, search_files, read_file,
-                  #   edit_file, create_directory, create_file, delete_file (unlink),
-                  #   delete_directory (rm recursive) — reaching fs only via fs.ts
-                  #   (find_files/search_files excepted: both list candidates via the
-                  #   shared `listWorkspaceFiles` helper, which shells to `git
-                  #   ls-files` and returns git-relative names, a read-only OS
-                  #   escape; search_files then reads each candidate's content
-                  #   through the normal resolveWithinRoot/fs.ts path); plus the two
-                  #   OS tools: run_command (the shell via node:child_process, spawn +
-                  #   taskkill /T /F — timeout, process-tree kill, single-flight
-                  #   guard, 1MB cap) and find_files (git via execSync, 10MB buffer,
-                  #   500-match cap). search_files matches its regex per line of file
-                  #   content (not file names), skipping binary/oversized files, capped
-                  #   at 200 matches total and 50 per file.
-                  #   create_subagent and ask_questions entries are throwing stubs
-                  #   (they exist only for the Record<LlmToolName, ...> exhaustiveness
-                  #   check) — the frontend intercepts and fulfills both itself
-                  #   (a nested loop / an interactive question card), never reaching
-                  #   this route.
-                  #   Errors resolve to 200 + "Error: …" so the model adapts);
-                  #   POST /api/llm/hook-command (a second, non-tool route: runs a
-                  #   command through the same runShellCommand core as run_command but
-                  #   returns {stdout, stderr, truncated, timedOut} structured JSON
-                  #   instead of one formatted string, since the panel's end-of-turn
-                  #   hook must tell stdout from stderr apart. Errors are thrown
-                  #   AppErrors like every other JSON route, not caught into a 200 —
-                  #   unlike /api/llm/tool this isn't model-facing)
+    llm.ts        #   THIN REGISTRY + routing only (split out of a single file once it
+                  #   crossed the 500-line cap — see llmCommand.ts/llmFs.ts/llmSearch.ts
+                  #   below): isLlmToolName, the create_subagent/ask_questions throwing
+                  #   stubs (they exist only for the Record<LlmToolName, ...>
+                  #   exhaustiveness check — the frontend intercepts and fulfills both
+                  #   itself, a nested loop / an interactive question card, never
+                  #   reaching this route), the `tools` name→handler registry built from
+                  #   the three sibling modules' exports, and the two HTTP routes:
+                  #   POST /api/llm/tool (dispatches into `tools`; errors resolve to 200
+                  #   + "Error: …" so the model adapts) and POST /api/llm/hook-command (a
+                  #   second, non-tool route: runs a command through llmCommand.ts's
+                  #   runShellCommand core — the same one run_command uses — but returns
+                  #   {stdout, stderr, truncated, timedOut} structured JSON instead of one
+                  #   formatted string, since the panel's end-of-turn hook must tell
+                  #   stdout from stderr apart. Errors are thrown AppErrors like every
+                  #   other JSON route, not caught into a 200 — unlike /api/llm/tool this
+                  #   isn't model-facing).
+    llmToolTypes.ts #  The one shared type (LlmToolHandler) all four llm* modules need,
+                  #   in its own type-only file so none of them has to import another's
+                  #   internals just to name it — erased at compile time, no runtime cost.
+    llmCommand.ts #   OS command execution: run_command (the shell via
+                  #   node:child_process, spawn + taskkill /T /F — timeout,
+                  #   process-tree kill, single-flight guard, 1MB output cap) and the
+                  #   exported runShellCommand core both llm.ts's hook-command route and
+                  #   run_command itself call.
+    llmFs.ts      #   The filesystem CRUD tools — list_directory, read_file, edit_file,
+                  #   create_directory, create_file, delete_file (unlink),
+                  #   delete_directory (rm recursive) — reaching fs only via fs.ts.
+    llmSearch.ts  #   find_files and search_files, sharing a `listWorkspaceFiles` helper
+                  #   (shells to `git ls-files`, returns git-relative names, a read-only
+                  #   OS escape) and a `requirePattern` regex-validation helper.
+                  #   find_files matches names against that list alone (git via execSync,
+                  #   10MB buffer, 500-match cap); search_files goes on to read each
+                  #   candidate's content through the normal resolveWithinRoot/fs.ts path
+                  #   (so its content-reading half is fully sandboxed) and matches its
+                  #   regex per line, skipping binary/oversized files, capped at 200
+                  #   matches total and 50 per file — a file that hits the per-file cap is
+                  #   named in the result's closing note even when the total cap is never
+                  #   reached, so a truncated file's matches are never silently implied
+                  #   complete.
     watch.ts      #   GET /api/watch (SSE: subscribes the shared watcher, streams WatchEvent
                   #   frames, unsubscribes on res close). The one non-JSON route; owns res.
   errors.ts       # error model: AppError type/enum, toResponse mapping
@@ -319,6 +331,7 @@ Target invariants (implemented in the backend):
 - Give the viewer a size/line strategy: it renders every line as a DOM node. Once files near the 1 MB cap (thousands of lines) are shown, consider virtualization or a "show first N lines / open full" affordance so the scroll region stays responsive. (The LLM transcript was virtualized first — `messageView.ts`/`VirtualList` is the working windowed-list reference; the viewer is the remaining application of the same pattern.)
 - **`components/llm.ts` is far past the 500-line cap and growing (top maintainability issue).** At ~1200 lines it trips `noExcessiveLinesPerFile`, and `setupLlm` plus `runTurn` trip `noExcessiveLinesPerFunction`. This change made it worse on both counts (the streaming/reasoning orchestration landed in `runTurn`). `messageView.ts` (~620 lines) also crossed the cap for the first time here, and `styles/llm.css` (~690) was already over; the `components/` directory holds 13 files against a 10-file limit, so a split must create sibling modules (e.g. `components/chat/`) rather than add more files in place. The extraction plan is the remaining work item below.
 - **Finish extracting `components/llm.ts` (in progress — still past 500 lines and growing).** The cheap extractions are done: the profile checklists moved to `profileLists.ts` and the ask_questions card to `askQuestionsCard.ts`, so `setupLlm` no longer owns their DOM. What remains embedded in `llm.ts` is the tool-dispatch cluster — `SUBAGENT_MAX_TOOL_TURNS`, `subagentToolDefs`, `parseSubagentArgs`, `parseAskQuestionsArgs`, `availableSubagentProfiles`, `ToolCallOutcome`, `resolveToolCall`, `runSubagent`, `askQuestions`/`resolvePendingAsk` — plus the hook helpers (`checkEndHook`, `formatEndHookOutput`/`endHookRetryMessage`, `disabledFromAllowed`), the prompt/turn-loop cluster (`systemPrompt`, `toWireMessage`, `buildMessages`, `summarizeConversation`, `submitTurn`, `runTurn`), and the Profiles-modal event wiring inside `setupLlm` itself (still a `noExcessiveLinesPerFunction` warning). These are self-contained units whose only shared dependencies are a handful of functions (`disabledToolResult`, `checkEndHook`, `runHookCommand`, `systemPrompt`), so the next step is a `components/chat/toolDispatch.ts` (dispatch + the two client-executed tools), a `components/chat/prompt.ts` (system prompt + wire conversion + compaction), and a `setupProfilesModal(root, profiles, store, onProfileChange)`-shaped helper for the modal wiring. `runTurn` would then import `resolveToolCall` the same way it already imports `toolCallLabel` from `messageView.ts`: turn loop → tool dispatch → execution, one direction, no back-edge. Note the one piece that resists extraction: `askQuestions` needs the live transcript (`askQuestionsCard` renders into `MessageView.scrollElement`), so the dispatch module should take the view as a parameter (or the card renderer as an injected callback) rather than importing the panel directly. `messageView.ts` needs the same treatment: the pure expanders (`expandMessage`, `toolCallLabel`, the `VisualItem` union) are already DOM-free and would move cleanly to `components/chat/visualItems.ts`, leaving the `VirtualList` + `MessageView` DOM shell behind.
+- **The backend's `routes/llm.ts` crossing the 500-line cap (fixed).** Adding `search_files` plus its two shared helpers (`listWorkspaceFiles`, `requirePattern`) had pushed the file to 553 significant lines, tripping Biome's `noExcessiveLinesPerFile` for the first time. Split into the four clusters it already read as, none of which called into another except through the shared `LlmToolHandler` type and the `tools` record: `llmCommand.ts` (OS command execution — `run_command` and the `runShellCommand` core `/api/llm/hook-command` also calls), `llmFs.ts` (the filesystem CRUD tools), `llmSearch.ts` (`find_files`/`search_files` and their shared helpers/caps), and `llmToolTypes.ts` (just the shared `LlmToolHandler` type, so none of the three cluster modules has to import another's internals to name it). `routes/llm.ts` is now the thin registry plus the two HTTP routes, mirroring the one-file-per-resource-cluster convention already used for `routes/ls.ts`/`routes/file.ts`/`routes/create.ts`. No circular imports were introduced (each cluster only imports `fs.ts`/`errors.ts`/`llmToolTypes.ts`, never another cluster). The frontend's `components/llm.ts` (entry above) has the same problem, worse and still open.
 
 ## Performance (obvious concerns only — profile before optimizing)
 
