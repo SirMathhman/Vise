@@ -179,6 +179,8 @@ export interface LlmUsage {
 export interface LlmAssistantMessage {
   content: string | null;
   tool_calls?: LlmToolCall[];
+  /** The model's chain-of-thought, if the proxy streams it. */
+  reasoning?: string | null;
   /** Tokens consumed by the last completion (the prompt that was sent). */
   usage?: LlmUsage;
 }
@@ -248,7 +250,8 @@ export async function streamLlmMessage(
   messages: LlmMessage[],
   model: string,
   tools: LlmTool[] | undefined,
-  onTextChunk: (text: string) => void
+  onTextChunk: (text: string) => void,
+  onReasoningChunk: (text: string) => void
 ): Promise<LlmAssistantMessage> {
   const body: Record<string, unknown> = { model, messages, stream: true };
   if (tools && tools.length > 0) body.tools = tools;
@@ -270,6 +273,7 @@ export async function streamLlmMessage(
   const decoder = new TextDecoder();
   let buffer = "";
   let content = "";
+  let reasoning = "";
   const toolCalls: LlmToolCall[] = [];
   let lastUsage: LlmUsage | undefined;
 
@@ -279,6 +283,7 @@ export async function streamLlmMessage(
         | {
             delta?: {
               content?: string;
+              reasoning_content?: string;
               tool_calls?: LlmToolCall[];
             };
           }[]
@@ -288,6 +293,10 @@ export async function streamLlmMessage(
     if (delta?.content) {
       content += delta.content;
       onTextChunk(content);
+    }
+    if (delta?.reasoning_content) {
+      reasoning += delta.reasoning_content;
+      onReasoningChunk(reasoning);
     }
     if (delta?.tool_calls) {
       for (const tc of delta.tool_calls) {
@@ -351,6 +360,7 @@ export async function streamLlmMessage(
   return {
     content: content || null,
     tool_calls: calls.length > 0 ? calls : undefined,
+    reasoning: reasoning || null,
     usage: lastUsage,
   };
 }

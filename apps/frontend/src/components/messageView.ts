@@ -24,6 +24,7 @@ export interface SubagentStep {
 /** One rendered block. A single chat message expands into one or more of these. */
 type VisualItem =
   | { kind: "message"; role: "user" | "assistant"; content: string }
+  | { kind: "reasoning"; text: string }
   | { kind: "tool-call"; label: string }
   | { kind: "tool-result"; text: string }
   | { kind: "compaction" }
@@ -63,7 +64,12 @@ function expandMessage(m: ChatMessage): VisualItem[] {
     return items;
   }
   if (m.role === "user" || m.role === "assistant") {
-    return [{ kind: "message", role: m.role, content: m.content ?? "" }];
+    const items: VisualItem[] = [];
+    if (m.role === "assistant" && m.reasoning) {
+      items.push({ kind: "reasoning", text: m.reasoning });
+    }
+    items.push({ kind: "message", role: m.role, content: m.content ?? "" });
+    return items;
   }
   return [];
 }
@@ -111,6 +117,8 @@ function renderItemDom(item: VisualItem): HTMLElement {
       block.append(who, text);
       return block;
     }
+    case "reasoning":
+      return renderReasoningDom(item.text, false);
     case "subagent":
       return renderSubagentDom(item);
     case "end-hook": {
@@ -120,6 +128,26 @@ function renderItemDom(item: VisualItem): HTMLElement {
       return block;
     }
   }
+}
+
+/**
+ * Render the model's chain-of-thought as a collapsible <details> block.
+ * Collapsed by default when re-rendered from the store (a long reasoning
+ * trace shouldn't dominate the transcript); the live streaming block opens it
+ * so the user watches the thinking as it arrives.
+ */
+function renderReasoningDom(text: string, open: boolean): HTMLElement {
+  const details = document.createElement("details");
+  details.className = "llm-reasoning";
+  if (open) details.open = true;
+  const summary = document.createElement("summary");
+  summary.className = "llm-reasoning-summary";
+  summary.textContent = "Thinking";
+  const body = document.createElement("div");
+  body.className = "llm-reasoning-text";
+  body.textContent = text;
+  details.append(summary, body);
+  return details;
 }
 
 /**
@@ -326,7 +354,10 @@ export class MessageView {
    */
   private follow = true;
   private followBtn: HTMLButtonElement;
-  private streamEl: HTMLElement | null = null;
+  private streamWrapper: HTMLElement | null = null;
+  private streamReasoningEl: HTMLElement | null = null;
+  private streamReasoningTextEl: HTMLElement | null = null;
+  private streamMsgEl: HTMLElement | null = null;
   private streamTextEl: HTMLSpanElement | null = null;
 
   constructor(scroll: HTMLElement) {
@@ -517,39 +548,72 @@ export class MessageView {
   }
 
   /**
-   * Begin streaming the model's reply: append an ephemeral assistant block
-   * (outside the virtual list, like the ask_questions card) and return a
-   * handle so the caller can update its text on each chunk and end the
-   * stream. The block is never persisted — only the final text becomes a
+   * Begin streaming the model's reply: append an ephemeral wrapper (outside
+   * the virtual list, like the ask_questions card) that will hold the
+   * reasoning block and the assistant text block as they arrive. The wrapper
+   * is never persisted — only the final text (and reasoning) become a
    * ChatMessage.
    */
   beginStreaming(): void {
     this.endStreaming();
-    const block = document.createElement("div");
-    block.className = "llm-msg llm-msg-assistant";
-    const who = document.createElement("span");
-    who.className = "llm-msg-role";
-    who.textContent = "Model";
-    const text = document.createElement("span");
-    text.className = "llm-msg-text";
-    block.append(who, text);
-    this.scroll.append(block);
-    this.streamEl = block;
-    this.streamTextEl = text;
+    const wrapper = document.createElement("div");
+    wrapper.className = "llm-stream";
+    this.scroll.append(wrapper);
+    this.streamWrapper = wrapper;
     this.notifyExternalContent();
   }
 
-  /** Update the streaming block's text with the cumulative reply so far. */
+  /**
+   * Update the streaming reasoning block with the cumulative chain-of-thought
+   * so far, creating it (open, so the thinking is visible live) on the first
+   * chunk.
+   */
+  updateReasoning(text: string): void {
+    if (!this.streamWrapper) return;
+    if (!this.streamReasoningEl) {
+      const details = renderReasoningDom(text, true);
+      this.streamWrapper.append(details);
+      this.streamReasoningEl = details;
+      this.streamReasoningTextEl = details.querySelector<HTMLElement>(
+        ".llm-reasoning-text"
+      );
+    } else if (this.streamReasoningTextEl) {
+      this.streamReasoningTextEl.textContent = text;
+    }
+    if (this.follow) this.list.scrollToBottom();
+  }
+
+  /**
+   * Update the streaming assistant text block with the cumulative reply so
+   * far, creating it on the first text chunk (after any reasoning block).
+   */
   updateStreaming(text: string): void {
+    if (!this.streamWrapper) return;
+    if (!this.streamMsgEl) {
+      const block = document.createElement("div");
+      block.className = "llm-msg llm-msg-assistant";
+      const who = document.createElement("span");
+      who.className = "llm-msg-role";
+      who.textContent = "Model";
+      const body = document.createElement("span");
+      body.className = "llm-msg-text";
+      block.append(who, body);
+      this.streamWrapper.append(block);
+      this.streamMsgEl = block;
+      this.streamTextEl = body;
+    }
     if (this.streamTextEl) this.streamTextEl.textContent = text;
     if (this.follow) this.list.scrollToBottom();
   }
 
-  /** Remove the streaming block, if any. Safe to call repeatedly. */
+  /** Remove the streaming wrapper, if any. Safe to call repeatedly. */
   endStreaming(): void {
-    if (this.streamEl) {
-      this.streamEl.remove();
-      this.streamEl = null;
+    if (this.streamWrapper) {
+      this.streamWrapper.remove();
+      this.streamWrapper = null;
+      this.streamReasoningEl = null;
+      this.streamReasoningTextEl = null;
+      this.streamMsgEl = null;
       this.streamTextEl = null;
     }
   }

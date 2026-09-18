@@ -104,7 +104,7 @@ A bearer token (`LLM_API_KEY`) is hardcoded in `api/client.ts` — a local-use k
 
 ### Shared contract (`packages/shared`)
 
-`packages/shared` is the single source of truth for cross-app shapes. It exports the `LLM_TOOL_NAMES` const array and the derived `LlmToolName` type. Both apps consume it **type-only** (`import type`), so the backend's zero-runtime-deps invariant holds (the type import erases the runtime const). It has **no build step** — `main`/`types` point straight at `./src/index.ts`.
+`packages/shared` is the single source of truth for cross-app shapes. It exports the `LLM_TOOL_NAMES` const array and the derived `LlmToolName` type. The **backend** consumes it type-only (`import type`), so its zero-runtime-deps invariant holds (the type import erases the runtime const). The **frontend** imports the `LLM_TOOL_NAMES` value directly where it needs the runtime array (e.g. `profiles.ts` seeds the default profile's `allowedTools`) — fine for the bundled SPA, which has no runtime-deps constraint. It has **no build step** — `main`/`types` point straight at `./src/index.ts`.
 
 **Adding an LLM tool touches three files:** the `LLM_TOOL_NAMES` const here, a definition in `llm/tools.ts`, and a handler in the `tools` record in `routes/llm.ts`. A misspelled tool name is a compile error on both sides.
 

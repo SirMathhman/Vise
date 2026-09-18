@@ -20,8 +20,16 @@ const LEGACY_MODEL = "vise:llm:model";
  * it are sent to the model. The message array is append-only — nothing
  * before a summary is ever removed from it, only bypassed in the outgoing
  * prompt.
+ *
+ * `reasoning` carries the model's chain-of-thought for an assistant reply
+ * (the proxy streams it separately from `content`). It is display-only: it is
+ * never sent back to the model, so it does not affect the outgoing prompt.
  */
-export type ChatMessage = LlmMessage & { compaction?: true; endHook?: true };
+export type ChatMessage = LlmMessage & {
+  compaction?: true;
+  endHook?: true;
+  reasoning?: string;
+};
 
 /**
  * A conversation is a self-contained chat: its message history, model
@@ -55,13 +63,15 @@ export interface Conversation {
 }
 
 /** True when `value` is a structurally valid persisted message. */
-function isValidMessage(value: unknown): value is LlmMessage {
+function isValidMessage(value: unknown): value is ChatMessage {
   return (
     typeof value === "object" &&
     value !== null &&
     (value as LlmMessage).role in { user: true, assistant: true, tool: true } &&
     (typeof (value as LlmMessage).content === "string" ||
-      (value as LlmMessage).content === null)
+      (value as LlmMessage).content === null) &&
+    ((value as ChatMessage).reasoning === undefined ||
+      typeof (value as ChatMessage).reasoning === "string")
   );
 }
 
