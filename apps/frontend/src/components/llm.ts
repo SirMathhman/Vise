@@ -1029,7 +1029,13 @@ async function submitTurn(
  * fields in the schema's declared order (verified live: one local model
  * emitted `content` before `start_line`), so nothing here assumes one —
  * `extractPartialJsonNumber`'s trailing-delimiter check makes it safe to
- * probe for a field on every chunk regardless of where it lands.
+ * probe for a field on every chunk regardless of where it lands. This is
+ * still only a best-effort guess, though: a model that also orders
+ * `end_line` *after* `content` (verified live, separately from the
+ * `start_line` case above) makes the omission check fire prematurely and
+ * locks in the wrong range for the live portion of the preview.
+ * `resyncEditDiff` is what guarantees the *settled* preview is always
+ * correct, by re-deriving the true values once the call is fully known.
  *
  * `beginEditDiff` is async (it fetches the file), so the first chunk that
  * qualifies kicks it off and records the pending call in `tracks`; every
@@ -1066,6 +1072,46 @@ function handleEditAnimChunk(
   tracks.set(index, {
     active: fileViewer.beginEditDiff(path, startLine, endLine),
   });
+}
+
+/**
+ * Re-derive an edit_file call's real `path`/`start_line`/`end_line`/
+ * `content` from its now-fully-arrived (and therefore always valid) JSON
+ * arguments, and re-open the live diff against them — correcting any wrong
+ * guess `handleEditAnimChunk` made while the call was still streaming (see
+ * its doc comment: the model is not guaranteed to emit these fields in the
+ * schema's order, and `end_line`'s absence is genuinely ambiguous — omitted
+ * vs. simply not arrived yet — until more of the call has streamed in).
+ * Malformed arguments are left as whatever the live guess produced; the
+ * backend will reject the call with a clear error regardless, and that
+ * error still reaches the transcript normally once the call executes.
+ */
+async function resyncEditDiff(
+  fileViewer: FileViewerHandle,
+  tc: LlmToolCall
+): Promise<boolean> {
+  let args: {
+    path?: unknown;
+    start_line?: unknown;
+    end_line?: unknown;
+    content?: unknown;
+  };
+  try {
+    args = JSON.parse(tc.function.arguments) as typeof args;
+  } catch {
+    return true;
+  }
+  if (typeof args.path !== "string" || typeof args.start_line !== "number") {
+    return true;
+  }
+  const startLine = Math.trunc(args.start_line);
+  const endLine =
+    typeof args.end_line === "number" ? Math.trunc(args.end_line) : startLine;
+  const active = await fileViewer.beginEditDiff(args.path, startLine, endLine);
+  if (active && typeof args.content === "string") {
+    fileViewer.updateEditDiffNew(args.content);
+  }
+  return active;
 }
 
 async function runTurn(
@@ -1173,7 +1219,7 @@ async function runTurn(
         // so leaving its unfinished green side up would misleadingly imply
         // it did.
         view.endStreaming();
-        if (editAnimTracks.size > 0) void fileViewer?.endEditDiff();
+        if (editAnimTracks.size > 0) void fileViewer?.cancelEditDiff();
         const text =
           reply.content && reply.content.trim() !== ""
             ? reply.content
@@ -1208,8 +1254,19 @@ async function runTurn(
         // managed to open, e.g. an unsaved manual edit that failed to flush).
         const active = new Map<number, boolean>();
         for (let ti = 0; ti < reply.tool_calls.length; ti++) {
+          const tc = reply.tool_calls[ti];
           const track = editAnimTracks.get(ti);
-          active.set(ti, track ? await track.active : false);
+          let isActive = track ? await track.active : false;
+          // The live guess (handleEditAnimChunk) may have read start_line/
+          // end_line wrong if the model streamed them out of the schema's
+          // order — now that the call is fully known, re-derive the real
+          // values and re-open the diff against them before the tool
+          // actually runs (once it does, the pre-edit file is gone, so this
+          // is the last point a correction can use the real "before" text).
+          if (isActive && fileViewer) {
+            isActive = await resyncEditDiff(fileViewer, tc);
+          }
+          active.set(ti, isActive);
         }
         reply.tool_calls.forEach((tc, ti) => {
           if (!active.get(ti)) view.appendToolCall(toolCallLabel(tc));
@@ -1237,11 +1294,13 @@ async function runTurn(
             );
           } else if (active.get(ti)) {
             // The call already ran (resolveToolCall awaited above): settle
-            // the preview by reloading the file's real, saved state. A
-            // failure's preview just reverts to the unchanged file — surface
-            // the actual reason the same way every other tool failure does.
-            await fileViewer?.endEditDiff();
+            // the preview (stop the cursor, show the outcome) and leave it
+            // up until the user dismisses it via its own OK button. A
+            // failure also surfaces the actual reason the same way every
+            // other tool failure does, since the settled preview only says
+            // "Edit failed" with no detail.
             const ok = !outcome.result.startsWith("Error:");
+            fileViewer?.endEditDiff(ok);
             if (!ok) view.appendToolResult(outcome.result);
           } else {
             view.appendToolResult(outcome.result);
@@ -1287,7 +1346,7 @@ async function runTurn(
   } catch (err) {
     history.length = preLength;
     view.endStreaming();
-    void fileViewer?.endEditDiff();
+    void fileViewer?.cancelEditDiff();
     if (err instanceof DOMException && err.name === "AbortError") {
       throw err;
     }

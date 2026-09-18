@@ -17,18 +17,25 @@ export interface DiffRow {
 
 /**
  * Clamp an edit_file range exactly the way the backend does (llmFs.ts's
- * editFileRange): `endLine` may run past the file's length to mean "through
- * the last line," so it's capped at `lineCount + 1` before use. Kept in sync
- * deliberately — this only decides which lines the *preview* marks changed,
- * not the authoritative edit, but a mismatch would show the wrong lines.
+ * editFileRange): `end_line` may run past the file's length to mean "through
+ * the last line," so it's capped at `lineCount + 1` before use. The backend
+ * never explicitly clamps `start_line` either, but `lines.slice(0, startLine
+ * - 1)` on a too-large index returns the whole array via JS's own
+ * slice-clamping — so a `start_line` past the end of the file behaves
+ * identically to `start_line = lineCount + 1` (append at the end), and is
+ * clamped the same way here so the preview doesn't render dozens of
+ * fabricated blank "context" lines for the gap. Kept in sync deliberately —
+ * this only decides which lines the *preview* marks changed, not the
+ * authoritative edit, but a mismatch would show the wrong lines.
  */
 export function clampEditRange(
   startLine: number,
   endLine: number,
   lineCount: number
 ): { start: number; end: number } {
+  const clampedStart = Math.min(startLine, lineCount + 1);
   const clampedEnd = Math.min(endLine, lineCount + 1);
-  return { start: startLine, end: Math.max(startLine, clampedEnd) };
+  return { start: clampedStart, end: Math.max(clampedStart, clampedEnd) };
 }
 
 /**

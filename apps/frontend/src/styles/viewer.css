@@ -112,6 +112,22 @@
   color: var(--danger);
 }
 
+/* The OK button that settles a live edit_file diff preview (see
+   fileTree.ts's endEditDiff) — reuses the same #viewer-actions bar and
+   .btn styling as the save-status/editor controls above it. */
+#app #viewer-actions .diff-status {
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+}
+
+#app #viewer-actions .diff-status-ok {
+  color: var(--success);
+}
+
+#app #viewer-actions .diff-status-error {
+  color: var(--danger);
+}
+
 /* Shared line primitives, used by the read-only view and (with the
    overrides below) by the editor backdrop. Declared first so the more
    specific editor rules that follow win on source order too. */

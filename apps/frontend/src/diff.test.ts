@@ -12,6 +12,10 @@ describe("clampEditRange", () => {
   it("never lets end drop below start", () => {
     expect(clampEditRange(5, 1, 10)).toEqual({ start: 5, end: 5 });
   });
+
+  it("clamps start_line to lineCount + 1 too, matching the backend's slice-clamping append behavior", () => {
+    expect(clampEditRange(100, 200, 5)).toEqual({ start: 6, end: 6 });
+  });
 });
 
 describe("buildDiffRows", () => {

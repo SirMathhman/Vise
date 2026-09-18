@@ -43,12 +43,23 @@ export interface FileViewerHandle {
   updateEditDiffNew(text: string): void;
   /**
    * Settle the diff once the call has actually executed on the backend (or
-   * failed — the chat transcript reports that separately), then reload the
-   * file from disk so the viewer reflects the real, authoritative result
-   * rather than the live preview. A no-op under the same supersede condition
-   * as `updateEditDiffNew`.
+   * failed — the chat transcript reports that separately): stop the live
+   * cursor, show the outcome, and leave the diff up — red/green and all —
+   * until the user dismisses it with the OK button that appears alongside
+   * the outcome. Only then does the viewer reload the file from disk and
+   * drop back to the plain (non-diff) editable view, which still shows the
+   * edit's real result — the color goes away, not the content. A no-op
+   * under the same supersede condition as `updateEditDiffNew`.
    */
-  endEditDiff(): Promise<void>;
+  endEditDiff(ok: boolean): void;
+  /**
+   * Abandon an in-progress preview immediately, with no dismiss step — for
+   * when the call never actually ran (the user clicked Stop, or the turn
+   * was rolled back), so there is no real outcome to show or wait on.
+   * Reloads the file from disk right away. A no-op under the same supersede
+   * condition as `updateEditDiffNew`.
+   */
+  cancelEditDiff(): Promise<void>;
 }
 
 /**
@@ -121,7 +132,8 @@ export async function setupFileViewer(
     beginEditDiff: (rel, startLine, endLine) =>
       beginEditDiff(viewer, rel, startLine, endLine),
     updateEditDiffNew: (text) => updateEditDiffNew(viewer, text),
-    endEditDiff: () => endEditDiff(viewer),
+    endEditDiff: (ok) => endEditDiff(viewer, ok),
+    cancelEditDiff: () => cancelEditDiff(viewer),
   };
 }
 
@@ -587,12 +599,32 @@ function updateEditDiffNew(viewer: Viewer, text: string): void {
 }
 
 /** endEditDiff: see `FileViewerHandle`. */
-async function endEditDiff(viewer: Viewer): Promise<void> {
+function endEditDiff(viewer: Viewer, ok: boolean): void {
   const diff = viewer.activeDiff;
   if (!diff) return;
-  // The edit already ran on the backend (or failed) by the time this is
-  // called; reload from disk either way so the viewer shows the real,
-  // authoritative result instead of the live preview.
+  diff.addedContainer.querySelector(".diff-cursor")?.remove();
+
+  viewer.actions.innerHTML = "";
+  const status = document.createElement("span");
+  status.className = `diff-status ${ok ? "diff-status-ok" : "diff-status-error"}`;
+  status.textContent = ok ? "Edited" : "Edit failed";
+  const okBtn = document.createElement("button");
+  okBtn.type = "button";
+  okBtn.className = "btn";
+  okBtn.textContent = "OK";
+  // Dismiss: drop the diff and its colors, keeping the edit's real result —
+  // loadIntoViewer re-fetches from disk, which already has whatever the
+  // call actually did (or didn't, on failure) applied.
+  okBtn.addEventListener("click", () => {
+    void loadIntoViewer(viewer, diff.rel);
+  });
+  viewer.actions.append(status, okBtn);
+}
+
+/** cancelEditDiff: see `FileViewerHandle`. */
+async function cancelEditDiff(viewer: Viewer): Promise<void> {
+  const diff = viewer.activeDiff;
+  if (!diff) return;
   await loadIntoViewer(viewer, diff.rel);
 }
 
