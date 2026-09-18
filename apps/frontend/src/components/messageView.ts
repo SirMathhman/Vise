@@ -213,7 +213,7 @@ class VirtualList {
   constructor(
     scroll: HTMLElement,
     renderItem: (index: number, item: VisualItem) => HTMLElement,
-    getItems: () => VisualItem[]
+    getItems: () => VisualItem[],
   ) {
     this.scroll = scroll;
     this.renderItem = renderItem;
@@ -259,7 +259,7 @@ class VirtualList {
     for (let i = 0; i < MAX_PASSES + 2; i++) {
       const target = Math.max(
         0,
-        this.scroll.scrollHeight - this.scroll.clientHeight
+        this.scroll.scrollHeight - this.scroll.clientHeight,
       );
       if (target === prevTarget) return;
       this.scroll.scrollTop = target;
@@ -371,7 +371,7 @@ export class MessageView {
     this.list = new VirtualList(
       scroll,
       (_i, item) => renderItemDom(item),
-      () => this.items
+      () => this.items,
     );
     this.followBtn = this.createFollowButton();
     // The follow toggle lives in the thin .llm-transcript-head strip just
@@ -486,7 +486,7 @@ export class MessageView {
   appendSubagentResult(
     task: string,
     steps: SubagentStep[],
-    result: string
+    result: string,
   ): void {
     this.items.push({ kind: "subagent", task, steps, result });
     this.list.refresh();
@@ -575,7 +575,7 @@ export class MessageView {
       this.streamWrapper.append(details);
       this.streamReasoningEl = details;
       this.streamReasoningTextEl = details.querySelector<HTMLElement>(
-        ".llm-reasoning-text"
+        ".llm-reasoning-text",
       );
     } else if (this.streamReasoningTextEl) {
       this.streamReasoningTextEl.textContent = text;
