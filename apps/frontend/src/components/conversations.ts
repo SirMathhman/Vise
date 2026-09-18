@@ -64,10 +64,11 @@ export interface Conversation {
    * The workspace root's AGENTS.md text, loaded once per conversation and
    * cached here so later turns (and any subagents delegated from this
    * conversation) reuse it instead of re-fetching the file every turn.
-   * Undefined until the first turn loads it (which also covers
-   * conversations created before this field existed), and stays undefined if
-   * the file is missing or empty — a falsy value, so it contributes nothing
-   * to the prompt.
+   * `undefined` until the first successful load (which also covers
+   * conversations created before this field existed, and a failed fetch —
+   * e.g. the file is missing — which a later turn retries); once loaded it
+   * holds the trimmed text, or `""` when the file is present but empty.
+   * Either falsy value contributes nothing to the prompt.
    */
   agentsMd?: string;
 }
@@ -96,7 +97,8 @@ function isValidConversation(value: unknown): value is Conversation {
     Array.isArray(c.messages) &&
     (c.messages as unknown[]).every(isValidMessage) &&
     (c.profileId === undefined || typeof c.profileId === "string") &&
-    (c.hookOutput === undefined || typeof c.hookOutput === "string")
+    (c.hookOutput === undefined || typeof c.hookOutput === "string") &&
+    (c.agentsMd === undefined || typeof c.agentsMd === "string")
   );
 }
 

@@ -475,21 +475,21 @@ interface PromptContext {
 const AGENTS_MD_PATH = "AGENTS.md";
 
 /**
- * Load the workspace's AGENTS.md, or undefined when the file is missing or
- * can't be read — a missing or unreadable file simply contributes nothing
- * to the prompt. Callers cache the result on the conversation and only call
- * this when that cache is empty, so it runs once per conversation (a
- * switched-to conversation reuses its cached copy; a fresh one fetches its
- * own).
+ * Load the workspace's AGENTS.md and return its trimmed text, or `""` when
+ * the file is present but empty. Throws on any failure (the file is missing
+ * — a 404 — or the backend is down / unreachable); the caller catches and
+ * leaves its per-conversation cache `undefined` so a later turn retries.
+ *
+ * Callers cache the successful result on the conversation and only call this
+ * when that cache is empty, so a present file is fetched once per
+ * conversation (a switched-to conversation reuses its cached copy; a fresh
+ * one fetches its own). A present-but-empty file caches as `""` (falsy, so it
+ * contributes nothing to the prompt) rather than re-fetching every turn; only
+ * a failed fetch stays uncached.
  */
-async function loadAgentsMd(): Promise<string | undefined> {
-  try {
-    const file = await getFile(AGENTS_MD_PATH);
-    const text = file.content.trim();
-    return text === "" ? undefined : text;
-  } catch {
-    return undefined;
-  }
+async function loadAgentsMd(): Promise<string> {
+  const file = await getFile(AGENTS_MD_PATH);
+  return file.content.trim();
 }
 
 /**
@@ -1005,10 +1005,18 @@ async function submitTurn(
 ): Promise<void> {
   const conv = store.getActive();
   const profile = profiles.getProfile(conv.profileId) ?? profiles.getDefault();
-  // The workspace's AGENTS.md, loaded once per conversation and cached on the
-  // conversation itself (a switched-to conversation reuses its cached copy;
-  // a fresh one fetches its own). Undefined when the file is missing.
-  if (conv.agentsMd === undefined) conv.agentsMd = await loadAgentsMd();
+  // The workspace's AGENTS.md, loaded once per conversation and cached on
+  // the conversation itself (a switched-to conversation reuses its cached
+  // copy; a fresh one fetches its own). A failed fetch (file missing,
+  // backend down) is swallowed: the cache stays undefined so a later turn
+  // can retry, and the prompt simply lacks the file this turn.
+  if (conv.agentsMd === undefined) {
+    try {
+      conv.agentsMd = await loadAgentsMd();
+    } catch {
+      // Leave conv.agentsMd undefined so the next turn retries.
+    }
+  }
   const agentsMd = conv.agentsMd;
   const hookCommand = profile.hookCommand.trim();
   const needsHook =
