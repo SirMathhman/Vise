@@ -25,7 +25,7 @@ import { reloadOpenTabs, resetDeletedTabBuffers } from "./tabsView.js";
 /** Locate the `<li>` for a directory (by rel) in the current tree DOM. */
 export function findDirLi(
   list: HTMLUListElement,
-  rel: string
+  rel: string,
 ): HTMLLIElement | null {
   const parts = rel.split("/");
   let current: HTMLUListElement | null = list;
@@ -37,7 +37,7 @@ export function findDirLi(
         (el) =>
           el instanceof HTMLLIElement &&
           el.classList.contains("directory") &&
-          el.querySelector(".name")?.textContent === part
+          el.querySelector(".name")?.textContent === part,
       ) as HTMLLIElement | undefined) ?? null;
     if (!found) return null;
     current = found.querySelector(":scope > ul");
@@ -49,7 +49,7 @@ export async function renderListing(
   list: HTMLUListElement,
   lsPath: HTMLElement,
   rel: string,
-  viewer: Viewer
+  viewer: Viewer,
 ): Promise<void> {
   try {
     const data = await listDir(rel);
@@ -70,7 +70,7 @@ export async function renderListing(
 function renderEntry(
   item: DirEntry,
   parentRel: string,
-  viewer: Viewer
+  viewer: Viewer,
 ): HTMLLIElement {
   const li = document.createElement("li");
   li.className = item.kind;
@@ -95,7 +95,7 @@ function renderEntry(
     toggle.textContent = "▸";
     toggle.addEventListener(
       "click",
-      () => void expandDir(toggle, li, childRel, viewer)
+      () => void expandDir(toggle, li, childRel, viewer),
     );
     row.addEventListener("contextmenu", (e) => {
       e.preventDefault();
@@ -108,7 +108,7 @@ function renderEntry(
               void refreshDir(viewer, childRel, li);
               void viewer.cb.viewFile(
                 childRel ? `${childRel}/${name}` : name,
-                viewer
+                viewer,
               );
             }),
         },
@@ -126,7 +126,7 @@ function renderEntry(
     row.classList.add("clickable");
     row.addEventListener(
       "click",
-      () => void viewer.cb.viewFile(childRel, viewer)
+      () => void viewer.cb.viewFile(childRel, viewer),
     );
     row.addEventListener("contextmenu", (e) => {
       e.preventDefault();
@@ -149,7 +149,7 @@ async function deleteFile(
   rel: string,
   parentRel: string,
   li: HTMLLIElement,
-  viewer: Viewer
+  viewer: Viewer,
 ): Promise<void> {
   const name = rel.split("/").pop() ?? rel;
   const ok = window.confirm(`Delete "${name}"? This cannot be undone.`);
@@ -172,7 +172,7 @@ async function deleteFile(
     viewer.cb.setHint(
       viewer,
       `Delete failed: ${(err as Error).message}`,
-      "viewer-error"
+      "viewer-error",
     );
   }
 }
@@ -181,7 +181,7 @@ async function expandDir(
   toggle: HTMLButtonElement,
   li: HTMLLIElement,
   rel: string,
-  viewer: Viewer
+  viewer: Viewer,
 ): Promise<void> {
   const expanded = toggle.getAttribute("aria-expanded") === "true";
   if (expanded) {
@@ -212,7 +212,7 @@ async function expandDir(
 export async function refreshDir(
   viewer: Viewer,
   rel: string,
-  targetLi: HTMLLIElement | null
+  targetLi: HTMLLIElement | null,
 ): Promise<void> {
   if (!targetLi) {
     await renderListing(viewer.list, viewer.lsPath, "", viewer);
@@ -256,7 +256,7 @@ async function liveRefresh(viewer: Viewer, rel: string): Promise<void> {
   // first (shortest rel first) so a nested dir is re-located on the node its
   // parent's re-render just created.
   const dirs = [...viewer.expandedDirs].sort(
-    (a, b) => a.split("/").length - b.split("/").length
+    (a, b) => a.split("/").length - b.split("/").length,
   );
   for (const dirRel of dirs) {
     const li = findDirLi(viewer.list, dirRel);
