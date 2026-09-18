@@ -1018,6 +1018,7 @@ async function runTurn(
         (text) => {
           if (!streamingStarted) {
             view.beginStreaming();
+            view.clearNotice();
             streamingStarted = true;
           }
           view.updateStreaming(text);
