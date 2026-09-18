@@ -245,32 +245,23 @@ export async function sendLlmMessage(
  * text each time a new text delta arrives. Returns the complete assistant
  * reply (text and/or tool calls) when the stream ends. Unlike `sendLlmMessage`,
  * this sends `stream: true` and parses the SSE response incrementally.
+ *
+ * `signal`, when given, lets the caller cancel generation early (e.g. a Stop
+ * button). Aborting does not reject the returned promise: whatever text and
+ * reasoning were accumulated before the abort are returned normally, so the
+ * caller can treat an interrupted reply the same as a short complete one
+ * instead of having to special-case a thrown `AbortError`.
  */
 export async function streamLlmMessage(
   messages: LlmMessage[],
   model: string,
   tools: LlmTool[] | undefined,
   onTextChunk: (text: string) => void,
-  onReasoningChunk: (text: string) => void
+  onReasoningChunk: (text: string) => void,
+  signal?: AbortSignal
 ): Promise<LlmAssistantMessage> {
   const body: Record<string, unknown> = { model, messages, stream: true };
   if (tools && tools.length > 0) body.tools = tools;
-  const res = await fetch("/llm/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${LLM_API_KEY}`,
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) return fail(res);
-  if (!res.body) {
-    // No readable body (e.g. a proxy that stripped the stream); fall back to
-    // the non-streaming path so the caller still gets a complete reply.
-    return sendLlmMessage(messages, model, tools);
-  }
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
   let buffer = "";
   let content = "";
   let reasoning = "";
@@ -349,13 +340,37 @@ export async function streamLlmMessage(
     }
   };
 
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
+  try {
+    const res = await fetch("/llm/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${LLM_API_KEY}`,
+      },
+      body: JSON.stringify(body),
+      signal,
+    });
+    if (!res.ok) return fail(res);
+    if (!res.body) {
+      // No readable body (e.g. a proxy that stripped the stream); fall back to
+      // the non-streaming path so the caller still gets a complete reply.
+      return await sendLlmMessage(messages, model, tools);
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      processBuffer();
+    }
     processBuffer();
+  } catch (err) {
+    // A caller-initiated abort (a Stop button) ends generation early rather
+    // than failing the turn: return whatever was accumulated so far, exactly
+    // as if the model had produced a short, complete reply.
+    if (!(err instanceof DOMException && err.name === "AbortError")) throw err;
   }
-  processBuffer();
   const calls = toolCalls.filter((t) => t.id !== "");
   return {
     content: content || null,

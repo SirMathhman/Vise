@@ -100,6 +100,19 @@
   border-color: var(--border-gold);
 }
 
+/* #llm-send doubles as the Stop button while a turn is in flight (see
+   llm.ts's submitTurn) rather than a separate element, so the composer never
+   grows a second control that's disabled 95% of the time. */
+#app #llm #llm-send[data-mode="stop"] {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+#app #llm #llm-send[data-mode="stop"]:hover {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+}
+
 /* Profiles are edited in a modal (not inline in the panel's normal flow) so
    the panel never needs a second, nested scrollbar alongside the transcript
    (#llm-response) — the modal's own overflow-y is the only scroll region
