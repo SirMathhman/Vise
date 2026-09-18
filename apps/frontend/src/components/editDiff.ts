@@ -16,7 +16,7 @@
 import { getFile } from "../api/client.js";
 import { buildDiffRows, clampEditRange, type DiffRow } from "../diff.js";
 import { appendHighlighted } from "../highlight.js";
-import type { ActiveDiff, Viewer } from "./fileTree.js";
+import type { Viewer } from "./fileTree.js";
 
 /** Build one diff row's DOM: old/new gutter numbers, a marker, then the (syntax-highlighted) text. */
 function renderDiffRow(row: DiffRow): HTMLElement {

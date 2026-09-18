@@ -15,10 +15,9 @@
 import {
   deleteFile as apiDelete,
   type DirEntry,
-  getFile,
   listDir,
 } from "../api/client.js";
-import { makeContextMenu, showMenu } from "./contextMenu.js";
+import { showMenu } from "./contextMenu.js";
 import { showCreateForm } from "./createDialog.js";
 import type { Viewer } from "./fileTree.js";
 import { reloadOpenTabs, resetDeletedTabBuffers } from "./tabsView.js";
