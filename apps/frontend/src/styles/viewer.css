@@ -258,3 +258,91 @@
 #app #viewer-body .tok-keyword {
   color: var(--gold-bright);
 }
+
+/* ── Live edit_file diff preview ─────────────────────────── */
+/* Shown in place of the normal read-only/editor view while a model tool
+   call's edit is being previewed (see fileTree.ts's beginEditDiff/
+   updateEditDiffNew/endEditDiff): a dual-gutter unified diff, the same
+   shape most editors show a git diff in — old and new line numbers side by
+   side, a -/+ marker column, and a red/green row tint for removed/added
+   lines. Unchanged lines around the hunk render plainly with both gutters
+   agreeing, so the edit reads in its real surrounding context rather than
+   as an isolated snippet. */
+#app #viewer-body .diff-scroll {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+#app #viewer-body .diff-row {
+  display: flex;
+}
+
+#app #viewer-body .diff-old-no,
+#app #viewer-body .diff-new-no {
+  flex: 0 0 auto;
+  min-width: 3.5ch;
+  padding: 0 0.75ch;
+  text-align: right;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+#app #viewer-body .diff-old-no {
+  border-right: 1px solid var(--border);
+}
+
+#app #viewer-body .diff-new-no {
+  border-right: 1px solid var(--border);
+  margin-right: 1ch;
+}
+
+#app #viewer-body .diff-marker {
+  flex: 0 0 auto;
+  width: 1.5ch;
+  text-align: center;
+  user-select: none;
+}
+
+#app #viewer-body .diff-text {
+  flex: 1 1 auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+#app #viewer-body .diff-row-removed {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+}
+
+#app #viewer-body .diff-row-removed .diff-marker {
+  color: var(--danger);
+}
+
+#app #viewer-body .diff-row-added {
+  background: color-mix(in srgb, var(--success) 14%, transparent);
+}
+
+#app #viewer-body .diff-row-added .diff-marker {
+  color: var(--success);
+}
+
+/* The added (green) section is rewritten on every streamed chunk of the
+   model's `content` argument; a blinking cursor (a real node, appended after
+   the last added line's text — see updateEditDiffNew) gives it a live
+   typing feel until the call settles (endEditDiff reloads the file and
+   discards the whole diff, cursor included). */
+#app #viewer-body .diff-cursor {
+  display: inline-block;
+  width: 0.5em;
+  height: 1em;
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  background: var(--success);
+  animation: diff-cursor-blink 1s step-end infinite;
+}
+
+@keyframes diff-cursor-blink {
+  50% {
+    opacity: 0;
+  }
+}

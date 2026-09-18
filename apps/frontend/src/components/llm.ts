@@ -10,6 +10,10 @@ import {
   sendLlmMessage,
   streamLlmMessage,
 } from "../api/client.js";
+import {
+  extractPartialJsonNumber,
+  extractPartialJsonString,
+} from "../llm/partialJson.js";
 import { llmToolDefinitions } from "../llm/tools.js";
 import {
   type AskCardHandle,
@@ -21,6 +25,7 @@ import {
   type ConversationStore,
   createConversationStore,
 } from "./conversations.js";
+import type { FileViewerHandle } from "./fileTree.js";
 import {
   MessageView,
   type SubagentStep,
@@ -49,7 +54,10 @@ import {
  * panel's own scroll). The Send button (and Ctrl/Cmd+Enter) runs a chat
  * completion for the active conversation.
  */
-export function setupLlm(root: HTMLElement): void {
+export function setupLlm(
+  root: HTMLElement,
+  fileViewer: FileViewerHandle | undefined
+): void {
   const conversation =
     root.querySelector<HTMLSelectElement>("#llm-conversation");
   const model = root.querySelector<HTMLSelectElement>("#llm-model");
@@ -236,6 +244,7 @@ export function setupLlm(root: HTMLElement): void {
       store,
       profiles,
       view,
+      fileViewer,
       send,
       m,
       text,
@@ -873,6 +882,18 @@ let pendingAsk:
 let pendingAskSeq = 0;
 
 /**
+ * One edit_file call within a single streaming round whose live diff preview
+ * has been requested from the file viewer (see `handleEditAnimChunk`).
+ * Presence in the tracking map means `beginEditDiff` was called exactly
+ * once for this index; `active` resolves to whether the viewer actually
+ * took over — only then does the plain tool-call label get skipped in favor
+ * of the live preview.
+ */
+interface EditAnimTrack {
+  active: Promise<boolean>;
+}
+
+/**
  * Clear the pending ask_questions, if any: mark the card as not answered,
  * remove it from the DOM, and resolve its promise with the "not answered"
  * result. Called when the user starts a new turn, starts a new conversation,
@@ -928,6 +949,7 @@ async function submitTurn(
   store: ConversationStore,
   profiles: ProfileStore,
   view: MessageView,
+  fileViewer: FileViewerHandle | undefined,
   send: HTMLButtonElement,
   model: string,
   text: string,
@@ -964,6 +986,7 @@ async function submitTurn(
       profile,
       model,
       view,
+      fileViewer,
       text,
       store.getContextWindow(model),
       store.getPromptTokens(conv.id),
@@ -995,12 +1018,63 @@ async function submitTurn(
   }
 }
 
+/**
+ * Feed one streamed chunk of a tool call's accumulated name/arguments into
+ * the live edit_file diff preview in the file viewer, if it is (or might
+ * become) one. Gated on `path`/`start_line` resolving — `end_line` may
+ * genuinely be omitted (defaults to `start_line`, a pure insert), which is
+ * indistinguishable mid-stream from "hasn't arrived yet," so that case waits
+ * for the `content` key to appear (a required field every call has) before
+ * treating the omission as final. The model is not guaranteed to emit these
+ * fields in the schema's declared order (verified live: one local model
+ * emitted `content` before `start_line`), so nothing here assumes one —
+ * `extractPartialJsonNumber`'s trailing-delimiter check makes it safe to
+ * probe for a field on every chunk regardless of where it lands.
+ *
+ * `beginEditDiff` is async (it fetches the file), so the first chunk that
+ * qualifies kicks it off and records the pending call in `tracks`; every
+ * chunk after that (including this same one) streams the call's `content`
+ * so far into the diff's green side once — and only once — that promise
+ * resolves `true` (the viewer actually took over; `false` means it couldn't,
+ * e.g. an unsaved edit failed to flush, and this call gets no live preview).
+ */
+function handleEditAnimChunk(
+  fileViewer: FileViewerHandle,
+  tracks: Map<number, EditAnimTrack>,
+  index: number,
+  name: string,
+  args: string
+): void {
+  if (name !== "edit_file") return;
+  const existing = tracks.get(index);
+  if (existing) {
+    void existing.active.then((active) => {
+      if (active) {
+        fileViewer.updateEditDiffNew(extractPartialJsonString(args, "content"));
+      }
+    });
+    return;
+  }
+  const path = extractPartialJsonString(args, "path");
+  const startLine = extractPartialJsonNumber(args, "start_line");
+  if (!path || startLine === undefined) return;
+  let endLine = extractPartialJsonNumber(args, "end_line");
+  if (endLine === undefined) {
+    if (!args.includes('"content"')) return;
+    endLine = startLine;
+  }
+  tracks.set(index, {
+    active: fileViewer.beginEditDiff(path, startLine, endLine),
+  });
+}
+
 async function runTurn(
   store: ConversationStore,
   profiles: ProfileStore,
   profile: Profile,
   model: string,
   view: MessageView,
+  fileViewer: FileViewerHandle | undefined,
   userText: string,
   cap: number | undefined,
   lastPromptTokens: number | undefined,
@@ -1066,6 +1140,10 @@ async function runTurn(
           streamingStarted = true;
         }
       };
+      // Tracks edit_file calls previewed live in the file viewer as this
+      // round's tool_calls stream in (see handleEditAnimChunk), keyed by the
+      // call's index within this one streamLlmMessage invocation.
+      const editAnimTracks = new Map<number, EditAnimTrack>();
       const reply = await streamLlmMessage(
         messages,
         model,
@@ -1078,6 +1156,10 @@ async function runTurn(
           ensureStreamingStarted();
           view.updateReasoning(reasoning);
         },
+        fileViewer &&
+          ((index, name, args) => {
+            handleEditAnimChunk(fileViewer, editAnimTracks, index, name, args);
+          }),
         signal
       );
       lastUsage = reply.usage ?? lastUsage;
@@ -1086,8 +1168,12 @@ async function runTurn(
         // The user clicked Stop: finalize now with whatever text (if any)
         // was generated before the abort, skipping any tool calls the reply
         // may have (possibly incomplete, mid-stream) and the end-of-turn
-        // hook check, which would otherwise fight the user's stop.
+        // hook check, which would otherwise fight the user's stop. Reload
+        // any file the diff preview opened — the edit never actually ran,
+        // so leaving its unfinished green side up would misleadingly imply
+        // it did.
         view.endStreaming();
+        if (editAnimTracks.size > 0) void fileViewer?.endEditDiff();
         const text =
           reply.content && reply.content.trim() !== ""
             ? reply.content
@@ -1115,10 +1201,21 @@ async function runTurn(
           content: reply.content,
           tool_calls: reply.tool_calls,
         });
-        for (const tc of reply.tool_calls) {
-          view.appendToolCall(toolCallLabel(tc));
+        // An edit_file call whose live diff preview actually took over the
+        // file viewer gets no plain tool-call label — the preview already
+        // shows what it's doing — falling back to the normal label for
+        // everything else (including an edit_file call the preview never
+        // managed to open, e.g. an unsaved manual edit that failed to flush).
+        const active = new Map<number, boolean>();
+        for (let ti = 0; ti < reply.tool_calls.length; ti++) {
+          const track = editAnimTracks.get(ti);
+          active.set(ti, track ? await track.active : false);
         }
-        for (const tc of reply.tool_calls) {
+        reply.tool_calls.forEach((tc, ti) => {
+          if (!active.get(ti)) view.appendToolCall(toolCallLabel(tc));
+        });
+        for (let ti = 0; ti < reply.tool_calls.length; ti++) {
+          const tc = reply.tool_calls[ti];
           const outcome = await resolveToolCall(
             tc,
             model,
@@ -1138,6 +1235,14 @@ async function runTurn(
               outcome.steps,
               outcome.result
             );
+          } else if (active.get(ti)) {
+            // The call already ran (resolveToolCall awaited above): settle
+            // the preview by reloading the file's real, saved state. A
+            // failure's preview just reverts to the unchanged file — surface
+            // the actual reason the same way every other tool failure does.
+            await fileViewer?.endEditDiff();
+            const ok = !outcome.result.startsWith("Error:");
+            if (!ok) view.appendToolResult(outcome.result);
           } else {
             view.appendToolResult(outcome.result);
           }
@@ -1182,6 +1287,7 @@ async function runTurn(
   } catch (err) {
     history.length = preLength;
     view.endStreaming();
+    void fileViewer?.endEditDiff();
     if (err instanceof DOMException && err.name === "AbortError") {
       throw err;
     }

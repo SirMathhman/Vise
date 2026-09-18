@@ -113,20 +113,33 @@ apps/frontend/src/
   main.ts         # bootstrap: mounts render into #app (entry only)
   render.ts       # THIN composition: sets the full page HTML template, runs the health()
                   #   check, then delegates each panel to components/ — await setupFileViewer(root)
-                  #   (tree + editor) and setupLlm(root) (chat). Owns no panel logic itself.
+                  #   (tree + editor; captures its returned FileViewerHandle) and
+                  #   setupLlm(root, fileViewer) (chat). Owns no panel logic itself.
   dom.ts          # shared DOM helpers (makeButton, ...)
   highlight.ts    # SYNTAX HIGHLIGHT: pure line tokenizer + thin DOM appender (see invariant below)
+  diff.ts         # DOM-free line-diff math for the live edit_file preview: buildDiffRows
+                  #   (single-hunk unified diff — context/removed/added rows, dual old/new
+                  #   line numbers) + clampEditRange (mirrors the backend's end_line clamp).
   api/
     client.ts     # fetch wrapper: typed calls, base path, error normalization. Also hosts
                   #   subscribeToChanges(onEvent), the single place that opens the /api/watch
                   #   EventSource and hands parsed WatchEvent objects up (returns a close fn).
+  llm/
+    partialJson.ts  # DOM-free: extractPartialJsonString/extractPartialJsonNumber pull a
+                    #   field's value out of a tool call's still-streaming, possibly-invalid
+                    #   JSON arguments text — see the LLM panel section.
   components/     # self-contained views/widgets, one file each
     contextMenu.ts  #   reusable context menu (makeContextMenu / showMenu / hideMenu)
     createDialog.ts #   new-file / new-directory modal (showCreateForm)
     fileTree.ts     #   file tree + viewer/editor panel: a thin DOM controller exposed as
-                    #   setupFileViewer(root). Renders the listing (renderListing/renderEntry)
+                    #   setupFileViewer(root), returning a FileViewerHandle (beginEditDiff/
+                    #   updateEditDiffNew/endEditDiff) the LLM panel uses to preview an
+                    #   in-flight edit_file call live, in this panel, as an inline diff — see
+                    #   the LLM panel section. Renders the listing (renderListing/renderEntry)
                     #   and the always-edit overlay editor (renderEditor: transparent textarea
-                    #   over a live-highlighted backdrop + line-number gutter). Reached via
+                    #   over a live-highlighted backdrop + line-number gutter) — renderEditor
+                    #   is also the one place that resets activeDiff to null, since normal
+                    #   navigation always supersedes a live preview. Reached via
                     #   listDir/getFile/putFile/apiDelete in api/client.ts. Live reflection:
                     #   tracks expandedDirs and, on a debounced (80ms) WatchEvent, re-fetches
                     #   the root + each expanded dir (depth-ordered) and re-renders; reloads the

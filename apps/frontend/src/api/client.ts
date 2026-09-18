@@ -246,6 +246,12 @@ export async function sendLlmMessage(
  * reply (text and/or tool calls) when the stream ends. Unlike `sendLlmMessage`,
  * this sends `stream: true` and parses the SSE response incrementally.
  *
+ * `onToolCallChunk`, when given, is called with the current accumulated
+ * `name` and `arguments` text of a tool call every time either grows (keyed
+ * by the call's `index` within this reply, so a caller can track more than
+ * one in-flight call). `arguments` is raw, possibly-incomplete JSON text —
+ * see `llm/partialJson.ts` for pulling a live field value out of it.
+ *
  * `signal`, when given, lets the caller cancel generation early (e.g. a Stop
  * button). Aborting does not reject the returned promise: whatever text and
  * reasoning were accumulated before the abort are returned normally, so the
@@ -258,6 +264,7 @@ export async function streamLlmMessage(
   tools: LlmTool[] | undefined,
   onTextChunk: (text: string) => void,
   onReasoningChunk: (text: string) => void,
+  onToolCallChunk?: (index: number, name: string, args: string) => void,
   signal?: AbortSignal
 ): Promise<LlmAssistantMessage> {
   const body: Record<string, unknown> = { model, messages, stream: true };
@@ -304,6 +311,11 @@ export async function streamLlmMessage(
         if (tc.function?.name) existing.function.name += tc.function.name;
         if (tc.function?.arguments)
           existing.function.arguments += tc.function.arguments;
+        onToolCallChunk?.(
+          idx,
+          existing.function.name,
+          existing.function.arguments
+        );
       }
     }
     const usage = json.usage as

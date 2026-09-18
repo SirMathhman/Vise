@@ -175,6 +175,6 @@ export async function render(root: HTMLElement): Promise<void> {
     status.classList.add("err");
   }
 
-  await setupFileViewer(root);
-  setupLlm(root);
+  const fileViewer = await setupFileViewer(root);
+  setupLlm(root, fileViewer);
 }

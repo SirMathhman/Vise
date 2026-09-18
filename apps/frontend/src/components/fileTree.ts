@@ -6,26 +6,69 @@ import {
   putFile,
   subscribeToChanges,
 } from "../api/client.js";
+import { buildDiffRows, clampEditRange, type DiffRow } from "../diff.js";
 import { appendHighlighted } from "../highlight.js";
 import { makeContextMenu, showMenu } from "./contextMenu.js";
 import { showCreateForm } from "./createDialog.js";
 import { createFileStateStore, type FileStateStore } from "./fileState.js";
 
 /**
+ * Lets another panel (the LLM chat) drive the file viewer to preview an
+ * edit_file tool call live, as an inline diff — the same shape most editors
+ * show a git diff in (dual gutters, red removed / green added rows) — before
+ * the call actually executes on the backend. `setupFileViewer` returns this
+ * so `render.ts` can hand it to `setupLlm`; the two panels are otherwise
+ * fully decoupled (the viewer knows nothing about conversations or tools).
+ */
+export interface FileViewerHandle {
+  /**
+   * Try to open `rel` and show it as a live diff over `[startLine, endLine)`
+   * (1-based, exclusive end, matching edit_file's own semantics — see
+   * `diff.ts`). Flushes any pending edit first, exactly like clicking a file
+   * in the tree, so an in-progress manual edit is never silently discarded;
+   * returns `false` (and touches nothing) if that flush fails or the file
+   * can't be read, so the caller can skip the live preview for this call
+   * without blocking the model's actual edit.
+   */
+  beginEditDiff(
+    rel: string,
+    startLine: number,
+    endLine: number
+  ): Promise<boolean>;
+  /**
+   * Update the added (green) rows from the call's `content` argument so far,
+   * split on newlines. A no-op if a later `beginEditDiff`/normal navigation
+   * has since taken over the viewer.
+   */
+  updateEditDiffNew(text: string): void;
+  /**
+   * Settle the diff once the call has actually executed on the backend (or
+   * failed — the chat transcript reports that separately), then reload the
+   * file from disk so the viewer reflects the real, authoritative result
+   * rather than the live preview. A no-op under the same supersede condition
+   * as `updateEditDiffNew`.
+   */
+  endEditDiff(): Promise<void>;
+}
+
+/**
  * Wire up the file tree/listing and the editor/viewer panels. This is the
  * thin DOM controller for the left (tree) and center (viewer) panels: it
  * queries the elements, builds the shared `Viewer` state, wires the context
  * menu and `beforeunload` guard, renders the initial listing, and owns the
- * tree expand/refresh and the editor's auto-save lifecycle.
+ * tree expand/refresh and the editor's auto-save lifecycle. Returns a
+ * `FileViewerHandle` so the LLM panel can preview an edit_file call live.
  */
-export async function setupFileViewer(root: HTMLElement): Promise<void> {
+export async function setupFileViewer(
+  root: HTMLElement
+): Promise<FileViewerHandle | undefined> {
   const lsPath = root.querySelector<HTMLElement>("#ls-path");
   const list = root.querySelector<HTMLUListElement>("#ls-items");
   const viewerBody = root.querySelector<HTMLPreElement>("#viewer-body");
   const viewerTitle = root.querySelector<HTMLHeadingElement>("#viewer-title");
   const viewerActions = root.querySelector<HTMLElement>("#viewer-actions");
   if (!lsPath || !list || !viewerBody || !viewerTitle || !viewerActions) {
-    return;
+    return undefined;
   }
 
   const menu = makeContextMenu();
@@ -42,6 +85,7 @@ export async function setupFileViewer(root: HTMLElement): Promise<void> {
     lsPath,
     store,
     expandedDirs: new Set<string>(),
+    activeDiff: null,
   };
   window.addEventListener("beforeunload", (e: BeforeUnloadEvent) => {
     if (store.isDirty()) {
@@ -72,6 +116,13 @@ export async function setupFileViewer(root: HTMLElement): Promise<void> {
   });
   await renderListing(list, lsPath, "", viewer);
   subscribeToChanges((e) => scheduleLiveRefresh(viewer, e));
+
+  return {
+    beginEditDiff: (rel, startLine, endLine) =>
+      beginEditDiff(viewer, rel, startLine, endLine),
+    updateEditDiffNew: (text) => updateEditDiffNew(viewer, text),
+    endEditDiff: () => endEditDiff(viewer),
+  };
 }
 
 /**
@@ -168,6 +219,25 @@ interface Viewer {
   store: FileStateStore;
   /** Rel paths of directories currently expanded in the tree. */
   expandedDirs: Set<string>;
+  /**
+   * The live edit_file diff currently shown, if any. Its identity (not just
+   * its fields) is the guard: `updateEditDiffNew`/`endEditDiff` only act
+   * when the `ActiveDiff` object they were handed is still this one, so a
+   * superseded preview (the user navigated away, or a second edit_file call
+   * took over the viewer) silently stops updating instead of fighting
+   * whatever replaced it.
+   */
+  activeDiff: ActiveDiff | null;
+}
+
+/** The live state of one in-progress edit_file diff preview. */
+interface ActiveDiff {
+  rel: string;
+  lines: string[];
+  startLine: number;
+  endLine: number;
+  /** The container the added (green) rows are rendered into; rewritten on every `updateEditDiffNew`. */
+  addedContainer: HTMLElement;
 }
 
 async function renderListing(
@@ -335,6 +405,8 @@ async function viewFile(rel: string, viewer: Viewer): Promise<void> {
 }
 
 function renderEditor(viewer: Viewer): void {
+  // Normal navigation supersedes any live edit_file preview.
+  viewer.activeDiff = null;
   viewer.store.clearTimer();
   viewer.actions.innerHTML = "";
   const text = viewer.store.getContent() ?? "";
@@ -403,6 +475,125 @@ function renderEditor(viewer: Viewer): void {
   viewer.body.innerHTML = "";
   viewer.body.append(scroller);
   ta.focus();
+}
+
+/** Build one diff row's DOM: old/new gutter numbers, a marker, then the (syntax-highlighted) text. */
+function renderDiffRow(row: DiffRow): HTMLElement {
+  const el = document.createElement("div");
+  el.className =
+    row.marker === "-"
+      ? "diff-row diff-row-removed"
+      : row.marker === "+"
+        ? "diff-row diff-row-added"
+        : "diff-row";
+
+  const oldNo = document.createElement("span");
+  oldNo.className = "diff-old-no";
+  oldNo.textContent = row.oldNum === null ? "" : String(row.oldNum);
+
+  const newNo = document.createElement("span");
+  newNo.className = "diff-new-no";
+  newNo.textContent = row.newNum === null ? "" : String(row.newNum);
+
+  const marker = document.createElement("span");
+  marker.className = "diff-marker";
+  marker.textContent = row.marker;
+
+  const text = document.createElement("span");
+  text.className = "diff-text";
+  appendHighlighted(text, row.text);
+
+  el.append(oldNo, newNo, marker, text);
+  return el;
+}
+
+/**
+ * beginEditDiff: see `FileViewerHandle`. Flushes any pending edit first
+ * (same guard `viewFile` uses), then fetches the file fresh and mounts the
+ * static skeleton (context before/after + the removed rows) with an empty
+ * added section, ready for `updateEditDiffNew` to fill in as content streams.
+ */
+async function beginEditDiff(
+  viewer: Viewer,
+  rel: string,
+  startLine: number,
+  endLine: number
+): Promise<boolean> {
+  const saved = await viewer.store.flush();
+  if (!saved) return false;
+  let content: string;
+  try {
+    const data = await getFile(rel);
+    content = data.content;
+  } catch {
+    return false;
+  }
+
+  viewer.store.clearTimer();
+  viewer.title.textContent = rel;
+  viewer.actions.innerHTML = "";
+  const lines = content.split(/\r?\n/);
+  const { start, end } = clampEditRange(startLine, endLine, lines.length);
+
+  const scroller = document.createElement("div");
+  scroller.className = "diff-scroll";
+  scroller.append(...buildDiffRows(lines, start, end, []).map(renderDiffRow));
+  // The added rows live in their own container so updateEditDiffNew can
+  // rewrite just that slice without rebuilding the (static) rest each chunk.
+  // It's inserted once, right where the removed rows end, by re-deriving the
+  // row list with a single placeholder and swapping that node for the
+  // container — simplest way to reserve the right spot without hand-tracking
+  // DOM indices.
+  const placeholderIndex = end - start; // number of context-before + removed rows
+  const addedContainer = document.createElement("div");
+  addedContainer.className = "diff-added-container";
+  const beforeAddedChildren = [...scroller.children];
+  const anchor = beforeAddedChildren[placeholderIndex] ?? null;
+  scroller.insertBefore(addedContainer, anchor);
+
+  viewer.body.style.overflow = "hidden";
+  viewer.body.innerHTML = "";
+  viewer.body.append(scroller);
+  viewer.activeDiff = {
+    rel,
+    lines,
+    startLine: start,
+    endLine: end,
+    addedContainer,
+  };
+  // A cursor immediately, even before any content has streamed in, so the
+  // diff doesn't sit looking finished while the model is still generating.
+  const cursor = document.createElement("span");
+  cursor.className = "diff-cursor";
+  addedContainer.append(cursor);
+  addedContainer.scrollIntoView({ block: "center" });
+  return true;
+}
+
+/** updateEditDiffNew: see `FileViewerHandle`. */
+function updateEditDiffNew(viewer: Viewer, text: string): void {
+  const diff = viewer.activeDiff;
+  if (!diff) return;
+  const newLines = text === "" ? [] : text.split(/\r?\n/);
+  diff.addedContainer.innerHTML = "";
+  const rows = buildDiffRows(diff.lines, diff.startLine, diff.endLine, newLines)
+    .filter((r) => r.marker === "+")
+    .map(renderDiffRow);
+  diff.addedContainer.append(...rows);
+  const cursor = document.createElement("span");
+  cursor.className = "diff-cursor";
+  const lastText = rows.at(-1)?.querySelector(".diff-text");
+  (lastText ?? diff.addedContainer).append(cursor);
+}
+
+/** endEditDiff: see `FileViewerHandle`. */
+async function endEditDiff(viewer: Viewer): Promise<void> {
+  const diff = viewer.activeDiff;
+  if (!diff) return;
+  // The edit already ran on the backend (or failed) by the time this is
+  // called; reload from disk either way so the viewer shows the real,
+  // authoritative result instead of the live preview.
+  await loadIntoViewer(viewer, diff.rel);
 }
 
 function setSaveState(
