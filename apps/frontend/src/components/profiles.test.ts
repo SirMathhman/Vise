@@ -141,7 +141,7 @@ describe("profile store", () => {
           turnCommand: "",
           endCommand: "",
         },
-      ]),
+      ])
     );
 
     const store = createProfileStore();
@@ -176,7 +176,7 @@ describe("profile store", () => {
           turnCommand: "",
           endCommand: "",
         },
-      ]),
+      ])
     );
 
     const store = createProfileStore();
@@ -196,7 +196,7 @@ describe("profile store", () => {
           turnCommand: "",
           endCommand: "",
         },
-      ]),
+      ])
     );
 
     const store = createProfileStore();
@@ -227,7 +227,7 @@ describe("profile store", () => {
           turnCommand: "",
           endCommand: "",
         },
-      ]),
+      ])
     );
 
     const store = createProfileStore();

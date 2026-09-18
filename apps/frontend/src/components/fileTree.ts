@@ -1,16 +1,23 @@
-import {
-  deleteFile as apiDelete,
-  type DirEntry,
-  getFile,
-  listDir,
-  putFile,
-  subscribeToChanges,
-} from "../api/client.js";
-import { buildDiffRows, clampEditRange, type DiffRow } from "../diff.js";
+import { getFile, putFile, subscribeToChanges } from "../api/client.js";
 import { appendHighlighted } from "../highlight.js";
 import { makeContextMenu, showMenu } from "./contextMenu.js";
 import { showCreateForm } from "./createDialog.js";
+import {
+  beginEditDiff,
+  cancelEditDiff,
+  endEditDiff,
+  updateEditDiffNew,
+} from "./editDiff.js";
 import { createFileStateStore, type FileStateStore } from "./fileState.js";
+import { createTabStore, type TabStore } from "./tabs.js";
+import {
+  activateTab,
+  ensureBuffer,
+  renderTabs,
+  setTabSaveState,
+  type TabCallbacks,
+} from "./tabsView.js";
+import { refreshDir, renderListing, scheduleLiveRefresh } from "./treePanel.js";
 
 /**
  * Lets another panel (the LLM chat) drive the file viewer to preview an
@@ -83,10 +90,30 @@ export async function setupFileViewer(
   }
 
   const menu = makeContextMenu();
-  const store = createFileStateStore(
+  const tabBar = root.querySelector<HTMLElement>("#tab-bar");
+
+  // The open-file tab list and active tab id, restored from localStorage.
+  const tabStore = createTabStore();
+  // One buffer store per open tab (independent buffers — each tab autosaves
+  // from its own text, so a background tab's 1s timer resolves from its own
+  // buffer, not the shared textarea). The active tab's buffer is also
+  // `viewer.store`; the others live only in this map.
+  const tabBuffers = new Map<string, FileStateStore>();
+  // Each open tab's live editor text, keyed by tab id — the canonical source
+  // for that tab's buffer `reader` and for what its textarea shows.
+  const tabText = new Map<string, string>();
+
+  // The no-tab placeholder buffer: its `reader` reads `tabText.get("")` (always
+  // undefined) and it is never marked dirty, so it behaves like an empty,
+  // clean buffer. Assigned to `viewer.store` whenever no tab is active.
+  // The placeholder is never dirty (its reader reads tabText.get(""), always
+  // undefined), so its save-status callback is a no-op.
+  const placeholderStore = createFileStateStore(
     (rel, value) => putFile(rel, value),
-    (state, message) => setSaveState(viewerActions, state, message)
+    () => {}
   );
+  placeholderStore.setReader(() => tabText.get(""));
+
   const viewer: Viewer = {
     body: viewerBody,
     title: viewerTitle,
@@ -94,12 +121,27 @@ export async function setupFileViewer(
     menu,
     list,
     lsPath,
-    store,
+    // Reassigned to the active tab's buffer whenever a tab is active (see
+    // `activateTab`); the placeholder while no tab is active.
+    store: placeholderStore,
+    placeholderStore,
+    tabBuffers,
+    tabText,
+    tabStore,
     expandedDirs: new Set<string>(),
     activeDiff: null,
+    tabBar,
+    cb: {
+      viewFile: (rel, v) => viewFile(rel, v),
+      renderEditor: (v) => renderEditor(v),
+      setHint: (v, text, cls) => setHint(v.body, text, cls),
+      loadIntoViewer: (v, rel) => loadIntoViewer(v, rel),
+    },
   };
   window.addEventListener("beforeunload", (e: BeforeUnloadEvent) => {
-    if (store.isDirty()) {
+    // Any open tab with unsaved edits blocks unload (the beforeunload source
+    // of truth moved from a single store to "any tab dirty").
+    if ([...tabBuffers.values()].some((s) => s.isDirty())) {
       e.preventDefault();
       e.returnValue = "";
     }
@@ -126,6 +168,11 @@ export async function setupFileViewer(
     ]);
   });
   await renderListing(list, lsPath, "", viewer);
+  // Render the tab bar from the restored open set (buffers not yet loaded, so
+  // no dirty dots yet), then bring the active tab's file into the viewer.
+  if (tabBar) renderTabs(viewer, viewer.cb);
+  const activeTab = viewer.tabStore.getActive();
+  if (activeTab) await viewFile(activeTab.rel, viewer);
   subscribeToChanges((e) => scheduleLiveRefresh(viewer, e));
 
   return {
@@ -135,80 +182,6 @@ export async function setupFileViewer(
     endEditDiff: (ok) => endEditDiff(viewer, ok),
     cancelEditDiff: () => cancelEditDiff(viewer),
   };
-}
-
-/**
- * Debounced live-refresh: on a filesystem change, refresh the root plus every
- * expanded directory, and reload the open file in the viewer (only when its
- * buffer is clean, so a user mid-edit is never clobbered). A short timer
- * collapses the burst of events a single edit typically produces.
- */
-let liveRefreshTimer: ReturnType<typeof setTimeout> | undefined;
-function scheduleLiveRefresh(viewer: Viewer, e: { path: string }): void {
-  if (liveRefreshTimer !== undefined) clearTimeout(liveRefreshTimer);
-  liveRefreshTimer = setTimeout(() => {
-    liveRefreshTimer = undefined;
-    void liveRefresh(viewer, e.path);
-  }, 80);
-}
-
-async function liveRefresh(viewer: Viewer, rel: string): Promise<void> {
-  await refreshDir(viewer, "", null);
-  // Re-locate expanded dirs: their `li` nodes may have been recreated by the
-  // refresh above, so look them up fresh in the current DOM. Refresh ancestors
-  // first (shortest rel first) so a nested dir is re-located on the node its
-  // parent's re-render just created.
-  const dirs = [...viewer.expandedDirs].sort(
-    (a, b) => a.split("/").length - b.split("/").length
-  );
-  for (const dirRel of dirs) {
-    const li = findDirLi(viewer.list, dirRel);
-    if (li) await refreshDir(viewer, dirRel, li);
-  }
-
-  if (viewer.activeDiff?.rel === rel) {
-    // A live edit_file diff preview is showing for the very file that just
-    // changed on disk — almost always the preview's own write, landing
-    // ~100-200ms after the tool call resolves, well before a human reacts.
-    // `beginEditDiff` never touches `viewer.store` (there is no plain-editor
-    // buffer while a diff is up), so the checks below have no idea a diff is
-    // showing and would otherwise reload right over it via the same
-    // `openRel` match a manually-open file gets — silently defeating
-    // endEditDiff's "wait for the user's own OK click" behavior in the most
-    // common case (the file being edited is usually the one already open).
-    // Leave it exactly as endEditDiff left it.
-    return;
-  }
-  const openRel = viewer.store.getRel();
-  if (!openRel) return;
-  if (rel === openRel && !viewer.store.isDirty()) {
-    // The open file changed on disk and we have no unsaved edits: reload it.
-    await loadIntoViewer(viewer, openRel);
-  } else if (rel === openRel) {
-    // Changed on disk but the buffer has unsaved edits: keep them, just tell
-    // the user the file is out of date so they can decide to reload.
-    viewer.title.textContent = `${openRel} (out of date)`;
-  }
-}
-
-/** Locate the `<li>` for a directory (by rel) in the current tree DOM. */
-function findDirLi(list: HTMLUListElement, rel: string): HTMLLIElement | null {
-  const parts = rel.split("/");
-  let current: HTMLUListElement | null = list;
-  let found: HTMLLIElement | null = null;
-  for (const part of parts) {
-    if (!current) return null;
-    found =
-      (Array.from(current.children).find(
-        (el) =>
-          el instanceof HTMLLIElement &&
-          el.classList.contains("directory") &&
-          el.querySelector(".name")?.textContent === part
-      ) as HTMLLIElement | undefined) ?? null;
-    if (!found) return null;
-    current = found.querySelector(":scope > ul");
-  }
-  return found;
 }
 
 /**
@@ -234,14 +207,30 @@ async function loadIntoViewer(viewer: Viewer, rel: string): Promise<void> {
   }
 }
 
-interface Viewer {
+export interface Viewer {
   body: HTMLPreElement;
   title: HTMLHeadingElement;
   actions: HTMLElement;
   menu: HTMLDivElement;
   list: HTMLUListElement;
   lsPath: HTMLElement;
+  /**
+   * The active tab's buffer store. The per-tab map below (`tabBuffers`) is
+   * the real source of truth for each open tab's autosave lifecycle; `store`
+   * is just a convenience reference to the active tab's entry, kept so the
+   * many existing `viewer.store.*` call sites read unchanged. Reassigning
+   * it on tab switch is what makes the active tab's textarea the live reader
+   * for that tab's (background-safe) autosave timer.
+   */
   store: FileStateStore;
+  /** The no-tab placeholder buffer (assigned to `store` when no tab is active). */
+  placeholderStore: FileStateStore;
+  /** Every open tab's buffer store, keyed by tab id (the active tab's is also `store`). */
+  tabBuffers: Map<string, FileStateStore>;
+  /** Every open tab's last known editor text, keyed by tab id (backs each tab's buffer `reader`). */
+  tabText: Map<string, string>;
+  /** The open-file tab list and active tab id, persisted across reloads. */
+  tabStore: TabStore;
   /** Rel paths of directories currently expanded in the tree. */
   expandedDirs: Set<string>;
   /**
@@ -253,10 +242,17 @@ interface Viewer {
    * whatever replaced it.
    */
   activeDiff: ActiveDiff | null;
+  /** The tab bar element the tabs render into (absent if the shell lacks it). */
+  tabBar: HTMLElement | null;
+  /**
+   * The tab callbacks (viewFile/renderEditor/setHint/loadIntoViewer) that
+   * `tabsView.ts` needs but can't own without a circular import. Wired up in
+   * `setupFileViewer` after the `viewer` object is constructed.
+   */
+  cb: TabCallbacks;
 }
 
-/** The live state of one in-progress edit_file diff preview. */
-interface ActiveDiff {
+export interface ActiveDiff {
   rel: string;
   lines: string[];
   startLine: number;
@@ -265,162 +261,50 @@ interface ActiveDiff {
   addedContainer: HTMLElement;
 }
 
-async function renderListing(
-  list: HTMLUListElement,
-  lsPath: HTMLElement,
-  rel: string,
-  viewer: Viewer
-): Promise<void> {
-  try {
-    const data = await listDir(rel);
-    if (rel === "") lsPath.textContent = data.path;
-    list.innerHTML = "";
-    for (const item of data.items) {
-      list.append(renderEntry(item, rel, viewer));
-    }
-  } catch (err) {
-    list.innerHTML = "";
-    const li = document.createElement("li");
-    li.className = "error";
-    li.textContent = `Failed to load: ${(err as Error).message}`;
-    list.append(li);
-  }
-}
-
-function renderEntry(
-  item: DirEntry,
-  parentRel: string,
-  viewer: Viewer
-): HTMLLIElement {
-  const li = document.createElement("li");
-  li.className = item.kind;
-  const row = document.createElement("div");
-  row.className = "row";
-
-  const badge = document.createElement("span");
-  badge.className = "badge";
-  badge.textContent = item.kind === "directory" ? "dir" : "file";
-
-  const name = document.createElement("span");
-  name.className = "name";
-  name.textContent = item.name;
-
-  const childRel = parentRel ? `${parentRel}/${item.name}` : item.name;
-
-  if (item.kind === "directory") {
-    const toggle = document.createElement("button");
-    toggle.className = "toggle";
-    toggle.type = "button";
-    toggle.setAttribute("aria-expanded", "false");
-    toggle.textContent = "▸";
-    toggle.addEventListener(
-      "click",
-      () => void expandDir(toggle, li, childRel, viewer)
-    );
-    row.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      showMenu(viewer.menu, e.clientX, e.clientY, [
-        {
-          label: "New File",
-          onClick: () =>
-            showCreateForm("file", childRel, (name) => {
-              void refreshDir(viewer, childRel, li);
-              void viewFile(childRel ? `${childRel}/${name}` : name, viewer);
-            }),
-        },
-        {
-          label: "New Directory",
-          onClick: () =>
-            showCreateForm("directory", childRel, () => {
-              void refreshDir(viewer, childRel, li);
-            }),
-        },
-      ]);
-    });
-    row.append(toggle, badge, name);
-  } else {
-    row.classList.add("clickable");
-    row.addEventListener("click", () => void viewFile(childRel, viewer));
-    row.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      showMenu(viewer.menu, e.clientX, e.clientY, [
-        {
-          label: "Delete",
-          onClick: () => void deleteFile(childRel, parentRel, li, viewer),
-        },
-      ]);
-    });
-    row.append(badge, name);
-  }
-
-  li.append(row);
-  return li;
-}
-
-async function deleteFile(
-  rel: string,
-  parentRel: string,
-  li: HTMLLIElement,
-  viewer: Viewer
-): Promise<void> {
-  const name = rel.split("/").pop() ?? rel;
-  const ok = window.confirm(`Delete "${name}"? This cannot be undone.`);
-  if (!ok) return;
-  try {
-    await apiDelete(rel);
-    if (parentRel === "") {
-      await renderListing(viewer.list, viewer.lsPath, "", viewer);
-    } else {
-      const parentLi = li.parentElement?.parentElement;
-      if (parentLi instanceof HTMLLIElement) {
-        await refreshDir(viewer, parentRel, parentLi);
-      }
-    }
-    viewer.store.resetDirty();
-    setHint(viewer.body, `Deleted "${name}".`, "viewer-hint");
-  } catch (err) {
-    setHint(
-      viewer.body,
-      `Delete failed: ${(err as Error).message}`,
-      "viewer-error"
-    );
-  }
-}
-
-function setHint(
-  body: HTMLPreElement,
-  text: string,
-  cls = "viewer-hint"
-): void {
-  body.innerHTML = "";
-  const span = document.createElement("span");
-  span.className = cls;
-  span.textContent = text;
-  body.append(span);
-}
-
 async function viewFile(rel: string, viewer: Viewer): Promise<void> {
-  const saved = await viewer.store.flush();
-  if (!saved) {
-    // The pending save failed; abort so edits are not lost.
+  // Opening a file always lands on its tab: create one if absent, or activate
+  // an existing one (e.g. the user re-clicks an already-open file). We must
+  // flush the CURRENTLY active tab's buffer first — the shared textarea holds
+  // that tab's content — before the switch reassigns `viewer.store`.
+  const activeIdBefore = viewer.tabStore.activeId();
+  if (activeIdBefore !== null) {
+    const buffer = viewer.tabBuffers.get(activeIdBefore);
+    const saved = buffer ? await buffer.flush() : true;
+    if (!saved) return; // A pending save failed; abort so edits are not lost.
+  }
+  // Ensure a tab exists for this file and make it active.
+  const tabId = viewer.tabStore.open(rel);
+  viewer.tabStore.persist();
+  const buffer = ensureBuffer(viewer, tabId);
+  // Re-point `viewer.store` at this tab's buffer and re-render the tab bar.
+  activateTab(viewer, tabId, viewer.cb);
+  // If this tab's buffer already holds the file (a re-activation),
+  // `activateTab` has already rendered it into the viewer — done.
+  if (buffer.getRel() === rel && viewer.tabText.get(tabId) !== undefined) {
     return;
   }
+  // New tab (or a restored tab whose buffer hasn't loaded yet): fetch the
+  // file and seed its buffer.
   viewer.title.textContent = rel;
   viewer.actions.innerHTML = "";
   setHint(viewer.body, "Loading\u2026", "loading");
   try {
     const data = await getFile(rel);
+    // Guard: if the user switched tabs during the fetch, don't clobber the
+    // now-active tab's editor with this stale load.
+    if (viewer.tabStore.activeId() !== tabId) return;
     // The heading shows the path relative to the workspace root, not the
     // absolute one: the absolute path wrapped the heading onto several
     // lines, and its root half is already displayed by the listing panel.
     // The full path stays reachable as the heading's tooltip.
     viewer.title.textContent = rel;
     viewer.title.title = data.path;
-    viewer.store.beginLoad(rel, data.content);
+    buffer.beginLoad(rel, data.content);
+    viewer.tabText.set(tabId, data.content);
     renderEditor(viewer);
+    setTabSaveState(viewer, tabId, "saved");
   } catch (err) {
+    if (viewer.tabStore.activeId() !== tabId) return;
     setHint(
       viewer.body,
       `Failed to load: ${(err as Error).message}`,
@@ -434,7 +318,14 @@ function renderEditor(viewer: Viewer): void {
   viewer.activeDiff = null;
   viewer.store.clearTimer();
   viewer.actions.innerHTML = "";
+  // Seed the editor from the active tab's buffer (the canonical source). Keep
+  // `tabText` in sync with it so the active tab's background autosave timer
+  // (which reads from `tabText`) sees the same text the textarea will show.
+  const activeTabId = viewer.tabStore.activeId();
   const text = viewer.store.getContent() ?? "";
+  if (activeTabId !== null) {
+    viewer.tabText.set(activeTabId, text);
+  }
 
   // A transparent-text textarea sits on top of a live-highlighted backdrop.
   // Both share identical font metrics (inherited from .editor-scroll) and
@@ -480,11 +371,24 @@ function renderEditor(viewer: Viewer): void {
 
   ta.value = text;
   paint();
-  viewer.store.setReader(() => ta.value);
+  // The reader was already set at buffer creation to read this tab's stored
+  // text (`tabText.get(tabId)`); that is the canonical, background-safe
+  // source. We keep `tabText` in sync with the textarea on every input (see
+  // the handler below) and on load (see the call site), so the reader always
+  // sees the current content without any cross-tab coupling.
   ta.addEventListener("input", () => {
     paint();
+    // Keep the active tab's stored text in sync with what the user is typing,
+    // so its background autosave timer (which reads `tabText`) sees the new
+    // content.
+    const activeId = viewer.tabStore.activeId();
+    if (activeId !== null) {
+      viewer.tabText.set(activeId, ta.value);
+    }
     viewer.store.markDirty();
-    setSaveState(viewer.actions, "unsaved");
+    if (activeId !== null) {
+      setTabSaveState(viewer, activeId, "unsaved");
+    }
     viewer.store.scheduleSave();
   });
 
@@ -502,220 +406,14 @@ function renderEditor(viewer: Viewer): void {
   ta.focus();
 }
 
-/** Build one diff row's DOM: old/new gutter numbers, a marker, then the (syntax-highlighted) text. */
-function renderDiffRow(row: DiffRow): HTMLElement {
-  const el = document.createElement("div");
-  el.className =
-    row.marker === "-"
-      ? "diff-row diff-row-removed"
-      : row.marker === "+"
-        ? "diff-row diff-row-added"
-        : "diff-row";
-
-  const oldNo = document.createElement("span");
-  oldNo.className = "diff-old-no";
-  oldNo.textContent = row.oldNum === null ? "" : String(row.oldNum);
-
-  const newNo = document.createElement("span");
-  newNo.className = "diff-new-no";
-  newNo.textContent = row.newNum === null ? "" : String(row.newNum);
-
-  const marker = document.createElement("span");
-  marker.className = "diff-marker";
-  marker.textContent = row.marker;
-
-  const text = document.createElement("span");
-  text.className = "diff-text";
-  appendHighlighted(text, row.text);
-
-  el.append(oldNo, newNo, marker, text);
-  return el;
-}
-
-/**
- * beginEditDiff: see `FileViewerHandle`. Flushes any pending edit first
- * (same guard `viewFile` uses), then fetches the file fresh and mounts the
- * static skeleton (context before/after + the removed rows) with an empty
- * added section, ready for `updateEditDiffNew` to fill in as content streams.
- */
-async function beginEditDiff(
-  viewer: Viewer,
-  rel: string,
-  startLine: number,
-  endLine: number
-): Promise<boolean> {
-  const saved = await viewer.store.flush();
-  if (!saved) return false;
-  let content: string;
-  try {
-    const data = await getFile(rel);
-    content = data.content;
-  } catch {
-    return false;
-  }
-
-  viewer.store.clearTimer();
-  viewer.title.textContent = rel;
-  viewer.actions.innerHTML = "";
-  const lines = content.split(/\r?\n/);
-  const { start, end } = clampEditRange(startLine, endLine, lines.length);
-
-  const scroller = document.createElement("div");
-  scroller.className = "diff-scroll";
-  scroller.append(...buildDiffRows(lines, start, end, []).map(renderDiffRow));
-  // The added rows live in their own container so updateEditDiffNew can
-  // rewrite just that slice without rebuilding the (static) rest each chunk.
-  // It's inserted once, right where the removed rows end, by re-deriving the
-  // row list with a single placeholder and swapping that node for the
-  // container — simplest way to reserve the right spot without hand-tracking
-  // DOM indices.
-  const placeholderIndex = end - start; // number of context-before + removed rows
-  const addedContainer = document.createElement("div");
-  addedContainer.className = "diff-added-container";
-  const beforeAddedChildren = [...scroller.children];
-  const anchor = beforeAddedChildren[placeholderIndex] ?? null;
-  scroller.insertBefore(addedContainer, anchor);
-
-  viewer.body.style.overflow = "hidden";
-  viewer.body.innerHTML = "";
-  viewer.body.append(scroller);
-  viewer.activeDiff = {
-    rel,
-    lines,
-    startLine: start,
-    endLine: end,
-    addedContainer,
-  };
-  // A cursor immediately, even before any content has streamed in, so the
-  // diff doesn't sit looking finished while the model is still generating.
-  const cursor = document.createElement("span");
-  cursor.className = "diff-cursor";
-  addedContainer.append(cursor);
-  addedContainer.scrollIntoView({ block: "center" });
-  return true;
-}
-
-/** updateEditDiffNew: see `FileViewerHandle`. */
-function updateEditDiffNew(viewer: Viewer, text: string): void {
-  const diff = viewer.activeDiff;
-  if (!diff) return;
-  const newLines = text === "" ? [] : text.split(/\r?\n/);
-  diff.addedContainer.innerHTML = "";
-  const rows = buildDiffRows(diff.lines, diff.startLine, diff.endLine, newLines)
-    .filter((r) => r.marker === "+")
-    .map(renderDiffRow);
-  diff.addedContainer.append(...rows);
-  const cursor = document.createElement("span");
-  cursor.className = "diff-cursor";
-  const lastText = rows.at(-1)?.querySelector(".diff-text");
-  (lastText ?? diff.addedContainer).append(cursor);
-}
-
-/** endEditDiff: see `FileViewerHandle`. */
-function endEditDiff(viewer: Viewer, ok: boolean): void {
-  const diff = viewer.activeDiff;
-  if (!diff) return;
-  diff.addedContainer.querySelector(".diff-cursor")?.remove();
-
-  viewer.actions.innerHTML = "";
-  const status = document.createElement("span");
-  status.className = `diff-status ${ok ? "diff-status-ok" : "diff-status-error"}`;
-  status.textContent = ok ? "Edited" : "Edit failed";
-  const okBtn = document.createElement("button");
-  okBtn.type = "button";
-  okBtn.className = "btn";
-  okBtn.textContent = "OK";
-  // Dismiss: drop the diff and its colors, keeping the edit's real result —
-  // loadIntoViewer re-fetches from disk, which already has whatever the
-  // call actually did (or didn't, on failure) applied.
-  okBtn.addEventListener("click", () => {
-    void loadIntoViewer(viewer, diff.rel);
-  });
-  viewer.actions.append(status, okBtn);
-}
-
-/** cancelEditDiff: see `FileViewerHandle`. */
-async function cancelEditDiff(viewer: Viewer): Promise<void> {
-  const diff = viewer.activeDiff;
-  if (!diff) return;
-  await loadIntoViewer(viewer, diff.rel);
-}
-
-function setSaveState(
-  actions: HTMLElement,
-  state: "unsaved" | "saving" | "saved" | "error",
-  message?: string
+function setHint(
+  body: HTMLPreElement,
+  text: string,
+  cls = "viewer-hint"
 ): void {
-  let span = actions.querySelector<HTMLElement>(".save-status");
-  if (!span) {
-    span = document.createElement("span");
-    span.className = "save-status";
-    actions.append(span);
-  }
-  span.className = `save-status save-status-${state}`;
-  span.textContent =
-    state === "unsaved"
-      ? "\u25CF unsaved"
-      : state === "saving"
-        ? "saving\u2026"
-        : state === "saved"
-          ? "saved"
-          : `save failed${message ? `: ${message}` : ""}`;
-}
-
-async function expandDir(
-  toggle: HTMLButtonElement,
-  li: HTMLLIElement,
-  rel: string,
-  viewer: Viewer
-): Promise<void> {
-  const expanded = toggle.getAttribute("aria-expanded") === "true";
-  if (expanded) {
-    toggle.textContent = "▸";
-    toggle.setAttribute("aria-expanded", "false");
-    viewer.expandedDirs.delete(rel);
-    const existing = li.querySelector(":scope > ul");
-    if (existing) existing.remove();
-    return;
-  }
-
-  toggle.textContent = "▾";
-  toggle.setAttribute("aria-expanded", "true");
-  viewer.expandedDirs.add(rel);
-  const existing = li.querySelector(":scope > ul");
-  if (existing) {
-    existing.remove();
-    return;
-  }
-
-  const childList = document.createElement("ul");
-  childList.className = "children";
-  childList.setAttribute("aria-label", `${rel} contents`);
-  li.append(childList);
-  await renderListing(childList, li, rel, viewer);
-}
-
-async function refreshDir(
-  viewer: Viewer,
-  rel: string,
-  targetLi: HTMLLIElement | null
-): Promise<void> {
-  if (!targetLi) {
-    await renderListing(viewer.list, viewer.lsPath, "", viewer);
-    return;
-  }
-  viewer.expandedDirs.add(rel);
-  const toggle = targetLi.querySelector<HTMLButtonElement>(".toggle");
-  if (toggle) {
-    toggle.textContent = "▾";
-    toggle.setAttribute("aria-expanded", "true");
-  }
-  let childList = targetLi.querySelector<HTMLUListElement>(":scope > ul");
-  if (!childList) {
-    childList = document.createElement("ul");
-    childList.className = "children";
-    childList.setAttribute("aria-label", `${rel} contents`);
-    targetLi.append(childList);
-  }
-  await renderListing(childList, targetLi, rel, viewer);
+  body.innerHTML = "";
+  const span = document.createElement("span");
+  span.className = cls;
+  span.textContent = text;
+  body.append(span);
 }

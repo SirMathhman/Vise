@@ -362,3 +362,94 @@
     opacity: 0;
   }
 }
+
+/* ── Open-file tab bar ────────────────────────────────────────
+   A horizontal strip of tabs sitting between the panel heading and the
+   viewer body. Each tab is a button showing the file's base name (full rel
+   path as tooltip), a dirty dot when its buffer has unsaved edits, and a
+   close (×) button. The active tab is highlighted. Clicking a tab activates
+   it (bringing that buffer into the shared viewer); the × closes it (with a
+   confirm if dirty). Rebuilt wholesale by fileTree.ts's renderTabs on every
+   tab change. */
+#app #tab-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0 0 10px;
+  min-height: 0;
+}
+
+/* With no tabs open the bar is empty and collapses so it takes no space. */
+#app #tab-bar:empty {
+  display: none;
+}
+
+#app #tab-bar .tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-heading);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 4px 8px;
+  cursor: pointer;
+  max-width: 200px;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+#app #tab-bar .tab:hover {
+  color: var(--text);
+  border-color: var(--border-gold);
+}
+
+#app #tab-bar .tab-active {
+  color: var(--text);
+  border-color: var(--border-gold);
+  background: color-mix(in srgb, var(--gold-dim) 30%, transparent);
+}
+
+/* The file's base name; truncated with an ellipsis so long paths don't blow
+   out the tab. */
+#app #tab-bar .tab-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A small dot shown when the tab's buffer has unsaved edits. */
+#app #tab-bar .tab-dirty {
+  color: var(--gold-bright);
+  font-size: 0.6rem;
+}
+
+/* The close (×) button inside a tab. */
+#app #tab-bar .tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  font-size: 0.9rem;
+  line-height: 1;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+  padding: 0;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+#app #tab-bar .tab-close:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--danger) 30%, transparent);
+}

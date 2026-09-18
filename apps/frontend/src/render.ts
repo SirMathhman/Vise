@@ -20,6 +20,11 @@ export async function render(root: HTMLElement): Promise<void> {
         </section>
         <section id="viewer">
           <h2 id="viewer-title">File contents</h2>
+          <div
+            id="tab-bar"
+            class="tab-bar"
+            aria-label="open file tabs"
+          ></div>
           <div id="viewer-actions"></div>
           <pre id="viewer-body"><span class="viewer-hint">Select a file to view its contents.</span></pre>
         </section>
