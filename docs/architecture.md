@@ -76,6 +76,14 @@ apps/backend/src/
                   #   + "Error: …" so the model adapts) and POST /api/llm/hook-command (a
                   #   second, non-tool route: runs a command through llmCommand.ts's
                   #   runShellCommand core — the same one run_command uses — but returns
+    browser.ts    #   BROWSER SESSION: createBrowserSession -> BrowserSession, the
+                  #   app-owned Playwright session the four browser tools drive.
+                  #   Lazily opens a visible system-Chrome page on first
+                  #   browser_open; snapshot/click/type re-collect a numbered
+                  #   snapshot of interactive elements before acting so the
+                  #   model's element indices stay live. Owned by AppContext
+                  #   (ctx.browserSession) and closed in close() — see the
+                  #   "long-lived resources" invariant above.
                   #   {stdout, stderr, truncated, timedOut} structured JSON instead of one
                   #   formatted string, since the panel's end-of-turn hook must tell
                   #   stdout from stderr apart. Errors are thrown AppErrors like every
@@ -323,7 +331,7 @@ Target invariants (implemented in the backend):
 - `router.ts` is pure (Route type + matching) and imports no I/O — trivially unit-testable.
 - Each `routes/*.ts` is a self-contained resource module: `(ctx) => Route[]`. Adding an endpoint = adding a file, no edits to `app.ts`.
 - `app.ts` is thin: register route groups, wrap the server, wire body parsing + error handling. It contains no handler bodies or matching logic.
-- `context.ts` owns `AppContext`; the context is constructed once (in `index.ts`) and passed into `createApp` — no module-level singleton. The live-reflection `fileWatcher` is a context member, created inert in `createContext`, `start()`ed in `createApp`, and closed in `close()` — the "app lifecycle owns long-lived resources" invariant now holds. Residual: `close()` tears the watcher down only after `server.close()` drains, and a live SSE stream never drains on its own, so `closeAllConnections()` is needed (see Potential Problems).
+- `context.ts` owns `AppContext`; the context is constructed once (in `index.ts`) and passed into `createApp` — no module-level singleton. The app's long-lived resources are all context members, created inert in `createContext` and torn down in `close()`: the live-reflection `fileWatcher` (`start()`ed in `createApp`, closed in `close()`) and the model-driven `browserSession` (a Playwright session lazily opened on first `browser_open` and closed in `close()`). Both obey the "app lifecycle owns long-lived resources" invariant — the browser session's state (the Chrome `Browser`/`Page` handles) lives inside the `BrowserSession` object the context owns, not in a module-level singleton, so the app's resource lifetime is visible in one place. Residual: `close()` tears the watcher down only after `server.close()` drains, and a live SSE stream never drains on its own, so `closeAllConnections()` is needed (see Potential Problems).
 - Frontend `api/client.ts` is the single place that knows the base URL and normalizes network/HTTP errors, so views never call `fetch` directly. Every endpoint is wrapped (`listDir`, `getFile`, `putFile`, `deleteFile`, `createEntry`, `health`); the `fail(res)` helper centralizes the "parse body → read `message` → throw `Error`" normalization.
 - **Invariant — file content is rendered as text, never as HTML.** `highlight.ts` tokenizes one line into runs and `render.ts` inserts every run via `textContent`/`createTextNode`. File content must never reach the DOM through `innerHTML`/`insertAdjacentHTML`, so arbitrary (attacker- or binary-) file bytes cannot inject markup/scripts. Keep the tokenizer pure (a line in, `Token[]` out) so it stays trivially testable and split-free, and keep the DOM-appending as a thin separate function.
 - **Invariant — the always-edit overlay keeps both text layers on identical font metrics.** Every file opens in the editor: a transparent-text `<textarea>` (`color: transparent`, `white-space: pre`, no wrap) absolutely positioned over a live re-highlighted `<pre>` backdrop, with a sticky line-number gutter. The two layers only align pixel-perfectly if `font-family`/`font-size`/`line-height`/`tab-size`/`padding`/`margin` are identical on both. Because a `<pre>`'s UA stylesheet forces `font-family: monospace` (overriding inheritance), the backdrop must set the exact mono stack explicitly — relying on inheritance re-introduces ghosted/doubled text. The overlay container (`.editor-scroll`) is the sole scroller; `#viewer-body` is `overflow: hidden` so exactly one scrollbar shows.
