@@ -1,6 +1,7 @@
 import { health } from "./api/client.js";
 import { setupFileViewer } from "./components/fileTree.js";
 import { setupLlm } from "./components/llm.js";
+import { setupPanelDividers } from "./components/panels.js";
 
 export async function render(root: HTMLElement): Promise<void> {
   root.innerHTML = `
@@ -18,6 +19,14 @@ export async function render(root: HTMLElement): Promise<void> {
           <code id="ls-path"></code>
           <ul id="ls-items" aria-label="files and directories"></ul>
         </section>
+        <div
+          class="panel-divider"
+          id="divider-1"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize the contents and viewer panels"
+          tabindex="0"
+        ></div>
         <section id="viewer">
           <h2 id="viewer-title">File contents</h2>
           <div
@@ -28,6 +37,14 @@ export async function render(root: HTMLElement): Promise<void> {
           <div id="viewer-actions"></div>
           <pre id="viewer-body"><span class="viewer-hint">Select a file to view its contents.</span></pre>
         </section>
+        <div
+          class="panel-divider"
+          id="divider-2"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize the viewer and model panels"
+          tabindex="0"
+        ></div>
         <section id="llm">
           <h2>Model</h2>
           <div class="llm-controls">
@@ -264,4 +281,5 @@ export async function render(root: HTMLElement): Promise<void> {
 
   const fileViewer = await setupFileViewer(root);
   setupLlm(root, fileViewer);
+  setupPanelDividers(root);
 }

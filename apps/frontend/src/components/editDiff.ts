@@ -58,7 +58,7 @@ export async function beginEditDiff(
   viewer: Viewer,
   rel: string,
   startLine: number,
-  endLine: number,
+  endLine: number
 ): Promise<boolean> {
   const saved = await viewer.store.flush();
   if (!saved) return false;
