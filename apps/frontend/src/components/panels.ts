@@ -39,6 +39,18 @@ const DIVIDER_PX = 20;
  */
 const BOUND = Symbol("panel-divider-bound");
 
+/** Shared mutable source of truth for the listing/viewer widths. */
+interface DividerState {
+  listingW: number;
+  viewerW: number;
+}
+/** The allowed-delta range function, keyed by divider mode. */
+type BoundsFn = (
+  mode: 1 | 2,
+  startListing: number,
+  startViewer: number
+) => [number, number];
+
 export function setupPanelDividers(root: HTMLElement): void {
   const layout = root.querySelector<HTMLElement>(".layout");
   const listing = root.querySelector<HTMLElement>("#listing");
@@ -67,18 +79,21 @@ export function setupPanelDividers(root: HTMLElement): void {
 
   // The listing and viewer widths we currently consider authoritative. The llm
   // panel's width is never tracked — it is always `freeSpace() - listing - viewer`.
-  let listingW = Math.max(
-    MIN_PX,
-    Math.round(listing.getBoundingClientRect().width)
-  );
-  let viewerW = Math.max(
-    MIN_PX,
-    Math.round(viewer.getBoundingClientRect().width)
-  );
+  // A mutable state object (not two standalone lets) so the hoisted
+  // `bindDivider` and `apply` below share the *same* source of truth: a plain
+  // pair of numbers captured by `bindDivider` would not reflect the mutations
+  // the drag/keyboard handlers make.
+  const state: DividerState = {
+    listingW: Math.max(
+      MIN_PX,
+      Math.round(listing.getBoundingClientRect().width)
+    ),
+    viewerW: Math.max(MIN_PX, Math.round(viewer.getBoundingClientRect().width)),
+  };
 
   const apply = (): void => {
-    freeze(listing, listingW);
-    freeze(viewer, viewerW);
+    freeze(listing, state.listingW);
+    freeze(viewer, state.viewerW);
   };
 
   /**
@@ -104,85 +119,97 @@ export function setupPanelDividers(root: HTMLElement): void {
     return [MIN_PX - startViewer, maxViewer - startViewer];
   };
 
-  const bind = (divider: HTMLElement, mode: 1 | 2): void => {
-    const d = divider as HTMLElement & { [BOUND]?: boolean };
-    if (d[BOUND]) return;
-    d[BOUND] = true;
-
-    let dragging = false;
-    let startX = 0;
-    let startListing = 0;
-    let startViewer = 0;
-
-    const onPointerDown = (e: PointerEvent): void => {
-      dragging = true;
-      startX = e.clientX;
-      startListing = listingW;
-      startViewer = viewerW;
-      divider.classList.add("active");
-      divider.setPointerCapture(e.pointerId);
-      e.preventDefault();
-    };
-
-    const onPointerMove = (e: PointerEvent): void => {
-      if (!dragging) return;
-      const d = e.clientX - startX;
-      const [lo, hi] = bounds(mode, startListing, startViewer);
-      const dd = Math.min(Math.max(d, lo), hi);
-      if (mode === 1) {
-        listingW = startListing + dd;
-        viewerW = startViewer - dd;
-      } else {
-        viewerW = startViewer + dd;
-      }
-      apply();
-    };
-
-    const onPointerEnd = (e: PointerEvent): void => {
-      if (!dragging) return;
-      dragging = false;
-      divider.classList.remove("active");
-      try {
-        divider.releasePointerCapture(e.pointerId);
-      } catch {
-        /* pointer already released */
-      }
-    };
-
-    divider.addEventListener("pointerdown", onPointerDown);
-    divider.addEventListener("pointermove", onPointerMove);
-    divider.addEventListener("pointerup", onPointerEnd);
-    divider.addEventListener("pointercancel", onPointerEnd);
-
-    // Keyboard: arrow keys nudge, Shift for a larger step, Home/End snap to the
-    // min/max of the current range.
-    divider.addEventListener("keydown", (e: KeyboardEvent): void => {
-      let dd: number | null = null;
-      if (e.key === "ArrowLeft") dd = e.shiftKey ? -STEP_PX_LARGE : -STEP_PX;
-      else if (e.key === "ArrowRight")
-        dd = e.shiftKey ? STEP_PX_LARGE : STEP_PX;
-      else if (e.key === "Home" || e.key === "End") {
-        const [lo, hi] = bounds(mode, listingW, viewerW);
-        dd = e.key === "Home" ? lo : hi;
-      }
-      if (dd === null) return;
-      const [lo, hi] = bounds(mode, listingW, viewerW);
-      const c = Math.min(Math.max(dd, lo), hi);
-      if (mode === 1) {
-        listingW += c;
-        viewerW -= c;
-      } else {
-        viewerW += c;
-      }
-      apply();
-      e.preventDefault();
-    });
-  };
-
   // Freeze the CSS-proportioned widths the browser just laid out into pixel
   // values. Reading the rendered widths (not recomputing from the ratio)
   // means handover to pixel control is seamless — no jump.
   apply();
-  bind(divider1, 1);
-  bind(divider2, 2);
+  bindDivider(divider1, 1, state, bounds, apply);
+  bindDivider(divider2, 2, state, bounds, apply);
+}
+
+/**
+ * Wires a single divider element: pointer-drag plus keyboard nudging. Hoisted
+ * out of `setupPanelDividers` (the 100-line function cap) so the setup entry
+ * point stays a thin composer of the `state`/`bounds`/`apply` context this
+ * handler needs. Mutates `state` in place (the shared source of truth with
+ * `apply`) and never owns app state of its own.
+ */
+function bindDivider(
+  divider: HTMLElement,
+  mode: 1 | 2,
+  state: DividerState,
+  bounds: BoundsFn,
+  apply: () => void
+): void {
+  const d = divider as HTMLElement & { [BOUND]?: boolean };
+  if (d[BOUND]) return;
+  d[BOUND] = true;
+
+  let dragging = false;
+  let startX = 0;
+  let startListing = 0;
+  let startViewer = 0;
+
+  const onPointerDown = (e: PointerEvent): void => {
+    dragging = true;
+    startX = e.clientX;
+    startListing = state.listingW;
+    startViewer = state.viewerW;
+    divider.classList.add("active");
+    divider.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  };
+
+  const onPointerMove = (e: PointerEvent): void => {
+    if (!dragging) return;
+    const delta = e.clientX - startX;
+    const [lo, hi] = bounds(mode, startListing, startViewer);
+    const dd = Math.min(Math.max(delta, lo), hi);
+    if (mode === 1) {
+      state.listingW = startListing + dd;
+      state.viewerW = startViewer - dd;
+    } else {
+      state.viewerW = startViewer + dd;
+    }
+    apply();
+  };
+
+  const onPointerEnd = (e: PointerEvent): void => {
+    if (!dragging) return;
+    dragging = false;
+    divider.classList.remove("active");
+    try {
+      divider.releasePointerCapture(e.pointerId);
+    } catch {
+      /* pointer already released */
+    }
+  };
+
+  divider.addEventListener("pointerdown", onPointerDown);
+  divider.addEventListener("pointermove", onPointerMove);
+  divider.addEventListener("pointerup", onPointerEnd);
+  divider.addEventListener("pointercancel", onPointerEnd);
+
+  // Keyboard: arrow keys nudge, Shift for a larger step, Home/End snap to the
+  // min/max of the current range.
+  divider.addEventListener("keydown", (e: KeyboardEvent): void => {
+    let dd: number | null = null;
+    if (e.key === "ArrowLeft") dd = e.shiftKey ? -STEP_PX_LARGE : -STEP_PX;
+    else if (e.key === "ArrowRight") dd = e.shiftKey ? STEP_PX_LARGE : STEP_PX;
+    else if (e.key === "Home" || e.key === "End") {
+      const [lo, hi] = bounds(mode, state.listingW, state.viewerW);
+      dd = e.key === "Home" ? lo : hi;
+    }
+    if (dd === null) return;
+    const [lo, hi] = bounds(mode, state.listingW, state.viewerW);
+    const c = Math.min(Math.max(dd, lo), hi);
+    if (mode === 1) {
+      state.listingW += c;
+      state.viewerW -= c;
+    } else {
+      state.viewerW += c;
+    }
+    apply();
+    e.preventDefault();
+  });
 }
