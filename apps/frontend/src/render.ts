@@ -28,6 +28,27 @@ export async function render(root: HTMLElement): Promise<void> {
           tabindex="0"
         ></div>
         <section id="viewer">
+          <div
+            id="viewer-url-bar"
+            class="viewer-url-bar"
+            aria-label="open a URL as an embedded tab"
+          >
+            <button
+              id="viewer-url-open"
+              class="btn btn-ghost"
+              type="button"
+              title="Open a URL as an embedded tab in this panel"
+            >
+              Open URL
+            </button>
+            <input
+              id="viewer-url-input"
+              type="text"
+              aria-label="URL to open"
+              placeholder="www.example.com or https://…"
+              hidden
+            />
+          </div>
           <h2 id="viewer-title">File contents</h2>
           <div
             id="tab-bar"

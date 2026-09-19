@@ -58,6 +58,43 @@ describe("TabStore: opening and activation", () => {
   });
 });
 
+describe("TabStore: URL tabs", () => {
+  it("opens a URL tab marked as kind=url and activates it", () => {
+    const store = createTabStore();
+    const id = store.open("https://www.google.com", "url");
+    const tab = store.getTabs()[0];
+    expect(tab.kind).toBe("url");
+    expect(tab.rel).toBe("https://www.google.com");
+    expect(store.activeId()).toBe(id);
+  });
+
+  it("defaults to kind=file when no kind is given", () => {
+    const store = createTabStore();
+    store.open("a.txt");
+    expect(store.getTabs()[0].kind).toBe("file");
+  });
+
+  it("re-activates an existing URL tab for the same URL instead of duplicating", () => {
+    const store = createTabStore();
+    const first = store.open("https://example.com", "url");
+    store.open("a.txt");
+    const second = store.open("https://example.com", "url");
+    expect(second).toBe(first);
+    expect(store.getTabs()).toHaveLength(2);
+    expect(store.activeId()).toBe(first);
+  });
+
+  it("mixes file and URL tabs in one open set and closes either", () => {
+    const store = createTabStore();
+    const file = store.open("a.txt");
+    const url = store.open("https://example.com", "url");
+    expect(store.getTabs()).toHaveLength(2);
+    store.close(url);
+    expect(store.activeId()).toBe(file);
+    expect(store.getTabs()).toHaveLength(1);
+  });
+});
+
 describe("TabStore: closing", () => {
   it("promotes the first remaining tab when the active one is closed", () => {
     const store = createTabStore();
@@ -162,5 +199,35 @@ describe("TabStore: persistence across reloads", () => {
     const store = createTabStore();
     expect(store.getTabs()).toHaveLength(0);
     expect(store.activeId()).toBeNull();
+  });
+
+  it("restores tabs persisted before URL tabs existed as file tabs", () => {
+    const legacy = [
+      { id: "a", rel: "a.txt" },
+      { id: "b", rel: "b.txt" },
+    ];
+    localStorage.setItem("vise:viewer:tabs", JSON.stringify(legacy));
+    localStorage.setItem("vise:viewer:active", "a");
+
+    const store = createTabStore();
+    expect(store.getTabs().map((t) => t.kind)).toEqual(["file", "file"]);
+    expect(store.activeId()).toBe("a");
+  });
+
+  it("restores URL tabs and rejects rows with an invalid kind", () => {
+    const mixed = [
+      { id: "a", rel: "a.txt" },
+      { id: "u", rel: "https://example.com", kind: "url" },
+      { id: "x", rel: "c.txt", kind: "bogus" },
+    ];
+    localStorage.setItem("vise:viewer:tabs", JSON.stringify(mixed));
+    localStorage.setItem("vise:viewer:active", "a");
+
+    const store = createTabStore();
+    expect(store.getTabs().map((t) => t.rel)).toEqual([
+      "a.txt",
+      "https://example.com",
+    ]);
+    expect(store.getTabs().map((t) => t.kind)).toEqual(["file", "url"]);
   });
 });

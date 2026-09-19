@@ -14,20 +14,33 @@
 const STORAGE_TABS = "vise:viewer:tabs";
 const STORAGE_ACTIVE = "vise:viewer:active";
 
-/** A single open tab: the file's relative path and a unique id. */
+/** A tab's content source: a workspace file, or an embedded web page. */
+export type TabKind = "file" | "url";
+
+/** A single open tab: the file's relative path (or URL) and a unique id. */
 export interface Tab {
   id: string;
-  /** Workspace-relative path of the open file (forward-slash separated). */
+  /**
+   * Workspace-relative path of the open file (forward-slash separated), or
+   * the URL of an embedded web page, depending on `kind`.
+   */
   rel: string;
+  /**
+   * The tab's content source. Absent from tabs persisted before URL tabs
+   * existed; `loadTabs` defaults those to `"file"`.
+   */
+  kind?: TabKind;
 }
 
 /** True when `value` is a structurally valid persisted tab. */
 function isValidTab(value: unknown): value is Tab {
+  const v = value as Tab;
   return (
     typeof value === "object" &&
     value !== null &&
-    typeof (value as Tab).id === "string" &&
-    typeof (value as Tab).rel === "string"
+    typeof v.id === "string" &&
+    typeof v.rel === "string" &&
+    (v.kind === undefined || v.kind === "file" || v.kind === "url")
   );
 }
 
@@ -76,7 +89,11 @@ function loadTabs(): Tab[] {
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isValidTab);
+    // Tabs persisted before URL tabs existed carry no `kind`; default them
+    // to file tabs so they keep working.
+    return parsed
+      .filter(isValidTab)
+      .map((t) => ({ ...t, kind: t.kind ?? "file" }));
   } catch {
     return [];
   }
@@ -101,11 +118,11 @@ export interface TabStore {
   /** All open tabs, in display (left-to-right) order. */
   getTabs(): Tab[];
   /**
-   * Open a file: if a tab already holds `rel`, activate it (a no-op when that
-   * tab is already active); otherwise create a new tab for `rel` and activate
-   * it. Returns the (existing or new) tab's id.
+   * Open a file or URL: if a tab already holds `rel`, activate it (a no-op
+   * when that tab is already active); otherwise create a new tab for `rel`
+   * and activate it. Returns the (existing or new) tab's id.
    */
-  open(rel: string): string;
+  open(rel: string, kind?: TabKind): string;
   /**
    * Close the tab with this id. If it was active, the first remaining tab
    * becomes active (or none, when the last tab is closed). No-op if no tab has
@@ -136,14 +153,14 @@ export function createTabStore(): TabStore {
     activeId: () => activeId,
     getActive,
     getTabs: () => tabs,
-    open(rel) {
+    open(rel, kind) {
       const existing = tabs.find((t) => t.rel === rel);
       if (existing) {
         activeId = existing.id;
         return existing.id;
       }
       const id = newId();
-      tabs = [...tabs, { id, rel }];
+      tabs = [...tabs, { id, rel, kind: kind ?? "file" }];
       activeId = id;
       return id;
     },

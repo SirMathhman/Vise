@@ -157,6 +157,20 @@ export async function closeTab(
  * wholesale on every call (the tab set is small, so a full rebuild is simpler
  * than diffing).
  */
+/**
+ * A URL tab's label: its host (`www.google.com`) rather than the full URL,
+ * which would overflow the tab. Scheme-less or file: URLs have no host to
+ * show, so fall back to the raw string.
+ */
+function hostnameOf(url: string): string {
+  try {
+    const host = new URL(url).hostname;
+    return host !== "" ? host : url;
+  } catch {
+    return url;
+  }
+}
+
 export function renderTabs(viewer: Viewer, cb: TabCallbacks): void {
   const bar = viewer.tabBar;
   if (!bar) return;
@@ -164,14 +178,21 @@ export function renderTabs(viewer: Viewer, cb: TabCallbacks): void {
   const tabs = viewer.tabStore.getTabs();
   const activeId = viewer.tabStore.activeId();
   for (const tab of tabs) {
+    const isUrl = tab.kind === "url";
     const label = document.createElement("button");
     label.type = "button";
-    label.className = `tab ${tab.id === activeId ? "tab-active" : ""}`;
+    label.className = `tab ${isUrl ? "tab-url" : ""} ${
+      tab.id === activeId ? "tab-active" : ""
+    }`;
     label.title = tab.rel;
 
     const name = document.createElement("span");
     name.className = "tab-name";
-    name.textContent = tab.rel.split("/").pop() ?? tab.rel;
+    // URL tabs show their host (e.g. `www.google.com`) rather than the full
+    // URL, which would overflow the tab; the full URL stays the tooltip.
+    name.textContent = isUrl
+      ? hostnameOf(tab.rel)
+      : (tab.rel.split("/").pop() ?? tab.rel);
     label.append(name);
 
     const buffer = viewer.tabBuffers.get(tab.id);
@@ -270,6 +291,8 @@ export async function reloadOpenTabs(
 ): Promise<void> {
   for (const tab of viewer.tabStore.getTabs()) {
     const buffer = viewer.tabBuffers.get(tab.id);
+    // URL tabs own no buffer (they render an iframe, not an editor); they
+    // are never affected by file watch events.
     if (!buffer) continue;
     const openRel = buffer.getRel();
     if (openRel !== rel) continue;

@@ -115,6 +115,82 @@
 /* The OK button that settles a live edit_file diff preview (see
    fileTree.ts's endEditDiff) — reuses the same #viewer-actions bar and
    .btn styling as the save-status/editor controls above it. */
+/* ── URL bar ───────────────────────────────────────────────
+   The persistent "Open URL" button above the viewer heading. It lives
+   outside #viewer-actions on purpose: that element is cleared wholesale on
+   file navigation (renderEditor / viewFile / closeTab / activateTab), so a
+   button inside it would vanish after the first file open. The bar collapses
+   to nothing while only the button shows (an empty flex row takes no height
+   of its own); the input expands the bar the moment it appears. */
+#app .viewer-url-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+#app .viewer-url-bar #viewer-url-open {
+  font-family: var(--font-heading);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+#app .viewer-url-bar #viewer-url-open:hover {
+  color: var(--text);
+  border-color: var(--border-gold);
+}
+
+#app .viewer-url-bar #viewer-url-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border-gold);
+  border-radius: 2px;
+  padding: 3px 8px;
+}
+
+/* An unparseable URL: the border turns danger-red until the user presses
+   Enter (which clears it) or Escape (which hides the bar). */
+#app .viewer-url-bar #viewer-url-input.url-invalid {
+  border-color: var(--danger);
+}
+
+/* The embedded web page: fills the viewer body. The body is a block
+   <pre> with a flex-determined height and overflow:auto, so the frame
+   needs an explicit height:100% to take the whole area instead of
+   collapsing to its intrinsic (zero) height. */
+#app #viewer-body .url-frame {
+  height: 100%;
+  width: 100%;
+  border: none;
+  background: #fff;
+}
+
+/* URL tabs in the tab bar: same shape as file tabs, but the hostname reads
+   as a link and the tab is slightly distinguished so a web page tab is
+   never mistaken for an open file. */
+#app #tab-bar .tab-url .tab-name {
+  color: var(--gold-bright);
+}
+
+#app #tab-bar .tab-url .tab-close:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--danger) 30%, transparent);
+}
+
 #app #viewer-actions .diff-status {
   font-size: 0.75rem;
   letter-spacing: 0.06em;
