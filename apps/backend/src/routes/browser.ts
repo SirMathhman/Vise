@@ -5,7 +5,6 @@ import {
   type Page,
 } from "playwright-core";
 import { badRequest } from "../errors.js";
-import type { LlmToolHandler } from "./llmToolTypes.js";
 
 /**
  * The model-driven browser session. The panel's own URL tabs render the page
@@ -87,23 +86,23 @@ interface SnapshotEntry {
   label: string;
 }
 
-/** The one browser session, at most one page. Undefined until first open. */
-let browser: Browser | undefined;
-let page: Page | undefined;
-
-/** True when a browser session has been opened at least once. */
-function hasPage(): boolean {
-  return page !== undefined;
-}
-
-/** A model-readable error when an action needs a page but none is open. */
-function requirePage(): Page {
-  if (!page) {
-    throw badRequest(
-      "no browser page is open; call browser_open with a URL first"
-    );
-  }
-  return page;
+/**
+ * The app-owned model-driven browser session: a single visible Chrome page,
+ * lazily opened on the first `browser_open` and closed with the app. The app
+ * context creates and holds it (see context.ts), so the app's long-lived
+ * resources live in one place rather than in a module-level singleton.
+ */
+export interface BrowserSession {
+  /** browser_open: launch (if needed) and navigate the page to `args.url`. */
+  open(args: Record<string, unknown>): Promise<string>;
+  /** browser_snapshot: re-read the page's interactive elements. */
+  snapshot(): Promise<string>;
+  /** browser_click: click the element at the given number. */
+  click(args: Record<string, unknown>): Promise<string>;
+  /** browser_type: fill/check/select the element at the given number. */
+  type(args: Record<string, unknown>): Promise<string>;
+  /** Close the session and release the page. Safe to call more than once. */
+  close(): Promise<void>;
 }
 
 /**
@@ -169,160 +168,178 @@ function labelOf(raw: RawElement, kind: ElementKind): string {
   }
 }
 
-/**
- * Collect the current interactive elements of the active page in DOM order
- * (deterministic, so the model's numbers are stable across a snapshot and the
- * action that follows it). Returns the handles (for acting) and the
- * model-facing entries (for the snapshot text).
- */
-async function collectElements(): Promise<{
-  handles: ElementHandle[];
-  entries: SnapshotEntry[];
-}> {
-  const p = requirePage();
-  const handles = await p.$$(INTERACTIVE_SELECTOR);
-  const entries: SnapshotEntry[] = [];
-  for (let i = 0; i < handles.length && i < MAX_SNAPSHOT_ELEMENTS; i++) {
-    const raw = (await handles[i].evaluate((el) => {
-      const a = el as BrowserElement;
-      return {
-        tag: a.tagName.toLowerCase(),
-        aria: a.getAttribute("aria-label") ?? "",
-        text: (a.textContent ?? "").trim(),
-        value: a.value,
-        placeholder: a.placeholder,
-        name: a.getAttribute("name") ?? "",
-        id: a.id,
-        href: a.href,
-        type: a.type,
-      };
-    })) as RawElement;
-    const kind = kindOf(raw);
-    const label = labelOf(raw, kind).slice(0, 60);
-    entries.push({ n: i, kind, label });
-  }
-  return { handles, entries };
-}
+export function createBrowserSession(): BrowserSession {
+  // The one browser session, at most one page. Undefined until first open.
+  let browser: Browser | undefined;
+  let page: Page | undefined;
 
-/**
- * Format a page's interactive elements as the numbered list the model reads.
- * A leading line with the title and URL orients the model to the current
- * page before the element list.
- */
-async function snapshotText(): Promise<string> {
-  const p = requirePage();
-  const url = p.url();
-  const title = await p.title().catch(() => "");
-  const { entries } = await collectElements();
-  const lines = entries.map((e) => `  ${e.n}) [${e.kind}] ${e.label}`);
-  const more =
-    entries.length < MAX_SNAPSHOT_ELEMENTS
-      ? ""
-      : `\n  (snapshot capped at ${MAX_SNAPSHOT_ELEMENTS} elements; re-snapshot after acting if you need more)`;
-  return `Title: ${title || "(untitled)"}\nURL: ${url}\nInteractive elements:\n${lines.join("\n")}${more}`;
-}
-
-/** Open (or navigate the existing) browser page to `url` and return a snapshot. */
-export const browserOpen: LlmToolHandler = async (args) => {
-  const url = typeof args.url === "string" ? args.url.trim() : "";
-  if (!url) throw badRequest("url is required");
-
-  if (!browser) {
-    browser = await chromium.launch({
-      channel: "chrome", // drive the system Chrome, no bundled download
-      headless: false, // a visible window the user can watch
-    });
-  }
-  if (!page) page = await browser.newPage();
-  page.setDefaultTimeout(ACTION_TIMEOUT_MS);
-  await page.goto(url, { waitUntil: "load", timeout: LOAD_TIMEOUT_MS });
-  const snap = await snapshotText();
-  return `Opened the page in the browser window.\n${snap}`;
-};
-
-/** Re-read the active page's interactive elements and return the snapshot. */
-export const browserSnapshot: LlmToolHandler = async () => {
-  requirePage();
-  return snapshotText();
-};
-
-/** Click the interactive element with the given number from the current page. */
-export const browserClick: LlmToolHandler = async (args) => {
-  requirePage();
-  const n = typeof args.n === "number" ? Math.trunc(args.n) : NaN;
-  if (!Number.isFinite(n))
-    throw badRequest("n is required (an element number)");
-  const { handles, entries } = await collectElements();
-  if (n < 0 || n >= handles.length) {
-    throw badRequest(
-      `no element ${n}; the page has ${handles.length} interactive elements (0..${handles.length - 1})`
-    );
-  }
-  const label = entries[n]?.label ?? "element";
-  await handles[n].click();
-  // A click can navigate or mutate the DOM, so hand back a fresh snapshot:
-  // the model's next action must target the current element numbers.
-  const snap = await snapshotText();
-  return `Clicked [${entries[n]?.kind}] "${label}".\n${snap}`;
-};
-
-/** Type text into the interactive element with the given number. */
-export const browserType: LlmToolHandler = async (args) => {
-  requirePage();
-  const n = typeof args.n === "number" ? Math.trunc(args.n) : NaN;
-  if (!Number.isFinite(n))
-    throw badRequest("n is required (an element number)");
-  const text = typeof args.text === "string" ? args.text : "";
-  const { handles, entries } = await collectElements();
-  if (n < 0 || n >= handles.length) {
-    throw badRequest(
-      `no element ${n}; the page has ${handles.length} interactive elements (0..${handles.length - 1})`
-    );
-  }
-  const kind = entries[n]?.kind;
-  const label = entries[n]?.label ?? "element";
-  if (kind === "checkbox" || kind === "radio") {
-    await handles[n].check();
-  } else if (kind === "select") {
-    // Match an option by visible label first, then by value.
-    try {
-      await handles[n].selectOption({ label: text });
-    } catch {
-      await handles[n].selectOption({ value: text });
+  /** A model-readable error when an action needs a page but none is open. */
+  function requirePage(): Page {
+    if (!page) {
+      throw badRequest(
+        "no browser page is open; call browser_open with a URL first"
+      );
     }
-  } else if (
-    kind === "text-field" ||
-    kind === "text-area" ||
-    kind === "summary"
-  ) {
-    await handles[n].fill(text);
-  } else {
-    throw badRequest(
-      `element ${n} is a [${kind}] and cannot be typed into; use browser_click`
-    );
+    return page;
   }
-  const snap = await snapshotText();
-  return `Typed "${text}" into [${kind}] "${label}".\n${snap}`;
-};
 
-/**
- * Close the browser session and release the page. Called from app close so the
- * Chrome process (and its helper processes) don't outlive the backend. Safe
- * to call when no session was ever opened, or more than once.
- */
-export async function closeBrowser(): Promise<void> {
-  const b = browser;
-  browser = undefined;
-  page = undefined;
-  if (b) {
-    try {
-      await b.close();
-    } catch {
-      // Already closed (e.g. the user closed the window); nothing to clean up.
+  /**
+   * Collect the current interactive elements of the active page in DOM order
+   * (deterministic, so the model's numbers are stable across a snapshot and
+   * the action that follows it). Returns the handles (for acting) and the
+   * model-facing entries (for the snapshot text).
+   */
+  async function collectElements(): Promise<{
+    handles: ElementHandle[];
+    entries: SnapshotEntry[];
+  }> {
+    const p = requirePage();
+    const handles = await p.$$(INTERACTIVE_SELECTOR);
+    const entries: SnapshotEntry[] = [];
+    for (let i = 0; i < handles.length && i < MAX_SNAPSHOT_ELEMENTS; i++) {
+      const raw = (await handles[i].evaluate((el) => {
+        const a = el as BrowserElement;
+        return {
+          tag: a.tagName.toLowerCase(),
+          aria: a.getAttribute("aria-label") ?? "",
+          text: (a.textContent ?? "").trim(),
+          value: a.value,
+          placeholder: a.placeholder,
+          name: a.getAttribute("name") ?? "",
+          id: a.id,
+          href: a.href,
+          type: a.type,
+        };
+      })) as RawElement;
+      const kind = kindOf(raw);
+      const label = labelOf(raw, kind).slice(0, 60);
+      entries.push({ n: i, kind, label });
     }
+    return { handles, entries };
   }
-}
 
-export function isBrowserOpen(): boolean {
-  return hasPage();
+  /**
+   * Format a page's interactive elements as the numbered list the model
+   * reads. A leading line with the title and URL orients the model to the
+   * current page before the element list.
+   */
+  async function snapshotText(): Promise<string> {
+    const p = requirePage();
+    const url = p.url();
+    const title = await p.title().catch(() => "");
+    const { entries } = await collectElements();
+    const lines = entries.map((e) => `  ${e.n}) [${e.kind}] ${e.label}`);
+    const more =
+      entries.length < MAX_SNAPSHOT_ELEMENTS
+        ? ""
+        : `\n  (snapshot capped at ${MAX_SNAPSHOT_ELEMENTS} elements; re-snapshot after acting if you need more)`;
+    return `Title: ${title || "(untitled)"}\nURL: ${url}\nInteractive elements:\n${lines.join("\n")}${more}`;
+  }
+
+  return {
+    /**
+     * browser_open: launch Chrome if it isn't already, open (or reuse) the
+     * single page, navigate it to `url`, and return a snapshot of the page's
+     * interactive elements so the model knows what it can act on.
+     */
+    async open(args: Record<string, unknown>): Promise<string> {
+      const url = typeof args.url === "string" ? args.url.trim() : "";
+      if (!url) throw badRequest("url is required");
+
+      if (!browser) {
+        browser = await chromium.launch({
+          channel: "chrome", // drive the system Chrome, no bundled download
+          headless: false, // a visible window the user can watch
+        });
+      }
+      if (!page) page = await browser.newPage();
+      page.setDefaultTimeout(ACTION_TIMEOUT_MS);
+      await page.goto(url, { waitUntil: "load", timeout: LOAD_TIMEOUT_MS });
+      const snap = await snapshotText();
+      return `Opened the page in the browser window.\n${snap}`;
+    },
+
+    /** Re-read the active page's interactive elements and return the snapshot. */
+    async snapshot(): Promise<string> {
+      requirePage();
+      return snapshotText();
+    },
+
+    /** Click the interactive element with the given number from the current page. */
+    async click(args: Record<string, unknown>): Promise<string> {
+      requirePage();
+      const n = typeof args.n === "number" ? Math.trunc(args.n) : NaN;
+      if (!Number.isFinite(n))
+        throw badRequest("n is required (an element number)");
+      const { handles, entries } = await collectElements();
+      if (n < 0 || n >= handles.length) {
+        throw badRequest(
+          `no element ${n}; the page has ${handles.length} interactive elements (0..${handles.length - 1})`
+        );
+      }
+      const label = entries[n]?.label ?? "element";
+      await handles[n].click();
+      // A click can navigate or mutate the DOM, so hand back a fresh snapshot:
+      // the model's next action must target the current element numbers.
+      const snap = await snapshotText();
+      return `Clicked [${entries[n]?.kind}] "${label}".\n${snap}`;
+    },
+
+    /** Type text into (or check/select) the element with the given number. */
+    async type(args: Record<string, unknown>): Promise<string> {
+      requirePage();
+      const n = typeof args.n === "number" ? Math.trunc(args.n) : NaN;
+      if (!Number.isFinite(n))
+        throw badRequest("n is required (an element number)");
+      const text = typeof args.text === "string" ? args.text : "";
+      const { handles, entries } = await collectElements();
+      if (n < 0 || n >= handles.length) {
+        throw badRequest(
+          `no element ${n}; the page has ${handles.length} interactive elements (0..${handles.length - 1})`
+        );
+      }
+      const kind = entries[n]?.kind;
+      const label = entries[n]?.label ?? "element";
+      if (kind === "checkbox" || kind === "radio") {
+        await handles[n].check();
+      } else if (kind === "select") {
+        // Match an option by visible label first, then by value.
+        try {
+          await handles[n].selectOption({ label: text });
+        } catch {
+          await handles[n].selectOption({ value: text });
+        }
+      } else if (
+        kind === "text-field" ||
+        kind === "text-area" ||
+        kind === "summary"
+      ) {
+        await handles[n].fill(text);
+      } else {
+        throw badRequest(
+          `element ${n} is a [${kind}] and cannot be typed into; use browser_click`
+        );
+      }
+      const snap = await snapshotText();
+      return `Typed "${text}" into [${kind}] "${label}".\n${snap}`;
+    },
+
+    /**
+     * Close the browser session and release the page. Called from app close so
+     * the Chrome process (and its helper processes) don't outlive the
+     * backend. Safe to call when no session was ever opened, or more than once.
+     */
+    async close(): Promise<void> {
+      const b = browser;
+      browser = undefined;
+      page = undefined;
+      if (b) {
+        try {
+          await b.close();
+        } catch {
+          // Already closed (e.g. the user closed the window); nothing to clean up.
+        }
+      }
+    },
+  };
 }

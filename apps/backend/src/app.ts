@@ -10,7 +10,6 @@ import {
 } from "./errors.js";
 import { readJsonBody } from "./json.js";
 import { matchRoute } from "./router.js";
-import { closeBrowser } from "./routes/browser.js";
 import { createRoutes } from "./routes/create.js";
 import { echoRoutes } from "./routes/echo.js";
 import { fileRoutes } from "./routes/file.js";
@@ -83,7 +82,7 @@ export function createApp(ctx: AppContext) {
         server.closeAllConnections();
         server.close(async () => {
           ctx.fileWatcher.close();
-          await closeBrowser();
+          await ctx.browserSession.close();
           resolve();
         });
       }),

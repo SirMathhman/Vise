@@ -1,15 +1,8 @@
 import { resolve } from "node:path";
-import type { LlmToolName } from "@vise/shared";
 import type { AppContext } from "../context.js";
 import { AppError, badRequest } from "../errors.js";
 import { sendJson } from "../http.js";
 import type { Route } from "../router.js";
-import {
-  browserClick,
-  browserOpen,
-  browserSnapshot,
-  browserType,
-} from "./browser.js";
 import { runCommand, runShellCommand } from "./llmCommand.js";
 import {
   createDirectory,
@@ -28,9 +21,21 @@ import type { LlmToolHandler } from "./llmToolTypes.js";
  * the handler record above, so the shared package is used type-only here and
  * the backend stays free of runtime dependencies.
  */
-function isLlmToolName(value: string): value is LlmToolName {
-  return value in tools;
-}
+/**
+ * True when the model-supplied name is one of the tools we expose. The full
+ * dispatch record (module tools plus the app-owned browser session handlers)
+ * is built inside llmToolRoutes, so the check is inlined there against that
+ * record rather than done here against the module-level partial record.
+ */
+
+/**
+ * The tools the backend executes for the model, keyed by name. The browser
+ * tools (browser_open/snapshot/click/type) are added at route construction
+ * time from the app-owned browser session, so this record holds only the
+ * non-browser tools. Membership of a name in this record is what makes a tool
+ * "known" to the backend; the browser tools are known because they are merged
+ * in before dispatch.
+ */
 
 /**
  * create_subagent spawns a nested chat-completion loop, which only the panel
@@ -82,7 +87,7 @@ const useSkill: LlmToolHandler = async () => {
  * llmSearch.ts: find_files/search_files) — this file is only the registry and
  * the two HTTP routes that dispatch into it.
  */
-const tools: Record<LlmToolName, LlmToolHandler> = {
+const moduleTools: Record<string, LlmToolHandler> = {
   list_directory: listDirectory,
   find_files: findFiles,
   search_files: searchFiles,
@@ -93,10 +98,6 @@ const tools: Record<LlmToolName, LlmToolHandler> = {
   delete_file: deleteFile,
   delete_directory: deleteDirectory,
   run_command: runCommand,
-  browser_open: browserOpen,
-  browser_snapshot: browserSnapshot,
-  browser_click: browserClick,
-  browser_type: browserType,
   create_subagent: createSubagent,
   ask_questions: askQuestions,
   use_skill: useSkill,
@@ -110,6 +111,14 @@ const tools: Record<LlmToolName, LlmToolHandler> = {
  */
 export function llmToolRoutes(ctx: AppContext): Route[] {
   const root = resolve(ctx.rootPath);
+  const browser = ctx.browserSession;
+  const tools: Record<string, LlmToolHandler> = {
+    ...moduleTools,
+    browser_open: browser.open,
+    browser_snapshot: browser.snapshot,
+    browser_click: browser.click,
+    browser_type: browser.type,
+  };
   return [
     {
       method: "POST",
@@ -132,7 +141,7 @@ export function llmToolRoutes(ctx: AppContext): Route[] {
           }
         }
 
-        const tool = isLlmToolName(name) ? tools[name] : undefined;
+        const tool = (tools as Record<string, LlmToolHandler>)[name];
         if (!tool) {
           sendJson(res, 200, { result: `Error: unknown tool "${name}".` });
           return;
