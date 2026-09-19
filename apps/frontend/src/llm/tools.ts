@@ -284,6 +284,99 @@ const searchFiles: LlmTool = {
 };
 
 /**
+ * Open (or navigate the existing) browser window to a URL and return a
+ * numbered snapshot of its interactive elements. This is the entry point for
+ * the model-driven browser: a separate, visible Chrome window (not the panel's
+ * own cross-origin URL tabs) that the model can click and type into.
+ */
+const browserOpen: LlmTool = {
+  type: "function",
+  function: {
+    name: "browser_open",
+    description:
+      "Open a URL in a visible browser window and return a numbered snapshot of the page's interactive elements (buttons, links, text fields, etc.). This is how you act on a web page: open it, read the snapshot, then use browser_click or browser_type with an element number from that snapshot. Each action also returns a fresh snapshot, so always base your next element number on the latest one. Use this when the user asks you to interact with a web page (click a button, fill a form, submit, etc.).",
+    parameters: {
+      type: "object",
+      properties: {
+        url: {
+          type: "string",
+          description:
+            "The URL to open, e.g. https://example.com. A bare host like www.example.com is accepted.",
+        },
+      },
+      required: ["url"],
+    },
+  },
+};
+
+/**
+ * Re-read the active browser page's interactive elements. Use this to get a
+ * fresh element list after any action, or to re-orient if the page changed.
+ */
+const browserSnapshot: LlmTool = {
+  type: "function",
+  function: {
+    name: "browser_snapshot",
+    description:
+      "Return a fresh numbered snapshot of the active browser page's interactive elements (title, URL, and the element list). Use this to re-read the page after it has changed, or if you are unsure of the current element numbers. browser_open, browser_click, and browser_type each return a fresh snapshot already, so you usually do not need to call this separately.",
+    parameters: {
+      type: "object",
+      properties: {},
+    },
+  },
+};
+
+/**
+ * Click the interactive element with the given number from the current page.
+ */
+const browserClick: LlmTool = {
+  type: "function",
+  function: {
+    name: "browser_click",
+    description:
+      'Click the interactive element with the given number (from the latest snapshot returned by browser_open, browser_snapshot, or a prior action) on the active browser page. The element number is the index shown in the snapshot, e.g. "2) [button] Submit" is element 2. A fresh snapshot is returned after the click so you can act on the result. Use this to click buttons, links, toggles, and other clickable elements.',
+    parameters: {
+      type: "object",
+      properties: {
+        n: {
+          type: "number",
+          description: "The element number from the latest snapshot (0-based).",
+        },
+      },
+      required: ["n"],
+    },
+  },
+};
+
+/**
+ * Type text into the interactive element with the given number from the
+ * current page.
+ */
+const browserType: LlmTool = {
+  type: "function",
+  function: {
+    name: "browser_type",
+    description:
+      "Type text into the interactive element with the given number (from the latest snapshot) on the active browser page. For text fields and textareas this fills the field; for a select it chooses an option matching the text; for a checkbox or radio it checks it. A fresh snapshot is returned after the action. Use this to fill search boxes, form fields, and other inputs.",
+    parameters: {
+      type: "object",
+      properties: {
+        n: {
+          type: "number",
+          description: "The element number from the latest snapshot (0-based).",
+        },
+        text: {
+          type: "string",
+          description:
+            "The text to type into the element (or the option label for a select).",
+        },
+      },
+      required: ["n", "text"],
+    },
+  },
+};
+
+/**
  * Delegate a self-contained sub-task to an independent helper agent. Handled
  * entirely client-side (see components/llm.ts's runSubagent): the panel runs
  * a nested tool-calling loop with its own message history (just the task, not
@@ -412,6 +505,10 @@ export const llmToolDefinitions: LlmTool[] = [
   deleteFile,
   deleteDirectory,
   runCommand,
+  browserOpen,
+  browserSnapshot,
+  browserClick,
+  browserType,
   createSubagent,
   askQuestions,
   useSkill,

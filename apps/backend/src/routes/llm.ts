@@ -4,6 +4,12 @@ import type { AppContext } from "../context.js";
 import { AppError, badRequest } from "../errors.js";
 import { sendJson } from "../http.js";
 import type { Route } from "../router.js";
+import {
+  browserClick,
+  browserOpen,
+  browserSnapshot,
+  browserType,
+} from "./browser.js";
 import { runCommand, runShellCommand } from "./llmCommand.js";
 import {
   createDirectory,
@@ -87,6 +93,10 @@ const tools: Record<LlmToolName, LlmToolHandler> = {
   delete_file: deleteFile,
   delete_directory: deleteDirectory,
   run_command: runCommand,
+  browser_open: browserOpen,
+  browser_snapshot: browserSnapshot,
+  browser_click: browserClick,
+  browser_type: browserType,
   create_subagent: createSubagent,
   ask_questions: askQuestions,
   use_skill: useSkill,
