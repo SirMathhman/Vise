@@ -152,19 +152,22 @@ apps/frontend/src/
                     #   user actions (note: the multi-tab feature has since pushed that
                     #   controller well past the 500-line cap — see Future Work).
     tabs.ts         #   DOM-free viewer tab store: owns the ordered list of open tabs
-                    #   (each a Tab = {id, rel}, a workspace-relative path + unique id)
+                    #   (each a Tab = {id, rel, kind?}, where rel is a workspace-relative
+                    #   path or a URL and kind is "file" | "url"; kind is optional and
+                    #   defaulted to "file" for rows persisted before URL tabs existed)
                     #   and which tab is active. Persists to vise:viewer:tabs (+
                     #   vise:viewer:active) with structured validation (isValidTab),
                     #   mirroring conversations.ts/profiles.ts/skills.ts so it runs under
                     #   Jest in Node (tabs.test.ts). API: activeId/getActive/getTabs,
-                    #   open(rel) (activates an existing tab for the same rel rather than
-                    #   duplicating), close(id) (closing the active tab promotes the first
-                    #   remaining; closing the last leaves the store empty), and
-                    #   activate(id). It deliberately does NOT own the per-tab FileStateStore
-                    #   buffers: those need the network `persist` callback and the DOM
-                    #   save-status span, both controller concerns, so fileTree.ts keeps one
-                    #   FileStateStore per tab plus a per-tab text map and consults this store
-                    #   only for the open set and the active id.
+                    #   open(rel, kind?) (activates an existing tab for the same rel rather
+                    #   than duplicating; kind defaults to "file"), close(id) (closing the
+                    #   active tab promotes the first remaining; closing the last leaves the
+                    #   store empty), and activate(id). It deliberately does NOT own the
+                    #   per-tab FileStateStore buffers: those need the network `persist`
+                    #   callback and the DOM save-status span, both controller concerns, so
+                    #   fileTree.ts keeps one FileStateStore per file tab plus a per-tab text
+                    #   map and consults this store only for the open set and the active id
+                    #   (URL tabs own no buffer — fileTree.openUrl renders an <iframe>).
     llm.ts          #   LLM chat panel: a thin DOM controller over the conversation AND
                     #   profile stores. Queries elements, builds both stores, wires render
                     #   fns + events (including the Profiles modal: profile create/rename/
