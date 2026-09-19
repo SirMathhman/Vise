@@ -492,7 +492,13 @@ function setupUrlBar(viewer: Viewer, bar: HTMLElement): void {
     input.classList.remove("url-invalid");
     input.value = "";
     input.hidden = true;
-    void viewFile(url, viewer);
+    // A *new* URL has no existing tab, so `viewFile`'s URL dispatch (which
+    // only fires for a pre-existing kind=url tab) would skip it and fall
+    // into the file path — persisting the URL as a file tab and 404ing on
+    // the URL string. Call `openUrl` directly; it opens kind=url, persists,
+    // activates, and renders the iframe. Re-opening an existing URL tab via
+    // the tab bar still flows through `viewFile`, where the dispatch works.
+    void openUrl(url, viewer);
   };
   input.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
