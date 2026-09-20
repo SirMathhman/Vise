@@ -377,6 +377,34 @@ const browserType: LlmTool = {
 };
 
 /**
+ * Drag one interactive element onto another on the current page.
+ */
+const browserDrag: LlmTool = {
+  type: "function",
+  function: {
+    name: "browser_drag",
+    description:
+      "Drag the element numbered `from` (from the latest snapshot) and drop it onto the element numbered `to` on the active browser page, using real mouse press/move/release events (so HTML5 drag-and-drop and drag libraries respond). Both numbers come from the same snapshot; draggable elements are listed as [draggable]. A fresh snapshot is returned after the drop. Use this to reorder list items, move cards between columns, or drop a file-like item onto a target.",
+    parameters: {
+      type: "object",
+      properties: {
+        from: {
+          type: "number",
+          description:
+            "The number of the element to pick up (0-based, from the latest snapshot).",
+        },
+        to: {
+          type: "number",
+          description:
+            "The number of the element to drop onto (0-based, from the latest snapshot).",
+        },
+      },
+      required: ["from", "to"],
+    },
+  },
+};
+
+/**
  * Delegate a self-contained sub-task to an independent helper agent. Handled
  * entirely client-side (see components/llm.ts's runSubagent): the panel runs
  * a nested tool-calling loop with its own message history (just the task, not
@@ -509,6 +537,7 @@ export const llmToolDefinitions: LlmTool[] = [
   browserSnapshot,
   browserClick,
   browserType,
+  browserDrag,
   createSubagent,
   askQuestions,
   useSkill,

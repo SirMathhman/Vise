@@ -77,7 +77,7 @@ apps/backend/src/
                   #   second, non-tool route: runs a command through llmCommand.ts's
                   #   runShellCommand core — the same one run_command uses — but returns
     browser.ts    #   BROWSER SESSION: createBrowserSession -> BrowserSession, the
-                  #   app-owned Playwright session the four browser tools drive.
+                  #   app-owned Playwright session the five browser tools drive.
                   #   Lazily opens a visible system-Chrome page on first
                   #   browser_open; snapshot/click/type re-collect a numbered
                   #   snapshot of interactive elements before acting so the

@@ -18,12 +18,12 @@ import {
  * and is mirrored into Vise's viewer panel as a live screencast (see
  * browserScreencast.ts), so the user watches — and can hand-drive — the very
  * page the model is acting on. This module owns that single session — at most
- * one page at a time — and exposes four tools: open, snapshot, click, and type,
+ * one page at a time — and exposes five tools: open, snapshot, click, type, and drag,
  * plus the panel-facing navigate/stream/input surface.
  *
  * The model's interface is a numbered snapshot: `browser_open` and
  * `browser_snapshot` return the page's interactive elements as a numbered
- * list, and `browser_click`/`browser_type` act on an element by its number.
+ * list, and `browser_click`/`browser_type`/`browser_drag` act on elements by number.
  * Because tool calls run serially (see llm.ts), each action re-collects the
  * element list immediately before acting, so the model's number always maps
  * to a live element without storing stale handles across calls.
@@ -33,6 +33,8 @@ import {
 const ACTION_TIMEOUT_MS = 30_000;
 /** How long a page load may take before it is reported as failed. */
 const LOAD_TIMEOUT_MS = 45_000;
+/** Intermediate mouse moves in a drag; drag libraries need more than one move event to start. */
+const DRAG_MOVE_STEPS = 10;
 /** The maximum number of interactive elements a snapshot lists (output bound). */
 const MAX_SNAPSHOT_ELEMENTS = 100;
 
@@ -40,10 +42,11 @@ const MAX_SNAPSHOT_ELEMENTS = 100;
  * The CSS selector for the interactive elements a snapshot lists. Restricted
  * to elements the model can meaningfully click or type into: buttons, links,
  * text inputs, textareas, selects, ARIA button/link roles, `<summary>`
- * toggles, and contenteditable fields. Hidden inputs are excluded.
+ * toggles, contenteditable fields, and draggable elements. Hidden inputs are
+ * excluded.
  */
 const INTERACTIVE_SELECTOR =
-  "button, a[href], input:not([type=hidden]), textarea, select, [role=button], [role=link], [contenteditable=true], summary";
+  "button, a[href], input:not([type=hidden]), textarea, select, [role=button], [role=link], [contenteditable=true], summary, [draggable=true]";
 
 /** The model-facing kind of an interactive element (drives label + action). */
 type ElementKind =
@@ -54,7 +57,8 @@ type ElementKind =
   | "select"
   | "checkbox"
   | "radio"
-  | "summary";
+  | "summary"
+  | "draggable";
 
 /** The raw properties read from a live element, used to build its label/kind. */
 interface RawElement {
@@ -67,6 +71,7 @@ interface RawElement {
   id: string;
   href: string;
   type: string;
+  draggable: boolean;
 }
 
 /**
@@ -109,6 +114,8 @@ export interface BrowserSession {
   click(args: Record<string, unknown>): Promise<string>;
   /** browser_type: fill/check/select the element at the given number. */
   type(args: Record<string, unknown>): Promise<string>;
+  /** browser_drag: drag the `from` element and drop it onto the `to` element. */
+  drag(args: Record<string, unknown>): Promise<string>;
   /**
    * Navigate the page from the panel's URL bar (rather than from a tool call),
    * launching the browser if this is the first use. Returns the resolved URL.
@@ -144,7 +151,7 @@ function kindOf(raw: RawElement): ElementKind {
       if (raw.type === "radio") return "radio";
       return "text-field";
     default:
-      return "text-field";
+      return raw.draggable ? "draggable" : "text-field";
   }
 }
 
@@ -182,6 +189,8 @@ function labelOf(raw: RawElement, kind: ElementKind): string {
       );
     case "summary":
       return raw.aria || raw.text || "summary";
+    case "draggable":
+      return raw.aria || raw.text || (raw.id ? `#${raw.id}` : "") || kind;
     default:
       return fallback;
   }
@@ -253,6 +262,7 @@ export function createBrowserSession(): BrowserSession {
           id: a.id,
           href: a.href,
           type: a.type,
+          draggable: a.getAttribute("draggable") === "true",
         };
       })) as RawElement;
       const kind = kindOf(raw);
@@ -260,6 +270,21 @@ export function createBrowserSession(): BrowserSession {
       entries.push({ n: i, kind, label });
     }
     return { handles, entries };
+  }
+
+  /**
+   * Scroll an element into view and return the viewport coordinates of its
+   * center, or a model-readable error if it has no visible box.
+   */
+  async function centerOf(
+    handle: ElementHandle,
+    n: number
+  ): Promise<{ x: number; y: number }> {
+    await handle.scrollIntoViewIfNeeded();
+    const box = await handle.boundingBox();
+    if (!box)
+      throw badRequest(`element ${n} is not visible and cannot be dragged`);
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
   }
 
   /**
@@ -359,6 +384,39 @@ export function createBrowserSession(): BrowserSession {
       }
       const snap = await snapshotText();
       return `Typed "${text}" into [${kind}] "${label}".\n${snap}`;
+    },
+
+    /**
+     * Drag the element numbered `from` onto the element numbered `to`, using
+     * real mouse press/move/release events so HTML5 drag-and-drop and drag
+     * libraries respond as they would to a user.
+     */
+    async drag(args: Record<string, unknown>): Promise<string> {
+      requirePage();
+      const from = typeof args.from === "number" ? Math.trunc(args.from) : NaN;
+      const to = typeof args.to === "number" ? Math.trunc(args.to) : NaN;
+      if (!Number.isFinite(from) || !Number.isFinite(to))
+        throw badRequest("from and to are required (element numbers)");
+      const { handles, entries } = await collectElements();
+      for (const n of [from, to]) {
+        if (n < 0 || n >= handles.length) {
+          throw badRequest(
+            `no element ${n}; the page has ${handles.length} interactive elements (0..${handles.length - 1})`
+          );
+        }
+      }
+      const p = requirePage();
+      const source = await centerOf(handles[from], from);
+      // Re-measure the target after picking up: scrolling the source into view
+      // may have moved it.
+      await p.mouse.move(source.x, source.y);
+      await p.mouse.down();
+      const target = await centerOf(handles[to], to);
+      await p.mouse.move(target.x, target.y, { steps: DRAG_MOVE_STEPS });
+      await p.mouse.up();
+      const snap = await snapshotText();
+      return `Dragged [${entries[from]?.kind}] "${entries[from]?.label}" onto [${entries[to]?.kind}] "${entries[to]?.label}".
+${snap}`;
     },
 
     /**
