@@ -1,5 +1,5 @@
 import type { LlmToolCall } from "../api/client.js";
-import { renderMarkdownInto } from "../markdown.js";
+import { renderMarkdownInto } from "../markdown/index.js";
 import type { ChatMessage } from "./conversations.js";
 
 /**
