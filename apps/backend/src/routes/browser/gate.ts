@@ -38,7 +38,7 @@ export interface PageGate {
    * reporting a dialog the action opens (which would otherwise block it)
    * instead of hanging on it.
    */
-  guarded(run: (p: Page) => Promise<string>): Promise<string>;
+  guarded<T>(run: (p: Page) => Promise<T>): Promise<T | string>;
   /** Detach the screencast and close Chrome. Safe to call more than once. */
   close(): Promise<void>;
 }
@@ -102,8 +102,12 @@ export function createPageGate(
      */
     async close() {
       const b = browser;
+      const l = live;
       browser = undefined;
       live = undefined;
+      // A page blocked on an open dialog can't shut down, so answer it first
+      // (the throw when there is none is expected).
+      await l?.dialogs.answer({ action: "dismiss" }).catch(() => undefined);
       // Detach CDP before killing the browser so the session teardown doesn't
       // race the process exit and log a spurious protocol error.
       await screencast.close();

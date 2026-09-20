@@ -3,7 +3,9 @@ import {
   LOAD_TIMEOUT_MS,
   type PageActionName,
   pageActions,
+  screenshot,
 } from "./actions.js";
+import type { LlmToolResult } from "../llmToolTypes.js";
 import { createPageGate } from "./gate.js";
 import {
   type BrowserInput,
@@ -47,6 +49,8 @@ export interface BrowserSession {
    * run the named action against the open page.
    */
   act(tool: PageActionName, args: Record<string, unknown>): Promise<string>;
+  /** browser_screenshot: capture the page as an image. */
+  screenshot(args: Record<string, unknown>): Promise<string | LlmToolResult>;
   /** browser_dialog: accept or dismiss the JavaScript dialog the page has open. */
   dialog(args: Record<string, unknown>): Promise<string>;
   /**
@@ -100,6 +104,11 @@ export function createBrowserSession(): BrowserSession {
     /** Run a page-acting tool (click, type, drag, hover) against the open page. */
     async act(tool, args) {
       return guarded((p) => pageActions[tool](p, args));
+    },
+
+    /** Capture the page as an image. */
+    async screenshot(args) {
+      return guarded((p) => screenshot(p, args));
     },
 
     /** Accept or dismiss the open dialog, then return a fresh snapshot. */

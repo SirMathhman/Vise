@@ -11,4 +11,13 @@
 export type LlmToolHandler = (
   args: Record<string, unknown>,
   root: string
-) => Promise<string>;
+) => Promise<string | LlmToolResult>;
+
+/**
+ * A tool result that carries images alongside its text (browser_screenshot).
+ * `images` are data URLs. Tools with no images just return a string.
+ */
+export interface LlmToolResult {
+  text: string;
+  images: string[];
+}

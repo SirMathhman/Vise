@@ -15,7 +15,7 @@ export interface DialogWatch {
    * action is then blocked on it), return a description of the dialog instead
    * of waiting; if one is already open, refuse to start the action.
    */
-  guard(run: () => Promise<string>): Promise<string>;
+  guard<T>(run: () => Promise<T>): Promise<T | string>;
   /** Whether a dialog is currently open (the page is blocked on it). */
   isOpen(): boolean;
   /** Throw the "a dialog is open" error if one is; for actions that bypass `guard`. */

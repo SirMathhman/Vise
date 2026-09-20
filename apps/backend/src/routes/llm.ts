@@ -97,6 +97,7 @@ export function llmToolRoutes(ctx: AppContext): Route[] {
     browser_open: browser.open,
     browser_snapshot: browser.snapshot,
     browser_dialog: browser.dialog,
+    browser_screenshot: browser.screenshot,
   };
   // The page-acting browser tools all route through the session's one `act`.
   for (const name of Object.keys(pageActions) as PageActionName[]) {
@@ -130,8 +131,12 @@ export function llmToolRoutes(ctx: AppContext): Route[] {
           return;
         }
         try {
-          const result = await tool(args, root);
-          sendJson(res, 200, { result });
+          const out = await tool(args, root);
+          if (typeof out === "string") {
+            sendJson(res, 200, { result: out });
+          } else {
+            sendJson(res, 200, { result: out.text, images: out.images });
+          }
         } catch (err) {
           const message =
             err instanceof AppError ? err.message : (err as Error).message;

@@ -1,5 +1,6 @@
 import type { ElementHandle, Page } from "playwright-core";
 import { AppError, badRequest } from "../../errors.js";
+import type { LlmToolResult } from "../llmToolTypes.js";
 import { snapshotText } from "./snapshot.js";
 import { resolveTargets } from "./targets.js";
 
@@ -7,6 +8,8 @@ import { resolveTargets } from "./targets.js";
 export const LOAD_TIMEOUT_MS = 45_000;
 /** How long a browser_run_code snippet may run before it is abandoned. */
 const CODE_TIMEOUT_MS = 30_000;
+/** JPEG quality of a screenshot sent to the model (0-100). */
+const SCREENSHOT_QUALITY = 70;
 /** The maximum characters of page text or code result returned to the model. */
 const MAX_TEXT_CHARS = 20_000;
 /** Intermediate mouse moves in a drag; drag libraries need more than one move event to start. */
@@ -254,4 +257,27 @@ async function runCode(
     shown = String(value);
   }
   return withSnapshot(page, `Code returned: ${capText(shown)}`);
+}
+
+/**
+ * browser_screenshot: capture the page as a JPEG (much smaller than a PNG,
+ * which matters because it is sent to the model and held in memory) and return
+ * it as an image. `full_page` captures the whole scrollable page instead of
+ * just the viewport.
+ */
+export async function screenshot(
+  page: Page,
+  args: Record<string, unknown>
+): Promise<LlmToolResult> {
+  const fullPage = args.full_page === true;
+  const bytes = await page.screenshot({
+    type: "jpeg",
+    quality: SCREENSHOT_QUALITY,
+    fullPage,
+  });
+  const title = await page.title().catch(() => "");
+  return {
+    text: `Took a screenshot of ${fullPage ? "the full page" : "the viewport"}: "${title || "(untitled)"}" at ${page.url()}. It is attached as an image.`,
+    images: [`data:image/jpeg;base64,${bytes.toString("base64")}`],
+  };
 }
