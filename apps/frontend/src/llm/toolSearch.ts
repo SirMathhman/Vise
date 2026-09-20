@@ -13,7 +13,9 @@ export const MAX_SEARCH_RESULTS = 8;
  * The tools matching `query`, best first. `select:a,b` returns exactly those
  * names (in that order). Otherwise every whitespace-separated word must
  * appear (case-insensitively) in the tool's name or description, and tools
- * with more of the words in their *name* rank first, then by list order.
+ * with more of the words in their *name* rank first, then by list order. If
+ * no tool has every word (a natural-language query full of filler), fall back
+ * to tools matching any word, most matching words first.
  */
 export function matchTools(defs: LlmTool[], query: string): LlmTool[] {
   const q = query.trim();
@@ -24,20 +26,28 @@ export function matchTools(defs: LlmTool[], query: string): LlmTool[] {
       .map((n) => n.trim())
       .filter(Boolean);
     return names
-      .map((n) => defs.find((d) => d.function.name === n))
+      .map((n) =>
+        defs.find((d) => d.function.name.toLowerCase() === n.toLowerCase())
+      )
       .filter((d): d is LlmTool => d !== undefined);
   }
   const words = q.toLowerCase().split(/\s+/).filter(Boolean);
-  return defs
-    .map((d, order) => {
-      const name = d.function.name.toLowerCase();
-      const haystack = `${name} ${d.function.description.toLowerCase()}`;
-      const matches = words.every((w) => haystack.includes(w));
-      const inName = words.filter((w) => name.includes(w)).length;
-      return { d, order, matches, inName };
-    })
-    .filter((r) => r.matches)
-    .sort((a, b) => b.inName - a.inName || a.order - b.order)
+  const scored = defs.map((d, order) => {
+    const name = d.function.name.toLowerCase();
+    const haystack = `${name} ${d.function.description.toLowerCase()}`;
+    return {
+      d,
+      order,
+      found: words.filter((w) => haystack.includes(w)).length,
+      inName: words.filter((w) => name.includes(w)).length,
+    };
+  });
+  const all = scored.filter((r) => r.found === words.length);
+  const pool = all.length > 0 ? all : scored.filter((r) => r.found > 0);
+  return pool
+    .sort(
+      (a, b) => b.found - a.found || b.inName - a.inName || a.order - b.order
+    )
     .map((r) => r.d);
 }
 

@@ -1,4 +1,4 @@
-import { llmToolDefinitions, META_TOOL_NAMES } from "../llm/tools.js";
+import { isMetaTool, llmToolDefinitions } from "../llm/tools.js";
 import type { Profile, ProfileStore } from "./profiles.js";
 
 /**
@@ -17,7 +17,7 @@ export function renderProfileToolList(
   list.className = "llm-tools-list";
   for (const tool of llmToolDefinitions) {
     const name = tool.function.name;
-    if (META_TOOL_NAMES.includes(name)) continue; // infrastructure, not a permission
+    if (isMetaTool(name)) continue; // infrastructure, not a permission
     const li = document.createElement("li");
     li.className = "llm-tool";
     li.classList.toggle("llm-tool-disabled", !allowed.includes(name));

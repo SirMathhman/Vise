@@ -17,13 +17,18 @@ import {
   extractPartialJsonNumber,
   extractPartialJsonString,
 } from "../llm/partialJson.js";
-import { formatToolSearch, matchTools } from "../llm/toolSearch.js";
 import {
-  DEFERRED_TOOL_NAMES,
-  llmToolDefinitions,
-  META_TOOL_NAMES,
-  offeredToolDefinitions,
-} from "../llm/tools.js";
+  disabledFromAllowed,
+  disabledToolResult,
+  offeredToolsFor,
+  parseAskQuestionsArgs,
+  parseSubagentArgs,
+  parseUseSkillArgs,
+  searchToolsResult,
+  subagentToolDefs,
+  unwrapCallTool,
+} from "../llm/toolCalls.js";
+import { DEFERRED_TOOL_NAMES } from "../llm/tools.js";
 import {
   type AskCardHandle,
   type AskQuestion,
@@ -877,54 +882,8 @@ async function checkEndHook(command: string): Promise<EndHookOutcome> {
   return { blocked: false, summary };
 }
 
-/** Model-readable result returned when the active profile doesn't allow a tool. */
-function disabledToolResult(name: string, profileName: string): string {
-  return (
-    `${name} is not available in the "${profileName}" profile. Do not call ` +
-    "it; if you need its capability, tell the user to add it to the " +
-    "profile's allowed tools."
-  );
-}
-
-/**
- * Every known tool name that `allowed` does not include. The meta-tools
- * (search_tools, call_tool) are never disabled: they grant nothing themselves,
- * since a search only lists allowed tools and call_tool re-checks the target.
- */
-function disabledFromAllowed(allowed: string[]): string[] {
-  return llmToolDefinitions
-    .map((t) => t.function.name)
-    .filter(
-      (name) => !allowed.includes(name) && !META_TOOL_NAMES.includes(name)
-    );
-}
-
 /** Maximum tool-call rounds a subagent may run before it must give a final answer. */
 const SUBAGENT_MAX_TOOL_TURNS = 5;
-
-/**
- * The tool definitions offered to a subagent: llmToolDefinitions filtered to
- * the given profile's allowedTools, always excluding the three client-executed
- * tools that a headless subagent cannot fulfil (plus the search_tools/call_tool
- * meta-tools, which are also client-executed and unneeded because a subagent is
- * offered every allowed tool directly, deferred ones included) — create_subagent (so a
- * subagent can never spawn further subagents), ask_questions (its
- * collapsed transcript has no room for an interactive card, and its loop has
- * no way to pause for a user), and use_skill (the skill store is a panel
- * concern; a subagent's loop has no way to look one up, since it calls
- * executeLlmTool directly rather than resolveToolCall). All three are
- * excluded regardless of what a profile's own allowedTools happens to list.
- */
-function subagentToolDefs(profile: Profile): LlmTool[] {
-  return llmToolDefinitions.filter(
-    (t) =>
-      t.function.name !== "create_subagent" &&
-      t.function.name !== "ask_questions" &&
-      t.function.name !== "use_skill" &&
-      !META_TOOL_NAMES.includes(t.function.name) &&
-      profile.allowedTools.includes(t.function.name)
-  );
-}
 
 /**
  * The profiles a subagent spawned under `profile` may run under: every
@@ -946,66 +905,6 @@ function availableSubagentProfiles(
     );
 }
 
-/** Parse the `task`/`profile` arguments out of a create_subagent tool call. */
-function parseSubagentArgs(tc: LlmToolCall): {
-  task: string;
-  profile: string;
-} {
-  try {
-    const args = JSON.parse(tc.function.arguments) as {
-      task?: unknown;
-      profile?: unknown;
-    };
-    return {
-      task: typeof args.task === "string" ? args.task : "",
-      profile: typeof args.profile === "string" ? args.profile : "",
-    };
-  } catch {
-    return { task: "", profile: "" };
-  }
-}
-
-/** Parse the `name` argument out of a use_skill tool call. */
-function parseUseSkillArgs(tc: LlmToolCall): string | undefined {
-  try {
-    const args = JSON.parse(tc.function.arguments) as { name?: unknown };
-    return typeof args.name === "string" && args.name !== ""
-      ? args.name
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/** Parse the `questions` argument out of an ask_questions tool call. */
-function parseAskQuestionsArgs(tc: LlmToolCall): AskQuestion[] {
-  try {
-    const args = JSON.parse(tc.function.arguments) as {
-      questions?: unknown;
-    };
-    if (!Array.isArray(args.questions)) return [];
-    const out: AskQuestion[] = [];
-    for (const q of args.questions) {
-      if (typeof q !== "object" || q === null) continue;
-      const o = q as Record<string, unknown>;
-      if (typeof o.question !== "string") continue;
-      const item: AskQuestion = { question: o.question };
-      if (Array.isArray(o.options)) {
-        item.options = (o.options as unknown[]).filter(
-          (v): v is string => typeof v === "string"
-        );
-      }
-      if (typeof o.multi_select === "boolean") {
-        item.multiSelect = o.multi_select;
-      }
-      out.push(item);
-    }
-    return out;
-  } catch {
-    return [];
-  }
-}
-
 /** The outcome of resolving one model tool call. */
 interface ToolCallOutcome {
   result: string;
@@ -1015,66 +914,6 @@ interface ToolCallOutcome {
   steps?: SubagentStep[];
   /** Present only for a create_subagent call: the task it was given. */
   task?: string;
-}
-
-/** Parse a tool call's JSON arguments into an object, or undefined if they aren't one. */
-function parseJsonObject(json: string): Record<string, unknown> | undefined {
-  try {
-    const v: unknown = JSON.parse(json || "{}");
-    return v !== null && typeof v === "object" && !Array.isArray(v)
-      ? (v as Record<string, unknown>)
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/** The result of search_tools: allowed tools matching the query (the meta-tools themselves excluded). */
-function searchToolsResult(tc: LlmToolCall, profile: Profile): string {
-  const query = parseJsonObject(tc.function.arguments)?.query;
-  if (typeof query !== "string" || !query.trim()) {
-    return 'search_tools requires a `query` argument: keywords to match against tool names and descriptions, or "select:name1,name2".';
-  }
-  const searchable = llmToolDefinitions.filter(
-    (t) =>
-      !META_TOOL_NAMES.includes(t.function.name) &&
-      profile.allowedTools.includes(t.function.name)
-  );
-  return formatToolSearch(
-    matchTools(searchable, query),
-    new Set(DEFERRED_TOOL_NAMES),
-    query
-  );
-}
-
-/**
- * Turn a call_tool call into the call it stands for (same id, the named tool,
- * its arguments), or a model-readable error string. The result goes through
- * resolveToolCall again, so the profile check and each tool's own handling
- * apply unchanged; call_tool and search_tools themselves can't be nested.
- */
-function parseCallToolArgs(tc: LlmToolCall): LlmToolCall | string {
-  const args = parseJsonObject(tc.function.arguments);
-  const target = typeof args?.name === "string" ? args.name : "";
-  if (!target) {
-    return "call_tool requires a `name` argument: the exact name of the tool to run. Use search_tools to find it.";
-  }
-  if (META_TOOL_NAMES.includes(target)) {
-    return `${target} cannot be run through call_tool; call it directly.`;
-  }
-  if (!llmToolDefinitions.some((t) => t.function.name === target)) {
-    return `No tool named "${target}". Use search_tools to find the right name.`;
-  }
-  const inner = args?.arguments;
-  return {
-    id: tc.id,
-    type: "function",
-    function: {
-      name: target,
-      arguments:
-        typeof inner === "string" ? inner : JSON.stringify(inner ?? {}),
-    },
-  };
 }
 
 /**
@@ -1087,7 +926,7 @@ function parseCallToolArgs(tc: LlmToolCall): LlmToolCall | string {
  * names); everything else is forwarded to the backend.
  */
 async function resolveToolCall(
-  tc: LlmToolCall,
+  rawTc: LlmToolCall,
   model: string,
   profile: Profile,
   profiles: ProfileStore,
@@ -1095,26 +934,17 @@ async function resolveToolCall(
   agentsMd: string | undefined,
   skills: SkillStore
 ): Promise<ToolCallOutcome> {
+  // call_tool stands for the deferred tool it names; resolve that instead.
+  const unwrapped = unwrapCallTool(rawTc);
+  if (typeof unwrapped === "string") return { result: unwrapped };
+  const tc = unwrapped;
   const name = tc.function.name;
   const disabled = disabledFromAllowed(profile.allowedTools);
   if (disabled.includes(name)) {
     return { result: disabledToolResult(name, profile.name) };
   }
   if (name === "search_tools") {
-    return { result: searchToolsResult(tc, profile) };
-  }
-  if (name === "call_tool") {
-    const inner = parseCallToolArgs(tc);
-    if (typeof inner === "string") return { result: inner };
-    return resolveToolCall(
-      inner,
-      model,
-      profile,
-      profiles,
-      view,
-      agentsMd,
-      skills
-    );
+    return { result: searchToolsResult(tc, profile.allowedTools) };
   }
   if (name === "use_skill") {
     const args = parseUseSkillArgs(tc);
@@ -1194,7 +1024,7 @@ async function runSubagent(
   profile: Profile,
   agentsMd?: string
 ): Promise<{ result: string; steps: SubagentStep[] }> {
-  const tools = subagentToolDefs(profile);
+  const tools = subagentToolDefs(profile.allowedTools);
   const disabled = disabledFromAllowed(profile.allowedTools);
   const steps: SubagentStep[] = [];
   const messages: LlmMessage[] = [
@@ -1642,7 +1472,7 @@ async function runTurn(
       const reply = await streamLlmMessage(
         messages,
         model,
-        offeredToolDefinitions,
+        offeredToolsFor(disabled),
         (text) => {
           ensureStreamingStarted();
           view.updateStreaming(text);

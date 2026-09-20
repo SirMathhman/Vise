@@ -6,6 +6,7 @@
  * here and one handler on the backend — neither side hardcodes tool names
  * beyond this shared list.
  */
+import type { LlmToolName } from "@vise/shared";
 import type { LlmTool } from "../api/client.js";
 import { browserToolDefinitions } from "./browserTools.js";
 
@@ -427,16 +428,17 @@ const searchTools: LlmTool = {
 };
 
 /**
- * Run any tool by name, including ones not loaded up front. Handled
- * client-side: it re-dispatches as a call to the named tool, so the active
- * profile's allowed-tools check and every tool's usual handling still apply.
+ * Run a deferred tool by name (see DEFERRED_TOOL_NAMES). Handled client-side:
+ * it re-dispatches as a call to the named tool, so the active profile's
+ * allowed-tools check and the tool's usual handling still apply; loaded tools
+ * are refused (they are called directly).
  */
 const callTool: LlmTool = {
   type: "function",
   function: {
     name: "call_tool",
     description:
-      "Run a tool by name with the given arguments and return its result, exactly as if you had called it directly. Use this for tools that are not loaded up front: find one and its parameter schema with search_tools, then call it here. Do not use it for tools you already have loaded; call those directly.",
+      "Run a tool that is not loaded up front, by name, with the given arguments, and return its result exactly as if you had called it directly. Find the tool and its parameter schema with search_tools, then call it here, putting its parameters inside `arguments`. Tools you already have loaded must be called directly; this refuses them.",
     parameters: {
       type: "object",
       properties: {
@@ -466,7 +468,15 @@ export const DEFERRED_TOOL_NAMES: readonly string[] =
   browserToolDefinitions.map((t) => t.function.name);
 
 /** The two meta-tools over the tool list; never disabled, never user-toggled. */
-export const META_TOOL_NAMES: readonly string[] = ["search_tools", "call_tool"];
+export const META_TOOL_NAMES = [
+  "search_tools",
+  "call_tool",
+] as const satisfies readonly LlmToolName[];
+
+/** Whether `name` is one of the meta-tools. */
+export function isMetaTool(name: string): boolean {
+  return (META_TOOL_NAMES as readonly string[]).includes(name);
+}
 
 /** All tool definitions, in a stable order (loaded and deferred alike). */
 export const llmToolDefinitions: LlmTool[] = [
