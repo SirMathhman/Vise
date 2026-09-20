@@ -6,33 +6,37 @@ import { resolveTargets } from "./targets.js";
 /** Intermediate mouse moves in a drag; drag libraries need more than one move event to start. */
 const DRAG_MOVE_STEPS = 10;
 
+/**
+ * The result every page action returns: what it did, then a fresh snapshot.
+ * A page action can navigate or mutate the DOM, so the model's next action
+ * must target the current element numbers.
+ */
+async function withSnapshot(page: Page, message: string): Promise<string> {
+  return `${message}\n${await snapshotText(page)}`;
+}
+
 /** browser_click: click the element with the given number. */
-export async function click(
+async function click(
   page: Page,
   args: Record<string, unknown>
 ): Promise<string> {
   const [{ handle, entry }] = await resolveTargets(page, args, ["n"]);
   await handle.click();
-  // A click can navigate or mutate the DOM, so hand back a fresh snapshot:
-  // the model's next action must target the current element numbers.
-  const snap = await snapshotText(page);
-  return `Clicked [${entry.kind}] "${entry.label}".\n${snap}`;
+  return withSnapshot(page, `Clicked [${entry.kind}] "${entry.label}".`);
 }
 
 /** browser_hover: move the mouse over the element with the given number. */
-export async function hover(
+async function hover(
   page: Page,
   args: Record<string, unknown>
 ): Promise<string> {
   const [{ handle, entry }] = await resolveTargets(page, args, ["n"]);
   await handle.hover();
-  // Hovering commonly reveals menus and tooltips, so hand back a fresh snapshot.
-  const snap = await snapshotText(page);
-  return `Hovered over [${entry.kind}] "${entry.label}".\n${snap}`;
+  return withSnapshot(page, `Hovered over [${entry.kind}] "${entry.label}".`);
 }
 
 /** browser_type: type into (or check/select) the element with the given number. */
-export async function type(
+async function type(
   page: Page,
   args: Record<string, unknown>
 ): Promise<string> {
@@ -59,8 +63,7 @@ export async function type(
       `element ${n} is a [${kind}] and cannot be typed into; use browser_click`
     );
   }
-  const snap = await snapshotText(page);
-  return `Typed "${text}" into [${kind}] "${label}".\n${snap}`;
+  return withSnapshot(page, `Typed "${text}" into [${kind}] "${label}".`);
 }
 
 /**
@@ -83,7 +86,7 @@ async function centerOf(
  * `to`, using real mouse press/move/release events so HTML5 drag-and-drop and
  * drag libraries respond as they would to a user.
  */
-export async function drag(
+async function drag(
   page: Page,
   args: Record<string, unknown>
 ): Promise<string> {
@@ -100,8 +103,30 @@ export async function drag(
     // Never leave the button held down in the shared page if the move failed.
     await page.mouse.up();
   }
-  const snap = await snapshotText(page);
   const s = source.entry;
   const t = target.entry;
-  return `Dragged [${s.kind}] "${s.label}" onto [${t.kind}] "${t.label}".\n${snap}`;
+  return withSnapshot(
+    page,
+    `Dragged [${s.kind}] "${s.label}" onto [${t.kind}] "${t.label}".`
+  );
 }
+
+/**
+ * The page-acting browser tools, keyed by tool name. Each takes the open page
+ * and the model's arguments and returns a result ending in a fresh snapshot.
+ * Adding a tool of this shape means adding an entry here (plus its name in
+ * `@vise/shared` and its schema in the frontend); the session and the tool
+ * registry derive from this record.
+ */
+export const pageActions = {
+  browser_click: click,
+  browser_type: type,
+  browser_drag: drag,
+  browser_hover: hover,
+} satisfies Record<
+  string,
+  (page: Page, args: Record<string, unknown>) => Promise<string>
+>;
+
+/** The name of a page-acting browser tool. */
+export type PageActionName = keyof typeof pageActions;

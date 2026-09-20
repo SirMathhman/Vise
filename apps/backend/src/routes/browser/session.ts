@@ -1,7 +1,6 @@
-import { type Browser, chromium, type Page } from "playwright-core";
 import { badRequest } from "../../errors.js";
-import * as actions from "./actions.js";
-import { type DialogWatch, watchDialogs } from "./dialogs.js";
+import { type PageActionName, pageActions } from "./actions.js";
+import { createPageGate } from "./gate.js";
 import {
   type BrowserInput,
   createScreencast,
@@ -16,19 +15,18 @@ import { snapshotText } from "./snapshot.js";
  * and is mirrored into Vise's viewer panel as a live screencast (see
  * screencast.ts), so the user watches — and can hand-drive — the very
  * page the model is acting on. This module owns that single session — at most
- * one page at a time — and exposes seven tools: open, snapshot, click, type, drag, hover, and dialog,
- * plus the panel-facing navigate/stream/input surface.
+ * one page at a time (see gate.ts) — and exposes seven tools: open, snapshot,
+ * dialog, and the page actions (click, type, drag, hover), plus the
+ * panel-facing navigate/stream/input surface.
  *
  * The model's interface is a numbered snapshot: `browser_open` and
  * `browser_snapshot` return the page's interactive elements as a numbered
- * list, and `browser_click`/`browser_type`/`browser_drag` act on elements by number.
+ * list, and the page actions act on elements by number.
  * Because tool calls run serially (see llm.ts), each action re-collects the
  * element list immediately before acting, so the model's number always maps
  * to a live element without storing stale handles across calls.
  */
 
-/** How long a single page action (navigate, click, fill) may take before it is a timeout. */
-const ACTION_TIMEOUT_MS = 30_000;
 /** How long a page load may take before it is reported as failed. */
 const LOAD_TIMEOUT_MS = 45_000;
 
@@ -43,14 +41,11 @@ export interface BrowserSession {
   open(args: Record<string, unknown>): Promise<string>;
   /** browser_snapshot: re-read the page's interactive elements. */
   snapshot(): Promise<string>;
-  /** browser_click: click the element at the given number. */
-  click(args: Record<string, unknown>): Promise<string>;
-  /** browser_type: fill/check/select the element at the given number. */
-  type(args: Record<string, unknown>): Promise<string>;
-  /** browser_hover: hover the mouse over the element at the given number. */
-  hover(args: Record<string, unknown>): Promise<string>;
-  /** browser_drag: drag the `from` element and drop it onto the `to` element. */
-  drag(args: Record<string, unknown>): Promise<string>;
+  /**
+   * The page-acting tools (browser_click/type/drag/hover, see actions.ts):
+   * run the named action against the open page.
+   */
+  act(tool: PageActionName, args: Record<string, unknown>): Promise<string>;
   /** browser_dialog: accept or dismiss the JavaScript dialog the page has open. */
   dialog(args: Record<string, unknown>): Promise<string>;
   /**
@@ -69,68 +64,12 @@ export interface BrowserSession {
 }
 
 export function createBrowserSession(): BrowserSession {
-  // The one browser session, at most one page. Undefined until first open.
-  let browser: Browser | undefined;
-  // The open page and the watch holding its JavaScript dialogs (see
-  // dialogs.ts), which always come and go together.
-  let live: { page: Page; dialogs: DialogWatch } | undefined;
-  // The gate: every use of the page (each tool, the panel's navigate) runs one
-  // at a time through it, so panel navigation can't interleave with a model
-  // action and two first calls can't both launch Chrome.
-  let tail: Promise<unknown> = Promise.resolve();
-  function serial<T>(run: () => Promise<T>): Promise<T> {
-    const next = tail.then(run, run);
-    tail = next.catch(() => undefined);
-    return next;
-  }
-  // The screencast that mirrors `page` into the viewer panel. Created eagerly
+  // The screencast that mirrors the page into the viewer panel. Created eagerly
   // (it is inert until a page is attached) so subscribers can connect before
   // the first navigation, exactly like opening an empty browser tab.
   const screencast = createScreencast();
-
-  /**
-   * Launch Chrome and open the single page if they don't exist yet, attaching
-   * the screencast to any page we create. Chrome runs headless because the
-   * page is rendered inside Vise's viewer panel now; set VISE_BROWSER_HEADFUL
-   * to get a real window back when debugging the automation itself.
-   */
-  async function ensurePage(): Promise<NonNullable<typeof live>> {
-    if (!browser) {
-      browser = await chromium.launch({
-        channel: "chrome", // drive the system Chrome, no bundled download
-        headless: process.env.VISE_BROWSER_HEADFUL !== "1",
-      });
-    }
-    if (!live) {
-      const page = await browser.newPage();
-      page.setDefaultTimeout(ACTION_TIMEOUT_MS);
-      live = { page, dialogs: watchDialogs(page) };
-      await screencast.attach(page);
-    }
-    return live;
-  }
-
-  /** A model-readable error when an action needs a page but none is open. */
-  function requirePage(): NonNullable<typeof live> {
-    if (!live) {
-      throw badRequest(
-        "no browser page is open; call browser_open with a URL first"
-      );
-    }
-    return live;
-  }
-
-  /**
-   * Run a page action against the open page, serialized through the gate,
-   * reporting a dialog the action opens (which would otherwise block it)
-   * instead of hanging on it.
-   */
-  function guarded(run: (p: Page) => Promise<string>): Promise<string> {
-    return serial(() => {
-      const { page, dialogs } = requirePage();
-      return dialogs.guard(() => run(page));
-    });
-  }
+  const gate = createPageGate(screencast);
+  const { serial, ensurePage, guarded } = gate;
 
   return {
     /**
@@ -157,30 +96,15 @@ export function createBrowserSession(): BrowserSession {
       return guarded(snapshotText);
     },
 
-    /** Click the interactive element with the given number from the current page. */
-    async click(args: Record<string, unknown>): Promise<string> {
-      return guarded((p) => actions.click(p, args));
-    },
-
-    /** Type text into (or check/select) the element with the given number. */
-    async type(args: Record<string, unknown>): Promise<string> {
-      return guarded((p) => actions.type(p, args));
-    },
-
-    /** Drag the element numbered `from` onto the element numbered `to`. */
-    async drag(args: Record<string, unknown>): Promise<string> {
-      return guarded((p) => actions.drag(p, args));
-    },
-
-    /** Hover the mouse over the element with the given number. */
-    async hover(args: Record<string, unknown>): Promise<string> {
-      return guarded((p) => actions.hover(p, args));
+    /** Run a page-acting tool (click, type, drag, hover) against the open page. */
+    async act(tool, args) {
+      return guarded((p) => pageActions[tool](p, args));
     },
 
     /** Accept or dismiss the open dialog, then return a fresh snapshot. */
     async dialog(args: Record<string, unknown>): Promise<string> {
       const result = await serial(async () =>
-        requirePage().dialogs.answer(args)
+        gate.requirePage().dialogs.answer(args)
       );
       return `${result}\n${await guarded(snapshotText)}`;
     },
@@ -216,29 +140,13 @@ export function createBrowserSession(): BrowserSession {
 
     async dispatchInput(input) {
       // Input would hang behind an open dialog; drop it instead.
-      if (live?.dialogs.isOpen()) return;
+      if (gate.current()?.dialogs.isOpen()) return;
       return screencast.dispatchInput(input);
     },
 
-    /**
-     * Close the browser session and release the page. Called from app close so
-     * the Chrome process (and its helper processes) don't outlive the
-     * backend. Safe to call when no session was ever opened, or more than once.
-     */
-    async close(): Promise<void> {
-      const b = browser;
-      browser = undefined;
-      live = undefined;
-      // Detach CDP before killing the browser so the session teardown doesn't
-      // race the process exit and log a spurious protocol error.
-      await screencast.close();
-      if (b) {
-        try {
-          await b.close();
-        } catch {
-          // Already closed (e.g. the user closed the window); nothing to clean up.
-        }
-      }
+    /** Close the session and release the page (see PageGate.close). */
+    close() {
+      return gate.close();
     },
   };
 }

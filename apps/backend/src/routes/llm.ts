@@ -3,6 +3,7 @@ import type { AppContext } from "../context.js";
 import { AppError, badRequest } from "../errors.js";
 import { sendJson } from "../http.js";
 import type { Route } from "../router.js";
+import { type PageActionName, pageActions } from "./browser/actions.js";
 import { runCommand, runShellCommand } from "./llmCommand.js";
 import {
   createDirectory,
@@ -15,27 +16,6 @@ import {
 } from "./llmFs.js";
 import { findFiles, searchFiles } from "./llmSearch.js";
 import type { LlmToolHandler } from "./llmToolTypes.js";
-
-/**
- * True when the model-supplied name is one of the tools we expose. Derived from
- * the handler record above, so the shared package is used type-only here and
- * the backend stays free of runtime dependencies.
- */
-/**
- * True when the model-supplied name is one of the tools we expose. The full
- * dispatch record (module tools plus the app-owned browser session handlers)
- * is built inside llmToolRoutes, so the check is inlined there against that
- * record rather than done here against the module-level partial record.
- */
-
-/**
- * The tools the backend executes for the model, keyed by name. The browser
- * tools (browser_open/snapshot/click/type) are added at route construction
- * time from the app-owned browser session, so this record holds only the
- * non-browser tools. Membership of a name in this record is what makes a tool
- * "known" to the backend; the browser tools are known because they are merged
- * in before dispatch.
- */
 
 /**
  * create_subagent spawns a nested chat-completion loop, which only the panel
@@ -116,12 +96,12 @@ export function llmToolRoutes(ctx: AppContext): Route[] {
     ...moduleTools,
     browser_open: browser.open,
     browser_snapshot: browser.snapshot,
-    browser_click: browser.click,
-    browser_type: browser.type,
-    browser_drag: browser.drag,
-    browser_hover: browser.hover,
     browser_dialog: browser.dialog,
   };
+  // The page-acting browser tools all route through the session's one `act`.
+  for (const name of Object.keys(pageActions) as PageActionName[]) {
+    tools[name] = (args) => browser.act(name, args);
+  }
   return [
     {
       method: "POST",
