@@ -69,9 +69,18 @@ export interface BrowserSession {
 export function createBrowserSession(): BrowserSession {
   // The one browser session, at most one page. Undefined until first open.
   let browser: Browser | undefined;
-  let page: Page | undefined;
-  // Holds any JavaScript dialog the page opens (see dialogs.ts). Set with `page`.
-  let dialogs: DialogWatch | undefined;
+  // The open page and the watch holding its JavaScript dialogs (see
+  // dialogs.ts), which always come and go together.
+  let live: { page: Page; dialogs: DialogWatch } | undefined;
+  // The gate: every use of the page (each tool, the panel's navigate) runs one
+  // at a time through it, so panel navigation can't interleave with a model
+  // action and two first calls can't both launch Chrome.
+  let tail: Promise<unknown> = Promise.resolve();
+  function serial<T>(run: () => Promise<T>): Promise<T> {
+    const next = tail.then(run, run);
+    tail = next.catch(() => undefined);
+    return next;
+  }
   // The screencast that mirrors `page` into the viewer panel. Created eagerly
   // (it is inert until a page is attached) so subscribers can connect before
   // the first navigation, exactly like opening an empty browser tab.
@@ -83,39 +92,42 @@ export function createBrowserSession(): BrowserSession {
    * page is rendered inside Vise's viewer panel now; set VISE_BROWSER_HEADFUL
    * to get a real window back when debugging the automation itself.
    */
-  async function ensurePage(): Promise<Page> {
+  async function ensurePage(): Promise<NonNullable<typeof live>> {
     if (!browser) {
       browser = await chromium.launch({
         channel: "chrome", // drive the system Chrome, no bundled download
         headless: process.env.VISE_BROWSER_HEADFUL !== "1",
       });
     }
-    if (!page) {
-      page = await browser.newPage();
+    if (!live) {
+      const page = await browser.newPage();
       page.setDefaultTimeout(ACTION_TIMEOUT_MS);
-      dialogs = watchDialogs(page);
+      live = { page, dialogs: watchDialogs(page) };
       await screencast.attach(page);
     }
-    return page;
+    return live;
   }
 
   /** A model-readable error when an action needs a page but none is open. */
-  function requirePage(): Page {
-    if (!page) {
+  function requirePage(): NonNullable<typeof live> {
+    if (!live) {
       throw badRequest(
         "no browser page is open; call browser_open with a URL first"
       );
     }
-    return page;
+    return live;
   }
 
   /**
-   * Run a page action against the open page, reporting a dialog the action
-   * opens (which would otherwise block it) instead of hanging on it.
+   * Run a page action against the open page, serialized through the gate,
+   * reporting a dialog the action opens (which would otherwise block it)
+   * instead of hanging on it.
    */
   function guarded(run: (p: Page) => Promise<string>): Promise<string> {
-    const p = requirePage();
-    return (dialogs as DialogWatch).guard(() => run(p));
+    return serial(() => {
+      const { page, dialogs } = requirePage();
+      return dialogs.guard(() => run(page));
+    });
   }
 
   return {
@@ -128,11 +140,13 @@ export function createBrowserSession(): BrowserSession {
       const url = typeof args.url === "string" ? args.url.trim() : "";
       if (!url) throw badRequest("url is required");
 
-      await ensurePage();
-      return guarded(async (p) => {
-        await p.goto(url, { waitUntil: "load", timeout: LOAD_TIMEOUT_MS });
-        const snap = await snapshotText(p);
-        return `Opened the page in Vise's browser tab.\n${snap}`;
+      return serial(async () => {
+        const { page, dialogs } = await ensurePage();
+        return dialogs.guard(async () => {
+          await page.goto(url, { waitUntil: "load", timeout: LOAD_TIMEOUT_MS });
+          const snap = await snapshotText(page);
+          return `Opened the page in Vise's browser tab.\n${snap}`;
+        });
       });
     },
 
@@ -158,8 +172,9 @@ export function createBrowserSession(): BrowserSession {
 
     /** Accept or dismiss the open dialog, then return a fresh snapshot. */
     async dialog(args: Record<string, unknown>): Promise<string> {
-      requirePage();
-      const result = await (dialogs as DialogWatch).answer(args);
+      const result = await serial(async () =>
+        requirePage().dialogs.answer(args)
+      );
       return `${result}\n${await guarded(snapshotText)}`;
     },
 
@@ -171,9 +186,17 @@ export function createBrowserSession(): BrowserSession {
     async navigate(url: string): Promise<string> {
       const trimmed = url.trim();
       if (!trimmed) throw badRequest("url is required");
-      const p = await ensurePage();
-      await p.goto(trimmed, { waitUntil: "load", timeout: LOAD_TIMEOUT_MS });
-      return p.url();
+      return serial(async () => {
+        const { page, dialogs } = await ensurePage();
+        // A dialog blocks the page and the headless stream can't show it, so
+        // refuse rather than hang; only the model can answer it.
+        dialogs.assertClosed();
+        await page.goto(trimmed, {
+          waitUntil: "load",
+          timeout: LOAD_TIMEOUT_MS,
+        });
+        return page.url();
+      });
     },
 
     subscribeFrames(cb) {
@@ -184,7 +207,9 @@ export function createBrowserSession(): BrowserSession {
       return screencast.setViewport(width, height);
     },
 
-    dispatchInput(input) {
+    async dispatchInput(input) {
+      // Input would hang behind an open dialog; drop it instead.
+      if (live?.dialogs.isOpen()) return;
       return screencast.dispatchInput(input);
     },
 
@@ -196,8 +221,7 @@ export function createBrowserSession(): BrowserSession {
     async close(): Promise<void> {
       const b = browser;
       browser = undefined;
-      page = undefined;
-      dialogs = undefined;
+      live = undefined;
       // Detach CDP before killing the browser so the session teardown doesn't
       // race the process exit and log a spurious protocol error.
       await screencast.close();

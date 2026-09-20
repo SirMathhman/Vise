@@ -97,9 +97,11 @@ apps/backend/src/
                   #                    finally so a failed move never leaves it held down
                   #     dialogs.ts   - holds JS dialogs open (no Playwright auto-dismiss):
                   #                    guard() reports a dialog an action opened and
-                  #                    refuses new actions until browser_dialog answers it
-                  #     session.ts   - createBrowserSession: lifecycle (ensurePage, close)
-                  #                    and wiring only
+                  #                    refuses new actions until browser_dialog answers it;
+                  #                    clears a stale dialog on navigation/page close
+                  #     session.ts   - createBrowserSession: lifecycle (ensurePage, close),
+                  #                    wiring, and the gate (a promise chain) that runs
+                  #                    every tool and the panel's navigate one at a time
                   #     screencast.ts / view.ts - the panel-facing stream and input
                   #   Dependency direction: session -> actions -> targets -> snapshot ->
                   #   elements; nothing imports back up.
@@ -392,6 +394,7 @@ Target invariants (implemented in the backend):
 
 ## Future Work (what the architecture is working toward)
 
+- **Show a blocking dialog in the viewer.** A JS dialog is invisible in the headless screencast, so the user sees a frozen page and only the model can answer it via `browser_dialog`. Surface a "blocked by dialog: <message>" signal on the stream with accept/dismiss controls. Dialogs on `window.open` popups are also unwatched (the session tracks a single page), and the browser session has no unit tests (a fake `Page` + `Dialog` harness would pin the guard/gate semantics).
 - **The conversation store owns the entire turn boundary (done).** The store is now the _only_ place a turn's side effects happen: `appendMessage(msg)` is the single append point (keeps history append-only), `rollbackTo(n)` the failure rollback, and `commitTurn(usage?)` the post-turn gate (token + retitle + persist). `llm.ts`'s `runTurn` reads the live `store.getActive().messages` for `buildMessages` / `summarizeConversation` / `preLength` but never mutates it directly — the append-only + protocol-validity invariant is enforced by the store, not by controller discipline.
 - Make the write path as safe as the read path: add a conflict guard (`ETag`/`If-Match`, 409 on a stale save), and make writes atomic (temp file + `rename`). (Unsaved-edit guarding — dirty flag, "unsaved" indicator, confirm + `beforeunload` — is now implemented.)
 - Bound filesystem listing: cap entry count (and/or paginate), so a huge directory cannot stall a worker or balloon memory.
