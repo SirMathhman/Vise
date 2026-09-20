@@ -19,6 +19,18 @@ export async function click(
   return `Clicked [${entry.kind}] "${entry.label}".\n${snap}`;
 }
 
+/** browser_hover: move the mouse over the element with the given number. */
+export async function hover(
+  page: Page,
+  args: Record<string, unknown>
+): Promise<string> {
+  const [{ handle, entry }] = await resolveTargets(page, args, ["n"]);
+  await handle.hover();
+  // Hovering commonly reveals menus and tooltips, so hand back a fresh snapshot.
+  const snap = await snapshotText(page);
+  return `Hovered over [${entry.kind}] "${entry.label}".\n${snap}`;
+}
+
 /** browser_type: type into (or check/select) the element with the given number. */
 export async function type(
   page: Page,

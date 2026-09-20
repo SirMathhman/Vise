@@ -16,7 +16,7 @@ import { snapshotText } from "./snapshot.js";
  * and is mirrored into Vise's viewer panel as a live screencast (see
  * screencast.ts), so the user watches — and can hand-drive — the very
  * page the model is acting on. This module owns that single session — at most
- * one page at a time — and exposes six tools: open, snapshot, click, type, drag, and dialog,
+ * one page at a time — and exposes seven tools: open, snapshot, click, type, drag, hover, and dialog,
  * plus the panel-facing navigate/stream/input surface.
  *
  * The model's interface is a numbered snapshot: `browser_open` and
@@ -47,6 +47,8 @@ export interface BrowserSession {
   click(args: Record<string, unknown>): Promise<string>;
   /** browser_type: fill/check/select the element at the given number. */
   type(args: Record<string, unknown>): Promise<string>;
+  /** browser_hover: hover the mouse over the element at the given number. */
+  hover(args: Record<string, unknown>): Promise<string>;
   /** browser_drag: drag the `from` element and drop it onto the `to` element. */
   drag(args: Record<string, unknown>): Promise<string>;
   /** browser_dialog: accept or dismiss the JavaScript dialog the page has open. */
@@ -168,6 +170,11 @@ export function createBrowserSession(): BrowserSession {
     /** Drag the element numbered `from` onto the element numbered `to`. */
     async drag(args: Record<string, unknown>): Promise<string> {
       return guarded((p) => actions.drag(p, args));
+    },
+
+    /** Hover the mouse over the element with the given number. */
+    async hover(args: Record<string, unknown>): Promise<string> {
+      return guarded((p) => actions.hover(p, args));
     },
 
     /** Accept or dismiss the open dialog, then return a fresh snapshot. */

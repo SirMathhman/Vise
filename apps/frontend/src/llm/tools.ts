@@ -405,6 +405,29 @@ const browserDrag: LlmTool = {
 };
 
 /**
+ * Hover the mouse over the interactive element with the given number, e.g. to
+ * reveal a dropdown menu or tooltip.
+ */
+const browserHover: LlmTool = {
+  type: "function",
+  function: {
+    name: "browser_hover",
+    description:
+      "Move the mouse over the interactive element with the given number (from the latest snapshot) on the active browser page, without clicking. Use this to reveal content that only appears on hover, such as dropdown menus and tooltips. A fresh snapshot is returned afterwards, so newly revealed elements can be acted on.",
+    parameters: {
+      type: "object",
+      properties: {
+        n: {
+          type: "number",
+          description: "The element number from the latest snapshot (0-based).",
+        },
+      },
+      required: ["n"],
+    },
+  },
+};
+
+/**
  * Accept or dismiss the JavaScript dialog (alert/confirm/prompt/beforeunload)
  * the active browser page has open.
  */
@@ -567,6 +590,7 @@ export const llmToolDefinitions: LlmTool[] = [
   browserClick,
   browserType,
   browserDrag,
+  browserHover,
   browserDialog,
   createSubagent,
   askQuestions,

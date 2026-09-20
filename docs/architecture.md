@@ -76,8 +76,8 @@ apps/backend/src/
                   #   + "Error: …" so the model adapts) and POST /api/llm/hook-command (a
                   #   second, non-tool route: runs a command through llmCommand.ts's
                   #   runShellCommand core — the same one run_command uses — but returns
-    browser/      #   BROWSER SESSION: the app-owned Playwright session the six
-                  #   browser tools (open, snapshot, click, type, drag, dialog) drive, owned by
+    browser/      #   BROWSER SESSION: the app-owned Playwright session the seven
+                  #   browser tools (open, snapshot, click, type, drag, hover, dialog) drive, owned by
                   #   AppContext (ctx.browserSession) and closed in close() — see the
                   #   "long-lived resources" invariant above. Every action re-collects a
                   #   numbered snapshot of interactive elements before acting so the
@@ -92,7 +92,7 @@ apps/backend/src/
                   #                    the same capped list the snapshot printed, returning
                   #                    Targets or a badRequest; click/type/drag never
                   #                    re-implement it
-                  #     actions.ts   - one small function per tool (click, type, drag)
+                  #     actions.ts   - one small function per tool (click, type, drag, hover)
                   #                    taking (page, args); drag releases the mouse in a
                   #                    finally so a failed move never leaves it held down
                   #     dialogs.ts   - holds JS dialogs open (no Playwright auto-dismiss):
