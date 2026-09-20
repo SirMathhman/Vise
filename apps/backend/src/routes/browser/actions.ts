@@ -1,13 +1,13 @@
 import type { ElementHandle, Page } from "playwright-core";
 import { AppError, badRequest } from "../../errors.js";
 import type { LlmToolResult } from "../llmToolTypes.js";
+import { runSnippet } from "./codeRunner.js";
+import type { ActionEnv } from "./gate.js";
 import { snapshotText } from "./snapshot.js";
 import { resolveTargets } from "./targets.js";
 
 /** How long a page load (navigate, back, forward, reload) may take before it is reported as failed. */
 export const LOAD_TIMEOUT_MS = 45_000;
-/** How long a browser_run_code snippet may run before it is abandoned. */
-const CODE_TIMEOUT_MS = 30_000;
 /** JPEG quality of a screenshot sent to the model (0-100). */
 const SCREENSHOT_QUALITY = 70;
 /** The maximum characters of page text or code result returned to the model. */
@@ -159,7 +159,7 @@ export const pageActions = {
   browser_run_code: runCode,
 } satisfies Record<
   string,
-  (page: Page, args: Record<string, unknown>) => Promise<string>
+  (page: Page, args: Record<string, unknown>, env: ActionEnv) => Promise<string>
 >;
 
 /** The name of a page-acting browser tool. */
@@ -210,52 +210,20 @@ async function read(
   return `Title: ${title || "(untitled)"}\nURL: ${page.url()}\nPage text:\n${capText(text.trim())}`;
 }
 
-const AsyncFunction = Object.getPrototypeOf(async () => undefined)
-  .constructor as new (
-  ...params: string[]
-) => (...args: unknown[]) => Promise<unknown>;
-
 /**
  * browser_run_code: run a JavaScript snippet as an async function body with
- * the Playwright `page` in scope. Its return value (JSON) is reported, then a
- * fresh snapshot, since the code may have changed the page.
+ * the Playwright `page` in scope. It runs in a contained child process (see
+ * codeRunner.ts), not in the backend. Its return value (JSON) is reported,
+ * then a fresh snapshot, since the code may have changed the page.
  */
 async function runCode(
   page: Page,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  env: ActionEnv
 ): Promise<string> {
   const code = typeof args.code === "string" ? args.code : "";
   if (!code.trim()) throw badRequest("code is required");
-  let timer: NodeJS.Timeout | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(
-      () =>
-        reject(
-          badRequest(`code did not finish within ${CODE_TIMEOUT_MS / 1000}s`)
-        ),
-      CODE_TIMEOUT_MS
-    );
-  });
-  let value: unknown;
-  try {
-    value = await Promise.race([
-      new AsyncFunction("page", code)(page),
-      timeout,
-    ]);
-  } catch (err) {
-    if (err instanceof AppError) throw err;
-    throw badRequest(
-      `code threw: ${err instanceof Error ? err.message : String(err)}`
-    );
-  } finally {
-    clearTimeout(timer);
-  }
-  let shown: string;
-  try {
-    shown = value === undefined ? "undefined" : JSON.stringify(value);
-  } catch {
-    shown = String(value);
-  }
+  const shown = await runSnippet(env.cdpEndpoint, code);
   return withSnapshot(page, `Code returned: ${capText(shown)}`);
 }
 

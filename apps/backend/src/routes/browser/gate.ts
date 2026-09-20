@@ -1,3 +1,4 @@
+import { createServer } from "node:net";
 import { type Browser, chromium, type Page } from "playwright-core";
 import { badRequest } from "../../errors.js";
 import { type DialogWatch, watchDialogs } from "./dialogs.js";
@@ -10,6 +11,24 @@ const ACTION_TIMEOUT_MS = 30_000;
 export interface LivePage {
   page: Page;
   dialogs: DialogWatch;
+}
+
+/** What a page action may need besides the page itself. */
+export interface ActionEnv {
+  /** Where a separate process can attach to this Chrome over CDP (see codeRunner.ts). */
+  cdpEndpoint: string;
+}
+
+/** Ask the OS for a free localhost port. */
+function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const { port } = server.address() as { port: number };
+      server.close(() => resolve(port));
+    });
+  });
 }
 
 /**
@@ -38,7 +57,7 @@ export interface PageGate {
    * reporting a dialog the action opens (which would otherwise block it)
    * instead of hanging on it.
    */
-  guarded<T>(run: (p: Page) => Promise<T>): Promise<T | string>;
+  guarded<T>(run: (p: Page, env: ActionEnv) => Promise<T>): Promise<T | string>;
   /** Detach the screencast and close Chrome. Safe to call more than once. */
   close(): Promise<void>;
 }
@@ -48,6 +67,7 @@ export function createPageGate(
 ): PageGate {
   // The one browser session, at most one page. Undefined until first open.
   let browser: Browser | undefined;
+  let cdpEndpoint = "";
   let live: LivePage | undefined;
   let tail: Promise<unknown> = Promise.resolve();
 
@@ -72,9 +92,15 @@ export function createPageGate(
 
     async ensurePage() {
       if (!browser) {
+        // A localhost-only debugging port, so browser_run_code's contained
+        // child process can attach to this same Chrome (Playwright itself
+        // talks to it over a pipe).
+        const port = await freePort();
+        cdpEndpoint = `http://127.0.0.1:${port}`;
         browser = await chromium.launch({
           channel: "chrome", // drive the system Chrome, no bundled download
           headless: process.env.VISE_BROWSER_HEADFUL !== "1",
+          args: [`--remote-debugging-port=${port}`],
         });
       }
       if (!live) {
@@ -92,7 +118,7 @@ export function createPageGate(
     guarded(run) {
       return serial(() => {
         const { page, dialogs } = requirePage();
-        return dialogs.guard(() => run(page));
+        return dialogs.guard(() => run(page, { cdpEndpoint }));
       });
     },
 

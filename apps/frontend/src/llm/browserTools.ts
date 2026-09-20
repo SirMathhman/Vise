@@ -200,7 +200,7 @@ const browserRunCode: LlmTool = {
   function: {
     name: "browser_run_code",
     description:
-      "Run a JavaScript snippet against the active browser page. The snippet is the body of an async function with the Playwright `page` object in scope, so use `await` and `return` a JSON-serializable value, e.g. `return await page.locator('h1').innerText();`. Runs in the backend (Node), not in the page; use page.evaluate to run code inside the page. Times out after 30 seconds. The returned value is reported, followed by a fresh snapshot. Use this only when the other browser tools cannot do what you need (e.g. a complex selector, waiting for something, or reading a computed value).",
+      "Run a JavaScript snippet against the active browser page. The snippet is the body of an async function with the Playwright `page` object in scope, so use `await` and `return` a JSON-serializable value, e.g. `return await page.locator('h1').innerText();`. Runs in a sandboxed Node process, not in the page (use page.evaluate to run code inside the page), with no file-system or child-process access; only `page` is useful. Times out after 30 seconds (the process is killed). The returned value is reported, followed by a fresh snapshot. Use this only when the other browser tools cannot do what you need (e.g. a complex selector, waiting for something, or reading a computed value).",
     parameters: {
       type: "object",
       properties: {

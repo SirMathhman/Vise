@@ -21,7 +21,7 @@ import { snapshotText } from "./snapshot.js";
  * and is mirrored into Vise's viewer panel as a live screencast (see
  * screencast.ts), so the user watches — and can hand-drive — the very
  * page the model is acting on. This module owns that single session — at most
- * one page at a time (see gate.ts) — and exposes seven tools: open, snapshot,
+ * one page at a time (see gate.ts) — and exposes eleven tools: open, snapshot,
  * dialog, and the page actions (click, type, drag, hover), plus the
  * panel-facing navigate/stream/input surface.
  *
@@ -103,7 +103,7 @@ export function createBrowserSession(): BrowserSession {
 
     /** Run a page-acting tool (click, type, drag, hover) against the open page. */
     async act(tool, args) {
-      return guarded((p) => pageActions[tool](p, args));
+      return guarded((p, env) => pageActions[tool](p, args, env));
     },
 
     /** Capture the page as an image. */
