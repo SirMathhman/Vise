@@ -4,7 +4,6 @@ import {
   getFile,
   type LlmContentPart,
   type LlmMessage,
-  type LlmTool,
   type LlmToolCall,
   type LlmUsage,
   listLlmModels,
@@ -228,6 +227,7 @@ export function setupLlm(
     profileName.value = profile.name;
     profileName.disabled = isDefault;
     profilePrompt.value = profile.systemPrompt;
+    autoResizeTextarea(profilePrompt);
     profileHook.value = profile.hookCommand;
     profileTurnHook.value = profile.turnCommand;
     profileEndHook.value = profile.endCommand;
@@ -257,8 +257,13 @@ export function setupLlm(
 
   /** Open the Profiles modal, loading the editor fields fresh each time. */
   const openProfiles = () => {
-    showProfileEditor();
+    // Un-hide the overlay before loading fields: autoResizeTextarea in
+    // loadProfileEditorFields measures the textarea's scrollHeight, which
+    // is 0 while the overlay is hidden (display:none), so the resize
+    // would otherwise compute only the min-height floor and the textarea
+    // would still need its own scrollbar for a long prompt.
     profilesOverlay.hidden = false;
+    showProfileEditor();
     profileName.focus();
   };
 
@@ -435,6 +440,7 @@ export function setupLlm(
     refreshProfileSelects();
   });
   profilePrompt.addEventListener("change", () => {
+    autoResizeTextarea(profilePrompt);
     profiles.updateProfile(profileEditor.value, {
       systemPrompt: profilePrompt.value,
     });
@@ -583,6 +589,23 @@ function escapeHtml(text: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+/**
+ * Auto-resize a <textarea> to fit its content (and never less than 96px),
+ * so it never shows its own scrollbar. The Profiles modal is the single
+ * scroll region for its form; a fixed-height textarea holding a long system
+ * prompt would otherwise be a second, nested scroll region. The border is
+ * added to the measured scrollHeight because scrollHeight does not include
+ * border, but the content-box height does — without it the content would
+ * overflow the visible area by the border width and show a scrollbar.
+ */
+function autoResizeTextarea(el: HTMLTextAreaElement): void {
+  el.style.height = "auto";
+  const cs = getComputedStyle(el);
+  const border =
+    parseFloat(cs.borderTopWidth) + parseFloat(cs.borderBottomWidth);
+  el.style.height = `${Math.max(el.scrollHeight + border, 96)}px`;
 }
 
 /**

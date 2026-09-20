@@ -1,5 +1,5 @@
 import type { ElementHandle, Page } from "playwright-core";
-import { AppError, badRequest } from "../../errors.js";
+import { badRequest } from "../../errors.js";
 import type { LlmToolResult } from "../llmToolTypes.js";
 import { runSnippet } from "./codeRunner.js";
 import type { ActionEnv } from "./gate.js";

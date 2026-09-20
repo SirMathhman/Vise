@@ -132,24 +132,23 @@
   display: none;
 }
 
-/* No max-height / overflow here: the modal is not itself a scroll region.
-   Its content (a fixed-size header, a compact tools list — descriptions
-   collapsed by default, see .llm-tool-desc — and a flex-growing system-prompt
-   textarea) is designed to fit within the viewport, so the modal never
-   needs its own outer scrollbar. The only scroll region that can appear is
-   the textarea's internal one, when a single prompt overflows the
-   textarea's (flex-allocated) height — that's one scrollbar, not a nested
-   pair. */
+/* The modal is the single scroll region for the whole form. With 23 tools
+   the collapsed checklist is the tallest block in the modal, and there is no
+   way to lay it out — plus the system-prompt textarea, the subagent list, and
+   the four hook inputs — that fits a viewport-height box without either
+   dropping content or stacking a second, nested scrollbar. So the modal
+   scrolls as one region (its height stays capped at the viewport); the tools
+   list, the textarea, and the rest of the form all flow as normal content
+   and never scroll on their own (see the flex: 0 0 auto below), so the modal
+   is the only scroll region and the form has exactly one scrollbar. */
 #app .llm-profiles-modal {
   width: min(560px, 100%);
-  /* An explicit target height, not just a cap. The system-prompt textarea
-     is the one child that flex-grows, so with a purely content-sized modal
-     it could never be taller than its own min-height however much room the
-     viewport had — the space freed by laying the tools out in columns just
-     went unused. A concrete height gives it something to grow into, still
-     bounded by the viewport on a short screen. */
+  /* A concrete height cap, not just a target: it keeps the dialog from
+     growing past the viewport on a tall screen, and lets the form scroll
+     within it (see the overflow-y above) when 23 tools plus the prompt,
+     subagent list, and hooks don't fit. */
   height: min(760px, calc(100vh - 48px));
-  overflow: hidden;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   background: var(--bg-panel);
@@ -203,16 +202,13 @@
   margin-bottom: 12px;
 }
 
-/* Laid out in columns rather than one tall stack, and given its own
-   scroll region (max-height + overflow-y) so a tall list never pushes the
-   modal's content off the page: with 23 tools the collapsed list is already
-   the tallest block in the modal, and since the system-prompt textarea
-   below it is the one element that flex-grows into the leftover height, a
-   single column made every row come straight out of the field people
-   actually edit. Capping its height here (rather than letting the modal
-   scroll) keeps the header, prompt, hooks, and Close button visible at all
-   times. `align-items: start` keeps a row from stretching when the tool
-   beside it has its description expanded. */
+/* Laid out in columns rather than one tall stack — a single column made every
+   row come straight out of the field people actually edit (the
+   system-prompt textarea, which flex-grows into the leftover height). It
+   flows as normal content inside .llm-profiles-modal, which is the one
+   scroll region for the whole form (see the modal rule above); a second,
+   nested scrollbar here would defeat that. `align-items: start` keeps a row
+   from stretching when the tool beside it has its description expanded. */
 #app #llm .llm-tools-list {
   margin: 8px 0 0;
   padding: 0 4px 0 0;
@@ -221,8 +217,6 @@
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   align-items: start;
   gap: 8px 16px;
-  max-height: 360px;
-  overflow-y: auto;
 }
 
 #app #llm .llm-tool {
@@ -304,7 +298,10 @@
      align-items: stretch happened to cover for it; #llm-profile-prompt
      isn't in a flex container, so it needs this explicitly. */
   width: 100%;
-  height: 96px;
+  /* No fixed height: llm.ts auto-resizes #llm-profile-prompt to fit its
+     content (autoResizeTextarea) so it never scrolls on its own.
+     min-height keeps the field usable for a short prompt. */
+  min-height: 96px;
   resize: vertical;
   font-family: var(--font-sans);
   font-size: 0.9rem;
@@ -344,12 +341,17 @@
   margin-bottom: 0;
 }
 
-/* Flex-grows to fill whatever vertical space the modal has left after its
-   fixed-height chrome (header, selects, name input, tools list, hook
-   inputs). No fixed height: a fixed 220px here is what forced the rest of
-   the form to overflow the modal and create its outer scrollbar. */
+/* The modal is the single scroll region for the whole form (see the modal
+   rule above). With 23 tools the form overflows it, so there is no leftover
+   vertical space for the prompt to grow into — flex: 1 1 auto (the original
+   "grow to fill leftover space") shrank the textarea back to its min-height
+   when the modal overflowed, giving it its own internal scrollbar, a
+   nested region the constraint forbids. flex: 0 0 auto keeps the textarea
+   at its full auto-resized height (set by autoResizeTextarea in llm.ts) so
+   it never scrolls on its own; the modal scrolls instead. No fixed height:
+   min-height keeps the field usable for a short prompt. */
 #app #llm #llm-profile-prompt {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   min-height: 120px;
 }
 
