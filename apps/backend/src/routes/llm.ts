@@ -47,7 +47,7 @@ import type { LlmToolHandler } from "./llmToolTypes.js";
  */
 const createSubagent: LlmToolHandler = async () => {
   throw badRequest(
-    "create_subagent must be handled by the panel and never reaches the backend"
+    "create_subagent must be handled by the panel and never reaches the backend",
   );
 };
 
@@ -61,7 +61,7 @@ const createSubagent: LlmToolHandler = async () => {
  */
 const askQuestions: LlmToolHandler = async () => {
   throw badRequest(
-    "ask_questions must be handled by the panel and never reaches the backend"
+    "ask_questions must be handled by the panel and never reaches the backend",
   );
 };
 
@@ -75,7 +75,7 @@ const askQuestions: LlmToolHandler = async () => {
  */
 const useSkill: LlmToolHandler = async () => {
   throw badRequest(
-    "use_skill must be handled by the panel and never reaches the backend"
+    "use_skill must be handled by the panel and never reaches the backend",
   );
 };
 

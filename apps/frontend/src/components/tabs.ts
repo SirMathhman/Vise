@@ -14,8 +14,12 @@
 const STORAGE_TABS = "vise:viewer:tabs";
 const STORAGE_ACTIVE = "vise:viewer:active";
 
-/** A tab's content source: a workspace file, or an embedded web page. */
-export type TabKind = "file" | "url";
+/**
+ * A tab's content source: a workspace file, an embedded web page (a plain
+ * `<iframe>`, good for same-origin/localhost pages), or the CDP-backed browser
+ * surface (a screencast of the real Chrome page the model also drives).
+ */
+export type TabKind = "file" | "url" | "browser";
 
 /** A single open tab: the file's relative path (or URL) and a unique id. */
 export interface Tab {
@@ -40,7 +44,10 @@ function isValidTab(value: unknown): value is Tab {
     value !== null &&
     typeof v.id === "string" &&
     typeof v.rel === "string" &&
-    (v.kind === undefined || v.kind === "file" || v.kind === "url")
+    (v.kind === undefined ||
+      v.kind === "file" ||
+      v.kind === "url" ||
+      v.kind === "browser")
   );
 }
 

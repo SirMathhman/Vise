@@ -178,7 +178,9 @@ export function renderTabs(viewer: Viewer, cb: TabCallbacks): void {
   const tabs = viewer.tabStore.getTabs();
   const activeId = viewer.tabStore.activeId();
   for (const tab of tabs) {
-    const isUrl = tab.kind === "url";
+    // Both web tab kinds (embedded iframe and the CDP browser surface) read
+    // as web pages in the bar; only their rendering inside the viewer differs.
+    const isUrl = tab.kind === "url" || tab.kind === "browser";
     const label = document.createElement("button");
     label.type = "button";
     label.className = `tab ${isUrl ? "tab-url" : ""} ${

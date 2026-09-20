@@ -76,6 +76,115 @@ export function subscribeToChanges(
   return () => source.close();
 }
 
+/** Per-frame geometry for mapping a canvas click back to a page coordinate. */
+export interface BrowserFrameMeta {
+  offsetTop: number;
+  pageScaleFactor: number;
+  deviceWidth: number;
+  deviceHeight: number;
+  scrollOffsetX: number;
+  scrollOffsetY: number;
+}
+
+/** One screencast frame from the model-driven browser page. */
+export interface BrowserFrame {
+  /** Base64-encoded JPEG of the page viewport. */
+  data: string;
+  meta: BrowserFrameMeta;
+  /** The page's current URL, which changes when the page navigates itself. */
+  url: string;
+}
+
+/**
+ * A user input event to replay into the browser page. Mirrors the backend's
+ * `BrowserInput` union (routes/browserScreencast.ts) — kept structural rather
+ * than imported because @vise/shared carries only the LLM tool-name contract.
+ */
+export type BrowserInputEvent =
+  | {
+      kind: "mouse";
+      type: "mousePressed" | "mouseReleased" | "mouseMoved";
+      x: number;
+      y: number;
+      button?: "left" | "right" | "middle" | "none";
+      clickCount?: number;
+      modifiers?: number;
+    }
+  | {
+      kind: "wheel";
+      x: number;
+      y: number;
+      deltaX: number;
+      deltaY: number;
+      modifiers?: number;
+    }
+  | {
+      kind: "key";
+      type: "keyDown" | "keyUp" | "char";
+      key?: string;
+      code?: string;
+      text?: string;
+      windowsVirtualKeyCode?: number;
+      modifiers?: number;
+    };
+
+/**
+ * Subscribe to the browser page's screencast at `/api/browser/stream`. Same
+ * shape as `subscribeToChanges`: returns an unsubscribe that closes the
+ * stream, and `EventSource` reconnects on its own after a transient drop.
+ */
+export function subscribeToBrowserFrames(
+  onFrame: (f: BrowserFrame) => void
+): () => void {
+  const source = new EventSource("/api/browser/stream");
+  source.onmessage = (msg) => {
+    try {
+      onFrame(JSON.parse(msg.data) as BrowserFrame);
+    } catch {
+      // Ignore a malformed frame; the next one repaints anyway.
+    }
+  };
+  return () => source.close();
+}
+
+/** Navigate the browser page from the panel. Resolves to the settled URL. */
+export async function navigateBrowser(url: string): Promise<string> {
+  const res = await fetch("/api/browser/navigate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
+  if (!res.ok) return fail(res);
+  return ((await res.json()) as { url: string }).url;
+}
+
+/**
+ * Replay one input event into the browser page. Fire-and-forget by design:
+ * input is high-frequency and a dropped move must never block the next one,
+ * so a failure resolves silently rather than rejecting into the UI.
+ */
+export async function sendBrowserInput(
+  input: BrowserInputEvent
+): Promise<void> {
+  await fetch("/api/browser/input", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  }).catch(() => undefined);
+}
+
+/** Resize the browser page's viewport to match the panel showing it. */
+export async function setBrowserViewport(
+  width: number,
+  height: number
+): Promise<void> {
+  await fetch("/api/browser/viewport", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ width, height }),
+  }).catch(() => undefined);
+}
+
 /** GET the listing for a directory ("" = root). */
 export async function listDir(rel: string): Promise<LsResponse> {
   const res = await fetch(`/api/ls/${encodeRel(rel)}`);

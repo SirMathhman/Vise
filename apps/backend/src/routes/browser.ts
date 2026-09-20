@@ -5,13 +5,21 @@ import {
   type Page,
 } from "playwright-core";
 import { badRequest } from "../errors.js";
+import {
+  type BrowserInput,
+  createScreencast,
+  type ScreencastFrame,
+} from "./browserScreencast.js";
 
 /**
  * The model-driven browser session. The panel's own URL tabs render the page
  * in a cross-origin `<iframe>` that Vise's own DOM cannot script, so the model
- * drives a separate, visible Chrome window (via Playwright) that mirrors the
- * page it wants to act on. This module owns that single session — at most one
- * page at a time — and exposes four tools: open, snapshot, click, and type.
+ * drives a real Chrome page (via Playwright) instead. That page runs headless
+ * and is mirrored into Vise's viewer panel as a live screencast (see
+ * browserScreencast.ts), so the user watches — and can hand-drive — the very
+ * page the model is acting on. This module owns that single session — at most
+ * one page at a time — and exposes four tools: open, snapshot, click, and type,
+ * plus the panel-facing navigate/stream/input surface.
  *
  * The model's interface is a numbered snapshot: `browser_open` and
  * `browser_snapshot` return the page's interactive elements as a numbered
@@ -101,6 +109,17 @@ export interface BrowserSession {
   click(args: Record<string, unknown>): Promise<string>;
   /** browser_type: fill/check/select the element at the given number. */
   type(args: Record<string, unknown>): Promise<string>;
+  /**
+   * Navigate the page from the panel's URL bar (rather than from a tool call),
+   * launching the browser if this is the first use. Returns the resolved URL.
+   */
+  navigate(url: string): Promise<string>;
+  /** Subscribe to screencast frames for the viewer panel's browser tab. */
+  subscribeFrames(cb: (frame: ScreencastFrame) => void): () => void;
+  /** Resize the page viewport to match the panel showing the stream. */
+  setViewport(width: number, height: number): Promise<void>;
+  /** Replay a user input event from the panel into the page. */
+  dispatchInput(input: BrowserInput): Promise<void>;
   /** Close the session and release the page. Safe to call more than once. */
   close(): Promise<void>;
 }
@@ -172,6 +191,31 @@ export function createBrowserSession(): BrowserSession {
   // The one browser session, at most one page. Undefined until first open.
   let browser: Browser | undefined;
   let page: Page | undefined;
+  // The screencast that mirrors `page` into the viewer panel. Created eagerly
+  // (it is inert until a page is attached) so subscribers can connect before
+  // the first navigation, exactly like opening an empty browser tab.
+  const screencast = createScreencast();
+
+  /**
+   * Launch Chrome and open the single page if they don't exist yet, attaching
+   * the screencast to any page we create. Chrome runs headless because the
+   * page is rendered inside Vise's viewer panel now; set VISE_BROWSER_HEADFUL
+   * to get a real window back when debugging the automation itself.
+   */
+  async function ensurePage(): Promise<Page> {
+    if (!browser) {
+      browser = await chromium.launch({
+        channel: "chrome", // drive the system Chrome, no bundled download
+        headless: process.env.VISE_BROWSER_HEADFUL !== "1",
+      });
+    }
+    if (!page) {
+      page = await browser.newPage();
+      page.setDefaultTimeout(ACTION_TIMEOUT_MS);
+      await screencast.attach(page);
+    }
+    return page;
+  }
 
   /** A model-readable error when an action needs a page but none is open. */
   function requirePage(): Page {
@@ -246,17 +290,10 @@ export function createBrowserSession(): BrowserSession {
       const url = typeof args.url === "string" ? args.url.trim() : "";
       if (!url) throw badRequest("url is required");
 
-      if (!browser) {
-        browser = await chromium.launch({
-          channel: "chrome", // drive the system Chrome, no bundled download
-          headless: false, // a visible window the user can watch
-        });
-      }
-      if (!page) page = await browser.newPage();
-      page.setDefaultTimeout(ACTION_TIMEOUT_MS);
-      await page.goto(url, { waitUntil: "load", timeout: LOAD_TIMEOUT_MS });
+      const p = await ensurePage();
+      await p.goto(url, { waitUntil: "load", timeout: LOAD_TIMEOUT_MS });
       const snap = await snapshotText();
-      return `Opened the page in the browser window.\n${snap}`;
+      return `Opened the page in Vise's browser tab.\n${snap}`;
     },
 
     /** Re-read the active page's interactive elements and return the snapshot. */
@@ -325,6 +362,31 @@ export function createBrowserSession(): BrowserSession {
     },
 
     /**
+     * Navigate from the panel's URL bar. Unlike `open` (a tool call) this
+     * returns the resolved URL rather than a model-facing snapshot, since the
+     * user reads the page itself in the stream.
+     */
+    async navigate(url: string): Promise<string> {
+      const trimmed = url.trim();
+      if (!trimmed) throw badRequest("url is required");
+      const p = await ensurePage();
+      await p.goto(trimmed, { waitUntil: "load", timeout: LOAD_TIMEOUT_MS });
+      return p.url();
+    },
+
+    subscribeFrames(cb) {
+      return screencast.subscribe(cb);
+    },
+
+    setViewport(width, height) {
+      return screencast.setViewport(width, height);
+    },
+
+    dispatchInput(input) {
+      return screencast.dispatchInput(input);
+    },
+
+    /**
      * Close the browser session and release the page. Called from app close so
      * the Chrome process (and its helper processes) don't outlive the
      * backend. Safe to call when no session was ever opened, or more than once.
@@ -333,6 +395,9 @@ export function createBrowserSession(): BrowserSession {
       const b = browser;
       browser = undefined;
       page = undefined;
+      // Detach CDP before killing the browser so the session teardown doesn't
+      // race the process exit and log a spurious protocol error.
+      await screencast.close();
       if (b) {
         try {
           await b.close();

@@ -179,6 +179,22 @@
   background: #fff;
 }
 
+/* The CDP browser surface: a canvas painted from the page's screencast.
+   Sized like the iframe above, but `object-fit: contain` keeps the page
+   undistorted during the moment between a panel resize and the viewport
+   catching up. `outline: none` because the canvas is focusable (tabindex=0)
+   purely so it can receive keystrokes to forward. */
+#app #viewer-body .browser-canvas {
+  height: 100%;
+  width: 100%;
+  display: block;
+  object-fit: contain;
+  border: none;
+  background: #fff;
+  outline: none;
+  cursor: default;
+}
+
 /* URL tabs in the tab bar: same shape as file tabs, but the hostname reads
    as a link and the tab is slightly distinguished so a web page tab is
    never mistaken for an open file. */

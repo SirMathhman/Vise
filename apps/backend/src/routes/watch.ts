@@ -1,17 +1,6 @@
-import type { ServerResponse } from "node:http";
 import type { AppContext } from "../context.js";
+import { sendSseHeaders } from "../http.js";
 import type { Route } from "../router.js";
-
-function writeSseHeaders(res: ServerResponse): void {
-  res.writeHead(200, {
-    "Content-Type": "text/event-stream; charset=utf-8",
-    "Cache-Control": "no-cache, no-transform",
-    Connection: "keep-alive",
-    "X-Accel-Buffering": "no",
-  });
-  // Prime the stream; some clients only fire "open" after the first bytes.
-  res.write(":ok\n\n");
-}
 
 /**
  * GET /api/watch — server-sent stream of debounced filesystem change events
@@ -24,7 +13,7 @@ export function watchRoutes(ctx: AppContext): Route[] {
       method: "GET",
       pattern: "/api/watch",
       handler: (_req, res) => {
-        writeSseHeaders(res);
+        sendSseHeaders(res);
 
         const unsubscribe = ctx.fileWatcher.subscribe((e) => {
           res.write(`data: ${JSON.stringify(e)}\n\n`);

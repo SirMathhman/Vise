@@ -18,6 +18,7 @@ import {
   type TabCallbacks,
 } from "./tabsView.js";
 import { refreshDir, renderListing, scheduleLiveRefresh } from "./treePanel.js";
+import { openBrowser, openUrl, setupUrlBar } from "./webTabs.js";
 
 /**
  * Lets another panel (the LLM chat) drive the file viewer to preview an
@@ -272,6 +273,10 @@ async function viewFile(rel: string, viewer: Viewer): Promise<void> {
     await openUrl(rel, viewer);
     return;
   }
+  if (existing?.kind === "browser") {
+    await openBrowser(rel, viewer);
+    return;
+  }
   // Opening a file always lands on its tab: create one if absent, or activate
   // an existing one (e.g. the user re-clicks an already-open file). We must
   // flush the CURRENTLY active tab's buffer first — the shared textarea holds
@@ -426,120 +431,4 @@ function setHint(
   span.className = cls;
   span.textContent = text;
   body.append(span);
-}
-
-/**
- * Open a URL as an embedded tab: an <iframe> fills the viewer body in place
- * of the editor. The tab bar's dispatch (`viewFile`) already routes here for
- * URL tabs, so re-opening a URL tab re-renders the frame from its stored
- * URL (the browser serves cached content for a navigated-back-to URL). The
- * frame has no editor buffer: it is read-only, and `closeTab` handles its
- * absence from `tabBuffers` (no flush, no dirty check).
- */
-async function openUrl(rel: string, viewer: Viewer): Promise<void> {
-  // The active file tab's buffer must be flushed before switching (same
-  // guard as `viewFile`); URL tabs have no buffer of their own.
-  const activeIdBefore = viewer.tabStore.activeId();
-  if (activeIdBefore !== null) {
-    const buffer = viewer.tabBuffers.get(activeIdBefore);
-    const saved = buffer ? await buffer.flush() : true;
-    if (!saved) return; // A pending save failed; abort so edits are not lost.
-  }
-  const tabId = viewer.tabStore.open(rel, "url");
-  viewer.tabStore.persist();
-  // Re-point `viewer.store` at the placeholder (URL tabs own no buffer) and
-  // re-render the tab bar.
-  activateTab(viewer, tabId, viewer.cb);
-  viewer.title.textContent = rel;
-  viewer.title.title = rel;
-  viewer.actions.innerHTML = "";
-  // A URL tab shows no editor, so any live edit_file diff preview is gone.
-  viewer.activeDiff = null;
-  // Replace whatever the body holds (an editor, a stale frame, a hint) with
-  // the frame for this URL.
-  viewer.body.style.overflow = "";
-  viewer.body.innerHTML = "";
-  const frame = document.createElement("iframe");
-  frame.className = "url-frame";
-  frame.src = rel;
-  frame.setAttribute("aria-label", `web page: ${rel}`);
-  viewer.body.append(frame);
-}
-
-/**
- * The "Open URL" bar above the viewer actions: a persistent button that
- * reveals an input; Enter (or blur-with-text) opens the typed URL as an
- * embedded tab. It lives outside `#viewer-actions` deliberately — that
- * element is cleared wholesale on file navigation (`renderEditor`,
- * `viewFile`, `closeTab`, `activateTab`), so a button inside it would
- * disappear after the first file open.
- */
-function setupUrlBar(viewer: Viewer, bar: HTMLElement): void {
-  const btn = bar.querySelector<HTMLButtonElement>("#viewer-url-open");
-  const input = bar.querySelector<HTMLInputElement>("#viewer-url-input");
-  if (!btn || !input) return;
-  btn.addEventListener("click", () => {
-    input.hidden = false;
-    input.value = "";
-    input.focus();
-  });
-  const submit = (): void => {
-    const url = normalizeUrl(input.value);
-    if (url === null) {
-      input.classList.add("url-invalid");
-      return;
-    }
-    input.classList.remove("url-invalid");
-    input.value = "";
-    input.hidden = true;
-    // A *new* URL has no existing tab, so `viewFile`'s URL dispatch (which
-    // only fires for a pre-existing kind=url tab) would skip it and fall
-    // into the file path — persisting the URL as a file tab and 404ing on
-    // the URL string. Call `openUrl` directly; it opens kind=url, persists,
-    // activates, and renders the iframe. Re-opening an existing URL tab via
-    // the tab bar still flows through `viewFile`, where the dispatch works.
-    void openUrl(url, viewer);
-  };
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      submit();
-    } else if (e.key === "Escape") {
-      input.hidden = true;
-      input.value = "";
-    }
-  });
-  input.addEventListener("blur", () => {
-    // A non-empty value the user abandoned still opens its tab; an empty one
-    // collapses the bar back to its button.
-    if (input.value.trim() !== "") {
-      submit();
-    } else {
-      input.hidden = true;
-    }
-  });
-}
-
-/**
- * Normalize a typed URL: bare hostnames (`www.google.com`) get an https
- * scheme; anything `new URL` accepts is returned as typed, else `null`.
- * Only http(s) and file URLs are embedded (about:, javascript:, and other
- * schemes have no meaningful rendered page to pin to a tab).
- */
-function normalizeUrl(raw: string): string | null {
-  const trimmed = raw.trim();
-  if (trimmed === "") return null;
-  const candidate = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)
-    ? trimmed
-    : `https://${trimmed}`;
-  try {
-    const u = new URL(candidate);
-    return u.protocol === "http:" ||
-      u.protocol === "https:" ||
-      u.protocol === "file:"
-      ? candidate
-      : null;
-  } catch {
-    return null;
-  }
 }
