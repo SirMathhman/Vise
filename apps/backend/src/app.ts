@@ -10,6 +10,7 @@ import {
 } from "./errors.js";
 import { readJsonBody } from "./json.js";
 import { matchRoute } from "./router.js";
+import { firefoxBridgeRoutes } from "./routes/browser/firefox/routes.js";
 import { browserViewRoutes } from "./routes/browser/view.js";
 import { createRoutes } from "./routes/create.js";
 import { echoRoutes } from "./routes/echo.js";
@@ -30,6 +31,7 @@ const routeGroups = [
   llmToolRoutes,
   watchRoutes,
   browserViewRoutes,
+  firefoxBridgeRoutes,
 ];
 
 export function createApp(ctx: AppContext) {
