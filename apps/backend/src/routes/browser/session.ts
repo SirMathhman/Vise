@@ -1,11 +1,11 @@
 import { badRequest } from "../../errors.js";
+import type { LlmToolResult } from "../llmToolTypes.js";
 import {
   LOAD_TIMEOUT_MS,
   type PageActionName,
   pageActions,
   screenshot,
 } from "./actions.js";
-import type { LlmToolResult } from "../llmToolTypes.js";
 import { createPageGate } from "./gate.js";
 import {
   type BrowserInput,
