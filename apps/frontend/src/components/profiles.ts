@@ -23,7 +23,11 @@ export const DEFAULT_SYSTEM_PROMPT =
   "to replace. To create new files or directories, call create_file or " +
   "create_directory. To run a PowerShell command (builds, git, typecheck, " +
   "file operations, etc.), call run_command with the command; it runs in the " +
-  "workspace root and returns its output and exit status. To delegate a " +
+  "workspace root and returns its output and exit status. For a long-running " +
+  "command — a full test run, a build, a dev server — that would outlast " +
+  "run_command's 30-second timeout, call run_command_background to start it " +
+  "and get back its id, then wait_for_command with that id (a timeoutMs, and " +
+  'action: "kill" if it is stuck) to wait for it or stop it. To delegate a ' +
   "self-contained sub-task to an independent helper (e.g. a focused search or " +
   "fix that doesn't need this conversation's context), call create_subagent " +
   "with a clear task description; it returns the helper's final answer. Base " +

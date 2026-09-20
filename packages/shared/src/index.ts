@@ -15,6 +15,8 @@ export const LLM_TOOL_NAMES = [
   "delete_file",
   "delete_directory",
   "run_command",
+  "run_command_background",
+  "wait_for_command",
   "browser_open",
   "browser_snapshot",
   "browser_click",

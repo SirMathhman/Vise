@@ -4,7 +4,12 @@ import { AppError, badRequest } from "../errors.js";
 import { sendJson } from "../http.js";
 import type { Route } from "../router.js";
 import { type PageActionName, pageActions } from "./browser/actions.js";
-import { runCommand, runShellCommand } from "./llmCommand.js";
+import {
+  runCommand,
+  runCommandBackground,
+  runShellCommand,
+  waitForCommand,
+} from "./llmCommand.js";
 import {
   createDirectory,
   createFile,
@@ -93,6 +98,8 @@ const moduleTools: Record<string, LlmToolHandler> = {
   delete_file: deleteFile,
   delete_directory: deleteDirectory,
   run_command: runCommand,
+  run_command_background: runCommandBackground,
+  wait_for_command: waitForCommand,
   create_subagent: createSubagent,
   ask_questions: askQuestions,
   use_skill: useSkill,

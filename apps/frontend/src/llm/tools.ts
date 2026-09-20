@@ -235,6 +235,73 @@ const runCommand: LlmTool = {
 };
 
 /**
+ * Start a long-running command in the background and return its id, so it
+ * can be observed or terminated with wait_for_command. Use for work that
+ * would outlast run_command's 30-second foreground timeout — a test run, a
+ * build, a dev server — where the command should be kicked off and the model
+ * can wait for it or check on it in a later call. The command has no timeout
+ * of its own and may run alongside any number of siblings.
+ */
+const runCommandBackground: LlmTool = {
+  type: "function",
+  function: {
+    name: "run_command_background",
+    description:
+      "Start a long-running PowerShell command in the workspace root in the background and return its id. Use this for commands that would not fit run_command's 30-second foreground timeout — a full test run, a build, a dev server — where you want to kick off the work and then wait for it or check on it with wait_for_command. The command has no timeout of its own and may run alongside any number of other background commands. The result is the command's id.",
+    parameters: {
+      type: "object",
+      properties: {
+        command: {
+          type: "string",
+          description:
+            'The PowerShell command to run in the workspace root (e.g. "pnpm test" or "pnpm build").',
+        },
+      },
+      required: ["command"],
+    },
+  },
+};
+
+/**
+ * Wait for a background command to finish, or terminate it. Takes the id from
+ * run_command_background, a mandatory timeoutMs (how long to wait before
+ * reporting "still running"), and an optional action "kill" to stop it
+ * immediately. Returns the command's output and status so far; if it is still
+ * running after timeoutMs, the result carries running: true and the output
+ * accumulated up to that point, so the model can wait again, check on it, or
+ * kill it.
+ */
+const waitForCommand: LlmTool = {
+  type: "function",
+  function: {
+    name: "wait_for_command",
+    description:
+      'Wait for a background command (started by run_command_background) to finish, or terminate it. `id` is the id returned by run_command_background; `timeoutMs` is a required positive number of milliseconds to wait before reporting the command as still running. If the command is still running when the timeout elapses, the result says so and includes the output so far, so you can wait again with a larger timeout, check on it, or kill it. To stop the command immediately, pass action: "kill" (the result is its final state). Use this to wait for a long test run or build, or to kill a command that is stuck.',
+    parameters: {
+      type: "object",
+      properties: {
+        id: {
+          type: "string",
+          description:
+            "The id of the background command to wait for or kill, as returned by run_command_background.",
+        },
+        timeoutMs: {
+          type: "number",
+          description:
+            "How long (in milliseconds) to wait before reporting the command as still running. Required and must be a positive number.",
+        },
+        action: {
+          type: "string",
+          description:
+            'Optional: "wait" (the default) to observe the command, or "kill" to terminate it immediately.',
+        },
+      },
+      required: ["id", "timeoutMs"],
+    },
+  },
+};
+
+/**
  * Search for file names matching a regular expression across the workspace,
  * excluding files and directories git ignores. Matches the file's base name
  * (the file name without its directory).
@@ -490,6 +557,8 @@ export const llmToolDefinitions: LlmTool[] = [
   deleteFile,
   deleteDirectory,
   runCommand,
+  runCommandBackground,
+  waitForCommand,
   ...browserToolDefinitions,
   createSubagent,
   askQuestions,
