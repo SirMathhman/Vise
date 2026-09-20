@@ -514,11 +514,13 @@
 }
 
 #app #llm-response .llm-subagent-body .llm-tool,
+#app #llm-response .llm-subagent-body .llm-tool-result {
+  margin-left: 0;
+}
+
 /* A fixed aspect-ratio box: the virtual list measures a block once at render,
    so the image's height must be known before it has loaded. */
-  #app
-  #llm-response
-  .llm-tool-image {
+#app #llm-response .llm-tool-image {
   display: block;
   width: 100%;
   max-width: 480px;
@@ -527,10 +529,6 @@
   margin-top: 6px;
   background: var(--bg);
   border: 1px solid var(--border);
-}
-
-#app #llm-response .llm-subagent-body .llm-tool-result {
-  margin-left: 0;
 }
 
 #app #llm-response .llm-subagent-result {
