@@ -40,7 +40,7 @@ function spawnPowershell(command: string, root: string): ChildProcess {
   return spawn(
     "powershell.exe",
     ["-NoProfile", "-NonInteractive", "-Command", command],
-    { cwd: root },
+    { cwd: root }
   );
 }
 
@@ -74,7 +74,7 @@ interface CommandResult {
  */
 export function runShellCommand(
   command: string,
-  root: string,
+  root: string
 ): Promise<CommandResult> {
   let child: ChildProcess;
   try {
@@ -83,7 +83,7 @@ export function runShellCommand(
     throw new AppError(
       500,
       "spawn_error",
-      `failed to run command: ${err instanceof Error ? err.message : String(err)}`,
+      `failed to run command: ${err instanceof Error ? err.message : String(err)}`
     );
   }
 
@@ -120,8 +120,8 @@ export function runShellCommand(
         new AppError(
           500,
           "spawn_error",
-          `failed to run command: ${err.message}`,
-        ),
+          `failed to run command: ${err.message}`
+        )
       );
     });
 
@@ -180,7 +180,7 @@ export function startBackgroundCommand(command: string, root: string): string {
     throw new AppError(
       500,
       "spawn_error",
-      `failed to run command: ${err instanceof Error ? err.message : String(err)}`,
+      `failed to run command: ${err instanceof Error ? err.message : String(err)}`
     );
   }
   const id = nextBackgroundId++;
@@ -194,8 +194,8 @@ export function startBackgroundCommand(command: string, root: string): string {
         new AppError(
           500,
           "spawn_error",
-          `failed to run command: ${err.message}`,
-        ),
+          `failed to run command: ${err.message}`
+        )
       );
     });
     child.on("close", (code, signal) => {
@@ -283,14 +283,14 @@ function formatBackground(bg: BackgroundCommand): BackgroundCommandStatus {
  */
 export function waitBackgroundCommand(
   id: number,
-  timeoutMs: number,
+  timeoutMs: number
 ): Promise<BackgroundCommandStatus> {
   const bg = backgroundCommands.get(id);
   if (!bg) throw badRequest(`no background command with id ${id}`);
   return new Promise<BackgroundCommandStatus>((resolvePromise) => {
     const timer = setTimeout(
       () => resolvePromise(formatBackground(bg)),
-      timeoutMs,
+      timeoutMs
     );
     bg.done.then(
       () => {
@@ -300,7 +300,7 @@ export function waitBackgroundCommand(
       () => {
         clearTimeout(timer);
         resolvePromise(formatBackground(bg));
-      },
+      }
     );
   });
 }
@@ -316,6 +316,26 @@ export function killBackgroundCommand(id: number): BackgroundCommandStatus {
     killProcessTree(bg.child);
   }
   return formatBackground(bg);
+}
+
+/**
+ * Kill any live background command and clear the registry, so none outlive
+ * the backend (a background dev server would otherwise keep running as an
+ * orphan after shutdown, and settled entries would accumulate for the life
+ * of a long dev session). Called from the app's close() alongside the other
+ * long-lived app-owned resources (the file watcher and the browser session).
+ */
+export function closeBackgroundCommands(): void {
+  for (const bg of backgroundCommands.values()) {
+    if (!bg.settled) {
+      bg.killed = true;
+      bg.status = "killed";
+      bg.settled = true;
+      killProcessTree(bg.child);
+    }
+  }
+  backgroundCommands.clear();
+  nextBackgroundId = 1;
 }
 
 /**
@@ -371,7 +391,7 @@ export const waitForCommand: LlmToolHandler = async (args, _root) => {
   const timeoutMs = Number(args.timeoutMs);
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
     throw badRequest(
-      "timeoutMs is required and must be a positive number (milliseconds)",
+      "timeoutMs is required and must be a positive number (milliseconds)"
     );
   }
   const action = typeof args.action === "string" ? args.action : "wait";

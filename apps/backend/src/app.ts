@@ -18,6 +18,7 @@ import { fileRoutes } from "./routes/file.js";
 import { healthRoutes } from "./routes/health.js";
 import { helloRoutes } from "./routes/hello.js";
 import { llmToolRoutes } from "./routes/llm.js";
+import { closeBackgroundCommands } from "./routes/llmCommand.js";
 import { lsRoutes } from "./routes/ls.js";
 import { watchRoutes } from "./routes/watch.js";
 
@@ -86,6 +87,7 @@ export function createApp(ctx: AppContext) {
         server.closeAllConnections();
         server.close(async () => {
           ctx.fileWatcher.close();
+          closeBackgroundCommands();
           await ctx.browserSession.close();
           resolve();
         });
