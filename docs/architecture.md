@@ -76,14 +76,30 @@ apps/backend/src/
                   #   + "Error: …" so the model adapts) and POST /api/llm/hook-command (a
                   #   second, non-tool route: runs a command through llmCommand.ts's
                   #   runShellCommand core — the same one run_command uses — but returns
-    browser.ts    #   BROWSER SESSION: createBrowserSession -> BrowserSession, the
-                  #   app-owned Playwright session the five browser tools drive.
-                  #   Lazily opens a visible system-Chrome page on first
-                  #   browser_open; snapshot/click/type re-collect a numbered
-                  #   snapshot of interactive elements before acting so the
-                  #   model's element indices stay live. Owned by AppContext
-                  #   (ctx.browserSession) and closed in close() — see the
-                  #   "long-lived resources" invariant above.
+    browser/      #   BROWSER SESSION: the app-owned Playwright session the five
+                  #   browser tools (open, snapshot, click, type, drag) drive, owned by
+                  #   AppContext (ctx.browserSession) and closed in close() — see the
+                  #   "long-lived resources" invariant above. Every action re-collects a
+                  #   numbered snapshot of interactive elements before acting so the
+                  #   model's element indices stay live. Split by dependency direction:
+                  #     elements.ts  - PURE: INTERACTIVE_SELECTOR, ElementKind, kindOf,
+                  #                    labelOf, RawElement/SnapshotEntry (no Playwright
+                  #                    import, unit-testable in Node)
+                  #     snapshot.ts  - collectTargets (one page.evaluate, capped at
+                  #                    MAX_SNAPSHOT_ELEMENTS) + snapshotText
+                  #     targets.ts   - the single element-number validator: parses numeric
+                  #                    args (n / from / to) and range-checks them against
+                  #                    the same capped list the snapshot printed, returning
+                  #                    Targets or a badRequest; click/type/drag never
+                  #                    re-implement it
+                  #     actions.ts   - one small function per tool (click, type, drag)
+                  #                    taking (page, args); drag releases the mouse in a
+                  #                    finally so a failed move never leaves it held down
+                  #     session.ts   - createBrowserSession: lifecycle (ensurePage, close)
+                  #                    and wiring only
+                  #     screencast.ts / view.ts - the panel-facing stream and input
+                  #   Dependency direction: session -> actions -> targets -> snapshot ->
+                  #   elements; nothing imports back up.
                   #   {stdout, stderr, truncated, timedOut} structured JSON instead of one
                   #   formatted string, since the panel's end-of-turn hook must tell
                   #   stdout from stderr apart. Errors are thrown AppErrors like every

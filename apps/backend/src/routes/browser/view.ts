@@ -2,7 +2,7 @@
  * The HTTP surface for the viewer panel's browser tab: a screencast stream out,
  * and navigation/input/viewport control in. These are panel-facing routes, not
  * LLM tools — the model drives the same page through `/api/llm/tool`
- * (browser_open/click/type in browser.ts), and both act on the one app-owned
+ * (browser_open/click/type/drag in session.ts), and both act on the one app-owned
  * session, which is the point: the user watches the model work.
  *
  * The stream mirrors `routes/watch.ts` exactly — same SSE headers, same
@@ -10,11 +10,11 @@
  * codebase read the same way.
  */
 
-import type { AppContext } from "../context.js";
-import { badRequest } from "../errors.js";
-import { sendJson, sendSseHeaders } from "../http.js";
-import type { Route } from "../router.js";
-import type { BrowserInput } from "./browserScreencast.js";
+import type { AppContext } from "../../context.js";
+import { badRequest } from "../../errors.js";
+import { sendJson, sendSseHeaders } from "../../http.js";
+import type { Route } from "../../router.js";
+import type { BrowserInput } from "./screencast.js";
 
 /** Read a finite number from an unknown JSON field, or fall back. */
 function num(value: unknown, fallback: number): number {

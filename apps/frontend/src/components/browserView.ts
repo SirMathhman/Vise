@@ -7,7 +7,7 @@
  * host can actually do. A plain `<iframe>` (the `kind: "url"` tab) can't script
  * a cross-origin page and most sites refuse to be framed at all, so instead the
  * backend runs the page headless and streams frames (see
- * routes/browserScreencast.ts). Because the model's browser_click/browser_type
+ * routes/browser/screencast.ts). Because the model's browser_click/browser_type
  * tools drive that same page, whatever the model does shows up here live.
  *
  * Teardown is self-healing rather than call-site driven: the viewer clears

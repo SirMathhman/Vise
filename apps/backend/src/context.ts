@@ -1,4 +1,4 @@
-import { createBrowserSession } from "./routes/browser.js";
+import { createBrowserSession } from "./routes/browser/session.js";
 import { createFileWatcher } from "./watch.js";
 
 export type FileWatcher = ReturnType<typeof createFileWatcher>;

@@ -14,7 +14,7 @@
  * this stream drive the same page, so the user watches the model work.
  *
  * Lifecycle: this module owns the CDP session, never the page or the browser —
- * `browser.ts` owns those and calls `attach` whenever it creates a page and
+ * `session.ts` owns those and calls `attach` whenever it creates a page and
  * `close` on teardown. The screencast itself runs only while at least one
  * subscriber is listening AND a page is attached, so nothing encodes frames
  * that nobody is watching.
@@ -103,7 +103,7 @@ export interface Screencast {
  * The structural shape of Playwright's CDPSession that this module uses. Typed
  * locally rather than against the bundled protocol types so the module does not
  * couple to a generated `Protocol` namespace that may move between versions —
- * the same reasoning as `BrowserElement` in browser.ts.
+ * the same reasoning as `BrowserElement` in elements.ts.
  */
 interface RawCdpSession {
   send(method: string, params?: Record<string, unknown>): Promise<unknown>;

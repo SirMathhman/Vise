@@ -97,7 +97,7 @@ export interface BrowserFrame {
 
 /**
  * A user input event to replay into the browser page. Mirrors the backend's
- * `BrowserInput` union (routes/browserScreencast.ts) — kept structural rather
+ * `BrowserInput` union (routes/browser/screencast.ts) — kept structural rather
  * than imported because @vise/shared carries only the LLM tool-name contract.
  */
 export type BrowserInputEvent =
