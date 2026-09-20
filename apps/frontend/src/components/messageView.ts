@@ -27,7 +27,13 @@ type VisualItem =
   | { kind: "message"; role: "user" | "assistant"; content: string }
   | { kind: "reasoning"; text: string }
   | { kind: "tool-call"; label: string }
-  | { kind: "tool-result"; text: string; images?: string[] }
+  | {
+      kind: "tool-result";
+      text: string;
+      images?: string[];
+      /** The user collapsed this result; kept here so it survives the list re-rendering the block. */
+      collapsed?: boolean;
+    }
   | { kind: "compaction" }
   | { kind: "subagent"; task: string; steps: SubagentStep[]; result: string }
   | { kind: "end-hook"; text: string };
@@ -83,7 +89,7 @@ function expandMessages(messages: ChatMessage[]): VisualItem[] {
 }
 
 /** Build the DOM block for a single visual item. */
-function renderItemDom(item: VisualItem): HTMLElement {
+function renderItemDom(item: VisualItem, onResize: () => void): HTMLElement {
   switch (item.kind) {
     case "compaction": {
       const note = document.createElement("div");
@@ -100,19 +106,8 @@ function renderItemDom(item: VisualItem): HTMLElement {
       block.append(label);
       return block;
     }
-    case "tool-result": {
-      const block = document.createElement("div");
-      block.className = "llm-tool-result";
-      block.textContent = item.text;
-      for (const url of item.images ?? []) {
-        const img = document.createElement("img");
-        img.className = "llm-tool-image";
-        img.src = url;
-        img.alt = "Image returned by the tool";
-        block.append(img);
-      }
-      return block;
-    }
+    case "tool-result":
+      return renderToolResultDom(item, onResize);
     case "message": {
       const block = document.createElement("div");
       block.className = `llm-msg llm-msg-${item.role}`;
@@ -139,6 +134,51 @@ function renderItemDom(item: VisualItem): HTMLElement {
       return block;
     }
   }
+}
+
+/**
+ * Render a tool's output: a header button (chevron + line count) that
+ * collapses the output to that one line, and the output itself. Expanded by
+ * default. The collapsed state lives on the item (not the DOM node), because
+ * the virtualized list drops and re-creates blocks as they scroll in and out
+ * of view; `onResize` tells the list the block's height changed.
+ */
+function renderToolResultDom(
+  item: Extract<VisualItem, { kind: "tool-result" }>,
+  onResize: () => void
+): HTMLElement {
+  const block = document.createElement("div");
+  block.className = "llm-tool-result";
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "llm-tool-result-toggle";
+  const body = document.createElement("div");
+  body.className = "llm-tool-result-body";
+  body.textContent = item.text;
+  for (const url of item.images ?? []) {
+    const img = document.createElement("img");
+    img.className = "llm-tool-image";
+    img.src = url;
+    img.alt = "Image returned by the tool";
+    body.append(img);
+  }
+  const lines = item.text.split("\n").length;
+  const label = `Result \u00b7 ${lines} line${lines === 1 ? "" : "s"}`;
+  const apply = (): void => {
+    const collapsed = item.collapsed === true;
+    block.classList.toggle("collapsed", collapsed);
+    body.hidden = collapsed;
+    toggle.setAttribute("aria-expanded", String(!collapsed));
+    toggle.textContent = `${collapsed ? "\u25b8" : "\u25be"} ${label}`;
+  };
+  toggle.addEventListener("click", () => {
+    item.collapsed = !item.collapsed;
+    apply();
+    onResize();
+  });
+  apply();
+  block.append(toggle, body);
+  return block;
 }
 
 /**
@@ -381,7 +421,7 @@ export class MessageView {
       });
     this.list = new VirtualList(
       scroll,
-      (_i, item) => renderItemDom(item),
+      (_i, item) => renderItemDom(item, () => this.list.refresh()),
       () => this.items
     );
     this.followBtn = this.createFollowButton();

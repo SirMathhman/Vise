@@ -513,6 +513,27 @@
   margin-top: 6px;
 }
 
+#app #llm-response .llm-tool-result-toggle {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+#app #llm-response .llm-tool-result-toggle:hover {
+  color: var(--gold);
+}
+
+#app #llm-response .llm-tool-result-body {
+  margin-top: 4px;
+}
+
 #app #llm-response .llm-subagent-body .llm-tool,
 #app #llm-response .llm-subagent-body .llm-tool-result {
   margin-left: 0;
