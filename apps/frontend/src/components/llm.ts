@@ -294,14 +294,20 @@ export function setupLlm(
     skillName.value = skill?.name ?? "";
     skillSummary.value = skill?.summary ?? "";
     skillContent.value = skill?.content ?? "";
+    autoResizeTextarea(skillContent);
     skillDeleteBtn.disabled = !skill;
   };
 
   /** Open the Skills modal, loading the editor fields fresh each time. */
   const openSkills = () => {
+    // Un-hide the overlay before loading fields: autoResizeTextarea in
+    // loadSkillEditorFields measures the textarea's scrollHeight, which is 0
+    // while the overlay is hidden (display:none), so the resize would
+    // otherwise compute only the min-height floor and the textarea would
+    // still need its own scrollbar for a long skill.
+    skillsOverlay.hidden = false;
     refreshSkillSelect();
     loadSkillEditorFields();
-    skillsOverlay.hidden = false;
     skillSummary.focus();
   };
 
@@ -513,6 +519,7 @@ export function setupLlm(
     }
   });
   skillContent.addEventListener("change", () => {
+    autoResizeTextarea(skillContent);
     const name = skillEditor.value;
     if (name) {
       skills.updateSkill(name, { content: skillContent.value });

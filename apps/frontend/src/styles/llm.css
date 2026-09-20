@@ -355,6 +355,16 @@
   min-height: 120px;
 }
 
+/* Same single-scroll-region rule as #llm-profile-prompt: the Skills modal
+   shares the .llm-profiles-modal box, so without this override its
+   #llm-skill-content textarea would flex-shrink to its min-height and grow
+   its own internal scrollbar when a long skill overflows the modal.
+   autoResizeTextarea in llm.ts keeps it at full content height instead. */
+#app #llm #llm-skill-content {
+  flex: 0 0 auto;
+  min-height: 120px;
+}
+
 /* Holds the follow toggle at the right end of .llm-transcript-head.
    `flex: none` so it takes only the pill's width and the token readout
    beside it keeps the rest. MessageView finds this element by class to
