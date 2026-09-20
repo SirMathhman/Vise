@@ -25,7 +25,7 @@ export interface SubagentStep {
 /** One rendered block. A single chat message expands into one or more of these. */
 type VisualItem =
   | { kind: "message"; role: "user" | "assistant"; content: string }
-  | { kind: "reasoning"; text: string }
+  | { kind: "reasoning"; text: string; open?: boolean }
   | { kind: "tool-call"; label: string }
   | {
       kind: "tool-result";
@@ -35,7 +35,13 @@ type VisualItem =
       collapsed?: boolean;
     }
   | { kind: "compaction" }
-  | { kind: "subagent"; task: string; steps: SubagentStep[]; result: string }
+  | {
+      kind: "subagent";
+      task: string;
+      steps: SubagentStep[];
+      result: string;
+      open?: boolean;
+    }
   | { kind: "end-hook"; text: string };
 
 /** Vertical gap applied after each block, mirroring the pre-wrap margin rhythm. */
@@ -89,7 +95,7 @@ function expandMessages(messages: ChatMessage[]): VisualItem[] {
 }
 
 /** Build the DOM block for a single visual item. */
-function renderItemDom(item: VisualItem, onResize: () => void): HTMLElement {
+function renderItemDom(item: VisualItem): HTMLElement {
   switch (item.kind) {
     case "compaction": {
       const note = document.createElement("div");
@@ -107,7 +113,7 @@ function renderItemDom(item: VisualItem, onResize: () => void): HTMLElement {
       return block;
     }
     case "tool-result":
-      return renderToolResultDom(item, onResize);
+      return renderToolResultDom(item);
     case "message": {
       const block = document.createElement("div");
       block.className = `llm-msg llm-msg-${item.role}`;
@@ -124,7 +130,9 @@ function renderItemDom(item: VisualItem, onResize: () => void): HTMLElement {
       return block;
     }
     case "reasoning":
-      return renderReasoningDom(item.text, false);
+      return renderReasoningDom(item.text, item.open === true, (open) => {
+        item.open = open;
+      });
     case "subagent":
       return renderSubagentDom(item);
     case "end-hook": {
@@ -141,17 +149,23 @@ function renderItemDom(item: VisualItem, onResize: () => void): HTMLElement {
  * collapses the output to that one line, and the output itself. Expanded by
  * default. The collapsed state lives on the item (not the DOM node), because
  * the virtualized list drops and re-creates blocks as they scroll in and out
- * of view; `onResize` tells the list the block's height changed.
+ * of view; the list notices the height change itself (see VirtualList).
  */
 function renderToolResultDom(
-  item: Extract<VisualItem, { kind: "tool-result" }>,
-  onResize: () => void
+  item: Extract<VisualItem, { kind: "tool-result" }>
 ): HTMLElement {
   const block = document.createElement("div");
   block.className = "llm-tool-result";
   const toggle = document.createElement("button");
   toggle.type = "button";
   toggle.className = "llm-tool-result-toggle";
+  const chevron = document.createElement("span");
+  chevron.setAttribute("aria-hidden", "true");
+  const lines = item.text.split("\n").length;
+  const label = document.createTextNode(
+    ` Result \u00b7 ${lines} line${lines === 1 ? "" : "s"}`
+  );
+  toggle.append(chevron, label);
   const body = document.createElement("div");
   body.className = "llm-tool-result-body";
   body.textContent = item.text;
@@ -162,19 +176,15 @@ function renderToolResultDom(
     img.alt = "Image returned by the tool";
     body.append(img);
   }
-  const lines = item.text.split("\n").length;
-  const label = `Result \u00b7 ${lines} line${lines === 1 ? "" : "s"}`;
   const apply = (): void => {
     const collapsed = item.collapsed === true;
-    block.classList.toggle("collapsed", collapsed);
     body.hidden = collapsed;
     toggle.setAttribute("aria-expanded", String(!collapsed));
-    toggle.textContent = `${collapsed ? "\u25b8" : "\u25be"} ${label}`;
+    chevron.textContent = collapsed ? "\u25b8" : "\u25be";
   };
   toggle.addEventListener("click", () => {
     item.collapsed = !item.collapsed;
     apply();
-    onResize();
   });
   apply();
   block.append(toggle, body);
@@ -187,10 +197,17 @@ function renderToolResultDom(
  * trace shouldn't dominate the transcript); the live streaming block opens it
  * so the user watches the thinking as it arrives.
  */
-function renderReasoningDom(text: string, open: boolean): HTMLElement {
+function renderReasoningDom(
+  text: string,
+  open: boolean,
+  onToggle?: (open: boolean) => void
+): HTMLElement {
   const details = document.createElement("details");
   details.className = "llm-reasoning";
   if (open) details.open = true;
+  if (onToggle) {
+    details.addEventListener("toggle", () => onToggle(details.open));
+  }
   const summary = document.createElement("summary");
   summary.className = "llm-reasoning-summary";
   summary.textContent = "Thinking";
@@ -207,13 +224,15 @@ function renderReasoningDom(text: string, open: boolean): HTMLElement {
  * final result. Collapsed by default so a delegated sub-task doesn't dominate
  * the main transcript.
  */
-function renderSubagentDom(item: {
-  task: string;
-  steps: SubagentStep[];
-  result: string;
-}): HTMLElement {
+function renderSubagentDom(
+  item: Extract<VisualItem, { kind: "subagent" }>
+): HTMLElement {
   const details = document.createElement("details");
   details.className = "llm-subagent";
+  if (item.open) details.open = true;
+  details.addEventListener("toggle", () => {
+    item.open = details.open;
+  });
   const summary = document.createElement("summary");
   summary.className = "llm-subagent-summary";
   summary.textContent = `Subagent: ${item.task}`;
@@ -260,15 +279,26 @@ class VirtualList {
   private renderItem: (index: number, item: VisualItem) => HTMLElement;
   private getItems: () => VisualItem[];
   private scroll: HTMLElement;
+  private onRelayout: () => void;
+  /**
+   * Watches every live block, so any change to a block's own height (a
+   * collapse/expand, an image loading, a font swap) re-measures the list
+   * without each block having to tell it. Blocks carry no callback to the
+   * list; their UI state lives on the VisualItem.
+   */
+  private observer = new ResizeObserver(() => this.onResized());
+  private resizeRaf = 0;
 
   constructor(
     scroll: HTMLElement,
     renderItem: (index: number, item: VisualItem) => HTMLElement,
-    getItems: () => VisualItem[]
+    getItems: () => VisualItem[],
+    onRelayout: () => void
   ) {
     this.scroll = scroll;
     this.renderItem = renderItem;
     this.getItems = getItems;
+    this.onRelayout = onRelayout;
     this.content = document.createElement("div");
     this.content.className = "llm-virtual";
     scroll.append(this.content);
@@ -283,10 +313,33 @@ class VirtualList {
     });
   };
 
+  /**
+   * A live block changed size. Re-lay-out (on the next frame, coalescing a
+   * burst) only if some block's height really differs from what was measured,
+   * then tell the owner, which re-derives things that depend on the layout
+   * (e.g. whether the view is still at the bottom).
+   */
+  private onResized(): void {
+    if (this.resizeRaf) return;
+    this.resizeRaf = requestAnimationFrame(() => {
+      this.resizeRaf = 0;
+      for (const [idx, node] of this.nodes) {
+        if (this.heights[idx] !== node.offsetHeight + GAP) {
+          this.layout();
+          this.onRelayout();
+          return;
+        }
+      }
+    });
+  }
+
   /** Dispose: drop listeners and live nodes. */
   destroy(): void {
     if (this.raf) cancelAnimationFrame(this.raf);
     this.raf = 0;
+    if (this.resizeRaf) cancelAnimationFrame(this.resizeRaf);
+    this.resizeRaf = 0;
+    this.observer.disconnect();
     this.scroll.removeEventListener("scroll", this.onScroll);
     this.content.remove();
     this.nodes.clear();
@@ -319,6 +372,12 @@ class VirtualList {
     }
   }
 
+  /** Remove a live block from the DOM and stop watching it. */
+  private dropNode(node: HTMLElement): void {
+    this.observer.unobserve(node);
+    node.remove();
+  }
+
   /** Compute top offsets for every block from measured/estimated heights. */
   private computeOffsets(n: number): number[] {
     const offsets = new Array<number>(n + 1);
@@ -349,7 +408,7 @@ class VirtualList {
     const offsets = this.computeOffsets(n);
     this.content.style.height = `${offsets[n]}px`;
     if (n === 0) {
-      for (const node of this.nodes.values()) node.remove();
+      for (const node of this.nodes.values()) this.dropNode(node);
       this.nodes.clear();
       return;
     }
@@ -363,7 +422,7 @@ class VirtualList {
 
     for (const [idx, node] of this.nodes) {
       if (idx < start || idx > end) {
-        node.remove();
+        this.dropNode(node);
         this.nodes.delete(idx);
       }
     }
@@ -374,6 +433,7 @@ class VirtualList {
       if (!node) {
         node = this.renderItem(i, items[i]);
         this.content.append(node);
+        this.observer.observe(node);
         this.nodes.set(i, node);
       }
       node.style.top = `${offsets[i]}px`;
@@ -421,8 +481,13 @@ export class MessageView {
       });
     this.list = new VirtualList(
       scroll,
-      (_i, item) => renderItemDom(item, () => this.list.refresh()),
-      () => this.items
+      (_i, item) => renderItemDom(item),
+      () => this.items,
+      // A block resized (e.g. the user expanded one near the bottom): the view
+      // may no longer be at the bottom, so re-derive `follow` from where we
+      // are, so the next streamed chunk doesn't yank the user away from what
+      // they just opened.
+      () => this.onScroll()
     );
     this.followBtn = this.createFollowButton();
     // The follow toggle lives in the thin .llm-transcript-head strip just
