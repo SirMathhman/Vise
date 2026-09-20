@@ -1,4 +1,5 @@
 import type { LlmToolCall } from "../api/client.js";
+import { renderMarkdownInto } from "../markdown.js";
 import type { ChatMessage } from "./conversations.js";
 
 /**
@@ -118,9 +119,12 @@ function renderItemDom(item: VisualItem): HTMLElement {
       const who = document.createElement("span");
       who.className = "llm-msg-role";
       who.textContent = item.role === "user" ? "You" : "Model";
-      const text = document.createElement("span");
-      text.className = "llm-msg-text";
-      text.textContent = item.content;
+      // The model's replies are Markdown; the user's own text stays plain.
+      const isModel = item.role === "assistant";
+      const text = document.createElement(isModel ? "div" : "span");
+      text.className = isModel ? "llm-msg-text llm-md" : "llm-msg-text";
+      if (isModel) renderMarkdownInto(text, item.content);
+      else text.textContent = item.content;
       block.append(who, text);
       return block;
     }
@@ -602,14 +606,14 @@ export class MessageView {
       const who = document.createElement("span");
       who.className = "llm-msg-role";
       who.textContent = "Model";
-      const body = document.createElement("span");
-      body.className = "llm-msg-text";
+      const body = document.createElement("div");
+      body.className = "llm-msg-text llm-md";
       block.append(who, body);
       this.streamWrapper.append(block);
       this.streamMsgEl = block;
       this.streamTextEl = body;
     }
-    if (this.streamTextEl) this.streamTextEl.textContent = text;
+    if (this.streamTextEl) renderMarkdownInto(this.streamTextEl, text);
     if (this.follow) this.list.scrollToBottom();
   }
 
