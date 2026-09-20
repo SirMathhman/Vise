@@ -216,6 +216,28 @@ const browserRunCode: LlmTool = {
 };
 
 /**
+ * Capture a screenshot of the active browser page as an image the model sees.
+ */
+const browserScreenshot: LlmTool = {
+  type: "function",
+  function: {
+    name: "browser_screenshot",
+    description:
+      "Capture a screenshot of the active browser page and attach it as an image you can see. Use this to check how a page actually looks (layout, images, colors, charts, canvas content) when the text snapshot and browser_read are not enough. Requires a vision-capable model. Only your most recent screenshot stays in context, so note what you need from it before taking another.",
+    parameters: {
+      type: "object",
+      properties: {
+        full_page: {
+          type: "boolean",
+          description:
+            "Capture the whole scrollable page instead of just the visible viewport. Defaults to false.",
+        },
+      },
+    },
+  },
+};
+
+/**
  * Accept or dismiss the JavaScript dialog (alert/confirm/prompt/beforeunload)
  * the active browser page has open.
  */
@@ -255,5 +277,6 @@ export const browserToolDefinitions: LlmTool[] = [
   browserNavigate,
   browserRead,
   browserRunCode,
+  browserScreenshot,
   browserDialog,
 ];

@@ -76,8 +76,9 @@ apps/backend/src/
                   #   + "Error: …" so the model adapts) and POST /api/llm/hook-command (a
                   #   second, non-tool route: runs a command through llmCommand.ts's
                   #   runShellCommand core — the same one run_command uses — but returns
-    browser/      #   BROWSER SESSION: the app-owned Playwright session the seven
-                  #   browser tools (open, snapshot, click, type, drag, hover, dialog) drive, owned by
+    browser/      #   BROWSER SESSION: the app-owned Playwright session the eleven
+                  #   browser tools (open, snapshot, click, type, drag, hover, navigate,
+                  #   read, run_code, screenshot, dialog) drive, owned by
                   #   AppContext (ctx.browserSession) and closed in close() — see the
                   #   "long-lived resources" invariant above. Every action re-collects a
                   #   numbered snapshot of interactive elements before acting so the
@@ -93,13 +94,15 @@ apps/backend/src/
                   #                    Targets or a badRequest; click/type/drag never
                   #                    re-implement it
                   #     actions.ts   - one small function per page-acting tool (click, type, drag,
-                  #                    hover), collected in the `pageActions` record
+                  #                    hover, navigate, read, run_code), collected in the `pageActions` record
                   #                    taking (page, args); drag releases the mouse in a
                   #                    finally so a failed move never leaves it held down
                   #     dialogs.ts   - holds JS dialogs open (no Playwright auto-dismiss):
                   #                    guard() reports a dialog an action opened and
                   #                    refuses new actions until browser_dialog answers it;
                   #                    clears a stale dialog on navigation/page close
+                  #                    plus screenshot(), the one tool returning an
+                  #                    image (LlmToolResult {text, images})
                   #     gate.ts      - createPageGate: owns Chrome + the single page
                   #                    (ensurePage, close) and the gate (a promise chain)
                   #                    that runs every tool and the panel's navigate one

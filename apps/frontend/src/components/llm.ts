@@ -1,6 +1,8 @@
 import {
   executeLlmTool,
+  executeLlmToolWithImages,
   getFile,
+  type LlmContentPart,
   type LlmMessage,
   type LlmTool,
   type LlmToolCall,
@@ -983,6 +985,8 @@ function parseAskQuestionsArgs(tc: LlmToolCall): AskQuestion[] {
 /** The outcome of resolving one model tool call. */
 interface ToolCallOutcome {
   result: string;
+  /** Images the tool returned (data URLs), e.g. a browser screenshot. */
+  images?: string[];
   /** Present only for a create_subagent call: its internal trace, for the collapsed transcript block. */
   steps?: SubagentStep[];
   /** Present only for a create_subagent call: the task it was given. */
@@ -1070,7 +1074,7 @@ async function resolveToolCall(
     const { result, steps } = await runSubagent(task, model, target, agentsMd);
     return { result, steps, task };
   }
-  return { result: await executeLlmTool(tc) };
+  return executeLlmToolWithImages(tc);
 }
 
 /**
@@ -1631,6 +1635,7 @@ async function runTurn(
             role: "tool",
             content: outcome.result,
             tool_call_id: tc.id,
+            ...(outcome.images?.length ? { images: outcome.images } : {}),
           });
           if (outcome.steps) {
             view.appendSubagentResult(
@@ -1649,7 +1654,7 @@ async function runTurn(
             fileViewer?.endEditDiff(ok);
             if (!ok) view.appendToolResult(outcome.result);
           } else {
-            view.appendToolResult(outcome.result);
+            view.appendToolResult(outcome.result, outcome.images);
           }
         }
         continue;
@@ -1716,8 +1721,45 @@ const SUMMARY_PROMPT =
  * but must not be echoed back to the model on the next turn.
  */
 function toWireMessage(m: ChatMessage): LlmMessage {
-  const { reasoning: _reasoning, ...wire } = m;
+  const { reasoning: _reasoning, images: _images, ...wire } = m;
   return wire;
+}
+
+/**
+ * Convert stored messages to wire form, delivering tool-returned images the
+ * only way the chat protocol allows: a `tool` message's content must be text,
+ * so the images go in a synthetic `user` message placed right after the last
+ * tool message of that group (never between an assistant's tool calls and
+ * their results). Only the most recent images are sent — older screenshots
+ * are dropped from the prompt, since images are expensive in tokens.
+ */
+function toWireMessages(messages: ChatMessage[]): LlmMessage[] {
+  let latest = -1;
+  messages.forEach((m, i) => {
+    if (m.role === "tool" && m.images?.length) latest = i;
+  });
+  const out: LlmMessage[] = [];
+  let pending: string[] = [];
+  const flush = () => {
+    if (pending.length === 0) return;
+    out.push({
+      role: "user",
+      content: [
+        { type: "text", text: "Image(s) returned by the tool call above:" },
+        ...pending.map(
+          (url): LlmContentPart => ({ type: "image_url", image_url: { url } })
+        ),
+      ],
+    });
+    pending = [];
+  };
+  messages.forEach((m, i) => {
+    if (m.role !== "tool") flush();
+    out.push(toWireMessage(m));
+    if (i === latest) pending = m.images ?? [];
+  });
+  flush();
+  return out;
 }
 
 /**
@@ -1741,11 +1783,9 @@ function buildMessages(
   ];
   if (cut >= 0) {
     messages.push({ role: "user", content: history[cut].content ?? "" });
-    for (let i = cut + 1; i < history.length; i++) {
-      messages.push(toWireMessage(history[i]));
-    }
+    messages.push(...toWireMessages(history.slice(cut + 1)));
   } else {
-    for (const m of history) messages.push(toWireMessage(m));
+    messages.push(...toWireMessages(history));
   }
   return messages;
 }

@@ -260,10 +260,16 @@ export async function listLlmModels(): Promise<LlmModel[]> {
   }));
 }
 
+/** One part of a multimodal message's content, in OpenAI-compatible wire format. */
+export type LlmContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } };
+
 /** A single turn in a chat conversation, in OpenAI-compatible wire format. */
 export interface LlmMessage {
   role: "system" | "user" | "assistant" | "tool";
-  content: string | null;
+  /** Text, or (user messages only) text and image parts. */
+  content: string | LlmContentPart[] | null;
   /** Present on assistant messages that request tool invocations. */
   tool_calls?: LlmToolCall[];
   /** On `tool` messages, the id of the call this result answers. */
@@ -501,12 +507,20 @@ export async function streamLlmMessage(
   };
 }
 
+/** A tool's model-readable text, plus any images (data URLs) it returned. */
+export interface LlmToolOutput {
+  result: string;
+  images: string[];
+}
+
 /**
- * Execute a tool call on the backend and return the model-readable result
- * string. Errors come back as text (the backend resolves them to a string) so
- * the tool loop can feed them straight back to the model.
+ * Execute a tool call on the backend and return its model-readable result
+ * text and any images. Errors come back as text (the backend resolves them to
+ * a string) so the tool loop can feed them straight back to the model.
  */
-export async function executeLlmTool(tc: LlmToolCall): Promise<string> {
+export async function executeLlmToolWithImages(
+  tc: LlmToolCall
+): Promise<LlmToolOutput> {
   const res = await fetch("/api/llm/tool", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -515,9 +529,20 @@ export async function executeLlmTool(tc: LlmToolCall): Promise<string> {
       arguments: tc.function.arguments,
     }),
   });
-  if (!res.ok) return fail(res);
-  const data = (await res.json()) as { result: string };
-  return data.result;
+  if (!res.ok) return { result: await fail(res), images: [] };
+  const data = (await res.json()) as { result: string; images?: string[] };
+  return { result: data.result, images: data.images ?? [] };
+}
+
+/**
+ * Execute a tool call for a caller that can only use text (hooks, helper
+ * agents): any images are dropped, and the text says so.
+ */
+export async function executeLlmTool(tc: LlmToolCall): Promise<string> {
+  const { result, images } = await executeLlmToolWithImages(tc);
+  return images.length > 0
+    ? `${result}\n(The image cannot be shown in this context.)`
+    : result;
 }
 
 /** stdout/stderr kept separate, unlike run_command's combined model text. */

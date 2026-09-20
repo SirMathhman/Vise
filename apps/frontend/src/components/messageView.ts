@@ -26,7 +26,7 @@ type VisualItem =
   | { kind: "message"; role: "user" | "assistant"; content: string }
   | { kind: "reasoning"; text: string }
   | { kind: "tool-call"; label: string }
-  | { kind: "tool-result"; text: string }
+  | { kind: "tool-result"; text: string; images?: string[] }
   | { kind: "compaction" }
   | { kind: "subagent"; task: string; steps: SubagentStep[]; result: string }
   | { kind: "end-hook"; text: string };
@@ -52,7 +52,7 @@ function expandMessage(m: ChatMessage): VisualItem[] {
   if (m.compaction) return [{ kind: "compaction" }];
   if (m.endHook) return [{ kind: "end-hook", text: m.content ?? "" }];
   if (m.role === "tool")
-    return [{ kind: "tool-result", text: m.content ?? "" }];
+    return [{ kind: "tool-result", text: m.content ?? "", images: m.images }];
   if (m.role === "assistant" && m.tool_calls && m.tool_calls.length > 0) {
     const items: VisualItem[] = m.tool_calls.map((tc) => ({
       kind: "tool-call",
@@ -103,6 +103,13 @@ function renderItemDom(item: VisualItem): HTMLElement {
       const block = document.createElement("div");
       block.className = "llm-tool-result";
       block.textContent = item.text;
+      for (const url of item.images ?? []) {
+        const img = document.createElement("img");
+        img.className = "llm-tool-image";
+        img.src = url;
+        img.alt = "Image returned by the tool";
+        block.append(img);
+      }
       return block;
     }
     case "message": {
@@ -450,8 +457,8 @@ export class MessageView {
   }
 
   /** Append a single tool-result block and follow it, if following. */
-  appendToolResult(text: string): void {
-    this.items.push({ kind: "tool-result", text });
+  appendToolResult(text: string, images?: string[]): void {
+    this.items.push({ kind: "tool-result", text, images });
     this.list.refresh();
     if (this.follow) this.list.scrollToBottom();
   }

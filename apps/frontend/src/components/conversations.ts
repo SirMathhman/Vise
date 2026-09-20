@@ -25,7 +25,16 @@ const LEGACY_MODEL = "vise:llm:model";
  * (the proxy streams it separately from `content`). It is display-only: it is
  * never sent back to the model, so it does not affect the outgoing prompt.
  */
-export type ChatMessage = LlmMessage & {
+export type ChatMessage = Omit<LlmMessage, "content"> & {
+  /** Stored messages are always text; images ride in `images` instead. */
+  content: string | null;
+  /**
+   * On a `tool` message, the images (data URLs) the tool returned. The wire
+   * form is built from it (see llm.ts's buildMessages: a follow-up user
+   * message, latest only) and it is never persisted (too big for
+   * localStorage), so a reloaded conversation keeps only the tool's text.
+   */
+  images?: string[];
   compaction?: true;
   endHook?: true;
   reasoning?: string;
@@ -143,7 +152,12 @@ export function deriveTitle(
 /** Persist every conversation and the active id across page reloads. */
 function saveConversations(convs: Conversation[], activeId: string): void {
   try {
-    localStorage.setItem(STORAGE_CONVS, JSON.stringify(convs));
+    localStorage.setItem(
+      STORAGE_CONVS,
+      JSON.stringify(convs, (key, value) =>
+        key === "images" ? undefined : value
+      )
+    );
     localStorage.setItem(STORAGE_ACTIVE, activeId);
   } catch {
     // Storage may be unavailable (private mode, quota); persistence is a
