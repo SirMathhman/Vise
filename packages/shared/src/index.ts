@@ -20,6 +20,7 @@ export const LLM_TOOL_NAMES = [
   "browser_click",
   "browser_type",
   "browser_drag",
+  "browser_dialog",
   "create_subagent",
   "ask_questions",
   "use_skill",

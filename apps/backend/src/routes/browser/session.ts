@@ -1,6 +1,7 @@
 import { type Browser, chromium, type Page } from "playwright-core";
 import { badRequest } from "../../errors.js";
 import * as actions from "./actions.js";
+import { type DialogWatch, watchDialogs } from "./dialogs.js";
 import {
   type BrowserInput,
   createScreencast,
@@ -15,7 +16,7 @@ import { snapshotText } from "./snapshot.js";
  * and is mirrored into Vise's viewer panel as a live screencast (see
  * screencast.ts), so the user watches — and can hand-drive — the very
  * page the model is acting on. This module owns that single session — at most
- * one page at a time — and exposes five tools: open, snapshot, click, type, and drag,
+ * one page at a time — and exposes six tools: open, snapshot, click, type, drag, and dialog,
  * plus the panel-facing navigate/stream/input surface.
  *
  * The model's interface is a numbered snapshot: `browser_open` and
@@ -48,6 +49,8 @@ export interface BrowserSession {
   type(args: Record<string, unknown>): Promise<string>;
   /** browser_drag: drag the `from` element and drop it onto the `to` element. */
   drag(args: Record<string, unknown>): Promise<string>;
+  /** browser_dialog: accept or dismiss the JavaScript dialog the page has open. */
+  dialog(args: Record<string, unknown>): Promise<string>;
   /**
    * Navigate the page from the panel's URL bar (rather than from a tool call),
    * launching the browser if this is the first use. Returns the resolved URL.
@@ -67,6 +70,8 @@ export function createBrowserSession(): BrowserSession {
   // The one browser session, at most one page. Undefined until first open.
   let browser: Browser | undefined;
   let page: Page | undefined;
+  // Holds any JavaScript dialog the page opens (see dialogs.ts). Set with `page`.
+  let dialogs: DialogWatch | undefined;
   // The screencast that mirrors `page` into the viewer panel. Created eagerly
   // (it is inert until a page is attached) so subscribers can connect before
   // the first navigation, exactly like opening an empty browser tab.
@@ -88,6 +93,7 @@ export function createBrowserSession(): BrowserSession {
     if (!page) {
       page = await browser.newPage();
       page.setDefaultTimeout(ACTION_TIMEOUT_MS);
+      dialogs = watchDialogs(page);
       await screencast.attach(page);
     }
     return page;
@@ -103,6 +109,15 @@ export function createBrowserSession(): BrowserSession {
     return page;
   }
 
+  /**
+   * Run a page action against the open page, reporting a dialog the action
+   * opens (which would otherwise block it) instead of hanging on it.
+   */
+  function guarded(run: (p: Page) => Promise<string>): Promise<string> {
+    const p = requirePage();
+    return (dialogs as DialogWatch).guard(() => run(p));
+  }
+
   return {
     /**
      * browser_open: launch Chrome if it isn't already, open (or reuse) the
@@ -113,30 +128,39 @@ export function createBrowserSession(): BrowserSession {
       const url = typeof args.url === "string" ? args.url.trim() : "";
       if (!url) throw badRequest("url is required");
 
-      const p = await ensurePage();
-      await p.goto(url, { waitUntil: "load", timeout: LOAD_TIMEOUT_MS });
-      const snap = await snapshotText(p);
-      return `Opened the page in Vise's browser tab.\n${snap}`;
+      await ensurePage();
+      return guarded(async (p) => {
+        await p.goto(url, { waitUntil: "load", timeout: LOAD_TIMEOUT_MS });
+        const snap = await snapshotText(p);
+        return `Opened the page in Vise's browser tab.\n${snap}`;
+      });
     },
 
     /** Re-read the active page's interactive elements and return the snapshot. */
     async snapshot(): Promise<string> {
-      return snapshotText(requirePage());
+      return guarded(snapshotText);
     },
 
     /** Click the interactive element with the given number from the current page. */
     async click(args: Record<string, unknown>): Promise<string> {
-      return actions.click(requirePage(), args);
+      return guarded((p) => actions.click(p, args));
     },
 
     /** Type text into (or check/select) the element with the given number. */
     async type(args: Record<string, unknown>): Promise<string> {
-      return actions.type(requirePage(), args);
+      return guarded((p) => actions.type(p, args));
     },
 
     /** Drag the element numbered `from` onto the element numbered `to`. */
     async drag(args: Record<string, unknown>): Promise<string> {
-      return actions.drag(requirePage(), args);
+      return guarded((p) => actions.drag(p, args));
+    },
+
+    /** Accept or dismiss the open dialog, then return a fresh snapshot. */
+    async dialog(args: Record<string, unknown>): Promise<string> {
+      requirePage();
+      const result = await (dialogs as DialogWatch).answer(args);
+      return `${result}\n${await guarded(snapshotText)}`;
     },
 
     /**
@@ -173,6 +197,7 @@ export function createBrowserSession(): BrowserSession {
       const b = browser;
       browser = undefined;
       page = undefined;
+      dialogs = undefined;
       // Detach CDP before killing the browser so the session teardown doesn't
       // race the process exit and log a spurious protocol error.
       await screencast.close();

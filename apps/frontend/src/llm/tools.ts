@@ -405,6 +405,35 @@ const browserDrag: LlmTool = {
 };
 
 /**
+ * Accept or dismiss the JavaScript dialog (alert/confirm/prompt/beforeunload)
+ * the active browser page has open.
+ */
+const browserDialog: LlmTool = {
+  type: "function",
+  function: {
+    name: "browser_dialog",
+    description:
+      'Accept or dismiss the JavaScript dialog (alert, confirm, prompt, or beforeunload) that the active browser page has open. When an action opens a dialog, its result tells you so (with the dialog type and message) and the page is blocked until you answer: every other browser tool refuses to run while a dialog is open. Use action "accept" (OK) or "dismiss" (Cancel); for a prompt, pass `text` to accept with that answer. A fresh snapshot is returned afterwards.',
+    parameters: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          description:
+            'Either "accept" (press OK) or "dismiss" (press Cancel / close).',
+        },
+        text: {
+          type: "string",
+          description:
+            "For a prompt dialog being accepted: the text to enter. Ignored otherwise.",
+        },
+      },
+      required: ["action"],
+    },
+  },
+};
+
+/**
  * Delegate a self-contained sub-task to an independent helper agent. Handled
  * entirely client-side (see components/llm.ts's runSubagent): the panel runs
  * a nested tool-calling loop with its own message history (just the task, not
@@ -538,6 +567,7 @@ export const llmToolDefinitions: LlmTool[] = [
   browserClick,
   browserType,
   browserDrag,
+  browserDialog,
   createSubagent,
   askQuestions,
   useSkill,

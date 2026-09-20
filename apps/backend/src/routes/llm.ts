@@ -119,6 +119,7 @@ export function llmToolRoutes(ctx: AppContext): Route[] {
     browser_click: browser.click,
     browser_type: browser.type,
     browser_drag: browser.drag,
+    browser_dialog: browser.dialog,
   };
   return [
     {
