@@ -203,16 +203,16 @@
   margin-bottom: 12px;
 }
 
-/* No max-height/overflow here on purpose: this list flows as normal content
-   inside .llm-profiles-modal, which is the one scroll region for the whole
-   form — a second, nested scrollbar here would defeat that.
-
-   Laid out in columns rather than one tall stack: ten tools in a single
-   column made this the tallest block in the modal, and since the
-   system-prompt textarea below it is the one element that flex-grows into
-   the leftover height, every row here came straight out of the field people
-   actually edit. `align-items: start` keeps a row from stretching when the
-   tool beside it has its description expanded. */
+/* Laid out in columns rather than one tall stack, and given its own
+   scroll region (max-height + overflow-y) so a tall list never pushes the
+   modal's content off the page: with 23 tools the collapsed list is already
+   the tallest block in the modal, and since the system-prompt textarea
+   below it is the one element that flex-grows into the leftover height, a
+   single column made every row come straight out of the field people
+   actually edit. Capping its height here (rather than letting the modal
+   scroll) keeps the header, prompt, hooks, and Close button visible at all
+   times. `align-items: start` keeps a row from stretching when the tool
+   beside it has its description expanded. */
 #app #llm .llm-tools-list {
   margin: 8px 0 0;
   padding: 0 4px 0 0;
@@ -221,6 +221,8 @@
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   align-items: start;
   gap: 8px 16px;
+  max-height: 360px;
+  overflow-y: auto;
 }
 
 #app #llm .llm-tool {
