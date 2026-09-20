@@ -1,8 +1,14 @@
 import type { ElementHandle, Page } from "playwright-core";
-import { badRequest } from "../../errors.js";
+import { AppError, badRequest } from "../../errors.js";
 import { snapshotText } from "./snapshot.js";
 import { resolveTargets } from "./targets.js";
 
+/** How long a page load (navigate, back, forward, reload) may take before it is reported as failed. */
+export const LOAD_TIMEOUT_MS = 45_000;
+/** How long a browser_run_code snippet may run before it is abandoned. */
+const CODE_TIMEOUT_MS = 30_000;
+/** The maximum characters of page text or code result returned to the model. */
+const MAX_TEXT_CHARS = 20_000;
 /** Intermediate mouse moves in a drag; drag libraries need more than one move event to start. */
 const DRAG_MOVE_STEPS = 10;
 
@@ -35,35 +41,57 @@ async function hover(
   return withSnapshot(page, `Hovered over [${entry.kind}] "${entry.label}".`);
 }
 
-/** browser_type: type into (or check/select) the element with the given number. */
+/**
+ * browser_type: type into (or check/select) the element with the given number
+ * and/or press a key. With a `key` (a Playwright key name such as "Enter" or
+ * "Control+A") and no element number, the key goes to whatever has focus.
+ */
 async function type(
   page: Page,
   args: Record<string, unknown>
 ): Promise<string> {
+  const key = typeof args.key === "string" ? args.key : "";
+  if (key && args.n === undefined && args.text === undefined) {
+    await page.keyboard.press(key);
+    return withSnapshot(page, `Pressed ${key}.`);
+  }
   const text = typeof args.text === "string" ? args.text : "";
   const [{ handle, entry }] = await resolveTargets(page, args, ["n"]);
   const { kind, label, n } = entry;
-  if (kind === "checkbox" || kind === "radio") {
-    await handle.check();
-  } else if (kind === "select") {
-    // Match an option by visible label first, then by value.
-    try {
-      await handle.selectOption({ label: text });
-    } catch {
-      await handle.selectOption({ value: text });
+  // With a key and no text, the key alone is the action (it may target an
+  // element that can't be typed into, like a button).
+  const typing = !key || args.text !== undefined;
+  if (typing) {
+    if (kind === "checkbox" || kind === "radio") {
+      await handle.check();
+    } else if (kind === "select") {
+      // Match an option by visible label first, then by value.
+      try {
+        await handle.selectOption({ label: text });
+      } catch {
+        await handle.selectOption({ value: text });
+      }
+    } else if (
+      kind === "text-field" ||
+      kind === "text-area" ||
+      kind === "summary"
+    ) {
+      await handle.fill(text);
+    } else {
+      throw badRequest(
+        `element ${n} is a [${kind}] and cannot be typed into; use browser_click`
+      );
     }
-  } else if (
-    kind === "text-field" ||
-    kind === "text-area" ||
-    kind === "summary"
-  ) {
-    await handle.fill(text);
-  } else {
-    throw badRequest(
-      `element ${n} is a [${kind}] and cannot be typed into; use browser_click`
-    );
   }
-  return withSnapshot(page, `Typed "${text}" into [${kind}] "${label}".`);
+  if (key) await handle.press(key);
+  const on = `[${kind}] "${label}"`;
+  if (!key) return withSnapshot(page, `Typed "${text}" into ${on}.`);
+  return withSnapshot(
+    page,
+    typing
+      ? `Typed "${text}" into ${on}, then pressed ${key}.`
+      : `Pressed ${key} on ${on}.`
+  );
 }
 
 /**
@@ -123,6 +151,9 @@ export const pageActions = {
   browser_type: type,
   browser_drag: drag,
   browser_hover: hover,
+  browser_navigate: navigate,
+  browser_read: read,
+  browser_run_code: runCode,
 } satisfies Record<
   string,
   (page: Page, args: Record<string, unknown>) => Promise<string>
@@ -130,3 +161,97 @@ export const pageActions = {
 
 /** The name of a page-acting browser tool. */
 export type PageActionName = keyof typeof pageActions;
+
+/** browser_navigate: go back, go forward, or reload the current page. */
+async function navigate(
+  page: Page,
+  args: Record<string, unknown>
+): Promise<string> {
+  const action = args.action;
+  const opts = { waitUntil: "load", timeout: LOAD_TIMEOUT_MS } as const;
+  if (action === "reload") {
+    await page.reload(opts);
+    return withSnapshot(page, "Reloaded the page.");
+  }
+  if (action !== "back" && action !== "forward") {
+    throw badRequest('action must be "back", "forward", or "reload"');
+  }
+  const before = page.url();
+  // Resolves to null when there is no such history entry (or a same-document
+  // move), so whether we moved is judged by the URL changing.
+  await (action === "back" ? page.goBack(opts) : page.goForward(opts));
+  const moved = page.url() !== before;
+  return withSnapshot(
+    page,
+    moved
+      ? `Went ${action}.`
+      : `There is no ${action === "back" ? "previous" : "next"} page in the history.`
+  );
+}
+
+/** Cut `text` to the model's output bound, saying so when it was cut. */
+function capText(text: string): string {
+  return text.length <= MAX_TEXT_CHARS
+    ? text
+    : `${text.slice(0, MAX_TEXT_CHARS)}\n(truncated at ${MAX_TEXT_CHARS} characters)`;
+}
+
+/** browser_read: the visible text content of the page. */
+async function read(
+  page: Page,
+  _args: Record<string, unknown>
+): Promise<string> {
+  // A string expression, because the backend has no DOM lib to type a function.
+  const text = String(await page.evaluate("document.body.innerText"));
+  const title = await page.title().catch(() => "");
+  return `Title: ${title || "(untitled)"}\nURL: ${page.url()}\nPage text:\n${capText(text.trim())}`;
+}
+
+const AsyncFunction = Object.getPrototypeOf(async () => undefined)
+  .constructor as new (
+  ...params: string[]
+) => (...args: unknown[]) => Promise<unknown>;
+
+/**
+ * browser_run_code: run a JavaScript snippet as an async function body with
+ * the Playwright `page` in scope. Its return value (JSON) is reported, then a
+ * fresh snapshot, since the code may have changed the page.
+ */
+async function runCode(
+  page: Page,
+  args: Record<string, unknown>
+): Promise<string> {
+  const code = typeof args.code === "string" ? args.code : "";
+  if (!code.trim()) throw badRequest("code is required");
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(
+          badRequest(`code did not finish within ${CODE_TIMEOUT_MS / 1000}s`)
+        ),
+      CODE_TIMEOUT_MS
+    );
+  });
+  let value: unknown;
+  try {
+    value = await Promise.race([
+      new AsyncFunction("page", code)(page),
+      timeout,
+    ]);
+  } catch (err) {
+    if (err instanceof AppError) throw err;
+    throw badRequest(
+      `code threw: ${err instanceof Error ? err.message : String(err)}`
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+  let shown: string;
+  try {
+    shown = value === undefined ? "undefined" : JSON.stringify(value);
+  } catch {
+    shown = String(value);
+  }
+  return withSnapshot(page, `Code returned: ${capText(shown)}`);
+}

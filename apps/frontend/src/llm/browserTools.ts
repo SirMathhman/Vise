@@ -79,21 +79,26 @@ const browserType: LlmTool = {
   function: {
     name: "browser_type",
     description:
-      "Type text into the interactive element with the given number (from the latest snapshot) on the active browser page. For text fields and textareas this fills the field; for a select it chooses an option matching the text; for a checkbox or radio it checks it. A fresh snapshot is returned after the action. Use this to fill search boxes, form fields, and other inputs.",
+      'Type text into, and/or press a key on, the active browser page. With `n` (an element number from the latest snapshot) and `text`: for text fields and textareas this fills the field; for a select it chooses an option matching the text; for a checkbox or radio it checks it. With `key` (a Playwright key name such as "Enter", "Tab", "Escape", or "Control+A"): the key is pressed on element `n` after any typing, or, if you give only `key`, on whatever currently has focus. Provide `text`, `key`, or both. A fresh snapshot is returned after the action. Use this to fill search boxes and forms, submit with Enter, and use keyboard shortcuts.',
     parameters: {
       type: "object",
       properties: {
         n: {
           type: "number",
-          description: "The element number from the latest snapshot (0-based).",
+          description:
+            "The element number from the latest snapshot (0-based). Required when typing text; optional when only pressing a key.",
         },
         text: {
           type: "string",
           description:
             "The text to type into the element (or the option label for a select).",
         },
+        key: {
+          type: "string",
+          description:
+            'A key or shortcut to press, e.g. "Enter", "Tab", "Escape", "ArrowDown", "Control+A".',
+        },
       },
-      required: ["n", "text"],
     },
   },
 };
@@ -150,6 +155,67 @@ const browserHover: LlmTool = {
 };
 
 /**
+ * Go back, forward, or reload on the active browser page.
+ */
+const browserNavigate: LlmTool = {
+  type: "function",
+  function: {
+    name: "browser_navigate",
+    description:
+      'Navigate the active browser page through its history or reload it: action "back", "forward", or "reload". To open a new URL use browser_open instead. A fresh snapshot is returned afterwards.',
+    parameters: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          description: 'One of "back", "forward", or "reload".',
+        },
+      },
+      required: ["action"],
+    },
+  },
+};
+
+/**
+ * Read the visible text content of the active browser page.
+ */
+const browserRead: LlmTool = {
+  type: "function",
+  function: {
+    name: "browser_read",
+    description:
+      "Return the visible text content of the active browser page (its title, URL, and body text, capped at 20,000 characters). Use this to read an article, a result, or any content that the interactive-element snapshot does not show.",
+    parameters: {
+      type: "object",
+      properties: {},
+    },
+  },
+};
+
+/**
+ * Run a Playwright snippet against the active browser page.
+ */
+const browserRunCode: LlmTool = {
+  type: "function",
+  function: {
+    name: "browser_run_code",
+    description:
+      "Run a JavaScript snippet against the active browser page. The snippet is the body of an async function with the Playwright `page` object in scope, so use `await` and `return` a JSON-serializable value, e.g. `return await page.locator('h1').innerText();`. Runs in the backend (Node), not in the page; use page.evaluate to run code inside the page. Times out after 30 seconds. The returned value is reported, followed by a fresh snapshot. Use this only when the other browser tools cannot do what you need (e.g. a complex selector, waiting for something, or reading a computed value).",
+    parameters: {
+      type: "object",
+      properties: {
+        code: {
+          type: "string",
+          description:
+            "The async function body to run, with `page` (a Playwright Page) in scope.",
+        },
+      },
+      required: ["code"],
+    },
+  },
+};
+
+/**
  * Accept or dismiss the JavaScript dialog (alert/confirm/prompt/beforeunload)
  * the active browser page has open.
  */
@@ -186,5 +252,8 @@ export const browserToolDefinitions: LlmTool[] = [
   browserType,
   browserDrag,
   browserHover,
+  browserNavigate,
+  browserRead,
+  browserRunCode,
   browserDialog,
 ];

@@ -1,5 +1,9 @@
 import { badRequest } from "../../errors.js";
-import { type PageActionName, pageActions } from "./actions.js";
+import {
+  LOAD_TIMEOUT_MS,
+  type PageActionName,
+  pageActions,
+} from "./actions.js";
 import { createPageGate } from "./gate.js";
 import {
   type BrowserInput,
@@ -26,9 +30,6 @@ import { snapshotText } from "./snapshot.js";
  * element list immediately before acting, so the model's number always maps
  * to a live element without storing stale handles across calls.
  */
-
-/** How long a page load may take before it is reported as failed. */
-const LOAD_TIMEOUT_MS = 45_000;
 
 /**
  * The app-owned model-driven browser session: a single visible Chrome page,
