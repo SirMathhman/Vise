@@ -17,7 +17,13 @@ import {
   extractPartialJsonNumber,
   extractPartialJsonString,
 } from "../llm/partialJson.js";
-import { llmToolDefinitions } from "../llm/tools.js";
+import { formatToolSearch, matchTools } from "../llm/toolSearch.js";
+import {
+  DEFERRED_TOOL_NAMES,
+  llmToolDefinitions,
+  META_TOOL_NAMES,
+  offeredToolDefinitions,
+} from "../llm/tools.js";
 import {
   type AskCardHandle,
   type AskQuestion,
@@ -660,6 +666,8 @@ interface PromptContext {
   base: string;
   /** Tool names not allowed under the active profile. */
   disabled: string[];
+  /** Allowed tools not loaded up front, found with search_tools and run with call_tool. */
+  deferred?: string[];
   /** The startup hook's cached output, if any. */
   hookOutput?: string;
   /** This turn's fresh turn-hook output, if any. */
@@ -727,6 +735,13 @@ function systemPrompt(ctx: PromptContext): string {
       `must not be called: ${ctx.disabled.join(", ")}. If a task needs one ` +
       "of them, tell the user it isn't available and ask them to add it to " +
       "the profile's allowed tools.";
+  }
+  if (ctx.deferred && ctx.deferred.length > 0) {
+    text +=
+      "\n\nThese tools are not loaded up front: " +
+      `${ctx.deferred.join(", ")}. To use one, first call search_tools with ` +
+      "keywords (or select:name) to get its parameter schema, then run it " +
+      "with call_tool, passing its name and arguments.";
   }
   if (ctx.hookOutput) {
     text +=
@@ -871,11 +886,17 @@ function disabledToolResult(name: string, profileName: string): string {
   );
 }
 
-/** Every known tool name that `allowed` does not include. */
+/**
+ * Every known tool name that `allowed` does not include. The meta-tools
+ * (search_tools, call_tool) are never disabled: they grant nothing themselves,
+ * since a search only lists allowed tools and call_tool re-checks the target.
+ */
 function disabledFromAllowed(allowed: string[]): string[] {
   return llmToolDefinitions
     .map((t) => t.function.name)
-    .filter((name) => !allowed.includes(name));
+    .filter(
+      (name) => !allowed.includes(name) && !META_TOOL_NAMES.includes(name)
+    );
 }
 
 /** Maximum tool-call rounds a subagent may run before it must give a final answer. */
@@ -884,7 +905,9 @@ const SUBAGENT_MAX_TOOL_TURNS = 5;
 /**
  * The tool definitions offered to a subagent: llmToolDefinitions filtered to
  * the given profile's allowedTools, always excluding the three client-executed
- * tools that a headless subagent cannot fulfil — create_subagent (so a
+ * tools that a headless subagent cannot fulfil (plus the search_tools/call_tool
+ * meta-tools, which are also client-executed and unneeded because a subagent is
+ * offered every allowed tool directly, deferred ones included) — create_subagent (so a
  * subagent can never spawn further subagents), ask_questions (its
  * collapsed transcript has no room for an interactive card, and its loop has
  * no way to pause for a user), and use_skill (the skill store is a panel
@@ -898,6 +921,7 @@ function subagentToolDefs(profile: Profile): LlmTool[] {
       t.function.name !== "create_subagent" &&
       t.function.name !== "ask_questions" &&
       t.function.name !== "use_skill" &&
+      !META_TOOL_NAMES.includes(t.function.name) &&
       profile.allowedTools.includes(t.function.name)
   );
 }
@@ -993,6 +1017,66 @@ interface ToolCallOutcome {
   task?: string;
 }
 
+/** Parse a tool call's JSON arguments into an object, or undefined if they aren't one. */
+function parseJsonObject(json: string): Record<string, unknown> | undefined {
+  try {
+    const v: unknown = JSON.parse(json || "{}");
+    return v !== null && typeof v === "object" && !Array.isArray(v)
+      ? (v as Record<string, unknown>)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The result of search_tools: allowed tools matching the query (the meta-tools themselves excluded). */
+function searchToolsResult(tc: LlmToolCall, profile: Profile): string {
+  const query = parseJsonObject(tc.function.arguments)?.query;
+  if (typeof query !== "string" || !query.trim()) {
+    return 'search_tools requires a `query` argument: keywords to match against tool names and descriptions, or "select:name1,name2".';
+  }
+  const searchable = llmToolDefinitions.filter(
+    (t) =>
+      !META_TOOL_NAMES.includes(t.function.name) &&
+      profile.allowedTools.includes(t.function.name)
+  );
+  return formatToolSearch(
+    matchTools(searchable, query),
+    new Set(DEFERRED_TOOL_NAMES),
+    query
+  );
+}
+
+/**
+ * Turn a call_tool call into the call it stands for (same id, the named tool,
+ * its arguments), or a model-readable error string. The result goes through
+ * resolveToolCall again, so the profile check and each tool's own handling
+ * apply unchanged; call_tool and search_tools themselves can't be nested.
+ */
+function parseCallToolArgs(tc: LlmToolCall): LlmToolCall | string {
+  const args = parseJsonObject(tc.function.arguments);
+  const target = typeof args?.name === "string" ? args.name : "";
+  if (!target) {
+    return "call_tool requires a `name` argument: the exact name of the tool to run. Use search_tools to find it.";
+  }
+  if (META_TOOL_NAMES.includes(target)) {
+    return `${target} cannot be run through call_tool; call it directly.`;
+  }
+  if (!llmToolDefinitions.some((t) => t.function.name === target)) {
+    return `No tool named "${target}". Use search_tools to find the right name.`;
+  }
+  const inner = args?.arguments;
+  return {
+    id: tc.id,
+    type: "function",
+    function: {
+      name: target,
+      arguments:
+        typeof inner === "string" ? inner : JSON.stringify(inner ?? {}),
+    },
+  };
+}
+
 /**
  * Resolve a single tool call to its model-readable result. Tools the active
  * profile doesn't allow are short-circuited client-side; create_subagent
@@ -1015,6 +1099,22 @@ async function resolveToolCall(
   const disabled = disabledFromAllowed(profile.allowedTools);
   if (disabled.includes(name)) {
     return { result: disabledToolResult(name, profile.name) };
+  }
+  if (name === "search_tools") {
+    return { result: searchToolsResult(tc, profile) };
+  }
+  if (name === "call_tool") {
+    const inner = parseCallToolArgs(tc);
+    if (typeof inner === "string") return { result: inner };
+    return resolveToolCall(
+      inner,
+      model,
+      profile,
+      profiles,
+      view,
+      agentsMd,
+      skills
+    );
   }
   if (name === "use_skill") {
     const args = parseUseSkillArgs(tc);
@@ -1520,6 +1620,7 @@ async function runTurn(
       const messages = buildMessages(history, {
         base: profile.systemPrompt,
         disabled,
+        deferred: DEFERRED_TOOL_NAMES.filter((n) => !disabled.includes(n)),
         hookOutput,
         turnOutput,
         profileNames,
@@ -1541,7 +1642,7 @@ async function runTurn(
       const reply = await streamLlmMessage(
         messages,
         model,
-        llmToolDefinitions,
+        offeredToolDefinitions,
         (text) => {
           ensureStreamingStarted();
           view.updateStreaming(text);

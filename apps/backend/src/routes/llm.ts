@@ -60,6 +60,21 @@ const useSkill: LlmToolHandler = async () => {
 };
 
 /**
+ * search_tools and call_tool are the meta-tools over the tool list itself
+ * (deferred tools are found with one and run with the other). They need the
+ * panel's tool definitions and profile, so the panel handles them and never
+ * forwards them here; reaching this handler means that interception was
+ * bypassed.
+ */
+const panelOnly =
+  (name: string): LlmToolHandler =>
+  async () => {
+    throw badRequest(
+      `${name} must be handled by the panel and never reaches the backend`
+    );
+  };
+
+/**
  * The tools available to the model, keyed by the name the model uses. The keys
  * are checked against the shared LlmToolName union, so a renamed or misspelled
  * tool name here is a compile error. The handlers themselves live in sibling
@@ -81,6 +96,8 @@ const moduleTools: Record<string, LlmToolHandler> = {
   create_subagent: createSubagent,
   ask_questions: askQuestions,
   use_skill: useSkill,
+  search_tools: panelOnly("search_tools"),
+  call_tool: panelOnly("call_tool"),
 };
 
 /**

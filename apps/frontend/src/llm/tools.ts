@@ -401,7 +401,74 @@ const useSkill: LlmTool = {
   },
 };
 
-/** All tool definitions available to the model, in a stable order. */
+/**
+ * Find tools by keyword, including ones not loaded up front (see
+ * DEFERRED_TOOL_NAMES). Handled client-side (components/llm.ts's
+ * resolveToolCall), which searches the active profile's allowed tools.
+ */
+const searchTools: LlmTool = {
+  type: "function",
+  function: {
+    name: "search_tools",
+    description:
+      'Search the available tools by keyword and return each match\'s name, description, and parameter schema. Some tools are not loaded up front (the system prompt lists them); use this to find one and learn its parameters, then run it with call_tool. Every word of the query must appear in the tool\'s name or description (e.g. "browser click"). Use "select:name1,name2" to fetch exact tools by name.',
+    parameters: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description:
+            'Keywords to match against tool names and descriptions, or "select:name1,name2" for exact names.',
+        },
+      },
+      required: ["query"],
+    },
+  },
+};
+
+/**
+ * Run any tool by name, including ones not loaded up front. Handled
+ * client-side: it re-dispatches as a call to the named tool, so the active
+ * profile's allowed-tools check and every tool's usual handling still apply.
+ */
+const callTool: LlmTool = {
+  type: "function",
+  function: {
+    name: "call_tool",
+    description:
+      "Run a tool by name with the given arguments and return its result, exactly as if you had called it directly. Use this for tools that are not loaded up front: find one and its parameter schema with search_tools, then call it here. Do not use it for tools you already have loaded; call those directly.",
+    parameters: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "The exact name of the tool to run, e.g. browser_open.",
+        },
+        arguments: {
+          type: "object",
+          description:
+            "The tool's arguments, an object matching the parameter schema from search_tools.",
+          additionalProperties: true,
+        },
+      },
+      required: ["name"],
+    },
+  },
+};
+
+/**
+ * The tools not sent with each request: the model finds them with
+ * `search_tools` and runs them with `call_tool`. The browser tools are the
+ * largest, most specialised group, so they are deferred; their names are still
+ * listed in the system prompt so the model knows to look.
+ */
+export const DEFERRED_TOOL_NAMES: readonly string[] =
+  browserToolDefinitions.map((t) => t.function.name);
+
+/** The two meta-tools over the tool list; never disabled, never user-toggled. */
+export const META_TOOL_NAMES: readonly string[] = ["search_tools", "call_tool"];
+
+/** All tool definitions, in a stable order (loaded and deferred alike). */
 export const llmToolDefinitions: LlmTool[] = [
   listDirectory,
   findFiles,
@@ -417,4 +484,11 @@ export const llmToolDefinitions: LlmTool[] = [
   createSubagent,
   askQuestions,
   useSkill,
+  searchTools,
+  callTool,
 ];
+
+/** The definitions actually sent with each request: everything except the deferred tools. */
+export const offeredToolDefinitions: LlmTool[] = llmToolDefinitions.filter(
+  (t) => !DEFERRED_TOOL_NAMES.includes(t.function.name)
+);
