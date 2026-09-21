@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 import * as readline from "node:readline";
 
@@ -276,6 +276,46 @@ const tools: Tool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "create_file",
+      description:
+        "Create a new file with the given content. The path is resolved relative to the working directory. Parent directories are created if they do not exist. If the file already exists, an error is returned and the file is unchanged.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "The path to the file to create.",
+          },
+          content: {
+            type: "string",
+            description: "The content to write to the file.",
+          },
+        },
+        required: ["path", "content"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "create_directory",
+      description:
+        "Create a new directory. The path is resolved relative to the working directory. Parent directories are created if they do not exist. If the directory already exists, an error is returned.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "The path to the directory to create.",
+          },
+        },
+        required: ["path"],
+      },
+    },
+  },
 ];
 
 // Executes a tool call and returns its result as a string. Unknown tools
@@ -322,6 +362,34 @@ function runTool(name: string, args: Record<string, unknown>): string {
       }`;
     }
     return `Edited ${rawPath}: replaced ${replacee.length} character(s) starting at offset ${index}.`;
+  }
+  if (name === "create_file") {
+    const content = String(args.content ?? "");
+    if (existsSync(filePath)) {
+      return `Error creating ${rawPath}: file already exists.`;
+    }
+    try {
+      mkdirSync(path.dirname(filePath), { recursive: true });
+      writeFileSync(filePath, content, "utf-8");
+    } catch (err) {
+      return `Error creating ${rawPath}: ${
+        err instanceof Error ? err.message : String(err)
+      }`;
+    }
+    return `Created ${rawPath} (${content.length} character(s)).`;
+  }
+  if (name === "create_directory") {
+    if (existsSync(filePath)) {
+      return `Error creating ${rawPath}: directory already exists.`;
+    }
+    try {
+      mkdirSync(filePath, { recursive: true });
+    } catch (err) {
+      return `Error creating ${rawPath}: ${
+        err instanceof Error ? err.message : String(err)
+      }`;
+    }
+    return `Created directory ${rawPath}.`;
   }
   return `Unknown tool: ${name}`;
 }
