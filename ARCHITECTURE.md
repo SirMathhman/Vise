@@ -46,18 +46,20 @@ the code; it is not a changelog. Progress lives in the git log.
   instruction is the CWD message) and file-based profiles from `.agents/*.md`
   in the working directory. Switching profiles appends a new system message
   to the conversation; existing history is never altered.
-- **Hook command** — an optional config-driven shell command (`PRE_SESSION_CMD`,
-  `PRE_TURN_CMD`, `POST_TURN_CMD`) that runs at a fixed point around turns:
-  the pre-session hook once, before the first turn; the pre-turn hook once
-  before every user message is sent to the model; the post-turn hook once
-  after the model's final answer. The pre hooks always print their combined
-  stdout+stderr and append it to the conversation as a system message, on
-  success or failure. The post hook is silent on success (neither printed nor
-  appended, so a passing check never pollutes context) and, on failure
-  (non-zero exit), prints the output as a warning and appends it as a system
-  message so the model sees it on the next turn. Unlike tools, hooks are
-  driven by config rather than by the model, and they run at fixed points
-  rather than on demand.
+- **Hook command** — a shell command that runs at a fixed point around turns.
+  Hooks come from two sources: env-var config (`PRE_SESSION_CMD`,
+  `PRE_TURN_CMD`, `POST_TURN_CMD`) and directory-based hooks
+  (`.hooks/<type>/*.cmd` files, where `<type>` is `pre-session`, `pre-turn`,
+  or `post-turn`; each file's trimmed content is a command, files run in
+  alphabetical order). Env-var hooks run first, followed by directory hooks;
+  all hooks run regardless of prior failures (continue-on-error semantics).
+  The pre hooks always print their combined stdout+stderr and append it to
+  the conversation as a system message, on success or failure. The post hook
+  is silent on success (neither printed nor appended, so a passing check never
+  pollutes context) and, on failure (non-zero exit), prints the output as a
+  warning and appends it as a system message so the model sees it on the next
+  turn. Unlike tools, hooks are driven by config rather than by the model, and
+  they run at fixed points rather than on demand.
 
 **Invariants:**
 
@@ -76,18 +78,17 @@ the code; it is not a changelog. Progress lives in the git log.
 4. The active model is read at request time, not captured at startup, so a
    switch takes effect on the next turn without rebuilding the client.
 5. Tools are the only modules that read or write the filesystem or execute
-   external processes during a turn, and the hook command module is the only
-   exception: `src/repl/presession.ts` (to be renamed `externalcmd.ts`, see
-   Future Work) spawns exactly one subprocess per hook invocation — once
-   before the first turn for `PRE_SESSION_CMD`, once before every user turn
-   for `PRE_TURN_CMD`, and once after the model's final answer for
-   `POST_TURN_CMD` — and returns its output and exit code to the loop. No
-   other module outside the tools may spawn a subprocess. Neither the tools
-   nor the hook module call `fetch` or touch the conversation directly; tools
-   return a string result that the loop appends as a `role: "tool"` message,
-   and the loop appends hook output as a `role: "system"` message (pre hooks
-   always; the post hook only when it exits non-zero, per the hook command
-   definition).
+   external processes during a turn. The hook system is the only exception:
+   `src/repl/hooks.ts` reads the `.hooks/<type>/` directory at startup to
+   discover directory-based hooks (read-only filesystem access, no
+   subprocesses), and `src/repl/presession.ts` (to be renamed `externalcmd.ts`,
+   see Future Work) spawns exactly one subprocess per hook invocation. No
+   other module outside the tools may read the filesystem or spawn a
+   subprocess. Neither the tools nor the hook modules call `fetch` or touch
+   the conversation directly; tools return a string result that the loop
+   appends as a `role: "tool"` message, and the loop appends hook output as
+   a `role: "system"` message (pre hooks always; the post hook only when it
+   exits non-zero, per the hook command definition).
 6. Session-long state (the set of tracked processes) is created at the entry
    point and passed to tools as a parameter — the same pattern as commands
    receiving the client. `tools.ts` holds no module-level mutable state.
@@ -116,6 +117,11 @@ src/repl/input.ts     stdin buffering (line queue + nextLine). No fetch, no stat
 src/repl/render.ts    prompt/answer/error rendering. Pure formatting.
 src/repl/commands.ts  the command registry: parse a `/` line, dispatch to a
                         handler, return a result. No fetch, no stdin/stdout.
+src/repl/hooks.ts    hook discovery: reads `.hooks/<type>/` directories
+                        (read-only filesystem access, the only non-tool FS
+                        read, invariant 5), returns `HookCommand[]` with
+                        `{ name, command }` in alphabetical order. No
+                        subprocesses, no printing, no fetch.
 src/repl/presession.ts runs the configured hook commands: `PRE_SESSION_CMD`
                         once before the first turn, `PRE_TURN_CMD` once before
                         every user turn, and `POST_TURN_CMD` once after the
@@ -270,15 +276,19 @@ Run it in CI or as part of `bun lint` before it matters.
   model's final answer), so its name no longer reflects its contents. Rename
   it and its exports (`runPreSessionCmd` -> `runShellCommand`,
   `PreSessionResult` -> `ShellResult`) to the generic hook-command runner,
-  and collapse the three run -> render -> push blocks in `loop.ts` into a
-  single local helper that takes the command, a label, and per-hook policy —
-  render `always` | `onFailure` and append `always` | `onFailure` — since the
-  post hook diverges from the pre hooks (silent on success). `render.ts` gets
-  one `renderHook(label, output, exitCode, renderOnSuccess: boolean)` instead
-  of the three label-specific renderers. In the same pass, stop discarding
+  and collapse the six run -> render -> push blocks in `loop.ts` (three
+  call sites × two sources: env-var and directory hooks) into a single local
+  helper that takes the command, a label, and per-hook policy — render
+  `always` | `onFailure` and append `always` | `onFailure` — since the post
+  hook diverges from the pre hooks (silent on success). `render.ts` gets one
+  `renderHook(label, output, exitCode, renderOnSuccess: boolean)` instead of
+  the four label-specific renderers (`renderPreSession`, `renderPreTurn`,
+  `renderPostTurn`, `renderHook`). In the same pass, stop discarding
   the exit code when a hook produces no output (a failing check with empty
   stdout+stderr is currently dropped), and prefix the appended message with
-  the label and exit code so the model can tell a hook failed.
+  the label and exit code so the model can tell a hook failed. This is the
+  direct fix for `loop.ts`'s `run` function exceeding the 100-line limit
+  (currently 174 lines).
 - **Per-tool co-located modules.** Each tool is a self-contained `ToolModule`
   export from its submodule: a schema (the `Tool` object describing arguments
   to the model) paired with the handler that executes it. `tools.ts` becomes
