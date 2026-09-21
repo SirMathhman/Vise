@@ -39,6 +39,11 @@ the code; it is not a changelog. Progress lives in the git log.
   awaiting to completion, identified by a process ID. Its accumulated
   stdout/stderr, exit code, and liveness are kept for the rest of the
   session so `wait_for_process` and `kill_process` can act on it later.
+- **Profile** — a named set of custom system instructions (a persona).
+  Profiles come from two sources: a built-in "Agent" default (whose
+  instruction is the CWD message) and file-based profiles from `.agents/*.md`
+  in the working directory. Switching profiles appends a new system message
+  to the conversation; existing history is never altered.
 
 **Invariants:**
 
@@ -48,8 +53,12 @@ the code; it is not a changelog. Progress lives in the git log.
    modules.
 2. The LLM client is the only module that calls `fetch`. The model catalog is
    fetched through the client, not beside it.
-3. Commands never reach the model. A command's output is rendered by the
-   transport, never appended to the conversation.
+3. Commands never reach the model. A command's rendered output is printed by
+   the transport, never appended to the conversation. A command may request
+   a state change via its result (e.g. `setModel` changes the active model,
+   `setProfile` causes the loop to append a new system message carrying the
+   profile's instruction); the loop applies these side effects. A profile
+   switch appends a new system message but never alters existing history.
 4. The active model is read at request time, not captured at startup, so a
    switch takes effect on the next turn without rebuilding the client.
 5. Tools are the only modules that read or write the filesystem or execute
@@ -76,6 +85,10 @@ src/llm/client.ts     LLM client: takes Config + messages, returns a structured
                         result. The ONLY place fetch() is called.
 src/llm/models.ts     model catalog: list models via the client, validate a name
                         against the catalog. No fetch of its own.
+src/profiles.ts       profile registry: list and look up profiles. Profiles
+                        come from the built-in Agent default plus .agents/*.md
+                        files in the CWD. Pure functions over the filesystem.
+                        No mutable state, no fetch, no stdin/stdout.
 src/repl/input.ts     stdin buffering (line queue + nextLine). No fetch, no state.
 src/repl/render.ts    prompt/answer/error rendering. Pure formatting.
 src/repl/commands.ts  the command registry: parse a `/` line, dispatch to a
@@ -104,11 +117,11 @@ src/tools/search.ts   content-search handlers: find_files, search_content.
 ```
 
 Dependency direction: `index -> src/repl/loop -> (src/repl/input, src/repl/render,
-src/repl/commands, src/llm/client, src/tools) -> src/llm/models -> src/llm/types,
-src/config`. `src/llm/*` and `src/repl/*` do not import each other.
+src/repl/commands, src/llm/client, src/tools, src/profiles) -> src/llm/models ->
+src/llm/types, src/config`. `src/llm/*` and `src/repl/*` do not import each other.
 `src/tools/*` do not import each other; `src/tools.ts` is the only importer of
 the tool submodules. `src/config.ts`, `src/config/persist.ts`, `src/llm/types.ts`,
-and the `src/tools/*` submodules are leaves.
+`src/profiles.ts`, and the `src/tools/*` submodules are leaves.
 
 Commands are the seam that keeps the loop small: `commands.ts` returns a result
 value (text to render, or a request to mutate session state) and never prints or
@@ -131,7 +144,15 @@ Run it in CI or as part of `bun lint` before it matters.
   eventually exceed the model's context window (the server returns an error
   rather than truncating). Watch for: 400/413-style errors from llama.cpp on
   long sessions. The fix is a bounded window (keep last N messages or tokens)
-  owned by `loop.ts`, not by `client.ts`.
+  owned by `loop.ts`, not by `client.ts`. Profile switches also append system
+  messages to the conversation, so repeatedly switching profiles adds
+  redundant context that the bounded window must account for.
+- **Duplicate CWD system message.** The loop seeds the conversation with a
+  hardcoded CWD string, and `BUILTIN_AGENT.instruction` is the same string.
+  If the user explicitly runs `/profile Agent`, a second identical CWD
+  message is appended. The loop should seed with `BUILTIN_AGENT.instruction`
+  so `profiles.ts` is the single source of truth for the default
+  instruction.
 - **No retry or timeout on `fetch`.** A hung llama.cpp server blocks the REPL
   forever; a transient ECONNREFUSED is reported as a generic error. The client
   should have a `signal`/timeout and a distinguishable "server unreachable"
@@ -187,6 +208,38 @@ Run it in CI or as part of `bun lint` before it matters.
 
 ## Future Work
 
+- **Per-tool co-located modules.** Each tool is a self-contained `ToolModule`
+  export from its submodule: a schema (the `Tool` object describing arguments
+  to the model) paired with the handler that executes it. `tools.ts` becomes
+  pure composition — it imports all `ToolModule` exports and builds the
+  `Tool[]` array and dispatch table from them, holding no inline schema
+  definitions. Adding a tool then touches exactly one submodule file. Target
+  shape:
+  ```ts
+  export type ToolModule = {
+    schema: Tool;
+    handler: (
+      args: Record<string, unknown>,
+      tracker: ProcessTracker,
+    ) => Promise<string>;
+  };
+  ```
+  This keeps `tools.ts` under 50 lines and makes the schema the single source
+  of truth for what a handler accepts, living next to the code that consumes
+  those arguments.
+- **Typed tool arguments.** Each `ToolModule` declares a typed argument
+  interface (e.g., `ReadFileArgs { path: string; startLine?: number;
+endLine?: number }`) rather than `Record<string, unknown>`. The handler
+  signature becomes `(args: ReadFileArgs, tracker: ProcessTracker) =>
+Promise<string>`, with a thin validation/coercion step at the registry
+  boundary that converts the model's JSON into the typed shape. This catches
+  argument-name typos at compile time and removes per-handler runtime
+  coercion (`String(args.path ?? "")`).
+- **Structured tool results.** Handlers return a `ToolResult` discriminated
+  union (`{ ok: true; text: string } | { ok: false; error: string;
+retryable: boolean }`) instead of a bare string. The loop renders the error
+  case distinctly and can log non-retryable failures without the model
+  guessing from prose.
 - **Streaming responses.** `stream: true` + SSE parsing in `client.ts` so the
   user sees tokens as they arrive; `render.ts` gains an append mode. The
   conversation still accumulates the full reply before the next turn.
@@ -201,7 +254,8 @@ Run it in CI or as part of `bun lint` before it matters.
   `process.on("exit")` (or `SIGINT`) hook in `loop.ts` that kills any
   remaining tracked processes.
 - **Tests.** Unit tests for `input.ts` (line buffering), `client.ts` (against a
-  mocked `fetch`), and `loop.ts` (conversation accumulation). These are the
+  mocked `fetch`), `loop.ts` (conversation accumulation), and each tool
+  handler (filesystem fixtures + a stubbed `ProcessTracker`). These are the
   seams that make the module split above safe to execute.
 
 ## Performance

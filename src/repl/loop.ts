@@ -20,12 +20,14 @@ import {
 
 export async function run(config: Config): Promise<void> {
   // The running conversation; every turn appends to it, so each request
-  // carries the full history (context) to the model. Seeded with a system
-  // message carrying the CWD so the model can answer environment questions.
+  // carries the full history (context) to the model. Seeded with the
+  // built-in Agent profile's instruction (the CWD system message) so the
+  // model can answer environment questions. Using BUILTIN_AGENT.instruction
+  // keeps profiles.ts the single source of truth for the default instruction.
   const messages: ChatMessage[] = [
     {
       role: "system",
-      content: `The current working directory is: ${process.cwd()}`,
+      content: BUILTIN_AGENT.instruction,
     },
   ];
 
