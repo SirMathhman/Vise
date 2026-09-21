@@ -254,7 +254,7 @@ const tools: Tool[] = [
     function: {
       name: "edit_file",
       description:
-        "Edit a file by replacing the first occurrence of replacee with replacement. The path is resolved relative to the working directory. If replacee is not found, no change is made and an error is returned. The file is created if it does not exist, when replacee is empty.",
+        "Edit a file by replacing the first occurrence of replacee with replacement. The path is resolved relative to the working directory. The file must already exist. If replacee is not found, no change is made and an error is returned. Only the first occurrence is replaced.",
       parameters: {
         type: "object",
         properties: {

@@ -141,10 +141,7 @@ Run it in CI or as part of `bun lint` before it matters.
   model must parse to decide whether to retry. A structured result
   (`Ok | ToolError`) would say what, where, why, fix. `edit_file` only
   replaces the *first* occurrence of `replacee`; a model editing a repeated
-  string will silently miss later occurrences. The schema description claims
-  the file is created when `replacee` is empty, but the implementation reads
-  the file first and prepends when the file exists — the description is
-  inaccurate in both cases.
+  string will silently miss later occurrences.
 
 ## Future Work
 
