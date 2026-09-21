@@ -1,6 +1,13 @@
 // The tool registry and dispatch. The only module that reads or writes the
 // filesystem and executes external processes. No fetch, no stdin/stdout.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import * as path from "node:path";
 import type { Tool } from "./llm/types.ts";
 
@@ -11,13 +18,23 @@ export const tools: Tool[] = [
     function: {
       name: "read_file",
       description:
-        "Read the contents of a file. The path is resolved relative to the working directory. Returns the file's text content, or an error message if the file cannot be read.",
+        "Read the contents of a file. The path is resolved relative to the working directory. Returns the file's text content, or an error message if the file cannot be read. Optionally, startLine and endLine (1-based, inclusive) limit which lines are returned. At most 500 lines are returned; if the range exceeds this, it is capped.",
       parameters: {
         type: "object",
         properties: {
           path: {
             type: "string",
             description: "The path to the file to read.",
+          },
+          startLine: {
+            type: "number",
+            description:
+              "The 1-based line number to start reading from. Defaults to 1.",
+          },
+          endLine: {
+            type: "number",
+            description:
+              "The 1-based inclusive line number to stop at. Defaults to the last line. Capped at startLine + 499 (500 lines max).",
           },
         },
         required: ["path"],
@@ -88,6 +105,30 @@ export const tools: Tool[] = [
           },
         },
         required: ["path"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_directory",
+      description:
+        "List the contents of a directory as an indented tree. The path is resolved relative to the working directory. The depth parameter controls how many levels deep to recurse. Returns file and directory names with their relative paths.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description:
+              "The path to the directory to list. Defaults to the current working directory.",
+          },
+          depth: {
+            type: "number",
+            description:
+              "How many levels deep to recurse. Defaults to 1. Capped at 5.",
+          },
+        },
+        required: [],
       },
     },
   },
@@ -278,13 +319,50 @@ const handlers: Record<
   read_file: async (args) => {
     const rawPath = String(args.path ?? "");
     const filePath = path.resolve(process.cwd(), rawPath);
+    const startLine = Math.max(1, Number(args.startLine ?? 1));
+    const endLine = Math.max(startLine, Number(args.endLine ?? Infinity));
     try {
-      return readFileSync(filePath, "utf-8");
+      const content = readFileSync(filePath, "utf-8");
+      const lines = content.split("\n");
+      const total = lines.length;
+      const cappedEnd = Math.min(endLine, startLine + 499);
+      const slice = lines.slice(startLine - 1, cappedEnd);
+      const prefix =
+        startLine > 1 || cappedEnd < total
+          ? `Lines ${startLine}–${cappedEnd} of ${total}:\n\n`
+          : "";
+      return prefix + slice.join("\n");
     } catch (err) {
       return `Error reading ${rawPath}: ${
         err instanceof Error ? err.message : String(err)
       }`;
     }
+  },
+  list_directory: async (args) => {
+    const rawPath = String(args.path ?? ".");
+    const dirPath = path.resolve(process.cwd(), rawPath);
+    const depth = Math.max(1, Math.min(5, Number(args.depth ?? 1)));
+    if (!existsSync(dirPath)) {
+      return `Error listing ${rawPath}: path does not exist.`;
+    }
+    const stat = statSync(dirPath);
+    if (!stat.isDirectory()) {
+      return `Error listing ${rawPath}: not a directory.`;
+    }
+    const lines: string[] = [];
+    const walk = (dir: string, indent: number, remaining: number) => {
+      const entries = readdirSync(dir);
+      for (const name of entries) {
+        const fullPath = path.join(dir, name);
+        const isDir = statSync(fullPath).isDirectory();
+        lines.push(`${"  ".repeat(indent)}${name}${isDir ? "/" : ""}`);
+        if (isDir && remaining > 1) {
+          walk(fullPath, indent + 1, remaining - 1);
+        }
+      }
+    };
+    walk(dirPath, 0, depth);
+    return lines.length > 0 ? lines.join("\n") : "(empty directory)";
   },
   edit_file: async (args) => {
     const rawPath = String(args.path ?? "");
