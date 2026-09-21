@@ -6,6 +6,7 @@ import type { Config } from "../config.ts";
 import { chatCompletion } from "../llm/client.ts";
 import { listModels } from "../llm/models.ts";
 import type { ChatMessage } from "../llm/types.ts";
+import { BUILTIN_AGENT, getProfile } from "../profiles.ts";
 import { ProcessTracker } from "../tools/process.ts";
 import { runTool, tools } from "../tools.ts";
 import { runCommand } from "./commands.ts";
@@ -36,6 +37,11 @@ export async function run(config: Config): Promise<void> {
   // runtime with the /model command.
   let model = config.model;
 
+  // The active profile name. Starts from the built-in Agent and can be
+  // changed at runtime with the /profile command. When it changes, a new
+  // system message is appended to the conversation; history is never altered.
+  let activeProfile = BUILTIN_AGENT.name;
+
   for (;;) {
     renderPrompt();
     const raw = await nextLine();
@@ -48,6 +54,7 @@ export async function run(config: Config): Promise<void> {
     if (text.startsWith("/")) {
       const result = await runCommand(text, {
         model,
+        activeProfile,
         listModels: () => listModels(config),
         persistModel: (name: string) =>
           persistEnvVar(
@@ -57,6 +64,15 @@ export async function run(config: Config): Promise<void> {
           ),
       });
       if (result.setModel) model = result.setModel;
+      if (result.setProfile) {
+        activeProfile = result.setProfile;
+        // Profile change appends a new system message carrying the profile's
+        // instruction; it never alters the existing conversation history.
+        const profile = getProfile(result.setProfile);
+        if (profile) {
+          messages.push({ role: "system", content: profile.instruction });
+        }
+      }
       renderCommand(result);
       continue;
     }

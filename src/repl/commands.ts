@@ -5,15 +5,18 @@
 // never calls fetch directly (the catalog and persistence hook are passed
 // in as parameters).
 import type { ModelInfo } from "../llm/types.ts";
+import { getProfile, listProfiles } from "../profiles.ts";
 
 export type CommandResult = {
   lines: string[];
   isError?: boolean;
   setModel?: string;
+  setProfile?: string;
 };
 
 export type CommandContext = {
   model: string;
+  activeProfile: string;
   listModels: () => Promise<ModelInfo[]>;
   persistModel: (name: string) => void;
 };
@@ -23,9 +26,12 @@ export async function runCommand(
   ctx: CommandContext,
 ): Promise<CommandResult> {
   const [command, ...rest] = text.split(/\s+/);
+  if (command === "/profile") {
+    return runProfileCommand(rest, ctx);
+  }
   if (command !== "/model") {
     return {
-      lines: [`Unknown command: ${command}. Try /model.`],
+      lines: [`Unknown command: ${command}. Try /model or /profile.`],
       isError: true,
     };
   }
@@ -64,4 +70,31 @@ export async function runCommand(
     const detail = err instanceof Error ? err.message : String(err);
     return { lines: [`model> ${name} (not saved: ${detail})`], setModel: name };
   }
+}
+
+// /profile handler. With no argument, lists all available profiles and marks
+// the active one. With a name, switches to that profile by returning
+// setProfile (the loop appends a new system message; history is never altered).
+function runProfileCommand(rest: string[], ctx: CommandContext): CommandResult {
+  const name = rest.join(" ").trim();
+  if (name.length === 0) {
+    const profiles = listProfiles();
+    const lines = ["Available profiles:"];
+    for (const p of profiles) {
+      const mark = p.name === ctx.activeProfile ? " (active)" : "";
+      lines.push(`  ${p.name}${mark}`);
+    }
+    return { lines };
+  }
+  const profile = getProfile(name);
+  if (!profile) {
+    const profiles = listProfiles();
+    const lines = [`error: unknown profile: ${name}`, "Available profiles:"];
+    for (const p of profiles) lines.push(`  ${p.name}`);
+    return { lines, isError: true };
+  }
+  return {
+    lines: [`profile> ${profile.name}`],
+    setProfile: profile.name,
+  };
 }
