@@ -1,5 +1,6 @@
 // The tool registry and dispatch. Composes schemas and handler functions
 // from submodules. No fetch, no stdin/stdout.
+import type { Config } from "./config.ts";
 import type { Tool } from "./llm/types.ts";
 import {
   create_directory,
@@ -15,6 +16,26 @@ import {
   wait_for_process,
 } from "./tools/process.ts";
 import { find_files, search_content } from "./tools/search.ts";
+import { run_subagent } from "./tools/subagent.ts";
+
+// Per-call context handed to every tool handler. Carries the state a tool
+// needs beyond its arguments: the active model (read at call time, not
+// captured at startup), the shared background-process tracker, the
+// subagent nesting depth, and the config + tool set + dispatch function a
+// subagent needs to spawn its own tools. Passed by reference so the
+// /model command's runtime switch is visible to every handler in flight.
+export type ToolContext = {
+  config: Config;
+  model: string;
+  tracker: ProcessTracker;
+  depth: number;
+  tools: Tool[];
+  dispatch: (
+    name: string,
+    args: Record<string, unknown>,
+    ctx: ToolContext,
+  ) => Promise<string>;
+};
 
 // The tool schemas sent to the model in the request's `tools` field.
 export const tools: Tool[] = [
@@ -201,6 +222,30 @@ export const tools: Tool[] = [
   {
     type: "function",
     function: {
+      name: "run_subagent",
+      description:
+        "Delegate a task to a subagent, which runs an isolated conversation seeded with the named profile's instructions. The subagent has full tool access and can spawn its own subagents. Returns the subagent's final answer as a string. Use this to hand off a self-contained task to a specialized persona (profile).",
+      parameters: {
+        type: "object",
+        properties: {
+          profile: {
+            type: "string",
+            description:
+              "The name of the profile to run the subagent as. The profile's instruction becomes the subagent's system message.",
+          },
+          task: {
+            type: "string",
+            description:
+              "The task to hand to the subagent. The subagent sees only this text plus its profile instruction; it does not see the parent conversation.",
+          },
+        },
+        required: ["profile", "task"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "run_powershell",
       description:
         "Run a PowerShell command. If the command does not finish within the timeout, the process is kept running in the background and a process ID is returned. Use wait_for_process or kill_process to manage it.",
@@ -267,7 +312,7 @@ export const tools: Tool[] = [
 // Adding a tool means adding one schema to `tools` above and one entry here.
 const handlers: Record<
   string,
-  (args: Record<string, unknown>, tracker: ProcessTracker) => Promise<string>
+  (args: Record<string, unknown>, ctx: ToolContext) => Promise<string>
 > = {
   read_file,
   edit_file,
@@ -279,6 +324,7 @@ const handlers: Record<
   run_powershell,
   wait_for_process,
   kill_process,
+  run_subagent,
 };
 
 // Dispatches a tool call by name. Adding a tool means adding one entry to
@@ -286,8 +332,8 @@ const handlers: Record<
 export async function runTool(
   name: string,
   args: Record<string, unknown>,
-  tracker: ProcessTracker,
+  ctx: ToolContext,
 ): Promise<string> {
   const handler = handlers[name];
-  return handler ? handler(args, tracker) : `Unknown tool: ${name}`;
+  return handler ? handler(args, ctx) : `Unknown tool: ${name}`;
 }

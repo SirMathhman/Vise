@@ -1,5 +1,6 @@
 // Background process tracking and the three process tool handlers.
 // The only module that calls Bun.spawn.
+import type { ToolContext } from "../tools.ts";
 
 export interface TrackedProcess {
   proc: Bun.Subprocess;
@@ -111,14 +112,16 @@ export class ProcessTracker {
   };
 }
 
-// Process tool handlers. Each takes the raw argument bag and a ProcessTracker.
+// Process tool handlers. Each takes the raw argument bag and a ToolContext.
+// The ProcessTracker is accessed via ctx.tracker.
 
 export const run_powershell = async (
   args: Record<string, unknown>,
-  tracker: ProcessTracker,
+  ctx: ToolContext,
 ): Promise<string> => {
   const command = String(args.command ?? "");
   const timeout = Number(args.timeout ?? 30);
+  const tracker = ctx.tracker;
   const { id, t } = tracker.spawn(command);
   await Promise.race([
     t.proc.exited,
@@ -133,10 +136,11 @@ export const run_powershell = async (
 
 export const wait_for_process = async (
   args: Record<string, unknown>,
-  tracker: ProcessTracker,
+  ctx: ToolContext,
 ): Promise<string> => {
   const id = String(args.process_id ?? "");
   const timeout = Number(args.timeout ?? 30);
+  const tracker = ctx.tracker;
   const t = tracker.get(id);
   if (!t)
     return `No process with id "${id}". It may have already finished or been killed.`;
@@ -153,9 +157,10 @@ export const wait_for_process = async (
 
 export const kill_process = async (
   args: Record<string, unknown>,
-  tracker: ProcessTracker,
+  ctx: ToolContext,
 ): Promise<string> => {
   const id = String(args.process_id ?? "");
+  const tracker = ctx.tracker;
   const t = tracker.get(id);
   if (!t)
     return `No process with id "${id}". It may have already finished or been killed.`;

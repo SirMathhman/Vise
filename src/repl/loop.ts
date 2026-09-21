@@ -8,6 +8,7 @@ import { listModels } from "../llm/models.ts";
 import type { ChatMessage } from "../llm/types.ts";
 import { BUILTIN_AGENT, getProfile } from "../profiles.ts";
 import { ProcessTracker } from "../tools/process.ts";
+import type { ToolContext } from "../tools.ts";
 import { runTool, tools } from "../tools.ts";
 import { runCommand } from "./commands.ts";
 import type { HookCommand } from "./hooks.ts";
@@ -63,6 +64,14 @@ async function runModelTurn(
   postTurnHooks: HookCommand[],
   activeProfile: string,
 ): Promise<void> {
+  const toolCtx: ToolContext = {
+    config,
+    model,
+    tracker,
+    depth: 0,
+    tools,
+    dispatch: (name, args, ctx) => runTool(name, args, ctx),
+  };
   const MAX_TOOL_ROUNDS = 8;
   for (let round = 0; ; round++) {
     if (round >= MAX_TOOL_ROUNDS) {
@@ -86,7 +95,7 @@ async function runModelTurn(
         messages.push({
           role: "tool",
           tool_call_id: tc.id,
-          content: await runTool(tc.function.name, args, tracker),
+          content: await runTool(tc.function.name, args, toolCtx),
         });
       }
       continue;
