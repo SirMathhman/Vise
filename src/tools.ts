@@ -96,7 +96,7 @@ export const tools: Tool[] = [
     function: {
       name: "run_powershell",
       description:
-        "Run a PowerShell command and return its output. The command runs in the current working directory. Returns stdout, stderr, and the exit code. Use this to run scripts, query the system, or perform file operations that PowerShell handles well.",
+        "Run a PowerShell command. If the command does not finish within the timeout, the process is kept running in the background and a process ID is returned. Use wait_for_process or kill_process to manage it.",
       parameters: {
         type: "object",
         properties: {
@@ -104,18 +104,128 @@ export const tools: Tool[] = [
             type: "string",
             description: "The PowerShell command or script to execute.",
           },
+          timeout: {
+            type: "number",
+            description:
+              "How long (in seconds) to wait for the command to finish before returning control. The process is not killed when this elapses.",
+          },
         },
-        required: ["command"],
+        required: ["command", "timeout"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "wait_for_process",
+      description:
+        "Wait for a background process to finish. Returns its output if it has finished, or a message saying it is still running if the timeout elapses.",
+      parameters: {
+        type: "object",
+        properties: {
+          process_id: {
+            type: "string",
+            description: "The ID of the process returned by run_powershell.",
+          },
+          timeout: {
+            type: "number",
+            description: "How long (in seconds) to wait.",
+          },
+        },
+        required: ["process_id", "timeout"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "kill_process",
+      description:
+        "Kill a background process that was started by run_powershell. Returns any output collected so far.",
+      parameters: {
+        type: "object",
+        properties: {
+          process_id: {
+            type: "string",
+            description: "The ID of the process returned by run_powershell.",
+          },
+        },
+        required: ["process_id"],
       },
     },
   },
 ];
 
+// --- Background process tracking ---
+
+interface TrackedProcess {
+  proc: Bun.Subprocess;
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  finished: boolean;
+}
+
+const tracked = new Map<string, TrackedProcess>();
+let nextProcId = 1;
+
+function spawnPowerShell(command: string): Bun.Subprocess {
+  return Bun.spawn(
+    ["powershell", "-NoProfile", "-NonInteractive", "-Command", command],
+    { cwd: process.cwd(), stdout: "pipe", stderr: "pipe" },
+  );
+}
+
+function track(proc: Bun.Subprocess): TrackedProcess {
+  const t: TrackedProcess = {
+    proc,
+    stdout: "",
+    stderr: "",
+    exitCode: null,
+    finished: false,
+  };
+  const pump = (
+    stream: ReadableStream<Uint8Array> | null,
+    key: "stdout" | "stderr",
+  ) => {
+    if (!stream) return;
+    const reader = stream.getReader();
+    (async () => {
+      const decoder = new TextDecoder();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        t[key] += decoder.decode(value);
+      }
+    })();
+  };
+  pump(proc.stdout as ReadableStream<Uint8Array> | null, "stdout");
+  pump(proc.stderr as ReadableStream<Uint8Array> | null, "stderr");
+  proc.exited.then((code) => {
+    t.exitCode = code;
+    t.finished = true;
+  });
+  return t;
+}
+
+function formatProcessResult(t: TrackedProcess): string {
+  const parts: string[] = [];
+  if (t.stdout.trim()) parts.push(`stdout:\n${t.stdout.trim()}`);
+  if (t.stderr.trim()) parts.push(`stderr:\n${t.stderr.trim()}`);
+  if (t.exitCode !== null && t.exitCode !== 0) {
+    parts.push(`exit code: ${t.exitCode}`);
+  }
+  return parts.length > 0 ? parts.join("\n\n") : "(no output)";
+}
+
 // Per-tool handlers. Each takes the raw argument bag and returns a string
 // result. Unknown tools and read failures are reported as strings so the
 // model can see them.
-const handlers: Record<string, (args: Record<string, unknown>) => string> = {
-  read_file: (args) => {
+const handlers: Record<
+  string,
+  (args: Record<string, unknown>) => Promise<string>
+> = {
+  read_file: async (args) => {
     const rawPath = String(args.path ?? "");
     const filePath = path.resolve(process.cwd(), rawPath);
     try {
@@ -126,7 +236,7 @@ const handlers: Record<string, (args: Record<string, unknown>) => string> = {
       }`;
     }
   },
-  edit_file: (args) => {
+  edit_file: async (args) => {
     const rawPath = String(args.path ?? "");
     const filePath = path.resolve(process.cwd(), rawPath);
     const replacee = String(args.replacee ?? "");
@@ -159,7 +269,7 @@ const handlers: Record<string, (args: Record<string, unknown>) => string> = {
     }
     return `Edited ${rawPath}: replaced ${replacee.length} character(s) starting at offset ${index}.`;
   },
-  create_file: (args) => {
+  create_file: async (args) => {
     const rawPath = String(args.path ?? "");
     const filePath = path.resolve(process.cwd(), rawPath);
     const content = String(args.content ?? "");
@@ -176,7 +286,7 @@ const handlers: Record<string, (args: Record<string, unknown>) => string> = {
     }
     return `Created ${rawPath} (${content.length} character(s)).`;
   },
-  create_directory: (args) => {
+  create_directory: async (args) => {
     const rawPath = String(args.path ?? "");
     const filePath = path.resolve(process.cwd(), rawPath);
     if (existsSync(filePath)) {
@@ -191,27 +301,56 @@ const handlers: Record<string, (args: Record<string, unknown>) => string> = {
     }
     return `Created directory ${rawPath}.`;
   },
-  run_powershell: (args) => {
+  run_powershell: async (args) => {
     const command = String(args.command ?? "");
-    const result = Bun.spawnSync(
-      ["powershell", "-NoProfile", "-NonInteractive", "-Command", command],
-      { cwd: process.cwd(), stdout: "pipe", stderr: "pipe" },
-    );
-    const stdout = result.stdout?.toString() ?? "";
-    const stderr = result.stderr?.toString() ?? "";
-    const parts: string[] = [];
-    if (stdout.trim()) parts.push(`stdout:\n${stdout.trim()}`);
-    if (stderr.trim()) parts.push(`stderr:\n${stderr.trim()}`);
-    if (result.exitCode !== 0) {
-      parts.push(`exit code: ${result.exitCode}`);
+    const timeout = Number(args.timeout ?? 30);
+    const proc = spawnPowerShell(command);
+    const t = track(proc);
+    await Promise.race([
+      proc.exited,
+      new Promise((r) => setTimeout(r, timeout * 1000)),
+    ]);
+    if (t.finished) {
+      return formatProcessResult(t);
     }
-    return parts.length > 0 ? parts.join("\n\n") : "(no output)";
+    const id = String(nextProcId++);
+    tracked.set(id, t);
+    return `Process started (id: ${id}), still running after ${timeout}s. Use wait_for_process or kill_process.`;
+  },
+  wait_for_process: async (args) => {
+    const id = String(args.process_id ?? "");
+    const timeout = Number(args.timeout ?? 30);
+    const t = tracked.get(id);
+    if (!t)
+      return `No process with id "${id}". It may have already finished or been killed.`;
+    await Promise.race([
+      t.proc.exited,
+      new Promise((r) => setTimeout(r, timeout * 1000)),
+    ]);
+    if (t.finished) {
+      tracked.delete(id);
+      return formatProcessResult(t);
+    }
+    return `Process ${id} is still running after ${timeout}s.`;
+  },
+  kill_process: async (args) => {
+    const id = String(args.process_id ?? "");
+    const t = tracked.get(id);
+    if (!t)
+      return `No process with id "${id}". It may have already finished or been killed.`;
+    t.proc.kill();
+    await t.proc.exited;
+    tracked.delete(id);
+    return `Killed process ${id}.\n\n${formatProcessResult(t)}`;
   },
 };
 
 // Dispatches a tool call by name. Adding a tool means adding one entry to
 // the `handlers` table and one schema to `tools` — no edit to this function.
-export function runTool(name: string, args: Record<string, unknown>): string {
+export async function runTool(
+  name: string,
+  args: Record<string, unknown>,
+): Promise<string> {
   const handler = handlers[name];
   return handler ? handler(args) : `Unknown tool: ${name}`;
 }

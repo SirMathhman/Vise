@@ -89,7 +89,7 @@ export async function run(config: Config): Promise<void> {
             messages.push({
               role: "tool",
               tool_call_id: tc.id,
-              content: runTool(tc.function.name, args),
+              content: await runTool(tc.function.name, args),
             });
           }
           continue;
