@@ -29,6 +29,10 @@ the code; it is not a changelog. Progress lives in the git log.
 - **Model selector** — the single owner of the active model name. It reads the
   catalog, validates a requested name against it, updates the in-memory value,
   and persists the choice. Nothing else may mutate the active model.
+- **Tool** — a function the model can call (e.g. `read_file`, `edit_file`) to
+  act on the filesystem. Tools are the only modules permitted to read or write
+  files; they never call `fetch` and never touch the conversation directly —
+  they return a string result that the loop appends as a `role: "tool"` message.
 
 **Invariants:**
 
@@ -42,6 +46,9 @@ the code; it is not a changelog. Progress lives in the git log.
    transport, never appended to the conversation.
 4. The active model is read at request time, not captured at startup, so a
    switch takes effect on the next turn without rebuilding the client.
+5. Tools are the only modules that read or write the filesystem. They never
+   call `fetch` and never touch the conversation directly; they return a
+   string result that the loop appends as a `role: "tool"` message.
 
 ## Structure
 
@@ -65,6 +72,8 @@ src/repl/commands.ts  the command registry: parse a `/` line, dispatch to a
                         handler, return a result. No fetch, no stdin/stdout.
 src/repl/loop.ts      the turn loop: glue between input, conversation, client,
                         commands, render.
+src/tools.ts          the tool registry and dispatch. The only module that
+                        reads or writes the filesystem. No fetch, no stdin/stdout.
 ```
 
 Dependency direction: `index -> src/repl/loop -> (src/repl/input, src/repl/render,
@@ -128,6 +137,14 @@ Run it in CI or as part of `bun lint` before it matters.
   is not a chat completion. It must go through the client so timeouts, auth
   headers, and structured errors are shared; a bare `fetch` in the command
   handler would duplicate all three.
+- **Tool results are opaque strings.** A tool failure is reported as prose the
+  model must parse to decide whether to retry. A structured result
+  (`Ok | ToolError`) would say what, where, why, fix. `edit_file` only
+  replaces the *first* occurrence of `replacee`; a model editing a repeated
+  string will silently miss later occurrences. The schema description claims
+  the file is created when `replacee` is empty, but the implementation reads
+  the file first and prepends when the file exists — the description is
+  inaccurate in both cases.
 
 ## Future Work
 
