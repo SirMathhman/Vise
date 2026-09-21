@@ -126,7 +126,7 @@ async function runModelTurn(
 export async function run(config: Config): Promise<void> {
   // The running conversation; every turn appends to it, so each request
   // carries the full history (context) to the model. Seeded with the
-  // built-in Agent profile's instruction (the CWD system message) so the
+  // built-in agent profile's instruction (the CWD system message) so the
   // model can answer environment questions. Using BUILTIN_AGENT.instruction
   // keeps profiles.ts the single source of truth for the default instruction.
   const messages: ChatMessage[] = [
@@ -140,7 +140,7 @@ export async function run(config: Config): Promise<void> {
   // runtime with the /model command.
   let model = config.model;
 
-  // The active profile name. Starts from the built-in Agent and can be
+  // The active profile name. Starts from the built-in agent and can be
   // changed at runtime with the /profile command. When it changes, a new
   // system message is appended to the conversation; history is never altered.
   let activeProfile = BUILTIN_AGENT.name;

@@ -1,6 +1,6 @@
 // Profile registry. A profile is a named set of custom system instructions
 // (like a custom agent persona). Profiles come from two sources:
-//   1. The built-in "Agent" profile (the default; its instruction is the
+//   1. The built-in "agent" profile (the default; its instruction is the
 //      CWD system message).
 //   2. File-based profiles from `.agents/*.md` in the working directory.
 //      The filename (minus extension) is the profile name; the file content
@@ -29,12 +29,12 @@ const AGENTS_DIR = ".agents";
 // The built-in default profile. Its instruction is the CWD message that seeds
 // the conversation at startup.
 export const BUILTIN_AGENT: Profile = {
-  name: "Agent",
+  name: "agent",
   instruction: `The current working directory is: ${process.cwd()}`,
   source: "builtin",
 };
 
-// Returns every available profile: the built-in Agent plus any .agents/*.md
+// Returns every available profile: the built-in agent plus any .agents/*.md
 // files found in the working directory.
 export function listProfiles(): Profile[] {
   const profiles: Profile[] = [BUILTIN_AGENT];
