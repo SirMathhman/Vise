@@ -17,9 +17,10 @@ the code; it is not a changelog. Progress lives in the git log.
   assistant replies, errors). Swappable, and the only module allowed to touch
   `process.stdin`/`process.stdout`.
 - **Config** — the typed, env-derived settings object (base URL, model, API
-  key, pre-session command, pre-turn command). Constructed once at startup.
-  Read-only everywhere except the model selector, which owns the one mutable
-  field (`model`) and is the only writer of config back to disk.
+  key, pre-session command, pre-turn command, post-turn command). Constructed
+  once at startup. Read-only everywhere except the model selector, which owns
+  the one mutable field (`model`) and is the only writer of config back to
+  disk.
 - **Command** — a line beginning with `/` that the REPL handles locally and
   never sends to the model. A command is a pure function of its arguments plus
   the session state it is handed; it returns a result the renderer prints.
@@ -46,12 +47,17 @@ the code; it is not a changelog. Progress lives in the git log.
   in the working directory. Switching profiles appends a new system message
   to the conversation; existing history is never altered.
 - **Hook command** — an optional config-driven shell command (`PRE_SESSION_CMD`,
-  `PRE_TURN_CMD`) that runs at a fixed point around turns: the pre-session
-  hook once, before the first turn; the pre-turn hook once before every user
-  message is sent to the model. Each invocation's combined stdout+stderr is
-  printed to the user and appended to the conversation as a system message.
-  Unlike tools, hooks are driven by config rather than by the model, and
-  they run at fixed points rather than on demand.
+  `PRE_TURN_CMD`, `POST_TURN_CMD`) that runs at a fixed point around turns:
+  the pre-session hook once, before the first turn; the pre-turn hook once
+  before every user message is sent to the model; the post-turn hook once
+  after the model's final answer. The pre hooks always print their combined
+  stdout+stderr and append it to the conversation as a system message, on
+  success or failure. The post hook is silent on success (neither printed nor
+  appended, so a passing check never pollutes context) and, on failure
+  (non-zero exit), prints the output as a warning and appends it as a system
+  message so the model sees it on the next turn. Unlike tools, hooks are
+  driven by config rather than by the model, and they run at fixed points
+  rather than on demand.
 
 **Invariants:**
 
@@ -73,12 +79,15 @@ the code; it is not a changelog. Progress lives in the git log.
    external processes during a turn, and the hook command module is the only
    exception: `src/repl/presession.ts` (to be renamed `externalcmd.ts`, see
    Future Work) spawns exactly one subprocess per hook invocation — once
-   before the first turn for `PRE_SESSION_CMD` and once before every user turn
-   for `PRE_TURN_CMD` — and returns its output and exit code to the loop. No
+   before the first turn for `PRE_SESSION_CMD`, once before every user turn
+   for `PRE_TURN_CMD`, and once after the model's final answer for
+   `POST_TURN_CMD` — and returns its output and exit code to the loop. No
    other module outside the tools may spawn a subprocess. Neither the tools
    nor the hook module call `fetch` or touch the conversation directly; tools
    return a string result that the loop appends as a `role: "tool"` message,
-   and the loop appends hook output as a `role: "system"` message.
+   and the loop appends hook output as a `role: "system"` message (pre hooks
+   always; the post hook only when it exits non-zero, per the hook command
+   definition).
 6. Session-long state (the set of tracked processes) is created at the entry
    point and passed to tools as a parameter — the same pattern as commands
    receiving the client. `tools.ts` holds no module-level mutable state.
@@ -108,12 +117,15 @@ src/repl/render.ts    prompt/answer/error rendering. Pure formatting.
 src/repl/commands.ts  the command registry: parse a `/` line, dispatch to a
                         handler, return a result. No fetch, no stdin/stdout.
 src/repl/presession.ts runs the configured hook commands: `PRE_SESSION_CMD`
-                        once before the first turn and `PRE_TURN_CMD` once before
-                        every user turn. Spawns exactly one subprocess per
+                        once before the first turn, `PRE_TURN_CMD` once before
+                        every user turn, and `POST_TURN_CMD` once after the
+                        model's final answer. Spawns exactly one subprocess per
                         invocation (the only non-tool spawn, invariant 5),
                         returns the combined stdout+stderr and exit code; no
                         printing of its own — the loop renders the result and
-                        appends it to the conversation as a system message.
+                        appends it to the conversation as a system message
+                        (pre hooks always; the post hook only when it exits
+                        non-zero).
 src/repl/loop.ts      the turn loop: glue between input, conversation, client,
                         commands, render, and presession.
 src/tools.ts          tool registry: schema array + dispatch table. Imports
@@ -173,15 +185,23 @@ Run it in CI or as part of `bun lint` before it matters.
   too (below). The pre-turn hook compounds this: it appends a system message
   every turn (up to the 16 KB hook budget each), so even a chatty hook that
   fits in context once will exhaust the window after enough turns; the
-  bounded window is the only fix.
+  bounded window is the only fix. The post hook compounds it too, but only
+  while it is failing: a failing post hook appends its output every turn, so
+  a hook that stays broken adds one system message per turn.
 - **Hook command output is unchecked and its latency is unbounded.** Unlike
   tool results (16 KB budget per tracked-process stream, 500-line read cap),
   the pre-session and pre-turn hooks' combined stdout+stderr enter the
   conversation with no budget beyond the shared 16 KB hook cap; their exit
   codes are only printed to stderr, so a failing hook's output still reaches
-  the model as context; and they have no timeout, so a hung hook blocks
-  startup (pre-session) or every user turn (pre-turn). Report a non-zero exit
-  code distinctly in the appended message, and give the spawn the same
+  the model as context (the post hook deliberately inverts this: it appends
+  only on failure, but its appended message carries the raw output with no
+  exit-code report, so the model cannot tell the hook failed unless the output
+  says so); and they have no timeout, so a hung hook blocks startup
+  (pre-session), every user turn (pre-turn), or every final answer (post-turn).
+  A hook that fails with no stdout/stderr is also silently dropped — the
+  runner returns `null` for empty output, discarding the exit code — so a
+  failing check can reach neither the user nor the model. Report a non-zero
+  exit code distinctly in the appended message, and give the spawn the same
   timeout/structured-error treatment the client's `fetch` should have.
 - **Duplicate CWD system message.** The loop seeds the conversation with a
   hardcoded CWD string, and `BUILTIN_AGENT.instruction` is the same string.
@@ -245,14 +265,20 @@ Run it in CI or as part of `bun lint` before it matters.
 ## Future Work
 
 - **Rename `src/repl/presession.ts` to `src/repl/externalcmd.ts`.** The module
-  now runs both hook commands (`PRE_SESSION_CMD` once before the first turn,
-  `PRE_TURN_CMD` before every user turn), so its name no longer reflects its
-  contents. Rename it and its exports (`runPreSessionCmd` ->
-  `runShellCommand`, `PreSessionResult` -> `ShellResult`) to the generic
-  hook-command runner, and collapse the two identical run -> render -> push
-  blocks in `loop.ts` into a single local helper that takes the command and a
-  label; `render.ts` gets one `renderHook(label, output, exitCode)` instead
-  of the two label-specific renderers.
+  now runs all three hook commands (`PRE_SESSION_CMD` once before the first
+  turn, `PRE_TURN_CMD` before every user turn, `POST_TURN_CMD` after the
+  model's final answer), so its name no longer reflects its contents. Rename
+  it and its exports (`runPreSessionCmd` -> `runShellCommand`,
+  `PreSessionResult` -> `ShellResult`) to the generic hook-command runner,
+  and collapse the three run -> render -> push blocks in `loop.ts` into a
+  single local helper that takes the command, a label, and per-hook policy —
+  render `always` | `onFailure` and append `always` | `onFailure` — since the
+  post hook diverges from the pre hooks (silent on success). `render.ts` gets
+  one `renderHook(label, output, exitCode, renderOnSuccess: boolean)` instead
+  of the three label-specific renderers. In the same pass, stop discarding
+  the exit code when a hook produces no output (a failing check with empty
+  stdout+stderr is currently dropped), and prefix the appended message with
+  the label and exit code so the model can tell a hook failed.
 - **Per-tool co-located modules.** Each tool is a self-contained `ToolModule`
   export from its submodule: a schema (the `Tool` object describing arguments
   to the model) paired with the handler that executes it. `tools.ts` becomes
