@@ -1,6 +1,0 @@
-{
-  "name": "@vise/firefox-extension",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Firefox extension that lets the Vise assistant drive the user's own Firefox (no build step; load manifest.json as a temporary add-on)"
-}
