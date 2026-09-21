@@ -75,7 +75,8 @@ src/repl/commands.ts  the command registry: parse a `/` line, dispatch to a
                         handler, return a result. No fetch, no stdin/stdout.
 src/repl/loop.ts      the turn loop: glue between input, conversation, client,
                         commands, render.
-src/tools.ts          the tool registry and dispatch. The only module that
+src/tools.ts          the tool registry and dispatch: schema array + a
+                        `Record<string, handler>` table. The only module that
                         reads or writes the filesystem or executes external
                         processes. No fetch, no stdin/stdout.
 ```

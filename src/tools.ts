@@ -111,12 +111,13 @@ export const tools: Tool[] = [
   },
 ];
 
-// Executes a tool call and returns its result as a string. Unknown tools
-// and read failures are reported as strings so the model can see them.
-export function runTool(name: string, args: Record<string, unknown>): string {
-  const rawPath = String(args.path ?? "");
-  const filePath = path.resolve(process.cwd(), rawPath);
-  if (name === "read_file") {
+// Per-tool handlers. Each takes the raw argument bag and returns a string
+// result. Unknown tools and read failures are reported as strings so the
+// model can see them.
+const handlers: Record<string, (args: Record<string, unknown>) => string> = {
+  read_file: (args) => {
+    const rawPath = String(args.path ?? "");
+    const filePath = path.resolve(process.cwd(), rawPath);
     try {
       return readFileSync(filePath, "utf-8");
     } catch (err) {
@@ -124,8 +125,10 @@ export function runTool(name: string, args: Record<string, unknown>): string {
         err instanceof Error ? err.message : String(err)
       }`;
     }
-  }
-  if (name === "edit_file") {
+  },
+  edit_file: (args) => {
+    const rawPath = String(args.path ?? "");
+    const filePath = path.resolve(process.cwd(), rawPath);
     const replacee = String(args.replacee ?? "");
     const replacement = String(args.replacement ?? "");
     let contents: string;
@@ -155,8 +158,10 @@ export function runTool(name: string, args: Record<string, unknown>): string {
       }`;
     }
     return `Edited ${rawPath}: replaced ${replacee.length} character(s) starting at offset ${index}.`;
-  }
-  if (name === "create_file") {
+  },
+  create_file: (args) => {
+    const rawPath = String(args.path ?? "");
+    const filePath = path.resolve(process.cwd(), rawPath);
     const content = String(args.content ?? "");
     if (existsSync(filePath)) {
       return `Error creating ${rawPath}: file already exists.`;
@@ -170,8 +175,10 @@ export function runTool(name: string, args: Record<string, unknown>): string {
       }`;
     }
     return `Created ${rawPath} (${content.length} character(s)).`;
-  }
-  if (name === "create_directory") {
+  },
+  create_directory: (args) => {
+    const rawPath = String(args.path ?? "");
+    const filePath = path.resolve(process.cwd(), rawPath);
     if (existsSync(filePath)) {
       return `Error creating ${rawPath}: directory already exists.`;
     }
@@ -183,8 +190,8 @@ export function runTool(name: string, args: Record<string, unknown>): string {
       }`;
     }
     return `Created directory ${rawPath}.`;
-  }
-  if (name === "run_powershell") {
+  },
+  run_powershell: (args) => {
     const command = String(args.command ?? "");
     const result = Bun.spawnSync(
       ["powershell", "-NoProfile", "-NonInteractive", "-Command", command],
@@ -199,6 +206,12 @@ export function runTool(name: string, args: Record<string, unknown>): string {
       parts.push(`exit code: ${result.exitCode}`);
     }
     return parts.length > 0 ? parts.join("\n\n") : "(no output)";
-  }
-  return `Unknown tool: ${name}`;
+  },
+};
+
+// Dispatches a tool call by name. Adding a tool means adding one entry to
+// the `handlers` table and one schema to `tools` — no edit to this function.
+export function runTool(name: string, args: Record<string, unknown>): string {
+  const handler = handlers[name];
+  return handler ? handler(args) : `Unknown tool: ${name}`;
 }
