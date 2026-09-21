@@ -10,6 +10,7 @@ import { BUILTIN_AGENT, getProfile } from "../profiles.ts";
 import { ProcessTracker } from "../tools/process.ts";
 import { runTool, tools } from "../tools.ts";
 import { runCommand } from "./commands.ts";
+import type { HookCommand } from "./hooks.ts";
 import { loadHooks } from "./hooks.ts";
 import { createInput } from "./input.ts";
 import { runPreSessionCmd } from "./presession.ts";
@@ -47,6 +48,69 @@ async function runHook(
   if (shouldRender) {
     renderHook(label, result.output, result.exitCode);
     messages.push({ role: "system", content: result.output });
+  }
+}
+
+// Drives a single model turn: call the model, handle tool calls, run
+// post-turn hooks. Loops until the model stops calling tools or the round
+// cap is hit. Errors are caught and rendered; the conversation is left
+// intact so the next turn can proceed.
+async function runModelTurn(
+  config: Config,
+  model: string,
+  messages: ChatMessage[],
+  tracker: ProcessTracker,
+  postTurnHooks: HookCommand[],
+  activeProfile: string,
+): Promise<void> {
+  const MAX_TOOL_ROUNDS = 8;
+  for (let round = 0; ; round++) {
+    if (round >= MAX_TOOL_ROUNDS) {
+      throw new Error("Stopped after max tool rounds without a final answer");
+    }
+    const reply = await chatCompletion(config, model, messages, tools);
+    const toolCalls = reply.toolCalls;
+    if (toolCalls.length > 0) {
+      // Append the assistant's tool-call message, then each tool's
+      // result, and loop so the model can produce a final answer.
+      messages.push({
+        role: "assistant",
+        content: reply.content || null,
+        tool_calls: toolCalls,
+      });
+      for (const tc of toolCalls) {
+        const args = JSON.parse(tc.function.arguments) as Record<
+          string,
+          unknown
+        >;
+        messages.push({
+          role: "tool",
+          tool_call_id: tc.id,
+          content: await runTool(tc.function.name, args, tracker),
+        });
+      }
+      continue;
+    }
+    const answer = reply.content;
+    if (answer.length > 0)
+      messages.push({ role: "assistant", content: answer });
+    renderReply(answer);
+
+    // Run post-turn hooks (env var + .hooks/post-turn/ directory) after
+    // the model's answer. On failure (non-zero exit), the output is
+    // printed to the user AND appended as a system message so the model
+    // can see it on the next turn. A failing command with empty output
+    // still triggers the failure path (the exit code is never discarded).
+    if (
+      config.postTurnCmd &&
+      hookAllowed(config.postTurnCmdProfiles, activeProfile)
+    )
+      await runHook(config.postTurnCmd, "post-turn", "failure", messages);
+    for (const hook of postTurnHooks)
+      if (hookAllowed(hook.profiles, activeProfile))
+        await runHook(hook.command, hook.name, "failure", messages);
+
+    break;
   }
 }
 
@@ -142,60 +206,14 @@ export async function run(config: Config): Promise<void> {
     messages.push({ role: "user", content: text });
 
     try {
-      // The model may call tools any number of times before producing a final
-      // answer, so loop until it stops calling tools. Cap the rounds to avoid
-      // an unbounded loop if the model keeps calling tools.
-      const MAX_TOOL_ROUNDS = 8;
-      for (let round = 0; ; round++) {
-        if (round >= MAX_TOOL_ROUNDS) {
-          throw new Error(
-            "Stopped after max tool rounds without a final answer",
-          );
-        }
-        const reply = await chatCompletion(config, model, messages, tools);
-        const toolCalls = reply.toolCalls;
-        if (toolCalls.length > 0) {
-          // Append the assistant's tool-call message, then each tool's
-          // result, and loop so the model can produce a final answer.
-          messages.push({
-            role: "assistant",
-            content: reply.content || null,
-            tool_calls: toolCalls,
-          });
-          for (const tc of toolCalls) {
-            const args = JSON.parse(tc.function.arguments) as Record<
-              string,
-              unknown
-            >;
-            messages.push({
-              role: "tool",
-              tool_call_id: tc.id,
-              content: await runTool(tc.function.name, args, tracker),
-            });
-          }
-          continue;
-        }
-        const answer = reply.content;
-        if (answer.length > 0)
-          messages.push({ role: "assistant", content: answer });
-        renderReply(answer);
-
-        // Run post-turn hooks (env var + .hooks/post-turn/ directory) after
-        // the model's answer. On failure (non-zero exit), the output is
-        // printed to the user AND appended as a system message so the model
-        // can see it on the next turn. A failing command with empty output
-        // still triggers the failure path (the exit code is never discarded).
-        if (
-          config.postTurnCmd &&
-          hookAllowed(config.postTurnCmdProfiles, activeProfile)
-        )
-          await runHook(config.postTurnCmd, "post-turn", "failure", messages);
-        for (const hook of postTurnHooks)
-          if (hookAllowed(hook.profiles, activeProfile))
-            await runHook(hook.command, hook.name, "failure", messages);
-
-        break;
-      }
+      await runModelTurn(
+        config,
+        model,
+        messages,
+        tracker,
+        postTurnHooks,
+        activeProfile,
+      );
     } catch (err) {
       renderError(err instanceof Error ? err.message : String(err));
     }
