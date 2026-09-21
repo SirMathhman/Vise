@@ -10,29 +10,55 @@ const rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout,
 });
-// Piped stdin ending sets this flag; the loop finishes the in-flight request
-// before exiting so the result is always printed.
-let stdinEnded = false;
-process.stdin.on("end", () => {
-  stdinEnded = true;
+
+// Every "line" event is pushed onto a buffer as it arrives, so piped lines
+// that land while a fetch is in flight are not lost.
+const lines: string[] = [];
+let closed = false;
+rl.on("line", (line) => {
+  lines.push(line);
 });
-// Ctrl-C exits immediately (there is nothing to drain).
+rl.on("close", () => {
+  closed = true;
+});
 process.on("SIGINT", () => {
   console.log("\nBye.");
-  process.exit(0);
+  rl.close();
 });
 
-// Wrap rl.question (callback-based) in a Promise.
-const ask = () =>
-  new Promise<string>((resolve) => rl.question("you> ", resolve));
+// Resolves with the next buffered line, or "" once input has closed and no
+// lines remain.
+const nextLine = (): Promise<string> => {
+  if (lines.length > 0) return Promise.resolve(lines.shift() ?? "");
+  if (closed) return Promise.resolve("");
+  return new Promise((resolve) => {
+    const done = (value: string) => {
+      rl.removeListener("line", onLine);
+      rl.removeListener("close", onClose);
+      resolve(value);
+    };
+    const onLine = () => done(lines.shift() ?? "");
+    const onClose = () => done("");
+    rl.on("line", onLine);
+    rl.on("close", onClose);
+  });
+};
+
+// The running conversation; every turn appends to it, so each request
+// carries the full history (context) to the model.
+const messages: { role: "user" | "assistant"; content: string }[] = [];
 
 for (;;) {
-  if (stdinEnded) break;
-  const text = (await ask()).trim();
-  if (text.length === 0) continue;
+  process.stdout.write("you> ");
+  const raw = await nextLine();
+  const text = (raw ?? "").trim();
+  if (text.length === 0) {
+    if (closed) break;
+    continue;
+  }
+  messages.push({ role: "user", content: text });
 
   try {
-    // Exactly one message per request.
     const res = await fetch(`${BASE_URL}/v1/chat/completions`, {
       method: "POST",
       headers: {
@@ -41,7 +67,7 @@ for (;;) {
       },
       body: JSON.stringify({
         model: MODEL,
-        messages: [{ role: "user", content: text }],
+        messages,
       }),
     });
     if (!res.ok) {
@@ -51,8 +77,10 @@ for (;;) {
     const data = (await res.json()) as {
       choices?: { message?: { content?: string } }[];
     };
-    const answer = data.choices?.[0]?.message?.content;
-    console.log(`\nassistant> ${answer ?? "(empty response)"}\n`);
+    const answer = data.choices?.[0]?.message?.content ?? "";
+    if (answer.length > 0)
+      messages.push({ role: "assistant", content: answer });
+    console.log(`\nassistant> ${answer || "(empty response)"}\n`);
   } catch (err) {
     console.error(`error: ${err instanceof Error ? err.message : String(err)}`);
   }
