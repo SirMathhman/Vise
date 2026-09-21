@@ -1,6 +1,6 @@
 // Background process tracking and the three process tool handlers.
 // The only module that calls Bun.spawn.
-import type { ToolContext } from "../tools.ts";
+import type { ToolContext } from "../llm/types.ts";
 
 export interface TrackedProcess {
   proc: Bun.Subprocess;

@@ -6,9 +6,8 @@
 // run_subagent handler) appends it as a tool result in the parent
 // conversation. The subagent's own conversation is discarded on return.
 import { chatCompletion } from "./llm/client.ts";
-import type { ChatMessage } from "./llm/types.ts";
+import type { ChatMessage, ToolContext } from "./llm/types.ts";
 import { getProfile } from "./profiles.ts";
-import type { ToolContext } from "./tools.ts";
 
 const MAX_DEPTH = 5;
 const MAX_TOOL_ROUNDS = 8;

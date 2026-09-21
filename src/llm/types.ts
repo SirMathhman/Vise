@@ -24,6 +24,25 @@ export type Tool = {
   };
 };
 
+// Per-call context handed to every tool handler. Carries the state a tool
+// needs beyond its arguments: the active model (read at call time, not
+// captured at startup), the shared background-process tracker, the
+// subagent nesting depth, and the config + tool set + dispatch function a
+// subagent needs to spawn its own tools. Passed by reference so the
+// /model command's runtime switch is visible to every handler in flight.
+export type ToolContext = {
+  config: import("../config.ts").Config;
+  model: string;
+  tracker: import("../tools/process.ts").ProcessTracker;
+  depth: number;
+  tools: Tool[];
+  dispatch: (
+    name: string,
+    args: Record<string, unknown>,
+    ctx: ToolContext,
+  ) => Promise<string>;
+};
+
 // A model the server can serve, as reported by GET /v1/models.
 export type ModelInfo = { id: string; loaded: boolean };
 
