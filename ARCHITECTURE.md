@@ -156,16 +156,19 @@ Run it in CI or as part of `bun lint` before it matters.
   (`Ok | ToolError`) would say what, where, why, fix. `edit_file` only
   replaces the _first_ occurrence of `replacee`; a model editing a repeated
   string will silently miss later occurrences.
-- **Background processes outlive the REPL.** Tracked processes are never
-  reaped on exit: `process.exit(0)` (and Ctrl-C) orphan every running
-  background `powershell` subprocess, and a tracked entry is only removed
-  when the model explicitly awaits or kills it, so the map can hold dead
-  process objects for the rest of the session. The tracker needs a shutdown
-  hook the loop calls on exit, and finished entries should be pruned.
-  The `ProcessTracker` (in `tools.ts`) is the loop's hook for this: `loop.ts`
-  calls `tracker.shutdown()` before `process.exit`, which kills every
-  unfinished tracked process and clears the map. The Ctrl-C path still
-  skips it; a `process.on("exit")` hook would cover that.
+- **Background processes outlive the REPL on interrupt.** The EOF path
+  reaps tracked processes (`tracker.shutdown()` before `process.exit`),
+  but Ctrl-C/SIGINT orphans every running background `powershell`
+  subprocess, and finished entries are never pruned from the map, so dead
+  process objects can be held for the rest of the session. Reaping must
+  cover every exit path (a `process.on("exit")`/`SIGINT` hook in `loop.ts`),
+  and the tracker should drop finished entries on access.
+- **`list_directory` output is unbounded.** Unlike `read_file` (500-line cap)
+  and tool output from tracked processes (16 KB cap), a directory tree has
+  no line budget: a `node_modules` at depth ≥ 2 can return thousands of
+  lines into the conversation. The walk should filter noise
+  (`node_modules`, `.git`) and/or cap the output, the same way the other
+  tool results are bounded.
 
 ## Future Work
 
@@ -197,9 +200,8 @@ Obvious concerns only — profile before optimizing.
 - **Memory:** the line buffer is bounded by input; the conversation is bounded
   only by the model's context window, not by the process. Tracked-process
   output is bounded by `OUTPUT_BUDGET` (16 KB per stream per process, with a
-  truncation marker).
-  output is bounded by neither: stdout/stderr accumulate until the process
-  exits (Future Work).
+  truncation marker). `read_file` is bounded at 500 lines per call.
+  `list_directory` is currently unbounded (see Potential Problems).
 - **Command latency:** `/model` with no argument performs a network round-trip
   before printing anything, so it inherits the client's (currently absent)
   timeout. A cached catalog would make listing instant but could go stale; the
