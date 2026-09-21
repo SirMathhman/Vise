@@ -5,6 +5,7 @@ export type Config = {
   baseUrl: string;
   model: string;
   apiKey?: string;
+  preSessionCmd?: string;
 };
 
 export function loadConfig(): Config {
@@ -12,5 +13,6 @@ export function loadConfig(): Config {
     baseUrl: process.env.LLM_BASE_URL ?? "http://localhost:8080",
     model: process.env.LLM_MODEL ?? "local",
     apiKey: process.env.LLM_API_KEY,
+    preSessionCmd: process.env.PRE_SESSION_CMD,
   };
 }
