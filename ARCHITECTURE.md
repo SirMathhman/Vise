@@ -53,13 +53,18 @@ the code; it is not a changelog. Progress lives in the git log.
   or `post-turn`; each file's trimmed content is a command, files run in
   alphabetical order). Env-var hooks run first, followed by directory hooks;
   all hooks run regardless of prior failures (continue-on-error semantics).
-  The pre hooks always print their combined stdout+stderr and append it to
-  the conversation as a system message, on success or failure. The post hook
-  is silent on success (neither printed nor appended, so a passing check never
-  pollutes context) and, on failure (non-zero exit), prints the output as a
-  warning and appends it as a system message so the model sees it on the next
-  turn. Unlike tools, hooks are driven by config rather than by the model, and
-  they run at fixed points rather than on demand.
+  The pre hooks print their combined stdout+stderr and append it to
+  the conversation as a system message when output is non-empty, on success
+  or failure. The post hook is silent on success (neither printed nor appended,
+  so a passing check never pollutes context) and, on failure (non-zero exit),
+  prints the output as a warning and appends it as a system message so the
+  model sees it on the next turn. Unlike tools, hooks are driven by config
+  rather than by the model, and they run at fixed points rather than on demand.
+  Each hook can optionally be scoped to specific profiles via a whitelist:
+  directory hooks declare this on a `# profiles: a,b,c` first line in the
+  file, and env-var hooks via a companion `*_PROFILES` env var
+  (e.g. `PRE_TURN_CMD_PROFILES=agent,reviewer`). A hook with no whitelist
+  runs for all profiles.
 
 **Invariants:**
 
@@ -87,8 +92,8 @@ the code; it is not a changelog. Progress lives in the git log.
    subprocess. Neither the tools nor the hook modules call `fetch` or touch
    the conversation directly; tools return a string result that the loop
    appends as a `role: "tool"` message, and the loop appends hook output as
-   a `role: "system"` message (pre hooks always; the post hook only when it
-   exits non-zero, per the hook command definition).
+   a `role: "system"` message (pre hooks when output is non-empty; the post
+   hook only when it exits non-zero, per the hook command definition).
 6. Session-long state (the set of tracked processes) is created at the entry
    point and passed to tools as a parameter — the same pattern as commands
    receiving the client. `tools.ts` holds no module-level mutable state.
@@ -120,8 +125,10 @@ src/repl/commands.ts  the command registry: parse a `/` line, dispatch to a
 src/repl/hooks.ts    hook discovery: reads `.hooks/<type>/` directories
                         (read-only filesystem access, the only non-tool FS
                         read, invariant 5), returns `HookCommand[]` with
-                        `{ name, command }` in alphabetical order. No
-                        subprocesses, no printing, no fetch.
+                        `{ name, command, profiles? }` in alphabetical
+                        order. Parses an optional `# profiles: a,b,c` first
+                        line from each file to set the profile whitelist.
+                        No subprocesses, no printing, no fetch.
 src/repl/presession.ts runs the configured hook commands: `PRE_SESSION_CMD`
                         once before the first turn, `PRE_TURN_CMD` once before
                         every user turn, and `POST_TURN_CMD` once after the
@@ -133,7 +140,9 @@ src/repl/presession.ts runs the configured hook commands: `PRE_SESSION_CMD`
                         (pre hooks always; the post hook only when it exits
                         non-zero).
 src/repl/loop.ts      the turn loop: glue between input, conversation, client,
-                        commands, render, and presession.
+                        commands, render, and presession. Contains runHook
+                        (hook execution + render/append policy) and
+                        runModelTurn (model-call/tool-call inner loop).
 src/tools.ts          tool registry: schema array + dispatch table. Imports
                         handler functions from the tool submodules below and
                         composes them into the `Record<string, handler>` table.
@@ -275,20 +284,9 @@ Run it in CI or as part of `bun lint` before it matters.
   turn, `PRE_TURN_CMD` before every user turn, `POST_TURN_CMD` after the
   model's final answer), so its name no longer reflects its contents. Rename
   it and its exports (`runPreSessionCmd` -> `runShellCommand`,
-  `PreSessionResult` -> `ShellResult`) to the generic hook-command runner,
-  and collapse the six run -> render -> push blocks in `loop.ts` (three
-  call sites × two sources: env-var and directory hooks) into a single local
-  helper that takes the command, a label, and per-hook policy — render
-  `always` | `onFailure` and append `always` | `onFailure` — since the post
-  hook diverges from the pre hooks (silent on success). `render.ts` gets one
-  `renderHook(label, output, exitCode, renderOnSuccess: boolean)` instead of
-  the four label-specific renderers (`renderPreSession`, `renderPreTurn`,
-  `renderPostTurn`, `renderHook`). In the same pass, stop discarding
-  the exit code when a hook produces no output (a failing check with empty
-  stdout+stderr is currently dropped), and prefix the appended message with
-  the label and exit code so the model can tell a hook failed. This is the
-  direct fix for `loop.ts`'s `run` function exceeding the 100-line limit
-  (currently 174 lines).
+  `PreSessionResult` -> `ShellResult`) to the generic hook-command runner.
+  The `runHook` helper and `runModelTurn` extraction are done; `run` is
+  now under the 100-line limit. The remaining step is the rename itself.
 - **Per-tool co-located modules.** Each tool is a self-contained `ToolModule`
   export from its submodule: a schema (the `Tool` object describing arguments
   to the model) paired with the handler that executes it. `tools.ts` becomes
