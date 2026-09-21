@@ -58,6 +58,13 @@ async function forward(
   const url = new URL(upstream);
   const target = new URL(path, url);
   const buf = await readBody(req);
+  // Tear down the upstream request when the client goes away, so an
+  // abandoned stream (user clicks Stop, navigates away, or closes the
+  // window) doesn't keep llama.cpp generating to a dead connection.
+  let upstreamReq: http.ClientRequest | null = null;
+  req.on("close", () => {
+    upstreamReq?.destroy();
+  });
   await new Promise<void>((resolveP, rejectP) => {
     const headers: Record<string, string> = {};
     const contentType = req.headers["content-type"];
@@ -67,7 +74,7 @@ async function forward(
     if (authorization !== undefined)
       headers.authorization = String(authorization);
     if (buf.length > 0) headers["content-length"] = String(buf.length);
-    const upstreamReq = http.request(
+    upstreamReq = http.request(
       {
         protocol: url.protocol,
         host: url.host,
