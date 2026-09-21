@@ -166,9 +166,6 @@ interface TrackedProcess {
   finished: boolean;
 }
 
-const tracked = new Map<string, TrackedProcess>();
-let nextProcId = 1;
-
 function spawnPowerShell(command: string): Bun.Subprocess {
   return Bun.spawn(
     ["powershell", "-NoProfile", "-NonInteractive", "-Command", command],
@@ -218,12 +215,45 @@ function formatProcessResult(t: TrackedProcess): string {
   return parts.length > 0 ? parts.join("\n\n") : "(no output)";
 }
 
+// Owns the set of tracked background processes. Constructed by the loop;
+// tools receive it as a parameter so the module holds no mutable state.
+export class ProcessTracker {
+  private map = new Map<string, TrackedProcess>();
+  private nextId = 1;
+
+  spawn(command: string): { id: string; t: TrackedProcess } {
+    const t = track(spawnPowerShell(command));
+    const id = String(this.nextId++);
+    this.map.set(id, t);
+    return { id, t };
+  }
+
+  get(id: string): TrackedProcess | undefined {
+    return this.map.get(id);
+  }
+
+  remove(id: string): void {
+    this.map.delete(id);
+  }
+
+  // Kill every tracked process and clear the map. Called by the loop on exit
+  // so background subprocesses are not orphaned.
+  async shutdown(): Promise<void> {
+    const pending = [...this.map.values()].filter((t) => !t.finished);
+    for (const t of pending) {
+      t.proc.kill();
+    }
+    await Promise.all(pending.map((t) => t.proc.exited));
+    this.map.clear();
+  }
+}
+
 // Per-tool handlers. Each takes the raw argument bag and returns a string
 // result. Unknown tools and read failures are reported as strings so the
 // model can see them.
 const handlers: Record<
   string,
-  (args: Record<string, unknown>) => Promise<string>
+  (args: Record<string, unknown>, tracker: ProcessTracker) => Promise<string>
 > = {
   read_file: async (args) => {
     const rawPath = String(args.path ?? "");
@@ -301,26 +331,24 @@ const handlers: Record<
     }
     return `Created directory ${rawPath}.`;
   },
-  run_powershell: async (args) => {
+  run_powershell: async (args, tracker) => {
     const command = String(args.command ?? "");
     const timeout = Number(args.timeout ?? 30);
-    const proc = spawnPowerShell(command);
-    const t = track(proc);
+    const { id, t } = tracker.spawn(command);
     await Promise.race([
-      proc.exited,
+      t.proc.exited,
       new Promise((r) => setTimeout(r, timeout * 1000)),
     ]);
     if (t.finished) {
+      tracker.remove(id);
       return formatProcessResult(t);
     }
-    const id = String(nextProcId++);
-    tracked.set(id, t);
     return `Process started (id: ${id}), still running after ${timeout}s. Use wait_for_process or kill_process.`;
   },
-  wait_for_process: async (args) => {
+  wait_for_process: async (args, tracker) => {
     const id = String(args.process_id ?? "");
     const timeout = Number(args.timeout ?? 30);
-    const t = tracked.get(id);
+    const t = tracker.get(id);
     if (!t)
       return `No process with id "${id}". It may have already finished or been killed.`;
     await Promise.race([
@@ -328,19 +356,19 @@ const handlers: Record<
       new Promise((r) => setTimeout(r, timeout * 1000)),
     ]);
     if (t.finished) {
-      tracked.delete(id);
+      tracker.remove(id);
       return formatProcessResult(t);
     }
     return `Process ${id} is still running after ${timeout}s.`;
   },
-  kill_process: async (args) => {
+  kill_process: async (args, tracker) => {
     const id = String(args.process_id ?? "");
-    const t = tracked.get(id);
+    const t = tracker.get(id);
     if (!t)
       return `No process with id "${id}". It may have already finished or been killed.`;
     t.proc.kill();
     await t.proc.exited;
-    tracked.delete(id);
+    tracker.remove(id);
     return `Killed process ${id}.\n\n${formatProcessResult(t)}`;
   },
 };
@@ -350,7 +378,8 @@ const handlers: Record<
 export async function runTool(
   name: string,
   args: Record<string, unknown>,
+  tracker: ProcessTracker,
 ): Promise<string> {
   const handler = handlers[name];
-  return handler ? handler(args) : `Unknown tool: ${name}`;
+  return handler ? handler(args, tracker) : `Unknown tool: ${name}`;
 }

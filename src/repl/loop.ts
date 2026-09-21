@@ -6,7 +6,7 @@ import type { Config } from "../config.ts";
 import { chatCompletion } from "../llm/client.ts";
 import { listModels } from "../llm/models.ts";
 import type { ChatMessage } from "../llm/types.ts";
-import { runTool, tools } from "../tools.ts";
+import { ProcessTracker, runTool, tools } from "../tools.ts";
 import { runCommand } from "./commands.ts";
 import { createInput } from "./input.ts";
 import {
@@ -29,6 +29,7 @@ export async function run(config: Config): Promise<void> {
 
   const input = createInput();
   const { nextLine, close } = input;
+  const tracker = new ProcessTracker();
 
   // The model used for requests. Starts from config and can be changed at
   // runtime with the /model command.
@@ -89,7 +90,7 @@ export async function run(config: Config): Promise<void> {
             messages.push({
               role: "tool",
               tool_call_id: tc.id,
-              content: await runTool(tc.function.name, args),
+              content: await runTool(tc.function.name, args, tracker),
             });
           }
           continue;
@@ -105,7 +106,8 @@ export async function run(config: Config): Promise<void> {
     }
   }
 
-  // Loop broke on EOF (or stdin was drained); nothing left to do.
+  // Loop broke on EOF (or stdin was drained); reap background processes.
   close();
+  await tracker.shutdown();
   process.exit(0);
 }

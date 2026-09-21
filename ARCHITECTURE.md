@@ -35,6 +35,10 @@ the code; it is not a changelog. Progress lives in the git log.
   subprocesses; they never call `fetch` and never touch the conversation
   directly — they return a string result that the loop appends as a
   `role: "tool"` message.
+- **Tracked process** — a background subprocess the model started without
+  awaiting to completion, identified by a process ID. Its accumulated
+  stdout/stderr, exit code, and liveness are kept for the rest of the
+  session so `wait_for_process` and `kill_process` can act on it later.
 
 **Invariants:**
 
@@ -52,6 +56,9 @@ the code; it is not a changelog. Progress lives in the git log.
    external processes. They never call `fetch` and never touch the conversation
    directly; they return a string result that the loop appends as a
    `role: "tool"` message.
+6. Session-long state (the set of tracked processes) is created at the entry
+   point and passed to tools as a parameter — the same pattern as commands
+   receiving the client. `tools.ts` holds no module-level mutable state.
 
 ## Structure
 
@@ -78,7 +85,9 @@ src/repl/loop.ts      the turn loop: glue between input, conversation, client,
 src/tools.ts          the tool registry and dispatch: schema array + a
                         `Record<string, handler>` table. The only module that
                         reads or writes the filesystem or executes external
-                        processes. No fetch, no stdin/stdout.
+                        processes. Currently also owns the tracked-process map
+                        and ID counter — that state should move to the entry
+                        point per invariant 6. No fetch, no stdin/stdout.
 ```
 
 Dependency direction: `index -> src/repl/loop -> (src/repl/input, src/repl/render,
@@ -147,6 +156,12 @@ Run it in CI or as part of `bun lint` before it matters.
   (`Ok | ToolError`) would say what, where, why, fix. `edit_file` only
   replaces the _first_ occurrence of `replacee`; a model editing a repeated
   string will silently miss later occurrences.
+- **Background processes outlive the REPL.** Tracked processes are never
+  reaped on exit: `process.exit(0)` (and Ctrl-C) orphan every running
+  background `powershell` subprocess, and a tracked entry is only removed
+  when the model explicitly awaits or kills it, so the map can hold dead
+  process objects for the rest of the session. The tracker needs a shutdown
+  hook the loop calls on exit, and finished entries should be pruned.
 
 ## Future Work
 
@@ -159,6 +174,16 @@ Run it in CI or as part of `bun lint` before it matters.
   conversation) and `/model` are the first entries.
 - **Session persistence.** Serialize the conversation to disk so a crash or
   Ctrl-C does not lose context; the transport stays oblivious.
+- **Process tracker at the entry point.** The tracked-process map and ID
+  counter move out of `tools.ts` module-level state into a `ProcessTracker`
+  constructed in `index.ts` and passed into `runTool` — the parameter-passing
+  pattern commands already use for the client. That makes the tool registry
+  stateless and testable, and gives `loop.ts` a hook to kill every tracked
+  process on exit instead of orphaning them.
+- **Bounded tool output.** A tracked process can accumulate megabytes of
+  stdout/stderr before `wait_for_process` returns it; truncate accumulated
+  output to a fixed budget (with a truncation marker) so a chatty long-running
+  process cannot bloat the conversation.
 - **Tests.** Unit tests for `input.ts` (line buffering), `client.ts` (against a
   mocked `fetch`), and `loop.ts` (conversation accumulation). These are the
   seams that make the module split above safe to execute.
@@ -172,7 +197,9 @@ Obvious concerns only — profile before optimizing.
 - **Token cost:** re-sending full history every turn doubles the tokens per
   added turn; the bounded window is the fix and is also a correctness issue.
 - **Memory:** the line buffer is bounded by input; the conversation is bounded
-  only by the model's context window, not by the process.
+  only by the model's context window, not by the process. Tracked-process
+  output is bounded by neither: stdout/stderr accumulate until the process
+  exits (Future Work).
 - **Command latency:** `/model` with no argument performs a network round-trip
   before printing anything, so it inherits the client's (currently absent)
   timeout. A cached catalog would make listing instant but could go stale; the
