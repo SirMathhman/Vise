@@ -14,6 +14,22 @@ type ClientConfig = Pick<Config, "baseUrl" | "apiKey">;
 const authHeaders = (apiKey: string | undefined): Record<string, string> =>
   apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
 
+// Generic GET that returns parsed JSON. The only fetch call for non-chat
+// endpoints. Throws on transport/HTTP errors.
+export async function getJson(
+  config: ClientConfig,
+  path: string,
+): Promise<unknown> {
+  const res = await fetch(`${config.baseUrl}${path}`, {
+    headers: authHeaders(config.apiKey),
+  });
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`HTTP ${res.status}: ${detail}`);
+  }
+  return res.json();
+}
+
 // Sends the conversation and returns the model's reply. Throws on
 // transport/HTTP errors. The active model is passed at request time, not
 // captured at startup, so a switch takes effect on the next turn.
