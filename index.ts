@@ -54,12 +54,35 @@ const nextLine = (): Promise<string> => {
   });
 };
 
-// --- Model selection ----------------------------------------------------
-// The server reports the models it can serve at GET /v1/models, each with a
-// load status. /model lists them and switches the active one.
+// --- LLM client ---------------------------------------------------------
+// The only place fetch() is called. Everything else talks to the model
+// through these functions.
+type ToolCall = {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+};
+
+type ChatMessage = {
+  role: "system" | "user" | "assistant" | "tool";
+  content?: string | null;
+  tool_calls?: ToolCall[];
+  tool_call_id?: string;
+};
+
+type Tool = {
+  type: "function";
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+};
+
+// A model the server can serve, as reported by GET /v1/models.
 type ModelInfo = { id: string; loaded: boolean };
 
-// Fetches the models the server can serve. Throws on transport/HTTP errors.
+// Fetches the model catalog. Throws on transport/HTTP errors.
 async function listModels(): Promise<ModelInfo[]> {
   const res = await fetch(`${BASE_URL}/v1/models`, {
     headers: authHeaders(),
@@ -80,6 +103,34 @@ async function listModels(): Promise<ModelInfo[]> {
   return models;
 }
 
+// Sends the conversation and returns the model's reply. Throws on
+// transport/HTTP errors.
+async function chatCompletion(
+  messages: ChatMessage[],
+  tools: Tool[],
+): Promise<{ content: string; toolCalls: ToolCall[] }> {
+  const res = await fetch(`${BASE_URL}/v1/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(),
+    },
+    body: JSON.stringify({ model, messages, tools }),
+  });
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`HTTP ${res.status}: ${detail}`);
+  }
+  const data = (await res.json()) as {
+    choices?: {
+      message?: { content?: string | null; tool_calls?: ToolCall[] };
+    }[];
+  };
+  const msg = data.choices?.[0]?.message;
+  return { content: msg?.content ?? "", toolCalls: msg?.tool_calls ?? [] };
+}
+
+// --- Config persistence -------------------------------------------------
 // Rewrites LLM_MODEL in .env.local so the choice survives a restart. The
 // file is created if it does not exist.
 function persistModel(name: string): void {
@@ -102,68 +153,85 @@ function persistModel(name: string): void {
   writeFileSync(envPath, updated, "utf-8");
 }
 
-// Handles a slash command. Returns true when the line was a command, so the
-// caller knows not to send it to the model.
-async function handleCommand(text: string): Promise<boolean> {
+// --- Commands -----------------------------------------------------------
+// A command is a pure function of its arguments plus the state it is handed:
+// it returns lines to render and, optionally, a new active model. It never
+// prints, never reads input, and never calls fetch directly (the catalog and
+// the persistence hook are passed in).
+type CommandResult = {
+  lines: string[];
+  isError?: boolean;
+  setModel?: string;
+};
+
+type CommandContext = {
+  model: string;
+  listModels: () => Promise<ModelInfo[]>;
+  persistModel: (name: string) => void;
+};
+
+async function runCommand(
+  text: string,
+  ctx: CommandContext,
+): Promise<CommandResult> {
   const [command, ...rest] = text.split(/\s+/);
   if (command !== "/model") {
-    console.log(`\nUnknown command: ${command}. Try /model.\n`);
-    return true;
+    return {
+      lines: [`Unknown command: ${command}. Try /model.`],
+      isError: true,
+    };
   }
   let models: ModelInfo[];
   try {
-    models = await listModels();
+    models = await ctx.listModels();
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
-    console.error(`error: could not list models: ${detail}`);
-    return true;
+    return {
+      lines: [`error: could not list models: ${detail}`],
+      isError: true,
+    };
   }
   const name = rest.join(" ").trim();
   if (name.length === 0) {
-    console.log("\nAvailable models:");
+    const lines = ["Available models:"];
     for (const m of models) {
-      const marks = [m.id === model ? "current" : "", m.loaded ? "loaded" : ""];
+      const marks = [
+        m.id === ctx.model ? "current" : "",
+        m.loaded ? "loaded" : "",
+      ];
       const suffix = marks.filter(Boolean).join(", ");
-      console.log(`  ${m.id}${suffix ? ` (${suffix})` : ""}`);
+      lines.push(`  ${m.id}${suffix ? ` (${suffix})` : ""}`);
     }
-    console.log("");
-    return true;
+    return { lines };
   }
   if (!models.some((m) => m.id === name)) {
-    console.error(`error: unknown model: ${name}`);
-    console.error("Available models:");
-    for (const m of models) console.error(`  ${m.id}`);
-    return true;
+    const lines = [`error: unknown model: ${name}`, "Available models:"];
+    for (const m of models) lines.push(`  ${m.id}`);
+    return { lines, isError: true };
   }
-  model = name;
   try {
-    persistModel(name);
-    console.log(`\nmodel> ${name} (saved to .env.local)\n`);
+    ctx.persistModel(name);
+    return { lines: [`model> ${name} (saved to .env.local)`], setModel: name };
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
-    console.log(`\nmodel> ${name} (not saved: ${detail})\n`);
+    return { lines: [`model> ${name} (not saved: ${detail})`], setModel: name };
   }
-  return true;
 }
+
+// --- Rendering ----------------------------------------------------------
+// The only place command output is written.
+const renderCommand = (result: CommandResult): void => {
+  const write = result.isError ? console.error : console.log;
+  write("");
+  for (const line of result.lines) write(line);
+  write("");
+};
 
 // --- Tool calling -------------------------------------------------------
 // The agent can call tools. Currently only read_file is available, which
 // reads a file from disk (relative to the working directory) and returns
 // its text content.
-type ToolCall = {
-  id: string;
-  type: "function";
-  function: { name: string; arguments: string };
-};
-
-type ChatMessage = {
-  role: "system" | "user" | "assistant" | "tool";
-  content?: string | null;
-  tool_calls?: ToolCall[];
-  tool_call_id?: string;
-};
-
-const tools = [
+const tools: Tool[] = [
   {
     type: "function",
     function: {
@@ -220,7 +288,9 @@ for (;;) {
   }
   // Slash commands are handled locally and never reach the model.
   if (text.startsWith("/")) {
-    await handleCommand(text);
+    const result = await runCommand(text, { model, listModels, persistModel });
+    if (result.setModel) model = result.setModel;
+    renderCommand(result);
     continue;
   }
   messages.push({ role: "user", content: text });
@@ -234,38 +304,14 @@ for (;;) {
       if (round >= MAX_TOOL_ROUNDS) {
         throw new Error("Stopped after max tool rounds without a final answer");
       }
-      const res = await fetch(`${BASE_URL}/v1/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...authHeaders(),
-        },
-        body: JSON.stringify({
-          model,
-          messages,
-          tools,
-        }),
-      });
-      if (!res.ok) {
-        const detail = await res.text();
-        throw new Error(`HTTP ${res.status}: ${detail}`);
-      }
-      const data = (await res.json()) as {
-        choices?: {
-          message?: {
-            content?: string | null;
-            tool_calls?: ToolCall[];
-          };
-        }[];
-      };
-      const msg = data.choices?.[0]?.message;
-      const toolCalls = msg?.tool_calls;
-      if (toolCalls && toolCalls.length > 0) {
+      const reply = await chatCompletion(messages, tools);
+      const toolCalls = reply.toolCalls;
+      if (toolCalls.length > 0) {
         // Append the assistant's tool-call message, then each tool's result,
         // and loop so the model can produce a final answer.
         messages.push({
           role: "assistant",
-          content: msg?.content ?? null,
+          content: reply.content || null,
           tool_calls: toolCalls,
         });
         for (const tc of toolCalls) {
@@ -281,7 +327,7 @@ for (;;) {
         }
         continue;
       }
-      const answer = msg?.content ?? "";
+      const answer = reply.content;
       if (answer.length > 0)
         messages.push({ role: "assistant", content: answer });
       console.log(`\nassistant> ${answer || "(empty response)"}\n`);
