@@ -6,7 +6,8 @@ import type { Config } from "../config.ts";
 import { chatCompletion } from "../llm/client.ts";
 import { listModels } from "../llm/models.ts";
 import type { ChatMessage } from "../llm/types.ts";
-import { ProcessTracker, runTool, tools } from "../tools.ts";
+import { ProcessTracker } from "../tools/process.ts";
+import { runTool, tools } from "../tools.ts";
 import { runCommand } from "./commands.ts";
 import { createInput } from "./input.ts";
 import {

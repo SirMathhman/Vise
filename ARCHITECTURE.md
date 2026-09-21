@@ -82,18 +82,33 @@ src/repl/commands.ts  the command registry: parse a `/` line, dispatch to a
                         handler, return a result. No fetch, no stdin/stdout.
 src/repl/loop.ts      the turn loop: glue between input, conversation, client,
                         commands, render.
-src/tools.ts          the tool registry and dispatch: schema array + a
-                        `Record<string, handler>` table. The only module that
-                        reads or writes the filesystem or executes external
-                        processes. Stateless: the ProcessTracker (background
-                        subprocess map + ID counter) is passed in as a
-                        parameter per invariant 6. No fetch, no stdin/stdout.
+src/tools.ts          tool registry: schema array + dispatch table. Imports
+                        handler functions from the tool submodules below and
+                        composes them into the `Record<string, handler>` table.
+                        No I/O of its own — all filesystem and process work
+                        lives in the submodules. Stateless: the ProcessTracker
+                        (background subprocess map + ID counter) is passed in
+                        as a parameter per invariant 6. No fetch, no
+                        stdin/stdout.
+src/tools/process.ts  background process tracking: TrackedProcess, spawn,
+                        track, and format helpers; the ProcessTracker class;
+                        and the run_powershell / wait_for_process /
+                        kill_process handlers. The only tool submodule that
+                        spawns subprocesses.
+src/tools/fs.ts       file-system handlers: read_file, edit_file, create_file,
+                        create_directory, list_directory. The only tool
+                        submodule that writes files.
+src/tools/search.ts   content-search handlers: find_files, search_content.
+                        Owns the shared walkFiles generator, displayPath, and
+                        escapeRegex helpers. Read-only filesystem access.
 ```
 
 Dependency direction: `index -> src/repl/loop -> (src/repl/input, src/repl/render,
-src/repl/commands, src/llm/client) -> src/llm/models -> src/llm/types, src/config`.
-`src/llm/*` and `src/repl/*` do not import each other. `src/config.ts`,
-`src/config/persist.ts`, and `src/llm/types.ts` are leaves.
+src/repl/commands, src/llm/client, src/tools) -> src/llm/models -> src/llm/types,
+src/config`. `src/llm/*` and `src/repl/*` do not import each other.
+`src/tools/*` do not import each other; `src/tools.ts` is the only importer of
+the tool submodules. `src/config.ts`, `src/config/persist.ts`, `src/llm/types.ts`,
+and the `src/tools/*` submodules are leaves.
 
 Commands are the seam that keeps the loop small: `commands.ts` returns a result
 value (text to render, or a request to mutate session state) and never prints or
