@@ -27,3 +27,10 @@ export function renderPreSession(output: string, exitCode: number): void {
     console.error(`pre-session: command exited with code ${exitCode}`);
   }
 }
+
+export function renderPreTurn(output: string, exitCode: number): void {
+  console.log(`\npre-turn:\n${output}\n`);
+  if (exitCode !== 0) {
+    console.error(`pre-turn: command exited with code ${exitCode}`);
+  }
+}

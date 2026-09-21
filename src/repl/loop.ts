@@ -16,6 +16,7 @@ import {
   renderCommand,
   renderError,
   renderPreSession,
+  renderPreTurn,
   renderPrompt,
   renderReply,
 } from "./render.ts";
@@ -91,6 +92,17 @@ export async function run(config: Config): Promise<void> {
       renderCommand(result);
       continue;
     }
+    // Run the pre-turn command (if configured) before every user message.
+    // Its output is printed to the user AND appended as a system message so
+    // the model sees it as fresh context for each turn.
+    if (config.preTurnCmd) {
+      const result = await runPreSessionCmd(config.preTurnCmd);
+      if (result) {
+        renderPreTurn(result.output, result.exitCode);
+        messages.push({ role: "system", content: result.output });
+      }
+    }
+
     messages.push({ role: "user", content: text });
 
     try {
