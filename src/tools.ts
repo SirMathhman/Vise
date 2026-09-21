@@ -173,7 +173,10 @@ function spawnPowerShell(command: string): Bun.Subprocess {
   );
 }
 
-function track(proc: Bun.Subprocess): TrackedProcess {
+function track(
+  proc: Bun.Subprocess,
+  append: (t: TrackedProcess, key: "stdout" | "stderr", chunk: string) => void,
+): TrackedProcess {
   const t: TrackedProcess = {
     proc,
     stdout: "",
@@ -192,7 +195,7 @@ function track(proc: Bun.Subprocess): TrackedProcess {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        t[key] += decoder.decode(value);
+        append(t, key, decoder.decode(value));
       }
     })();
   };
@@ -215,6 +218,13 @@ function formatProcessResult(t: TrackedProcess): string {
   return parts.length > 0 ? parts.join("\n\n") : "(no output)";
 }
 
+// Output kept per tracked process. Anything beyond this budget is replaced
+// with a marker so a chatty long-running process cannot bloat the
+// conversation.
+const OUTPUT_BUDGET = 16_000;
+const OUTPUT_MARKER =
+  "\n… (output truncated; keep it under 16000 characters) …\n";
+
 // Owns the set of tracked background processes. Constructed by the loop;
 // tools receive it as a parameter so the module holds no mutable state.
 export class ProcessTracker {
@@ -222,7 +232,7 @@ export class ProcessTracker {
   private nextId = 1;
 
   spawn(command: string): { id: string; t: TrackedProcess } {
-    const t = track(spawnPowerShell(command));
+    const t = track(spawnPowerShell(command), this.append);
     const id = String(this.nextId++);
     this.map.set(id, t);
     return { id, t };
@@ -246,6 +256,16 @@ export class ProcessTracker {
     await Promise.all(pending.map((t) => t.proc.exited));
     this.map.clear();
   }
+
+  private append = (
+    t: TrackedProcess,
+    key: "stdout" | "stderr",
+    chunk: string,
+  ) => {
+    const rest = OUTPUT_BUDGET - t[key].length;
+    if (rest > 0) t[key] += chunk.slice(0, rest);
+    if (t[key].length >= OUTPUT_BUDGET) t[key] += OUTPUT_MARKER;
+  };
 }
 
 // Per-tool handlers. Each takes the raw argument bag and returns a string

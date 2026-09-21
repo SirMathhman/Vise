@@ -85,9 +85,9 @@ src/repl/loop.ts      the turn loop: glue between input, conversation, client,
 src/tools.ts          the tool registry and dispatch: schema array + a
                         `Record<string, handler>` table. The only module that
                         reads or writes the filesystem or executes external
-                        processes. Currently also owns the tracked-process map
-                        and ID counter — that state should move to the entry
-                        point per invariant 6. No fetch, no stdin/stdout.
+                        processes. Stateless: the ProcessTracker (background
+                        subprocess map + ID counter) is passed in as a
+                        parameter per invariant 6. No fetch, no stdin/stdout.
 ```
 
 Dependency direction: `index -> src/repl/loop -> (src/repl/input, src/repl/render,
@@ -162,6 +162,10 @@ Run it in CI or as part of `bun lint` before it matters.
   when the model explicitly awaits or kills it, so the map can hold dead
   process objects for the rest of the session. The tracker needs a shutdown
   hook the loop calls on exit, and finished entries should be pruned.
+  The `ProcessTracker` (in `tools.ts`) is the loop's hook for this: `loop.ts`
+  calls `tracker.shutdown()` before `process.exit`, which kills every
+  unfinished tracked process and clears the map. The Ctrl-C path still
+  skips it; a `process.on("exit")` hook would cover that.
 
 ## Future Work
 
@@ -174,16 +178,10 @@ Run it in CI or as part of `bun lint` before it matters.
   conversation) and `/model` are the first entries.
 - **Session persistence.** Serialize the conversation to disk so a crash or
   Ctrl-C does not lose context; the transport stays oblivious.
-- **Process tracker at the entry point.** The tracked-process map and ID
-  counter move out of `tools.ts` module-level state into a `ProcessTracker`
-  constructed in `index.ts` and passed into `runTool` — the parameter-passing
-  pattern commands already use for the client. That makes the tool registry
-  stateless and testable, and gives `loop.ts` a hook to kill every tracked
-  process on exit instead of orphaning them.
-- **Bounded tool output.** A tracked process can accumulate megabytes of
-  stdout/stderr before `wait_for_process` returns it; truncate accumulated
-  output to a fixed budget (with a truncation marker) so a chatty long-running
-  process cannot bloat the conversation.
+- **Ctrl-C process reaping.** `tracker.shutdown()` runs before
+  `process.exit` on the EOF path but not on a Ctrl-C interrupt; add a
+  `process.on("exit")` (or `SIGINT`) hook in `loop.ts` that kills any
+  remaining tracked processes.
 - **Tests.** Unit tests for `input.ts` (line buffering), `client.ts` (against a
   mocked `fetch`), and `loop.ts` (conversation accumulation). These are the
   seams that make the module split above safe to execute.
@@ -198,6 +196,8 @@ Obvious concerns only — profile before optimizing.
   added turn; the bounded window is the fix and is also a correctness issue.
 - **Memory:** the line buffer is bounded by input; the conversation is bounded
   only by the model's context window, not by the process. Tracked-process
+  output is bounded by `OUTPUT_BUDGET` (16 KB per stream per process, with a
+  truncation marker).
   output is bounded by neither: stdout/stderr accumulate until the process
   exits (Future Work).
 - **Command latency:** `/model` with no argument performs a network round-trip
