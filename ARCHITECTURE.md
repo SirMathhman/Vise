@@ -29,10 +29,12 @@ the code; it is not a changelog. Progress lives in the git log.
 - **Model selector** — the single owner of the active model name. It reads the
   catalog, validates a requested name against it, updates the in-memory value,
   and persists the choice. Nothing else may mutate the active model.
-- **Tool** — a function the model can call (e.g. `read_file`, `edit_file`) to
-  act on the filesystem. Tools are the only modules permitted to read or write
-  files; they never call `fetch` and never touch the conversation directly —
-  they return a string result that the loop appends as a `role: "tool"` message.
+- **Tool** — a function the model can call (e.g. `read_file`, `edit_file`,
+  `run_powershell`) to act on the filesystem or execute external processes.
+  Tools are the only modules permitted to read or write files or spawn
+  subprocesses; they never call `fetch` and never touch the conversation
+  directly — they return a string result that the loop appends as a
+  `role: "tool"` message.
 
 **Invariants:**
 
@@ -46,9 +48,10 @@ the code; it is not a changelog. Progress lives in the git log.
    transport, never appended to the conversation.
 4. The active model is read at request time, not captured at startup, so a
    switch takes effect on the next turn without rebuilding the client.
-5. Tools are the only modules that read or write the filesystem. They never
-   call `fetch` and never touch the conversation directly; they return a
-   string result that the loop appends as a `role: "tool"` message.
+5. Tools are the only modules that read or write the filesystem or execute
+   external processes. They never call `fetch` and never touch the conversation
+   directly; they return a string result that the loop appends as a
+   `role: "tool"` message.
 
 ## Structure
 
@@ -73,7 +76,8 @@ src/repl/commands.ts  the command registry: parse a `/` line, dispatch to a
 src/repl/loop.ts      the turn loop: glue between input, conversation, client,
                         commands, render.
 src/tools.ts          the tool registry and dispatch. The only module that
-                        reads or writes the filesystem. No fetch, no stdin/stdout.
+                        reads or writes the filesystem or executes external
+                        processes. No fetch, no stdin/stdout.
 ```
 
 Dependency direction: `index -> src/repl/loop -> (src/repl/input, src/repl/render,

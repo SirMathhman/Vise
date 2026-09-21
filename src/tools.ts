@@ -1,5 +1,5 @@
 // The tool registry and dispatch. The only module that reads or writes the
-// filesystem. No fetch, no stdin/stdout.
+// filesystem and executes external processes. No fetch, no stdin/stdout.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 import type { Tool } from "./llm/types.ts";
@@ -91,6 +91,24 @@ export const tools: Tool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "run_powershell",
+      description:
+        "Run a PowerShell command and return its output. The command runs in the current working directory. Returns stdout, stderr, and the exit code. Use this to run scripts, query the system, or perform file operations that PowerShell handles well.",
+      parameters: {
+        type: "object",
+        properties: {
+          command: {
+            type: "string",
+            description: "The PowerShell command or script to execute.",
+          },
+        },
+        required: ["command"],
+      },
+    },
+  },
 ];
 
 // Executes a tool call and returns its result as a string. Unknown tools
@@ -165,6 +183,22 @@ export function runTool(name: string, args: Record<string, unknown>): string {
       }`;
     }
     return `Created directory ${rawPath}.`;
+  }
+  if (name === "run_powershell") {
+    const command = String(args.command ?? "");
+    const result = Bun.spawnSync(
+      ["powershell", "-NoProfile", "-NonInteractive", "-Command", command],
+      { cwd: process.cwd(), stdout: "pipe", stderr: "pipe" },
+    );
+    const stdout = result.stdout?.toString() ?? "";
+    const stderr = result.stderr?.toString() ?? "";
+    const parts: string[] = [];
+    if (stdout.trim()) parts.push(`stdout:\n${stdout.trim()}`);
+    if (stderr.trim()) parts.push(`stderr:\n${stderr.trim()}`);
+    if (result.exitCode !== 0) {
+      parts.push(`exit code: ${result.exitCode}`);
+    }
+    return parts.length > 0 ? parts.join("\n\n") : "(no output)";
   }
   return `Unknown tool: ${name}`;
 }
