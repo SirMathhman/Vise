@@ -20,3 +20,10 @@ export function renderCommand(result: {
   for (const line of result.lines) write(line);
   write("");
 }
+
+export function renderPreSession(output: string, exitCode: number): void {
+  console.log(`\npre-session:\n${output}\n`);
+  if (exitCode !== 0) {
+    console.error(`pre-session: command exited with code ${exitCode}`);
+  }
+}

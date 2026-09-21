@@ -11,36 +11,14 @@ import { ProcessTracker } from "../tools/process.ts";
 import { runTool, tools } from "../tools.ts";
 import { runCommand } from "./commands.ts";
 import { createInput } from "./input.ts";
+import { runPreSessionCmd } from "./presession.ts";
 import {
   renderCommand,
   renderError,
+  renderPreSession,
   renderPrompt,
   renderReply,
 } from "./render.ts";
-
-// Runs the pre-session command (if configured) before the conversation
-// begins. Spawns the command, captures stdout+stderr, prints the output to
-// the user, and appends it as a system message so the model sees it.
-async function runPreSessionCmd(cmd: string): Promise<string | null> {
-  const proc = Bun.spawn(
-    ["powershell", "-NoProfile", "-NonInteractive", "-Command", cmd],
-    { cwd: process.cwd(), stdout: "pipe", stderr: "pipe" },
-  );
-  const [stdout, stderr] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
-  await proc.exited;
-  const parts: string[] = [];
-  if (stdout.trim()) parts.push(stdout.trim());
-  if (stderr.trim()) parts.push(stderr.trim());
-  const output = parts.join("\n");
-  if (output.length > 0) {
-    console.log(`\npre-session:\n${output}\n`);
-    return output;
-  }
-  return null;
-}
 
 export async function run(config: Config): Promise<void> {
   // The running conversation; every turn appends to it, so each request
@@ -59,9 +37,10 @@ export async function run(config: Config): Promise<void> {
   // output is printed to the user AND appended as a system message so the
   // model sees it as initial context.
   if (config.preSessionCmd) {
-    const output = await runPreSessionCmd(config.preSessionCmd);
-    if (output) {
-      messages.push({ role: "system", content: output });
+    const result = await runPreSessionCmd(config.preSessionCmd);
+    if (result) {
+      renderPreSession(result.output, result.exitCode);
+      messages.push({ role: "system", content: result.output });
     }
   }
 
