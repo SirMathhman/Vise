@@ -21,31 +21,9 @@ export function renderCommand(result: {
   write("");
 }
 
-export function renderPreSession(output: string, exitCode: number): void {
-  console.log(`\npre-session:\n${output}\n`);
-  if (exitCode !== 0) {
-    console.error(`pre-session: command exited with code ${exitCode}`);
-  }
-}
-
-export function renderPreTurn(output: string, exitCode: number): void {
-  console.log(`\npre-turn:\n${output}\n`);
-  if (exitCode !== 0) {
-    console.error(`pre-turn: command exited with code ${exitCode}`);
-  }
-}
-
-export function renderPostTurn(output: string, exitCode: number): void {
-  // Only render on failure; success is silent.
-  if (exitCode !== 0) {
-    console.error(`\npost-turn:\n${output}\n`);
-    console.error(`post-turn: command exited with code ${exitCode}`);
-  }
-}
-
-// Renders a labeled hook result. Used when a hook has a name from the
-// directory (e.g. "lint", "typecheck"). The label distinguishes which
-// hook produced the output when multiple hooks run.
+// Renders a labeled hook result. The label identifies which hook produced
+// the output (e.g. "pre-session", "lint", "typecheck"). On non-zero exit,
+// a warning is printed after the output.
 export function renderHook(
   label: string,
   output: string,
