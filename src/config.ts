@@ -8,7 +8,19 @@ export type Config = {
   preSessionCmd?: string;
   preTurnCmd?: string;
   postTurnCmd?: string;
+  preSessionCmdProfiles?: string[];
+  preTurnCmdProfiles?: string[];
+  postTurnCmdProfiles?: string[];
 };
+
+function parseProfiles(env: string | undefined): string[] | undefined {
+  if (!env) return undefined;
+  const list = env
+    .split(",")
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+  return list.length > 0 ? list : undefined;
+}
 
 export function loadConfig(): Config {
   return {
@@ -18,5 +30,8 @@ export function loadConfig(): Config {
     preSessionCmd: process.env.PRE_SESSION_CMD,
     preTurnCmd: process.env.PRE_TURN_CMD,
     postTurnCmd: process.env.POST_TURN_CMD,
+    preSessionCmdProfiles: parseProfiles(process.env.PRE_SESSION_CMD_PROFILES),
+    preTurnCmdProfiles: parseProfiles(process.env.PRE_TURN_CMD_PROFILES),
+    postTurnCmdProfiles: parseProfiles(process.env.POST_TURN_CMD_PROFILES),
   };
 }

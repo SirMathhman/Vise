@@ -21,6 +21,17 @@ import {
   renderReply,
 } from "./render.ts";
 
+// Returns true if the hook should run for the given active profile.
+// A hook runs when: (a) it has no profile list (runs for all), or
+// (b) it has a profile list AND the active profile is in that list.
+function hookAllowed(
+  profiles: string[] | undefined,
+  activeProfile: string,
+): boolean {
+  if (!profiles || profiles.length === 0) return true;
+  return profiles.includes(activeProfile);
+}
+
 // Runs a hook command and applies the render/append policy. Pre hooks
 // render and append when output is non-empty; post hooks render and append
 // when the exit code is non-zero. The exit code is never discarded.
@@ -52,23 +63,6 @@ export async function run(config: Config): Promise<void> {
     },
   ];
 
-  // Run pre-session hooks (env var + .hooks/pre-session/ directory) before
-  // the first turn. Each hook's output is printed to the user AND appended
-  // as a system message so the model sees it as initial context.
-  const preSessionHooks = loadHooks("pre-session");
-  if (config.preSessionCmd)
-    await runHook(config.preSessionCmd, "pre-session", "output", messages);
-  for (const hook of preSessionHooks)
-    await runHook(hook.command, hook.name, "output", messages);
-
-  // Load hook lists once; the directory structure is static for the session.
-  const preTurnHooks = loadHooks("pre-turn");
-  const postTurnHooks = loadHooks("post-turn");
-
-  const input = createInput();
-  const { nextLine, close } = input;
-  const tracker = new ProcessTracker();
-
   // The model used for requests. Starts from config and can be changed at
   // runtime with the /model command.
   let model = config.model;
@@ -77,6 +71,27 @@ export async function run(config: Config): Promise<void> {
   // changed at runtime with the /profile command. When it changes, a new
   // system message is appended to the conversation; history is never altered.
   let activeProfile = BUILTIN_AGENT.name;
+
+  // Run pre-session hooks (env var + .hooks/pre-session/ directory) before
+  // the first turn. Each hook's output is printed to the user AND appended
+  // as a system message so the model sees it as initial context.
+  const preSessionHooks = loadHooks("pre-session");
+  if (
+    config.preSessionCmd &&
+    hookAllowed(config.preSessionCmdProfiles, activeProfile)
+  )
+    await runHook(config.preSessionCmd, "pre-session", "output", messages);
+  for (const hook of preSessionHooks)
+    if (hookAllowed(hook.profiles, activeProfile))
+      await runHook(hook.command, hook.name, "output", messages);
+
+  // Load hook lists once; the directory structure is static for the session.
+  const preTurnHooks = loadHooks("pre-turn");
+  const postTurnHooks = loadHooks("post-turn");
+
+  const input = createInput();
+  const { nextLine, close } = input;
+  const tracker = new ProcessTracker();
 
   for (;;) {
     renderPrompt();
@@ -115,10 +130,14 @@ export async function run(config: Config): Promise<void> {
     // Run pre-turn hooks (env var + .hooks/pre-turn/ directory) before every
     // user message. Each hook's output is printed to the user AND appended
     // as a system message so the model sees it as fresh context for each turn.
-    if (config.preTurnCmd)
+    if (
+      config.preTurnCmd &&
+      hookAllowed(config.preTurnCmdProfiles, activeProfile)
+    )
       await runHook(config.preTurnCmd, "pre-turn", "output", messages);
     for (const hook of preTurnHooks)
-      await runHook(hook.command, hook.name, "output", messages);
+      if (hookAllowed(hook.profiles, activeProfile))
+        await runHook(hook.command, hook.name, "output", messages);
 
     messages.push({ role: "user", content: text });
 
@@ -166,10 +185,14 @@ export async function run(config: Config): Promise<void> {
         // printed to the user AND appended as a system message so the model
         // can see it on the next turn. A failing command with empty output
         // still triggers the failure path (the exit code is never discarded).
-        if (config.postTurnCmd)
+        if (
+          config.postTurnCmd &&
+          hookAllowed(config.postTurnCmdProfiles, activeProfile)
+        )
           await runHook(config.postTurnCmd, "post-turn", "failure", messages);
         for (const hook of postTurnHooks)
-          await runHook(hook.command, hook.name, "failure", messages);
+          if (hookAllowed(hook.profiles, activeProfile))
+            await runHook(hook.command, hook.name, "failure", messages);
 
         break;
       }
