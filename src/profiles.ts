@@ -8,7 +8,14 @@
 //
 // No mutable state. Pure functions over the filesystem.
 
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import * as path from "node:path";
 
 export type Profile = {
@@ -65,5 +72,23 @@ export function getProfile(name: string): Profile | undefined {
     return { name, instruction: content, source: "file" };
   } catch {
     return undefined;
+  }
+}
+
+// Creates a new profile file with a minimal stub. Returns an error message
+// string if the profile already exists or the file cannot be written;
+// returns null on success.
+export function createProfile(name: string): string | null {
+  if (name.length === 0) return "profile name is required";
+  if (getProfile(name) !== undefined) return `profile already exists: ${name}`;
+  const dirPath = path.resolve(process.cwd(), AGENTS_DIR);
+  if (!existsSync(dirPath)) mkdirSync(dirPath, { recursive: true });
+  const filePath = path.join(dirPath, `${name}.md`);
+  const template = `# Profile: ${name}\nYou are a ${name} agent. Edit this instruction to describe your role and behavior.\n`;
+  try {
+    writeFileSync(filePath, template, "utf-8");
+    return null;
+  } catch (err) {
+    return `could not create profile file: ${err instanceof Error ? err.message : String(err)}`;
   }
 }

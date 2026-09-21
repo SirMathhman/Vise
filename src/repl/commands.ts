@@ -5,7 +5,7 @@
 // never calls fetch directly (the catalog and persistence hook are passed
 // in as parameters).
 import type { ModelInfo } from "../llm/types.ts";
-import { getProfile, listProfiles } from "../profiles.ts";
+import { createProfile, getProfile, listProfiles } from "../profiles.ts";
 
 export type CommandResult = {
   lines: string[];
@@ -73,9 +73,22 @@ export async function runCommand(
 }
 
 // /profile handler. With no argument, lists all available profiles and marks
-// the active one. With a name, switches to that profile by returning
-// setProfile (the loop appends a new system message; history is never altered).
+// the active one. With `new <name>`, creates a profile stub file. With a
+// name, switches to that profile by returning setProfile (the loop appends
+// a new system message; history is never altered).
 function runProfileCommand(rest: string[], ctx: CommandContext): CommandResult {
+  if (rest.length === 1 && rest[0] === "new") {
+    return {
+      lines: ["/profile new requires a name: /profile new <name>"],
+      isError: true,
+    };
+  }
+  if (rest.length > 1 && rest[0] === "new") {
+    const name = rest.slice(1).join(" ").trim();
+    const err = createProfile(name);
+    if (err) return { lines: [`error: ${err}`], isError: true };
+    return { lines: [`created profile: ${name}`] };
+  }
   const name = rest.join(" ").trim();
   if (name.length === 0) {
     const profiles = listProfiles();
