@@ -228,9 +228,8 @@ const renderCommand = (result: CommandResult): void => {
 };
 
 // --- Tool calling -------------------------------------------------------
-// The agent can call tools. Currently only read_file is available, which
-// reads a file from disk (relative to the working directory) and returns
-// its text content.
+// The agent can call tools. read_file reads a file; edit_file replaces the
+// first occurrence of a text span in a file.
 const tools: Tool[] = [
   {
     type: "function",
@@ -250,20 +249,79 @@ const tools: Tool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "edit_file",
+      description:
+        "Edit a file by replacing the first occurrence of replacee with replacement. The path is resolved relative to the working directory. If replacee is not found, no change is made and an error is returned. The file is created if it does not exist, when replacee is empty.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "The path to the file to edit.",
+          },
+          replacee: {
+            type: "string",
+            description:
+              "The exact text to find. It must match exactly, including whitespace and indentation.",
+          },
+          replacement: {
+            type: "string",
+            description: "The exact text to replace it with.",
+          },
+        },
+        required: ["path", "replacee", "replacement"],
+      },
+    },
+  },
 ];
 
 // Executes a tool call and returns its result as a string. Unknown tools
 // and read failures are reported as strings so the model can see them.
 function runTool(name: string, args: Record<string, unknown>): string {
+  const rawPath = String(args.path ?? "");
+  const filePath = path.resolve(process.cwd(), rawPath);
   if (name === "read_file") {
-    const rawPath = String(args.path ?? "");
     try {
-      return readFileSync(path.resolve(process.cwd(), rawPath), "utf-8");
+      return readFileSync(filePath, "utf-8");
     } catch (err) {
       return `Error reading ${rawPath}: ${
         err instanceof Error ? err.message : String(err)
       }`;
     }
+  }
+  if (name === "edit_file") {
+    const replacee = String(args.replacee ?? "");
+    const replacement = String(args.replacement ?? "");
+    let contents: string;
+    try {
+      contents = readFileSync(filePath, "utf-8");
+    } catch (err) {
+      return `Error reading ${rawPath}: ${
+        err instanceof Error ? err.message : String(err)
+      }`;
+    }
+    const index = contents.indexOf(replacee);
+    if (index < 0) {
+      if (replacee.length === 0) {
+        return `No change: replacee is empty, so ${rawPath} is unchanged.`;
+      }
+      return `No change: replacee was not found in ${rawPath}. Read the file and retry with the exact text.`;
+    }
+    const updated =
+      contents.slice(0, index) +
+      replacement +
+      contents.slice(index + replacee.length);
+    try {
+      writeFileSync(filePath, updated, "utf-8");
+    } catch (err) {
+      return `Error writing ${rawPath}: ${
+        err instanceof Error ? err.message : String(err)
+      }`;
+    }
+    return `Edited ${rawPath}: replaced ${replacee.length} character(s) starting at offset ${index}.`;
   }
   return `Unknown tool: ${name}`;
 }
