@@ -16,10 +16,10 @@ the code; it is not a changelog. Progress lives in the git log.
 - **Transport** — how stdin is read and how output is rendered (prompts,
   assistant replies, errors). Swappable, and the only module allowed to touch
   `process.stdin`/`process.stdout`.
-- **Config** — the typed, env-derived settings object (base URL, model, API key).
-  Constructed once at startup. Read-only everywhere except the model selector,
-  which owns the one mutable field (`model`) and is the only writer of config
-  back to disk.
+- **Config** — the typed, env-derived settings object (base URL, model, API
+  key, pre-session command). Constructed once at startup. Read-only
+  everywhere except the model selector, which owns the one mutable field
+  (`model`) and is the only writer of config back to disk.
 - **Command** — a line beginning with `/` that the REPL handles locally and
   never sends to the model. A command is a pure function of its arguments plus
   the session state it is handed; it returns a result the renderer prints.
@@ -31,10 +31,11 @@ the code; it is not a changelog. Progress lives in the git log.
   and persists the choice. Nothing else may mutate the active model.
 - **Tool** — a function the model can call (e.g. `read_file`, `edit_file`,
   `run_powershell`) to act on the filesystem or execute external processes.
-  Tools are the only modules permitted to read or write files or spawn
-  subprocesses; they never call `fetch` and never touch the conversation
-  directly — they return a string result that the loop appends as a
-  `role: "tool"` message.
+  During a turn, tools are the only modules permitted to read or write files
+  or spawn subprocesses (the pre-session command is the only startup-time
+  exception, see invariant 5); they never call `fetch` and never touch the
+  conversation directly — they return a string result that the loop appends
+  as a `role: "tool"` message.
 - **Tracked process** — a background subprocess the model started without
   awaiting to completion, identified by a process ID. Its accumulated
   stdout/stderr, exit code, and liveness are kept for the rest of the
@@ -44,6 +45,11 @@ the code; it is not a changelog. Progress lives in the git log.
   instruction is the CWD message) and file-based profiles from `.agents/*.md`
   in the working directory. Switching profiles appends a new system message
   to the conversation; existing history is never altered.
+- **Pre-session command** — an optional shell command (`PRE_SESSION_CMD`)
+  that runs exactly once, before the first turn. Its combined stdout+stderr
+  is printed to the user and appended to the conversation as an initial
+  system message. Unlike tools, it is driven by config rather than by the
+  model, and it runs at startup rather than on demand.
 
 **Invariants:**
 
@@ -62,9 +68,12 @@ the code; it is not a changelog. Progress lives in the git log.
 4. The active model is read at request time, not captured at startup, so a
    switch takes effect on the next turn without rebuilding the client.
 5. Tools are the only modules that read or write the filesystem or execute
-   external processes. They never call `fetch` and never touch the conversation
-   directly; they return a string result that the loop appends as a
-   `role: "tool"` message.
+   external processes during a turn, and the pre-session command module is the
+   only startup-time exception: `src/repl/presession.ts` spawns exactly one
+   subprocess before the first turn and returns its output and exit code to
+   the loop. Neither the tools nor the pre-session module call `fetch` or touch
+   the conversation directly; tools return a string result that the loop
+   appends as a `role: "tool"` message.
 6. Session-long state (the set of tracked processes) is created at the entry
    point and passed to tools as a parameter — the same pattern as commands
    receiving the client. `tools.ts` holds no module-level mutable state.
@@ -93,8 +102,14 @@ src/repl/input.ts     stdin buffering (line queue + nextLine). No fetch, no stat
 src/repl/render.ts    prompt/answer/error rendering. Pure formatting.
 src/repl/commands.ts  the command registry: parse a `/` line, dispatch to a
                         handler, return a result. No fetch, no stdin/stdout.
+src/repl/presession.ts runs the `PRE_SESSION_CMD` command once before the
+                        first turn. Spawns exactly one subprocess (the only
+                        non-tool spawn, invariant 5), returns the combined
+                        stdout+stderr and exit code; no printing of its own —
+                        the loop renders the result and seeds the conversation
+                        with the output.
 src/repl/loop.ts      the turn loop: glue between input, conversation, client,
-                        commands, render.
+                        commands, render, and presession.
 src/tools.ts          tool registry: schema array + dispatch table. Imports
                         handler functions from the tool submodules below and
                         composes them into the `Record<string, handler>` table.
@@ -117,8 +132,9 @@ src/tools/search.ts   content-search handlers: find_files, search_content.
 ```
 
 Dependency direction: `index -> src/repl/loop -> (src/repl/input, src/repl/render,
-src/repl/commands, src/llm/client, src/tools, src/profiles) -> src/llm/models ->
-src/llm/types, src/config`. `src/llm/*` and `src/repl/*` do not import each other.
+src/repl/commands, src/repl/presession, src/llm/client, src/tools, src/profiles)
+-> src/llm/models -> src/llm/types, src/config`. `src/llm/*` and `src/repl/*`
+do not import each other.
 `src/tools/*` do not import each other; `src/tools.ts` is the only importer of
 the tool submodules. `src/config.ts`, `src/config/persist.ts`, `src/llm/types.ts`,
 `src/profiles.ts`, and the `src/tools/*` submodules are leaves.
@@ -146,7 +162,19 @@ Run it in CI or as part of `bun lint` before it matters.
   long sessions. The fix is a bounded window (keep last N messages or tokens)
   owned by `loop.ts`, not by `client.ts`. Profile switches also append system
   messages to the conversation, so repeatedly switching profiles adds
-  redundant context that the bounded window must account for.
+  redundant context that the bounded window must account for. The
+  pre-session command's output enters the conversation the same way, so it
+  must be bounded too (below).
+- **Pre-session command output is unbounded and unchecked.** Unlike tool
+  results (16 KB budget per tracked-process stream, 500-line read cap), the
+  pre-session command's combined stdout+stderr enters the conversation with
+  no budget; its exit code is discarded, so a failing command is
+  indistinguishable from a successful one when it prints anything, and a
+  silently ignored failure when it prints nothing; and it has no timeout, so a
+  hung command blocks startup before the first turn. Bound the output the way
+  tracked-process output is bounded, report a non-zero exit code distinctly,
+  and give the spawn the same timeout/structured-error treatment the client's
+  `fetch` should have.
 - **Duplicate CWD system message.** The loop seeds the conversation with a
   hardcoded CWD string, and `BUILTIN_AGENT.instruction` is the same string.
   If the user explicitly runs `/profile Agent`, a second identical CWD
