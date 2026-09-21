@@ -14,13 +14,23 @@ export type ChatMessage = {
   tool_call_id?: string;
 };
 
+// The JSON Schema fragment declaring a tool's arguments, as sent in the
+// request's `tools` field. Every tool defines `type: "object"` plus a
+// `properties` map of argument name -> schema; `required` names the args that
+// must be supplied.
+export type ToolParameters = {
+  type: "object";
+  properties: Record<string, { type?: string; description?: string }>;
+  required?: string[];
+};
+
 // The tool the model can call, as declared in the request's `tools` field.
 export type Tool = {
   type: "function";
   function: {
     name: string;
     description: string;
-    parameters: Record<string, unknown>;
+    parameters: ToolParameters;
   };
 };
 

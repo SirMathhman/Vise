@@ -6,6 +6,7 @@
 // in as parameters).
 import type { ModelInfo } from "../llm/types.ts";
 import { createProfile, getProfile, listProfiles } from "../profiles.ts";
+import { tools } from "../tools.ts";
 
 export type CommandResult = {
   lines: string[];
@@ -29,9 +30,12 @@ export async function runCommand(
   if (command === "/profile") {
     return runProfileCommand(rest, ctx);
   }
+  if (command === "/tool") {
+    return runToolCommand(rest);
+  }
   if (command !== "/model") {
     return {
-      lines: [`Unknown command: ${command}. Try /model or /profile.`],
+      lines: [`Unknown command: ${command}. Try /model, /profile, or /tool.`],
       isError: true,
     };
   }
@@ -110,4 +114,35 @@ function runProfileCommand(rest: string[], ctx: CommandContext): CommandResult {
     lines: [`profile> ${profile.name}`],
     setProfile: profile.name,
   };
+}
+
+// /tool handler. With no argument, lists the names of every tool the model
+// can call. With a name, shows that tool's details (description and declared
+// arguments). Read-only; it never mutates session state.
+function runToolCommand(rest: string[]): CommandResult {
+  const name = rest.join(" ").trim();
+  if (name.length > 0) {
+    const tool = tools.find((t) => t.function.name === name);
+    if (!tool) {
+      const lines = [`error: unknown tool: ${name}`, "Available tools:"];
+      for (const t of tools) lines.push(`  ${t.function.name}`);
+      return { lines, isError: true };
+    }
+    const lines = [`${tool.function.name}:`, tool.function.description];
+    const props = tool.function.parameters.properties;
+    const keys = Object.keys(props);
+    if (keys.length > 0) {
+      lines.push("Arguments:");
+      for (const key of keys) {
+        const description = props[key]?.description;
+        lines.push(`  ${key}${description ? ` — ${description}` : ""}`);
+      }
+    }
+    return { lines };
+  }
+  const lines = ["Available tools:"];
+  for (const tool of tools) {
+    lines.push(`  ${tool.function.name}`);
+  }
+  return { lines };
 }

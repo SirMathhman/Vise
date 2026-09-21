@@ -177,7 +177,10 @@ value (text to render, or a request to mutate session state) and never prints or
 reads input itself. Adding a command must not require editing `loop.ts`; the
 registry is the extension point. A command that needs the model (e.g. a future
 `/summarize`) receives the client as a parameter rather than importing it, so
-`commands.ts` stays free of `fetch` and of the transport.
+`commands.ts` stays free of `fetch` and of the transport. A command that reads
+a stateless leaf module (the `src/tools` registry, the profile registry) may
+import it directly — only dependencies that reach `fetch` or the transport
+must be passed in via `CommandContext`.
 
 Enforcement: the `bun lint` script (Biome) enforces what it can; the rest
 (function/file/directory line limits — 100/500/10 — is caught by this review and
