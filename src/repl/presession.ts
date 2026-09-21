@@ -14,9 +14,7 @@ export type PreSessionResult = {
   exitCode: number;
 };
 
-export async function runPreSessionCmd(
-  cmd: string,
-): Promise<PreSessionResult | null> {
+export async function runPreSessionCmd(cmd: string): Promise<PreSessionResult> {
   const proc = Bun.spawn(
     ["powershell", "-NoProfile", "-NonInteractive", "-Command", cmd],
     { cwd: process.cwd(), stdout: "pipe", stderr: "pipe" },
@@ -31,7 +29,6 @@ export async function runPreSessionCmd(
   if (stdout.trim()) parts.push(stdout.trim());
   if (stderr.trim()) parts.push(stderr.trim());
   const combined = parts.join("\n");
-  if (combined.length === 0) return null;
 
   // Bound the output so a chatty command cannot blow the context window.
   let output = combined;

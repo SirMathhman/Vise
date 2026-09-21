@@ -40,7 +40,7 @@ export async function run(config: Config): Promise<void> {
   // model sees it as initial context.
   if (config.preSessionCmd) {
     const result = await runPreSessionCmd(config.preSessionCmd);
-    if (result) {
+    if (result.output.length > 0) {
       renderPreSession(result.output, result.exitCode);
       messages.push({ role: "system", content: result.output });
     }
@@ -98,7 +98,7 @@ export async function run(config: Config): Promise<void> {
     // the model sees it as fresh context for each turn.
     if (config.preTurnCmd) {
       const result = await runPreSessionCmd(config.preTurnCmd);
-      if (result) {
+      if (result.output.length > 0) {
         renderPreTurn(result.output, result.exitCode);
         messages.push({ role: "system", content: result.output });
       }
@@ -146,15 +146,15 @@ export async function run(config: Config): Promise<void> {
         renderReply(answer);
 
         // Run the post-turn command (if configured) after the model's answer.
-        // On failure, the output is printed to the user AND appended as a
-        // system message so the model can see it on the next turn.
+        // On failure (non-zero exit), the output is printed to the user AND
+        // appended as a system message so the model can see it on the next
+        // turn. A failing command with empty output still triggers the
+        // failure path (the exit code is never discarded).
         if (config.postTurnCmd) {
           const result = await runPreSessionCmd(config.postTurnCmd);
-          if (result) {
+          if (result.exitCode !== 0) {
             renderPostTurn(result.output, result.exitCode);
-            if (result.exitCode !== 0) {
-              messages.push({ role: "system", content: result.output });
-            }
+            messages.push({ role: "system", content: result.output });
           }
         }
 
