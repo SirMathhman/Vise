@@ -34,3 +34,11 @@ export function renderPreTurn(output: string, exitCode: number): void {
     console.error(`pre-turn: command exited with code ${exitCode}`);
   }
 }
+
+export function renderPostTurn(output: string, exitCode: number): void {
+  // Only render on failure; success is silent.
+  if (exitCode !== 0) {
+    console.error(`\npost-turn:\n${output}\n`);
+    console.error(`post-turn: command exited with code ${exitCode}`);
+  }
+}

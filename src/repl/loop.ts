@@ -15,6 +15,7 @@ import { runPreSessionCmd } from "./presession.ts";
 import {
   renderCommand,
   renderError,
+  renderPostTurn,
   renderPreSession,
   renderPreTurn,
   renderPrompt,
@@ -143,6 +144,20 @@ export async function run(config: Config): Promise<void> {
         if (answer.length > 0)
           messages.push({ role: "assistant", content: answer });
         renderReply(answer);
+
+        // Run the post-turn command (if configured) after the model's answer.
+        // On failure, the output is printed to the user AND appended as a
+        // system message so the model can see it on the next turn.
+        if (config.postTurnCmd) {
+          const result = await runPreSessionCmd(config.postTurnCmd);
+          if (result) {
+            renderPostTurn(result.output, result.exitCode);
+            if (result.exitCode !== 0) {
+              messages.push({ role: "system", content: result.output });
+            }
+          }
+        }
+
         break;
       }
     } catch (err) {

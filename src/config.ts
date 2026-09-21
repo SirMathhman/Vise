@@ -7,6 +7,7 @@ export type Config = {
   apiKey?: string;
   preSessionCmd?: string;
   preTurnCmd?: string;
+  postTurnCmd?: string;
 };
 
 export function loadConfig(): Config {
@@ -16,5 +17,6 @@ export function loadConfig(): Config {
     apiKey: process.env.LLM_API_KEY,
     preSessionCmd: process.env.PRE_SESSION_CMD,
     preTurnCmd: process.env.PRE_TURN_CMD,
+    postTurnCmd: process.env.POST_TURN_CMD,
   };
 }
