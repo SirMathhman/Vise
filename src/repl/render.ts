@@ -42,3 +42,17 @@ export function renderPostTurn(output: string, exitCode: number): void {
     console.error(`post-turn: command exited with code ${exitCode}`);
   }
 }
+
+// Renders a labeled hook result. Used when a hook has a name from the
+// directory (e.g. "lint", "typecheck"). The label distinguishes which
+// hook produced the output when multiple hooks run.
+export function renderHook(
+  label: string,
+  output: string,
+  exitCode: number,
+): void {
+  console.log(`\n${label}:\n${output}\n`);
+  if (exitCode !== 0) {
+    console.error(`${label}: command exited with code ${exitCode}`);
+  }
+}

@@ -10,11 +10,13 @@ import { BUILTIN_AGENT, getProfile } from "../profiles.ts";
 import { ProcessTracker } from "../tools/process.ts";
 import { runTool, tools } from "../tools.ts";
 import { runCommand } from "./commands.ts";
+import { loadHooks } from "./hooks.ts";
 import { createInput } from "./input.ts";
 import { runPreSessionCmd } from "./presession.ts";
 import {
   renderCommand,
   renderError,
+  renderHook,
   renderPostTurn,
   renderPreSession,
   renderPreTurn,
@@ -35,9 +37,10 @@ export async function run(config: Config): Promise<void> {
     },
   ];
 
-  // Run the pre-session command (if configured) before the first turn. Its
-  // output is printed to the user AND appended as a system message so the
-  // model sees it as initial context.
+  // Run pre-session hooks (env var + .hooks/pre-session/ directory) before
+  // the first turn. Each hook's output is printed to the user AND appended
+  // as a system message so the model sees it as initial context.
+  const preSessionHooks = loadHooks("pre-session");
   if (config.preSessionCmd) {
     const result = await runPreSessionCmd(config.preSessionCmd);
     if (result.output.length > 0) {
@@ -45,6 +48,17 @@ export async function run(config: Config): Promise<void> {
       messages.push({ role: "system", content: result.output });
     }
   }
+  for (const hook of preSessionHooks) {
+    const result = await runPreSessionCmd(hook.command);
+    if (result.output.length > 0) {
+      renderHook(hook.name, result.output, result.exitCode);
+      messages.push({ role: "system", content: result.output });
+    }
+  }
+
+  // Load hook lists once; the directory structure is static for the session.
+  const preTurnHooks = loadHooks("pre-turn");
+  const postTurnHooks = loadHooks("post-turn");
 
   const input = createInput();
   const { nextLine, close } = input;
@@ -93,13 +107,20 @@ export async function run(config: Config): Promise<void> {
       renderCommand(result);
       continue;
     }
-    // Run the pre-turn command (if configured) before every user message.
-    // Its output is printed to the user AND appended as a system message so
-    // the model sees it as fresh context for each turn.
+    // Run pre-turn hooks (env var + .hooks/pre-turn/ directory) before every
+    // user message. Each hook's output is printed to the user AND appended
+    // as a system message so the model sees it as fresh context for each turn.
     if (config.preTurnCmd) {
       const result = await runPreSessionCmd(config.preTurnCmd);
       if (result.output.length > 0) {
         renderPreTurn(result.output, result.exitCode);
+        messages.push({ role: "system", content: result.output });
+      }
+    }
+    for (const hook of preTurnHooks) {
+      const result = await runPreSessionCmd(hook.command);
+      if (result.output.length > 0) {
+        renderHook(hook.name, result.output, result.exitCode);
         messages.push({ role: "system", content: result.output });
       }
     }
@@ -145,15 +166,22 @@ export async function run(config: Config): Promise<void> {
           messages.push({ role: "assistant", content: answer });
         renderReply(answer);
 
-        // Run the post-turn command (if configured) after the model's answer.
-        // On failure (non-zero exit), the output is printed to the user AND
-        // appended as a system message so the model can see it on the next
-        // turn. A failing command with empty output still triggers the
-        // failure path (the exit code is never discarded).
+        // Run post-turn hooks (env var + .hooks/post-turn/ directory) after
+        // the model's answer. On failure (non-zero exit), the output is
+        // printed to the user AND appended as a system message so the model
+        // can see it on the next turn. A failing command with empty output
+        // still triggers the failure path (the exit code is never discarded).
         if (config.postTurnCmd) {
           const result = await runPreSessionCmd(config.postTurnCmd);
           if (result.exitCode !== 0) {
             renderPostTurn(result.output, result.exitCode);
+            messages.push({ role: "system", content: result.output });
+          }
+        }
+        for (const hook of postTurnHooks) {
+          const result = await runPreSessionCmd(hook.command);
+          if (result.exitCode !== 0) {
+            renderHook(hook.name, result.output, result.exitCode);
             messages.push({ role: "system", content: result.output });
           }
         }
