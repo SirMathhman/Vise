@@ -45,8 +45,15 @@ const nextLine = (): Promise<string> => {
 };
 
 // The running conversation; every turn appends to it, so each request
-// carries the full history (context) to the model.
-const messages: { role: "user" | "assistant"; content: string }[] = [];
+// carries the full history (context) to the model. Seeded with a system
+// message carrying the CWD so the model can answer environment questions.
+const messages: { role: "system" | "user" | "assistant"; content: string }[] =
+	[
+		{
+			role: "system",
+			content: `The current working directory is: ${process.cwd()}`,
+		},
+	];
 
 for (;;) {
 	process.stdout.write("you> ");
