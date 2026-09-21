@@ -3,6 +3,13 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 export interface Route {
   method: string;
   pattern: string;
+  /**
+   * Mark a route that owns its response and streams it (SSE, the /llm
+   * forward). The dispatch loop skips the JSON body read and the usual
+   * `toResponse` error mapping for these, because they write headers and
+   * bytes directly; a `toResponse` on an already-opened stream would throw.
+   */
+  streaming?: boolean;
   handler: (
     req: IncomingMessage,
     res: ServerResponse,

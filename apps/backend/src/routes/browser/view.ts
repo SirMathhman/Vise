@@ -83,6 +83,7 @@ export function browserViewRoutes(ctx: AppContext): Route[] {
     {
       method: "GET",
       pattern: "/api/browser/stream",
+      streaming: true,
       handler: (_req, res) => {
         sendSseHeaders(res);
 

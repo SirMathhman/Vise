@@ -12,6 +12,7 @@ export function watchRoutes(ctx: AppContext): Route[] {
     {
       method: "GET",
       pattern: "/api/watch",
+      streaming: true,
       handler: (_req, res) => {
         sendSseHeaders(res);
 

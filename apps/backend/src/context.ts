@@ -11,6 +11,20 @@ export type FirefoxBridge = ReturnType<typeof createFirefoxBridge>;
 export interface AppContext {
   now: () => Date;
   rootPath: string;
+  /**
+   * The directory the backend serves the built frontend from (see
+   * routes/static.ts). Undefined in dev, where the Vite dev server serves
+   * the frontend itself; set for a production / Electron deployment so a
+   * single origin serves the SPA alongside /api.
+   */
+  staticDir?: string;
+  /**
+   * The upstream an /llm/* request is forwarded to (see routes/llmForward.ts).
+   * Defaults to the local llama.cpp proxy on :8080. Undefined only if the
+   * caller explicitly passes null, in which case /llm/* returns 502 so a
+   * misconfiguration is visible rather than silently 404'ing.
+   */
+  llmUpstream?: string;
   /** The app-owned filesystem watcher, started and closed with the app. */
   fileWatcher: FileWatcher;
   /**
@@ -26,7 +40,15 @@ export interface AppContext {
   firefoxBridge: FirefoxBridge;
 }
 
-export function createContext(rootPath: string): AppContext {
+export interface CreateContextOptions {
+  staticDir?: string;
+  llmUpstream?: string | null;
+}
+
+export function createContext(
+  rootPath: string,
+  options: CreateContextOptions = {}
+): AppContext {
   const fileWatcher = createFileWatcher(rootPath);
   const firefoxBridge = createFirefoxBridge();
   const browserSession = createRoutedSession(
@@ -37,6 +59,11 @@ export function createContext(rootPath: string): AppContext {
   return {
     now: () => new Date(),
     rootPath,
+    staticDir: options.staticDir,
+    llmUpstream:
+      options.llmUpstream === null
+        ? undefined
+        : (options.llmUpstream ?? "http://127.0.0.1:8080"),
     fileWatcher,
     browserSession,
     firefoxBridge,
