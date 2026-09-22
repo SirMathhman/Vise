@@ -5,8 +5,9 @@
 // frame only; streaming is exercised separately via the live spike.
 //
 // Run: bun spike/tui-spike-test.ts
-import React from "react";
+
 import { renderToString } from "ink";
+import React from "react";
 import { App } from "./tui-spike";
 
 const frame = renderToString(React.createElement(App));

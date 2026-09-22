@@ -9,8 +9,9 @@
 //
 // Layout is a scrolling console (Ink's default, NOT alternate screen), which
 // matches how the current Vise REPL already behaves. Ctrl-C exits.
+
+import { Box, render, Static, Text, useApp, useInput } from "ink";
 import React, { useState } from "react";
-import { Box, Static, Text, useApp, useInput, render } from "ink";
 
 // Streams a reply token by token with a tiny pause between tokens, standing in
 // for chatCompletionStream's onDelta callback.
@@ -129,11 +130,7 @@ export function App() {
           <Text color={busy ? undefined : "white"}>|</Text>
           {after}
         </Text>
-        {busy && (
-          <Text dimColor>
-            {"  (generating; Ctrl-C to exit)"}
-          </Text>
-        )}
+        {busy && <Text dimColor>{"  (generating; Ctrl-C to exit)"}</Text>}
       </Box>
     </Box>
   );
