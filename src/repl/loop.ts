@@ -9,6 +9,7 @@ import type { ChatMessage, Usage } from "../llm/types.ts";
 import { ensureIndexed } from "../llm/vectors.ts";
 import { withNotesIntro } from "../notes.ts";
 import { BUILTIN_AGENT, getProfile } from "../profiles.ts";
+import { loadSession, saveSession } from "../session.ts";
 import { ProcessTracker } from "../tools/process.ts";
 import type { ToolContext } from "../tools.ts";
 import { runTool, tools } from "../tools.ts";
@@ -26,7 +27,6 @@ import {
   renderHook,
   renderPrompt,
 } from "./render.ts";
-import { loadSession, saveSession } from "../session.ts";
 
 // Auto-compact once the conversation reaches this fraction of the server's
 // context window (see maybeAutoCompact). Chosen to leave headroom for the

@@ -477,8 +477,13 @@ retryable: boolean }`) instead of a bare string. The loop renders the error
   is generated rather than hand-written, unknown commands suggest the nearest
   match, and adding a command is a one-line registration. `/reset` (clear the
   conversation) and `/model` are the first entries.
-- **Session persistence.** Serialize the conversation to disk so a crash or
-  Ctrl-C does not lose context; the transport stays oblivious.
+- **Durable in-flight turns.** `src/session.ts` persists the conversation at
+  turn boundaries, but a crash or Ctrl-C _during_ a model turn (after the user
+  message is pushed, before the next iteration's save) loses that turn, and
+  startup resumes unconditionally with no way to start fresh or pick among
+  saved sessions. Add a durable in-flight marker (or save after the user
+  message is appended, discarding a dangling user turn on load) and a
+  startup choice (resume / fresh / list saved sessions).
 - **Ctrl-C process reaping.** `tracker.shutdown()` runs before
   `process.exit` on the EOF path but not on a Ctrl-C interrupt; add a
   `process.on("exit")` (or `SIGINT`) hook in `loop.ts` that kills any
