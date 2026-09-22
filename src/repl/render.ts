@@ -53,6 +53,14 @@ export function renderCommand(result: {
   write("");
 }
 
+// Prints a notice when the conversation is auto-compacted, so the user can
+// tell it happened without having to run /context themselves.
+export function renderCompactNotice(): void {
+  console.log(
+    "\n[compact] conversation summarized to stay under the context window\n",
+  );
+}
+
 // Renders a labeled hook result. The label identifies which hook produced
 // the output (e.g. "pre-session", "lint", "typecheck"). On non-zero exit,
 // a warning is printed after the output.

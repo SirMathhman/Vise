@@ -12,6 +12,7 @@ import { ProcessTracker } from "../tools/process.ts";
 import type { ToolContext } from "../tools.ts";
 import { runTool, tools } from "../tools.ts";
 import { runCommand } from "./commands.ts";
+import { compactConversation, TOOLS_DISABLED_NOTICE } from "./compact.ts";
 import type { HookCommand } from "./hooks.ts";
 import { loadHooks } from "./hooks.ts";
 import { createInput } from "./input.ts";
@@ -19,10 +20,17 @@ import { runPreSessionCmd } from "./presession.ts";
 import {
   createReplyStream,
   renderCommand,
+  renderCompactNotice,
   renderError,
   renderHook,
   renderPrompt,
 } from "./render.ts";
+
+// Auto-compact once the conversation reaches this fraction of the server's
+// context window (see maybeAutoCompact). Chosen to leave headroom for the
+// summarization call itself, which needs to fit the existing history plus
+// its own reply within the remaining budget.
+const AUTO_COMPACT_THRESHOLD = 0.8;
 
 // Returns true if the hook should run for the given active profile.
 // A hook runs when: (a) it has no profile list (runs for all), or
@@ -50,6 +58,43 @@ async function runHook(
   if (shouldRender) {
     renderHook(label, result.output, result.exitCode);
     messages.push({ role: "system", content: result.output });
+  }
+}
+
+// Compacts the conversation in place when usage has crossed
+// AUTO_COMPACT_THRESHOLD of the server's context window. Best-effort: a
+// failure to fetch the context size or to summarize is swallowed (after a
+// stderr warning) rather than interrupting the turn loop, since compaction
+// is a housekeeping side effect, not something the user asked for this turn.
+// Skipped entirely when the server doesn't report a context size (e.g. a
+// router reporting n_ctx: 0), since there's no percentage to compare against.
+async function maybeAutoCompact(
+  config: Config,
+  model: string,
+  messages: ChatMessage[],
+  activeProfile: string,
+  toolsEnabled: boolean,
+  usage: Usage,
+): Promise<boolean> {
+  try {
+    const size = await getContextSize(config);
+    if (!size || usage.total_tokens / size < AUTO_COMPACT_THRESHOLD) {
+      return false;
+    }
+    const compacted = await compactConversation(
+      config,
+      model,
+      messages,
+      activeProfile,
+      toolsEnabled,
+    );
+    messages.splice(0, messages.length, ...compacted);
+    return true;
+  } catch (err) {
+    process.stderr.write(
+      `[compact] ${err instanceof Error ? err.message : String(err)}\n`,
+    );
+    return false;
   }
 }
 
@@ -249,6 +294,14 @@ export async function run(config: Config): Promise<void> {
           ),
         lastUsage,
         getContextSize: () => getContextSize(config),
+        compact: () =>
+          compactConversation(
+            config,
+            model,
+            messages,
+            activeProfile,
+            toolsEnabled,
+          ),
       });
       if (result.setModel) model = result.setModel;
       if (result.setProfile) {
@@ -268,12 +321,15 @@ export async function run(config: Config): Promise<void> {
         // next turn. Turning them on is silent (nothing for the model to
         // react to). Either way, existing history is never altered.
         if (toolsEnabled === false) {
-          messages.push({
-            role: "system",
-            content:
-              "Your tools were just disabled. You can no longer call tools; if you need one, say so and ask the user to re-enable them with /tools on.",
-          });
+          messages.push({ role: "system", content: TOOLS_DISABLED_NOTICE });
         }
+      }
+      if (result.newMessages) {
+        // /compact replaces the entire conversation with a fresh, minimal
+        // one (profile instruction + summary); the usage figure /context
+        // reports is stale the moment that happens.
+        messages.splice(0, messages.length, ...result.newMessages);
+        lastUsage = undefined;
       }
       renderCommand(result);
       continue;
@@ -303,7 +359,21 @@ export async function run(config: Config): Promise<void> {
         toolsEnabled,
         activeTools,
       );
-      if (usage) lastUsage = usage;
+      if (usage) {
+        lastUsage = usage;
+        const compacted = await maybeAutoCompact(
+          config,
+          model,
+          messages,
+          activeProfile,
+          toolsEnabled,
+          usage,
+        );
+        if (compacted) {
+          lastUsage = undefined;
+          renderCompactNotice();
+        }
+      }
     } catch (err) {
       renderError(err instanceof Error ? err.message : String(err));
     }

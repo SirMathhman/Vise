@@ -29,8 +29,8 @@ rules to respect:
   all go through it.
 - **Commands never reach the model.** `/`-lines are handled locally; their
   output is printed by the transport, never appended to the conversation.
-  The commands today are `/model`, `/profile`, `/tool`, `/tools`, and
-  `/context`.
+  The commands today are `/model`, `/profile`, `/tool`, `/tools`, `/context`,
+  and `/compact`.
 - **Tools are the only modules that read/write the filesystem or spawn
   processes** during a turn. The documented exceptions: hook commands
   (`.hooks/` dir read + one spawn per invocation), `src/profiles.ts` (reads
@@ -60,6 +60,13 @@ rules to respect:
 - `src/llm/client.ts` — the single `fetch` site.
 - `src/repl/loop.ts` — the turn loop (glue between input, conversation, client,
   commands, render, and hooks).
+- `src/repl/compact.ts` — conversation compaction: one non-streaming,
+  tool-free model call collapses the whole conversation into a summary.
+  Triggered automatically once usage crosses 80% of the server's context
+  window (skipped if the server doesn't report one), or manually via
+  `/compact`. Deliberately a single rare collapse rather than an incremental
+  trim, so it invalidates the server's KV-cache prefix once instead of every
+  turn.
 - `src/tools.ts` + `src/tools/*` — tool registry and per-tool handler submodules.
 - `src/subagent.ts` + `src/tools/subagent.ts` — the `run_subagent` tool: nested
   isolated subagent conversations seeded from a profile's instruction.

@@ -179,9 +179,20 @@ src/repl/presession.ts runs the configured hook commands: `PRE_SESSION_CMD`
                         (pre hooks always; the post hook only when it exits
                         non-zero).
 src/repl/loop.ts      the turn loop: glue between input, conversation, client,
-                        commands, render, and presession. Contains runHook
-                        (hook execution + render/append policy) and
-                        runModelTurn (model-call/tool-call inner loop).
+                        commands, render, presession, and compact. Contains
+                        runHook (hook execution + render/append policy),
+                        runModelTurn (model-call/tool-call inner loop), and
+                        maybeAutoCompact (threshold check + apply).
+src/repl/compact.ts   conversation compaction: one non-streaming, tool-free
+                        chatCompletion call summarizes the whole conversation,
+                        then compactConversation returns a fresh, minimal
+                        messages array (profile instruction + tools-disabled
+                        notice if applicable + the summary) for the caller to
+                        install. Deliberately a single rare collapse rather
+                        than an incremental trim (see Potential Problems,
+                        "Unbounded conversation"). No fetch of its own, no
+                        stdin/stdout; loop.ts owns both triggers (the 80%
+                        auto-compact check and the /compact command).
 src/tools.ts          tool registry: schema array + dispatch table. Imports
                         handler functions from the tool submodules below and
                         composes them into the `Record<string, handler>` table.
@@ -204,9 +215,9 @@ src/tools/search.ts   content-search handlers: find_files, search_content.
 ```
 
 Dependency direction: `index -> src/repl/loop -> (src/repl/input, src/repl/render,
-src/repl/commands, src/repl/presession, src/llm/client, src/tools, src/profiles)
--> src/llm/models -> src/llm/types, src/config`. `src/llm/*` and `src/repl/*`
-do not import each other.
+src/repl/commands, src/repl/presession, src/repl/compact, src/llm/client,
+src/tools, src/profiles) -> src/llm/models -> src/llm/types, src/config`.
+`src/llm/*` and `src/repl/*` do not import each other.
 `src/tools/*` do not import each other; `src/tools.ts` is the only importer of
 the tool submodules. `src/config.ts`, `src/config/persist.ts`, `src/llm/types.ts`,
 `src/profiles.ts`, and the `src/tools/*` submodules are leaves.
@@ -214,11 +225,14 @@ the tool submodules. `src/config.ts`, `src/config/persist.ts`, `src/llm/types.ts
 Commands are the seam that keeps the loop small: `commands.ts` returns a result
 value (text to render, or a request to mutate session state) and never prints or
 reads input itself. Adding a command must not require editing `loop.ts`; the
-registry is the extension point. A command that needs the model (e.g. a future
-`/summarize`) receives the client as a parameter rather than importing it, so
-`commands.ts` stays free of `fetch` and of the transport. A command that reads
-a stateless leaf module (the `src/tools` registry, the profile registry) may
-import it directly — only dependencies that reach `fetch` or the transport
+registry is the extension point. A command that needs the model (`/context`'s
+`getContextSize`, `/compact`'s `compact`) receives a bound closure as a
+`CommandContext` field rather than importing the client itself, so
+`commands.ts` stays free of `fetch` and of the transport; `/compact`'s closure
+returns a full replacement `messages` array via `CommandResult.newMessages`,
+which only `loop.ts` (the owner of the conversation) installs. A command that
+reads a stateless leaf module (the `src/tools` registry, the profile registry)
+may import it directly — only dependencies that reach `fetch` or the transport
 must be passed in via `CommandContext`.
 
 Enforcement: the `bun lint` script (Biome) enforces what it can; the rest
@@ -233,18 +247,25 @@ Run it in CI or as part of `bun lint` before it matters.
 - **Unbounded conversation.** `messages` grows linearly with turns; every request
   re-sends the whole history, so a long session is O(n^2) tokens total and will
   eventually exceed the model's context window (the server returns an error
-  rather than truncating). Watch for: 400/413-style errors from llama.cpp on
-  long sessions. The fix is a bounded window (keep last N messages or tokens)
-  owned by `loop.ts`, not by `client.ts`. Profile switches also append system
-  messages to the conversation, so repeatedly switching profiles adds
-  redundant context that the bounded window must account for. The pre-session
-  hook's output enters the conversation the same way, so it must be bounded
-  too (below). The pre-turn hook compounds this: it appends a system message
-  every turn (up to the 16 KB hook budget each), so even a chatty hook that
-  fits in context once will exhaust the window after enough turns; the
-  bounded window is the only fix. The post hook compounds it too, but only
-  while it is failing: a failing post hook appends its output every turn, so
-  a hook that stays broken adds one system message per turn.
+  rather than truncating). Mitigated by `src/repl/compact.ts`: once usage
+  crosses 80% of the server's context window (`GET /props`'s `n_ctx`), or on
+  `/compact`, the whole conversation collapses into one summary in a single
+  call. Deliberately whole-history-at-once rather than a sliding window that
+  trims a few old messages per turn: llama.cpp's KV-cache reuse depends on
+  each request sharing a stable prefix with the previous one, so a per-turn
+  trim would invalidate the cache every turn, while a rare full collapse
+  invalidates it once and then leaves the (now short) prefix stable for many
+  turns after. Gaps that remain: skipped entirely when the server doesn't
+  report `n_ctx` (a router proxying multiple models reports `n_ctx: 0`, for
+  example) — such a session can still hit a hard context-length error with no
+  warning; a single turn's own tool-call rounds can still grow past the
+  window before the turn ends, since compaction only runs between turns;
+  and the summarization call's own prompt (existing history plus the summary
+  request) must itself fit before the threshold leaves enough headroom for
+  the reply — a very large single message pushing past 80% in one turn could
+  still fail to compact. Profile switches and hook output continue to append
+  system messages between compactions as before; they just no longer
+  accumulate forever.
 - **Hook command output is unchecked and its latency is unbounded.** Unlike
   tool results (16 KB budget per tracked-process stream, 500-line read cap),
   the pre-session and pre-turn hooks' combined stdout+stderr enter the
@@ -288,8 +309,9 @@ Run it in CI or as part of `bun lint` before it matters.
 - **Model switch is not validated against the conversation.** Switching models
   mid-session keeps the history, which is the intended behavior, but a model
   with a smaller context window may reject the accumulated history on the next
-  turn. The bounded window (above) is the real fix; until then, a switch is a
-  plausible trigger for a context-length error.
+  turn — compaction only checks the *current* model's `n_ctx` after a turn
+  completes, so a switch to a much smaller-context model can still overflow
+  on the very next request, before compaction gets a chance to run.
 - **Catalog fetch is a second network path.** `/model` performs a request that
   is not a chat completion. It must go through the client so timeouts, auth
   headers, and structured errors are shared; a bare `fetch` in the command
@@ -408,8 +430,8 @@ retryable: boolean }`) instead of a bare string. The loop renders the error
 - **Bounded reply budget.** A streamed reply has no size cap: a runaway model
   (or a tool result that echoes a large file into the reply) can write
   unbounded output to the terminal before `renderReplyEnd` runs. The
-  conversation-side budget (the bounded window, above) does not cap the
-  terminal-side display. A byte budget on the reply stream — mirroring the
+  conversation-side budget (compaction, above) does not cap the terminal-side
+  display. A byte budget on the reply stream — mirroring the
   `OUTPUT_BUDGET` used for tracked-process output — would cap what the user
   sees and what enters the conversation, with a truncation marker when the
   budget is hit.
@@ -419,7 +441,8 @@ retryable: boolean }`) instead of a bare string. The loop renders the error
 Obvious concerns only — profile before optimizing.
 
 - **Token cost:** re-sending full history every turn doubles the tokens per
-  added turn; the bounded window is the fix and is also a correctness issue.
+  added turn; compaction (`src/repl/compact.ts`, see Potential Problems)
+  bounds this, at the cost of one extra request each time it runs.
 - **Memory:** the line buffer is bounded by input; the conversation is bounded
   only by the model's context window, not by the process. Tracked-process
   output is bounded by `OUTPUT_BUDGET` (16 KB per stream per process, with a

@@ -4,7 +4,7 @@
 // optionally, a new active model. It never prints, never reads input, and
 // never calls fetch directly (the catalog and persistence hook are passed
 // in as parameters).
-import type { ModelInfo, Usage } from "../llm/types.ts";
+import type { ChatMessage, ModelInfo, Usage } from "../llm/types.ts";
 import { createProfile, getProfile, listProfiles } from "../profiles.ts";
 import { tools } from "../tools.ts";
 
@@ -14,6 +14,7 @@ export type CommandResult = {
   setModel?: string;
   setProfile?: string;
   setTools?: boolean;
+  newMessages?: ChatMessage[];
 };
 
 export type CommandContext = {
@@ -24,6 +25,7 @@ export type CommandContext = {
   persistModel: (name: string) => void;
   lastUsage: Usage | undefined;
   getContextSize: () => Promise<number | undefined>;
+  compact: () => Promise<ChatMessage[]>;
 };
 
 export async function runCommand(
@@ -43,10 +45,14 @@ export async function runCommand(
   if (command === "/context") {
     return runContextCommand(ctx);
   }
+  if (command === "/compact") {
+    return runCompactCommand(ctx);
+  }
   if (command !== "/model") {
     return {
       lines: [
-        `Unknown command: ${command}. Try /model, /profile, /tool, /tools, or /context.`,
+        `Unknown command: ${command}. Try /model, /profile, /tool, /tools, ` +
+          "/context, or /compact.",
       ],
       isError: true,
     };
@@ -216,4 +222,21 @@ async function runContextCommand(ctx: CommandContext): Promise<CommandResult> {
     lines.push(`(could not fetch context window size: ${detail})`);
   }
   return { lines };
+}
+
+// /compact handler. Collapses the conversation into a single summary via
+// ctx.compact() (bound in loop.ts to compactConversation), and returns the
+// result as newMessages so the loop can replace its conversation state.
+// Skips the model call entirely when there's nothing to compact yet.
+async function runCompactCommand(ctx: CommandContext): Promise<CommandResult> {
+  if (!ctx.lastUsage) {
+    return { lines: ["Nothing to compact yet."] };
+  }
+  try {
+    const newMessages = await ctx.compact();
+    return { lines: ["compact> conversation summarized"], newMessages };
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    return { lines: [`error: could not compact: ${detail}`], isError: true };
+  }
 }
