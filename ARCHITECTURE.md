@@ -109,11 +109,37 @@ index.ts              entry point: build Config, wire Transport + Client + Repl,
 src/config.ts         read env -> typed Config. No I/O beyond reading env, no fetch.
 src/config/persist.ts rewrite a single key in .env.local. The only module that
                         writes config to disk; takes a path + key + value.
-src/llm/types.ts      Message, ChatMessage, ChatCompletionRequest/Response shapes.
+src/llm/types.ts      Pure wire-protocol and shared-shape types; no I/O, no
+                        imports of any handler module. Message, ChatMessage,
+                        ChatCompletionRequest/Response, Tool, and ToolContext
+                        shapes. ToolContext.tracker is typed as a structural
+                        ProcessTracker interface defined here (the methods a
+                        tool handler calls: spawn/get/remove/shutdown) rather
+                        than importing the ProcessTracker class from
+                        tools/process.ts; that keeps this module a leaf and
+                        breaks the tools/* <-> llm/types.ts circular
+                        dependency. The ProcessTracker class in tools/process.ts
+                        satisfies the interface structurally.
 src/llm/client.ts     LLM client: takes Config + messages, returns a structured
                         result. The ONLY place fetch() is called.
 src/llm/models.ts     model catalog: list models via the client, validate a name
                         against the catalog. No fetch of its own.
+src/llm/vectors.ts    vector index over project files: chunks each non-ignored
+                        file into ~800-char blocks, embeds them through the
+                        client's embeddings() helper (the only fetch path,
+                        invariant 2), and stores chunks + embeddings in a
+                        SQLite DB at .vise/vectors.db. Re-embeds only files
+                        whose mtime/size changed; prunes files that vanished
+                        or became gitignored. Respects .gitignore via
+                        `git ls-files`, with a manual-walk fallback when git
+                        is unavailable. Exposes ensureIndexed(config) and
+                        semanticSearch(config, query, k). The one
+                        documented non-tool module that touches the
+                        filesystem and spawns a subprocess (invariant 5):
+                        ensureIndexed runs at startup from the entry point
+                        (loop.ts), before the first turn, so it is outside
+                        "during a turn"; the tool handler semsearch.ts is
+                        the in-turn consumer.
 src/profiles.ts       profile registry: list and look up profiles. Profiles
                         come from the built-in Agent default plus .agents/*.md
                         files in the CWD. Pure functions over the filesystem.
@@ -279,9 +305,35 @@ Run it in CI or as part of `bun lint` before it matters.
   lines into the conversation. The walk should filter noise
   (`node_modules`, `.git`) and/or cap the output, the same way the other
   tool results are bounded.
+- **`semanticSearch` scans the whole index in memory.** Every call loads
+  the entire `chunks` table and runs a JS cosine loop over every row, so
+  each search is O(N × dim) in CPU and O(N × dim) in memory. Correct while
+  the index is small; at 10k+ chunks it will feel slow and spike memory.
+  The fix is an ANN index (or at least a `sqlite-vec`/k-NN vector column)
+  in `vectors.ts`, keeping the SQLite DB the storage boundary.
+- **The tools layer has a circular dependency.** `src/llm/types.ts`
+  (ToolContext) references the `ProcessTracker` class from
+  `src/tools/process.ts`, while `process.ts` imports `ToolContext` back from
+  `types.ts`. madge flags it. Break it by typing `ToolContext.tracker` with a
+  structural interface defined in `types.ts` instead of importing the class
+  (see Future Work); this keeps `types.ts` a leaf and the tools layer
+  splittable without circular imports.
 
 ## Future Work
 
+- **Break the tools-layer circular dependency.** In `src/llm/types.ts`,
+  replace the `import("../tools/process.ts").ProcessTracker` reference in
+  `ToolContext.tracker` with a small structural interface defined locally
+  (`ProcessTrackerShape` or similar: the `spawn`/`get`/`remove`/`shutdown`
+  methods a tool handler calls). The `ProcessTracker` class in
+  `tools/process.ts` satisfies it structurally, so no handler changes are
+  needed and `types.ts` becomes a pure leaf again. This makes
+  `madge --extensions ts src/ index.ts` report zero cycles and lets the tools
+  layer split freely.
+- **Vector ANN index.** Replace `semanticSearch`'s whole-table scan with a
+  k-NN index (`sqlite-vec` or an in-memory HNSW over the cached embeddings)
+  so search cost stops scaling with the number of indexed chunks. Keep the
+  SQLite DB as the durable store; only the scoring path changes.
 - **Rename `src/repl/presession.ts` to `src/repl/externalcmd.ts`.** The module
   now runs all three hook commands (`PRE_SESSION_CMD` once before the first
   turn, `PRE_TURN_CMD` before every user turn, `POST_TURN_CMD` after the

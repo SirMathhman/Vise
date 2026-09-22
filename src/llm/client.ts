@@ -30,6 +30,38 @@ export async function getJson(
   return res.json();
 }
 
+// The result of a single embedding: a flat vector of floats. The
+// OpenAI-compatible /embeddings endpoint returns one entry per input
+// text, each carrying an `embedding` array of floats.
+export type EmbeddingResult = { embedding: number[] };
+
+// POSTs a list of texts to the server's /embeddings endpoint and returns
+// one EmbeddingResult per input, in order. The single fetch site for
+// embedding requests (the LLM client is the only module that calls fetch,
+// invariant 2).
+export async function embeddings(
+  config: ClientConfig,
+  model: string,
+  input: string[],
+): Promise<EmbeddingResult[]> {
+  const res = await fetch(`${config.baseUrl}/embeddings`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(config.apiKey),
+    },
+    body: JSON.stringify({ model, input }),
+  });
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`HTTP ${res.status}: ${detail}`);
+  }
+  const data = (await res.json()) as {
+    data?: EmbeddingResult[];
+  };
+  return data.data ?? [];
+}
+
 // Sends the conversation and returns the model's reply. Throws on
 // transport/HTTP errors. The active model is passed at request time, not
 // captured at startup, so a switch takes effect on the next turn.

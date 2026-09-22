@@ -34,6 +34,27 @@ export type Tool = {
   };
 };
 
+// A tracked background process, as held by the process tracker. Type-level
+// only; no I/O.
+export type TrackedProcess = {
+  proc: Bun.Subprocess;
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  finished: boolean;
+};
+
+// Structural API the tool handlers rely on for background-process
+// management. Defined here (llm layer) so ToolContext does not import from
+// the tools layer; the tools-layer ProcessTracker satisfies it structurally,
+// so no handler changes are required to adopt it.
+export type ProcessTrackerApi = {
+  spawn: (command: string) => { id: string; t: TrackedProcess };
+  get: (id: string) => TrackedProcess | undefined;
+  remove: (id: string) => void;
+  shutdown: () => Promise<void>;
+};
+
 // Per-call context handed to every tool handler. Carries the state a tool
 // needs beyond its arguments: the active model (read at call time, not
 // captured at startup), the shared background-process tracker, the
@@ -43,7 +64,7 @@ export type Tool = {
 export type ToolContext = {
   config: import("../config.ts").Config;
   model: string;
-  tracker: import("../tools/process.ts").ProcessTracker;
+  tracker: ProcessTrackerApi;
   depth: number;
   tools: Tool[];
   toolsEnabled: boolean;

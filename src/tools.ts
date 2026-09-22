@@ -14,6 +14,7 @@ import {
   wait_for_process,
 } from "./tools/process.ts";
 import { find_files, search_content } from "./tools/search.ts";
+import { semantic_search } from "./tools/semsearch.ts";
 import { run_subagent, run_subagent_schema } from "./tools/subagent.ts";
 
 // The tool schemas sent to the model in the request's `tools` field.
@@ -198,6 +199,28 @@ export const tools: Tool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "semantic_search",
+      description:
+        "Search file contents by meaning, not exact text. Returns the most relevant chunks across all indexed files. Use this when you know roughly what you are looking for but not the exact words.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "A natural-language description of what to find.",
+          },
+          k: {
+            type: "number",
+            description: "How many results to return. Defaults to 5.",
+          },
+        },
+        required: ["query"],
+      },
+    },
+  },
   run_subagent_schema,
   {
     type: "function",
@@ -280,6 +303,7 @@ const handlers: Record<
   run_powershell,
   wait_for_process,
   kill_process,
+  semantic_search,
   run_subagent,
 };
 

@@ -6,6 +6,7 @@ import type { Config } from "../config.ts";
 import { chatCompletion } from "../llm/client.ts";
 import { listModels } from "../llm/models.ts";
 import type { ChatMessage } from "../llm/types.ts";
+import { ensureIndexed } from "../llm/vectors.ts";
 import { BUILTIN_AGENT, getProfile } from "../profiles.ts";
 import { ProcessTracker } from "../tools/process.ts";
 import type { ToolContext } from "../tools.ts";
@@ -188,6 +189,23 @@ export async function run(config: Config): Promise<void> {
   const input = createInput();
   const { nextLine, close } = input;
   const tracker = new ProcessTracker();
+
+  // Build or update the vector index before the first turn. Only re-embeds
+  // files that changed since the last startup (tracked by mtime + size in
+  // .vise/vector.db). Failures are non-fatal: the REPL continues and the
+  // semantic_search tool returns an error if the index is unavailable.
+  try {
+    const summary = await ensureIndexed(config);
+    if (summary.indexed > 0 || summary.pruned > 0) {
+      process.stderr.write(
+        `[index] ${summary.indexed} indexed, ${summary.unchanged} unchanged, ${summary.pruned} pruned, ${summary.skipped} skipped\n`,
+      );
+    }
+  } catch (err) {
+    process.stderr.write(
+      `[index] ${err instanceof Error ? err.message : String(err)}\n`,
+    );
+  }
 
   for (;;) {
     renderPrompt();

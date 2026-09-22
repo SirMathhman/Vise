@@ -1,14 +1,6 @@
 // Background process tracking and the three process tool handlers.
 // The only module that calls Bun.spawn.
-import type { ToolContext } from "../llm/types.ts";
-
-export interface TrackedProcess {
-  proc: Bun.Subprocess;
-  stdout: string;
-  stderr: string;
-  exitCode: number | null;
-  finished: boolean;
-}
+import type { ToolContext, TrackedProcess } from "../llm/types.ts";
 
 function spawnPowerShell(command: string): Bun.Subprocess {
   return Bun.spawn(
