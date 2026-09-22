@@ -3,22 +3,40 @@ export function renderPrompt(): void {
   process.stdout.write("you> ");
 }
 
-// Streams the model's reply to the terminal in three steps: renderReplyStart
-// prints the "assistant>" header once, renderReplyChunk appends content
-// deltas as they arrive, and renderReplyEnd terminates the reply. Together
-// they reproduce the previous single-shot renderReply output.
-export function renderReplyStart(): void {
-  process.stdout.write("\nassistant> ");
-}
-
-export function renderReplyChunk(delta: string): void {
-  process.stdout.write(delta);
-}
-
-export function renderReplyEnd(): void {
-  // Two newlines: the reply's own terminator plus the blank line the
-  // previous renderReply emitted before the next prompt.
-  process.stdout.write("\n\n");
+// Creates a streaming reply handle owned by the transport. The loop
+// forwards content deltas to write() as they arrive; the "assistant>" header
+// is printed once, lazily, on the first write. end() terminates the reply and
+// is idempotent: a second end() or a write() after end() is a no-op, so an
+// interrupted reply can't leave the cursor mid-line. If end() is called with
+// no prior writes (no deltas arrived, e.g. an empty response), it renders the
+// full "(empty response)" placeholder, matching the previous single-shot
+// output.
+export function createReplyStream(): {
+  write: (delta: string) => void;
+  end: () => void;
+} {
+  let started = false;
+  let ended = false;
+  return {
+    write: (delta: string) => {
+      if (ended) return;
+      if (!started) {
+        process.stdout.write("\nassistant> ");
+        started = true;
+      }
+      process.stdout.write(delta);
+    },
+    end: () => {
+      if (ended) return;
+      ended = true;
+      if (!started) {
+        process.stdout.write("\nassistant> (empty response)");
+      }
+      // Two newlines: the reply's own terminator plus the blank line the
+      // previous renderReply emitted before the next prompt.
+      process.stdout.write("\n\n");
+    },
+  };
 }
 
 export function renderError(message: string): void {

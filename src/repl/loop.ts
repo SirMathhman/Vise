@@ -17,13 +17,11 @@ import { loadHooks } from "./hooks.ts";
 import { createInput } from "./input.ts";
 import { runPreSessionCmd } from "./presession.ts";
 import {
+  createReplyStream,
   renderCommand,
   renderError,
   renderHook,
   renderPrompt,
-  renderReplyChunk,
-  renderReplyEnd,
-  renderReplyStart,
 } from "./render.ts";
 
 // Returns true if the hook should run for the given active profile.
@@ -87,17 +85,12 @@ async function runModelTurn(
     dispatch: (name, args, ctx) => runTool(name, args, ctx),
   };
   const MAX_TOOL_ROUNDS = 8;
-  // Forwards content deltas to the terminal as they arrive. The "assistant>"
-  // header is printed once, on the first delta. Tool-call rounds usually
-  // carry no content, so only the final answer is streamed to the user.
-  let replyStarted = false;
-  const onDelta = (delta: string): void => {
-    if (!replyStarted) {
-      renderReplyStart();
-      replyStarted = true;
-    }
-    renderReplyChunk(delta);
-  };
+  // Owns the reply's terminal state (header-once, terminator, idempotency)
+  // in the transport. Content deltas are forwarded to write() as they arrive;
+  // tool-call rounds usually carry no content, so only the final answer is
+  // streamed to the user.
+  const replyStream = createReplyStream();
+  const onDelta = (delta: string): void => replyStream.write(delta);
   for (let round = 0; ; round++) {
     if (round >= MAX_TOOL_ROUNDS) {
       throw new Error("Stopped after max tool rounds without a final answer");
@@ -134,13 +127,7 @@ async function runModelTurn(
     const answer = reply.content;
     if (answer.length > 0)
       messages.push({ role: "assistant", content: answer });
-    if (!replyStarted) {
-      // No deltas arrived (e.g. an empty response): render the full reply
-      // the way the previous non-streaming path did.
-      renderReplyStart();
-      renderReplyChunk(answer || "(empty response)");
-    }
-    renderReplyEnd();
+    replyStream.end();
 
     // Run post-turn hooks (env var + .hooks/post-turn/ directory) after
     // the model's answer. On failure (non-zero exit), the output is
