@@ -22,17 +22,44 @@ export type Profile = {
   name: string;
   instruction: string;
   source: "builtin" | "file";
+  tools?: string[];
 };
 
 const AGENTS_DIR = ".agents";
 
 // The built-in default profile. Its instruction is the CWD message that seeds
-// the conversation at startup.
+// the conversation at startup. No tool whitelist: all tools are available.
 export const BUILTIN_AGENT: Profile = {
   name: "agent",
   instruction: `The current working directory is: ${process.cwd()}`,
   source: "builtin",
 };
+
+// Parses a profile file's content into instruction + optional tool whitelist.
+// A line starting with "tools:" (case-insensitive) declares the whitelist as
+// a comma-separated list of tool names. That line is removed from the
+// instruction. If no such line exists, tools is undefined (all tools allowed).
+function parseProfileContent(content: string): {
+  instruction: string;
+  tools?: string[];
+} {
+  const lines = content.split("\n");
+  const instructionLines: string[] = [];
+  let toolNames: string[] | undefined;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.toLowerCase().startsWith("tools:")) {
+      const value = trimmed.slice("tools:".length).trim();
+      if (value.length > 0) {
+        toolNames = value.split(/,|\s+/).filter((n) => n.length > 0);
+      }
+    } else {
+      instructionLines.push(line);
+    }
+  }
+  const instruction = instructionLines.join("\n").trim();
+  return { instruction, tools: toolNames };
+}
 
 // Returns every available profile: the built-in agent plus any .agents/*.md
 // files found in the working directory.
@@ -53,7 +80,8 @@ export function listProfiles(): Profile[] {
         "utf-8",
       ).trim();
       if (content.length === 0) continue;
-      profiles.push({ name, instruction: content, source: "file" });
+      const { instruction, tools } = parseProfileContent(content);
+      profiles.push({ name, instruction, source: "file", tools });
     } catch {
       // unreadable file: skip
     }
@@ -69,7 +97,8 @@ export function getProfile(name: string): Profile | undefined {
   try {
     const content = readFileSync(filePath, "utf-8").trim();
     if (content.length === 0) return undefined;
-    return { name, instruction: content, source: "file" };
+    const { instruction, tools } = parseProfileContent(content);
+    return { name, instruction, source: "file", tools };
   } catch {
     return undefined;
   }

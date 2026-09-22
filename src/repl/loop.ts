@@ -66,13 +66,20 @@ async function runModelTurn(
   postTurnHooks: HookCommand[],
   activeProfile: string,
   toolsEnabled: boolean,
+  activeTools: string[] | undefined,
 ): Promise<void> {
+  // Filter the tools array to only those in the active profile's whitelist.
+  // undefined means "all tools" (no whitelist). The filtered array is what
+  // the model sees and what subagents inherit via toolCtx.tools.
+  const filteredTools = activeTools
+    ? tools.filter((t) => activeTools.includes(t.function.name))
+    : tools;
   const toolCtx: ToolContext = {
     config,
     model,
     tracker,
     depth: 0,
-    tools,
+    tools: filteredTools,
     toolsEnabled,
     dispatch: (name, args, ctx) => runTool(name, args, ctx),
   };
@@ -81,7 +88,7 @@ async function runModelTurn(
     if (round >= MAX_TOOL_ROUNDS) {
       throw new Error("Stopped after max tool rounds without a final answer");
     }
-    const reply = await chatCompletion(config, model, messages, tools);
+    const reply = await chatCompletion(config, model, messages, filteredTools);
     const toolCalls = reply.toolCalls;
     if (toolCalls.length > 0) {
       // Append the assistant's tool-call message, then each tool's
@@ -156,6 +163,11 @@ export async function run(config: Config): Promise<void> {
   // the switch takes effect on the next turn without rebuilding the client.
   let toolsEnabled = true;
 
+  // The active profile's tool whitelist. undefined means "all tools". Updated
+  // when the profile changes. Passed into runModelTurn so the model only sees
+  // the whitelisted tool schemas.
+  let activeTools: string[] | undefined;
+
   // Run pre-session hooks (env var + .hooks/pre-session/ directory) before
   // the first turn. Each hook's output is printed to the user AND appended
   // as a system message so the model sees it as initial context.
@@ -207,6 +219,7 @@ export async function run(config: Config): Promise<void> {
         const profile = getProfile(result.setProfile);
         if (profile) {
           messages.push({ role: "system", content: profile.instruction });
+          activeTools = profile.tools;
         }
       }
       if (result.setTools !== undefined) {
@@ -249,6 +262,7 @@ export async function run(config: Config): Promise<void> {
         postTurnHooks,
         activeProfile,
         toolsEnabled,
+        activeTools,
       );
     } catch (err) {
       renderError(err instanceof Error ? err.message : String(err));

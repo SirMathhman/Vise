@@ -26,12 +26,20 @@ export async function runSubagent(
   if (ctx.depth >= MAX_DEPTH)
     throw new Error(`Max subagent depth (${MAX_DEPTH}) reached`);
 
+  // Intersect the subagent profile's tool whitelist with the parent's tool
+  // set. If the profile declares a whitelist, only tools present in BOTH
+  // are available. If the profile has no whitelist, the parent's set is
+  // used as-is.
+  const subTools = profile.tools
+    ? ctx.tools.filter((t) => profile.tools?.includes(t.function.name))
+    : ctx.tools;
+
   const messages: ChatMessage[] = [
     { role: "system", content: profile.instruction },
     { role: "user", content: task },
   ];
 
-  const subCtx: ToolContext = { ...ctx, depth: ctx.depth + 1 };
+  const subCtx: ToolContext = { ...ctx, depth: ctx.depth + 1, tools: subTools };
 
   for (let round = 0; ; round++) {
     if (round >= MAX_TOOL_ROUNDS)
@@ -40,7 +48,7 @@ export async function runSubagent(
       ctx.config,
       ctx.model,
       messages,
-      ctx.tools,
+      subTools,
     );
     const toolCalls = reply.toolCalls;
     if (toolCalls.length > 0) {
