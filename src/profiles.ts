@@ -1,10 +1,15 @@
 // Profile registry. A profile is a named set of custom system instructions
 // (like a custom agent persona). Profiles come from two sources:
 //   1. The built-in "agent" profile (the default; its instruction is the
-//      CWD system message).
+//      AGENTS.md instructions plus the CWD system message).
 //   2. File-based profiles from `.agents/*.md` in the working directory.
 //      The filename (minus extension) is the profile name; the file content
 //      is the system instruction.
+//
+// Every profile's instruction is composed from the AGENTS.md instructions
+// (when present) plus the profile's own instruction, so the model receives
+// the codebase's agent instructions in the system prompt regardless of which
+// profile is active.
 //
 // No mutable state. Pure functions over the filesystem.
 
@@ -26,12 +31,41 @@ export type Profile = {
 };
 
 const AGENTS_DIR = ".agents";
+const AGENTS_MD = "AGENTS.md";
 
-// The built-in default profile. Its instruction is the CWD message that seeds
-// the conversation at startup. No tool whitelist: all tools are available.
+// Reads AGENTS.md from the working directory once at startup and returns its
+// trimmed content, or null if the file is missing or unreadable. The value
+// is computed once (at module load) and reused, so edits to AGENTS.md during
+// a session are not picked up.
+function loadAgentsMd(): string | null {
+  try {
+    const filePath = path.resolve(process.cwd(), AGENTS_MD);
+    if (!existsSync(filePath) || !statSync(filePath).isFile()) return null;
+    const content = readFileSync(filePath, "utf-8").trim();
+    return content.length > 0 ? content : null;
+  } catch {
+    return null;
+  }
+}
+
+const AGENTS_MD_CONTENT = loadAgentsMd();
+
+// Composes a profile's system instruction from the AGENTS.md instructions
+// (when present) plus the profile's own instruction. Returns the bare
+// instruction when AGENTS.md is absent.
+function composeInstruction(instruction: string): string {
+  if (AGENTS_MD_CONTENT === null) return instruction;
+  return `You are a custom agent.\nHere are the instructions for this codebase:\n\n${AGENTS_MD_CONTENT}\n\n${instruction}`;
+}
+
+// The built-in default profile. Its instruction is the AGENTS.md instructions
+// plus the CWD message that seeds the conversation at startup. No tool
+// whitelist: all tools are available.
 export const BUILTIN_AGENT: Profile = {
   name: "agent",
-  instruction: `The current working directory is: ${process.cwd()}`,
+  instruction: composeInstruction(
+    `The current working directory is: ${process.cwd()}`,
+  ),
   source: "builtin",
 };
 
@@ -81,7 +115,12 @@ export function listProfiles(): Profile[] {
       ).trim();
       if (content.length === 0) continue;
       const { instruction, tools } = parseProfileContent(content);
-      profiles.push({ name, instruction, source: "file", tools });
+      profiles.push({
+        name,
+        instruction: composeInstruction(instruction),
+        source: "file",
+        tools,
+      });
     } catch {
       // unreadable file: skip
     }
@@ -98,7 +137,12 @@ export function getProfile(name: string): Profile | undefined {
     const content = readFileSync(filePath, "utf-8").trim();
     if (content.length === 0) return undefined;
     const { instruction, tools } = parseProfileContent(content);
-    return { name, instruction, source: "file", tools };
+    return {
+      name,
+      instruction: composeInstruction(instruction),
+      source: "file",
+      tools,
+    };
   } catch {
     return undefined;
   }
