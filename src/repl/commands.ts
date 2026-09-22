@@ -28,9 +28,9 @@ export type CommandContext = {
   lastUsage: Usage | undefined;
   getContextSize: () => Promise<number | undefined>;
   compact: () => Promise<ChatMessage[]>;
-  saveSession: (name: string) => string | null;
-  loadSession: (name: string) => SessionState | null;
-  listSessions: () => string[];
+  saveNamedSession: (name: string) => string | null;
+  loadNamedSession: (name: string) => SessionState | null;
+  listNamedSessions: () => string[];
   newConversation: (
     activeProfile: string,
     toolsEnabled: boolean,
@@ -273,7 +273,7 @@ function runSaveCommand(rest: string[], ctx: CommandContext): CommandResult {
       isError: true,
     };
   }
-  const err = ctx.saveSession(name);
+  const err = ctx.saveNamedSession(name);
   if (err) {
     return { lines: [`error: could not save: ${err}`], isError: true };
   }
@@ -291,9 +291,9 @@ function runLoadCommand(rest: string[], ctx: CommandContext): CommandResult {
       isError: true,
     };
   }
-  const state = ctx.loadSession(name);
+  const state = ctx.loadNamedSession(name);
   if (!state) {
-    const sessions = ctx.listSessions();
+    const sessions = ctx.listNamedSessions();
     if (sessions.length === 0) {
       return {
         lines: [`error: no saved sessions found`],
@@ -312,7 +312,7 @@ function runLoadCommand(rest: string[], ctx: CommandContext): CommandResult {
 
 // /sessions handler. Lists all saved session names. Read-only.
 function runSessionsCommand(ctx: CommandContext): CommandResult {
-  const sessions = ctx.listSessions();
+  const sessions = ctx.listNamedSessions();
   if (sessions.length === 0) {
     return { lines: ["No saved sessions."] };
   }

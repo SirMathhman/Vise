@@ -322,10 +322,10 @@ export async function run(config: Config): Promise<void> {
             activeProfile,
             toolsEnabled,
           ),
-        saveSession: (name: string) =>
+        saveNamedSession: (name: string) =>
           saveNamedSession(name, { messages, activeProfile, toolsEnabled }),
-        loadSession: (name: string) => loadNamedSession(name),
-        listSessions: () => listNamedSessions(),
+        loadNamedSession: (name: string) => loadNamedSession(name),
+        listNamedSessions: () => listNamedSessions(),
         newConversation: (profile: string, tools: boolean) =>
           newConversation(profile, tools),
       });
