@@ -63,10 +63,13 @@ the code; it is not a changelog. Progress lives in the git log.
   description; the rest of the file is its content. Notes are read and
   written with the regular file tools (`read_file`, `create_file`,
   `edit_file`) — there is no dedicated note tool or command. The short index
-  (a `name — summary` line per note, plus a header explaining the
-  convention) is injected at the beginning of the system prompt at startup
-  and rebuilt by compaction; it is static for a session, so notes created or
-  edited mid-session appear in the index on the next session.
+  (a `name — summary` line per note, preceded by a "Current notes:" header)
+  is injected at the beginning of the system prompt at startup and rebuilt
+  by compaction; it is static for a session, so notes created or edited
+  mid-session appear in the index on the next session. The notes convention
+  is explained in AGENTS.md (always in the system prompt via
+  `composeInstruction`), so the runtime header only lists what notes
+  currently exist rather than re-explaining the convention.
 - **Hook command** — a shell command that runs at a fixed point around turns.
   Hooks come from two sources: env-var config (`PRE_SESSION_CMD`,
   `PRE_TURN_CMD`, `POST_TURN_CMD`) and directory-based hooks
