@@ -55,6 +55,10 @@ rules to respect:
 - `src/tools.ts` + `src/tools/*` — tool registry and per-tool handler submodules.
 - `src/subagent.ts` + `src/tools/subagent.ts` — the `run_subagent` tool: nested
   isolated subagent conversations seeded from a profile's instruction.
+- `src/llm/vectors.ts` + `src/tools/semsearch.ts` — semantic search: chunks
+  and embeds project files into a SQLite index at `.vise/vectors.db`
+  (re-indexed at startup, not during a turn), queried by the `semsearch`
+  tool.
 - `.agents/*.md` — named **profiles** (personas); the built-in `agent` is the
   default. The file name is the profile name, the file content is the system
   instruction.
