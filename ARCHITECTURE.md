@@ -107,16 +107,22 @@ the code; it is not a changelog. Progress lives in the git log.
 4. The active model is read at request time, not captured at startup, so a
    switch takes effect on the next turn without rebuilding the client.
 5. Tools are the only modules that read or write the filesystem or execute
-   external processes during a turn. The hook system is the only exception:
+   external processes during a turn. The hook system is the primary exception:
    `src/repl/hooks.ts` reads the `.hooks/<type>/` directory at startup to
    discover directory-based hooks (read-only filesystem access, no
    subprocesses), and `src/repl/presession.ts` (to be renamed `externalcmd.ts`,
-   see Future Work) spawns exactly one subprocess per hook invocation. No
-   other module outside the tools may read the filesystem or spawn a
-   subprocess. Neither the tools nor the hook modules call `fetch` or touch
-   the conversation directly; tools return a string result that the loop
-   appends as a `role: "tool"` message, and the loop appends hook output as
-   a `role: "system"` message (pre hooks when output is non-empty; the post
+   see Future Work) spawns exactly one subprocess per hook invocation. A small
+   set of documented non-tool FS readers/writers also exist outside the
+   tools, all at startup or turn boundaries (never during a tool call):
+   `src/profiles.ts` reads `.agents/*.md` and `AGENTS.md` and writes
+   `.agents/<name>.md` on `/profile new`; `src/config/persist.ts` writes
+   `.env.local` on model select; and `src/session.ts` reads/writes
+   `.vise/session.json` (load on startup, save after each turn) so the
+   conversation, active profile, and tools flag survive a restart. Neither
+   the tools nor the hook modules call `fetch` or touch the conversation
+   directly; tools return a string result that the loop appends as a
+   `role: "tool"` message, and the loop appends hook output as a
+   `role: "system"` message (pre hooks when output is non-empty; the post
    hook only when it exits non-zero, per the hook command definition).
 6. Session-long state (the set of tracked processes) is created at the entry
    point and passed to tools as a parameter — the same pattern as commands
@@ -220,6 +226,18 @@ src/repl/compact.ts   conversation compaction: one non-streaming, tool-free
                         "Unbounded conversation"). No fetch of its own, no
                         stdin/stdout; loop.ts owns both triggers (the 80%
                         auto-compact check and the /compact command).
+src/session.ts        conversation persistence: loadSession() reads
+                        .vise/session.json and returns the saved { messages,
+                        activeProfile, toolsEnabled } (or null when missing
+                        or corrupt); saveSession() writes that same shape to
+                        disk, creating .vise/ if needed. A documented
+                        non-tool FS reader/writer (invariant 5), like
+                        profiles.ts and config/persist.ts, but it touches the
+                        disk only at turn boundaries — load on startup, save
+                        after each turn — never during a tool call. No fetch,
+                        no stdin/stdout. loop.ts calls loadSession() before
+                        the first turn and saveSession() at the top of every
+                        loop iteration.
 src/tools.ts          tool registry: schema array + dispatch table. Imports
                         handler functions from the tool submodules below and
                         composes them into the `Record<string, handler>` table.
@@ -242,12 +260,13 @@ src/tools/search.ts   content-search handlers: find_files, search_content.
 ```
 
 Dependency direction: `index -> src/repl/loop -> (src/repl/input, src/repl/render,
-src/repl/commands, src/repl/presession, src/repl/compact, src/llm/client,
-src/tools, src/profiles) -> src/llm/models -> src/llm/types, src/config`.
-`src/llm/*` and `src/repl/*` do not import each other.
+src/repl/commands, src/repl/presession, src/repl/compact, src/session,
+src/llm/client, src/tools, src/profiles) -> src/llm/models -> src/llm/types,
+src/config`. `src/llm/*` and `src/repl/*` do not import each other.
 `src/tools/*` do not import each other; `src/tools.ts` is the only importer of
 the tool submodules. `src/config.ts`, `src/config/persist.ts`, `src/llm/types.ts`,
-`src/profiles.ts`, and the `src/tools/*` submodules are leaves.
+`src/profiles.ts`, `src/session.ts`, and the `src/tools/*` submodules are
+leaves.
 
 Commands are the seam that keeps the loop small: `commands.ts` returns a result
 value (text to render, or a request to mutate session state) and never prints or

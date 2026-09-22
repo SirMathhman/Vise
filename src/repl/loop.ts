@@ -26,6 +26,7 @@ import {
   renderHook,
   renderPrompt,
 } from "./render.ts";
+import { loadSession, saveSession } from "../session.ts";
 
 // Auto-compact once the conversation reaches this fraction of the server's
 // context window (see maybeAutoCompact). Chosen to leave headroom for the
@@ -196,38 +197,43 @@ async function runModelTurn(
 }
 
 export async function run(config: Config): Promise<void> {
-  // The running conversation; every turn appends to it, so each request
-  // carries the full history (context) to the model. Seeded with the
-  // built-in agent profile's instruction (the CWD system message) so the
-  // model can answer environment questions. Using BUILTIN_AGENT.instruction
-  // keeps profiles.ts the single source of truth for the default instruction.
-  const messages: ChatMessage[] = [
-    {
-      role: "system",
-      content: withNotesIntro(BUILTIN_AGENT.instruction),
-    },
+  // Restore the previous session, or fall back to a fresh conversation. The
+  // saved session carries the full message history, the active profile name,
+  // and the tools-enabled flag. When the file is missing or corrupt, the
+  // fallback seeds the built-in agent profile's instruction (the CWD system
+  // message) so the model can answer environment questions. Using
+  // BUILTIN_AGENT.instruction keeps profiles.ts the single source of truth
+  // for the default instruction.
+  const session = loadSession();
+  const messages: ChatMessage[] = session?.messages ?? [
+    { role: "system", content: withNotesIntro(BUILTIN_AGENT.instruction) },
   ];
 
   // The model used for requests. Starts from config and can be changed at
-  // runtime with the /model command.
+  // runtime with the /model command. (Not part of the saved session: the
+  // active model already persists to .env.local.)
   let model = config.model;
 
-  // The active profile name. Starts from the built-in agent and can be
-  // changed at runtime with the /profile command. When it changes, a new
-  // system message is appended to the conversation; history is never altered.
-  let activeProfile = BUILTIN_AGENT.name;
+  // The active profile name. Restored from the saved session when present,
+  // otherwise the built-in agent. Can be changed at runtime with the
+  // /profile command. When it changes, a new system message is appended to
+  // the conversation; history is never altered.
+  let activeProfile = session?.activeProfile ?? BUILTIN_AGENT.name;
 
-  // Whether tools are enabled for this session. Starts enabled; the /tools
-  // command toggles it. When it changes, a new system message is appended
-  // (only when disabled, so the model is told its tools are off); history
-  // is never altered. Read at request time and passed into runModelTurn so
-  // the switch takes effect on the next turn without rebuilding the client.
-  let toolsEnabled = true;
+  // Whether tools are enabled for this session. Restored from the saved
+  // session when present, otherwise enabled. The /tools command toggles it.
+  // When it changes, a new system message is appended (only when disabled,
+  // so the model is told its tools are off); history is never altered. Read
+  // at request time and passed into runModelTurn so the switch takes effect
+  // on the next turn without rebuilding the client.
+  let toolsEnabled = session?.toolsEnabled ?? true;
 
   // The active profile's tool whitelist. undefined means "all tools". Updated
   // when the profile changes. Passed into runModelTurn so the model only sees
-  // the whitelisted tool schemas.
-  let activeTools: string[] | undefined;
+  // the whitelisted tool schemas. Derived from the active profile at startup
+  // (the profile's own tools field), not saved separately — the profile is
+  // the single source of truth for its tool whitelist.
+  let activeTools: string[] | undefined = getProfile(activeProfile)?.tools;
 
   // The most recent turn's token usage, as reported by the server. undefined
   // until the first turn completes (or if the server never reports usage).
@@ -273,6 +279,12 @@ export async function run(config: Config): Promise<void> {
   }
 
   for (;;) {
+    // Persist the conversation state at the top of every iteration, so the
+    // file on disk always reflects the most recent turn. Saving here (rather
+    // than at the end of each branch) means the previous turn's mutations are
+    // saved even when the user exits on the very next line (EOF), which
+    // otherwise would skip a branch-end save.
+    saveSession({ messages, activeProfile, toolsEnabled });
     renderPrompt();
     const raw = await nextLine();
     const text = (raw ?? "").trim();

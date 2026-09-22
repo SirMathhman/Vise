@@ -35,8 +35,11 @@ rules to respect:
   processes** during a turn. The documented exceptions: hook commands
   (`.hooks/` dir read + one spawn per invocation), `src/profiles.ts` (reads
   `.agents/*.md` and `AGENTS.md`; `createProfile` also writes
-  `.agents/<name>.md` on `/profile new`), and `src/config/persist.ts`
-  (writes `.env.local` on model select).
+  `.agents/<name>.md` on `/profile new`), `src/config/persist.ts` (writes
+  `.env.local` on model select), and `src/session.ts` (reads/writes
+  `.vise/session.json` at turn boundaries — load on startup, save after each
+  turn — so the conversation, active profile, and tools flag survive a
+  restart).
 - **Session state (tracked processes) is created at the entry point and passed
   in** as a parameter — `tools.ts` holds no module-level mutable state.
 - **Notes are a file convention, not a tool or command.** Memories and skills
@@ -91,6 +94,9 @@ rules to respect:
   `src/notes.ts`.
 - `src/config.ts` / `src/config/persist.ts` — env-derived config and the one
   disk writer.
+- `src/session.ts` — session persistence: loads/saves `.vise/session.json`
+  (the conversation, active profile, and tools flag) so a restarted REPL
+  resumes where it left off.
 
 ## Working style
 
