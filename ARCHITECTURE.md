@@ -42,10 +42,14 @@ the code; it is not a changelog. Progress lives in the git log.
   stdout/stderr, exit code, and liveness are kept for the rest of the
   session so `wait_for_process` and `kill_process` can act on it later.
 - **Profile** — a named set of custom system instructions (a persona).
-  Profiles come from two sources: a built-in "Agent" default (whose
-  instruction is the CWD message) and file-based profiles from `.agents/*.md`
-  in the working directory. Switching profiles appends a new system message
-  to the conversation; existing history is never altered.
+  Profiles come from two sources: a built-in "Agent" default and file-based
+  profiles from `.agents/*.md` in the working directory. Every profile's
+  instruction is composed from the codebase's agent instructions (`AGENTS.md`
+  in the working directory, when present) plus the profile's own instruction
+  (for the built-in agent, the CWD message), so the model receives the
+  codebase's agent instructions in the system prompt regardless of which
+  profile is active. Switching profiles appends a new system message to the
+  conversation; existing history is never altered.
 - **Hook command** — a shell command that runs at a fixed point around turns.
   Hooks come from two sources: env-var config (`PRE_SESSION_CMD`,
   `PRE_TURN_CMD`, `POST_TURN_CMD`) and directory-based hooks
@@ -142,8 +146,12 @@ src/llm/vectors.ts    vector index over project files: chunks each non-ignored
                         the in-turn consumer.
 src/profiles.ts       profile registry: list and look up profiles. Profiles
                         come from the built-in Agent default plus .agents/*.md
-                        files in the CWD. Pure functions over the filesystem.
-                        No mutable state, no fetch, no stdin/stdout.
+                        files in the CWD. Reads AGENTS.md once at startup and
+                        composes its content into every profile's instruction
+                        (a documented FS-exception, invariant 5), so the model
+                        receives the codebase's agent instructions in the
+                        system prompt for any active profile. No mutable state,
+                        no fetch, no stdin/stdout.
 src/repl/input.ts     stdin buffering (line queue + nextLine). No fetch, no state.
 src/repl/render.ts    prompt/answer/error rendering. Pure formatting.
 src/repl/commands.ts  the command registry: parse a `/` line, dispatch to a
@@ -247,12 +255,6 @@ Run it in CI or as part of `bun lint` before it matters.
   failing check can reach neither the user nor the model. Report a non-zero
   exit code distinctly in the appended message, and give the spawn the same
   timeout/structured-error treatment the client's `fetch` should have.
-- **Duplicate CWD system message.** The loop seeds the conversation with a
-  hardcoded CWD string, and `BUILTIN_AGENT.instruction` is the same string.
-  If the user explicitly runs `/profile Agent`, a second identical CWD
-  message is appended. The loop should seed with `BUILTIN_AGENT.instruction`
-  so `profiles.ts` is the single source of truth for the default
-  instruction.
 - **No retry or timeout on `fetch`.** A hung llama.cpp server blocks the REPL
   forever; a transient ECONNREFUSED is reported as a generic error. The client
   should have a `signal`/timeout and a distinguishable "server unreachable"
@@ -311,25 +313,15 @@ Run it in CI or as part of `bun lint` before it matters.
   the index is small; at 10k+ chunks it will feel slow and spike memory.
   The fix is an ANN index (or at least a `sqlite-vec`/k-NN vector column)
   in `vectors.ts`, keeping the SQLite DB the storage boundary.
-- **The tools layer has a circular dependency.** `src/llm/types.ts`
-  (ToolContext) references the `ProcessTracker` class from
-  `src/tools/process.ts`, while `process.ts` imports `ToolContext` back from
-  `types.ts`. madge flags it. Break it by typing `ToolContext.tracker` with a
-  structural interface defined in `types.ts` instead of importing the class
-  (see Future Work); this keeps `types.ts` a leaf and the tools layer
-  splittable without circular imports.
+- **Tools in `tools.ts` mix registration with full schemas.** Inline tool
+  schemas in `src/tools.ts` make the module exceed 320 lines and tightly couple
+  schema definitions with the dispatch table. Submodules (`fs.ts`, `search.ts`,
+  `process.ts`) should co-locate their schemas with their handler logic (as
+  already prototyped by `run_subagent_schema` in `tools/subagent.ts`), keeping
+  `tools.ts` under 50 lines as pure composition.
 
 ## Future Work
 
-- **Break the tools-layer circular dependency.** In `src/llm/types.ts`,
-  replace the `import("../tools/process.ts").ProcessTracker` reference in
-  `ToolContext.tracker` with a small structural interface defined locally
-  (`ProcessTrackerShape` or similar: the `spawn`/`get`/`remove`/`shutdown`
-  methods a tool handler calls). The `ProcessTracker` class in
-  `tools/process.ts` satisfies it structurally, so no handler changes are
-  needed and `types.ts` becomes a pure leaf again. This makes
-  `madge --extensions ts src/ index.ts` report zero cycles and lets the tools
-  layer split freely.
 - **Vector ANN index.** Replace `semanticSearch`'s whole-table scan with a
   k-NN index (`sqlite-vec` or an in-memory HNSW over the cached embeddings)
   so search cost stops scaling with the number of indexed chunks. Keep the
