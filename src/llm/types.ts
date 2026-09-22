@@ -85,10 +85,21 @@ export type ChatCompletionResponse = {
   }[];
 };
 
+// Token accounting for one completion, as reported by the server. Present on
+// non-streaming responses, and on the final streamed chunk when the request
+// carries `stream_options: { include_usage: true }`.
+export type Usage = {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+};
+
 // The shape of one SSE chunk from /v1/chat/completions with stream: true.
 // Each chunk carries a `delta` with the next content fragment and/or the
 // next tool-call fragment; tool-call fragments arrive split across chunks
-// and the client reassembles them by index.
+// and the client reassembles them by index. `usage` arrives on the final
+// chunk only, alongside (not inside) `choices`, matching llama.cpp's
+// stream_options.include_usage behavior.
 export type ChatCompletionChunk = {
   choices?: {
     delta?: {
@@ -100,9 +111,16 @@ export type ChatCompletionChunk = {
       }[];
     };
   }[];
+  usage?: Usage;
 };
 
 // The shape of the /v1/models response body.
 export type ModelsResponse = {
   data?: { id?: string; status?: { value?: string } }[];
+};
+
+// The shape of the /props response body. `n_ctx` (the server's context
+// window, in tokens) lives under default_generation_settings.
+export type PropsResponse = {
+  default_generation_settings?: { n_ctx?: number };
 };

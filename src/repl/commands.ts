@@ -4,7 +4,7 @@
 // optionally, a new active model. It never prints, never reads input, and
 // never calls fetch directly (the catalog and persistence hook are passed
 // in as parameters).
-import type { ModelInfo } from "../llm/types.ts";
+import type { ModelInfo, Usage } from "../llm/types.ts";
 import { createProfile, getProfile, listProfiles } from "../profiles.ts";
 import { tools } from "../tools.ts";
 
@@ -22,6 +22,8 @@ export type CommandContext = {
   toolsEnabled: boolean;
   listModels: () => Promise<ModelInfo[]>;
   persistModel: (name: string) => void;
+  lastUsage: Usage | undefined;
+  getContextSize: () => Promise<number | undefined>;
 };
 
 export async function runCommand(
@@ -38,10 +40,13 @@ export async function runCommand(
   if (command === "/tools") {
     return runToolsCommand(rest, ctx.toolsEnabled);
   }
+  if (command === "/context") {
+    return runContextCommand(ctx);
+  }
   if (command !== "/model") {
     return {
       lines: [
-        `Unknown command: ${command}. Try /model, /profile, /tool, or /tools.`,
+        `Unknown command: ${command}. Try /model, /profile, /tool, /tools, or /context.`,
       ],
       isError: true,
     };
@@ -186,4 +191,29 @@ function runToolsCommand(rest: string[], enabled: boolean): CommandResult {
     ],
     isError: true,
   };
+}
+
+// /context handler. Reports the token count currently sitting in the
+// conversation (from the most recent response's usage) and, when the server
+// reports its context window (GET /props), that count as a percentage of it.
+// Read-only; it never mutates session state.
+async function runContextCommand(ctx: CommandContext): Promise<CommandResult> {
+  if (!ctx.lastUsage) {
+    return { lines: ["No turns yet in this conversation."] };
+  }
+  const used = ctx.lastUsage.total_tokens;
+  const lines = [`context> ${used} tokens used`];
+  try {
+    const size = await ctx.getContextSize();
+    if (size) {
+      const pct = ((used / size) * 100).toFixed(1);
+      lines[0] = `context> ${used} / ${size} tokens (${pct}%)`;
+    } else {
+      lines.push("(server did not report a context window size)");
+    }
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    lines.push(`(could not fetch context window size: ${detail})`);
+  }
+  return { lines };
 }

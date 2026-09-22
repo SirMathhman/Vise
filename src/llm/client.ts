@@ -5,8 +5,10 @@ import type {
   ChatCompletionChunk,
   ChatCompletionResponse,
   ChatMessage,
+  PropsResponse,
   Tool,
   ToolCall,
+  Usage,
 } from "./types.ts";
 
 type ClientConfig = Pick<Config, "baseUrl" | "apiKey">;
@@ -67,6 +69,16 @@ export async function embeddings(
   return body.data ?? [];
 }
 
+// Fetches the server's context window size (n_ctx) from GET /props. Returns
+// undefined if the server doesn't report it (older servers, or a field
+// rename), rather than throwing, since this is advisory display data.
+export async function getContextSize(
+  config: ClientConfig,
+): Promise<number | undefined> {
+  const props = (await getJson(config, "/props")) as PropsResponse;
+  return props.default_generation_settings?.n_ctx;
+}
+
 // Sends the conversation and returns the model's reply. Throws on
 // transport/HTTP errors. The active model is passed at request time, not
 // captured at startup, so a switch takes effect on the next turn.
@@ -98,20 +110,28 @@ export async function chatCompletion(
 // chatCompletion. Content deltas are passed to onDelta as they arrive, so
 // the caller can render them to the terminal in real time; tool calls are
 // reassembled from the split delta fragments by index and returned in full.
+// `stream_options.include_usage` asks the server to attach token counts to
+// the final chunk; `usage` is undefined if the server doesn't honor it.
 export async function chatCompletionStream(
   config: ClientConfig,
   model: string,
   messages: ChatMessage[],
   tools: Tool[],
   onDelta: (content: string) => void,
-): Promise<{ content: string; toolCalls: ToolCall[] }> {
+): Promise<{ content: string; toolCalls: ToolCall[]; usage?: Usage }> {
   const res = await fetch(`${config.baseUrl}/v1/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       ...authHeaders(config.apiKey),
     },
-    body: JSON.stringify({ model, messages, tools, stream: true }),
+    body: JSON.stringify({
+      model,
+      messages,
+      tools,
+      stream: true,
+      stream_options: { include_usage: true },
+    }),
   });
   if (!res.ok) {
     const detail = await res.text();
@@ -121,15 +141,17 @@ export async function chatCompletionStream(
 
   const content: string[] = [];
   const toolCalls: ToolCall[] = [];
+  let usage: Usage | undefined;
   const decoder = new TextDecoder();
   let buffer = "";
   // Processes one "data: ..." SSE line, appending the content delta to the
-  // result and forwarding it to onDelta, and reassembling tool-call
-  // fragments by index into toolCalls.
+  // result and forwarding it to onDelta, reassembling tool-call fragments by
+  // index into toolCalls, and capturing usage from the final chunk.
   const processLine = (line: string): void => {
     const data = line.slice("data:".length).trim();
     if (data.length === 0 || data === "[DONE]") return;
     const chunk = JSON.parse(data) as ChatCompletionChunk;
+    if (chunk.usage) usage = chunk.usage;
     const delta = chunk.choices?.[0]?.delta;
     if (delta?.content) {
       content.push(delta.content);
@@ -165,5 +187,5 @@ export async function chatCompletionStream(
   }
   const remaining = buffer.trim();
   if (remaining.startsWith("data:")) processLine(remaining);
-  return { content: content.join(""), toolCalls };
+  return { content: content.join(""), toolCalls, usage };
 }

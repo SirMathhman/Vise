@@ -3,9 +3,9 @@
 import * as path from "node:path";
 import { persistEnvVar } from "../config/persist.ts";
 import type { Config } from "../config.ts";
-import { chatCompletionStream } from "../llm/client.ts";
+import { chatCompletionStream, getContextSize } from "../llm/client.ts";
 import { listModels } from "../llm/models.ts";
-import type { ChatMessage } from "../llm/types.ts";
+import type { ChatMessage, Usage } from "../llm/types.ts";
 import { ensureIndexed } from "../llm/vectors.ts";
 import { BUILTIN_AGENT, getProfile } from "../profiles.ts";
 import { ProcessTracker } from "../tools/process.ts";
@@ -59,6 +59,8 @@ async function runHook(
 // intact so the next turn can proceed. When tools are disabled
 // (toolsEnabled is false), tool calls still arrive but runTool short-circuits
 // them, so the model gets a "disabled" result instead of the tool's work.
+// Returns the last round's token usage (for /context), or undefined if the
+// server never reported one.
 async function runModelTurn(
   config: Config,
   model: string,
@@ -68,7 +70,7 @@ async function runModelTurn(
   activeProfile: string,
   toolsEnabled: boolean,
   activeTools: string[] | undefined,
-): Promise<void> {
+): Promise<Usage | undefined> {
   // Filter the tools array to only those in the active profile's whitelist.
   // undefined means "all tools" (no whitelist). The filtered array is what
   // the model sees and what subagents inherit via toolCtx.tools.
@@ -143,7 +145,7 @@ async function runModelTurn(
       if (hookAllowed(hook.profiles, activeProfile))
         await runHook(hook.command, hook.name, "failure", messages);
 
-    break;
+    return reply.usage;
   }
 }
 
@@ -180,6 +182,11 @@ export async function run(config: Config): Promise<void> {
   // when the profile changes. Passed into runModelTurn so the model only sees
   // the whitelisted tool schemas.
   let activeTools: string[] | undefined;
+
+  // The most recent turn's token usage, as reported by the server. undefined
+  // until the first turn completes (or if the server never reports usage).
+  // Read by /context; updated after every runModelTurn call.
+  let lastUsage: Usage | undefined;
 
   // Run pre-session hooks (env var + .hooks/pre-session/ directory) before
   // the first turn. Each hook's output is printed to the user AND appended
@@ -240,6 +247,8 @@ export async function run(config: Config): Promise<void> {
             "LLM_MODEL",
             name,
           ),
+        lastUsage,
+        getContextSize: () => getContextSize(config),
       });
       if (result.setModel) model = result.setModel;
       if (result.setProfile) {
@@ -284,7 +293,7 @@ export async function run(config: Config): Promise<void> {
     messages.push({ role: "user", content: text });
 
     try {
-      await runModelTurn(
+      const usage = await runModelTurn(
         config,
         model,
         messages,
@@ -294,6 +303,7 @@ export async function run(config: Config): Promise<void> {
         toolsEnabled,
         activeTools,
       );
+      if (usage) lastUsage = usage;
     } catch (err) {
       renderError(err instanceof Error ? err.message : String(err));
     }

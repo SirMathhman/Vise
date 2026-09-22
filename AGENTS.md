@@ -24,15 +24,19 @@ rules to respect:
   other way around); the `src/tools/*` submodules must not import each other
   (`src/tools.ts` is their only importer). No cycles — verify with
   `npx madge`.
-- **The LLM client is the only module that calls `fetch`.** Both the chat
-  request and the model catalog go through it.
+- **The LLM client is the only module that calls `fetch`.** The chat
+  request, the model catalog, and the context-size lookup (`GET /props`)
+  all go through it.
 - **Commands never reach the model.** `/`-lines are handled locally; their
   output is printed by the transport, never appended to the conversation.
+  The commands today are `/model`, `/profile`, `/tool`, `/tools`, and
+  `/context`.
 - **Tools are the only modules that read/write the filesystem or spawn
   processes** during a turn. The documented exceptions: hook commands
   (`.hooks/` dir read + one spawn per invocation), `src/profiles.ts` (reads
-  `.agents/*.md`), and `src/config/persist.ts` (writes `.env.local` on model
-  select).
+  `.agents/*.md` and `AGENTS.md`; `createProfile` also writes
+  `.agents/<name>.md` on `/profile new`), and `src/config/persist.ts`
+  (writes `.env.local` on model select).
 - **Session state (tracked processes) is created at the entry point and passed
   in** as a parameter — `tools.ts` holds no module-level mutable state.
 
@@ -43,8 +47,12 @@ rules to respect:
 - **Line limits are enforced by review, not Biome** (function / file / directory
   limits; see ARCHITECTURE.md "Enforcement"). Don't split or trim code on your
   own initiative just to satisfy a size warning.
-- Config is env-derived from `.env.local`; the model selector is the only writer
-  of config back to disk.
+- Config is env-derived from `.env.local`; the model selector is the only
+  writer of config back to disk. The env vars: `LLM_BASE_URL`
+  (default `http://localhost:8080`) and `LLM_MODEL` (default `local`) are the
+  only ones with defaults; `LLM_EMBED_MODEL` falls back to `LLM_MODEL`;
+  `LLM_API_KEY` and the `PRE_SESSION_CMD` / `PRE_TURN_CMD` / `POST_TURN_CMD`
+  (+ `_PROFILES`) hook vars are optional.
 
 ## Where things live
 
@@ -59,9 +67,9 @@ rules to respect:
   and embeds project files into a SQLite index at `.vise/vectors.db`
   (re-indexed at startup, not during a turn), queried by the `semsearch`
   tool.
-- `.agents/*.md` — named **profiles** (personas); the built-in `agent` is the
-  default. The file name is the profile name, the file content is the system
-  instruction.
+- `.agents/*.md` — named **profiles** (personas); the built-in `agent` is
+  the default. The file name is the profile name, the file content is the
+  system instruction (an optional `tools:` line whitelists tools).
 - `.hooks/{pre-session,pre-turn,post-turn}/*.cmd` — directory-based **hook
   commands** run at fixed points around turns.
 - `src/config.ts` / `src/config/persist.ts` — env-derived config and the one
