@@ -85,6 +85,23 @@ export type ChatCompletionResponse = {
   }[];
 };
 
+// The shape of one SSE chunk from /v1/chat/completions with stream: true.
+// Each chunk carries a `delta` with the next content fragment and/or the
+// next tool-call fragment; tool-call fragments arrive split across chunks
+// and the client reassembles them by index.
+export type ChatCompletionChunk = {
+  choices?: {
+    delta?: {
+      content?: string | null;
+      tool_calls?: {
+        index: number;
+        id?: string;
+        function?: { name?: string; arguments?: string };
+      }[];
+    };
+  }[];
+};
+
 // The shape of the /v1/models response body.
 export type ModelsResponse = {
   data?: { id?: string; status?: { value?: string } }[];

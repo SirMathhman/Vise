@@ -3,7 +3,7 @@
 import * as path from "node:path";
 import { persistEnvVar } from "../config/persist.ts";
 import type { Config } from "../config.ts";
-import { chatCompletion } from "../llm/client.ts";
+import { chatCompletionStream } from "../llm/client.ts";
 import { listModels } from "../llm/models.ts";
 import type { ChatMessage } from "../llm/types.ts";
 import { ensureIndexed } from "../llm/vectors.ts";
@@ -21,7 +21,9 @@ import {
   renderError,
   renderHook,
   renderPrompt,
-  renderReply,
+  renderReplyChunk,
+  renderReplyEnd,
+  renderReplyStart,
 } from "./render.ts";
 
 // Returns true if the hook should run for the given active profile.
@@ -85,11 +87,28 @@ async function runModelTurn(
     dispatch: (name, args, ctx) => runTool(name, args, ctx),
   };
   const MAX_TOOL_ROUNDS = 8;
+  // Forwards content deltas to the terminal as they arrive. The "assistant>"
+  // header is printed once, on the first delta. Tool-call rounds usually
+  // carry no content, so only the final answer is streamed to the user.
+  let replyStarted = false;
+  const onDelta = (delta: string): void => {
+    if (!replyStarted) {
+      renderReplyStart();
+      replyStarted = true;
+    }
+    renderReplyChunk(delta);
+  };
   for (let round = 0; ; round++) {
     if (round >= MAX_TOOL_ROUNDS) {
       throw new Error("Stopped after max tool rounds without a final answer");
     }
-    const reply = await chatCompletion(config, model, messages, filteredTools);
+    const reply = await chatCompletionStream(
+      config,
+      model,
+      messages,
+      filteredTools,
+      onDelta,
+    );
     const toolCalls = reply.toolCalls;
     if (toolCalls.length > 0) {
       // Append the assistant's tool-call message, then each tool's
@@ -115,7 +134,13 @@ async function runModelTurn(
     const answer = reply.content;
     if (answer.length > 0)
       messages.push({ role: "assistant", content: answer });
-    renderReply(answer);
+    if (!replyStarted) {
+      // No deltas arrived (e.g. an empty response): render the full reply
+      // the way the previous non-streaming path did.
+      renderReplyStart();
+      renderReplyChunk(answer || "(empty response)");
+    }
+    renderReplyEnd();
 
     // Run post-turn hooks (env var + .hooks/post-turn/ directory) after
     // the model's answer. On failure (non-zero exit), the output is

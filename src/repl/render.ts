@@ -3,8 +3,22 @@ export function renderPrompt(): void {
   process.stdout.write("you> ");
 }
 
-export function renderReply(answer: string): void {
-  console.log(`\nassistant> ${answer || "(empty response)"}\n`);
+// Streams the model's reply to the terminal in three steps: renderReplyStart
+// prints the "assistant>" header once, renderReplyChunk appends content
+// deltas as they arrive, and renderReplyEnd terminates the reply. Together
+// they reproduce the previous single-shot renderReply output.
+export function renderReplyStart(): void {
+  process.stdout.write("\nassistant> ");
+}
+
+export function renderReplyChunk(delta: string): void {
+  process.stdout.write(delta);
+}
+
+export function renderReplyEnd(): void {
+  // Two newlines: the reply's own terminator plus the blank line the
+  // previous renderReply emitted before the next prompt.
+  process.stdout.write("\n\n");
 }
 
 export function renderError(message: string): void {
