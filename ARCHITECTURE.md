@@ -7,6 +7,11 @@ the code; it is not a changelog. Progress lives in the git log.
 
 - **Turn** — one user message plus the model's reply to it. A turn is the unit of
   state that accumulates in a conversation.
+- **Reply rendering** — the streaming display of a model reply to the user, as
+  distinct from the reply's accumulation in the conversation. The client emits
+  content deltas through a callback as they arrive; the turn loop renders each
+  delta to the terminal in real time. The conversation still accumulates the
+  full reply before the next turn (Future Work).
 - **Conversation** — the ordered, in-memory sequence of turns (user + assistant
   messages) sent to the model on every request. It is the REPL's source of truth
   for context.
@@ -366,9 +371,23 @@ Promise<string>`, with a thin validation/coercion step at the registry
 retryable: boolean }`) instead of a bare string. The loop renders the error
   case distinctly and can log non-retryable failures without the model
   guessing from prose.
-- **Streaming responses.** `stream: true` + SSE parsing in `client.ts` so the
-  user sees tokens as they arrive; `render.ts` gains an append mode. The
-  conversation still accumulates the full reply before the next turn.
+- **Reply rendering stream seam.** Streaming is working end-to-end for the
+  main conversation, but the display path is wired through three separate
+  functions (`renderReplyStart` / `renderReplyChunk` / `renderReplyEnd`) whose
+  open/close pairing and the lazy-header-on-first-delta logic live in the
+  turn loop rather than in the transport. If replies are ever interrupted
+  (Ctrl-C, a hook that writes to the terminal, a render error), an
+  unterminated reply can leave the cursor in the middle of the assistant
+  line. A single `createReplyStream()` that owns the header-once and
+  terminator state — and that can be cancelled — removes the pairing
+  invariant from the loop.
+- **Shared streaming path for subagents.** The parent turn streams its reply
+  but `subagent.ts` still uses the non-streaming `chatCompletion`, so a
+  subagent's intermediate replies (and any tool-call rounds it performs) are
+  invisible to the user. The client's streaming path should be the one used
+  by both, with the subagent passing a no-op `onDelta` so its output stays a
+  tool result in the parent conversation. That leaves the non-streaming
+  `chatCompletion` as the only fetch path without a streaming twin.
 - **Command registry.** A table of `{ name, description, handler }` so `/help`
   is generated rather than hand-written, unknown commands suggest the nearest
   match, and adding a command is a one-line registration. `/reset` (clear the
@@ -380,16 +399,25 @@ retryable: boolean }`) instead of a bare string. The loop renders the error
   `process.on("exit")` (or `SIGINT`) hook in `loop.ts` that kills any
   remaining tracked processes.
 - **Tests.** Unit tests for `input.ts` (line buffering), `client.ts` (against a
-  mocked `fetch`), `loop.ts` (conversation accumulation), and each tool
+  mocked `fetch`), `loop.ts` (conversation accumulation, including the
+  streaming reply path — that the header is printed once on the first delta,
+  that a final reply with no tool calls still terminates cleanly, and that an
+  empty response renders the `(empty response)` fallback), and each tool
   handler (filesystem fixtures + a stubbed `ProcessTracker`). These are the
   seams that make the module split above safe to execute.
+- **Bounded reply budget.** A streamed reply has no size cap: a runaway model
+  (or a tool result that echoes a large file into the reply) can write
+  unbounded output to the terminal before `renderReplyEnd` runs. The
+  conversation-side budget (the bounded window, above) does not cap the
+  terminal-side display. A byte budget on the reply stream — mirroring the
+  `OUTPUT_BUDGET` used for tracked-process output — would cap what the user
+  sees and what enters the conversation, with a truncation marker when the
+  budget is hit.
 
 ## Performance
 
 Obvious concerns only — profile before optimizing.
 
-- **Perceived latency:** the full reply is awaited before any output; streaming
-  (Future Work) is the real fix, not a micro-optimization.
 - **Token cost:** re-sending full history every turn doubles the tokens per
   added turn; the bounded window is the fix and is also a correctness issue.
 - **Memory:** the line buffer is bounded by input; the conversation is bounded
