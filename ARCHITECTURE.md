@@ -55,6 +55,18 @@ the code; it is not a changelog. Progress lives in the git log.
   codebase's agent instructions in the system prompt regardless of which
   profile is active. Switching profiles appends a new system message to the
   conversation; existing history is never altered.
+- **Note** — a plain markdown file at `.vise/notes/<name>.md` in the
+  working directory. Notes are how memories and skills are unified: there is
+  no type distinction, a note is simply a fact, decision, or how-to the model
+  wants to keep across sessions. The filename (minus `.md`) is the note's
+  name; a `summary: <one line>` line near the top is its one-line
+  description; the rest of the file is its content. Notes are read and
+  written with the regular file tools (`read_file`, `create_file`,
+  `edit_file`) — there is no dedicated note tool or command. The short index
+  (a `name — summary` line per note, plus a header explaining the
+  convention) is injected at the beginning of the system prompt at startup
+  and rebuilt by compaction; it is static for a session, so notes created or
+  edited mid-session appear in the index on the next session.
 - **Hook command** — a shell command that runs at a fixed point around turns.
   Hooks come from two sources: env-var config (`PRE_SESSION_CMD`,
   `PRE_TURN_CMD`, `POST_TURN_CMD`) and directory-based hooks
@@ -157,6 +169,18 @@ src/profiles.ts       profile registry: list and look up profiles. Profiles
                         receives the codebase's agent instructions in the
                         system prompt for any active profile. No mutable state,
                         no fetch, no stdin/stdout.
+src/notes.ts          note registry + notes intro. Notes unify memories and
+                        skills as plain .vise/notes/<name>.md files the model
+                        and user read/write with the regular file tools (no
+                        dedicated tool or command). listNotes()/getNote()
+                        resolve the .vise/notes/ directory (read-only FS,
+                        invariant 5, like AGENTS.md); withNotesIntro() builds
+                        the short `name — summary` index once at module load
+                        and prepends it to the profile's instruction so the
+                        notes list sits at the beginning of the system prompt
+                        (loop.ts seeds it, compact.ts and profile switches
+                        rebuild it). No mutable state, no fetch, no
+                        stdin/stdout.
 src/repl/input.ts     stdin buffering (line queue + nextLine). No fetch, no state.
 src/repl/render.ts    prompt/answer/error rendering. Pure formatting.
 src/repl/commands.ts  the command registry: parse a `/` line, dispatch to a
@@ -319,12 +343,12 @@ Run it in CI or as part of `bun lint` before it matters.
   itself, while the manual `/compact` path instead returns `newMessages` for
   `run()` to splice at the call site — the same "replace the conversation"
   effect implemented two different ways. A single `applyCompaction(state,
-  newMessages)` helper used by both would remove the duplication and shrink
+newMessages)` helper used by both would remove the duplication and shrink
   `run()` at the same time.
 - **Model switch is not validated against the conversation.** Switching models
   mid-session keeps the history, which is the intended behavior, but a model
   with a smaller context window may reject the accumulated history on the next
-  turn — compaction only checks the *current* model's `n_ctx` after a turn
+  turn — compaction only checks the _current_ model's `n_ctx` after a turn
   completes, so a switch to a much smaller-context model can still overflow
   on the very next request, before compaction gets a chance to run.
 - **Catalog fetch is a second network path.** `/model` performs a request that

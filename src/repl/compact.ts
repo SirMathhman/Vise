@@ -10,6 +10,7 @@
 import type { Config } from "../config.ts";
 import { chatCompletion } from "../llm/client.ts";
 import type { ChatMessage } from "../llm/types.ts";
+import { withNotesIntro } from "../notes.ts";
 import { BUILTIN_AGENT, getProfile } from "../profiles.ts";
 
 const SUMMARY_PROMPT =
@@ -44,7 +45,7 @@ export async function compactConversation(
   );
   const profile = getProfile(activeProfile) ?? BUILTIN_AGENT;
   const compacted: ChatMessage[] = [
-    { role: "system", content: profile.instruction },
+    { role: "system", content: withNotesIntro(profile.instruction) },
   ];
   if (!toolsEnabled) {
     compacted.push({ role: "system", content: TOOLS_DISABLED_NOTICE });

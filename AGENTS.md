@@ -39,6 +39,12 @@ rules to respect:
   (writes `.env.local` on model select).
 - **Session state (tracked processes) is created at the entry point and passed
   in** as a parameter — `tools.ts` holds no module-level mutable state.
+- **Notes are a file convention, not a tool or command.** Memories and skills
+  are unified as plain `.vise/notes/*.md` files the model and the user read
+  and write with the regular file tools; there is no note tool and no `/note`
+  command. The short index (name — summary per note) is injected at the
+  beginning of the system prompt at startup and rebuilt by compaction; the
+  full content is read on demand with `read_file`.
 
 ## Conventions
 
@@ -79,6 +85,10 @@ rules to respect:
   system instruction (an optional `tools:` line whitelists tools).
 - `.hooks/{pre-session,pre-turn,post-turn}/*.cmd` — directory-based **hook
   commands** run at fixed points around turns.
+- `.vise/notes/*.md` — **notes**: the unified memories-and-skills file
+  convention. Filename is the note's name, a `summary:` line feeds the short
+  index, the rest is the note's content. Injected into the system prompt by
+  `src/notes.ts`.
 - `src/config.ts` / `src/config/persist.ts` — env-derived config and the one
   disk writer.
 

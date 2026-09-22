@@ -7,6 +7,7 @@ import { chatCompletionStream, getContextSize } from "../llm/client.ts";
 import { listModels } from "../llm/models.ts";
 import type { ChatMessage, Usage } from "../llm/types.ts";
 import { ensureIndexed } from "../llm/vectors.ts";
+import { withNotesIntro } from "../notes.ts";
 import { BUILTIN_AGENT, getProfile } from "../profiles.ts";
 import { ProcessTracker } from "../tools/process.ts";
 import type { ToolContext } from "../tools.ts";
@@ -203,7 +204,7 @@ export async function run(config: Config): Promise<void> {
   const messages: ChatMessage[] = [
     {
       role: "system",
-      content: BUILTIN_AGENT.instruction,
+      content: withNotesIntro(BUILTIN_AGENT.instruction),
     },
   ];
 
@@ -310,7 +311,10 @@ export async function run(config: Config): Promise<void> {
         // instruction; it never alters the existing conversation history.
         const profile = getProfile(result.setProfile);
         if (profile) {
-          messages.push({ role: "system", content: profile.instruction });
+          messages.push({
+            role: "system",
+            content: withNotesIntro(profile.instruction),
+          });
           activeTools = profile.tools;
         }
       }
