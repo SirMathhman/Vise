@@ -13,11 +13,13 @@ export type CommandResult = {
   isError?: boolean;
   setModel?: string;
   setProfile?: string;
+  setTools?: boolean;
 };
 
 export type CommandContext = {
   model: string;
   activeProfile: string;
+  toolsEnabled: boolean;
   listModels: () => Promise<ModelInfo[]>;
   persistModel: (name: string) => void;
 };
@@ -33,9 +35,14 @@ export async function runCommand(
   if (command === "/tool") {
     return runToolCommand(rest);
   }
+  if (command === "/tools") {
+    return runToolsCommand(rest, ctx.toolsEnabled);
+  }
   if (command !== "/model") {
     return {
-      lines: [`Unknown command: ${command}. Try /model, /profile, or /tool.`],
+      lines: [
+        `Unknown command: ${command}. Try /model, /profile, /tool, or /tools.`,
+      ],
       isError: true,
     };
   }
@@ -145,4 +152,38 @@ function runToolCommand(rest: string[]): CommandResult {
     lines.push(`  ${tool.function.name}`);
   }
   return { lines };
+}
+
+// /tools handler. With no argument, reports whether tools are enabled. With
+// `on` or `off`, sets the tools-enabled flag by returning setTools; the loop
+// applies the flag and, when tools are turned off, appends a system message
+// telling the model its tools were just disabled. Read-only otherwise; it
+// never runs a tool or mutates session state directly.
+function runToolsCommand(rest: string[], enabled: boolean): CommandResult {
+  const arg = rest.join(" ").trim().toLowerCase();
+  if (arg.length === 0) {
+    return {
+      lines: [enabled ? "tools> enabled" : "tools> disabled"],
+    };
+  }
+  if (arg === "off" || arg === "disable" || arg === "disabled") {
+    return {
+      lines: ["tools> disabled"],
+      setTools: false,
+    };
+  }
+  if (arg === "on" || arg === "enable" || arg === "enabled") {
+    return {
+      lines: ["tools> enabled"],
+      setTools: true,
+    };
+  }
+  return {
+    lines: [
+      `unknown /tools argument: ${arg}`,
+      enabled ? "tools> enabled" : "tools> disabled",
+      "Usage: /tools [on|off]",
+    ],
+    isError: true,
+  };
 }

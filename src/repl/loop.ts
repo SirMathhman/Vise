@@ -55,7 +55,9 @@ async function runHook(
 // Drives a single model turn: call the model, handle tool calls, run
 // post-turn hooks. Loops until the model stops calling tools or the round
 // cap is hit. Errors are caught and rendered; the conversation is left
-// intact so the next turn can proceed.
+// intact so the next turn can proceed. When tools are disabled
+// (toolsEnabled is false), tool calls still arrive but runTool short-circuits
+// them, so the model gets a "disabled" result instead of the tool's work.
 async function runModelTurn(
   config: Config,
   model: string,
@@ -63,6 +65,7 @@ async function runModelTurn(
   tracker: ProcessTracker,
   postTurnHooks: HookCommand[],
   activeProfile: string,
+  toolsEnabled: boolean,
 ): Promise<void> {
   const toolCtx: ToolContext = {
     config,
@@ -70,6 +73,7 @@ async function runModelTurn(
     tracker,
     depth: 0,
     tools,
+    toolsEnabled,
     dispatch: (name, args, ctx) => runTool(name, args, ctx),
   };
   const MAX_TOOL_ROUNDS = 8;
@@ -145,6 +149,13 @@ export async function run(config: Config): Promise<void> {
   // system message is appended to the conversation; history is never altered.
   let activeProfile = BUILTIN_AGENT.name;
 
+  // Whether tools are enabled for this session. Starts enabled; the /tools
+  // command toggles it. When it changes, a new system message is appended
+  // (only when disabled, so the model is told its tools are off); history
+  // is never altered. Read at request time and passed into runModelTurn so
+  // the switch takes effect on the next turn without rebuilding the client.
+  let toolsEnabled = true;
+
   // Run pre-session hooks (env var + .hooks/pre-session/ directory) before
   // the first turn. Each hook's output is printed to the user AND appended
   // as a system message so the model sees it as initial context.
@@ -179,6 +190,7 @@ export async function run(config: Config): Promise<void> {
       const result = await runCommand(text, {
         model,
         activeProfile,
+        toolsEnabled,
         listModels: () => listModels(config),
         persistModel: (name: string) =>
           persistEnvVar(
@@ -195,6 +207,20 @@ export async function run(config: Config): Promise<void> {
         const profile = getProfile(result.setProfile);
         if (profile) {
           messages.push({ role: "system", content: profile.instruction });
+        }
+      }
+      if (result.setTools !== undefined) {
+        toolsEnabled = result.setTools;
+        // Turning tools off appends a system message telling the model its
+        // tools were just disabled, so it can answer without them on the
+        // next turn. Turning them on is silent (nothing for the model to
+        // react to). Either way, existing history is never altered.
+        if (toolsEnabled === false) {
+          messages.push({
+            role: "system",
+            content:
+              "Your tools were just disabled. You can no longer call tools; if you need one, say so and ask the user to re-enable them with /tools on.",
+          });
         }
       }
       renderCommand(result);
@@ -222,6 +248,7 @@ export async function run(config: Config): Promise<void> {
         tracker,
         postTurnHooks,
         activeProfile,
+        toolsEnabled,
       );
     } catch (err) {
       renderError(err instanceof Error ? err.message : String(err));

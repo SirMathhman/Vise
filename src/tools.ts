@@ -289,11 +289,19 @@ export type { ToolContext } from "./llm/types.ts";
 
 // Dispatches a tool call by name. Adding a tool means adding one entry to
 // the `handlers` table and one schema to `tools` — no edit to this function.
+// When tools are disabled (ctx.toolsEnabled is false), every call is rejected
+// with a "disabled" result instead of running its handler. The tool
+// definitions in `tools` are never removed; only their dispatch is short-
+// circuited, so the model keeps seeing the same schemas and can re-enable
+// them with /tools on.
 export async function runTool(
   name: string,
   args: Record<string, unknown>,
   ctx: ToolContext,
 ): Promise<string> {
+  if (!ctx.toolsEnabled) {
+    return `Tool "${name}" is currently disabled; no action was taken.`;
+  }
   const handler = handlers[name];
   return handler ? handler(args, ctx) : `Unknown tool: ${name}`;
 }

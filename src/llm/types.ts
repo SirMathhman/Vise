@@ -46,6 +46,7 @@ export type ToolContext = {
   tracker: import("../tools/process.ts").ProcessTracker;
   depth: number;
   tools: Tool[];
+  toolsEnabled: boolean;
   dispatch: (
     name: string,
     args: Record<string, unknown>,
