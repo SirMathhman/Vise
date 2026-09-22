@@ -30,10 +30,11 @@ export async function getJson(
   return res.json();
 }
 
-// The result of a single embedding: a flat vector of floats. The
-// OpenAI-compatible /embeddings endpoint returns one entry per input
-// text, each carrying an `embedding` array of floats.
-export type EmbeddingResult = { embedding: number[] };
+// The result of a single embedding: a flat vector of floats, or a list of
+// per-token embedding vectors (when unpooled, as returned by llama.cpp).
+export type EmbeddingResult = {
+  embedding: number[] | number[][];
+};
 
 // POSTs a list of texts to the server's /embeddings endpoint and returns
 // one EmbeddingResult per input, in order. The single fetch site for
@@ -56,10 +57,13 @@ export async function embeddings(
     const detail = await res.text();
     throw new Error(`HTTP ${res.status}: ${detail}`);
   }
-  const data = (await res.json()) as {
-    data?: EmbeddingResult[];
-  };
-  return data.data ?? [];
+  const body = (await res.json()) as
+    | EmbeddingResult[]
+    | { data?: EmbeddingResult[] };
+  if (Array.isArray(body)) {
+    return body;
+  }
+  return body.data ?? [];
 }
 
 // Sends the conversation and returns the model's reply. Throws on

@@ -24,10 +24,11 @@ function parseProfiles(env: string | undefined): string[] | undefined {
 }
 
 export function loadConfig(): Config {
+  const model = process.env.LLM_MODEL ?? "local";
   return {
     baseUrl: process.env.LLM_BASE_URL ?? "http://localhost:8080",
-    model: process.env.LLM_MODEL ?? "local",
-    embedModel: process.env.LLM_EMBED_MODEL ?? "embed",
+    model,
+    embedModel: process.env.LLM_EMBED_MODEL ?? model,
     apiKey: process.env.LLM_API_KEY,
     preSessionCmd: process.env.PRE_SESSION_CMD,
     preTurnCmd: process.env.PRE_TURN_CMD,

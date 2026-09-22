@@ -65,6 +65,51 @@ function chunkFile(content: string): string[] {
 
 // --- Embedding ---
 
+// Mean-pools a token-level matrix (number[][]) into a single L2-normalized vector.
+// If the input is already a 1D vector (number[]), converts and L2-normalizes it.
+function poolAndNormalize(raw: number[] | number[][]): Float32Array {
+  if (raw.length === 0) return new Float32Array(0);
+  if (typeof raw[0] === "number") {
+    const vec = new Float32Array(raw as number[]);
+    let norm = 0;
+    for (let i = 0; i < vec.length; i++) {
+      const val = vec[i] ?? 0;
+      norm += val * val;
+    }
+    norm = Math.sqrt(norm);
+    if (norm > 0) {
+      for (let i = 0; i < vec.length; i++) {
+        vec[i] = (vec[i] ?? 0) / norm;
+      }
+    }
+    return vec;
+  }
+
+  const matrix = raw as number[][];
+  const dim = matrix[0]?.length ?? 0;
+  const out = new Float32Array(dim);
+  if (matrix.length === 0 || dim === 0) return out;
+
+  for (const tokenVec of matrix) {
+    for (let i = 0; i < dim; i++) {
+      out[i] = (out[i] ?? 0) + (tokenVec[i] ?? 0);
+    }
+  }
+  let norm = 0;
+  for (let i = 0; i < dim; i++) {
+    const avg = (out[i] ?? 0) / matrix.length;
+    out[i] = avg;
+    norm += avg * avg;
+  }
+  norm = Math.sqrt(norm);
+  if (norm > 0) {
+    for (let i = 0; i < dim; i++) {
+      out[i] = (out[i] ?? 0) / norm;
+    }
+  }
+  return out;
+}
+
 // Embeds a list of texts in one request via the LLM client and returns
 // their vectors in order. Used by both index construction and search.
 async function embedAll(
@@ -74,7 +119,7 @@ async function embedAll(
   const res = await embeddings(config, config.embedModel, texts);
   const out: Float32Array[] = [];
   for (const item of res) {
-    out.push(new Float32Array(item.embedding));
+    out.push(poolAndNormalize(item.embedding));
   }
   return out;
 }
