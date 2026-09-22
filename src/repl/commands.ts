@@ -6,6 +6,7 @@
 // in as parameters).
 import type { ChatMessage, ModelInfo, Usage } from "../llm/types.ts";
 import { createProfile, getProfile, listProfiles } from "../profiles.ts";
+import type { SessionState } from "../session.ts";
 import { tools } from "../tools.ts";
 
 export type CommandResult = {
@@ -15,6 +16,7 @@ export type CommandResult = {
   setProfile?: string;
   setTools?: boolean;
   newMessages?: ChatMessage[];
+  newSession?: SessionState;
 };
 
 export type CommandContext = {
@@ -26,6 +28,13 @@ export type CommandContext = {
   lastUsage: Usage | undefined;
   getContextSize: () => Promise<number | undefined>;
   compact: () => Promise<ChatMessage[]>;
+  saveSession: (name: string) => string | null;
+  loadSession: (name: string) => SessionState | null;
+  listSessions: () => string[];
+  newConversation: (
+    activeProfile: string,
+    toolsEnabled: boolean,
+  ) => SessionState;
 };
 
 export async function runCommand(
@@ -48,11 +57,23 @@ export async function runCommand(
   if (command === "/compact") {
     return runCompactCommand(ctx);
   }
+  if (command === "/save") {
+    return runSaveCommand(rest, ctx);
+  }
+  if (command === "/load") {
+    return runLoadCommand(rest, ctx);
+  }
+  if (command === "/sessions") {
+    return runSessionsCommand(ctx);
+  }
+  if (command === "/new") {
+    return runNewCommand(ctx);
+  }
   if (command !== "/model") {
     return {
       lines: [
         `Unknown command: ${command}. Try /model, /profile, /tool, /tools, ` +
-          "/context, or /compact.",
+          "/context, /compact, /save, /load, /sessions, or /new.",
       ],
       isError: true,
     };
@@ -239,4 +260,74 @@ async function runCompactCommand(ctx: CommandContext): Promise<CommandResult> {
     const detail = err instanceof Error ? err.message : String(err);
     return { lines: [`error: could not compact: ${detail}`], isError: true };
   }
+}
+
+// /save handler. Saves the current conversation under the given name to
+// .vise/sessions/<name>.json. The name must be a valid filename (alphanumerics,
+// dots, hyphens, underscores). With no argument, shows usage.
+function runSaveCommand(rest: string[], ctx: CommandContext): CommandResult {
+  const name = rest.join(" ").trim();
+  if (name.length === 0) {
+    return {
+      lines: ["Usage: /save <name>"],
+      isError: true,
+    };
+  }
+  const err = ctx.saveSession(name);
+  if (err) {
+    return { lines: [`error: could not save: ${err}`], isError: true };
+  }
+  return { lines: [`saved session: ${name}`] };
+}
+
+// /load handler. Loads a named session from .vise/sessions/<name>.json and
+// replaces the current conversation with it. With no argument, shows usage.
+// With an unknown name, lists available sessions.
+function runLoadCommand(rest: string[], ctx: CommandContext): CommandResult {
+  const name = rest.join(" ").trim();
+  if (name.length === 0) {
+    return {
+      lines: ["Usage: /load <name>"],
+      isError: true,
+    };
+  }
+  const state = ctx.loadSession(name);
+  if (!state) {
+    const sessions = ctx.listSessions();
+    if (sessions.length === 0) {
+      return {
+        lines: [`error: no saved sessions found`],
+        isError: true,
+      };
+    }
+    const lines = [`error: unknown session: ${name}`, "Available sessions:"];
+    for (const s of sessions) lines.push(`  ${s}`);
+    return { lines, isError: true };
+  }
+  return {
+    lines: [`loaded session: ${name}`],
+    newSession: state,
+  };
+}
+
+// /sessions handler. Lists all saved session names. Read-only.
+function runSessionsCommand(ctx: CommandContext): CommandResult {
+  const sessions = ctx.listSessions();
+  if (sessions.length === 0) {
+    return { lines: ["No saved sessions."] };
+  }
+  const lines = ["Saved sessions:"];
+  for (const s of sessions) lines.push(`  ${s}`);
+  return { lines };
+}
+
+// /new handler. Starts a fresh conversation seeded with the active profile's
+// instruction, keeping the current profile and tools flag. Returns a
+// newSession so the loop replaces the conversation state.
+function runNewCommand(ctx: CommandContext): CommandResult {
+  const state = ctx.newConversation(ctx.activeProfile, ctx.toolsEnabled);
+  return {
+    lines: ["conversation cleared"],
+    newSession: state,
+  };
 }

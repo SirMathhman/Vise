@@ -30,7 +30,7 @@ rules to respect:
 - **Commands never reach the model.** `/`-lines are handled locally; their
   output is printed by the transport, never appended to the conversation.
   The commands today are `/model`, `/profile`, `/tool`, `/tools`, `/context`,
-  and `/compact`.
+  `/compact`, `/save`, `/load`, `/sessions`, and `/new`.
 - **Tools are the only modules that read/write the filesystem or spawn
   processes** during a turn. The documented exceptions: hook commands
   (`.hooks/` dir read + one spawn per invocation), `src/profiles.ts` (reads
@@ -39,7 +39,8 @@ rules to respect:
   `.env.local` on model select), and `src/session.ts` (reads/writes
   `.vise/session.json` at turn boundaries — load on startup, save after each
   turn — so the conversation, active profile, and tools flag survive a
-  restart).
+  restart — and named session files under `.vise/sessions/*.json` written
+  by `/save` and read by `/load`).
 - **Session state (tracked processes) is created at the entry point and passed
   in** as a parameter — `tools.ts` holds no module-level mutable state.
 - **Notes are a file convention, not a tool or command.** Memories and skills
@@ -94,9 +95,10 @@ rules to respect:
   `src/notes.ts`.
 - `src/config.ts` / `src/config/persist.ts` — env-derived config and the one
   disk writer.
-- `src/session.ts` — session persistence: loads/saves `.vise/session.json`
-  (the conversation, active profile, and tools flag) so a restarted REPL
-  resumes where it left off.
+- `src/session.ts` — session persistence: the auto-resume state
+  (`.vise/session.json`) and named session snapshots
+  (`.vise/sessions/*.json`) that back `/save`, `/load`, `/sessions`, and
+  `/new`.
 
 ## Working style
 

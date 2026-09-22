@@ -118,7 +118,9 @@ the code; it is not a changelog. Progress lives in the git log.
    `.agents/<name>.md` on `/profile new`; `src/config/persist.ts` writes
    `.env.local` on model select; and `src/session.ts` reads/writes
    `.vise/session.json` (load on startup, save after each turn) so the
-   conversation, active profile, and tools flag survive a restart. Neither
+   conversation, active profile, and tools flag survive a restart, and
+   reads/writes `.vise/sessions/*.json` for named session snapshots
+   (written by `/save`, read by `/load`). Neither
    the tools nor the hook modules call `fetch` or touch the conversation
    directly; tools return a string result that the loop appends as a
    `role: "tool"` message, and the loop appends hook output as a
@@ -230,14 +232,22 @@ src/session.ts        conversation persistence: loadSession() reads
                         .vise/session.json and returns the saved { messages,
                         activeProfile, toolsEnabled } (or null when missing
                         or corrupt); saveSession() writes that same shape to
-                        disk, creating .vise/ if needed. A documented
+                        disk, creating .vise/ if needed. Named session
+                        snapshots: saveNamedSession() writes the state to
+                        .vise/sessions/<name>.json, loadNamedSession() reads
+                        it back, listNamedSessions() lists all saved names,
+                        and newConversation() creates a fresh state seeded
+                        with the active profile's instruction. A documented
                         non-tool FS reader/writer (invariant 5), like
                         profiles.ts and config/persist.ts, but it touches the
-                        disk only at turn boundaries — load on startup, save
-                        after each turn — never during a tool call. No fetch,
-                        no stdin/stdout. loop.ts calls loadSession() before
-                        the first turn and saveSession() at the top of every
-                        loop iteration.
+                        disk only at turn boundaries and during /save, /load,
+                        /sessions, and /new — never during a tool call. No
+                        fetch, no stdin/stdout. loop.ts calls loadSession()
+                        before the first turn and saveSession() at the top of
+                        every loop iteration; the named-session functions are
+                        exposed via CommandContext so the /save, /load,
+                        /sessions, and /new handlers in commands.ts can call
+                        them.
 src/tools.ts          tool registry: schema array + dispatch table. Imports
                         handler functions from the tool submodules below and
                         composes them into the `Record<string, handler>` table.
@@ -475,15 +485,17 @@ retryable: boolean }`) instead of a bare string. The loop renders the error
   `chatCompletion` as the only fetch path without a streaming twin.
 - **Command registry.** A table of `{ name, description, handler }` so `/help`
   is generated rather than hand-written, unknown commands suggest the nearest
-  match, and adding a command is a one-line registration. `/reset` (clear the
+  match, and adding a command is a one-line registration. `/new` (clear the
   conversation) and `/model` are the first entries.
 - **Durable in-flight turns.** `src/session.ts` persists the conversation at
-  turn boundaries, but a crash or Ctrl-C _during_ a model turn (after the user
-  message is pushed, before the next iteration's save) loses that turn, and
-  startup resumes unconditionally with no way to start fresh or pick among
-  saved sessions. Add a durable in-flight marker (or save after the user
-  message is appended, discarding a dangling user turn on load) and a
-  startup choice (resume / fresh / list saved sessions).
+  turn boundaries, and `/new` / `/save` / `/load` / `/sessions` give the user
+  a way to start fresh and pick among saved sessions, but a crash or Ctrl-C
+  _during_ a model turn (after the user message is pushed, before the next
+  iteration's save) still loses that turn, and startup resumes the auto-resume
+  file unconditionally with no way to list saved sessions from the CLI at
+  startup. Add a durable in-flight marker (or save after the user message is
+  appended, discarding a dangling user turn on load) and, optionally, a
+  startup flag (e.g. `--fresh`) to bypass the auto-resume file.
 - **Ctrl-C process reaping.** `tracker.shutdown()` runs before
   `process.exit` on the EOF path but not on a Ctrl-C interrupt; add a
   `process.on("exit")` (or `SIGINT`) hook in `loop.ts` that kills any

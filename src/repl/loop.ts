@@ -9,7 +9,14 @@ import type { ChatMessage, Usage } from "../llm/types.ts";
 import { ensureIndexed } from "../llm/vectors.ts";
 import { withNotesIntro } from "../notes.ts";
 import { BUILTIN_AGENT, getProfile } from "../profiles.ts";
-import { loadSession, saveSession } from "../session.ts";
+import {
+  listNamedSessions,
+  loadNamedSession,
+  loadSession,
+  newConversation,
+  saveNamedSession,
+  saveSession,
+} from "../session.ts";
 import { ProcessTracker } from "../tools/process.ts";
 import type { ToolContext } from "../tools.ts";
 import { runTool, tools } from "../tools.ts";
@@ -315,6 +322,12 @@ export async function run(config: Config): Promise<void> {
             activeProfile,
             toolsEnabled,
           ),
+        saveSession: (name: string) =>
+          saveNamedSession(name, { messages, activeProfile, toolsEnabled }),
+        loadSession: (name: string) => loadNamedSession(name),
+        listSessions: () => listNamedSessions(),
+        newConversation: (profile: string, tools: boolean) =>
+          newConversation(profile, tools),
       });
       if (result.setModel) model = result.setModel;
       if (result.setProfile) {
@@ -345,6 +358,16 @@ export async function run(config: Config): Promise<void> {
         // one (profile instruction + summary); the usage figure /context
         // reports is stale the moment that happens.
         messages.splice(0, messages.length, ...result.newMessages);
+        lastUsage = undefined;
+      }
+      if (result.newSession) {
+        // /load and /new replace the entire conversation state. The profile
+        // and tools flag come from the saved state (or the current values for
+        // /new), so activeTools must be re-derived.
+        messages.splice(0, messages.length, ...result.newSession.messages);
+        activeProfile = result.newSession.activeProfile;
+        toolsEnabled = result.newSession.toolsEnabled;
+        activeTools = getProfile(activeProfile)?.tools;
         lastUsage = undefined;
       }
       renderCommand(result);
