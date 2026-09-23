@@ -293,6 +293,23 @@ body {
   margin-top: 4px;
 }
 
+.tool-block .args {
+  max-height: 10.5em;
+  overflow: hidden;
+}
+
+.tool-block .args.clipped {
+  cursor: pointer;
+  -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent);
+  mask-image: linear-gradient(to bottom, #000 70%, transparent);
+}
+
+.tool-block .args.clipped.expanded {
+  max-height: none;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
 .tool-block .children:not(:empty) {
   display: flex;
   flex-direction: column;

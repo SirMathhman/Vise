@@ -43,10 +43,14 @@ export function renderToolCallEnd(
   durationMs: number,
   status: "done" | "failed" | "disabled" | "unknown",
   depth: number,
+  error?: string,
 ): void {
   const indent = "  ".repeat(depth);
   const seconds = (durationMs / 1000).toFixed(1);
-  process.stdout.write(`${indent}tool> ${name} ${status} (${seconds}s)\n`);
+  const reason = error ? `: ${previewToolArgument(error)}` : "";
+  process.stdout.write(
+    `${indent}tool> ${name} ${status} (${seconds}s)${reason}\n`,
+  );
 }
 
 function previewToolArgument(value: unknown): string {

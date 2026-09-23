@@ -155,8 +155,16 @@ export class WebTransport implements Transport {
     durationMs: number,
     status: "done" | "failed" | "disabled" | "unknown",
     depth: number,
+    error?: string,
   ): void {
-    this.send({ type: "tool_call_end", name, durationMs, status, depth });
+    this.send({
+      type: "tool_call_end",
+      name,
+      durationMs,
+      status,
+      depth,
+      error,
+    });
   }
 
   command(result: CommandRender): void {

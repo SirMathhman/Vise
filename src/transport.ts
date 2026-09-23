@@ -94,6 +94,7 @@ export type Transport = {
     durationMs: number,
     status: "done" | "failed" | "disabled" | "unknown",
     depth: number,
+    error?: string,
   ) => void;
   command: (result: CommandRender) => void;
   error: (message: string) => void;

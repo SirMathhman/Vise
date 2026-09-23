@@ -70,6 +70,7 @@
 
     socket.addEventListener("close", () => {
       setConnState("closed");
+      interruptOpenToolBlocks();
       if (!intentionalClose) {
         // Auto-reconnect after a network drop. The server keeps the
         // session alive across disconnects, so the conversation continues.
@@ -178,6 +179,16 @@
     metaEl.textContent = "running…";
     el.appendChild(metaEl);
     parentEl.appendChild(el);
+    // Long arguments (e.g. a whole file for create_file) are clipped to a
+    // preview; clicking the preview toggles the full text.
+    if (argsEl.scrollHeight > argsEl.clientHeight) {
+      argsEl.classList.add("clipped");
+      argsEl.title = "Click to show all";
+      argsEl.addEventListener("click", () => {
+        const expanded = argsEl.classList.toggle("expanded");
+        argsEl.title = expanded ? "Click to collapse" : "Click to show all";
+      });
+    }
     scrollDown();
     return { el, meta: metaEl, children: childrenEl };
   }
@@ -232,6 +243,8 @@
     }
     switch (msg.type) {
       case "prompt":
+        // The REPL is waiting for input, so no tool call is still running.
+        interruptOpenToolBlocks();
         break;
       case "reply_delta":
         onReplyDelta(msg.text);
@@ -337,8 +350,19 @@
     if (!entry) return;
     openToolBlocks.length = msg.depth;
     const seconds = (msg.durationMs / 1000).toFixed(1);
-    entry.meta.textContent = `${msg.status} · ${seconds} s`;
+    entry.meta.textContent = `${msg.status} · ${seconds} s${msg.error ? ` — ${msg.error}` : ""}`;
     entry.el.className = `tool-block ${msg.status === "done" ? "done" : msg.status === "failed" ? "failed" : ""}`;
+  }
+
+  // Marks every still-running tool block as interrupted: its end event will
+  // never arrive (the socket dropped, or the turn ended without it).
+  function interruptOpenToolBlocks() {
+    for (const entry of openToolBlocks) {
+      if (!entry) continue;
+      entry.meta.textContent = "interrupted";
+      entry.el.className = "tool-block failed";
+    }
+    openToolBlocks.length = 0;
   }
 
   function onCommand(msg) {

@@ -334,6 +334,7 @@ export async function runTool(
     // Visualization is observational and must not block tool dispatch.
   }
   let status: "done" | "failed" | "disabled" | "unknown" = "done";
+  let error: string | undefined;
   try {
     if (!ctx.toolsEnabled) {
       status = "disabled";
@@ -347,10 +348,10 @@ export async function runTool(
     return await handler(args, ctx);
   } catch (err) {
     status = "failed";
+    error = err instanceof Error ? err.message : String(err);
     // Expected failures become the tool result; anything else (bugs, a
     // disconnect during ask_user) still aborts the turn.
-    if (err instanceof ToolFailure)
-      return `Tool "${name}" failed: ${err.message}`;
+    if (err instanceof ToolFailure) return `Tool "${name}" failed: ${error}`;
     throw err;
   } finally {
     try {
@@ -359,6 +360,7 @@ export async function runTool(
         Date.now() - startedAt,
         status,
         ctx.depth,
+        error,
       );
     } catch {
       // Preserve the handler result/error if visualization fails.

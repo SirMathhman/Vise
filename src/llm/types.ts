@@ -102,6 +102,8 @@ export type ToolCallObserver = {
     durationMs: number,
     status: "done" | "failed" | "disabled" | "unknown",
     depth: number,
+    // Why a failed call failed; set only when status is "failed".
+    error?: string,
   ) => void;
 };
 

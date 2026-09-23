@@ -27,6 +27,7 @@ export type ServerMessage =
       durationMs: number;
       status: "done" | "failed" | "disabled" | "unknown";
       depth: number;
+      error?: string;
     }
   | {
       type: "command";

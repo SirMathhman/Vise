@@ -39,8 +39,8 @@ export function createTerminalTransport(): Transport {
     question: (q, type, options) => renderQuestion(q, type, options),
     toolCallStart: (name, args, depth) =>
       renderToolCallStart(name, args, depth),
-    toolCallEnd: (name, durationMs, status, depth) =>
-      renderToolCallEnd(name, durationMs, status, depth),
+    toolCallEnd: (name, durationMs, status, depth, error) =>
+      renderToolCallEnd(name, durationMs, status, depth, error),
     command: (result: CommandRender) => renderCommand(result),
     error: (message: string) => renderError(message),
     hook: (label, output, exitCode) => renderHook(label, output, exitCode),

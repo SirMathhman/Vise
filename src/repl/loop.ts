@@ -232,8 +232,8 @@ async function runModelTurn(
     toolCallObserver: {
       onToolCallStart: (name, args, depth) =>
         transport.toolCallStart(name, args, depth),
-      onToolCallEnd: (name, durationMs, status, depth) =>
-        transport.toolCallEnd(name, durationMs, status, depth),
+      onToolCallEnd: (name, durationMs, status, depth, error) =>
+        transport.toolCallEnd(name, durationMs, status, depth, error),
     },
     dispatch: (name, args, ctx) => runTool(name, args, ctx),
   };
