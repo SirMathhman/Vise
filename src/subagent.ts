@@ -45,6 +45,7 @@ export async function runSubagent(
     depth: ctx.depth + 1,
     tools: subTools,
     askQuestion: undefined,
+    toolCallObserver: ctx.toolCallObserver,
   };
 
   const reply = await runToolRounds(

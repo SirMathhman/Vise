@@ -327,9 +327,37 @@ export async function runTool(
   args: Record<string, unknown>,
   ctx: ToolContext,
 ): Promise<string> {
-  if (!ctx.toolsEnabled) {
-    return `Tool "${name}" is currently disabled; no action was taken.`;
+  const startedAt = Date.now();
+  try {
+    ctx.toolCallObserver?.onToolCallStart?.(name, args, ctx.depth);
+  } catch {
+    // Visualization is observational and must not block tool dispatch.
   }
-  const handler = handlers[name];
-  return handler ? handler(args, ctx) : `Unknown tool: ${name}`;
+  let status: "done" | "failed" | "disabled" | "unknown" = "done";
+  try {
+    if (!ctx.toolsEnabled) {
+      status = "disabled";
+      return `Tool "${name}" is currently disabled; no action was taken.`;
+    }
+    const handler = handlers[name];
+    if (!handler) {
+      status = "unknown";
+      return `Unknown tool: ${name}`;
+    }
+    return await handler(args, ctx);
+  } catch (err) {
+    status = "failed";
+    throw err;
+  } finally {
+    try {
+      ctx.toolCallObserver?.onToolCallEnd?.(
+        name,
+        Date.now() - startedAt,
+        status,
+        ctx.depth,
+      );
+    } catch {
+      // Preserve the handler result/error if visualization fails.
+    }
+  }
 }

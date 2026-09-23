@@ -35,4 +35,7 @@ can select listed options, add a custom answer, or do both. Only a line entered
 after the question appears is used; lines typed earlier are discarded.
 Subagents cannot prompt the user.
 
+Tool calls are shown as they run, with the tool name, clipped argument
+previews, completion status, and duration. Nested subagent calls are indented.
+
 This project was created using `bun init` in bun v1.3.14. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.

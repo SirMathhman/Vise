@@ -36,6 +36,8 @@ import {
   renderHook,
   renderPrompt,
   renderQuestion,
+  renderToolCallEnd,
+  renderToolCallStart,
 } from "./render.ts";
 
 // Auto-compact once the conversation reaches this fraction of the server's
@@ -143,6 +145,10 @@ async function runModelTurn(
     tools: filteredTools,
     toolsEnabled,
     askQuestion,
+    toolCallObserver: {
+      onToolCallStart: renderToolCallStart,
+      onToolCallEnd: renderToolCallEnd,
+    },
     dispatch: (name, args, ctx) => runTool(name, args, ctx),
   };
   // Owns the reply's terminal state (header-once, terminator, idempotency)

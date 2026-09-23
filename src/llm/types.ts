@@ -89,6 +89,20 @@ export type AskQuestionRequest = {
   options?: string[];
 };
 
+export type ToolCallObserver = {
+  onToolCallStart?: (
+    name: string,
+    args: Record<string, unknown>,
+    depth: number,
+  ) => void;
+  onToolCallEnd?: (
+    name: string,
+    durationMs: number,
+    status: "done" | "failed" | "disabled" | "unknown",
+    depth: number,
+  ) => void;
+};
+
 // Per-call context handed to every tool handler. Carries the state a tool
 // needs beyond its arguments: the active model (read at call time, not
 // captured at startup), the shared background-process tracker, the
@@ -103,6 +117,7 @@ export type ToolContext = {
   tools: Tool[];
   toolsEnabled: boolean;
   askQuestion?: (request: AskQuestionRequest) => Promise<string>;
+  toolCallObserver?: ToolCallObserver;
   dispatch: (
     name: string,
     args: Record<string, unknown>,

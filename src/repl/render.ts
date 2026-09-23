@@ -23,6 +23,38 @@ export function renderQuestion(
   }
 }
 
+export function renderToolCallStart(
+  name: string,
+  args: Record<string, unknown>,
+  depth: number,
+): void {
+  const indent = "  ".repeat(depth);
+  const details = Object.entries(args)
+    .map(([key, value]) => `${key}=${previewToolArgument(value)}`)
+    .join(" ");
+  process.stdout.write(
+    `\n${indent}tool> ${name}${details ? ` ${details}` : ""}\n`,
+  );
+}
+
+export function renderToolCallEnd(
+  name: string,
+  durationMs: number,
+  status: "done" | "failed" | "disabled" | "unknown",
+  depth: number,
+): void {
+  const indent = "  ".repeat(depth);
+  const seconds = (durationMs / 1000).toFixed(1);
+  process.stdout.write(`${indent}tool> ${name} ${status} (${seconds}s)\n`);
+}
+
+function previewToolArgument(value: unknown): string {
+  const text = typeof value === "string" ? value : JSON.stringify(value);
+  if (text === undefined) return "undefined";
+  const compact = text.replace(/\s+/g, " ");
+  return compact.length > 80 ? `${compact.slice(0, 77)}...` : compact;
+}
+
 // Creates a streaming reply handle owned by the transport. The loop
 // forwards content deltas to write() as they arrive; the "assistant>" header
 // is printed once, lazily, on the first write. end() terminates the reply and
