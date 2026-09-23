@@ -15,8 +15,6 @@ import type {
 
 type ClientConfig = Pick<Config, "baseUrl" | "apiKey">;
 
-const THINKING_BUDGET_TOKENS = 8192;
-
 // Headers shared by every request to the server.
 const authHeaders = (apiKey: string | undefined): Record<string, string> =>
   apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
@@ -102,7 +100,6 @@ export async function chatCompletion(
       model,
       messages,
       tools,
-      thinking_budget_tokens: THINKING_BUDGET_TOKENS,
     }),
   });
   if (!res.ok) {
@@ -160,7 +157,6 @@ export async function chatCompletionStream(
       model,
       messages,
       tools,
-      thinking_budget_tokens: THINKING_BUDGET_TOKENS,
       stream: true,
       stream_options: { include_usage: true },
       return_progress: true,

@@ -34,12 +34,13 @@ the code; it is not a changelog. Progress lives in the git log.
   never shows prompt text — only token counts and timing. The live progress
   is observed through the same `onPrefill` callback the LLM client exposes,
   so it is wired by the caller (the main REPL) and not by subagents.
-- **Reasoning budget** — every chat completion request sets llama.cpp's
-  `thinking_budget_tokens` to 8192, so server-side reasoning generation is
-  limited per completion when the server honors the request-level setting.
-  This is a server-specific request extension; other OpenAI-compatible
-  servers may ignore it, and llama.cpp's server-level reasoning-budget
-  configuration may take precedence.
+- **Reasoning budget** — owned by the server, not the client. Chat requests
+  send no `thinking_budget_tokens`, so llama.cpp's startup
+  `--reasoning-budget` governs every completion. On the user's llama.cpp fork
+  with `--reasoning-budget-uniform`, that budget is a stretch target rather
+  than a cap: the model cannot end reasoning on its own and is force-closed at
+  a uniformly random length within the budget. Sending a per-request budget
+  would switch that request back to a plain cap, so the client leaves it out.
 - **Conversation** — the ordered, in-memory sequence of turns (user + assistant
   messages) sent to the model on every request. It is the REPL's source of truth
   for context.
@@ -517,13 +518,11 @@ Run it in CI or as part of `bun lint` before it matters.
   forever; a transient ECONNREFUSED is reported as a generic error. The client
   should have a `signal`/timeout and a distinguishable "server unreachable"
   error.
-- **The reasoning budget may not be effective.** `client.ts` sends
-  `thinking_budget_tokens: 8192` on both streaming and non-streaming chat
-  completions, but a compatible server may ignore this llama.cpp-specific
-  extension, and llama.cpp's configured server-level reasoning budget can
-  take precedence over the per-request value. Treat the field as a requested
-  limit, not a guarantee, until the supported server version and startup
-  configuration are checked or the effective behavior is verified.
+- **Reasoning length depends on server configuration.** The client sends no
+  reasoning budget, so a server started without `--reasoning-budget` lets the
+  model think without limit, and a non-llama.cpp server applies its own
+  policy. The effective behavior is only as good as the server's startup
+  flags; there is no client-side check that a budget is in force.
 - **Hard `process.exit(0)` at shutdown.** Any finally-block cleanup or future
   teardown (e.g., flushing a session log) is skipped. Prefer letting the event
   loop drain; keep `process.exit` as a last resort for a stuck loop.
