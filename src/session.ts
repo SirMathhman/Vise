@@ -25,7 +25,7 @@ import {
 } from "node:fs";
 import * as path from "node:path";
 import type { ChatMessage } from "./llm/types.ts";
-import { withNotesIntro } from "./notes.ts";
+import { refreshNotesIntro, withNotesIntro } from "./notes.ts";
 import { BUILTIN_AGENT, getProfile } from "./profiles.ts";
 
 export type SessionState = {
@@ -72,7 +72,7 @@ export function loadSession(): SessionState | null {
     )
       return null;
     return {
-      messages: parsed.messages as ChatMessage[],
+      messages: refreshRestoredMessages(parsed.messages as ChatMessage[]),
       activeProfile: parsed.activeProfile,
       toolsEnabled: parsed.toolsEnabled,
     };
@@ -131,10 +131,22 @@ export function loadNamedSession(name: string): SessionState | null {
     )
       return null;
     return {
-      messages: parsed.messages as ChatMessage[],
+      messages: refreshRestoredMessages(parsed.messages as ChatMessage[]),
       activeProfile: parsed.activeProfile,
       toolsEnabled: parsed.toolsEnabled,
     };
+
+    // Refreshes generated note-index prefixes on restored system messages while
+    // leaving conversation content and all non-index system messages untouched.
+    function refreshRestoredMessages(messages: ChatMessage[]): ChatMessage[] {
+      return messages.map((message) => {
+        if (message.role !== "system" || typeof message.content !== "string") {
+          return message;
+        }
+        const content = refreshNotesIntro(message.content);
+        return content === message.content ? message : { ...message, content };
+      });
+    }
   } catch {
     return null;
   }

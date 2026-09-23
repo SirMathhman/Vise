@@ -354,7 +354,7 @@ function runNoteCommand(rest: string[], ctx: CommandContext): CommandResult {
   return {
     lines: [
       `created note: ${name}`,
-      `edit .vise/notes/${name}.md to add content`,
+      `edit .agents/notes/${name}.md to add content`,
     ],
   };
 }

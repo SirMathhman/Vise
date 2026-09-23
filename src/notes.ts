@@ -4,7 +4,7 @@
 // write with the regular file tools. There is no type distinction: a note is
 // a fact, a decision, or a how-to the model wants to keep across sessions.
 //
-// A note lives at .vise/notes/<name>.md. The filename (minus .md) is the
+// A note lives at .agents/notes/<name>.md. The filename (minus .md) is the
 // note's name; a `summary: <one line>` line near the top of the file feeds
 // the short index; the rest of the file is the note's full content.
 //
@@ -27,7 +27,7 @@ import {
 } from "node:fs";
 import * as path from "node:path";
 
-const NOTES_DIR = ".vise/notes";
+const NOTES_DIR = path.join(".agents", "notes");
 
 export type Note = {
   name: string;
@@ -35,7 +35,7 @@ export type Note = {
   content: string;
 };
 
-// Reads .vise/notes/<name>.md from the working directory and returns its
+// Reads .agents/notes/<name>.md from the working directory and returns its
 // name, summary, and content. Returns null if the file is missing, not a
 // regular file, or unreadable.
 export function getNote(name: string): Note | null {
@@ -49,7 +49,7 @@ export function getNote(name: string): Note | null {
   }
 }
 
-// Creates a new note template at .vise/notes/<name>.md. Names are a single
+// Creates a new note template at .agents/notes/<name>.md. Names are a single
 // safe filename component; an existing file is never overwritten.
 export function createNote(name: string): string | null {
   if (!/^[a-zA-Z0-9_-][a-zA-Z0-9._-]*$/.test(name)) {
@@ -69,7 +69,7 @@ export function createNote(name: string): string | null {
   }
 }
 
-// Returns every note in .vise/notes/ (alphabetical by name), or an empty
+// Returns every note in .agents/notes/ (alphabetical by name), or an empty
 // array when the directory is absent or has no .md files.
 export function listNotes(): Note[] {
   const dirPath = path.resolve(process.cwd(), NOTES_DIR);
@@ -131,7 +131,7 @@ export function buildNotesIntro(): string | null {
 }
 
 // The intro block, computed once at module load (like AGENTS.md) and reused
-// for the rest of the session, so edits to .vise/notes/ mid-session are not
+// for the rest of the session, so edits to .agents/notes/ mid-session are not
 // picked up. null when there are no notes at startup.
 const NOTES_INTRO = buildNotesIntro();
 
@@ -143,4 +143,13 @@ const NOTES_INTRO = buildNotesIntro();
 export function withNotesIntro(instruction: string): string {
   if (NOTES_INTRO === null) return instruction;
   return `${NOTES_INTRO}\n\n${instruction}`;
+}
+
+// Refreshes a generated note-index prefix from a persisted system message.
+// Messages without that prefix are returned unchanged.
+export function refreshNotesIntro(instruction: string): string {
+  if (!instruction.startsWith("Current notes:\n")) return instruction;
+  const separator = instruction.indexOf("\n\n");
+  const body = separator < 0 ? "" : instruction.slice(separator + 2);
+  return withNotesIntro(body);
 }

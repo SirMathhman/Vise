@@ -50,7 +50,7 @@ rules to respect:
 - **Session state (tracked processes) is created at the entry point and passed
   in** as a parameter — `tools.ts` holds no module-level mutable state.
 - **Notes are a file convention, not a tool.** Memories and skills are unified
-  as plain `.vise/notes/*.md` files the model and the user read and write with
+  as plain `.agents/notes/*.md` files the model and the user read and write with
   the regular file tools. `/note new <name>` creates an empty template, and
   `/<name> <instructions>` invokes an existing note as one model turn. The
   short index (name — summary per note) is injected at the beginning of the system prompt at startup and
@@ -98,7 +98,7 @@ rules to respect:
   system instruction (an optional `tools:` line whitelists tools).
 - `.hooks/{pre-session,pre-turn,post-turn}/*.cmd` — directory-based **hook
   commands** run at fixed points around turns.
-- `.vise/notes/*.md` — **notes**: the unified memories-and-skills file
+- `.agents/notes/*.md` — **notes**: the unified memories-and-skills file
   convention. Filename is the note's name, a `summary:` line feeds the short
   index, the rest is the note's content. Injected into the system prompt by
   `src/notes.ts`.

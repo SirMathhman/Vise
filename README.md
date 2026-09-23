@@ -24,9 +24,9 @@ instructions.
 - `/model <name>` — switch to `<name>`. The name must be one the server
   reports; unknown names are rejected. The choice is saved to `LLM_MODEL` in
   `.env.local` so it survives a restart. The conversation is kept.
-- `/<note-name> <instructions>` — use `.vise/notes/<note-name>.md` as context
+- `/<note-name> <instructions>` — use `.agents/notes/<note-name>.md` as context
   for one request. For example, `/review check this implementation` invokes
-  `.vise/notes/review.md` with the trailing request.
+  `.agents/notes/review.md` with the trailing request.
 
 During a model turn, `ask_user` supports open-ended (`freeform`), single-choice
 (`multiple_choice`), and multi-select (`multiple_select`) questions. Choice
