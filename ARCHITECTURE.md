@@ -21,6 +21,12 @@ the code; it is not a changelog. Progress lives in the git log.
   also preserved on the assistant message (`reasoning_content`) so the model
   can see its own prior thinking on the next turn; the server round-trips the
   field, though individual templates may or may not honor it.
+- **Reasoning budget** — every chat completion request sets llama.cpp's
+  `thinking_budget_tokens` to 8192, so server-side reasoning generation is
+  limited per completion when the server honors the request-level setting.
+  This is a server-specific request extension; other OpenAI-compatible
+  servers may ignore it, and llama.cpp's server-level reasoning-budget
+  configuration may take precedence.
 - **Conversation** — the ordered, in-memory sequence of turns (user + assistant
   messages) sent to the model on every request. It is the REPL's source of truth
   for context.
@@ -55,6 +61,18 @@ the code; it is not a changelog. Progress lives in the git log.
   invariant 5); they never call `fetch` and never touch the conversation
   directly — they return a string result that the loop appends as a
   `role: "tool"` message.
+- **Interactive question tool** — `ask_user` pauses a main REPL model turn,
+  supports free-form, single-choice, and multi-select prompts through a
+  transport-owned callback, and returns the next freshly entered line as the
+  tool result. Choice prompts display options but accept natural-language
+  responses, including custom text. Subagents never receive this tool and
+  cannot prompt the user. Its JSON Schema constrains question types and
+  requires options only for choice modes; runtime validation remains required.
+- **Tool-call display** — the main REPL observes tool dispatch through an
+  optional `ToolContext` callback. The transport renders tool name, clipped
+  argument previews, nested depth, final status, and elapsed time; tool results
+  and full argument values are not printed by this display. Observer failures
+  are swallowed so the visualization cannot affect dispatch or handler results.
 - **Tracked process** — a background subprocess the model started without
   awaiting to completion, identified by a process ID. Its accumulated
   stdout/stderr, exit code, and liveness are kept for the rest of the
@@ -68,14 +86,16 @@ the code; it is not a changelog. Progress lives in the git log.
   codebase's agent instructions in the system prompt regardless of which
   profile is active. Switching profiles appends a new system message to the
   conversation; existing history is never altered.
-- **Note** — a plain markdown file at `.vise/notes/<name>.md` in the
+- **Note** — a plain markdown file at `.agents/notes/<name>.md` in the
   working directory. Notes are how memories and skills are unified: there is
   no type distinction, a note is simply a fact, decision, or how-to the model
   wants to keep across sessions. The filename (minus `.md`) is the note's
   name; a `summary: <one line>` line near the top is its one-line
   description; the rest of the file is its content. Users and the model
   maintain notes with the regular file tools (`read_file`, `create_file`,
-  `edit_file`) — there is no dedicated note-management tool. A slash-prefixed
+  `edit_file`); `/note new <name>` scaffolds an empty template without
+  overwriting existing notes, and there is no dedicated note tool. A
+  slash-prefixed
   input matching a note name, after built-in commands are resolved, starts a
   one-shot model turn: the note content and trailing instructions become the
   user input and pass through the regular pre-turn hooks, model/tool flow, and
@@ -83,11 +103,16 @@ the code; it is not a changelog. Progress lives in the git log.
   performed by `src/notes.ts` (invariant 5). The short index
   (a `name — summary` line per note, preceded by a "Current notes:" header)
   is injected at the beginning of the system prompt at startup and rebuilt
-  by compaction; it is static for a session, so notes created or edited
-  mid-session appear in the index on the next session. The notes convention
-  is explained in AGENTS.md (always in the system prompt via
+  by compaction; it is static for a session. Notes created or edited
+  mid-session appear in a newly initialized conversation. On session
+  restoration, only the generated index prefix in system messages is
+  refreshed from the current note registry; conversation text is preserved,
+  and note files are not migrated. The notes convention is explained in
+  AGENTS.md (always in the system prompt via
   `composeInstruction`), so the runtime header only lists what notes
-  currently exist rather than re-explaining the convention.
+  currently exist rather than re-explaining the convention. `.vise/` is
+  reserved for generated runtime state; legacy `.vise/notes/` files are not
+  migrated or read.
 - **Hook command** — a shell command that runs at a fixed point around turns.
   Hooks come from two sources: env-var config (`PRE_SESSION_CMD`,
   `PRE_TURN_CMD`, `POST_TURN_CMD`) and directory-based hooks
@@ -125,16 +150,17 @@ the code; it is not a changelog. Progress lives in the git log.
 4. The active model is read at request time, not captured at startup, so a
    switch takes effect on the next turn without rebuilding the client.
 5. Tools are the only modules that read or write the filesystem or execute
-  external processes during a turn. The hook system is the primary exception:
+   external processes during a turn. The hook system is the primary exception:
    `src/repl/hooks.ts` reads the `.hooks/<type>/` directory at startup to
    discover directory-based hooks (read-only filesystem access, no
    subprocesses), and `src/repl/presession.ts` (to be renamed `externalcmd.ts`,
    see Future Work) spawns exactly one subprocess per hook invocation. A small
-  set of documented non-tool FS readers/writers also exist outside the
-  tools, all at startup or turn boundaries (never during a tool call):
-  `src/notes.ts` reads a matching `.vise/notes/<name>.md` on demand for a
-  named-note invocation and builds the startup note index;
-  `src/profiles.ts` reads `.agents/*.md` and `AGENTS.md` and writes
+   set of documented non-tool FS readers/writers also exist outside the
+   tools, all at startup or turn boundaries (never during a tool call):
+   `src/notes.ts` reads a matching `.agents/notes/<name>.md` on demand for a
+   named-note invocation, creates a template during `/note new`, and builds
+   the startup note index;
+   `src/profiles.ts` reads `.agents/*.md` and `AGENTS.md` and writes
    `.agents/<name>.md` on `/profile new`; `src/config/persist.ts` writes
    `.env.local` on model select; and `src/session.ts` reads/writes
    `.vise/session.json` (load on startup, save after each turn) so the
@@ -149,6 +175,14 @@ the code; it is not a changelog. Progress lives in the git log.
 6. Session-long state (the set of tracked processes) is created at the entry
    point and passed to tools as a parameter — the same pattern as commands
    receiving the client. `tools.ts` holds no module-level mutable state.
+7. Interactive input is transport-owned. The main REPL supplies a typed
+   callback to `ask_user` supporting free-form, multiple-choice, and
+   multiple-select questions. Choice prompts accept natural-language answers,
+   including custom text; tool handlers never read stdin or print prompts,
+   and subagents have no user-input callback.
+8. Tool-call visualization is observational: it must not alter tool arguments,
+   results, dispatch order, or conversation messages. Subagent tool calls may
+   reuse the observer, with nesting represented by depth.
 
 ## Structure
 
@@ -208,20 +242,24 @@ src/profiles.ts       profile registry: list and look up profiles. Profiles
                         system prompt for any active profile. No mutable state,
                         no fetch, no stdin/stdout.
 src/notes.ts          note registry + notes intro. Notes unify memories and
-                        skills as plain .vise/notes/<name>.md files the model
-                        and user maintain with the regular file tools (no
-                        dedicated note-management tool). listNotes()/getNote()
-                        resolve the .vise/notes/ directory; getNote() reads a
-                        matching note on demand for a named-note invocation
-                        (read-only FS, invariant 5, like AGENTS.md).
+                        skills as plain .agents/notes/<name>.md files the model
+                        and user maintain with the regular file tools, with
+                        `/note new <name>` as a template-creation command (no
+                        dedicated note tool). listNotes()/getNote()/createNote()
+                        resolve the .agents/notes/ directory; getNote() reads a
+                        matching note on demand, and createNote() creates a
+                        summary template without overwriting (read/write FS,
+                        invariant 5, like profiles.ts).
                         withNotesIntro() builds the short `name — summary`
                         index once at module load and prepends it to the
                         profile's instruction so the notes list sits at the
                         beginning of the system prompt (loop.ts seeds it,
                         compact.ts and profile switches rebuild it). No
                         mutable state, no fetch, no stdin/stdout.
-src/repl/input.ts     stdin buffering (line queue + nextLine). No fetch, no state.
-src/repl/render.ts    prompt, error, hook, and command rendering plus the
+src/repl/input.ts     stdin buffering (line queue + nextLine + nextFreshLine).
+                        nextFreshLine discards already-buffered input and waits
+                        for a new answer line. No fetch, no other state.
+src/repl/render.ts    prompt, question, tool-call, error, hook, and command rendering plus the
                         reply-stream and thinking-indicator handles
                         (createReplyStream, createThinkingIndicator), which own
                         the terminal state for a streamed answer and one
@@ -266,8 +304,10 @@ src/repl/compact.ts   conversation compaction: one non-streaming, tool-free
 src/session.ts        conversation persistence: loadSession() reads
                         .vise/session.json and returns the saved { messages,
                         activeProfile, toolsEnabled } (or null when missing
-                        or corrupt); saveSession() writes that same shape to
-                        disk, creating .vise/ if needed. Named session
+                        or corrupt), refreshing only the generated notes-index
+                        prefix on restored system messages; saveSession()
+                        writes that same shape to disk, creating .vise/ if
+                        needed. Named session
                         snapshots: saveNamedSession() writes the state to
                         .vise/sessions/<name>.json, loadNamedSession() reads
                         it back, listNamedSessions() lists all saved names,
@@ -301,6 +341,11 @@ src/tools/process.ts  background process tracking: TrackedProcess, spawn,
                         and the run_powershell / wait_for_process /
                         kill_process handlers. The only tool submodule that
                         spawns subprocesses.
+src/tools/ask.ts      ask_user schema and handler. The handler awaits the
+                        ToolContext.askQuestion callback and has no direct
+                        stdin/stdout access; its schema constrains type/options
+                        relationships and runtime validation checks model input;
+                        subagents omit this tool.
 src/tools/fs.ts       file-system handlers: read_file, edit_file, create_file,
                         create_directory, list_directory. The only tool
                         submodule that writes files.
@@ -330,10 +375,13 @@ registry is the extension point. A command that needs the model (`/context`'s
 `CommandContext` field rather than importing the client itself, so
 `commands.ts` stays free of `fetch` and of the transport; `/compact`'s closure
 returns a full replacement `messages` array via `CommandResult.newMessages`,
-which only `loop.ts` (the owner of the conversation) installs. A command that
-reads a stateless leaf module (the `src/tools` registry, the profile registry)
-may import it directly — only dependencies that reach `fetch` or the transport
-must be passed in via `CommandContext`.
+which only `loop.ts` (the owner of the conversation) installs. A command may
+import a read-only leaf registry directly (for example, the `src/tools`
+registry or profile lookup functions). Effects that mutate files must instead
+be explicit `CommandContext` capabilities (for example, `createNote` or
+`createProfile`), so command handlers do not conceal filesystem writes behind
+module imports. Dependencies that reach `fetch` or the transport must also be
+passed in via `CommandContext`.
 
 Enforcement: the `bun lint` script (Biome) should check maintained source and
 configuration, excluding generated runtime state under `.vise/`; the rest
@@ -367,6 +415,12 @@ Run it in CI or as part of `bun lint` before it matters.
   still fail to compact. Profile switches and hook output continue to append
   system messages between compactions as before; they just no longer
   accumulate forever.
+- **Restored sessions refresh note indexes without migrating notes.** The
+  note index is embedded in system messages when a conversation is created.
+  On restore, `src/session.ts` refreshes only the generated index prefix from
+  the current note registry, preserving the rest of the conversation. This is
+  path-only: note files remain at `.agents/notes/`, and legacy `.vise/notes/`
+  files are neither read nor migrated.
 - **Hook command output is unchecked and its latency is unbounded.** Unlike
   tool results (16 KB budget per tracked-process stream, 500-line read cap),
   the pre-session and pre-turn hooks' combined stdout+stderr enter the
@@ -386,6 +440,13 @@ Run it in CI or as part of `bun lint` before it matters.
   forever; a transient ECONNREFUSED is reported as a generic error. The client
   should have a `signal`/timeout and a distinguishable "server unreachable"
   error.
+- **The reasoning budget may not be effective.** `client.ts` sends
+  `thinking_budget_tokens: 8192` on both streaming and non-streaming chat
+  completions, but a compatible server may ignore this llama.cpp-specific
+  extension, and llama.cpp's configured server-level reasoning budget can
+  take precedence over the per-request value. Treat the field as a requested
+  limit, not a guarantee, until the supported server version and startup
+  configuration are checked or the effective behavior is verified.
 - **Hard `process.exit(0)` at shutdown.** Any finally-block cleanup or future
   teardown (e.g., flushing a session log) is skipped. Prefer letting the event
   loop drain; keep `process.exit` as a last resort for a stuck loop.
@@ -437,6 +498,12 @@ newMessages)` helper used by both would remove the duplication and shrink
   (`Ok | ToolError`) would say what, where, why, fix. `edit_file` only
   replaces the _first_ occurrence of `replacee`; a model editing a repeated
   string will silently miss later occurrences.
+- **Tool-call observers can change dispatch outcomes.** `runTool` invokes the
+  start observer before entering its `try` block, and invokes the end observer
+  in `finally`; a throwing callback can prevent dispatch or replace a handler's
+  result or original error. This contradicts the observational invariant.
+  Isolate observer failures so visualization remains best-effort and never
+  changes tool execution or its outcome.
 - **Background processes outlive the REPL on interrupt.** The EOF path
   reaps tracked processes (`tracker.shutdown()` before `process.exit`),
   but Ctrl-C/SIGINT orphans every running background `powershell`
@@ -540,7 +607,14 @@ endLine?: number }`) rather than `Record<string, unknown>`. The handler
 Promise<string>`, with a thin validation/coercion step at the registry
   boundary that converts the model's JSON into the typed shape. This catches
   argument-name typos at compile time and removes per-handler runtime
-  coercion (`String(args.path ?? "")`).
+  coercion (`String(args.path ?? "")`). The model-facing JSON Schema must
+  express the same contract as the TypeScript type rather than leaving
+  accepted values implicit: for `ask_user`, constrain `type` to the supported
+  question kinds and encode that free-form questions omit `options` while
+  choice questions require at least two non-empty strings. Keep the callback
+  request a discriminated union so invalid combinations cannot cross the
+  transport seam; retain runtime validation at the untrusted model-JSON
+  boundary.
 - **Structured tool results.** Handlers return a `ToolResult` discriminated
   union (`{ ok: true; text: string } | { ok: false; error: string;
 retryable: boolean }`) instead of a bare string. The loop renders the error
