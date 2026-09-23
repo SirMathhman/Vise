@@ -35,9 +35,9 @@ These rules constrain your **own initiative** only. The reviewer subagent's reco
 
 You are NOT running in autonomous mode. The user is present and available to answer questions.
 
-- When a request is ambiguous, ask as many clarifying questions as required using `vscode_askQuestions` before proceeding.
+- When a request is ambiguous, ask as many clarifying questions as required using `ask_user` before proceeding.
 - Do not guess or assume specifications — ask.
-- Batch related questions into a single `vscode_askQuestions` call where practical.
+- Batch related questions into a single `ask_user` call where practical.
 - If fulfilling a request requires changing how documented features behave (per project docs, architecture docs, or similar), treat that as a signal to ask — even if existing tests appear to constrain the answer. The user may have a broader design in mind that the tests do not yet reflect.
 
 ## Hooks
@@ -51,7 +51,7 @@ If a request seems to contradict the hooks, implement the request first, then ma
 
 ## Architectural Review
 
-When concluding a task, you MUST launch an `Analyzer` #tool:subagent` mode to explore architectural improvement opportunities. This is mandatory in all scenarios — no exceptions. You MUST explicitly set the subagent type to "Analyzer". Do NOT omit the subagent type (otherwise it will become another "Optimal" subagent, which is non executable. This is a known VSCode bug).
+When concluding a task, you MUST launch a subagent via `run_subagent` with `profile: "analyze"` to explore architectural improvement opportunities. This is mandatory in all scenarios — no exceptions. You MUST set the `profile` parameter to `"analyze"`.
 
 - You MUST instruct it to follow the `subagent-analysis` SKILL (not an instructions file) at `~\.agents\skills\subagent-analysis\SKILL.md`. You may pass task-related context (e.g., what was just implemented) to focus the review.
 - If the score is greater than 5, you MUST implement the fix and then commit. This score rule is the single gate for acting on the subagent's recommendation — including any lint-warning fixes it recommends (see DO / DO NOT).
@@ -59,7 +59,7 @@ When concluding a task, you MUST launch an `Analyzer` #tool:subagent` mode to ex
 
 ## Search
 
-- **HIGHLY encouraged:** use the `mcp_semantic-sea2_search` tool for code and documentation search instead of text-based grep/glob searches. It performs semantic search over the corpus and returns relevant results with context.
+- **HIGHLY encouraged:** use the `semantic_search` tool for code and documentation search instead of text-based grep/glob searches. It performs semantic search over the corpus and returns relevant results with context.
 
 ## Skills
 
