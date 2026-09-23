@@ -14,6 +14,7 @@ export function renderPrompt(): void {
 export function createReplyStream(): {
   write: (delta: string) => void;
   end: () => void;
+  cancel: () => void;
 } {
   let started = false;
   let ended = false;
@@ -35,6 +36,11 @@ export function createReplyStream(): {
       // Two newlines: the reply's own terminator plus the blank line the
       // previous renderReply emitted before the next prompt.
       process.stdout.write("\n\n");
+    },
+    cancel: () => {
+      if (ended) return;
+      ended = true;
+      if (started) process.stdout.write("\n");
     },
   };
 }

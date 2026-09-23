@@ -148,7 +148,7 @@ async function runModelTurn(
   // streamed to the user.
   const replyStream = createReplyStream();
   let thinking = createThinkingIndicator();
-  const reply = await runToolRounds(
+  const replyPromise = runToolRounds(
     config,
     model,
     messages,
@@ -169,6 +169,16 @@ async function runModelTurn(
       onRoundEnd: () => thinking.finish(),
     },
   );
+  const reply = await replyPromise.catch((err: unknown) => {
+    // Close any partial assistant line without allowing a cleanup failure to
+    // replace the model/tool/observer error that caused the turn to fail.
+    try {
+      replyStream.cancel();
+    } catch {
+      // Preserve the original failure.
+    }
+    throw err;
+  });
   replyStream.end();
 
   // Run post-turn hooks (env var + .hooks/post-turn/ directory) after the
