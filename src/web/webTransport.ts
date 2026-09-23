@@ -5,7 +5,11 @@
 // with ""). Each render method sends the corresponding ServerMessage frame
 // over the socket; the replyStream/thinkingIndicator/prefillIndicator
 // factory methods return handles that emit reply_delta / status frames.
-// handleMessage is called by server.ts on every WS message.
+// handleMessage is called by server.ts on every WS message. The transport
+// outlives any one socket: server.ts attaches a socket on connect and
+// detaches it on disconnect (frames sent while detached are dropped), so a
+// browser reload resumes the same session. Only an explicit client `close`
+// frame ends input.
 import type {
   CommandRender,
   PrefillIndicator,
@@ -23,7 +27,10 @@ export type WebSocketConnection = {
 };
 
 export class WebTransport implements Transport {
-  private readonly socket: WebSocketConnection;
+  private socket: WebSocketConnection | null;
+  // The unanswered ask_user question, re-sent on reattach so a reload
+  // during a question leaves it answerable.
+  private pendingQuestion: ServerMessage | null = null;
   private readonly lines: string[] = [];
   private closed = false;
   private waitingForFreshLine = false;
@@ -32,6 +39,24 @@ export class WebTransport implements Transport {
 
   constructor(socket: WebSocketConnection) {
     this.socket = socket;
+  }
+
+  attach(socket: WebSocketConnection): void {
+    this.socket = socket;
+    if (this.pendingQuestion) this.send(this.pendingQuestion);
+    this.send({ type: "prompt" });
+  }
+
+  detach(): void {
+    this.socket = null;
+  }
+
+  isAttached(): boolean {
+    return this.socket !== null;
+  }
+
+  isAttachedTo(socket: WebSocketConnection): boolean {
+    return this.socket === socket;
   }
 
   // Called by server.ts when a WS message arrives. Parses the ClientMessage
@@ -57,6 +82,7 @@ export class WebTransport implements Transport {
   private pushLine(line: string): void {
     if (this.waitingForFreshLine) {
       this.waitingForFreshLine = false;
+      this.pendingQuestion = null;
       this.freshLineResolvers.shift()?.(line);
       return;
     }
@@ -78,7 +104,7 @@ export class WebTransport implements Transport {
   }
 
   private send(message: ServerMessage): void {
-    if (this.closed) return;
+    if (this.closed || !this.socket) return;
     this.socket.send(JSON.stringify(message));
   }
 
@@ -112,7 +138,8 @@ export class WebTransport implements Transport {
     type: "freeform" | "multiple_choice" | "multiple_select",
     options?: string[],
   ): void {
-    this.send({ type: "question", question, kind: type, options });
+    this.pendingQuestion = { type: "question", question, kind: type, options };
+    this.send(this.pendingQuestion);
   }
 
   toolCallStart(

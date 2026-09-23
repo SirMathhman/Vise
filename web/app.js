@@ -56,8 +56,8 @@
     socket.addEventListener("close", () => {
       setConnState("closed");
       if (!intentionalClose) {
-        // Auto-reconnect after a refresh/network drop. The server resumes
-        // from .vise/session.json, so the conversation continues.
+        // Auto-reconnect after a network drop. The server keeps the
+        // session alive across disconnects, so the conversation continues.
         setTimeout(() => {
           if (
             socket &&
@@ -212,6 +212,10 @@
       case "status":
         onStatus(msg);
         break;
+      case "session_in_use":
+        intentionalClose = true;
+        makeLine("error-line", "Another browser tab holds this session.");
+        break;
       case "done":
         setStatus("");
         break;
@@ -348,8 +352,8 @@
     inputEl.style.height = `${Math.min(inputEl.scrollHeight, 240)}px`;
   }
 
-  // Intentional close (user navigates away / reloads). The server saves the
-  // session on shutdown, so reconnecting resumes from .vise/session.json.
+  // Page unload (navigate away / reload). The server only detaches the
+  // socket, so the reloaded page reattaches to the same session.
   window.addEventListener("beforeunload", () => {
     intentionalClose = true;
     if (socket && socket.readyState === WebSocket.OPEN) {

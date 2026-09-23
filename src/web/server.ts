@@ -1,9 +1,11 @@
 // The web entry point's server. Serves the static client (web/index.html,
 // web/app.js, web/style.css, and marked's UMD build) over HTTP and owns a
 // single WebSocket-driven session. On the first WS connection it constructs a
-// WebTransport and hands it to run(config, transport); a second connection is
-// rejected with "session in use" (MVP is single-session). When run() returns
-// (the session ends), resolveSessionEnded fires and web.ts exits the process.
+// WebTransport and hands it to run(config, transport). A disconnect only
+// detaches the socket; the next connection reattaches to the same session.
+// A connection while another socket is attached gets a session_in_use frame
+// (MVP is single-session). When run() returns (the client sent `close`),
+// resolveSessionEnded fires and web.ts exits the process.
 // No existing core module is modified; src/web/* imports from src/repl/*,
 // src/config.ts, and src/transport.ts but is not imported by any of them.
 import * as path from "node:path";
@@ -65,9 +67,13 @@ export async function createWebServer(config: Config): Promise<void> {
     },
     websocket: {
       open: (socket) => {
-        if (active !== null) {
-          socket.send("session in use");
+        if (active?.isAttached()) {
+          socket.send(JSON.stringify({ type: "session_in_use" }));
           socket.close();
+          return;
+        }
+        if (active !== null) {
+          active.attach(socket);
           return;
         }
         const transport = new WebTransport(socket);
@@ -81,10 +87,9 @@ export async function createWebServer(config: Config): Promise<void> {
         active?.handleMessage(data.toString());
       },
       close: (socket) => {
-        // Browser disconnected (tab closed / network drop). Tear the
-        // transport down so run() breaks out of its loop cleanly.
-        active?.close();
-        void socket;
+        // Browser disconnected (reload / tab closed / network drop). Keep
+        // the session alive for the next connection.
+        if (active?.isAttachedTo(socket)) active.detach();
       },
     },
   });

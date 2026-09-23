@@ -293,7 +293,10 @@ src/web/server.ts    Web entry-point server: serves the static client and
                         owns the single active WebSocket REPL session. The
                         server adapts the socket to `WebTransport` and calls
                         the shared `run(config, transport)`; it is not imported
-                        by the core loop or the terminal entry point.
+                        by the core loop or the terminal entry point. The
+                        session outlives any one socket: a disconnect only
+                        detaches it (a reload reattaches); only an explicit
+                        client `close` frame ends `run()`.
 web/                  Static browser client (HTML, CSS, vanilla JS). Owns DOM
                         rendering and WebSocket connection behavior; it never
                         calls the model server directly.

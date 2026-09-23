@@ -42,7 +42,9 @@ export type ServerMessage =
       total?: number;
       cache?: number;
     }
-  | { type: "done" };
+  | { type: "done" }
+  // Sent to a second browser while another one holds the session.
+  | { type: "session_in_use" };
 
 // Client -> server. `input` carries one line of user input (a regular message
 // OR an ask_user answer; both feed the same line queue). `close` is a
