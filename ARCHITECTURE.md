@@ -37,9 +37,9 @@ the code; it is not a changelog. Progress lives in the git log.
 - **Reasoning budget / level** — a request-level override of how long the
   model reasons, selected at runtime with `/think <name>` and sent as
   `reasoning_budget_tokens` + `reasoning_budget_uniform: true` on every
-  following request (uniform mode, on the user's llama.cpp fork: the model
-  cannot end reasoning on its own and is force-closed at a uniformly random
-  length within the budget, rather than the budget acting as a plain cap). A
+  following request (uniform mode, on the user's llama.cpp fork: reasoning is
+  force-closed at a uniformly random length within the budget unless the
+  model ends it sooner, rather than the budget acting as a plain cap). A
   **level** is a `{ name, tokens }` pair from `Config.reasoningLevels`,
   parsed from `LLM_REASONING_LEVELS` (`name:tokens,...`; built-in defaults
   when unset — see `src/config.ts`). Until a level is chosen, or once
@@ -47,7 +47,7 @@ the code; it is not a changelog. Progress lives in the git log.
   sent and llama.cpp's startup `--reasoning-budget` governs the completion
   instead. A fresh session starts on the level named by
   `DEFAULT_REASONING_LEVEL` (`"medium"`) when the table defines it. Because
-  uniform mode bans the model's own end of reasoning, the budget actually sent
+  reasoning can run all the way to the budget, the budget actually sent
   is capped at the free context (context size minus tokens used minus an
   answer reserve), recomputed every tool round; "tokens used" is the server's
   last reported count plus an estimate of the messages appended since, and

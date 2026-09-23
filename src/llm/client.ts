@@ -150,8 +150,9 @@ const REASONING_CHARS_PER_TOKEN = 4;
 // prefill progress on early chunks; each arrives via onPrefill as
 // (processed, total, cache, timeMs) and is never called if the server
 // doesn't honor it (older builds). `reasoningBudget`, when set, is sent as a
-// per-request reasoning_budget_tokens in uniform mode (llama.cpp fork: the
-// model thinks a uniformly random length up to the budget); when unset, the
+// per-request reasoning_budget_tokens in uniform mode (llama.cpp fork:
+// thinking is cut off at a uniformly random length up to the budget, or ends
+// sooner on its own); when unset, the
 // server's own --reasoning-budget applies.
 export async function chatCompletionStream(
   config: ClientConfig,

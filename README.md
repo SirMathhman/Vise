@@ -53,9 +53,10 @@ use `/profile <name>` to switch it for the rest of the conversation instead.
   (`name:tokens` pairs, e.g. `low:512,medium:2048,high:8192,max:32768`, which
   is also the default when unset); a fresh session starts on `medium` when
   the table defines it. This is specific to the reasoning-budget-uniform
-  fork of llama.cpp; a plain llama.cpp server treats the field as a hard cap
-  instead of a target length, and other OpenAI-compatible servers may ignore
-  it.
+  fork of llama.cpp, where reasoning is force-ended at a uniformly random
+  length up to the budget unless the model stops sooner; a plain llama.cpp
+  server treats the field as a fixed hard cap, and other OpenAI-compatible
+  servers may ignore it.
 
 In the web UI (`bun run web`), the **sessions** panel below the header does
 the same things with buttons instead of typed commands: a name field + Save,

@@ -16,8 +16,8 @@ export type Config = {
 };
 
 // A named reasoning budget selectable with /think <name>. `tokens` is sent as
-// the per-request reasoning_budget_tokens (uniform mode: the model thinks a
-// uniformly random length up to `tokens`).
+// the per-request reasoning_budget_tokens (uniform mode: thinking is cut off
+// at a uniformly random length up to `tokens`, or ends sooner on its own).
 export type ReasoningLevel = { name: string; tokens: number };
 
 // Built-in levels, used when LLM_REASONING_LEVELS is unset.
