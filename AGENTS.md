@@ -7,6 +7,8 @@ The model is the product; everything else is plumbing around it.
 
 - `bun install` — install dependencies.
 - `bun run start` (or `bun index.ts`) — run the REPL.
+- `bun run web` (or `bun web.ts`) — run the web UI (serves the frontend
+  and runs the WebSocket backend session on http://localhost:3000).
 - `bun lint` — Biome check (lint + format).
 
 There is no build step (Bun runs TypeScript directly) and no test framework is
@@ -31,8 +33,11 @@ rules to respect:
   transport, never appended to the conversation. The built-ins are `/model`,
   `/profile`, `/tool`, `/tools`, `/context`, `/compact`, `/save`, `/load`,
   `/sessions`, `/new`, and `/note new <name>`. A slash-prefixed line matching
-  an existing note name instead starts a one-shot model turn using that note
-  and its trailing instructions.
+  an existing note name, or (if no note of that name exists) an existing
+  profile name, instead starts a one-shot model turn using that note's
+  content or that profile's instruction plus any trailing instructions; the
+  active profile is not changed (use `/profile <name>` to switch it
+  persistently).
 - **Tools are the only modules that read/write the filesystem or spawn
   processes** during a turn. The documented exceptions: hook commands
   (`.hooks/` dir read + one spawn per invocation), `src/profiles.ts` (reads

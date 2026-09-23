@@ -108,12 +108,16 @@ the code; it is not a changelog. Progress lives in the git log.
   maintain notes with the regular file tools (`read_file`, `create_file`,
   `edit_file`); `/note new <name>` scaffolds an empty template without
   overwriting existing notes, and there is no dedicated note tool. A
-  slash-prefixed
-  input matching a note name, after built-in commands are resolved, starts a
-  one-shot model turn: the note content and trailing instructions become the
-  user input and pass through the regular pre-turn hooks, model/tool flow, and
-  post-turn hooks. This on-demand lookup is a read-only filesystem exception
-  performed by `src/notes.ts` (invariant 5). The short index
+  slash-prefixed input matching a note name, after built-in commands are
+  resolved, starts a one-shot model turn: the note content and trailing
+  instructions become the user input and pass through the regular pre-turn
+  hooks, model/tool flow, and post-turn hooks. When no note matches, the same
+  slash-prefixed input is tried against profile names instead: a match runs
+  one turn using that profile's instruction (composed the same way
+  `/profile <name>` composes it) as context, without switching the active
+  profile — `/profile <name>` remains the only way to change it persistently.
+  This on-demand lookup is a read-only filesystem exception
+  performed by `src/notes.ts` and `src/profiles.ts` (invariant 5). The short index
   (a `name — summary` line per note, preceded by a "Current notes:" header)
   is injected at the beginning of the system prompt at startup and rebuilt
   by compaction; it is static for a session. Notes created or edited

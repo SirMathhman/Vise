@@ -74,17 +74,35 @@ export async function runCommand(
   if (command === "/note") {
     return runNoteCommand(rest, ctx);
   }
-  const noteName = command.slice(1);
-  const note =
-    command !== "/model" && noteName.length > 0 && !/[\\/]/.test(noteName)
-      ? getNote(noteName)
-      : null;
+  const oneShotName = command.slice(1);
+  const canMatchOneShot =
+    command !== "/model" &&
+    oneShotName.length > 0 &&
+    !/[\\/]/.test(oneShotName);
+  const note = canMatchOneShot ? getNote(oneShotName) : null;
   if (note) {
     const instructions = text.slice(command.length).trim();
     return {
       lines: [`note> ${note.name}`],
       modelInput: [
         `Use this note as context for the request:\n\n${note.content}`,
+        instructions ? `Further instructions:\n${instructions}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
+    };
+  }
+  // A slash-prefixed line matching a profile name (but no note of the same
+  // name) instead runs one model turn under that profile's instruction,
+  // without switching the active profile — unlike `/profile <name>`, which
+  // switches persistently. Mirrors the note convention above.
+  const oneShotProfile = canMatchOneShot ? getProfile(oneShotName) : undefined;
+  if (oneShotProfile) {
+    const instructions = text.slice(command.length).trim();
+    return {
+      lines: [`profile> ${oneShotProfile.name} (one-shot)`],
+      modelInput: [
+        `Use this profile's instructions as context for the request:\n\n${oneShotProfile.instruction}`,
         instructions ? `Further instructions:\n${instructions}` : "",
       ]
         .filter(Boolean)
