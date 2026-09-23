@@ -22,7 +22,7 @@ export type ReasoningBudget = {
   usedTokens?: number;
 };
 
-// The budget to send for one round. In exact mode the model cannot end its
+// The budget to send for one round. In uniform mode the model cannot end its
 // reasoning on its own, so a budget larger than the free context would fill
 // the window mid-thought and leave no room for an answer; it is capped at
 // the free context minus ANSWER_RESERVE_TOKENS (floored at 0, which the

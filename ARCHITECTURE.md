@@ -36,10 +36,10 @@ the code; it is not a changelog. Progress lives in the git log.
   so it is wired by the caller (the main REPL) and not by subagents.
 - **Reasoning budget / level** — a request-level override of how long the
   model reasons, selected at runtime with `/think <name>` and sent as
-  `reasoning_budget_tokens` + `reasoning_budget_exact: true` on every
-  following request (exact mode, on the user's llama.cpp fork: the model
-  cannot end reasoning on its own and is force-closed after exactly the
-  budget, rather than the budget acting as a plain cap). A
+  `reasoning_budget_tokens` + `reasoning_budget_uniform: true` on every
+  following request (uniform mode, on the user's llama.cpp fork: the model
+  cannot end reasoning on its own and is force-closed at a uniformly random
+  length within the budget, rather than the budget acting as a plain cap). A
   **level** is a `{ name, tokens }` pair from `Config.reasoningLevels`,
   parsed from `LLM_REASONING_LEVELS` (`name:tokens,...`; built-in defaults
   when unset — see `src/config.ts`). Until a level is chosen, or once
@@ -47,7 +47,7 @@ the code; it is not a changelog. Progress lives in the git log.
   sent and llama.cpp's startup `--reasoning-budget` governs the completion
   instead. A fresh session starts on the level named by
   `DEFAULT_REASONING_LEVEL` (`"medium"`) when the table defines it. Because
-  exact mode bans the model's own end of reasoning, the budget actually sent
+  uniform mode bans the model's own end of reasoning, the budget actually sent
   is capped at the free context (context size minus tokens used minus an
   answer reserve), recomputed every tool round; otherwise a budget larger than
   the space left would fill the window mid-thought and leave no answer. The one
@@ -246,8 +246,8 @@ src/llm/client.ts     LLM client: takes Config + messages, returns a structured
                         result. The ONLY place fetch() is called.
                         chatCompletionStream and chatCompletion both take an
                         optional reasoningBudget (tokens); when set, sends
-                        reasoning_budget_tokens + reasoning_budget_exact: true
-                        on that one request, in exact mode; omitted, the
+                        reasoning_budget_tokens + reasoning_budget_uniform: true
+                        on that one request, in uniform mode; omitted, the
                         server's own --reasoning-budget governs instead. The
                         turn loop passes the caller's chosen /think level;
                         compact.ts always passes 0 (see "Reasoning budget /
@@ -561,20 +561,21 @@ Run it in CI or as part of `bun lint` before it matters.
   forever; a transient ECONNREFUSED is reported as a generic error. The client
   should have a `signal`/timeout and a distinguishable "server unreachable"
   error.
-- **Exact reasoning is paid per tool round.** Every model round in a turn,
-  including each tool-call round, thinks the full (capped) budget, and each
-  round's `reasoning_content` stays in the conversation. A tool-heavy turn at
-  a large level therefore costs roughly budget x rounds in time and context.
+- **Forced reasoning is paid per tool round.** Every model round in a turn,
+  including each tool-call round, draws its own random length up to the
+  (capped) budget, and each round's `reasoning_content` stays in the
+  conversation. A tool-heavy turn at a large level therefore costs roughly
+  budget/2 x rounds in time and context.
   Future work: a separate, smaller budget for tool-call rounds, and dropping
   `reasoning_content` from earlier rounds.
 - **Reasoning length depends on server configuration.** Until `/think <name>`
   selects a level, the client sends no reasoning budget, so a server started
   without `--reasoning-budget` lets the model think without limit, and a
   non-llama.cpp server applies its own policy (and may ignore
-  `reasoning_budget_tokens`/`reasoning_budget_exact` once a level is
+  `reasoning_budget_tokens`/`reasoning_budget_uniform` once a level is
   selected, too). The effective behavior is only as good as the server's
   startup flags and the fork it's running; there is no client-side check that
-  a budget is in force or that exact mode is understood.
+  a budget is in force or that uniform mode is understood.
 - **Hard `process.exit(0)` at shutdown.** Any finally-block cleanup or future
   teardown (e.g., flushing a session log) is skipped. Prefer letting the event
   loop drain; keep `process.exit` as a last resort for a stuck loop.
