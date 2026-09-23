@@ -36,10 +36,10 @@ the code; it is not a changelog. Progress lives in the git log.
   so it is wired by the caller (the main REPL) and not by subagents.
 - **Reasoning budget / level** — a request-level override of how long the
   model reasons, selected at runtime with `/think <name>` and sent as
-  `reasoning_budget_tokens` + `reasoning_budget_uniform: true` on every
-  following request (uniform mode, on the user's llama.cpp fork: the model
-  cannot end reasoning on its own and is force-closed at a uniformly random
-  length within the budget, rather than the budget acting as a plain cap). A
+  `reasoning_budget_tokens` + `reasoning_budget_exact: true` on every
+  following request (exact mode, on the user's llama.cpp fork: the model
+  cannot end reasoning on its own and is force-closed after exactly the
+  budget, rather than the budget acting as a plain cap). A
   **level** is a `{ name, tokens }` pair from `Config.reasoningLevels`,
   parsed from `LLM_REASONING_LEVELS` (`name:tokens,...`; built-in defaults
   when unset — see `src/config.ts`). Until a level is chosen, or once
@@ -242,8 +242,8 @@ src/llm/client.ts     LLM client: takes Config + messages, returns a structured
                         result. The ONLY place fetch() is called.
                         chatCompletionStream and chatCompletion both take an
                         optional reasoningBudget (tokens); when set, sends
-                        reasoning_budget_tokens + reasoning_budget_uniform: true
-                        on that one request, in uniform mode; omitted, the
+                        reasoning_budget_tokens + reasoning_budget_exact: true
+                        on that one request, in exact mode; omitted, the
                         server's own --reasoning-budget governs instead. The
                         turn loop passes the caller's chosen /think level;
                         compact.ts always passes 0 (see "Reasoning budget /
@@ -556,10 +556,10 @@ Run it in CI or as part of `bun lint` before it matters.
   selects a level, the client sends no reasoning budget, so a server started
   without `--reasoning-budget` lets the model think without limit, and a
   non-llama.cpp server applies its own policy (and may ignore
-  `reasoning_budget_tokens`/`reasoning_budget_uniform` once a level is
+  `reasoning_budget_tokens`/`reasoning_budget_exact` once a level is
   selected, too). The effective behavior is only as good as the server's
   startup flags and the fork it's running; there is no client-side check that
-  a budget is in force or that uniform mode is understood.
+  a budget is in force or that exact mode is understood.
 - **Hard `process.exit(0)` at shutdown.** Any finally-block cleanup or future
   teardown (e.g., flushing a session log) is skipped. Prefer letting the event
   loop drain; keep `process.exit` as a last resort for a stuck loop.

@@ -85,7 +85,7 @@ export async function getContextSize(
 // transport/HTTP errors. The active model is passed at request time, not
 // captured at startup, so a switch takes effect on the next turn.
 // `reasoningBudget`, when set, is sent as a per-request reasoning_budget_tokens
-// in uniform mode (see chatCompletionStream); when unset, the server's own
+// in exact mode (see chatCompletionStream); when unset, the server's own
 // --reasoning-budget applies.
 export async function chatCompletion(
   config: ClientConfig,
@@ -107,7 +107,7 @@ export async function chatCompletion(
       ...(reasoningBudget !== undefined
         ? {
             reasoning_budget_tokens: reasoningBudget,
-            reasoning_budget_uniform: true,
+            reasoning_budget_exact: true,
           }
         : {}),
     }),
@@ -143,8 +143,8 @@ const REASONING_CHARS_PER_TOKEN = 4;
 // prefill progress on early chunks; each arrives via onPrefill as
 // (processed, total, cache, timeMs) and is never called if the server
 // doesn't honor it (older builds). `reasoningBudget`, when set, is sent as a
-// per-request reasoning_budget_tokens in uniform mode (llama.cpp fork: the
-// model thinks a uniformly random length up to the budget); when unset, the
+// per-request reasoning_budget_tokens in exact mode (llama.cpp fork: the
+// model thinks exactly the budget before the end is forced); when unset, the
 // server's own --reasoning-budget applies.
 export async function chatCompletionStream(
   config: ClientConfig,
@@ -177,7 +177,7 @@ export async function chatCompletionStream(
       ...(reasoningBudget !== undefined
         ? {
             reasoning_budget_tokens: reasoningBudget,
-            reasoning_budget_uniform: true,
+            reasoning_budget_exact: true,
           }
         : {}),
     }),

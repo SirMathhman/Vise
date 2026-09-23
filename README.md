@@ -48,14 +48,14 @@ use `/profile <name>` to switch it for the rest of the conversation instead.
 - `/new` — start a fresh conversation under the current profile.
 - `/think` — list the configured reasoning levels and mark the current one.
 - `/think <name>` — send that level's token budget as `reasoning_budget_tokens`
-  (with `reasoning_budget_uniform: true`) on every following request, until
+  (with `reasoning_budget_exact: true`) on every following request, until
   changed again. Levels come from `LLM_REASONING_LEVELS` in `.env.local`
   (`name:tokens` pairs, e.g. `low:512,medium:2048,high:8192,max:32768`, which
   is also the default when unset); a fresh session starts on `medium` when
-  the table defines it. This is specific to the reasoning-budget-uniform
-  fork of llama.cpp; a plain llama.cpp server treats the field as a hard cap
-  instead of a target length, and other OpenAI-compatible servers may ignore
-  it.
+  the table defines it. With the reasoning-budget-exact fork of llama.cpp,
+  the model thinks exactly that many tokens; a plain llama.cpp server treats
+  the field as a cap instead (the model may stop sooner), and other
+  OpenAI-compatible servers may ignore it.
 
 In the web UI (`bun run web`), the **sessions** panel below the header does
 the same things with buttons instead of typed commands: a name field + Save,
