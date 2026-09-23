@@ -6,6 +6,7 @@ import type {
   ChatCompletionReply,
   ChatCompletionResponse,
   ChatMessage,
+  PrefillTimings,
   PropsResponse,
   Tool,
   ToolCall,
@@ -166,18 +167,20 @@ export async function chatCompletionStream(
   let reasoningLength = 0;
   const toolCalls: ToolCall[] = [];
   let usage: Usage | undefined;
+  let prefill: PrefillTimings | undefined;
   const decoder = new TextDecoder();
   let buffer = "";
   // Processes one "data: ..." SSE line, appending the content delta to the
   // result and forwarding it to onDelta, accumulating the reasoning delta and
   // forwarding a running token estimate to onReasoning, reassembling
-  // tool-call fragments by index into toolCalls, and capturing usage from the
-  // final chunk.
+  // tool-call fragments by index into toolCalls, and capturing usage and the
+  // prefill timings from the final chunk.
   const processLine = (line: string): void => {
     const data = line.slice("data:".length).trim();
     if (data.length === 0 || data === "[DONE]") return;
     const chunk = JSON.parse(data) as ChatCompletionChunk;
     if (chunk.usage) usage = chunk.usage;
+    if (chunk.timings) prefill = chunk.timings;
     const delta = chunk.choices?.[0]?.delta;
     if (delta?.reasoning_content) {
       reasoning.push(delta.reasoning_content);
@@ -223,5 +226,6 @@ export async function chatCompletionStream(
     toolCalls,
     reasoning: reasoning.join(""),
     usage,
+    prefill,
   };
 }

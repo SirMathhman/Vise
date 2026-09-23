@@ -34,6 +34,7 @@ import {
   renderCompactNotice,
   renderError,
   renderHook,
+  renderPrefill,
   renderPrompt,
   renderQuestion,
   renderToolCallEnd,
@@ -189,6 +190,11 @@ async function runModelTurn(
     throw err;
   });
   replyStream.end();
+
+  // Show the prefill (prompt-processing) phase the server reports, which
+  // runs before any token is generated. Rendered after the reply so it sits
+  // at the end of the turn, alongside the other per-turn diagnostics.
+  renderPrefill(reply.prefill);
 
   // Run post-turn hooks (env var + .hooks/post-turn/ directory) after the
   // model's answer. On failure (non-zero exit), the output is printed to

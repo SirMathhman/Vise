@@ -8,12 +8,14 @@ export type ToolCall = {
 };
 
 // The accumulated result of one streaming chat completion: the answer text,
-// any tool calls, the model's reasoning, and usage as reported by the server.
+// any tool calls, the model's reasoning, usage as reported by the server,
+// and the prefill-phase timings when the server reports them.
 export type ChatCompletionReply = {
   content: string;
   toolCalls: ToolCall[];
   reasoning: string;
   usage?: Usage;
+  prefill?: PrefillTimings;
 };
 
 export type ChatMessage = {
@@ -143,11 +145,26 @@ export type Usage = {
   total_tokens: number;
 };
 
+// Phase timings reported by llama.cpp's server on the final chunk of a
+// streamed completion (and on non-streaming responses). `prompt_*` fields
+// describe the prefill (prompt-processing) phase, which runs before any
+// token is generated: `prompt_n` is the number of prompt tokens processed,
+// `cache_n` is the subset reused from the KV cache (not re-prefilled),
+// `prompt_ms` is wall time, and `prompt_per_second` is the prefill
+// throughput. All fields are optional: a server that doesn't report timings
+// (older builds) simply omits the object.
+export type PrefillTimings = {
+  prompt_n?: number;
+  cache_n?: number;
+  prompt_ms?: number;
+  prompt_per_second?: number;
+};
+
 // The shape of one SSE chunk from /v1/chat/completions with stream: true.
 // Each chunk carries a `delta` with the next content fragment and/or the
 // next tool-call fragment; tool-call fragments arrive split across chunks
-// and the client reassembles them by index. `usage` arrives on the final
-// chunk only, alongside (not inside) `choices`, matching llama.cpp's
+// and the client reassembles them by index. `usage` and `timings` arrive on
+// the final chunk only, alongside (not inside) `choices`, matching llama.cpp's
 // stream_options.include_usage behavior.
 export type ChatCompletionChunk = {
   choices?: {
@@ -162,6 +179,7 @@ export type ChatCompletionChunk = {
     };
   }[];
   usage?: Usage;
+  timings?: PrefillTimings;
 };
 
 // The shape of the /v1/models response body.

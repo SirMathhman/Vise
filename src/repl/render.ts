@@ -1,4 +1,6 @@
 // Prompt, answer, and error rendering. Pure formatting; no fetch.
+import type { PrefillTimings } from "../llm/types.ts";
+
 export function renderPrompt(): void {
   process.stdout.write("you> ");
 }
@@ -150,6 +152,27 @@ export function createThinkingIndicator(): {
       process.stdout.write("\n");
     },
   };
+}
+
+// Renders the prefill (prompt-processing) phase the llama.cpp server
+// reports for one completion. Prefill runs before any token is generated
+// (prompt -> prefill -> decode), so it's shown as a one-line summary after
+// the answer rather than interleaved with it. When the server doesn't report
+// timings (older builds), the function is a no-op. The caller writes this
+// immediately after the reply stream ends, so no leading newline is needed.
+export function renderPrefill(prefill: PrefillTimings | undefined): void {
+  if (!prefill) return;
+  const parts: string[] = [];
+  if (prefill.prompt_n !== undefined)
+    parts.push(`prefill ${prefill.prompt_n} tokens`);
+  if (prefill.prompt_ms !== undefined)
+    parts.push(`${(prefill.prompt_ms / 1000).toFixed(1)}s`);
+  if (prefill.prompt_per_second !== undefined)
+    parts.push(`${prefill.prompt_per_second.toFixed(1)} tok/s`);
+  if (prefill.cache_n !== undefined && prefill.cache_n > 0)
+    parts.push(`cache ${prefill.cache_n}`);
+  if (parts.length === 0) return;
+  process.stdout.write(`${parts.join(" · ")}\n`);
 }
 
 export function renderError(message: string): void {
