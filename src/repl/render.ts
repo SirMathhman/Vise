@@ -3,6 +3,10 @@ export function renderPrompt(): void {
   process.stdout.write("you> ");
 }
 
+export function renderQuestion(question: string): void {
+  process.stdout.write(`\nquestion> ${question}\nanswer> `);
+}
+
 // Creates a streaming reply handle owned by the transport. The loop
 // forwards content deltas to write() as they arrive; the "assistant>" header
 // is printed once, lazily, on the first write. end() terminates the reply and

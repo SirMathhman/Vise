@@ -83,6 +83,7 @@ export type ToolContext = {
   depth: number;
   tools: Tool[];
   toolsEnabled: boolean;
+  askQuestion?: (question: string) => Promise<string>;
   dispatch: (
     name: string,
     args: Record<string, unknown>,

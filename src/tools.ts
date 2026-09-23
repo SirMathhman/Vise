@@ -1,6 +1,8 @@
 // The tool registry and dispatch. Composes schemas and handler functions
-// from submodules. No fetch, no stdin/stdout.
+// from submodules. No fetch, no stdin/stdout; interactive input is passed
+// into the ask_user handler through its ToolContext callback.
 import type { Tool, ToolContext } from "./llm/types.ts";
+import { ask_user, ask_user_schema } from "./tools/ask.ts";
 import {
   create_directory,
   create_file,
@@ -222,6 +224,7 @@ export const tools: Tool[] = [
     },
   },
   run_subagent_schema,
+  ask_user_schema,
   {
     type: "function",
     function: {
@@ -305,6 +308,7 @@ const handlers: Record<
   kill_process,
   semantic_search,
   run_subagent,
+  ask_user,
 };
 
 // Re-export ToolContext so existing importers (loop.ts, process.ts) can

@@ -43,6 +43,9 @@ rules to respect:
   turn — so the conversation, active profile, and tools flag survive a
   restart — and named session files under `.vise/sessions/*.json` written
   by `/save` and read by `/load`).
+- **The interactive `ask_user` tool is available only in the main REPL.** Its
+  input and output flow through the REPL transport; subagents must not prompt
+  the user.
 - **Session state (tracked processes) is created at the entry point and passed
   in** as a parameter — `tools.ts` holds no module-level mutable state.
 - **Notes are a file convention, not a tool.** Memories and skills are unified
@@ -81,6 +84,8 @@ rules to respect:
   trim, so it invalidates the server's KV-cache prefix once instead of every
   turn.
 - `src/tools.ts` + `src/tools/*` — tool registry and per-tool handler submodules.
+- `src/tools/ask.ts` — `ask_user`, which requests one plain-text answer via an
+  explicit callback provided by the REPL.
 - `src/subagent.ts` + `src/tools/subagent.ts` — the `run_subagent` tool: nested
   isolated subagent conversations seeded from a profile's instruction.
 - `src/llm/vectors.ts` + `src/tools/semsearch.ts` — semantic search: chunks

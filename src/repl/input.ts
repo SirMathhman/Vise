@@ -3,6 +3,7 @@ import * as readline from "node:readline";
 
 export type Input = {
   nextLine: () => Promise<string>;
+  nextFreshLine: () => Promise<string>;
   close: () => void;
 };
 
@@ -16,8 +17,9 @@ export function createInput(): Input {
   // that land while a fetch is in flight are not lost.
   const lines: string[] = [];
   let closed = false;
+  let waitingForFreshLine = false;
   rl.on("line", (line) => {
-    lines.push(line);
+    if (!waitingForFreshLine) lines.push(line);
   });
   rl.on("close", () => {
     closed = true;
@@ -49,5 +51,23 @@ export function createInput(): Input {
     rl.close();
   };
 
-  return { nextLine, close };
+  const nextFreshLine = (): Promise<string> => {
+    lines.length = 0;
+    if (closed) return Promise.resolve("");
+    waitingForFreshLine = true;
+    return new Promise((resolve) => {
+      const done = (value: string) => {
+        waitingForFreshLine = false;
+        rl.removeListener("line", onLine);
+        rl.removeListener("close", onClose);
+        resolve(value);
+      };
+      const onLine = (line: string) => done(line);
+      const onClose = () => done("");
+      rl.on("line", onLine);
+      rl.on("close", onClose);
+    });
+  };
+
+  return { nextLine, nextFreshLine, close };
 }

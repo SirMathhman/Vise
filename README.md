@@ -28,4 +28,9 @@ instructions.
   for one request. For example, `/review check this implementation` invokes
   `.vise/notes/review.md` with the trailing request.
 
+During a model turn, the `ask_user` tool can pause to ask one plain-text
+question and wait for your answer. Only a line entered after its question
+appears is used as the answer; lines typed earlier are discarded. Subagents
+cannot prompt the user.
+
 This project was created using `bun init` in bun v1.3.14. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.

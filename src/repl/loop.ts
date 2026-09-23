@@ -35,6 +35,7 @@ import {
   renderError,
   renderHook,
   renderPrompt,
+  renderQuestion,
 } from "./render.ts";
 
 // Auto-compact once the conversation reaches this fraction of the server's
@@ -126,6 +127,7 @@ async function runModelTurn(
   activeProfile: string,
   toolsEnabled: boolean,
   activeTools: string[] | undefined,
+  askQuestion: (question: string) => Promise<string>,
 ): Promise<Usage | undefined> {
   // Filter the tools array to only those in the active profile's whitelist.
   // undefined means "all tools" (no whitelist). The filtered array is what
@@ -140,6 +142,7 @@ async function runModelTurn(
     depth: 0,
     tools: filteredTools,
     toolsEnabled,
+    askQuestion,
     dispatch: (name, args, ctx) => runTool(name, args, ctx),
   };
   // Owns the reply's terminal state (header-once, terminator, idempotency)
@@ -258,7 +261,7 @@ export async function run(config: Config): Promise<void> {
   const postTurnHooks = loadHooks("post-turn");
 
   const input = createInput();
-  const { nextLine, close } = input;
+  const { nextLine, nextFreshLine, close } = input;
   const tracker = new ProcessTracker();
 
   // Build or update the vector index before the first turn. Only re-embeds
@@ -392,6 +395,10 @@ export async function run(config: Config): Promise<void> {
         activeProfile,
         toolsEnabled,
         activeTools,
+        async (question) => {
+          renderQuestion(question);
+          return nextFreshLine();
+        },
       );
       if (usage) {
         lastUsage = usage;

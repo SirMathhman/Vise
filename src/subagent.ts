@@ -29,16 +29,23 @@ export async function runSubagent(
   // set. If the profile declares a whitelist, only tools present in BOTH
   // are available. If the profile has no whitelist, the parent's set is
   // used as-is.
-  const subTools = profile.tools
-    ? ctx.tools.filter((t) => profile.tools?.includes(t.function.name))
-    : ctx.tools;
+  const subTools = ctx.tools.filter(
+    (tool) =>
+      tool.function.name !== "ask_user" &&
+      (!profile.tools || profile.tools.includes(tool.function.name)),
+  );
 
   const messages: ChatMessage[] = [
     { role: "system", content: profile.instruction },
     { role: "user", content: task },
   ];
 
-  const subCtx: ToolContext = { ...ctx, depth: ctx.depth + 1, tools: subTools };
+  const subCtx: ToolContext = {
+    ...ctx,
+    depth: ctx.depth + 1,
+    tools: subTools,
+    askQuestion: undefined,
+  };
 
   const reply = await runToolRounds(
     ctx.config,
