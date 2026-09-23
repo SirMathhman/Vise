@@ -35,9 +35,13 @@ the code; it is not a changelog. Progress lives in the git log.
   once at startup. Read-only everywhere except the model selector, which owns
   the one mutable field (`model`) and is the only writer of config back to
   disk.
-- **Command** — a line beginning with `/` that the REPL handles locally and
-  never sends to the model. A command is a pure function of its arguments plus
-  the session state it is handed; it returns a result the renderer prints.
+- **Command** — a built-in line beginning with `/` that the REPL handles
+  locally and never sends to the model. A command handler receives its
+  arguments and explicit context, returns a result for the loop/renderer to
+  apply, and does not read input or print directly. Context capabilities may
+  perform effects (for example, model listing, profile creation, or session
+  persistence); keep those effects explicit and do not let handlers import
+  the transport or call `fetch` themselves.
 - **Model catalog** — the set of models the server reports at `GET /v1/models`,
   each with a load status. The catalog is the authority for what a model name
   may be; the selector never accepts a name the catalog does not contain.
@@ -69,9 +73,14 @@ the code; it is not a changelog. Progress lives in the git log.
   no type distinction, a note is simply a fact, decision, or how-to the model
   wants to keep across sessions. The filename (minus `.md`) is the note's
   name; a `summary: <one line>` line near the top is its one-line
-  description; the rest of the file is its content. Notes are read and
-  written with the regular file tools (`read_file`, `create_file`,
-  `edit_file`) — there is no dedicated note tool or command. The short index
+  description; the rest of the file is its content. Users and the model
+  maintain notes with the regular file tools (`read_file`, `create_file`,
+  `edit_file`) — there is no dedicated note-management tool. A slash-prefixed
+  input matching a note name, after built-in commands are resolved, starts a
+  one-shot model turn: the note content and trailing instructions become the
+  user input and pass through the regular pre-turn hooks, model/tool flow, and
+  post-turn hooks. This on-demand lookup is a read-only filesystem exception
+  performed by `src/notes.ts` (invariant 5). The short index
   (a `name — summary` line per note, preceded by a "Current notes:" header)
   is injected at the beginning of the system prompt at startup and rebuilt
   by compaction; it is static for a session, so notes created or edited
@@ -107,8 +116,8 @@ the code; it is not a changelog. Progress lives in the git log.
    modules.
 2. The LLM client is the only module that calls `fetch`. The model catalog is
    fetched through the client, not beside it.
-3. Commands never reach the model. A command's rendered output is printed by
-   the transport, never appended to the conversation. A command may request
+3. Built-in commands never reach the model. Their rendered output is printed
+   by the transport, never appended to the conversation. A command may request
    a state change via its result (e.g. `setModel` changes the active model,
    `setProfile` causes the loop to append a new system message carrying the
    profile's instruction); the loop applies these side effects. A profile
@@ -116,14 +125,16 @@ the code; it is not a changelog. Progress lives in the git log.
 4. The active model is read at request time, not captured at startup, so a
    switch takes effect on the next turn without rebuilding the client.
 5. Tools are the only modules that read or write the filesystem or execute
-   external processes during a turn. The hook system is the primary exception:
+  external processes during a turn. The hook system is the primary exception:
    `src/repl/hooks.ts` reads the `.hooks/<type>/` directory at startup to
    discover directory-based hooks (read-only filesystem access, no
    subprocesses), and `src/repl/presession.ts` (to be renamed `externalcmd.ts`,
    see Future Work) spawns exactly one subprocess per hook invocation. A small
-   set of documented non-tool FS readers/writers also exist outside the
-   tools, all at startup or turn boundaries (never during a tool call):
-   `src/profiles.ts` reads `.agents/*.md` and `AGENTS.md` and writes
+  set of documented non-tool FS readers/writers also exist outside the
+  tools, all at startup or turn boundaries (never during a tool call):
+  `src/notes.ts` reads a matching `.vise/notes/<name>.md` on demand for a
+  named-note invocation and builds the startup note index;
+  `src/profiles.ts` reads `.agents/*.md` and `AGENTS.md` and writes
    `.agents/<name>.md` on `/profile new`; `src/config/persist.ts` writes
    `.env.local` on model select; and `src/session.ts` reads/writes
    `.vise/session.json` (load on startup, save after each turn) so the
@@ -198,16 +209,17 @@ src/profiles.ts       profile registry: list and look up profiles. Profiles
                         no fetch, no stdin/stdout.
 src/notes.ts          note registry + notes intro. Notes unify memories and
                         skills as plain .vise/notes/<name>.md files the model
-                        and user read/write with the regular file tools (no
-                        dedicated tool or command). listNotes()/getNote()
-                        resolve the .vise/notes/ directory (read-only FS,
-                        invariant 5, like AGENTS.md); withNotesIntro() builds
-                        the short `name — summary` index once at module load
-                        and prepends it to the profile's instruction so the
-                        notes list sits at the beginning of the system prompt
-                        (loop.ts seeds it, compact.ts and profile switches
-                        rebuild it). No mutable state, no fetch, no
-                        stdin/stdout.
+                        and user maintain with the regular file tools (no
+                        dedicated note-management tool). listNotes()/getNote()
+                        resolve the .vise/notes/ directory; getNote() reads a
+                        matching note on demand for a named-note invocation
+                        (read-only FS, invariant 5, like AGENTS.md).
+                        withNotesIntro() builds the short `name — summary`
+                        index once at module load and prepends it to the
+                        profile's instruction so the notes list sits at the
+                        beginning of the system prompt (loop.ts seeds it,
+                        compact.ts and profile switches rebuild it). No
+                        mutable state, no fetch, no stdin/stdout.
 src/repl/input.ts     stdin buffering (line queue + nextLine). No fetch, no state.
 src/repl/render.ts    prompt, error, hook, and command rendering plus the
                         reply-stream and thinking-indicator handles
@@ -323,7 +335,8 @@ reads a stateless leaf module (the `src/tools` registry, the profile registry)
 may import it directly — only dependencies that reach `fetch` or the transport
 must be passed in via `CommandContext`.
 
-Enforcement: the `bun lint` script (Biome) enforces what it can; the rest
+Enforcement: the `bun lint` script (Biome) should check maintained source and
+configuration, excluding generated runtime state under `.vise/`; the rest
 (function/file/directory line limits — 100/500/10 — is caught by this review and
 by the madge-style dependency check below).
 
@@ -580,4 +593,3 @@ retryable: boolean }`) instead of a bare string. The loop renders the error
   `OUTPUT_BUDGET` used for tracked-process output — would cap what the user
   sees and what enters the conversation, with a truncation marker when the
   budget is hit.
-

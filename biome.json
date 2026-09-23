@@ -6,6 +6,9 @@
     "indentStyle": "space",
     "indentWidth": 2
   },
+  "files": {
+    "includes": ["**", "!**/.vise"]
+  },
   "linter": {
     "enabled": true,
     "rules": {

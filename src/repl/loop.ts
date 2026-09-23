@@ -292,7 +292,9 @@ export async function run(config: Config): Promise<void> {
       if (raw === "") break;
       continue;
     }
-    // Slash commands are handled locally and never reach the model.
+    // Built-in slash commands are handled locally. A matching note name
+    // instead turns the line into one model request with note context.
+    let userText = text;
     if (text.startsWith("/")) {
       const result = await runCommand(text, {
         model,
@@ -322,49 +324,48 @@ export async function run(config: Config): Promise<void> {
         newConversation: (profile: string, tools: boolean) =>
           newConversation(profile, tools),
       });
-      if (result.setModel) model = result.setModel;
-      if (result.setProfile) {
-        activeProfile = result.setProfile;
-        // Profile change appends a new system message carrying the profile's
-        // instruction; it never alters the existing conversation history.
-        const profile = getProfile(result.setProfile);
-        if (profile) {
-          messages.push({
-            role: "system",
-            content: withNotesIntro(profile.instruction),
-          });
-          activeTools = profile.tools;
+      if (result.modelInput) {
+        userText = result.modelInput;
+        renderCommand(result);
+      } else {
+        if (result.setModel) model = result.setModel;
+        if (result.setProfile) {
+          activeProfile = result.setProfile;
+          // Profile change appends a new system message carrying the profile's
+          // instruction; it never alters the existing conversation history.
+          const profile = getProfile(result.setProfile);
+          if (profile) {
+            messages.push({
+              role: "system",
+              content: withNotesIntro(profile.instruction),
+            });
+            activeTools = profile.tools;
+          }
         }
-      }
-      if (result.setTools !== undefined) {
-        toolsEnabled = result.setTools;
-        // Turning tools off appends a system message telling the model its
-        // tools were just disabled, so it can answer without them on the
-        // next turn. Turning them on is silent (nothing for the model to
-        // react to). Either way, existing history is never altered.
-        if (toolsEnabled === false) {
-          messages.push({ role: "system", content: TOOLS_DISABLED_NOTICE });
+        if (result.setTools !== undefined) {
+          toolsEnabled = result.setTools;
+          // Turning tools off appends a system message telling the model its
+          // tools were just disabled. Turning them on is silent.
+          if (toolsEnabled === false) {
+            messages.push({ role: "system", content: TOOLS_DISABLED_NOTICE });
+          }
         }
+        if (result.newMessages) {
+          // /compact replaces conversation history; its usage is stale.
+          messages.splice(0, messages.length, ...result.newMessages);
+          lastUsage = undefined;
+        }
+        if (result.newSession) {
+          // /load and /new replace the conversation and its session settings.
+          messages.splice(0, messages.length, ...result.newSession.messages);
+          activeProfile = result.newSession.activeProfile;
+          toolsEnabled = result.newSession.toolsEnabled;
+          activeTools = getProfile(activeProfile)?.tools;
+          lastUsage = undefined;
+        }
+        renderCommand(result);
+        continue;
       }
-      if (result.newMessages) {
-        // /compact replaces the entire conversation with a fresh, minimal
-        // one (profile instruction + summary); the usage figure /context
-        // reports is stale the moment that happens.
-        messages.splice(0, messages.length, ...result.newMessages);
-        lastUsage = undefined;
-      }
-      if (result.newSession) {
-        // /load and /new replace the entire conversation state. The profile
-        // and tools flag come from the saved state (or the current values for
-        // /new), so activeTools must be re-derived.
-        messages.splice(0, messages.length, ...result.newSession.messages);
-        activeProfile = result.newSession.activeProfile;
-        toolsEnabled = result.newSession.toolsEnabled;
-        activeTools = getProfile(activeProfile)?.tools;
-        lastUsage = undefined;
-      }
-      renderCommand(result);
-      continue;
     }
     // Run pre-turn hooks (env var + .hooks/pre-turn/ directory) before every
     // user message. Each hook's output is printed to the user AND appended
@@ -378,7 +379,7 @@ export async function run(config: Config): Promise<void> {
       if (hookAllowed(hook.profiles, activeProfile))
         await runHook(hook.command, hook.name, "output", messages);
 
-    messages.push({ role: "user", content: text });
+    messages.push({ role: "user", content: userText });
 
     try {
       const usage = await runModelTurn(

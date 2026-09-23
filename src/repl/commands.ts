@@ -1,10 +1,9 @@
 // The command registry: parse a `/` line, dispatch to a handler, return a
-// result. No fetch, no stdin/stdout. A command is a pure function of its
-// arguments plus the state it is handed; it returns lines to render and,
-// optionally, a new active model. It never prints, never reads input, and
-// never calls fetch directly (the catalog and persistence hook are passed
-// in as parameters).
+// result. No fetch, no stdin/stdout. A command uses its arguments plus the
+// state it is handed; it returns lines to render and, optionally, a new
+// active model or one-shot model input. It never prints or reads input.
 import type { ChatMessage, ModelInfo, Usage } from "../llm/types.ts";
+import { getNote } from "../notes.ts";
 import { createProfile, getProfile, listProfiles } from "../profiles.ts";
 import type { SessionState } from "../session.ts";
 import { tools } from "../tools.ts";
@@ -17,6 +16,7 @@ export type CommandResult = {
   setTools?: boolean;
   newMessages?: ChatMessage[];
   newSession?: SessionState;
+  modelInput?: string;
 };
 
 export type CommandContext = {
@@ -68,6 +68,23 @@ export async function runCommand(
   }
   if (command === "/new") {
     return runNewCommand(ctx);
+  }
+  const noteName = command.slice(1);
+  const note =
+    command !== "/model" && noteName.length > 0 && !/[\\/]/.test(noteName)
+      ? getNote(noteName)
+      : null;
+  if (note) {
+    const instructions = text.slice(command.length).trim();
+    return {
+      lines: [`note> ${note.name}`],
+      modelInput: [
+        `Use this note as context for the request:\n\n${note.content}`,
+        instructions ? `Further instructions:\n${instructions}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
+    };
   }
   if (command !== "/model") {
     return {

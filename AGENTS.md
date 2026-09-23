@@ -27,10 +27,11 @@ rules to respect:
 - **The LLM client is the only module that calls `fetch`.** The chat
   request, the model catalog, and the context-size lookup (`GET /props`)
   all go through it.
-- **Commands never reach the model.** `/`-lines are handled locally; their
-  output is printed by the transport, never appended to the conversation.
-  The commands today are `/model`, `/profile`, `/tool`, `/tools`, `/context`,
-  `/compact`, `/save`, `/load`, `/sessions`, and `/new`.
+- **Built-in commands never reach the model.** Their output is printed by the
+  transport, never appended to the conversation. The built-ins are `/model`,
+  `/profile`, `/tool`, `/tools`, `/context`, `/compact`, `/save`, `/load`,
+  `/sessions`, and `/new`. A slash-prefixed line matching a note name instead
+  starts a one-shot model turn using that note and its trailing instructions.
 - **Tools are the only modules that read/write the filesystem or spawn
   processes** during a turn. The documented exceptions: hook commands
   (`.hooks/` dir read + one spawn per invocation), `src/profiles.ts` (reads
@@ -43,12 +44,13 @@ rules to respect:
   by `/save` and read by `/load`).
 - **Session state (tracked processes) is created at the entry point and passed
   in** as a parameter — `tools.ts` holds no module-level mutable state.
-- **Notes are a file convention, not a tool or command.** Memories and skills
-  are unified as plain `.vise/notes/*.md` files the model and the user read
-  and write with the regular file tools; there is no note tool and no `/note`
-  command. The short index (name — summary per note) is injected at the
-  beginning of the system prompt at startup and rebuilt by compaction; the
-  full content is read on demand with `read_file`.
+- **Notes are a file convention, not a tool.** Memories and skills are unified
+  as plain `.vise/notes/*.md` files the model and the user read and write with
+  the regular file tools; there is no note tool. `/<name> <instructions>`
+  invokes an existing note as one model turn. The short index (name — summary
+  per note) is injected at the beginning of the system prompt at startup and
+  rebuilt by compaction; full content can be read with `read_file` or invoked
+  directly with `/<name> <instructions>` for a one-shot turn.
 
 ## Conventions
 
