@@ -28,7 +28,15 @@ export type ServerMessage =
       status: "done" | "failed" | "disabled" | "unknown";
       depth: number;
     }
-  | { type: "command"; lines: string[]; isError?: boolean }
+  | {
+      type: "command";
+      lines: string[];
+      isError?: boolean;
+      // Current saved-session names (see CommandRender); lets the client's
+      // sessions panel refresh from the same round trip as /save and
+      // /sessions (list/delete/rename), without a follow-up request.
+      sessionNames?: string[];
+    }
   | { type: "error"; message: string }
   | { type: "hook"; label: string; output: string; exitCode: number }
   | { type: "compact_notice" }

@@ -13,14 +13,17 @@
 //
 // Documented FS exception (invariant 5): like the hook system and the vector
 // index, this module reads and writes the filesystem outside the tools and
-// hook layers — at turn boundaries and during /save, /load, /sessions, and
-// /new command handling — but never during a tool call.
+// hook layers — at turn boundaries and during /save, /load, /sessions
+// (including its delete and rename subcommands), and /new command handling —
+// but never during a tool call.
 // No fetch, no stdin/stdout.
 import {
   existsSync,
   mkdirSync,
   readdirSync,
   readFileSync,
+  renameSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import * as path from "node:path";
@@ -149,6 +152,42 @@ export function loadNamedSession(name: string): SessionState | null {
     };
   } catch {
     return null;
+  }
+}
+
+// Deletes a named session file. Returns null on success, or an error
+// message if the name is invalid or no such session exists.
+export function deleteNamedSession(name: string): string | null {
+  if (!isValidName(name)) return `invalid session name: ${name}`;
+  const file = namedSessionPath(name);
+  if (!existsSync(file)) return `no such session: ${name}`;
+  try {
+    unlinkSync(file);
+    return null;
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err);
+  }
+}
+
+// Renames a named session file. Returns null on success, or an error
+// message if either name is invalid, the source is missing, or the
+// destination already exists — a rename never overwrites; delete the
+// destination first if that's the intent.
+export function renameNamedSession(
+  oldName: string,
+  newName: string,
+): string | null {
+  if (!isValidName(oldName)) return `invalid session name: ${oldName}`;
+  if (!isValidName(newName)) return `invalid session name: ${newName}`;
+  const oldFile = namedSessionPath(oldName);
+  const newFile = namedSessionPath(newName);
+  if (!existsSync(oldFile)) return `no such session: ${oldName}`;
+  if (existsSync(newFile)) return `session already exists: ${newName}`;
+  try {
+    renameSync(oldFile, newFile);
+    return null;
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err);
   }
 }
 

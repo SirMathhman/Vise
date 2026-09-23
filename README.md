@@ -38,6 +38,19 @@ use `/profile <name>` to switch it for the rest of the conversation instead.
   `.agents/<profile-name>.md`'s instruction as context for one request
   instead, without switching the active profile. For example,
   `/plan add a dark mode toggle` runs one turn under the `plan` profile.
+- `/save <name>` — save the current conversation as a named session at
+  `.vise/sessions/<name>.json`.
+- `/load <name>` — replace the current conversation with a saved session.
+- `/sessions` — list saved session names.
+- `/sessions delete <name>` — delete a saved session.
+- `/sessions rename <old> <new>` — rename a saved session (fails if `<new>`
+  already exists; delete it first to overwrite).
+- `/new` — start a fresh conversation under the current profile.
+
+In the web UI (`bun run web`), the **sessions** panel below the header does
+the same things with buttons instead of typed commands: a name field + Save,
+and a Load/Rename/Delete row per saved session. Click the refresh icon to
+load or update the list.
 
 During a model turn, `ask_user` supports open-ended (`freeform`), single-choice
 (`multiple_choice`), and multi-select (`multiple_select`) questions. Choice

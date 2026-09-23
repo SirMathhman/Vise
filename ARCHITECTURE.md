@@ -371,13 +371,17 @@ src/session.ts        conversation persistence: loadSession() reads
                         needed. Named session
                         snapshots: saveNamedSession() writes the state to
                         .vise/sessions/<name>.json, loadNamedSession() reads
-                        it back, listNamedSessions() lists all saved names,
-                        and newConversation() creates a fresh state seeded
-                        with the active profile's instruction. A documented
-                        non-tool FS reader/writer (invariant 5), like
-                        profiles.ts and config/persist.ts, but it touches the
-                        disk only at turn boundaries and during /save, /load,
-                        /sessions, and /new — never during a tool call. No
+                        it back, deleteNamedSession() removes the file,
+                        renameNamedSession() moves it to a new name (refusing
+                        to overwrite an existing one), listNamedSessions()
+                        lists all saved names, and newConversation() creates a
+                        fresh state seeded with the active profile's
+                        instruction. A documented non-tool FS reader/writer
+                        (invariant 5), like profiles.ts and config/persist.ts,
+                        but it touches the disk only at turn boundaries and
+                        during /save, /load, /sessions (including its delete
+                        and rename subcommands), and /new — never during a
+                        tool call. No
                         fetch, no stdin/stdout. loop.ts calls loadSession()
                         before the first turn and saveSession() at the top of
                         every loop iteration; the named-session functions are

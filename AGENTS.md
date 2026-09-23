@@ -46,8 +46,9 @@ rules to respect:
   `.env.local` on model select), and `src/session.ts` (reads/writes
   `.vise/session.json` at turn boundaries — load on startup, save after each
   turn — so the conversation, active profile, and tools flag survive a
-  restart — and named session files under `.vise/sessions/*.json` written
-  by `/save` and read by `/load`).
+  restart — and named session files under `.vise/sessions/*.json` written by
+  `/save`, read by `/load`, and deleted/renamed by `/sessions delete` and
+  `/sessions rename`).
 - **The interactive `ask_user` tool is available only in the main REPL.** It
   supports free-form, multiple-choice, and multiple-select questions; choice
   prompts accept natural-language answers including custom text. Its input and

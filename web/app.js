@@ -17,7 +17,11 @@
     questionEl,
     diagnosticsEl,
     inputEl,
-    sendEl;
+    sendEl,
+    sessionsListEl,
+    sessionNameInputEl,
+    sessionSaveBtnEl,
+    sessionRefreshBtnEl;
 
   function init() {
     connStateEl = document.getElementById("conn-state");
@@ -27,9 +31,18 @@
     diagnosticsEl = document.getElementById("diagnostics-body");
     inputEl = document.getElementById("input");
     sendEl = document.getElementById("send");
+    sessionsListEl = document.getElementById("sessions-list");
+    sessionNameInputEl = document.getElementById("session-name-input");
+    sessionSaveBtnEl = document.getElementById("session-save-btn");
+    sessionRefreshBtnEl = document.getElementById("session-refresh-btn");
 
     sendEl.addEventListener("click", onSendClick);
     inputEl.addEventListener("keydown", onInputKeydown);
+    sessionSaveBtnEl.addEventListener("click", onSessionSaveClick);
+    sessionNameInputEl.addEventListener("keydown", onSessionNameKeydown);
+    sessionRefreshBtnEl.addEventListener("click", () =>
+      sendCommand("/sessions"),
+    );
 
     connect();
   }
@@ -84,6 +97,23 @@
     if (socket && socket.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify(msg));
     }
+  }
+
+  // Sends a line of input as if typed in the composer: echoes it as a user
+  // message, then transmits it. Used by the composer's own Send button.
+  function sendLine(text) {
+    send({ type: "input", text });
+    makeLine("msg user", text);
+    questionEl.hidden = true;
+    setStatus("");
+  }
+
+  // Sends a line of input triggered by a UI control (the sessions panel's
+  // buttons) rather than typed by the user. Unlike sendLine, this does not
+  // echo the text as a user message — the command's own rendered result
+  // (always sent back, per the built-in-commands contract) is the feedback.
+  function sendCommand(text) {
+    send({ type: "input", text });
   }
 
   // --- Rendering helpers ---
@@ -295,6 +325,9 @@
 
   function onCommand(msg) {
     makePreLines("command-line", msg.lines, msg.isError);
+    if (Array.isArray(msg.sessionNames)) {
+      renderSessionsList(msg.sessionNames);
+    }
   }
 
   function onError(message) {
@@ -334,10 +367,7 @@
     if (text.trim().length === 0) return;
     inputEl.value = "";
     autoresize();
-    makeLine("msg user", text);
-    send({ type: "input", text });
-    questionEl.hidden = true;
-    setStatus("");
+    sendLine(text);
   }
 
   function onInputKeydown(ev) {
@@ -345,6 +375,80 @@
       ev.preventDefault();
       onSendClick();
     }
+  }
+
+  // --- Sessions panel ---
+  function onSessionSaveClick() {
+    const name = sessionNameInputEl.value.trim();
+    if (!name) return;
+    sessionNameInputEl.value = "";
+    sendCommand(`/save ${name}`);
+  }
+
+  function onSessionNameKeydown(ev) {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      onSessionSaveClick();
+    }
+  }
+
+  function renderSessionsList(names) {
+    sessionsListEl.innerHTML = "";
+    if (names.length === 0) {
+      const empty = document.createElement("li");
+      empty.className = "sessions-empty";
+      empty.textContent = "No saved sessions.";
+      sessionsListEl.appendChild(empty);
+      return;
+    }
+    for (const name of names) {
+      sessionsListEl.appendChild(makeSessionRow(name));
+    }
+  }
+
+  function makeSessionRow(name) {
+    const li = document.createElement("li");
+    li.className = "session-row";
+
+    const nameEl = document.createElement("span");
+    nameEl.className = "session-name";
+    nameEl.textContent = name;
+    li.appendChild(nameEl);
+
+    const actions = document.createElement("span");
+    actions.className = "session-actions";
+
+    const loadBtn = document.createElement("button");
+    loadBtn.type = "button";
+    loadBtn.textContent = "Load";
+    loadBtn.addEventListener("click", () => sendCommand(`/load ${name}`));
+    actions.appendChild(loadBtn);
+
+    const renameBtn = document.createElement("button");
+    renameBtn.type = "button";
+    renameBtn.textContent = "Rename";
+    renameBtn.addEventListener("click", () => {
+      const next = window.prompt(`Rename "${name}" to:`, name);
+      const trimmed = next ? next.trim() : "";
+      if (trimmed && trimmed !== name) {
+        sendCommand(`/sessions rename ${name} ${trimmed}`);
+      }
+    });
+    actions.appendChild(renameBtn);
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "danger";
+    deleteBtn.textContent = "Delete";
+    deleteBtn.addEventListener("click", () => {
+      if (window.confirm(`Delete saved session "${name}"?`)) {
+        sendCommand(`/sessions delete ${name}`);
+      }
+    });
+    actions.appendChild(deleteBtn);
+
+    li.appendChild(actions);
+    return li;
   }
 
   function autoresize() {

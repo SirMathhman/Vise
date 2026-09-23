@@ -17,6 +17,35 @@
         </span>
       </header>
 
+      <section id="sessions" class="sessions">
+        <details>
+          <summary>sessions</summary>
+          <div id="sessions-body">
+            <div id="sessions-save-row" class="sessions-save-row">
+              <input
+                id="session-name-input"
+                class="session-name-input"
+                type="text"
+                placeholder="save current as&hellip;"
+              />
+              <button id="session-save-btn" type="button">Save</button>
+              <button
+                id="session-refresh-btn"
+                type="button"
+                title="Refresh saved sessions"
+              >
+                &#8635;
+              </button>
+            </div>
+            <ul id="sessions-list" class="sessions-list">
+              <li class="sessions-empty">
+                Click refresh (&#8635;) to load saved sessions.
+              </li>
+            </ul>
+          </div>
+        </details>
+      </section>
+
       <main id="chat">
         <div id="status-line" class="status-line" hidden></div>
         <div id="messages"></div>

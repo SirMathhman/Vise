@@ -164,6 +164,7 @@ export class WebTransport implements Transport {
       type: "command",
       lines: result.lines,
       isError: result.isError,
+      sessionNames: result.sessionNames,
     });
   }
 

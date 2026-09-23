@@ -11,10 +11,12 @@ import { ensureIndexed } from "../llm/vectors.ts";
 import { createNote, withNotesIntro } from "../notes.ts";
 import { BUILTIN_AGENT, getProfile } from "../profiles.ts";
 import {
+  deleteNamedSession,
   listNamedSessions,
   loadNamedSession,
   loadSession,
   newConversation,
+  renameNamedSession,
   saveNamedSession,
   saveSession,
 } from "../session.ts";
@@ -477,6 +479,9 @@ export async function run(config: Config, transport: Transport): Promise<void> {
             toolsEnabled: state.toolsEnabled,
           }),
         loadNamedSession: (name: string) => loadNamedSession(name),
+        deleteNamedSession: (name: string) => deleteNamedSession(name),
+        renameNamedSession: (oldName: string, newName: string) =>
+          renameNamedSession(oldName, newName),
         listNamedSessions: () => listNamedSessions(),
         newConversation: (profile: string, tools: boolean) =>
           newConversation(profile, tools),
@@ -484,10 +489,18 @@ export async function run(config: Config, transport: Transport): Promise<void> {
       });
       if (result.modelInput) {
         userText = result.modelInput;
-        transport.command({ lines: result.lines, isError: result.isError });
+        transport.command({
+          lines: result.lines,
+          isError: result.isError,
+          sessionNames: result.sessionNames,
+        });
       } else {
         applyCommandResult(result, state);
-        transport.command({ lines: result.lines, isError: result.isError });
+        transport.command({
+          lines: result.lines,
+          isError: result.isError,
+          sessionNames: result.sessionNames,
+        });
         continue;
       }
     }

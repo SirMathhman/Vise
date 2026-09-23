@@ -53,9 +53,14 @@ export type PrefillIndicator = {
 
 // The rendered payload for a built-in command's output. The core's command
 // registry returns this; the transport renders it (and nothing else).
+// sessionNames, when present, carries the current saved-session names (from
+// /save and /sessions and its subcommands) for a transport that wants to
+// render a structured session list rather than parsing `lines`; a transport
+// that only prints text (the terminal) can ignore it.
 export type CommandRender = {
   lines: string[];
   isError?: boolean;
+  sessionNames?: string[];
 };
 
 // The swappable transport seam. The core turn loop (loop.ts) depends only on

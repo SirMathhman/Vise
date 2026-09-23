@@ -17,6 +17,10 @@ export type CommandResult = {
   newMessages?: ChatMessage[];
   newSession?: SessionState;
   modelInput?: string;
+  // The current saved-session names, set by /save and every /sessions
+  // (list/delete/rename) result so a UI can refresh its session list from
+  // the same round trip instead of issuing a follow-up /sessions call.
+  sessionNames?: string[];
 };
 
 export type CommandContext = {
@@ -30,6 +34,8 @@ export type CommandContext = {
   compact: () => Promise<ChatMessage[]>;
   saveNamedSession: (name: string) => string | null;
   loadNamedSession: (name: string) => SessionState | null;
+  deleteNamedSession: (name: string) => string | null;
+  renameNamedSession: (oldName: string, newName: string) => string | null;
   listNamedSessions: () => string[];
   newConversation: (
     activeProfile: string,
@@ -66,7 +72,7 @@ export async function runCommand(
     return runLoadCommand(rest, ctx);
   }
   if (command === "/sessions") {
-    return runSessionsCommand(ctx);
+    return runSessionsCommand(rest, ctx);
   }
   if (command === "/new") {
     return runNewCommand(ctx);
@@ -317,7 +323,10 @@ function runSaveCommand(rest: string[], ctx: CommandContext): CommandResult {
   if (err) {
     return { lines: [`error: could not save: ${err}`], isError: true };
   }
-  return { lines: [`saved session: ${name}`] };
+  return {
+    lines: [`saved session: ${name}`],
+    sessionNames: ctx.listNamedSessions(),
+  };
 }
 
 // /load handler. Loads a named session from .vise/sessions/<name>.json and
@@ -338,11 +347,12 @@ function runLoadCommand(rest: string[], ctx: CommandContext): CommandResult {
       return {
         lines: [`error: no saved sessions found`],
         isError: true,
+        sessionNames: sessions,
       };
     }
     const lines = [`error: unknown session: ${name}`, "Available sessions:"];
     for (const s of sessions) lines.push(`  ${s}`);
-    return { lines, isError: true };
+    return { lines, isError: true, sessionNames: sessions };
   }
   return {
     lines: [`loaded session: ${name}`],
@@ -350,15 +360,85 @@ function runLoadCommand(rest: string[], ctx: CommandContext): CommandResult {
   };
 }
 
-// /sessions handler. Lists all saved session names. Read-only.
-function runSessionsCommand(ctx: CommandContext): CommandResult {
+// /sessions handler. With no argument, lists all saved session names. With
+// `delete <name>`, removes a saved session. With `rename <old> <new>`,
+// renames one without changing its content. Every branch returns the
+// current session list in sessionNames (even on error) so a UI list stays
+// in sync with a single round trip.
+function runSessionsCommand(
+  rest: string[],
+  ctx: CommandContext,
+): CommandResult {
+  if (rest.length === 0) {
+    return listSessionsResult(ctx);
+  }
+  if (rest[0] === "delete") {
+    return runSessionsDeleteCommand(rest.slice(1), ctx);
+  }
+  if (rest[0] === "rename") {
+    return runSessionsRenameCommand(rest.slice(1), ctx);
+  }
+  return {
+    lines: ["Usage: /sessions [delete <name> | rename <old> <new>]"],
+    isError: true,
+  };
+}
+
+function listSessionsResult(ctx: CommandContext): CommandResult {
   const sessions = ctx.listNamedSessions();
   if (sessions.length === 0) {
-    return { lines: ["No saved sessions."] };
+    return { lines: ["No saved sessions."], sessionNames: sessions };
   }
   const lines = ["Saved sessions:"];
   for (const s of sessions) lines.push(`  ${s}`);
-  return { lines };
+  return { lines, sessionNames: sessions };
+}
+
+function runSessionsDeleteCommand(
+  rest: string[],
+  ctx: CommandContext,
+): CommandResult {
+  const name = rest.join(" ").trim();
+  if (name.length === 0) {
+    return { lines: ["Usage: /sessions delete <name>"], isError: true };
+  }
+  const err = ctx.deleteNamedSession(name);
+  if (err) {
+    return {
+      lines: [`error: could not delete: ${err}`],
+      isError: true,
+      sessionNames: ctx.listNamedSessions(),
+    };
+  }
+  return {
+    lines: [`deleted session: ${name}`],
+    sessionNames: ctx.listNamedSessions(),
+  };
+}
+
+function runSessionsRenameCommand(
+  rest: string[],
+  ctx: CommandContext,
+): CommandResult {
+  const [oldName, newName] = rest;
+  if (!oldName || !newName || rest.length !== 2) {
+    return {
+      lines: ["Usage: /sessions rename <old> <new>"],
+      isError: true,
+    };
+  }
+  const err = ctx.renameNamedSession(oldName, newName);
+  if (err) {
+    return {
+      lines: [`error: could not rename: ${err}`],
+      isError: true,
+      sessionNames: ctx.listNamedSessions(),
+    };
+  }
+  return {
+    lines: [`renamed session: ${oldName} -> ${newName}`],
+    sessionNames: ctx.listNamedSessions(),
+  };
 }
 
 // /note new <name> creates a blank note template without replacing any
