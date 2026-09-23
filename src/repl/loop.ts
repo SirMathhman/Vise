@@ -350,7 +350,7 @@ export async function run(config: Config, transport: Transport): Promise<void> {
       });
       if (result.modelInput) {
         userText = result.modelInput;
-        transport.command(result);
+        transport.command({ lines: result.lines, isError: result.isError });
       } else {
         if (result.setModel) model = result.setModel;
         if (result.setProfile) {
@@ -387,7 +387,7 @@ export async function run(config: Config, transport: Transport): Promise<void> {
           activeTools = getProfile(activeProfile)?.tools;
           lastUsage = undefined;
         }
-        transport.command(result);
+        transport.command({ lines: result.lines, isError: result.isError });
         continue;
       }
     }
@@ -451,5 +451,4 @@ export async function run(config: Config, transport: Transport): Promise<void> {
   // Loop broke on EOF (or stdin was drained); reap background processes.
   transport.close();
   await tracker.shutdown();
-  process.exit(0);
 }

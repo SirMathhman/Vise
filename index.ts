@@ -9,3 +9,4 @@ import { createTerminalTransport } from "./src/repl/terminalTransport.ts";
 const config = loadConfig();
 const transport = createTerminalTransport();
 await run(config, transport);
+process.exit(0);
