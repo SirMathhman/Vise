@@ -70,7 +70,7 @@
 
     socket.addEventListener("close", () => {
       setConnState("closed");
-      interruptOpenToolBlocks();
+      markOpenToolBlocksDisconnected();
       if (!intentionalClose) {
         // Auto-reconnect after a network drop. The server keeps the
         // session alive across disconnects, so the conversation continues.
@@ -243,8 +243,6 @@
     }
     switch (msg.type) {
       case "prompt":
-        // The REPL is waiting for input, so no tool call is still running.
-        interruptOpenToolBlocks();
         break;
       case "reply_delta":
         onReplyDelta(msg.text);
@@ -354,13 +352,12 @@
     entry.el.className = `tool-block ${msg.status === "done" ? "done" : msg.status === "failed" ? "failed" : ""}`;
   }
 
-  // Marks every still-running tool block as interrupted: its end event will
-  // never arrive (the socket dropped, or the turn ended without it).
-  function interruptOpenToolBlocks() {
+  // On a socket drop, relabels still-running tool blocks: their end events
+  // are lost with the socket, but the server keeps the turn going, so the
+  // outcome is unknown rather than failed.
+  function markOpenToolBlocksDisconnected() {
     for (const entry of openToolBlocks) {
-      if (!entry) continue;
-      entry.meta.textContent = "interrupted";
-      entry.el.className = "tool-block failed";
+      if (entry) entry.meta.textContent = "disconnected (outcome unknown)";
     }
     openToolBlocks.length = 0;
   }
