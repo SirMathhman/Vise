@@ -12,6 +12,15 @@ the code; it is not a changelog. Progress lives in the git log.
   content deltas through a callback as they arrive; the turn loop renders each
   delta to the terminal in real time. The conversation still accumulates the
   full reply before the next turn (Future Work).
+- **Thinking display** — the bounded, one-line display of the model's
+  reasoning (the `reasoning_content` deltas that precede a reply on reasoning
+  models). Because reasoning can be arbitrarily long, the display never shows
+  the reasoning text itself: it repaints a single line with an elapsed time and
+  a running token estimate while the model thinks, then settles into a one-line
+  "thought" marker when the answer (or a tool call) begins. The reasoning is
+  also preserved on the assistant message (`reasoning_content`) so the model
+  can see its own prior thinking on the next turn; the server round-trips the
+  field, though individual templates may or may not honor it.
 - **Conversation** — the ordered, in-memory sequence of turns (user + assistant
   messages) sent to the model on every request. It is the REPL's source of truth
   for context.

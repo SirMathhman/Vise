@@ -3,6 +3,7 @@
 import type { Config } from "../config.ts";
 import type {
   ChatCompletionChunk,
+  ChatCompletionReply,
   ChatCompletionResponse,
   ChatMessage,
   PropsResponse,
@@ -105,20 +106,33 @@ export async function chatCompletion(
   return { content: msg?.content ?? "", toolCalls: msg?.tool_calls ?? [] };
 }
 
+// Rough tokens-per-character ratio used to estimate a live reasoning-token
+// count from the streamed reasoning text. The server only reports exact token
+// counts on the final chunk (and only for the whole completion), so a live
+// per-delta count is inherently an estimate; this is a deliberate, cheap
+// approximation for display, not an accounting.
+const REASONING_CHARS_PER_TOKEN = 4;
+
 // Sends the conversation as a streaming request (stream: true) and returns
 // the model's reply. Throws on transport/HTTP errors, same as
 // chatCompletion. Content deltas are passed to onDelta as they arrive, so
-// the caller can render them to the terminal in real time; tool calls are
+// the caller can render them to the terminal in real time; reasoning
+// (thinking) deltas are passed to onReasoning as a running token estimate so
+// the caller can show a bounded "thinking" indicator. Tool calls are
 // reassembled from the split delta fragments by index and returned in full.
-// `stream_options.include_usage` asks the server to attach token counts to
-// the final chunk; `usage` is undefined if the server doesn't honor it.
+// The full reasoning text is returned so the caller can preserve it on the
+// assistant message (llama.cpp's server accepts reasoning_content back on
+// assistant messages). `stream_options.include_usage` asks the server to
+// attach token counts to the final chunk; `usage` is undefined if the server
+// doesn't honor it.
 export async function chatCompletionStream(
   config: ClientConfig,
   model: string,
   messages: ChatMessage[],
   tools: Tool[],
   onDelta: (content: string) => void,
-): Promise<{ content: string; toolCalls: ToolCall[]; usage?: Usage }> {
+  onReasoning: (tokens: number) => void,
+): Promise<ChatCompletionReply> {
   const res = await fetch(`${config.baseUrl}/v1/chat/completions`, {
     method: "POST",
     headers: {
@@ -140,19 +154,28 @@ export async function chatCompletionStream(
   if (!res.body) throw new Error("server sent no response body");
 
   const content: string[] = [];
+  const reasoning: string[] = [];
   const toolCalls: ToolCall[] = [];
   let usage: Usage | undefined;
   const decoder = new TextDecoder();
   let buffer = "";
   // Processes one "data: ..." SSE line, appending the content delta to the
-  // result and forwarding it to onDelta, reassembling tool-call fragments by
-  // index into toolCalls, and capturing usage from the final chunk.
+  // result and forwarding it to onDelta, accumulating the reasoning delta and
+  // forwarding a running token estimate to onReasoning, reassembling
+  // tool-call fragments by index into toolCalls, and capturing usage from the
+  // final chunk.
   const processLine = (line: string): void => {
     const data = line.slice("data:".length).trim();
     if (data.length === 0 || data === "[DONE]") return;
     const chunk = JSON.parse(data) as ChatCompletionChunk;
     if (chunk.usage) usage = chunk.usage;
     const delta = chunk.choices?.[0]?.delta;
+    if (delta?.reasoning_content) {
+      reasoning.push(delta.reasoning_content);
+      onReasoning(
+        Math.round(reasoning.join("").length / REASONING_CHARS_PER_TOKEN),
+      );
+    }
     if (delta?.content) {
       content.push(delta.content);
       onDelta(delta.content);
@@ -187,5 +210,10 @@ export async function chatCompletionStream(
   }
   const remaining = buffer.trim();
   if (remaining.startsWith("data:")) processLine(remaining);
-  return { content: content.join(""), toolCalls, usage };
+  return {
+    content: content.join(""),
+    toolCalls,
+    reasoning: reasoning.join(""),
+    usage,
+  };
 }

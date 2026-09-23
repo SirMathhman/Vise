@@ -39,6 +39,61 @@ export function createReplyStream(): {
   };
 }
 
+// Creates a bounded "thinking" indicator for one model completion. The
+// model's reasoning can be arbitrarily long, so the indicator never shows
+// the reasoning text itself — it repaints a single line with an elapsed-time
+// and a running token estimate, then settles into a one-line "thought"
+// marker when the answer (or a tool call) begins. All writes are in-place
+// (\r repaints), so no matter how long the model thinks, the screen stays
+// one line; nothing scrolls. No ANSI codes: plain \r + padding, so it works
+// across terminals.
+export function createThinkingIndicator(): {
+  start: () => void;
+  report: (tokens: number) => void;
+  finish: () => void;
+} {
+  let started = false;
+  let finished = false;
+  let startMs = 0;
+  let tokens = 0;
+  let lastLength = 0;
+  // Paints the current one-line status, clearing any trailing characters left
+  // over from a longer previous paint.
+  const paint = (done: boolean): void => {
+    const elapsed = (Date.now() - startMs) / 1000;
+    const line = done
+      ? `thought ${elapsed.toFixed(1)}s · ~${tokens} tokens`
+      : `thinking… ${elapsed.toFixed(1)}s · ~${tokens} tokens`;
+    const pad = " ".repeat(Math.max(0, lastLength - line.length));
+    process.stdout.write(`\r${line}${pad}`);
+    lastLength = line.length;
+  };
+  return {
+    start: () => {
+      if (started || finished) return;
+      started = true;
+      startMs = Date.now();
+      // Drop to a fresh line so the indicator doesn't clobber whatever is on
+      // the current line (e.g. the user's prompt line).
+      process.stdout.write("\r\n");
+      paint(false);
+    },
+    report: (t: number) => {
+      if (!started || finished) return;
+      tokens = t;
+      paint(false);
+    },
+    finish: () => {
+      if (!started || finished) return;
+      finished = true;
+      paint(true);
+      // A terminating newline so the next thing written (the assistant>
+      // header or a prompt) starts on a fresh line.
+      process.stdout.write("\n");
+    },
+  };
+}
+
 export function renderError(message: string): void {
   console.error(`error: ${message}`);
 }

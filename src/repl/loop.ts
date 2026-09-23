@@ -5,7 +5,7 @@ import { persistEnvVar } from "../config/persist.ts";
 import type { Config } from "../config.ts";
 import { chatCompletionStream, getContextSize } from "../llm/client.ts";
 import { listModels } from "../llm/models.ts";
-import type { ChatMessage, Usage } from "../llm/types.ts";
+import type { ChatCompletionReply, ChatMessage, Usage } from "../llm/types.ts";
 import { ensureIndexed } from "../llm/vectors.ts";
 import { withNotesIntro } from "../notes.ts";
 import { BUILTIN_AGENT, getProfile } from "../profiles.ts";
@@ -28,6 +28,7 @@ import { createInput } from "./input.ts";
 import { runPreSessionCmd } from "./presession.ts";
 import {
   createReplyStream,
+  createThinkingIndicator,
   renderCommand,
   renderCompactNotice,
   renderError,
@@ -146,26 +147,55 @@ async function runModelTurn(
   // tool-call rounds usually carry no content, so only the final answer is
   // streamed to the user.
   const replyStream = createReplyStream();
-  const onDelta = (delta: string): void => replyStream.write(delta);
   for (let round = 0; ; round++) {
     if (round >= MAX_TOOL_ROUNDS) {
       throw new Error("Stopped after max tool rounds without a final answer");
     }
-    const reply = await chatCompletionStream(
-      config,
-      model,
-      messages,
-      filteredTools,
-      onDelta,
-    );
+    // Per-round thinking indicator: one bounded line for the model's
+    // reasoning. The reasoning can be arbitrarily long, so it never shows the
+    // reasoning text — only an elapsed time and a running token estimate —
+    // and settles into a "thought" marker the moment the answer (or a tool
+    // call) begins. Settling happens in onDelta (so the marker lands before
+    // the streamed answer) and again after the round, idempotently, for the
+    // tool-call / empty cases where no content delta ever arrives.
+    const thinking = createThinkingIndicator();
+    const onDelta = (delta: string): void => {
+      thinking.finish();
+      replyStream.write(delta);
+    };
+    const onReasoning = (tokens: number): void => {
+      thinking.start();
+      thinking.report(tokens);
+    };
+    let reply: ChatCompletionReply;
+    try {
+      reply = await chatCompletionStream(
+        config,
+        model,
+        messages,
+        filteredTools,
+        onDelta,
+        onReasoning,
+      );
+    } catch (err) {
+      // If the model request fails mid-thinking, settle the indicator so the
+      // error message and the next prompt don't get appended to the live
+      // "thinking…" line.
+      thinking.finish();
+      throw err;
+    }
     const toolCalls = reply.toolCalls;
     if (toolCalls.length > 0) {
       // Append the assistant's tool-call message, then each tool's
-      // result, and loop so the model can produce a final answer.
+      // result, and loop so the model can produce a final answer. The
+      // reasoning is preserved on the assistant message so the model can
+      // see its own prior thinking on the next turn.
+      thinking.finish();
       messages.push({
         role: "assistant",
         content: reply.content || null,
         tool_calls: toolCalls,
+        reasoning_content: reply.reasoning || null,
       });
       for (const tc of toolCalls) {
         const args = JSON.parse(tc.function.arguments) as Record<
@@ -180,9 +210,14 @@ async function runModelTurn(
       }
       continue;
     }
+    thinking.finish();
     const answer = reply.content;
     if (answer.length > 0)
-      messages.push({ role: "assistant", content: answer });
+      messages.push({
+        role: "assistant",
+        content: answer,
+        reasoning_content: reply.reasoning || null,
+      });
     replyStream.end();
 
     // Run post-turn hooks (env var + .hooks/post-turn/ directory) after

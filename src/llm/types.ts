@@ -7,11 +7,26 @@ export type ToolCall = {
   function: { name: string; arguments: string };
 };
 
+// The accumulated result of one streaming chat completion: the answer text,
+// any tool calls, the model's reasoning, and usage as reported by the server.
+export type ChatCompletionReply = {
+  content: string;
+  toolCalls: ToolCall[];
+  reasoning: string;
+  usage?: Usage;
+};
+
 export type ChatMessage = {
   role: "system" | "user" | "assistant" | "tool";
   content?: string | null;
   tool_calls?: ToolCall[];
   tool_call_id?: string;
+  // The model's reasoning/thinking, separate from `content` (llama.cpp's
+  // OpenAI-compatible server emits it as `reasoning_content`, mirroring the
+  // DeepSeek API). Present on assistant messages only. Stored so the model
+  // can see its own prior reasoning on the next turn; some templates honor it,
+  // others ignore it.
+  reasoning_content?: string | null;
 };
 
 // The JSON Schema fragment declaring a tool's arguments, as sent in the
@@ -81,7 +96,11 @@ export type ModelInfo = { id: string; loaded: boolean };
 // The shape of the /v1/chat/completions response body.
 export type ChatCompletionResponse = {
   choices?: {
-    message?: { content?: string | null; tool_calls?: ToolCall[] };
+    message?: {
+      content?: string | null;
+      tool_calls?: ToolCall[];
+      reasoning_content?: string | null;
+    };
   }[];
 };
 
@@ -104,6 +123,7 @@ export type ChatCompletionChunk = {
   choices?: {
     delta?: {
       content?: string | null;
+      reasoning_content?: string | null;
       tool_calls?: {
         index: number;
         id?: string;
