@@ -5,12 +5,11 @@
 // The subagent returns its final answer as a string. The caller (the
 // run_subagent handler) appends it as a tool result in the parent
 // conversation. The subagent's own conversation is discarded on return.
-import { chatCompletion } from "./llm/client.ts";
+import { runToolRounds } from "./llm/turns.ts";
 import type { ChatMessage, ToolContext } from "./llm/types.ts";
 import { getProfile } from "./profiles.ts";
 
 const MAX_DEPTH = 5;
-const MAX_TOOL_ROUNDS = 8;
 
 // Runs an isolated subagent conversation. Seeds a fresh conversation with
 // the profile's instruction and the task as a user message. Loops on
@@ -41,35 +40,12 @@ export async function runSubagent(
 
   const subCtx: ToolContext = { ...ctx, depth: ctx.depth + 1, tools: subTools };
 
-  for (let round = 0; ; round++) {
-    if (round >= MAX_TOOL_ROUNDS)
-      throw new Error("Subagent stopped after max tool rounds");
-    const reply = await chatCompletion(
-      ctx.config,
-      ctx.model,
-      messages,
-      subTools,
-    );
-    const toolCalls = reply.toolCalls;
-    if (toolCalls.length > 0) {
-      messages.push({
-        role: "assistant",
-        content: reply.content || null,
-        tool_calls: toolCalls,
-      });
-      for (const tc of toolCalls) {
-        const args = JSON.parse(tc.function.arguments) as Record<
-          string,
-          unknown
-        >;
-        messages.push({
-          role: "tool",
-          tool_call_id: tc.id,
-          content: await subCtx.dispatch(tc.function.name, args, subCtx),
-        });
-      }
-      continue;
-    }
-    return reply.content;
-  }
+  const reply = await runToolRounds(
+    ctx.config,
+    ctx.model,
+    messages,
+    subTools,
+    (name, args) => subCtx.dispatch(name, args, subCtx),
+  );
+  return reply.content;
 }

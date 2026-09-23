@@ -163,6 +163,13 @@ src/llm/types.ts      Pure wire-protocol and shared-shape types; no I/O, no
                         satisfies the interface structurally.
 src/llm/client.ts     LLM client: takes Config + messages, returns a structured
                         result. The ONLY place fetch() is called.
+src/llm/turns.ts      Shared model/tool-round protocol for the REPL and
+                        subagents. Repeatedly calls chatCompletionStream,
+                        appends assistant tool-call messages (including
+                        reasoning_content) and tool results, and appends the
+                        final assistant reply. Takes a dispatch callback and
+                        optional stream observers; owns no presentation,
+                        hooks, or filesystem/process access.
 src/llm/models.ts     model catalog: list models via the client, validate a name
                         against the catalog. No fetch of its own.
 src/llm/vectors.ts    vector index over project files: chunks each non-ignored
@@ -202,7 +209,12 @@ src/notes.ts          note registry + notes intro. Notes unify memories and
                         rebuild it). No mutable state, no fetch, no
                         stdin/stdout.
 src/repl/input.ts     stdin buffering (line queue + nextLine). No fetch, no state.
-src/repl/render.ts    prompt/answer/error rendering. Pure formatting.
+src/repl/render.ts    prompt, error, hook, and command rendering plus the
+                        reply-stream and thinking-indicator handles
+                        (createReplyStream, createThinkingIndicator), which own
+                        the terminal state for a streamed answer and one
+                        model completion's bounded "thinking" line respectively.
+                        Pure formatting; no fetch, no imports.
 src/repl/commands.ts  the command registry: parse a `/` line, dispatch to a
                         handler, return a result. No fetch, no stdin/stdout.
 src/repl/hooks.ts    hook discovery: reads `.hooks/<type>/` directories
@@ -225,8 +237,10 @@ src/repl/presession.ts runs the configured hook commands: `PRE_SESSION_CMD`
 src/repl/loop.ts      the turn loop: glue between input, conversation, client,
                         commands, render, presession, and compact. Contains
                         runHook (hook execution + render/append policy),
-                        runModelTurn (model-call/tool-call inner loop), and
-                        maybeAutoCompact (threshold check + apply).
+                        runModelTurn (observer wiring, turn-level hooks, and
+                        usage), and maybeAutoCompact (threshold check + apply).
+                        The model/tool-call round protocol lives in
+                        src/llm/turns.ts and is shared with subagents.
 src/repl/compact.ts   conversation compaction: one non-streaming, tool-free
                         chatCompletion call summarizes the whole conversation,
                         then compactConversation returns a fresh, minimal
@@ -257,6 +271,11 @@ src/session.ts        conversation persistence: loadSession() reads
                         exposed via CommandContext so the /save, /load,
                         /sessions, and /new handlers in commands.ts can call
                         them.
+src/subagent.ts       isolated profile-seeded subagent conversation. Uses
+                        src/llm/turns.ts for the same model/tool-round
+                        protocol as the main REPL; supplies a dispatch closure
+                        and no stream observers so its final text remains a
+                        tool result in the parent conversation.
 src/tools.ts          tool registry: schema array + dispatch table. Imports
                         handler functions from the tool submodules below and
                         composes them into the `Record<string, handler>` table.
@@ -280,12 +299,16 @@ src/tools/search.ts   content-search handlers: find_files, search_content.
 
 Dependency direction: `index -> src/repl/loop -> (src/repl/input, src/repl/render,
 src/repl/commands, src/repl/presession, src/repl/compact, src/session,
-src/llm/client, src/tools, src/profiles) -> src/llm/models -> src/llm/types,
-src/config`. `src/llm/*` and `src/repl/*` do not import each other.
+src/llm/client, src/llm/turns, src/tools, src/profiles) -> src/llm/models ->
+src/llm/types, src/config`. `src/repl/loop.ts` and `src/subagent.ts` use
+`src/llm/turns.ts`, which depends only on `src/llm/client.ts`,
+`src/llm/types.ts`, and `src/config.ts`. Dependencies point down into the LLM
+layer; no `src/llm/*` module imports from the REPL or tools layers.
 `src/tools/*` do not import each other; `src/tools.ts` is the only importer of
 the tool submodules. `src/config.ts`, `src/config/persist.ts`, `src/llm/types.ts`,
 `src/profiles.ts`, `src/session.ts`, and the `src/tools/*` submodules are
-leaves.
+leaves. `src/llm/turns.ts` owns no presentation, hooks, or tool access; tool
+execution enters only through its dispatch callback.
 
 Commands are the seam that keeps the loop small: `commands.ts` returns a result
 value (text to render, or a request to mutate session state) and never prints or
@@ -427,6 +450,41 @@ newMessages)` helper used by both would remove the duplication and shrink
   already prototyped by `run_subagent_schema` in `tools/subagent.ts`), keeping
   `tools.ts` under 50 lines as pure composition.
 
+## Performance
+
+Obvious concerns only; real optimization follows profiling.
+
+- **Conversation re-send is O(n^2) tokens.** Every request re-sends the whole
+  history, so a long session costs quadratic tokens total, and the request
+  body is re-serialized from scratch each turn. Compaction (Potential
+  Problems) bounds the history; the serialization cost is inherent to the
+  stateless wire protocol and not worth fighting.
+- **Reasoning-token estimate is approximate.** `client.ts` maintains a
+  running character count and estimates tokens at roughly four characters per
+  token, so each stream delta is O(1) to account for. This is display-only;
+  exact usage arrives only at completion and is not split by reasoning vs.
+  answer text.
+- **`semanticSearch` scans the whole index.** O(N x dim) CPU and memory per
+  call over the chunks table (see Potential Problems; the fix is an ANN
+  index).
+- **Per-reasoning-chunk repaint is bounded.** The thinking indicator repaints
+  one line per reasoning chunk; the cost is one \r-repaint per chunk, linear
+  in the number of chunks, with no per-chunk allocation beyond the line
+  string itself.
+
+- **Token cost:** re-sending full history every turn doubles the tokens per
+  added turn; compaction (`src/repl/compact.ts`, see Potential Problems)
+  bounds this, at the cost of one extra request each time it runs.
+- **Memory:** the line buffer is bounded by input; the conversation is bounded
+  only by the model's context window, not by the process. Tracked-process
+  output is bounded by `OUTPUT_BUDGET` (16 KB per stream per process, with a
+  truncation marker). `read_file` is bounded at 500 lines per call.
+  `list_directory` is currently unbounded (see Potential Problems).
+- **Command latency:** `/model` with no argument performs a network round-trip
+  before printing anything, so it inherits the client's (currently absent)
+  timeout. A cached catalog could make listing instant but could go stale; the
+  catalog is small, so re-fetching is the right default.
+
 ## Future Work
 
 - **Vector ANN index.** Replace `semanticSearch`'s whole-table scan with a
@@ -475,23 +533,21 @@ Promise<string>`, with a thin validation/coercion step at the registry
 retryable: boolean }`) instead of a bare string. The loop renders the error
   case distinctly and can log non-retryable failures without the model
   guessing from prose.
-- **Reply rendering stream seam.** Streaming is working end-to-end for the
-  main conversation, but the display path is wired through three separate
-  functions (`renderReplyStart` / `renderReplyChunk` / `renderReplyEnd`) whose
-  open/close pairing and the lazy-header-on-first-delta logic live in the
-  turn loop rather than in the transport. If replies are ever interrupted
-  (Ctrl-C, a hook that writes to the terminal, a render error), an
-  unterminated reply can leave the cursor in the middle of the assistant
-  line. A single `createReplyStream()` that owns the header-once and
-  terminator state — and that can be cancelled — removes the pairing
-  invariant from the loop.
-- **Shared streaming path for subagents.** The parent turn streams its reply
-  but `subagent.ts` still uses the non-streaming `chatCompletion`, so a
-  subagent's intermediate replies (and any tool-call rounds it performs) are
-  invisible to the user. The client's streaming path should be the one used
-  by both, with the subagent passing a no-op `onDelta` so its output stays a
-  tool result in the parent conversation. That leaves the non-streaming
-  `chatCompletion` as the only fetch path without a streaming twin.
+- **Cancellable reply stream.** `createReplyStream()` now owns the header-once
+  and terminator state (the pairing invariant the previous version of this
+  item tracked), but it still cannot be cancelled: an interrupted turn
+  (Ctrl-C, an error mid-stream) ends the in-flight reply with no `cancel()`
+  path, and the EOF/Ctrl-C exit path in `loop.ts` never closes a reply that
+  was still streaming. Add a cancel handle (close the stream without the
+  full terminator, or with a distinct interruption marker) and call it from
+  the interrupt/shutdown path.
+- **Subagents are still a silent black box.** The shared `src/llm/turns.ts`
+  runner now keeps the main REPL and subagents on the same tool-round
+  protocol, including reasoning preservation. `runSubagent` supplies no-op
+  stream observers, so nested calls remain invisible until their final tool
+  result returns. If users need visibility into long-running nested work,
+  add a concise observer/status channel that does not leak subagent token
+  output into the parent reply stream.
 - **Command registry.** A table of `{ name, description, handler }` so `/help`
   is generated rather than hand-written, unknown commands suggest the nearest
   match, and adding a command is a one-line registration. `/new` (clear the
@@ -525,19 +581,3 @@ retryable: boolean }`) instead of a bare string. The loop renders the error
   sees and what enters the conversation, with a truncation marker when the
   budget is hit.
 
-## Performance
-
-Obvious concerns only — profile before optimizing.
-
-- **Token cost:** re-sending full history every turn doubles the tokens per
-  added turn; compaction (`src/repl/compact.ts`, see Potential Problems)
-  bounds this, at the cost of one extra request each time it runs.
-- **Memory:** the line buffer is bounded by input; the conversation is bounded
-  only by the model's context window, not by the process. Tracked-process
-  output is bounded by `OUTPUT_BUDGET` (16 KB per stream per process, with a
-  truncation marker). `read_file` is bounded at 500 lines per call.
-  `list_directory` is currently unbounded (see Potential Problems).
-- **Command latency:** `/model` with no argument performs a network round-trip
-  before printing anything, so it inherits the client's (currently absent)
-  timeout. A cached catalog would make listing instant but could go stale; the
-  catalog is small, so re-fetching is the right default.

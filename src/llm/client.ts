@@ -155,6 +155,7 @@ export async function chatCompletionStream(
 
   const content: string[] = [];
   const reasoning: string[] = [];
+  let reasoningLength = 0;
   const toolCalls: ToolCall[] = [];
   let usage: Usage | undefined;
   const decoder = new TextDecoder();
@@ -172,9 +173,8 @@ export async function chatCompletionStream(
     const delta = chunk.choices?.[0]?.delta;
     if (delta?.reasoning_content) {
       reasoning.push(delta.reasoning_content);
-      onReasoning(
-        Math.round(reasoning.join("").length / REASONING_CHARS_PER_TOKEN),
-      );
+      reasoningLength += delta.reasoning_content.length;
+      onReasoning(Math.round(reasoningLength / REASONING_CHARS_PER_TOKEN));
     }
     if (delta?.content) {
       content.push(delta.content);
