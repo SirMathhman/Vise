@@ -3,8 +3,24 @@ export function renderPrompt(): void {
   process.stdout.write("you> ");
 }
 
-export function renderQuestion(question: string): void {
-  process.stdout.write(`\nquestion> ${question}\nanswer> `);
+export function renderQuestion(
+  question: string,
+  type: "freeform" | "multiple_choice" | "multiple_select",
+  options?: string[],
+): void {
+  process.stdout.write(`\nquestion> ${question}\n`);
+  if (options) {
+    options.forEach((option, index) => {
+      process.stdout.write(`  ${index + 1}. ${option}\n`);
+    });
+    process.stdout.write(
+      type === "multiple_select"
+        ? "Select any, add your own, or both in a reply.\nanswer> "
+        : "Choose one, add your own, or both in a reply.\nanswer> ",
+    );
+  } else {
+    process.stdout.write("answer> ");
+  }
 }
 
 // Creates a streaming reply handle owned by the transport. The loop

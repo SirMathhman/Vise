@@ -6,7 +6,7 @@ import type { Config } from "../config.ts";
 import { getContextSize } from "../llm/client.ts";
 import { listModels } from "../llm/models.ts";
 import { runToolRounds } from "../llm/turns.ts";
-import type { ChatMessage, Usage } from "../llm/types.ts";
+import type { AskQuestionRequest, ChatMessage, Usage } from "../llm/types.ts";
 import { ensureIndexed } from "../llm/vectors.ts";
 import { createNote, withNotesIntro } from "../notes.ts";
 import { BUILTIN_AGENT, getProfile } from "../profiles.ts";
@@ -127,7 +127,7 @@ async function runModelTurn(
   activeProfile: string,
   toolsEnabled: boolean,
   activeTools: string[] | undefined,
-  askQuestion: (question: string) => Promise<string>,
+  askQuestion: (request: AskQuestionRequest) => Promise<string>,
 ): Promise<Usage | undefined> {
   // Filter the tools array to only those in the active profile's whitelist.
   // undefined means "all tools" (no whitelist). The filtered array is what
@@ -395,8 +395,8 @@ export async function run(config: Config): Promise<void> {
         activeProfile,
         toolsEnabled,
         activeTools,
-        async (question) => {
-          renderQuestion(question);
+        async (request) => {
+          renderQuestion(request.question, request.type, request.options);
           return nextFreshLine();
         },
       );

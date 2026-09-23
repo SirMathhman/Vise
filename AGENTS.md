@@ -43,9 +43,10 @@ rules to respect:
   turn — so the conversation, active profile, and tools flag survive a
   restart — and named session files under `.vise/sessions/*.json` written
   by `/save` and read by `/load`).
-- **The interactive `ask_user` tool is available only in the main REPL.** Its
-  input and output flow through the REPL transport; subagents must not prompt
-  the user.
+- **The interactive `ask_user` tool is available only in the main REPL.** It
+  supports free-form, multiple-choice, and multiple-select questions; choice
+  prompts accept natural-language answers including custom text. Its input and
+  output flow through the REPL transport; subagents must not prompt the user.
 - **Session state (tracked processes) is created at the entry point and passed
   in** as a parameter — `tools.ts` holds no module-level mutable state.
 - **Notes are a file convention, not a tool.** Memories and skills are unified

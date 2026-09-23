@@ -35,8 +35,21 @@ export type ChatMessage = {
 // must be supplied.
 export type ToolParameters = {
   type: "object";
-  properties: Record<string, { type?: string; description?: string }>;
+  properties: Record<
+    string,
+    {
+      type?: string;
+      description?: string;
+      enum?: string[];
+      items?: { type?: string };
+    }
+  >;
   required?: string[];
+  oneOf?: {
+    properties?: Record<string, { enum?: string[] }>;
+    required?: string[];
+    not?: { required?: string[] };
+  }[];
 };
 
 // The tool the model can call, as declared in the request's `tools` field.
@@ -70,6 +83,12 @@ export type ProcessTrackerApi = {
   shutdown: () => Promise<void>;
 };
 
+export type AskQuestionRequest = {
+  question: string;
+  type: "freeform" | "multiple_choice" | "multiple_select";
+  options?: string[];
+};
+
 // Per-call context handed to every tool handler. Carries the state a tool
 // needs beyond its arguments: the active model (read at call time, not
 // captured at startup), the shared background-process tracker, the
@@ -83,7 +102,7 @@ export type ToolContext = {
   depth: number;
   tools: Tool[];
   toolsEnabled: boolean;
-  askQuestion?: (question: string) => Promise<string>;
+  askQuestion?: (request: AskQuestionRequest) => Promise<string>;
   dispatch: (
     name: string,
     args: Record<string, unknown>,

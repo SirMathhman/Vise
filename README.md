@@ -28,9 +28,11 @@ instructions.
   for one request. For example, `/review check this implementation` invokes
   `.vise/notes/review.md` with the trailing request.
 
-During a model turn, the `ask_user` tool can pause to ask one plain-text
-question and wait for your answer. Only a line entered after its question
-appears is used as the answer; lines typed earlier are discarded. Subagents
-cannot prompt the user.
+During a model turn, `ask_user` supports open-ended (`freeform`), single-choice
+(`multiple_choice`), and multi-select (`multiple_select`) questions. Choice
+questions show numbered options but accept a natural-language response, so you
+can select listed options, add a custom answer, or do both. Only a line entered
+after the question appears is used; lines typed earlier are discarded.
+Subagents cannot prompt the user.
 
 This project was created using `bun init` in bun v1.3.14. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
