@@ -17,6 +17,7 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "dompurify": "^3.4.16",
     "ink": "^7.1.1",
     "marked": "^18.0.14",
     "react": "^19.3.0"

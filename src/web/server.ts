@@ -1,5 +1,6 @@
 // The web entry point's server. Serves the static client (web/index.html,
-// web/app.js, web/style.css, and marked's UMD build) over HTTP and owns a
+// web/app.js, web/style.css, and the marked/DOMPurify UMD builds) over HTTP
+// and owns a
 // single WebSocket-driven session. On the first WS connection it constructs a
 // WebTransport and hands it to run(config, transport). A disconnect only
 // detaches the socket; the next connection reattaches to the same session.
@@ -22,6 +23,7 @@ const STATIC_FILES: Record<string, string> = {
   "/app.js": "web/app.js",
   "/style.css": "web/style.css",
   "/marked.umd.js": "node_modules/marked/lib/marked.umd.js",
+  "/purify.min.js": "node_modules/dompurify/dist/purify.min.js",
 };
 
 // Content types by extension for the served files.

@@ -117,9 +117,20 @@
   }
 
   // --- Rendering helpers ---
+  // Assistant text isn't purely model-authored: it routinely echoes tool
+  // output (read_file, search_content, ...) read from the working tree, so
+  // HTML/script markup can end up in it (accidentally or via a prompt
+  // injection). marked() doesn't escape raw HTML, so the parsed output is
+  // sanitized before it ever reaches innerHTML. Without DOMPurify (load
+  // failure), fall through to plain-text rendering rather than risk
+  // unsanitized HTML.
   function renderMarkdown(el, text) {
-    if (typeof marked !== "undefined" && marked.parse) {
-      el.innerHTML = marked.parse(text);
+    if (
+      typeof marked !== "undefined" &&
+      marked.parse &&
+      typeof DOMPurify !== "undefined"
+    ) {
+      el.innerHTML = DOMPurify.sanitize(marked.parse(text));
     } else {
       el.textContent = text;
     }
