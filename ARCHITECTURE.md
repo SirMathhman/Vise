@@ -259,12 +259,13 @@ src/notes.ts          note registry + notes intro. Notes unify memories and
 src/repl/input.ts     stdin buffering (line queue + nextLine + nextFreshLine).
                         nextFreshLine discards already-buffered input and waits
                         for a new answer line. No fetch, no other state.
-src/repl/render.ts    prompt, question, tool-call, error, hook, and command rendering plus the
-                        reply-stream and thinking-indicator handles
+src/repl/render.ts    prompt, question, tool-call, error, hook, command, and prefill
+                        rendering plus the reply-stream and thinking-indicator handles
                         (createReplyStream, createThinkingIndicator), which own
                         the terminal state for a streamed answer and one
                         model completion's bounded "thinking" line respectively.
-                        Pure formatting; no fetch, no imports.
+                        Pure formatting; no fetch; type-only import from llm/types.ts
+                        for the PrefillTimings wire shape.
 src/repl/commands.ts  the command registry: parse a `/` line, dispatch to a
                         handler, return a result. No fetch, no stdin/stdout.
 src/repl/hooks.ts    hook discovery: reads `.hooks/<type>/` directories
