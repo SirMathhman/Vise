@@ -293,6 +293,13 @@ body {
   margin-top: 4px;
 }
 
+.tool-block .children:not(:empty) {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
 .tool-block .meta {
   margin-top: 4px;
   font-size: 12px;

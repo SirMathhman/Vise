@@ -346,8 +346,11 @@ export async function runTool(
     }
     return await handler(args, ctx);
   } catch (err) {
+    // A throwing handler (e.g. a subagent whose server connection dropped)
+    // is reported as failed and its error handed to the model as the result,
+    // rather than aborting the whole turn.
     status = "failed";
-    throw err;
+    return `Tool "${name}" failed: ${err instanceof Error ? err.message : String(err)}`;
   } finally {
     try {
       ctx.toolCallObserver?.onToolCallEnd?.(

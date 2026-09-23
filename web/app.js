@@ -7,8 +7,10 @@
   var socket = null;
   var intentionalClose = false;
   var currentReply = null; // { el, buf } for the in-flight assistant reply
-  var toolBlocks = new Map(); // keyed "<name>::<seq>" -> { el, meta, started }
-  var toolSeq = 0;
+  // Open tool blocks indexed by nesting depth. Tool calls run one at a time,
+  // so a call at depth d always belongs to the open block at depth d - 1 (the
+  // run_subagent that spawned it) and ends before its parent does.
+  var openToolBlocks = [];
 
   // --- DOM refs (populated in init) ---
   var connStateEl,
@@ -147,7 +149,11 @@
     return { el, body, buf: "" };
   }
 
-  function makeToolBlock(name, args) {
+  // Builds a tool block inside `parentEl` (the message list, or the children
+  // area of the subagent block that made the call). Arguments render as
+  // `key: value` lines with string values verbatim, so multi-line task text
+  // shows real line breaks instead of JSON-escaped "\n".
+  function makeToolBlock(name, args, parentEl) {
     const el = document.createElement("div");
     el.className = "tool-block";
     const nameEl = document.createElement("span");
@@ -156,14 +162,24 @@
     el.appendChild(nameEl);
     const argsEl = document.createElement("pre");
     argsEl.className = "args";
-    argsEl.textContent = JSON.stringify(args, null, 2);
+    argsEl.textContent = Object.entries(args || {})
+      .map(([key, value]) => {
+        const text =
+          typeof value === "string" ? value : JSON.stringify(value, null, 2);
+        return `${key}: ${text}`;
+      })
+      .join("\n");
     el.appendChild(argsEl);
+    const childrenEl = document.createElement("div");
+    childrenEl.className = "children";
+    el.appendChild(childrenEl);
     const metaEl = document.createElement("div");
     metaEl.className = "meta";
+    metaEl.textContent = "running…";
     el.appendChild(metaEl);
-    messagesEl.appendChild(el);
+    parentEl.appendChild(el);
     scrollDown();
-    return { el, meta: metaEl };
+    return { el, meta: metaEl, children: childrenEl };
   }
 
   function makeLine(className, text, extraClass) {
@@ -305,33 +321,24 @@
   }
 
   function onToolCallStart(msg) {
-    var block = makeToolBlock(msg.name, msg.args);
-    toolBlocks.set(`${msg.name}::${++toolSeq}`, {
-      el: block.el,
-      meta: block.meta,
-      started: true,
-    });
+    // Anything left open at this depth or deeper is stale (e.g. a turn that
+    // died mid-call); drop it so the new call nests under the right parent.
+    openToolBlocks.length = msg.depth;
+    const parent = openToolBlocks[msg.depth - 1];
+    openToolBlocks[msg.depth] = makeToolBlock(
+      msg.name,
+      msg.args,
+      parent ? parent.children : messagesEl,
+    );
   }
 
   function onToolCallEnd(msg) {
-    // Match the most recent started tool block with the same name.
-    var key = null;
-    var keys = Array.from(toolBlocks.keys());
-    for (let i = keys.length - 1; i >= 0; i--) {
-      if (keys[i].indexOf(`${msg.name}::`) === 0) {
-        key = keys[i];
-        break;
-      }
-    }
-    if (key !== null) {
-      const entry = toolBlocks.get(key);
-      if (entry?.meta) {
-        entry.meta.textContent = `${msg.status === "done" ? "done" : msg.status} · ${Math.round(msg.durationMs)} ms · depth ${msg.depth}`;
-        entry.el.className = `tool-block ${msg.status === "done" ? "done" : msg.status === "failed" ? "failed" : ""}`;
-        entry.started = false;
-        toolBlocks.delete(key);
-      }
-    }
+    const entry = openToolBlocks[msg.depth];
+    if (!entry) return;
+    openToolBlocks.length = msg.depth;
+    const seconds = (msg.durationMs / 1000).toFixed(1);
+    entry.meta.textContent = `${msg.status} · ${seconds} s`;
+    entry.el.className = `tool-block ${msg.status === "done" ? "done" : msg.status === "failed" ? "failed" : ""}`;
   }
 
   function onCommand(msg) {

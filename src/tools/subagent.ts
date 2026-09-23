@@ -38,9 +38,7 @@ export const run_subagent = async (
   const task = String(args.task ?? "");
   if (profile.length === 0 || task.length === 0)
     return "run_subagent requires both 'profile' and 'task' arguments.";
-  try {
-    return await runSubagent(ctx, profile, task);
-  } catch (err) {
-    return err instanceof Error ? err.message : String(err);
-  }
+  // Errors (unknown profile, max depth, a dropped server connection)
+  // propagate so runTool reports the call as failed.
+  return await runSubagent(ctx, profile, task);
 };
