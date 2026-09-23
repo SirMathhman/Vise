@@ -269,6 +269,18 @@ src/notes.ts          note registry + notes intro. Notes unify memories and
                         beginning of the system prompt (loop.ts seeds it,
                         compact.ts and profile switches rebuild it). No
                         mutable state, no fetch, no stdin/stdout.
+src/transport.ts      Pure types: the swappable `Transport` seam between the
+                        core turn loop and a concrete frontend (terminal today;
+                        a web UI or TUI later). Declares the input methods
+                        (nextLine/nextFreshLine/close), the one-shot renders
+                        (prompt/question/toolCallStart/toolCallEnd/command/
+                        error/hook/compactNotice), the per-completion stateful
+                        handle factories (replyStream/thinkingIndicator/
+                        prefillIndicator), and a `log` diagnostics channel for
+                        housekeeping messages ([compact] .../ [index] ...).
+                        The core (loop.ts) depends only on this interface and
+                        never touches stdin/stdout directly. No I/O; no import
+                        of any handler module.
 src/repl/input.ts     stdin buffering (line queue + nextLine + nextFreshLine).
                         nextFreshLine discards already-buffered input and waits
                         for a new answer line. No fetch, no other state.
@@ -279,6 +291,13 @@ src/repl/render.ts    prompt, question, tool-call, error, hook, command renderin
                         own the terminal state for a streamed answer and one
                         model completion's bounded "thinking" line and live
                         "prefilling" line respectively. Pure formatting; no
+                        fetch; no import from llm/types.ts.
+src/repl/terminalTransport.ts  the terminal implementation of the Transport
+                        seam (src/transport.ts). Delegates to input.ts for
+                        stdin and render.ts for stdout, so terminal behavior
+                        is unchanged. A future web UI or TUI provides a
+                        different implementation of the same Transport
+                        interface and is handed in from the entry point. No
                         fetch; no import from llm/types.ts.
 src/repl/commands.ts  the command registry: parse a `/` line, dispatch to a
                         handler, return a result. No fetch, no stdin/stdout.
@@ -299,8 +318,12 @@ src/repl/presession.ts runs the configured hook commands: `PRE_SESSION_CMD`
                         appends it to the conversation as a system message
                         (pre hooks always; the post hook only when it exits
                         non-zero).
-src/repl/loop.ts      the turn loop: glue between input, conversation, client,
-                        commands, render, presession, and compact. Contains
+src/repl/loop.ts      the turn loop: glue between conversation, client,
+                        commands, presession, and compact. All I/O (input,
+                        rendering, diagnostics) is routed through the swappable
+                        Transport seam (src/transport.ts) handed in from the
+                        entry point; the loop holds no direct stdin/stdout or
+                        render imports. Contains
                         runHook (hook execution + render/append policy),
                         runModelTurn (observer wiring, turn-level hooks, and
                         usage), and maybeAutoCompact (threshold check + apply).
