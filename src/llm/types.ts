@@ -86,6 +86,11 @@ export type AskQuestionRequest = {
   options?: string[];
 };
 
+// Thrown by a tool handler for an expected failure (e.g. a subagent whose
+// server connection dropped). runTool reports the call as failed and hands
+// the message to the model as the result; any other error aborts the turn.
+export class ToolFailure extends Error {}
+
 export type ToolCallObserver = {
   onToolCallStart?: (
     name: string,

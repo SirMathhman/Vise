@@ -2,7 +2,7 @@
 // that runs an isolated conversation seeded with the named profile's
 // instruction. The subagent has full tool access and can nest, bounded by
 // depth. Returns the subagent's final answer as a string (the tool result).
-import type { Tool, ToolContext } from "../llm/types.ts";
+import { type Tool, type ToolContext, ToolFailure } from "../llm/types.ts";
 import { runSubagent } from "../subagent.ts";
 
 export const run_subagent_schema: Tool = {
@@ -38,7 +38,12 @@ export const run_subagent = async (
   const task = String(args.task ?? "");
   if (profile.length === 0 || task.length === 0)
     return "run_subagent requires both 'profile' and 'task' arguments.";
-  // Errors (unknown profile, max depth, a dropped server connection)
-  // propagate so runTool reports the call as failed.
-  return await runSubagent(ctx, profile, task);
+  // Any subagent error (unknown profile, max depth, a dropped server
+  // connection) is an expected failure: runTool reports the call as failed
+  // and the parent model gets the message as the result.
+  try {
+    return await runSubagent(ctx, profile, task);
+  } catch (err) {
+    throw new ToolFailure(err instanceof Error ? err.message : String(err));
+  }
 };

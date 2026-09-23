@@ -1,7 +1,7 @@
 // The tool registry and dispatch. Composes schemas and handler functions
 // from submodules. No fetch, no stdin/stdout; interactive input is passed
 // into the ask_user handler through its ToolContext callback.
-import type { Tool, ToolContext } from "./llm/types.ts";
+import { type Tool, type ToolContext, ToolFailure } from "./llm/types.ts";
 import { ask_user, ask_user_schema } from "./tools/ask.ts";
 import {
   create_directory,
@@ -346,11 +346,12 @@ export async function runTool(
     }
     return await handler(args, ctx);
   } catch (err) {
-    // A throwing handler (e.g. a subagent whose server connection dropped)
-    // is reported as failed and its error handed to the model as the result,
-    // rather than aborting the whole turn.
     status = "failed";
-    return `Tool "${name}" failed: ${err instanceof Error ? err.message : String(err)}`;
+    // Expected failures become the tool result; anything else (bugs, a
+    // disconnect during ask_user) still aborts the turn.
+    if (err instanceof ToolFailure)
+      return `Tool "${name}" failed: ${err.message}`;
+    throw err;
   } finally {
     try {
       ctx.toolCallObserver?.onToolCallEnd?.(
