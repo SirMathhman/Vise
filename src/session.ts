@@ -56,6 +56,18 @@ function isValidName(name: string): boolean {
   return /^[a-zA-Z0-9._-]+$/.test(name);
 }
 
+// Refreshes generated note-index prefixes on restored system messages while
+// leaving conversation content and all non-index system messages untouched.
+function refreshRestoredMessages(messages: ChatMessage[]): ChatMessage[] {
+  return messages.map((message) => {
+    if (message.role !== "system" || typeof message.content !== "string") {
+      return message;
+    }
+    const content = refreshNotesIntro(message.content);
+    return content === message.content ? message : { ...message, content };
+  });
+}
+
 // Loads the saved session from disk. Returns null when the file is missing
 // or the JSON is corrupt or has the wrong shape, so the caller can fall back
 // to a fresh conversation.
@@ -135,18 +147,6 @@ export function loadNamedSession(name: string): SessionState | null {
       activeProfile: parsed.activeProfile,
       toolsEnabled: parsed.toolsEnabled,
     };
-
-    // Refreshes generated note-index prefixes on restored system messages while
-    // leaving conversation content and all non-index system messages untouched.
-    function refreshRestoredMessages(messages: ChatMessage[]): ChatMessage[] {
-      return messages.map((message) => {
-        if (message.role !== "system" || typeof message.content !== "string") {
-          return message;
-        }
-        const content = refreshNotesIntro(message.content);
-        return content === message.content ? message : { ...message, content };
-      });
-    }
   } catch {
     return null;
   }

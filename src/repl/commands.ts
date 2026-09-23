@@ -43,6 +43,7 @@ export async function runCommand(
   ctx: CommandContext,
 ): Promise<CommandResult> {
   const [command, ...rest] = text.split(/\s+/);
+  if (!command) return { lines: [], isError: true };
   if (command === "/profile") {
     return runProfileCommand(rest, ctx);
   }
