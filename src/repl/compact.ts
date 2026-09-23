@@ -29,7 +29,11 @@ export const TOOLS_DISABLED_NOTICE =
 // profile's instruction, the tools-disabled notice (if applicable), and one
 // system message summarizing everything that came before. Costs exactly one
 // extra non-streaming, tool-free request (the summary itself isn't shown to
-// the user; only the resulting messages array is returned).
+// the user; only the resulting messages array is returned). Summarizing is a
+// mechanical extraction task, not something that benefits from reasoning, so
+// the request asks for none (reasoning_budget_tokens: 0) regardless of the
+// active /think level — every other call site opts in to a reasoning
+// budget; this is the only one that opts out.
 export async function compactConversation(
   config: Config,
   model: string,
@@ -42,6 +46,7 @@ export async function compactConversation(
     model,
     [...messages, { role: "user", content: SUMMARY_PROMPT }],
     [],
+    0,
   );
   const profile = getProfile(activeProfile) ?? BUILTIN_AGENT;
   const compacted: ChatMessage[] = [

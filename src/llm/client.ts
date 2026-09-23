@@ -84,11 +84,15 @@ export async function getContextSize(
 // Sends the conversation and returns the model's reply. Throws on
 // transport/HTTP errors. The active model is passed at request time, not
 // captured at startup, so a switch takes effect on the next turn.
+// `reasoningBudget`, when set, is sent as a per-request reasoning_budget_tokens
+// in uniform mode (see chatCompletionStream); when unset, the server's own
+// --reasoning-budget applies.
 export async function chatCompletion(
   config: ClientConfig,
   model: string,
   messages: ChatMessage[],
   tools: Tool[],
+  reasoningBudget?: number,
 ): Promise<{ content: string; toolCalls: ToolCall[] }> {
   const res = await fetch(`${config.baseUrl}/v1/chat/completions`, {
     method: "POST",
@@ -100,6 +104,12 @@ export async function chatCompletion(
       model,
       messages,
       tools,
+      ...(reasoningBudget !== undefined
+        ? {
+            reasoning_budget_tokens: reasoningBudget,
+            reasoning_budget_uniform: true,
+          }
+        : {}),
     }),
   });
   if (!res.ok) {

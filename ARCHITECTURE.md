@@ -46,7 +46,10 @@ the code; it is not a changelog. Progress lives in the git log.
   `/think <name>` targets a name the table doesn't define, no budget field is
   sent and llama.cpp's startup `--reasoning-budget` governs the completion
   instead. A fresh session starts on the level named by
-  `DEFAULT_REASONING_LEVEL` (`"medium"`) when the table defines it.
+  `DEFAULT_REASONING_LEVEL` (`"medium"`) when the table defines it. The one
+  exception is `compactConversation`'s summary request, which always sends
+  `reasoning_budget_tokens: 0` regardless of the active level — summarizing
+  is a mechanical extraction task, not one that benefits from reasoning.
 - **Conversation** — the ordered, in-memory sequence of turns (user + assistant
   messages) sent to the model on every request. It is the REPL's source of truth
   for context.
@@ -237,12 +240,14 @@ src/llm/types.ts      Pure wire-protocol and shared-shape types; no I/O, no
                         satisfies the interface structurally.
 src/llm/client.ts     LLM client: takes Config + messages, returns a structured
                         result. The ONLY place fetch() is called.
-                        chatCompletionStream takes an optional reasoningBudget
-                        (tokens); when set, sends reasoning_budget_tokens +
-                        reasoning_budget_uniform: true so the caller's chosen
-                        /think level reaches the server, in uniform mode, on
-                        this one request; omitted when no level is active, so
-                        the server's own --reasoning-budget governs instead.
+                        chatCompletionStream and chatCompletion both take an
+                        optional reasoningBudget (tokens); when set, sends
+                        reasoning_budget_tokens + reasoning_budget_uniform: true
+                        on that one request, in uniform mode; omitted, the
+                        server's own --reasoning-budget governs instead. The
+                        turn loop passes the caller's chosen /think level;
+                        compact.ts always passes 0 (see "Reasoning budget /
+                        level").
 src/llm/turns.ts      Shared model/tool-round protocol for the REPL and
                         subagents. Repeatedly calls chatCompletionStream,
                         appends assistant tool-call messages (including
@@ -379,7 +384,9 @@ src/repl/loop.ts      the turn loop: glue between conversation, client,
                         The model/tool-call round protocol lives in
                         src/llm/turns.ts and is shared with subagents.
 src/repl/compact.ts   conversation compaction: one non-streaming, tool-free
-                        chatCompletion call summarizes the whole conversation,
+                        chatCompletion call (reasoning_budget_tokens: 0 --
+                        summarizing needs no reasoning, regardless of the
+                        active /think level) summarizes the whole conversation,
                         then compactConversation returns a fresh, minimal
                         messages array (profile instruction + tools-disabled
                         notice if applicable + the summary) for the caller to
