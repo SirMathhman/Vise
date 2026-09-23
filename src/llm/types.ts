@@ -45,11 +45,6 @@ export type ToolParameters = {
     }
   >;
   required?: string[];
-  oneOf?: {
-    properties?: Record<string, { enum?: string[] }>;
-    required?: string[];
-    not?: { required?: string[] };
-  }[];
 };
 
 // The tool the model can call, as declared in the request's `tools` field.

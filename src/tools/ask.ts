@@ -23,22 +23,14 @@ export const ask_user_schema: Tool = {
           type: "array",
           items: { type: "string" },
           description:
-            "Answer options for multiple_choice or multiple_select; omit for freeform.",
+            "Answer options; required (at least two) for multiple_choice and multiple_select, and must be omitted for freeform.",
         },
       },
+      // The options/type dependency is stated in the descriptions and
+      // enforced by the handler below, not by a JSON Schema `oneOf`:
+      // llama.cpp compiles the parameter schema into a sampling grammar and
+      // a top-level combinator makes it emit `{}` for every call.
       required: ["question", "type"],
-      oneOf: [
-        {
-          properties: { type: { enum: ["freeform"] } },
-          not: { required: ["options"] },
-        },
-        {
-          properties: {
-            type: { enum: ["multiple_choice", "multiple_select"] },
-          },
-          required: ["options"],
-        },
-      ],
     },
   },
 };
