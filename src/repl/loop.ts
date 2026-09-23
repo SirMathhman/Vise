@@ -21,25 +21,12 @@ import {
 import { ProcessTracker } from "../tools/process.ts";
 import type { ToolContext } from "../tools.ts";
 import { runTool, tools } from "../tools.ts";
+import type { Transport } from "../transport.ts";
 import { runCommand } from "./commands.ts";
 import { compactConversation, TOOLS_DISABLED_NOTICE } from "./compact.ts";
 import type { HookCommand } from "./hooks.ts";
 import { loadHooks } from "./hooks.ts";
-import { createInput } from "./input.ts";
 import { runPreSessionCmd } from "./presession.ts";
-import {
-  createPrefillIndicator,
-  createReplyStream,
-  createThinkingIndicator,
-  renderCommand,
-  renderCompactNotice,
-  renderError,
-  renderHook,
-  renderPrompt,
-  renderQuestion,
-  renderToolCallEnd,
-  renderToolCallStart,
-} from "./render.ts";
 
 // Auto-compact once the conversation reaches this fraction of the server's
 // context window (see maybeAutoCompact). Chosen to leave headroom for the
@@ -66,12 +53,13 @@ async function runHook(
   label: string,
   renderOn: "output" | "failure",
   messages: ChatMessage[],
+  transport: Transport,
 ): Promise<void> {
   const result = await runPreSessionCmd(command);
   const shouldRender =
     renderOn === "output" ? result.output.length > 0 : result.exitCode !== 0;
   if (shouldRender) {
-    renderHook(label, result.output, result.exitCode);
+    transport.hook(label, result.output, result.exitCode);
     messages.push({ role: "system", content: result.output });
   }
 }
@@ -90,6 +78,7 @@ async function maybeAutoCompact(
   activeProfile: string,
   toolsEnabled: boolean,
   usage: Usage,
+  transport: Transport,
 ): Promise<boolean> {
   try {
     const size = await getContextSize(config);
@@ -106,8 +95,8 @@ async function maybeAutoCompact(
     messages.splice(0, messages.length, ...compacted);
     return true;
   } catch (err) {
-    process.stderr.write(
-      `[compact] ${err instanceof Error ? err.message : String(err)}\n`,
+    transport.log(
+      `[compact] ${err instanceof Error ? err.message : String(err)}`,
     );
     return false;
   }
@@ -131,6 +120,7 @@ async function runModelTurn(
   toolsEnabled: boolean,
   activeTools: string[] | undefined,
   askQuestion: (request: AskQuestionRequest) => Promise<string>,
+  transport: Transport,
 ): Promise<Usage | undefined> {
   // Filter the tools array to only those in the active profile's whitelist.
   // undefined means "all tools" (no whitelist). The filtered array is what
@@ -147,8 +137,10 @@ async function runModelTurn(
     toolsEnabled,
     askQuestion,
     toolCallObserver: {
-      onToolCallStart: renderToolCallStart,
-      onToolCallEnd: renderToolCallEnd,
+      onToolCallStart: (name, args, depth) =>
+        transport.toolCallStart(name, args, depth),
+      onToolCallEnd: (name, durationMs, status, depth) =>
+        transport.toolCallEnd(name, durationMs, status, depth),
     },
     dispatch: (name, args, ctx) => runTool(name, args, ctx),
   };
@@ -156,9 +148,9 @@ async function runModelTurn(
   // in the transport. Content deltas are forwarded to write() as they arrive;
   // tool-call rounds usually carry no content, so only the final answer is
   // streamed to the user.
-  const replyStream = createReplyStream();
-  let thinking = createThinkingIndicator();
-  let prefill = createPrefillIndicator();
+  const replyStream = transport.replyStream();
+  let thinking = transport.thinkingIndicator();
+  let prefill = transport.prefillIndicator();
   const replyPromise = runToolRounds(
     config,
     model,
@@ -167,8 +159,8 @@ async function runModelTurn(
     (name, args) => runTool(name, args, toolCtx),
     {
       onRoundStart: () => {
-        thinking = createThinkingIndicator();
-        prefill = createPrefillIndicator();
+        thinking = transport.thinkingIndicator();
+        prefill = transport.prefillIndicator();
       },
       onDelta: (delta) => {
         prefill.finish();
@@ -209,15 +201,21 @@ async function runModelTurn(
     config.postTurnCmd &&
     hookAllowed(config.postTurnCmdProfiles, activeProfile)
   )
-    await runHook(config.postTurnCmd, "post-turn", "failure", messages);
+    await runHook(
+      config.postTurnCmd,
+      "post-turn",
+      "failure",
+      messages,
+      transport,
+    );
   for (const hook of postTurnHooks)
     if (hookAllowed(hook.profiles, activeProfile))
-      await runHook(hook.command, hook.name, "failure", messages);
+      await runHook(hook.command, hook.name, "failure", messages, transport);
 
   return reply.usage;
 }
 
-export async function run(config: Config): Promise<void> {
+export async function run(config: Config, transport: Transport): Promise<void> {
   // Restore the previous session, or fall back to a fresh conversation. The
   // saved session carries the full message history, the active profile name,
   // and the tools-enabled flag. When the file is missing or corrupt, the
@@ -269,17 +267,21 @@ export async function run(config: Config): Promise<void> {
     config.preSessionCmd &&
     hookAllowed(config.preSessionCmdProfiles, activeProfile)
   )
-    await runHook(config.preSessionCmd, "pre-session", "output", messages);
+    await runHook(
+      config.preSessionCmd,
+      "pre-session",
+      "output",
+      messages,
+      transport,
+    );
   for (const hook of preSessionHooks)
     if (hookAllowed(hook.profiles, activeProfile))
-      await runHook(hook.command, hook.name, "output", messages);
+      await runHook(hook.command, hook.name, "output", messages, transport);
 
   // Load hook lists once; the directory structure is static for the session.
   const preTurnHooks = loadHooks("pre-turn");
   const postTurnHooks = loadHooks("post-turn");
 
-  const input = createInput();
-  const { nextLine, nextFreshLine, close } = input;
   const tracker = new ProcessTracker();
 
   // Build or update the vector index before the first turn. Only re-embeds
@@ -289,13 +291,13 @@ export async function run(config: Config): Promise<void> {
   try {
     const summary = await ensureIndexed(config);
     if (summary.indexed > 0 || summary.pruned > 0) {
-      process.stderr.write(
-        `[index] ${summary.indexed} indexed, ${summary.unchanged} unchanged, ${summary.pruned} pruned, ${summary.skipped} skipped\n`,
+      transport.log(
+        `[index] ${summary.indexed} indexed, ${summary.unchanged} unchanged, ${summary.pruned} pruned, ${summary.skipped} skipped`,
       );
     }
   } catch (err) {
-    process.stderr.write(
-      `[index] ${err instanceof Error ? err.message : String(err)}\n`,
+    transport.log(
+      `[index] ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 
@@ -306,8 +308,8 @@ export async function run(config: Config): Promise<void> {
     // saved even when the user exits on the very next line (EOF), which
     // otherwise would skip a branch-end save.
     saveSession({ messages, activeProfile, toolsEnabled });
-    renderPrompt();
-    const raw = await nextLine();
+    transport.prompt();
+    const raw = await transport.nextLine();
     const text = (raw ?? "").trim();
     if (text.length === 0) {
       if (raw === "") break;
@@ -348,7 +350,7 @@ export async function run(config: Config): Promise<void> {
       });
       if (result.modelInput) {
         userText = result.modelInput;
-        renderCommand(result);
+        transport.command(result);
       } else {
         if (result.setModel) model = result.setModel;
         if (result.setProfile) {
@@ -385,7 +387,7 @@ export async function run(config: Config): Promise<void> {
           activeTools = getProfile(activeProfile)?.tools;
           lastUsage = undefined;
         }
-        renderCommand(result);
+        transport.command(result);
         continue;
       }
     }
@@ -396,10 +398,16 @@ export async function run(config: Config): Promise<void> {
       config.preTurnCmd &&
       hookAllowed(config.preTurnCmdProfiles, activeProfile)
     )
-      await runHook(config.preTurnCmd, "pre-turn", "output", messages);
+      await runHook(
+        config.preTurnCmd,
+        "pre-turn",
+        "output",
+        messages,
+        transport,
+      );
     for (const hook of preTurnHooks)
       if (hookAllowed(hook.profiles, activeProfile))
-        await runHook(hook.command, hook.name, "output", messages);
+        await runHook(hook.command, hook.name, "output", messages, transport);
 
     messages.push({ role: "user", content: userText });
 
@@ -414,9 +422,10 @@ export async function run(config: Config): Promise<void> {
         toolsEnabled,
         activeTools,
         async (request) => {
-          renderQuestion(request.question, request.type, request.options);
-          return nextFreshLine();
+          transport.question(request.question, request.type, request.options);
+          return transport.nextFreshLine();
         },
+        transport,
       );
       if (usage) {
         lastUsage = usage;
@@ -427,19 +436,20 @@ export async function run(config: Config): Promise<void> {
           activeProfile,
           toolsEnabled,
           usage,
+          transport,
         );
         if (compacted) {
           lastUsage = undefined;
-          renderCompactNotice();
+          transport.compactNotice();
         }
       }
     } catch (err) {
-      renderError(err instanceof Error ? err.message : String(err));
+      transport.error(err instanceof Error ? err.message : String(err));
     }
   }
 
   // Loop broke on EOF (or stdin was drained); reap background processes.
-  close();
+  transport.close();
   await tracker.shutdown();
   process.exit(0);
 }
