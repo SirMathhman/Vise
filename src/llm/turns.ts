@@ -6,7 +6,7 @@ import type { Config } from "../config.ts";
 import { chatCompletionStream } from "./client.ts";
 import type { ChatCompletionReply, ChatMessage, Tool } from "./types.ts";
 
-const MAX_TOOL_ROUNDS = 8;
+const MAX_TOOL_ROUNDS = 100;
 
 export type ToolRoundObserver = {
   // Observer callbacks are part of the caller's control path: a failure aborts
