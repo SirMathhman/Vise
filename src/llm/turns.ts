@@ -38,6 +38,7 @@ export async function runToolRounds(
   tools: Tool[],
   dispatch: (name: string, args: Record<string, unknown>) => Promise<string>,
   observer: ToolRoundObserver = {},
+  reasoningBudget?: number,
 ): Promise<ChatCompletionReply> {
   for (let round = 0; ; round++) {
     if (round >= MAX_TOOL_ROUNDS) {
@@ -57,6 +58,7 @@ export async function runToolRounds(
         (tokens) => observer.onReasoning?.(tokens, round),
         (processed, total, cache, timeMs) =>
           observer.onPrefill?.(processed, total, cache, timeMs, round),
+        reasoningBudget,
       );
     } catch (err) {
       failed = true;

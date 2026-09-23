@@ -2,6 +2,7 @@
 // result. No fetch, no stdin/stdout. A command uses its arguments plus the
 // state it is handed; it returns lines to render and, optionally, a new
 // active model or one-shot model input. It never prints or reads input.
+import type { ReasoningLevel } from "../config.ts";
 import type { ChatMessage, ModelInfo, Usage } from "../llm/types.ts";
 import { getNote } from "../notes.ts";
 import { createProfile, getProfile, listProfiles } from "../profiles.ts";
@@ -14,6 +15,7 @@ export type CommandResult = {
   setModel?: string;
   setProfile?: string;
   setTools?: boolean;
+  setReasoningLevel?: string;
   newMessages?: ChatMessage[];
   newSession?: SessionState;
   modelInput?: string;
@@ -27,6 +29,8 @@ export type CommandContext = {
   model: string;
   activeProfile: string;
   toolsEnabled: boolean;
+  reasoningLevel: string | undefined;
+  reasoningLevels: ReasoningLevel[];
   listModels: () => Promise<ModelInfo[]>;
   persistModel: (name: string) => void;
   lastUsage: Usage | undefined;
@@ -58,6 +62,9 @@ export async function runCommand(
   }
   if (command === "/tools") {
     return runToolsCommand(rest, ctx.toolsEnabled);
+  }
+  if (command === "/think") {
+    return runThinkCommand(rest, ctx);
   }
   if (command === "/context") {
     return runContextCommand(ctx);
@@ -119,7 +126,7 @@ export async function runCommand(
     return {
       lines: [
         `Unknown command: ${command}. Try /model, /profile, /tool, /tools, ` +
-          "/context, /compact, /save, /load, /sessions, /new, or /note new.",
+          "/think, /context, /compact, /save, /load, /sessions, /new, or /note new.",
       ],
       isError: true,
     };
@@ -263,6 +270,37 @@ function runToolsCommand(rest: string[], enabled: boolean): CommandResult {
       "Usage: /tools [on|off]",
     ],
     isError: true,
+  };
+}
+
+// /think handler. With no argument, lists the configured reasoning levels
+// (LLM_REASONING_LEVELS or the built-in table) and marks the current one.
+// With a level name, selects it for following turns by returning
+// setReasoningLevel; the loop sends that level's token budget per request.
+function runThinkCommand(rest: string[], ctx: CommandContext): CommandResult {
+  const listLines = (): string[] => {
+    const lines = ["Reasoning levels (tokens):"];
+    for (const level of ctx.reasoningLevels) {
+      const mark = level.name === ctx.reasoningLevel ? " (current)" : "";
+      lines.push(`  ${level.name} ${level.tokens}${mark}`);
+    }
+    if (!ctx.reasoningLevels.some((l) => l.name === ctx.reasoningLevel)) {
+      lines.push("  (current: server default)");
+    }
+    return lines;
+  };
+  const name = rest.join(" ").trim();
+  if (name.length === 0) return { lines: listLines() };
+  const level = ctx.reasoningLevels.find((l) => l.name === name);
+  if (!level) {
+    return {
+      lines: [`error: unknown reasoning level: ${name}`, ...listLines()],
+      isError: true,
+    };
+  }
+  return {
+    lines: [`think> ${level.name} (${level.tokens} tokens)`],
+    setReasoningLevel: level.name,
   };
 }
 

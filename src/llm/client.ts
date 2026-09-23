@@ -132,7 +132,10 @@ const REASONING_CHARS_PER_TOKEN = 4;
 // doesn't honor it. `return_progress` asks the server to stream live
 // prefill progress on early chunks; each arrives via onPrefill as
 // (processed, total, cache, timeMs) and is never called if the server
-// doesn't honor it (older builds).
+// doesn't honor it (older builds). `reasoningBudget`, when set, is sent as a
+// per-request reasoning_budget_tokens in uniform mode (llama.cpp fork: the
+// model thinks a uniformly random length up to the budget); when unset, the
+// server's own --reasoning-budget applies.
 export async function chatCompletionStream(
   config: ClientConfig,
   model: string,
@@ -146,6 +149,7 @@ export async function chatCompletionStream(
     cache: number,
     timeMs: number,
   ) => void,
+  reasoningBudget?: number,
 ): Promise<ChatCompletionReply> {
   const res = await fetch(`${config.baseUrl}/v1/chat/completions`, {
     method: "POST",
@@ -160,6 +164,12 @@ export async function chatCompletionStream(
       stream: true,
       stream_options: { include_usage: true },
       return_progress: true,
+      ...(reasoningBudget !== undefined
+        ? {
+            reasoning_budget_tokens: reasoningBudget,
+            reasoning_budget_uniform: true,
+          }
+        : {}),
     }),
   });
   if (!res.ok) {

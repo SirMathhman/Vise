@@ -34,13 +34,19 @@ the code; it is not a changelog. Progress lives in the git log.
   never shows prompt text — only token counts and timing. The live progress
   is observed through the same `onPrefill` callback the LLM client exposes,
   so it is wired by the caller (the main REPL) and not by subagents.
-- **Reasoning budget** — owned by the server, not the client. Chat requests
-  send no `thinking_budget_tokens`, so llama.cpp's startup
-  `--reasoning-budget` governs every completion. On the user's llama.cpp fork
-  with `--reasoning-budget-uniform`, that budget is a stretch target rather
-  than a cap: the model cannot end reasoning on its own and is force-closed at
-  a uniformly random length within the budget. Sending a per-request budget
-  would switch that request back to a plain cap, so the client leaves it out.
+- **Reasoning budget / level** — a request-level override of how long the
+  model reasons, selected at runtime with `/think <name>` and sent as
+  `reasoning_budget_tokens` + `reasoning_budget_uniform: true` on every
+  following request (uniform mode, on the user's llama.cpp fork: the model
+  cannot end reasoning on its own and is force-closed at a uniformly random
+  length within the budget, rather than the budget acting as a plain cap). A
+  **level** is a `{ name, tokens }` pair from `Config.reasoningLevels`,
+  parsed from `LLM_REASONING_LEVELS` (`name:tokens,...`; built-in defaults
+  when unset — see `src/config.ts`). Until a level is chosen, or once
+  `/think <name>` targets a name the table doesn't define, no budget field is
+  sent and llama.cpp's startup `--reasoning-budget` governs the completion
+  instead. A fresh session starts on the level named by
+  `DEFAULT_REASONING_LEVEL` (`"medium"`) when the table defines it.
 - **Conversation** — the ordered, in-memory sequence of turns (user + assistant
   messages) sent to the model on every request. It is the REPL's source of truth
   for context.
@@ -210,7 +216,12 @@ split-on-demand module; terminal and web entry points share the same REPL core):
 ```
 index.ts              terminal entry point: build Config, wire terminal Transport + Repl
 web.ts                web entry point: build Config, start the HTTP/WebSocket server
-src/config.ts         read env -> typed Config. No I/O beyond reading env, no fetch.
+src/config.ts         read env -> typed Config. No I/O beyond reading env, no
+                        fetch. Also defines ReasoningLevel ({ name, tokens })
+                        and parses LLM_REASONING_LEVELS into Config.reasoningLevels
+                        (built-in low/medium/high/max when unset); throws at
+                        startup on a malformed entry rather than silently
+                        dropping a level.
 src/config/persist.ts rewrite a single key in .env.local. The only module that
                         writes config to disk; takes a path + key + value.
 src/llm/types.ts      Pure wire-protocol and shared-shape types; no I/O, no
@@ -226,12 +237,20 @@ src/llm/types.ts      Pure wire-protocol and shared-shape types; no I/O, no
                         satisfies the interface structurally.
 src/llm/client.ts     LLM client: takes Config + messages, returns a structured
                         result. The ONLY place fetch() is called.
+                        chatCompletionStream takes an optional reasoningBudget
+                        (tokens); when set, sends reasoning_budget_tokens +
+                        reasoning_budget_uniform: true so the caller's chosen
+                        /think level reaches the server, in uniform mode, on
+                        this one request; omitted when no level is active, so
+                        the server's own --reasoning-budget governs instead.
 src/llm/turns.ts      Shared model/tool-round protocol for the REPL and
                         subagents. Repeatedly calls chatCompletionStream,
                         appends assistant tool-call messages (including
                         reasoning_content) and tool results, and appends the
-                        final assistant reply. Takes a dispatch callback and
-                        optional stream observers; owns no presentation,
+                        final assistant reply. Takes a dispatch callback,
+                        optional stream observers, and an optional reasoning
+                        budget passed straight through to chatCompletionStream
+                        on every round; owns no presentation,
                         hooks, or filesystem/process access.
 src/llm/models.ts     model catalog: list models via the client, validate a name
                         against the catalog. No fetch of its own.
@@ -325,6 +344,12 @@ src/repl/terminalTransport.ts  the terminal implementation of the Transport
                         fetch; no import from llm/types.ts.
 src/repl/commands.ts  the command registry: parse a `/` line, dispatch to a
                         handler, return a result. No fetch, no stdin/stdout.
+                        /think lists CommandContext.reasoningLevels (marking
+                        the current one) with no argument, or returns
+                        setReasoningLevel with a known name; an unknown name is
+                        an error listing the table. Pure lookup against the
+                        table the entry point built from env — no fetch, no
+                        knowledge of the wire protocol.
 src/repl/hooks.ts    hook discovery: reads `.hooks/<type>/` directories
                         (read-only filesystem access, the only non-tool FS
                         read, invariant 5), returns `HookCommand[]` with
@@ -365,8 +390,10 @@ src/repl/compact.ts   conversation compaction: one non-streaming, tool-free
                         auto-compact check and the /compact command).
 src/session.ts        conversation persistence: loadSession() reads
                         .vise/session.json and returns the saved { messages,
-                        activeProfile, toolsEnabled } (or null when missing
-                        or corrupt), refreshing only the generated notes-index
+                        activeProfile, toolsEnabled, reasoningLevel? } (or
+                        null when missing or corrupt; reasoningLevel is
+                        undefined for sessions saved before /think existed),
+                        refreshing only the generated notes-index
                         prefix on restored system messages; saveSession()
                         writes that same shape to disk, creating .vise/ if
                         needed. Named session
@@ -518,11 +545,14 @@ Run it in CI or as part of `bun lint` before it matters.
   forever; a transient ECONNREFUSED is reported as a generic error. The client
   should have a `signal`/timeout and a distinguishable "server unreachable"
   error.
-- **Reasoning length depends on server configuration.** The client sends no
-  reasoning budget, so a server started without `--reasoning-budget` lets the
-  model think without limit, and a non-llama.cpp server applies its own
-  policy. The effective behavior is only as good as the server's startup
-  flags; there is no client-side check that a budget is in force.
+- **Reasoning length depends on server configuration.** Until `/think <name>`
+  selects a level, the client sends no reasoning budget, so a server started
+  without `--reasoning-budget` lets the model think without limit, and a
+  non-llama.cpp server applies its own policy (and may ignore
+  `reasoning_budget_tokens`/`reasoning_budget_uniform` once a level is
+  selected, too). The effective behavior is only as good as the server's
+  startup flags and the fork it's running; there is no client-side check that
+  a budget is in force or that uniform mode is understood.
 - **Hard `process.exit(0)` at shutdown.** Any finally-block cleanup or future
   teardown (e.g., flushing a session log) is skipped. Prefer letting the event
   loop drain; keep `process.exit` as a last resort for a stuck loop.

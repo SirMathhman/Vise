@@ -2,7 +2,7 @@
 // render.
 import * as path from "node:path";
 import { persistEnvVar } from "../config/persist.ts";
-import type { Config } from "../config.ts";
+import { type Config, DEFAULT_REASONING_LEVEL } from "../config.ts";
 import { getContextSize } from "../llm/client.ts";
 import { listModels } from "../llm/models.ts";
 import { runToolRounds } from "../llm/turns.ts";
@@ -49,7 +49,25 @@ type TurnState = {
   activeTools: string[] | undefined;
   messages: ChatMessage[];
   lastUsage: Usage | undefined;
+  reasoningLevel: string | undefined;
 };
+
+// The token budget of the active /think level, or undefined (send none; the
+// server's --reasoning-budget applies) when the level isn't in the table.
+function reasoningBudget(config: Config, state: TurnState): number | undefined {
+  return config.reasoningLevels.find((l) => l.name === state.reasoningLevel)
+    ?.tokens;
+}
+
+// The session fields persisted to disk (auto-resume and named sessions).
+function sessionSnapshot(state: TurnState) {
+  return {
+    messages: state.messages,
+    activeProfile: state.activeProfile,
+    toolsEnabled: state.toolsEnabled,
+    reasoningLevel: state.reasoningLevel,
+  };
+}
 
 // Replaces a conversation's messages in place with a new set, so callers
 // holding a reference to the same array (transport renders, session saves)
@@ -172,6 +190,7 @@ async function runModelTurn(
   activeTools: string[] | undefined,
   askQuestion: (request: AskQuestionRequest) => Promise<string>,
   transport: Transport,
+  reasoningBudget: number | undefined,
 ): Promise<Usage | undefined> {
   // Filter the tools array to only those in the active profile's whitelist.
   // undefined means "all tools" (no whitelist). The filtered array is what
@@ -232,6 +251,7 @@ async function runModelTurn(
         thinking.finish();
       },
     },
+    reasoningBudget,
   );
   const reply = await replyPromise.catch((err: unknown) => {
     // Close any partial assistant line without allowing a cleanup failure to
@@ -270,6 +290,7 @@ async function runModelTurn(
 // way without any state mutation.
 function applyCommandResult(result: CommandResult, state: TurnState): void {
   if (result.setModel) state.model = result.setModel;
+  if (result.setReasoningLevel) state.reasoningLevel = result.setReasoningLevel;
   if (result.setProfile) {
     state.activeProfile = result.setProfile;
     // Profile change appends a new system message carrying the profile's
@@ -301,6 +322,8 @@ function applyCommandResult(result: CommandResult, state: TurnState): void {
     replaceMessages(state.messages, result.newSession.messages);
     state.activeProfile = result.newSession.activeProfile;
     state.toolsEnabled = result.newSession.toolsEnabled;
+    state.reasoningLevel =
+      result.newSession.reasoningLevel ?? state.reasoningLevel;
     state.activeTools = getProfile(state.activeProfile)?.tools;
     state.lastUsage = undefined;
   }
@@ -382,7 +405,17 @@ async function initializeSession(
       { role: "system", content: withNotesIntro(BUILTIN_AGENT.instruction) },
     ],
     lastUsage: undefined,
+    reasoningLevel: session?.reasoningLevel,
   };
+  // A restored level that the current table no longer defines (or none at
+  // all) falls back to the default level, when the table has one.
+  if (!config.reasoningLevels.some((l) => l.name === state.reasoningLevel)) {
+    state.reasoningLevel = config.reasoningLevels.some(
+      (l) => l.name === DEFAULT_REASONING_LEVEL,
+    )
+      ? DEFAULT_REASONING_LEVEL
+      : undefined;
+  }
   state.activeTools = getProfile(state.activeProfile)?.tools;
 
   // Run pre-session hooks (env var + .hooks/pre-session/ directory) before
@@ -434,11 +467,7 @@ export async function run(config: Config, transport: Transport): Promise<void> {
     // than at the end of each branch) means the previous turn's mutations are
     // saved even when the user exits on the very next line (EOF), which
     // otherwise would skip a branch-end save.
-    saveSession({
-      messages: state.messages,
-      activeProfile: state.activeProfile,
-      toolsEnabled: state.toolsEnabled,
-    });
+    saveSession(sessionSnapshot(state));
     transport.prompt();
     const raw = await transport.nextLine();
     const text = (raw ?? "").trim();
@@ -455,6 +484,8 @@ export async function run(config: Config, transport: Transport): Promise<void> {
         model: state.model,
         activeProfile: state.activeProfile,
         toolsEnabled: state.toolsEnabled,
+        reasoningLevel: state.reasoningLevel,
+        reasoningLevels: config.reasoningLevels,
         listModels: () => listModels(config),
         persistModel: (name: string) =>
           persistEnvVar(
@@ -473,11 +504,7 @@ export async function run(config: Config, transport: Transport): Promise<void> {
             state.toolsEnabled,
           ),
         saveNamedSession: (name: string) =>
-          saveNamedSession(name, {
-            messages: state.messages,
-            activeProfile: state.activeProfile,
-            toolsEnabled: state.toolsEnabled,
-          }),
+          saveNamedSession(name, sessionSnapshot(state)),
         loadNamedSession: (name: string) => loadNamedSession(name),
         deleteNamedSession: (name: string) => deleteNamedSession(name),
         renameNamedSession: (oldName: string, newName: string) =>
@@ -535,6 +562,7 @@ export async function run(config: Config, transport: Transport): Promise<void> {
           return transport.nextFreshLine();
         },
         transport,
+        reasoningBudget(config, state),
       );
       await applyPostTurnOutcome(usage, config, state, transport);
     } catch (err) {

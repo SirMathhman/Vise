@@ -31,8 +31,8 @@ rules to respect:
   all go through it.
 - **Built-in commands never reach the model.** Their output is printed by the
   transport, never appended to the conversation. The built-ins are `/model`,
-  `/profile`, `/tool`, `/tools`, `/context`, `/compact`, `/save`, `/load`,
-  `/sessions`, `/new`, and `/note new <name>`. A slash-prefixed line matching
+  `/profile`, `/tool`, `/tools`, `/think`, `/context`, `/compact`, `/save`,
+  `/load`, `/sessions`, `/new`, and `/note new <name>`. A slash-prefixed line matching
   an existing note name, or (if no note of that name exists) an existing
   profile name, instead starts a one-shot model turn using that note's
   content or that profile's instruction plus any trailing instructions; the
@@ -75,7 +75,11 @@ rules to respect:
   (default `http://localhost:8080`) and `LLM_MODEL` (default `local`) are the
   only ones with defaults; `LLM_EMBED_MODEL` falls back to `LLM_MODEL`;
   `LLM_API_KEY` and the `PRE_SESSION_CMD` / `PRE_TURN_CMD` / `POST_TURN_CMD`
-  (+ `_PROFILES`) hook vars are optional.
+  (+ `_PROFILES`) hook vars are optional. `LLM_REASONING_LEVELS` is a
+  comma-separated `name:tokens` list (e.g. `low:512,medium:2048,high:8192,
+  max:32768`, which is also the built-in default when unset) selectable at
+  runtime with `/think <name>`; a session starts on `medium` when the table
+  defines it.
 
 ## Where things live
 

@@ -12,7 +12,53 @@ export type Config = {
   preSessionCmdProfiles?: string[];
   preTurnCmdProfiles?: string[];
   postTurnCmdProfiles?: string[];
+  reasoningLevels: ReasoningLevel[];
 };
+
+// A named reasoning budget selectable with /think <name>. `tokens` is sent as
+// the per-request reasoning_budget_tokens (uniform mode: the model thinks a
+// uniformly random length up to `tokens`).
+export type ReasoningLevel = { name: string; tokens: number };
+
+// Built-in levels, used when LLM_REASONING_LEVELS is unset.
+const DEFAULT_REASONING_LEVELS: ReasoningLevel[] = [
+  { name: "low", tokens: 512 },
+  { name: "medium", tokens: 2048 },
+  { name: "high", tokens: 8192 },
+  { name: "max", tokens: 32768 },
+];
+
+// The level a fresh session starts on, when the table defines it; otherwise
+// no level is sent and the server's own --reasoning-budget applies.
+export const DEFAULT_REASONING_LEVEL = "medium";
+
+// Parses LLM_REASONING_LEVELS ("name:tokens,name:tokens,..."; any names, in
+// the order given). Throws on a malformed entry so a typo fails loudly at
+// startup instead of silently dropping a level.
+function parseReasoningLevels(env: string | undefined): ReasoningLevel[] {
+  if (!env || env.trim().length === 0) return DEFAULT_REASONING_LEVELS;
+  const levels: ReasoningLevel[] = [];
+  for (const entry of env.split(",")) {
+    const trimmed = entry.trim();
+    if (trimmed.length === 0) continue;
+    const match = /^([^:\s]+)\s*:\s*(\d+)$/.exec(trimmed);
+    const name = match?.[1];
+    const tokens = Number(match?.[2]);
+    if (!name || !Number.isInteger(tokens) || tokens <= 0) {
+      throw new Error(
+        `LLM_REASONING_LEVELS: invalid entry "${trimmed}" (expected name:tokens, e.g. high:8192)`,
+      );
+    }
+    if (levels.some((l) => l.name === name)) {
+      throw new Error(`LLM_REASONING_LEVELS: duplicate level "${name}"`);
+    }
+    levels.push({ name, tokens });
+  }
+  if (levels.length === 0) {
+    throw new Error("LLM_REASONING_LEVELS: no levels defined");
+  }
+  return levels;
+}
 
 function parseProfiles(env: string | undefined): string[] | undefined {
   if (!env) return undefined;
@@ -36,5 +82,6 @@ export function loadConfig(): Config {
     preSessionCmdProfiles: parseProfiles(process.env.PRE_SESSION_CMD_PROFILES),
     preTurnCmdProfiles: parseProfiles(process.env.PRE_TURN_CMD_PROFILES),
     postTurnCmdProfiles: parseProfiles(process.env.POST_TURN_CMD_PROFILES),
+    reasoningLevels: parseReasoningLevels(process.env.LLM_REASONING_LEVELS),
   };
 }

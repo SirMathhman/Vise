@@ -35,7 +35,15 @@ export type SessionState = {
   messages: ChatMessage[];
   activeProfile: string;
   toolsEnabled: boolean;
+  // The /think level name; absent in sessions saved before levels existed
+  // (and in newConversation results, so /new keeps the current level).
+  reasoningLevel?: string;
 };
+
+// Reads the optional reasoningLevel field from a parsed session file.
+function parseReasoningLevel(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
 
 const SESSION_DIR = ".vise";
 const SESSIONS_DIR = "sessions";
@@ -90,6 +98,7 @@ export function loadSession(): SessionState | null {
       messages: refreshRestoredMessages(parsed.messages as ChatMessage[]),
       activeProfile: parsed.activeProfile,
       toolsEnabled: parsed.toolsEnabled,
+      reasoningLevel: parseReasoningLevel(parsed.reasoningLevel),
     };
   } catch {
     return null;
@@ -149,6 +158,7 @@ export function loadNamedSession(name: string): SessionState | null {
       messages: refreshRestoredMessages(parsed.messages as ChatMessage[]),
       activeProfile: parsed.activeProfile,
       toolsEnabled: parsed.toolsEnabled,
+      reasoningLevel: parseReasoningLevel(parsed.reasoningLevel),
     };
   } catch {
     return null;
