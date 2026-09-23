@@ -42,9 +42,10 @@ export function estimateTokens(messages: ChatMessage[]): number {
   return Math.ceil(chars / ESTIMATE_CHARS_PER_TOKEN);
 }
 
-// The budget to send for one round. In uniform mode the model cannot end its
-// reasoning on its own, so a budget larger than the free context would fill
-// the window mid-thought and leave no room for an answer; it is capped at
+// The budget to send for one round. Reasoning can run all the way to the
+// budget (the random cut-off may land at N), so a budget larger than the free
+// context could fill the window mid-thought and leave no room for an answer;
+// it is capped at
 // the free context minus ANSWER_RESERVE_TOKENS (floored at 0, which the
 // server treats as "end reasoning immediately").
 export function effectiveReasoningBudget(
