@@ -35,6 +35,7 @@ export type CommandContext = {
     activeProfile: string,
     toolsEnabled: boolean,
   ) => SessionState;
+  createNote: (name: string) => string | null;
 };
 
 export async function runCommand(
@@ -69,6 +70,9 @@ export async function runCommand(
   if (command === "/new") {
     return runNewCommand(ctx);
   }
+  if (command === "/note") {
+    return runNoteCommand(rest, ctx);
+  }
   const noteName = command.slice(1);
   const note =
     command !== "/model" && noteName.length > 0 && !/[\\/]/.test(noteName)
@@ -90,7 +94,7 @@ export async function runCommand(
     return {
       lines: [
         `Unknown command: ${command}. Try /model, /profile, /tool, /tools, ` +
-          "/context, /compact, /save, /load, /sessions, or /new.",
+          "/context, /compact, /save, /load, /sessions, /new, or /note new.",
       ],
       isError: true,
     };
@@ -336,6 +340,23 @@ function runSessionsCommand(ctx: CommandContext): CommandResult {
   const lines = ["Saved sessions:"];
   for (const s of sessions) lines.push(`  ${s}`);
   return { lines };
+}
+
+// /note new <name> creates a blank note template without replacing any
+// existing note. The startup index includes it after the next restart.
+function runNoteCommand(rest: string[], ctx: CommandContext): CommandResult {
+  if (rest.length !== 2 || rest[0] !== "new" || !rest[1]) {
+    return { lines: ["Usage: /note new <name>"], isError: true };
+  }
+  const name = rest[1];
+  const error = ctx.createNote(name);
+  if (error) return { lines: [`error: ${error}`], isError: true };
+  return {
+    lines: [
+      `created note: ${name}`,
+      `edit .vise/notes/${name}.md to add content`,
+    ],
+  };
 }
 
 // /new handler. Starts a fresh conversation seeded with the active profile's

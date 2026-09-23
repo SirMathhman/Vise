@@ -8,7 +8,7 @@ import { listModels } from "../llm/models.ts";
 import { runToolRounds } from "../llm/turns.ts";
 import type { ChatMessage, Usage } from "../llm/types.ts";
 import { ensureIndexed } from "../llm/vectors.ts";
-import { withNotesIntro } from "../notes.ts";
+import { createNote, withNotesIntro } from "../notes.ts";
 import { BUILTIN_AGENT, getProfile } from "../profiles.ts";
 import {
   listNamedSessions,
@@ -323,6 +323,7 @@ export async function run(config: Config): Promise<void> {
         listNamedSessions: () => listNamedSessions(),
         newConversation: (profile: string, tools: boolean) =>
           newConversation(profile, tools),
+        createNote: (name: string) => createNote(name),
       });
       if (result.modelInput) {
         userText = result.modelInput;

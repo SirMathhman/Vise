@@ -30,8 +30,9 @@ rules to respect:
 - **Built-in commands never reach the model.** Their output is printed by the
   transport, never appended to the conversation. The built-ins are `/model`,
   `/profile`, `/tool`, `/tools`, `/context`, `/compact`, `/save`, `/load`,
-  `/sessions`, and `/new`. A slash-prefixed line matching a note name instead
-  starts a one-shot model turn using that note and its trailing instructions.
+  `/sessions`, `/new`, and `/note new <name>`. A slash-prefixed line matching
+  an existing note name instead starts a one-shot model turn using that note
+  and its trailing instructions.
 - **Tools are the only modules that read/write the filesystem or spawn
   processes** during a turn. The documented exceptions: hook commands
   (`.hooks/` dir read + one spawn per invocation), `src/profiles.ts` (reads
@@ -46,9 +47,9 @@ rules to respect:
   in** as a parameter — `tools.ts` holds no module-level mutable state.
 - **Notes are a file convention, not a tool.** Memories and skills are unified
   as plain `.vise/notes/*.md` files the model and the user read and write with
-  the regular file tools; there is no note tool. `/<name> <instructions>`
-  invokes an existing note as one model turn. The short index (name — summary
-  per note) is injected at the beginning of the system prompt at startup and
+  the regular file tools. `/note new <name>` creates an empty template, and
+  `/<name> <instructions>` invokes an existing note as one model turn. The
+  short index (name — summary per note) is injected at the beginning of the system prompt at startup and
   rebuilt by compaction; full content can be read with `read_file` or invoked
   directly with `/<name> <instructions>` for a one-shot turn.
 

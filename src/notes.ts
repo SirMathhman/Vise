@@ -15,10 +15,16 @@
 // convention itself is documented in AGENTS.md (always in the system prompt
 // via composeInstruction), so the intro only lists what notes currently exist.
 //
-// No mutable state, no fetch, no stdin/stdout. Pure functions over the
-// filesystem (a documented FS exception, invariant 5, like AGENTS.md and
-// .agents/*.md).
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+// No mutable state, no fetch, no stdin/stdout. Functions over the filesystem
+// (a documented FS exception, invariant 5, like AGENTS.md and .agents/*.md).
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import * as path from "node:path";
 
 const NOTES_DIR = ".vise/notes";
@@ -40,6 +46,26 @@ export function getNote(name: string): Note | null {
     return parseNote(name, content);
   } catch {
     return null;
+  }
+}
+
+// Creates a new note template at .vise/notes/<name>.md. Names are a single
+// safe filename component; an existing file is never overwritten.
+export function createNote(name: string): string | null {
+  if (!/^[a-zA-Z0-9_-][a-zA-Z0-9._-]*$/.test(name)) {
+    return "note name must use letters, numbers, dots, hyphens, or underscores";
+  }
+  const dirPath = path.resolve(process.cwd(), NOTES_DIR);
+  const filePath = path.join(dirPath, `${name}.md`);
+  try {
+    mkdirSync(dirPath, { recursive: true });
+    writeFileSync(filePath, "summary: \n\n", { encoding: "utf-8", flag: "wx" });
+    return null;
+  } catch (err) {
+    if (err instanceof Error && "code" in err && err.code === "EEXIST") {
+      return `note already exists: ${name}`;
+    }
+    return `could not create note: ${err instanceof Error ? err.message : String(err)}`;
   }
 }
 
