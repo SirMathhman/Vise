@@ -330,6 +330,7 @@
     if (text.trim().length === 0) return;
     inputEl.value = "";
     autoresize();
+    makeLine("msg user", text);
     send({ type: "input", text });
     questionEl.hidden = true;
     setStatus("");

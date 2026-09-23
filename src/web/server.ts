@@ -56,7 +56,13 @@ export async function createWebServer(config: Config): Promise<void> {
 
   Bun.serve({
     port: PORT,
-    fetch: serveStatic,
+    fetch: (req, server) => {
+      if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
+        if (server.upgrade(req)) return undefined;
+        return new Response("WebSocket upgrade failed", { status: 400 });
+      }
+      return serveStatic(req);
+    },
     websocket: {
       open: (socket) => {
         if (active !== null) {

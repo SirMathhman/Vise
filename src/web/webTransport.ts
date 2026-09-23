@@ -52,14 +52,17 @@ export class WebTransport implements Transport {
 
   // A line of input has arrived. If a nextFreshLine wait is pending (the
   // user is answering an ask_user question), resolve it directly; otherwise
-  // buffer it for the next nextLine drain. Mirrors src/repl/input.ts.
+  // hand it to a pending nextLine waiter, or buffer it for the next drain.
+  // Mirrors src/repl/input.ts.
   private pushLine(line: string): void {
     if (this.waitingForFreshLine) {
-      const resolve = this.freshLineResolvers.shift();
-      if (resolve) resolve(line);
-    } else {
-      this.lines.push(line);
+      this.waitingForFreshLine = false;
+      this.freshLineResolvers.shift()?.(line);
+      return;
     }
+    const waiter = this.nextLineResolvers.shift();
+    if (waiter) waiter(line);
+    else this.lines.push(line);
   }
 
   // Teardown: mark closed and resolve any pending waiters with "" (EOF),

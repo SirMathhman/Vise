@@ -200,11 +200,11 @@ the code; it is not a changelog. Progress lives in the git log.
 ## Structure
 
 Module layout and dependency direction (each directory/file below is a real,
-split-on-demand module — the single-file `index.ts` is the collapsed form of
-this graph):
+split-on-demand module; terminal and web entry points share the same REPL core):
 
 ```
-index.ts              entry point: build Config, wire Transport + Client + Repl, run
+index.ts              terminal entry point: build Config, wire terminal Transport + Repl
+web.ts                web entry point: build Config, start the HTTP/WebSocket server
 src/config.ts         read env -> typed Config. No I/O beyond reading env, no fetch.
 src/config/persist.ts rewrite a single key in .env.local. The only module that
                         writes config to disk; takes a path + key + value.
@@ -270,8 +270,8 @@ src/notes.ts          note registry + notes intro. Notes unify memories and
                         compact.ts and profile switches rebuild it). No
                         mutable state, no fetch, no stdin/stdout.
 src/transport.ts      Pure types: the swappable `Transport` seam between the
-                        core turn loop and a concrete frontend (terminal today;
-                        a web UI or TUI later). Declares the input methods
+                        core turn loop and a concrete frontend (terminal or
+                        browser today; a TUI or remote frontend later). Declares the input methods
                         (nextLine/nextFreshLine/close), the one-shot renders
                         (prompt/question/toolCallStart/toolCallEnd/command/
                         error/hook/compactNotice), the per-completion stateful
@@ -281,6 +281,22 @@ src/transport.ts      Pure types: the swappable `Transport` seam between the
                         The core (loop.ts) depends only on this interface and
                         never touches stdin/stdout directly. No I/O; no import
                         of any handler module.
+src/web/protocol.ts   Pure WebSocket message unions for browser/server frames.
+                        The browser client mirrors these shapes in plain JS;
+                        validate all received frames at runtime because the
+                        network boundary is untrusted.
+src/web/webTransport.ts  Browser-backed `Transport` implementation. Maps
+                        WebSocket input frames to line-queue operations and
+                        transport render calls to server frames. No fetch or
+                        direct filesystem access.
+src/web/server.ts    Web entry-point server: serves the static client and
+                        owns the single active WebSocket REPL session. The
+                        server adapts the socket to `WebTransport` and calls
+                        the shared `run(config, transport)`; it is not imported
+                        by the core loop or the terminal entry point.
+web/                  Static browser client (HTML, CSS, vanilla JS). Owns DOM
+                        rendering and WebSocket connection behavior; it never
+                        calls the model server directly.
 src/repl/input.ts     stdin buffering (line queue + nextLine + nextFreshLine).
                         nextFreshLine discards already-buffered input and waits
                         for a new answer line. No fetch, no other state.
@@ -392,7 +408,19 @@ src/tools/search.ts   content-search handlers: find_files, search_content.
                         escapeRegex helpers. Read-only filesystem access.
 ```
 
-Dependency direction: `index -> src/repl/loop -> (src/repl/input, src/repl/render,
+Dependency direction: `index -> src/repl/terminalTransport -> src/transport`,
+`web.ts -> src/web/server -> src/web/webTransport -> src/transport`, and each
+entry point calls `src/repl/loop`; the loop depends on `(src/repl/commands,
+src/repl/presession, src/repl/compact, src/session,
+src/llm/client, src/llm/turns, src/tools, src/profiles)`. The web server may
+import the loop and static web assets, but neither the loop nor the LLM layer
+may import a concrete frontend. `src/web/protocol.ts` is a leaf shared-shape
+module; browser code is outside the TypeScript module graph and communicates
+only through the server's WebSocket frames. The terminal and web frontends
+must preserve the same `Transport` behavior, including fresh-line semantics
+for `ask_user`.
+
+The broader core dependency direction remains: `index -> src/repl/loop -> (src/repl/input, src/repl/render,
 src/repl/commands, src/repl/presession, src/repl/compact, src/session,
 src/llm/client, src/llm/turns, src/tools, src/profiles) -> src/llm/models ->
 src/llm/types, src/config`. `src/repl/loop.ts` and `src/subagent.ts` use
