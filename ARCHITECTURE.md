@@ -21,6 +21,19 @@ the code; it is not a changelog. Progress lives in the git log.
   also preserved on the assistant message (`reasoning_content`) so the model
   can see its own prior thinking on the next turn; the server round-trips the
   field, though individual templates may or may not honor it.
+- **Prefill display** — the bounded, one-line live display of the server's
+  prefill (prompt-processing) phase, shown before any token is generated
+  (prompt -> prefill -> decode). Driven by llama.cpp's `return_progress`
+  stream chunks: while prefill runs, the transport repaints a single line
+  with an elapsed time and the new-token progress fraction (prefilled-so-far
+  over total-new, alongside the cached count), then settles into a one-line
+  "prefilled" summary when the first reasoning or content delta begins. This
+  is the single prefill summary per turn; there is no separate post-answer
+  prefill line. As with the thinking indicator, it is a plain \r repaint,
+  inert when the server doesn't report `prompt_progress` (older builds), and
+  never shows prompt text — only token counts and timing. The live progress
+  is observed through the same `onPrefill` callback the LLM client exposes,
+  so it is wired by the caller (the main REPL) and not by subagents.
 - **Reasoning budget** — every chat completion request sets llama.cpp's
   `thinking_budget_tokens` to 8192, so server-side reasoning generation is
   limited per completion when the server honors the request-level setting.
@@ -259,13 +272,14 @@ src/notes.ts          note registry + notes intro. Notes unify memories and
 src/repl/input.ts     stdin buffering (line queue + nextLine + nextFreshLine).
                         nextFreshLine discards already-buffered input and waits
                         for a new answer line. No fetch, no other state.
-src/repl/render.ts    prompt, question, tool-call, error, hook, command, and prefill
-                        rendering plus the reply-stream and thinking-indicator handles
-                        (createReplyStream, createThinkingIndicator), which own
-                        the terminal state for a streamed answer and one
-                        model completion's bounded "thinking" line respectively.
-                        Pure formatting; no fetch; type-only import from llm/types.ts
-                        for the PrefillTimings wire shape.
+src/repl/render.ts    prompt, question, tool-call, error, hook, command rendering
+                        plus the reply-stream, thinking-indicator, and
+                        prefill-indicator handles (createReplyStream,
+                        createThinkingIndicator, createPrefillIndicator), which
+                        own the terminal state for a streamed answer and one
+                        model completion's bounded "thinking" line and live
+                        "prefilling" line respectively. Pure formatting; no
+                        fetch; no import from llm/types.ts.
 src/repl/commands.ts  the command registry: parse a `/` line, dispatch to a
                         handler, return a result. No fetch, no stdin/stdout.
 src/repl/hooks.ts    hook discovery: reads `.hooks/<type>/` directories

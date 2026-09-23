@@ -132,7 +132,10 @@ const REASONING_CHARS_PER_TOKEN = 4;
 // assistant message (llama.cpp's server accepts reasoning_content back on
 // assistant messages). `stream_options.include_usage` asks the server to
 // attach token counts to the final chunk; `usage` is undefined if the server
-// doesn't honor it.
+// doesn't honor it. `return_progress` asks the server to stream live
+// prefill progress on early chunks; each arrives via onPrefill as
+// (processed, total, cache, timeMs) and is never called if the server
+// doesn't honor it (older builds).
 export async function chatCompletionStream(
   config: ClientConfig,
   model: string,
@@ -140,6 +143,12 @@ export async function chatCompletionStream(
   tools: Tool[],
   onDelta: (content: string) => void,
   onReasoning: (tokens: number) => void,
+  onPrefill?: (
+    processed: number,
+    total: number,
+    cache: number,
+    timeMs: number,
+  ) => void,
 ): Promise<ChatCompletionReply> {
   const res = await fetch(`${config.baseUrl}/v1/chat/completions`, {
     method: "POST",
@@ -154,6 +163,7 @@ export async function chatCompletionStream(
       thinking_budget_tokens: THINKING_BUDGET_TOKENS,
       stream: true,
       stream_options: { include_usage: true },
+      return_progress: true,
     }),
   });
   if (!res.ok) {
@@ -181,6 +191,14 @@ export async function chatCompletionStream(
     const chunk = JSON.parse(data) as ChatCompletionChunk;
     if (chunk.usage) usage = chunk.usage;
     if (chunk.timings) prefill = chunk.timings;
+    if (chunk.prompt_progress && onPrefill) {
+      onPrefill(
+        chunk.prompt_progress.processed,
+        chunk.prompt_progress.total,
+        chunk.prompt_progress.cache,
+        chunk.prompt_progress.time_ms,
+      );
+    }
     const delta = chunk.choices?.[0]?.delta;
     if (delta?.reasoning_content) {
       reasoning.push(delta.reasoning_content);

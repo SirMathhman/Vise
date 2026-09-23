@@ -15,6 +15,13 @@ export type ToolRoundObserver = {
   onRoundStart?: (round: number) => void;
   onDelta?: (delta: string, round: number) => void;
   onReasoning?: (tokens: number, round: number) => void;
+  onPrefill?: (
+    processed: number,
+    total: number,
+    cache: number,
+    timeMs: number,
+    round: number,
+  ) => void;
   onRoundEnd?: (round: number, reply: ChatCompletionReply | undefined) => void;
 };
 
@@ -48,6 +55,8 @@ export async function runToolRounds(
         tools,
         (delta) => observer.onDelta?.(delta, round),
         (tokens) => observer.onReasoning?.(tokens, round),
+        (processed, total, cache, timeMs) =>
+          observer.onPrefill?.(processed, total, cache, timeMs, round),
       );
     } catch (err) {
       failed = true;

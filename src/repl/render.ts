@@ -1,5 +1,4 @@
 // Prompt, answer, and error rendering. Pure formatting; no fetch.
-import type { PrefillTimings } from "../llm/types.ts";
 
 export function renderPrompt(): void {
   process.stdout.write("you> ");
@@ -154,25 +153,71 @@ export function createThinkingIndicator(): {
   };
 }
 
-// Renders the prefill (prompt-processing) phase the llama.cpp server
-// reports for one completion. Prefill runs before any token is generated
-// (prompt -> prefill -> decode), so it's shown as a one-line summary after
-// the answer rather than interleaved with it. When the server doesn't report
-// timings (older builds), the function is a no-op. The caller writes this
-// immediately after the reply stream ends, so no leading newline is needed.
-export function renderPrefill(prefill: PrefillTimings | undefined): void {
-  if (!prefill) return;
-  const parts: string[] = [];
-  if (prefill.prompt_n !== undefined)
-    parts.push(`prefill ${prefill.prompt_n} tokens`);
-  if (prefill.prompt_ms !== undefined)
-    parts.push(`${(prefill.prompt_ms / 1000).toFixed(1)}s`);
-  if (prefill.prompt_per_second !== undefined)
-    parts.push(`${prefill.prompt_per_second.toFixed(1)} tok/s`);
-  if (prefill.cache_n !== undefined && prefill.cache_n > 0)
-    parts.push(`cache ${prefill.cache_n}`);
-  if (parts.length === 0) return;
-  process.stdout.write(`${parts.join(" · ")}\n`);
+// Creates a live "prefilling" indicator for one model completion, shown
+// while the server reports prefill progress (before any token is generated).
+// It mirrors the thinking indicator: repaints a single line in place (\r)
+// with an elapsed time and the new-token progress fraction (prefilled-so-far
+// over total-new, with the cached count), then settles into a one-line
+// "prefilled" summary when thinking or content begins. Plain \r + padding, no
+// ANSI codes, so it works across terminals and nothing scrolls. If the
+// server doesn't report progress (older builds), start is never called and
+// the indicator stays inert.
+export function createPrefillIndicator(): {
+  start: () => void;
+  report: (
+    processed: number,
+    total: number,
+    cache: number,
+    timeMs: number,
+  ) => void;
+  finish: () => void;
+} {
+  let started = false;
+  let finished = false;
+  let lastLength = 0;
+  let processed = 0;
+  let total = 0;
+  let cache = 0;
+  let timeMs = 0;
+  // Paints the current one-line status, clearing any trailing characters left
+  // over from a longer previous paint.
+  const paint = (done: boolean): void => {
+    const newTotal = Math.max(0, total - cache);
+    const newDone = Math.max(0, processed - cache);
+    const fraction = newTotal > 0 ? `${newDone}/${newTotal}` : `cache ${cache}`;
+    const line = done
+      ? `prefilled ${(timeMs / 1000).toFixed(2)}s \u00b7 ${fraction}`
+      : `prefilling\u2026 ${(timeMs / 1000).toFixed(2)}s \u00b7 ${fraction}`;
+    const pad = " ".repeat(Math.max(0, lastLength - line.length));
+    process.stdout.write(`\r${line}${pad}`);
+    lastLength = line.length;
+  };
+  return {
+    start: () => {
+      if (started || finished) return;
+      started = true;
+      // Drop to a fresh line so the indicator doesn't clobber whatever is on
+      // the current line (e.g. the user's prompt line).
+      process.stdout.write("\r\n");
+    },
+    report: (p: number, t: number, c: number, ms: number) => {
+      if (finished) return;
+      processed = p;
+      total = t;
+      cache = c;
+      timeMs = ms;
+      if (!started) return;
+      paint(false);
+    },
+    finish: () => {
+      if (!started || finished) return;
+      finished = true;
+      paint(true);
+      // A terminating newline so the next thing written (the assistant>
+      // header or a prompt) starts on a fresh line.
+      process.stdout.write("\n");
+    },
+  };
 }
 
 export function renderError(message: string): void {

@@ -160,12 +160,27 @@ export type PrefillTimings = {
   prompt_per_second?: number;
 };
 
+// Live prefill (prompt-processing) progress, streamed by llama.cpp's server
+// on early chunks (before any content/reasoning) when the request carries
+// `return_progress: true`. `total` is the full prompt token count, `cache` is
+// the subset reused from the KV cache, `processed` has advanced from `cache`
+// toward `total` as new tokens are prefilled, and `time_ms` is the wall time
+// so far. `processed - cache` over `total - cache` is the timed progress.
+// Absent when the server doesn't honor `return_progress` (older builds).
+export type PromptProgress = {
+  total: number;
+  cache: number;
+  processed: number;
+  time_ms: number;
+};
+
 // The shape of one SSE chunk from /v1/chat/completions with stream: true.
 // Each chunk carries a `delta` with the next content fragment and/or the
 // next tool-call fragment; tool-call fragments arrive split across chunks
 // and the client reassembles them by index. `usage` and `timings` arrive on
 // the final chunk only, alongside (not inside) `choices`, matching llama.cpp's
-// stream_options.include_usage behavior.
+// stream_options.include_usage behavior. `prompt_progress` arrives on early
+// chunks while prefill runs when `return_progress: true` is set.
 export type ChatCompletionChunk = {
   choices?: {
     delta?: {
@@ -180,6 +195,7 @@ export type ChatCompletionChunk = {
   }[];
   usage?: Usage;
   timings?: PrefillTimings;
+  prompt_progress?: PromptProgress;
 };
 
 // The shape of the /v1/models response body.

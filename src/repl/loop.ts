@@ -28,13 +28,13 @@ import { loadHooks } from "./hooks.ts";
 import { createInput } from "./input.ts";
 import { runPreSessionCmd } from "./presession.ts";
 import {
+  createPrefillIndicator,
   createReplyStream,
   createThinkingIndicator,
   renderCommand,
   renderCompactNotice,
   renderError,
   renderHook,
-  renderPrefill,
   renderPrompt,
   renderQuestion,
   renderToolCallEnd,
@@ -158,6 +158,7 @@ async function runModelTurn(
   // streamed to the user.
   const replyStream = createReplyStream();
   let thinking = createThinkingIndicator();
+  let prefill = createPrefillIndicator();
   const replyPromise = runToolRounds(
     config,
     model,
@@ -167,16 +168,26 @@ async function runModelTurn(
     {
       onRoundStart: () => {
         thinking = createThinkingIndicator();
+        prefill = createPrefillIndicator();
       },
       onDelta: (delta) => {
+        prefill.finish();
         thinking.finish();
         replyStream.write(delta);
       },
       onReasoning: (tokens) => {
+        prefill.finish();
         thinking.start();
         thinking.report(tokens);
       },
-      onRoundEnd: () => thinking.finish(),
+      onPrefill: (processed, total, cache, timeMs) => {
+        prefill.start();
+        prefill.report(processed, total, cache, timeMs);
+      },
+      onRoundEnd: () => {
+        prefill.finish();
+        thinking.finish();
+      },
     },
   );
   const reply = await replyPromise.catch((err: unknown) => {
@@ -190,11 +201,6 @@ async function runModelTurn(
     throw err;
   });
   replyStream.end();
-
-  // Show the prefill (prompt-processing) phase the server reports, which
-  // runs before any token is generated. Rendered after the reply so it sits
-  // at the end of the turn, alongside the other per-turn diagnostics.
-  renderPrefill(reply.prefill);
 
   // Run post-turn hooks (env var + .hooks/post-turn/ directory) after the
   // model's answer. On failure (non-zero exit), the output is printed to
