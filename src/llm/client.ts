@@ -71,13 +71,20 @@ export async function embeddings(
   return body.data ?? [];
 }
 
-// Fetches the server's context window size (n_ctx) from GET /props. Returns
+// Fetches the server's context window size (n_ctx) from GET /props. The
+// model is passed as ?model= because a llama.cpp router reports n_ctx: 0 for
+// its own /props and only returns the real window when asked about a
+// specific model; a single-model server ignores the parameter. Returns
 // undefined if the server doesn't report it (older servers, or a field
 // rename), rather than throwing, since this is advisory display data.
 export async function getContextSize(
   config: ClientConfig,
+  model: string,
 ): Promise<number | undefined> {
-  const props = (await getJson(config, "/props")) as PropsResponse;
+  const props = (await getJson(
+    config,
+    `/props?model=${encodeURIComponent(model)}`,
+  )) as PropsResponse;
   return props.default_generation_settings?.n_ctx;
 }
 

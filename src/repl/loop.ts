@@ -5,7 +5,7 @@ import { persistEnvVar } from "../config/persist.ts";
 import { type Config, DEFAULT_REASONING_LEVEL } from "../config.ts";
 import { getContextSize } from "../llm/client.ts";
 import { listModels } from "../llm/models.ts";
-import { runToolRounds } from "../llm/turns.ts";
+import { type ReasoningBudget, runToolRounds } from "../llm/turns.ts";
 import type { AskQuestionRequest, ChatMessage, Usage } from "../llm/types.ts";
 import { ensureIndexed } from "../llm/vectors.ts";
 import { createNote, withNotesIntro } from "../notes.ts";
@@ -52,11 +52,23 @@ type TurnState = {
   reasoningLevel: string | undefined;
 };
 
-// The token budget of the active /think level, or undefined (send none; the
-// server's --reasoning-budget applies) when the level isn't in the table.
-function reasoningBudget(config: Config, state: TurnState): number | undefined {
-  return config.reasoningLevels.find((l) => l.name === state.reasoningLevel)
-    ?.tokens;
+// The active /think level's budget for one turn, or undefined (send none;
+// the server's --reasoning-budget applies) when the level isn't in the
+// table. Carries the context size and current conversation size so
+// runToolRounds can cap the budget to the free context each round; a failed
+// context-size lookup just leaves the budget uncapped.
+async function turnReasoning(
+  config: Config,
+  state: TurnState,
+): Promise<ReasoningBudget | undefined> {
+  const tokens = config.reasoningLevels.find(
+    (l) => l.name === state.reasoningLevel,
+  )?.tokens;
+  if (tokens === undefined) return undefined;
+  const contextSize = await getContextSize(config, state.model).catch(
+    () => undefined,
+  );
+  return { tokens, contextSize, usedTokens: state.lastUsage?.total_tokens };
 }
 
 // The session fields persisted to disk (auto-resume and named sessions).
@@ -150,7 +162,7 @@ async function maybeAutoCompact(
   transport: Transport,
 ): Promise<boolean> {
   try {
-    const size = await getContextSize(config);
+    const size = await getContextSize(config, model);
     if (!size || usage.total_tokens / size < AUTO_COMPACT_THRESHOLD) {
       return false;
     }
@@ -190,7 +202,7 @@ async function runModelTurn(
   activeTools: string[] | undefined,
   askQuestion: (request: AskQuestionRequest) => Promise<string>,
   transport: Transport,
-  reasoningBudget: number | undefined,
+  reasoning: ReasoningBudget | undefined,
 ): Promise<Usage | undefined> {
   // Filter the tools array to only those in the active profile's whitelist.
   // undefined means "all tools" (no whitelist). The filtered array is what
@@ -251,7 +263,7 @@ async function runModelTurn(
         thinking.finish();
       },
     },
-    reasoningBudget,
+    reasoning,
   );
   const reply = await replyPromise.catch((err: unknown) => {
     // Close any partial assistant line without allowing a cleanup failure to
@@ -494,7 +506,7 @@ export async function run(config: Config, transport: Transport): Promise<void> {
             name,
           ),
         lastUsage: state.lastUsage,
-        getContextSize: () => getContextSize(config),
+        getContextSize: () => getContextSize(config, state.model),
         compact: () =>
           compactConversation(
             config,
@@ -562,7 +574,7 @@ export async function run(config: Config, transport: Transport): Promise<void> {
           return transport.nextFreshLine();
         },
         transport,
-        reasoningBudget(config, state),
+        await turnReasoning(config, state),
       );
       await applyPostTurnOutcome(usage, config, state, transport);
     } catch (err) {

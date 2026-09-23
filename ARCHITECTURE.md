@@ -46,7 +46,11 @@ the code; it is not a changelog. Progress lives in the git log.
   `/think <name>` targets a name the table doesn't define, no budget field is
   sent and llama.cpp's startup `--reasoning-budget` governs the completion
   instead. A fresh session starts on the level named by
-  `DEFAULT_REASONING_LEVEL` (`"medium"`) when the table defines it. The one
+  `DEFAULT_REASONING_LEVEL` (`"medium"`) when the table defines it. Because
+  exact mode bans the model's own end of reasoning, the budget actually sent
+  is capped at the free context (context size minus tokens used minus an
+  answer reserve), recomputed every tool round; otherwise a budget larger than
+  the space left would fill the window mid-thought and leave no answer. The one
   exception is `compactConversation`'s summary request, which always sends
   `reasoning_budget_tokens: 0` regardless of the active level — summarizing
   is a mechanical extraction task, not one that benefits from reasoning.
@@ -253,9 +257,13 @@ src/llm/turns.ts      Shared model/tool-round protocol for the REPL and
                         appends assistant tool-call messages (including
                         reasoning_content) and tool results, and appends the
                         final assistant reply. Takes a dispatch callback,
-                        optional stream observers, and an optional reasoning
-                        budget passed straight through to chatCompletionStream
-                        on every round; owns no presentation,
+                        optional stream observers, and an optional
+                        ReasoningBudget; before every round it caps the budget
+                        at the free context (effectiveReasoningBudget: context
+                        size - tokens used - an answer reserve, floored at 0),
+                        using the previous round's reported usage, so tool
+                        rounds that grow the conversation shrink the budget
+                        instead of overflowing the window; owns no presentation,
                         hooks, or filesystem/process access.
 src/llm/models.ts     model catalog: list models via the client, validate a name
                         against the catalog. No fetch of its own.
@@ -516,10 +524,11 @@ Run it in CI or as part of `bun lint` before it matters.
   each request sharing a stable prefix with the previous one, so a per-turn
   trim would invalidate the cache every turn, while a rare full collapse
   invalidates it once and then leaves the (now short) prefix stable for many
-  turns after. Gaps that remain: skipped entirely when the server doesn't
-  report `n_ctx` (a router proxying multiple models reports `n_ctx: 0`, for
-  example) — such a session can still hit a hard context-length error with no
-  warning; a single turn's own tool-call rounds can still grow past the
+  turns after. The lookup passes `?model=` because a llama.cpp router reports
+  `n_ctx: 0` for its own `/props` and only returns the real window when asked
+  about a specific model. Gaps that remain: skipped entirely when the server
+  still doesn't report `n_ctx` — such a session can still hit a hard
+  context-length error with no warning; a single turn's own tool-call rounds can still grow past the
   window before the turn ends, since compaction only runs between turns;
   and the summarization call's own prompt (existing history plus the summary
   request) must itself fit before the threshold leaves enough headroom for
@@ -552,6 +561,12 @@ Run it in CI or as part of `bun lint` before it matters.
   forever; a transient ECONNREFUSED is reported as a generic error. The client
   should have a `signal`/timeout and a distinguishable "server unreachable"
   error.
+- **Exact reasoning is paid per tool round.** Every model round in a turn,
+  including each tool-call round, thinks the full (capped) budget, and each
+  round's `reasoning_content` stays in the conversation. A tool-heavy turn at
+  a large level therefore costs roughly budget x rounds in time and context.
+  Future work: a separate, smaller budget for tool-call rounds, and dropping
+  `reasoning_content` from earlier rounds.
 - **Reasoning length depends on server configuration.** Until `/think <name>`
   selects a level, the client sends no reasoning budget, so a server started
   without `--reasoning-budget` lets the model think without limit, and a

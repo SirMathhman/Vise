@@ -8,6 +8,35 @@ import type { ChatCompletionReply, ChatMessage, Tool } from "./types.ts";
 
 const MAX_TOOL_ROUNDS = 100;
 
+// Context kept free after the reasoning budget for the answer (or a tool
+// call) when the budget is capped to the space left in the context window.
+const ANSWER_RESERVE_TOKENS = 1024;
+
+// A per-turn reasoning budget plus what's needed to cap it: the /think
+// level's tokens, the server's context window (undefined = not reported,
+// budget sent uncapped), and the conversation's token count before the
+// first round (undefined = unknown, treated as 0).
+export type ReasoningBudget = {
+  tokens: number;
+  contextSize?: number;
+  usedTokens?: number;
+};
+
+// The budget to send for one round. In exact mode the model cannot end its
+// reasoning on its own, so a budget larger than the free context would fill
+// the window mid-thought and leave no room for an answer; it is capped at
+// the free context minus ANSWER_RESERVE_TOKENS (floored at 0, which the
+// server treats as "end reasoning immediately").
+export function effectiveReasoningBudget(
+  tokens: number,
+  contextSize: number | undefined,
+  usedTokens: number,
+): number {
+  if (!contextSize) return tokens;
+  const free = contextSize - usedTokens - ANSWER_RESERVE_TOKENS;
+  return Math.max(0, Math.min(tokens, free));
+}
+
 export type ToolRoundObserver = {
   // Observer callbacks are part of the caller's control path: a failure aborts
   // the run. onRoundEnd runs after every started round, including failures;
@@ -30,7 +59,10 @@ export type ToolRoundObserver = {
 // appended to messages between rounds. The final assistant message is also
 // appended when non-empty before the reply is returned. Observer failures are
 // fatal, but onRoundEnd is always attempted after onRoundStart; if stream and
-// cleanup both fail, the original stream/start error is preserved.
+// cleanup both fail, the original stream/start error is preserved. The
+// reasoning budget, when given, is recomputed every round against the
+// context the previous round's usage reports, so tool rounds that grow the
+// conversation shrink the budget instead of overflowing the window.
 export async function runToolRounds(
   config: Config,
   model: string,
@@ -38,8 +70,9 @@ export async function runToolRounds(
   tools: Tool[],
   dispatch: (name: string, args: Record<string, unknown>) => Promise<string>,
   observer: ToolRoundObserver = {},
-  reasoningBudget?: number,
+  reasoning?: ReasoningBudget,
 ): Promise<ChatCompletionReply> {
+  let usedTokens = reasoning?.usedTokens ?? 0;
   for (let round = 0; ; round++) {
     if (round >= MAX_TOOL_ROUNDS) {
       throw new Error("Stopped after max tool rounds without a final answer");
@@ -58,7 +91,12 @@ export async function runToolRounds(
         (tokens) => observer.onReasoning?.(tokens, round),
         (processed, total, cache, timeMs) =>
           observer.onPrefill?.(processed, total, cache, timeMs, round),
-        reasoningBudget,
+        reasoning &&
+          effectiveReasoningBudget(
+            reasoning.tokens,
+            reasoning.contextSize,
+            usedTokens,
+          ),
       );
     } catch (err) {
       failed = true;
@@ -76,6 +114,7 @@ export async function runToolRounds(
     }
     if (failed) throw roundError;
     if (!reply) throw new Error("Model round ended without a reply");
+    if (reply.usage) usedTokens = reply.usage.total_tokens;
 
     if (reply.toolCalls.length > 0) {
       messages.push({
