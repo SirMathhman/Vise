@@ -91,8 +91,8 @@ rules to respect:
   isolated subagent conversations seeded from a profile's instruction.
 - `src/llm/vectors.ts` + `src/tools/semsearch.ts` — semantic search: chunks
   and embeds project files into a SQLite index at `.vise/vectors.db`
-  (re-indexed at startup, not during a turn), queried by the `semsearch`
-  tool.
+  (re-indexed at startup, not during a turn), queried by the
+  `semantic_search` tool.
 - `.agents/*.md` — named **profiles** (personas); the built-in `agent` is
   the default. The file name is the profile name, the file content is the
   system instruction (an optional `tools:` line whitelists tools).
