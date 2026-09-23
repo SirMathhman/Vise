@@ -14,13 +14,33 @@ const ANSWER_RESERVE_TOKENS = 1024;
 
 // A per-turn reasoning budget plus what's needed to cap it: the /think
 // level's tokens, the server's context window (undefined = not reported,
-// budget sent uncapped), and the conversation's token count before the
-// first round (undefined = unknown, treated as 0).
+// budget sent uncapped), the last token count the server reported for this
+// conversation (undefined = none yet), and how many leading messages that
+// count covers. Messages after `measuredAt` are estimated.
 export type ReasoningBudget = {
   tokens: number;
   contextSize?: number;
   usedTokens?: number;
+  measuredAt?: number;
 };
+
+// Conservative characters-per-token ratio for estimating messages the server
+// hasn't counted yet (tool results, the new user message, hook output).
+// Deliberately lower than the display estimate in client.ts: an undercount
+// here overflows the window mid-thought, an overcount only trims the budget.
+const ESTIMATE_CHARS_PER_TOKEN = 3;
+
+// Estimated token count of messages the server hasn't reported usage for.
+export function estimateTokens(messages: ChatMessage[]): number {
+  let chars = 0;
+  for (const m of messages) {
+    chars += (m.content ?? "").length + (m.reasoning_content ?? "").length;
+    for (const call of m.tool_calls ?? []) {
+      chars += call.function.name.length + call.function.arguments.length;
+    }
+  }
+  return Math.ceil(chars / ESTIMATE_CHARS_PER_TOKEN);
+}
 
 // The budget to send for one round. In uniform mode the model cannot end its
 // reasoning on its own, so a budget larger than the free context would fill
@@ -60,9 +80,11 @@ export type ToolRoundObserver = {
 // appended when non-empty before the reply is returned. Observer failures are
 // fatal, but onRoundEnd is always attempted after onRoundStart; if stream and
 // cleanup both fail, the original stream/start error is preserved. The
-// reasoning budget, when given, is recomputed every round against the
-// context the previous round's usage reports, so tool rounds that grow the
-// conversation shrink the budget instead of overflowing the window.
+// reasoning budget, when given, is recomputed every round against the last
+// reported usage plus an estimate of every message appended since (tool
+// results, and before the first round the new user message and hook output),
+// so tool rounds that grow the conversation shrink the budget. Best effort:
+// the estimate is approximate.
 export async function runToolRounds(
   config: Config,
   model: string,
@@ -73,6 +95,8 @@ export async function runToolRounds(
   reasoning?: ReasoningBudget,
 ): Promise<ChatCompletionReply> {
   let usedTokens = reasoning?.usedTokens ?? 0;
+  let measuredAt =
+    reasoning?.usedTokens === undefined ? 0 : (reasoning.measuredAt ?? 0);
   for (let round = 0; ; round++) {
     if (round >= MAX_TOOL_ROUNDS) {
       throw new Error("Stopped after max tool rounds without a final answer");
@@ -80,6 +104,14 @@ export async function runToolRounds(
     let reply: ChatCompletionReply | undefined;
     let roundError: unknown;
     let failed = false;
+    const sentMessages = messages.length;
+    const budget =
+      reasoning &&
+      effectiveReasoningBudget(
+        reasoning.tokens,
+        reasoning.contextSize,
+        usedTokens + estimateTokens(messages.slice(measuredAt)),
+      );
     try {
       observer.onRoundStart?.(round);
       reply = await chatCompletionStream(
@@ -91,12 +123,7 @@ export async function runToolRounds(
         (tokens) => observer.onReasoning?.(tokens, round),
         (processed, total, cache, timeMs) =>
           observer.onPrefill?.(processed, total, cache, timeMs, round),
-        reasoning &&
-          effectiveReasoningBudget(
-            reasoning.tokens,
-            reasoning.contextSize,
-            usedTokens,
-          ),
+        budget,
       );
     } catch (err) {
       failed = true;
@@ -114,7 +141,12 @@ export async function runToolRounds(
     }
     if (failed) throw roundError;
     if (!reply) throw new Error("Model round ended without a reply");
-    if (reply.usage) usedTokens = reply.usage.total_tokens;
+    if (reply.usage) {
+      // total_tokens covers every message sent plus this reply, which is
+      // appended next as one assistant message.
+      usedTokens = reply.usage.total_tokens;
+      measuredAt = sentMessages + 1;
+    }
 
     if (reply.toolCalls.length > 0) {
       messages.push({

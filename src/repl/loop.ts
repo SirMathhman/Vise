@@ -49,8 +49,14 @@ type TurnState = {
   activeTools: string[] | undefined;
   messages: ChatMessage[];
   lastUsage: Usage | undefined;
+  // How many leading messages lastUsage covers; later ones are estimated.
+  lastUsageAt: number;
   reasoningLevel: string | undefined;
 };
+
+// A turn's final reported usage and how many messages it covers (taken
+// before post-turn hooks append anything).
+type MeasuredUsage = { usage: Usage; measuredAt: number };
 
 // The active /think level's budget for one turn, or undefined (send none;
 // the server's --reasoning-budget applies) when the level isn't in the
@@ -68,7 +74,12 @@ async function turnReasoning(
   const contextSize = await getContextSize(config, state.model).catch(
     () => undefined,
   );
-  return { tokens, contextSize, usedTokens: state.lastUsage?.total_tokens };
+  return {
+    tokens,
+    contextSize,
+    usedTokens: state.lastUsage?.total_tokens,
+    measuredAt: state.lastUsageAt,
+  };
 }
 
 // The session fields persisted to disk (auto-resume and named sessions).
@@ -203,7 +214,7 @@ async function runModelTurn(
   askQuestion: (request: AskQuestionRequest) => Promise<string>,
   transport: Transport,
   reasoning: ReasoningBudget | undefined,
-): Promise<Usage | undefined> {
+): Promise<MeasuredUsage | undefined> {
   // Filter the tools array to only those in the active profile's whitelist.
   // undefined means "all tools" (no whitelist). The filtered array is what
   // the model sees and what subagents inherit via toolCtx.tools.
@@ -276,6 +287,7 @@ async function runModelTurn(
     throw err;
   });
   replyStream.end();
+  const measuredAt = messages.length;
 
   // Run post-turn hooks (env var + .hooks/post-turn/ directory) after the
   // model's answer. On failure (non-zero exit), the output is printed to
@@ -291,7 +303,7 @@ async function runModelTurn(
     transport,
   );
 
-  return reply.usage;
+  return reply.usage && { usage: reply.usage, measuredAt };
 }
 
 // Applies a built-in command's result to the turn state: model, profile, and
@@ -346,13 +358,15 @@ function applyCommandResult(result: CommandResult, state: TurnState): void {
 // `state.lastUsage` and, on compaction, `state.messages` (via
 // maybeAutoCompact) and notifies the transport.
 async function applyPostTurnOutcome(
-  usage: Usage | undefined,
+  measured: MeasuredUsage | undefined,
   config: Config,
   state: TurnState,
   transport: Transport,
 ): Promise<void> {
-  if (!usage) return;
+  if (!measured) return;
+  const { usage } = measured;
   state.lastUsage = usage;
+  state.lastUsageAt = measured.measuredAt;
   const compacted = await maybeAutoCompact(
     config,
     state.model,
@@ -417,6 +431,7 @@ async function initializeSession(
       { role: "system", content: withNotesIntro(BUILTIN_AGENT.instruction) },
     ],
     lastUsage: undefined,
+    lastUsageAt: 0,
     reasoningLevel: session?.reasoningLevel,
   };
   // A restored level that the current table no longer defines (or none at

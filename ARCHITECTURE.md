@@ -49,8 +49,11 @@ the code; it is not a changelog. Progress lives in the git log.
   `DEFAULT_REASONING_LEVEL` (`"medium"`) when the table defines it. Because
   uniform mode bans the model's own end of reasoning, the budget actually sent
   is capped at the free context (context size minus tokens used minus an
-  answer reserve), recomputed every tool round; otherwise a budget larger than
-  the space left would fill the window mid-thought and leave no answer. The one
+  answer reserve), recomputed every tool round; "tokens used" is the server's
+  last reported count plus an estimate of the messages appended since, and
+  the whole conversation is estimated when no count exists yet (fresh,
+  restored, loaded, or compacted). Otherwise a budget larger than the space
+  left would fill the window mid-thought and leave no answer. The one
   exception is `compactConversation`'s summary request, which always sends
   `reasoning_budget_tokens: 0` regardless of the active level — summarizing
   is a mechanical extraction task, not one that benefits from reasoning.
@@ -261,9 +264,11 @@ src/llm/turns.ts      Shared model/tool-round protocol for the REPL and
                         ReasoningBudget; before every round it caps the budget
                         at the free context (effectiveReasoningBudget: context
                         size - tokens used - an answer reserve, floored at 0),
-                        using the previous round's reported usage, so tool
-                        rounds that grow the conversation shrink the budget
-                        instead of overflowing the window; owns no presentation,
+                        using the last reported usage plus a conservative
+                        estimate (estimateTokens, 3 chars/token) of every
+                        message appended since -- tool results, the new user
+                        message, hook output -- so tool rounds that grow the
+                        conversation shrink the budget; owns no presentation,
                         hooks, or filesystem/process access.
 src/llm/models.ts     model catalog: list models via the client, validate a name
                         against the catalog. No fetch of its own.
@@ -561,6 +566,13 @@ Run it in CI or as part of `bun lint` before it matters.
   forever; a transient ECONNREFUSED is reported as a generic error. The client
   should have a `signal`/timeout and a distinguishable "server unreachable"
   error.
+- **The reasoning cap is an estimate.** Messages the server hasn't counted
+  yet are estimated at 3 characters per token. Because uniform mode stops the
+  model from ending its reasoning early, any undercount becomes a context
+  overflow mid-thought rather than a harmless early stop. An exact count
+  would need `/tokenize` or a clamp inside the llama.cpp fork (which knows the
+  real prompt length and per-slot n_ctx). The 1024-token answer reserve may
+  also be too small for a large `create_file`/`edit_file` tool-call payload.
 - **Forced reasoning is paid per tool round.** Every model round in a turn,
   including each tool-call round, draws its own random length up to the
   (capped) budget, and each round's `reasoning_content` stays in the
