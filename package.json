@@ -5,6 +5,7 @@
   "private": true,
   "scripts": {
     "start": "bun index.ts",
+    "web": "bun web.ts",
     "lint": "biome check ."
   },
   "devDependencies": {
