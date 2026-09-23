@@ -541,21 +541,6 @@ Run it in CI or as part of `bun lint` before it matters.
   conversation, and the renderer. Keep handlers as pure functions of explicit
   parameters; if a handler needs to print, it returns text instead. Watch for
   `commands.ts` importing `loop.ts` (that would be a cycle).
-- **`run()` in `loop.ts` has re-exceeded the 100-line function limit.** Each
-  session-level feature added so far (`/context`, `/compact`, auto-compact)
-  has grown the top-level `for (;;)` loop in place rather than factoring its
-  own apply-the-result step into a helper, so `run()` is back over the limit
-  (Future Work's note that the `runHook`/`runModelTurn` extraction brought it
-  under 100 lines is now stale). Two candidates for extraction: (1) applying
-  a `CommandResult` (`setModel`/`setProfile`/`setTools`/`newMessages`) into a
-  function of the session state, and (2) applying a post-turn outcome
-  (`maybeAutoCompact` + the `lastUsage` reset + the compact notice). (2) is
-  also a reuse opportunity: `maybeAutoCompact` splices `messages` in place
-  itself, while the manual `/compact` path instead returns `newMessages` for
-  `run()` to splice at the call site — the same "replace the conversation"
-  effect implemented two different ways. A single `applyCompaction(state,
-newMessages)` helper used by both would remove the duplication and shrink
-  `run()` at the same time.
 - **Model switch is not validated against the conversation.** Switching models
   mid-session keeps the history, which is the intended behavior, but a model
   with a smaller context window may reject the accumulated history on the next
@@ -650,10 +635,6 @@ Obvious concerns only; real optimization follows profiling.
   model's final answer), so its name no longer reflects its contents. Rename
   it and its exports (`runPreSessionCmd` -> `runShellCommand`,
   `PreSessionResult` -> `ShellResult`) to the generic hook-command runner.
-  The `runHook` helper and `runModelTurn` extraction are done, but `run` has
-  since grown back past the 100-line limit as later features (`/context`,
-  `/compact`) were added in place (see Potential Problems); a further
-  extraction is needed before or alongside the rename.
 - **Per-tool co-located modules.** Each tool is a self-contained `ToolModule`
   export from its submodule: a schema (the `Tool` object describing arguments
   to the model) paired with the handler that executes it. `tools.ts` becomes
