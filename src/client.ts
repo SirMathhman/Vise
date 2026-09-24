@@ -1,10 +1,10 @@
-import { BASE_URL, authHeaders } from "./config";
+import { authHeaders, getBaseUrl } from "./config";
 import { executeToolCall, tools } from "./tools";
 import type { ListModelsResult, RequestMessage, ToolCall } from "./types";
 
 export async function listModels(): Promise<ListModelsResult> {
   try {
-    const res = await fetch(`${BASE_URL}/v1/models`, {
+    const res = await fetch(`${getBaseUrl()}/v1/models`, {
       headers: authHeaders(),
     });
     if (!res.ok) {
@@ -34,7 +34,7 @@ export async function send(
   for (let i = 0; i < 20; i++) {
     let res;
     try {
-      res = await fetch(`${BASE_URL}/v1/chat/completions`, {
+      res = await fetch(`${getBaseUrl()}/v1/chat/completions`, {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ model, messages: pending, tools }),

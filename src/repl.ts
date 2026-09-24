@@ -1,5 +1,5 @@
 import type { Interface } from "node:readline";
-import { BASE_URL, getApiKey } from "./config";
+import { getApiKey, getBaseUrl } from "./config";
 import type {
   ClientError,
   ReplDeps,
@@ -17,7 +17,7 @@ function maskKey(key: string): string {
 
 function printEnvInfo(model: string): void {
   const apiKey = getApiKey();
-  console.log(`Server:  ${BASE_URL}`);
+  console.log(`Server:  ${getBaseUrl()}`);
   console.log(`Model:   ${model}`);
   console.log(`API key: ${apiKey ? maskKey(apiKey) : "not set"}`);
   console.log(

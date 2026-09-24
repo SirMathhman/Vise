@@ -1,6 +1,16 @@
 import { existsSync, readFileSync } from "node:fs";
 
-export const BASE_URL = "http://localhost:8080";
+export const DEFAULT_BASE_URL = "http://localhost:8080";
+
+/**
+ * The llama.cpp server base URL, from `VISE_BASE_URL` or the default
+ * `http://localhost:8080`. Read at call time so the value reflects any env
+ * the process was started with.
+ */
+export function getBaseUrl(): string {
+  const url = process.env["VISE_BASE_URL"];
+  return url && url.trim() ? url.trim() : DEFAULT_BASE_URL;
+}
 
 /**
  * Load `.env` from the current working directory into `process.env`.
@@ -19,6 +29,15 @@ export function loadEnv(): void {
     const value = line.slice(eq + 1).trim();
     if (key && !(key in process.env)) process.env[key] = value;
   }
+}
+
+/**
+ * The configured default model name (`VISE_MODEL`), or `undefined` when not
+ * set. Read at call time; empty/whitespace values are treated as unset.
+ */
+export function getDefaultModel(): string | undefined {
+  const model = process.env["VISE_MODEL"];
+  return model ? model.trim() || undefined : undefined;
 }
 
 /** The configured API key, or `undefined` when not set. */

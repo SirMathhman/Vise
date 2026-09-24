@@ -14,7 +14,7 @@ Single user-facing surface: a line-based chat loop. No network other than the lo
 - **Config**: the single source of truth for the server URL, the _default_ model, and
   transport settings. No module may hardcode a URL or read an env var directly.
 - **Default model**: the model selected at startup (the first entry in the server's
-  model list, or `VISE_MODEL` once config supports it). Immutable; owned by config.
+  model list, or `VISE_MODEL` when set). Immutable; owned by config.
 - **Active model**: the model string sent with each request. Session state owned by the
   REPL: it starts as the default model and changes only via `/model <name>`.
 
@@ -27,7 +27,7 @@ vise/
     client.ts     # send(), listModels()
     tools.ts      # tool definitions, executeToolCall()
     repl.ts       # ask(), handleCommand(), printEnvInfo(), maskKey()
-    config.ts     # BASE_URL, loadEnv(), getApiKey(), authHeaders()
+    config.ts     # getBaseUrl(), loadEnv(), getApiKey(), authHeaders()
     types.ts      # RequestMessage, ToolCall, ToolResponse, ReplState, ReplDeps, ListModelsResult, ClientError
   ARCHITECTURE.md # this file
 ```
@@ -43,7 +43,9 @@ index.ts ──► client ──► config
 
 Rules:
 
-- `repl.ts` receives its dependencies as a parameter; it never imports `fetch` or `config`.
+- `repl.ts` receives its dependencies as a parameter; it never imports `fetch`.
+  It may import `config` for display values (`getBaseUrl`, `getApiKey`) via
+  `printEnvInfo`/`/whoami`, but performs no other config reads.
 - `client.ts` owns the HTTP client (`send`) and model discovery (`listModels`).
   It imports tool execution from `tools.ts` and config from `config.ts`.
 - `tools.ts` owns tool definitions and execution; it has no runtime dependencies
@@ -112,6 +114,24 @@ disk lives here, and no other module opens a file or lists a directory.
   held in memory whole. `truncated` is `true` only when reading stopped early
   at `endLine` (more may exist beyond); `false` when EOF was reached.
 
+## Configuration
+
+`config.ts` is the only module that reads configuration. Every value is read at
+**call time** (never a module-level constant) so the value reflects the
+process environment and the `.env` file loaded by `loadEnv()`. No other module
+reads an env var directly.
+
+| Variable         | Source                        | Effect                                          |
+|------------------|-------------------------------|-------------------------------------------------|
+| `VISE_BASE_URL`  | env / `.env`                  | Overrides the server URL (default `http://localhost:8080`). |
+| `VISE_MODEL`     | env / `.env`                  | Sets the **default** model. Validated against the server's model list at startup; an unknown name exits with a clear message. |
+| `VISE_API_KEY`   | env / `.env`                  | Bearer token sent on every request. Optional.   |
+
+The base URL is exposed as `getBaseUrl()`; the default model is resolved in
+`index.ts` startup (the only place that owns the default-model choice), then
+passed into `ReplState` as the active model. CLI flags (`--base-url`,
+`--model`) are not yet implemented — see Future Work.
+
 ## Potential Problems
 
 - **Dangling user turn**: if a failure path forgets to roll back, the next request
@@ -156,8 +176,9 @@ Other exceptions (e.g. the max-iteration guard) fall through to a generic
 
 ## Future Work
 
-1. **Config from env/CLI**: `VISE_BASE_URL`, `VISE_MODEL`, or `--base-url` /
-   `--model` flags. `config.ts` validates and merges; no other module reads env.
+1. **Config CLI flags**: `--base-url` / `--model` flags to complement the existing
+   `VISE_BASE_URL` / `VISE_MODEL` env vars. `config.ts` merges env + flags
+   (flags win); no other module reads args. Env vars are already wired.
 2. **Streaming**: `chat` gains an `onChunk` callback or returns an `AsyncIterable`.
    The REPL prints chunks as they arrive; history still gets the full message
    appended once on completion.
