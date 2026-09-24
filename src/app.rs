@@ -47,12 +47,17 @@ async fn app_loop(
                 && let Some(prompt) = app.send()
             {
                 let (tx, mut rx) = mpsc::channel::<String>(64);
+                let (err_tx, err_rx) = tokio::sync::oneshot::channel::<Option<String>>();
                 let client = client.clone();
                 tokio::spawn(async move {
-                    let _ = llm::send_streaming(&client, prompt, tx).await;
+                    let result = llm::send_streaming(&client, prompt, tx).await;
+                    let _ = err_tx.send(result.err());
                 });
                 app.streaming = true;
                 drain_tokens(app, &mut rx).await;
+                if let Ok(Some(err)) = err_rx.await {
+                    app.error = Some(err);
+                }
             }
         }
     }
