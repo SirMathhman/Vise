@@ -1,9 +1,42 @@
 import { createInterface } from "node:readline";
+import { readdir } from "node:fs/promises";
+import type { Dirent } from "node:fs";
 import { BASE_URL, authHeaders, getApiKey, loadEnv } from "./src/config";
 
-type ChatMessage = {
-  role: "user" | "assistant";
-  content: string;
+type ToolCall = {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+};
+
+type RequestMessage =
+  | { role: "system" | "user" | "assistant"; content: string }
+  | {
+      role: "assistant";
+      content?: string;
+      tool_calls?: ToolCall[];
+    }
+  | { role: "tool"; tool_call_id: string; content: string };
+
+type ToolResponse = { content: string };
+
+const LIST_FILES_TOOL = {
+  type: "function",
+  function: {
+    name: "list_files",
+    description: "List the file and directory entries in a directory.",
+    parameters: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description:
+            "The directory to list. Defaults to the current working directory.",
+        },
+      },
+      required: [] as string[],
+    },
+  },
 };
 
 type ListModelsResult =
@@ -33,29 +66,80 @@ async function listModels(): Promise<ListModelsResult> {
   }
 }
 
-async function send(history: ChatMessage[], model: string): Promise<string> {
+async function executeToolCall(call: ToolCall): Promise<ToolResponse> {
+  if (call.function.name === "list_files") {
+    const raw: unknown = call.function.arguments;
+    const args = (raw && typeof raw === "object" ? raw : {}) as Record<
+      string,
+      unknown
+    >;
+    const path =
+      typeof args["path"] === "string" && args["path"] !== ""
+        ? args["path"]
+        : process.cwd();
+    try {
+      const entries = await readdir(path, { withFileTypes: true });
+      const items = entries.map((entry: Dirent) => ({
+        name: entry.name,
+        type: entry.isDirectory() ? "directory" : "file",
+      }));
+      return { content: JSON.stringify(items, null, 2) };
+    } catch (err) {
+      return { content: `Error: ${err instanceof Error ? err.message : String(err)}` };
+    }
+  }
+  return { content: `Unknown tool: ${call.function.name}` };
+}
+
+async function send(history: RequestMessage[], model: string): Promise<string> {
   const messages = [
-    {
-      role: "system" as const,
-      content: `Current working directory: ${process.cwd()}`,
-    },
+    { role: "system", content: `Current working directory: ${process.cwd()}` } as const,
     ...history,
   ];
-  const res = await fetch(`${BASE_URL}/v1/chat/completions`, {
-    method: "POST",
-    headers: { ...authHeaders(), "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model,
-      messages,
-    }),
-  });
-  if (!res.ok) {
-    throw new Error(`llama.cpp returned ${res.status} ${res.statusText}`);
+  const tools = [LIST_FILES_TOOL];
+  let pending = messages;
+  for (let i = 0; i < 20; i++) {
+    const res = await fetch(`${BASE_URL}/v1/chat/completions`, {
+      method: "POST",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ model, messages: pending, tools }),
+    });
+    if (!res.ok) {
+      throw new Error(`llama.cpp returned ${res.status} ${res.statusText}`);
+    }
+    const data = (await res.json()) as {
+      choices?: {
+        message?: {
+          content?: string;
+          tool_calls?: ToolCall[];
+        };
+      }[];
+    };
+    const message = data.choices?.[0]?.message ?? {};
+    if (message.tool_calls && message.tool_calls.length > 0) {
+      pending = [
+        ...pending,
+        {
+          role: "assistant",
+          content: message.content ?? "",
+          tool_calls: message.tool_calls,
+        },
+        ...(await Promise.all(
+          message.tool_calls.map(async (call) => {
+            const result = await executeToolCall(call);
+            return {
+              role: "tool" as const,
+              tool_call_id: call.id,
+              content: result.content,
+            };
+          }),
+        )),
+      ];
+      continue;
+    }
+    return message.content ?? "";
   }
-  const data = (await res.json()) as {
-    choices?: { message?: { content?: string } }[];
-  };
-  return data.choices?.[0]?.message?.content ?? "";
+  throw new Error("Exceeded maximum tool call iterations.");
 }
 
 function maskKey(key: string): string {
@@ -89,7 +173,7 @@ async function main(): Promise<void> {
   console.log(`Model: ${model}`);
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });
-  const history: ChatMessage[] = [];
+  const history: RequestMessage[] = [];
 
   const ask = (): void => {
     rl.question("> ", async (line?: string) => {
