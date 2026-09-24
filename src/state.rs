@@ -48,23 +48,25 @@ impl App {
         Some(prompt)
     }
 
-    pub(crate) fn handle_key(&mut self, key: &KeyEvent) {
+    /// Returns `true` if this is an editing key the app consumed.
+    /// Returns `false` for command keys (e.g. Ctrl+Enter) so the caller
+    /// can decide what to do with them.
+    pub(crate) fn handle_key(&mut self, key: &KeyEvent) -> bool {
         if key.kind != KeyEventKind::Press {
-            return;
+            return false;
         }
         if key.modifiers.contains(KeyModifiers::CONTROL) {
-            // Ctrl+Enter is handled by app_loop; swallow here.
-            return;
+            return false;
         }
         match key.code {
-            KeyCode::Backspace => self.backspace(),
-            KeyCode::Delete => self.delete(),
-            KeyCode::Left => self.move_left(),
-            KeyCode::Right => self.move_right(),
-            KeyCode::Home => self.cursor = 0,
-            KeyCode::End => self.cursor = self.input.chars().count(),
-            KeyCode::Enter => self.input.push('\n'),
-            c => self.insert(c.to_string()),
+            KeyCode::Backspace => { self.backspace(); true }
+            KeyCode::Delete => { self.delete(); true }
+            KeyCode::Left => { self.move_left(); true }
+            KeyCode::Right => { self.move_right(); true }
+            KeyCode::Home => { self.cursor = 0; true }
+            KeyCode::End => { self.cursor = self.input.chars().count(); true }
+            KeyCode::Enter => { self.input.push('\n'); true }
+            c => { self.insert(c.to_string()); true }
         }
     }
 

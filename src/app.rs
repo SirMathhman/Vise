@@ -41,8 +41,8 @@ async fn app_loop(
             if app.streaming {
                 continue;
             }
-            app.handle_key(&key);
-            if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL)
+            if !app.handle_key(&key)
+                && key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL)
                 && key.code == crossterm::event::KeyCode::Enter
                 && let Some(prompt) = app.send()
             {

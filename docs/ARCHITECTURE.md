@@ -8,6 +8,7 @@
 - **Screen**: a self-contained rendered view identified by a variant; screens compose via ratatui `Layout` and own no global state of their own.
 - **Bootstrap**: process-level initialization — environment loading (`dotenvy`), `color_eyre` install, runtime construction — confined to the binary entry point (`main.rs`). Real environment variables take precedence over `.env` (dotenvy does not override existing vars); a failed `.env` load must produce a visible warning, never a silent one.
 - **Invariant**: terminal I/O is confined to a single module (`app.rs`); every other module is pure of terminal setup and therefore unit-testable without a real TTY.
+- **Key-consumption contract**: `state` methods report whether they consumed the key; `app` dispatches command keys (send, quit, etc.) only on unconsumed events. `state` never needs to know which keys are command keys.
 
 ## Structure
 
