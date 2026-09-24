@@ -11,8 +11,12 @@ Single user-facing surface: a line-based chat loop. No network other than the lo
   a dangling user turn (transient errors must not pollute context).
 - **Client**: the only module that knows the wire format (URLs, headers, JSON shape).
 - **REPL**: the only module that knows the terminal (readline, prompts, exit words).
-- **Config**: the single source of truth for server URL, model, and transport settings.
-  No module may hardcode a URL or read an env var directly.
+- **Config**: the single source of truth for the server URL, the *default* model, and
+  transport settings. No module may hardcode a URL or read an env var directly.
+- **Default model**: the model selected at startup (the first entry in the server's
+  model list, or `VISE_MODEL` once config supports it). Immutable; owned by config.
+- **Active model**: the model string sent with each request. Session state owned by the
+  REPL: it starts as the default model and changes only via `/model <name>`.
 
 ## Structure
 
@@ -21,8 +25,8 @@ vise/
   index.ts        # entry point: parse config, construct client, run REPL
   src/
     config.ts     # load/validate config (env vars, CLI flags, defaults)
-    client.ts     # LlamaClient: getModelName(), chat(messages) -> Reply
-    repl.ts       # runRepl(client, opts): prompt loop, exit, /clear, /exit
+    client.ts     # LlamaClient: listModels(), chat(messages, model) -> Reply
+    repl.ts       # runRepl(client, opts): prompt loop, /whoami, /model, exit, /clear, /exit
   ARCHITECTURE.md # this file
 ```
 
@@ -70,16 +74,26 @@ History invariants:
   return a non-OK response. Watch for this; the fix is a `/clear` command
   (already planned) and possibly a token-budget trim, not client-side truncation
   of the user's message.
-- **Startup ordering**: `getModelName()` runs before the REPL opens. If it
+- **Startup ordering**: `listModels()` runs before the REPL opens. If it
   fails, the process must exit with a clear message, not fall into the REPL
   with a dead client.
+- **Model list is not a chat-capability check**: `/v1/models` lists every loaded
+  model, including embedding models (e.g. `nomic-embed-text`). Membership in the
+  list does not prove the model can serve chat, so `/model <name>` can accept a
+  model whose next turn fails server-side. The send-error message should point
+  back to `/model`.
+- **Stale active model**: the active model is validated only at switch time. If
+  the server is restarted with a different `--model`, the cached string may no
+  longer exist; the next request fails with an HTTP error.
 
 ## Future Work
 
 1. **Split `index.ts`** into `src/client.ts`, `src/repl.ts`, `src/config.ts`
    per the structure above. `index.ts` becomes ~15 lines of wiring.
-2. **`/clear` and `/exit` commands** in the REPL. `/clear` resets history to `[]`;
-   `/exit` and `exit`/`quit` close the readline interface.
+2. **Commands** in the REPL: `/whoami` (environment), `/model [name]` (list or switch
+   the active model), `/clear` (reset history to `[]`), and `/exit` (alias `exit`/`quit`).
+   As commands accumulate, extract a `handleCommand(text, session, client): Promise<boolean>`
+   so `ask()` stays a thin prompt → dispatch → history → send loop.
 3. **Structured error type** in `client.ts`: a `ClientError` discriminated union
    (`{ kind: "http", status, statusText } | { kind: "network", cause }`) instead
    of plain `Error`. `repl.ts` maps kinds to user-facing messages.
