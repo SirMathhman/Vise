@@ -1,3 +1,6 @@
 fn main() -> color_eyre::Result<()> {
-    vise::run()
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        vise::run().await
+    })
 }
