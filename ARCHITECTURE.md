@@ -52,6 +52,23 @@ Rules:
   (startup errors, exit codes, `process.exit`).
 - No module imports `index.ts`.
 
+### REPL commands
+
+`repl.ts` recognizes two kinds of input lines: **chat commands** (routed through
+`handleCommand`, which mutates `ReplState` or prints info, then the loop
+continues) and **exit words** (handled directly in `ask()`, the readline
+owner, because they tear down the terminal via `rl.close()`).
+
+Chat commands:
+
+- `/whoami` — print server, model, masked API key, runtime.
+- `/model` — list models, `*` marking the active one.
+- `/model <name>` — switch the active model (validated against the list).
+- `/clear` — reset `state.history` to `[]`.
+
+Exit words (all close the readline interface and end the process): `exit`,
+`quit`, `/exit`.
+
 ### Conversation state
 
 History lives in the REPL layer, not the client: the client is stateless and
@@ -106,9 +123,9 @@ disk lives here, and no other module opens a file or lists a directory.
   may live.
 - **Unbounded history**: the local server has no context-window awareness exposed
   to us. A very long session will eventually exceed the model's context and
-  return a non-OK response. Watch for this; the fix is a `/clear` command
-  (already planned) and possibly a token-budget trim, not client-side truncation
-  of the user's message.
+  return a non-OK response. `/clear` lets the user reset history at will; a
+  token-budget trim could go further, but neither should truncate the user's
+  message client-side.
 - **Startup ordering**: `listModels()` runs before the REPL opens. If it
   fails, the process must exit with a clear message, not fall into the REPL
   with a dead client.
@@ -123,17 +140,15 @@ disk lives here, and no other module opens a file or lists a directory.
 
 ## Future Work
 
-1. **Commands** in the REPL: `/clear` (reset history to `[]`), and `/exit`
-   (alias `exit`/`quit`). `/whoami` and `/model` are done.
-2. **Structured error type** in `src/client.ts`: a `ClientError` discriminated union
+1. **Structured error type** in `src/client.ts`: a `ClientError` discriminated union
    (`{ kind: "http", status, statusText } | { kind: "network", cause }`) instead
    of plain `Error`. `src/repl.ts` maps kinds to user-facing messages.
-3. **Config from env/CLI**: `VISE_BASE_URL`, `VISE_MODEL`, or `--base-url` /
+2. **Config from env/CLI**: `VISE_BASE_URL`, `VISE_MODEL`, or `--base-url` /
    `--model` flags. `config.ts` validates and merges; no other module reads env.
-4. **Streaming**: `chat` gains an `onChunk` callback or returns an `AsyncIterable`.
+3. **Streaming**: `chat` gains an `onChunk` callback or returns an `AsyncIterable`.
    The REPL prints chunks as they arrive; history still gets the full message
    appended once on completion.
-5. **`system` role**: a `--system` flag or `~/.vise/system.md` file. The client
+4. **`system` role**: a `--system` flag or `~/.vise/system.md` file. The client
    prepends a `system` message to the transcript; the REPL never constructs
    messages directly.
 

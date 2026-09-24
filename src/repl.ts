@@ -29,6 +29,11 @@ async function handleCommand(
     printEnvInfo(state.model);
     return true;
   }
+  if (text.toLowerCase() === "/clear") {
+    state.history = [];
+    console.log("History cleared.");
+    return true;
+  }
   if (
     text.toLowerCase() === "/model" ||
     text.toLowerCase().startsWith("/model ")
@@ -61,7 +66,8 @@ async function handleCommand(
 export function ask(rl: Interface, state: ReplState, deps: ReplDeps): void {
   rl.question("> ", async (line?: string) => {
     const text = (line ?? "").trim();
-    if (text.toLowerCase() === "exit" || text.toLowerCase() === "quit") {
+    const lower = text.toLowerCase();
+    if (lower === "exit" || lower === "quit" || lower === "/exit") {
       rl.close();
       return;
     }
