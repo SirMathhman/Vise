@@ -26,6 +26,7 @@ vise/
   src/
     config.ts     # load/validate config (env vars, CLI flags, defaults)
     client.ts     # LlamaClient: listModels(), chat(messages, model) -> Reply
+    tools.ts      # Tool definitions (OpenAI schema) + executor (filesystem access)
     repl.ts       # runRepl(client, opts): prompt loop, /whoami, /model, exit, /clear, /exit
   ARCHITECTURE.md # this file
 ```
@@ -34,7 +35,7 @@ Dependency direction (strictly one-way):
 
 ```
 index.ts ──► config ──► client ──► (fetch)
-   └──────► repl ──► client
+   └──────► repl ──► client ──► tools
 ```
 
 Rules:
@@ -52,9 +53,17 @@ History lives in the REPL layer, not the client: the client is stateless and
 `client.ts` pure and trivially testable, and makes "what does the server see"
 a pure function of the history array.
 
+When tool calling is active, `send()` returns all messages it generated
+(tool-calls assistant, tool results, final assistant). The REPL pushes them
+all into history so the server sees the full tool transcript on the next turn.
+This preserves the pure-function-of-history contract across turns: the history
+array contains every message the server has ever seen, including intermediate
+tool turns.
+
 History invariants:
 
-- Push the user turn **before** sending; on success, append the assistant turn.
+- Push the user turn **before** sending; on success, append all new messages
+  returned by `send()` (tool turns + final assistant).
 - On failure, roll back the user turn so the next request starts from a clean
   assistant-ending transcript.
 - Never mutate a message after it has been appended (the server may stream;

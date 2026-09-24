@@ -91,11 +91,15 @@ async function executeToolCall(call: ToolCall): Promise<ToolResponse> {
   return { content: `Unknown tool: ${call.function.name}` };
 }
 
-async function send(history: RequestMessage[], model: string): Promise<string> {
-  const messages = [
-    { role: "system", content: `Current working directory: ${process.cwd()}` } as const,
-    ...history,
-  ];
+async function send(
+  history: RequestMessage[],
+  model: string,
+): Promise<RequestMessage[]> {
+  const systemMsg: RequestMessage = {
+    role: "system",
+    content: `Current working directory: ${process.cwd()}`,
+  };
+  const messages: RequestMessage[] = [systemMsg, ...history];
   const tools = [LIST_FILES_TOOL];
   let pending = messages;
   for (let i = 0; i < 20; i++) {
@@ -117,13 +121,14 @@ async function send(history: RequestMessage[], model: string): Promise<string> {
     };
     const message = data.choices?.[0]?.message ?? {};
     if (message.tool_calls && message.tool_calls.length > 0) {
+      const toolCallsMsg: RequestMessage = {
+        role: "assistant",
+        content: message.content ?? "",
+        tool_calls: message.tool_calls,
+      };
       pending = [
         ...pending,
-        {
-          role: "assistant",
-          content: message.content ?? "",
-          tool_calls: message.tool_calls,
-        },
+        toolCallsMsg,
         ...(await Promise.all(
           message.tool_calls.map(async (call) => {
             const result = await executeToolCall(call);
@@ -137,7 +142,12 @@ async function send(history: RequestMessage[], model: string): Promise<string> {
       ];
       continue;
     }
-    return message.content ?? "";
+    const finalMsg: RequestMessage = {
+      role: "assistant",
+      content: message.content ?? "",
+    };
+    pending = [...pending, finalMsg];
+    return pending.slice(1 + history.length);
   }
   throw new Error("Exceeded maximum tool call iterations.");
 }
@@ -218,9 +228,14 @@ async function main(): Promise<void> {
       }
       history.push({ role: "user", content: text });
       try {
-        const reply = await send(history, model);
-        history.push({ role: "assistant", content: reply });
-        console.log(reply);
+        const newMessages = await send(history, model);
+        for (const m of newMessages) {
+          history.push(m);
+        }
+        const last = newMessages[newMessages.length - 1];
+        if (last !== undefined) {
+          console.log(last.content ?? "");
+        }
       } catch (err) {
         history.pop();
         console.error(
