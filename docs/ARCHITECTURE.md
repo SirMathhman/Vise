@@ -6,6 +6,7 @@
 - **App state**: the single owned value (`App`) describing everything the UI displays and all mutable state (screen stack, buffers, configuration).
 - **Frame tick**: one iteration of the main loop — process pending events, then render once.
 - **Screen**: a self-contained rendered view identified by a variant; screens compose via ratatui `Layout` and own no global state of their own.
+- **Bootstrap**: process-level initialization — environment loading (`dotenvy`), `color_eyre` install, runtime construction — confined to the binary entry point (`main.rs`). Real environment variables take precedence over `.env` (dotenvy does not override existing vars); a failed `.env` load must produce a visible warning, never a silent one.
 - **Invariant**: terminal I/O is confined to a single module (`app.rs`); every other module is pure of terminal setup and therefore unit-testable without a real TTY.
 
 ## Structure
@@ -22,7 +23,7 @@ vise/
     llm.rs          # reqwest streaming client for the local llama.cpp OpenAI endpoint
 ```
 
-Dependency direction (lib only): `main → app` (single entry, `vise::run`); `app → {state, event, ui, llm}`; `ui → state` (read-only `&App`); `state`, `event`, and `llm` have no internal deps of one another. No cycles: `ui`, `state`, `event`, and `llm` are leaves; only `app` composes them.
+Dependency direction (lib only): `main → app` (single entry, `vise::run`); `app → {state, event, ui, llm}`; `ui → state` (read-only `&App`); `state`, `event`, and `llm` have no internal deps of one another. No cycles: `ui`, `state`, `event`, and `llm` are leaves; only `app` composes them. `main` owns all bootstrap (`dotenvy`, `color_eyre`, runtime); the lib never mutates process environment or terminal state outside `app`.
 
 ### Streaming model
 
@@ -30,7 +31,7 @@ The event loop is async on a multi-thread tokio runtime. The blocking crossterm 
 
 ## Potential Problems
 
-- **Terminal ownership in the library**: `lib.rs` currently owns `ratatui::try_init`, `terminal.draw`, and the whole event loop, which violates the invariant that the lib be pure of terminal setup. The fix is the module split above: only `app.rs` touches the terminal; `state`, `event`, `ui`, and `llm` must be terminal-free and unit-testable without a TTY.
+- **Composition-point growth**: `app.rs` is the single composition point (terminal setup, event-loop orchestration, token drain). Today it holds three concerns (`run`, `app_loop`, `drain_tokens`); if it grows past ~100 lines or a second screen/input mode is added, split `app_loop` into focused handlers (input dispatch, stream drain, render scheduling) so each remains independently testable.
 - **Blocking event reads**: the crossterm reader is isolated on `spawn_blocking`, so the async loop is not blocked by I/O. A frame cadence is still not enforced; add `event::poll(timeout)` / a `Tick` event when a steady redraw rate or resize handling becomes a requirement.
 - **State duplication**: render fns must take `&App` by reference and never cache copies of `App` fields; stale local state is a class of bug, not a feature.
 - **Error surface**: `llm.rs` returns `Result<(), String>` today. Introduce a `ViseError` enum (implementing `std::error::Error`) as domain errors grow; each variant must answer what/where/why/fix. Start by converting the `llm` request/stream errors so the `app` layer can match on a structured type instead of strings.
@@ -39,7 +40,6 @@ The event loop is async on a multi-thread tokio runtime. The blocking crossterm 
 
 ## Future Work
 
-- **Split `lib.rs`** (immediate, no behavior change): move `App` + `Message` into `state.rs`, the crossterm reader into `event.rs`, `render` into `ui.rs`, and `run`/`app_loop`/`drain_tokens` into `app.rs`. This is the single highest-value change and the prerequisite for everything below.
 - Add an offscreen-terminal test harness (ratatui `TestBackend`) so `ui.rs` render fns are unit-tested without a TTY. This is only possible once `ui` no longer owns terminal setup.
 - Add a `ViseError` enum as domain errors appear; keep `color_eyre` for reporting only.
 - Replace blocking `event::read()` with `event::poll(Duration)` + a `Tick` event once a steady frame cadence is needed.
