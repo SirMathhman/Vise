@@ -5,6 +5,7 @@ pub mod app;
 
 /// Runs the TUI, streaming a single message to the local llama.cpp server.
 pub async fn run() -> color_eyre::Result<()> {
+    dotenvy::dotenv().ok();
     color_eyre::install()?;
 
     let mut terminal = ratatui::try_init()?;
