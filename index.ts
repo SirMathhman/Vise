@@ -5,7 +5,7 @@ const BASE_URL = "http://localhost:8080";
 async function getModelName(): Promise<string> {
   const res = await fetch(`${BASE_URL}/v1/models`);
   if (!res.ok) return "local";
-  const data: { data?: { id?: string }[] } = await res.json();
+  const data = (await res.json()) as { data?: { id?: string }[] };
   return data.data?.[0]?.id ?? "local";
 }
 
@@ -21,9 +21,9 @@ async function send(message: string, model: string): Promise<string> {
   if (!res.ok) {
     throw new Error(`llama.cpp returned ${res.status} ${res.statusText}`);
   }
-  const data: {
+  const data = (await res.json()) as {
     choices?: { message?: { content?: string } }[];
-  } = await res.json();
+  };
   return data.choices?.[0]?.message?.content ?? "";
 }
 
