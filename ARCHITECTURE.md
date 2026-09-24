@@ -36,7 +36,7 @@ Dependency direction (strictly one-way):
 
 ```
 index.ts ──► client ──► config
-  │        ──► tools  ──► (none)
+  │        └──────► tools ──► (none)
   │        ──► repl   ──► config
   └────────► types    (types-only, no runtime imports)
 ```

@@ -30,15 +30,11 @@ export async function listModels(): Promise<ListModelsResult> {
 }
 
 export async function send(
-  history: RequestMessage[],
+  messages: RequestMessage[],
   model: string,
 ): Promise<RequestMessage[]> {
-  const systemMsg: RequestMessage = {
-    role: "system",
-    content: `Current working directory: ${process.cwd()}`,
-  };
-  const messages: RequestMessage[] = [systemMsg, ...history];
   let pending = messages;
+  const newMessages: RequestMessage[] = [];
   for (let i = 0; i < 20; i++) {
     const res = await fetch(`${BASE_URL}/v1/chat/completions`, {
       method: "POST",
@@ -63,28 +59,28 @@ export async function send(
         content: message.content ?? "",
         tool_calls: message.tool_calls,
       };
-      pending = [
-        ...pending,
-        toolCallsMsg,
-        ...(await Promise.all(
-          message.tool_calls.map(async (call) => {
-            const result = await executeToolCall(call);
-            return {
-              role: "tool" as const,
-              tool_call_id: call.id,
-              content: result.content,
-            };
-          }),
-        )),
-      ];
+      newMessages.push(toolCallsMsg);
+      const toolResults = await Promise.all(
+        message.tool_calls.map(async (call) => {
+          const result = await executeToolCall(call);
+          return {
+            role: "tool" as const,
+            tool_call_id: call.id,
+            content: result.content,
+          };
+        }),
+      );
+      newMessages.push(...toolResults);
+      pending = [...pending, toolCallsMsg, ...toolResults];
       continue;
     }
     const finalMsg: RequestMessage = {
       role: "assistant",
       content: message.content ?? "",
     };
+    newMessages.push(finalMsg);
     pending = [...pending, finalMsg];
-    return pending.slice(1 + history.length);
+    return newMessages;
   }
   throw new Error("Exceeded maximum tool call iterations.");
 }

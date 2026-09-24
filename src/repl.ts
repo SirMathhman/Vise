@@ -1,6 +1,6 @@
 import type { Interface } from "node:readline";
 import { BASE_URL, getApiKey } from "./config";
-import type { ReplDeps, ReplState } from "./types";
+import type { ReplDeps, ReplState, RequestMessage } from "./types";
 export type { ReplDeps, ReplState };
 
 // ─── Command handlers ───────────────────────────────────────────────────
@@ -10,7 +10,7 @@ function maskKey(key: string): string {
   return `${key.slice(0, 4)}\u2026${key.slice(-4)} (${key.length} chars)`;
 }
 
-export function printEnvInfo(model: string): void {
+function printEnvInfo(model: string): void {
   const apiKey = getApiKey();
   console.log(`Server:  ${BASE_URL}`);
   console.log(`Model:   ${model}`);
@@ -79,8 +79,12 @@ export function ask(
       return;
     }
     state.history.push({ role: "user", content: text });
+    const systemMsg: RequestMessage = {
+      role: "system",
+      content: `Current working directory: ${process.cwd()}`,
+    };
     try {
-      const newMessages = await deps.send(state.history, state.model);
+      const newMessages = await deps.send([systemMsg, ...state.history], state.model);
       for (const m of newMessages) {
         state.history.push(m);
       }
