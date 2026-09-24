@@ -75,6 +75,26 @@ History invariants:
 - Never mutate a message after it has been appended (the server may stream;
   the REPL owns display).
 
+### Tool execution
+
+`tools.ts` is the module that owns the filesystem: every tool that touches the
+disk lives here, and no other module opens a file or lists a directory.
+
+- **Definitions**: each tool is an OpenAI function object (`LIST_FILES_TOOL`,
+  `READ_FILE_TOOL`). The `tools` array is what `client.ts` sends in every
+  request, so the model sees the full schema.
+- **Execution**: `executeToolCall(call)` runs a single tool and returns a
+  `ToolResponse`. **Contract: it must never throw** — every failure (missing
+  file, unreadable directory, unknown tool name) is folded into a
+  `ToolResponse` whose `content` is an error string the model can read.
+  `client.ts` calls `executeToolCall` inline during its tool-call loop; there is
+  no separate tool-execution module because the tools are simple, local, and
+  synchronous with the request.
+- **Arbitrarily large files**: `read_file` streams via `createReadStream` +
+  readline and collects only the requested line range, so a huge file is never
+  held in memory whole. `truncated` is `true` only when reading stopped early
+  at `endLine` (more may exist beyond); `false` when EOF was reached.
+
 ## Potential Problems
 
 - **Dangling user turn**: if a failure path forgets to roll back, the next request

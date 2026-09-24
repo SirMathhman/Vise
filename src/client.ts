@@ -1,10 +1,6 @@
 import { BASE_URL, authHeaders } from "./config";
 import { executeToolCall, tools } from "./tools";
-import type {
-  ListModelsResult,
-  RequestMessage,
-  ToolCall,
-} from "./types";
+import type { ListModelsResult, RequestMessage, ToolCall } from "./types";
 
 export async function listModels(): Promise<ListModelsResult> {
   try {

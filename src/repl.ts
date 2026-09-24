@@ -58,11 +58,7 @@ async function handleCommand(
 
 // ─── REPL loop ───────────────────────────────────────────────────────────
 
-export function ask(
-  rl: Interface,
-  state: ReplState,
-  deps: ReplDeps,
-): void {
+export function ask(rl: Interface, state: ReplState, deps: ReplDeps): void {
   rl.question("> ", async (line?: string) => {
     const text = (line ?? "").trim();
     if (text.toLowerCase() === "exit" || text.toLowerCase() === "quit") {
@@ -84,7 +80,10 @@ export function ask(
       content: `Current working directory: ${process.cwd()}`,
     };
     try {
-      const newMessages = await deps.send([systemMsg, ...state.history], state.model);
+      const newMessages = await deps.send(
+        [systemMsg, ...state.history],
+        state.model,
+      );
       for (const m of newMessages) {
         state.history.push(m);
       }
