@@ -80,11 +80,10 @@ async fn drain_lines(buf: &mut Vec<u8>, tx: &mpsc::Sender<String>) {
                         buf.clear();
                         return;
                     }
-                    if let Ok(chunk) = serde_json::from_str::<ChatChunk>(payload) {
-                        if let Some(token) = chunk.choices.first().and_then(|c| c.delta.content.clone())
-                        {
-                            let _ = tx.send(token);
-                        }
+                    if let Ok(chunk) = serde_json::from_str::<ChatChunk>(payload)
+                        && let Some(token) = chunk.choices.first().and_then(|c| c.delta.content.clone())
+                    {
+                        let _ = tx.send(token).await;
                     }
                 }
             }

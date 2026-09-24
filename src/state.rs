@@ -27,17 +27,9 @@ impl App {
     }
 
     pub(crate) fn is_quit(&self, event: &Event) -> bool {
-        if let Event::Key(key) = event {
-            if key.kind == KeyEventKind::Press {
-                if key.code == KeyCode::Char('q') && self.input.is_empty() {
-                    return true;
-                }
-                if key.code == KeyCode::Esc && self.input.is_empty() && self.message.is_none() {
-                    return true;
-                }
-            }
-        }
-        false
+        matches!(event, Event::Key(key) if key.kind == KeyEventKind::Press
+            && ((key.code == KeyCode::Char('q') && self.input.is_empty())
+                || (key.code == KeyCode::Esc && self.input.is_empty() && self.message.is_none())))
     }
 
     pub(crate) fn send(&mut self) -> Option<String> {
