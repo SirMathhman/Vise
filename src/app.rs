@@ -42,7 +42,10 @@ async fn app_loop(
                 continue;
             }
             app.handle_key(&key);
-            if let Some(prompt) = app.send() {
+            if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL)
+                && key.code == crossterm::event::KeyCode::Enter
+                && let Some(prompt) = app.send()
+            {
                 let (tx, mut rx) = mpsc::channel::<String>(64);
                 let client = client.clone();
                 tokio::spawn(async move {

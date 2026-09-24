@@ -53,9 +53,7 @@ impl App {
             return;
         }
         if key.modifiers.contains(KeyModifiers::CONTROL) {
-            if key.code == KeyCode::Enter {
-                let _ = self.send();
-            }
+            // Ctrl+Enter is handled by app_loop; swallow here.
             return;
         }
         match key.code {
