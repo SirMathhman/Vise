@@ -34,12 +34,19 @@ async function listModels(): Promise<ListModelsResult> {
 }
 
 async function send(history: ChatMessage[], model: string): Promise<string> {
+  const messages = [
+    {
+      role: "system" as const,
+      content: `Current working directory: ${process.cwd()}`,
+    },
+    ...history,
+  ];
   const res = await fetch(`${BASE_URL}/v1/chat/completions`, {
     method: "POST",
     headers: { ...authHeaders(), "Content-Type": "application/json" },
     body: JSON.stringify({
       model,
-      messages: history,
+      messages,
     }),
   });
   if (!res.ok) {
