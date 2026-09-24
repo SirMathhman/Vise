@@ -11,7 +11,7 @@ Single user-facing surface: a line-based chat loop. No network other than the lo
   a dangling user turn (transient errors must not pollute context).
 - **Client**: the only module that knows the wire format (URLs, headers, JSON shape).
 - **REPL**: the only module that knows the terminal (readline, prompts, exit words).
-- **Config**: the single source of truth for the server URL, the *default* model, and
+- **Config**: the single source of truth for the server URL, the _default_ model, and
   transport settings. No module may hardcode a URL or read an env var directly.
 - **Default model**: the model selected at startup (the first entry in the server's
   model list, or `VISE_MODEL` once config supports it). Immutable; owned by config.
