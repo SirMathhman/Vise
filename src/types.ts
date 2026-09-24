@@ -19,6 +19,10 @@ export type ListModelsResult =
   | { ok: true; models: string[] }
   | { ok: false; error: string };
 
+export type ClientError =
+  | { kind: "http"; status: number; statusText: string; body?: string }
+  | { kind: "network"; cause: unknown };
+
 export type ReplState = {
   history: RequestMessage[];
   model: string;

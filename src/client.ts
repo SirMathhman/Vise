@@ -32,13 +32,25 @@ export async function send(
   let pending = messages;
   const newMessages: RequestMessage[] = [];
   for (let i = 0; i < 20; i++) {
-    const res = await fetch(`${BASE_URL}/v1/chat/completions`, {
-      method: "POST",
-      headers: { ...authHeaders(), "Content-Type": "application/json" },
-      body: JSON.stringify({ model, messages: pending, tools }),
-    });
+    let res;
+    try {
+      res = await fetch(`${BASE_URL}/v1/chat/completions`, {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ model, messages: pending, tools }),
+      });
+    } catch (err) {
+      throw { kind: "network" as const, cause: err };
+    }
     if (!res.ok) {
-      throw new Error(`llama.cpp returned ${res.status} ${res.statusText}`);
+      const body = await res.text().catch(() => "");
+      const snippet = body.slice(0, 200).trim();
+      throw {
+        kind: "http" as const,
+        status: res.status,
+        statusText: res.statusText,
+        body: snippet || undefined,
+      };
     }
     const data = (await res.json()) as {
       choices?: {

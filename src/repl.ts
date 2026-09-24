@@ -1,6 +1,11 @@
 import type { Interface } from "node:readline";
 import { BASE_URL, getApiKey } from "./config";
-import type { ReplDeps, ReplState, RequestMessage } from "./types";
+import type {
+  ClientError,
+  ReplDeps,
+  ReplState,
+  RequestMessage,
+} from "./types";
 export type { ReplDeps, ReplState };
 
 // ─── Command handlers ───────────────────────────────────────────────────
@@ -99,9 +104,34 @@ export function ask(rl: Interface, state: ReplState, deps: ReplDeps): void {
       }
     } catch (err) {
       state.history.pop();
-      console.error(
-        `Error: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      if (
+        err !== null &&
+        typeof err === "object" &&
+        "kind" in err &&
+        (err as ClientError).kind === "http"
+      ) {
+        const httpErr = err as ClientError & { kind: "http" };
+        const detail = httpErr.body ? ` ${httpErr.body}` : "";
+        console.error(
+          `HTTP ${httpErr.status} ${httpErr.statusText}${detail}: ` +
+            `the server rejected the request. Check the model with /model ` +
+            `and that the server is healthy.`,
+        );
+      } else if (
+        err !== null &&
+        typeof err === "object" &&
+        "kind" in err &&
+        (err as ClientError).kind === "network"
+      ) {
+        const cause = (err as ClientError & { kind: "network" }).cause;
+        console.error(
+          `Network error: ${cause instanceof Error ? cause.message : String(cause)}`,
+        );
+      } else {
+        console.error(
+          `Error: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }
     ask(rl, state, deps);
   });

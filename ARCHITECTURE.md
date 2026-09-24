@@ -28,7 +28,7 @@ vise/
     tools.ts      # tool definitions, executeToolCall()
     repl.ts       # ask(), handleCommand(), printEnvInfo(), maskKey()
     config.ts     # BASE_URL, loadEnv(), getApiKey(), authHeaders()
-    types.ts      # RequestMessage, ToolCall, ToolResponse, ReplState, ReplDeps, ListModelsResult
+    types.ts      # RequestMessage, ToolCall, ToolResponse, ReplState, ReplDeps, ListModelsResult, ClientError
   ARCHITECTURE.md # this file
 ```
 
@@ -138,17 +138,30 @@ disk lives here, and no other module opens a file or lists a directory.
   the server is restarted with a different `--model`, the cached string may no
   longer exist; the next request fails with an HTTP error.
 
+### Error handling
+
+`send()` in `client.ts` throws a `ClientError` discriminated union (defined in
+`types.ts`) on failure, not a plain `Error`. The REPL pattern-matches on `kind`:
+
+- `{ kind: "http", status, statusText, body? }` — the server responded with a
+  non-OK status. The client captures a 200-char snippet of the response body
+  (where llama.cpp's OpenAI-compatible endpoint reports the actual cause, e.g.
+  `{"error": "model 'X' not loaded"}`) and the REPL prints it inline with the
+  status plus a hint to check `/model`.
+- `{ kind: "network", cause }` — the fetch itself failed (connection refused,
+  DNS, etc.). The REPL prints the underlying cause.
+
+Other exceptions (e.g. the max-iteration guard) fall through to a generic
+`Error:` message.
+
 ## Future Work
 
-1. **Structured error type** in `src/client.ts`: a `ClientError` discriminated union
-   (`{ kind: "http", status, statusText } | { kind: "network", cause }`) instead
-   of plain `Error`. `src/repl.ts` maps kinds to user-facing messages.
-2. **Config from env/CLI**: `VISE_BASE_URL`, `VISE_MODEL`, or `--base-url` /
+1. **Config from env/CLI**: `VISE_BASE_URL`, `VISE_MODEL`, or `--base-url` /
    `--model` flags. `config.ts` validates and merges; no other module reads env.
-3. **Streaming**: `chat` gains an `onChunk` callback or returns an `AsyncIterable`.
+2. **Streaming**: `chat` gains an `onChunk` callback or returns an `AsyncIterable`.
    The REPL prints chunks as they arrive; history still gets the full message
    appended once on completion.
-4. **`system` role**: a `--system` flag or `~/.vise/system.md` file. The client
+3. **`system` role**: a `--system` flag or `~/.vise/system.md` file. The client
    prepends a `system` message to the transcript; the REPL never constructs
    messages directly.
 
