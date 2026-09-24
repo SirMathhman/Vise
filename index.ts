@@ -20,6 +20,8 @@ type RequestMessage =
 
 type ToolResponse = { content: string };
 
+const DEFAULT_LIST_LIMIT = 200;
+
 const LIST_FILES_TOOL = {
   type: "function",
   function: {
@@ -32,6 +34,11 @@ const LIST_FILES_TOOL = {
           type: "string",
           description:
             "The directory to list. Defaults to the current working directory.",
+        },
+        limit: {
+          type: "integer",
+          description:
+            "Maximum number of entries to return. Defaults to 200.",
         },
       },
       required: [] as string[],
@@ -77,15 +84,31 @@ async function executeToolCall(call: ToolCall): Promise<ToolResponse> {
       typeof args["path"] === "string" && args["path"] !== ""
         ? args["path"]
         : process.cwd();
+    const rawLimit = args["limit"];
+    const limit =
+      typeof rawLimit === "number" && rawLimit > 0
+        ? Math.floor(rawLimit)
+        : DEFAULT_LIST_LIMIT;
     try {
       const entries = await readdir(path, { withFileTypes: true });
-      const items = entries.map((entry: Dirent) => ({
+      const sorted = [...entries].sort((a: Dirent, b: Dirent) =>
+        a.name.localeCompare(b.name),
+      );
+      const total = sorted.length;
+      const items = sorted.slice(0, limit).map((entry: Dirent) => ({
         name: entry.name,
         type: entry.isDirectory() ? "directory" : "file",
       }));
-      return { content: JSON.stringify(items, null, 2) };
+      const result = {
+        total,
+        truncated: total > limit,
+        entries: items,
+      };
+      return { content: JSON.stringify(result, null, 2) };
     } catch (err) {
-      return { content: `Error: ${err instanceof Error ? err.message : String(err)}` };
+      return {
+        content: `Error: ${err instanceof Error ? err.message : String(err)}`,
+      };
     }
   }
   return { content: `Unknown tool: ${call.function.name}` };
