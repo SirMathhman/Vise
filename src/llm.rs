@@ -41,10 +41,10 @@ pub async fn send_streaming(
     });
 
     let mut req = client.post(format!("{BASE_URL}/v1/chat/completions"));
-    if let Ok(key) = std::env::var("LLAMA_API_KEY") {
-        if !key.is_empty() {
-            req = req.header("Authorization", format!("Bearer {key}"));
-        }
+    if let Ok(key) = std::env::var("LLAMA_API_KEY")
+        && !key.is_empty()
+    {
+        req = req.header("Authorization", format!("Bearer {key}"));
     }
     let resp = req
         .json(&body)
