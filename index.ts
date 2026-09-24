@@ -2,6 +2,11 @@ import { createInterface } from "node:readline";
 
 const BASE_URL = "http://localhost:8080";
 
+type ChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
 async function getModelName(): Promise<string> {
   const res = await fetch(`${BASE_URL}/v1/models`);
   if (!res.ok) return "local";
@@ -9,13 +14,13 @@ async function getModelName(): Promise<string> {
   return data.data?.[0]?.id ?? "local";
 }
 
-async function send(message: string, model: string): Promise<string> {
+async function send(history: ChatMessage[], model: string): Promise<string> {
   const res = await fetch(`${BASE_URL}/v1/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model,
-      messages: [{ role: "user", content: message }],
+      messages: history,
     }),
   });
   if (!res.ok) {
@@ -32,6 +37,7 @@ async function main(): Promise<void> {
   console.log(`Model: ${model}`);
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const history: ChatMessage[] = [];
 
   const ask = (): void => {
     rl.question("> ", async (line?: string) => {
@@ -44,10 +50,13 @@ async function main(): Promise<void> {
         ask();
         return;
       }
+      history.push({ role: "user", content: text });
       try {
-        const reply = await send(text, model);
+        const reply = await send(history, model);
+        history.push({ role: "assistant", content: reply });
         console.log(reply);
       } catch (err) {
+        history.pop();
         console.error(
           `Error: ${err instanceof Error ? err.message : String(err)}`,
         );
