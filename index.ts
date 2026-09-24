@@ -1,16 +1,16 @@
 import { createInterface } from "node:readline";
-import { BASE_URL, authHeaders, loadEnv } from "./src/config";
+import { BASE_URL, authHeaders, getApiKey, loadEnv } from "./src/config";
 
 type ChatMessage = {
   role: "user" | "assistant";
   content: string;
 };
 
-async function getModelName(): Promise<string> {
+async function getModelName(): Promise<string | undefined> {
   const res = await fetch(`${BASE_URL}/v1/models`, { headers: authHeaders() });
-  if (!res.ok) return "local";
+  if (!res.ok) return undefined;
   const data = (await res.json()) as { data?: { id?: string }[] };
-  return data.data?.[0]?.id ?? "local";
+  return data.data?.[0]?.id;
 }
 
 async function send(history: ChatMessage[], model: string): Promise<string> {
@@ -31,9 +31,28 @@ async function send(history: ChatMessage[], model: string): Promise<string> {
   return data.choices?.[0]?.message?.content ?? "";
 }
 
+function maskKey(key: string): string {
+  if (key.length <= 8) return "***";
+  return `${key.slice(0, 4)}\u2026${key.slice(-4)} (${key.length} chars)`;
+}
+
+function printEnvInfo(model: string): void {
+  const apiKey = getApiKey();
+  console.log(`Server:  ${BASE_URL}`);
+  console.log(`Model:   ${model}`);
+  console.log(`API key: ${apiKey ? maskKey(apiKey) : "not set"}`);
+  console.log(
+    `Runtime: ${process.version} (${process.platform}/${process.arch})`,
+  );
+}
+
 async function main(): Promise<void> {
   loadEnv();
   const model = await getModelName();
+  if (model === undefined) {
+    console.error(`No model reported by ${BASE_URL}/v1/models; is the server running?`);
+    process.exit(1);
+  }
   console.log(`Model: ${model}`);
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -47,6 +66,11 @@ async function main(): Promise<void> {
         return;
       }
       if (!text) {
+        ask();
+        return;
+      }
+      if (text.toLowerCase() === "/whoami") {
+        printEnvInfo(model);
         ask();
         return;
       }
