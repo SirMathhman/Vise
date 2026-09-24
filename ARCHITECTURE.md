@@ -22,26 +22,32 @@ Single user-facing surface: a line-based chat loop. No network other than the lo
 
 ```
 vise/
-  index.ts        # entry point: parse config, construct client, run REPL
+  index.ts        # wiring only: main()
   src/
-    config.ts     # load/validate config (env vars, CLI flags, defaults)
-    client.ts     # LlamaClient: listModels(), chat(messages, model) -> Reply
-    tools.ts      # Tool definitions (OpenAI schema) + executor (filesystem access)
-    repl.ts       # runRepl(client, opts): prompt loop, /whoami, /model, exit, /clear, /exit
+    client.ts     # send(), listModels()
+    tools.ts      # tool definitions, executeToolCall()
+    repl.ts       # ask(), handleCommand(), printEnvInfo(), maskKey()
+    config.ts     # BASE_URL, loadEnv(), getApiKey(), authHeaders()
+    types.ts      # RequestMessage, ToolCall, ToolResponse, ReplState, ReplDeps, ListModelsResult
   ARCHITECTURE.md # this file
 ```
 
 Dependency direction (strictly one-way):
 
 ```
-index.ts ──► config ──► client ──► (fetch)
-   └──────► repl ──► client ──► tools
+index.ts ──► client ──► config
+  │        ──► tools  ──► (none)
+  │        ──► repl   ──► config
+  └────────► types    (types-only, no runtime imports)
 ```
 
 Rules:
 
-- `repl.ts` receives a client as a dependency; it never imports `fetch` or `config`.
-- `client.ts` receives its base URL and model from `config`; it never reads env vars.
+- `repl.ts` receives its dependencies as a parameter; it never imports `fetch` or `config`.
+- `client.ts` owns the HTTP client (`send`) and model discovery (`listModels`).
+  It imports tool execution from `tools.ts` and config from `config.ts`.
+- `tools.ts` owns tool definitions and execution; it has no runtime dependencies
+  beyond Node builtins.
 - `index.ts` wires everything together and owns process-level concerns
   (startup errors, exit codes, `process.exit`).
 - No module imports `index.ts`.
@@ -97,21 +103,17 @@ History invariants:
 
 ## Future Work
 
-1. **Split `index.ts`** into `src/client.ts`, `src/repl.ts`, `src/config.ts`
-   per the structure above. `index.ts` becomes ~15 lines of wiring.
-2. **Commands** in the REPL: `/whoami` (environment), `/model [name]` (list or switch
-   the active model), `/clear` (reset history to `[]`), and `/exit` (alias `exit`/`quit`).
-   As commands accumulate, extract a `handleCommand(text, session, client): Promise<boolean>`
-   so `ask()` stays a thin prompt → dispatch → history → send loop.
-3. **Structured error type** in `client.ts`: a `ClientError` discriminated union
+1. **Commands** in the REPL: `/clear` (reset history to `[]`), and `/exit`
+   (alias `exit`/`quit`). `/whoami` and `/model` are done.
+2. **Structured error type** in `src/client.ts`: a `ClientError` discriminated union
    (`{ kind: "http", status, statusText } | { kind: "network", cause }`) instead
-   of plain `Error`. `repl.ts` maps kinds to user-facing messages.
-4. **Config from env/CLI**: `VISE_BASE_URL`, `VISE_MODEL`, or `--base-url` /
+   of plain `Error`. `src/repl.ts` maps kinds to user-facing messages.
+3. **Config from env/CLI**: `VISE_BASE_URL`, `VISE_MODEL`, or `--base-url` /
    `--model` flags. `config.ts` validates and merges; no other module reads env.
-5. **Streaming**: `chat` gains an `onChunk` callback or returns an `AsyncIterable`.
+4. **Streaming**: `chat` gains an `onChunk` callback or returns an `AsyncIterable`.
    The REPL prints chunks as they arrive; history still gets the full message
    appended once on completion.
-6. **`system` role**: a `--system` flag or `~/.vise/system.md` file. The client
+5. **`system` role**: a `--system` flag or `~/.vise/system.md` file. The client
    prepends a `system` message to the transcript; the REPL never constructs
    messages directly.
 
