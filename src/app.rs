@@ -2,11 +2,24 @@ use crossterm::event::Event;
 use ratatui::DefaultTerminal;
 use tokio::sync::mpsc;
 
+use crate::event;
 use crate::llm;
 use crate::state::App;
 use crate::ui;
 
-pub(crate) async fn app_loop(
+/// Runs the TUI, streaming a single message to the local llama.cpp server.
+pub async fn run() -> color_eyre::Result<()> {
+    let mut terminal = ratatui::try_init()?;
+    let mut app = App::new();
+    let client = reqwest::Client::new();
+    let mut ev_rx = event::start_reader();
+
+    let result = app_loop(&mut terminal, &mut app, &client, &mut ev_rx).await;
+    ratatui::restore();
+    result
+}
+
+async fn app_loop(
     terminal: &mut DefaultTerminal,
     app: &mut App,
     client: &reqwest::Client,
