@@ -1,6 +1,5 @@
 import { createInterface } from "node:readline";
-
-const BASE_URL = "http://localhost:8080";
+import { BASE_URL, authHeaders, loadEnv } from "./src/config";
 
 type ChatMessage = {
   role: "user" | "assistant";
@@ -8,7 +7,7 @@ type ChatMessage = {
 };
 
 async function getModelName(): Promise<string> {
-  const res = await fetch(`${BASE_URL}/v1/models`);
+  const res = await fetch(`${BASE_URL}/v1/models`, { headers: authHeaders() });
   if (!res.ok) return "local";
   const data = (await res.json()) as { data?: { id?: string }[] };
   return data.data?.[0]?.id ?? "local";
@@ -17,7 +16,7 @@ async function getModelName(): Promise<string> {
 async function send(history: ChatMessage[], model: string): Promise<string> {
   const res = await fetch(`${BASE_URL}/v1/chat/completions`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
     body: JSON.stringify({
       model,
       messages: history,
@@ -33,6 +32,7 @@ async function send(history: ChatMessage[], model: string): Promise<string> {
 }
 
 async function main(): Promise<void> {
+  loadEnv();
   const model = await getModelName();
   console.log(`Model: ${model}`);
 
