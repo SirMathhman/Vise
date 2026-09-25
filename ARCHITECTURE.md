@@ -47,11 +47,12 @@ vise/
 
 - **`/exit`** — exits the REPL (also exits on EOF).
 - **`/context`** — prints the current context usage as `Context: <used> / <total> tokens`. `used` is an estimate of the tokens in the system prompt plus all history (`chars / 4`); `total` is `CONTEXT_WINDOW` from `client.rs`. It is a rough estimate, not an exact token count, and does not require a model call.
+- **`/compact`** — manually compresses the older portion of the history into a summary and keeps the last `KEEP_RECENT` (4) messages verbatim. Also fires automatically before a turn when context usage reaches `COMPACTION_THRESHOLD` (80% of `CONTEXT_WINDOW`). Requires a model call to produce the summary.
 
 ## Potential Problems
 
 - **API key in source** — `const API_KEY` will become a git secret. Must move to environment variable or CLI flag before any non-local deployment.
-- **Unbounded history** — `history: Vec<(String, String)>` grows without limit. Will eventually exceed context window. A sliding window or summary-based truncation will be needed; profile real usage before choosing a strategy.
+- **Unbounded history** — resolved by compaction: when context usage crosses `COMPACTION_THRESHOLD` (80% of `CONTEXT_WINDOW`), the older portion of history is compressed into a running summary and the last `KEEP_RECENT` (4) messages are kept verbatim. The summary is folded into the system prompt. The user can also trigger compaction manually with `/compact`. `KEEP_RECENT` and `COMPACTION_THRESHOLD` are module-level constants in `evaluator.rs`.
 - **Multi-line input** — `read_line` gives one line per turn. Block expressions or multi-line prompts will need a continuation prompt or a line editor (`rustyline`). Not a problem until someone needs it.
 - **Blocking client in an async world** — `reqwest::blocking` is fine for a CLI REPL. If the project later adds concurrent features (e.g., streaming tokens, multiple servers), migrate to `tokio` + async `reqwest`. Do not do this preemptively.
 - **No streaming** — responses are buffered. For long completions the user sees a blank prompt for the entire inference time. Streaming (`SSE` / `stream: true`) is the natural next feature but adds significant complexity; only add when the UX cost is real.
@@ -62,7 +63,7 @@ vise/
 - Add `/clear` command to reset `Evaluator` history without restarting.
 - Add integration tests in `vise-core` against a mock HTTP server (`wiremock` or a local `llama-server`) — these need no terminal.
 - Consider streaming responses (`stream: true`) when the blocking UX cost becomes real.
-- Add history truncation strategy (sliding window or summary) before context window is hit in practice.
+- Tune `KEEP_RECENT` and `COMPACTION_THRESHOLD` based on real-world usage and model behavior.
 
 ## Performance
 

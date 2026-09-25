@@ -35,7 +35,21 @@ fn main() {
                     line.clear();
                     continue;
                 }
+                if input == "/compact" {
+                    match evaluator.compact(&client) {
+                        Ok(()) => println!("Compacted context."),
+                        Err(e) => eprintln!("error: {e}"),
+                    }
+                    line.clear();
+                    continue;
+                }
                 if !input.is_empty() {
+                    if evaluator.should_compact() {
+                        match evaluator.compact(&client) {
+                            Ok(()) => println!("Context compacted."),
+                            Err(e) => eprintln!("error compacting: {e}"),
+                        }
+                    }
                     match evaluator.eval(&client, input) {
                         Ok(result) => println!("{result}"),
                         Err(e) => eprintln!("error: {e}"),

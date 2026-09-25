@@ -3,6 +3,10 @@ use crate::error::EvalError;
 use crate::tools;
 
 const CHARS_PER_TOKEN: f64 = 4.0;
+/// Fraction of the context window at which compaction fires automatically.
+const COMPACTION_THRESHOLD: f64 = 0.8;
+/// Number of trailing messages kept verbatim after compaction.
+const KEEP_RECENT: usize = 4;
 
 enum ToolCall {
     ReadDir(String),
@@ -38,6 +42,7 @@ fn extract_tool(reply: &str) -> Option<ToolCall> {
 pub struct Evaluator {
     history: Vec<(String, String)>, // (role, content)
     cwd: String,
+    summary: String, // running summary of compacted (older) context; empty when none
 }
 
 impl Evaluator {
@@ -45,6 +50,7 @@ impl Evaluator {
         Self {
             history: vec![],
             cwd,
+            summary: String::new(),
         }
     }
 
@@ -56,15 +62,98 @@ impl Evaluator {
         (chars as f64 / CHARS_PER_TOKEN) as usize
     }
 
+    /// Returns `true` once context usage has crossed the compaction threshold.
+    pub fn should_compact(&self) -> bool {
+        (self.context_used() as f64)
+            >= (crate::client::CONTEXT_WINDOW as f64) * COMPACTION_THRESHOLD
+    }
+
+    /// Compresses the older portion of the history into a running summary,
+    /// keeping the trailing `KEEP_RECENT` messages verbatim.
+    pub fn compact(&mut self, client: &reqwest::blocking::Client) -> Result<(), EvalError> {
+        if self.history.len() <= KEEP_RECENT {
+            return Ok(());
+        }
+        let split = self.history.len() - KEEP_RECENT;
+        let older: Vec<Msg> = self.history[..split]
+            .iter()
+            .map(|(role, content)| Msg {
+                role: role.as_str(),
+                content: content.as_str(),
+            })
+            .collect();
+        let system_content = if self.summary.is_empty() {
+            "You are a conversation summarizer. Produce a single concise summary of the \
+             conversation below that preserves the key facts, decisions, file paths, \
+             code, and current state so the conversation can continue without the \
+             original messages."
+                .to_string()
+        } else {
+            format!(
+                "You are a conversation summarizer. An earlier summary of this \
+                 conversation is provided below, followed by newer messages. Produce a \
+                 single updated summary that incorporates the existing summary and the \
+                 new messages, preserving the key facts, decisions, file paths, code, \
+                 and current state so the conversation can continue without the original \
+                 messages.\n\nExisting summary:\n{}",
+                self.summary
+            )
+        };
+        let mut messages: Vec<Msg> = vec![Msg {
+            role: "system",
+            content: &system_content,
+        }];
+        messages.extend(older);
+        messages.push(Msg {
+            role: "user",
+            content: "Summarize this conversation.",
+        });
+        let body = ChatRequest { model: MODEL, messages };
+        let resp = client
+            .post(format!("{BASE_URL}/v1/chat/completions"))
+            .header("Authorization", format!("Bearer {API_KEY}"))
+            .json(&body)
+            .send()
+            .map_err(EvalError::Request)?;
+        if !resp.status().is_success() {
+            let status = resp.status().as_u16();
+            let body = resp.text().unwrap_or_default();
+            return Err(EvalError::Response { status, body });
+        }
+        let resp: ChatResponse = resp.json().map_err(|_| EvalError::BadJson)?;
+        let summary = resp
+            .choices
+            .first()
+            .map(|c| c.message.content.clone())
+            .unwrap_or_default();
+        if summary.trim().is_empty() {
+            return Err(EvalError::Response {
+                status: 200,
+                body: "empty summary".into(),
+            });
+        }
+        self.summary = summary;
+        self.history = self.history[split..].to_vec();
+        Ok(())
+    }
+
     fn system_prompt(&self) -> String {
-        format!(
+        let base = format!(
             "You are an agent running in a terminal. Your current working directory is: {}. \
              If you need to read a directory's contents, respond with a line containing \
              read_dir(\"<path>\"). If you need to read a file's contents, respond with a \
              line containing read_file(\"<path>\"). In both cases <path> is relative to the \
              working directory.",
             self.cwd
-        )
+        );
+        if self.summary.is_empty() {
+            base
+        } else {
+            format!(
+                "{}\n\nEarlier in this conversation, here is a summary of what happened:\n{}",
+                base, self.summary
+            )
+        }
     }
 
     pub fn eval(
