@@ -3,6 +3,7 @@ use std::io::{self, BufRead, Write};
 mod client;
 mod evaluator;
 mod error;
+mod tools;
 
 use evaluator::Evaluator;
 

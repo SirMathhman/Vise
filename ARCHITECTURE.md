@@ -14,13 +14,14 @@
 vise/
 ├── src/
 │   ├── main.rs       // Entry point: owns Client + Evaluator, REPL loop
-│   ├── evaluator.rs  // Evaluator struct: owns history Vec<(role, content)>, tool extraction, fn eval(&mut self) -> Result<String, EvalError>
+│   ├── evaluator.rs  // Evaluator state machine: owns history Vec<(role, content)>, parses tool calls (ToolCall, extract_tool), fn eval(&mut self) -> Result<String, EvalError>
+│   ├── tools.rs      // Tool I/O + result types: DirListing/DirEntry/EntryKind/FileContent, read_dir/read_file, format_listing/format_file
 │   ├── client.rs     // reqwest Client consts (BASE_URL, API_KEY, MODEL); typed request/response structs
 │   └── error.rs      // EvalError enum + Display impl
 ```
 
-**Dependency direction:** `main → repl → evaluator → client → error`. No upward or circular dependencies.
-`client` is a leaf that knows only about the llama.cpp HTTP API. `evaluator` is pure logic (no I/O beyond calling `client`). `repl` owns the loop but delegates evaluation. `main` wires everything together.
+**Dependency direction:** `main → evaluator → {tools, client, error}`. No upward or circular dependencies.
+`client` is a leaf that knows only about the llama.cpp HTTP API. `tools` owns filesystem I/O and the result types for each tool. `evaluator` is the state machine (no filesystem I/O — it delegates to `tools`). `main` owns the REPL loop, wires everything together, and declares the modules.
 
 ### Crate layout (when the binary outgrows ~500 lines)
 
@@ -36,7 +37,7 @@ vise/
 
 ## Tools
 
-- **`read_dir`** — lets the agent inspect a directory's contents. The system message tells the model it may emit `read_dir("<path>")` in its reply. `Evaluator::eval` loops over turns: it sends a request, and if the reply contains a tool call, the REPL executes it, feeds the result back as the next user message, and asks the model again — until the model gives a final answer.
+- **`read_dir`** — lets the agent inspect a directory's contents. The system message tells the model it may emit `read_dir("<path>")` in its reply. `Evaluator::eval` loops over turns: it sends a request, and if the reply contains a tool call, it executes it via `tools.rs`, feeds the result back as the next user message, and asks the model again — until the model gives a final answer.
 - **`read_file`** — lets the agent read a file's contents. Same loop: the model emits `read_file("<path>")`, the REPL reads the file (capped, see below) and feeds it back.
 - **Detection** — `extract_tool` scans the reply for the first `read_dir(` or `read_file(` marker and pulls out the quoted path, dispatching to the matching handler. Both tools share the same text protocol; no extra schema or dependencies.
 - **Path resolution** — the argument is relative to the CWD (the same value injected into the system message), resolved via `base.join(path)`.
