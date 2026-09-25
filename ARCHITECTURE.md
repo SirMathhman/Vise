@@ -13,10 +13,9 @@
 ```
 vise/
 ├── src/
-│   ├── main.rs       // Thin entry point: arg/env parsing, owns Client + Evaluator, REPL loop
-│   ├── repl.rs       // Prompt loop, line reading, command dispatch, empty-line skip
-│   ├── evaluator.rs  // Evaluator struct: owns Vec<Msg>, fn eval(&mut self) -> Result<String, EvalError>
-│   ├── client.rs     // LlmClient: wraps reqwest::blocking::Client, BASE_URL, API_KEY; typed request/response structs
+│   ├── main.rs       // Entry point: owns Client + Evaluator, REPL loop
+│   ├── evaluator.rs  // Evaluator struct: owns history Vec<(role, content)>, tool extraction, fn eval(&mut self) -> Result<String, EvalError>
+│   ├── client.rs     // reqwest Client consts (BASE_URL, API_KEY, MODEL); typed request/response structs
 │   └── error.rs      // EvalError enum + Display impl
 ```
 
@@ -37,9 +36,11 @@ vise/
 
 ## Tools
 
-- **`read_dir`** — lets the agent inspect a directory's contents. The system message tells the model it may emit `read_dir("<path>")` in its reply. `Evaluator::eval` loops over turns: it sends a request, and if the reply contains a `read_dir` call, the REPL executes a streaming, capped listing (`read_dir` fn), feeds the result back as the next user message, and asks the model again — until the model gives a final answer.
+- **`read_dir`** — lets the agent inspect a directory's contents. The system message tells the model it may emit `read_dir("<path>")` in its reply. `Evaluator::eval` loops over turns: it sends a request, and if the reply contains a tool call, the REPL executes it, feeds the result back as the next user message, and asks the model again — until the model gives a final answer.
+- **`read_file`** — lets the agent read a file's contents. Same loop: the model emits `read_file("<path>")`, the REPL reads the file (capped, see below) and feeds it back.
+- **Detection** — `extract_tool` scans the reply for the first `read_dir(` or `read_file(` marker and pulls out the quoted path, dispatching to the matching handler. Both tools share the same text protocol; no extra schema or dependencies.
 - **Path resolution** — the argument is relative to the CWD (the same value injected into the system message), resolved via `base.join(path)`.
-- **Arbitrarily sized** — the listing streams through `std::fs::read_dir` and stops at `MAX_LISTING_ENTRIES`, so a huge directory never materializes all entries in memory or overflows the model's context.
+- **Arbitrarily sized** — `read_dir` streams through `std::fs::read_dir` and stops at `MAX_LISTING_ENTRIES`; `read_file` reads at most `MAX_FILE_BYTES` (32 KiB) into a single buffer. A huge directory or file never materializes more than the cap in memory or overflows the model's context; the result is marked `truncated` and the model is told so in the header.
 
 ## Potential Problems
 
@@ -52,7 +53,6 @@ vise/
 ## Future Work
 
 - Move `API_KEY` to `std::env::var("VISE_API_KEY")` with a compile-time default for local dev.
-- Extract `repl.rs` / `evaluator.rs` / `client.rs` / `error.rs` from `main.rs` once the file exceeds ~200 lines or a second input source is added.
 - Add `/clear` command to reset `Evaluator` history without restarting.
 - Add integration tests in `vise-core` against a mock HTTP server (`wiremock` or a local `llama-server`) — these need no terminal.
 - Consider streaming responses (`stream: true`) when the blocking UX cost becomes real.
