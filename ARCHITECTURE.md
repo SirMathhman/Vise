@@ -35,6 +35,12 @@ vise/
 
 `vise-core` is the unit under test: `Evaluator` + `LlmClient` can be exercised against a mock server without a terminal.
 
+## Tools
+
+- **`read_dir`** — lets the agent inspect a directory's contents. The system message tells the model it may emit `read_dir("<path>")` in its reply. `Evaluator::eval` loops over turns: it sends a request, and if the reply contains a `read_dir` call, the REPL executes a streaming, capped listing (`read_dir` fn), feeds the result back as the next user message, and asks the model again — until the model gives a final answer.
+- **Path resolution** — the argument is relative to the CWD (the same value injected into the system message), resolved via `base.join(path)`.
+- **Arbitrarily sized** — the listing streams through `std::fs::read_dir` and stops at `MAX_LISTING_ENTRIES`, so a huge directory never materializes all entries in memory or overflows the model's context.
+
 ## Potential Problems
 
 - **API key in source** — `const API_KEY` will become a git secret. Must move to environment variable or CLI flag before any non-local deployment.

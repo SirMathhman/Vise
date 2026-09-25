@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 const API_KEY: &str = "S6677k5w355Nw9ErxCZWYCMiW4ItldmzXBLUElpnLsdE8gBj5A";
 const BASE_URL: &str = "http://localhost:8080";
 const MODEL: &str = "RentedNoodle/Qwen3.8-27B-OrcaRouter-GSQ-RCO-IQ3_XXS-Uncensored:QATFA";
+const MAX_LISTING_ENTRIES: usize = 500;
 
 #[derive(Serialize)]
 struct ChatRequest<'a> {
@@ -34,6 +35,26 @@ struct ChatMessage {
     content: String,
 }
 
+#[derive(Deserialize)]
+struct DirListing {
+    entries: Vec<DirEntry>,
+    found: bool,
+    truncated: bool,
+}
+
+#[derive(Deserialize)]
+struct DirEntry {
+    name: String,
+    size: u64,
+    kind: EntryKind,
+}
+
+#[derive(Deserialize)]
+enum EntryKind {
+    File,
+    Dir,
+}
+
 #[derive(Debug)]
 enum EvalError {
     Request(reqwest::Error),
@@ -53,6 +74,69 @@ impl fmt::Display for EvalError {
     }
 }
 
+fn read_dir(path: &str, base: &std::path::Path) -> DirListing {
+    let dir_path = base.join(path);
+    let mut entries: Vec<DirEntry> = Vec::new();
+    let mut found = false;
+    let mut truncated = false;
+
+    if let Ok(dir) = std::fs::read_dir(&dir_path) {
+        found = true;
+        for entry in dir {
+            match entry {
+                Ok(entry) => {
+                    let name = entry.file_name().to_string_lossy().into_owned();
+                    let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                    let kind = match entry.file_type() {
+                        Ok(t) if t.is_dir() => EntryKind::Dir,
+                        _ => EntryKind::File,
+                    };
+                    entries.push(DirEntry { name, size, kind });
+                }
+                Err(_) => continue,
+            }
+            if entries.len() >= MAX_LISTING_ENTRIES {
+                truncated = true;
+                break;
+            }
+        }
+    }
+
+    DirListing { entries, found, truncated }
+}
+
+fn extract_dir(reply: &str) -> Option<String> {
+    let start = reply.find("read_dir(")?;
+    let after_open = &reply[start + "read_dir(".len()..];
+    let quote = after_open.find('"')?;
+    let after_quote = &after_open[quote + 1..];
+    let end = after_quote.find('"')?;
+    let path = &after_quote[..end];
+    if path.is_empty() {
+        None
+    } else {
+        Some(path.to_string())
+    }
+}
+
+fn format_listing(dir: &str, listing: &DirListing) -> String {
+    let mut out = String::new();
+    if !listing.found {
+        out.push_str(&format!("Listing of \"{}\": not found\n", dir));
+        return out;
+    }
+    let count = listing.entries.len();
+    let note = if listing.truncated { " (truncated)" } else { "" };
+    out.push_str(&format!("Listing of \"{}\" ({} entries{})\n", dir, count, note));
+    for e in &listing.entries {
+        match e.kind {
+            EntryKind::Dir => out.push_str(&format!("- {}\n", e.name)),
+            EntryKind::File => out.push_str(&format!("- {} ({} bytes)\n", e.name, e.size)),
+        }
+    }
+    out
+}
+
 struct Evaluator {
     history: Vec<(String, String)>, // (role, content)
     cwd: String,
@@ -66,8 +150,28 @@ impl Evaluator {
     fn eval(&mut self, client: &reqwest::blocking::Client, input: &str) -> Result<String, EvalError> {
         self.history.push(("user".into(), input.into()));
 
+        loop {
+            let reply = self.send_turn(client)?;
+            match extract_dir(&reply) {
+                Some(path) => {
+                    let listing = read_dir(&path, std::path::Path::new(&self.cwd));
+                    let text = format_listing(&path, &listing);
+                    self.history.push(("assistant".into(), reply));
+                    self.history.push(("user".into(), text));
+                }
+                None => {
+                    self.history.push(("assistant".into(), reply.clone()));
+                    return Ok(reply);
+                }
+            }
+        }
+    }
+
+    fn send_turn(&self, client: &reqwest::blocking::Client) -> Result<String, EvalError> {
         let system = format!(
-            "You are an agent running in a terminal. Your current working directory is: {}",
+            "You are an agent running in a terminal. Your current working directory is: {}. \
+             If you need to read a directory's contents, respond with a line containing \
+             read_dir(\"<path>\") where <path> is relative to the working directory.",
             self.cwd
         );
         let mut messages: Vec<Msg> = vec![Msg {
@@ -104,7 +208,6 @@ impl Evaluator {
             .first()
             .map(|c| c.message.content.clone())
             .unwrap_or_default();
-        self.history.push(("assistant".into(), reply.clone()));
         Ok(reply)
     }
 }
