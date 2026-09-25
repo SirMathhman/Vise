@@ -1,3 +1,4 @@
+use std::fmt;
 use std::io::{self, BufRead, Write};
 
 use serde::{Deserialize, Serialize};
@@ -35,8 +36,68 @@ struct ChatMessage {
 
 #[derive(Debug)]
 enum EvalError {
-    Io(std::io::Error),
     Request(reqwest::Error),
+    Response { status: u16, body: String },
+    BadJson,
+}
+
+impl fmt::Display for EvalError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            EvalError::Request(e) => write!(f, "request failed: {e}"),
+            EvalError::Response { status, body } => {
+                write!(f, "server returned {status}: {body}")
+            }
+            EvalError::BadJson => write!(f, "server returned invalid JSON"),
+        }
+    }
+}
+
+struct Evaluator {
+    history: Vec<(String, String)>, // (role, content)
+}
+
+impl Evaluator {
+    fn new() -> Self {
+        Self { history: vec![] }
+    }
+
+    fn eval(&mut self, client: &reqwest::blocking::Client, input: &str) -> Result<String, EvalError> {
+        self.history.push(("user".into(), input.into()));
+
+        let messages: Vec<Msg> = self
+            .history
+            .iter()
+            .map(|(role, content)| Msg { role, content })
+            .collect();
+        let body = ChatRequest {
+            model: MODEL,
+            messages,
+        };
+
+        let resp = client
+            .post(format!("{BASE_URL}/v1/chat/completions"))
+            .header("Authorization", format!("Bearer {API_KEY}"))
+            .json(&body)
+            .send()
+            .map_err(EvalError::Request)?;
+
+        if !resp.status().is_success() {
+            let status = resp.status().as_u16();
+            let body = resp.text().unwrap_or_default();
+            return Err(EvalError::Response { status, body });
+        }
+
+        let resp: ChatResponse = resp.json().map_err(|_| EvalError::BadJson)?;
+
+        let reply = resp
+            .choices
+            .first()
+            .map(|c| c.message.content.clone())
+            .unwrap_or_default();
+        self.history.push(("assistant".into(), reply.clone()));
+        Ok(reply)
+    }
 }
 
 fn main() {
@@ -44,6 +105,7 @@ fn main() {
     let stdin = io::stdin();
     let mut stdout = io::stdout();
     let mut line = String::new();
+    let mut evaluator = Evaluator::new();
 
     loop {
         print!("> ");
@@ -56,38 +118,15 @@ fn main() {
                 if input == "/exit" {
                     break;
                 }
-                match eval(&client, input) {
-                    Ok(result) => println!("{result}"),
-                    Err(e) => eprintln!("error: {e:?}"),
+                if !input.is_empty() {
+                    match evaluator.eval(&client, input) {
+                        Ok(result) => println!("{result}"),
+                        Err(e) => eprintln!("error: {e}"),
+                    }
                 }
                 line.clear();
             }
             Err(_) => break,
         }
     }
-}
-
-fn eval(client: &reqwest::blocking::Client, input: &str) -> Result<String, EvalError> {
-    let body = ChatRequest {
-        model: MODEL,
-        messages: vec![Msg {
-            role: "user",
-            content: input,
-        }],
-    };
-
-    let resp: ChatResponse = client
-        .post(format!("{BASE_URL}/v1/chat/completions"))
-        .header("Authorization", format!("Bearer {API_KEY}"))
-        .json(&body)
-        .send()
-        .map_err(EvalError::Request)?
-        .json()
-        .map_err(|_| EvalError::Io(io::Error::new(io::ErrorKind::Other, "bad JSON response")))?;
-
-    Ok(resp
-        .choices
-        .first()
-        .map(|c| c.message.content.clone())
-        .unwrap_or_default())
 }
