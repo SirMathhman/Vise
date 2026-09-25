@@ -49,9 +49,9 @@ impl Evaluator {
     }
 
     pub fn context_used(&self) -> usize {
-        let mut chars = self.system_prompt().len();
+        let mut chars = self.system_prompt().chars().count();
         for (_, content) in &self.history {
-            chars += content.len();
+            chars += content.chars().count();
         }
         (chars as f64 / CHARS_PER_TOKEN) as usize
     }

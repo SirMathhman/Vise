@@ -5,7 +5,7 @@
 - **REPL** — the interactive read-eval-print loop. The only user-facing entry point.
 - **Evaluator** — an object that owns conversation state (a growing `Vec<Msg>`) and, per turn, sends the full history to the LLM and appends the reply. Stateless HTTP calls are the _mechanism_; the Evaluator is the _state machine_.
 - **EvalError** — a structured, non-panicking error enum that answers: what went wrong, why, and how to fix it. Must distinguish transport failure (no server, DNS) from application failure (401, 404, 500) from decode failure (valid HTTP, wrong JSON shape).
-- **Command** — a user-typed line that is not sent to the model (`/exit`, `/clear`, `/help`). Intercepted by the REPL, not the Evaluator.
+- **Command** — a user-typed line that is not sent to the model (`/exit`, `/context`). Intercepted by the REPL, not the Evaluator.
 - **Turn** — one user line + one model reply. The unit of history.
 
 ## Structure
