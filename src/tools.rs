@@ -32,6 +32,11 @@ pub struct FileContent {
     pub error: Option<String>,
 }
 
+#[derive(Deserialize)]
+pub struct DirCreated {
+    pub error: Option<String>,
+}
+
 pub fn read_dir(path: &str, base: &std::path::Path) -> DirListing {
     let dir_path = base.join(path);
     let mut entries: Vec<DirEntry> = Vec::new();
@@ -97,6 +102,16 @@ pub fn read_file(path: &str, base: &std::path::Path) -> FileContent {
     FileContent { content, truncated, error }
 }
 
+pub fn create_dir(path: &str, base: &std::path::Path) -> DirCreated {
+    let dir_path = base.join(path);
+    match std::fs::create_dir_all(&dir_path) {
+        Ok(()) => DirCreated { error: None },
+        Err(e) => DirCreated {
+            error: Some(e.to_string()),
+        },
+    }
+}
+
 pub fn format_listing(dir: &str, listing: &DirListing) -> String {
     let mut out = String::new();
     if !listing.found {
@@ -119,9 +134,8 @@ pub fn format_listing(dir: &str, listing: &DirListing) -> String {
 }
 
 pub fn format_file(path: &str, file: &FileContent) -> String {
-    match &file.error {
-        Some(e) => return format!("File \"{}\": {}\n", path, e),
-        None => {}
+    if let Some(e) = &file.error {
+        return format!("File \"{}\": {}\n", path, e);
     }
     let note = if file.truncated { " (truncated)" } else { "" };
     format!(
@@ -131,4 +145,11 @@ pub fn format_file(path: &str, file: &FileContent) -> String {
         note,
         file.content
     )
+}
+
+pub fn format_create_dir(path: &str, result: &DirCreated) -> String {
+    match &result.error {
+        Some(e) => format!("Directory \"{}\": {}\n", path, e),
+        None => format!("Created directory \"{}\"\n", path),
+    }
 }

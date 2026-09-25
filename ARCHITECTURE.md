@@ -15,7 +15,7 @@ vise/
 ├── src/
 │   ├── main.rs       // Entry point: owns Client + Evaluator, REPL loop
 │   ├── evaluator.rs  // Evaluator state machine: owns history Vec<(role, content)>, parses tool calls (ToolCall, extract_tool), fn eval(&mut self) -> Result<String, EvalError>
-│   ├── tools.rs      // Tool I/O + result types: DirListing/DirEntry/EntryKind/FileContent, read_dir/read_file, format_listing/format_file
+│   ├── tools.rs      // Tool I/O + result types: DirListing/DirEntry/EntryKind/FileContent/DirCreated, read_dir/read_file/create_dir, format_listing/format_file/format_create_dir
 │   ├── client.rs     // reqwest Client consts (BASE_URL, API_KEY, MODEL); typed request/response structs
 │   └── error.rs      // EvalError enum + Display impl
 ```
@@ -39,7 +39,8 @@ vise/
 
 - **`read_dir`** — lets the agent inspect a directory's contents. The system message tells the model it may emit `read_dir("<path>")` in its reply. `Evaluator::eval` loops over turns: it sends a request, and if the reply contains a tool call, it executes it via `tools.rs`, feeds the result back as the next user message, and asks the model again — until the model gives a final answer.
 - **`read_file`** — lets the agent read a file's contents. Same loop: the model emits `read_file("<path>")`, the REPL reads the file (capped, see below) and feeds it back.
-- **Detection** — `extract_tool` scans the reply for the first `read_dir(` or `read_file(` marker and pulls out the quoted path, dispatching to the matching handler. Both tools share the same text protocol; no extra schema or dependencies.
+- **`create_dir`** — lets the agent create a directory (including any missing parent directories, like `mkdir -p`). The model emits `create_dir("<path>")`, `tools.rs` calls `std::fs::create_dir_all`, and the result is fed back. Idempotent: creating an already-existing directory succeeds.
+- **Detection** — `extract_tool` scans the reply for the first `read_dir(`, `read_file(`, or `create_dir(` marker and pulls out the quoted path, dispatching to the matching handler. All tools share the same text protocol; no extra schema or dependencies.
 - **Path resolution** — the argument is relative to the CWD (the same value injected into the system message), resolved via `base.join(path)`.
 - **Arbitrarily sized** — `read_dir` streams through `std::fs::read_dir` and stops at `MAX_LISTING_ENTRIES`; `read_file` reads at most `MAX_FILE_BYTES` (32 KiB) into a single buffer. A huge directory or file never materializes more than the cap in memory or overflows the model's context; the result is marked `truncated` and the model is told so in the header.
 

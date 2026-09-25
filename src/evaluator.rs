@@ -11,20 +11,22 @@ const KEEP_RECENT: usize = 4;
 enum ToolCall {
     ReadDir(String),
     ReadFile(String),
+    CreateDir(String),
 }
 
 fn extract_tool(reply: &str) -> Option<ToolCall> {
-    let dir_pos = reply.find("read_dir(");
-    let file_pos = reply.find("read_file(");
-    let marker = match (dir_pos, file_pos) {
-        (Some(d), Some(f)) => {
-            if f < d { "read_file(" } else { "read_dir(" }
+    // Find the earliest-occurring tool marker in the reply. Markers are
+    // distinct (none is a substring of another), so this is unambiguous.
+    let markers: [&str; 3] = ["read_dir(", "read_file(", "create_dir("];
+    let mut best: Option<(usize, &str)> = None;
+    for marker in markers {
+        if let Some(pos) = reply.find(marker)
+            && best.as_ref().map(|(p, _)| pos < *p).unwrap_or(true)
+        {
+            best = Some((pos, marker));
         }
-        (Some(_), None) => "read_dir(",
-        (None, Some(_)) => "read_file(",
-        (None, None) => return None,
-    };
-    let start = reply.find(marker).unwrap();
+    }
+    let (start, marker) = best?;
     let after_open = &reply[start + marker.len()..];
     let quote = after_open.find('"')?;
     let after_quote = &after_open[quote + 1..];
@@ -35,7 +37,8 @@ fn extract_tool(reply: &str) -> Option<ToolCall> {
     }
     match marker {
         "read_dir(" => Some(ToolCall::ReadDir(path)),
-        _ => Some(ToolCall::ReadFile(path)),
+        "read_file(" => Some(ToolCall::ReadFile(path)),
+        _ => Some(ToolCall::CreateDir(path)),
     }
 }
 
@@ -142,8 +145,9 @@ impl Evaluator {
             "You are an agent running in a terminal. Your current working directory is: {}. \
              If you need to read a directory's contents, respond with a line containing \
              read_dir(\"<path>\"). If you need to read a file's contents, respond with a \
-             line containing read_file(\"<path>\"). In both cases <path> is relative to the \
-             working directory.",
+             line containing read_file(\"<path>\"). If you need to create a directory, \
+             respond with a line containing create_dir(\"<path>\"). In all cases <path> \
+             is relative to the working directory.",
             self.cwd
         );
         if self.summary.is_empty() {
@@ -175,6 +179,12 @@ impl Evaluator {
                 Some(ToolCall::ReadFile(path)) => {
                     let file = tools::read_file(&path, std::path::Path::new(&self.cwd));
                     let text = tools::format_file(&path, &file);
+                    self.history.push(("assistant".into(), reply));
+                    self.history.push(("user".into(), text));
+                }
+                Some(ToolCall::CreateDir(path)) => {
+                    let result = tools::create_dir(&path, std::path::Path::new(&self.cwd));
+                    let text = tools::format_create_dir(&path, &result);
                     self.history.push(("assistant".into(), reply));
                     self.history.push(("user".into(), text));
                 }
