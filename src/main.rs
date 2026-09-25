@@ -55,21 +55,30 @@ impl fmt::Display for EvalError {
 
 struct Evaluator {
     history: Vec<(String, String)>, // (role, content)
+    cwd: String,
 }
 
 impl Evaluator {
-    fn new() -> Self {
-        Self { history: vec![] }
+    fn new(cwd: String) -> Self {
+        Self { history: vec![], cwd }
     }
 
     fn eval(&mut self, client: &reqwest::blocking::Client, input: &str) -> Result<String, EvalError> {
         self.history.push(("user".into(), input.into()));
 
-        let messages: Vec<Msg> = self
-            .history
-            .iter()
-            .map(|(role, content)| Msg { role, content })
-            .collect();
+        let system = format!(
+            "You are an agent running in a terminal. Your current working directory is: {}",
+            self.cwd
+        );
+        let mut messages: Vec<Msg> = vec![Msg {
+            role: "system",
+            content: &system,
+        }];
+        messages.extend(
+            self.history
+                .iter()
+                .map(|(role, content)| Msg { role, content }),
+        );
         let body = ChatRequest {
             model: MODEL,
             messages,
@@ -105,7 +114,10 @@ fn main() {
     let stdin = io::stdin();
     let mut stdout = io::stdout();
     let mut line = String::new();
-    let mut evaluator = Evaluator::new();
+    let cwd = std::env::current_dir()
+        .map(|p| p.display().to_string())
+        .unwrap_or_default();
+    let mut evaluator = Evaluator::new(cwd);
 
     loop {
         print!("> ");
