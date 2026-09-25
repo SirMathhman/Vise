@@ -5,6 +5,7 @@ mod evaluator;
 mod error;
 mod tools;
 
+use client::CONTEXT_WINDOW;
 use evaluator::Evaluator;
 
 fn main() {
@@ -27,6 +28,12 @@ fn main() {
                 let input = line.trim();
                 if input == "/exit" {
                     break;
+                }
+                if input == "/context" {
+                    let used = evaluator.context_used();
+                    println!("Context: {used} / {CONTEXT_WINDOW} tokens");
+                    line.clear();
+                    continue;
                 }
                 if !input.is_empty() {
                     match evaluator.eval(&client, input) {

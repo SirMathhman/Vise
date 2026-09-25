@@ -43,6 +43,11 @@ vise/
 - **Path resolution** — the argument is relative to the CWD (the same value injected into the system message), resolved via `base.join(path)`.
 - **Arbitrarily sized** — `read_dir` streams through `std::fs::read_dir` and stops at `MAX_LISTING_ENTRIES`; `read_file` reads at most `MAX_FILE_BYTES` (32 KiB) into a single buffer. A huge directory or file never materializes more than the cap in memory or overflows the model's context; the result is marked `truncated` and the model is told so in the header.
 
+## Commands
+
+- **`/exit`** — exits the REPL (also exits on EOF).
+- **`/context`** — prints the current context usage as `Context: <used> / <total> tokens`. `used` is an estimate of the tokens in the system prompt plus all history (`chars / 4`); `total` is `CONTEXT_WINDOW` from `client.rs`. It is a rough estimate, not an exact token count, and does not require a model call.
+
 ## Potential Problems
 
 - **API key in source** — `const API_KEY` will become a git secret. Must move to environment variable or CLI flag before any non-local deployment.

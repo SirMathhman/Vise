@@ -2,6 +2,8 @@ use crate::client::{ChatRequest, ChatResponse, MODEL, API_KEY, BASE_URL, Msg};
 use crate::error::EvalError;
 use crate::tools;
 
+const CHARS_PER_TOKEN: f64 = 4.0;
+
 enum ToolCall {
     ReadDir(String),
     ReadFile(String),
@@ -46,6 +48,25 @@ impl Evaluator {
         }
     }
 
+    pub fn context_used(&self) -> usize {
+        let mut chars = self.system_prompt().len();
+        for (_, content) in &self.history {
+            chars += content.len();
+        }
+        (chars as f64 / CHARS_PER_TOKEN) as usize
+    }
+
+    fn system_prompt(&self) -> String {
+        format!(
+            "You are an agent running in a terminal. Your current working directory is: {}. \
+             If you need to read a directory's contents, respond with a line containing \
+             read_dir(\"<path>\"). If you need to read a file's contents, respond with a \
+             line containing read_file(\"<path>\"). In both cases <path> is relative to the \
+             working directory.",
+            self.cwd
+        )
+    }
+
     pub fn eval(
         &mut self,
         client: &reqwest::blocking::Client,
@@ -77,14 +98,7 @@ impl Evaluator {
     }
 
     fn send_turn(&self, client: &reqwest::blocking::Client) -> Result<String, EvalError> {
-        let system = format!(
-            "You are an agent running in a terminal. Your current working directory is: {}. \
-             If you need to read a directory's contents, respond with a line containing \
-             read_dir(\"<path>\"). If you need to read a file's contents, respond with a \
-             line containing read_file(\"<path>\"). In both cases <path> is relative to the \
-             working directory.",
-            self.cwd
-        );
+        let system = self.system_prompt();
         let mut messages: Vec<Msg> = vec![Msg {
             role: "system",
             content: &system,
