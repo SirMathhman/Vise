@@ -60,6 +60,12 @@ export class Session {
     return runTurn(this.client, this.tools, this.messages, this.toolDefs);
   }
 
+  /**
+   * Render `/context`. Reads the max live on every call (at most one `/slots`
+   * request) and never makes a model call or pushes a message. Do not cache
+   * `contextMax` across turns here: the live read is what keeps the reported
+   * window accurate if the server's window changes.
+   */
   private async reportContext(): Promise<Result<string>> {
     const max = await this.context.contextMax();
     if (!max.ok) return { ok: false, error: max.error };

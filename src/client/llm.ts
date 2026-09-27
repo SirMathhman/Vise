@@ -61,7 +61,8 @@ export class LlmClient implements Client {
         };
       }
       const slots = (await res.json()) as Slot[];
-      const first = Array.isArray(slots) && slots.length > 0 ? slots[0] : undefined;
+      const first =
+        Array.isArray(slots) && slots.length > 0 ? slots[0] : undefined;
       const nCtx = first?.n_ctx;
       if (nCtx === undefined) {
         return {
