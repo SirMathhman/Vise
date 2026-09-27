@@ -5,7 +5,7 @@ import { Session } from "./src/repl/session.ts";
 import { formatError } from "./src/output/format.ts";
 
 const client = new LlmClient();
-const session = new Session(client, toolRunner, tools, process.cwd());
+const session = new Session(client, toolRunner, tools, client, process.cwd());
 
 const rl = createInterface({
   input: process.stdin,
@@ -13,16 +13,19 @@ const rl = createInterface({
   terminal: false,
 });
 
-rl.on("line", async (line) => {
+let chain = Promise.resolve();
+rl.on("line", (line) => {
   if (line.trim() === "") return;
-  const result = await session.handleLine(line);
-  if (result === "exit") {
-    rl.close();
-    return;
-  }
-  if (result.ok) {
-    console.log(result.value);
-  } else {
-    console.error(formatError(result.error));
-  }
+  chain = chain.then(async () => {
+    const result = await session.handleLine(line);
+    if (result === "exit") {
+      rl.close();
+      return;
+    }
+    if (result.ok) {
+      console.log(result.value);
+    } else {
+      console.error(formatError(result.error));
+    }
+  });
 });
