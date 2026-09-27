@@ -45,20 +45,27 @@ const tools: Tool[] = [
     type: "function",
     function: {
       name: "edit_file",
-      description: "Write the full contents of a file to a given path",
+      description:
+        "Replace the first exact occurrence of old_string in a file with new_string. The file can be of arbitrary length; only the changed portion is provided, so the whole file need not be reproduced. old_string must match exactly once.",
       parameters: {
         type: "object",
         properties: {
           path: {
             type: "string",
-            description: "Path of the file to write",
+            description: "Path of the file to edit",
           },
-          content: {
+          old_string: {
             type: "string",
-            description: "Full new contents of the file",
+            description:
+              "Exact literal text to find and replace. Must appear exactly once.",
+          },
+          new_string: {
+            type: "string",
+            description:
+              "Exact literal text to replace old_string with. May be empty to delete.",
           },
         },
-        required: ["path", "content"],
+        required: ["path", "old_string", "new_string"],
       },
     },
   },
@@ -83,12 +90,19 @@ const toolRunner: ToolRunner = {
     }
     if (name === "edit_file") {
       try {
-        writeFileSync(
-          String(args.path ?? ""),
-          String(args.content ?? ""),
-          "utf8",
-        );
-        return `wrote ${String(args.path ?? "")}`;
+        const path = String(args.path ?? "");
+        const old = String(args.old_string ?? "");
+        const next = String(args.new_string ?? "");
+        const current = readFileSync(path, "utf8");
+        const count = current.split(old).length - 1;
+        if (count === 0) {
+          return `error: old_string not found in ${path}`;
+        }
+        if (count > 1) {
+          return `error: old_string appears ${count} times in ${path}; it must be unique`;
+        }
+        writeFileSync(path, current.replace(old, next), "utf8");
+        return `edited ${path}`;
       } catch (err) {
         return err instanceof Error ? err.message : String(err);
       }

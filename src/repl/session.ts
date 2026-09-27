@@ -15,7 +15,12 @@ export class Session {
   private readonly tools: ToolRunner;
   private readonly toolDefs: Tool[];
 
-  constructor(client: Client, tools: ToolRunner, toolDefs: Tool[], cwd: string) {
+  constructor(
+    client: Client,
+    tools: ToolRunner,
+    toolDefs: Tool[],
+    cwd: string,
+  ) {
     this.client = client;
     this.tools = tools;
     this.toolDefs = toolDefs;
