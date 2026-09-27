@@ -1,5 +1,5 @@
 import { createInterface } from "node:readline";
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { LlmClient } from "./src/client/llm.ts";
 import type { Tool } from "./src/client/llm.ts";
 import { runTurn } from "./src/core/engine.ts";
@@ -43,13 +43,34 @@ const tools: Tool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "edit_file",
+      description: "Write the full contents of a file to a given path",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "Path of the file to write",
+          },
+          content: {
+            type: "string",
+            description: "Full new contents of the file",
+          },
+        },
+        required: ["path", "content"],
+      },
+    },
+  },
 ];
 
 const toolRunner: ToolRunner = {
   run(name, args) {
     if (name === "list_directory") {
       try {
-        const entries = readdirSync(args.path ?? ".");
+        const entries = readdirSync(String(args.path ?? "."));
         return entries.join("\n");
       } catch (err) {
         return err instanceof Error ? err.message : String(err);
@@ -58,6 +79,18 @@ const toolRunner: ToolRunner = {
     if (name === "read_file") {
       try {
         return readFileSync(String(args.path ?? ""), "utf8");
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
+    }
+    if (name === "edit_file") {
+      try {
+        writeFileSync(
+          String(args.path ?? ""),
+          String(args.content ?? ""),
+          "utf8",
+        );
+        return `wrote ${String(args.path ?? "")}`;
       } catch (err) {
         return err instanceof Error ? err.message : String(err);
       }
