@@ -5,7 +5,9 @@ const API_KEY = "S6677k5w355Nw9ErxCZWYCMiW4ItldmzXBLUElpnLsdE8gBj5A";
 const MODEL =
   "RentedNoodle/Qwen3.8-27B-OrcaRouter-GSQ-RCO-IQ3_XXS-Uncensored:QATFA";
 
-const messages: { role: "user" | "assistant"; content: string }[] = [];
+const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
+  { role: "system", content: `Working directory: ${process.cwd()}` },
+];
 
 const rl = createInterface({
   input: process.stdin,
