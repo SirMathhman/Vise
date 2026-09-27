@@ -1,17 +1,5 @@
 import type { Message, AssistantMessage, Result } from "../core/errors.ts";
-
-export interface Tool {
-  type: "function";
-  function: {
-    name: string;
-    description: string;
-    parameters: Record<string, unknown>;
-  };
-}
-
-export interface Client {
-  chat(messages: Message[], tools?: Tool[]): Promise<Result<AssistantMessage>>;
-}
+import type { Client, Tool } from "../core/engine.ts";
 
 const URL = "http://localhost:8080/v1/chat/completions";
 const API_KEY = "S6677k5w355Nw9ErxCZWYCMiW4ItldmzXBLUElpnLsdE8gBj5A";

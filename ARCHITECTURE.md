@@ -51,7 +51,7 @@ src/
     terminal.ts     # interactive TTY driver: prompt, echo, readline wiring
     pipe.ts         # piped/script driver: read input to EOF, emit results
   client/
-    llm.ts          # LLM transport: takes messages, returns Result<string>;
+    llm.ts          # LLM transport: implements the core's `Client` type;
                     # wraps fetch, owns URL/key/model config; the sole module
                     # in the tree that performs network I/O
   core/
@@ -84,10 +84,12 @@ Rules:
   session API; choosing between them is driven by
   `process.stdin.isTTY` / argv, not by special-casing inside the loop.
 - `client/llm.ts` is the sole module that performs network I/O. It receives a
-  messages array and returns a `Result<string>`, swallowing all HTTP and
-  network errors into structured variants. The core depends on a `Client` _type_
-  (a single-method interface: `chat(messages) => Result<string>`), not on
-  `client/llm.ts` directly — so the core can be tested with a stub.
+  messages array and returns a `Result<AssistantMessage>`, swallowing all HTTP
+  and network errors into structured variants. The `Client` and `Tool` types
+  are owned by the core (`core/engine.ts`); the edge _implements_ `Client`
+  (today `LlmClient`) and provides the `Tool[]` definitions plus a
+  `ToolRunner`, so every dependency arrow points edge → core and the core can
+  be tested with stubs.
 - Every file stays under 500 code lines and every function under 100 lines;
   when a module approaches that, split it along a natural seam.
 
@@ -114,7 +116,7 @@ role earns it, not before.
   driver/session/engine split is overdue, not optional.
 - **Pure core vs. network I/O.** The core's fundamental operation is an HTTP
   round-trip, which is I/O. The resolution is the `Client` interface: the
-  core depends on the _type_, the edge provides the _implementation_. Do not
+  core owns the _type_, the edge provides the _implementation_. Do not
   put `fetch` in `core/engine.ts`; do not put HTTP logic in `driver/`. If a
   future driver (e.g. a mock client for tests) needs to swap the transport,
   that is the mechanism — not a new module at the core level.

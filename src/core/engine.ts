@@ -1,5 +1,27 @@
-import type { Client, Tool } from "../client/llm.ts";
-import type { Message, Result } from "./errors.ts";
+import type { AssistantMessage, Message, Result } from "./errors.ts";
+
+/**
+ * Definition of a single tool function, as presented to the model. The core
+ * owns this type; the edge provides the `Tool[]` definitions and the
+ * `ToolRunner` implementation.
+ */
+export interface Tool {
+  type: "function";
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+}
+
+/**
+ * The core depends only on this type, not on a concrete transport, so it can
+ * be tested with a stub. The edge provides the implementation (currently
+ * `LlmClient` in `client/llm.ts`).
+ */
+export interface Client {
+  chat(messages: Message[], tools?: Tool[]): Promise<Result<AssistantMessage>>;
+}
 
 /**
  * Executes a tool invocation with the given name and arguments, returning a

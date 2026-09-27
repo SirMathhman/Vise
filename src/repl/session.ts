@@ -1,6 +1,5 @@
-import type { Client, Tool } from "../client/llm.ts";
 import { runTurn } from "../core/engine.ts";
-import type { ToolRunner } from "../core/engine.ts";
+import type { Client, Tool, ToolRunner } from "../core/engine.ts";
 import type { Message, Result } from "../core/errors.ts";
 
 /**

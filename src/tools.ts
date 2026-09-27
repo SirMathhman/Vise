@@ -1,6 +1,11 @@
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
-import type { Tool } from "./client/llm.ts";
-import type { ToolRunner } from "./core/engine.ts";
+import {
+  readdirSync,
+  readFileSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import type { Tool, ToolRunner } from "./core/engine.ts";
 
 /** Tool definitions exposed to the model. */
 export const tools: Tool[] = [
@@ -66,6 +71,41 @@ export const tools: Tool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "delete_file",
+      description: "Delete the file at the given path",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "Path of the file to delete",
+          },
+        },
+        required: ["path"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "delete_directory",
+      description:
+        "Delete the directory at the given path and everything inside it",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "Path of the directory to delete",
+          },
+        },
+        required: ["path"],
+      },
+    },
+  },
 ];
 
 /** Edge-provided tool implementations. All I/O is here; the core only
@@ -106,6 +146,30 @@ export const toolRunner: ToolRunner = {
         }
         writeFileSync(path, current.replace(old, next), "utf8");
         return `edited ${path}`;
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
+    }
+    if (name === "delete_file") {
+      try {
+        const path = String(args.path ?? "");
+        if (path === "") {
+          return `error: path must not be empty`;
+        }
+        unlinkSync(path);
+        return `deleted ${path}`;
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
+    }
+    if (name === "delete_directory") {
+      try {
+        const path = String(args.path ?? "");
+        if (path === "") {
+          return `error: path must not be empty`;
+        }
+        rmSync(path, { recursive: true });
+        return `deleted ${path}`;
       } catch (err) {
         return err instanceof Error ? err.message : String(err);
       }
