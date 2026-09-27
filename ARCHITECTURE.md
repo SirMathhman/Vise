@@ -118,6 +118,14 @@ role earns it, not before.
   put `fetch` in `core/engine.ts`; do not put HTTP logic in `driver/`. If a
   future driver (e.g. a mock client for tests) needs to swap the transport,
   that is the mechanism — not a new module at the core level.
+- **Unbounded tool output.** A tool result like `read_file` returning full
+  file contents of arbitrary length can grow the `messages` array without
+  bound, not just from conversation length. On a local llama.cpp server with
+  a finite context window, a single large `read_file` can exceed the model's
+  context and produce a truncated or garbled response. The core's
+  `messages` array has no size cap; bounding tool output (truncation,
+  pagination, or a max-byte limit) is a future concern that belongs in the
+  session or engine layer, not in the tool implementation itself.
 - **Unbounded line input.** A piped file is unbounded. The core must process
   lines streaming, one at a time, and never buffer the whole input in memory.
 - **TTY-only assumptions.** Today the readline interface hard-codes
