@@ -108,9 +108,10 @@ role earns it, not before.
   structured error variants; the remaining surface is the driver formatting
   those variants for display — keep that formatting in `output/format.ts`
   once it exists, not inline in `index.ts`.
-- **One file doing every job.** `index.ts` is currently entry, driver, session,
-  and core fused (the transport is already extracted). If it grows past ~50
-  lines, the driver/session split is overdue, not optional.
+- **One file doing every job.** `index.ts` is currently entry, driver,
+  session, core, and tool dispatch fused (the transport is already
+  extracted). It is already past the ~50-line threshold, so the
+  driver/session/engine split is overdue, not optional.
 - **Pure core vs. network I/O.** The core's fundamental operation is an HTTP
   round-trip, which is I/O. The resolution is the `Client` interface: the
   core depends on the _type_, the edge provides the _implementation_. Do not
@@ -141,9 +142,10 @@ role earns it, not before.
   scriptable and CI-able.
 - **CLI surface.** `cli.ts` with subcommands and flags; `index.ts` shrinks to
   pure wiring.
-- **Error model.** `core/errors.ts` with a small discriminated error union
-  (e.g. parse failure, I/O failure, malformed response), each variant
-  answering the four questions above.
+- **Tool system.** Tool definitions (`Tool[]`) as core data; `ToolRunner`
+  interface in `core/engine.ts` (edge provides implementations, engine
+  dispatches by name). Structured tool-execution errors as a `ViseError`
+  variant (e.g. `kind: "tool"`), not string-swallowed into the message.
 - **Session state.** Conversation state (the growing `messages` array),
   interrupt (Ctrl+C) handling, and clean termination state owned by
   `session.ts`, exercisable without a real TTY.
