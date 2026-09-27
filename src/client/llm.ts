@@ -57,12 +57,18 @@ export class LlmClient implements Client {
       });
       if (!res.ok) {
         const text = await res.text();
-        return { ok: false, error: { kind: "http", status: res.status, body: text } };
+        return {
+          ok: false,
+          error: { kind: "http", status: res.status, body: text },
+        };
       }
       const data = (await res.json()) as ChatResponse;
       const choice = data.choices[0]?.message;
       if (!choice) {
-        return { ok: false, error: { kind: "malformed", body: JSON.stringify(data) } };
+        return {
+          ok: false,
+          error: { kind: "malformed", body: JSON.stringify(data) },
+        };
       }
       return {
         ok: true,

@@ -1,5 +1,5 @@
 import { createInterface } from "node:readline";
-import { readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { LlmClient } from "./src/client/llm.ts";
 import type { Tool } from "./src/client/llm.ts";
 import { runTurn } from "./src/core/engine.ts";
@@ -26,6 +26,23 @@ const tools: Tool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "read_file",
+      description: "Read the full contents of a file from a given path",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "Path of the file to read",
+          },
+        },
+        required: ["path"],
+      },
+    },
+  },
 ];
 
 const toolRunner: ToolRunner = {
@@ -34,6 +51,13 @@ const toolRunner: ToolRunner = {
       try {
         const entries = readdirSync(args.path ?? ".");
         return entries.join("\n");
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
+    }
+    if (name === "read_file") {
+      try {
+        return readFileSync(String(args.path ?? ""), "utf8");
       } catch (err) {
         return err instanceof Error ? err.message : String(err);
       }
