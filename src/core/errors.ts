@@ -1,6 +1,19 @@
+export interface ToolCall {
+  id: string;
+  function: { name: string; arguments: string };
+}
+
 export interface Message {
-  role: "system" | "user" | "assistant";
+  role: "system" | "user" | "assistant" | "tool";
   content: string;
+  tool_calls?: ToolCall[];
+  tool_call_id?: string;
+}
+
+/** The model's reply for a single round trip. */
+export interface AssistantMessage {
+  content: string;
+  tool_calls?: ToolCall[];
 }
 
 export type ViseError =
