@@ -13,6 +13,10 @@ const rl = createInterface({
 
 rl.on("line", async (line) => {
   if (line.trim() === "") return;
+  if (line.trim() === "/exit") {
+    rl.close();
+    return;
+  }
   const res = await fetch(URL, {
     method: "POST",
     headers: {
