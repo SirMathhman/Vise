@@ -91,10 +91,11 @@ Rules:
 - Every file stays under 500 code lines and every function under 100 lines;
   when a module approaches that, split it along a natural seam.
 
-This is the shape the current single-file REPL is growing into: today
-`index.ts` plays the roles of entry point, driver, session, and core all at
-once. As functionality lands, those roles separate into the modules above —
-each module exists as soon as its role earns it, not before.
+This is the shape the current code is growing into: today `index.ts` plays
+the roles of entry point, driver, session, and core all at once, while the
+transport already lives in `client/llm.ts`. As functionality lands, those
+roles separate into the modules above — each module exists as soon as its
+role earns it, not before.
 
 ## Potential Problems
 
@@ -103,12 +104,13 @@ each module exists as soon as its role earns it, not before.
   Audit new code for it; termination must flow through event-loop draining.
 - **Stringly-typed errors.** If `throw` or `console.error` with a bare string
   appears in core code, convert it to a structured `Result`/error type before
-  the pattern spreads. The current fetch path already has an error surface
-  (network failure, non-2xx responses, malformed JSON) that is not yet
-  handled; this is where errors will first need to be caught and structured.
-- **One file doing every job.** `index.ts` is currently all four roles (entry,
-  driver, session, core) plus the transport. If it grows past ~50 lines, the
-  driver/session/client split is overdue, not optional.
+  the pattern spreads. The client already returns `Result<string>` with
+  structured error variants; the remaining surface is the driver formatting
+  those variants for display — keep that formatting in `output/format.ts`
+  once it exists, not inline in `index.ts`.
+- **One file doing every job.** `index.ts` is currently entry, driver, session,
+  and core fused (the transport is already extracted). If it grows past ~50
+  lines, the driver/session split is overdue, not optional.
 - **Pure core vs. network I/O.** The core's fundamental operation is an HTTP
   round-trip, which is I/O. The resolution is the `Client` interface: the
   core depends on the _type_, the edge provides the _implementation_. Do not
@@ -126,14 +128,14 @@ each module exists as soon as its role earns it, not before.
 
 ## Future Work
 
-- **Client abstraction.** Extract the `fetch` call into `client/llm.ts` behind
-  a `Client` interface (`chat(messages: Message[]) => Result<string>`). The
-  engine receives a `Client` and never calls `fetch` directly. This is the
-  first split to make: it unblocks every other module from the pure-core
-  invariant without violating it.
-- **Structured evaluation.** With the client extracted, `core/engine.ts` becomes
-  a real `parse → dispatch → Result` pipeline that can be unit-tested with a
-  stub client.
+- **Engine.** Extract the line-handling logic (command dispatch, message
+  assembly, result handling) from `index.ts` into `core/engine.ts`. The
+  engine receives a `Client` and a `Session`, and returns a `Result` per
+  line. This makes the pure-core invariant real and enables unit tests with
+  a stub client.
+- **Session.** Move the conversation state (the `messages` array) and the
+  `/exit` command into `repl/session.ts`. The session owns state; the engine
+  is stateless.
 - **Drivers.** Add the pipe/script driver alongside the terminal driver so the
   same session can be driven non-interactively; this is what makes the tool
   scriptable and CI-able.
