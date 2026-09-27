@@ -2,11 +2,9 @@ import { createInterface } from "node:readline";
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { LlmClient } from "./src/client/llm.ts";
 import type { Tool } from "./src/client/llm.ts";
-import { runTurn } from "./src/core/engine.ts";
 import type { ToolRunner } from "./src/core/engine.ts";
-import type { Message } from "./src/core/errors.ts";
-
-const client = new LlmClient();
+import { Session } from "./src/repl/session.ts";
+import { formatError } from "./src/output/format.ts";
 
 const tools: Tool[] = [
   {
@@ -99,9 +97,8 @@ const toolRunner: ToolRunner = {
   },
 };
 
-const messages: Message[] = [
-  { role: "system", content: `Working directory: ${process.cwd()}` },
-];
+const client = new LlmClient();
+const session = new Session(client, toolRunner, tools, process.cwd());
 
 const rl = createInterface({
   input: process.stdin,
@@ -111,22 +108,14 @@ const rl = createInterface({
 
 rl.on("line", async (line) => {
   if (line.trim() === "") return;
-  if (line.trim() === "/exit") {
+  const result = await session.handleLine(line);
+  if (result === "exit") {
     rl.close();
     return;
   }
-  messages.push({ role: "user", content: line });
-  const result = await runTurn(client, toolRunner, messages, tools);
   if (result.ok) {
     console.log(result.value);
   } else {
-    const err = result.error;
-    if (err.kind === "http") {
-      console.error(`vise: HTTP ${err.status} from server: ${err.body}`);
-    } else if (err.kind === "network") {
-      console.error(`vise: ${err.cause}`);
-    } else {
-      console.error(`vise: ${err.body}`);
-    }
+    console.error(formatError(result.error));
   }
 });
