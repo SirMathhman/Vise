@@ -5,6 +5,8 @@ const API_KEY = "S6677k5w355Nw9ErxCZWYCMiW4ItldmzXBLUElpnLsdE8gBj5A";
 const MODEL =
   "RentedNoodle/Qwen3.8-27B-OrcaRouter-GSQ-RCO-IQ3_XXS-Uncensored:QATFA";
 
+const messages: { role: "user" | "assistant"; content: string }[] = [];
+
 const rl = createInterface({
   input: process.stdin,
   output: process.stdout,
@@ -17,6 +19,7 @@ rl.on("line", async (line) => {
     rl.close();
     return;
   }
+  messages.push({ role: "user", content: line });
   try {
     const res = await fetch(URL, {
       method: "POST",
@@ -26,7 +29,7 @@ rl.on("line", async (line) => {
       },
       body: JSON.stringify({
         model: MODEL,
-        messages: [{ role: "user", content: line }],
+        messages,
         stream: false,
       }),
     });
@@ -38,7 +41,9 @@ rl.on("line", async (line) => {
     const data = (await res.json()) as {
       choices: { message: { content: string } }[];
     };
-    console.log(data.choices[0]?.message.content ?? "");
+    const content = data.choices[0]?.message.content ?? "";
+    messages.push({ role: "assistant", content });
+    console.log(content);
   } catch (err) {
     console.error(`vise: ${err instanceof Error ? err.message : String(err)}`);
   }
