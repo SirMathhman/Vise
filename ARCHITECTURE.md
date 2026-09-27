@@ -90,8 +90,9 @@ each module exists as soon as its role earns it, not before.
   Audit new code for it; termination must flow through event-loop draining.
 - **Stringly-typed errors.** If `throw` or `console.error` with a bare string
   appears in core code, convert it to a structured `Result`/error type before
-  the pattern spreads. The current echo path has no error surface; the moment
-  evaluation is added, this is where errors will first appear.
+  the pattern spreads. The current fetch path already has an error surface
+  (network failure, non-2xx responses, malformed JSON) that is not yet
+  handled; this is where errors will first need to be caught and structured.
 - **One file doing every job.** `index.ts` is currently all four roles (entry,
   driver, session, core). If it grows past ~50 lines, the driver/session split
   is overdue, not optional.
@@ -106,8 +107,8 @@ each module exists as soon as its role earns it, not before.
 
 ## Future Work
 
-- **Structured evaluation.** Replace the echo with a real `parse → evaluate`
-  pipeline in `core/engine.ts` returning `Result` values.
+- **Structured evaluation.** Replace the inline `fetch` round-trip with a real
+  `parse → evaluate` pipeline in `core/engine.ts` returning `Result` values.
 - **Drivers.** Add the pipe/script driver alongside the terminal driver so the
   same session can be driven non-interactively; this is what makes the tool
   scriptable and CI-able.
