@@ -51,9 +51,10 @@ src/
     terminal.ts     # interactive TTY driver: prompt, echo, readline wiring
     pipe.ts         # piped/script driver: read input to EOF, emit results
   client/
-    llm.ts          # LLM transport: implements the core's `Client` type;
-                    # wraps fetch, owns URL/key/model config; the sole module
-                    # in the tree that performs network I/O
+    llm.ts          # LLM transport: implements the core's `Client` type,
+                    # `ContextSource`, and `ModelController`; wraps fetch,
+                    # owns URL/key/model config; the sole module in the tree
+                    # that performs network I/O
   core/
     engine.ts       # line -> parse -> dispatch to client -> Result pipeline
     errors.ts       # structured error types and constructors
@@ -145,16 +146,19 @@ role earns it, not before.
 - **TTY-only assumptions.** Today the readline interface hard-codes
   `terminal: false` and assumes a TTY. The driver split exists precisely so
   TTY and non-TTY paths are tested independently; do not re-couple them.
-- **Blocking tools.** Tool implementations run synchronously inside the
-  event loop (e.g. `spawnSync` in `run_powershell` waits up to the full
-  command duration); while a tool is running the REPL cannot accept, echo,
-  or even service interrupt input. The fix is an async `ToolRunner.run`
-  (see Future Work) — until then, keep tool timeouts short enough that the
-  stall is tolerable and do not add tools that wait on unbounded user input
-  in the child process.
+- **Blocking tools.** Tool implementations run child processes and
+  file I/O. `ToolRunner.run` is async to prevent blocking the REPL event
+  loop, but long-running commands (e.g. unbounded child processes) can
+  still stall turn completion. Bounding execution time and supporting
+  cancellation/interrupts remain essential driver/engine concerns.
 - **Implicit global state.** Session state (conversation state, interrupt
   handling) must live in the session object, not in module-level `let`
   bindings, or the core becomes untestable and un-reentrant.
+- **Dynamic model switching and context awareness.** Model switching
+  via `/model` changes the active model on the client. Because context
+  limits and token usages vary per model, the session must query `contextMax`
+  and context usage dynamically with each model rather than caching a static
+  limit across model transitions.
 
 ## Future Work
 
@@ -175,9 +179,12 @@ role earns it, not before.
   interface (edge provides implementations in `src/tools.ts`, engine
   dispatches by name) are implemented. What remains: structured
   tool-execution errors as a `ViseError` variant (e.g. `kind: "tool"`), not
-  string-swallowed into the message; and an async `ToolRunner.run` so tools
-  that wait on child processes or the network do not block the REPL event
-  loop while they run.
+  string-swallowed into the message; and output bounding (truncation/pagination)
+  to prevent single tool calls from exhausting context windows.
+- **Model management & configuration.** Model selection via `/model` and
+  model enumeration via `GET /v1/models` are now supported at runtime. Future
+  work includes model parameter configuration (temperature, top_p), model
+  aliasing, and persisting default model selection across invocations.
 - **Session state.** Conversation state (the growing `messages` array),
   interrupt (Ctrl+C) handling, and clean termination state owned by
   `session.ts`, exercisable without a real TTY.

@@ -1,7 +1,7 @@
 import { runTurn, splitForCompaction, summarize } from "../core/engine.ts";
 import type { Client, Tool, ToolRunner } from "../core/engine.ts";
 import type { Message, Result, ViseError } from "../core/errors.ts";
-import { formatContext } from "../output/format.ts";
+import { formatContext, formatModelList } from "../output/format.ts";
 
 /**
  * The outcome of a handled line. A successful turn carries the model's reply
@@ -212,12 +212,9 @@ export class Session {
       const models = await this.modelController.listModels();
       if (!models.ok) return models;
       const current = this.modelController.getModel();
-      const lines = models.value.map((m) =>
-        m === current ? `* ${m} (active)` : `  ${m}`,
-      );
       return {
         ok: true,
-        value: lines.length > 0 ? lines.join("\n") : "no models available",
+        value: formatModelList(models.value, current),
       };
     }
 

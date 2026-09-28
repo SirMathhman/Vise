@@ -36,3 +36,16 @@ export function formatCompactionFailure(err: ViseError): string {
     return `vise: auto-compact skipped: ${err.body}`;
   }
 }
+
+/**
+ * Render the list of available models, marking the active model with an asterisk.
+ */
+export function formatModelList(
+  models: string[],
+  activeModel: string,
+): string {
+  if (models.length === 0) return "no models available";
+  return models
+    .map((m) => (m === activeModel ? `* ${m} (active)` : `  ${m}`))
+    .join("\n");
+}
