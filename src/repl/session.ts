@@ -99,6 +99,21 @@ const COMPACTION_THRESHOLD = 0.9;
 const RECENT_TURNS_TO_KEEP = 2;
 
 /**
+ * Edge-provided options for constructing a Session. Groups the optional
+ * edge services (model controller, profile source, hooks) and the required
+ * context source + cwd into a single object, so adding a new service is
+ * a new optional field, not a new positional parameter.
+ */
+export interface SessionOptions {
+  cwd: string;
+  context: ContextSource;
+  modelController?: ModelController;
+  profileSource?: ProfileSource;
+  preTurnHook?: PreTurnHook;
+  postTurnHook?: PostTurnHook;
+}
+
+/**
  * Owns the conversation state (the growing messages array) and handles
  * per-line turns. Stateless with respect to I/O: it takes the transport
  * types, context source, and working directory from the edge and never
@@ -122,25 +137,20 @@ export class Session {
     client: Client,
     tools: ToolRunner,
     toolDefs: Tool[],
-    context: ContextSource,
-    cwd: string,
-    modelController?: ModelController,
-    profileSource?: ProfileSource,
-    preTurnHook?: PreTurnHook,
-    postTurnHook?: PostTurnHook,
+    options: SessionOptions,
   ) {
     this.client = client;
     this.tools = tools;
     this.toolDefs = toolDefs;
-    this.context = context;
-    this.modelController = modelController;
-    this.profileSource = profileSource;
-    this.preTurnHook = preTurnHook;
-    this.postTurnHook = postTurnHook;
-    this.cwd = cwd;
+    this.context = options.context;
+    this.modelController = options.modelController;
+    this.profileSource = options.profileSource;
+    this.preTurnHook = options.preTurnHook;
+    this.postTurnHook = options.postTurnHook;
+    this.cwd = options.cwd;
     this.systemMessage = {
       role: "system",
-      content: `Working directory: ${cwd}`,
+      content: `Working directory: ${options.cwd}`,
     };
     this.messages = [this.systemMessage];
   }

@@ -135,9 +135,13 @@ role earns it, not before.
   those variants for display — keep that formatting in `output/format.ts`
   once it exists, not inline in `index.ts`.
 - **One file doing every job.** `index.ts` is currently a thin entry
-  and driver layer (~38 lines); the transport, tool dispatch, engine,
-  and session are already extracted into their own modules. What
-  remains is the driver split (TTY vs. pipe) and the `cli.ts` surface.
+  and driver layer that also hosts the edge service implementations
+  (`FileProfileSource`, `ShellHook`, `loadHookCommands`). The transport,
+  tool dispatch, engine, and session are already extracted into their
+  own modules. What remains is the driver split (TTY vs. pipe) and the
+  `cli.ts` surface. As the driver layer splits, those edge service
+  implementations move out of `index.ts` into the driver modules that
+  construct the `Session`; until then, `index.ts` is their home.
 - **Pure core vs. network I/O.** The core's fundamental operation is an HTTP
   round-trip, which is I/O. The resolution is the `Client` interface: the
   core owns the _type_, the edge provides the _implementation_. Do not

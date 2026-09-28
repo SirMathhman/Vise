@@ -139,17 +139,14 @@ const postTurnHook = hookCommands.post
   : undefined;
 
 const client = new LlmClient();
-const session = new Session(
-  client,
-  toolRunner,
-  tools,
-  client,
-  process.cwd(),
-  client,
-  new FileProfileSource(join(process.cwd(), "profiles")),
+const session = new Session(client, toolRunner, tools, {
+  cwd: process.cwd(),
+  context: client,
+  modelController: client,
+  profileSource: new FileProfileSource(join(process.cwd(), "profiles")),
   preTurnHook,
   postTurnHook,
-);
+});
 
 const rl = createInterface({
   input: process.stdin,
