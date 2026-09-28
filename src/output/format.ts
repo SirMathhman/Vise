@@ -51,8 +51,8 @@ export function formatModelList(models: string[], activeModel: string): string {
 export function formatHelp(opts: {
   hasModel: boolean;
   hasProfile: boolean;
-  hasPreTurnHook: boolean;
-  hasPostTurnHook: boolean;
+  preTurnHookCount: number;
+  postTurnHookCount: number;
 }): string {
   const lines = [
     "/exit          exit the REPL",
@@ -72,12 +72,16 @@ export function formatHelp(opts: {
       "/profile <name> set the active profile",
     );
   }
-  if (opts.hasPreTurnHook) {
+  if (opts.preTurnHookCount > 0) {
     lines.push("");
-    lines.push("pre-turn hook:  active (output injected before every turn)");
+    lines.push(
+      `pre-turn hook${opts.preTurnHookCount > 1 ? "s" : ""}: ${opts.preTurnHookCount} active (output injected before every turn)`,
+    );
   }
-  if (opts.hasPostTurnHook) {
-    lines.push("post-turn hook: active (output injected after every turn)");
+  if (opts.postTurnHookCount > 0) {
+    lines.push(
+      `post-turn hook${opts.postTurnHookCount > 1 ? "s" : ""}: ${opts.postTurnHookCount} active (output injected after every turn)`,
+    );
   }
   return lines.join("\n");
 }

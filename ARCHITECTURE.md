@@ -109,11 +109,10 @@ Rules:
   that run configured shell commands before and after every chat turn and
   return their combined output. The edge provides the implementation
   (`ShellHook` in `index.ts`, spawning `powershell.exe` with the command
-  from `.viserc.json`). The pre-turn hook's output is injected as a user
-  message before the user's input, so the model sees fresh context each
-  turn; the post-turn hook's output is injected as a user message after
-  the assistant's reply, so the model sees it on the next turn. Same
-  edge-owns-I/O pattern as `ProfileSource`.
+  from `.viserc.json`). Multiple hooks of the same kind run in parallel;
+  each hook's output is injected as its own user message, in config order —
+  pre-turn before the user's input, post-turn after the assistant's reply.
+  Same edge-owns-I/O pattern as `ProfileSource`.
 - Every file stays under 500 code lines and every function under 100 lines;
   when a module approaches that, split it along a natural seam.
 

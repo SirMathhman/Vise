@@ -109,8 +109,8 @@ export interface SessionOptions {
   context: ContextSource;
   modelController?: ModelController;
   profileSource?: ProfileSource;
-  preTurnHook?: PreTurnHook;
-  postTurnHook?: PostTurnHook;
+  preTurnHooks: PreTurnHook[];
+  postTurnHooks: PostTurnHook[];
 }
 
 /**
@@ -128,8 +128,8 @@ export class Session {
   private readonly context: ContextSource;
   private readonly modelController?: ModelController;
   private readonly profileSource?: ProfileSource;
-  private readonly preTurnHook?: PreTurnHook;
-  private readonly postTurnHook?: PostTurnHook;
+  private readonly preTurnHooks: PreTurnHook[];
+  private readonly postTurnHooks: PostTurnHook[];
   private readonly cwd: string;
   private activeProfile: string | undefined;
 
@@ -145,8 +145,8 @@ export class Session {
     this.context = options.context;
     this.modelController = options.modelController;
     this.profileSource = options.profileSource;
-    this.preTurnHook = options.preTurnHook;
-    this.postTurnHook = options.postTurnHook;
+    this.preTurnHooks = options.preTurnHooks;
+    this.postTurnHooks = options.postTurnHooks;
     this.cwd = options.cwd;
     this.systemMessage = {
       role: "system",
@@ -172,8 +172,8 @@ export class Session {
         value: formatHelp({
           hasModel: !!this.modelController,
           hasProfile: !!this.profileSource,
-          hasPreTurnHook: !!this.preTurnHook,
-          hasPostTurnHook: !!this.postTurnHook,
+          preTurnHookCount: this.preTurnHooks.length,
+          postTurnHookCount: this.postTurnHooks.length,
         }),
       };
     if (trimmed === "/context") return this.reportContext();
@@ -184,10 +184,14 @@ export class Session {
     if (trimmed === "/profile" || trimmed.startsWith("/profile ")) {
       return this.handleProfileCommand(trimmed);
     }
-    if (this.preTurnHook) {
-      const hookOutput = await this.preTurnHook.run();
-      if (hookOutput.trim() !== "") {
-        this.messages.push({ role: "user", content: hookOutput });
+    if (this.preTurnHooks.length > 0) {
+      const outputs = await Promise.all(
+        this.preTurnHooks.map((h) => h.run()),
+      );
+      for (const hookOutput of outputs) {
+        if (hookOutput.trim() !== "") {
+          this.messages.push({ role: "user", content: hookOutput });
+        }
       }
     }
     this.messages.push({ role: "user", content: line });
@@ -199,10 +203,14 @@ export class Session {
       this.toolDefs,
     );
     if (!turn.ok) return turn;
-    if (this.postTurnHook) {
-      const hookOutput = await this.postTurnHook.run();
-      if (hookOutput.trim() !== "") {
-        this.messages.push({ role: "user", content: hookOutput });
+    if (this.postTurnHooks.length > 0) {
+      const outputs = await Promise.all(
+        this.postTurnHooks.map((h) => h.run()),
+      );
+      for (const hookOutput of outputs) {
+        if (hookOutput.trim() !== "") {
+          this.messages.push({ role: "user", content: hookOutput });
+        }
       }
     }
     // A failed auto-compact is non-fatal: proceed with the (uncut) conversation

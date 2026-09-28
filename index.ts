@@ -109,19 +109,37 @@ class ShellHook implements PreTurnHook, PostTurnHook {
   }
 }
 
-/** Read hook commands from `.viserc.json` if present. */
-function loadHookCommands(): { pre?: string; post?: string } {
+/**
+ * Read hook commands from `.viserc.json` if present.
+ *
+ * Each hook key (`preTurnCommand`, `postTurnCommand`) accepts either a
+ * single command string or an array of command strings. An array produces
+ * one hook per entry; all hooks of a kind run in parallel each turn.
+ */
+function loadHookCommands(): { pre?: string[]; post?: string[] } {
   const configPath = join(process.cwd(), ".viserc.json");
   if (!existsSync(configPath)) return {};
   try {
     const raw = readFileSync(configPath, "utf8");
     const config = JSON.parse(raw);
-    const result: { pre?: string; post?: string } = {};
-    if (typeof config.preTurnCommand === "string") {
-      result.pre = config.preTurnCommand;
+    const result: { pre?: string[]; post?: string[] } = {};
+    const pre = config.preTurnCommand;
+    const post = config.postTurnCommand;
+    if (typeof pre === "string") {
+      result.pre = [pre];
+    } else if (
+      Array.isArray(pre) &&
+      pre.every((c) => typeof c === "string")
+    ) {
+      result.pre = pre;
     }
-    if (typeof config.postTurnCommand === "string") {
-      result.post = config.postTurnCommand;
+    if (typeof post === "string") {
+      result.post = [post];
+    } else if (
+      Array.isArray(post) &&
+      post.every((c) => typeof c === "string")
+    ) {
+      result.post = post;
     }
     return result;
   } catch {
@@ -131,12 +149,10 @@ function loadHookCommands(): { pre?: string; post?: string } {
 }
 
 const hookCommands = loadHookCommands();
-const preTurnHook = hookCommands.pre
-  ? new ShellHook(hookCommands.pre)
-  : undefined;
-const postTurnHook = hookCommands.post
-  ? new ShellHook(hookCommands.post)
-  : undefined;
+const preTurnHooks = (hookCommands.pre ?? []).map((cmd) => new ShellHook(cmd));
+const postTurnHooks = (hookCommands.post ?? []).map(
+  (cmd) => new ShellHook(cmd),
+);
 
 const client = new LlmClient();
 const session = new Session(client, toolRunner, tools, {
@@ -144,8 +160,8 @@ const session = new Session(client, toolRunner, tools, {
   context: client,
   modelController: client,
   profileSource: new FileProfileSource(join(process.cwd(), "profiles")),
-  preTurnHook,
-  postTurnHook,
+  preTurnHooks,
+  postTurnHooks,
 });
 
 const rl = createInterface({
