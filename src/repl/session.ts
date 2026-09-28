@@ -5,6 +5,7 @@ import {
   formatContext,
   formatHelp,
   formatModelList,
+  formatNoteList,
   formatProfileList,
 } from "../output/format.ts";
 
@@ -63,6 +64,18 @@ export interface ModelController {
 }
 
 /**
+ * Source of note listings for the `/notes` command. A note is the project's
+ * combined "memories" (short facts) and "skills" (how-to procedures) store,
+ * exposed to the model on demand via tools and to the user via `/notes`.
+ * Only listing is supported here: the model does its own reads/writes through
+ * the note tools. Provided by the edge (the session performs no I/O).
+ */
+export interface NoteSource {
+  /** List all notes (memories and skills) with their one-line summaries. */
+  listNotes(): Promise<Result<string[]>>;
+}
+
+/**
  * Pre-turn hook: runs a configured shell command before every turn and returns
  * its combined output (stdout/stderr or error text). The output is injected
  * as context into the user's message so the model sees it each turn. Provided
@@ -109,6 +122,7 @@ export interface SessionOptions {
   context: ContextSource;
   modelController?: ModelController;
   profileSource?: ProfileSource;
+  noteSource?: NoteSource;
   preTurnHooks: PreTurnHook[];
   postTurnHooks: PostTurnHook[];
 }
@@ -128,6 +142,7 @@ export class Session {
   private readonly context: ContextSource;
   private readonly modelController?: ModelController;
   private readonly profileSource?: ProfileSource;
+  private readonly noteSource?: NoteSource;
   private readonly preTurnHooks: PreTurnHook[];
   private readonly postTurnHooks: PostTurnHook[];
   private readonly cwd: string;
@@ -145,6 +160,7 @@ export class Session {
     this.context = options.context;
     this.modelController = options.modelController;
     this.profileSource = options.profileSource;
+    this.noteSource = options.noteSource;
     this.preTurnHooks = options.preTurnHooks;
     this.postTurnHooks = options.postTurnHooks;
     this.cwd = options.cwd;
@@ -172,6 +188,7 @@ export class Session {
         value: formatHelp({
           hasModel: !!this.modelController,
           hasProfile: !!this.profileSource,
+          hasNotes: !!this.noteSource,
           preTurnHookCount: this.preTurnHooks.length,
           postTurnHookCount: this.postTurnHooks.length,
         }),
@@ -184,6 +201,7 @@ export class Session {
     if (trimmed === "/profile" || trimmed.startsWith("/profile ")) {
       return this.handleProfileCommand(trimmed);
     }
+    if (trimmed === "/notes") return this.handleNotesCommand();
     await this.runHooks(this.preTurnHooks);
     this.messages.push({ role: "user", content: line });
     const auto = await this.maybeAutoCompact();
@@ -207,9 +225,7 @@ export class Session {
    * post-turn paths so the parallel execution, non-blank filter, and
    * injection logic live in one place.
    */
-  private async runHooks(
-    hooks: PreTurnHook[] | PostTurnHook[],
-  ): Promise<void> {
+  private async runHooks(hooks: PreTurnHook[] | PostTurnHook[]): Promise<void> {
     if (hooks.length === 0) return;
     const outputs = await Promise.all(hooks.map((h) => h.run()));
     for (const output of outputs) {
@@ -372,6 +388,26 @@ export class Session {
       ok: true,
       value: body === "" ? "profile cleared" : `profile set to ${arg}`,
     };
+  }
+
+  /**
+   * Handle `/notes`. Lists every note (memory and skill) with its one-line
+   * summary. Notes are exposed to the model on demand through the note tools;
+   * this command is the user's read-only view of the same store.
+   */
+  private async handleNotesCommand(): Promise<Result<string>> {
+    if (!this.noteSource) {
+      return {
+        ok: false,
+        error: {
+          kind: "malformed",
+          body: "notes not supported by the current client",
+        },
+      };
+    }
+    const notes = await this.noteSource.listNotes();
+    if (!notes.ok) return notes;
+    return { ok: true, value: formatNoteList(notes.value) };
   }
 }
 

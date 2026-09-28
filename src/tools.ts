@@ -10,6 +10,13 @@ import {
 } from "node:fs";
 import { dirname } from "node:path";
 import type { Tool, ToolRunner } from "./core/engine.ts";
+import {
+  deleteNote,
+  findNoteKind,
+  listNotes,
+  readNote,
+  saveNote,
+} from "./notes.ts";
 
 /** Tool definitions exposed to the model. */
 export const tools: Tool[] = [
@@ -147,6 +154,89 @@ export const tools: Tool[] = [
           },
         },
         required: ["command"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_notes",
+      description:
+        "List all notes (memories and skills) with their one-line summaries. Notes are short facts (memory) or how-to procedures (skill) stored for this project. Use this to see what is known before relying on or writing a note. Optional 'kind' filters to 'memory' or 'skill'.",
+      parameters: {
+        type: "object",
+        properties: {
+          kind: {
+            type: "string",
+            description:
+              "Optional filter: 'memory' or 'skill'. Omit to list both.",
+          },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "read_note",
+      description:
+        "Read the full body of a note by name. Searches both memory and skill notes. Call list_notes first to see what is available.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: {
+            type: "string",
+            description: "Name of the note to read",
+          },
+        },
+        required: ["name"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "save_note",
+      description:
+        "Save a new note for this project. The first line of body becomes the note's one-line summary (shown in list_notes); the rest is the body. Names must be unique across both kinds, so a name already used by a memory cannot be reused by a skill and vice versa.",
+      parameters: {
+        type: "object",
+        properties: {
+          kind: {
+            type: "string",
+            description:
+              "Note kind: 'memory' (a fact) or 'skill' (a procedure)",
+          },
+          name: {
+            type: "string",
+            description:
+              "Short unique name for the note (becomes the filename)",
+          },
+          body: {
+            type: "string",
+            description:
+              "Note contents. The first non-empty line is its summary.",
+          },
+        },
+        required: ["kind", "name", "body"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "delete_note",
+      description:
+        "Delete a note by name. Searches both memory and skill notes. Use with care.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: {
+            type: "string",
+            description: "Name of the note to delete",
+          },
+        },
+        required: ["name"],
       },
     },
   },
@@ -299,6 +389,55 @@ export const toolRunner: ToolRunner = {
           return `exit code ${exitCode}\n${body}`.trim();
         }
         return body;
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
+    }
+    if (name === "list_notes") {
+      try {
+        const kind = args.kind === undefined ? undefined : String(args.kind);
+        const notes = listNotes(process.cwd());
+        const filtered =
+          kind === undefined ? notes : notes.filter((n) => n.kind === kind);
+        if (filtered.length === 0) return "no notes";
+        return filtered
+          .map((n) => `[${n.kind}] ${n.name} — ${n.summary}`)
+          .join("\n");
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
+    }
+    if (name === "read_note") {
+      try {
+        const noteName = String(args.name ?? "");
+        const kind = findNoteKind(process.cwd(), noteName);
+        if (kind === undefined) {
+          return `error: note '${noteName}' not found`;
+        }
+        return readNote(process.cwd(), kind, noteName) ?? "";
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
+    }
+    if (name === "save_note") {
+      try {
+        const kind = String(args.kind ?? "");
+        const noteName = String(args.name ?? "");
+        const body = String(args.body ?? "");
+        if (kind !== "memory" && kind !== "skill") {
+          return `error: kind must be 'memory' or 'skill'`;
+        }
+        saveNote(process.cwd(), kind, noteName, body);
+        return `saved ${kind} note '${noteName}'`;
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
+    }
+    if (name === "delete_note") {
+      try {
+        const noteName = String(args.name ?? "");
+        const kind = deleteNote(process.cwd(), noteName);
+        return `deleted ${kind} note '${noteName}'`;
       } catch (err) {
         return err instanceof Error ? err.message : String(err);
       }

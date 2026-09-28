@@ -7,10 +7,12 @@ import { tools, toolRunner } from "./src/tools.ts";
 import { Session } from "./src/repl/session.ts";
 import type {
   ProfileSource,
+  NoteSource,
   PreTurnHook,
   PostTurnHook,
 } from "./src/repl/session.ts";
 import type { Result } from "./src/core/errors.ts";
+import { listNotes } from "./src/notes.ts";
 import { formatCompactionFailure, formatError } from "./src/output/format.ts";
 
 /**
@@ -110,6 +112,23 @@ class ShellHook implements PreTurnHook, PostTurnHook {
 }
 
 /**
+ * Edge implementation of NoteSource backed by the `notes/` directory.
+ * Lists every note (memory and skill) with its one-line summary. This is the
+ * user's read-only view of the same store the model edits via tools.
+ */
+class FileNoteSource implements NoteSource {
+  constructor(private readonly base: string) {}
+
+  async listNotes(): Promise<Result<string[]>> {
+    const notes = listNotes(this.base);
+    return {
+      ok: true,
+      value: notes.map((n) => `[${n.kind}] ${n.name} — ${n.summary}`),
+    };
+  }
+}
+
+/**
  * Read hook commands from `.viserc.json` if present.
  *
  * Each hook key (`preTurnCommand`, `postTurnCommand`) accepts either a
@@ -127,10 +146,7 @@ function loadHookCommands(): { pre?: string[]; post?: string[] } {
     const post = config.postTurnCommand;
     if (typeof pre === "string") {
       result.pre = [pre];
-    } else if (
-      Array.isArray(pre) &&
-      pre.every((c) => typeof c === "string")
-    ) {
+    } else if (Array.isArray(pre) && pre.every((c) => typeof c === "string")) {
       result.pre = pre;
     }
     if (typeof post === "string") {
@@ -160,6 +176,7 @@ const session = new Session(client, toolRunner, tools, {
   context: client,
   modelController: client,
   profileSource: new FileProfileSource(join(process.cwd(), "profiles")),
+  noteSource: new FileNoteSource(process.cwd()),
   preTurnHooks,
   postTurnHooks,
 });

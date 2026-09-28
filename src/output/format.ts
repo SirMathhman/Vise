@@ -47,10 +47,17 @@ export function formatModelList(models: string[], activeModel: string): string {
     .join("\n");
 }
 
+/** Format the `/notes` listing. Each line is a pre-formatted note entry. */
+export function formatNoteList(lines: string[]): string {
+  if (lines.length === 0) return "no notes";
+  return lines.join("\n");
+}
+
 /** Render the available slash commands as a multi-line help text. */
 export function formatHelp(opts: {
   hasModel: boolean;
   hasProfile: boolean;
+  hasNotes: boolean;
   preTurnHookCount: number;
   postTurnHookCount: number;
 }): string {
@@ -71,6 +78,9 @@ export function formatHelp(opts: {
       "/profile        list available profiles",
       "/profile <name> set the active profile",
     );
+  }
+  if (opts.hasNotes) {
+    lines.push("/notes          list all notes (memories and skills)");
   }
   if (opts.preTurnHookCount > 0) {
     lines.push("");
