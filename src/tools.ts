@@ -164,7 +164,19 @@ export const toolRunner: ToolRunner = {
         }
         const dir = dirname(path);
         mkdirSync(dir, { recursive: true });
-        writeFileSync(path, String(args.content ?? ""), "utf8");
+        try {
+          writeFileSync(path, String(args.content ?? ""), "utf8");
+        } catch (err) {
+          // The open succeeded (file now exists, possibly empty/partial).
+          // Remove it so a retry isn't told "already exists" for a file
+          // this tool just made.
+          try {
+            unlinkSync(path);
+          } catch {
+            // File may not exist; the original error is what matters.
+          }
+          throw err;
+        }
         return `created ${path}`;
       } catch (err) {
         return err instanceof Error ? err.message : String(err);
