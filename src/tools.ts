@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -131,6 +132,24 @@ export const tools: Tool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "run_powershell",
+      description:
+        "Run a PowerShell command and return its combined stdout/stderr output. Runs in the current working directory.",
+      parameters: {
+        type: "object",
+        properties: {
+          command: {
+            type: "string",
+            description: "The PowerShell command to run",
+          },
+        },
+        required: ["command"],
+      },
+    },
+  },
 ];
 
 /** Edge-provided tool implementations. All I/O is here; the core only
@@ -224,6 +243,34 @@ export const toolRunner: ToolRunner = {
         }
         rmSync(path, { recursive: true });
         return `deleted ${path}`;
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
+    }
+    if (name === "run_powershell") {
+      try {
+        const command = String(args.command ?? "");
+        if (command === "") {
+          return `error: command must not be empty`;
+        }
+        const res = spawnSync(
+          "powershell.exe",
+          ["-NoProfile", "-NonInteractive", "-Command", command],
+          { encoding: "utf8", timeout: 60_000, windowsHide: true },
+        );
+        if (res.error) {
+          return res.error.message;
+        }
+        const exitCode = res.status ?? -1;
+        const stdout = res.stdout ?? "";
+        const stderr = res.stderr ?? "";
+        const body = [stdout.trim(), stderr.trim()]
+          .filter((s) => s !== "")
+          .join("\n");
+        if (exitCode !== 0) {
+          return `exit code ${exitCode}\n${body}`.trim();
+        }
+        return body;
       } catch (err) {
         return err instanceof Error ? err.message : String(err);
       }
