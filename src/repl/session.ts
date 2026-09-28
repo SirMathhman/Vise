@@ -184,16 +184,7 @@ export class Session {
     if (trimmed === "/profile" || trimmed.startsWith("/profile ")) {
       return this.handleProfileCommand(trimmed);
     }
-    if (this.preTurnHooks.length > 0) {
-      const outputs = await Promise.all(
-        this.preTurnHooks.map((h) => h.run()),
-      );
-      for (const hookOutput of outputs) {
-        if (hookOutput.trim() !== "") {
-          this.messages.push({ role: "user", content: hookOutput });
-        }
-      }
-    }
+    await this.runHooks(this.preTurnHooks);
     this.messages.push({ role: "user", content: line });
     const auto = await this.maybeAutoCompact();
     const turn = await runTurn(
@@ -203,20 +194,29 @@ export class Session {
       this.toolDefs,
     );
     if (!turn.ok) return turn;
-    if (this.postTurnHooks.length > 0) {
-      const outputs = await Promise.all(
-        this.postTurnHooks.map((h) => h.run()),
-      );
-      for (const hookOutput of outputs) {
-        if (hookOutput.trim() !== "") {
-          this.messages.push({ role: "user", content: hookOutput });
-        }
-      }
-    }
+    await this.runHooks(this.postTurnHooks);
     // A failed auto-compact is non-fatal: proceed with the (uncut) conversation
     // and let the edge report that compaction did not happen.
     if (auto.ok) return turn;
     return { ok: true, value: turn.value, compactionWarning: auto.error };
+  }
+
+  /**
+   * Run all hooks in the given list in parallel and push each non-blank
+   * output as a user message, in config order. Shared by the pre-turn and
+   * post-turn paths so the parallel execution, non-blank filter, and
+   * injection logic live in one place.
+   */
+  private async runHooks(
+    hooks: PreTurnHook[] | PostTurnHook[],
+  ): Promise<void> {
+    if (hooks.length === 0) return;
+    const outputs = await Promise.all(hooks.map((h) => h.run()));
+    for (const output of outputs) {
+      if (output.trim() !== "") {
+        this.messages.push({ role: "user", content: output });
+      }
+    }
   }
 
   /**
