@@ -37,8 +37,10 @@ export interface ContextSource {
 
 /**
  * Source of profile text. A profile is free-form instruction text appended
- * to the default system message to shape the assistant's persona. Provided
- * by the edge (the session performs no I/O).
+ * to the conversation as a user message to shape the assistant's persona.
+ * The system message is never modified by profile switching (invariant:
+ * this preserves prompt-prefix caching). Provided by the edge (the session
+ * performs no I/O).
  */
 export interface ProfileSource {
   /** Names of the available profiles (without file extension). */
@@ -253,9 +255,11 @@ export class Session {
   /**
    * Handle `/profile` and `/profile <name>`.
    * When name is omitted: lists available profiles from the source.
-   * When name is provided: loads the profile text and rebuilds the system
-   * message as the working-directory default plus the profile text.
-   * An empty profile file clears back to the default system message.
+   * When name is provided: loads the profile text and appends it to the
+   * conversation as a user message. The system message is never modified
+   * (invariant: profile instructions are appended, not injected into the
+   * system prompt, to preserve prefix caching).
+   * An empty profile file appends a clearing instruction instead.
    */
   private async handleProfileCommand(line: string): Promise<Result<string>> {
     if (!this.profileSource) {
@@ -282,14 +286,18 @@ export class Session {
     if (!loaded.ok) return loaded;
     const body = loaded.value.trim();
     this.activeProfile = body === "" ? undefined : arg;
-    this.messages[0] = {
-      role: "system",
-      content:
-        body === ""
-          ? `Working directory: ${this.cwd}`
-          : `Working directory: ${this.cwd}\n\n${body}`,
+    if (body !== "") {
+      this.messages.push({ role: "user", content: body });
+    } else {
+      this.messages.push({
+        role: "user",
+        content: "Profile cleared. Please disregard any previous profile instructions.",
+      });
+    }
+    return {
+      ok: true,
+      value: body === "" ? "profile cleared" : `profile set to ${arg}`,
     };
-    return { ok: true, value: body === "" ? "profile cleared" : `profile set to ${arg}` };
   }
 }
 

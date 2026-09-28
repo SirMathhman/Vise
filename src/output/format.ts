@@ -57,8 +57,6 @@ export function formatProfileList(
 ): string {
   if (profiles.length === 0) return "no profiles found";
   return profiles
-    .map((p) =>
-      p === activeProfile ? `* ${p} (active)` : `  ${p}`,
-    )
+    .map((p) => (p === activeProfile ? `* ${p} (active)` : `  ${p}`))
     .join("\n");
 }
