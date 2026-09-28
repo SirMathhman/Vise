@@ -161,7 +161,9 @@ export class Session {
     }
     if (this.preTurnHook) {
       const hookOutput = await this.preTurnHook.run();
-      this.messages.push({ role: "user", content: hookOutput });
+      if (hookOutput.trim() !== "") {
+        this.messages.push({ role: "user", content: hookOutput });
+      }
     }
     this.messages.push({ role: "user", content: line });
     const auto = await this.maybeAutoCompact();

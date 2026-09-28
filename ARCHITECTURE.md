@@ -105,6 +105,13 @@ Rules:
   text at runtime. The edge provides the implementation (`FileProfileSource`
   in `index.ts`, backed by `profiles/*.md` files). Same pattern as
   `ModelController`: core owns the interface, edge does the I/O.
+- `PreTurnHook` is a core-owned type (`repl/session.ts`) that runs a
+  configured shell command before every chat turn and returns its combined
+  output. The edge provides the implementation (`ShellPreTurnHook` in
+  `index.ts`, spawning `powershell.exe` with the command from
+  `.viserc.json`). The hook's output is injected as a user message before
+  the user's input, so the model sees fresh context each turn. Same
+  edge-owns-I/O pattern as `ProfileSource`.
 - Every file stays under 500 code lines and every function under 100 lines;
   when a module approaches that, split it along a natural seam.
 
