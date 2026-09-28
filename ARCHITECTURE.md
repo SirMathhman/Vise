@@ -120,6 +120,15 @@ role earns it, not before.
   put `fetch` in `core/engine.ts`; do not put HTTP logic in `driver/`. If a
   future driver (e.g. a mock client for tests) needs to swap the transport,
   that is the mechanism — not a new module at the core level.
+- **Unbounded conversation.** The `messages` array grows with every turn and
+  has no size cap; on a local llama.cpp server with a finite context window it
+  eventually overflows. This is addressed by compaction: the session
+  summarizes the older portion of the conversation (via the core's
+  `summarize`/`splitForCompaction`) and keeps only the most recent turns
+  verbatim, on demand (`/compact`) and automatically when the server-reported
+  token count nears the window. The core's `splitForCompaction` is pure; the
+  summarize round-trip goes through the `Client`, so no I/O is added to the
+  core.
 - **Unbounded tool output.** A tool result like `read_file` returning full
   file contents of arbitrary length can grow the `messages` array without
   bound, not just from conversation length. On a local llama.cpp server with

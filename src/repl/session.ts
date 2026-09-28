@@ -1,7 +1,18 @@
-import { runTurn } from "../core/engine.ts";
+import { runTurn, splitForCompaction, summarize } from "../core/engine.ts";
 import type { Client, Tool, ToolRunner } from "../core/engine.ts";
-import type { Message, Result } from "../core/errors.ts";
+import type { Message, Result, ViseError } from "../core/errors.ts";
 import { formatContext } from "../output/format.ts";
+
+/**
+ * The outcome of a handled line. A successful turn carries the model's reply
+ * and, when auto-compaction failed before the turn, an optional
+ * `compactionWarning` the edge surfaces on stderr. This keeps all I/O at the
+ * edge (invariant #2): the session never writes to stdout or stderr itself.
+ */
+export type LineResult =
+  | "exit"
+  | { ok: true; value: string; compactionWarning?: ViseError }
+  | { ok: false; error: ViseError };
 
 /**
  * Source of context-window data. Provided by the edge: the used count comes
@@ -19,6 +30,20 @@ export interface ContextSource {
   /** The model's maximum context window in tokens, queried live. */
   contextMax(): Promise<Result<number>>;
 }
+
+/**
+ * Auto-compaction triggers when the last turn's server-reported token count
+ * reaches this fraction of the model's context window. Chosen high enough that
+ * a normal turn only compacts when overflow is genuinely imminent.
+ */
+const COMPACTION_THRESHOLD = 0.9;
+
+/**
+ * How many complete turns (starting from a user message) to keep verbatim after
+ * compaction, in addition to the summary. Keeps enough recent context that the
+ * conversation continues to feel continuous.
+ */
+const RECENT_TURNS_TO_KEEP = 2;
 
 /**
  * Owns the conversation state (the growing messages array) and handles
@@ -49,15 +74,85 @@ export class Session {
 
   /**
    * Handle a single non-empty line. Returns "exit" when the line is `/exit`;
-   * a formatted context line for `/context`; otherwise the Result from the
-   * core pipeline.
+   * a formatted context line for `/context`; a compaction note for `/compact`;
+   * otherwise the turn outcome. An auto-compact that fails before a turn does
+   * not abort the turn — the user's prompt still runs against the uncut
+   * conversation — and the failure is carried as `compactionWarning` on the
+   * successful result so the edge can surface it (the session performs no I/O).
    */
-  async handleLine(line: string): Promise<Result<string> | "exit"> {
+  async handleLine(line: string): Promise<LineResult> {
     const trimmed = line.trim();
     if (trimmed === "/exit") return "exit";
     if (trimmed === "/context") return this.reportContext();
+    if (trimmed === "/compact") return this.compact();
     this.messages.push({ role: "user", content: line });
-    return runTurn(this.client, this.tools, this.messages, this.toolDefs);
+    const auto = await this.maybeAutoCompact();
+    const turn = await runTurn(this.client, this.tools, this.messages, this.toolDefs);
+    if (!turn.ok) return turn;
+    // A failed auto-compact is non-fatal: proceed with the (uncut) conversation
+    // and let the edge report that compaction did not happen.
+    if (auto.ok) return turn;
+    return { ok: true, value: turn.value, compactionWarning: auto.error };
+  }
+
+  /**
+   * On-demand compaction (`/compact`). Summarizes the older portion of the
+   * conversation and keeps the most recent turns verbatim. On any error the
+   * conversation is left untouched and the error is returned.
+   */
+  private async compact(): Promise<Result<string>> {
+    return this.doCompact();
+  }
+
+  /**
+   * Auto-compaction guard, run before every normal turn. Returns a successful
+   * no-op when nothing needed compacting (cold start, below threshold, or
+   * nothing to summarize). When the last turn's server-reported usage is at or
+   * above `COMPACTION_THRESHOLD` of the live window, performs the same
+   * compaction as `/compact`. Best-effort: any failure is returned so the
+   * caller can log it, but never blocks the turn.
+   */
+  private async maybeAutoCompact(): Promise<Result<string>> {
+    const lastUsed = this.context.lastPromptTokensUsed();
+    if (lastUsed === undefined) return okNoop();
+    const max = await this.context.contextMax();
+    if (!max.ok) return max;
+    if (lastUsed < COMPACTION_THRESHOLD * max.value) return okNoop();
+    return this.doCompact();
+  }
+
+  /**
+   * Shared compaction body: split the conversation, summarize the older
+   * portion, and replace the conversation with the summary plus the recent
+   * turns. On any error the conversation is left untouched and the error is
+   * returned.
+   */
+  private async doCompact(): Promise<Result<string>> {
+    const conversation = this.messages.slice(1); // drop the system message
+    const split = splitForCompaction(conversation, RECENT_TURNS_TO_KEEP);
+    if (split.toSummarize.length === 0) {
+      return okNoop();
+    }
+    const summary = await summarize(this.client, split.toSummarize);
+    if (!summary.ok) {
+      // Leave the conversation untouched; report the error.
+      return { ok: false, error: summary.error };
+    }
+    const framed: Message = {
+      role: "user",
+      content: `Here is a summary of our conversation so far: ${summary.value}`,
+    };
+    const system = this.messages[0];
+    this.messages.length = 0;
+    if (system) this.messages.push(system);
+    this.messages.push(framed);
+    for (const m of split.recent) {
+      this.messages.push(m);
+    }
+    return {
+      ok: true,
+      value: `compacted ${split.toSummarize.length} messages`,
+    };
   }
 
   /**
@@ -72,4 +167,9 @@ export class Session {
     const used = this.context.lastPromptTokensUsed() ?? 0;
     return { ok: true, value: formatContext(used, max.value) };
   }
+}
+
+/** A successful no-op compaction result: nothing needed to be compacted. */
+function okNoop(): Result<string> {
+  return { ok: true, value: "nothing to compact" };
 }

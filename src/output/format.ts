@@ -21,3 +21,18 @@ export function formatContext(usedTokens: number, maxTokens: number): string {
   const pctLabel = pct >= 1 ? pct.toFixed(1) : pct.toFixed(2);
   return `context: ${usedTokens} / ${maxTokens} tokens (${pctLabel}%)`;
 }
+
+/**
+ * Render a failed auto-compaction as a single stderr line. Distinguishes the
+ * case where the live window read failed (no max known) from a summarize
+ * failure, so the user can tell which thing broke.
+ */
+export function formatCompactionFailure(err: ViseError): string {
+  if (err.kind === "http") {
+    return `vise: auto-compact skipped (HTTP ${err.status}): ${err.body}`;
+  } else if (err.kind === "network") {
+    return `vise: auto-compact skipped (network): ${err.cause}`;
+  } else {
+    return `vise: auto-compact skipped: ${err.body}`;
+  }
+}

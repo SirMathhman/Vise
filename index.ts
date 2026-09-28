@@ -2,7 +2,7 @@ import { createInterface } from "node:readline";
 import { LlmClient } from "./src/client/llm.ts";
 import { tools, toolRunner } from "./src/tools.ts";
 import { Session } from "./src/repl/session.ts";
-import { formatError } from "./src/output/format.ts";
+import { formatCompactionFailure, formatError } from "./src/output/format.ts";
 
 const client = new LlmClient();
 const session = new Session(client, toolRunner, tools, client, process.cwd());
@@ -24,6 +24,9 @@ rl.on("line", (line) => {
     }
     if (result.ok) {
       console.log(result.value);
+      if (result.compactionWarning) {
+        console.error(formatCompactionFailure(result.compactionWarning));
+      }
     } else {
       console.error(formatError(result.error));
     }
