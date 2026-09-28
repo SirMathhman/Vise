@@ -3,6 +3,7 @@ import type { Client, Tool, ToolRunner } from "../core/engine.ts";
 import type { Message, Result, ViseError } from "../core/errors.ts";
 import {
   formatContext,
+  formatHelp,
   formatModelList,
   formatProfileList,
 } from "../output/format.ts";
@@ -109,7 +110,10 @@ export class Session {
     this.modelController = modelController;
     this.profileSource = profileSource;
     this.cwd = cwd;
-    this.systemMessage = { role: "system", content: `Working directory: ${cwd}` };
+    this.systemMessage = {
+      role: "system",
+      content: `Working directory: ${cwd}`,
+    };
     this.messages = [this.systemMessage];
   }
 
@@ -124,6 +128,7 @@ export class Session {
   async handleLine(line: string): Promise<LineResult> {
     const trimmed = line.trim();
     if (trimmed === "/exit") return "exit";
+    if (trimmed === "/help") return { ok: true, value: formatHelp() };
     if (trimmed === "/context") return this.reportContext();
     if (trimmed === "/compact") return this.doCompact();
     if (trimmed === "/model" || trimmed.startsWith("/model ")) {

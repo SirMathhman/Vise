@@ -47,6 +47,20 @@ export function formatModelList(models: string[], activeModel: string): string {
     .join("\n");
 }
 
+/** Render the available slash commands as a multi-line help text. */
+export function formatHelp(): string {
+  return [
+    "/exit          exit the REPL",
+    "/help          show this help",
+    "/context       show context window usage",
+    "/compact       compact the conversation now",
+    "/model          list available models",
+    "/model <name>   switch to the named model",
+    "/profile        list available profiles",
+    "/profile <name> set the active profile",
+  ].join("\n");
+}
+
 /**
  * Render the list of available profiles, marking the active profile with an
  * asterisk. `activeProfile` is undefined when no profile is set.
