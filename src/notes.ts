@@ -61,6 +61,15 @@ function summaryOf(body: string): string {
 }
 
 /**
+ * Render a single listed note as its presentation line:
+ * `[<kind>] <name> — <summary>`. Shared by the model-facing `list_notes`
+ * tool and the user-facing `/notes` command so the format lives in one place.
+ */
+export function formatNoteEntry(e: NoteEntry): string {
+  return `[${e.kind}] ${e.name} — ${e.summary}`;
+}
+
+/**
  * List every note under `base`, across both kinds, sorted by name within each
  * kind. Returns `NoteEntry` records with each note's one-line summary.
  */

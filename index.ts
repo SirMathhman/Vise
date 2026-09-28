@@ -12,7 +12,7 @@ import type {
   PostTurnHook,
 } from "./src/repl/session.ts";
 import type { Result } from "./src/core/errors.ts";
-import { listNotes } from "./src/notes.ts";
+import { listNotes, formatNoteEntry } from "./src/notes.ts";
 import { formatCompactionFailure, formatError } from "./src/output/format.ts";
 
 /**
@@ -123,7 +123,7 @@ class FileNoteSource implements NoteSource {
     const notes = listNotes(this.base);
     return {
       ok: true,
-      value: notes.map((n) => `[${n.kind}] ${n.name} — ${n.summary}`),
+      value: notes.map(formatNoteEntry),
     };
   }
 }

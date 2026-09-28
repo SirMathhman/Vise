@@ -13,6 +13,7 @@ import type { Tool, ToolRunner } from "./core/engine.ts";
 import {
   deleteNote,
   findNoteKind,
+  formatNoteEntry,
   listNotes,
   readNote,
   saveNote,
@@ -245,203 +246,230 @@ export const tools: Tool[] = [
 /** Edge-provided tool implementations. All I/O is here; the core only
  * depends on the ToolRunner type.
  */
+
+function errStr(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function listDirectory(args: Record<string, unknown>): string {
+  try {
+    const entries = readdirSync(String(args.path ?? "."));
+    return entries.join("\n");
+  } catch (err) {
+    return errStr(err);
+  }
+}
+
+function readFile(args: Record<string, unknown>): string {
+  try {
+    return readFileSync(String(args.path ?? ""), "utf8");
+  } catch (err) {
+    return errStr(err);
+  }
+}
+
+function createFile(args: Record<string, unknown>): string {
+  const path = String(args.path ?? "");
+  if (path === "") return `error: path must not be empty`;
+  try {
+    if (existsSync(path)) {
+      return `error: ${path} already exists; use edit_file to modify it`;
+    }
+    const dir = dirname(path);
+    mkdirSync(dir, { recursive: true });
+    try {
+      writeFileSync(path, String(args.content ?? ""), "utf8");
+    } catch (err) {
+      // The open succeeded (file now exists, possibly empty/partial).
+      // Remove it so a retry isn't told "already exists" for a file
+      // this tool just made.
+      try {
+        unlinkSync(path);
+      } catch {
+        // File may not exist; the original error is what matters.
+      }
+      throw err;
+    }
+    return `created ${path}`;
+  } catch (err) {
+    return errStr(err);
+  }
+}
+
+function editFile(args: Record<string, unknown>): string {
+  const path = String(args.path ?? "");
+  const old = String(args.old_string ?? "");
+  const next = String(args.new_string ?? "");
+  try {
+    if (old === "") {
+      return `error: old_string must not be empty in ${path}`;
+    }
+    const current = readFileSync(path, "utf8");
+    const count = current.split(old).length - 1;
+    if (count === 0) {
+      return `error: old_string not found in ${path}`;
+    }
+    if (count > 1) {
+      return `error: old_string appears ${count} times in ${path}; it must be unique`;
+    }
+    writeFileSync(path, current.replace(old, next), "utf8");
+    return `edited ${path}`;
+  } catch (err) {
+    return errStr(err);
+  }
+}
+
+function deleteFile(args: Record<string, unknown>): string {
+  const path = String(args.path ?? "");
+  if (path === "") return `error: path must not be empty`;
+  try {
+    unlinkSync(path);
+    return `deleted ${path}`;
+  } catch (err) {
+    return errStr(err);
+  }
+}
+
+function deleteDirectory(args: Record<string, unknown>): string {
+  const path = String(args.path ?? "");
+  if (path === "") return `error: path must not be empty`;
+  try {
+    rmSync(path, { recursive: true });
+    return `deleted ${path}`;
+  } catch (err) {
+    return errStr(err);
+  }
+}
+
+async function runPowershell(args: Record<string, unknown>): Promise<string> {
+  const command = String(args.command ?? "");
+  if (command === "") return `error: command must not be empty`;
+  try {
+    const res = await new Promise<{
+      status: number;
+      stdout: string;
+      stderr: string;
+    }>((resolve, reject) => {
+      const proc = spawn(
+        "powershell.exe",
+        ["-NoProfile", "-NonInteractive", "-Command", command],
+        { windowsHide: true },
+      );
+      let stdout = "";
+      let stderr = "";
+      let timedOut = false;
+      const timer = setTimeout(() => {
+        timedOut = true;
+        proc.kill("SIGTERM");
+      }, 60_000);
+      proc.stdout.on("data", (d: Buffer) => {
+        stdout += d.toString("utf8");
+      });
+      proc.stderr.on("data", (d: Buffer) => {
+        stderr += d.toString("utf8");
+      });
+      proc.on("close", (status) => {
+        clearTimeout(timer);
+        if (timedOut) {
+          resolve({ status: -1, stdout, stderr });
+        } else {
+          resolve({ status: status ?? -1, stdout, stderr });
+        }
+      });
+      proc.on("error", (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+    });
+    const exitCode = res.status;
+    const stdout = res.stdout;
+    const stderr = res.stderr;
+    const body = [stdout.trim(), stderr.trim()]
+      .filter((s) => s !== "")
+      .join("\n");
+    if (exitCode !== 0) {
+      return `exit code ${exitCode}\n${body}`.trim();
+    }
+    return body;
+  } catch (err) {
+    return errStr(err);
+  }
+}
+
+function listNotesTool(args: Record<string, unknown>): string {
+  const kind = args.kind === undefined ? undefined : String(args.kind);
+  if (kind !== undefined && kind !== "memory" && kind !== "skill") {
+    return `error: kind must be 'memory' or 'skill'`;
+  }
+  try {
+    const notes = listNotes(process.cwd());
+    const filtered =
+      kind === undefined ? notes : notes.filter((n) => n.kind === kind);
+    if (filtered.length === 0) return "no notes";
+    return filtered.map(formatNoteEntry).join("\n");
+  } catch (err) {
+    return errStr(err);
+  }
+}
+
+function readNoteTool(args: Record<string, unknown>): string {
+  const noteName = String(args.name ?? "");
+  try {
+    const kind = findNoteKind(process.cwd(), noteName);
+    if (kind === undefined) {
+      return `error: note '${noteName}' not found`;
+    }
+    return readNote(process.cwd(), kind, noteName) ?? "";
+  } catch (err) {
+    return errStr(err);
+  }
+}
+
+function saveNoteTool(args: Record<string, unknown>): string {
+  const kind = String(args.kind ?? "");
+  const noteName = String(args.name ?? "");
+  const body = String(args.body ?? "");
+  if (kind !== "memory" && kind !== "skill") {
+    return `error: kind must be 'memory' or 'skill'`;
+  }
+  try {
+    saveNote(process.cwd(), kind, noteName, body);
+    return `saved ${kind} note '${noteName}'`;
+  } catch (err) {
+    return errStr(err);
+  }
+}
+
+function deleteNoteTool(args: Record<string, unknown>): string {
+  const noteName = String(args.name ?? "");
+  try {
+    const kind = deleteNote(process.cwd(), noteName);
+    return `deleted ${kind} note '${noteName}'`;
+  } catch (err) {
+    return errStr(err);
+  }
+}
+
+const toolHandlers: Record<string, (args: Record<string, unknown>) => string | Promise<string>> = {
+  list_directory: listDirectory,
+  read_file: readFile,
+  create_file: createFile,
+  edit_file: editFile,
+  delete_file: deleteFile,
+  delete_directory: deleteDirectory,
+  run_powershell: runPowershell,
+  list_notes: listNotesTool,
+  read_note: readNoteTool,
+  save_note: saveNoteTool,
+  delete_note: deleteNoteTool,
+};
+
 export const toolRunner: ToolRunner = {
   async run(name, args): Promise<string> {
-    if (name === "list_directory") {
-      try {
-        const entries = readdirSync(String(args.path ?? "."));
-        return entries.join("\n");
-      } catch (err) {
-        return err instanceof Error ? err.message : String(err);
-      }
+    const handler = toolHandlers[name];
+    if (handler === undefined) {
+      return `error: unknown tool ${name}`;
     }
-    if (name === "read_file") {
-      try {
-        return readFileSync(String(args.path ?? ""), "utf8");
-      } catch (err) {
-        return err instanceof Error ? err.message : String(err);
-      }
-    }
-    if (name === "create_file") {
-      try {
-        const path = String(args.path ?? "");
-        if (path === "") {
-          return `error: path must not be empty`;
-        }
-        if (existsSync(path)) {
-          return `error: ${path} already exists; use edit_file to modify it`;
-        }
-        const dir = dirname(path);
-        mkdirSync(dir, { recursive: true });
-        try {
-          writeFileSync(path, String(args.content ?? ""), "utf8");
-        } catch (err) {
-          // The open succeeded (file now exists, possibly empty/partial).
-          // Remove it so a retry isn't told "already exists" for a file
-          // this tool just made.
-          try {
-            unlinkSync(path);
-          } catch {
-            // File may not exist; the original error is what matters.
-          }
-          throw err;
-        }
-        return `created ${path}`;
-      } catch (err) {
-        return err instanceof Error ? err.message : String(err);
-      }
-    }
-    if (name === "edit_file") {
-      try {
-        const path = String(args.path ?? "");
-        const old = String(args.old_string ?? "");
-        const next = String(args.new_string ?? "");
-        if (old === "") {
-          return `error: old_string must not be empty in ${path}`;
-        }
-        const current = readFileSync(path, "utf8");
-        const count = current.split(old).length - 1;
-        if (count === 0) {
-          return `error: old_string not found in ${path}`;
-        }
-        if (count > 1) {
-          return `error: old_string appears ${count} times in ${path}; it must be unique`;
-        }
-        writeFileSync(path, current.replace(old, next), "utf8");
-        return `edited ${path}`;
-      } catch (err) {
-        return err instanceof Error ? err.message : String(err);
-      }
-    }
-    if (name === "delete_file") {
-      try {
-        const path = String(args.path ?? "");
-        if (path === "") {
-          return `error: path must not be empty`;
-        }
-        unlinkSync(path);
-        return `deleted ${path}`;
-      } catch (err) {
-        return err instanceof Error ? err.message : String(err);
-      }
-    }
-    if (name === "delete_directory") {
-      try {
-        const path = String(args.path ?? "");
-        if (path === "") {
-          return `error: path must not be empty`;
-        }
-        rmSync(path, { recursive: true });
-        return `deleted ${path}`;
-      } catch (err) {
-        return err instanceof Error ? err.message : String(err);
-      }
-    }
-    if (name === "run_powershell") {
-      try {
-        const command = String(args.command ?? "");
-        if (command === "") {
-          return `error: command must not be empty`;
-        }
-        const res = await new Promise<{
-          status: number;
-          stdout: string;
-          stderr: string;
-        }>((resolve, reject) => {
-          const proc = spawn(
-            "powershell.exe",
-            ["-NoProfile", "-NonInteractive", "-Command", command],
-            { windowsHide: true },
-          );
-          let stdout = "";
-          let stderr = "";
-          let timedOut = false;
-          const timer = setTimeout(() => {
-            timedOut = true;
-            proc.kill("SIGTERM");
-          }, 60_000);
-          proc.stdout.on("data", (d: Buffer) => {
-            stdout += d.toString("utf8");
-          });
-          proc.stderr.on("data", (d: Buffer) => {
-            stderr += d.toString("utf8");
-          });
-          proc.on("close", (status) => {
-            clearTimeout(timer);
-            if (timedOut) {
-              resolve({ status: -1, stdout, stderr });
-            } else {
-              resolve({ status: status ?? -1, stdout, stderr });
-            }
-          });
-          proc.on("error", (err) => {
-            clearTimeout(timer);
-            reject(err);
-          });
-        });
-        const exitCode = res.status;
-        const stdout = res.stdout;
-        const stderr = res.stderr;
-        const body = [stdout.trim(), stderr.trim()]
-          .filter((s) => s !== "")
-          .join("\n");
-        if (exitCode !== 0) {
-          return `exit code ${exitCode}\n${body}`.trim();
-        }
-        return body;
-      } catch (err) {
-        return err instanceof Error ? err.message : String(err);
-      }
-    }
-    if (name === "list_notes") {
-      try {
-        const kind = args.kind === undefined ? undefined : String(args.kind);
-        const notes = listNotes(process.cwd());
-        const filtered =
-          kind === undefined ? notes : notes.filter((n) => n.kind === kind);
-        if (filtered.length === 0) return "no notes";
-        return filtered
-          .map((n) => `[${n.kind}] ${n.name} — ${n.summary}`)
-          .join("\n");
-      } catch (err) {
-        return err instanceof Error ? err.message : String(err);
-      }
-    }
-    if (name === "read_note") {
-      try {
-        const noteName = String(args.name ?? "");
-        const kind = findNoteKind(process.cwd(), noteName);
-        if (kind === undefined) {
-          return `error: note '${noteName}' not found`;
-        }
-        return readNote(process.cwd(), kind, noteName) ?? "";
-      } catch (err) {
-        return err instanceof Error ? err.message : String(err);
-      }
-    }
-    if (name === "save_note") {
-      try {
-        const kind = String(args.kind ?? "");
-        const noteName = String(args.name ?? "");
-        const body = String(args.body ?? "");
-        if (kind !== "memory" && kind !== "skill") {
-          return `error: kind must be 'memory' or 'skill'`;
-        }
-        saveNote(process.cwd(), kind, noteName, body);
-        return `saved ${kind} note '${noteName}'`;
-      } catch (err) {
-        return err instanceof Error ? err.message : String(err);
-      }
-    }
-    if (name === "delete_note") {
-      try {
-        const noteName = String(args.name ?? "");
-        const kind = deleteNote(process.cwd(), noteName);
-        return `deleted ${kind} note '${noteName}'`;
-      } catch (err) {
-        return err instanceof Error ? err.message : String(err);
-      }
-    }
-    return `error: unknown tool ${name}`;
+    return handler(args);
   },
 };
