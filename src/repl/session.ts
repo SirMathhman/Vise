@@ -128,7 +128,14 @@ export class Session {
   async handleLine(line: string): Promise<LineResult> {
     const trimmed = line.trim();
     if (trimmed === "/exit") return "exit";
-    if (trimmed === "/help") return { ok: true, value: formatHelp() };
+    if (trimmed === "/help")
+      return {
+        ok: true,
+        value: formatHelp({
+          hasModel: !!this.modelController,
+          hasProfile: !!this.profileSource,
+        }),
+      };
     if (trimmed === "/context") return this.reportContext();
     if (trimmed === "/compact") return this.doCompact();
     if (trimmed === "/model" || trimmed.startsWith("/model ")) {

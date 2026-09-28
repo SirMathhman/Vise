@@ -48,17 +48,20 @@ export function formatModelList(models: string[], activeModel: string): string {
 }
 
 /** Render the available slash commands as a multi-line help text. */
-export function formatHelp(): string {
-  return [
+export function formatHelp(opts: { hasModel: boolean; hasProfile: boolean }): string {
+  const lines = [
     "/exit          exit the REPL",
     "/help          show this help",
     "/context       show context window usage",
     "/compact       compact the conversation now",
-    "/model          list available models",
-    "/model <name>   switch to the named model",
-    "/profile        list available profiles",
-    "/profile <name> set the active profile",
-  ].join("\n");
+  ];
+  if (opts.hasModel) {
+    lines.push("/model          list available models", "/model <name>   switch to the named model");
+  }
+  if (opts.hasProfile) {
+    lines.push("/profile        list available profiles", "/profile <name> set the active profile");
+  }
+  return lines.join("\n");
 }
 
 /**
