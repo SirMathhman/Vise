@@ -63,6 +63,17 @@ export interface ModelController {
 }
 
 /**
+ * Pre-turn hook: runs a configured shell command before every turn and returns
+ * its combined output (stdout/stderr or error text). The output is injected
+ * as context into the user's message so the model sees it each turn. Provided
+ * by the edge (the session performs no I/O).
+ */
+export interface PreTurnHook {
+  /** Run the pre-turn hook command and return its combined output. */
+  run(): Promise<string>;
+}
+
+/**
  * Auto-compaction triggers when the last turn's server-reported token count
  * reaches this fraction of the model's context window. Chosen high enough that
  * a normal turn only compacts when overflow is genuinely imminent.
@@ -91,6 +102,7 @@ export class Session {
   private readonly context: ContextSource;
   private readonly modelController?: ModelController;
   private readonly profileSource?: ProfileSource;
+  private readonly preTurnHook?: PreTurnHook;
   private readonly cwd: string;
   private activeProfile: string | undefined;
 
@@ -102,6 +114,7 @@ export class Session {
     cwd: string,
     modelController?: ModelController,
     profileSource?: ProfileSource,
+    preTurnHook?: PreTurnHook,
   ) {
     this.client = client;
     this.tools = tools;
@@ -109,6 +122,7 @@ export class Session {
     this.context = context;
     this.modelController = modelController;
     this.profileSource = profileSource;
+    this.preTurnHook = preTurnHook;
     this.cwd = cwd;
     this.systemMessage = {
       role: "system",
@@ -134,6 +148,7 @@ export class Session {
         value: formatHelp({
           hasModel: !!this.modelController,
           hasProfile: !!this.profileSource,
+          hasPreTurnHook: !!this.preTurnHook,
         }),
       };
     if (trimmed === "/context") return this.reportContext();
@@ -143,6 +158,10 @@ export class Session {
     }
     if (trimmed === "/profile" || trimmed.startsWith("/profile ")) {
       return this.handleProfileCommand(trimmed);
+    }
+    if (this.preTurnHook) {
+      const hookOutput = await this.preTurnHook.run();
+      this.messages.push({ role: "user", content: hookOutput });
     }
     this.messages.push({ role: "user", content: line });
     const auto = await this.maybeAutoCompact();

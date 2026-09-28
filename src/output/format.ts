@@ -48,7 +48,11 @@ export function formatModelList(models: string[], activeModel: string): string {
 }
 
 /** Render the available slash commands as a multi-line help text. */
-export function formatHelp(opts: { hasModel: boolean; hasProfile: boolean }): string {
+export function formatHelp(opts: {
+  hasModel: boolean;
+  hasProfile: boolean;
+  hasPreTurnHook: boolean;
+}): string {
   const lines = [
     "/exit          exit the REPL",
     "/help          show this help",
@@ -56,10 +60,20 @@ export function formatHelp(opts: { hasModel: boolean; hasProfile: boolean }): st
     "/compact       compact the conversation now",
   ];
   if (opts.hasModel) {
-    lines.push("/model          list available models", "/model <name>   switch to the named model");
+    lines.push(
+      "/model          list available models",
+      "/model <name>   switch to the named model",
+    );
   }
   if (opts.hasProfile) {
-    lines.push("/profile        list available profiles", "/profile <name> set the active profile");
+    lines.push(
+      "/profile        list available profiles",
+      "/profile <name> set the active profile",
+    );
+  }
+  if (opts.hasPreTurnHook) {
+    lines.push("");
+    lines.push("pre-turn hook: active (output injected before every turn)");
   }
   return lines.join("\n");
 }

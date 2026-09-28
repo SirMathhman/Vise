@@ -1,10 +1,11 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { join } from "node:path";
 import { LlmClient } from "./src/client/llm.ts";
 import { tools, toolRunner } from "./src/tools.ts";
 import { Session } from "./src/repl/session.ts";
-import type { ProfileSource } from "./src/repl/session.ts";
+import type { ProfileSource, PreTurnHook } from "./src/repl/session.ts";
 import type { Result } from "./src/core/errors.ts";
 import { formatCompactionFailure, formatError } from "./src/output/format.ts";
 
@@ -40,6 +41,89 @@ class FileProfileSource implements ProfileSource {
   }
 }
 
+/**
+ * Edge implementation of PreTurnHook. Runs a configured shell command before
+ * every turn and returns its combined stdout/stderr output (or error text).
+ * The command is read from `.viserc.json` in the working directory.
+ */
+class ShellPreTurnHook implements PreTurnHook {
+  private readonly command: string;
+
+  constructor(command: string) {
+    this.command = command;
+  }
+
+  async run(): Promise<string> {
+    try {
+      const res = await new Promise<{
+        status: number;
+        stdout: string;
+        stderr: string;
+      }>((resolve, reject) => {
+        const proc = spawn("powershell.exe", [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          this.command,
+        ]);
+        let stdout = "";
+        let stderr = "";
+        let timedOut = false;
+        const timer = setTimeout(() => {
+          timedOut = true;
+          proc.kill("SIGTERM");
+        }, 30_000);
+        proc.stdout.on("data", (d: Buffer) => {
+          stdout += d.toString("utf8");
+        });
+        proc.stderr.on("data", (d: Buffer) => {
+          stderr += d.toString("utf8");
+        });
+        proc.on("close", (status) => {
+          clearTimeout(timer);
+          if (timedOut) {
+            resolve({ status: -1, stdout, stderr });
+          } else {
+            resolve({ status: status ?? -1, stdout, stderr });
+          }
+        });
+        proc.on("error", (err) => {
+          clearTimeout(timer);
+          reject(err);
+        });
+      });
+      const body = [res.stdout.trim(), res.stderr.trim()]
+        .filter((s) => s !== "")
+        .join("\n");
+      if (res.status !== 0) {
+        return `hook error (exit code ${res.status}):\n${body}`.trim();
+      }
+      return body;
+    } catch (err) {
+      return `hook error: ${err instanceof Error ? err.message : String(err)}`;
+    }
+  }
+}
+
+/** Read the pre-turn hook command from `.viserc.json` if present. */
+function loadHookCommand(): string | undefined {
+  const configPath = join(process.cwd(), ".viserc.json");
+  if (!existsSync(configPath)) return undefined;
+  try {
+    const raw = readFileSync(configPath, "utf8");
+    const config = JSON.parse(raw);
+    if (typeof config.preTurnCommand === "string") {
+      return config.preTurnCommand;
+    }
+  } catch {
+    // Malformed config: fall back to no hook.
+  }
+  return undefined;
+}
+
+const hookCommand = loadHookCommand();
+const preTurnHook = hookCommand ? new ShellPreTurnHook(hookCommand) : undefined;
+
 const client = new LlmClient();
 const session = new Session(
   client,
@@ -49,6 +133,7 @@ const session = new Session(
   process.cwd(),
   client,
   new FileProfileSource(join(process.cwd(), "profiles")),
+  preTurnHook,
 );
 
 const rl = createInterface({
