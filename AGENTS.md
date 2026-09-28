@@ -27,7 +27,7 @@ Full design rationale, invariants, and target layout live in [ARCHITECTURE.md](A
 - `src/core/engine.ts` mutates the `messages` array in place by design; it's a documented side channel, not a bug.
 - `RECENT_TURNS_TO_KEEP` in `src/repl/session.ts` and `MAX_TOOL_ROUNDS` in `src/core/engine.ts` are the compaction/tool-loop bounds.
 - `API_KEY`, `URL`, `MODEL` are hardcoded constants in `src/client/llm.ts` (no env config by design — local-only tool).
-- **Profiles:** `/profile <name>` loads a `.md` file from the `profiles/` directory and appends its text to the default system message. The `ProfileSource` interface is owned by the core (`src/repl/session.ts`); the edge (`index.ts` `FileProfileSource`) does the `node:fs` I/O. Same edge-owns-I/O pattern as `ModelController`.
+- **Profiles:** `/profile <name>` loads a `.md` file from the `profiles/` directory and appends its text as a user message to the conversation. The system message is never modified (invariant #6). The `ProfileSource` interface is owned by the core (`src/repl/session.ts`); the edge (`index.ts` `FileProfileSource`) does the `node:fs` I/O. Same edge-owns-I/O pattern as `ModelController`.
 
 ## Environment
 
