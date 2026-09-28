@@ -450,7 +450,10 @@ function deleteNoteTool(args: Record<string, unknown>): string {
   }
 }
 
-const toolHandlers: Record<string, (args: Record<string, unknown>) => string | Promise<string>> = {
+const toolHandlers: Record<
+  string,
+  (args: Record<string, unknown>) => string | Promise<string>
+> = {
   list_directory: listDirectory,
   read_file: readFile,
   create_file: createFile,

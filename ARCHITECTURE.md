@@ -114,7 +114,7 @@ Rules:
   pre-turn before the user's input, post-turn after the assistant's reply.
   Same edge-owns-I/O pattern as `ProfileSource`.
 - `NoteSource` is a core-owned type (`repl/session.ts`) for listing notes
-  for the `/notes` command. A note is the project's combined "memories"
+  for the `/note` command. A note is the project's combined "memories"
   (short facts) and "skills" (how-to procedures) store: one `.md` file per
   note under `notes/<kind>/`, the filename (minus extension) is the note
   name, the first non-empty line is its one-line summary (shown by listing),
@@ -122,7 +122,7 @@ Rules:
   Recall is all on-demand — nothing is auto-injected into context; the model
   reads/writes notes through the `list_notes`/`read_note`/`save_note`/
   `delete_note` tools when it decides it needs them, and the user sees the
-  same store via `/notes` (read-only list). The shared file I/O lives in
+  same store via `/note` (read-only list). The shared file I/O lives in
   `src/notes.ts` (edge); the `FileNoteSource` in `index.ts` implements
   `NoteSource`. Same edge-owns-I/O pattern as `ProfileSource`.
 - Every file stays under 500 code lines and every function under 100 lines;

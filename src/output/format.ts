@@ -47,7 +47,7 @@ export function formatModelList(models: string[], activeModel: string): string {
     .join("\n");
 }
 
-/** Format the `/notes` listing. Each line is a pre-formatted note entry. */
+/** Format the `/note` listing. Each line is a pre-formatted note entry. */
 export function formatNoteList(lines: string[]): string {
   if (lines.length === 0) return "no notes";
   return lines.join("\n");
@@ -80,7 +80,7 @@ export function formatHelp(opts: {
     );
   }
   if (opts.hasNotes) {
-    lines.push("/notes          list all notes (memories and skills)");
+    lines.push("/note            list all notes (memories and skills)");
   }
   if (opts.preTurnHookCount > 0) {
     lines.push("");

@@ -17,7 +17,7 @@ import { join } from "node:path";
  * summary (used for listing); the rest is the body.
  *
  * This module is edge I/O (invariant #2). It is shared by the model-facing
- * note tools (`tools.ts`) and the user-facing `/notes` command's `NoteSource`
+ * note tools (`tools.ts`) and the user-facing `/note` command's `NoteSource`
  * (`index.ts`), so the file layout and naming rules live in one place.
  */
 
@@ -63,7 +63,7 @@ function summaryOf(body: string): string {
 /**
  * Render a single listed note as its presentation line:
  * `[<kind>] <name> — <summary>`. Shared by the model-facing `list_notes`
- * tool and the user-facing `/notes` command so the format lives in one place.
+ * tool and the user-facing `/note` command so the format lives in one place.
  */
 export function formatNoteEntry(e: NoteEntry): string {
   return `[${e.kind}] ${e.name} — ${e.summary}`;

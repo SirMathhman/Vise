@@ -64,9 +64,9 @@ export interface ModelController {
 }
 
 /**
- * Source of note listings for the `/notes` command. A note is the project's
+ * Source of note listings for the `/note` command. A note is the project's
  * combined "memories" (short facts) and "skills" (how-to procedures) store,
- * exposed to the model on demand via tools and to the user via `/notes`.
+ * exposed to the model on demand via tools and to the user via `/note`.
  * Only listing is supported here: the model does its own reads/writes through
  * the note tools. Provided by the edge (the session performs no I/O).
  */
@@ -201,7 +201,7 @@ export class Session {
     if (trimmed === "/profile" || trimmed.startsWith("/profile ")) {
       return this.handleProfileCommand(trimmed);
     }
-    if (trimmed === "/notes") return this.handleNotesCommand();
+    if (trimmed === "/note") return this.handleNotesCommand();
     await this.runHooks(this.preTurnHooks);
     this.messages.push({ role: "user", content: line });
     const auto = await this.maybeAutoCompact();
@@ -391,7 +391,7 @@ export class Session {
   }
 
   /**
-   * Handle `/notes`. Lists every note (memory and skill) with its one-line
+   * Handle `/note`. Lists every note (memory and skill) with its one-line
    * summary. Notes are exposed to the model on demand through the note tools;
    * this command is the user's read-only view of the same store.
    */
