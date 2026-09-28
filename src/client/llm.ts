@@ -29,8 +29,57 @@ interface Slot {
   n_ctx: number;
 }
 
+interface ModelsResponse {
+  data?: { id: string }[];
+}
+
 export class LlmClient implements Client {
   private lastPromptTokens: number | undefined;
+  private currentModel: string = MODEL;
+
+  /**
+   * The current active model id.
+   */
+  getModel(): string {
+    return this.currentModel;
+  }
+
+  /**
+   * Change the active model.
+   */
+  setModel(name: string): void {
+    this.currentModel = name;
+  }
+
+  /**
+   * Fetch the list of available model ids from the server via `GET /v1/models`.
+   */
+  async listModels(): Promise<Result<string[]>> {
+    try {
+      const res = await fetch("http://localhost:8080/v1/models", {
+        method: "GET",
+        headers: { authorization: `Bearer ${API_KEY}` },
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        return {
+          ok: false,
+          error: { kind: "http", status: res.status, body: text },
+        };
+      }
+      const data = (await res.json()) as ModelsResponse;
+      const models = data.data?.map((m) => m.id).filter(Boolean) ?? [];
+      return { ok: true, value: models };
+    } catch (err) {
+      return {
+        ok: false,
+        error: {
+          kind: "network",
+          cause: err instanceof Error ? err.message : String(err),
+        },
+      };
+    }
+  }
 
   /**
    * The server's token count of the most recent prompt sent via `chat`.
@@ -47,7 +96,7 @@ export class LlmClient implements Client {
   async contextMax(): Promise<Result<number>> {
     try {
       const res = await fetch(
-        `http://localhost:8080/slots?model=${encodeURIComponent(MODEL)}`,
+        `http://localhost:8080/slots?model=${encodeURIComponent(this.currentModel)}`,
         {
           method: "GET",
           headers: { authorization: `Bearer ${API_KEY}` },
@@ -89,7 +138,7 @@ export class LlmClient implements Client {
     tools?: Tool[],
   ): Promise<Result<AssistantMessage>> {
     const body: Record<string, unknown> = {
-      model: MODEL,
+      model: this.currentModel,
       messages,
       stream: false,
     };

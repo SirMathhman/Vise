@@ -5,7 +5,14 @@ import { Session } from "./src/repl/session.ts";
 import { formatCompactionFailure, formatError } from "./src/output/format.ts";
 
 const client = new LlmClient();
-const session = new Session(client, toolRunner, tools, client, process.cwd());
+const session = new Session(
+  client,
+  toolRunner,
+  tools,
+  client,
+  process.cwd(),
+  client,
+);
 
 const rl = createInterface({
   input: process.stdin,

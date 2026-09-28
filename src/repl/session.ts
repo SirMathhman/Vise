@@ -32,6 +32,18 @@ export interface ContextSource {
 }
 
 /**
+ * Controller for inspecting and switching the active model.
+ */
+export interface ModelController {
+  /** Return the currently active model identifier. */
+  getModel(): string;
+  /** Set the active model identifier. */
+  setModel(name: string): void;
+  /** Retrieve available model names from the server. */
+  listModels(): Promise<Result<string[]>>;
+}
+
+/**
  * Auto-compaction triggers when the last turn's server-reported token count
  * reaches this fraction of the model's context window. Chosen high enough that
  * a normal turn only compacts when overflow is genuinely imminent.
@@ -57,6 +69,7 @@ export class Session {
   private readonly tools: ToolRunner;
   private readonly toolDefs: Tool[];
   private readonly context: ContextSource;
+  private readonly modelController?: ModelController;
 
   constructor(
     client: Client,
@@ -64,11 +77,13 @@ export class Session {
     toolDefs: Tool[],
     context: ContextSource,
     cwd: string,
+    modelController?: ModelController,
   ) {
     this.client = client;
     this.tools = tools;
     this.toolDefs = toolDefs;
     this.context = context;
+    this.modelController = modelController;
     this.messages = [{ role: "system", content: `Working directory: ${cwd}` }];
   }
 
@@ -85,6 +100,9 @@ export class Session {
     if (trimmed === "/exit") return "exit";
     if (trimmed === "/context") return this.reportContext();
     if (trimmed === "/compact") return this.compact();
+    if (trimmed === "/model" || trimmed.startsWith("/model ")) {
+      return this.handleModelCommand(trimmed);
+    }
     this.messages.push({ role: "user", content: line });
     const auto = await this.maybeAutoCompact();
     const turn = await runTurn(
@@ -171,6 +189,52 @@ export class Session {
     if (!max.ok) return { ok: false, error: max.error };
     const used = this.context.lastPromptTokensUsed() ?? 0;
     return { ok: true, value: formatContext(used, max.value) };
+  }
+
+  /**
+   * Handle `/model` and `/model <name>`.
+   * When name is omitted: lists available models from the server.
+   * When name is provided: validates the name and switches the active model.
+   */
+  private async handleModelCommand(line: string): Promise<Result<string>> {
+    if (!this.modelController) {
+      return {
+        ok: false,
+        error: {
+          kind: "malformed",
+          body: "model switching not supported by the current client",
+        },
+      };
+    }
+
+    const arg = line.slice("/model".length).trim();
+    if (arg === "") {
+      const models = await this.modelController.listModels();
+      if (!models.ok) return models;
+      const current = this.modelController.getModel();
+      const lines = models.value.map((m) =>
+        m === current ? `* ${m} (active)` : `  ${m}`,
+      );
+      return {
+        ok: true,
+        value: lines.length > 0 ? lines.join("\n") : "no models available",
+      };
+    }
+
+    const models = await this.modelController.listModels();
+    if (!models.ok) return models;
+    if (!models.value.includes(arg)) {
+      return {
+        ok: false,
+        error: {
+          kind: "malformed",
+          body: `unknown model '${arg}'. Run '/model' to see available models.`,
+        },
+      };
+    }
+
+    this.modelController.setModel(arg);
+    return { ok: true, value: `switched to model ${arg}` };
   }
 }
 
