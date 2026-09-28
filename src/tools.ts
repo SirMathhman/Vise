@@ -1,10 +1,13 @@
 import {
+  existsSync,
+  mkdirSync,
   readdirSync,
   readFileSync,
   rmSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
+import { dirname } from "node:path";
 import type { Tool, ToolRunner } from "./core/engine.ts";
 
 /** Tool definitions exposed to the model. */
@@ -40,6 +43,28 @@ export const tools: Tool[] = [
           },
         },
         required: ["path"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "create_file",
+      description:
+        "Create a new file at the given path with the given contents. Parent directories are created as needed. Fails if the file already exists.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "Path of the file to create",
+          },
+          content: {
+            type: "string",
+            description: "Contents to write to the file. May be empty.",
+          },
+        },
+        required: ["path", "content"],
       },
     },
   },
@@ -124,6 +149,23 @@ export const toolRunner: ToolRunner = {
     if (name === "read_file") {
       try {
         return readFileSync(String(args.path ?? ""), "utf8");
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
+    }
+    if (name === "create_file") {
+      try {
+        const path = String(args.path ?? "");
+        if (path === "") {
+          return `error: path must not be empty`;
+        }
+        if (existsSync(path)) {
+          return `error: ${path} already exists; use edit_file to modify it`;
+        }
+        const dir = dirname(path);
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(path, String(args.content ?? ""), "utf8");
+        return `created ${path}`;
       } catch (err) {
         return err instanceof Error ? err.message : String(err);
       }

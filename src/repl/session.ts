@@ -87,7 +87,12 @@ export class Session {
     if (trimmed === "/compact") return this.compact();
     this.messages.push({ role: "user", content: line });
     const auto = await this.maybeAutoCompact();
-    const turn = await runTurn(this.client, this.tools, this.messages, this.toolDefs);
+    const turn = await runTurn(
+      this.client,
+      this.tools,
+      this.messages,
+      this.toolDefs,
+    );
     if (!turn.ok) return turn;
     // A failed auto-compact is non-fatal: proceed with the (uncut) conversation
     // and let the edge report that compaction did not happen.
