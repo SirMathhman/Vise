@@ -29,7 +29,7 @@ export interface Client {
  * the core depends only on this interface so it can be tested with a stub.
  */
 export interface ToolRunner {
-  run(name: string, args: Record<string, unknown>): string;
+  run(name: string, args: Record<string, unknown>): Promise<string>;
 }
 
 const MAX_TOOL_ROUNDS = 10;
@@ -134,7 +134,7 @@ export async function runTurn(
             string,
             unknown
           >;
-          output = tools.run(tc.function.name, args);
+          output = await tools.run(tc.function.name, args);
         } catch {
           output = `error: failed to execute ${tc.function.name}`;
         }

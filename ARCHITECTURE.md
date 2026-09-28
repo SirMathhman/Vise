@@ -62,6 +62,8 @@ src/
   repl/
     session.ts      # orchestrates: lines in, results out; owns conversation
                     # state (the growing messages array)
+  tools.ts          # edge-provided tool definitions (`Tool[]`) and `ToolRunner`
+                    # implementation: all tool I/O (file ops, shell commands)
 ```
 
 Dependency direction (arrows point from dependent to dependency):
@@ -72,6 +74,7 @@ index.ts ──> cli ──> driver/* ──> session ──> engine
                                        │        └──> client/llm  (transport)
                                        │
                                        └────────> output/format
+tools.ts ──> engine                  # edge: tool definitions + ToolRunner implementation
 errors.ts is imported by engine, session, output, and client — and by nothing else
 ```
 
@@ -111,7 +114,7 @@ role earns it, not before.
   those variants for display — keep that formatting in `output/format.ts`
   once it exists, not inline in `index.ts`.
 - **One file doing every job.** `index.ts` is currently entry, driver,
-  session, core, and tool dispatch fused (the transport is already
+  and session fused (the transport and tool dispatch are already
   extracted). It is already past the ~50-line threshold, so the
   driver/session/engine split is overdue, not optional.
 - **Pure core vs. network I/O.** The core's fundamental operation is an HTTP
@@ -142,6 +145,13 @@ role earns it, not before.
 - **TTY-only assumptions.** Today the readline interface hard-codes
   `terminal: false` and assumes a TTY. The driver split exists precisely so
   TTY and non-TTY paths are tested independently; do not re-couple them.
+- **Blocking tools.** Tool implementations run synchronously inside the
+  event loop (e.g. `spawnSync` in `run_powershell` waits up to the full
+  command duration); while a tool is running the REPL cannot accept, echo,
+  or even service interrupt input. The fix is an async `ToolRunner.run`
+  (see Future Work) — until then, keep tool timeouts short enough that the
+  stall is tolerable and do not add tools that wait on unbounded user input
+  in the child process.
 - **Implicit global state.** Session state (conversation state, interrupt
   handling) must live in the session object, not in module-level `let`
   bindings, or the core becomes untestable and un-reentrant.
@@ -161,10 +171,13 @@ role earns it, not before.
   scriptable and CI-able.
 - **CLI surface.** `cli.ts` with subcommands and flags; `index.ts` shrinks to
   pure wiring.
-- **Tool system.** Tool definitions (`Tool[]`) as core data; `ToolRunner`
-  interface in `core/engine.ts` (edge provides implementations, engine
-  dispatches by name). Structured tool-execution errors as a `ViseError`
-  variant (e.g. `kind: "tool"`), not string-swallowed into the message.
+- **Tool system.** Tool definitions (`Tool[]`) and the `ToolRunner`
+  interface (edge provides implementations in `src/tools.ts`, engine
+  dispatches by name) are implemented. What remains: structured
+  tool-execution errors as a `ViseError` variant (e.g. `kind: "tool"`), not
+  string-swallowed into the message; and an async `ToolRunner.run` so tools
+  that wait on child processes or the network do not block the REPL event
+  loop while they run.
 - **Session state.** Conversation state (the growing `messages` array),
   interrupt (Ctrl+C) handling, and clean termination state owned by
   `session.ts`, exercisable without a real TTY.

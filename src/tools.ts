@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -156,7 +156,7 @@ export const tools: Tool[] = [
  * depends on the ToolRunner type.
  */
 export const toolRunner: ToolRunner = {
-  run(name, args) {
+  async run(name, args): Promise<string> {
     if (name === "list_directory") {
       try {
         const entries = readdirSync(String(args.path ?? "."));
@@ -253,17 +253,43 @@ export const toolRunner: ToolRunner = {
         if (command === "") {
           return `error: command must not be empty`;
         }
-        const res = spawnSync(
-          "powershell.exe",
-          ["-NoProfile", "-NonInteractive", "-Command", command],
-          { encoding: "utf8", timeout: 60_000, windowsHide: true },
+        const res = await new Promise<{ status: number; stdout: string; stderr: string }>(
+          (resolve, reject) => {
+            const proc = spawn(
+              "powershell.exe",
+              ["-NoProfile", "-NonInteractive", "-Command", command],
+              { windowsHide: true },
+            );
+            let stdout = "";
+            let stderr = "";
+            let timedOut = false;
+            const timer = setTimeout(() => {
+              timedOut = true;
+              proc.kill("SIGTERM");
+            }, 60_000);
+            proc.stdout.on("data", (d: Buffer) => {
+              stdout += d.toString("utf8");
+            });
+            proc.stderr.on("data", (d: Buffer) => {
+              stderr += d.toString("utf8");
+            });
+            proc.on("close", (status) => {
+              clearTimeout(timer);
+              if (timedOut) {
+                resolve({ status: -1, stdout, stderr });
+              } else {
+                resolve({ status: status ?? -1, stdout, stderr });
+              }
+            });
+            proc.on("error", (err) => {
+              clearTimeout(timer);
+              reject(err);
+            });
+          },
         );
-        if (res.error) {
-          return res.error.message;
-        }
-        const exitCode = res.status ?? -1;
-        const stdout = res.stdout ?? "";
-        const stderr = res.stderr ?? "";
+        const exitCode = res.status;
+        const stdout = res.stdout;
+        const stderr = res.stderr;
         const body = [stdout.trim(), stderr.trim()]
           .filter((s) => s !== "")
           .join("\n");
