@@ -74,6 +74,17 @@ export interface PreTurnHook {
 }
 
 /**
+ * Post-turn hook: runs a configured shell command after every successful turn
+ * and returns its combined output (stdout/stderr or error text). The output
+ * is injected as a user message after the assistant's reply, so the model
+ * sees it in the next turn. Provided by the edge (the session performs no I/O).
+ */
+export interface PostTurnHook {
+  /** Run the post-turn hook command and return its combined output. */
+  run(): Promise<string>;
+}
+
+/**
  * Auto-compaction triggers when the last turn's server-reported token count
  * reaches this fraction of the model's context window. Chosen high enough that
  * a normal turn only compacts when overflow is genuinely imminent.
@@ -103,6 +114,7 @@ export class Session {
   private readonly modelController?: ModelController;
   private readonly profileSource?: ProfileSource;
   private readonly preTurnHook?: PreTurnHook;
+  private readonly postTurnHook?: PostTurnHook;
   private readonly cwd: string;
   private activeProfile: string | undefined;
 
@@ -115,6 +127,7 @@ export class Session {
     modelController?: ModelController,
     profileSource?: ProfileSource,
     preTurnHook?: PreTurnHook,
+    postTurnHook?: PostTurnHook,
   ) {
     this.client = client;
     this.tools = tools;
@@ -123,6 +136,7 @@ export class Session {
     this.modelController = modelController;
     this.profileSource = profileSource;
     this.preTurnHook = preTurnHook;
+    this.postTurnHook = postTurnHook;
     this.cwd = cwd;
     this.systemMessage = {
       role: "system",
@@ -149,6 +163,7 @@ export class Session {
           hasModel: !!this.modelController,
           hasProfile: !!this.profileSource,
           hasPreTurnHook: !!this.preTurnHook,
+          hasPostTurnHook: !!this.postTurnHook,
         }),
       };
     if (trimmed === "/context") return this.reportContext();
@@ -174,6 +189,12 @@ export class Session {
       this.toolDefs,
     );
     if (!turn.ok) return turn;
+    if (this.postTurnHook) {
+      const hookOutput = await this.postTurnHook.run();
+      if (hookOutput.trim() !== "") {
+        this.messages.push({ role: "user", content: hookOutput });
+      }
+    }
     // A failed auto-compact is non-fatal: proceed with the (uncut) conversation
     // and let the edge report that compaction did not happen.
     if (auto.ok) return turn;

@@ -52,6 +52,7 @@ export function formatHelp(opts: {
   hasModel: boolean;
   hasProfile: boolean;
   hasPreTurnHook: boolean;
+  hasPostTurnHook: boolean;
 }): string {
   const lines = [
     "/exit          exit the REPL",
@@ -73,7 +74,10 @@ export function formatHelp(opts: {
   }
   if (opts.hasPreTurnHook) {
     lines.push("");
-    lines.push("pre-turn hook: active (output injected before every turn)");
+    lines.push("pre-turn hook:  active (output injected before every turn)");
+  }
+  if (opts.hasPostTurnHook) {
+    lines.push("post-turn hook: active (output injected after every turn)");
   }
   return lines.join("\n");
 }

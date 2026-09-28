@@ -5,7 +5,11 @@ import { join } from "node:path";
 import { LlmClient } from "./src/client/llm.ts";
 import { tools, toolRunner } from "./src/tools.ts";
 import { Session } from "./src/repl/session.ts";
-import type { ProfileSource, PreTurnHook } from "./src/repl/session.ts";
+import type {
+  ProfileSource,
+  PreTurnHook,
+  PostTurnHook,
+} from "./src/repl/session.ts";
 import type { Result } from "./src/core/errors.ts";
 import { formatCompactionFailure, formatError } from "./src/output/format.ts";
 
@@ -42,11 +46,11 @@ class FileProfileSource implements ProfileSource {
 }
 
 /**
- * Edge implementation of PreTurnHook. Runs a configured shell command before
- * every turn and returns its combined stdout/stderr output (or error text).
+ * Edge implementation of PreTurnHook and PostTurnHook. Runs a configured shell
+ * command and returns its combined stdout/stderr output (or error text).
  * The command is read from `.viserc.json` in the working directory.
  */
-class ShellPreTurnHook implements PreTurnHook {
+class ShellHook implements PreTurnHook, PostTurnHook {
   private readonly command: string;
 
   constructor(command: string) {
@@ -105,24 +109,34 @@ class ShellPreTurnHook implements PreTurnHook {
   }
 }
 
-/** Read the pre-turn hook command from `.viserc.json` if present. */
-function loadHookCommand(): string | undefined {
+/** Read hook commands from `.viserc.json` if present. */
+function loadHookCommands(): { pre?: string; post?: string } {
   const configPath = join(process.cwd(), ".viserc.json");
-  if (!existsSync(configPath)) return undefined;
+  if (!existsSync(configPath)) return {};
   try {
     const raw = readFileSync(configPath, "utf8");
     const config = JSON.parse(raw);
+    const result: { pre?: string; post?: string } = {};
     if (typeof config.preTurnCommand === "string") {
-      return config.preTurnCommand;
+      result.pre = config.preTurnCommand;
     }
+    if (typeof config.postTurnCommand === "string") {
+      result.post = config.postTurnCommand;
+    }
+    return result;
   } catch {
-    // Malformed config: fall back to no hook.
+    // Malformed config: fall back to no hooks.
   }
-  return undefined;
+  return {};
 }
 
-const hookCommand = loadHookCommand();
-const preTurnHook = hookCommand ? new ShellPreTurnHook(hookCommand) : undefined;
+const hookCommands = loadHookCommands();
+const preTurnHook = hookCommands.pre
+  ? new ShellHook(hookCommands.pre)
+  : undefined;
+const postTurnHook = hookCommands.post
+  ? new ShellHook(hookCommands.post)
+  : undefined;
 
 const client = new LlmClient();
 const session = new Session(
@@ -134,6 +148,7 @@ const session = new Session(
   client,
   new FileProfileSource(join(process.cwd(), "profiles")),
   preTurnHook,
+  postTurnHook,
 );
 
 const rl = createInterface({

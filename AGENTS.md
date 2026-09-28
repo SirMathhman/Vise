@@ -28,6 +28,7 @@ Full design rationale, invariants, and target layout live in [ARCHITECTURE.md](A
 - `RECENT_TURNS_TO_KEEP` in `src/repl/session.ts` and `MAX_TOOL_ROUNDS` in `src/core/engine.ts` are the compaction/tool-loop bounds.
 - `API_KEY`, `URL`, `MODEL` are hardcoded constants in `src/client/llm.ts` (no env config by design — local-only tool).
 - **Profiles:** `/profile <name>` loads a `.md` file from the `profiles/` directory and appends its text as a user message to the conversation. The system message is never modified (invariant #6). The `ProfileSource` interface is owned by the core (`src/repl/session.ts`); the edge (`index.ts` `FileProfileSource`) does the `node:fs` I/O. Same edge-owns-I/O pattern as `ModelController`.
+- **Pre-turn hook:** A shell command (configured in `.viserc.json` as `preTurnCommand`) runs before every turn; its output is injected as a user message before the user's input. **Post-turn hook:** A shell command (configured in `.viserc.json` as `postTurnCommand`) runs after every successful turn; its output is injected as a user message after the assistant's reply. The `PreTurnHook`/`PostTurnHook` interfaces are core-owned (`src/repl/session.ts`); the edge (`index.ts` `ShellHook`) spawns `powershell.exe`. Same edge-owns-I/O pattern.
 
 ## Environment
 
