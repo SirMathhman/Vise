@@ -1,7 +1,11 @@
 import { runTurn, splitForCompaction, summarize } from "../core/engine.ts";
 import type { Client, Tool, ToolRunner } from "../core/engine.ts";
 import type { Message, Result, ViseError } from "../core/errors.ts";
-import { formatContext, formatModelList } from "../output/format.ts";
+import {
+  formatContext,
+  formatModelList,
+  formatProfileList,
+} from "../output/format.ts";
 
 /**
  * The outcome of a handled line. A successful turn carries the model's reply
@@ -29,6 +33,18 @@ export interface ContextSource {
   lastPromptTokensUsed(): number | undefined;
   /** The model's maximum context window in tokens, queried live. */
   contextMax(): Promise<Result<number>>;
+}
+
+/**
+ * Source of profile text. A profile is free-form instruction text appended
+ * to the default system message to shape the assistant's persona. Provided
+ * by the edge (the session performs no I/O).
+ */
+export interface ProfileSource {
+  /** Names of the available profiles (without file extension). */
+  listProfiles(): Promise<Result<string[]>>;
+  /** Load the full text of the named profile. Empty string when unset. */
+  loadProfile(name: string): Promise<Result<string>>;
 }
 
 /**
@@ -70,6 +86,9 @@ export class Session {
   private readonly toolDefs: Tool[];
   private readonly context: ContextSource;
   private readonly modelController?: ModelController;
+  private readonly profileSource?: ProfileSource;
+  private readonly cwd: string;
+  private activeProfile: string | undefined;
 
   constructor(
     client: Client,
@@ -78,12 +97,15 @@ export class Session {
     context: ContextSource,
     cwd: string,
     modelController?: ModelController,
+    profileSource?: ProfileSource,
   ) {
     this.client = client;
     this.tools = tools;
     this.toolDefs = toolDefs;
     this.context = context;
     this.modelController = modelController;
+    this.profileSource = profileSource;
+    this.cwd = cwd;
     this.messages = [{ role: "system", content: `Working directory: ${cwd}` }];
   }
 
@@ -99,9 +121,12 @@ export class Session {
     const trimmed = line.trim();
     if (trimmed === "/exit") return "exit";
     if (trimmed === "/context") return this.reportContext();
-    if (trimmed === "/compact") return this.compact();
+    if (trimmed === "/compact") return this.doCompact();
     if (trimmed === "/model" || trimmed.startsWith("/model ")) {
       return this.handleModelCommand(trimmed);
+    }
+    if (trimmed === "/profile" || trimmed.startsWith("/profile ")) {
+      return this.handleProfileCommand(trimmed);
     }
     this.messages.push({ role: "user", content: line });
     const auto = await this.maybeAutoCompact();
@@ -116,15 +141,6 @@ export class Session {
     // and let the edge report that compaction did not happen.
     if (auto.ok) return turn;
     return { ok: true, value: turn.value, compactionWarning: auto.error };
-  }
-
-  /**
-   * On-demand compaction (`/compact`). Summarizes the older portion of the
-   * conversation and keeps the most recent turns verbatim. On any error the
-   * conversation is left untouched and the error is returned.
-   */
-  private async compact(): Promise<Result<string>> {
-    return this.doCompact();
   }
 
   /**
@@ -232,6 +248,48 @@ export class Session {
 
     this.modelController.setModel(arg);
     return { ok: true, value: `switched to model ${arg}` };
+  }
+
+  /**
+   * Handle `/profile` and `/profile <name>`.
+   * When name is omitted: lists available profiles from the source.
+   * When name is provided: loads the profile text and rebuilds the system
+   * message as the working-directory default plus the profile text.
+   * An empty profile file clears back to the default system message.
+   */
+  private async handleProfileCommand(line: string): Promise<Result<string>> {
+    if (!this.profileSource) {
+      return {
+        ok: false,
+        error: {
+          kind: "malformed",
+          body: "profiles not supported by the current client",
+        },
+      };
+    }
+
+    const arg = line.slice("/profile".length).trim();
+    if (arg === "") {
+      const profiles = await this.profileSource.listProfiles();
+      if (!profiles.ok) return profiles;
+      return {
+        ok: true,
+        value: formatProfileList(profiles.value, this.activeProfile),
+      };
+    }
+
+    const loaded = await this.profileSource.loadProfile(arg);
+    if (!loaded.ok) return loaded;
+    const body = loaded.value.trim();
+    this.activeProfile = body === "" ? undefined : arg;
+    this.messages[0] = {
+      role: "system",
+      content:
+        body === ""
+          ? `Working directory: ${this.cwd}`
+          : `Working directory: ${this.cwd}\n\n${body}`,
+    };
+    return { ok: true, value: body === "" ? "profile cleared" : `profile set to ${arg}` };
   }
 }
 

@@ -5,12 +5,12 @@ Full design rationale, invariants, and target layout live in [ARCHITECTURE.md](A
 
 ## Commands
 
-| Task | Command | Notes |
-|------|---------|-------|
-| Run | `bun run index.ts` | Entry point. No build step — Bun transpiles TS on the fly. |
-| Install | `bun install` | Only dev deps are `@types/bun` and `typescript`; zero runtime deps. |
-| Type-check | `bunx tsc --noEmit` | No `typecheck`/`test`/`lint` scripts exist in `package.json`. |
-| Test | *(none)* | No test framework or test directory yet. |
+| Task       | Command             | Notes                                                               |
+| ---------- | ------------------- | ------------------------------------------------------------------- |
+| Run        | `bun run index.ts`  | Entry point. No build step — Bun transpiles TS on the fly.          |
+| Install    | `bun install`       | Only dev deps are `@types/bun` and `typescript`; zero runtime deps. |
+| Type-check | `bunx tsc --noEmit` | No `typecheck`/`test`/`lint` scripts exist in `package.json`.       |
+| Test       | _(none)_            | No test framework or test directory yet.                            |
 
 ## Hard rules (from the architecture invariants)
 
@@ -27,6 +27,7 @@ Full design rationale, invariants, and target layout live in [ARCHITECTURE.md](A
 - `src/core/engine.ts` mutates the `messages` array in place by design; it's a documented side channel, not a bug.
 - `RECENT_TURNS_TO_KEEP` in `src/repl/session.ts` and `MAX_TOOL_ROUNDS` in `src/core/engine.ts` are the compaction/tool-loop bounds.
 - `API_KEY`, `URL`, `MODEL` are hardcoded constants in `src/client/llm.ts` (no env config by design — local-only tool).
+- **Profiles:** `/profile <name>` loads a `.md` file from the `profiles/` directory and appends its text to the default system message. The `ProfileSource` interface is owned by the core (`src/repl/session.ts`); the edge (`index.ts` `FileProfileSource`) does the `node:fs` I/O. Same edge-owns-I/O pattern as `ModelController`.
 
 ## Environment
 
@@ -37,5 +38,5 @@ Full design rationale, invariants, and target layout live in [ARCHITECTURE.md](A
 ## Pitfalls
 
 - A single large `read_file` tool result can blow the context window — tool output is unbounded (no truncation/pagination yet).
-- `toolRunner.run` returns `` error: unknown tool ${name}`` as a plain string, not a `ViseError` variant. Keep it that way until structured tool errors land (see "Future Work" in ARCHITECTURE.md).
+- `toolRunner.run` returns ` error: unknown tool ${name}` as a plain string, not a `ViseError` variant. Keep it that way until structured tool errors land (see "Future Work" in ARCHITECTURE.md).
 - `contextMax()` must be queried live per model, never cached — window sizes differ per model.

@@ -94,6 +94,11 @@ Rules:
   (today `LlmClient`) and provides the `Tool[]` definitions plus a
   `ToolRunner`, so every dependency arrow points edge → core and the core can
   be tested with stubs.
+
+- `ProfileSource` is a core-owned type (`repl/session.ts`) for loading profile
+  text at runtime. The edge provides the implementation (`FileProfileSource`
+  in `index.ts`, backed by `profiles/*.md` files). Same pattern as
+  `ModelController`: core owns the interface, edge does the I/O.
 - Every file stays under 500 code lines and every function under 100 lines;
   when a module approaches that, split it along a natural seam.
 
