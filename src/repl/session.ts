@@ -83,6 +83,7 @@ const RECENT_TURNS_TO_KEEP = 2;
  */
 export class Session {
   private readonly messages: Message[];
+  private readonly systemMessage: Message;
   private readonly client: Client;
   private readonly tools: ToolRunner;
   private readonly toolDefs: Tool[];
@@ -108,7 +109,8 @@ export class Session {
     this.modelController = modelController;
     this.profileSource = profileSource;
     this.cwd = cwd;
-    this.messages = [{ role: "system", content: `Working directory: ${cwd}` }];
+    this.systemMessage = { role: "system", content: `Working directory: ${cwd}` };
+    this.messages = [this.systemMessage];
   }
 
   /**
@@ -183,9 +185,8 @@ export class Session {
       role: "user",
       content: `Here is a summary of our conversation so far: ${summary.value}`,
     };
-    const system = this.messages[0];
     this.messages.length = 0;
-    if (system) this.messages.push(system);
+    this.messages.push(this.systemMessage);
     this.messages.push(framed);
     for (const m of split.recent) {
       this.messages.push(m);
@@ -291,7 +292,8 @@ export class Session {
     } else {
       this.messages.push({
         role: "user",
-        content: "Profile cleared. Please disregard any previous profile instructions.",
+        content:
+          "Profile cleared. Please disregard any previous profile instructions.",
       });
     }
     return {

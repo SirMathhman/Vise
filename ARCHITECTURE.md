@@ -38,6 +38,12 @@ target architecture and the work that remains.
 4. Dependency arrows point one way only: edge → core. The core never imports
    anything from a driver or from `index.ts`.
 5. No module in the core imports `node:readline`, `console`, or `process`.
+6. The system message (the first element of the conversation's `messages`
+   array) is set once in the `Session` constructor and never modified after
+   initialization. This preserves prompt-prefix caching: the LLM server can
+   reuse cached KV positions for the system prompt across turns. Profile
+   instructions are appended as user messages, not injected into the system
+   prompt.
 
 ## Structure
 
