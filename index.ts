@@ -12,7 +12,7 @@ import type {
   PostTurnHook,
 } from "./src/repl/session.ts";
 import type { Result } from "./src/core/errors.ts";
-import { listNotes, formatNoteEntry } from "./src/notes.ts";
+import { listNotes, formatNoteEntry, initNote } from "./src/notes.ts";
 import { formatCompactionFailure, formatError } from "./src/output/format.ts";
 
 /**
@@ -113,8 +113,8 @@ class ShellHook implements PreTurnHook, PostTurnHook {
 
 /**
  * Edge implementation of NoteSource backed by the `notes/` directory.
- * Lists every note (memory and skill) with its one-line summary. This is the
- * user's read-only view of the same store the model edits via tools.
+ * Lists every note with its one-line summary and creates new notes. This is
+ * the user's view of the same store the model edits via tools.
  */
 class FileNoteSource implements NoteSource {
   constructor(private readonly base: string) {}
@@ -125,6 +125,21 @@ class FileNoteSource implements NoteSource {
       ok: true,
       value: notes.map(formatNoteEntry),
     };
+  }
+
+  async initNote(name: string): Promise<Result<string>> {
+    try {
+      initNote(this.base, name);
+      return { ok: true, value: name };
+    } catch (err) {
+      return {
+        ok: false,
+        error: {
+          kind: "malformed",
+          body: err instanceof Error ? err.message : String(err),
+        },
+      };
+    }
   }
 }
 

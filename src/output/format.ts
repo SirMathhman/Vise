@@ -80,7 +80,8 @@ export function formatHelp(opts: {
     );
   }
   if (opts.hasNotes) {
-    lines.push("/note            list all notes (memories and skills)");
+    lines.push("/note            list all notes");
+    lines.push("/note init <name>  create a new note with a placeholder body");
   }
   if (opts.preTurnHookCount > 0) {
     lines.push("");

@@ -71,8 +71,10 @@ export interface ModelController {
  * the note tools. Provided by the edge (the session performs no I/O).
  */
 export interface NoteSource {
-  /** List all notes (memories and skills) with their one-line summaries. */
+  /** List all notes with their one-line summaries. */
   listNotes(): Promise<Result<string[]>>;
+  /** Initialize a new note with a placeholder template body. */
+  initNote(name: string): Promise<Result<string>>;
 }
 
 /**
@@ -201,7 +203,9 @@ export class Session {
     if (trimmed === "/profile" || trimmed.startsWith("/profile ")) {
       return this.handleProfileCommand(trimmed);
     }
-    if (trimmed === "/note") return this.handleNotesCommand();
+    if (trimmed === "/note" || trimmed.startsWith("/note ")) {
+      return this.handleNotesCommand(trimmed);
+    }
     await this.runHooks(this.preTurnHooks);
     this.messages.push({ role: "user", content: line });
     const auto = await this.maybeAutoCompact();
@@ -391,11 +395,13 @@ export class Session {
   }
 
   /**
-   * Handle `/note`. Lists every note (memory and skill) with its one-line
-   * summary. Notes are exposed to the model on demand through the note tools;
-   * this command is the user's read-only view of the same store.
+   * Handle `/note` and `/note init <name>`. When no argument: lists every
+   * note with its one-line summary. When `init <name>`: creates a new note
+   * with a placeholder template body. Notes are exposed to the model on
+   * demand through the note tools; this command is the user's view of the
+   * same store.
    */
-  private async handleNotesCommand(): Promise<Result<string>> {
+  private async handleNotesCommand(line: string): Promise<Result<string>> {
     if (!this.noteSource) {
       return {
         ok: false,
@@ -405,9 +411,29 @@ export class Session {
         },
       };
     }
-    const notes = await this.noteSource.listNotes();
-    if (!notes.ok) return notes;
-    return { ok: true, value: formatNoteList(notes.value) };
+    const arg = line.slice("/note".length).trim();
+    if (arg === "") {
+      const notes = await this.noteSource.listNotes();
+      if (!notes.ok) return notes;
+      return { ok: true, value: formatNoteList(notes.value) };
+    }
+    const sub = arg.split(" ")[0];
+    if (sub === "init") {
+      const name = arg.slice("init".length).trim();
+      if (name === "") {
+        return {
+          ok: false,
+          error: { kind: "malformed", body: "usage: /note init <name>" },
+        };
+      }
+      const result = await this.noteSource.initNote(name);
+      if (!result.ok) return result;
+      return { ok: true, value: `initialized note '${name}'` };
+    }
+    return {
+      ok: false,
+      error: { kind: "malformed", body: `unknown /note subcommand '${sub}'` },
+    };
   }
 }
 

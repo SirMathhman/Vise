@@ -12,7 +12,6 @@ import { dirname } from "node:path";
 import type { Tool, ToolRunner } from "./core/engine.ts";
 import {
   deleteNote,
-  findNoteKind,
   formatNoteEntry,
   listNotes,
   readNote,
@@ -163,16 +162,10 @@ export const tools: Tool[] = [
     function: {
       name: "list_notes",
       description:
-        "List all notes (memories and skills) with their one-line summaries. Notes are short facts (memory) or how-to procedures (skill) stored for this project. Use this to see what is known before relying on or writing a note. Optional 'kind' filters to 'memory' or 'skill'.",
+        "List all notes with their one-line summaries. Notes are short facts or how-to procedures stored for this project. Use this to see what is known before relying on or writing a note.",
       parameters: {
         type: "object",
-        properties: {
-          kind: {
-            type: "string",
-            description:
-              "Optional filter: 'memory' or 'skill'. Omit to list both.",
-          },
-        },
+        properties: {},
       },
     },
   },
@@ -181,7 +174,7 @@ export const tools: Tool[] = [
     function: {
       name: "read_note",
       description:
-        "Read the full body of a note by name. Searches both memory and skill notes. Call list_notes first to see what is available.",
+        "Read the full body of a note by name. Call list_notes first to see what is available.",
       parameters: {
         type: "object",
         properties: {
@@ -199,15 +192,10 @@ export const tools: Tool[] = [
     function: {
       name: "save_note",
       description:
-        "Save a new note for this project. The first line of body becomes the note's one-line summary (shown in list_notes); the rest is the body. Names must be unique across both kinds, so a name already used by a memory cannot be reused by a skill and vice versa.",
+        "Save a new note for this project. The first non-empty line of body becomes the note's one-line summary (shown in list_notes); the rest is the body. Note names must be unique.",
       parameters: {
         type: "object",
         properties: {
-          kind: {
-            type: "string",
-            description:
-              "Note kind: 'memory' (a fact) or 'skill' (a procedure)",
-          },
           name: {
             type: "string",
             description:
@@ -219,7 +207,7 @@ export const tools: Tool[] = [
               "Note contents. The first non-empty line is its summary.",
           },
         },
-        required: ["kind", "name", "body"],
+        required: ["name", "body"],
       },
     },
   },
@@ -228,7 +216,7 @@ export const tools: Tool[] = [
     function: {
       name: "delete_note",
       description:
-        "Delete a note by name. Searches both memory and skill notes. Use with care.",
+        "Delete a note by name. Use with care.",
       parameters: {
         type: "object",
         properties: {
@@ -397,16 +385,10 @@ async function runPowershell(args: Record<string, unknown>): Promise<string> {
 }
 
 function listNotesTool(args: Record<string, unknown>): string {
-  const kind = args.kind === undefined ? undefined : String(args.kind);
-  if (kind !== undefined && kind !== "memory" && kind !== "skill") {
-    return `error: kind must be 'memory' or 'skill'`;
-  }
   try {
     const notes = listNotes(process.cwd());
-    const filtered =
-      kind === undefined ? notes : notes.filter((n) => n.kind === kind);
-    if (filtered.length === 0) return "no notes";
-    return filtered.map(formatNoteEntry).join("\n");
+    if (notes.length === 0) return "no notes";
+    return notes.map(formatNoteEntry).join("\n");
   } catch (err) {
     return errStr(err);
   }
@@ -415,26 +397,18 @@ function listNotesTool(args: Record<string, unknown>): string {
 function readNoteTool(args: Record<string, unknown>): string {
   const noteName = String(args.name ?? "");
   try {
-    const kind = findNoteKind(process.cwd(), noteName);
-    if (kind === undefined) {
-      return `error: note '${noteName}' not found`;
-    }
-    return readNote(process.cwd(), kind, noteName) ?? "";
+    return readNote(process.cwd(), noteName) ?? "";
   } catch (err) {
     return errStr(err);
   }
 }
 
 function saveNoteTool(args: Record<string, unknown>): string {
-  const kind = String(args.kind ?? "");
   const noteName = String(args.name ?? "");
   const body = String(args.body ?? "");
-  if (kind !== "memory" && kind !== "skill") {
-    return `error: kind must be 'memory' or 'skill'`;
-  }
   try {
-    saveNote(process.cwd(), kind, noteName, body);
-    return `saved ${kind} note '${noteName}'`;
+    saveNote(process.cwd(), noteName, body);
+    return `saved note '${noteName}'`;
   } catch (err) {
     return errStr(err);
   }
@@ -443,8 +417,8 @@ function saveNoteTool(args: Record<string, unknown>): string {
 function deleteNoteTool(args: Record<string, unknown>): string {
   const noteName = String(args.name ?? "");
   try {
-    const kind = deleteNote(process.cwd(), noteName);
-    return `deleted ${kind} note '${noteName}'`;
+    deleteNote(process.cwd(), noteName);
+    return `deleted note '${noteName}'`;
   } catch (err) {
     return errStr(err);
   }
