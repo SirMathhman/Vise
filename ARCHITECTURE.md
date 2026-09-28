@@ -114,10 +114,10 @@ role earns it, not before.
   structured error variants; the remaining surface is the driver formatting
   those variants for display — keep that formatting in `output/format.ts`
   once it exists, not inline in `index.ts`.
-- **One file doing every job.** `index.ts` is currently entry, driver,
-  and session fused (the transport and tool dispatch are already
-  extracted). It is already past the ~50-line threshold, so the
-  driver/session/engine split is overdue, not optional.
+- **One file doing every job.** `index.ts` is currently a thin entry
+  and driver layer (~38 lines); the transport, tool dispatch, engine,
+  and session are already extracted into their own modules. What
+  remains is the driver split (TTY vs. pipe) and the `cli.ts` surface.
 - **Pure core vs. network I/O.** The core's fundamental operation is an HTTP
   round-trip, which is I/O. The resolution is the `Client` interface: the
   core owns the _type_, the edge provides the _implementation_. Do not
@@ -162,14 +162,12 @@ role earns it, not before.
 
 ## Future Work
 
-- **Engine.** Extract the line-handling logic (command dispatch, message
-  assembly, result handling) from `index.ts` into `core/engine.ts`. The
-  engine receives a `Client` and a `Session`, and returns a `Result` per
-  line. This makes the pure-core invariant real and enables unit tests with
-  a stub client.
-- **Session.** Move the conversation state (the `messages` array) and the
-  `/exit` command into `repl/session.ts`. The session owns state; the engine
-  is stateless.
+- **Engine (done).** `core/engine.ts` already contains `runTurn`,
+  `splitForCompaction`, and `summarize`; it is pure and unit-testable with a
+  stub `Client`.
+- **Session (done).** `repl/session.ts` already owns the conversation state
+  (`messages` array) and handles `/exit`, `/context`, `/compact`, `/model`,
+  and turn dispatch. The session owns state; the engine is stateless.
 - **Drivers.** Add the pipe/script driver alongside the terminal driver so the
   same session can be driven non-interactively; this is what makes the tool
   scriptable and CI-able.
