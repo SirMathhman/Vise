@@ -103,11 +103,7 @@ export function saveNote(base: string, name: string, body: string): void {
     throw new Error(`note '${name}' already exists`);
   }
   mkdirSync(noteDir(base), { recursive: true });
-  writeFileSync(
-    notePath(base, name),
-    body.replace(/\s+$/, "") + "\n",
-    "utf8",
-  );
+  writeFileSync(notePath(base, name), body.replace(/\s+$/, "") + "\n", "utf8");
 }
 
 /**

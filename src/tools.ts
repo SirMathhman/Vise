@@ -8,7 +8,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import type { Tool, ToolRunner } from "./core/engine.ts";
 import {
   deleteNote,
@@ -160,6 +160,30 @@ export const tools: Tool[] = [
   {
     type: "function",
     function: {
+      name: "find_files",
+      description:
+        "Find files by name using a regular expression. Recursively searches the given directory (default '.') and returns the relative paths of every file whose name matches the regex. Returns an empty list when nothing matches.",
+      parameters: {
+        type: "object",
+        properties: {
+          pattern: {
+            type: "string",
+            description:
+              "JavaScript regular expression to match file names against (e.g. '^test.*\\.ts$').",
+          },
+          root: {
+            type: "string",
+            description:
+              "Directory to search from (default '.'). Traversed recursively.",
+          },
+        },
+        required: ["pattern"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "list_notes",
       description:
         "List all notes with their one-line summaries. Notes are short facts or how-to procedures stored for this project. Use this to see what is known before relying on or writing a note.",
@@ -215,8 +239,7 @@ export const tools: Tool[] = [
     type: "function",
     function: {
       name: "delete_note",
-      description:
-        "Delete a note by name. Use with care.",
+      description: "Delete a note by name. Use with care.",
       parameters: {
         type: "object",
         properties: {
@@ -424,6 +447,40 @@ function deleteNoteTool(args: Record<string, unknown>): string {
   }
 }
 
+function findFiles(args: Record<string, unknown>): string {
+  try {
+    const pattern = String(args.pattern ?? "");
+    if (pattern === "") return "error: pattern must not be empty";
+    const root = String(args.root ?? ".");
+    const re = new RegExp(pattern);
+    const out: string[] = [];
+    const stack: string[] = [root];
+    while (stack.length > 0) {
+      const dir = stack.pop()!;
+      let entries;
+      try {
+        entries = readdirSync(dir, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+      for (const entry of entries) {
+        if (entry.isSymbolicLink()) continue;
+        const fullPath = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          stack.push(fullPath);
+        } else if (re.test(entry.name)) {
+          out.push(fullPath);
+        }
+      }
+    }
+    const matches = out;
+    if (matches.length === 0) return "no matches";
+    return matches.join("\n");
+  } catch (err) {
+    return errStr(err);
+  }
+}
+
 const toolHandlers: Record<
   string,
   (args: Record<string, unknown>) => string | Promise<string>
@@ -435,6 +492,7 @@ const toolHandlers: Record<
   delete_file: deleteFile,
   delete_directory: deleteDirectory,
   run_powershell: runPowershell,
+  find_files: findFiles,
   list_notes: listNotesTool,
   read_note: readNoteTool,
   save_note: saveNoteTool,

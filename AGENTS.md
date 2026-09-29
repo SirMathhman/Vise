@@ -12,6 +12,31 @@ Full design rationale, invariants, and target layout live in [ARCHITECTURE.md](A
 | Type-check | `bunx tsc --noEmit` | No `typecheck`/`test`/`lint` scripts exist in `package.json`.       |
 | Test       | _(none)_            | No test framework or test directory yet.                            |
 
+## Surface (product features an agent touches)
+
+Two surfaces an agent commonly edits. The list below is a quick reference — the
+authoritative definitions live in the source files linked.
+
+**User-facing slash commands** — dispatched in `Session.handleLine`
+(`src/repl/session.ts`); help text is rendered by `formatHelp` in
+`src/output/format.ts`. To add one, handle it in `handleLine` and add it to
+`formatHelp`.
+
+- `/exit`, `/help`, `/context`, `/compact`
+- `/model` (list) / `/model <name>` (switch) — via `ModelController`
+- `/profile` (list) / `/profile <name>` (set) — via `ProfileSource`
+- `/note` (list) / `/note init <name>` (create) — via `NoteSource`
+
+**Model-facing tools** — defined in `src/tools.ts` (`tools: Tool[]`) with their
+implementations in the same file; dispatched by name by the core in
+`src/core/engine.ts`. To add one, append a definition to `tools`, add a handler
+function, and register it in the `toolHandlers` map.
+
+- Files: `list_directory`, `read_file`, `create_file`, `edit_file`,
+  `delete_file`, `delete_directory`, `find_files` (recursive regex name match)
+- Shell: `run_powershell` (Windows-only, 60s SIGTERM timeout)
+- Notes: `list_notes`, `read_note`, `save_note`, `delete_note`
+
 ## Hard rules (from the architecture invariants)
 
 - **No `process.exit()` anywhere.** Termination happens when the event loop drains; set `process.exitCode` instead. `process.exit()` truncates buffered stdout through pipes.
