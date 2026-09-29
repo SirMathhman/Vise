@@ -126,12 +126,15 @@ Rules:
   (edge); the `FileNoteSource` in `index.ts` implements `NoteSource`. Same
   edge-owns-I/O pattern as `ProfileSource`.
 - `ToolController` is a core-owned type (`core/engine.ts`) for the `/tool`
-  command. It lets the user inspect and toggle the model-facing tools that are
-  offered each turn: a disabled tool is omitted from the definitions sent to
-  the model and rejected if the model still calls it. State is in-memory
+  command. It lets the user inspect and toggle the model-facing tools. The
+  full set of tool definitions is always sent to the model regardless of
+  enabled state — disabling a tool does not change the definitions offered;
+  it only makes the `ToolRunner` reject invocations of that tool. When a tool
+  is enabled or disabled, the `Session` injects a user message into the
+  conversation informing the model of the state change. State is in-memory
   per-process only (not persisted), matching the other controllers. The edge
-  provides the implementation (`ToolSet` in `src/tools.ts`); the session queries
-  `enabled()` live on every turn. Same edge-owns-I/O pattern as `ProfileSource`.
+  provides the implementation (`ToolSet` in `src/tools.ts`). Same
+  edge-owns-I/O pattern as `ProfileSource`.
 - Every file stays under 500 code lines and every function under 100 lines;
   when a module approaches that, split it along a natural seam.
 

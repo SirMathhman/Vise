@@ -350,10 +350,11 @@ const toolHandlers: Record<
 
 /**
  * Edge implementation of the core `ToolController`. Tracks which tools are
- * enabled (default: all) and, on each turn, returns the enabled definitions
- * that the model is offered. Disabling a tool removes it from the model's
- * tool list; if the model still calls a disabled tool, `toolRunner` reports
- * a clear error instead of running the handler.
+ * enabled (default: all). The full set of tool definitions is always sent
+ * to the model regardless of enabled state — disabling a tool does not
+ * change the definitions offered; it only makes `toolRunner` reject
+ * invocations of that tool. When the user toggles a tool, the `Session`
+ * injects a user message informing the model of the state change.
  */
 export class ToolSet implements ToolController {
   private readonly defs: Tool[];
@@ -368,10 +369,6 @@ export class ToolSet implements ToolController {
       name: t.function.name,
       enabled: !this.disabled.has(t.function.name),
     }));
-  }
-
-  enabled(): Tool[] {
-    return this.defs.filter((t) => !this.disabled.has(t.function.name));
   }
 
   isEnabled(name: string): boolean {

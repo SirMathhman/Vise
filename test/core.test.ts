@@ -1,6 +1,11 @@
 import { describe, test, expect } from "bun:test";
 import { runTurn, summarize } from "../src/core/engine.ts";
-import type { Client, Tool, ToolController, ToolRunner } from "../src/core/engine.ts";
+import type {
+  Client,
+  Tool,
+  ToolController,
+  ToolRunner,
+} from "../src/core/engine.ts";
 import type { Message, AssistantMessage } from "../src/core/errors.ts";
 import { Session } from "../src/repl/session.ts";
 import type { ContextSource } from "../src/repl/session.ts";
@@ -138,25 +143,18 @@ describe("Session streaming flag (core)", () => {
 describe("Session /tool command (core)", () => {
   /**
    * A minimal ToolController stub for exercising the /tool dispatch in
-   * Session. It tracks enabled/disabled state so list() and enabled()
-   * reflect set() calls, and records set() calls so tests can assert
-   * toggling.
+   * Session. It tracks enabled/disabled state so list() reflects set() calls,
+   * and records set() calls so tests can assert toggling.
    */
-  function makeToolController(): ToolController & { sets: [string, boolean][] } {
+  function makeToolController(): ToolController & {
+    sets: [string, boolean][];
+  } {
     const names = ["alpha", "beta"];
     const disabled = new Set<string>();
     const sets: [string, boolean][] = [];
     return {
       sets,
-      list: () =>
-        names.map((name) => ({ name, enabled: !disabled.has(name) })),
-      enabled: () =>
-        names
-          .filter((name) => !disabled.has(name))
-          .map((name) => ({
-            type: "function" as const,
-            function: { name, description: "", parameters: {} },
-          })),
+      list: () => names.map((name) => ({ name, enabled: !disabled.has(name) })),
       isEnabled: (name: string) => !disabled.has(name),
       set(name: string, enabled: boolean) {
         sets.push([name, enabled]);
@@ -187,9 +185,7 @@ describe("Session /tool command (core)", () => {
     const session = makeSession(tc);
     const result = await session.handleLine("/tool");
     if (result === "exit" || !result.ok) throw new Error("expected ok result");
-    expect(result.value).toBe(
-      "* alpha (enabled)\n* beta (enabled)",
-    );
+    expect(result.value).toBe("* alpha (enabled)\n* beta (enabled)");
   });
 
   test("/tool <name> enable sets the tool enabled", async () => {
@@ -214,7 +210,8 @@ describe("Session /tool command (core)", () => {
     const tc = makeToolController();
     const session = makeSession(tc);
     const result = await session.handleLine("/tool gamma disable");
-    if (result === "exit" || result.ok) throw new Error("expected error result");
+    if (result === "exit" || result.ok)
+      throw new Error("expected error result");
     expect(result.error.kind).toBe("malformed");
     if (result.error.kind === "malformed") {
       expect(result.error.body).toBe(
@@ -227,7 +224,8 @@ describe("Session /tool command (core)", () => {
     const tc = makeToolController();
     const session = makeSession(tc);
     const result = await session.handleLine("/tool alpha toggle");
-    if (result === "exit" || result.ok) throw new Error("expected error result");
+    if (result === "exit" || result.ok)
+      throw new Error("expected error result");
     expect(result.error.kind).toBe("malformed");
     if (result.error.kind === "malformed") {
       expect(result.error.body).toBe("usage: /tool <name> enable|disable");
@@ -242,7 +240,8 @@ describe("Session /tool command (core)", () => {
       postTurnHooks: [],
     });
     const result = await session.handleLine("/tool");
-    if (result === "exit" || result.ok) throw new Error("expected error result");
+    if (result === "exit" || result.ok)
+      throw new Error("expected error result");
     expect(result.error.kind).toBe("malformed");
     if (result.error.kind === "malformed") {
       expect(result.error.body).toBe(
@@ -251,7 +250,7 @@ describe("Session /tool command (core)", () => {
     }
   });
 
-  test("disabling a tool removes it from the definitions passed to the model", async () => {
+  test("disabling a tool does not change the definitions passed to the model", async () => {
     const toolDefs: Tool[] = [
       {
         type: "function",
@@ -280,10 +279,61 @@ describe("Session /tool command (core)", () => {
     // First turn: all tools enabled.
     await session.handleLine("hi");
     expect(lastToolDefs?.length).toBe(2);
-    // Disable alpha, then turn again.
+    // Disable alpha, then turn again. The definitions offered to the model are
+    // unchanged: every tool definition is still sent even though alpha is
+    // disabled.
     await session.handleLine("/tool alpha disable");
     await session.handleLine("hi");
-    expect(lastToolDefs?.length).toBe(1);
-    expect(lastToolDefs?.[0]?.function.name).toBe("beta");
+    expect(lastToolDefs?.length).toBe(2);
+  });
+
+  test("disabling a tool informs the model by injecting a message", async () => {
+    let lastMessages: Message[] | undefined;
+    const capturingClient: Client = {
+      async chat(messages: Message[]) {
+        lastMessages = messages;
+        return { ok: true, value: { content: "reply" } };
+      },
+    };
+    const tc = makeToolController();
+    const session = new Session(capturingClient, noopTools, noToolDefs, {
+      cwd: "/tmp",
+      context: noopContext,
+      toolController: tc,
+      preTurnHooks: [],
+      postTurnHooks: [],
+    });
+    // Disabling pushes a notification user message into the conversation so
+    // the model sees it on the next turn.
+    await session.handleLine("/tool alpha disable");
+    await session.handleLine("hi");
+    const contents = lastMessages?.map((m) => m.content) ?? [];
+    expect(contents).toContain(
+      "Tool 'alpha' is now disabled. Do not call it; if asked, say it is disabled.",
+    );
+  });
+
+  test("enabling a tool informs the model by injecting a message", async () => {
+    let lastMessages: Message[] | undefined;
+    const capturingClient: Client = {
+      async chat(messages: Message[]) {
+        lastMessages = messages;
+        return { ok: true, value: { content: "reply" } };
+      },
+    };
+    const tc = makeToolController();
+    const session = new Session(capturingClient, noopTools, noToolDefs, {
+      cwd: "/tmp",
+      context: noopContext,
+      toolController: tc,
+      preTurnHooks: [],
+      postTurnHooks: [],
+    });
+    // Disabling then re-enabling pushes a notification for each transition.
+    await session.handleLine("/tool alpha disable");
+    await session.handleLine("/tool alpha enable");
+    await session.handleLine("hi");
+    const contents = lastMessages?.map((m) => m.content) ?? [];
+    expect(contents).toContain("Tool 'alpha' is now enabled. You may call it.");
   });
 });

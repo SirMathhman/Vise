@@ -1,10 +1,6 @@
 import type { ToolController } from "../core/engine.ts";
 import type { Result } from "../core/errors.ts";
-import type {
-  ContextSource,
-  ModelController,
-  NoteSource,
-} from "./session.ts";
+import type { ContextSource, ModelController, NoteSource } from "./session.ts";
 import {
   formatContext,
   formatModelList,
@@ -76,12 +72,17 @@ export async function handleModelCommand(
 /**
  * Handle `/tool`, `/tool <name> enable`, and `/tool <name> disable`.
  * When no name is given: lists every tool with its current enabled state.
- * When a name and a verb are given: toggles that tool, which changes the
- * definitions offered to the model on the next turn.
+ * When a name and a verb are given: toggles that tool. The full set of tool
+ * definitions is always sent to the model regardless of enabled state —
+ * disabling a tool does not change the definitions; it only makes the
+ * `ToolRunner` reject invocations of that tool. When `onToggle` is provided
+ * (as the `Session` does), it is called with the new state so the model can
+ * be informed the tool's enabled state changed.
  */
 export function handleToolCommand(
   toolController: ToolController | undefined,
   line: string,
+  onToggle?: (name: string, enabled: boolean) => void,
 ): Result<string> {
   if (!toolController) {
     return {
@@ -123,7 +124,9 @@ export function handleToolCommand(
     };
   }
 
-  toolController.set(name, verb === "enable");
+  const enabled = verb === "enable";
+  toolController.set(name, enabled);
+  onToggle?.(name, enabled);
   return { ok: true, value: `${name} ${verb}d` };
 }
 

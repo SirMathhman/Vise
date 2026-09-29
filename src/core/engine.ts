@@ -44,18 +44,16 @@ export interface ToolRunner {
 }
 
 /**
- * Controls which tools the model is offered each turn. A disabled tool is
- * omitted from the definitions sent to the model (and rejected if invoked).
- * The edge provides the implementation (currently `ToolSet` in `tools.ts`);
- * the core depends only on this interface so it can be tested with a stub.
- * The session queries `enabled()` live on every turn, so toggling a tool
- * takes effect immediately on the next turn.
+ * Controls which tools are enabled. The full set of tool definitions is
+ * always sent to the model regardless of enabled state — disabling a tool
+ * does not change the definitions offered to the model; it only makes the
+ * `ToolRunner` reject invocations of that tool. The edge provides the
+ * implementation (currently `ToolSet` in `tools.ts`); the core depends only
+ * on this interface so it can be tested with a stub.
  */
 export interface ToolController {
   /** All known tools with their enabled state, in definition order. */
   list(): { name: string; enabled: boolean }[];
-  /** The tool definitions currently enabled (what is sent to the model). */
-  enabled(): Tool[];
   /** Enable or disable a tool by name. */
   set(name: string, enabled: boolean): void;
   /** Whether a tool is currently enabled. */
