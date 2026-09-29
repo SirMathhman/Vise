@@ -1,4 +1,9 @@
-import type { AssistantMessage, Message, Result } from "./errors.ts";
+import type {
+  AssistantMessage,
+  Message,
+  Result,
+  PromptProgress,
+} from "./errors.ts";
 
 /**
  * Definition of a single tool function, as presented to the model. The core
@@ -25,6 +30,7 @@ export interface Client {
     tools?: Tool[],
     onToken?: (token: string) => void,
     onThinking?: (token: string) => void,
+    onPromptProgress?: (progress: PromptProgress) => void,
   ): Promise<Result<AssistantMessage>>;
 }
 
@@ -121,9 +127,16 @@ export async function runTurn(
   toolDefs: Tool[],
   onToken?: (token: string) => void,
   onThinking?: (token: string) => void,
+  onPromptProgress?: (progress: PromptProgress) => void,
 ): Promise<Result<string>> {
   for (let i = 0; i < MAX_TOOL_ROUNDS; i++) {
-    const result = await client.chat(messages, toolDefs, onToken, onThinking);
+    const result = await client.chat(
+      messages,
+      toolDefs,
+      onToken,
+      onThinking,
+      onPromptProgress,
+    );
     if (!result.ok) {
       return { ok: false, error: result.error };
     }

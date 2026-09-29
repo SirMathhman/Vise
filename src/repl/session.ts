@@ -1,6 +1,11 @@
 import { runTurn, splitForCompaction, summarize } from "../core/engine.ts";
 import type { Client, Tool, ToolRunner } from "../core/engine.ts";
-import type { Message, Result, ViseError } from "../core/errors.ts";
+import type {
+  Message,
+  Result,
+  ViseError,
+  PromptProgress,
+} from "../core/errors.ts";
 import {
   formatContext,
   formatHelp,
@@ -149,6 +154,15 @@ export interface SessionOptions {
    * rounds.
    */
   onThinking?: (token: string) => void;
+  /**
+   * Edge-provided callback invoked with the prompt-processing progress
+   * reported in every streaming chunk (llama.cpp `return_progress`). The
+   * session performs no I/O itself (invariant #2); this is the edge's sink
+   * for the live prompt count, so it can show how many prompt tokens are
+   * being computed during the silent prefill. Used for all model calls
+   * including tool rounds.
+   */
+  onPromptProgress?: (progress: PromptProgress) => void;
 }
 
 /**
@@ -172,6 +186,7 @@ export class Session {
   private readonly cwd: string;
   private readonly onToken?: (token: string) => void;
   private readonly onThinking?: (token: string) => void;
+  private readonly onPromptProgress?: (progress: PromptProgress) => void;
   private activeProfile: string | undefined;
 
   constructor(
@@ -192,6 +207,7 @@ export class Session {
     this.cwd = options.cwd;
     this.onToken = options.onToken;
     this.onThinking = options.onThinking;
+    this.onPromptProgress = options.onPromptProgress;
     this.systemMessage = {
       role: "system",
       content: `Working directory: ${options.cwd}`,
@@ -243,6 +259,7 @@ export class Session {
       this.toolDefs,
       this.onToken,
       this.onThinking,
+      this.onPromptProgress,
     );
     if (!turn.ok) return turn;
     await this.runHooks(this.postTurnHooks);

@@ -11,7 +11,7 @@ import type {
   PreTurnHook,
   PostTurnHook,
 } from "./src/repl/session.ts";
-import type { Result } from "./src/core/errors.ts";
+import type { Result, PromptProgress } from "./src/core/errors.ts";
 import { listNotes, formatNoteEntry, initNote } from "./src/notes.ts";
 import { formatCompactionFailure, formatError } from "./src/output/format.ts";
 
@@ -187,12 +187,38 @@ const postTurnHooks = (hookCommands.post ?? []).map(
 
 const client = new LlmClient();
 
-// Live thinking-token counter. Counts reasoning_content deltas as they
-// stream in and shows a running count on stdout without printing the
-// thinking text. Resets at the start of each turn.
+// Live progress counters. The prompt counter shows how many prompt tokens
+// are being computed during the silent prefill (llama.cpp `return_progress`);
+// the thinking counter counts reasoning_content deltas. Neither prints the
+// underlying text. Both reset at the start of each turn.
+let promptActive = false;
+let lastProcessed = 0;
 let thinkingCount = 0;
 let thinkingActive = false;
 let contentWritten = false;
+
+const onPromptProgress = (progress: PromptProgress) => {
+  if (progress.processed >= progress.total) {
+    // Prefill finished; clear the counter line for the content that follows.
+    if (promptActive) {
+      promptActive = false;
+      process.stdout.write("\n");
+    }
+    return;
+  }
+  const text = `prompt: ${progress.processed}/${progress.total}`;
+  if (promptActive) {
+    const prev = `prompt: ${lastProcessed}/${progress.total}`;
+    process.stdout.write("\r" + " ".repeat(prev.length + 1) + "\r" + text);
+  } else {
+    if (contentWritten) {
+      process.stdout.write("\n");
+    }
+    promptActive = true;
+    process.stdout.write(text);
+  }
+  lastProcessed = progress.processed;
+};
 
 const onThinking = (_token: string) => {
   thinkingCount++;
@@ -211,6 +237,10 @@ const onThinking = (_token: string) => {
 };
 
 const onToken = (token: string) => {
+  if (promptActive) {
+    promptActive = false;
+    process.stdout.write("\n");
+  }
   if (thinkingActive) {
     thinkingActive = false;
     process.stdout.write("\n");
@@ -229,6 +259,7 @@ const session = new Session(client, toolRunner, tools, {
   postTurnHooks,
   onToken,
   onThinking,
+  onPromptProgress,
 });
 
 const rl = createInterface({
@@ -241,6 +272,8 @@ let chain = Promise.resolve();
 rl.on("line", (line) => {
   if (line.trim() === "") return;
   chain = chain.then(async () => {
+    promptActive = false;
+    lastProcessed = 0;
     thinkingCount = 0;
     thinkingActive = false;
     contentWritten = false;

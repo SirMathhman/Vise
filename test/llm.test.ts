@@ -46,6 +46,25 @@ describe("streamChat (edge)", () => {
     expect(result.usage).toBe(42);
   });
 
+  test("invokes onPromptProgress per prompt_progress payload", async () => {
+    const seen: number[] = [];
+    const chunks = [
+      'data: {"prompt_progress":{"total":100,"cache":0,"processed":10,"time_ms":1}}\n\n',
+      'data: {"prompt_progress":{"total":100,"cache":0,"processed":60,"time_ms":2}}\n\n',
+      'data: {"choices":[{"delta":{"content":"hi"}}]}\n\n',
+    ];
+    const result = await streamChat(
+      sseStream(chunks),
+      undefined,
+      undefined,
+      (p) => {
+        seen.push(p.processed);
+      },
+    );
+    expect(seen).toEqual([10, 60]);
+    expect(result.message.content).toBe("hi");
+  });
+
   test("returns sawData=false for a stream with no data lines", async () => {
     const chunks = ["\n\n", "  \n\n", "\n"];
     const result = await streamChat(sseStream(chunks));

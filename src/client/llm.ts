@@ -1,4 +1,9 @@
-import type { Message, AssistantMessage, Result } from "../core/errors.ts";
+import type {
+  Message,
+  AssistantMessage,
+  Result,
+  PromptProgress,
+} from "../core/errors.ts";
 import type { Client, Tool } from "../core/engine.ts";
 
 const URL = "http://localhost:8080/v1/chat/completions";
@@ -56,6 +61,7 @@ interface StreamChoice {
 interface StreamChunk {
   choices?: StreamChoice[];
   usage?: Usage;
+  prompt_progress?: PromptProgress;
 }
 
 /**
@@ -70,6 +76,7 @@ export async function streamChat(
   stream: ReadableStream<Uint8Array>,
   onToken?: (token: string) => void,
   onThinking?: (token: string) => void,
+  onPromptProgress?: (progress: PromptProgress) => void,
 ): Promise<{ message: AssistantMessage; usage?: number; sawData: boolean }> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
@@ -90,6 +97,9 @@ export async function streamChat(
       return;
     }
     sawData = true;
+    if (chunk.prompt_progress) {
+      onPromptProgress?.(chunk.prompt_progress);
+    }
     const choice = chunk.choices?.[0];
     const delta = choice?.delta;
     const reasoning = delta?.reasoning_content;
@@ -249,12 +259,14 @@ export class LlmClient implements Client {
     tools?: Tool[],
     onToken?: (token: string) => void,
     onThinking?: (token: string) => void,
+    onPromptProgress?: (progress: PromptProgress) => void,
   ): Promise<Result<AssistantMessage>> {
     const body: Record<string, unknown> = {
       model: this.currentModel,
       messages,
       stream: true,
       stream_options: { include_usage: true },
+      return_progress: true,
     };
     if (tools && tools.length > 0) {
       body.tools = tools;
@@ -283,7 +295,12 @@ export class LlmClient implements Client {
           error: { kind: "malformed", body: "empty response body" },
         };
       }
-      const acc = await streamChat(stream, onToken, onThinking);
+      const acc = await streamChat(
+        stream,
+        onToken,
+        onThinking,
+        onPromptProgress,
+      );
       if (!acc.sawData) {
         return {
           ok: false,

@@ -16,6 +16,19 @@ export interface AssistantMessage {
   tool_calls?: ToolCall[];
 }
 
+/**
+ * Prompt-processing progress, reported in every streaming chunk when the
+ * request sets llama.cpp's `return_progress` flag. `processed` advances as
+ * prompt tokens are computed; `cache` is the portion served from the KV
+ * cache, and `total` is the full prompt length.
+ */
+export interface PromptProgress {
+  total: number;
+  cache: number;
+  processed: number;
+  time_ms: number;
+}
+
 export type ViseError =
   | { kind: "http"; status: number; body: string }
   | { kind: "network"; cause: string }
