@@ -236,8 +236,9 @@ export class Session {
     await this.runHooks(this.postTurnHooks);
     // A failed auto-compact is non-fatal: proceed with the (uncut) conversation
     // and let the edge report that compaction did not happen. The `streamed`
-    // flag tells the edge the reply text was already written token-by-token,
-    // so it only needs to emit the trailing newline rather than re-print.
+    // flag tells the edge the reply text (if any) was already written
+    // token-by-token, so it only needs to emit the trailing newline rather
+    // than re-print.
     if (auto.ok) {
       return { ok: true, value: turn.value, streamed };
     }

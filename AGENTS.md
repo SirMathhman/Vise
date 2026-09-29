@@ -71,3 +71,4 @@ register it in the `toolHandlers` map in `src/tools.ts`.
 - A single large `read_file` tool result can blow the context window — tool output is unbounded (no truncation/pagination yet).
 - `toolRunner.run` returns ` error: unknown tool ${name}` as a plain string, not a `ViseError` variant. Keep it that way until structured tool errors land (see "Future Work" in ARCHITECTURE.md).
 - `contextMax()` must be queried live per model, never cached — window sizes differ per model.
+- A 200 response with a non-JSON (e.g. plain-text) body now surfaces as a `malformed` error (`stream returned no data`) instead of a `network` error — a deliberate, more accurate classification now that the client always requests `stream: true`.
