@@ -51,7 +51,10 @@ export function makeSubagentHandler(
       profileText = loaded.value;
     }
 
-    const systemMessage = { role: "system" as const, content: `Working directory: ${cwd}` };
+    const systemMessage = {
+      role: "system" as const,
+      content: `Working directory: ${cwd}`,
+    };
     const result = await runSubagent(
       client,
       tools,

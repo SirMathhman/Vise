@@ -50,11 +50,20 @@ describe("makeSubagentHandler (edge)", () => {
     const source = stubProfileSource(async () => {
       throw new Error("should not be called for the default profile");
     });
-    const handler = makeSubagentHandler(client, source, "/tmp", noopTools, noToolDefs);
+    const handler = makeSubagentHandler(
+      client,
+      source,
+      "/tmp",
+      noopTools,
+      noToolDefs,
+    );
     const result = await handler({ task: "do the thing", profile: "default" });
     expect(result).toBe("done");
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.[0]).toEqual({ role: "system", content: "Working directory: /tmp" });
+    expect(calls[0]?.[0]).toEqual({
+      role: "system",
+      content: "Working directory: /tmp",
+    });
     expect(calls[0]?.[2]).toEqual({ role: "user", content: "do the thing" });
   });
 
@@ -64,8 +73,17 @@ describe("makeSubagentHandler (edge)", () => {
       expect(name).toBe("specialist");
       return { ok: true, value: "You are a specialist." };
     });
-    const handler = makeSubagentHandler(client, source, "/tmp", noopTools, noToolDefs);
-    const result = await handler({ task: "do the thing", profile: "specialist" });
+    const handler = makeSubagentHandler(
+      client,
+      source,
+      "/tmp",
+      noopTools,
+      noToolDefs,
+    );
+    const result = await handler({
+      task: "do the thing",
+      profile: "specialist",
+    });
     expect(result).toBe("ok");
     expect(calls[0]).toEqual([
       { role: "system", content: "Working directory: /tmp" },
@@ -79,13 +97,19 @@ describe("makeSubagentHandler (edge)", () => {
     const source = stubProfileSource(async () => {
       return { ok: true, value: "p" };
     });
-    const handler = makeSubagentHandler(client, source, "/tmp", noopTools, noToolDefs);
+    const handler = makeSubagentHandler(
+      client,
+      source,
+      "/tmp",
+      noopTools,
+      noToolDefs,
+    );
     expect(await handler({ profile: "default" })).toBe(
       "error: run_subagent requires a non-empty 'task' argument",
     );
-    expect(
-      await handler({ task: "   ", profile: "default" }),
-    ).toBe("error: run_subagent requires a non-empty 'task' argument");
+    expect(await handler({ task: "   ", profile: "default" })).toBe(
+      "error: run_subagent requires a non-empty 'task' argument",
+    );
   });
 
   test("returns an error string when the profile is missing", async () => {
@@ -93,7 +117,13 @@ describe("makeSubagentHandler (edge)", () => {
     const source = stubProfileSource(async () => {
       return { ok: true, value: "p" };
     });
-    const handler = makeSubagentHandler(client, source, "/tmp", noopTools, noToolDefs);
+    const handler = makeSubagentHandler(
+      client,
+      source,
+      "/tmp",
+      noopTools,
+      noToolDefs,
+    );
     expect(await handler({ task: "do it" })).toBe(
       "error: run_subagent requires a 'profile' argument",
     );
@@ -102,9 +132,18 @@ describe("makeSubagentHandler (edge)", () => {
   test("propagates a ProfileSource load error as an error string", async () => {
     const { client, calls } = recordingClient("x");
     const source = stubProfileSource(async () => {
-      return { ok: false, error: { kind: "malformed", body: "profile 'nope' not found." } };
+      return {
+        ok: false,
+        error: { kind: "malformed", body: "profile 'nope' not found." },
+      };
     });
-    const handler = makeSubagentHandler(client, source, "/tmp", noopTools, noToolDefs);
+    const handler = makeSubagentHandler(
+      client,
+      source,
+      "/tmp",
+      noopTools,
+      noToolDefs,
+    );
     const result = await handler({ task: "do it", profile: "nope" });
     expect(result).toBe("error: vise: profile 'nope' not found.");
     // The client is never consulted when the profile fails to load.
@@ -120,7 +159,13 @@ describe("makeSubagentHandler (edge)", () => {
     const source = stubProfileSource(async () => {
       return { ok: true, value: "" };
     });
-    const handler = makeSubagentHandler(client, source, "/tmp", noopTools, noToolDefs);
+    const handler = makeSubagentHandler(
+      client,
+      source,
+      "/tmp",
+      noopTools,
+      noToolDefs,
+    );
     expect(await handler({ task: "do it", profile: "default" })).toBe(
       "error: vise: boom",
     );

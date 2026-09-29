@@ -3,12 +3,7 @@ import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { join } from "node:path";
 import { LlmClient } from "./src/client/llm.ts";
-import {
-  tools,
-  toolRunner,
-  toolController,
-  setToolHandler,
-} from "./src/tools.ts";
+import { tools, toolController, createToolRunner } from "./src/tools.ts";
 import { makeSubagentHandler } from "./src/tools/subagent.ts";
 import { Session } from "./src/repl/session.ts";
 import type {
@@ -256,10 +251,24 @@ const onToken = (token: string) => {
 };
 
 const profileSource = new FileProfileSource(join(process.cwd(), "profiles"));
-setToolHandler(
-  "run_subagent",
-  makeSubagentHandler(client, profileSource, process.cwd(), toolRunner, tools),
-);
+
+// The subagent handler needs the ToolRunner for recursion, and the runner
+// needs the handler. Break the cycle with a lazily-resolving structural
+// runner: its `run` closure reads `toolRunner` at dispatch time (after the
+// const below is initialized), so `run_subagent` dispatches back through the
+// real runner and any subagent tool call routes through the composed handler.
+const toolRunner = createToolRunner({
+  run_subagent: makeSubagentHandler(
+    client,
+    profileSource,
+    process.cwd(),
+    {
+      run: (name: string, args: Record<string, unknown>) =>
+        toolRunner.run(name, args),
+    },
+    tools,
+  ),
+});
 
 const session = new Session(client, toolRunner, tools, {
   cwd: process.cwd(),

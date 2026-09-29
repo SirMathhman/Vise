@@ -199,6 +199,12 @@ role earns it, not before.
   `messages` array has no size cap; bounding tool output (truncation,
   pagination, or a max-byte limit) is a future concern that belongs in the
   session or engine layer, not in the tool implementation itself.
+- **Unbounded subagent recursion.** `run_subagent` receives the same
+  `ToolRunner` and `Tool[]` as its parent, so a subagent can spawn its own
+  subagents with no depth limit. Each level runs a full tool loop, so
+  recursive spawning multiplies context usage quickly on a local server.
+  The only bounds are `MAX_TOOL_ROUNDS` per turn and the model's context
+  window; a depth cap or cost-aware guard is a future concern.
 - **Unbounded line input.** A piped file is unbounded. The core must process
   lines streaming, one at a time, and never buffer the whole input in memory.
 - **TTY-only assumptions.** Today the readline interface hard-codes

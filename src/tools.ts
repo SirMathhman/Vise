@@ -347,14 +347,19 @@ export const tools: Tool[] = [
   },
 ];
 
-/** Edge-provided tool implementations. All I/O is in the modules imported
- * above; the core only depends on the ToolRunner type.
+/** A single tool handler, mapping a tool's arguments to its result text. */
+export type ToolHandler = (
+  args: Record<string, unknown>,
+) => string | Promise<string>;
+
+/** Edge-provided tool implementations for the tools that need no edge
+ * services. All I/O is in the modules imported above; the core only depends
+ * on the ToolRunner type. Tools that need edge services constructed in
+ * index.ts (e.g. run_subagent needs the Client and ProfileSource) are added
+ * via createToolRunner.
  */
 
-const toolHandlers: Record<
-  string,
-  (args: Record<string, unknown>) => string | Promise<string>
-> = {
+const baseHandlers: Record<string, ToolHandler> = {
   list_directory: listDirectory,
   read_file: readFile,
   create_file: createFile,
@@ -410,29 +415,31 @@ export class ToolSet implements ToolController {
 
 export const toolController = new ToolSet(tools);
 
-export const toolRunner: ToolRunner = {
-  async run(name, args): Promise<string> {
-    const handler = toolHandlers[name];
-    if (handler === undefined) {
-      return `error: unknown tool ${name}`;
-    }
-    if (!toolController.isEnabled(name)) {
-      return `error: tool ${name} is disabled`;
-    }
-    return handler(args);
-  },
-};
-
 /**
- * Register a tool handler after module init, for tools whose handler depends
- * on edge-provided services (e.g. `run_subagent` needs the `Client` and
- * `ProfileSource` that are constructed in `index.ts`). The handler is added
- * to `toolHandlers` and the tool is already present in `tools`, so it is
- * immediately available to the model.
+ * Build a `ToolRunner` composing the static base handlers with any extra
+ * handlers supplied at construction time. The extras are for tools whose
+ * handler depends on edge services constructed in index.ts (e.g.
+ * `run_subagent` needs the `Client` and `ProfileSource`); composing them here
+ * keeps the wiring explicit and avoids a mutable module-level handler map.
+ * The full set of tool definitions is always sent to the model regardless of
+ * enabled state — disabling a tool does not change the definitions; it only
+ * makes the runner report `error: tool <name> is disabled` if the model
+ * calls it.
  */
-export function setToolHandler(
-  name: string,
-  handler: (args: Record<string, unknown>) => string | Promise<string>,
-): void {
-  toolHandlers[name] = handler;
+export function createToolRunner(
+  extra?: Record<string, ToolHandler>,
+): ToolRunner {
+  const handlers: Record<string, ToolHandler> = { ...baseHandlers, ...extra };
+  return {
+    async run(name, args): Promise<string> {
+      const handler = handlers[name];
+      if (handler === undefined) {
+        return `error: unknown tool ${name}`;
+      }
+      if (!toolController.isEnabled(name)) {
+        return `error: tool ${name} is disabled`;
+      }
+      return handler(args);
+    },
+  };
 }
