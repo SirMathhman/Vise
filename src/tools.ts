@@ -1,22 +1,21 @@
-import { spawn } from "node:child_process";
-import {
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  unlinkSync,
-  writeFileSync,
-} from "node:fs";
-import { dirname, join } from "node:path";
 import type { Tool, ToolRunner } from "./core/engine.ts";
 import {
-  deleteNote,
-  formatNoteEntry,
-  listNotes,
-  readNote,
-  saveNote,
-} from "./notes.ts";
+  createFile,
+  deleteDirectory,
+  deleteFile,
+  editFile,
+  findFiles,
+  listDirectory,
+  readFile,
+  searchFiles,
+} from "./tools/files.ts";
+import { runPowershell } from "./tools/shell.ts";
+import {
+  deleteNoteTool,
+  listNotesTool,
+  readNoteTool,
+  saveNoteTool,
+} from "./tools/notes-tool.ts";
 
 /** Tool definitions exposed to the model. */
 export const tools: Tool[] = [
@@ -184,6 +183,30 @@ export const tools: Tool[] = [
   {
     type: "function",
     function: {
+      name: "search_files",
+      description:
+        "Search file contents for a regular expression. The path may be a file (searched alone) or a directory (searched recursively). Returns one line per match, in the form '<path>:<line number>: <matching line>'. Returns 'no matches' when nothing matches.",
+      parameters: {
+        type: "object",
+        properties: {
+          pattern: {
+            type: "string",
+            description:
+              "JavaScript regular expression to match against each line of file contents (e.g. 'TODO|FIXME').",
+          },
+          path: {
+            type: "string",
+            description:
+              "A file or directory to search (default '.'). Directories are searched recursively.",
+          },
+        },
+        required: ["pattern"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "list_notes",
       description:
         "List all notes with their one-line summaries. Notes are short facts or how-to procedures stored for this project. Use this to see what is known before relying on or writing a note.",
@@ -254,232 +277,9 @@ export const tools: Tool[] = [
   },
 ];
 
-/** Edge-provided tool implementations. All I/O is here; the core only
- * depends on the ToolRunner type.
+/** Edge-provided tool implementations. All I/O is in the modules imported
+ * above; the core only depends on the ToolRunner type.
  */
-
-function errStr(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
-
-function listDirectory(args: Record<string, unknown>): string {
-  try {
-    const entries = readdirSync(String(args.path ?? "."));
-    return entries.join("\n");
-  } catch (err) {
-    return errStr(err);
-  }
-}
-
-function readFile(args: Record<string, unknown>): string {
-  try {
-    return readFileSync(String(args.path ?? ""), "utf8");
-  } catch (err) {
-    return errStr(err);
-  }
-}
-
-function createFile(args: Record<string, unknown>): string {
-  const path = String(args.path ?? "");
-  if (path === "") return `error: path must not be empty`;
-  try {
-    if (existsSync(path)) {
-      return `error: ${path} already exists; use edit_file to modify it`;
-    }
-    const dir = dirname(path);
-    mkdirSync(dir, { recursive: true });
-    try {
-      writeFileSync(path, String(args.content ?? ""), "utf8");
-    } catch (err) {
-      // The open succeeded (file now exists, possibly empty/partial).
-      // Remove it so a retry isn't told "already exists" for a file
-      // this tool just made.
-      try {
-        unlinkSync(path);
-      } catch {
-        // File may not exist; the original error is what matters.
-      }
-      throw err;
-    }
-    return `created ${path}`;
-  } catch (err) {
-    return errStr(err);
-  }
-}
-
-function editFile(args: Record<string, unknown>): string {
-  const path = String(args.path ?? "");
-  const old = String(args.old_string ?? "");
-  const next = String(args.new_string ?? "");
-  try {
-    if (old === "") {
-      return `error: old_string must not be empty in ${path}`;
-    }
-    const current = readFileSync(path, "utf8");
-    const count = current.split(old).length - 1;
-    if (count === 0) {
-      return `error: old_string not found in ${path}`;
-    }
-    if (count > 1) {
-      return `error: old_string appears ${count} times in ${path}; it must be unique`;
-    }
-    writeFileSync(path, current.replace(old, next), "utf8");
-    return `edited ${path}`;
-  } catch (err) {
-    return errStr(err);
-  }
-}
-
-function deleteFile(args: Record<string, unknown>): string {
-  const path = String(args.path ?? "");
-  if (path === "") return `error: path must not be empty`;
-  try {
-    unlinkSync(path);
-    return `deleted ${path}`;
-  } catch (err) {
-    return errStr(err);
-  }
-}
-
-function deleteDirectory(args: Record<string, unknown>): string {
-  const path = String(args.path ?? "");
-  if (path === "") return `error: path must not be empty`;
-  try {
-    rmSync(path, { recursive: true });
-    return `deleted ${path}`;
-  } catch (err) {
-    return errStr(err);
-  }
-}
-
-async function runPowershell(args: Record<string, unknown>): Promise<string> {
-  const command = String(args.command ?? "");
-  if (command === "") return `error: command must not be empty`;
-  try {
-    const res = await new Promise<{
-      status: number;
-      stdout: string;
-      stderr: string;
-    }>((resolve, reject) => {
-      const proc = spawn(
-        "powershell.exe",
-        ["-NoProfile", "-NonInteractive", "-Command", command],
-        { windowsHide: true },
-      );
-      let stdout = "";
-      let stderr = "";
-      let timedOut = false;
-      const timer = setTimeout(() => {
-        timedOut = true;
-        proc.kill("SIGTERM");
-      }, 60_000);
-      proc.stdout.on("data", (d: Buffer) => {
-        stdout += d.toString("utf8");
-      });
-      proc.stderr.on("data", (d: Buffer) => {
-        stderr += d.toString("utf8");
-      });
-      proc.on("close", (status) => {
-        clearTimeout(timer);
-        if (timedOut) {
-          resolve({ status: -1, stdout, stderr });
-        } else {
-          resolve({ status: status ?? -1, stdout, stderr });
-        }
-      });
-      proc.on("error", (err) => {
-        clearTimeout(timer);
-        reject(err);
-      });
-    });
-    const exitCode = res.status;
-    const stdout = res.stdout;
-    const stderr = res.stderr;
-    const body = [stdout.trim(), stderr.trim()]
-      .filter((s) => s !== "")
-      .join("\n");
-    if (exitCode !== 0) {
-      return `exit code ${exitCode}\n${body}`.trim();
-    }
-    return body;
-  } catch (err) {
-    return errStr(err);
-  }
-}
-
-function listNotesTool(args: Record<string, unknown>): string {
-  try {
-    const notes = listNotes(process.cwd());
-    if (notes.length === 0) return "no notes";
-    return notes.map(formatNoteEntry).join("\n");
-  } catch (err) {
-    return errStr(err);
-  }
-}
-
-function readNoteTool(args: Record<string, unknown>): string {
-  const noteName = String(args.name ?? "");
-  try {
-    return readNote(process.cwd(), noteName) ?? "";
-  } catch (err) {
-    return errStr(err);
-  }
-}
-
-function saveNoteTool(args: Record<string, unknown>): string {
-  const noteName = String(args.name ?? "");
-  const body = String(args.body ?? "");
-  try {
-    saveNote(process.cwd(), noteName, body);
-    return `saved note '${noteName}'`;
-  } catch (err) {
-    return errStr(err);
-  }
-}
-
-function deleteNoteTool(args: Record<string, unknown>): string {
-  const noteName = String(args.name ?? "");
-  try {
-    deleteNote(process.cwd(), noteName);
-    return `deleted note '${noteName}'`;
-  } catch (err) {
-    return errStr(err);
-  }
-}
-
-function findFiles(args: Record<string, unknown>): string {
-  try {
-    const pattern = String(args.pattern ?? "");
-    if (pattern === "") return "error: pattern must not be empty";
-    const root = String(args.root ?? ".");
-    const re = new RegExp(pattern);
-    const out: string[] = [];
-    const stack: string[] = [root];
-    while (stack.length > 0) {
-      const dir = stack.pop()!;
-      let entries;
-      try {
-        entries = readdirSync(dir, { withFileTypes: true });
-      } catch {
-        continue;
-      }
-      for (const entry of entries) {
-        if (entry.isSymbolicLink()) continue;
-        const fullPath = join(dir, entry.name);
-        if (entry.isDirectory()) {
-          stack.push(fullPath);
-        } else if (re.test(entry.name)) {
-          out.push(fullPath);
-        }
-      }
-    }
-    const matches = out;
-    if (matches.length === 0) return "no matches";
-    return matches.join("\n");
-  } catch (err) {
-    return errStr(err);
-  }
-}
 
 const toolHandlers: Record<
   string,
@@ -493,6 +293,7 @@ const toolHandlers: Record<
   delete_directory: deleteDirectory,
   run_powershell: runPowershell,
   find_files: findFiles,
+  search_files: searchFiles,
   list_notes: listNotesTool,
   read_note: readNoteTool,
   save_note: saveNoteTool,

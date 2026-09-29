@@ -33,7 +33,8 @@ implementations in the same file; dispatched by name by the core in
 function, and register it in the `toolHandlers` map.
 
 - Files: `list_directory`, `read_file`, `create_file`, `edit_file`,
-  `delete_file`, `delete_directory`, `find_files` (recursive regex name match)
+  `delete_file`, `delete_directory`, `find_files` (recursive regex name match),
+  `search_files` (recursive regex content search, file or directory)
 - Shell: `run_powershell` (Windows-only, 60s SIGTERM timeout)
 - Notes: `list_notes`, `read_note`, `save_note`, `delete_note`
 
