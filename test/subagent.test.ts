@@ -172,6 +172,9 @@ describe("makeSubagentHandler (edge)", () => {
   });
 
   test("indents the subagent's streamed tokens at the start of each line", async () => {
+    // Disable color so this test isolates indentation from ANSI wrapping.
+    const savedNoColor = process.env.NO_COLOR;
+    process.env.NO_COLOR = "1";
     const received: string[] = [];
     // A client that streams its reply through onToken, then returns it as
     // content. runTurn forwards the handler's indentedOnToken to chat as the
@@ -204,6 +207,11 @@ describe("makeSubagentHandler (edge)", () => {
     await handler({ task: "do it", profile: "default" });
     // Both line starts are indented by two spaces.
     expect(received).toEqual(["  hello\n", "  world"]);
+    if (savedNoColor === undefined) {
+      delete process.env.NO_COLOR;
+    } else {
+      process.env.NO_COLOR = savedNoColor;
+    }
   });
 
   test("dims the subagent's streamed tokens when color is enabled", async () => {

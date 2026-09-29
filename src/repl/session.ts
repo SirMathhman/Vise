@@ -169,6 +169,13 @@ export interface SessionOptions {
    * including tool rounds.
    */
   onPromptProgress?: (progress: PromptProgress) => void;
+  /**
+   * Initial context injected as the first user message after the system
+   * message. Provided by the edge at construction time; typically contains
+   * the working directory's initial file structure so the model has a
+   * starting map of the project without calling tools.
+   */
+  initialMessage?: string;
 }
 
 /**
@@ -194,6 +201,7 @@ export class Session {
   private readonly onToken?: (token: string) => void;
   private readonly onThinking?: (token: string) => void;
   private readonly onPromptProgress?: (progress: PromptProgress) => void;
+  private readonly initialMessage?: string;
   private activeProfile: string | undefined;
 
   constructor(
@@ -216,11 +224,15 @@ export class Session {
     this.onToken = options.onToken;
     this.onThinking = options.onThinking;
     this.onPromptProgress = options.onPromptProgress;
+    this.initialMessage = options.initialMessage;
     this.systemMessage = {
       role: "system",
       content: `Working directory: ${options.cwd}`,
     };
     this.messages = [this.systemMessage];
+    if (this.initialMessage !== undefined && this.initialMessage !== "") {
+      this.messages.push({ role: "user", content: this.initialMessage });
+    }
   }
 
   /**

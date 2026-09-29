@@ -16,6 +16,7 @@ import type { Result, PromptProgress } from "./src/core/errors.ts";
 import { listNotes, formatNoteEntry, initNote } from "./src/notes.ts";
 import { formatCompactionFailure, formatError } from "./src/output/format.ts";
 import { red, dim, cyan } from "./src/output/color.ts";
+import { buildInitialTree } from "./src/fs-tree.ts";
 
 /**
  * Edge implementation of ProfileSource backed by a `profiles/` directory of
@@ -276,6 +277,7 @@ const toolRunner = createToolRunner({
   ),
 });
 
+const initialTree = buildInitialTree(process.cwd());
 const session = new Session(client, toolRunner, tools, {
   cwd: process.cwd(),
   context: client,
@@ -288,6 +290,7 @@ const session = new Session(client, toolRunner, tools, {
   onToken,
   onThinking,
   onPromptProgress,
+  initialMessage: `Here is the initial directory structure of the working directory:\n${initialTree}`,
 });
 
 const rl = createInterface({
