@@ -26,6 +26,14 @@ interface ProcessRecord {
   stderr: string;
   status: ProcessStatus;
   exitCode: number | null;
+  /**
+   * Set to true only when `kill_process` terminated this process. Kept as a
+   * separate flag (rather than a value that the `close` handler overwrites)
+   * so the "killed by us" distinction survives the process's exit. The
+   * `close` handler owns `status` and `exitCode`; this field is owned
+   * exclusively by `kill_process`, so the two never race.
+   */
+  killedByUs: boolean;
 }
 
 const processes = new Map<number, ProcessRecord>();
@@ -51,6 +59,7 @@ function spawnPowerShell(command: string): {
     stderr: "",
     status: "running",
     exitCode: null,
+    killedByUs: false,
   };
   proc.stdout.on("data", (d: Buffer) => {
     record.stdout += d.toString("utf8");
@@ -68,6 +77,24 @@ function formatBody(record: ProcessRecord): string {
   return [record.stdout.trim(), record.stderr.trim()]
     .filter((s) => s !== "")
     .join("\n");
+}
+
+/**
+ * The terminal description for a process that is no longer running. A
+ * process we killed is reported as "killed" regardless of its raw exit code
+ * (a SIGTERM does not produce a meaningful exit status); anything else is
+ * reported by exit code, with an empty successful run rendered as
+ * "(no output)".
+ */
+function describeFinished(id: number, record: ProcessRecord): string {
+  const body = formatBody(record);
+  if (record.killedByUs) {
+    return `killed process ${id}\n${body}`.trim();
+  }
+  if (record.status === "finished" && record.exitCode === 0) {
+    return body || "(no output)";
+  }
+  return `process ${id} exited with code ${record.exitCode ?? -1}\n${body}`.trim();
 }
 
 /**
@@ -157,6 +184,7 @@ export function waitForProcess(args: Record<string, unknown>): Promise<string> {
   if (record.status !== "running") {
     return Promise.resolve(describeFinished(id, record));
   }
+
   if (timeout === 0) {
     return Promise.resolve(
       `still running; output so far:\n${formatBody(record)}`.trim(),
@@ -171,7 +199,9 @@ export function waitForProcess(args: Record<string, unknown>): Promise<string> {
     const onDone = () => {
       clearTimeout(timer);
       const body = formatBody(record);
-      if (record.status === "finished" && record.exitCode === 0) {
+      if (record.killedByUs) {
+        resolve(`killed process ${id}\n${body}`.trim());
+      } else if (record.status === "finished" && record.exitCode === 0) {
         resolve(body || "(no output)");
       } else {
         resolve(`exit code ${record.exitCode ?? -1}\n${body}`.trim());
@@ -195,14 +225,6 @@ export function waitForProcess(args: Record<string, unknown>): Promise<string> {
   });
 }
 
-function describeFinished(id: number, record: ProcessRecord): string {
-  const body = formatBody(record);
-  if (record.status === "finished" && record.exitCode === 0) {
-    return body || "(no output)";
-  }
-  return `process ${id} exited with code ${record.exitCode ?? -1}\n${body}`.trim();
-}
-
 /**
  * `kill_process`: send SIGTERM to the background process with `process_id`
  * and return a confirmation plus whatever output was captured before it
@@ -220,12 +242,11 @@ export function killProcess(args: Record<string, unknown>): string {
     return `process ${id} is no longer running`;
   }
   if (record.status !== "running") {
-    const body = formatBody(record);
-    return `process ${id} already exited with code ${record.exitCode ?? -1}\n${body}`.trim();
+    return describeFinished(id, record);
   }
   const proc = record.proc;
   if (proc !== null) {
-    record.status = "killed";
+    record.killedByUs = true;
     try {
       proc.kill("SIGTERM");
     } catch {
