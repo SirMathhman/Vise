@@ -61,8 +61,8 @@ export function makeSubagentHandler(
     };
 
     // Indent every line of the subagent's streamed output so it is visually
-    // distinct from the parent's own reply. The parent's reply is unindented;
-    // the subagent's is prefixed with two spaces at the start of each line.
+    // distinct from the parent's own reply. Fixed 2-space indent regardless of
+    // nesting depth (a depth-2 subagent is indented the same as a depth-1 one).
     // The driver's onToken clears the thinking/prompt-progress indicator and
     // writes at the current cursor, so we track line-start state ourselves:
     // start at true (subagent output begins at line start), and flip to false
