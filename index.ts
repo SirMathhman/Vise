@@ -193,14 +193,6 @@ const client = new LlmClient();
 let thinkingCount = 0;
 let thinkingActive = false;
 
-function clearThinkingDisplay() {
-  if (thinkingActive) {
-    const prev = `thinking: ${thinkingCount}`;
-    process.stdout.write("\r" + " ".repeat(prev.length + 1) + "\r");
-    thinkingActive = false;
-  }
-}
-
 const onThinking = (_token: string) => {
   thinkingCount++;
   if (thinkingActive) {
@@ -215,7 +207,10 @@ const onThinking = (_token: string) => {
 };
 
 const onToken = (token: string) => {
-  clearThinkingDisplay();
+  if (thinkingActive) {
+    thinkingActive = false;
+    process.stdout.write("\n");
+  }
   process.stdout.write(token);
 };
 
