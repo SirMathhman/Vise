@@ -267,6 +267,9 @@ const toolRunner = createToolRunner({
         toolRunner.run(name, args),
     },
     tools,
+    onToken,
+    onThinking,
+    onPromptProgress,
   ),
 });
 

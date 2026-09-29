@@ -1,5 +1,6 @@
 import { runSubagent } from "../core/engine.ts";
 import type { Client, Tool, ToolRunner } from "../core/engine.ts";
+import type { PromptProgress } from "../core/errors.ts";
 import type { ProfileSource } from "../repl/session.ts";
 import { formatError } from "../output/format.ts";
 
@@ -31,6 +32,9 @@ export function makeSubagentHandler(
   cwd: string,
   tools: ToolRunner,
   toolDefs: Tool[],
+  onToken?: (token: string) => void,
+  onThinking?: (token: string) => void,
+  onPromptProgress?: (progress: PromptProgress) => void,
 ): (args: Record<string, unknown>) => Promise<string> {
   return async (args) => {
     const task = args["task"];
@@ -55,6 +59,26 @@ export function makeSubagentHandler(
       role: "system" as const,
       content: `Working directory: ${cwd}`,
     };
+
+    // Indent every line of the subagent's streamed output so it is visually
+    // distinct from the parent's own reply. The parent's reply is unindented;
+    // the subagent's is prefixed with two spaces at the start of each line.
+    // The driver's onToken clears the thinking/prompt-progress indicator and
+    // writes at the current cursor, so we track line-start state ourselves:
+    // start at true (subagent output begins at line start), and flip to false
+    // after writing a token that does not end in a newline.
+    let subAtLineStart = true;
+    const indentedOnToken = (token: string) => {
+      if (onToken) {
+        if (subAtLineStart) {
+          onToken("  " + token);
+        } else {
+          onToken(token);
+        }
+      }
+      subAtLineStart = token.endsWith("\n") && token.length > 0;
+    };
+
     const result = await runSubagent(
       client,
       tools,
@@ -62,6 +86,9 @@ export function makeSubagentHandler(
       systemMessage,
       profileText,
       task,
+      indentedOnToken,
+      onThinking,
+      onPromptProgress,
     );
     if (!result.ok) return `error: ${formatError(result.error)}`;
     return result.value;

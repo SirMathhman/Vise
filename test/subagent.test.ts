@@ -170,4 +170,39 @@ describe("makeSubagentHandler (edge)", () => {
       "error: vise: boom",
     );
   });
+
+  test("indents the subagent's streamed tokens at the start of each line", async () => {
+    const received: string[] = [];
+    // A client that streams its reply through onToken, then returns it as
+    // content. runTurn forwards the handler's indentedOnToken to chat as the
+    // onToken callback, so the captured tokens are what the driver's onToken
+    // sees.
+    const client: Client = {
+      async chat(
+        _m: Message[],
+        _t?: Tool[],
+        onToken?: (token: string) => void,
+      ) {
+        // Two tokens: one ends in a newline, one does not. This exercises both
+        // the indentation and the line-start tracking.
+        onToken?.("hello\n");
+        onToken?.("world");
+        return { ok: true, value: { content: "hello\nworld" } };
+      },
+    };
+    const source = stubProfileSource(async () => ({ ok: true, value: "" }));
+    const handler = makeSubagentHandler(
+      client,
+      source,
+      "/tmp",
+      noopTools,
+      noToolDefs,
+      (token: string) => {
+        received.push(token);
+      },
+    );
+    await handler({ task: "do it", profile: "default" });
+    // Both line starts are indented by two spaces.
+    expect(received).toEqual(["  hello\n", "  world"]);
+  });
 });
