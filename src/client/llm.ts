@@ -61,8 +61,11 @@ interface StreamChunk {
  * Parse the SSE chat-completions stream, accumulating the assistant message
  * and invoking `onToken` for each content delta. Returns the final message,
  * the last seen `usage.prompt_tokens`, and whether any data payload arrived.
+ *
+ * Exported for testing: it is the edge's SSE parser and is exercised with a
+ * synthetic stream in `test/llm.test.ts`.
  */
-async function streamChat(
+export async function streamChat(
   stream: ReadableStream<Uint8Array>,
   onToken?: (token: string) => void,
 ): Promise<{ message: AssistantMessage; usage?: number; sawData: boolean }> {
