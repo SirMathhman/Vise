@@ -37,7 +37,7 @@ register it in the `toolHandlers` map in `src/tools.ts`.
 - Files: `list_directory`, `read_file`, `create_file`, `edit_file`,
   `delete_file`, `delete_directory`, `find_files` (recursive regex name match),
   `search_files` (recursive regex content search, file or directory)
-- Shell: `run_powershell` (Windows-only, 60s SIGTERM timeout)
+- Shell: `run_powershell` (Windows-only, foreground 60s SIGTERM timeout; `background: true` spawns a background process and returns a numeric process id), `wait_for_process` (block on a background process up to a timeout, in ms), `kill_process` (SIGTERM a background process)
 - Notes: `list_notes`, `read_note`, `save_note`, `delete_note`
 
 ## Hard rules (from the architecture invariants)
@@ -63,7 +63,7 @@ register it in the `toolHandlers` map in `src/tools.ts`.
 
 - The LLM is a **local llama.cpp server** at `http://localhost:8080` (OpenAI-compatible API).
 - **Do not start a second `llama-server` instance if one is already running** — it causes memory issues. Check port 8080 first.
-- `run_powershell` in `src/tools/shell.ts` hardcodes `powershell.exe` with a 60-second SIGTERM timeout. This is a Windows-only tool; there is no shell tool for other platforms.
+- `run_powershell` in `src/tools/shell.ts` hardcodes `powershell.exe` with a 60-second SIGTERM timeout for foreground commands. This is a Windows-only tool; there is no shell tool for other platforms. Background processes (started with `background: true`) are tracked in an in-process registry and reached by numeric id via `wait_for_process` and `kill_process`; they are not subject to the foreground timeout.
 
 ## Pitfalls
 

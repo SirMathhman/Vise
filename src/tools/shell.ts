@@ -1,54 +1,125 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { errStr } from "./files.ts";
 
+/**
+ * Foreground commands that do not finish within this window are killed.
+ * Background processes are not subject to this limit.
+ */
+const FOREGROUND_TIMEOUT_MS = 60_000;
+
+type ProcessStatus = "running" | "finished" | "killed";
+
+/**
+ * Live record for a background process. Foreground processes never enter the
+ * registry — they block until close, so the process id is meaningless to
+ * them. The registry exists only so that `wait_for_process` / `kill_process`
+ * can reach a background process from a later tool call.
+ */
+interface ProcessRecord {
+  /**
+   * Live handle while running. Cleared once the process exits so the
+   * registry holds no live `ChildProcess` and does not keep the event loop
+   * open after the conversation is done.
+   */
+  proc: ChildProcess | null;
+  stdout: string;
+  stderr: string;
+  status: ProcessStatus;
+  exitCode: number | null;
+}
+
+const processes = new Map<number, ProcessRecord>();
+let nextProcessId = 1;
+
+/**
+ * Spawns powershell.exe with the given command and wires up the output
+ * handlers. Returns the spawn handle; the caller decides whether to wait on
+ * it (foreground) or register it (background).
+ */
+function spawnPowerShell(command: string): {
+  proc: ChildProcess;
+  record: ProcessRecord;
+} {
+  const proc = spawn(
+    "powershell.exe",
+    ["-NoProfile", "-NonInteractive", "-Command", command],
+    { windowsHide: true },
+  );
+  const record: ProcessRecord = {
+    proc,
+    stdout: "",
+    stderr: "",
+    status: "running",
+    exitCode: null,
+  };
+  proc.stdout.on("data", (d: Buffer) => {
+    record.stdout += d.toString("utf8");
+  });
+  proc.stderr.on("data", (d: Buffer) => {
+    record.stderr += d.toString("utf8");
+  });
+  return { proc, record };
+}
+
+/**
+ * Joins the captured stdout and stderr, dropping whichever is empty.
+ */
+function formatBody(record: ProcessRecord): string {
+  return [record.stdout.trim(), record.stderr.trim()]
+    .filter((s) => s !== "")
+    .join("\n");
+}
+
+/**
+ * `run_powershell`: run a PowerShell command.
+ *
+ * Foreground (default): blocks until the command exits or the
+ * `FOREGROUND_TIMEOUT_MS` deadline fires (whichever first). Returns combined
+ * stdout/stderr, or an `exit code <n>` prefix when the command failed.
+ *
+ * Background (`background: true`): spawns and returns a numeric process id
+ * immediately. The id is what `wait_for_process` and `kill_process` take.
+ */
 export async function runPowershell(
   args: Record<string, unknown>,
 ): Promise<string> {
   const command = String(args.command ?? "");
   if (command === "") return `error: command must not be empty`;
+  const background = args.background === true;
   try {
-    const res = await new Promise<{
-      status: number;
-      stdout: string;
-      stderr: string;
-    }>((resolve, reject) => {
-      const proc = spawn(
-        "powershell.exe",
-        ["-NoProfile", "-NonInteractive", "-Command", command],
-        { windowsHide: true },
-      );
-      let stdout = "";
-      let stderr = "";
-      let timedOut = false;
-      const timer = setTimeout(() => {
-        timedOut = true;
-        proc.kill("SIGTERM");
-      }, 60_000);
-      proc.stdout.on("data", (d: Buffer) => {
-        stdout += d.toString("utf8");
+    if (background) {
+      const { proc, record } = spawnPowerShell(command);
+      const id = nextProcessId++;
+      processes.set(id, record);
+      proc.on("close", (status) => {
+        record.status = "finished";
+        record.exitCode = status ?? -1;
+        record.proc = null;
       });
-      proc.stderr.on("data", (d: Buffer) => {
-        stderr += d.toString("utf8");
+      proc.on("error", () => {
+        record.status = "killed";
+        record.proc = null;
       });
+      return String(id);
+    }
+    const { proc, record } = spawnPowerShell(command);
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      proc.kill("SIGTERM");
+    }, FOREGROUND_TIMEOUT_MS);
+    const result = await new Promise<{ status: number }>((resolve, reject) => {
       proc.on("close", (status) => {
         clearTimeout(timer);
-        if (timedOut) {
-          resolve({ status: -1, stdout, stderr });
-        } else {
-          resolve({ status: status ?? -1, stdout, stderr });
-        }
+        resolve({ status: status ?? -1 });
       });
       proc.on("error", (err) => {
         clearTimeout(timer);
         reject(err);
       });
     });
-    const exitCode = res.status;
-    const stdout = res.stdout;
-    const stderr = res.stderr;
-    const body = [stdout.trim(), stderr.trim()]
-      .filter((s) => s !== "")
-      .join("\n");
+    const exitCode = timedOut ? -1 : result.status;
+    const body = formatBody(record);
     if (exitCode !== 0) {
       return `exit code ${exitCode}\n${body}`.trim();
     }
@@ -56,4 +127,110 @@ export async function runPowershell(
   } catch (err) {
     return errStr(err);
   }
+}
+
+/**
+ * `wait_for_process`: block until the background process with `process_id`
+ * exits, or up to `timeout` milliseconds. A timeout of 0 returns the current
+ * status immediately without waiting. If the process finished within the
+ * window the result is the exit code plus captured output; if the timeout
+ * elapses first, the result reports that the process is still running and
+ * includes whatever output has been produced so far. Either way the process
+ * keeps running afterwards (a wait does not kill it).
+ */
+export function waitForProcess(args: Record<string, unknown>): Promise<string> {
+  const rawId = args.process_id;
+  const id = typeof rawId === "number" ? rawId : Number(rawId);
+  if (!Number.isInteger(id) || id < 1) {
+    return Promise.resolve("error: process_id must be a positive integer");
+  }
+  const record = processes.get(id);
+  if (record === undefined) {
+    return Promise.resolve(`error: no process ${id}`);
+  }
+  const rawTimeout = args.timeout;
+  const timeout =
+    typeof rawTimeout === "number" ? rawTimeout : Number(rawTimeout);
+  if (!Number.isFinite(timeout) || timeout < 0 || Math.floor(timeout) !== timeout) {
+    return Promise.resolve("error: timeout must be a non-negative number");
+  }
+  if (record.status !== "running") {
+    return Promise.resolve(describeFinished(id, record));
+  }
+  if (timeout === 0) {
+    return Promise.resolve(
+      `still running; output so far:\n${formatBody(record)}`.trim(),
+    );
+  }
+  return new Promise<string>((resolve) => {
+    const timer = setTimeout(() => {
+      resolve(
+        `still running after ${timeout} ms; output so far:\n${formatBody(record)}`.trim(),
+      );
+    }, timeout);
+    const onDone = () => {
+      clearTimeout(timer);
+      const body = formatBody(record);
+      if (record.status === "finished" && record.exitCode === 0) {
+        resolve(body || "(no output)");
+      } else {
+        resolve(`exit code ${record.exitCode ?? -1}\n${body}`.trim());
+      }
+    };
+    // Guard against double-resolution if both handlers fire.
+    let settled = false;
+    const settle = () => {
+      if (settled) return;
+      settled = true;
+      onDone();
+    };
+    const proc = record.proc;
+    if (proc === null) {
+      // Process already exited between the status check and here.
+      settle();
+      return;
+    }
+    proc.on("close", settle);
+    proc.on("error", settle);
+  });
+}
+
+function describeFinished(id: number, record: ProcessRecord): string {
+  const body = formatBody(record);
+  if (record.status === "finished" && record.exitCode === 0) {
+    return body || "(no output)";
+  }
+  return `process ${id} exited with code ${record.exitCode ?? -1}\n${body}`.trim();
+}
+
+/**
+ * `kill_process`: send SIGTERM to the background process with `process_id`
+ * and return a confirmation plus whatever output was captured before it
+ * died. Idempotent: a kill against an already-finished process returns a
+ * short "no longer running" message.
+ */
+export function killProcess(args: Record<string, unknown>): string {
+  const rawId = args.process_id;
+  const id = typeof rawId === "number" ? rawId : Number(rawId);
+  if (!Number.isInteger(id) || id < 1) {
+    return "error: process_id must be a positive integer";
+  }
+  const record = processes.get(id);
+  if (record === undefined) {
+    return `process ${id} is no longer running`;
+  }
+  if (record.status !== "running") {
+    const body = formatBody(record);
+    return `process ${id} already exited with code ${record.exitCode ?? -1}\n${body}`.trim();
+  }
+  const proc = record.proc;
+  if (proc !== null) {
+    record.status = "killed";
+    try {
+      proc.kill("SIGTERM");
+    } catch {
+      // Already reaped; the close handler has updated the record.
+    }
+  }
+  return `killed process ${id}`;
 }
