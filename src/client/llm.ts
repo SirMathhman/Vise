@@ -33,6 +33,108 @@ interface ModelsResponse {
   data?: { id: string }[];
 }
 
+/** A single streamed tool-call delta, accumulated by index across chunks. */
+interface StreamToolCallDelta {
+  index: number;
+  id?: string;
+  function?: { name?: string; arguments?: string };
+}
+
+/** The `delta` field of one streaming choice. */
+interface StreamDelta {
+  content?: string;
+  tool_calls?: StreamToolCallDelta[];
+}
+
+/** One choice in a streaming chunk. */
+interface StreamChoice {
+  delta: StreamDelta;
+}
+
+/** One SSE `data:` payload from the chat completions stream. */
+interface StreamChunk {
+  choices?: StreamChoice[];
+  usage?: Usage;
+}
+
+/**
+ * Parse the SSE chat-completions stream, accumulating the assistant message
+ * and invoking `onToken` for each content delta. Returns the final message,
+ * the last seen `usage.prompt_tokens`, and whether any data payload arrived.
+ */
+async function streamChat(
+  stream: ReadableStream<Uint8Array>,
+  onToken?: (token: string) => void,
+): Promise<{ message: AssistantMessage; usage?: number; sawData: boolean }> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let content = "";
+  let usage: number | undefined;
+  let sawData = false;
+  const toolCallParts = new Map<number, ToolCall>();
+
+  const handleData = (line: string) => {
+    if (line === "" || !line.startsWith("data:")) return;
+    const payload = line.slice("data:".length).trim();
+    if (payload === "[DONE]") return;
+    let chunk: StreamChunk;
+    try {
+      chunk = JSON.parse(payload) as StreamChunk;
+    } catch {
+      return;
+    }
+    sawData = true;
+    const choice = chunk.choices?.[0];
+    const delta = choice?.delta;
+    const piece = delta?.content;
+    if (piece && piece !== "") {
+      content += piece;
+      onToken?.(piece);
+    }
+    const deltas = delta?.tool_calls;
+    if (deltas) {
+      for (const tc of deltas) {
+        const existing = toolCallParts.get(tc.index);
+        if (existing) {
+          existing.function.arguments += tc.function?.arguments ?? "";
+          if (tc.function?.name) {
+            existing.function.name += tc.function.name;
+          }
+        } else {
+          toolCallParts.set(tc.index, {
+            id: tc.id ?? "",
+            function: {
+              name: tc.function?.name ?? "",
+              arguments: tc.function?.arguments ?? "",
+            },
+          });
+        }
+      }
+    }
+    const promptTokens = chunk.usage?.prompt_tokens;
+    if (promptTokens !== undefined) usage = promptTokens;
+  };
+
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let idx: number;
+    while ((idx = buffer.indexOf("\n")) >= 0) {
+      handleData(buffer.slice(0, idx));
+      buffer = buffer.slice(idx + 1);
+    }
+  }
+
+  const toolCalls = [...toolCallParts.values()];
+  const message: AssistantMessage = {
+    content,
+    ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
+  };
+  return { message, usage, sawData };
+}
+
 export class LlmClient implements Client {
   private lastPromptTokens: number | undefined;
   private currentModel: string = MODEL;
@@ -136,11 +238,13 @@ export class LlmClient implements Client {
   async chat(
     messages: Message[],
     tools?: Tool[],
+    onToken?: (token: string) => void,
   ): Promise<Result<AssistantMessage>> {
     const body: Record<string, unknown> = {
       model: this.currentModel,
       messages,
-      stream: false,
+      stream: true,
+      stream_options: { include_usage: true },
     };
     if (tools && tools.length > 0) {
       body.tools = tools;
@@ -162,22 +266,22 @@ export class LlmClient implements Client {
           error: { kind: "http", status: res.status, body: text },
         };
       }
-      const data = (await res.json()) as ChatResponse;
-      const choice = data.choices[0]?.message;
-      if (!choice) {
+      const stream = res.body;
+      if (!stream) {
         return {
           ok: false,
-          error: { kind: "malformed", body: JSON.stringify(data) },
+          error: { kind: "malformed", body: "empty response body" },
         };
       }
-      this.lastPromptTokens = data.usage?.prompt_tokens;
-      return {
-        ok: true,
-        value: {
-          content: choice.content ?? "",
-          tool_calls: choice.tool_calls,
-        },
-      };
+      const acc = await streamChat(stream, onToken);
+      if (!acc.sawData) {
+        return {
+          ok: false,
+          error: { kind: "malformed", body: "stream returned no data" },
+        };
+      }
+      this.lastPromptTokens = acc.usage;
+      return { ok: true, value: acc.message };
     } catch (err) {
       return {
         ok: false,

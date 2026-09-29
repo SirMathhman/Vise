@@ -186,6 +186,7 @@ const postTurnHooks = (hookCommands.post ?? []).map(
 );
 
 const client = new LlmClient();
+const onToken = (token: string) => process.stdout.write(token);
 const session = new Session(client, toolRunner, tools, {
   cwd: process.cwd(),
   context: client,
@@ -194,6 +195,7 @@ const session = new Session(client, toolRunner, tools, {
   noteSource: new FileNoteSource(process.cwd()),
   preTurnHooks,
   postTurnHooks,
+  onToken,
 });
 
 const rl = createInterface({
@@ -212,7 +214,14 @@ rl.on("line", (line) => {
       return;
     }
     if (result.ok) {
-      console.log(result.value);
+      // A streamed turn already wrote its reply token-by-token; only emit the
+      // closing newline. Unstreamed results (slash commands, etc.) are printed
+      // whole via console.log as before.
+      if (result.streamed) {
+        process.stdout.write("\n");
+      } else {
+        console.log(result.value);
+      }
       if (result.compactionWarning) {
         console.error(formatCompactionFailure(result.compactionWarning));
       }

@@ -17,7 +17,12 @@ import {
  */
 export type LineResult =
   | "exit"
-  | { ok: true; value: string; compactionWarning?: ViseError }
+  | {
+      ok: true;
+      value: string;
+      streamed?: boolean;
+      compactionWarning?: ViseError;
+    }
   | { ok: false; error: ViseError };
 
 /**
@@ -127,6 +132,14 @@ export interface SessionOptions {
   noteSource?: NoteSource;
   preTurnHooks: PreTurnHook[];
   postTurnHooks: PostTurnHook[];
+  /**
+   * Edge-provided callback invoked with each token of the user turn's reply as
+   * it streams in. The session performs no I/O itself (invariant #2); this is
+   * the edge's sink for streamed tokens. When absent, replies are not
+   * streamed. Used only for normal user turns, not for compaction or other
+   * internal model calls.
+   */
+  onToken?: (token: string) => void;
 }
 
 /**
@@ -148,6 +161,7 @@ export class Session {
   private readonly preTurnHooks: PreTurnHook[];
   private readonly postTurnHooks: PostTurnHook[];
   private readonly cwd: string;
+  private readonly onToken?: (token: string) => void;
   private activeProfile: string | undefined;
 
   constructor(
@@ -166,6 +180,7 @@ export class Session {
     this.preTurnHooks = options.preTurnHooks;
     this.postTurnHooks = options.postTurnHooks;
     this.cwd = options.cwd;
+    this.onToken = options.onToken;
     this.systemMessage = {
       role: "system",
       content: `Working directory: ${options.cwd}`,
@@ -209,18 +224,29 @@ export class Session {
     await this.runHooks(this.preTurnHooks);
     this.messages.push({ role: "user", content: line });
     const auto = await this.maybeAutoCompact();
+    const streamed = this.onToken !== undefined;
     const turn = await runTurn(
       this.client,
       this.tools,
       this.messages,
       this.toolDefs,
+      this.onToken,
     );
     if (!turn.ok) return turn;
     await this.runHooks(this.postTurnHooks);
     // A failed auto-compact is non-fatal: proceed with the (uncut) conversation
-    // and let the edge report that compaction did not happen.
-    if (auto.ok) return turn;
-    return { ok: true, value: turn.value, compactionWarning: auto.error };
+    // and let the edge report that compaction did not happen. The `streamed`
+    // flag tells the edge the reply text was already written token-by-token,
+    // so it only needs to emit the trailing newline rather than re-print.
+    if (auto.ok) {
+      return { ok: true, value: turn.value, streamed };
+    }
+    return {
+      ok: true,
+      value: turn.value,
+      streamed,
+      compactionWarning: auto.error,
+    };
   }
 
   /**

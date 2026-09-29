@@ -20,7 +20,11 @@ export interface Tool {
  * `LlmClient` in `client/llm.ts`).
  */
 export interface Client {
-  chat(messages: Message[], tools?: Tool[]): Promise<Result<AssistantMessage>>;
+  chat(
+    messages: Message[],
+    tools?: Tool[],
+    onToken?: (token: string) => void,
+  ): Promise<Result<AssistantMessage>>;
 }
 
 /**
@@ -114,9 +118,10 @@ export async function runTurn(
   tools: ToolRunner,
   messages: Message[],
   toolDefs: Tool[],
+  onToken?: (token: string) => void,
 ): Promise<Result<string>> {
   for (let i = 0; i < MAX_TOOL_ROUNDS; i++) {
-    const result = await client.chat(messages, toolDefs);
+    const result = await client.chat(messages, toolDefs, onToken);
     if (!result.ok) {
       return { ok: false, error: result.error };
     }

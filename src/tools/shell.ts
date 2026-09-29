@@ -178,7 +178,11 @@ export function waitForProcess(args: Record<string, unknown>): Promise<string> {
   const rawTimeout = args.timeout;
   const timeout =
     typeof rawTimeout === "number" ? rawTimeout : Number(rawTimeout);
-  if (!Number.isFinite(timeout) || timeout < 0 || Math.floor(timeout) !== timeout) {
+  if (
+    !Number.isFinite(timeout) ||
+    timeout < 0 ||
+    Math.floor(timeout) !== timeout
+  ) {
     return Promise.resolve("error: timeout must be a non-negative number");
   }
   if (record.status !== "running") {
