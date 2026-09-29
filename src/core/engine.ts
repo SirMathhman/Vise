@@ -24,6 +24,7 @@ export interface Client {
     messages: Message[],
     tools?: Tool[],
     onToken?: (token: string) => void,
+    onThinking?: (token: string) => void,
   ): Promise<Result<AssistantMessage>>;
 }
 
@@ -119,9 +120,10 @@ export async function runTurn(
   messages: Message[],
   toolDefs: Tool[],
   onToken?: (token: string) => void,
+  onThinking?: (token: string) => void,
 ): Promise<Result<string>> {
   for (let i = 0; i < MAX_TOOL_ROUNDS; i++) {
-    const result = await client.chat(messages, toolDefs, onToken);
+    const result = await client.chat(messages, toolDefs, onToken, onThinking);
     if (!result.ok) {
       return { ok: false, error: result.error };
     }

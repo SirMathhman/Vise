@@ -140,6 +140,15 @@ export interface SessionOptions {
    * internal model calls.
    */
   onToken?: (token: string) => void;
+  /**
+   * Edge-provided callback invoked with each token of the model's thinking
+   * (reasoning_content) as it streams in, before the reply content. The
+   * session performs no I/O itself (invariant #2); this is the edge's sink
+   * for streamed thinking tokens, so the edge can show a live count without
+   * printing the thinking text. Used for all model calls including tool
+   * rounds.
+   */
+  onThinking?: (token: string) => void;
 }
 
 /**
@@ -162,6 +171,7 @@ export class Session {
   private readonly postTurnHooks: PostTurnHook[];
   private readonly cwd: string;
   private readonly onToken?: (token: string) => void;
+  private readonly onThinking?: (token: string) => void;
   private activeProfile: string | undefined;
 
   constructor(
@@ -181,6 +191,7 @@ export class Session {
     this.postTurnHooks = options.postTurnHooks;
     this.cwd = options.cwd;
     this.onToken = options.onToken;
+    this.onThinking = options.onThinking;
     this.systemMessage = {
       role: "system",
       content: `Working directory: ${options.cwd}`,
@@ -231,6 +242,7 @@ export class Session {
       this.messages,
       this.toolDefs,
       this.onToken,
+      this.onThinking,
     );
     if (!turn.ok) return turn;
     await this.runHooks(this.postTurnHooks);

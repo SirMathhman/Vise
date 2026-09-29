@@ -34,12 +34,8 @@ describe("runTurn streaming (core)", () => {
       },
     };
     const messages: Message[] = [{ role: "user", content: "hi" }];
-    const result = await runTurn(
-      client,
-      noopTools,
-      messages,
-      noToolDefs,
-      (t) => seen.push(t),
+    const result = await runTurn(client, noopTools, messages, noToolDefs, (t) =>
+      seen.push(t),
     );
     expect(result.ok).toBeTrue();
     if (result.ok) expect(result.value).toBe("Hello");

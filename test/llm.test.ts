@@ -37,7 +37,10 @@ describe("streamChat (edge)", () => {
       'data: {"choices":[{"delta":{"content":"hi"}}]}\n\n',
       'data: {"choices":[]}\n\n',
       // Final chunk: usage present, no choices.
-      'data: {"choices":[]}\n\n'.replace('{"choices":[]}', '{"choices":[],"usage":{"prompt_tokens":42}}'),
+      'data: {"choices":[]}\n\n'.replace(
+        '{"choices":[]}',
+        '{"choices":[],"usage":{"prompt_tokens":42}}',
+      ),
     ];
     const result = await streamChat(sseStream(chunks));
     expect(result.usage).toBe(42);
@@ -54,10 +57,32 @@ describe("streamChat (edge)", () => {
     const chunks = [
       'data: {"choices":[{"delta":{"content":"Hel"}}]}\n\n',
       'data: {"choices":[{"delta":{"content":"lo"}}]}\n\n',
-      'data: [DONE]\n\n',
+      "data: [DONE]\n\n",
     ];
     const result = await streamChat(sseStream(chunks), (t) => seen.push(t));
     expect(result.message.content).toBe("Hello");
     expect(seen).toEqual(["Hel", "lo"]);
+  });
+
+  test("invokes onThinking per reasoning_content delta and onToken for content", async () => {
+    const thinking: string[] = [];
+    const content: string[] = [];
+    const chunks = [
+      // thinking phase: reasoning_content deltas arrive first
+      'data: {"choices":[{"delta":{"reasoning_content":"Let me"}}]}\n\n',
+      'data: {"choices":[{"delta":{"reasoning_content":" think"}}]}\n\n',
+      // content phase: content deltas follow
+      'data: {"choices":[{"delta":{"content":"Hi"}}]}\n\n',
+      'data: {"choices":[{"delta":{"content":" there"}}]}\n\n',
+      "data: [DONE]\n\n",
+    ];
+    const result = await streamChat(
+      sseStream(chunks),
+      (t) => content.push(t),
+      (t) => thinking.push(t),
+    );
+    expect(result.message.content).toBe("Hi there");
+    expect(content).toEqual(["Hi", " there"]);
+    expect(thinking).toEqual(["Let me", " think"]);
   });
 });

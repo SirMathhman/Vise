@@ -43,6 +43,7 @@ interface StreamToolCallDelta {
 /** The `delta` field of one streaming choice. */
 interface StreamDelta {
   content?: string;
+  reasoning_content?: string;
   tool_calls?: StreamToolCallDelta[];
 }
 
@@ -68,6 +69,7 @@ interface StreamChunk {
 export async function streamChat(
   stream: ReadableStream<Uint8Array>,
   onToken?: (token: string) => void,
+  onThinking?: (token: string) => void,
 ): Promise<{ message: AssistantMessage; usage?: number; sawData: boolean }> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
@@ -90,6 +92,10 @@ export async function streamChat(
     sawData = true;
     const choice = chunk.choices?.[0];
     const delta = choice?.delta;
+    const reasoning = delta?.reasoning_content;
+    if (reasoning && reasoning !== "") {
+      onThinking?.(reasoning);
+    }
     const piece = delta?.content;
     if (piece && piece !== "") {
       content += piece;
@@ -242,6 +248,7 @@ export class LlmClient implements Client {
     messages: Message[],
     tools?: Tool[],
     onToken?: (token: string) => void,
+    onThinking?: (token: string) => void,
   ): Promise<Result<AssistantMessage>> {
     const body: Record<string, unknown> = {
       model: this.currentModel,
@@ -276,7 +283,7 @@ export class LlmClient implements Client {
           error: { kind: "malformed", body: "empty response body" },
         };
       }
-      const acc = await streamChat(stream, onToken);
+      const acc = await streamChat(stream, onToken, onThinking);
       if (!acc.sawData) {
         return {
           ok: false,

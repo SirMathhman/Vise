@@ -186,7 +186,39 @@ const postTurnHooks = (hookCommands.post ?? []).map(
 );
 
 const client = new LlmClient();
-const onToken = (token: string) => process.stdout.write(token);
+
+// Live thinking-token counter. Counts reasoning_content deltas as they
+// stream in and shows a running count on stdout without printing the
+// thinking text. Resets at the start of each turn.
+let thinkingCount = 0;
+let thinkingActive = false;
+
+function clearThinkingDisplay() {
+  if (thinkingActive) {
+    const prev = `thinking: ${thinkingCount}`;
+    process.stdout.write("\r" + " ".repeat(prev.length + 1) + "\r");
+    thinkingActive = false;
+  }
+}
+
+const onThinking = (_token: string) => {
+  thinkingCount++;
+  if (thinkingActive) {
+    const prev = `thinking: ${thinkingCount - 1}`;
+    process.stdout.write(
+      "\r" + " ".repeat(prev.length + 1) + "\r" + `thinking: ${thinkingCount}`,
+    );
+  } else {
+    thinkingActive = true;
+    process.stdout.write(`thinking: ${thinkingCount}`);
+  }
+};
+
+const onToken = (token: string) => {
+  clearThinkingDisplay();
+  process.stdout.write(token);
+};
+
 const session = new Session(client, toolRunner, tools, {
   cwd: process.cwd(),
   context: client,
@@ -196,6 +228,7 @@ const session = new Session(client, toolRunner, tools, {
   preTurnHooks,
   postTurnHooks,
   onToken,
+  onThinking,
 });
 
 const rl = createInterface({
@@ -208,6 +241,8 @@ let chain = Promise.resolve();
 rl.on("line", (line) => {
   if (line.trim() === "") return;
   chain = chain.then(async () => {
+    thinkingCount = 0;
+    thinkingActive = false;
     const result = await session.handleLine(line);
     if (result === "exit") {
       rl.close();
