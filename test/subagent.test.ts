@@ -205,4 +205,49 @@ describe("makeSubagentHandler (edge)", () => {
     // Both line starts are indented by two spaces.
     expect(received).toEqual(["  hello\n", "  world"]);
   });
+
+  test("dims the subagent's streamed tokens when color is enabled", async () => {
+    // Force color on so `dim` emits codes. `isEnabled()` reads `process.env`
+    // per call, so mutating it here (with restore) deterministically enables
+    // color for the duration of this test only.
+    const savedForce = process.env.FORCE_COLOR;
+    process.env.FORCE_COLOR = "1";
+    try {
+      const received: string[] = [];
+      const client: Client = {
+        async chat(
+          _m: Message[],
+          _t?: Tool[],
+          onToken?: (token: string) => void,
+        ) {
+          // Two tokens: one ends in a newline, one does not. The dim codes
+          // wrap each whole token (indent + content), so each captured token
+          // is a self-contained dimmed span.
+          onToken?.("hello\n");
+          onToken?.("world");
+          return { ok: true, value: { content: "hello\nworld" } };
+        },
+      };
+      const source = stubProfileSource(async () => ({ ok: true, value: "" }));
+      const handler = makeSubagentHandler(
+        client,
+        source,
+        "/tmp",
+        noopTools,
+        noToolDefs,
+        (token: string) => {
+          received.push(token);
+        },
+      );
+      await handler({ task: "do it", profile: "default" });
+      // With color forced on, each line-start token is indented then dimmed.
+      expect(received).toEqual([
+        "\x1b[2m  hello\n\x1b[0m",
+        "\x1b[2m  world\x1b[0m",
+      ]);
+    } finally {
+      if (savedForce === undefined) delete process.env.FORCE_COLOR;
+      else process.env.FORCE_COLOR = savedForce;
+    }
+  });
 });

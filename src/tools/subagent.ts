@@ -3,6 +3,7 @@ import type { Client, Tool, ToolRunner } from "../core/engine.ts";
 import type { PromptProgress } from "../core/errors.ts";
 import type { ProfileSource } from "../repl/session.ts";
 import { formatError } from "../output/format.ts";
+import { dim } from "../output/color.ts";
 
 /**
  * The built-in "default" profile. Every subagent that does not name a custom
@@ -60,21 +61,20 @@ export function makeSubagentHandler(
       content: `Working directory: ${cwd}`,
     };
 
-    // Indent every line of the subagent's streamed output so it is visually
-    // distinct from the parent's own reply. Fixed 2-space indent regardless of
-    // nesting depth (a depth-2 subagent is indented the same as a depth-1 one).
-    // The driver's onToken clears the thinking/prompt-progress indicator and
-    // writes at the current cursor, so we track line-start state ourselves:
-    // start at true (subagent output begins at line start), and flip to false
-    // after writing a token that does not end in a newline.
+    // Indent and dim every line of the subagent's streamed output so it is
+    // visually distinct from the parent's own reply. Fixed 2-space indent
+    // regardless of nesting depth (a depth-2 subagent is indented the same as
+    // a depth-1 one); the dim is cosmetic and does not affect the result
+    // returned to the parent model. The driver's onToken clears the
+    // thinking/prompt-progress indicator and writes at the current cursor, so
+    // we track line-start state ourselves: start at true (subagent output
+    // begins at line start), and flip to false after writing a token that does
+    // not end in a newline.
     let subAtLineStart = true;
     const indentedOnToken = (token: string) => {
       if (onToken) {
-        if (subAtLineStart) {
-          onToken("  " + token);
-        } else {
-          onToken(token);
-        }
+        const out = subAtLineStart ? "  " + token : token;
+        onToken(dim(out));
       }
       subAtLineStart = token.endsWith("\n") && token.length > 0;
     };

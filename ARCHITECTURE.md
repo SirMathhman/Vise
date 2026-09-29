@@ -66,6 +66,8 @@ src/
     errors.ts       # structured error types and constructors
   output/
     format.ts       # Result -> text for terminal or plain output
+    color.ts        # terminal styling: decides whether ANSI SGR codes are
+                    # emitted; single source of truth for color availability
   repl/
     session.ts      # orchestrates: lines in, results out; owns conversation
                     # state (the growing messages array)
@@ -81,9 +83,17 @@ index.ts ──> cli ──> driver/* ──> session ──> engine
                                        │        └──> client/llm  (transport)
                                        │
                                        └────────> output/format
+                                       └────────> output/color   # edge: terminal styling
 tools.ts ──> engine                  # edge: tool definitions + ToolRunner implementation
+tools/* ──> output/color             # edge: subagent handler dims streamed tokens
 errors.ts is imported by engine, session, output, and client — and by nothing else
 ```
+
+`output/` is imported by edge modules only (`index.ts`, `tools/*`); the core
+never imports from it. `color.ts` is the single place that decides whether
+ANSI SGR codes are emitted; it reads `process.env`/`process.stdout` per call
+(edge, not core), so it is testable via env mutation and stays pure with
+respect to the core's I/O invariants.
 
 Rules:
 

@@ -15,6 +15,7 @@ import type {
 import type { Result, PromptProgress } from "./src/core/errors.ts";
 import { listNotes, formatNoteEntry, initNote } from "./src/notes.ts";
 import { formatCompactionFailure, formatError } from "./src/output/format.ts";
+import { red, dim, cyan } from "./src/output/color.ts";
 
 /**
  * Edge implementation of ProfileSource backed by a `profiles/` directory of
@@ -207,7 +208,9 @@ const onPromptProgress = (progress: PromptProgress) => {
     }
     return;
   }
-  const text = `prompt: ${progress.processed}/${progress.total}`;
+  // Dim the live counter. The overwrite width must be computed from the
+  // raw (un-dimmed) text: ANSI bytes are not part of the display width.
+  const text = dim(`prompt: ${progress.processed}/${progress.total}`);
   if (promptActive) {
     const prev = `prompt: ${lastProcessed}/${progress.total}`;
     process.stdout.write("\r" + " ".repeat(prev.length + 1) + "\r" + text);
@@ -223,17 +226,17 @@ const onPromptProgress = (progress: PromptProgress) => {
 
 const onThinking = (_token: string) => {
   thinkingCount++;
+  // Dim the live counter; overwrite width from the raw (un-dimmed) text.
+  const text = dim(`thinking: ${thinkingCount}`);
   if (thinkingActive) {
     const prev = `thinking: ${thinkingCount - 1}`;
-    process.stdout.write(
-      "\r" + " ".repeat(prev.length + 1) + "\r" + `thinking: ${thinkingCount}`,
-    );
+    process.stdout.write("\r" + " ".repeat(prev.length + 1) + "\r" + text);
   } else {
     if (contentWritten) {
       process.stdout.write("\n");
     }
     thinkingActive = true;
-    process.stdout.write(`thinking: ${thinkingCount}`);
+    process.stdout.write(text);
   }
 };
 
@@ -293,6 +296,12 @@ const rl = createInterface({
   terminal: false,
 });
 
+// Colored prompt marker. With `terminal: false`, readline does not manage
+// the echo position; the OS terminal echoes typed characters, so writing
+// the marker here (and after every turn) places it at the start of the line
+// the user is about to type on.
+process.stdout.write(cyan("> "));
+
 let chain = Promise.resolve();
 rl.on("line", (line) => {
   if (line.trim() === "") return;
@@ -317,10 +326,11 @@ rl.on("line", (line) => {
         console.log(result.value);
       }
       if (result.compactionWarning) {
-        console.error(formatCompactionFailure(result.compactionWarning));
+        console.error(red(formatCompactionFailure(result.compactionWarning)));
       }
     } else {
-      console.error(formatError(result.error));
+      console.error(red(formatError(result.error)));
     }
+    process.stdout.write(cyan("> "));
   });
 });
