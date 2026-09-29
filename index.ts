@@ -3,7 +3,13 @@ import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { join } from "node:path";
 import { LlmClient } from "./src/client/llm.ts";
-import { tools, toolRunner, toolController } from "./src/tools.ts";
+import {
+  tools,
+  toolRunner,
+  toolController,
+  setToolHandler,
+} from "./src/tools.ts";
+import { makeSubagentHandler } from "./src/tools/subagent.ts";
 import { Session } from "./src/repl/session.ts";
 import type {
   ProfileSource,
@@ -249,12 +255,18 @@ const onToken = (token: string) => {
   process.stdout.write(token);
 };
 
+const profileSource = new FileProfileSource(join(process.cwd(), "profiles"));
+setToolHandler(
+  "run_subagent",
+  makeSubagentHandler(client, profileSource, process.cwd(), toolRunner, tools),
+);
+
 const session = new Session(client, toolRunner, tools, {
   cwd: process.cwd(),
   context: client,
   modelController: client,
   toolController,
-  profileSource: new FileProfileSource(join(process.cwd(), "profiles")),
+  profileSource,
   noteSource: new FileNoteSource(process.cwd()),
   preTurnHooks,
   postTurnHooks,

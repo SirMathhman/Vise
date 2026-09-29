@@ -187,3 +187,42 @@ export async function runTurn(
     error: { kind: "malformed", body: "exceeded maximum tool rounds" },
   };
 }
+
+/**
+ * Run a subagent: a fresh conversation, isolated from the parent's, carrying
+ * its own system message and profile. The subagent runs the same tool loop as
+ * the parent (it receives the same `ToolRunner` and `Tool[]`, so it may in
+ * turn call `run_subagent` and spawn its own subagents). Returns the
+ * subagent's final assistant text.
+ *
+ * Pure: no `node:` imports, no I/O beyond the `Client` and `ToolRunner`. The
+ * `profileText` is the subagent's defining instructions; it is appended as a
+ * user message (never into the system message), the same convention the
+ * session uses for `/profile <name>`.
+ */
+export async function runSubagent(
+  client: Client,
+  tools: ToolRunner,
+  toolDefs: Tool[],
+  systemMessage: Message,
+  profileText: string,
+  task: string,
+  onToken?: (token: string) => void,
+  onThinking?: (token: string) => void,
+  onPromptProgress?: (progress: PromptProgress) => void,
+): Promise<Result<string>> {
+  const messages: Message[] = [systemMessage];
+  if (profileText.trim() !== "") {
+    messages.push({ role: "user", content: profileText });
+  }
+  messages.push({ role: "user", content: task });
+  return runTurn(
+    client,
+    tools,
+    messages,
+    toolDefs,
+    onToken,
+    onThinking,
+    onPromptProgress,
+  );
+}

@@ -321,6 +321,30 @@ export const tools: Tool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "run_subagent",
+      description:
+        "Run a subagent: a fresh, isolated conversation with its own profile, to perform a task and return its final result. The subagent can use all the same tools (including run_subagent) as you. Use it to delegate a self-contained sub-task.",
+      parameters: {
+        type: "object",
+        properties: {
+          task: {
+            type: "string",
+            description:
+              "The task to hand to the subagent. Be specific: what to do and what to return.",
+          },
+          profile: {
+            type: "string",
+            description:
+              "Profile name for the subagent's instructions. Use 'default' for the built-in general profile, or the name of a profile in profiles/.",
+          },
+        },
+        required: ["task", "profile"],
+      },
+    },
+  },
 ];
 
 /** Edge-provided tool implementations. All I/O is in the modules imported
@@ -398,3 +422,17 @@ export const toolRunner: ToolRunner = {
     return handler(args);
   },
 };
+
+/**
+ * Register a tool handler after module init, for tools whose handler depends
+ * on edge-provided services (e.g. `run_subagent` needs the `Client` and
+ * `ProfileSource` that are constructed in `index.ts`). The handler is added
+ * to `toolHandlers` and the tool is already present in `tools`, so it is
+ * immediately available to the model.
+ */
+export function setToolHandler(
+  name: string,
+  handler: (args: Record<string, unknown>) => string | Promise<string>,
+): void {
+  toolHandlers[name] = handler;
+}

@@ -252,18 +252,22 @@ export class Session {
       return handleModelCommand(this.modelController, trimmed);
     }
     if (trimmed === "/tool" || trimmed.startsWith("/tool ")) {
-      return handleToolCommand(this.toolController, trimmed, (name, enabled) => {
-        // A tool's enabled state changed; tell the model so it stops calling
-        // disabled tools and knows to invoke newly-enabled ones. The full
-        // definition list is always sent regardless, so this is a state
-        // note, not a change to the tools offered.
-        this.messages.push({
-          role: "user",
-          content: enabled
-            ? `Tool '${name}' is now enabled. You may call it.`
-            : `Tool '${name}' is now disabled. Do not call it; if asked, say it is disabled.`,
-        });
-      });
+      return handleToolCommand(
+        this.toolController,
+        trimmed,
+        (name, enabled) => {
+          // A tool's enabled state changed; tell the model so it stops calling
+          // disabled tools and knows to invoke newly-enabled ones. The full
+          // definition list is always sent regardless, so this is a state
+          // note, not a change to the tools offered.
+          this.messages.push({
+            role: "user",
+            content: enabled
+              ? `Tool '${name}' is now enabled. You may call it.`
+              : `Tool '${name}' is now disabled. Do not call it; if asked, say it is disabled.`,
+          });
+        },
+      );
     }
     if (trimmed === "/profile" || trimmed.startsWith("/profile ")) {
       return this.handleProfileCommand(trimmed);

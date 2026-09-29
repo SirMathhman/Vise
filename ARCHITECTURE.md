@@ -135,6 +135,19 @@ Rules:
   per-process only (not persisted), matching the other controllers. The edge
   provides the implementation (`ToolSet` in `src/tools.ts`). Same
   edge-owns-I/O pattern as `ProfileSource`.
+- Subagents are run by the `run_subagent` tool. The core `runSubagent`
+  (`core/engine.ts`) is pure: it builds a fresh conversation
+  (`[system, profile-as-user, task-as-user]`) and delegates to `runTurn`,
+  returning the subagent's final assistant text. The subagent receives the
+  same `ToolRunner` and `Tool[]` as its parent, so it may spawn its own
+  subagents. The subagent's defining instructions come from a profile: the
+  `profile` argument is required, `"default"` resolves to a built-in
+  constant, and any other name is loaded from `profiles/<name>.md` via
+  `ProfileSource` — the same edge I/O as `/profile`. The edge handler
+  (`src/tools/subagent.ts` `makeSubagentHandler`) performs the `ProfileSource`
+  I/O and calls the core; it is registered via `setToolHandler` in `index.ts`
+  because its handler depends on the `Client` and `ProfileSource`.
+  Same edge-owns-I/O pattern as `ProfileSource`.
 - Every file stays under 500 code lines and every function under 100 lines;
   when a module approaches that, split it along a natural seam.
 

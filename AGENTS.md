@@ -29,17 +29,20 @@ authoritative definitions live in the source files linked.
 - `/note` (list) / `/note init <name>` (create) — via `NoteSource`
 
 **Model-facing tools** — defined in `src/tools.ts` (`tools: Tool[]`) with their
-implementations in `src/tools/files.ts`, `src/tools/shell.ts`, and
-`src/tools/notes-tool.ts`; dispatched by name by the core in
-`src/core/engine.ts`. To add one, append a definition to `tools` in
-`src/tools.ts`, add a handler function in the matching domain module, and
-register it in the `toolHandlers` map in `src/tools.ts`.
+implementations in `src/tools/files.ts`, `src/tools/shell.ts`,
+`src/tools/notes-tool.ts`, and `src/tools/subagent.ts`; dispatched by name by
+the core in `src/core/engine.ts`. To add one, append a definition to `tools`
+in `src/tools.ts`, add a handler function in the matching domain module, and
+register it in the `toolHandlers` map in `src/tools.ts` (or via
+`setToolHandler` when the handler depends on edge services constructed later,
+such as the subagent handler's `Client`).
 
 - Files: `list_directory`, `read_file`, `create_file`, `edit_file`,
   `delete_file`, `delete_directory`, `find_files` (recursive regex name match),
   `search_files` (recursive regex content search, file or directory)
 - Shell: `run_powershell` (Windows-only, foreground 60s SIGTERM timeout; `background: true` spawns a background process and returns a numeric process id), `wait_for_process` (block on a background process up to a timeout, in ms), `kill_process` (SIGTERM a background process)
 - Notes: `list_notes`, `read_note`, `save_note`, `delete_note`
+- Subagents: `run_subagent` (runs a subagent — a fresh, isolated conversation with its own profile — to perform a task and return its final result; the subagent can use all the same tools, including `run_subagent`)
 
 ## Hard rules (from the architecture invariants)
 
@@ -60,6 +63,7 @@ register it in the `toolHandlers` map in `src/tools.ts`.
 - **Notes:** A per-project store of short facts and how-to procedures, kept in a flat `notes/` directory. Each note is one `.md` file; the filename (minus extension) is the note name, and the first non-empty line is its one-line summary (shown by listing); the rest is the body. Note names are unique. Recall is **all on-demand**: nothing is auto-injected into context — the model reads/writes notes through the `list_notes`/`read_note`/`save_note`/`delete_note` tools when it decides it needs them, and the user sees the same store via `/note` (list) and can create new notes via `/note init <name>`. The shared file I/O lives in `src/notes.ts` (edge). The `NoteSource` interface is core-owned (`src/repl/session.ts`); the edge (`index.ts` `FileNoteSource`) implements it. Same edge-owns-I/O pattern.
 - **Pre-turn hooks:** One or more shell commands (configured in `.viserc.json` as `preTurnCommand`) run in parallel before every turn; each hook's output is injected as a user message before the user's input, in config order. **Post-turn hooks:** One or more shell commands (configured in `.viserc.json` as `postTurnCommand`) run in parallel after every successful turn; each hook's output is injected as a user message after the assistant's reply, in config order. Each hook key accepts either a single command string or an array of command strings. The `PreTurnHook`/`PostTurnHook` interfaces are core-owned (`src/repl/session.ts`); the edge (`index.ts` `ShellHook`) spawns `powershell.exe`. Same edge-owns-I/O pattern.
 - **Tools:** `/tool` lists the model-facing tools with their enabled state; `/tool <name> enable|disable` toggles one. The full set of tool definitions is always sent to the model regardless of enabled state — disabling a tool does not change the definitions; it only makes the runner report `error: tool <name> is disabled` if the model calls it. Enabling or disabling also injects a user message into the conversation informing the model of the state change. State is in-memory per process only (not persisted). The `ToolController` interface is core-owned (`src/core/engine.ts`); the edge (`src/tools.ts` `ToolSet`) implements it. Same edge-owns-I/O pattern. The four controller/slash-command handlers that depend only on immutable session fields (`reportContext`, `handleModelCommand`, `handleToolCommand`, `handleNotesCommand`) live in `src/repl/commands.ts` to keep `session.ts` under the size limit; `handleProfileCommand` and `doCompact` stay in `Session` because they mutate conversation state.
+- **Subagents:** `run_subagent` runs a subagent — a fresh, isolated conversation with its own system message and profile — to perform a task and return its final assistant text. The subagent receives the same `ToolRunner` and `Tool[]` as the parent, so it may in turn call `run_subagent` and spawn its own subagents. The `profile` argument is required: `"default"` resolves to a built-in constant profile, any other name is loaded from `profiles/<name>.md` via `ProfileSource` (the same edge I/O as `/profile`). The core `runSubagent` (`src/core/engine.ts`) is pure and delegates to `runTurn`; the edge handler (`src/tools/subagent.ts` `makeSubagentHandler`) does the `ProfileSource` I/O and is registered via `setToolHandler` in `index.ts` (because its handler depends on the `Client` and `ProfileSource`, which are constructed there).
 - **Streaming:** the model reply streams token-by-token, always on for normal user turns. The core (`Client.chat` / `runTurn`) threads an optional `onToken` callback as a side channel — the core never does the I/O itself. The edge (`LlmClient`) performs the SSE parsing/accumulation; the driver (`index.ts`) passes an `onToken` that writes to stdout. `LineResult.streamed` tells the driver the reply text was already written, so it emits only the trailing newline instead of re-printing. Compaction/`summarize` calls pass no `onToken`, so they are not streamed. Streaming coverage lives in `test/` (`core.test.ts` for `runTurn`/`summarize`/`Session`, `llm.test.ts` for the `streamChat` SSE parser); `streamChat` is exported from `llm.ts` specifically so it can be unit-tested with a synthetic stream.
 
 ## Environment
