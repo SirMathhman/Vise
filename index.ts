@@ -192,6 +192,7 @@ const client = new LlmClient();
 // thinking text. Resets at the start of each turn.
 let thinkingCount = 0;
 let thinkingActive = false;
+let contentWritten = false;
 
 const onThinking = (_token: string) => {
   thinkingCount++;
@@ -201,6 +202,9 @@ const onThinking = (_token: string) => {
       "\r" + " ".repeat(prev.length + 1) + "\r" + `thinking: ${thinkingCount}`,
     );
   } else {
+    if (contentWritten) {
+      process.stdout.write("\n");
+    }
     thinkingActive = true;
     process.stdout.write(`thinking: ${thinkingCount}`);
   }
@@ -211,6 +215,7 @@ const onToken = (token: string) => {
     thinkingActive = false;
     process.stdout.write("\n");
   }
+  contentWritten = true;
   process.stdout.write(token);
 };
 
@@ -238,6 +243,7 @@ rl.on("line", (line) => {
   chain = chain.then(async () => {
     thinkingCount = 0;
     thinkingActive = false;
+    contentWritten = false;
     const result = await session.handleLine(line);
     if (result === "exit") {
       rl.close();
