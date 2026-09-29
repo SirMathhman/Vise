@@ -53,9 +53,26 @@ export function formatNoteList(lines: string[]): string {
   return lines.join("\n");
 }
 
+/**
+ * Render the list of available tools with their current enabled state.
+ * Enabled tools are marked with an asterisk; disabled ones are dimmed with
+ * `(disabled)`.
+ */
+export function formatToolList(
+  tools: { name: string; enabled: boolean }[],
+): string {
+  if (tools.length === 0) return "no tools available";
+  return tools
+    .map((t) =>
+      t.enabled ? `* ${t.name} (enabled)` : `  ${t.name} (disabled)`,
+    )
+    .join("\n");
+}
+
 /** Render the available slash commands as a multi-line help text. */
 export function formatHelp(opts: {
   hasModel: boolean;
+  hasTools: boolean;
   hasProfile: boolean;
   hasNotes: boolean;
   preTurnHookCount: number;
@@ -72,6 +89,10 @@ export function formatHelp(opts: {
       "/model          list available models",
       "/model <name>   switch to the named model",
     );
+  }
+  if (opts.hasTools) {
+    lines.push("/tool            list available tools");
+    lines.push("/tool <name> enable|disable  enable or disable a tool");
   }
   if (opts.hasProfile) {
     lines.push(

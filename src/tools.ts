@@ -1,4 +1,4 @@
-import type { Tool, ToolRunner } from "./core/engine.ts";
+import type { Tool, ToolController, ToolRunner } from "./core/engine.ts";
 import {
   createFile,
   deleteDirectory,
@@ -348,11 +348,55 @@ const toolHandlers: Record<
   delete_note: deleteNoteTool,
 };
 
+/**
+ * Edge implementation of the core `ToolController`. Tracks which tools are
+ * enabled (default: all) and, on each turn, returns the enabled definitions
+ * that the model is offered. Disabling a tool removes it from the model's
+ * tool list; if the model still calls a disabled tool, `toolRunner` reports
+ * a clear error instead of running the handler.
+ */
+export class ToolSet implements ToolController {
+  private readonly defs: Tool[];
+  private readonly disabled = new Set<string>();
+
+  constructor(defs: Tool[]) {
+    this.defs = defs;
+  }
+
+  list(): { name: string; enabled: boolean }[] {
+    return this.defs.map((t) => ({
+      name: t.function.name,
+      enabled: !this.disabled.has(t.function.name),
+    }));
+  }
+
+  enabled(): Tool[] {
+    return this.defs.filter((t) => !this.disabled.has(t.function.name));
+  }
+
+  isEnabled(name: string): boolean {
+    return !this.disabled.has(name);
+  }
+
+  set(name: string, enabled: boolean): void {
+    if (enabled) {
+      this.disabled.delete(name);
+    } else {
+      this.disabled.add(name);
+    }
+  }
+}
+
+export const toolController = new ToolSet(tools);
+
 export const toolRunner: ToolRunner = {
   async run(name, args): Promise<string> {
     const handler = toolHandlers[name];
     if (handler === undefined) {
       return `error: unknown tool ${name}`;
+    }
+    if (!toolController.isEnabled(name)) {
+      return `error: tool ${name} is disabled`;
     }
     return handler(args);
   },

@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { join } from "node:path";
 import { LlmClient } from "./src/client/llm.ts";
-import { tools, toolRunner } from "./src/tools.ts";
+import { tools, toolRunner, toolController } from "./src/tools.ts";
 import { Session } from "./src/repl/session.ts";
 import type {
   ProfileSource,
@@ -253,6 +253,7 @@ const session = new Session(client, toolRunner, tools, {
   cwd: process.cwd(),
   context: client,
   modelController: client,
+  toolController,
   profileSource: new FileProfileSource(join(process.cwd(), "profiles")),
   noteSource: new FileNoteSource(process.cwd()),
   preTurnHooks,

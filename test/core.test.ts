@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { runTurn, summarize } from "../src/core/engine.ts";
-import type { Client, Tool, ToolRunner } from "../src/core/engine.ts";
+import type { Client, Tool, ToolController, ToolRunner } from "../src/core/engine.ts";
 import type { Message, AssistantMessage } from "../src/core/errors.ts";
 import { Session } from "../src/repl/session.ts";
 import type { ContextSource } from "../src/repl/session.ts";
@@ -132,5 +132,158 @@ describe("Session streaming flag (core)", () => {
     const result = await session.handleLine("hi");
     if (result === "exit" || !result.ok) throw new Error("expected ok result");
     expect(result.streamed).toBeFalse();
+  });
+});
+
+describe("Session /tool command (core)", () => {
+  /**
+   * A minimal ToolController stub for exercising the /tool dispatch in
+   * Session. It tracks enabled/disabled state so list() and enabled()
+   * reflect set() calls, and records set() calls so tests can assert
+   * toggling.
+   */
+  function makeToolController(): ToolController & { sets: [string, boolean][] } {
+    const names = ["alpha", "beta"];
+    const disabled = new Set<string>();
+    const sets: [string, boolean][] = [];
+    return {
+      sets,
+      list: () =>
+        names.map((name) => ({ name, enabled: !disabled.has(name) })),
+      enabled: () =>
+        names
+          .filter((name) => !disabled.has(name))
+          .map((name) => ({
+            type: "function" as const,
+            function: { name, description: "", parameters: {} },
+          })),
+      isEnabled: (name: string) => !disabled.has(name),
+      set(name: string, enabled: boolean) {
+        sets.push([name, enabled]);
+        if (enabled) disabled.delete(name);
+        else disabled.add(name);
+      },
+    };
+  }
+
+  const client: Client = {
+    async chat() {
+      return { ok: true, value: { content: "reply" } };
+    },
+  };
+
+  function makeSession(tc: ToolController): Session {
+    return new Session(client, noopTools, noToolDefs, {
+      cwd: "/tmp",
+      context: noopContext,
+      toolController: tc,
+      preTurnHooks: [],
+      postTurnHooks: [],
+    });
+  }
+
+  test("/tool with no args lists tools with their enabled state", async () => {
+    const tc = makeToolController();
+    const session = makeSession(tc);
+    const result = await session.handleLine("/tool");
+    if (result === "exit" || !result.ok) throw new Error("expected ok result");
+    expect(result.value).toBe(
+      "* alpha (enabled)\n* beta (enabled)",
+    );
+  });
+
+  test("/tool <name> enable sets the tool enabled", async () => {
+    const tc = makeToolController();
+    const session = makeSession(tc);
+    const result = await session.handleLine("/tool alpha enable");
+    if (result === "exit" || !result.ok) throw new Error("expected ok result");
+    expect(result.value).toBe("alpha enabled");
+    expect(tc.sets).toEqual([["alpha", true]]);
+  });
+
+  test("/tool <name> disable sets the tool disabled", async () => {
+    const tc = makeToolController();
+    const session = makeSession(tc);
+    const result = await session.handleLine("/tool beta disable");
+    if (result === "exit" || !result.ok) throw new Error("expected ok result");
+    expect(result.value).toBe("beta disabled");
+    expect(tc.sets).toEqual([["beta", false]]);
+  });
+
+  test("/tool with unknown name returns an error", async () => {
+    const tc = makeToolController();
+    const session = makeSession(tc);
+    const result = await session.handleLine("/tool gamma disable");
+    if (result === "exit" || result.ok) throw new Error("expected error result");
+    expect(result.error.kind).toBe("malformed");
+    if (result.error.kind === "malformed") {
+      expect(result.error.body).toBe(
+        "unknown tool 'gamma'. Run '/tool' to see available tools.",
+      );
+    }
+  });
+
+  test("/tool with invalid verb returns an error", async () => {
+    const tc = makeToolController();
+    const session = makeSession(tc);
+    const result = await session.handleLine("/tool alpha toggle");
+    if (result === "exit" || result.ok) throw new Error("expected error result");
+    expect(result.error.kind).toBe("malformed");
+    if (result.error.kind === "malformed") {
+      expect(result.error.body).toBe("usage: /tool <name> enable|disable");
+    }
+  });
+
+  test("/tool when toolController is absent returns an error", async () => {
+    const session = new Session(client, noopTools, noToolDefs, {
+      cwd: "/tmp",
+      context: noopContext,
+      preTurnHooks: [],
+      postTurnHooks: [],
+    });
+    const result = await session.handleLine("/tool");
+    if (result === "exit" || result.ok) throw new Error("expected error result");
+    expect(result.error.kind).toBe("malformed");
+    if (result.error.kind === "malformed") {
+      expect(result.error.body).toBe(
+        "tools not supported by the current client",
+      );
+    }
+  });
+
+  test("disabling a tool removes it from the definitions passed to the model", async () => {
+    const toolDefs: Tool[] = [
+      {
+        type: "function",
+        function: { name: "alpha", description: "", parameters: {} },
+      },
+      {
+        type: "function",
+        function: { name: "beta", description: "", parameters: {} },
+      },
+    ];
+    let lastToolDefs: Tool[] | undefined;
+    const capturingClient: Client = {
+      async chat(_messages, toolDefsParam?: Tool[]) {
+        lastToolDefs = toolDefsParam;
+        return { ok: true, value: { content: "reply" } };
+      },
+    };
+    const tc = makeToolController();
+    const session = new Session(capturingClient, noopTools, toolDefs, {
+      cwd: "/tmp",
+      context: noopContext,
+      toolController: tc,
+      preTurnHooks: [],
+      postTurnHooks: [],
+    });
+    // First turn: all tools enabled.
+    await session.handleLine("hi");
+    expect(lastToolDefs?.length).toBe(2);
+    // Disable alpha, then turn again.
+    await session.handleLine("/tool alpha disable");
+    await session.handleLine("hi");
+    expect(lastToolDefs?.length).toBe(1);
+    expect(lastToolDefs?.[0]?.function.name).toBe("beta");
   });
 });

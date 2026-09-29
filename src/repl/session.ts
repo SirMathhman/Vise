@@ -1,18 +1,23 @@
 import { runTurn, splitForCompaction, summarize } from "../core/engine.ts";
-import type { Client, Tool, ToolRunner } from "../core/engine.ts";
+import type {
+  Client,
+  Tool,
+  ToolController,
+  ToolRunner,
+} from "../core/engine.ts";
 import type {
   Message,
   Result,
   ViseError,
   PromptProgress,
 } from "../core/errors.ts";
+import { formatHelp, formatProfileList } from "../output/format.ts";
 import {
-  formatContext,
-  formatHelp,
-  formatModelList,
-  formatNoteList,
-  formatProfileList,
-} from "../output/format.ts";
+  handleModelCommand,
+  handleNotesCommand,
+  handleToolCommand,
+  reportContext,
+} from "./commands.ts";
 
 /**
  * The outcome of a handled line. A successful turn carries the model's reply
@@ -133,6 +138,7 @@ export interface SessionOptions {
   cwd: string;
   context: ContextSource;
   modelController?: ModelController;
+  toolController?: ToolController;
   profileSource?: ProfileSource;
   noteSource?: NoteSource;
   preTurnHooks: PreTurnHook[];
@@ -179,6 +185,7 @@ export class Session {
   private readonly toolDefs: Tool[];
   private readonly context: ContextSource;
   private readonly modelController?: ModelController;
+  private readonly toolController?: ToolController;
   private readonly profileSource?: ProfileSource;
   private readonly noteSource?: NoteSource;
   private readonly preTurnHooks: PreTurnHook[];
@@ -200,6 +207,7 @@ export class Session {
     this.toolDefs = toolDefs;
     this.context = options.context;
     this.modelController = options.modelController;
+    this.toolController = options.toolController;
     this.profileSource = options.profileSource;
     this.noteSource = options.noteSource;
     this.preTurnHooks = options.preTurnHooks;
@@ -231,22 +239,26 @@ export class Session {
         ok: true,
         value: formatHelp({
           hasModel: !!this.modelController,
+          hasTools: !!this.toolController,
           hasProfile: !!this.profileSource,
           hasNotes: !!this.noteSource,
           preTurnHookCount: this.preTurnHooks.length,
           postTurnHookCount: this.postTurnHooks.length,
         }),
       };
-    if (trimmed === "/context") return this.reportContext();
+    if (trimmed === "/context") return reportContext(this.context);
     if (trimmed === "/compact") return this.doCompact();
     if (trimmed === "/model" || trimmed.startsWith("/model ")) {
-      return this.handleModelCommand(trimmed);
+      return handleModelCommand(this.modelController, trimmed);
+    }
+    if (trimmed === "/tool" || trimmed.startsWith("/tool ")) {
+      return handleToolCommand(this.toolController, trimmed);
     }
     if (trimmed === "/profile" || trimmed.startsWith("/profile ")) {
       return this.handleProfileCommand(trimmed);
     }
     if (trimmed === "/note" || trimmed.startsWith("/note ")) {
-      return this.handleNotesCommand(trimmed);
+      return handleNotesCommand(this.noteSource, trimmed);
     }
     await this.runHooks(this.preTurnHooks);
     this.messages.push({ role: "user", content: line });
@@ -256,7 +268,7 @@ export class Session {
       this.client,
       this.tools,
       this.messages,
-      this.toolDefs,
+      this.toolController?.enabled() ?? this.toolDefs,
       this.onToken,
       this.onThinking,
       this.onPromptProgress,
@@ -346,62 +358,6 @@ export class Session {
   }
 
   /**
-   * Render `/context`. Reads the max live on every call (at most one `/slots`
-   * request) and never makes a model call or pushes a message. Do not cache
-   * `contextMax` across turns here: the live read is what keeps the reported
-   * window accurate if the server's window changes.
-   */
-  private async reportContext(): Promise<Result<string>> {
-    const max = await this.context.contextMax();
-    if (!max.ok) return { ok: false, error: max.error };
-    const used = this.context.lastPromptTokensUsed() ?? 0;
-    return { ok: true, value: formatContext(used, max.value) };
-  }
-
-  /**
-   * Handle `/model` and `/model <name>`.
-   * When name is omitted: lists available models from the server.
-   * When name is provided: validates the name and switches the active model.
-   */
-  private async handleModelCommand(line: string): Promise<Result<string>> {
-    if (!this.modelController) {
-      return {
-        ok: false,
-        error: {
-          kind: "malformed",
-          body: "model switching not supported by the current client",
-        },
-      };
-    }
-
-    const arg = line.slice("/model".length).trim();
-    if (arg === "") {
-      const models = await this.modelController.listModels();
-      if (!models.ok) return models;
-      const current = this.modelController.getModel();
-      return {
-        ok: true,
-        value: formatModelList(models.value, current),
-      };
-    }
-
-    const models = await this.modelController.listModels();
-    if (!models.ok) return models;
-    if (!models.value.includes(arg)) {
-      return {
-        ok: false,
-        error: {
-          kind: "malformed",
-          body: `unknown model '${arg}'. Run '/model' to see available models.`,
-        },
-      };
-    }
-
-    this.modelController.setModel(arg);
-    return { ok: true, value: `switched to model ${arg}` };
-  }
-
-  /**
    * Handle `/profile` and `/profile <name>`.
    * When name is omitted: lists available profiles from the source.
    * When name is provided: loads the profile text and appends it to the
@@ -447,48 +403,6 @@ export class Session {
     return {
       ok: true,
       value: body === "" ? "profile cleared" : `profile set to ${arg}`,
-    };
-  }
-
-  /**
-   * Handle `/note` and `/note init <name>`. When no argument: lists every
-   * note with its one-line summary. When `init <name>`: creates a new note
-   * with a placeholder template body. Notes are exposed to the model on
-   * demand through the note tools; this command is the user's view of the
-   * same store.
-   */
-  private async handleNotesCommand(line: string): Promise<Result<string>> {
-    if (!this.noteSource) {
-      return {
-        ok: false,
-        error: {
-          kind: "malformed",
-          body: "notes not supported by the current client",
-        },
-      };
-    }
-    const arg = line.slice("/note".length).trim();
-    if (arg === "") {
-      const notes = await this.noteSource.listNotes();
-      if (!notes.ok) return notes;
-      return { ok: true, value: formatNoteList(notes.value) };
-    }
-    const sub = arg.split(" ")[0];
-    if (sub === "init") {
-      const name = arg.slice("init".length).trim();
-      if (name === "") {
-        return {
-          ok: false,
-          error: { kind: "malformed", body: "usage: /note init <name>" },
-        };
-      }
-      const result = await this.noteSource.initNote(name);
-      if (!result.ok) return result;
-      return { ok: true, value: `initialized note '${name}'` };
-    }
-    return {
-      ok: false,
-      error: { kind: "malformed", body: `unknown /note subcommand '${sub}'` },
     };
   }
 }
