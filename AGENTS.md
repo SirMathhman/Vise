@@ -28,9 +28,11 @@ authoritative definitions live in the source files linked.
 - `/note` (list) / `/note init <name>` (create) — via `NoteSource`
 
 **Model-facing tools** — defined in `src/tools.ts` (`tools: Tool[]`) with their
-implementations in the same file; dispatched by name by the core in
-`src/core/engine.ts`. To add one, append a definition to `tools`, add a handler
-function, and register it in the `toolHandlers` map.
+implementations in `src/tools/files.ts`, `src/tools/shell.ts`, and
+`src/tools/notes-tool.ts`; dispatched by name by the core in
+`src/core/engine.ts`. To add one, append a definition to `tools` in
+`src/tools.ts`, add a handler function in the matching domain module, and
+register it in the `toolHandlers` map in `src/tools.ts`.
 
 - Files: `list_directory`, `read_file`, `create_file`, `edit_file`,
   `delete_file`, `delete_directory`, `find_files` (recursive regex name match),
@@ -43,7 +45,7 @@ function, and register it in the `toolHandlers` map.
 - **No `process.exit()` anywhere.** Termination happens when the event loop drains; set `process.exitCode` instead. `process.exit()` truncates buffered stdout through pipes.
 - **The core (`src/core/`) is pure.** No `node:` imports, no `console`, no `process`, no globals. Same input → same output.
 - **No `throw` in core paths.** Errors are the structured `Result<T>` / `ViseError` union from `src/core/errors.ts`. All display formatting belongs in `src/output/format.ts`.
-- **Dependency arrows point edge → core only.** `client/llm.ts` is the sole module that performs network I/O; `src/tools.ts` is the edge implementation of the core's `Tool`/`ToolRunner` types.
+- **Dependency arrows point edge → core only.** `client/llm.ts` is the sole module that performs network I/O; `src/tools.ts` (definitions + registry) and the handler modules under `src/tools/` are the edge implementation of the core's `Tool`/`ToolRunner` types.
 - **Explicit `.ts` extensions on all imports** (`allowImportingTsExtensions`), ESM throughout.
 - **Size limits:** files < 500 code lines, functions < 100 lines. Split at a natural seam when approaching the limit.
 
@@ -61,7 +63,7 @@ function, and register it in the `toolHandlers` map.
 
 - The LLM is a **local llama.cpp server** at `http://localhost:8080` (OpenAI-compatible API).
 - **Do not start a second `llama-server` instance if one is already running** — it causes memory issues. Check port 8080 first.
-- `run_powershell` in `src/tools.ts` hardcodes `powershell.exe` with a 60-second SIGTERM timeout. This is a Windows-only tool; there is no shell tool for other platforms.
+- `run_powershell` in `src/tools/shell.ts` hardcodes `powershell.exe` with a 60-second SIGTERM timeout. This is a Windows-only tool; there is no shell tool for other platforms.
 
 ## Pitfalls
 
