@@ -56,19 +56,23 @@ export function buildInitialTree(dir: string): string {
     dirs.sort();
     files.sort();
 
-    for (const name of [...dirs, ...files]) {
+    const indent = "  ".repeat(depth);
+    for (const name of dirs) {
       if (entries >= MAX_ENTRIES) {
         truncated = true;
         return;
       }
       entries++;
-      const indent = "  ".repeat(depth);
-      if (statSync(join(current, name)).isDirectory()) {
-        lines.push(`${indent}${name}/`);
-        walk(join(current, name), depth + 1);
-      } else {
-        lines.push(`${indent}${name}`);
+      lines.push(`${indent}${name}/`);
+      walk(join(current, name), depth + 1);
+    }
+    for (const name of files) {
+      if (entries >= MAX_ENTRIES) {
+        truncated = true;
+        return;
       }
+      entries++;
+      lines.push(`${indent}${name}`);
     }
   }
 

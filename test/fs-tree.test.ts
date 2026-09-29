@@ -63,7 +63,9 @@ describe("buildInitialTree", () => {
       d = join(d, `level${i}`);
       mkdirSync(d);
     }
-    // File at depth 5 (inside level5) should appear.
+    // File at depth 6 (inside level5) should NOT appear.
+    // level5/ is at 5 levels below root and is listed, but its children
+    // (at5.txt, level6/) would be at 6 levels and are not enumerated.
     writeFileSync(
       join(
         depthDir,
