@@ -247,6 +247,17 @@ role earns it, not before.
   window; a depth cap or cost-aware guard is a future concern.
 - **Unbounded line input.** A piped file is unbounded. The core must process
   lines streaming, one at a time, and never buffer the whole input in memory.
+- **Initial context seeding.** At startup the edge composes the conversation's
+  first user message (after the system message) from the working directory: a
+  capped directory tree plus the project's `AGENTS.md` agent-instructions file
+  when present. The `Session` receives this as an opaque `initialMessage` string
+  and injects it once; it never re-reads the directory or the file. Both reads
+  are best-effort at the edge (invariant #2): a missing or unreadable
+  `AGENTS.md` is silently omitted, matching the tree's "unreadable directories
+  are silently skipped" behavior and the profile "absent → empty string"
+  sentinel. Because this is a one-shot value built at construction, no
+  core-owned `Source` interface is needed — the session takes an opaque
+  string, not a queryable edge service.
 - **TTY-only assumptions.** Today the readline interface hard-codes
   `terminal: false` and assumes a TTY. The driver split exists precisely so
   TTY and non-TTY paths are tested independently; do not re-couple them.
