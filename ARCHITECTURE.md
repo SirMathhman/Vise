@@ -77,8 +77,21 @@ src/
                     # output; pure state machine over one completed line plus
                     # fence state; imports only from color.ts
   repl/
-    session.ts      # orchestrates: lines in, results out; owns conversation
-                    # state (the growing messages array)
+    session.ts        # orchestrates: lines in, results out; owns conversation
+                      # state (the growing messages array); defines the core-owned
+                      # interfaces (ProfileSource, SessionSource, ProfileCommands,
+                      # SessionCommands, CompactionSource, etc.)
+    commands.ts       # leaf handlers for commands that depend only on immutable
+                      # session fields: reportContext, handleModelCommand,
+                      # handleToolCommand, handleNotesCommand — plain module-level
+                      # functions taking narrow controller/source interfaces
+    session-commands.ts # leaf handlers for commands that need mutable conversation
+                      # state: handleProfileCommand, handleResumeCommand,
+                      # handleSaveCommand — take ProfileCommands / SessionCommands
+                      # facade interfaces wired by Session via closures
+    compaction.ts       # leaf handler for compaction: runCompaction — takes a
+                      # CompactionSource interface with the Client and a reset
+                      # callback; no I/O, delegates to core's summarize/split
   tools.ts          # edge-provided tool definitions (`Tool[]`) and `ToolRunner`
                     # implementation: all tool I/O (file ops, shell commands)
 ```
@@ -107,6 +120,13 @@ respect to the core's I/O invariants.
 
 Rules:
 
+- `repl/` command handlers follow the facade pattern: the `Session` class
+  implements narrow interface objects (e.g. `ProfileCommands`,
+  `SessionCommands`, `CompactionSource`) via closures over its own fields;
+  the handler modules are plain module-level functions that take those
+  interfaces and are free of class-internal references. This keeps
+  `session.ts` under the size limit while preserving testability of each
+  handler with a stub interface.
 - `index.ts` stays a thin entry point: wire argv to a driver and run. It
   should remain under 50 lines and never contain a `for` loop over lines.
 - `core/` has zero `node:` imports and is unit-testable with plain assertions.
