@@ -247,8 +247,16 @@ const client = new LlmClient();
 
 const display = new StreamDisplay();
 
-const profileSource = new FileProfileSource(process.cwd());
-const sessionSource = new FileSessionSource(process.cwd());
+// Single directory that holds every runtime data store (profiles/, notes/,
+// sessions/) so the working directory is not polluted by them. The edge I/O
+// modules each join this `base` with their own subdirectory, so pointing the
+// data sources at `.vise/` relocates all three stores under it. `AGENTS.md`
+// and the startup directory tree still describe the working directory, so
+// they keep using `process.cwd()` directly.
+const dataDir = join(process.cwd(), ".vise");
+
+const profileSource = new FileProfileSource(dataDir);
+const sessionSource = new FileSessionSource(dataDir);
 
 const rl = createInterface({
   input: process.stdin,
@@ -294,8 +302,8 @@ function loadAgentsMd(dir: string): string {
 
 const initialTree = buildInitialTree(process.cwd());
 const agentsMd = loadAgentsMd(process.cwd());
-const availableProfiles = listProfiles(process.cwd());
-const availableNotes = listNotes(process.cwd());
+const availableProfiles = listProfiles(dataDir);
+const availableNotes = listNotes(dataDir);
 const initialMessage =
   `Here is the initial directory structure of the working directory:\n${initialTree}` +
   (agentsMd !== ""
@@ -313,7 +321,7 @@ const session = new Session(client, toolRunner, tools, {
   modelController: client,
   toolController,
   profileSource,
-  noteSource: new FileNoteSource(process.cwd()),
+  noteSource: new FileNoteSource(dataDir),
   sessionSource,
   preTurnHooks,
   postTurnHooks,

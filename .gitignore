@@ -16,7 +16,7 @@ _.log
 report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # runtime session state (auto-save snapshot + user-saved sessions)
-sessions/
+.vise/sessions/
 
 # dotenv environment variable files
 .env

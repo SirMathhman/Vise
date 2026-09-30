@@ -143,7 +143,7 @@ Rules:
 
 - `ProfileSource` is a core-owned type (`repl/session.ts`) for loading profile
   text at runtime. The edge provides the implementation (`FileProfileSource`
-  in `index.ts`, backed by `profiles/*.md` files). Same pattern as
+  in `index.ts`, backed by `.vise/profiles/*.md` files). Same pattern as
   `ModelController`: core owns the interface, edge does the I/O.
 - `PreTurnHook` and `PostTurnHook` are core-owned types (`repl/session.ts`)
   that run configured shell commands before and after every chat turn and
@@ -155,7 +155,7 @@ Rules:
   Same edge-owns-I/O pattern as `ProfileSource`.
 - `NoteSource` is a core-owned type (`repl/session.ts`) for the `/note`
   command. A note is the project's store of short facts and how-to
-  procedures: one `.md` file per note under a flat `notes/` directory, the
+  procedures: one `.md` file per note under a flat `.vise/notes/` directory, the
   filename (minus extension) is the note name, the first non-empty line is
   its one-line summary (shown by listing), the rest is the body. Note names
   are unique. Recall is all on-demand — nothing is auto-injected into
@@ -182,7 +182,7 @@ Rules:
   same `ToolRunner` and `Tool[]` as its parent, so it may spawn its own
   subagents. The subagent's defining instructions come from a profile: the
   `profile` argument is required, `"default"` resolves to a built-in
-  constant, and any other name is loaded from `profiles/<name>.md` via
+  constant, and any other name is loaded from `.vise/profiles/<name>.md` via
   `ProfileSource` — the same edge I/O as `/profile`. The edge handler
   (`src/tools/subagent.ts` `makeSubagentHandler`) performs the `ProfileSource`
   I/O and calls the core; it is registered in `index.ts` by passing it as the
@@ -262,19 +262,23 @@ role earns it, not before.
   first user message (after the system message) from the working directory: a
   capped directory tree, the project's `AGENTS.md` agent-instructions file when
   present, a comma-separated list of available profile names when the
-  `profiles/` directory has entries, and a list of available notes
-  (name — summary) when the `notes/` directory has entries. Each section is
-  conditionally included only when non-empty. The composition is a named edge
-  function (`buildInitialMessage` in `index.ts`); adding a new section is a
-  two-line addition inside that function, not a new nested ternary at the call
-  site. The `Session` receives the result as an opaque `initialMessage` string
-  and injects it once; it never re-reads the directory, files, or listings.
-  All reads are best-effort at the edge (invariant #2): a missing or unreadable
-  `AGENTS.md`, an empty `profiles/` or `notes/` directory, is silently omitted,
-  matching the tree's "unreadable directories are silently skipped" behavior
-  and the profile "absent → empty string" sentinel. Because this is a one-shot
-  value built at construction, no core-owned `Source` interface is needed — the
-  session takes an opaque string, not a queryable edge service.
+  `.vise/profiles/` directory has entries, and a list of available notes
+  (name — summary) when the `.vise/notes/` directory has entries. Each section
+  is conditionally included only when non-empty. All runtime data stores
+  (profiles, notes, sessions) live under a single `.vise/` directory to keep
+  the working directory clean; the dot name also excludes `.vise/` from the
+  startup directory tree (dotfiles are skipped). The composition is a named
+  edge function (`buildInitialMessage` in `index.ts`); adding a new section is
+  a two-line addition inside that function, not a new nested ternary at the
+  call site. The `Session` receives the result as an opaque `initialMessage`
+  string and injects it once; it never re-reads the directory, files, or
+  listings. All reads are best-effort at the edge (invariant #2): a missing or
+  unreadable `AGENTS.md`, an empty `.vise/profiles/` or `.vise/notes/`
+  directory, is silently omitted, matching the tree's "unreadable directories
+  are silently skipped" behavior and the profile "absent → empty string"
+  sentinel. Because this is a one-shot value built at construction, no
+  core-owned `Source` interface is needed — the session takes an opaque string,
+  not a queryable edge service.
 - **TTY-only assumptions.** Today the readline interface hard-codes
   `terminal: false` and assumes a TTY. The driver split exists precisely so
   TTY and non-TTY paths are tested independently; do not re-couple them.
