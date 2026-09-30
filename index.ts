@@ -281,7 +281,7 @@ const onToken = (token: string) => {
   }
 };
 
-const profileSource = new FileProfileSource(join(process.cwd(), "profiles"));
+const profileSource = new FileProfileSource(process.cwd());
 
 // The subagent handler needs the ToolRunner for recursion, and the runner
 // needs the handler. Break the cycle with a lazily-resolving structural
