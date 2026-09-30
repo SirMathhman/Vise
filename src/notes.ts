@@ -40,8 +40,9 @@ function notePath(base: string, name: string): string {
 }
 
 /**
- * Note names must be a single path-safe segment (no traversal). Profiles
- * share the same naming rule, so this is exported for reuse.
+ * Note and profile names must be a single path-safe segment (no traversal).
+ * Profiles share the same naming rule, so this is exported for reuse by
+ * `src/profiles.ts`.
  */
 export function validName(name: string): boolean {
   return (

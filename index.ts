@@ -1,10 +1,4 @@
-import {
-  existsSync,
-  readdirSync,
-  readFileSync,
-  writeFileSync,
-  mkdirSync,
-} from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { join } from "node:path";
@@ -19,41 +13,29 @@ import type {
   PostTurnHook,
 } from "./src/repl/session.ts";
 import type { Result, PromptProgress } from "./src/core/errors.ts";
-import {
-  listNotes,
-  formatNoteEntry,
-  initNote,
-  validName,
-} from "./src/notes.ts";
+import { listNotes, formatNoteEntry, initNote } from "./src/notes.ts";
+import { listProfiles, readProfile, initProfile } from "./src/profiles.ts";
 import { formatCompactionFailure, formatError } from "./src/output/format.ts";
 import { red, dim, cyan } from "./src/output/color.ts";
 import { renderLine } from "./src/output/markdown.ts";
 import { buildInitialTree } from "./src/fs-tree.ts";
 
-/** The placeholder body for a newly initialized profile. */
-const PROFILE_TEMPLATE =
-  "TODO: describe the persona or instructions for this profile";
-
 /**
  * Edge implementation of ProfileSource backed by a `profiles/` directory of
- * `.md` files. This is the sole owner of profile I/O; the session only asks
- * for names and text and performs no fs access itself (invariant #2).
+ * `.md` files. Thin adapter over the shared profile-file I/O in
+ * `src/profiles.ts` (invariant #2: edge owns I/O; the session only asks for
+ * names and text).
  */
 class FileProfileSource implements ProfileSource {
-  constructor(private readonly dir: string) {}
+  constructor(private readonly base: string) {}
 
   async listProfiles(): Promise<Result<string[]>> {
-    if (!existsSync(this.dir)) return { ok: true, value: [] };
-    const names = readdirSync(this.dir)
-      .filter((f) => f.endsWith(".md"))
-      .map((f) => f.slice(0, -3))
-      .sort();
-    return { ok: true, value: names };
+    return { ok: true, value: listProfiles(this.base) };
   }
 
   async loadProfile(name: string): Promise<Result<string>> {
-    const file = join(this.dir, `${name}.md`);
-    if (!existsSync(file)) {
+    const text = readProfile(this.base, name);
+    if (text === undefined) {
       return {
         ok: false,
         error: {
@@ -62,27 +44,22 @@ class FileProfileSource implements ProfileSource {
         },
       };
     }
-    return { ok: true, value: readFileSync(file, "utf-8") };
+    return { ok: true, value: text };
   }
 
   async initProfile(name: string): Promise<Result<string>> {
-    const file = join(this.dir, `${name}.md`);
-    if (!validName(name)) {
+    try {
+      initProfile(this.base, name);
+      return { ok: true, value: name };
+    } catch (err) {
       return {
         ok: false,
-        error: { kind: "malformed", body: `invalid profile name '${name}'` },
+        error: {
+          kind: "malformed",
+          body: err instanceof Error ? err.message : String(err),
+        },
       };
     }
-    if (existsSync(file)) {
-      return {
-        ok: false,
-        error: { kind: "malformed", body: `profile '${name}' already exists` },
-      };
-    }
-    mkdirSync(this.dir, { recursive: true });
-    const body = PROFILE_TEMPLATE.replace(/\s+$/, "") + "\n";
-    writeFileSync(file, body, "utf-8");
-    return { ok: true, value: name };
   }
 }
 
