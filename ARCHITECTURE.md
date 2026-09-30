@@ -76,9 +76,6 @@ src/
     markdown.ts     # per-line markdown-aware terminal styling for streamed
                     # output; pure state machine over one completed line plus
                     # fence state; imports only from color.ts
-    markdown.ts     # per-line markdown-aware terminal styling for streamed
-                    # output; pure state machine over one completed line plus
-                    # fence state; imports only from color.ts
   repl/
     session.ts      # orchestrates: lines in, results out; owns conversation
                     # state (the growing messages array)
