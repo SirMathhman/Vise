@@ -19,7 +19,12 @@ import type {
   SessionSource,
 } from "./src/repl/session.ts";
 import { Session } from "./src/repl/session.ts";
-import { listSessions, loadSession, saveAutoSession, saveNamedSession } from "./src/sessions.ts";
+import {
+  listSessions,
+  loadSession,
+  saveAutoSession,
+  saveNamedSession,
+} from "./src/sessions.ts";
 import { makeAskUserHandler, RlUserPrompter } from "./src/tools/ask-user.ts";
 import { makeSubagentHandler } from "./src/tools/subagent.ts";
 import { createToolRunner, toolController, tools } from "./src/tools.ts";
@@ -118,7 +123,9 @@ class ShellHook implements PreTurnHook, PostTurnHook {
           reject(err);
         });
       });
-      const body = [res.stdout.trim(), res.stderr.trim()].filter((s) => s !== "").join("\n");
+      const body = [res.stdout.trim(), res.stderr.trim()]
+        .filter((s) => s !== "")
+        .join("\n");
       if (res.status !== 0) {
         return `hook error (exit code ${res.status}):\n${body}`.trim();
       }
@@ -170,7 +177,10 @@ class FileNoteSource implements NoteSource {
 class FileSessionSource implements SessionSource {
   constructor(private readonly base: string) {}
 
-  async save(messages: Message[], activeProfile: string | undefined): Promise<Result<void>> {
+  async save(
+    messages: Message[],
+    activeProfile: string | undefined,
+  ): Promise<Result<void>> {
     return saveAutoSession(this.base, messages, activeProfile);
   }
 
@@ -214,7 +224,10 @@ function loadHookCommands(): { pre?: string[]; post?: string[] } {
     }
     if (typeof post === "string") {
       result.post = [post];
-    } else if (Array.isArray(post) && post.every((c) => typeof c === "string")) {
+    } else if (
+      Array.isArray(post) &&
+      post.every((c) => typeof c === "string")
+    ) {
       result.post = post;
     }
     return result;
@@ -226,7 +239,9 @@ function loadHookCommands(): { pre?: string[]; post?: string[] } {
 
 const hookCommands = loadHookCommands();
 const preTurnHooks = (hookCommands.pre ?? []).map((cmd) => new ShellHook(cmd));
-const postTurnHooks = (hookCommands.post ?? []).map((cmd) => new ShellHook(cmd));
+const postTurnHooks = (hookCommands.post ?? []).map(
+  (cmd) => new ShellHook(cmd),
+);
 
 const client = new LlmClient();
 
@@ -252,7 +267,8 @@ const toolRunner = createToolRunner({
     profileSource,
     process.cwd(),
     {
-      run: (name: string, args: Record<string, unknown>) => toolRunner.run(name, args),
+      run: (name: string, args: Record<string, unknown>) =>
+        toolRunner.run(name, args),
     },
     tools,
     display.onToken,
@@ -278,10 +294,18 @@ function loadAgentsMd(dir: string): string {
 
 const initialTree = buildInitialTree(process.cwd());
 const agentsMd = loadAgentsMd(process.cwd());
+const availableProfiles = listProfiles(process.cwd());
+const availableNotes = listNotes(process.cwd());
 const initialMessage =
   `Here is the initial directory structure of the working directory:\n${initialTree}` +
   (agentsMd !== ""
     ? `\n\nHere are the agent instructions for this project (AGENTS.md):\n${agentsMd}`
+    : "") +
+  (availableProfiles.length > 0
+    ? `\n\nHere are the available profiles:\n${availableProfiles.join(", ")}`
+    : "") +
+  (availableNotes.length > 0
+    ? `\n\nHere are the available notes:\n${availableNotes.map(formatNoteEntry).join("\n")}`
     : "");
 const session = new Session(client, toolRunner, tools, {
   cwd: process.cwd(),
