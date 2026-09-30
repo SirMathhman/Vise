@@ -1,8 +1,5 @@
 import type { Result } from "../core/errors.ts";
-import {
-  formatProfileList,
-  formatSessionList,
-} from "../output/format.ts";
+import { formatProfileList, formatSessionList } from "../output/format.ts";
 import type { ProfileCommands, SessionCommands } from "./session.ts";
 
 /**

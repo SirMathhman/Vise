@@ -24,7 +24,9 @@ export function okNoop(): Result<string> {
  * the error is returned. Extracted from the `Session` class so the handlers
  * can be plain module-level functions (matching the `commands.ts` pattern).
  */
-export async function runCompaction(source: CompactionSource): Promise<Result<string>> {
+export async function runCompaction(
+  source: CompactionSource,
+): Promise<Result<string>> {
   const conversation = source.messages().slice(1); // drop the system message
   const split = splitForCompaction(conversation, RECENT_TURNS_TO_KEEP);
   if (split.toSummarize.length === 0) {

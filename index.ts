@@ -270,7 +270,27 @@ const toolRunner = createToolRunner({
   ),
 });
 
+/**
+ * Read the project's `AGENTS.md` agent-instructions file from the working
+ * directory. Returns its full text, or an empty string when the file is
+ * absent or unreadable (auto-load is best-effort; a missing file must not
+ * prevent startup). Edge module: performs `node:fs` I/O (invariant #2).
+ */
+function loadAgentsMd(dir: string): string {
+  try {
+    return readFileSync(join(dir, "AGENTS.md"), "utf8");
+  } catch {
+    return "";
+  }
+}
+
 const initialTree = buildInitialTree(process.cwd());
+const agentsMd = loadAgentsMd(process.cwd());
+const initialMessage =
+  `Here is the initial directory structure of the working directory:\n${initialTree}` +
+  (agentsMd !== ""
+    ? `\n\nHere are the agent instructions for this project (AGENTS.md):\n${agentsMd}`
+    : "");
 const session = new Session(client, toolRunner, tools, {
   cwd: process.cwd(),
   context: client,
@@ -284,7 +304,7 @@ const session = new Session(client, toolRunner, tools, {
   onToken: display.onToken,
   onThinking: display.onThinking,
   onPromptProgress: display.onPromptProgress,
-  initialMessage: `Here is the initial directory structure of the working directory:\n${initialTree}`,
+  initialMessage,
 });
 
 const rl = createInterface({

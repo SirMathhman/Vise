@@ -183,7 +183,9 @@ describe("Session /profile default (core)", () => {
     const first = last[0];
     if (first === undefined) throw new Error("expected a system message");
     expect(first.role).toBe("system");
-    expect(last.some((m) => m.content.includes("helpful assistant"))).toBe(true);
+    expect(last.some((m) => m.content.includes("helpful assistant"))).toBe(
+      true,
+    );
   });
 
   test("/profile default is listed first even when no profile files exist", async () => {
