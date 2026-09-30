@@ -17,8 +17,15 @@ export interface UserPrompter {
    * @param options   Optional predefined choices to display alongside the
    *                  question. The user may pick one or type a free-form
    *                  answer. Empty array means free-form only.
+   * @param multiSelect  When true, the user may select more than one choice
+   *                  (separating numbers with commas in their reply).
+   *                  Defaults to false.
    */
-  ask(question: string, options: string[]): Promise<string>;
+  ask(
+    question: string,
+    options: string[],
+    multiSelect?: boolean,
+  ): Promise<string>;
 }
 
 /**
@@ -31,7 +38,11 @@ export interface UserPrompter {
 export class RlUserPrompter implements UserPrompter {
   constructor(private readonly mainRl: Interface) {}
 
-  ask(question: string, options: string[]): Promise<string> {
+  ask(
+    question: string,
+    options: string[],
+    multiSelect = false,
+  ): Promise<string> {
     return new Promise((resolve) => {
       this.mainRl.pause();
 
@@ -50,7 +61,9 @@ export class RlUserPrompter implements UserPrompter {
         });
         lines.push("");
       }
-      lines.push("Answer: ");
+      lines.push(
+        multiSelect ? "Answer (separate multiple with commas): " : "Answer: ",
+      );
 
       const answerLine = lines[lines.length - 1] as string;
       process.stdout.write(red("ask_user: "));
@@ -106,7 +119,11 @@ export function makeAskUserHandler(
       options = raw.filter((o): o is string => typeof o === "string");
     }
 
-    const answer = await prompter.ask(question, options);
+    const multiSelect =
+      typeof args["multi_select"] === "boolean" &&
+      args["multi_select"] === true;
+
+    const answer = await prompter.ask(question, options, multiSelect);
     if (answer === "") {
       return "error: ask_user was cancelled (no input received)";
     }
