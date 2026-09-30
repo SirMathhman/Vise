@@ -55,6 +55,11 @@ src/
   cli.ts            # argument parsing, subcommands, flag definitions
   driver/
     terminal.ts     # interactive TTY driver: prompt, echo, readline wiring
+    stream.ts       # streaming display state machine: owns the live
+                    # prompt/thinking counters and the markdown line buffer,
+                    # and exposes onToken/onThinking/onPromptProgress plus
+                    # beginTurn/finish; encapsulates the cross-callback
+                    # ordering invariants so they live in one place
     pipe.ts         # piped/script driver: read input to EOF, emit results
   client/
     llm.ts          # LLM transport: implements the core's `Client` type,
@@ -92,6 +97,7 @@ index.ts ──> cli ──> driver/* ──> session ──> engine
                                        └────────> output/color   # edge: terminal styling
 tools.ts ──> engine                  # edge: tool definitions + ToolRunner implementation
 tools/* ──> output/color             # edge: subagent handler dims streamed tokens
+driver/stream.ts ──> output/markdown # edge: streaming display renders lines
 index.ts ──> output/markdown         # edge: driver renders streamed lines with markdown styling
 errors.ts is imported by engine, session, output, and client — and by nothing else
 ```
@@ -234,7 +240,15 @@ role earns it, not before.
   cancellation/interrupts remain essential driver/engine concerns.
 - **Implicit global state.** Session state (conversation state, interrupt
   handling) must live in the session object, not in module-level `let`
-  bindings, or the core becomes untestable and un-reentrant.
+  bindings, or the core becomes untestable and un-reentrant. The streaming
+  display state is the live instance of this: the live prompt/thinking
+  counters and the markdown line buffer (fence state) are driven by three
+  independent per-token callbacks (`onToken`/`onThinking`/`onPromptProgress`)
+  that all write to the same stdout stream. That state must live in a
+  single driver object (e.g. `driver/stream.ts` `StreamDisplay`) that owns
+  the cross-callback ordering invariants (e.g. flush any partial content
+  line before a counter starts a fresh line, so buffered content is never
+  emitted after the counter line), not in module-level `let`s in `index.ts`.
 - **Dynamic model switching and context awareness.** Model switching
   via `/model` changes the active model on the client. Because context
   limits and token usages vary per model, the session must query `contextMax`

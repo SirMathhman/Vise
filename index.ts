@@ -12,12 +12,12 @@ import type {
   PreTurnHook,
   PostTurnHook,
 } from "./src/repl/session.ts";
-import type { Result, PromptProgress } from "./src/core/errors.ts";
+import type { Result } from "./src/core/errors.ts";
 import { listNotes, formatNoteEntry, initNote } from "./src/notes.ts";
 import { listProfiles, readProfile, initProfile } from "./src/profiles.ts";
 import { formatCompactionFailure, formatError } from "./src/output/format.ts";
 import { red, dim, cyan } from "./src/output/color.ts";
-import { renderLine } from "./src/output/markdown.ts";
+import { StreamDisplay } from "./src/driver/stream.ts";
 import { buildInitialTree } from "./src/fs-tree.ts";
 
 /**
@@ -203,96 +203,7 @@ const postTurnHooks = (hookCommands.post ?? []).map(
 
 const client = new LlmClient();
 
-// Live progress counters. The prompt counter shows how many prompt tokens
-// are being computed during the silent prefill (llama.cpp `return_progress`);
-// the thinking counter counts reasoning_content deltas. Neither prints the
-// underlying text. Both reset at the start of each turn.
-let promptActive = false;
-let lastProcessed = 0;
-let thinkingCount = 0;
-let thinkingActive = false;
-let contentWritten = false;
-// Markdown line-buffer state: buffers tokens until a newline is hit, then
-// renders the completed line via `renderLine`. Reset at the start of each
-// turn.
-let mdLineBuffer = "";
-let mdInFence = false;
-
-/** Flush any partial markdown line still buffered, ending it with `\n`. */
-function flushMdLine(): void {
-  if (mdLineBuffer.length > 0) {
-    const [styled, newInFence] = renderLine(mdLineBuffer, mdInFence);
-    mdInFence = newInFence;
-    mdLineBuffer = "";
-    process.stdout.write(styled + "\n");
-  }
-}
-
-const onPromptProgress = (progress: PromptProgress) => {
-  if (progress.processed >= progress.total) {
-    // Prefill finished; clear the counter line for the content that follows.
-    if (promptActive) {
-      promptActive = false;
-      process.stdout.write("\n");
-    }
-    return;
-  }
-  // Dim the live counter. The overwrite width must be computed from the
-  // raw (un-dimmed) text: ANSI bytes are not part of the display width.
-  const text = dim(`prompt: ${progress.processed}/${progress.total}`);
-  if (promptActive) {
-    const prev = `prompt: ${lastProcessed}/${progress.total}`;
-    process.stdout.write("\r" + " ".repeat(prev.length + 1) + "\r" + text);
-  } else {
-    if (contentWritten) {
-      // Flush any partial content line before starting the counter on a
-      // fresh line; otherwise the buffered content appears after the
-      // counter, out of order.
-      flushMdLine();
-    }
-    promptActive = true;
-    process.stdout.write(text);
-  }
-  lastProcessed = progress.processed;
-};
-
-const onThinking = (_token: string) => {
-  thinkingCount++;
-  // Dim the live counter; overwrite width from the raw (un-dimmed) text.
-  const text = dim(`thinking: ${thinkingCount}`);
-  if (thinkingActive) {
-    const prev = `thinking: ${thinkingCount - 1}`;
-    process.stdout.write("\r" + " ".repeat(prev.length + 1) + "\r" + text);
-  } else {
-    if (contentWritten) {
-      flushMdLine();
-    }
-    thinkingActive = true;
-    process.stdout.write(text);
-  }
-};
-
-const onToken = (token: string) => {
-  if (promptActive) {
-    promptActive = false;
-    process.stdout.write("\n");
-  }
-  if (thinkingActive) {
-    thinkingActive = false;
-    process.stdout.write("\n");
-  }
-  contentWritten = true;
-  mdLineBuffer += token;
-  // Split out completed lines and render each with markdown styling.
-  let nl: number;
-  while ((nl = mdLineBuffer.indexOf("\n")) !== -1) {
-    const line = mdLineBuffer.slice(0, nl);
-    mdLineBuffer = mdLineBuffer.slice(nl + 1);
-    const [styled, newInFence] = renderLine(line, mdInFence);
-    mdInFence = newInFence;
-    process.stdout.write(styled + "\n");
-  }
-};
+const display = new StreamDisplay();
 
 const profileSource = new FileProfileSource(process.cwd());
 
@@ -311,9 +222,9 @@ const toolRunner = createToolRunner({
         toolRunner.run(name, args),
     },
     tools,
-    onToken,
-    onThinking,
-    onPromptProgress,
+    display.onToken,
+    display.onThinking,
+    display.onPromptProgress,
   ),
 });
 
@@ -327,9 +238,9 @@ const session = new Session(client, toolRunner, tools, {
   noteSource: new FileNoteSource(process.cwd()),
   preTurnHooks,
   postTurnHooks,
-  onToken,
-  onThinking,
-  onPromptProgress,
+  onToken: display.onToken,
+  onThinking: display.onThinking,
+  onPromptProgress: display.onPromptProgress,
   initialMessage: `Here is the initial directory structure of the working directory:\n${initialTree}`,
 });
 
@@ -349,13 +260,7 @@ let chain = Promise.resolve();
 rl.on("line", (line) => {
   if (line.trim() === "") return;
   chain = chain.then(async () => {
-    promptActive = false;
-    lastProcessed = 0;
-    thinkingCount = 0;
-    thinkingActive = false;
-    contentWritten = false;
-    mdLineBuffer = "";
-    mdInFence = false;
+    display.beginTurn();
     const result = await session.handleLine(line);
     if (result === "exit") {
       rl.close();
@@ -365,14 +270,9 @@ rl.on("line", (line) => {
       // A streamed turn already wrote its reply token-by-token; flush any
       // partial line still buffered and emit the closing newline. Unstreamed
       // results (slash commands, etc.) are printed whole via console.log.
-      if (result.streamed) {
-        if (mdLineBuffer.length > 0) {
-          const [styled, newInFence] = renderLine(mdLineBuffer, mdInFence);
-          mdInFence = newInFence;
-          mdLineBuffer = "";
-          process.stdout.write(styled + "\n");
-        }
-      } else {
+      const streamed = !!result.streamed;
+      display.finish(streamed);
+      if (!streamed) {
         console.log(result.value);
       }
       if (result.compactionWarning) {
