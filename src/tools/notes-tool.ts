@@ -1,4 +1,10 @@
-import { deleteNote, formatNoteEntry, listNotes, readNote, saveNote } from "../notes.ts";
+import {
+  deleteNote,
+  formatNoteEntry,
+  listNotes,
+  readNote,
+  saveNote,
+} from "../notes.ts";
 import { errStr } from "./files.ts";
 
 export function listNotesTool(_args: Record<string, unknown>): string {

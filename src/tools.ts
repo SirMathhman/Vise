@@ -1,5 +1,4 @@
 import type { Tool, ToolController, ToolRunner } from "./core/engine.ts";
-import type { UserPrompter } from "./tools/ask-user.ts";
 import {
   createFile,
   deleteDirectory,

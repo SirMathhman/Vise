@@ -6,11 +6,13 @@
   "scripts": {
     "start": "bun index.ts",
     "test": "bun test",
-    "lint": "bunx @biomejs/biome check src/ test/ index.ts"
+    "lint": "eslint src/ test/ index.ts"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.15",
-    "@types/bun": "latest"
+    "@eslint/js": "^10.0.1",
+    "@types/bun": "latest",
+    "eslint": "^10.11.0",
+    "typescript-eslint": "^8.71.0"
   },
   "peerDependencies": {
     "typescript": "^5"
