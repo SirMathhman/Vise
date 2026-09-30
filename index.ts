@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { LlmClient } from "./src/client/llm.ts";
+import { BACKEND, LlmClient } from "./src/client/llm.ts";
 import { dataDir } from "./src/data-dir.ts";
 import type { Message, Result } from "./src/core/errors.ts";
 import { StreamDisplay } from "./src/driver/stream.ts";
@@ -285,14 +285,14 @@ const toolRunner = createToolRunner({
   ),
   ask_user: makeAskUserHandler(new RlUserPrompter(rl)),
   self: makeSelfHandler({
-    backend: "llama.cpp",
+    backend: BACKEND,
     model: () => client.getModel(),
     cwd: process.cwd(),
     contextMax: () => client.contextMax(),
     lastPromptTokens: () => client.lastPromptTokensUsed(),
     activeProfile: () => session.getActiveProfile(),
-    preTurnHooks: (hookCommands.pre ?? []),
-    postTurnHooks: (hookCommands.post ?? []),
+    preTurnHooks: hookCommands.pre ?? [],
+    postTurnHooks: hookCommands.post ?? [],
   }),
 });
 

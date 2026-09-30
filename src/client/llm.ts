@@ -10,6 +10,8 @@ const URL = "http://localhost:8080/v1/chat/completions";
 const API_KEY = "S6677k5w355Nw9ErxCZWYCMiW4ItldmzXBLUElpnLsdE8gBj5A";
 const MODEL =
   "RentedNoodle/Qwen3.8-27B-OrcaRouter-GSQ-RCO-IQ3_XXS-Uncensored:QATFA";
+/** The inference backend label reported by the `self` tool. */
+export const BACKEND = "llama.cpp";
 
 interface ToolCall {
   type: "function";
