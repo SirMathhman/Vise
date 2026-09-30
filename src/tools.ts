@@ -16,6 +16,7 @@ import {
   readNoteTool,
   saveNoteTool,
 } from "./tools/notes-tool.ts";
+import type { UserPrompter } from "./tools/ask-user.ts";
 
 /** Tool definitions exposed to the model. */
 export const tools: Tool[] = [
@@ -318,6 +319,31 @@ export const tools: Tool[] = [
           },
         },
         required: ["name"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "ask_user",
+      description:
+        "Ask the user a question and wait for their answer. Use this when you need clarification or a decision from the user before continuing. You may provide predefined choices the user can pick from, or leave options empty for a free-form question. The user's reply is returned as the tool result.",
+      parameters: {
+        type: "object",
+        properties: {
+          question: {
+            type: "string",
+            description:
+              "The question to ask the user. Be specific.",
+          },
+          options: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "Optional predefined choices to present alongside the question. The user may also type a free-form answer. Empty array means free-form only.",
+          },
+        },
+        required: ["question"],
       },
     },
   },

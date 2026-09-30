@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { LlmClient } from "./src/client/llm.ts";
 import { tools, toolController, createToolRunner } from "./src/tools.ts";
 import { makeSubagentHandler } from "./src/tools/subagent.ts";
+import { makeAskUserHandler, RlUserPrompter } from "./src/tools/ask-user.ts";
 import { Session } from "./src/repl/session.ts";
 import type {
   ProfileSource,
@@ -249,6 +250,12 @@ const display = new StreamDisplay();
 const profileSource = new FileProfileSource(process.cwd());
 const sessionSource = new FileSessionSource(process.cwd());
 
+const rl = createInterface({
+  input: process.stdin,
+  output: process.stdout,
+  terminal: false,
+});
+
 // The subagent handler needs the ToolRunner for recursion, and the runner
 // needs the handler. Break the cycle with a lazily-resolving structural
 // runner: its `run` closure reads `toolRunner` at dispatch time (after the
@@ -268,6 +275,7 @@ const toolRunner = createToolRunner({
     display.onThinking,
     display.onPromptProgress,
   ),
+  ask_user: makeAskUserHandler(new RlUserPrompter(rl)),
 });
 
 /**
@@ -305,12 +313,6 @@ const session = new Session(client, toolRunner, tools, {
   onThinking: display.onThinking,
   onPromptProgress: display.onPromptProgress,
   initialMessage,
-});
-
-const rl = createInterface({
-  input: process.stdin,
-  output: process.stdout,
-  terminal: false,
 });
 
 // Colored prompt marker. With `terminal: false`, readline does not manage
