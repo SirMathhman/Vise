@@ -3,10 +3,11 @@ import { createInterface } from "node:readline";
 import { red } from "../output/color.ts";
 
 /**
- * Core-owned interface for asking the user a question mid-turn. The LLM
- * calls the `ask_user` tool; the core hands the question and any choices
- * to this edge implementation, which prompts the user and returns their
- * answer as a string. The session never does I/O itself (invariant #2).
+ * Edge-owned interface for asking the user a question mid-turn. The LLM
+ * calls the `ask_user` tool; the edge handler delegates to this
+ * implementation, which prompts the user and returns their answer as a
+ * string. The core never references this type — it only sees the
+ * ToolRunner's string result (invariant #4).
  */
 export interface UserPrompter {
   /**

@@ -189,6 +189,16 @@ Rules:
   `run_subagent` `extra` handler to `createToolRunner` because its handler
   depends on the `Client` and `ProfileSource`.
   Same edge-owns-I/O pattern as `ProfileSource`.
+- `ask_user` is a model-facing tool that pauses the turn to ask the user a
+  question (with optional predefined choices) and return the answer as the
+  tool result. The `UserPrompter` interface is edge-owned (`src/tools/ask-user.ts`)
+  — unlike `ProfileSource` or `ToolController`, nothing in the core references
+  this type. The edge handler (`makeAskUserHandler` in `src/tools/ask-user.ts`)
+  is registered in `index.ts` as the `ask_user` `extra` handler to
+  `createToolRunner` because its dependency (`RlUserPrompter`) requires the
+  readline interface constructed there. This is the variant of the
+  `createToolRunner` extras pattern where a tool handler depends on an
+  edge-owned interface rather than a core-owned one.
 - Every file stays under 500 code lines and every function under 100 lines;
   when a module approaches that, split it along a natural seam.
 
