@@ -68,6 +68,12 @@ src/
     format.ts       # Result -> text for terminal or plain output
     color.ts        # terminal styling: decides whether ANSI SGR codes are
                     # emitted; single source of truth for color availability
+    markdown.ts     # per-line markdown-aware terminal styling for streamed
+                    # output; pure state machine over one completed line plus
+                    # fence state; imports only from color.ts
+    markdown.ts     # per-line markdown-aware terminal styling for streamed
+                    # output; pure state machine over one completed line plus
+                    # fence state; imports only from color.ts
   repl/
     session.ts      # orchestrates: lines in, results out; owns conversation
                     # state (the growing messages array)
@@ -86,6 +92,7 @@ index.ts ──> cli ──> driver/* ──> session ──> engine
                                        └────────> output/color   # edge: terminal styling
 tools.ts ──> engine                  # edge: tool definitions + ToolRunner implementation
 tools/* ──> output/color             # edge: subagent handler dims streamed tokens
+index.ts ──> output/markdown         # edge: driver renders streamed lines with markdown styling
 errors.ts is imported by engine, session, output, and client — and by nothing else
 ```
 
