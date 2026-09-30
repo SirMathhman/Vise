@@ -62,7 +62,11 @@ describe("runTurn streaming (core)", () => {
             value: {
               content: "thinking...",
               tool_calls: [
-                { id: "call_1", function: { name: "noop", arguments: "{}" } },
+                {
+                  type: "function",
+                  id: "call_1",
+                  function: { name: "noop", arguments: "{}" },
+                },
               ],
             },
           };

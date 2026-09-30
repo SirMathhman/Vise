@@ -1,4 +1,5 @@
 export interface ToolCall {
+  type: "function";
   id: string;
   function: { name: string; arguments: string };
 }

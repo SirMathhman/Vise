@@ -12,6 +12,7 @@ const MODEL =
   "RentedNoodle/Qwen3.8-27B-OrcaRouter-GSQ-RCO-IQ3_XXS-Uncensored:QATFA";
 
 interface ToolCall {
+  type: "function";
   id: string;
   function: { name: string; arguments: string };
 }
@@ -122,6 +123,7 @@ export async function streamChat(
           }
         } else {
           toolCallParts.set(tc.index, {
+            type: "function",
             id: tc.id ?? "",
             function: {
               name: tc.function?.name ?? "",
