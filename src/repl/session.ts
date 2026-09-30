@@ -535,11 +535,16 @@ export class Session {
     const loaded = await this.sessionSource.load(arg);
     if (!loaded.ok) return loaded;
     const saved = loaded.value;
-    // Replace the live conversation with the saved one. The saved messages
-    // array is a full snapshot including its own system message, so we
-    // replace everything (index 0 is always a system message by invariant).
+    // Replace the live conversation with the saved body, but keep the live
+    // system message at index 0 (invariant #6: the system message is set once
+    // in the constructor and never modified). The saved snapshot carries its
+    // own redundant system message; we drop it and splice the saved body
+    // (index 1 onwards) back in. This makes resume symmetric with doCompact,
+    // which also restores this.systemMessage at index 0.
+    const savedBody = saved.messages.slice(1);
     this.messages.length = 0;
-    for (const m of saved.messages) {
+    this.messages.push(this.systemMessage);
+    for (const m of savedBody) {
       this.messages.push(m);
     }
     this.activeProfile = saved.activeProfile;
@@ -549,12 +554,6 @@ export class Session {
     };
   }
 
-  /**
-   * Auto-save the current conversation after a successful normal turn.
-   * Silently ignores I/O errors — a save failure must not interrupt the
-   * turn. The snapshot is written under the fixed auto-save name so the
-   * edge can always find the latest state.
-   */
   /**
    * Handle `/save` and `/save <name>`. When name is omitted: lists all saved
    * sessions. When a name is provided: persists the current conversation

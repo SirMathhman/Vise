@@ -659,6 +659,50 @@ describe("Session /save and /resume (core)", () => {
     expect(result.value).toBe("resumed session 'old' (2 messages)");
   });
 
+  test("/resume keeps the live system message at index 0 (invariant #6)", async () => {
+    // A saved snapshot from a *different* cwd carries its own system message.
+    // After resume, the live system message must win so that subsequent turns
+    // (and doCompact) observe the constructor-set system message.
+    const seen: Message[][] = [];
+    const captureClient: Client = {
+      async chat(messages: Message[]) {
+        seen.push([...messages]);
+        return { ok: true, value: { content: "reply" } };
+      },
+    };
+    const savedMessages: Message[] = [
+      { role: "system", content: "Working directory: /saved" },
+      { role: "user", content: "earlier" },
+      { role: "assistant", content: "earlier reply" },
+    ];
+    const ss = makeSessionSource(
+      {
+        old: {
+          messages: savedMessages,
+          activeProfile: undefined,
+          savedAt: "t",
+        },
+      },
+      [],
+    );
+    const session = new Session(captureClient, noopTools, noToolDefs, {
+      cwd: "/tmp",
+      context: noopContext,
+      preTurnHooks: [],
+      postTurnHooks: [],
+      sessionSource: ss,
+    });
+    const resumed = await session.handleLine("/resume old");
+    if (resumed === "exit" || !resumed.ok) throw new Error("expected ok resume");
+    // A turn after resume sends the live conversation to the model.
+    const turn = await session.handleLine("hi");
+    if (turn === "exit" || !turn.ok) throw new Error("expected ok turn");
+    expect(seen.length).toBe(1);
+    const sent = seen[0];
+    expect(sent?.[0]?.role).toBe("system");
+    expect(sent?.[0]?.content).toBe("Working directory: /tmp");
+  });
+
   test("/resume with no args lists saved sessions", async () => {
     const ss = makeSessionSource(
       { auto: { messages: [], activeProfile: undefined, savedAt: "t" } },
