@@ -499,6 +499,15 @@ export class Session {
    * turn. The snapshot is written under the fixed auto-save name so the
    * edge can always find the latest state.
    */
+  /**
+   * The currently active profile name, or undefined when none is set.
+   * Exposed for the edge's `self` tool, which reports the agent's identity
+   * (the session's active-profile state is otherwise private).
+   */
+  getActiveProfile(): string | undefined {
+    return this.activeProfile;
+  }
+
   private async saveSession(): Promise<void> {
     if (!this.sessionSource) return;
     await this.sessionSource.save([...this.messages], this.activeProfile);

@@ -27,6 +27,7 @@ import {
   saveNamedSession,
 } from "./src/sessions.ts";
 import { makeAskUserHandler, RlUserPrompter } from "./src/tools/ask-user.ts";
+import { makeSelfHandler } from "./src/tools/self.ts";
 import { makeSubagentHandler } from "./src/tools/subagent.ts";
 import { createToolRunner, toolController, tools } from "./src/tools.ts";
 
@@ -283,6 +284,16 @@ const toolRunner = createToolRunner({
     display.onPromptProgress,
   ),
   ask_user: makeAskUserHandler(new RlUserPrompter(rl)),
+  self: makeSelfHandler({
+    backend: "llama.cpp",
+    model: () => client.getModel(),
+    cwd: process.cwd(),
+    contextMax: () => client.contextMax(),
+    lastPromptTokens: () => client.lastPromptTokensUsed(),
+    activeProfile: () => session.getActiveProfile(),
+    preTurnHooks: (hookCommands.pre ?? []),
+    postTurnHooks: (hookCommands.post ?? []),
+  }),
 });
 
 /**

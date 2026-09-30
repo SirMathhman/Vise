@@ -353,6 +353,18 @@ export const tools: Tool[] = [
   {
     type: "function",
     function: {
+      name: "self",
+      description:
+        "Report the agent's own state: the inference backend, the active model, the working directory, the current context-window fill, the active profile, and the pre/post-turn hook commands. Take no arguments; call it when you need to confirm which model and profile you are acting as, or how much context is in use.",
+      parameters: {
+        type: "object",
+        properties: {},
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "run_subagent",
       description:
         "Run a subagent: a fresh, isolated conversation with its own profile, to perform a task and return its final result. The subagent can use all the same tools (including run_subagent) as you. Use it to delegate a self-contained sub-task.",
