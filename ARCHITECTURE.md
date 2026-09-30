@@ -185,8 +185,9 @@ Rules:
   constant, and any other name is loaded from `profiles/<name>.md` via
   `ProfileSource` — the same edge I/O as `/profile`. The edge handler
   (`src/tools/subagent.ts` `makeSubagentHandler`) performs the `ProfileSource`
-  I/O and calls the core; it is registered via `setToolHandler` in `index.ts`
-  because its handler depends on the `Client` and `ProfileSource`.
+  I/O and calls the core; it is registered in `index.ts` by passing it as the
+  `run_subagent` `extra` handler to `createToolRunner` because its handler
+  depends on the `Client` and `ProfileSource`.
   Same edge-owns-I/O pattern as `ProfileSource`.
 - Every file stays under 500 code lines and every function under 100 lines;
   when a module approaches that, split it along a natural seam.
