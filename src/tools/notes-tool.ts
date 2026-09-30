@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { dataDir } from "../data-dir.ts";
 import {
   deleteNote,
   formatNoteEntry,
@@ -7,12 +7,6 @@ import {
   saveNote,
 } from "../notes.ts";
 import { errStr } from "./files.ts";
-
-// Every runtime data store (profiles, notes, sessions) lives under a single
-// `.vise/` directory so the working directory is not polluted by them. The
-// edge I/O modules each join this `base` with their own subdirectory, so
-// pointing the note tools at `.vise/` relocates the note store under it.
-const dataDir = join(process.cwd(), ".vise");
 
 export function listNotesTool(_args: Record<string, unknown>): string {
   try {

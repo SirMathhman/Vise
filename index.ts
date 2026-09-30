@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { LlmClient } from "./src/client/llm.ts";
+import { dataDir } from "./src/data-dir.ts";
 import type { Message, Result } from "./src/core/errors.ts";
 import { StreamDisplay } from "./src/driver/stream.ts";
 import { buildInitialTree } from "./src/fs-tree.ts";
@@ -253,8 +254,6 @@ const display = new StreamDisplay();
 // data sources at `.vise/` relocates all three stores under it. `AGENTS.md`
 // and the startup directory tree still describe the working directory, so
 // they keep using `process.cwd()` directly.
-const dataDir = join(process.cwd(), ".vise");
-
 const profileSource = new FileProfileSource(dataDir);
 const sessionSource = new FileSessionSource(dataDir);
 
