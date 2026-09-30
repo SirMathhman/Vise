@@ -260,15 +260,21 @@ role earns it, not before.
   lines streaming, one at a time, and never buffer the whole input in memory.
 - **Initial context seeding.** At startup the edge composes the conversation's
   first user message (after the system message) from the working directory: a
-  capped directory tree plus the project's `AGENTS.md` agent-instructions file
-  when present. The `Session` receives this as an opaque `initialMessage` string
-  and injects it once; it never re-reads the directory or the file. Both reads
-  are best-effort at the edge (invariant #2): a missing or unreadable
-  `AGENTS.md` is silently omitted, matching the tree's "unreadable directories
-  are silently skipped" behavior and the profile "absent → empty string"
-  sentinel. Because this is a one-shot value built at construction, no
-  core-owned `Source` interface is needed — the session takes an opaque
-  string, not a queryable edge service.
+  capped directory tree, the project's `AGENTS.md` agent-instructions file when
+  present, a comma-separated list of available profile names when the
+  `profiles/` directory has entries, and a list of available notes
+  (name — summary) when the `notes/` directory has entries. Each section is
+  conditionally included only when non-empty. The composition is a named edge
+  function (`buildInitialMessage` in `index.ts`); adding a new section is a
+  two-line addition inside that function, not a new nested ternary at the call
+  site. The `Session` receives the result as an opaque `initialMessage` string
+  and injects it once; it never re-reads the directory, files, or listings.
+  All reads are best-effort at the edge (invariant #2): a missing or unreadable
+  `AGENTS.md`, an empty `profiles/` or `notes/` directory, is silently omitted,
+  matching the tree's "unreadable directories are silently skipped" behavior
+  and the profile "absent → empty string" sentinel. Because this is a one-shot
+  value built at construction, no core-owned `Source` interface is needed — the
+  session takes an opaque string, not a queryable edge service.
 - **TTY-only assumptions.** Today the readline interface hard-codes
   `terminal: false` and assumes a TTY. The driver split exists precisely so
   TTY and non-TTY paths are tested independently; do not re-couple them.

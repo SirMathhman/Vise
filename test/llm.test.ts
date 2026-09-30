@@ -53,9 +53,14 @@ describe("streamChat (edge)", () => {
       'data: {"prompt_progress":{"total":100,"cache":0,"processed":60,"time_ms":2}}\n\n',
       'data: {"choices":[{"delta":{"content":"hi"}}]}\n\n',
     ];
-    const result = await streamChat(sseStream(chunks), undefined, undefined, (p) => {
-      seen.push(p.processed);
-    });
+    const result = await streamChat(
+      sseStream(chunks),
+      undefined,
+      undefined,
+      (p) => {
+        seen.push(p.processed);
+      },
+    );
     expect(seen).toEqual([10, 60]);
     expect(result.message.content).toBe("hi");
   });

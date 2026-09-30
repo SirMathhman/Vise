@@ -19,7 +19,11 @@ export default tseslint.config(
       "no-unused-vars": "off",
       "@typescript-eslint/no-unused-vars": [
         "error",
-        { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_" },
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+        },
       ],
     },
   },
@@ -32,7 +36,8 @@ export default tseslint.config(
           patterns: [
             {
               group: ["node:*"],
-              message: "The core must remain pure and cannot import Node.js modules.",
+              message:
+                "The core must remain pure and cannot import Node.js modules.",
             },
           ],
         },
@@ -42,7 +47,10 @@ export default tseslint.config(
   {
     files: ["src/**/*.ts", "index.ts"],
     rules: {
-      "max-lines": ["error", { max: 500, skipBlankLines: true, skipComments: true }],
+      "max-lines": [
+        "error",
+        { max: 500, skipBlankLines: true, skipComments: true },
+      ],
       "max-lines-per-function": [
         "error",
         { max: 100, skipBlankLines: true, skipComments: true },

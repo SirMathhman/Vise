@@ -9,7 +9,12 @@ import {
   readFile,
   searchFiles,
 } from "./tools/files.ts";
-import { deleteNoteTool, listNotesTool, readNoteTool, saveNoteTool } from "./tools/notes-tool.ts";
+import {
+  deleteNoteTool,
+  listNotesTool,
+  readNoteTool,
+  saveNoteTool,
+} from "./tools/notes-tool.ts";
 import { killProcess, runPowershell, waitForProcess } from "./tools/shell.ts";
 
 /** Tool definitions exposed to the model. */
@@ -90,7 +95,8 @@ export const tools: Tool[] = [
           },
           new_string: {
             type: "string",
-            description: "Exact literal text to replace old_string with. May be empty to delete.",
+            description:
+              "Exact literal text to replace old_string with. May be empty to delete.",
           },
         },
         required: ["path", "old_string", "new_string"],
@@ -118,7 +124,8 @@ export const tools: Tool[] = [
     type: "function",
     function: {
       name: "delete_directory",
-      description: "Delete the directory at the given path and everything inside it",
+      description:
+        "Delete the directory at the given path and everything inside it",
       parameters: {
         type: "object",
         properties: {
@@ -211,7 +218,8 @@ export const tools: Tool[] = [
           },
           root: {
             type: "string",
-            description: "Directory to search from (default '.'). Traversed recursively.",
+            description:
+              "Directory to search from (default '.'). Traversed recursively.",
           },
         },
         required: ["pattern"],
@@ -283,11 +291,13 @@ export const tools: Tool[] = [
         properties: {
           name: {
             type: "string",
-            description: "Short unique name for the note (becomes the filename)",
+            description:
+              "Short unique name for the note (becomes the filename)",
           },
           body: {
             type: "string",
-            description: "Note contents. The first non-empty line is its summary.",
+            description:
+              "Note contents. The first non-empty line is its summary.",
           },
         },
         required: ["name", "body"],
@@ -367,7 +377,9 @@ export const tools: Tool[] = [
 ];
 
 /** A single tool handler, mapping a tool's arguments to its result text. */
-export type ToolHandler = (args: Record<string, unknown>) => string | Promise<string>;
+export type ToolHandler = (
+  args: Record<string, unknown>,
+) => string | Promise<string>;
 
 /** Edge-provided tool implementations for the tools that need no edge
  * services. All I/O is in the modules imported above; the core only depends
@@ -443,7 +455,9 @@ export const toolController = new ToolSet(tools);
  * makes the runner report `error: tool <name> is disabled` if the model
  * calls it.
  */
-export function createToolRunner(extra?: Record<string, ToolHandler>): ToolRunner {
+export function createToolRunner(
+  extra?: Record<string, ToolHandler>,
+): ToolRunner {
   const handlers: Record<string, ToolHandler> = { ...baseHandlers, ...extra };
   return {
     async run(name, args): Promise<string> {
