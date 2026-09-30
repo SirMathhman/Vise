@@ -97,7 +97,8 @@ export function formatHelp(opts: {
   if (opts.hasProfile) {
     lines.push(
       "/profile        list available profiles",
-      "/profile <name> set the active profile",
+      "/profile <name>  set the active profile",
+      "/profile init <name>  create a new profile with a placeholder body",
     );
   }
   if (opts.hasNotes) {

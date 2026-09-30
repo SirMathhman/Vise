@@ -39,6 +39,12 @@ function stubProfileSource(
       return { ok: true, value: [] };
     },
     loadProfile: load,
+    async initProfile(name: string) {
+      return {
+        ok: false,
+        error: { kind: "malformed", body: `profile '${name}' not found` },
+      };
+    },
   };
 }
 

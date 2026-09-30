@@ -39,8 +39,11 @@ function notePath(base: string, name: string): string {
   return join(noteDir(base), `${name}.md`);
 }
 
-/** Note names must be a single path-safe segment (no traversal). */
-function validName(name: string): boolean {
+/**
+ * Note names must be a single path-safe segment (no traversal). Profiles
+ * share the same naming rule, so this is exported for reuse.
+ */
+export function validName(name: string): boolean {
   return (
     name.length > 0 &&
     !name.includes("/") &&

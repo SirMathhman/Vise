@@ -64,6 +64,11 @@ export interface ProfileSource {
   listProfiles(): Promise<Result<string[]>>;
   /** Load the full text of the named profile. Empty string when unset. */
   loadProfile(name: string): Promise<Result<string>>;
+  /**
+   * Initialize a new profile with a placeholder template body. Fails with a
+   * `malformed` error when the name is invalid or the profile already exists.
+   */
+  initProfile(name: string): Promise<Result<string>>;
 }
 
 /**
@@ -412,6 +417,20 @@ export class Session {
         ok: true,
         value: formatProfileList(profiles.value, this.activeProfile),
       };
+    }
+
+    const sub = arg.split(" ")[0];
+    if (sub === "init") {
+      const name = arg.slice("init".length).trim();
+      if (name === "") {
+        return {
+          ok: false,
+          error: { kind: "malformed", body: "usage: /profile init <name>" },
+        };
+      }
+      const result = await this.profileSource.initProfile(name);
+      if (!result.ok) return result;
+      return { ok: true, value: `initialized profile '${name}'` };
     }
 
     const loaded = await this.profileSource.loadProfile(arg);
