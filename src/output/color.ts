@@ -30,3 +30,8 @@ export function dim(text: string): string {
 export function cyan(text: string): string {
   return paint("\x1b[36m", "\x1b[0m", text);
 }
+
+/** Bold — for markdown headings and bold spans. */
+export function bold(text: string): string {
+  return paint("\x1b[1m", "\x1b[0m", text);
+}

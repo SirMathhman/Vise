@@ -16,6 +16,7 @@ import type { Result, PromptProgress } from "./src/core/errors.ts";
 import { listNotes, formatNoteEntry, initNote } from "./src/notes.ts";
 import { formatCompactionFailure, formatError } from "./src/output/format.ts";
 import { red, dim, cyan } from "./src/output/color.ts";
+import { renderLine } from "./src/output/markdown.ts";
 import { buildInitialTree } from "./src/fs-tree.ts";
 
 /**
@@ -199,6 +200,11 @@ let lastProcessed = 0;
 let thinkingCount = 0;
 let thinkingActive = false;
 let contentWritten = false;
+// Markdown line-buffer state: buffers tokens until a newline is hit, then
+// renders the completed line via `renderLine`. Reset at the start of each
+// turn.
+let mdLineBuffer = "";
+let mdInFence = false;
 
 const onPromptProgress = (progress: PromptProgress) => {
   if (progress.processed >= progress.total) {
@@ -251,7 +257,16 @@ const onToken = (token: string) => {
     process.stdout.write("\n");
   }
   contentWritten = true;
-  process.stdout.write(token);
+  mdLineBuffer += token;
+  // Split out completed lines and render each with markdown styling.
+  let nl: number;
+  while ((nl = mdLineBuffer.indexOf("\n")) !== -1) {
+    const line = mdLineBuffer.slice(0, nl);
+    mdLineBuffer = mdLineBuffer.slice(nl + 1);
+    const [styled, newInFence] = renderLine(line, mdInFence);
+    mdInFence = newInFence;
+    process.stdout.write(styled + "\n");
+  }
 };
 
 const profileSource = new FileProfileSource(join(process.cwd(), "profiles"));
@@ -314,17 +329,24 @@ rl.on("line", (line) => {
     thinkingCount = 0;
     thinkingActive = false;
     contentWritten = false;
+    mdLineBuffer = "";
+    mdInFence = false;
     const result = await session.handleLine(line);
     if (result === "exit") {
       rl.close();
       return;
     }
     if (result.ok) {
-      // A streamed turn already wrote its reply token-by-token; only emit the
-      // closing newline. Unstreamed results (slash commands, etc.) are printed
-      // whole via console.log as before.
+      // A streamed turn already wrote its reply token-by-token; flush any
+      // partial line still buffered and emit the closing newline. Unstreamed
+      // results (slash commands, etc.) are printed whole via console.log.
       if (result.streamed) {
-        process.stdout.write("\n");
+        if (mdLineBuffer.length > 0) {
+          const [styled, newInFence] = renderLine(mdLineBuffer, mdInFence);
+          mdInFence = newInFence;
+          mdLineBuffer = "";
+          process.stdout.write(styled + "\n");
+        }
       } else {
         console.log(result.value);
       }
