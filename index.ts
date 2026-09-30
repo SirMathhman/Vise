@@ -218,6 +218,16 @@ let contentWritten = false;
 let mdLineBuffer = "";
 let mdInFence = false;
 
+/** Flush any partial markdown line still buffered, ending it with `\n`. */
+function flushMdLine(): void {
+  if (mdLineBuffer.length > 0) {
+    const [styled, newInFence] = renderLine(mdLineBuffer, mdInFence);
+    mdInFence = newInFence;
+    mdLineBuffer = "";
+    process.stdout.write(styled + "\n");
+  }
+}
+
 const onPromptProgress = (progress: PromptProgress) => {
   if (progress.processed >= progress.total) {
     // Prefill finished; clear the counter line for the content that follows.
@@ -235,7 +245,10 @@ const onPromptProgress = (progress: PromptProgress) => {
     process.stdout.write("\r" + " ".repeat(prev.length + 1) + "\r" + text);
   } else {
     if (contentWritten) {
-      process.stdout.write("\n");
+      // Flush any partial content line before starting the counter on a
+      // fresh line; otherwise the buffered content appears after the
+      // counter, out of order.
+      flushMdLine();
     }
     promptActive = true;
     process.stdout.write(text);
@@ -252,7 +265,7 @@ const onThinking = (_token: string) => {
     process.stdout.write("\r" + " ".repeat(prev.length + 1) + "\r" + text);
   } else {
     if (contentWritten) {
-      process.stdout.write("\n");
+      flushMdLine();
     }
     thinkingActive = true;
     process.stdout.write(text);
