@@ -42,9 +42,7 @@ export function formatCompactionFailure(err: ViseError): string {
  */
 export function formatModelList(models: string[], activeModel: string): string {
   if (models.length === 0) return "no models available";
-  return models
-    .map((m) => (m === activeModel ? `* ${m} (active)` : `  ${m}`))
-    .join("\n");
+  return models.map((m) => (m === activeModel ? `* ${m} (active)` : `  ${m}`)).join("\n");
 }
 
 /** Format the `/note` listing. Each line is a pre-formatted note entry. */
@@ -58,14 +56,10 @@ export function formatNoteList(lines: string[]): string {
  * Enabled tools are marked with an asterisk; disabled ones are dimmed with
  * `(disabled)`.
  */
-export function formatToolList(
-  tools: { name: string; enabled: boolean }[],
-): string {
+export function formatToolList(tools: { name: string; enabled: boolean }[]): string {
   if (tools.length === 0) return "no tools available";
   return tools
-    .map((t) =>
-      t.enabled ? `* ${t.name} (enabled)` : `  ${t.name} (disabled)`,
-    )
+    .map((t) => (t.enabled ? `* ${t.name} (enabled)` : `  ${t.name} (disabled)`))
     .join("\n");
 }
 
@@ -131,14 +125,9 @@ export function formatHelp(opts: {
  * Render the list of available profiles, marking the active profile with an
  * asterisk. `activeProfile` is undefined when no profile is set.
  */
-export function formatProfileList(
-  profiles: string[],
-  activeProfile: string | undefined,
-): string {
+export function formatProfileList(profiles: string[], activeProfile: string | undefined): string {
   if (profiles.length === 0) return "no profiles found";
-  return profiles
-    .map((p) => (p === activeProfile ? `* ${p} (active)` : `  ${p}`))
-    .join("\n");
+  return profiles.map((p) => (p === activeProfile ? `* ${p} (active)` : `  ${p}`)).join("\n");
 }
 
 /**

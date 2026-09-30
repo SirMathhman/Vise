@@ -1,6 +1,6 @@
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { streamChat } from "../src/client/llm.ts";
-import type { AssistantMessage, Result } from "../src/core/errors.ts";
+import type { AssistantMessage } from "../src/core/errors.ts";
 
 /** Build a ReadableStream from an array of SSE line chunks (each a Uint8Array). */
 function sseStream(chunks: string[]): ReadableStream<Uint8Array> {
@@ -53,14 +53,9 @@ describe("streamChat (edge)", () => {
       'data: {"prompt_progress":{"total":100,"cache":0,"processed":60,"time_ms":2}}\n\n',
       'data: {"choices":[{"delta":{"content":"hi"}}]}\n\n',
     ];
-    const result = await streamChat(
-      sseStream(chunks),
-      undefined,
-      undefined,
-      (p) => {
-        seen.push(p.processed);
-      },
-    );
+    const result = await streamChat(sseStream(chunks), undefined, undefined, (p) => {
+      seen.push(p.processed);
+    });
     expect(seen).toEqual([10, 60]);
     expect(result.message.content).toBe("hi");
   });

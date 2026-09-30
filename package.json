@@ -5,9 +5,11 @@
   "private": true,
   "scripts": {
     "start": "bun index.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "lint": "bunx @biomejs/biome check src/ test/ index.ts"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.15",
     "@types/bun": "latest"
   },
   "peerDependencies": {

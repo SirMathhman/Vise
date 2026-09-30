@@ -114,10 +114,7 @@ export class StreamDisplay {
 
   private flushMdLine(): void {
     if (this.mdLineBuffer.length > 0) {
-      const [styled, newInFence] = renderLine(
-        this.mdLineBuffer,
-        this.mdInFence,
-      );
+      const [styled, newInFence] = renderLine(this.mdLineBuffer, this.mdInFence);
       this.mdInFence = newInFence;
       this.mdLineBuffer = "";
       process.stdout.write(styled + "\n");

@@ -1,17 +1,6 @@
+import type { Client, Tool, ToolController, ToolRunner } from "../core/engine.ts";
 import { runTurn } from "../core/engine.ts";
-import type {
-  Client,
-  Tool,
-  ToolController,
-  ToolRunner,
-} from "../core/engine.ts";
-import { runCompaction, okNoop } from "./compaction.ts";
-import type {
-  Message,
-  Result,
-  ViseError,
-  PromptProgress,
-} from "../core/errors.ts";
+import type { Message, PromptProgress, Result, ViseError } from "../core/errors.ts";
 import { formatHelp } from "../output/format.ts";
 import {
   handleModelCommand,
@@ -19,6 +8,7 @@ import {
   handleToolCommand,
   reportContext,
 } from "./commands.ts";
+import { okNoop, runCompaction } from "./compaction.ts";
 import {
   handleProfileCommand,
   handleResumeCommand,
@@ -144,10 +134,7 @@ export interface SavedSession {
  */
 export interface SessionSource {
   /** Persist the current conversation under the fixed auto-save name. */
-  save(
-    messages: Message[],
-    activeProfile: string | undefined,
-  ): Promise<Result<void>>;
+  save(messages: Message[], activeProfile: string | undefined): Promise<Result<void>>;
   /**
    * Persist the current conversation under a user-chosen name. Fails with a
    * `malformed` error when the name is invalid.
@@ -305,12 +292,7 @@ export class Session {
   private readonly sessionCommands: SessionCommands;
   private readonly compactionSource: CompactionSource;
 
-  constructor(
-    client: Client,
-    tools: ToolRunner,
-    toolDefs: Tool[],
-    options: SessionOptions,
-  ) {
+  constructor(client: Client, tools: ToolRunner, toolDefs: Tool[], options: SessionOptions) {
     this.client = client;
     this.tools = tools;
     this.toolDefs = toolDefs;
@@ -411,22 +393,18 @@ export class Session {
       return handleModelCommand(this.modelController, trimmed);
     }
     if (trimmed === "/tool" || trimmed.startsWith("/tool ")) {
-      return handleToolCommand(
-        this.toolController,
-        trimmed,
-        (name, enabled) => {
-          // A tool's enabled state changed; tell the model so it stops calling
-          // disabled tools and knows to invoke newly-enabled ones. The full
-          // definition list is always sent regardless, so this is a state
-          // note, not a change to the tools offered.
-          this.messages.push({
-            role: "user",
-            content: enabled
-              ? `Tool '${name}' is now enabled. You may call it.`
-              : `Tool '${name}' is now disabled. Do not call it; if asked, say it is disabled.`,
-          });
-        },
-      );
+      return handleToolCommand(this.toolController, trimmed, (name, enabled) => {
+        // A tool's enabled state changed; tell the model so it stops calling
+        // disabled tools and knows to invoke newly-enabled ones. The full
+        // definition list is always sent regardless, so this is a state
+        // note, not a change to the tools offered.
+        this.messages.push({
+          role: "user",
+          content: enabled
+            ? `Tool '${name}' is now enabled. You may call it.`
+            : `Tool '${name}' is now disabled. Do not call it; if asked, say it is disabled.`,
+        });
+      });
     }
     if (trimmed === "/profile" || trimmed.startsWith("/profile ")) {
       return handleProfileCommand(this.profileCommands, trimmed);

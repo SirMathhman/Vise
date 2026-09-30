@@ -1,15 +1,9 @@
-import type {
-  Message,
-  AssistantMessage,
-  Result,
-  PromptProgress,
-} from "../core/errors.ts";
 import type { Client, Tool } from "../core/engine.ts";
+import type { AssistantMessage, Message, PromptProgress, Result } from "../core/errors.ts";
 
 const URL = "http://localhost:8080/v1/chat/completions";
 const API_KEY = "S6677k5w355Nw9ErxCZWYCMiW4ItldmzXBLUElpnLsdE8gBj5A";
-const MODEL =
-  "RentedNoodle/Qwen3.8-27B-OrcaRouter-GSQ-RCO-IQ3_XXS-Uncensored:QATFA";
+const MODEL = "RentedNoodle/Qwen3.8-27B-OrcaRouter-GSQ-RCO-IQ3_XXS-Uncensored:QATFA";
 
 interface ToolCall {
   type: "function";
@@ -17,18 +11,8 @@ interface ToolCall {
   function: { name: string; arguments: string };
 }
 
-interface ChoiceMessage {
-  content?: string;
-  tool_calls?: ToolCall[];
-}
-
 interface Usage {
   prompt_tokens?: number;
-}
-
-interface ChatResponse {
-  choices: { message: ChoiceMessage }[];
-  usage?: Usage;
 }
 
 interface Slot {
@@ -233,8 +217,7 @@ export class LlmClient implements Client {
         };
       }
       const slots = (await res.json()) as Slot[];
-      const first =
-        Array.isArray(slots) && slots.length > 0 ? slots[0] : undefined;
+      const first = Array.isArray(slots) && slots.length > 0 ? slots[0] : undefined;
       const nCtx = first?.n_ctx;
       if (nCtx === undefined) {
         return {
@@ -297,12 +280,7 @@ export class LlmClient implements Client {
           error: { kind: "malformed", body: "empty response body" },
         };
       }
-      const acc = await streamChat(
-        stream,
-        onToken,
-        onThinking,
-        onPromptProgress,
-      );
+      const acc = await streamChat(stream, onToken, onThinking, onPromptProgress);
       if (!acc.sawData) {
         return {
           ok: false,

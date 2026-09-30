@@ -1,9 +1,9 @@
-import { runSubagent } from "../core/engine.ts";
 import type { Client, Tool, ToolRunner } from "../core/engine.ts";
+import { runSubagent } from "../core/engine.ts";
 import type { PromptProgress } from "../core/errors.ts";
-import type { ProfileSource } from "../repl/session.ts";
-import { formatError } from "../output/format.ts";
 import { dim } from "../output/color.ts";
+import { formatError } from "../output/format.ts";
+import type { ProfileSource } from "../repl/session.ts";
 
 /**
  * The built-in "default" profile. Every subagent that does not name a custom

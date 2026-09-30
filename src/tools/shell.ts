@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import { errStr } from "./files.ts";
 
 /**
@@ -48,11 +48,9 @@ function spawnPowerShell(command: string): {
   proc: ChildProcess;
   record: ProcessRecord;
 } {
-  const proc = spawn(
-    "powershell.exe",
-    ["-NoProfile", "-NonInteractive", "-Command", command],
-    { windowsHide: true },
-  );
+  const proc = spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", command], {
+    windowsHide: true,
+  });
   const record: ProcessRecord = {
     proc,
     stdout: "",
@@ -74,9 +72,7 @@ function spawnPowerShell(command: string): {
  * Joins the captured stdout and stderr, dropping whichever is empty.
  */
 function formatBody(record: ProcessRecord): string {
-  return [record.stdout.trim(), record.stderr.trim()]
-    .filter((s) => s !== "")
-    .join("\n");
+  return [record.stdout.trim(), record.stderr.trim()].filter((s) => s !== "").join("\n");
 }
 
 /**
@@ -107,9 +103,7 @@ function describeFinished(id: number, record: ProcessRecord): string {
  * Background (`background: true`): spawns and returns a numeric process id
  * immediately. The id is what `wait_for_process` and `kill_process` take.
  */
-export async function runPowershell(
-  args: Record<string, unknown>,
-): Promise<string> {
+export async function runPowershell(args: Record<string, unknown>): Promise<string> {
   const command = String(args.command ?? "");
   if (command === "") return `error: command must not be empty`;
   const background = args.background === true;
@@ -176,13 +170,8 @@ export function waitForProcess(args: Record<string, unknown>): Promise<string> {
     return Promise.resolve(`error: no process ${id}`);
   }
   const rawTimeout = args.timeout;
-  const timeout =
-    typeof rawTimeout === "number" ? rawTimeout : Number(rawTimeout);
-  if (
-    !Number.isFinite(timeout) ||
-    timeout < 0 ||
-    Math.floor(timeout) !== timeout
-  ) {
+  const timeout = typeof rawTimeout === "number" ? rawTimeout : Number(rawTimeout);
+  if (!Number.isFinite(timeout) || timeout < 0 || Math.floor(timeout) !== timeout) {
     return Promise.resolve("error: timeout must be a non-negative number");
   }
   if (record.status !== "running") {
@@ -190,15 +179,11 @@ export function waitForProcess(args: Record<string, unknown>): Promise<string> {
   }
 
   if (timeout === 0) {
-    return Promise.resolve(
-      `still running; output so far:\n${formatBody(record)}`.trim(),
-    );
+    return Promise.resolve(`still running; output so far:\n${formatBody(record)}`.trim());
   }
   return new Promise<string>((resolve) => {
     const timer = setTimeout(() => {
-      resolve(
-        `still running after ${timeout} ms; output so far:\n${formatBody(record)}`.trim(),
-      );
+      resolve(`still running after ${timeout} ms; output so far:\n${formatBody(record)}`.trim());
     }, timeout);
     const onDone = () => {
       clearTimeout(timer);

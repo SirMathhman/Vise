@@ -1,10 +1,6 @@
-import { describe, test, expect } from "bun:test";
-import { runTurn, summarize, runSubagent } from "../src/core/engine.ts";
-import type {
-  Client,
-  Tool,
-  ToolRunner,
-} from "../src/core/engine.ts";
+import { describe, expect, test } from "bun:test";
+import type { Client, Tool, ToolRunner } from "../src/core/engine.ts";
+import { runSubagent, runTurn, summarize } from "../src/core/engine.ts";
 import type { Message } from "../src/core/errors.ts";
 
 const noopTools: ToolRunner = {
@@ -27,9 +23,7 @@ describe("runTurn streaming (core)", () => {
       },
     };
     const messages: Message[] = [{ role: "user", content: "hi" }];
-    const result = await runTurn(client, noopTools, messages, noToolDefs, (t) =>
-      seen.push(t),
-    );
+    const result = await runTurn(client, noopTools, messages, noToolDefs, (t) => seen.push(t));
     expect(result.ok).toBeTrue();
     if (result.ok) expect(result.value).toBe("Hello");
     expect(seen).toEqual(tokens);
@@ -63,9 +57,7 @@ describe("runTurn streaming (core)", () => {
       },
     };
     const messages: Message[] = [{ role: "user", content: "go" }];
-    const result = await runTurn(client, noopTools, messages, noToolDefs, (t) =>
-      seen.push(t),
-    );
+    const result = await runTurn(client, noopTools, messages, noToolDefs, (t) => seen.push(t));
     expect(result.ok).toBeTrue();
     if (result.ok) expect(result.value).toBe("done");
     // Two rounds, two "thinking"+"..." deltas each → 4 total.
@@ -152,10 +144,7 @@ describe("runSubagent (core)", () => {
     );
     expect(result.ok).toBeTrue();
     expect(seen).toHaveLength(1);
-    expect(seen[0]).toEqual([
-      systemMessage,
-      { role: "user", content: "do the thing" },
-    ]);
+    expect(seen[0]).toEqual([systemMessage, { role: "user", content: "do the thing" }]);
   });
 
   test("propagates a client error as a failure result", async () => {

@@ -1,12 +1,12 @@
 import type { ToolController } from "../core/engine.ts";
 import type { Result } from "../core/errors.ts";
-import type { ContextSource, ModelController, NoteSource } from "./session.ts";
 import {
   formatContext,
   formatModelList,
   formatNoteList,
   formatToolList,
 } from "../output/format.ts";
+import type { ContextSource, ModelController, NoteSource } from "./session.ts";
 
 /**
  * Render `/context`. Reads the max live on every call (at most one `/slots`

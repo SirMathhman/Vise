@@ -1,33 +1,28 @@
-import { existsSync, readFileSync } from "node:fs";
 import { spawn } from "node:child_process";
-import { createInterface } from "node:readline";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { createInterface } from "node:readline";
 import { LlmClient } from "./src/client/llm.ts";
-import { tools, toolController, createToolRunner } from "./src/tools.ts";
-import { makeSubagentHandler } from "./src/tools/subagent.ts";
-import { makeAskUserHandler, RlUserPrompter } from "./src/tools/ask-user.ts";
-import { Session } from "./src/repl/session.ts";
-import type {
-  ProfileSource,
-  NoteSource,
-  PreTurnHook,
-  PostTurnHook,
-  SessionSource,
-  SavedSession,
-} from "./src/repl/session.ts";
 import type { Message, Result } from "./src/core/errors.ts";
-import { listNotes, formatNoteEntry, initNote } from "./src/notes.ts";
-import { listProfiles, readProfile, initProfile } from "./src/profiles.ts";
-import {
-  saveAutoSession,
-  saveNamedSession,
-  loadSession,
-  listSessions,
-} from "./src/sessions.ts";
-import { formatCompactionFailure, formatError } from "./src/output/format.ts";
-import { red, dim, cyan } from "./src/output/color.ts";
 import { StreamDisplay } from "./src/driver/stream.ts";
 import { buildInitialTree } from "./src/fs-tree.ts";
+import { formatNoteEntry, initNote, listNotes } from "./src/notes.ts";
+import { cyan, red } from "./src/output/color.ts";
+import { formatCompactionFailure, formatError } from "./src/output/format.ts";
+import { initProfile, listProfiles, readProfile } from "./src/profiles.ts";
+import type {
+  NoteSource,
+  PostTurnHook,
+  PreTurnHook,
+  ProfileSource,
+  SavedSession,
+  SessionSource,
+} from "./src/repl/session.ts";
+import { Session } from "./src/repl/session.ts";
+import { listSessions, loadSession, saveAutoSession, saveNamedSession } from "./src/sessions.ts";
+import { makeAskUserHandler, RlUserPrompter } from "./src/tools/ask-user.ts";
+import { makeSubagentHandler } from "./src/tools/subagent.ts";
+import { createToolRunner, toolController, tools } from "./src/tools.ts";
 
 /**
  * Edge implementation of ProfileSource backed by a `profiles/` directory of
@@ -123,9 +118,7 @@ class ShellHook implements PreTurnHook, PostTurnHook {
           reject(err);
         });
       });
-      const body = [res.stdout.trim(), res.stderr.trim()]
-        .filter((s) => s !== "")
-        .join("\n");
+      const body = [res.stdout.trim(), res.stderr.trim()].filter((s) => s !== "").join("\n");
       if (res.status !== 0) {
         return `hook error (exit code ${res.status}):\n${body}`.trim();
       }
@@ -177,10 +170,7 @@ class FileNoteSource implements NoteSource {
 class FileSessionSource implements SessionSource {
   constructor(private readonly base: string) {}
 
-  async save(
-    messages: Message[],
-    activeProfile: string | undefined,
-  ): Promise<Result<void>> {
+  async save(messages: Message[], activeProfile: string | undefined): Promise<Result<void>> {
     return saveAutoSession(this.base, messages, activeProfile);
   }
 
@@ -224,10 +214,7 @@ function loadHookCommands(): { pre?: string[]; post?: string[] } {
     }
     if (typeof post === "string") {
       result.post = [post];
-    } else if (
-      Array.isArray(post) &&
-      post.every((c) => typeof c === "string")
-    ) {
+    } else if (Array.isArray(post) && post.every((c) => typeof c === "string")) {
       result.post = post;
     }
     return result;
@@ -239,9 +226,7 @@ function loadHookCommands(): { pre?: string[]; post?: string[] } {
 
 const hookCommands = loadHookCommands();
 const preTurnHooks = (hookCommands.pre ?? []).map((cmd) => new ShellHook(cmd));
-const postTurnHooks = (hookCommands.post ?? []).map(
-  (cmd) => new ShellHook(cmd),
-);
+const postTurnHooks = (hookCommands.post ?? []).map((cmd) => new ShellHook(cmd));
 
 const client = new LlmClient();
 
@@ -267,8 +252,7 @@ const toolRunner = createToolRunner({
     profileSource,
     process.cwd(),
     {
-      run: (name: string, args: Record<string, unknown>) =>
-        toolRunner.run(name, args),
+      run: (name: string, args: Record<string, unknown>) => toolRunner.run(name, args),
     },
     tools,
     display.onToken,

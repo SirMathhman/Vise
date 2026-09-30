@@ -22,7 +22,7 @@
  * no `node:`, `console`, or `process` dependencies beyond what `color.ts`
  * itself needs for TTY detection.
  */
-import { dim, cyan, bold } from "./color.ts";
+import { bold, cyan, dim } from "./color.ts";
 
 /**
  * Render a single markdown line for terminal display.
@@ -81,15 +81,10 @@ function applyInline(text: string): string {
   // Backtick code spans: `code` → cyan.
   text = text.replace(/`([^`]+)`/g, (_m, code: string) => cyan(code));
   // Bold spans: **bold** → bold.
-  text = text.replace(/\*\*([^*]+)\*\*/g, (_m, content: string) =>
-    bold(content),
-  );
+  text = text.replace(/\*\*([^*]+)\*\*/g, (_m, content: string) => bold(content));
   // Links: [text](url) → cyan text + dim url.
-  text = text.replace(
-    /\[([^\]]+)\]\(([^)]+)\)/g,
-    (_m, label: string, url: string) => {
-      return cyan(label) + dim("(" + url + ")");
-    },
-  );
+  text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, label: string, url: string) => {
+    return cyan(label) + dim("(" + url + ")");
+  });
   return text;
 }

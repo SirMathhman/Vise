@@ -1,12 +1,12 @@
-import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildInitialTree } from "../src/fs-tree.ts";
-import { Session } from "../src/repl/session.ts";
 import type { Client } from "../src/core/engine.ts";
-import type { ContextSource } from "../src/repl/session.ts";
 import type { Message } from "../src/core/errors.ts";
+import { buildInitialTree } from "../src/fs-tree.ts";
+import type { ContextSource } from "../src/repl/session.ts";
+import { Session } from "../src/repl/session.ts";
 
 const noopTools = {
   run: async (_n: string, _a: Record<string, unknown>) => "",
@@ -66,30 +66,10 @@ describe("buildInitialTree", () => {
     // File at depth 6 (inside level5) should NOT appear.
     // level5/ is at 5 levels below root and is listed, but its children
     // (at5.txt, level6/) would be at 6 levels and are not enumerated.
-    writeFileSync(
-      join(
-        depthDir,
-        "level1",
-        "level2",
-        "level3",
-        "level4",
-        "level5",
-        "at5.txt",
-      ),
-      "",
-    );
+    writeFileSync(join(depthDir, "level1", "level2", "level3", "level4", "level5", "at5.txt"), "");
     // File at depth 6 (inside level6) should NOT appear.
     writeFileSync(
-      join(
-        depthDir,
-        "level1",
-        "level2",
-        "level3",
-        "level4",
-        "level5",
-        "level6",
-        "at6.txt",
-      ),
+      join(depthDir, "level1", "level2", "level3", "level4", "level5", "level6", "at6.txt"),
       "",
     );
 

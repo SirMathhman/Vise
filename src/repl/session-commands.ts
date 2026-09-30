@@ -20,11 +20,6 @@ const DEFAULT_PROFILE_NAME = "default";
 const DEFAULT_PROFILE_TEXT =
   "You are a helpful assistant. Respond clearly and concisely, and use your tools when a task requires them.";
 
-/** A successful no-op compaction result: nothing needed to be compacted. */
-function okNoop(): Result<string> {
-  return { ok: true, value: "nothing to compact" };
-}
-
 /**
  * Handle `/profile` and `/profile <name>`.
  * When name is omitted: lists available profiles from the source.

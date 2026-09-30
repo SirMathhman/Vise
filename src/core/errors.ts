@@ -35,6 +35,4 @@ export type ViseError =
   | { kind: "network"; cause: string }
   | { kind: "malformed"; body: string };
 
-export type Result<T> =
-  | { ok: true; value: T }
-  | { ok: false; error: ViseError };
+export type Result<T> = { ok: true; value: T } | { ok: false; error: ViseError };

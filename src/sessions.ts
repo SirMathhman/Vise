@@ -1,10 +1,4 @@
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Message, Result, ViseError } from "./core/errors.ts";
 import type { SavedSession } from "./repl/session.ts";
@@ -50,10 +44,7 @@ function validName(name: string): boolean {
 /**
  * Serialize a session snapshot to a JSON string.
  */
-function serialize(
-  messages: Message[],
-  activeProfile: string | undefined,
-): string {
+function serialize(messages: Message[], activeProfile: string | undefined): string {
   const saved: SavedSession = {
     messages,
     activeProfile,
@@ -134,8 +125,7 @@ export function loadSession(base: string, name: string): Result<SavedSession> {
     }
     const saved: SavedSession = {
       messages: raw.messages as Message[],
-      activeProfile:
-        typeof raw.activeProfile === "string" ? raw.activeProfile : undefined,
+      activeProfile: typeof raw.activeProfile === "string" ? raw.activeProfile : undefined,
       savedAt: typeof raw.savedAt === "string" ? raw.savedAt : "",
     };
     return { ok: true, value: saved };

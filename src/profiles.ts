@@ -1,10 +1,4 @@
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { validName } from "./notes.ts";
 
@@ -23,8 +17,7 @@ import { validName } from "./notes.ts";
  */
 
 /** The placeholder body for a newly initialized profile. */
-const PROFILE_TEMPLATE =
-  "TODO: describe the persona or instructions for this profile";
+const PROFILE_TEMPLATE = "TODO: describe the persona or instructions for this profile";
 
 /** Path of the profiles directory under the base directory. */
 function profileDir(base: string): string {
@@ -71,11 +64,7 @@ export function saveProfile(base: string, name: string, body: string): void {
     throw new Error(`profile '${name}' already exists`);
   }
   mkdirSync(profileDir(base), { recursive: true });
-  writeFileSync(
-    profilePath(base, name),
-    body.replace(/\s+$/, "") + "\n",
-    "utf8",
-  );
+  writeFileSync(profilePath(base, name), body.replace(/\s+$/, "") + "\n", "utf8");
 }
 
 /**

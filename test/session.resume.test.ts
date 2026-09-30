@@ -1,12 +1,8 @@
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import type { Client, Tool, ToolRunner } from "../src/core/engine.ts";
 import type { Message, Result } from "../src/core/errors.ts";
+import type { ContextSource, SavedSession, SessionSource } from "../src/repl/session.ts";
 import { Session } from "../src/repl/session.ts";
-import type {
-  ContextSource,
-  SessionSource,
-  SavedSession,
-} from "../src/repl/session.ts";
 
 const noopTools: ToolRunner = {
   async run(_name, _args) {
@@ -47,11 +43,7 @@ describe("Session /save and /resume (core)", () => {
         };
         return { ok: true, value: undefined };
       },
-      async saveNamed(
-        name: string,
-        messages: Message[],
-        activeProfile: string | undefined,
-      ) {
+      async saveNamed(name: string, messages: Message[], activeProfile: string | undefined) {
         saved[name] = {
           messages,
           activeProfile,
@@ -175,8 +167,7 @@ describe("Session /save and /resume (core)", () => {
       sessionSource: ss,
     });
     const resumed = await session.handleLine("/resume old");
-    if (resumed === "exit" || !resumed.ok)
-      throw new Error("expected ok resume");
+    if (resumed === "exit" || !resumed.ok) throw new Error("expected ok resume");
     // A turn after resume sends the live conversation to the model.
     const turn = await session.handleLine("hi");
     if (turn === "exit" || !turn.ok) throw new Error("expected ok turn");
@@ -214,8 +205,7 @@ describe("Session /save and /resume (core)", () => {
       sessionSource: ss,
     });
     const result = await session.handleLine("/resume nothere");
-    if (result === "exit" || result.ok)
-      throw new Error("expected error result");
+    if (result === "exit" || result.ok) throw new Error("expected error result");
     expect(result.error.kind).toBe("malformed");
     if (result.error.kind === "malformed") {
       expect(result.error.body).toContain("not found");
@@ -230,12 +220,10 @@ describe("Session /save and /resume (core)", () => {
       postTurnHooks: [],
     });
     const saveResult = await session.handleLine("/save x");
-    if (saveResult === "exit" || saveResult.ok)
-      throw new Error("expected error result");
+    if (saveResult === "exit" || saveResult.ok) throw new Error("expected error result");
     expect(saveResult.error.kind).toBe("malformed");
     const resumeResult = await session.handleLine("/resume x");
-    if (resumeResult === "exit" || resumeResult.ok)
-      throw new Error("expected error result");
+    if (resumeResult === "exit" || resumeResult.ok) throw new Error("expected error result");
     expect(resumeResult.error.kind).toBe("malformed");
   });
 

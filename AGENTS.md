@@ -5,12 +5,13 @@ Full design rationale, invariants, and target layout live in [ARCHITECTURE.md](A
 
 ## Commands
 
-| Task       | Command             | Notes                                                               |
-| ---------- | ------------------- | ------------------------------------------------------------------- |
-| Run        | `bun run index.ts`  | Entry point. No build step — Bun transpiles TS on the fly.          |
-| Install    | `bun install`       | Only dev deps are `@types/bun` and `typescript`; zero runtime deps. |
-| Type-check | `bunx tsc --noEmit` | No `typecheck`/`lint` scripts exist in `package.json`.              |
-| Test       | `bun test`          | Bun's built-in `bun:test` runner; suites live in `test/`.           |
+| Task       | Command             | Notes                                                                            |
+| ---------- | ------------------- | -------------------------------------------------------------------------------- |
+| Run        | `bun run index.ts`  | Entry point. No build step — Bun transpiles TS on the fly.                       |
+| Install    | `bun install`       | Only dev deps are `@types/bun` and `typescript`; zero runtime deps.              |
+| Type-check | `bunx tsc --noEmit` | `typescript` is a dev dep (peer). No `typecheck` script in `package.json`.       |
+| Lint       | `bun run lint`      | Biome (`@biomejs/biome`): formatting, import sort, lint. Config in `biome.json`. |
+| Test       | `bun test`          | Bun's built-in `bun:test` runner; suites live in `test/`.                        |
 
 ## Surface (product features an agent touches)
 

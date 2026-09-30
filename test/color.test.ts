@@ -1,15 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { dim, red, cyan } from "../src/output/color.ts";
+import { cyan, dim, red } from "../src/output/color.ts";
 
 /**
  * Run `fn` with the given env vars set, restoring the original values
  * afterward. `isEnabled()` in `color.ts` reads `process.env` per call, so the
  * color helpers are deterministic under these overrides.
  */
-function withEnv(
-  vars: Record<string, string | undefined>,
-  fn: () => void,
-): void {
+function withEnv(vars: Record<string, string | undefined>, fn: () => void): void {
   const saved: Record<string, string | undefined> = {};
   for (const key of Object.keys(vars)) {
     saved[key] = process.env[key];

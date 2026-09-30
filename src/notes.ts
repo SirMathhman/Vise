@@ -1,8 +1,8 @@
 import {
   existsSync,
   mkdirSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -45,12 +45,7 @@ function notePath(base: string, name: string): string {
  * `src/profiles.ts`.
  */
 export function validName(name: string): boolean {
-  return (
-    name.length > 0 &&
-    !name.includes("/") &&
-    !name.includes("\\") &&
-    !name.includes("..")
-  );
+  return name.length > 0 && !name.includes("/") && !name.includes("\\") && !name.includes("..");
 }
 
 /** First non-empty line of a note's body, or "" for an empty note. */

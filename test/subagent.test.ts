@@ -1,8 +1,8 @@
-import { describe, test, expect } from "bun:test";
-import { makeSubagentHandler } from "../src/tools/subagent.ts";
+import { describe, expect, test } from "bun:test";
 import type { Client, Tool, ToolRunner } from "../src/core/engine.ts";
 import type { Message, Result } from "../src/core/errors.ts";
 import type { ProfileSource } from "../src/repl/session.ts";
+import { makeSubagentHandler } from "../src/tools/subagent.ts";
 
 const noopTools: ToolRunner = {
   async run(_name, _args) {
@@ -31,9 +31,7 @@ function recordingClient(reply: string): {
 }
 
 /** A ProfileSource whose `loadProfile` is supplied per test. */
-function stubProfileSource(
-  load: (name: string) => Promise<Result<string>>,
-): ProfileSource {
+function stubProfileSource(load: (name: string) => Promise<Result<string>>): ProfileSource {
   return {
     async listProfiles() {
       return { ok: true, value: [] };
@@ -56,13 +54,7 @@ describe("makeSubagentHandler (edge)", () => {
     const source = stubProfileSource(async () => {
       throw new Error("should not be called for the default profile");
     });
-    const handler = makeSubagentHandler(
-      client,
-      source,
-      "/tmp",
-      noopTools,
-      noToolDefs,
-    );
+    const handler = makeSubagentHandler(client, source, "/tmp", noopTools, noToolDefs);
     const result = await handler({ task: "do the thing", profile: "default" });
     expect(result).toBe("done");
     expect(calls).toHaveLength(1);
@@ -79,13 +71,7 @@ describe("makeSubagentHandler (edge)", () => {
       expect(name).toBe("specialist");
       return { ok: true, value: "You are a specialist." };
     });
-    const handler = makeSubagentHandler(
-      client,
-      source,
-      "/tmp",
-      noopTools,
-      noToolDefs,
-    );
+    const handler = makeSubagentHandler(client, source, "/tmp", noopTools, noToolDefs);
     const result = await handler({
       task: "do the thing",
       profile: "specialist",
@@ -103,13 +89,7 @@ describe("makeSubagentHandler (edge)", () => {
     const source = stubProfileSource(async () => {
       return { ok: true, value: "p" };
     });
-    const handler = makeSubagentHandler(
-      client,
-      source,
-      "/tmp",
-      noopTools,
-      noToolDefs,
-    );
+    const handler = makeSubagentHandler(client, source, "/tmp", noopTools, noToolDefs);
     expect(await handler({ profile: "default" })).toBe(
       "error: run_subagent requires a non-empty 'task' argument",
     );
@@ -123,13 +103,7 @@ describe("makeSubagentHandler (edge)", () => {
     const source = stubProfileSource(async () => {
       return { ok: true, value: "p" };
     });
-    const handler = makeSubagentHandler(
-      client,
-      source,
-      "/tmp",
-      noopTools,
-      noToolDefs,
-    );
+    const handler = makeSubagentHandler(client, source, "/tmp", noopTools, noToolDefs);
     expect(await handler({ task: "do it" })).toBe(
       "error: run_subagent requires a 'profile' argument",
     );
@@ -143,13 +117,7 @@ describe("makeSubagentHandler (edge)", () => {
         error: { kind: "malformed", body: "profile 'nope' not found." },
       };
     });
-    const handler = makeSubagentHandler(
-      client,
-      source,
-      "/tmp",
-      noopTools,
-      noToolDefs,
-    );
+    const handler = makeSubagentHandler(client, source, "/tmp", noopTools, noToolDefs);
     const result = await handler({ task: "do it", profile: "nope" });
     expect(result).toBe("error: vise: profile 'nope' not found.");
     // The client is never consulted when the profile fails to load.
@@ -165,16 +133,8 @@ describe("makeSubagentHandler (edge)", () => {
     const source = stubProfileSource(async () => {
       return { ok: true, value: "" };
     });
-    const handler = makeSubagentHandler(
-      client,
-      source,
-      "/tmp",
-      noopTools,
-      noToolDefs,
-    );
-    expect(await handler({ task: "do it", profile: "default" })).toBe(
-      "error: vise: boom",
-    );
+    const handler = makeSubagentHandler(client, source, "/tmp", noopTools, noToolDefs);
+    expect(await handler({ task: "do it", profile: "default" })).toBe("error: vise: boom");
   });
 
   test("indents the subagent's streamed tokens at the start of each line", async () => {
@@ -187,11 +147,7 @@ describe("makeSubagentHandler (edge)", () => {
     // onToken callback, so the captured tokens are what the driver's onToken
     // sees.
     const client: Client = {
-      async chat(
-        _m: Message[],
-        _t?: Tool[],
-        onToken?: (token: string) => void,
-      ) {
+      async chat(_m: Message[], _t?: Tool[], onToken?: (token: string) => void) {
         // Two tokens: one ends in a newline, one does not. This exercises both
         // the indentation and the line-start tracking.
         onToken?.("hello\n");
@@ -229,11 +185,7 @@ describe("makeSubagentHandler (edge)", () => {
     try {
       const received: string[] = [];
       const client: Client = {
-        async chat(
-          _m: Message[],
-          _t?: Tool[],
-          onToken?: (token: string) => void,
-        ) {
+        async chat(_m: Message[], _t?: Tool[], onToken?: (token: string) => void) {
           // Two tokens: one ends in a newline, one does not. The dim codes
           // wrap each whole token (indent + content), so each captured token
           // is a self-contained dimmed span.
@@ -255,10 +207,7 @@ describe("makeSubagentHandler (edge)", () => {
       );
       await handler({ task: "do it", profile: "default" });
       // With color forced on, each line-start token is indented then dimmed.
-      expect(received).toEqual([
-        "\x1b[2m  hello\n\x1b[0m",
-        "\x1b[2m  world\x1b[0m",
-      ]);
+      expect(received).toEqual(["\x1b[2m  hello\n\x1b[0m", "\x1b[2m  world\x1b[0m"]);
     } finally {
       if (savedForce === undefined) delete process.env.FORCE_COLOR;
       else process.env.FORCE_COLOR = savedForce;
