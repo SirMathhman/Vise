@@ -26,6 +26,44 @@ const noopContext: ContextSource = {
   },
 };
 
+describe("Session streaming flag (core)", () => {
+  test("sets streamed=true on a successful turn when onToken is provided", async () => {
+    const client: Client = {
+      async chat() {
+        return { ok: true, value: { content: "reply" } };
+      },
+    };
+    const session = new Session(client, noopTools, noToolDefs, {
+      cwd: "/tmp",
+      context: noopContext,
+      preTurnHooks: [],
+      postTurnHooks: [],
+      onToken: () => {},
+    });
+    const result = await session.handleLine("hi");
+    expect(result).not.toBe("exit");
+    if (result === "exit" || !result.ok) throw new Error("expected ok result");
+    expect(result.streamed).toBe(true);
+  });
+
+  test("does not set streamed when onToken is absent", async () => {
+    const client: Client = {
+      async chat() {
+        return { ok: true, value: { content: "reply" } };
+      },
+    };
+    const session = new Session(client, noopTools, noToolDefs, {
+      cwd: "/tmp",
+      context: noopContext,
+      preTurnHooks: [],
+      postTurnHooks: [],
+    });
+    const result = await session.handleLine("hi");
+    if (result === "exit" || !result.ok) throw new Error("expected ok result");
+    expect(result.streamed).toBeFalse();
+  });
+});
+
 describe("Session /tool command (core)", () => {
   /**
    * A minimal ToolController stub for exercising the /tool dispatch in
