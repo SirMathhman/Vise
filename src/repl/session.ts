@@ -1,27 +1,29 @@
-import { runTurn, splitForCompaction, summarize } from "../core/engine.ts";
+import { runTurn } from "../core/engine.ts";
 import type {
   Client,
   Tool,
   ToolController,
   ToolRunner,
 } from "../core/engine.ts";
+import { runCompaction, okNoop } from "./compaction.ts";
 import type {
   Message,
   Result,
   ViseError,
   PromptProgress,
 } from "../core/errors.ts";
-import {
-  formatHelp,
-  formatProfileList,
-  formatSessionList,
-} from "../output/format.ts";
+import { formatHelp } from "../output/format.ts";
 import {
   handleModelCommand,
   handleNotesCommand,
   handleToolCommand,
   reportContext,
 } from "./commands.ts";
+import {
+  handleProfileCommand,
+  handleResumeCommand,
+  handleSaveCommand,
+} from "./session-commands.ts";
 
 /**
  * The outcome of a handled line. A successful turn carries the model's reply
@@ -162,36 +164,65 @@ export interface SessionSource {
 }
 
 /**
+ * The subset of Session state the profile command needs, exposed to
+ * `session-commands.ts` so the handler can be a plain module-level function
+ * (matching the `commands.ts` pattern) rather than a private method on the
+ * class. The Session implements this with closures over its own fields.
+ */
+export interface ProfileCommands {
+  profileSource(): ProfileSource | undefined;
+  activeProfile(): string | undefined;
+  setActiveProfile(name: string | undefined): void;
+  pushMessage(message: Message): void;
+}
+
+/**
+ * The subset of Session state the resume/save commands need, exposed to
+ * `session-commands.ts` so the handlers can be plain module-level functions
+ * (matching the `commands.ts` pattern) rather than private methods on the
+ * class. The Session implements this with closures over its own fields.
+ */
+export interface SessionCommands {
+  sessionSource(): SessionSource | undefined;
+  activeProfile(): string | undefined;
+  setActiveProfile(name: string | undefined): void;
+  pushMessage(message: Message): void;
+  /**
+   * Return the live messages array as a shallow copy (system message first).
+   * Used by `/save` to snapshot the current conversation.
+   */
+  messages(): Message[];
+  /**
+   * Replace the conversation body with the given messages, keeping the live
+   * system message at index 0 (invariant #6). Used by `/resume`.
+   */
+  resetMessages(messages: Message[]): void;
+}
+
+/**
+ * The subset of Session state the compaction handler needs, exposed to
+ * `compaction.ts` so the handler can be a plain module-level function
+ * (matching the `commands.ts` pattern) rather than a private method on the
+ * class. The Session implements this with closures over its own fields.
+ */
+export interface CompactionSource {
+  /** The client used for the summarizing model call. */
+  client: Client;
+  /** Return the live messages array as a shallow copy (system message first). */
+  messages(): Message[];
+  /**
+   * Replace the conversation body with the given messages, keeping the live
+   * system message at index 0 (invariant #6). Used after summarizing.
+   */
+  resetMessages(messages: Message[]): void;
+}
+
+/**
  * Auto-compaction triggers when the last turn's server-reported token count
  * reaches this fraction of the model's context window. Chosen high enough that
  * a normal turn only compacts when overflow is genuinely imminent.
  */
 const COMPACTION_THRESHOLD = 0.9;
-
-/**
- * How many complete turns (starting from a user message) to keep verbatim after
- * compaction, in addition to the summary. Keeps enough recent context that the
- * conversation continues to feel continuous.
- */
-const RECENT_TURNS_TO_KEEP = 2;
-
-/**
- * The reserved name of the built-in profile. `default` is not a file under
- * `profiles/`; it is a constant resolved directly by the session, so there is
- * always a baseline persona even when `profiles/` is empty. A file named
- * `default.md` would be shadowed by this constant (the constant always wins),
- * the same way `auto` is reserved for sessions.
- */
-const DEFAULT_PROFILE_NAME = "default";
-
-/**
- * The body of the built-in `default` profile, a general assistant baseline
- * distinct from the subagent's `DEFAULT_PROFILE`. It is appended as a user
- * message when the user runs `/profile default`, shaping the conversation
- * without ever touching the system message.
- */
-const DEFAULT_PROFILE_TEXT =
-  "You are a helpful assistant. Respond clearly and concisely, and use your tools when a task requires them.";
 
 /**
  * Edge-provided options for constructing a Session. Groups the optional
@@ -270,6 +301,9 @@ export class Session {
   private readonly initialMessage?: string;
   private readonly sessionSource?: SessionSource;
   private activeProfile: string | undefined;
+  private readonly profileCommands: ProfileCommands;
+  private readonly sessionCommands: SessionCommands;
+  private readonly compactionSource: CompactionSource;
 
   constructor(
     client: Client,
@@ -301,6 +335,50 @@ export class Session {
     if (this.initialMessage !== undefined && this.initialMessage !== "") {
       this.messages.push({ role: "user", content: this.initialMessage });
     }
+    // The command handlers are plain functions in `session-commands.ts`;
+    // the Session wires them to its own state with closures, so the
+    // handlers stay free of class-internal references (the `commands.ts`
+    // pattern). They are wired after `this.messages` exists so the
+    // closures can push/replace the conversation safely.
+    this.profileCommands = {
+      profileSource: () => this.profileSource,
+      activeProfile: () => this.activeProfile,
+      setActiveProfile: (name) => {
+        this.activeProfile = name;
+      },
+      pushMessage: (message) => {
+        this.messages.push(message);
+      },
+    };
+    this.sessionCommands = {
+      sessionSource: () => this.sessionSource,
+      activeProfile: () => this.activeProfile,
+      setActiveProfile: (name) => {
+        this.activeProfile = name;
+      },
+      pushMessage: (message) => {
+        this.messages.push(message);
+      },
+      messages: () => [...this.messages],
+      resetMessages: (body) => {
+        this.messages.length = 0;
+        this.messages.push(this.systemMessage);
+        for (const m of body) {
+          this.messages.push(m);
+        }
+      },
+    };
+    this.compactionSource = {
+      client: this.client,
+      messages: () => [...this.messages],
+      resetMessages: (body) => {
+        this.messages.length = 0;
+        this.messages.push(this.systemMessage);
+        for (const m of body) {
+          this.messages.push(m);
+        }
+      },
+    };
   }
 
   /**
@@ -351,16 +429,16 @@ export class Session {
       );
     }
     if (trimmed === "/profile" || trimmed.startsWith("/profile ")) {
-      return this.handleProfileCommand(trimmed);
+      return handleProfileCommand(this.profileCommands, trimmed);
     }
     if (trimmed === "/note" || trimmed.startsWith("/note ")) {
       return handleNotesCommand(this.noteSource, trimmed);
     }
     if (trimmed === "/resume" || trimmed.startsWith("/resume ")) {
-      return this.handleResumeCommand(trimmed);
+      return handleResumeCommand(this.sessionCommands, trimmed);
     }
     if (trimmed === "/save" || trimmed.startsWith("/save ")) {
-      return this.handleSaveCommand(trimmed);
+      return handleSaveCommand(this.sessionCommands, trimmed);
     }
     await this.runHooks(this.preTurnHooks);
     this.messages.push({ role: "user", content: line });
@@ -428,196 +506,13 @@ export class Session {
   }
 
   /**
-   * Shared compaction body: split the conversation, summarize the older
-   * portion, and replace the conversation with the summary plus the recent
-   * turns. On any error the conversation is left untouched and the error is
-   * returned.
+   * Shared compaction body: delegates to `compaction.ts` to split the
+   * conversation, summarize the older portion, and replace the conversation
+   * with the summary plus the recent turns. On any error the conversation is
+   * left untouched and the error is returned.
    */
   private async doCompact(): Promise<Result<string>> {
-    const conversation = this.messages.slice(1); // drop the system message
-    const split = splitForCompaction(conversation, RECENT_TURNS_TO_KEEP);
-    if (split.toSummarize.length === 0) {
-      return okNoop();
-    }
-    const summary = await summarize(this.client, split.toSummarize);
-    if (!summary.ok) {
-      // Leave the conversation untouched; report the error.
-      return { ok: false, error: summary.error };
-    }
-    const framed: Message = {
-      role: "user",
-      content: `Here is a summary of our conversation so far: ${summary.value}`,
-    };
-    this.messages.length = 0;
-    this.messages.push(this.systemMessage);
-    this.messages.push(framed);
-    for (const m of split.recent) {
-      this.messages.push(m);
-    }
-    return {
-      ok: true,
-      value: `compacted ${split.toSummarize.length} messages`,
-    };
-  }
-
-  /**
-   * Handle `/profile` and `/profile <name>`.
-   * When name is omitted: lists available profiles from the source.
-   * When name is provided: loads the profile text and appends it to the
-   * conversation as a user message. The system message is never modified
-   * (invariant: profile instructions are appended, not injected into the
-   * system prompt, to preserve prefix caching).
-   * An empty profile file appends a clearing instruction instead.
-   */
-  private async handleProfileCommand(line: string): Promise<Result<string>> {
-    if (!this.profileSource) {
-      return {
-        ok: false,
-        error: {
-          kind: "malformed",
-          body: "profiles not supported by the current client",
-        },
-      };
-    }
-
-    const arg = line.slice("/profile".length).trim();
-    if (arg === "") {
-      const profiles = await this.profileSource.listProfiles();
-      if (!profiles.ok) return profiles;
-      // The built-in default profile is always available even when no files
-      // exist under profiles/; surface it first so it is discoverable.
-      return {
-        ok: true,
-        value: formatProfileList(
-          [DEFAULT_PROFILE_NAME, ...profiles.value],
-          this.activeProfile,
-        ),
-      };
-    }
-
-    const sub = arg.split(" ")[0];
-    if (sub === "init") {
-      const name = arg.slice("init".length).trim();
-      if (name === "") {
-        return {
-          ok: false,
-          error: { kind: "malformed", body: "usage: /profile init <name>" },
-        };
-      }
-      const result = await this.profileSource.initProfile(name);
-      if (!result.ok) return result;
-      return { ok: true, value: `initialized profile '${name}'` };
-    }
-
-    // The built-in default profile is resolved directly, not via the
-    // ProfileSource, since it has no file. It always has a non-empty body,
-    // so this is the "set" path, never the clearing path.
-    if (arg === DEFAULT_PROFILE_NAME) {
-      this.activeProfile = DEFAULT_PROFILE_NAME;
-      this.messages.push({ role: "user", content: DEFAULT_PROFILE_TEXT });
-      return { ok: true, value: `profile set to ${arg}` };
-    }
-
-    const loaded = await this.profileSource.loadProfile(arg);
-    if (!loaded.ok) return loaded;
-    const body = loaded.value.trim();
-    this.activeProfile = body === "" ? undefined : arg;
-    if (body !== "") {
-      this.messages.push({ role: "user", content: body });
-    } else {
-      this.messages.push({
-        role: "user",
-        content:
-          "Profile cleared. Please disregard any previous profile instructions.",
-      });
-    }
-    return {
-      ok: true,
-      value: body === "" ? "profile cleared" : `profile set to ${arg}`,
-    };
-  }
-
-  /**
-   * Handle `/resume` and `/resume <name>`. When name is omitted: lists all
-   * saved sessions. When a name is provided: loads the saved conversation
-   * and replaces the current messages array, restoring the active profile.
-   * The system message is always the one from the current Session (invariant
-   * #6); the saved messages are a full snapshot including the original system
-   * message, so on restore the saved system message replaces the live one
-   * and the rest of the conversation is spliced in.
-   */
-  private async handleResumeCommand(line: string): Promise<Result<string>> {
-    if (!this.sessionSource) {
-      return {
-        ok: false,
-        error: {
-          kind: "malformed",
-          body: "session persistence not supported by the current client",
-        },
-      };
-    }
-
-    const arg = line.slice("/resume".length).trim();
-    if (arg === "") {
-      const names = await this.sessionSource.list();
-      if (!names.ok) return names;
-      return { ok: true, value: formatSessionList(names.value) };
-    }
-
-    const loaded = await this.sessionSource.load(arg);
-    if (!loaded.ok) return loaded;
-    const saved = loaded.value;
-    // Replace the live conversation with the saved body, but keep the live
-    // system message at index 0 (invariant #6: the system message is set once
-    // in the constructor and never modified). The saved snapshot carries its
-    // own redundant system message; we drop it and splice the saved body
-    // (index 1 onwards) back in. This makes resume symmetric with doCompact,
-    // which also restores this.systemMessage at index 0.
-    const savedBody = saved.messages.slice(1);
-    this.messages.length = 0;
-    this.messages.push(this.systemMessage);
-    for (const m of savedBody) {
-      this.messages.push(m);
-    }
-    this.activeProfile = saved.activeProfile;
-    return {
-      ok: true,
-      value: `resumed session '${arg}' (${saved.messages.length - 1} messages)`,
-    };
-  }
-
-  /**
-   * Handle `/save` and `/save <name>`. When name is omitted: lists all saved
-   * sessions. When a name is provided: persists the current conversation
-   * under that name (the fixed auto-save snapshot is separate and written
-   * after every successful turn). Fails with a `malformed` error when the
-   * name is invalid.
-   */
-  private async handleSaveCommand(line: string): Promise<Result<string>> {
-    if (!this.sessionSource) {
-      return {
-        ok: false,
-        error: {
-          kind: "malformed",
-          body: "session persistence not supported by the current client",
-        },
-      };
-    }
-
-    const arg = line.slice("/save".length).trim();
-    if (arg === "") {
-      const names = await this.sessionSource.list();
-      if (!names.ok) return names;
-      return { ok: true, value: formatSessionList(names.value) };
-    }
-
-    const saved = await this.sessionSource.saveNamed(
-      arg,
-      [...this.messages],
-      this.activeProfile,
-    );
-    if (!saved.ok) return saved;
-    return { ok: true, value: `saved session '${arg}'` };
+    return runCompaction(this.compactionSource);
   }
 
   /**
@@ -630,9 +525,4 @@ export class Session {
     if (!this.sessionSource) return;
     await this.sessionSource.save([...this.messages], this.activeProfile);
   }
-}
-
-/** A successful no-op compaction result: nothing needed to be compacted. */
-function okNoop(): Result<string> {
-  return { ok: true, value: "nothing to compact" };
 }
