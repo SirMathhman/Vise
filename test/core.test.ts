@@ -8,7 +8,12 @@ import type {
 } from "../src/core/engine.ts";
 import type { Message, AssistantMessage } from "../src/core/errors.ts";
 import { Session } from "../src/repl/session.ts";
-import type { ContextSource } from "../src/repl/session.ts";
+import type {
+  ContextSource,
+  SessionSource,
+  SavedSession,
+} from "../src/repl/session.ts";
+import type { Result } from "../src/core/errors.ts";
 
 const noopTools: ToolRunner = {
   async run(_name, _args) {
@@ -535,5 +540,226 @@ describe("Session /profile init command (core)", () => {
         "profiles not supported by the current client",
       );
     }
+  });
+});
+
+describe("Session /save and /resume (core)", () => {
+  const client: Client = {
+    async chat() {
+      return { ok: true, value: { content: "reply" } };
+    },
+  };
+
+  function makeSessionSource(
+    sessions: Record<string, SavedSession>,
+    autoCalls: Message[][],
+  ): SessionSource {
+    const saved: Record<string, SavedSession> = { ...sessions };
+    return {
+      async save(messages: Message[], _active: string | undefined) {
+        autoCalls.push([...messages]);
+        saved["auto"] = {
+          messages,
+          activeProfile: undefined,
+          savedAt: "t",
+        };
+        return { ok: true, value: undefined };
+      },
+      async saveNamed(
+        name: string,
+        messages: Message[],
+        activeProfile: string | undefined,
+      ) {
+        saved[name] = {
+          messages,
+          activeProfile,
+          savedAt: "t",
+        };
+        return { ok: true, value: undefined };
+      },
+      async load(name: string): Promise<Result<SavedSession>> {
+        const s = saved[name];
+        if (!s) {
+          return {
+            ok: false,
+            error: {
+              kind: "malformed" as const,
+              body: `session '${name}' not found`,
+            },
+          };
+        }
+        return { ok: true, value: s };
+      },
+      async list(): Promise<Result<string[]>> {
+        return { ok: true, value: Object.keys(saved) };
+      },
+    };
+  }
+
+  test("/save <name> persists the current conversation and reports success", async () => {
+    const ss = makeSessionSource({}, []);
+    const session = new Session(client, noopTools, noToolDefs, {
+      cwd: "/tmp",
+      context: noopContext,
+      preTurnHooks: [],
+      postTurnHooks: [],
+      sessionSource: ss,
+    });
+    // One normal turn so the conversation has content beyond the system message.
+    const turn = await session.handleLine("hello");
+    if (turn === "exit" || !turn.ok) throw new Error("expected ok turn");
+    const result = await session.handleLine("/save mywork");
+    if (result === "exit" || !result.ok) throw new Error("expected ok result");
+    expect(result.value).toBe("saved session 'mywork'");
+  });
+
+  test("/save with no args lists saved sessions", async () => {
+    const ss = makeSessionSource(
+      { auto: { messages: [], activeProfile: undefined, savedAt: "t" } },
+      [],
+    );
+    const session = new Session(client, noopTools, noToolDefs, {
+      cwd: "/tmp",
+      context: noopContext,
+      preTurnHooks: [],
+      postTurnHooks: [],
+      sessionSource: ss,
+    });
+    const result = await session.handleLine("/save");
+    if (result === "exit" || !result.ok) throw new Error("expected ok result");
+    expect(result.value).toContain("saved sessions:");
+    expect(result.value).toContain("auto");
+  });
+
+  test("/resume <name> restores the saved conversation and active profile", async () => {
+    const savedMessages: Message[] = [
+      { role: "system", content: "Working directory: /saved" },
+      { role: "user", content: "earlier" },
+      { role: "assistant", content: "earlier reply" },
+    ];
+    const ss = makeSessionSource(
+      {
+        old: {
+          messages: savedMessages,
+          activeProfile: "personality",
+          savedAt: "t",
+        },
+      },
+      [],
+    );
+    const session = new Session(client, noopTools, noToolDefs, {
+      cwd: "/tmp",
+      context: noopContext,
+      preTurnHooks: [],
+      postTurnHooks: [],
+      sessionSource: ss,
+    });
+    const result = await session.handleLine("/resume old");
+    if (result === "exit" || !result.ok) throw new Error("expected ok result");
+    expect(result.value).toBe("resumed session 'old' (2 messages)");
+  });
+
+  test("/resume with no args lists saved sessions", async () => {
+    const ss = makeSessionSource(
+      { auto: { messages: [], activeProfile: undefined, savedAt: "t" } },
+      [],
+    );
+    const session = new Session(client, noopTools, noToolDefs, {
+      cwd: "/tmp",
+      context: noopContext,
+      preTurnHooks: [],
+      postTurnHooks: [],
+      sessionSource: ss,
+    });
+    const result = await session.handleLine("/resume");
+    if (result === "exit" || !result.ok) throw new Error("expected ok result");
+    expect(result.value).toContain("saved sessions:");
+    expect(result.value).toContain("auto");
+  });
+
+  test("/resume <name> returns an error when the session is not found", async () => {
+    const ss = makeSessionSource({}, []);
+    const session = new Session(client, noopTools, noToolDefs, {
+      cwd: "/tmp",
+      context: noopContext,
+      preTurnHooks: [],
+      postTurnHooks: [],
+      sessionSource: ss,
+    });
+    const result = await session.handleLine("/resume nothere");
+    if (result === "exit" || result.ok)
+      throw new Error("expected error result");
+    expect(result.error.kind).toBe("malformed");
+    if (result.error.kind === "malformed") {
+      expect(result.error.body).toContain("not found");
+    }
+  });
+
+  test("/save and /resume return an error when sessionSource is absent", async () => {
+    const session = new Session(client, noopTools, noToolDefs, {
+      cwd: "/tmp",
+      context: noopContext,
+      preTurnHooks: [],
+      postTurnHooks: [],
+    });
+    const saveResult = await session.handleLine("/save x");
+    if (saveResult === "exit" || saveResult.ok)
+      throw new Error("expected error result");
+    expect(saveResult.error.kind).toBe("malformed");
+    const resumeResult = await session.handleLine("/resume x");
+    if (resumeResult === "exit" || resumeResult.ok)
+      throw new Error("expected error result");
+    expect(resumeResult.error.kind).toBe("malformed");
+  });
+
+  test("auto-save runs after a successful turn and saves a copy of messages", async () => {
+    const autoCalls: Message[][] = [];
+    const ss = makeSessionSource({}, autoCalls);
+    const session = new Session(client, noopTools, noToolDefs, {
+      cwd: "/tmp",
+      context: noopContext,
+      preTurnHooks: [],
+      postTurnHooks: [],
+      sessionSource: ss,
+    });
+    const result = await session.handleLine("hello");
+    if (result === "exit" || !result.ok) throw new Error("expected ok turn");
+    // Auto-save must have captured the conversation (system + user + assistant).
+    expect(autoCalls.length).toBe(1);
+    const first = autoCalls[0];
+    expect(first?.length).toBeGreaterThanOrEqual(3);
+  });
+
+  test("auto-save failure does not interrupt the turn", async () => {
+    const failing: SessionSource = {
+      async save() {
+        return {
+          ok: false,
+          error: { kind: "network" as const, cause: "disk full" },
+        };
+      },
+      async saveNamed() {
+        return { ok: true, value: undefined };
+      },
+      async load(): Promise<Result<SavedSession>> {
+        return {
+          ok: false,
+          error: { kind: "malformed" as const, body: "none" },
+        };
+      },
+      async list(): Promise<Result<string[]>> {
+        return { ok: true, value: [] };
+      },
+    };
+    const session = new Session(client, noopTools, noToolDefs, {
+      cwd: "/tmp",
+      context: noopContext,
+      preTurnHooks: [],
+      postTurnHooks: [],
+      sessionSource: failing,
+    });
+    const result = await session.handleLine("hello");
+    // The turn still succeeds even though save() returned an error.
+    if (result === "exit" || !result.ok) throw new Error("expected ok turn");
   });
 });

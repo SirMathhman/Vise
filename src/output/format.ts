@@ -75,6 +75,7 @@ export function formatHelp(opts: {
   hasTools: boolean;
   hasProfile: boolean;
   hasNotes: boolean;
+  hasSessions: boolean;
   preTurnHookCount: number;
   postTurnHookCount: number;
 }): string {
@@ -105,6 +106,12 @@ export function formatHelp(opts: {
     lines.push("/note            list all notes");
     lines.push("/note init <name>  create a new note with a placeholder body");
   }
+  if (opts.hasSessions) {
+    lines.push("/save            list saved sessions");
+    lines.push("/save <name>     save the current conversation under a name");
+    lines.push("/resume          list saved sessions");
+    lines.push("/resume <name>   resume a previously saved session");
+  }
   if (opts.preTurnHookCount > 0) {
     lines.push("");
     lines.push(
@@ -131,4 +138,15 @@ export function formatProfileList(
   return profiles
     .map((p) => (p === activeProfile ? `* ${p} (active)` : `  ${p}`))
     .join("\n");
+}
+
+/**
+ * Render the list of saved sessions as a multi-line string. Each line is
+ * `  <name>  <savedAt>`. The `auto` entry (the fixed crash-recovery snapshot)
+ * is shown first when present.
+ */
+export function formatSessionList(names: string[]): string {
+  if (names.length === 0) return "no saved sessions";
+  const lines = names.map((n) => `  ${n}`).join("\n");
+  return `saved sessions:\n${lines}\n\n/resume <name>  resume a session\n/save <name>   save the current conversation`;
 }

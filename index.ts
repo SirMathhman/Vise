@@ -11,10 +11,18 @@ import type {
   NoteSource,
   PreTurnHook,
   PostTurnHook,
+  SessionSource,
+  SavedSession,
 } from "./src/repl/session.ts";
-import type { Result } from "./src/core/errors.ts";
+import type { Message, Result } from "./src/core/errors.ts";
 import { listNotes, formatNoteEntry, initNote } from "./src/notes.ts";
 import { listProfiles, readProfile, initProfile } from "./src/profiles.ts";
+import {
+  saveAutoSession,
+  saveNamedSession,
+  loadSession,
+  listSessions,
+} from "./src/sessions.ts";
 import { formatCompactionFailure, formatError } from "./src/output/format.ts";
 import { red, dim, cyan } from "./src/output/color.ts";
 import { StreamDisplay } from "./src/driver/stream.ts";
@@ -160,6 +168,39 @@ class FileNoteSource implements NoteSource {
 }
 
 /**
+ * Edge implementation of SessionSource backed by a `sessions/` directory of
+ * `.json` files. Thin adapter over the shared session I/O in
+ * `src/sessions.ts` (invariant #2: edge owns I/O; the session only asks for
+ * messages and profile names).
+ */
+class FileSessionSource implements SessionSource {
+  constructor(private readonly base: string) {}
+
+  async save(
+    messages: Message[],
+    activeProfile: string | undefined,
+  ): Promise<Result<void>> {
+    return saveAutoSession(this.base, messages, activeProfile);
+  }
+
+  async saveNamed(
+    name: string,
+    messages: Message[],
+    activeProfile: string | undefined,
+  ): Promise<Result<void>> {
+    return saveNamedSession(this.base, name, messages, activeProfile);
+  }
+
+  async load(name: string): Promise<Result<SavedSession>> {
+    return loadSession(this.base, name);
+  }
+
+  async list(): Promise<Result<string[]>> {
+    return { ok: true, value: listSessions(this.base) };
+  }
+}
+
+/**
  * Read hook commands from `.viserc.json` if present.
  *
  * Each hook key (`preTurnCommand`, `postTurnCommand`) accepts either a
@@ -206,6 +247,7 @@ const client = new LlmClient();
 const display = new StreamDisplay();
 
 const profileSource = new FileProfileSource(process.cwd());
+const sessionSource = new FileSessionSource(process.cwd());
 
 // The subagent handler needs the ToolRunner for recursion, and the runner
 // needs the handler. Break the cycle with a lazily-resolving structural
@@ -236,6 +278,7 @@ const session = new Session(client, toolRunner, tools, {
   toolController,
   profileSource,
   noteSource: new FileNoteSource(process.cwd()),
+  sessionSource,
   preTurnHooks,
   postTurnHooks,
   onToken: display.onToken,

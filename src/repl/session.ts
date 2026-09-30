@@ -11,7 +11,11 @@ import type {
   ViseError,
   PromptProgress,
 } from "../core/errors.ts";
-import { formatHelp, formatProfileList } from "../output/format.ts";
+import {
+  formatHelp,
+  formatProfileList,
+  formatSessionList,
+} from "../output/format.ts";
 import {
   handleModelCommand,
   handleNotesCommand,
@@ -120,6 +124,44 @@ export interface PostTurnHook {
 }
 
 /**
+ * A snapshot of a conversation at a point in time, persisted for later
+ * resumption. The `messages` array includes the system message; `activeProfile`
+ * is the profile name that was active when the snapshot was taken (undefined
+ * when no profile was set).
+ */
+export interface SavedSession {
+  messages: Message[];
+  activeProfile: string | undefined;
+  savedAt: string;
+}
+
+/**
+ * Source of saved session snapshots. The session calls `save` after every
+ * successful normal turn (auto-save) and calls `load`/`list` for the
+ * `/resume` command. Provided by the edge (the session performs no I/O).
+ */
+export interface SessionSource {
+  /** Persist the current conversation under the fixed auto-save name. */
+  save(
+    messages: Message[],
+    activeProfile: string | undefined,
+  ): Promise<Result<void>>;
+  /**
+   * Persist the current conversation under a user-chosen name. Fails with a
+   * `malformed` error when the name is invalid.
+   */
+  saveNamed(
+    name: string,
+    messages: Message[],
+    activeProfile: string | undefined,
+  ): Promise<Result<void>>;
+  /** Load a saved session by name. Fails with a `malformed` error when not found. */
+  load(name: string): Promise<Result<SavedSession>>;
+  /** List all saved session names (without file extension). */
+  list(): Promise<Result<string[]>>;
+}
+
+/**
  * Auto-compaction triggers when the last turn's server-reported token count
  * reaches this fraction of the model's context window. Chosen high enough that
  * a normal turn only compacts when overflow is genuinely imminent.
@@ -181,6 +223,7 @@ export interface SessionOptions {
    * starting map of the project without calling tools.
    */
   initialMessage?: string;
+  sessionSource?: SessionSource;
 }
 
 /**
@@ -207,6 +250,7 @@ export class Session {
   private readonly onThinking?: (token: string) => void;
   private readonly onPromptProgress?: (progress: PromptProgress) => void;
   private readonly initialMessage?: string;
+  private readonly sessionSource?: SessionSource;
   private activeProfile: string | undefined;
 
   constructor(
@@ -230,6 +274,7 @@ export class Session {
     this.onThinking = options.onThinking;
     this.onPromptProgress = options.onPromptProgress;
     this.initialMessage = options.initialMessage;
+    this.sessionSource = options.sessionSource;
     this.systemMessage = {
       role: "system",
       content: `Working directory: ${options.cwd}`,
@@ -259,6 +304,7 @@ export class Session {
           hasTools: !!this.toolController,
           hasProfile: !!this.profileSource,
           hasNotes: !!this.noteSource,
+          hasSessions: !!this.sessionSource,
           preTurnHookCount: this.preTurnHooks.length,
           postTurnHookCount: this.postTurnHooks.length,
         }),
@@ -292,6 +338,12 @@ export class Session {
     if (trimmed === "/note" || trimmed.startsWith("/note ")) {
       return handleNotesCommand(this.noteSource, trimmed);
     }
+    if (trimmed === "/resume" || trimmed.startsWith("/resume ")) {
+      return this.handleResumeCommand(trimmed);
+    }
+    if (trimmed === "/save" || trimmed.startsWith("/save ")) {
+      return this.handleSaveCommand(trimmed);
+    }
     await this.runHooks(this.preTurnHooks);
     this.messages.push({ role: "user", content: line });
     const auto = await this.maybeAutoCompact();
@@ -307,6 +359,7 @@ export class Session {
     );
     if (!turn.ok) return turn;
     await this.runHooks(this.postTurnHooks);
+    await this.saveSession();
     // A failed auto-compact is non-fatal: proceed with the (uncut) conversation
     // and let the edge report that compaction did not happen. The `streamed`
     // flag tells the edge the reply text (if any) was already written
@@ -450,6 +503,101 @@ export class Session {
       ok: true,
       value: body === "" ? "profile cleared" : `profile set to ${arg}`,
     };
+  }
+
+  /**
+   * Handle `/resume` and `/resume <name>`. When name is omitted: lists all
+   * saved sessions. When a name is provided: loads the saved conversation
+   * and replaces the current messages array, restoring the active profile.
+   * The system message is always the one from the current Session (invariant
+   * #6); the saved messages are a full snapshot including the original system
+   * message, so on restore the saved system message replaces the live one
+   * and the rest of the conversation is spliced in.
+   */
+  private async handleResumeCommand(line: string): Promise<Result<string>> {
+    if (!this.sessionSource) {
+      return {
+        ok: false,
+        error: {
+          kind: "malformed",
+          body: "session persistence not supported by the current client",
+        },
+      };
+    }
+
+    const arg = line.slice("/resume".length).trim();
+    if (arg === "") {
+      const names = await this.sessionSource.list();
+      if (!names.ok) return names;
+      return { ok: true, value: formatSessionList(names.value) };
+    }
+
+    const loaded = await this.sessionSource.load(arg);
+    if (!loaded.ok) return loaded;
+    const saved = loaded.value;
+    // Replace the live conversation with the saved one. The saved messages
+    // array is a full snapshot including its own system message, so we
+    // replace everything (index 0 is always a system message by invariant).
+    this.messages.length = 0;
+    for (const m of saved.messages) {
+      this.messages.push(m);
+    }
+    this.activeProfile = saved.activeProfile;
+    return {
+      ok: true,
+      value: `resumed session '${arg}' (${saved.messages.length - 1} messages)`,
+    };
+  }
+
+  /**
+   * Auto-save the current conversation after a successful normal turn.
+   * Silently ignores I/O errors — a save failure must not interrupt the
+   * turn. The snapshot is written under the fixed auto-save name so the
+   * edge can always find the latest state.
+   */
+  /**
+   * Handle `/save` and `/save <name>`. When name is omitted: lists all saved
+   * sessions. When a name is provided: persists the current conversation
+   * under that name (the fixed auto-save snapshot is separate and written
+   * after every successful turn). Fails with a `malformed` error when the
+   * name is invalid.
+   */
+  private async handleSaveCommand(line: string): Promise<Result<string>> {
+    if (!this.sessionSource) {
+      return {
+        ok: false,
+        error: {
+          kind: "malformed",
+          body: "session persistence not supported by the current client",
+        },
+      };
+    }
+
+    const arg = line.slice("/save".length).trim();
+    if (arg === "") {
+      const names = await this.sessionSource.list();
+      if (!names.ok) return names;
+      return { ok: true, value: formatSessionList(names.value) };
+    }
+
+    const saved = await this.sessionSource.saveNamed(
+      arg,
+      [...this.messages],
+      this.activeProfile,
+    );
+    if (!saved.ok) return saved;
+    return { ok: true, value: `saved session '${arg}'` };
+  }
+
+  /**
+   * Auto-save the current conversation after a successful normal turn.
+   * Silently ignores I/O errors — a save failure must not interrupt the
+   * turn. The snapshot is written under the fixed auto-save name so the
+   * edge can always find the latest state.
+   */
+  private async saveSession(): Promise<void> {
+    if (!this.sessionSource) return;
+    await this.sessionSource.save([...this.messages], this.activeProfile);
   }
 }
 
