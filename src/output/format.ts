@@ -99,6 +99,7 @@ export function formatHelp(opts: {
     lines.push(
       "/profile        list available profiles",
       "/profile <name>  set the active profile",
+      "/profile default  activate the built-in default profile",
       "/profile init <name>  create a new profile with a placeholder body",
     );
   }

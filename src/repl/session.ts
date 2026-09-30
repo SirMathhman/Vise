@@ -176,6 +176,24 @@ const COMPACTION_THRESHOLD = 0.9;
 const RECENT_TURNS_TO_KEEP = 2;
 
 /**
+ * The reserved name of the built-in profile. `default` is not a file under
+ * `profiles/`; it is a constant resolved directly by the session, so there is
+ * always a baseline persona even when `profiles/` is empty. A file named
+ * `default.md` would be shadowed by this constant (the constant always wins),
+ * the same way `auto` is reserved for sessions.
+ */
+const DEFAULT_PROFILE_NAME = "default";
+
+/**
+ * The body of the built-in `default` profile, a general assistant baseline
+ * distinct from the subagent's `DEFAULT_PROFILE`. It is appended as a user
+ * message when the user runs `/profile default`, shaping the conversation
+ * without ever touching the system message.
+ */
+const DEFAULT_PROFILE_TEXT =
+  "You are a helpful assistant. Respond clearly and concisely, and use your tools when a task requires them.";
+
+/**
  * Edge-provided options for constructing a Session. Groups the optional
  * edge services (model controller, profile source, hooks) and the required
  * context source + cwd into a single object, so adding a new service is
@@ -466,9 +484,14 @@ export class Session {
     if (arg === "") {
       const profiles = await this.profileSource.listProfiles();
       if (!profiles.ok) return profiles;
+      // The built-in default profile is always available even when no files
+      // exist under profiles/; surface it first so it is discoverable.
       return {
         ok: true,
-        value: formatProfileList(profiles.value, this.activeProfile),
+        value: formatProfileList(
+          [DEFAULT_PROFILE_NAME, ...profiles.value],
+          this.activeProfile,
+        ),
       };
     }
 
@@ -484,6 +507,15 @@ export class Session {
       const result = await this.profileSource.initProfile(name);
       if (!result.ok) return result;
       return { ok: true, value: `initialized profile '${name}'` };
+    }
+
+    // The built-in default profile is resolved directly, not via the
+    // ProfileSource, since it has no file. It always has a non-empty body,
+    // so this is the "set" path, never the clearing path.
+    if (arg === DEFAULT_PROFILE_NAME) {
+      this.activeProfile = DEFAULT_PROFILE_NAME;
+      this.messages.push({ role: "user", content: DEFAULT_PROFILE_TEXT });
+      return { ok: true, value: `profile set to ${arg}` };
     }
 
     const loaded = await this.profileSource.loadProfile(arg);

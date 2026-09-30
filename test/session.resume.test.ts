@@ -1,9 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import type {
-  Client,
-  Tool,
-  ToolRunner,
-} from "../src/core/engine.ts";
+import type { Client, Tool, ToolRunner } from "../src/core/engine.ts";
 import type { Message, Result } from "../src/core/errors.ts";
 import { Session } from "../src/repl/session.ts";
 import type {
