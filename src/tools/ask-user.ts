@@ -9,23 +9,29 @@ import { red } from "../output/color.ts";
  * string. The core never references this type — it only sees the
  * ToolRunner's string result (invariant #4).
  */
-export interface UserPrompter {
+/**
+ * The request payload for a single `UserPrompter.ask` call. A parameter
+ * object so the interface stays stable as the ask_user tool grows more
+ * knobs (e.g. timeouts, required flags) — no positional parameter ripples.
+ */
+export interface AskRequest {
+  /** The free-form question to display. */
+  question: string;
   /**
-   * Ask the user a question and return their answer.
-   *
-   * @param question  The free-form question to display.
-   * @param options   Optional predefined choices to display alongside the
-   *                  question. The user may pick one or type a free-form
-   *                  answer. Empty array means free-form only.
-   * @param multiSelect  When true, the user may select more than one choice
-   *                  (separating numbers with commas in their reply).
-   *                  Defaults to false.
+   * Predefined choices to display alongside the question. Empty array
+   * means free-form only.
    */
-  ask(
-    question: string,
-    options: string[],
-    multiSelect?: boolean,
-  ): Promise<string>;
+  options: string[];
+  /**
+   * When true, the user may select more than one choice (separating
+   * numbers with commas in their reply). Defaults to false.
+   */
+  multiSelect?: boolean;
+}
+
+export interface UserPrompter {
+  /** Ask the user a question and return their answer. */
+  ask(request: AskRequest): Promise<string>;
 }
 
 /**
@@ -38,11 +44,9 @@ export interface UserPrompter {
 export class RlUserPrompter implements UserPrompter {
   constructor(private readonly mainRl: Interface) {}
 
-  ask(
-    question: string,
-    options: string[],
-    multiSelect = false,
-  ): Promise<string> {
+  ask({ question, options, multiSelect = false }: AskRequest): Promise<
+    string
+  > {
     return new Promise((resolve) => {
       this.mainRl.pause();
 
@@ -123,7 +127,7 @@ export function makeAskUserHandler(
       typeof args["multi_select"] === "boolean" &&
       args["multi_select"] === true;
 
-    const answer = await prompter.ask(question, options, multiSelect);
+    const answer = await prompter.ask({ question, options, multiSelect });
     if (answer === "") {
       return "error: ask_user was cancelled (no input received)";
     }

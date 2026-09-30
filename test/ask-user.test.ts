@@ -1,26 +1,19 @@
 import { describe, test, expect } from "bun:test";
 import {
   makeAskUserHandler,
+  type AskRequest,
   type UserPrompter,
 } from "../src/tools/ask-user.ts";
 
 /** A UserPrompter that records each call and returns a fixed answer. */
 function stubPrompter(answer: string): {
   prompter: UserPrompter;
-  calls: {
-    question: string;
-    options: string[];
-    multiSelect: boolean | undefined;
-  }[];
+  calls: AskRequest[];
 } {
-  const calls: {
-    question: string;
-    options: string[];
-    multiSelect: boolean | undefined;
-  }[] = [];
+  const calls: AskRequest[] = [];
   const prompter: UserPrompter = {
-    async ask(question: string, options: string[], multiSelect?: boolean) {
-      calls.push({ question, options, multiSelect });
+    async ask(request: AskRequest) {
+      calls.push(request);
       return answer;
     },
   };
