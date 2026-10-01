@@ -325,6 +325,12 @@ export class Session {
   private readonly sessionSource?: SessionSource;
   private readonly onMaxRounds?: () => Promise<boolean>;
   private activeProfile: string | undefined;
+  /**
+   * The AbortController for the turn in flight. A fresh controller is created
+   * at the start of each normal turn; `interrupt()` aborts it so the in-flight
+   * model call and tool rounds stop. `null` when no turn is running.
+   */
+  private currentAbort: AbortController | null = null;
   private readonly profileCommands: ProfileCommands;
   private readonly sessionCommands: SessionCommands;
   private readonly compactionSource: CompactionSource;
@@ -471,40 +477,57 @@ export class Session {
     if (trimmed === "/save" || trimmed.startsWith("/save ")) {
       return handleSaveCommand(this.sessionCommands, trimmed);
     }
-    await this.runHooks(this.preTurnHooks);
-    this.messages.push({ role: "user", content: line });
-    const auto = await this.maybeAutoCompact();
-    const streamed = this.onToken !== undefined;
-    const turn = await runTurn(
-      this.client,
-      this.tools,
-      this.messages,
-      this.toolDefs,
-      {
-        onToken: this.onToken,
-        onThinking: this.onThinking,
-        onPromptProgress: this.onPromptProgress,
-        onToolCall: this.onToolCall,
-        onMaxRounds: this.onMaxRounds,
-      },
-    );
-    if (!turn.ok) return turn;
-    await this.runHooks(this.postTurnHooks);
-    await this.saveSession();
-    // A failed auto-compact is non-fatal: proceed with the (uncut) conversation
-    // and let the edge report that compaction did not happen. The `streamed`
-    // flag tells the edge the reply text (if any) was already written
-    // token-by-token, so it only needs to emit the trailing newline rather
-    // than re-print.
-    if (auto.ok) {
-      return { ok: true, value: turn.value, streamed };
+    const abort = new AbortController();
+    this.currentAbort = abort;
+    try {
+      await this.runHooks(this.preTurnHooks);
+      this.messages.push({ role: "user", content: line });
+      const auto = await this.maybeAutoCompact();
+      const streamed = this.onToken !== undefined;
+      const turn = await runTurn(
+        this.client,
+        this.tools,
+        this.messages,
+        this.toolDefs,
+        {
+          onToken: this.onToken,
+          onThinking: this.onThinking,
+          onPromptProgress: this.onPromptProgress,
+          onToolCall: this.onToolCall,
+          onMaxRounds: this.onMaxRounds,
+          abort: abort.signal,
+        },
+      );
+      if (!turn.ok) return turn;
+      await this.runHooks(this.postTurnHooks);
+      await this.saveSession();
+      // A failed auto-compact is non-fatal: proceed with the (uncut)
+      // conversation and let the edge report that compaction did not happen.
+      // The `streamed` flag tells the edge the reply text (if any) was
+      // already written token-by-token, so it only needs to emit the trailing
+      // newline rather than re-print.
+      if (auto.ok) {
+        return { ok: true, value: turn.value, streamed };
+      }
+      return {
+        ok: true,
+        value: turn.value,
+        streamed,
+        compactionWarning: auto.error,
+      };
+    } finally {
+      this.currentAbort = null;
     }
-    return {
-      ok: true,
-      value: turn.value,
-      streamed,
-      compactionWarning: auto.error,
-    };
+  }
+
+  /**
+   * Interrupt the turn in flight, if any. Aborts the in-flight model call and
+   * stops the tool loop between rounds; the running turn's promise then
+   * resolves with an `interrupted` error. Safe to call when no turn is running
+   * (no-op). Called by the edge's SIGINT handler.
+   */
+  interrupt(): void {
+    this.currentAbort?.abort();
   }
 
   private async handleWorkflowCommand(line: string): Promise<LineResult> {

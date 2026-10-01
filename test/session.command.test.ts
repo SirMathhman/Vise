@@ -59,6 +59,47 @@ describe("Session streaming flag (core)", () => {
   });
 });
 
+describe("Session.interrupt (core)", () => {
+  test("returns interrupted when interrupt() is called during an in-flight turn", async () => {
+    const client: Client = {
+      async chat() {
+        return { ok: true, value: { content: "hi" } };
+      },
+    };
+    const session = new Session(client, noopTools, noToolDefs, {
+      cwd: "/tmp",
+      context: noopContext,
+      preTurnHooks: [],
+      postTurnHooks: [],
+    });
+    const turnPromise = session.handleLine("hi");
+    // interrupt() runs synchronously, before the turn's awaits resolve, so the
+    // per-turn signal is already aborted when runTurn performs its pre-call
+    // check. The turn must surface as interrupted.
+    session.interrupt();
+    const result = await turnPromise;
+    expect(result).not.toBe("exit");
+    if (result === "exit" || result.ok) throw new Error("expected interrupted error");
+    expect(result.error).toEqual({ kind: "interrupted" });
+  });
+
+  test("is a no-op when no turn is in flight", () => {
+    const client: Client = {
+      async chat() {
+        return { ok: true, value: { content: "reply" } };
+      },
+    };
+    const session = new Session(client, noopTools, noToolDefs, {
+      cwd: "/tmp",
+      context: noopContext,
+      preTurnHooks: [],
+      postTurnHooks: [],
+    });
+    // No turn running: interrupt() must not throw.
+    expect(() => session.interrupt()).not.toThrow();
+  });
+});
+
 describe("Session /tool command (core)", () => {
   /**
    * A minimal ToolController stub for exercising the /tool dispatch in

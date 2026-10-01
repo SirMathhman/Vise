@@ -336,6 +336,20 @@ const rl = createInterface({
 // readline so a second prompt can never open a competing interface.
 const rlPrompter = new RlUserPrompter(rl);
 
+// Ctrl+C handling. `terminal: false` makes readline emit "SIGINT" on Ctrl+C
+// rather than swallowing the key, so we own the behavior. While a turn is in
+// flight the first Ctrl+C interrupts it (aborting the in-flight model call
+// and stopping the tool loop); at an idle prompt Ctrl+C exits the process.
+let turnRunning = false;
+rl.on("SIGINT", () => {
+  if (turnRunning) {
+    session.interrupt();
+  } else {
+    process.exitCode = 130;
+    rl.close();
+  }
+});
+
 // The subagent handler needs the ToolRunner for recursion, and the runner
 // needs the handler. Break the cycle with a lazily-resolving structural
 // runner: its `run` closure reads `toolRunner` at dispatch time (after the
@@ -437,8 +451,10 @@ let chain = Promise.resolve();
 rl.on("line", (line) => {
   if (line.trim() === "") return;
   chain = chain.then(async () => {
+    turnRunning = true;
     display.beginTurn();
     const result = await session.handleLine(line);
+    turnRunning = false;
     if (result === "exit") {
       rl.close();
       return;

@@ -6,6 +6,8 @@ export function formatError(err: ViseError): string {
     return `vise: HTTP ${err.status} from server: ${err.body}`;
   } else if (err.kind === "network") {
     return `vise: ${err.cause}`;
+  } else if (err.kind === "interrupted") {
+    return "vise: interrupted";
   } else {
     return `vise: ${err.body}`;
   }
@@ -32,6 +34,8 @@ export function formatCompactionFailure(err: ViseError): string {
     return `vise: auto-compact skipped (HTTP ${err.status}): ${err.body}`;
   } else if (err.kind === "network") {
     return `vise: auto-compact skipped (network): ${err.cause}`;
+  } else if (err.kind === "interrupted") {
+    return "vise: auto-compact skipped: interrupted";
   } else {
     return `vise: auto-compact skipped: ${err.body}`;
   }

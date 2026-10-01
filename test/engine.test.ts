@@ -126,6 +126,53 @@ describe("runTurn streaming (core)", () => {
   });
 });
 
+describe("runTurn interruption (core)", () => {
+  test("returns interrupted without calling the client when the signal is already aborted", async () => {
+    let calls = 0;
+    const client: Client = {
+      async chat() {
+        calls += 1;
+        return { ok: true, value: { content: "hi" } };
+      },
+    };
+    const controller = new AbortController();
+    controller.abort();
+    const result = await runTurn(
+      client,
+      noopTools,
+      [{ role: "user", content: "go" }],
+      noToolDefs,
+      { abort: controller.signal },
+    );
+    expect(result.ok).toBeFalse();
+    if (!result.ok) expect(result.error).toEqual({ kind: "interrupted" });
+    expect(calls).toBe(0);
+  });
+
+  test("returns interrupted when the signal is aborted by the in-flight round", async () => {
+    const controller = new AbortController();
+    const client: Client = {
+      async chat() {
+        // Simulate the in-flight stream noticing the interrupt: the edge
+        // aborts the controller while the model call is in flight, and the
+        // call completes (here with a network error, as an aborted fetch
+        // would). The post-round abort check must win over that error.
+        controller.abort();
+        return { ok: false, error: { kind: "network", cause: "aborted" } };
+      },
+    };
+    const result = await runTurn(
+      client,
+      noopTools,
+      [{ role: "user", content: "go" }],
+      noToolDefs,
+      { abort: controller.signal },
+    );
+    expect(result.ok).toBeFalse();
+    if (!result.ok) expect(result.error).toEqual({ kind: "interrupted" });
+  });
+});
+
 describe("summarize (core)", () => {
   test("does not invoke onToken (compaction is not streamed)", async () => {
     const seen: string[] = [];

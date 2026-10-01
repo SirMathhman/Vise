@@ -78,6 +78,7 @@ export async function streamChat(
   onToken?: (token: string) => void,
   onThinking?: (token: string) => void,
   onPromptProgress?: (progress: PromptProgress) => void,
+  signal?: AbortSignal,
 ): Promise<{ message: AssistantMessage; usage?: number; sawData: boolean }> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
@@ -138,6 +139,10 @@ export async function streamChat(
   };
 
   for (;;) {
+    if (signal?.aborted) {
+      await reader.cancel().catch(() => {});
+      break;
+    }
     const { value, done } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
@@ -386,6 +391,7 @@ export class LlmClient implements Client {
     onThinking?: (token: string) => void,
     onPromptProgress?: (progress: PromptProgress) => void,
     responseSchema?: Record<string, unknown>,
+    signal?: AbortSignal,
   ): Promise<Result<AssistantMessage>> {
     const body: Record<string, unknown> = {
       model: this.currentModel,
@@ -412,6 +418,7 @@ export class LlmClient implements Client {
           authorization: `Bearer ${API_KEY}`,
         },
         body: JSON.stringify(body),
+        signal,
       });
       if (!res.ok) {
         const text = await res.text();
@@ -432,6 +439,7 @@ export class LlmClient implements Client {
         onToken,
         onThinking,
         onPromptProgress,
+        signal,
       );
       if (!acc.sawData) {
         return {

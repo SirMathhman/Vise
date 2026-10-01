@@ -33,6 +33,7 @@ export interface PromptProgress {
 export type ViseError =
   | { kind: "http"; status: number; body: string }
   | { kind: "network"; cause: string }
-  | { kind: "malformed"; body: string };
+  | { kind: "malformed"; body: string }
+  | { kind: "interrupted" };
 
 export type Result<T> = { ok: true; value: T } | { ok: false; error: ViseError };

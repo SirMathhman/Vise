@@ -32,6 +32,7 @@ export interface Client {
     onThinking?: (token: string) => void,
     onPromptProgress?: (progress: PromptProgress) => void,
     responseSchema?: Record<string, unknown>,
+    signal?: AbortSignal,
   ): Promise<Result<AssistantMessage>>;
 }
 
@@ -50,6 +51,12 @@ export interface TurnCallbacks {
   onPromptProgress?: (progress: PromptProgress) => void;
   onToolCall?: (name: string, depth?: number) => void;
   onMaxRounds?: () => Promise<boolean>;
+  /**
+   * Aborts the turn when the user interrupts (e.g. Ctrl+C). The edge sets the
+   * signal on interrupt; the core threads it to the in-flight model call and
+   * stops the tool loop between rounds. When absent, turns run to completion.
+   */
+  abort?: AbortSignal;
 }
 
 /**
@@ -172,6 +179,9 @@ export async function runTurn(
         error: { kind: "malformed", body: "exceeded maximum tool rounds" },
       };
     }
+    if (callbacks.abort?.aborted) {
+      return { ok: false, error: { kind: "interrupted" } };
+    }
     rounds += 1;
     const result = await client.chat(
       messages,
@@ -179,7 +189,12 @@ export async function runTurn(
       callbacks.onToken,
       callbacks.onThinking,
       callbacks.onPromptProgress,
+      undefined,
+      callbacks.abort,
     );
+    if (callbacks.abort?.aborted) {
+      return { ok: false, error: { kind: "interrupted" } };
+    }
     if (!result.ok) {
       return { ok: false, error: result.error };
     }
