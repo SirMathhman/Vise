@@ -36,4 +36,6 @@ export type ViseError =
   | { kind: "malformed"; body: string }
   | { kind: "interrupted" };
 
-export type Result<T> = { ok: true; value: T } | { ok: false; error: ViseError };
+export type Result<T> =
+  | { ok: true; value: T }
+  | { ok: false; error: ViseError };

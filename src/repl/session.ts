@@ -523,11 +523,17 @@ export class Session {
   /**
    * Interrupt the turn in flight, if any. Aborts the in-flight model call and
    * stops the tool loop between rounds; the running turn's promise then
-   * resolves with an `interrupted` error. Safe to call when no turn is running
-   * (no-op). Called by the edge's SIGINT handler.
+   * resolves with an `interrupted` error. Returns `true` if a turn was running
+   * and was interrupted, `false` if no turn was running (no-op). Called by the
+   * edge's SIGINT handler, which uses the return value to decide whether to
+   * interrupt (turn in flight) or exit (idle prompt).
    */
-  interrupt(): void {
-    this.currentAbort?.abort();
+  interrupt(): boolean {
+    if (this.currentAbort) {
+      this.currentAbort.abort();
+      return true;
+    }
+    return false;
   }
 
   private async handleWorkflowCommand(line: string): Promise<LineResult> {

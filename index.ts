@@ -340,11 +340,11 @@ const rlPrompter = new RlUserPrompter(rl);
 // rather than swallowing the key, so we own the behavior. While a turn is in
 // flight the first Ctrl+C interrupts it (aborting the in-flight model call
 // and stopping the tool loop); at an idle prompt Ctrl+C exits the process.
-let turnRunning = false;
 rl.on("SIGINT", () => {
-  if (turnRunning) {
-    session.interrupt();
-  } else {
+  // `interrupt()` returns `true` if a turn was in flight (aborted) and `false`
+  // at an idle prompt. The session is the single source of truth for turn
+  // state; no module-level flag is needed.
+  if (!session.interrupt()) {
     process.exitCode = 130;
     rl.close();
   }
@@ -451,10 +451,8 @@ let chain = Promise.resolve();
 rl.on("line", (line) => {
   if (line.trim() === "") return;
   chain = chain.then(async () => {
-    turnRunning = true;
     display.beginTurn();
     const result = await session.handleLine(line);
-    turnRunning = false;
     if (result === "exit") {
       rl.close();
       return;
