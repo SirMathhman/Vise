@@ -569,7 +569,11 @@ export class Session {
     await this.runHooks(this.postTurnHooks);
     await this.saveSession();
     if (auto.ok) {
-      return { ok: true, value: result.value, streamed: this.onToken !== undefined };
+      return {
+        ok: true,
+        value: result.value,
+        streamed: this.onToken !== undefined,
+      };
     }
     return {
       ok: true,

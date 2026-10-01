@@ -6,11 +6,7 @@ import type { Client, Tool, ToolRunner } from "../src/core/engine.ts";
 import type { Message } from "../src/core/errors.ts";
 import type { ContextSource, WorkflowSource } from "../src/repl/session.ts";
 import { Session } from "../src/repl/session.ts";
-import {
-  initWorkflow,
-  listWorkflows,
-  loadWorkflow,
-} from "../src/workflows.ts";
+import { initWorkflow, listWorkflows, loadWorkflow } from "../src/workflows.ts";
 
 let root: string;
 
@@ -28,7 +24,9 @@ describe("workflow storage (edge)", () => {
     const global = join(root, "global");
     initWorkflow(project, "review");
     expect(loadWorkflow(project, global, "review")).toEqual({
-      steps: [{ type: "instruction", text: "TODO: describe the required step" }],
+      steps: [
+        { type: "instruction", text: "TODO: describe the required step" },
+      ],
     });
     expect(listWorkflows(project, global)).toEqual([
       { name: "review", scope: "project", active: true },
@@ -40,8 +38,14 @@ describe("workflow storage (edge)", () => {
     const global = join(root, "shadow-global");
     mkdirSync(join(project, "workflows"), { recursive: true });
     mkdirSync(join(global, "workflows"), { recursive: true });
-    writeFileSync(join(project, "workflows", "review.json"), JSON.stringify({ steps: [] }));
-    writeFileSync(join(global, "workflows", "review.json"), JSON.stringify({ steps: [] }));
+    writeFileSync(
+      join(project, "workflows", "review.json"),
+      JSON.stringify({ steps: [] }),
+    );
+    writeFileSync(
+      join(global, "workflows", "review.json"),
+      JSON.stringify({ steps: [] }),
+    );
     expect(listWorkflows(project, global)).toEqual([
       { name: "review", scope: "project", active: true },
       { name: "review", scope: "global", active: false },
@@ -59,7 +63,10 @@ describe("runWorkflow (core)", () => {
         description: "read a file",
         parameters: {
           type: "object",
-          properties: { path: { type: "string" }, encoding: { type: "string" } },
+          properties: {
+            path: { type: "string" },
+            encoding: { type: "string" },
+          },
           required: ["path"],
         },
       },
@@ -75,14 +82,26 @@ describe("runWorkflow (core)", () => {
           expect(tools).toBeUndefined();
           expect(schema).toEqual({
             type: "object",
-            properties: { path: { type: "string" }, encoding: { type: "string" } },
+            properties: {
+              path: { type: "string" },
+              encoding: { type: "string" },
+            },
             required: ["path", "encoding"],
           });
-          expect(messages.some((message) => message.content === "instruction tool output")).toBeTrue();
-          return { ok: true, value: { content: '{"path":"README.md","encoding":"utf8"}' } };
+          expect(
+            messages.some(
+              (message) => message.content === "instruction tool output",
+            ),
+          ).toBeTrue();
+          return {
+            ok: true,
+            value: { content: '{"path":"README.md","encoding":"utf8"}' },
+          };
         }
         if (tools) {
-          const instruction = messages.find((message) => message.content.startsWith("Workflow instruction"));
+          const instruction = messages.find((message) =>
+            message.content.startsWith("Workflow instruction"),
+          );
           if (instruction && !events.includes("instruction-finished")) {
             if (!events.includes("instruction-tool-round")) {
               events.push("instruction-tool-round");
@@ -90,11 +109,16 @@ describe("runWorkflow (core)", () => {
                 ok: true,
                 value: {
                   content: "",
-                  tool_calls: [{
-                    type: "function",
-                    id: "instruction-call",
-                    function: { name: "read_file", arguments: '{"path":"."}' },
-                  }],
+                  tool_calls: [
+                    {
+                      type: "function",
+                      id: "instruction-call",
+                      function: {
+                        name: "read_file",
+                        arguments: '{"path":"."}',
+                      },
+                    },
+                  ],
                 },
               };
             }
@@ -123,7 +147,11 @@ describe("runWorkflow (core)", () => {
       workflow: {
         steps: [
           { type: "instruction", text: "Inspect the task" },
-          { type: "tool", name: "read_file", args: { path: "<path>", encoding: "<encoding>" } },
+          {
+            type: "tool",
+            name: "read_file",
+            args: { path: "<path>", encoding: "<encoding>" },
+          },
         ],
       },
       request: "Review the project",
@@ -138,10 +166,28 @@ describe("runWorkflow (core)", () => {
       "run:read_file:README.md",
       "final-turn",
     ]);
-    expect(messages.some((message) => message.content.includes("step output"))).toBeTrue();
-    expect(messages.some((message) => message.role === "assistant" && message.content === '{"path":"README.md","encoding":"utf8"}')).toBeTrue();
-    expect(messages.filter((message) => message.role === "assistant" && message.tool_calls)).toHaveLength(1);
-    expect(messages.some((message) => message.role === "user" && message.content.startsWith("Workflow tool step 2 result"))).toBeTrue();
+    expect(
+      messages.some((message) => message.content.includes("step output")),
+    ).toBeTrue();
+    expect(
+      messages.some(
+        (message) =>
+          message.role === "assistant" &&
+          message.content === '{"path":"README.md","encoding":"utf8"}',
+      ),
+    ).toBeTrue();
+    expect(
+      messages.filter(
+        (message) => message.role === "assistant" && message.tool_calls,
+      ),
+    ).toHaveLength(1);
+    expect(
+      messages.some(
+        (message) =>
+          message.role === "user" &&
+          message.content.startsWith("Workflow tool step 2 result"),
+      ),
+    ).toBeTrue();
   });
 
   test("stops with an error when a forced tool step fails", async () => {
@@ -162,7 +208,9 @@ describe("runWorkflow (core)", () => {
       toolDefs,
       messages: [{ role: "system", content: "system" }],
       name: "sample",
-      workflow: { steps: [{ type: "tool", name: "read_file", args: { path: "<path>" } }] },
+      workflow: {
+        steps: [{ type: "tool", name: "read_file", args: { path: "<path>" } }],
+      },
       request: "",
     });
     expect(result.ok).toBeFalse();
@@ -191,7 +239,9 @@ describe("runWorkflow (core)", () => {
       toolDefs,
       messages: [{ role: "system", content: "system" }],
       name: "sample",
-      workflow: { steps: [{ type: "tool", name: "read_file", args: { path: "<path>" } }] },
+      workflow: {
+        steps: [{ type: "tool", name: "read_file", args: { path: "<path>" } }],
+      },
       request: "",
     });
     expect(result.ok).toBeFalse();
@@ -244,13 +294,17 @@ describe("Session /workflow command (core)", () => {
     });
 
     const listed = await session.handleLine("/workflow");
-    if (listed === "exit" || !listed.ok) throw new Error("expected workflow list");
+    if (listed === "exit" || !listed.ok)
+      throw new Error("expected workflow list");
     expect(listed.value).toContain("review [project] (active)");
     expect(listed.value).toContain("review [global] (shadowed)");
 
     await session.handleLine("/workflow init local");
     await session.handleLine("/workflow init --global shared");
-    expect(initialized).toEqual([["local", "project"], ["shared", "global"]]);
+    expect(initialized).toEqual([
+      ["local", "project"],
+      ["shared", "global"],
+    ]);
   });
 
   test("passes trailing user input into the workflow and returns its final answer", async () => {
@@ -269,7 +323,9 @@ describe("Session /workflow command (core)", () => {
     };
     const client: Client = {
       async chat(messages) {
-        requestSeen = messages.find((message) => message.content.startsWith("Run workflow"))?.content ?? "";
+        requestSeen =
+          messages.find((message) => message.content.startsWith("Run workflow"))
+            ?.content ?? "";
         return { ok: true, value: { content: "review complete" } };
       },
     };
@@ -280,8 +336,11 @@ describe("Session /workflow command (core)", () => {
       preTurnHooks: [],
       postTurnHooks: [],
     });
-    const result = await session.handleLine("/workflow review Check the auth changes");
-    if (result === "exit" || !result.ok) throw new Error("expected workflow success");
+    const result = await session.handleLine(
+      "/workflow review Check the auth changes",
+    );
+    if (result === "exit" || !result.ok)
+      throw new Error("expected workflow success");
     expect(result.value).toBe("review complete");
     expect(requestSeen).toContain("Check the auth changes");
   });
