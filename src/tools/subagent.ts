@@ -93,8 +93,8 @@ export function makeSubagentHandler(
         {
           ...callbacks,
           onToken: indentedOnToken,
-          onToolCall: (name, depth = 0) => {
-            callbacks.onToolCall?.(name, depth + 1);
+          onToolCall: (name) => {
+            callbacks.onToolCall?.(name, 1);
           },
         },
       );
