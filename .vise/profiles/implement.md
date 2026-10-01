@@ -1,12 +1,3 @@
----
-name: Implement
-description: Describe what this custom agent does and when to use it.
-argument-hint: The inputs this agent expects, e.g., "a task to implement" or "a question to answer".
-agents: ["Analyzer", "Planning Subagent"]
-disable-model-invocation: true
-user-invocable: true
----
-
 Standing instructions for all work in this environment.
 
 ## DO / DO NOT
@@ -19,7 +10,7 @@ These rules constrain your **own initiative** only. The reviewer subagent's reco
 - **DO** always fix lint *errors*.
 - **DO** fix a lint *warning* when the reviewer recommends it.
 - **DO NOT** fix a lint *warning* on your own initiative — not to satisfy a size limit, not to "clean up," not to preempt the reviewer.
-- **DO NOT** let a size-limit warning (≤ 300 lines/file, ≤ 50 lines/function) drive your design or make you split or trim code.
+- **DO NOT** let a size-limit warning drive your design or make you split or trim code. The size limits are files < 500 code lines and functions < 100 lines (see `AGENTS.md`).
 - **Why:** you lack full codebase context (especially as it grows), so you cannot judge whether a warning is worth fixing. The reviewer has that context and is the sole authority on warnings.
 
 ### Tests
@@ -43,9 +34,9 @@ These rules constrain your **own initiative** only. The reviewer subagent's reco
 
 You are NOT running in autonomous mode. The user is present and available to answer questions.
 
-- When a request is ambiguous, ask as many clarifying questions as required using `vscode_askQuestions` before proceeding.
+- When a request is ambiguous, ask as many clarifying questions as required using `ask_user` before proceeding.
 - Do not guess or assume specifications — ask.
-- Batch related questions into a single `vscode_askQuestions` call where practical.
+- Batch related questions into a single `ask_user` call where practical, or use `multi_select` for independent yes/no-style questions.
 - If fulfilling a request requires changing how documented features behave (per project docs, architecture docs, or similar), treat that as a signal to ask — even if existing tests appear to constrain the answer. The user may have a broader design in mind that the tests do not yet reflect.
 
 ## Hooks
@@ -54,25 +45,26 @@ If a request seems to contradict the hooks, implement the request first, then ma
 
 ## Version Control
 
-- Commit often: after each plan phase, and after refactoring or other significant changes, so the working tree handed back is clean.
+- Commit often: after each plan phase, and after refactoring or other significant changes, so the working tree handed back is clean. Use `run_powershell` to run git commands.
 - Do not dig into git history extensively.
 
 ## Architectural Review
 
-When concluding a task, you MUST launch an `Analyzer` #tool:subagent` mode to explore architectural improvement opportunities. This is mandatory in all scenarios — no exceptions. You MUST explicitly set the subagent type to "Analyzer". Do NOT omit the subagent type (otherwise it will become another "Optimal" subagent, which is non executable. This is a known VSCode bug).
+When concluding a task, you MUST run a reviewer subagent to explore architectural improvement opportunities. This is mandatory in all scenarios — no exceptions.
 
-- You MUST instruct it to follow the `subagent-analysis` SKILL (not an instructions file) at `~\.agents\skills\subagent-analysis\SKILL.md`. You may pass task-related context (e.g., what was just implemented) to focus the review.
-- If the score is greater than 5, you MUST implement the fix and then commit. This score rule is the single gate for acting on the subagent's recommendation — including any lint-warning fixes it recommends (see DO / DO NOT).
+- Launch it with `run_subagent`, passing the profile name `analyze` in the `profile` argument. You may pass task-related context (e.g., what was just implemented) to focus the review.
+- If the reviewer's score is greater than 5, you MUST implement the fix and then commit. This score rule is the single gate for acting on the subagent's recommendation — including any lint-warning fixes it recommends (see DO / DO NOT).
 - If the reviewer proposes tests and/or added tests, then you MUST confirm with the user that these tests are valid, because tests lock in the functional requirements.
 
 ## Search
 
-- **HIGHLY encouraged:** use the `mcp_semantic-sea2_search` tool for code and documentation search instead of text-based grep/glob searches. It performs semantic search over the corpus and returns relevant results with context.
+- Use `search_files` (recursive regex content search) and `find_files` (recursive regex name match) for code and documentation discovery. For references in external dependencies, run them under `node_modules/`.
+- Read `read_note` on a note's body when a note in the listing looks relevant; the note listing is auto-injected into context at startup.
 
-## Skills
+## Notes
 
-If you find yourself consistently working in a nontrivial domain (body of knowledge), strongly consider creating a skill file. See the `create-skill` skill for details.
+If you find yourself repeatedly needing a project-specific fact or how-to that is not yet captured, save it with `save_note` so it is available to future turns and sessions. The note listing is auto-injected at startup; full note bodies are read on demand via `read_note`.
 
 ## Pitfalls
 
-- The `where` command is sometimes misleading. Before installing a process or tool, try running it directly; it may already be installed but not resolvable by `where`.
+- The `where` command is sometimes misleading. Before installing a process or tool, try running it directly via `run_powershell`; it may already be installed but not resolvable by `where`.
