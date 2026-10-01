@@ -1,6 +1,6 @@
-import type { Client, Tool, ToolRunner } from "./engine.ts";
+import type { Client, Tool, ToolRunner, TurnCallbacks } from "./engine.ts";
 import { runTurn } from "./engine.ts";
-import type { Message, PromptProgress, Result } from "./errors.ts";
+import type { Message, Result } from "./errors.ts";
 
 export type WorkflowStep =
   | { type: "instruction"; text: string }
@@ -20,10 +20,7 @@ interface WorkflowRunOptions {
   name: string;
   workflow: Workflow;
   request: string;
-  onToken?: (token: string) => void;
-  onThinking?: (token: string) => void;
-  onPromptProgress?: (progress: PromptProgress) => void;
-  onMaxRounds?: () => Promise<boolean>;
+  callbacks: TurnCallbacks;
 }
 
 /** Execute workflow steps in order, then ask the model for a final response. */
@@ -56,10 +53,7 @@ export async function runWorkflow(
     options.tools,
     messages,
     options.toolDefs,
-    options.onToken,
-    options.onThinking,
-    options.onPromptProgress,
-    options.onMaxRounds,
+    workflowCallbacks(options),
   );
 }
 
@@ -77,10 +71,7 @@ async function runInstructionStep(
     options.tools,
     options.messages,
     options.toolDefs,
-    options.onToken,
-    options.onThinking,
-    options.onPromptProgress,
-    options.onMaxRounds,
+    workflowCallbacks(options),
   );
 }
 
@@ -145,8 +136,8 @@ async function runToolStep(
     options.messages,
     undefined,
     undefined,
-    options.onThinking,
-    options.onPromptProgress,
+    options.callbacks.onThinking,
+    options.callbacks.onPromptProgress,
     { type: "object", ...schema },
   );
   if (!generated.ok) return generated;
@@ -161,6 +152,7 @@ async function runToolStep(
     role: "assistant",
     content: generated.value.content,
   });
+  options.callbacks.onToolCall?.(step.name, 0);
   let output: string;
   try {
     output = await options.tools.run(step.name, args.value);
@@ -241,6 +233,10 @@ function withRequiredPlaceholders(
     : [];
   schema.required = [...new Set([...required, ...placeholders])];
   return schema;
+}
+
+function workflowCallbacks(options: WorkflowRunOptions): TurnCallbacks {
+  return options.callbacks;
 }
 
 function validateArguments(

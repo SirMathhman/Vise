@@ -83,21 +83,13 @@ export function makeSubagentHandler(
     };
 
     const run = () =>
-      runSubagent(
-        client,
-        tools,
-        toolDefs,
-        systemMessage,
-        profileText,
-        task,
-        {
-          ...callbacks,
-          onToken: indentedOnToken,
-          onToolCall: (name) => {
-            callbacks.onToolCall?.(name, 1);
-          },
+      runSubagent(client, tools, toolDefs, systemMessage, profileText, task, {
+        ...callbacks,
+        onToken: indentedOnToken,
+        onToolCall: (name) => {
+          callbacks.onToolCall?.(name, 1);
         },
-      );
+      });
     const result = withPreservedSlotCache
       ? await withPreservedSlotCache(run)
       : await run();

@@ -59,11 +59,13 @@ describe("makeSubagentHandler (edge)", () => {
           ok: true,
           value: {
             content: "",
-            tool_calls: [{
-              type: "function",
-              id: "call-1",
-              function: { name: "noop", arguments: "{}" },
-            }],
+            tool_calls: [
+              {
+                type: "function",
+                id: "call-1",
+                function: { name: "noop", arguments: "{}" },
+              },
+            ],
           },
         };
       },
