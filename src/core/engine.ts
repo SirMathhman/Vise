@@ -115,13 +115,6 @@ export async function summarize(client: Client, toSummarize: Message[]): Promise
 }
 
 /**
- * Pure core pipeline: takes the accumulated conversation and a user line,
- * runs the model, dispatches any tool calls through `tools`, and returns the
- * assistant's final content. Mutates `messages` (appending assistant and
- * tool messages). No `node:` imports, no I/O — depends only on `Client` and
- * `ToolRunner`, so it is testable with stubs.
- */
-/**
  * Callback invoked when the tool loop reaches `MAX_TOOL_ROUNDS`. The edge
  * prompts the user for consent to continue. Returns `true` to reset the
  * round counter and keep looping, `false` to end the turn with an error.
