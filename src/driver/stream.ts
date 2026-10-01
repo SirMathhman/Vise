@@ -92,7 +92,7 @@ export class StreamDisplay {
   };
 
   /** Display a tool invocation as a visible event between model rounds. */
-  onToolCall = (name: string): void => {
+  onToolCall = (name: string, depth = 0): void => {
     if (this.promptActive) {
       this.promptActive = false;
       process.stdout.write("\n");
@@ -102,7 +102,7 @@ export class StreamDisplay {
       process.stdout.write("\n");
     }
     if (this.contentWritten) this.flushMdLine();
-    process.stdout.write(dim(`tool: ${name}`) + "\n");
+    process.stdout.write(dim(`${"  ".repeat(depth)}tool: ${name}`) + "\n");
   };
 
   /** Reset all state at the start of a new user turn. */

@@ -48,24 +48,8 @@ export interface TurnCallbacks {
   onToken?: (token: string) => void;
   onThinking?: (token: string) => void;
   onPromptProgress?: (progress: PromptProgress) => void;
-  onToolCall?: (name: string) => void;
+  onToolCall?: (name: string, depth?: number) => void;
   onMaxRounds?: () => Promise<boolean>;
-}
-
-export function mergeTurnCallbacks(
-  primary: TurnCallbacks,
-  overrides: TurnCallbacks,
-): TurnCallbacks {
-  return {
-    onToken: overrides.onToken ?? primary.onToken,
-    onThinking: overrides.onThinking ?? primary.onThinking,
-    onPromptProgress: overrides.onPromptProgress ?? primary.onPromptProgress,
-    onToolCall: (name) => {
-      primary.onToolCall?.(name);
-      overrides.onToolCall?.(name);
-    },
-    onMaxRounds: primary.onMaxRounds ?? overrides.onMaxRounds,
-  };
 }
 
 /**
@@ -207,7 +191,7 @@ export async function runTurn(
         tool_calls: reply.tool_calls,
       });
       for (const tc of reply.tool_calls) {
-        callbacks.onToolCall?.(tc.function.name);
+        callbacks.onToolCall?.(tc.function.name, 0);
         let output: string;
         try {
           const args = JSON.parse(tc.function.arguments) as Record<

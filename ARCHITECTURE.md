@@ -55,11 +55,10 @@ src/
   cli.ts            # argument parsing, subcommands, flag definitions
   driver/
     terminal.ts     # interactive TTY driver: prompt, echo, readline wiring
-    stream.ts       # streaming display state machine: owns the live
-                    # prompt/thinking counters and the markdown line buffer,
-                    # and exposes onToken/onThinking/onPromptProgress plus
-                    # beginTurn/finish; encapsulates the cross-callback
-                    # ordering invariants so they live in one place
+    stream.ts       # streaming display state machine: owns live prompt,
+                    # thinking, visible tool-call events, and markdown
+                    # buffering; exposes onToken/onThinking/onPromptProgress/
+                    # onToolCall plus beginTurn/finish and callback ordering invariants
     pipe.ts         # piped/script driver: read input to EOF, emit results
   client/
     llm.ts          # LLM transport: implements the core's `Client` type,
@@ -308,14 +307,14 @@ role earns it, not before.
 - **Implicit global state.** Session state (conversation state, interrupt
   handling) must live in the session object, not in module-level `let`
   bindings, or the core becomes untestable and un-reentrant. The streaming
-  display state is the live instance of this: the live prompt/thinking
-  counters and the markdown line buffer (fence state) are driven by three
-  independent per-token callbacks (`onToken`/`onThinking`/`onPromptProgress`)
-  that all write to the same stdout stream. That state must live in a
-  single driver object (e.g. `driver/stream.ts` `StreamDisplay`) that owns
-  the cross-callback ordering invariants (e.g. flush any partial content
-  line before a counter starts a fresh line, so buffered content is never
-  emitted after the counter line), not in module-level `let`s in `index.ts`.
+  display state is the live instance of this: prompt/thinking counters, tool
+  invocation events, and the markdown line buffer (fence state) are driven
+  by callbacks (`onToken`/`onThinking`/`onPromptProgress`/`onToolCall`) that
+  all write to the same stdout stream. That state must live in a single
+  driver object (e.g. `driver/stream.ts` `StreamDisplay`) that owns the
+  cross-callback ordering invariants (e.g. flush any partial content line
+  before a counter or tool event starts a fresh line, so buffered content is
+  never emitted after that event), not in module-level `let`s in `index.ts`.
 - **Dynamic model switching and context awareness.** Model switching
   via `/model` changes the active model on the client. Because context
   limits and token usages vary per model, the session must query `contextMax`

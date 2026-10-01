@@ -4,7 +4,7 @@ import type {
   ToolRunner,
   TurnCallbacks,
 } from "../core/engine.ts";
-import { mergeTurnCallbacks, runSubagent } from "../core/engine.ts";
+import { runSubagent } from "../core/engine.ts";
 import { dim } from "../output/color.ts";
 import { formatError } from "../output/format.ts";
 import type { ProfileSource } from "../repl/session.ts";
@@ -90,7 +90,13 @@ export function makeSubagentHandler(
         systemMessage,
         profileText,
         task,
-        mergeTurnCallbacks(callbacks, { onToken: indentedOnToken }),
+        {
+          ...callbacks,
+          onToken: indentedOnToken,
+          onToolCall: (name, depth = 0) => {
+            callbacks.onToolCall?.(name, depth + 1);
+          },
+        },
       );
     const result = withPreservedSlotCache
       ? await withPreservedSlotCache(run)

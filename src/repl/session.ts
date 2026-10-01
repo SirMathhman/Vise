@@ -278,7 +278,7 @@ export interface SessionOptions {
    */
   onPromptProgress?: (progress: PromptProgress) => void;
   /** Edge-provided notification for each tool invocation before execution. */
-  onToolCall?: (name: string) => void;
+  onToolCall?: (name: string, depth?: number) => void;
   /**
    * Initial context injected as the first user message after the system
    * message. Provided by the edge at construction time; typically contains
@@ -320,7 +320,7 @@ export class Session {
   private readonly onToken?: (token: string) => void;
   private readonly onThinking?: (token: string) => void;
   private readonly onPromptProgress?: (progress: PromptProgress) => void;
-  private readonly onToolCall?: (name: string) => void;
+  private readonly onToolCall?: (name: string, depth?: number) => void;
   private readonly initialMessage?: string;
   private readonly sessionSource?: SessionSource;
   private readonly onMaxRounds?: () => Promise<boolean>;

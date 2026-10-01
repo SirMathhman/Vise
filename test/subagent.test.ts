@@ -49,6 +49,39 @@ function stubProfileSource(
 }
 
 describe("makeSubagentHandler (edge)", () => {
+  test("marks tool notifications from a subagent as nested", async () => {
+    let round = 0;
+    const client: Client = {
+      async chat() {
+        round += 1;
+        if (round > 1) return { ok: true, value: { content: "done" } };
+        return {
+          ok: true,
+          value: {
+            content: "",
+            tool_calls: [{
+              type: "function",
+              id: "call-1",
+              function: { name: "noop", arguments: "{}" },
+            }],
+          },
+        };
+      },
+    };
+    const seen: [string, number | undefined][] = [];
+    const source = stubProfileSource(async () => ({ ok: true, value: "" }));
+    const handler = makeSubagentHandler(
+      client,
+      source,
+      "/tmp",
+      noopTools,
+      noToolDefs,
+      { onToolCall: (name, depth) => seen.push([name, depth]) },
+    );
+    await handler({ task: "do the thing", profile: "default" });
+    expect(seen).toEqual([["noop", 1]]);
+  });
+
   test("preserves and restores slot cache around the subagent operation", async () => {
     const { client, calls } = recordingClient("done");
     const order: string[] = [];
