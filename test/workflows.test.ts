@@ -170,6 +170,36 @@ describe("runWorkflow (core)", () => {
       expect(result.error.body).toContain("workflow tool 'read_file' failed");
     }
   });
+
+  test("rejects schema-invalid generated arguments without executing the tool", async () => {
+    let toolRuns = 0;
+    const client: Client = {
+      async chat(_messages, _tools, _token, _thinking, _progress, schema) {
+        if (!schema) throw new Error("only args generation should run");
+        return { ok: true, value: { content: '{"path":42}' } };
+      },
+    };
+    const runner: ToolRunner = {
+      async run() {
+        toolRuns += 1;
+        return "should not execute";
+      },
+    };
+    const result = await runWorkflow({
+      client,
+      tools: runner,
+      toolDefs,
+      messages: [{ role: "system", content: "system" }],
+      name: "sample",
+      workflow: { steps: [{ type: "tool", name: "read_file", args: { path: "<path>" } }] },
+      request: "",
+    });
+    expect(result.ok).toBeFalse();
+    expect(toolRuns).toBe(0);
+    if (!result.ok && result.error.kind === "malformed") {
+      expect(result.error.body).toContain("argument 'path' must be string");
+    }
+  });
 });
 
 describe("Session /workflow command (core)", () => {

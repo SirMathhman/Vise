@@ -143,6 +143,16 @@ async function runToolStep(
   if (!generated.ok) return generated;
   const args = parseArguments(generated.value.content, step.name);
   if (!args.ok) return args;
+  const validationError = validateArguments(args.value, schema);
+  if (validationError) {
+    return {
+      ok: false,
+      error: {
+        kind: "malformed",
+        body: `workflow generated invalid arguments for '${step.name}': ${validationError}`,
+      },
+    };
+  }
 
   options.messages.push({
     role: "assistant",
@@ -204,4 +214,67 @@ function withRequiredPlaceholders(
     : [];
   schema.required = [...new Set([...required, ...placeholders])];
   return schema;
+}
+
+function validateArguments(
+  args: Record<string, unknown>,
+  schema: Record<string, unknown>,
+): string | undefined {
+  const properties = schema.properties;
+  if (typeof properties !== "object" || properties === null || Array.isArray(properties)) {
+    return "tool schema properties must be an object";
+  }
+  const propertySchemas = properties as Record<string, unknown>;
+  const required = Array.isArray(schema.required)
+    ? schema.required.filter((entry): entry is string => typeof entry === "string")
+    : [];
+  for (const key of required) {
+    if (!(key in args)) return `missing required argument '${key}'`;
+  }
+  for (const [key, value] of Object.entries(args)) {
+    if (!(key in propertySchemas)) return `unknown argument '${key}'`;
+    const definition = propertySchemas[key];
+    if (typeof definition !== "object" || definition === null || Array.isArray(definition)) {
+      return `invalid schema for argument '${key}'`;
+    }
+    const error = validateValue(value, definition as Record<string, unknown>, key);
+    if (error) return error;
+  }
+  return undefined;
+}
+
+function validateValue(
+  value: unknown,
+  schema: Record<string, unknown>,
+  path: string,
+): string | undefined {
+  const type = schema.type;
+  const valid = type === "string" ? typeof value === "string"
+    : type === "integer" ? typeof value === "number" && Number.isInteger(value)
+      : type === "number" ? typeof value === "number" && Number.isFinite(value)
+        : type === "boolean" ? typeof value === "boolean"
+          : type === "array" ? Array.isArray(value)
+            : type === "object" ? typeof value === "object" && value !== null && !Array.isArray(value)
+              : true;
+  if (!valid) return `argument '${path}' must be ${String(type)}`;
+  if (Array.isArray(schema.enum) && !schema.enum.includes(value)) {
+    return `argument '${path}' must be one of the allowed values`;
+  }
+  if (type === "array" && Array.isArray(value) && typeof schema.items === "object" && schema.items !== null) {
+    const itemSchema = schema.items as Record<string, unknown>;
+    for (const [index, item] of value.entries()) {
+      const error = validateValue(item, itemSchema, `${path}[${index}]`);
+      if (error) return error;
+    }
+  }
+  if (type === "object" && typeof value === "object" && value !== null && !Array.isArray(value)) {
+    const nested = schema.properties;
+    if (typeof nested === "object" && nested !== null && !Array.isArray(nested)) {
+      return validateArguments(value as Record<string, unknown>, {
+        properties: nested,
+        required: schema.required,
+      });
+    }
+  }
+  return undefined;
 }
