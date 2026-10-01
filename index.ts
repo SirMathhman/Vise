@@ -354,6 +354,7 @@ const toolRunner = createToolRunner({
     display.onToken,
     display.onThinking,
     display.onPromptProgress,
+    (operation) => client.withPreservedSlotCache(operation),
   ),
   ask_user: makeAskUserHandler(rlPrompter),
   self: makeSelfHandler({

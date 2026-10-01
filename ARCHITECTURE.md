@@ -178,6 +178,11 @@ Rules:
   llama.cpp's response format constraints are used only on argument-generation
   requests (without native tool definitions), since its automatic tool-call
   grammar cannot be combined with a user grammar in the same request.
+- `LlmClient` owns best-effort llama.cpp slot-cache preservation around
+  subagent calls. It discovers populated, idle slots through `/slots`, saves
+  snapshots by process/nesting depth/slot, and restores them in `finally`;
+  this requires the server's `--slot-save-path` option and does not add a
+  separate filesystem dependency to Vise.
 - `ToolController` is a core-owned type (`core/engine.ts`) for the `/tool`
   command. It lets the user inspect and toggle the model-facing tools. The
   full set of tool definitions is always sent to the model regardless of

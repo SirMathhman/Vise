@@ -47,6 +47,60 @@ function stubProfileSource(load: (name: string) => Promise<Result<string>>): Pro
 }
 
 describe("makeSubagentHandler (edge)", () => {
+  test("preserves and restores slot cache around the subagent operation", async () => {
+    const { client, calls } = recordingClient("done");
+    const order: string[] = [];
+    const source = stubProfileSource(async () => ({ ok: true, value: "" }));
+    const handler = makeSubagentHandler(
+      client,
+      source,
+      "/tmp",
+      noopTools,
+      noToolDefs,
+      undefined,
+      undefined,
+      undefined,
+      async (operation) => {
+        order.push("snapshot");
+        const result = await operation();
+        order.push("restore");
+        return result;
+      },
+    );
+    expect(await handler({ task: "do it", profile: "default" })).toBe("done");
+    expect(order).toEqual(["snapshot", "restore"]);
+    expect(calls).toHaveLength(1);
+  });
+
+  test("restores the slot cache when the subagent operation rejects", async () => {
+    const client: Client = {
+      async chat() {
+        throw new Error("subagent crash");
+      },
+    };
+    let restored = false;
+    const source = stubProfileSource(async () => ({ ok: true, value: "" }));
+    const handler = makeSubagentHandler(
+      client,
+      source,
+      "/tmp",
+      noopTools,
+      noToolDefs,
+      undefined,
+      undefined,
+      undefined,
+      async (operation) => {
+        try {
+          return await operation();
+        } finally {
+          restored = true;
+        }
+      },
+    );
+    await expect(handler({ task: "do it", profile: "default" })).rejects.toThrow("subagent crash");
+    expect(restored).toBeTrue();
+  });
+
   test("returns the subagent's result and passes a fresh conversation to the client", async () => {
     const { client, calls } = recordingClient("done");
     // The "default" profile is a built-in constant, so the ProfileSource is

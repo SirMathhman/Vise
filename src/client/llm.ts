@@ -24,7 +24,15 @@ interface Usage {
 }
 
 interface Slot {
+  id: number;
   n_ctx: number;
+  n_prompt_tokens?: number;
+  is_processing?: boolean;
+}
+
+interface SlotStateResult {
+  n_saved?: number;
+  n_restored?: number;
 }
 
 interface ModelsResponse {
@@ -151,6 +159,124 @@ export async function streamChat(
 export class LlmClient implements Client {
   private lastPromptTokens: number | undefined;
   private currentModel: string = MODEL;
+  private slotCacheDepth = 0;
+  private readonly slotRequestTimeoutMs: number;
+
+  constructor(slotRequestTimeoutMs = 5_000) {
+    this.slotRequestTimeoutMs = slotRequestTimeoutMs;
+  }
+
+  /** Run an operation while best-effort preserving populated llama.cpp slots. */
+  async withPreservedSlotCache<T>(operation: () => Promise<T>): Promise<T> {
+    const depth = this.slotCacheDepth++;
+    let saved: { id: number; filename: string }[] = [];
+    try {
+      saved = await this.savePopulatedSlots(depth);
+    } catch {
+      // Slot endpoints and slot saving may be disabled; run without snapshots.
+    }
+    try {
+      return await operation();
+    } finally {
+      for (const slot of saved) {
+        try {
+          await this.restoreSlot(slot.id, slot.filename);
+        } catch {
+          // Cache preservation is best-effort and must not mask the operation.
+        }
+      }
+      this.slotCacheDepth -= 1;
+    }
+  }
+
+  private async savePopulatedSlots(
+    depth: number,
+  ): Promise<{ id: number; filename: string }[]> {
+    const model = encodeURIComponent(this.currentModel);
+    const response = await this.slotFetch(
+      `http://localhost:8080/slots?model=${model}&include_slots=true`,
+      {
+        headers: { authorization: `Bearer ${API_KEY}` },
+      },
+      this.slotRequestTimeoutMs,
+    );
+    if (!response.ok) return [];
+    const body: unknown = await response.json();
+    const slots = Array.isArray(body)
+      ? (body as Slot[])
+      : typeof body === "object" && body !== null && Array.isArray((body as { slots?: unknown }).slots)
+        ? (body as { slots: Slot[] }).slots
+        : [];
+    if (!Array.isArray(slots)) return [];
+
+    const saved: { id: number; filename: string }[] = [];
+    for (const slot of slots) {
+      if (
+        !Number.isInteger(slot.id) ||
+        (slot.n_prompt_tokens ?? 0) <= 0 ||
+        slot.is_processing === true
+      ) {
+        continue;
+      }
+      const filename = `vise-${process.pid}-subagent-${depth}-slot-${slot.id}.bin`;
+      try {
+        const result = await this.slotAction(slot.id, "save", filename);
+        if ((result.n_saved ?? 0) > 0) saved.push({ id: slot.id, filename });
+      } catch {
+        // Continue saving other slots when one slot cannot be preserved.
+      }
+    }
+    return saved;
+  }
+
+  private async restoreSlot(id: number, filename: string): Promise<void> {
+    await this.slotAction(id, "restore", filename);
+  }
+
+  private async slotAction(
+    id: number,
+    action: "save" | "restore",
+    filename: string,
+  ): Promise<SlotStateResult> {
+    const model = encodeURIComponent(this.currentModel);
+    const response = await this.slotFetch(
+      `http://localhost:8080/slots/${id}?action=${action}&model=${model}`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${API_KEY}`,
+        },
+        body: JSON.stringify({ filename, model: this.currentModel }),
+      },
+      this.slotRequestTimeoutMs,
+    );
+    if (!response.ok) return {};
+    return (await response.json()) as SlotStateResult;
+  }
+
+  private async slotFetch(
+    url: string,
+    init: RequestInit,
+    timeoutMs: number,
+  ): Promise<Response> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await Promise.race([
+        fetch(url, { ...init, signal: controller.signal }),
+        new Promise<Response>((_resolve, reject) => {
+          controller.signal.addEventListener(
+            "abort",
+            () => reject(new DOMException("slot request timed out", "TimeoutError")),
+            { once: true },
+          );
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
 
   /**
    * The current active model id.

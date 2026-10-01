@@ -36,6 +36,7 @@ export function makeSubagentHandler(
   onToken?: (token: string) => void,
   onThinking?: (token: string) => void,
   onPromptProgress?: (progress: PromptProgress) => void,
+  withPreservedSlotCache?: <T>(operation: () => Promise<T>) => Promise<T>,
 ): (args: Record<string, unknown>) => Promise<string> {
   return async (args) => {
     const task = args["task"];
@@ -79,17 +80,21 @@ export function makeSubagentHandler(
       subAtLineStart = token.endsWith("\n") && token.length > 0;
     };
 
-    const result = await runSubagent(
-      client,
-      tools,
-      toolDefs,
-      systemMessage,
-      profileText,
-      task,
-      indentedOnToken,
-      onThinking,
-      onPromptProgress,
-    );
+    const run = () =>
+      runSubagent(
+        client,
+        tools,
+        toolDefs,
+        systemMessage,
+        profileText,
+        task,
+        indentedOnToken,
+        onThinking,
+        onPromptProgress,
+      );
+    const result = withPreservedSlotCache
+      ? await withPreservedSlotCache(run)
+      : await run();
     if (!result.ok) return `error: ${formatError(result.error)}`;
     return result.value;
   };

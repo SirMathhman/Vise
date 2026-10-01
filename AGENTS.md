@@ -79,6 +79,7 @@ or the `ask_user` handler's `RlUserPrompter`).
 ## Environment
 
 - The LLM is a **local llama.cpp server** at `http://localhost:8080` (OpenAI-compatible API).
+- Subagent cache preservation uses llama.cpp's `/slots` save/restore endpoints. These are best-effort and require the server to start with `--slot-save-path`; snapshots are retained under fixed process/nesting-depth/slot filenames in that server-side directory.
 - **Do not start a second `llama-server` instance if one is already running** — it causes memory issues. Check port 8080 first.
 - `run_powershell` in `src/tools/shell.ts` hardcodes `powershell.exe` with a 60-second SIGTERM timeout for foreground commands. This is a Windows-only tool; there is no shell tool for other platforms. Background processes (started with `background: true`) are tracked in an in-process registry and reached by numeric id via `wait_for_process` and `kill_process`; they are not subject to the foreground timeout.
 
