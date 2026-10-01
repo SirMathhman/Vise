@@ -42,7 +42,9 @@ export function formatCompactionFailure(err: ViseError): string {
  */
 export function formatModelList(models: string[], activeModel: string): string {
   if (models.length === 0) return "no models available";
-  return models.map((m) => (m === activeModel ? `* ${m} (active)` : `  ${m}`)).join("\n");
+  return models
+    .map((m) => (m === activeModel ? `* ${m} (active)` : `  ${m}`))
+    .join("\n");
 }
 
 /** Format the `/note` listing. Each line is a pre-formatted note entry. */
@@ -56,10 +58,14 @@ export function formatNoteList(lines: string[]): string {
  * Enabled tools are marked with an asterisk; disabled ones are dimmed with
  * `(disabled)`.
  */
-export function formatToolList(tools: { name: string; enabled: boolean }[]): string {
+export function formatToolList(
+  tools: { name: string; enabled: boolean }[],
+): string {
   if (tools.length === 0) return "no tools available";
   return tools
-    .map((t) => (t.enabled ? `* ${t.name} (enabled)` : `  ${t.name} (disabled)`))
+    .map((t) =>
+      t.enabled ? `* ${t.name} (enabled)` : `  ${t.name} (disabled)`,
+    )
     .join("\n");
 }
 
@@ -69,6 +75,7 @@ export function formatHelp(opts: {
   hasTools: boolean;
   hasProfile: boolean;
   hasNotes: boolean;
+  hasWorkflows: boolean;
   hasSessions: boolean;
   preTurnHookCount: number;
   postTurnHookCount: number;
@@ -101,6 +108,12 @@ export function formatHelp(opts: {
     lines.push("/note            list all notes");
     lines.push("/note init <name>  create a new note with a placeholder body");
   }
+  if (opts.hasWorkflows) {
+    lines.push("/workflow                 list available workflows");
+    lines.push("/workflow <name> [input]  run a workflow");
+    lines.push("/workflow init <name>    create a project workflow");
+    lines.push("/workflow init --global <name>  create a global workflow");
+  }
   if (opts.hasSessions) {
     lines.push("/save            list saved sessions");
     lines.push("/save <name>     save the current conversation under a name");
@@ -121,13 +134,32 @@ export function formatHelp(opts: {
   return lines.join("\n");
 }
 
+/** Format workflow names, showing scope and which definition wins lookup. */
+export function formatWorkflowList(
+  workflows: { name: string; scope: "project" | "global"; active: boolean }[],
+): string {
+  if (workflows.length === 0) return "no workflows found";
+  return workflows
+    .map((workflow) => {
+      const marker = workflow.active ? "*" : " ";
+      const active = workflow.active ? " (active)" : " (shadowed)";
+      return `${marker} ${workflow.name} [${workflow.scope}]${active}`;
+    })
+    .join("\n");
+}
+
 /**
  * Render the list of available profiles, marking the active profile with an
  * asterisk. `activeProfile` is undefined when no profile is set.
  */
-export function formatProfileList(profiles: string[], activeProfile: string | undefined): string {
+export function formatProfileList(
+  profiles: string[],
+  activeProfile: string | undefined,
+): string {
   if (profiles.length === 0) return "no profiles found";
-  return profiles.map((p) => (p === activeProfile ? `* ${p} (active)` : `  ${p}`)).join("\n");
+  return profiles
+    .map((p) => (p === activeProfile ? `* ${p} (active)` : `  ${p}`))
+    .join("\n");
 }
 
 /**

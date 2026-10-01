@@ -68,6 +68,7 @@ src/
                     # that performs network I/O
   core/
     engine.ts       # line -> parse -> dispatch to client -> Result pipeline
+    workflow.ts     # pure ordered workflow execution over Client and ToolRunner
     errors.ts       # structured error types and constructors
   output/
     format.ts       # Result -> text for terminal or plain output
@@ -94,6 +95,7 @@ src/
                       # callback; no I/O, delegates to core's summarize/split
   tools.ts          # edge-provided tool definitions (`Tool[]`) and `ToolRunner`
                     # implementation: all tool I/O (file ops, shell commands)
+  workflows.ts      # edge-owned JSON workflow file I/O and validation
 ```
 
 Dependency direction (arrows point from dependent to dependency):
@@ -165,6 +167,17 @@ Rules:
   notes via `/note init <name>`. The shared file I/O lives in `src/notes.ts`
   (edge); the `FileNoteSource` in `index.ts` implements `NoteSource`. Same
   edge-owns-I/O pattern as `ProfileSource`.
+- `WorkflowSource` is a core-owned type (`repl/session.ts`) for listing,
+  loading, and creating workflows. Workflow JSON lives under
+  `.vise/workflows/` and `~/.vise/workflows/`; project workflows shadow
+  same-named global workflows. The edge validates and persists definitions in
+  `src/workflows.ts`. Pure orchestration in `core/workflow.ts` executes
+  instruction steps through normal model/tool turns and explicit tool steps
+  through schema-constrained argument generation followed by direct
+  `ToolRunner` execution, in order, then requests a final model response.
+  llama.cpp's response format constraints are used only on argument-generation
+  requests (without native tool definitions), since its automatic tool-call
+  grammar cannot be combined with a user grammar in the same request.
 - `ToolController` is a core-owned type (`core/engine.ts`) for the `/tool`
   command. It lets the user inspect and toggle the model-facing tools. The
   full set of tool definitions is always sent to the model regardless of

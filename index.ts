@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { homedir } from "node:os";
 import { createInterface } from "node:readline";
 import { BACKEND, LlmClient } from "./src/client/llm.ts";
 import { dataDir } from "./src/data-dir.ts";
@@ -11,6 +12,7 @@ import { formatNoteEntry, initNote, listNotes } from "./src/notes.ts";
 import { cyan, red } from "./src/output/color.ts";
 import { formatCompactionFailure, formatError } from "./src/output/format.ts";
 import { initProfile, listProfiles, readProfile } from "./src/profiles.ts";
+import { initWorkflow, listWorkflows, loadWorkflow } from "./src/workflows.ts";
 import type {
   NoteSource,
   PostTurnHook,
@@ -18,6 +20,7 @@ import type {
   ProfileSource,
   SavedSession,
   SessionSource,
+  WorkflowSource,
 } from "./src/repl/session.ts";
 import { Session } from "./src/repl/session.ts";
 import {
@@ -203,6 +206,66 @@ class FileSessionSource implements SessionSource {
   }
 }
 
+/** Edge implementation for project and global JSON workflows. */
+class FileWorkflowSource implements WorkflowSource {
+  private readonly projectBase: string;
+  private readonly globalBase: string;
+
+  constructor(projectBase: string, globalBase: string) {
+    this.projectBase = projectBase;
+    this.globalBase = globalBase;
+  }
+
+  async listWorkflows() {
+    return {
+      ok: true as const,
+      value: listWorkflows(this.projectBase, this.globalBase),
+    };
+  }
+
+  async loadWorkflow(name: string) {
+    try {
+      const workflow = loadWorkflow(this.projectBase, this.globalBase, name);
+      if (!workflow) {
+        return {
+          ok: false as const,
+          error: {
+            kind: "malformed" as const,
+            body: `workflow '${name}' not found. Run '/workflow' to list workflows.`,
+          },
+        };
+      }
+      return { ok: true as const, value: workflow };
+    } catch (err) {
+      return {
+        ok: false as const,
+        error: {
+          kind: "malformed" as const,
+          body: `workflow '${name}' is invalid: ${err instanceof Error ? err.message : String(err)}`,
+        },
+      };
+    }
+  }
+
+  async initWorkflow(name: string, scope: "project" | "global") {
+    try {
+      initWorkflow(
+        scope === "project" ? this.projectBase : this.globalBase,
+        name,
+      );
+      return { ok: true as const, value: name };
+    } catch (err) {
+      return {
+        ok: false as const,
+        error: {
+          kind: "malformed" as const,
+          body: err instanceof Error ? err.message : String(err),
+        },
+      };
+    }
+  }
+}
+
 /**
  * Read hook commands from `.viserc.json` if present.
  *
@@ -257,6 +320,10 @@ const display = new StreamDisplay();
 // they keep using `process.cwd()` directly.
 const profileSource = new FileProfileSource(dataDir);
 const sessionSource = new FileSessionSource(dataDir);
+const workflowSource = new FileWorkflowSource(
+  dataDir,
+  join(homedir(), ".vise"),
+);
 
 const rl = createInterface({
   input: process.stdin,
@@ -337,6 +404,7 @@ const session = new Session(client, toolRunner, tools, {
   toolController,
   profileSource,
   noteSource: new FileNoteSource(dataDir),
+  workflowSource,
   sessionSource,
   preTurnHooks,
   postTurnHooks,

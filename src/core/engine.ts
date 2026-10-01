@@ -1,4 +1,9 @@
-import type { AssistantMessage, Message, PromptProgress, Result } from "./errors.ts";
+import type {
+  AssistantMessage,
+  Message,
+  PromptProgress,
+  Result,
+} from "./errors.ts";
 
 /**
  * Definition of a single tool function, as presented to the model. The core
@@ -26,6 +31,7 @@ export interface Client {
     onToken?: (token: string) => void,
     onThinking?: (token: string) => void,
     onPromptProgress?: (progress: PromptProgress) => void,
+    responseSchema?: Record<string, unknown>,
   ): Promise<Result<AssistantMessage>>;
 }
 
@@ -85,7 +91,10 @@ export interface CompactionSplit {
  * Pure: no I/O, depends only on the `Message` type. If there are no user
  * turns at all, everything goes to `toSummarize` and `recent` is empty.
  */
-export function splitForCompaction(messages: Message[], recentTurns: number): CompactionSplit {
+export function splitForCompaction(
+  messages: Message[],
+  recentTurns: number,
+): CompactionSplit {
   // Find the indexes of every user message; these are turn boundaries.
   const boundaries: number[] = [];
   for (let i = 0; i < messages.length; i++) {
@@ -96,7 +105,9 @@ export function splitForCompaction(messages: Message[], recentTurns: number): Co
     return { toSummarize: messages.slice(), recent: [] };
   }
   const keepFromIndex =
-    boundaries.length <= recentTurns ? boundaries[0] : boundaries[boundaries.length - recentTurns];
+    boundaries.length <= recentTurns
+      ? boundaries[0]
+      : boundaries[boundaries.length - recentTurns];
   return {
     toSummarize: messages.slice(0, keepFromIndex),
     recent: messages.slice(keepFromIndex),
@@ -108,8 +119,14 @@ export function splitForCompaction(messages: Message[], recentTurns: number): Co
  * messages plus the `SUMMARIZE_PROMPT` to the model and returns the model's
  * summary text. Pure: no I/O beyond the `Client` and no `node:` imports.
  */
-export async function summarize(client: Client, toSummarize: Message[]): Promise<Result<string>> {
-  const result = await client.chat([...toSummarize, { role: "user", content: SUMMARIZE_PROMPT }]);
+export async function summarize(
+  client: Client,
+  toSummarize: Message[],
+): Promise<Result<string>> {
+  const result = await client.chat([
+    ...toSummarize,
+    { role: "user", content: SUMMARIZE_PROMPT },
+  ]);
   if (!result.ok) return result;
   return { ok: true, value: result.value.content };
 }
@@ -159,7 +176,13 @@ export async function runTurn(
       };
     }
     rounds += 1;
-    const result = await client.chat(messages, toolDefs, onToken, onThinking, onPromptProgress);
+    const result = await client.chat(
+      messages,
+      toolDefs,
+      onToken,
+      onThinking,
+      onPromptProgress,
+    );
     if (!result.ok) {
       return { ok: false, error: result.error };
     }
@@ -173,7 +196,10 @@ export async function runTurn(
       for (const tc of reply.tool_calls) {
         let output: string;
         try {
-          const args = JSON.parse(tc.function.arguments) as Record<string, unknown>;
+          const args = JSON.parse(tc.function.arguments) as Record<
+            string,
+            unknown
+          >;
           output = await tools.run(tc.function.name, args);
         } catch {
           output = `error: failed to execute ${tc.function.name}`;
@@ -215,5 +241,13 @@ export async function runSubagent(
     messages.push({ role: "user", content: profileText });
   }
   messages.push({ role: "user", content: task });
-  return runTurn(client, tools, messages, toolDefs, onToken, onThinking, onPromptProgress);
+  return runTurn(
+    client,
+    tools,
+    messages,
+    toolDefs,
+    onToken,
+    onThinking,
+    onPromptProgress,
+  );
 }

@@ -5,13 +5,15 @@ import type {
   ToolRunner,
 } from "../core/engine.ts";
 import { runTurn } from "../core/engine.ts";
+import { runWorkflow } from "../core/workflow.ts";
+import type { Workflow, WorkflowScope } from "../core/workflow.ts";
 import type {
   Message,
   PromptProgress,
   Result,
   ViseError,
 } from "../core/errors.ts";
-import { formatHelp } from "../output/format.ts";
+import { formatHelp, formatWorkflowList } from "../output/format.ts";
 import {
   handleModelCommand,
   handleNotesCommand,
@@ -101,6 +103,15 @@ export interface NoteSource {
   listNotes(): Promise<Result<string[]>>;
   /** Initialize a new note with a placeholder template body. */
   initNote(name: string): Promise<Result<string>>;
+}
+
+/** Edge-owned workflow listing, loading, and creation. */
+export interface WorkflowSource {
+  listWorkflows(): Promise<
+    Result<{ name: string; scope: WorkflowScope; active: boolean }[]>
+  >;
+  loadWorkflow(name: string): Promise<Result<Workflow>>;
+  initWorkflow(name: string, scope: WorkflowScope): Promise<Result<string>>;
 }
 
 /**
@@ -237,6 +248,7 @@ export interface SessionOptions {
   toolController?: ToolController;
   profileSource?: ProfileSource;
   noteSource?: NoteSource;
+  workflowSource?: WorkflowSource;
   preTurnHooks: PreTurnHook[];
   postTurnHooks: PostTurnHook[];
   /**
@@ -299,6 +311,7 @@ export class Session {
   private readonly toolController?: ToolController;
   private readonly profileSource?: ProfileSource;
   private readonly noteSource?: NoteSource;
+  private readonly workflowSource?: WorkflowSource;
   private readonly preTurnHooks: PreTurnHook[];
   private readonly postTurnHooks: PostTurnHook[];
   private readonly cwd: string;
@@ -327,6 +340,7 @@ export class Session {
     this.toolController = options.toolController;
     this.profileSource = options.profileSource;
     this.noteSource = options.noteSource;
+    this.workflowSource = options.workflowSource;
     this.preTurnHooks = options.preTurnHooks;
     this.postTurnHooks = options.postTurnHooks;
     this.cwd = options.cwd;
@@ -409,6 +423,7 @@ export class Session {
           hasTools: !!this.toolController,
           hasProfile: !!this.profileSource,
           hasNotes: !!this.noteSource,
+          hasWorkflows: !!this.workflowSource,
           hasSessions: !!this.sessionSource,
           preTurnHookCount: this.preTurnHooks.length,
           postTurnHookCount: this.postTurnHooks.length,
@@ -442,6 +457,9 @@ export class Session {
     }
     if (trimmed === "/note" || trimmed.startsWith("/note ")) {
       return handleNotesCommand(this.noteSource, trimmed);
+    }
+    if (trimmed === "/workflow" || trimmed.startsWith("/workflow ")) {
+      return this.handleWorkflowCommand(trimmed);
     }
     if (trimmed === "/resume" || trimmed.startsWith("/resume ")) {
       return handleResumeCommand(this.sessionCommands, trimmed);
@@ -478,6 +496,85 @@ export class Session {
       ok: true,
       value: turn.value,
       streamed,
+      compactionWarning: auto.error,
+    };
+  }
+
+  private async handleWorkflowCommand(line: string): Promise<LineResult> {
+    const source = this.workflowSource;
+    if (!source) {
+      return {
+        ok: false,
+        error: {
+          kind: "malformed",
+          body: "workflows not supported by the current client",
+        },
+      };
+    }
+    const arg = line.slice("/workflow".length).trim();
+    if (arg === "") {
+      const listed = await source.listWorkflows();
+      if (!listed.ok) return listed;
+      return { ok: true, value: formatWorkflowList(listed.value) };
+    }
+    if (arg === "init" || arg.startsWith("init ")) {
+      const initArgs = arg
+        .slice("init".length)
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+      let scope: WorkflowScope = "project";
+      if (initArgs[0] === "--global") {
+        scope = "global";
+        initArgs.shift();
+      }
+      if (initArgs.length !== 1 || !initArgs[0]) {
+        return {
+          ok: false,
+          error: {
+            kind: "malformed",
+            body: "usage: /workflow init [--global] <name>",
+          },
+        };
+      }
+      const created = await source.initWorkflow(initArgs[0], scope);
+      if (!created.ok) return created;
+      return {
+        ok: true,
+        value: `initialized ${scope} workflow '${created.value}'`,
+      };
+    }
+
+    const separator = arg.search(/\s/);
+    const name = separator < 0 ? arg : arg.slice(0, separator);
+    const request = separator < 0 ? "" : arg.slice(separator).trim();
+    const loaded = await source.loadWorkflow(name);
+    if (!loaded.ok) return loaded;
+    await this.runHooks(this.preTurnHooks);
+    const auto = await this.maybeAutoCompact();
+    const result = await runWorkflow({
+      client: this.client,
+      tools: this.tools,
+      toolDefs: this.toolDefs,
+      messages: this.messages,
+      name,
+      workflow: loaded.value,
+      request,
+      onToken: this.onToken,
+      onThinking: this.onThinking,
+      onPromptProgress: this.onPromptProgress,
+      onMaxRounds: this.onMaxRounds,
+    });
+    if (!result.ok) return result;
+    await this.runHooks(this.postTurnHooks);
+    await this.saveSession();
+    if (auto.ok) {
+      return { ok: true, value: result.value, streamed: this.onToken !== undefined };
+    }
+    return {
+      ok: true,
+      value: result.value,
+      streamed: this.onToken !== undefined,
       compactionWarning: auto.error,
     };
   }

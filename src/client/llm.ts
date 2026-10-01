@@ -254,6 +254,7 @@ export class LlmClient implements Client {
     onToken?: (token: string) => void,
     onThinking?: (token: string) => void,
     onPromptProgress?: (progress: PromptProgress) => void,
+    responseSchema?: Record<string, unknown>,
   ): Promise<Result<AssistantMessage>> {
     const body: Record<string, unknown> = {
       model: this.currentModel,
@@ -265,6 +266,12 @@ export class LlmClient implements Client {
     if (tools && tools.length > 0) {
       body.tools = tools;
       body.tool_choice = "auto";
+    }
+    if (responseSchema) {
+      body.response_format = {
+        type: "json_schema",
+        json_schema: { schema: responseSchema },
+      };
     }
     try {
       const res = await fetch(URL, {
