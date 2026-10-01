@@ -277,6 +277,8 @@ export interface SessionOptions {
    * including tool rounds.
    */
   onPromptProgress?: (progress: PromptProgress) => void;
+  /** Edge-provided notification for each tool invocation before execution. */
+  onToolCall?: (name: string) => void;
   /**
    * Initial context injected as the first user message after the system
    * message. Provided by the edge at construction time; typically contains
@@ -318,6 +320,7 @@ export class Session {
   private readonly onToken?: (token: string) => void;
   private readonly onThinking?: (token: string) => void;
   private readonly onPromptProgress?: (progress: PromptProgress) => void;
+  private readonly onToolCall?: (name: string) => void;
   private readonly initialMessage?: string;
   private readonly sessionSource?: SessionSource;
   private readonly onMaxRounds?: () => Promise<boolean>;
@@ -347,6 +350,7 @@ export class Session {
     this.onToken = options.onToken;
     this.onThinking = options.onThinking;
     this.onPromptProgress = options.onPromptProgress;
+    this.onToolCall = options.onToolCall;
     this.initialMessage = options.initialMessage;
     this.sessionSource = options.sessionSource;
     this.onMaxRounds = options.onMaxRounds;
@@ -476,10 +480,13 @@ export class Session {
       this.tools,
       this.messages,
       this.toolDefs,
-      this.onToken,
-      this.onThinking,
-      this.onPromptProgress,
-      this.onMaxRounds,
+      {
+        onToken: this.onToken,
+        onThinking: this.onThinking,
+        onPromptProgress: this.onPromptProgress,
+        onToolCall: this.onToolCall,
+        onMaxRounds: this.onMaxRounds,
+      },
     );
     if (!turn.ok) return turn;
     await this.runHooks(this.postTurnHooks);
@@ -560,10 +567,13 @@ export class Session {
       name,
       workflow: loaded.value,
       request,
-      onToken: this.onToken,
-      onThinking: this.onThinking,
-      onPromptProgress: this.onPromptProgress,
-      onMaxRounds: this.onMaxRounds,
+      callbacks: {
+        onToken: this.onToken,
+        onThinking: this.onThinking,
+        onPromptProgress: this.onPromptProgress,
+        onToolCall: this.onToolCall,
+        onMaxRounds: this.onMaxRounds,
+      },
     });
     if (!result.ok) return result;
     await this.runHooks(this.postTurnHooks);

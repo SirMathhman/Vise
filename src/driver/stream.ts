@@ -91,6 +91,20 @@ export class StreamDisplay {
     this.lastProcessed = progress.processed;
   };
 
+  /** Display a tool invocation as a visible event between model rounds. */
+  onToolCall = (name: string): void => {
+    if (this.promptActive) {
+      this.promptActive = false;
+      process.stdout.write("\n");
+    }
+    if (this.thinkingActive) {
+      this.thinkingActive = false;
+      process.stdout.write("\n");
+    }
+    if (this.contentWritten) this.flushMdLine();
+    process.stdout.write(dim(`tool: ${name}`) + "\n");
+  };
+
   /** Reset all state at the start of a new user turn. */
   beginTurn(): void {
     this.promptActive = false;
@@ -114,7 +128,10 @@ export class StreamDisplay {
 
   private flushMdLine(): void {
     if (this.mdLineBuffer.length > 0) {
-      const [styled, newInFence] = renderLine(this.mdLineBuffer, this.mdInFence);
+      const [styled, newInFence] = renderLine(
+        this.mdLineBuffer,
+        this.mdInFence,
+      );
       this.mdInFence = newInFence;
       this.mdLineBuffer = "";
       process.stdout.write(styled + "\n");

@@ -23,7 +23,9 @@ describe("runTurn streaming (core)", () => {
       },
     };
     const messages: Message[] = [{ role: "user", content: "hi" }];
-    const result = await runTurn(client, noopTools, messages, noToolDefs, (t) => seen.push(t));
+    const result = await runTurn(client, noopTools, messages, noToolDefs, {
+      onToken: (t) => seen.push(t),
+    });
     expect(result.ok).toBeTrue();
     if (result.ok) expect(result.value).toBe("Hello");
     expect(seen).toEqual(tokens);
@@ -57,11 +59,70 @@ describe("runTurn streaming (core)", () => {
       },
     };
     const messages: Message[] = [{ role: "user", content: "go" }];
-    const result = await runTurn(client, noopTools, messages, noToolDefs, (t) => seen.push(t));
+    const result = await runTurn(client, noopTools, messages, noToolDefs, {
+      onToken: (t) => seen.push(t),
+    });
     expect(result.ok).toBeTrue();
     if (result.ok) expect(result.value).toBe("done");
     // Two rounds, two "thinking"+"..." deltas each → 4 total.
     expect(seen).toEqual(["thinking", "...", "thinking", "..."]);
+  });
+
+  test("notifies the edge of each tool invocation before dispatch", async () => {
+    const events: string[] = [];
+    const client: Client = {
+      async chat() {
+        return {
+          ok: true,
+          value: {
+            content: "",
+            tool_calls: [
+              {
+                type: "function",
+                id: "1",
+                function: { name: "read_file", arguments: "{}" },
+              },
+              {
+                type: "function",
+                id: "2",
+                function: { name: "list_directory", arguments: "{}" },
+              },
+            ],
+          },
+        };
+      },
+    };
+    const tools: ToolRunner = {
+      async run(name) {
+        events.push(`run:${name}`);
+        return "ok";
+      },
+    };
+    let rounds = 0;
+    const twoRoundClient: Client = {
+      async chat(messages, defs, token, thinking, progress) {
+        rounds++;
+        if (rounds === 1)
+          return client.chat(messages, defs, token, thinking, progress);
+        return { ok: true, value: { content: "done" } };
+      },
+    };
+    const result = await runTurn(
+      twoRoundClient,
+      tools,
+      [{ role: "user", content: "go" }],
+      noToolDefs,
+      {
+        onToolCall: (name) => events.push(`notify:${name}`),
+      },
+    );
+    expect(result.ok).toBeTrue();
+    expect(events).toEqual([
+      "notify:read_file",
+      "run:read_file",
+      "notify:list_directory",
+      "run:list_directory",
+    ]);
   });
 });
 
@@ -144,7 +205,10 @@ describe("runSubagent (core)", () => {
     );
     expect(result.ok).toBeTrue();
     expect(seen).toHaveLength(1);
-    expect(seen[0]).toEqual([systemMessage, { role: "user", content: "do the thing" }]);
+    expect(seen[0]).toEqual([
+      systemMessage,
+      { role: "user", content: "do the thing" },
+    ]);
   });
 
   test("propagates a client error as a failure result", async () => {

@@ -75,6 +75,7 @@ describe("runWorkflow (core)", () => {
 
   test("runs instruction phases, constrained tool steps, and final turn in sequence", async () => {
     const events: string[] = [];
+    const visibleTools: string[] = [];
     const client: Client = {
       async chat(messages, tools, _onToken, _onThinking, _progress, schema) {
         if (schema) {
@@ -155,6 +156,7 @@ describe("runWorkflow (core)", () => {
         ],
       },
       request: "Review the project",
+      callbacks: { onToolCall: (name) => visibleTools.push(name) },
     });
 
     expect(result).toEqual({ ok: true, value: "workflow complete" });
@@ -188,6 +190,7 @@ describe("runWorkflow (core)", () => {
           message.content.startsWith("Workflow tool step 2 result"),
       ),
     ).toBeTrue();
+    expect(visibleTools).toEqual(["read_file", "read_file"]);
   });
 
   test("stops with an error when a forced tool step fails", async () => {
@@ -212,6 +215,7 @@ describe("runWorkflow (core)", () => {
         steps: [{ type: "tool", name: "read_file", args: { path: "<path>" } }],
       },
       request: "",
+      callbacks: {},
     });
     expect(result.ok).toBeFalse();
     if (!result.ok && result.error.kind === "malformed") {
@@ -243,6 +247,7 @@ describe("runWorkflow (core)", () => {
         steps: [{ type: "tool", name: "read_file", args: { path: "<path>" } }],
       },
       request: "",
+      callbacks: {},
     });
     expect(result.ok).toBeFalse();
     expect(toolRuns).toBe(0);

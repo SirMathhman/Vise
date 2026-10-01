@@ -351,9 +351,12 @@ const toolRunner = createToolRunner({
         toolRunner.run(name, args),
     },
     tools,
-    display.onToken,
-    display.onThinking,
-    display.onPromptProgress,
+    {
+      onToken: display.onToken,
+      onThinking: display.onThinking,
+      onPromptProgress: display.onPromptProgress,
+      onToolCall: display.onToolCall,
+    },
     (operation) => client.withPreservedSlotCache(operation),
   ),
   ask_user: makeAskUserHandler(rlPrompter),
@@ -412,6 +415,7 @@ const session = new Session(client, toolRunner, tools, {
   onToken: display.onToken,
   onThinking: display.onThinking,
   onPromptProgress: display.onPromptProgress,
+  onToolCall: display.onToolCall,
   initialMessage,
   onMaxRounds: async () => {
     const answer = await rlPrompter.ask({

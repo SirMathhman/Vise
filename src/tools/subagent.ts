@@ -1,6 +1,10 @@
-import type { Client, Tool, ToolRunner } from "../core/engine.ts";
-import { runSubagent } from "../core/engine.ts";
-import type { PromptProgress } from "../core/errors.ts";
+import type {
+  Client,
+  Tool,
+  ToolRunner,
+  TurnCallbacks,
+} from "../core/engine.ts";
+import { mergeTurnCallbacks, runSubagent } from "../core/engine.ts";
 import { dim } from "../output/color.ts";
 import { formatError } from "../output/format.ts";
 import type { ProfileSource } from "../repl/session.ts";
@@ -33,9 +37,7 @@ export function makeSubagentHandler(
   cwd: string,
   tools: ToolRunner,
   toolDefs: Tool[],
-  onToken?: (token: string) => void,
-  onThinking?: (token: string) => void,
-  onPromptProgress?: (progress: PromptProgress) => void,
+  callbacks: TurnCallbacks = {},
   withPreservedSlotCache?: <T>(operation: () => Promise<T>) => Promise<T>,
 ): (args: Record<string, unknown>) => Promise<string> {
   return async (args) => {
@@ -73,9 +75,9 @@ export function makeSubagentHandler(
     // not end in a newline.
     let subAtLineStart = true;
     const indentedOnToken = (token: string) => {
-      if (onToken) {
+      if (callbacks.onToken) {
         const out = subAtLineStart ? "  " + token : token;
-        onToken(dim(out));
+        callbacks.onToken(dim(out));
       }
       subAtLineStart = token.endsWith("\n") && token.length > 0;
     };
@@ -88,9 +90,7 @@ export function makeSubagentHandler(
         systemMessage,
         profileText,
         task,
-        indentedOnToken,
-        onThinking,
-        onPromptProgress,
+        mergeTurnCallbacks(callbacks, { onToken: indentedOnToken }),
       );
     const result = withPreservedSlotCache
       ? await withPreservedSlotCache(run)

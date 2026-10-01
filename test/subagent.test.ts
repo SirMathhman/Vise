@@ -59,9 +59,7 @@ describe("makeSubagentHandler (edge)", () => {
       "/tmp",
       noopTools,
       noToolDefs,
-      undefined,
-      undefined,
-      undefined,
+      {},
       async (operation) => {
         order.push("snapshot");
         const result = await operation();
@@ -88,9 +86,7 @@ describe("makeSubagentHandler (edge)", () => {
       "/tmp",
       noopTools,
       noToolDefs,
-      undefined,
-      undefined,
-      undefined,
+      {},
       async (operation) => {
         try {
           return await operation();
@@ -262,9 +258,12 @@ describe("makeSubagentHandler (edge)", () => {
       "/tmp",
       noopTools,
       noToolDefs,
-      (token: string) => {
-        received.push(token);
+      {
+        onToken: (token) => {
+          received.push(token);
+        },
       },
+      async (operation) => operation(),
     );
     await handler({ task: "do it", profile: "default" });
     // Both line starts are indented by two spaces.
@@ -305,8 +304,10 @@ describe("makeSubagentHandler (edge)", () => {
         "/tmp",
         noopTools,
         noToolDefs,
-        (token: string) => {
-          received.push(token);
+        {
+          onToken: (token) => {
+            received.push(token);
+          },
         },
       );
       await handler({ task: "do it", profile: "default" });

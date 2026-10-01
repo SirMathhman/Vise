@@ -44,6 +44,30 @@ export interface ToolRunner {
   run(name: string, args: Record<string, unknown>): Promise<string>;
 }
 
+export interface TurnCallbacks {
+  onToken?: (token: string) => void;
+  onThinking?: (token: string) => void;
+  onPromptProgress?: (progress: PromptProgress) => void;
+  onToolCall?: (name: string) => void;
+  onMaxRounds?: () => Promise<boolean>;
+}
+
+export function mergeTurnCallbacks(
+  primary: TurnCallbacks,
+  overrides: TurnCallbacks,
+): TurnCallbacks {
+  return {
+    onToken: overrides.onToken ?? primary.onToken,
+    onThinking: overrides.onThinking ?? primary.onThinking,
+    onPromptProgress: overrides.onPromptProgress ?? primary.onPromptProgress,
+    onToolCall: (name) => {
+      primary.onToolCall?.(name);
+      overrides.onToolCall?.(name);
+    },
+    onMaxRounds: primary.onMaxRounds ?? overrides.onMaxRounds,
+  };
+}
+
 /**
  * Controls which tools are enabled. The full set of tool definitions is
  * always sent to the model regardless of enabled state — disabling a tool
@@ -132,14 +156,6 @@ export async function summarize(
 }
 
 /**
- * Callback invoked when the tool loop reaches `MAX_TOOL_ROUNDS`. The edge
- * prompts the user for consent to continue. Returns `true` to reset the
- * round counter and keep looping, `false` to end the turn with an error.
- * When absent (as in subagents), the turn ends without prompting.
- */
-type OnMaxRounds = () => Promise<boolean>;
-
-/**
  * Pure core pipeline: takes the accumulated conversation and a user line,
  * runs the model, dispatches any tool calls through `tools`, and returns the
  * assistant's final content. Mutates `messages` (appending assistant and
@@ -155,16 +171,13 @@ export async function runTurn(
   tools: ToolRunner,
   messages: Message[],
   toolDefs: Tool[],
-  onToken?: (token: string) => void,
-  onThinking?: (token: string) => void,
-  onPromptProgress?: (progress: PromptProgress) => void,
-  onMaxRounds?: OnMaxRounds,
+  callbacks: TurnCallbacks = {},
 ): Promise<Result<string>> {
   let rounds = 0;
   while (true) {
     if (rounds >= MAX_TOOL_ROUNDS) {
-      if (onMaxRounds) {
-        const keepGoing = await onMaxRounds();
+      if (callbacks.onMaxRounds) {
+        const keepGoing = await callbacks.onMaxRounds();
         if (keepGoing) {
           rounds = 0;
           continue;
@@ -179,9 +192,9 @@ export async function runTurn(
     const result = await client.chat(
       messages,
       toolDefs,
-      onToken,
-      onThinking,
-      onPromptProgress,
+      callbacks.onToken,
+      callbacks.onThinking,
+      callbacks.onPromptProgress,
     );
     if (!result.ok) {
       return { ok: false, error: result.error };
@@ -194,6 +207,7 @@ export async function runTurn(
         tool_calls: reply.tool_calls,
       });
       for (const tc of reply.tool_calls) {
+        callbacks.onToolCall?.(tc.function.name);
         let output: string;
         try {
           const args = JSON.parse(tc.function.arguments) as Record<
@@ -232,22 +246,12 @@ export async function runSubagent(
   systemMessage: Message,
   profileText: string,
   task: string,
-  onToken?: (token: string) => void,
-  onThinking?: (token: string) => void,
-  onPromptProgress?: (progress: PromptProgress) => void,
+  callbacks: TurnCallbacks = {},
 ): Promise<Result<string>> {
   const messages: Message[] = [systemMessage];
   if (profileText.trim() !== "") {
     messages.push({ role: "user", content: profileText });
   }
   messages.push({ role: "user", content: task });
-  return runTurn(
-    client,
-    tools,
-    messages,
-    toolDefs,
-    onToken,
-    onThinking,
-    onPromptProgress,
-  );
+  return runTurn(client, tools, messages, toolDefs, callbacks);
 }
