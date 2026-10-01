@@ -255,6 +255,31 @@ describe("runWorkflow (core)", () => {
       expect(result.error.body).toContain("argument 'path' must be string");
     }
   });
+
+  test("returns interrupted when the turn's abort signal is already aborted", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    let called = false;
+    const client: Client = {
+      async chat() {
+        called = true;
+        return { ok: true, value: { content: "should not run" } };
+      },
+    };
+    const result = await runWorkflow({
+      client,
+      tools: { async run() { return "out"; } },
+      toolDefs,
+      messages: [{ role: "system", content: "system" }],
+      name: "sample",
+      workflow: { steps: [{ type: "instruction", text: "Do it" }] },
+      request: "",
+      callbacks: { abort: controller.signal },
+    });
+    expect(result.ok).toBeFalse();
+    if (!result.ok) expect(result.error).toEqual({ kind: "interrupted" });
+    expect(called).toBeFalse();
+  });
 });
 
 describe("Session /workflow command (core)", () => {

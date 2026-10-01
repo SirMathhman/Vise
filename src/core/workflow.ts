@@ -139,6 +139,7 @@ async function runToolStep(
     options.callbacks.onThinking,
     options.callbacks.onPromptProgress,
     { type: "object", ...schema },
+    options.callbacks.abort,
   );
   if (!generated.ok) return generated;
   const args = parseAndValidateArguments(

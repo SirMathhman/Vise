@@ -597,40 +597,51 @@ export class Session {
     const request = separator < 0 ? "" : arg.slice(separator).trim();
     const loaded = await source.loadWorkflow(name);
     if (!loaded.ok) return loaded;
-    await this.runHooks(this.preTurnHooks);
-    const auto = await this.maybeAutoCompact();
-    const result = await runWorkflow({
-      client: this.client,
-      tools: this.tools,
-      toolDefs: this.toolDefs,
-      messages: this.messages,
-      name,
-      workflow: loaded.value,
-      request,
-      callbacks: {
-        onToken: this.onToken,
-        onThinking: this.onThinking,
-        onPromptProgress: this.onPromptProgress,
-        onToolCall: this.onToolCall,
-        onMaxRounds: this.onMaxRounds,
-      },
-    });
-    if (!result.ok) return result;
-    await this.runHooks(this.postTurnHooks);
-    await this.saveSession();
-    if (auto.ok) {
+    // A workflow run is a turn in flight, so a Ctrl+C interrupts it the same
+    // way a plain prompt is interrupted. The per-turn controller is created
+    // here (not in `handleLine`, which returned control before the command
+    // was dispatched) and cleared in a `finally`.
+    const abort = new AbortController();
+    this.currentAbort = abort;
+    try {
+      await this.runHooks(this.preTurnHooks);
+      const auto = await this.maybeAutoCompact();
+      const result = await runWorkflow({
+        client: this.client,
+        tools: this.tools,
+        toolDefs: this.toolDefs,
+        messages: this.messages,
+        name,
+        workflow: loaded.value,
+        request,
+        callbacks: {
+          onToken: this.onToken,
+          onThinking: this.onThinking,
+          onPromptProgress: this.onPromptProgress,
+          onToolCall: this.onToolCall,
+          onMaxRounds: this.onMaxRounds,
+          abort: abort.signal,
+        },
+      });
+      if (!result.ok) return result;
+      await this.runHooks(this.postTurnHooks);
+      await this.saveSession();
+      if (auto.ok) {
+        return {
+          ok: true,
+          value: result.value,
+          streamed: this.onToken !== undefined,
+        };
+      }
       return {
         ok: true,
         value: result.value,
         streamed: this.onToken !== undefined,
+        compactionWarning: auto.error,
       };
+    } finally {
+      this.currentAbort = null;
     }
-    return {
-      ok: true,
-      value: result.value,
-      streamed: this.onToken !== undefined,
-      compactionWarning: auto.error,
-    };
   }
 
   /**
