@@ -264,6 +264,11 @@ const rl = createInterface({
   terminal: false,
 });
 
+// Shared prompter for mid-turn user questions: used by the ask_user tool and
+// by the max-tool-rounds consent prompt. One RlUserPrompter over the main
+// readline so a second prompt can never open a competing interface.
+const rlPrompter = new RlUserPrompter(rl);
+
 // The subagent handler needs the ToolRunner for recursion, and the runner
 // needs the handler. Break the cycle with a lazily-resolving structural
 // runner: its `run` closure reads `toolRunner` at dispatch time (after the
@@ -283,7 +288,7 @@ const toolRunner = createToolRunner({
     display.onThinking,
     display.onPromptProgress,
   ),
-  ask_user: makeAskUserHandler(new RlUserPrompter(rl)),
+  ask_user: makeAskUserHandler(rlPrompter),
   self: makeSelfHandler({
     backend: BACKEND,
     model: () => client.getModel(),
@@ -339,6 +344,14 @@ const session = new Session(client, toolRunner, tools, {
   onThinking: display.onThinking,
   onPromptProgress: display.onPromptProgress,
   initialMessage,
+  onMaxRounds: async () => {
+    const answer = await rlPrompter.ask({
+      question: "Maximum tool rounds reached. Continue?",
+      options: ["Continue", "Stop"],
+    });
+    const a = answer.trim().toLowerCase();
+    return a === "1" || a === "continue" || a === "yes" || a === "y";
+  },
 });
 
 // Colored prompt marker. With `terminal: false`, readline does not manage

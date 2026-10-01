@@ -273,6 +273,13 @@ export interface SessionOptions {
    */
   initialMessage?: string;
   sessionSource?: SessionSource;
+  /**
+   * Edge-provided callback invoked when the tool loop reaches its maximum
+   * rounds. Prompts the user to continue; returns true to reset the round
+   * counter and keep going, false to end the turn with an error. When absent
+   * (subagents), the turn ends without prompting.
+   */
+  onMaxRounds?: () => Promise<boolean>;
 }
 
 /**
@@ -300,6 +307,7 @@ export class Session {
   private readonly onPromptProgress?: (progress: PromptProgress) => void;
   private readonly initialMessage?: string;
   private readonly sessionSource?: SessionSource;
+  private readonly onMaxRounds?: () => Promise<boolean>;
   private activeProfile: string | undefined;
   private readonly profileCommands: ProfileCommands;
   private readonly sessionCommands: SessionCommands;
@@ -327,6 +335,7 @@ export class Session {
     this.onPromptProgress = options.onPromptProgress;
     this.initialMessage = options.initialMessage;
     this.sessionSource = options.sessionSource;
+    this.onMaxRounds = options.onMaxRounds;
     this.systemMessage = {
       role: "system",
       content: `Working directory: ${options.cwd}`,
@@ -452,6 +461,7 @@ export class Session {
       this.onToken,
       this.onThinking,
       this.onPromptProgress,
+      this.onMaxRounds,
     );
     if (!turn.ok) return turn;
     await this.runHooks(this.postTurnHooks);

@@ -55,7 +55,7 @@ export interface ToolController {
   isEnabled(name: string): boolean;
 }
 
-const MAX_TOOL_ROUNDS = 10;
+const MAX_TOOL_ROUNDS = 100;
 
 /**
  * The text appended to the conversation to request a summary of it. Kept
@@ -121,6 +121,25 @@ export async function summarize(client: Client, toSummarize: Message[]): Promise
  * tool messages). No `node:` imports, no I/O — depends only on `Client` and
  * `ToolRunner`, so it is testable with stubs.
  */
+/**
+ * Callback invoked when the tool loop reaches `MAX_TOOL_ROUNDS`. The edge
+ * prompts the user for consent to continue. Returns `true` to reset the
+ * round counter and keep looping, `false` to end the turn with an error.
+ * When absent (as in subagents), the turn ends without prompting.
+ */
+type OnMaxRounds = () => Promise<boolean>;
+
+/**
+ * Pure core pipeline: takes the accumulated conversation and a user line,
+ * runs the model, dispatches any tool calls through `tools`, and returns the
+ * assistant's final content. Mutates `messages` (appending assistant and
+ * tool messages). No `node:` imports, no I/O — depends only on `Client` and
+ * `ToolRunner`, so it is testable with stubs.
+ *
+ * `onMaxRounds` is called when the loop reaches `MAX_TOOL_ROUNDS` rounds. If
+ * it returns `true` the counter resets and the loop continues; if `false` the
+ * turn ends with an error. When omitted (subagents), the turn ends silently.
+ */
 export async function runTurn(
   client: Client,
   tools: ToolRunner,
@@ -129,8 +148,24 @@ export async function runTurn(
   onToken?: (token: string) => void,
   onThinking?: (token: string) => void,
   onPromptProgress?: (progress: PromptProgress) => void,
+  onMaxRounds?: OnMaxRounds,
 ): Promise<Result<string>> {
-  for (let i = 0; i < MAX_TOOL_ROUNDS; i++) {
+  let rounds = 0;
+  while (true) {
+    if (rounds >= MAX_TOOL_ROUNDS) {
+      if (onMaxRounds) {
+        const keepGoing = await onMaxRounds();
+        if (keepGoing) {
+          rounds = 0;
+          continue;
+        }
+      }
+      return {
+        ok: false,
+        error: { kind: "malformed", body: "exceeded maximum tool rounds" },
+      };
+    }
+    rounds += 1;
     const result = await client.chat(messages, toolDefs, onToken, onThinking, onPromptProgress);
     if (!result.ok) {
       return { ok: false, error: result.error };
@@ -157,10 +192,6 @@ export async function runTurn(
       return { ok: true, value: reply.content };
     }
   }
-  return {
-    ok: false,
-    error: { kind: "malformed", body: "exceeded maximum tool rounds" },
-  };
 }
 
 /**
