@@ -356,4 +356,28 @@ describe("makeSubagentHandler (edge)", () => {
       else process.env.FORCE_COLOR = savedForce;
     }
   });
+
+  test("forwards the parent turn's abort signal into the subagent's turn", async () => {
+    const controller = new AbortController();
+    const source = stubProfileSource(async () => ({ ok: true, value: "" }));
+    let captured: AbortSignal | undefined;
+    const client: Client = {
+      async chat(_m, _t, _on, _think, _prog, _schema, signal) {
+        captured = signal;
+        return { ok: true, value: { content: "done" } };
+      },
+    };
+    const handler = makeSubagentHandler(
+      client,
+      source,
+      "/tmp",
+      noopTools,
+      noToolDefs,
+      {},
+      undefined,
+      () => controller.signal,
+    );
+    await handler({ task: "do it", profile: "default" });
+    expect(captured).toBe(controller.signal);
+  });
 });

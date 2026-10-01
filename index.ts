@@ -372,6 +372,7 @@ const toolRunner = createToolRunner({
       onToolCall: display.onToolCall,
     },
     (operation) => client.withPreservedSlotCache(operation),
+    () => session.currentAbortSignal,
   ),
   ask_user: makeAskUserHandler(rlPrompter),
   self: makeSelfHandler({

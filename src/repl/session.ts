@@ -536,6 +536,17 @@ export class Session {
     return false;
   }
 
+  /**
+   * The AbortSignal for the turn in flight, or `undefined` when no turn is
+   * running. The subagent handler forwards this into its `runSubagent`
+   * callbacks so a subagent's in-flight model call is interrupted together
+   * with the parent's turn (the same Ctrl+C that aborts the parent aborts the
+   * subagent).
+   */
+  get currentAbortSignal(): AbortSignal | undefined {
+    return this.currentAbort?.signal;
+  }
+
   private async handleWorkflowCommand(line: string): Promise<LineResult> {
     const source = this.workflowSource;
     if (!source) {

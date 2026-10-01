@@ -39,6 +39,7 @@ export function makeSubagentHandler(
   toolDefs: Tool[],
   callbacks: TurnCallbacks = {},
   withPreservedSlotCache?: <T>(operation: () => Promise<T>) => Promise<T>,
+  currentAbortSignal?: () => AbortSignal | undefined,
 ): (args: Record<string, unknown>) => Promise<string> {
   return async (args) => {
     const task = args["task"];
@@ -89,6 +90,10 @@ export function makeSubagentHandler(
         onToolCall: (name) => {
           callbacks.onToolCall?.(name, 1);
         },
+        // Forward the parent turn's live abort signal so a subagent's
+        // in-flight model call is interrupted together with the parent's
+        // turn (the same Ctrl+C that aborts the parent aborts the subagent).
+        abort: currentAbortSignal?.(),
       });
     const result = withPreservedSlotCache
       ? await withPreservedSlotCache(run)
