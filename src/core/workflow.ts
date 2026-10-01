@@ -150,18 +150,12 @@ async function runToolStep(
     { type: "object", ...schema },
   );
   if (!generated.ok) return generated;
-  const args = parseArguments(generated.value.content, step.name);
+  const args = parseAndValidateArguments(
+    generated.value.content,
+    step.name,
+    schema,
+  );
   if (!args.ok) return args;
-  const validationError = validateArguments(args.value, schema);
-  if (validationError) {
-    return {
-      ok: false,
-      error: {
-        kind: "malformed",
-        body: `workflow generated invalid arguments for '${step.name}': ${validationError}`,
-      },
-    };
-  }
 
   options.messages.push({
     role: "assistant",
@@ -187,6 +181,26 @@ async function runToolStep(
     };
   }
   return { ok: true, value: undefined };
+}
+
+function parseAndValidateArguments(
+  content: string,
+  toolName: string,
+  schema: Record<string, unknown>,
+): Result<Record<string, unknown>> {
+  const args = parseArguments(content, toolName);
+  if (!args.ok) return args;
+  const validationError = validateArguments(args.value, schema);
+  if (validationError) {
+    return {
+      ok: false,
+      error: {
+        kind: "malformed",
+        body: `workflow generated invalid arguments for '${toolName}': ${validationError}`,
+      },
+    };
+  }
+  return args;
 }
 
 function parseArguments(

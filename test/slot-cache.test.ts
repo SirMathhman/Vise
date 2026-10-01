@@ -8,14 +8,33 @@ function mockFetch(
 ): { calls: FetchCall[]; restore: () => void } {
   const original = globalThis.fetch;
   const calls: FetchCall[] = [];
-  const replacement = async (input: string | URL | Request, init?: RequestInit) => {
-    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-    calls.push({ url, method: init?.method ?? "GET", body: typeof init?.body === "string" ? init.body : undefined });
+  const replacement = async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ) => {
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url;
+    calls.push({
+      url,
+      method: init?.method ?? "GET",
+      body: typeof init?.body === "string" ? init.body : undefined,
+    });
     return respond(url, init);
   };
-  Object.assign(replacement, { preconnect: original.preconnect.bind(original) });
+  Object.assign(replacement, {
+    preconnect: original.preconnect.bind(original),
+  });
   globalThis.fetch = replacement as typeof fetch;
-  return { calls, restore: () => { globalThis.fetch = original; } };
+  return {
+    calls,
+    restore: () => {
+      globalThis.fetch = original;
+    },
+  };
 }
 
 function jsonResponse(value: unknown, status = 200): Response {
@@ -36,37 +55,50 @@ describe("llama.cpp subagent slot cache (edge)", () => {
         ]);
       }
       if (url.includes("action=save")) return jsonResponse({ n_saved: 32 });
-      if (url.includes("action=restore")) return jsonResponse({ n_restored: 32 });
+      if (url.includes("action=restore"))
+        return jsonResponse({ n_restored: 32 });
       return jsonResponse({}, 404);
     });
     try {
       const client = new LlmClient();
-      const nested = async () => client.withPreservedSlotCache(async () => "nested");
+      const nested = async () =>
+        client.withPreservedSlotCache(async () => "nested");
       const result = await client.withPreservedSlotCache(async () => nested());
       expect(result).toBe("nested");
 
       const actions = mock.calls.filter((call) => call.url.includes("action="));
-      expect(actions.map((call) => call.url.match(/action=(save|restore)/)?.[1])).toEqual([
-        "save",
-        "save",
-        "restore",
-        "restore",
-      ]);
-      expect(actions.map((call) => JSON.parse(call.body ?? "{}").filename)).toEqual([
+      expect(
+        actions.map((call) => call.url.match(/action=(save|restore)/)?.[1]),
+      ).toEqual(["save", "save", "restore", "restore"]);
+      expect(
+        actions.map((call) => JSON.parse(call.body ?? "{}").filename),
+      ).toEqual([
         `vise-${process.pid}-subagent-0-slot-0.bin`,
         `vise-${process.pid}-subagent-1-slot-0.bin`,
         `vise-${process.pid}-subagent-1-slot-0.bin`,
         `vise-${process.pid}-subagent-0-slot-0.bin`,
       ]);
-      expect(actions.every((call) => JSON.parse(call.body ?? "{}").model)).toBeTrue();
-      expect(mock.calls.filter((call) => call.url.includes("/slots?")).every((call) => call.url.includes("model=") && call.url.includes("include_slots=true"))).toBeTrue();
+      expect(
+        actions.every((call) => JSON.parse(call.body ?? "{}").model),
+      ).toBeTrue();
+      expect(
+        mock.calls
+          .filter((call) => call.url.includes("/slots?"))
+          .every(
+            (call) =>
+              call.url.includes("model=") &&
+              call.url.includes("include_slots=true"),
+          ),
+      ).toBeTrue();
     } finally {
       mock.restore();
     }
   });
 
   test("runs the subagent operation if slot snapshots are unavailable", async () => {
-    const mock = mockFetch(() => jsonResponse({ error: "slot saving disabled" }, 501));
+    const mock = mockFetch(() =>
+      jsonResponse({ error: "slot saving disabled" }, 501),
+    );
     try {
       const client = new LlmClient();
       let ran = false;
@@ -83,9 +115,14 @@ describe("llama.cpp subagent slot cache (edge)", () => {
   });
 
   test("does not block subagent execution when the slot endpoint hangs", async () => {
-    const mock = mockFetch((_url, init) => new Promise<Response>((_resolve, reject) => {
-      init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
-    }));
+    const mock = mockFetch(
+      (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(new DOMException("aborted", "AbortError")),
+          );
+        }),
+    );
     try {
       const client = new LlmClient(5);
       let ran = false;
@@ -104,18 +141,26 @@ describe("llama.cpp subagent slot cache (edge)", () => {
   test("does not block subagent completion when slot restoration hangs", async () => {
     const mock = mockFetch((url, init) => {
       if (url.includes("/slots?") && !url.includes("/slots/")) {
-        return jsonResponse([{ id: 0, n_prompt_tokens: 32, is_processing: false }]);
+        return jsonResponse([
+          { id: 0, n_prompt_tokens: 32, is_processing: false },
+        ]);
       }
       if (url.includes("action=save")) return jsonResponse({ n_saved: 32 });
       return new Promise<Response>((_resolve, reject) => {
-        init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+        init?.signal?.addEventListener("abort", () =>
+          reject(new DOMException("aborted", "AbortError")),
+        );
       });
     });
     try {
       const client = new LlmClient(5);
-      const result = await client.withPreservedSlotCache(async () => "completed");
+      const result = await client.withPreservedSlotCache(
+        async () => "completed",
+      );
       expect(result).toBe("completed");
-      expect(mock.calls.some((call) => call.url.includes("action=restore"))).toBeTrue();
+      expect(
+        mock.calls.some((call) => call.url.includes("action=restore")),
+      ).toBeTrue();
     } finally {
       mock.restore();
     }

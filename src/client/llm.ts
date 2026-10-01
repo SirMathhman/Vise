@@ -204,7 +204,9 @@ export class LlmClient implements Client {
     const body: unknown = await response.json();
     const slots = Array.isArray(body)
       ? (body as Slot[])
-      : typeof body === "object" && body !== null && Array.isArray((body as { slots?: unknown }).slots)
+      : typeof body === "object" &&
+          body !== null &&
+          Array.isArray((body as { slots?: unknown }).slots)
         ? (body as { slots: Slot[] }).slots
         : [];
     if (!Array.isArray(slots)) return [];
@@ -268,7 +270,10 @@ export class LlmClient implements Client {
         new Promise<Response>((_resolve, reject) => {
           controller.signal.addEventListener(
             "abort",
-            () => reject(new DOMException("slot request timed out", "TimeoutError")),
+            () =>
+              reject(
+                new DOMException("slot request timed out", "TimeoutError"),
+              ),
             { once: true },
           );
         }),
