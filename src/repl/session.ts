@@ -5,7 +5,6 @@ import type {
   ToolRunner,
 } from "../core/engine.ts";
 import { runTurn } from "../core/engine.ts";
-import { runWorkflow } from "../core/workflow.ts";
 import type { Workflow, WorkflowScope } from "../core/workflow.ts";
 import type {
   Message,
@@ -13,7 +12,7 @@ import type {
   Result,
   ViseError,
 } from "../core/errors.ts";
-import { formatHelp, formatWorkflowList } from "../output/format.ts";
+import { formatHelp } from "../output/format.ts";
 import {
   handleModelCommand,
   handleNotesCommand,
@@ -26,6 +25,12 @@ import {
   handleResumeCommand,
   handleSaveCommand,
 } from "./session-commands.ts";
+import {
+  dispatch,
+} from "./session-dispatch.ts";
+import type { SessionDispatch } from "./session-dispatch.ts";
+import { handleWorkflowCommand } from "./workflow-commands.ts";
+import type { WorkflowCommands } from "./workflow-commands.ts";
 
 /**
  * The outcome of a handled line. A successful turn carries the model's reply
@@ -334,6 +339,8 @@ export class Session {
   private readonly profileCommands: ProfileCommands;
   private readonly sessionCommands: SessionCommands;
   private readonly compactionSource: CompactionSource;
+  private readonly workflowCommands: WorkflowCommands;
+  private readonly sessionDispatch: SessionDispatch;
 
   constructor(
     client: Client,
@@ -412,6 +419,63 @@ export class Session {
         }
       },
     };
+    this.workflowCommands = {
+      workflowSource: () => this.workflowSource,
+      client: () => this.client,
+      tools: () => this.tools,
+      toolDefs: () => this.toolDefs,
+      // `runWorkflow` mutates the conversation in place (the engine's
+      // documented side channel), so the handler holds the live array.
+      messages: () => this.messages,
+      preTurnHooks: () => this.preTurnHooks,
+      postTurnHooks: () => this.postTurnHooks,
+      onToken: () => this.onToken,
+      onThinking: () => this.onThinking,
+      onPromptProgress: () => this.onPromptProgress,
+      onToolCall: () => this.onToolCall,
+      onMaxRounds: () => this.onMaxRounds,
+      maybeAutoCompact: () => this.maybeAutoCompact(),
+      save: () => this.saveSession(),
+      setCurrentAbort: (controller) => {
+        this.currentAbort = controller;
+      },
+    };
+    // The line dispatcher is a plain module-level function in
+    // `session-dispatch.ts`; the Session wires it to its own state with
+    // closures, so the dispatcher stays free of class-internal references
+    // (the `commands.ts` pattern). It is wired after `this.messages` exists
+    // so the closures can push/replace the conversation safely.
+    this.sessionDispatch = {
+      modelController: () => this.modelController,
+      toolController: () => this.toolController,
+      profileSource: () => this.profileSource,
+      noteSource: () => this.noteSource,
+      workflowSource: () => this.workflowSource,
+      sessionSource: () => this.sessionSource,
+      context: () => this.context,
+      preTurnHooks: () => this.preTurnHooks,
+      postTurnHooks: () => this.postTurnHooks,
+      // `runTurn` mutates the conversation in place (the engine's documented
+      // side channel), so the dispatcher holds the live array.
+      messages: () => this.messages,
+      client: () => this.client,
+      tools: () => this.tools,
+      toolDefs: () => this.toolDefs,
+      onToken: () => this.onToken,
+      onThinking: () => this.onThinking,
+      onPromptProgress: () => this.onPromptProgress,
+      onToolCall: () => this.onToolCall,
+      onMaxRounds: () => this.onMaxRounds,
+      profileCommands: () => this.profileCommands,
+      sessionCommands: () => this.sessionCommands,
+      workflowCommands: () => this.workflowCommands,
+      doCompact: () => this.doCompact(),
+      maybeAutoCompact: () => this.maybeAutoCompact(),
+      save: () => this.saveSession(),
+      setCurrentAbort: (controller) => {
+        this.currentAbort = controller;
+      },
+    };
   }
 
   /**
@@ -469,7 +533,7 @@ export class Session {
       return handleNotesCommand(this.noteSource, trimmed);
     }
     if (trimmed === "/workflow" || trimmed.startsWith("/workflow ")) {
-      return this.handleWorkflowCommand(trimmed);
+      return handleWorkflowCommand(this.workflowCommands, trimmed);
     }
     if (trimmed === "/resume" || trimmed.startsWith("/resume ")) {
       return handleResumeCommand(this.sessionCommands, trimmed);
@@ -547,102 +611,6 @@ export class Session {
     return this.currentAbort?.signal;
   }
 
-  private async handleWorkflowCommand(line: string): Promise<LineResult> {
-    const source = this.workflowSource;
-    if (!source) {
-      return {
-        ok: false,
-        error: {
-          kind: "malformed",
-          body: "workflows not supported by the current client",
-        },
-      };
-    }
-    const arg = line.slice("/workflow".length).trim();
-    if (arg === "") {
-      const listed = await source.listWorkflows();
-      if (!listed.ok) return listed;
-      return { ok: true, value: formatWorkflowList(listed.value) };
-    }
-    if (arg === "init" || arg.startsWith("init ")) {
-      const initArgs = arg
-        .slice("init".length)
-        .trim()
-        .split(/\s+/)
-        .filter(Boolean);
-      let scope: WorkflowScope = "project";
-      if (initArgs[0] === "--global") {
-        scope = "global";
-        initArgs.shift();
-      }
-      if (initArgs.length !== 1 || !initArgs[0]) {
-        return {
-          ok: false,
-          error: {
-            kind: "malformed",
-            body: "usage: /workflow init [--global] <name>",
-          },
-        };
-      }
-      const created = await source.initWorkflow(initArgs[0], scope);
-      if (!created.ok) return created;
-      return {
-        ok: true,
-        value: `initialized ${scope} workflow '${created.value}'`,
-      };
-    }
-
-    const separator = arg.search(/\s/);
-    const name = separator < 0 ? arg : arg.slice(0, separator);
-    const request = separator < 0 ? "" : arg.slice(separator).trim();
-    const loaded = await source.loadWorkflow(name);
-    if (!loaded.ok) return loaded;
-    // A workflow run is a turn in flight, so a Ctrl+C interrupts it the same
-    // way a plain prompt is interrupted. The per-turn controller is created
-    // here (not in `handleLine`, which returned control before the command
-    // was dispatched) and cleared in a `finally`.
-    const abort = new AbortController();
-    this.currentAbort = abort;
-    try {
-      await this.runHooks(this.preTurnHooks);
-      const auto = await this.maybeAutoCompact();
-      const result = await runWorkflow({
-        client: this.client,
-        tools: this.tools,
-        toolDefs: this.toolDefs,
-        messages: this.messages,
-        name,
-        workflow: loaded.value,
-        request,
-        callbacks: {
-          onToken: this.onToken,
-          onThinking: this.onThinking,
-          onPromptProgress: this.onPromptProgress,
-          onToolCall: this.onToolCall,
-          onMaxRounds: this.onMaxRounds,
-          abort: abort.signal,
-        },
-      });
-      if (!result.ok) return result;
-      await this.runHooks(this.postTurnHooks);
-      await this.saveSession();
-      if (auto.ok) {
-        return {
-          ok: true,
-          value: result.value,
-          streamed: this.onToken !== undefined,
-        };
-      }
-      return {
-        ok: true,
-        value: result.value,
-        streamed: this.onToken !== undefined,
-        compactionWarning: auto.error,
-      };
-    } finally {
-      this.currentAbort = null;
-    }
-  }
 
   /**
    * Run all hooks in the given list in parallel and push each non-blank
