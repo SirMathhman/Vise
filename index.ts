@@ -3,14 +3,13 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { createInterface } from "node:readline";
+import { TerminalDriver } from "./src/driver/terminal.ts";
 import { BACKEND, LlmClient } from "./src/client/llm.ts";
 import { dataDir } from "./src/data-dir.ts";
 import type { Message, Result } from "./src/core/errors.ts";
 import { StreamDisplay } from "./src/driver/stream.ts";
 import { buildInitialTree } from "./src/fs-tree.ts";
 import { formatNoteEntry, initNote, listNotes } from "./src/notes.ts";
-import { cyan, red } from "./src/output/color.ts";
-import { formatCompactionFailure, formatError } from "./src/output/format.ts";
 import { initProfile, listProfiles, readProfile } from "./src/profiles.ts";
 import { initWorkflow, listWorkflows, loadWorkflow } from "./src/workflows.ts";
 import type {
@@ -333,22 +332,10 @@ const rl = createInterface({
 
 // Shared prompter for mid-turn user questions: used by the ask_user tool and
 // by the max-tool-rounds consent prompt. One RlUserPrompter over the main
-// readline so a second prompt can never open a competing interface.
+// readline so a second prompt can never open a competing interface. It is
+// wired directly into the toolRunner (ask_user) and the onMaxRounds callback
+// below; the driver owns only the SIGINT/line loop over this same `rl`.
 const rlPrompter = new RlUserPrompter(rl);
-
-// Ctrl+C handling. `terminal: false` makes readline emit "SIGINT" on Ctrl+C
-// rather than swallowing the key, so we own the behavior. While a turn is in
-// flight the first Ctrl+C interrupts it (aborting the in-flight model call
-// and stopping the tool loop); at an idle prompt Ctrl+C exits the process.
-rl.on("SIGINT", () => {
-  // `interrupt()` returns `true` if a turn was in flight (aborted) and `false`
-  // at an idle prompt. The session is the single source of truth for turn
-  // state; no module-level flag is needed.
-  if (!session.interrupt()) {
-    process.exitCode = 130;
-    rl.close();
-  }
-});
 
 // The subagent handler needs the ToolRunner for recursion, and the runner
 // needs the handler. Break the cycle with a lazily-resolving structural
@@ -442,37 +429,11 @@ const session = new Session(client, toolRunner, tools, {
   },
 });
 
-// Colored prompt marker. With `terminal: false`, readline does not manage
-// the echo position; the OS terminal echoes typed characters, so writing
-// the marker here (and after every turn) places it at the start of the line
-// the user is about to type on.
-process.stdout.write(cyan("> "));
-
-let chain = Promise.resolve();
-rl.on("line", (line) => {
-  if (line.trim() === "") return;
-  chain = chain.then(async () => {
-    display.beginTurn();
-    const result = await session.handleLine(line);
-    if (result === "exit") {
-      rl.close();
-      return;
-    }
-    if (result.ok) {
-      // A streamed turn already wrote its reply token-by-token; flush any
-      // partial line still buffered and emit the closing newline. Unstreamed
-      // results (slash commands, etc.) are printed whole via console.log.
-      const streamed = !!result.streamed;
-      display.finish(streamed);
-      if (!streamed) {
-        console.log(result.value);
-      }
-      if (result.compactionWarning) {
-        console.error(red(formatCompactionFailure(result.compactionWarning)));
-      }
-    } else {
-      console.error(red(formatError(result.error)));
-    }
-    process.stdout.write(cyan("> "));
-  });
-});
+// The interactive frontend: the terminal driver owns the readline line loop,
+// Ctrl+C handling, the `> ` prompt marker, and per-turn result rendering. It
+// is a thin adapter over the session and the StreamDisplay; swapping it for
+// a pipe/script driver (see ARCHITECTURE.md) does not touch the core or the
+// session. The driver takes the same `rl` and `rlPrompter` so the ask_user
+// handler and the onMaxRounds callback share one prompter instance.
+const driver = new TerminalDriver(session, display, rl);
+driver.run();

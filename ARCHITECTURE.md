@@ -219,11 +219,12 @@ Rules:
 - Every file stays under 500 code lines and every function under 100 lines;
   when a module approaches that, split it along a natural seam.
 
-This is the shape the current code is growing into: today `index.ts` plays
-the roles of entry point, driver, session, and core all at once, while the
-transport already lives in `client/llm.ts`. As functionality lands, those
-roles separate into the modules above — each module exists as soon as its
-role earns it, not before.
+This is the shape the current code is growing into: `index.ts` is now thin
+wiring (constructs edge services and the `TerminalDriver`, then calls
+`driver.run()`), the interactive terminal driver lives in
+`src/driver/terminal.ts`, and the transport lives in `client/llm.ts`. The
+remaining seam is `driver/pipe.ts` (a non-TTY frontend for piped/script
+input), which will plug into the same `Session` without touching the core.
 
 ## Potential Problems
 
