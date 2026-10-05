@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { Client, Tool, ToolRunner } from "../src/core/engine.ts";
 import type { Message, Result } from "../src/core/errors.ts";
-import type { ContextSource, SavedSession, SessionSource } from "../src/repl/session.ts";
+import type {
+  ContextSource,
+  SavedSession,
+  SessionSource,
+} from "../src/repl/session.ts";
 import { Session } from "../src/repl/session.ts";
 
 const noopTools: ToolRunner = {
@@ -30,26 +34,47 @@ describe("Session /save and /resume (core)", () => {
 
   function makeSessionSource(
     sessions: Record<string, SavedSession>,
-    autoCalls: Message[][],
+    autoCalls: { name: string; messages: Message[]; overwrite: boolean }[],
   ): SessionSource {
     const saved: Record<string, SavedSession> = { ...sessions };
     return {
-      async save(messages: Message[], _active: string | undefined) {
-        autoCalls.push([...messages]);
-        saved["auto"] = {
-          messages,
-          activeProfile: undefined,
-          savedAt: "t",
-        };
-        return { ok: true, value: undefined };
-      },
-      async saveNamed(name: string, messages: Message[], activeProfile: string | undefined) {
-        saved[name] = {
+      async save(
+        name: string,
+        messages: Message[],
+        activeProfile: string | undefined,
+        overwrite: boolean,
+      ) {
+        let finalName = name;
+        let counter = 2;
+        while (!overwrite && saved[finalName]) {
+          finalName = `${name}-${counter}`;
+          counter++;
+        }
+        saved[finalName] = {
           messages,
           activeProfile,
           savedAt: "t",
         };
-        return { ok: true, value: undefined };
+        autoCalls.push({ name: finalName, messages: [...messages], overwrite });
+        return { ok: true, value: finalName };
+      },
+      async saveNamed(
+        name: string,
+        messages: Message[],
+        activeProfile: string | undefined,
+      ) {
+        let finalName = name;
+        let counter = 2;
+        while (saved[finalName]) {
+          finalName = `${name}-${counter}`;
+          counter++;
+        }
+        saved[finalName] = {
+          messages,
+          activeProfile,
+          savedAt: "t",
+        };
+        return { ok: true, value: finalName };
       },
       async load(name: string): Promise<Result<SavedSession>> {
         const s = saved[name];
@@ -100,9 +125,26 @@ describe("Session /save and /resume (core)", () => {
     expect(result.value).toBe("saved session 'mywork'");
   });
 
+  test("/save <name> reports a numeric suffix when the name is taken", async () => {
+    const ss = makeSessionSource(
+      { mywork: { messages: [], activeProfile: undefined, savedAt: "t" } },
+      [],
+    );
+    const session = new Session(client, noopTools, noToolDefs, {
+      cwd: "/tmp",
+      context: noopContext,
+      preTurnHooks: [],
+      postTurnHooks: [],
+      sessionSource: ss,
+    });
+    const result = await session.handleLine("/save mywork");
+    if (result === "exit" || !result.ok) throw new Error("expected ok result");
+    expect(result.value).toContain("mywork-2");
+  });
+
   test("/save with no args lists saved sessions", async () => {
     const ss = makeSessionSource(
-      { auto: { messages: [], activeProfile: undefined, savedAt: "t" } },
+      { previous: { messages: [], activeProfile: undefined, savedAt: "t" } },
       [],
     );
     const session = new Session(client, noopTools, noToolDefs, {
@@ -115,7 +157,7 @@ describe("Session /save and /resume (core)", () => {
     const result = await session.handleLine("/save");
     if (result === "exit" || !result.ok) throw new Error("expected ok result");
     expect(result.value).toContain("saved sessions:");
-    expect(result.value).toContain("auto");
+    expect(result.value).toContain("previous");
   });
 
   test("/resume <name> restores the saved conversation and active profile", async () => {
@@ -180,7 +222,8 @@ describe("Session /save and /resume (core)", () => {
       sessionSource: ss,
     });
     const resumed = await session.handleLine("/resume old");
-    if (resumed === "exit" || !resumed.ok) throw new Error("expected ok resume");
+    if (resumed === "exit" || !resumed.ok)
+      throw new Error("expected ok resume");
     // A turn after resume sends the live conversation to the model.
     const turn = await session.handleLine("hi");
     if (turn === "exit" || !turn.ok) throw new Error("expected ok turn");
@@ -190,9 +233,35 @@ describe("Session /save and /resume (core)", () => {
     expect(sent?.[0]?.content).toBe("Working directory: /tmp");
   });
 
+  test("auto-save after resume overwrites the resumed session", async () => {
+    const autoCalls: { name: string; messages: Message[]; overwrite: boolean }[] = [];
+    const savedMessages: Message[] = [
+      { role: "system", content: "Working directory: /saved" },
+      { role: "user", content: "earlier" },
+      { role: "assistant", content: "earlier reply" },
+    ];
+    const ss = makeSessionSource(
+      { old: { messages: savedMessages, activeProfile: undefined, savedAt: "t" } },
+      autoCalls,
+    );
+    const session = new Session(client, noopTools, noToolDefs, {
+      cwd: "/tmp",
+      context: noopContext,
+      preTurnHooks: [],
+      postTurnHooks: [],
+      sessionSource: ss,
+    });
+    const resumed = await session.handleLine("/resume old");
+    if (resumed === "exit" || !resumed.ok) throw new Error("expected resume");
+    const turn = await session.handleLine("continue");
+    if (turn === "exit" || !turn.ok) throw new Error("expected turn");
+    expect(autoCalls[0]?.name).toBe("old");
+    expect(autoCalls[0]?.overwrite).toBe(true);
+  });
+
   test("/resume with no args lists saved sessions", async () => {
     const ss = makeSessionSource(
-      { auto: { messages: [], activeProfile: undefined, savedAt: "t" } },
+      { previous: { messages: [], activeProfile: undefined, savedAt: "t" } },
       [],
     );
     const session = new Session(client, noopTools, noToolDefs, {
@@ -205,7 +274,7 @@ describe("Session /save and /resume (core)", () => {
     const result = await session.handleLine("/resume");
     if (result === "exit" || !result.ok) throw new Error("expected ok result");
     expect(result.value).toContain("saved sessions:");
-    expect(result.value).toContain("auto");
+    expect(result.value).toContain("previous");
   });
 
   test("/resume <name> returns an error when the session is not found", async () => {
@@ -218,7 +287,8 @@ describe("Session /save and /resume (core)", () => {
       sessionSource: ss,
     });
     const result = await session.handleLine("/resume nothere");
-    if (result === "exit" || result.ok) throw new Error("expected error result");
+    if (result === "exit" || result.ok)
+      throw new Error("expected error result");
     expect(result.error.kind).toBe("malformed");
     if (result.error.kind === "malformed") {
       expect(result.error.body).toContain("not found");
@@ -233,15 +303,17 @@ describe("Session /save and /resume (core)", () => {
       postTurnHooks: [],
     });
     const saveResult = await session.handleLine("/save x");
-    if (saveResult === "exit" || saveResult.ok) throw new Error("expected error result");
+    if (saveResult === "exit" || saveResult.ok)
+      throw new Error("expected error result");
     expect(saveResult.error.kind).toBe("malformed");
     const resumeResult = await session.handleLine("/resume x");
-    if (resumeResult === "exit" || resumeResult.ok) throw new Error("expected error result");
+    if (resumeResult === "exit" || resumeResult.ok)
+      throw new Error("expected error result");
     expect(resumeResult.error.kind).toBe("malformed");
   });
 
   test("auto-save runs after a successful turn and saves a copy of messages", async () => {
-    const autoCalls: Message[][] = [];
+    const autoCalls: { name: string; messages: Message[]; overwrite: boolean }[] = [];
     const ss = makeSessionSource({}, autoCalls);
     const session = new Session(client, noopTools, noToolDefs, {
       cwd: "/tmp",
@@ -255,7 +327,30 @@ describe("Session /save and /resume (core)", () => {
     // Auto-save must have captured the conversation (system + user + assistant).
     expect(autoCalls.length).toBe(1);
     const first = autoCalls[0];
-    expect(first?.length).toBeGreaterThanOrEqual(3);
+    expect(first?.name).toBe("hello");
+    expect(first?.overwrite).toBe(false);
+    expect(first?.messages.length).toBeGreaterThanOrEqual(3);
+  });
+
+  test("auto-save resolves a collision once and reuses the resolved name", async () => {
+    const autoCalls: { name: string; messages: Message[]; overwrite: boolean }[] = [];
+    const ss = makeSessionSource(
+      { hello: { messages: [], activeProfile: undefined, savedAt: "t" } },
+      autoCalls,
+    );
+    const session = new Session(client, noopTools, noToolDefs, {
+      cwd: "/tmp",
+      context: noopContext,
+      preTurnHooks: [],
+      postTurnHooks: [],
+      sessionSource: ss,
+    });
+    const firstTurn = await session.handleLine("hello");
+    if (firstTurn === "exit" || !firstTurn.ok) throw new Error("expected first turn");
+    const secondTurn = await session.handleLine("again");
+    if (secondTurn === "exit" || !secondTurn.ok) throw new Error("expected second turn");
+    expect(autoCalls.map((call) => call.name)).toEqual(["hello-2", "hello-2"]);
+    expect(autoCalls.map((call) => call.overwrite)).toEqual([false, true]);
   });
 
   test("auto-save failure does not interrupt the turn", async () => {
@@ -266,8 +361,8 @@ describe("Session /save and /resume (core)", () => {
           error: { kind: "network" as const, cause: "disk full" },
         };
       },
-      async saveNamed() {
-        return { ok: true, value: undefined };
+      async saveNamed(name: string) {
+        return { ok: true, value: name };
       },
       async load(): Promise<Result<SavedSession>> {
         return {
@@ -299,7 +394,13 @@ describe("Session /save and /resume (core)", () => {
 
   test("/delete <name> removes the session and reports success", async () => {
     const ss = makeSessionSource(
-      { old: { messages: [{ role: "system", content: "s" }], activeProfile: undefined, savedAt: "t" } },
+      {
+        old: {
+          messages: [{ role: "system", content: "s" }],
+          activeProfile: undefined,
+          savedAt: "t",
+        },
+      },
       [],
     );
     const session = new Session(client, noopTools, noToolDefs, {
@@ -324,7 +425,8 @@ describe("Session /save and /resume (core)", () => {
       sessionSource: ss,
     });
     const result = await session.handleLine("/delete");
-    if (result === "exit" || result.ok) throw new Error("expected error result");
+    if (result === "exit" || result.ok)
+      throw new Error("expected error result");
     expect(result.error.kind).toBe("malformed");
     if (result.error.kind === "malformed") {
       expect(result.error.body).toContain("usage: /delete");
@@ -341,7 +443,8 @@ describe("Session /save and /resume (core)", () => {
       sessionSource: ss,
     });
     const result = await session.handleLine("/delete nothere");
-    if (result === "exit" || result.ok) throw new Error("expected error result");
+    if (result === "exit" || result.ok)
+      throw new Error("expected error result");
     expect(result.error.kind).toBe("malformed");
     if (result.error.kind === "malformed") {
       expect(result.error.body).toContain("not found");

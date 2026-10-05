@@ -339,6 +339,7 @@ describe("Session /workflow command (core)", () => {
 
   test("passes trailing user input into the workflow and returns its final answer", async () => {
     let requestSeen = "";
+    const autoSavedNames: string[] = [];
     const source: WorkflowSource = {
       async listWorkflows() {
         return { ok: true, value: [] };
@@ -363,6 +364,24 @@ describe("Session /workflow command (core)", () => {
       cwd: "/tmp",
       context,
       workflowSource: source,
+      sessionSource: {
+        async save(name) {
+          autoSavedNames.push(name);
+          return { ok: true, value: name };
+        },
+        async saveNamed(name) {
+          return { ok: true, value: name };
+        },
+        async load() {
+          return { ok: false, error: { kind: "malformed", body: "unused" } };
+        },
+        async list() {
+          return { ok: true, value: [] };
+        },
+        async delete() {
+          return { ok: true, value: undefined };
+        },
+      },
       preTurnHooks: [],
       postTurnHooks: [],
     });
@@ -372,6 +391,7 @@ describe("Session /workflow command (core)", () => {
     if (result === "exit" || !result.ok)
       throw new Error("expected workflow success");
     expect(result.value).toBe("review complete");
+    expect(autoSavedNames).toEqual(["Check the auth changes"]);
     expect(requestSeen).toContain("Check the auth changes");
   });
 });

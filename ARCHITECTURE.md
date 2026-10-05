@@ -181,12 +181,15 @@ Rules:
 - `SessionSource` is a core-owned type (`repl/session.ts`) for saving,
   loading, listing, and deleting conversation snapshots. The edge
   implementation (`src/sessions.ts`) stores one JSON snapshot per name under
-  `.vise/sessions/`; snapshots retain the active profile and timestamp. The
-  reserved `auto` snapshot is updated after successful turns and cannot be
-  overwritten by named saves or deleted. `/save`, `/resume`, and `/delete`
-  share this source and command layer. The web sessions panel must use these
-  same commands and store for save, resume, delete, and list refresh rather
-  than introducing a second persistence path.
+  `.vise/sessions/`; snapshots retain the active profile and timestamp.
+  Successful turns auto-save to a name derived from the conversation's first
+  user message; an initial collision receives a numeric suffix, and later
+  auto-saves overwrite that stable name. Manual `/save <name>` creates a
+  separate snapshot and uses the same suffix policy on collision. Resuming a
+  session continues auto-saving under its existing name. `/save`, `/resume`,
+  and `/delete` share this source and command layer. The web sessions panel
+  must use these same commands and store for save, resume, delete, and list
+  refresh rather than introducing a second persistence path.
 - `WorkflowSource` is a core-owned type (`repl/session.ts`) for listing,
   loading, and creating workflows. Workflow JSON lives under
   `.vise/workflows/` and `~/.vise/workflows/`; project workflows shadow
@@ -314,6 +317,12 @@ and must not add a user/assistant message or trigger a model turn.
   usable snapshot if a write is interrupted. If multiple drivers or processes
   mutate the same project store concurrently, define an explicit consistency
   policy rather than silently relying on process-local serialization.
+- **Auto-save name ownership.** An internal command such as `/workflow` is not
+  the conversation's first user message and must not claim its derived
+  auto-save name before a user message exists. Keep workflow-turn persistence
+  while deferring first-name selection until the first conversational input;
+  otherwise a command can give the session a surprising name that remains
+  stable for all later turns.
 - **Initial context seeding.** At startup the edge composes the conversation's
   first user message (after the system message) from the working directory: a
   capped directory tree, the project's `AGENTS.md` agent-instructions file when

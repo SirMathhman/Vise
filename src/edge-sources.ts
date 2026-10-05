@@ -172,17 +172,19 @@ export class FileSessionSource implements SessionSource {
   constructor(private readonly base: string) {}
 
   async save(
+    name: string,
     messages: Message[],
     activeProfile: string | undefined,
-  ): Promise<Result<void>> {
-    return saveAutoSession(this.base, messages, activeProfile);
+    overwrite: boolean,
+  ): Promise<Result<string>> {
+    return saveAutoSession(this.base, name, messages, activeProfile, overwrite);
   }
 
   async saveNamed(
     name: string,
     messages: Message[],
     activeProfile: string | undefined,
-  ): Promise<Result<void>> {
+  ): Promise<Result<string>> {
     return saveNamedSession(this.base, name, messages, activeProfile);
   }
 

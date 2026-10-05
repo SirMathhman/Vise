@@ -55,6 +55,8 @@ export interface WorkflowCommands {
   maybeAutoCompact(): Promise<Result<string>>;
   /** Persist the conversation after the turn (auto-save). */
   save(): Promise<void>;
+  /** Set the autosave name from the workflow's conversational request. */
+  setSessionName(name: string): void;
   /** Store the per-turn AbortController (the source of truth for interrupt). */
   setCurrentAbort(controller: AbortController | null): void;
 }
@@ -149,6 +151,7 @@ export async function handleWorkflowCommand(
   try {
     const messages = session.messages();
     await runHooks(session.preTurnHooks(), messages);
+    if (request.trim() !== "") session.setSessionName(request);
     const auto = await session.maybeAutoCompact();
     const streamed = session.onToken() !== undefined;
     const result = await runWorkflow({

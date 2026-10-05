@@ -169,8 +169,9 @@ export function formatProfileList(
 
 /**
  * Render the list of saved sessions as a multi-line string. Each line is
- * `  <name>  <savedAt>`. The `auto` entry (the fixed crash-recovery snapshot)
- * is shown first when present.
+ * `  <name>  <savedAt>`. Auto-saved sessions (named from the conversation's
+ * first message) and manually saved sessions are listed together, sorted by
+ * name.
  */
 export function formatSessionList(names: string[]): string {
   if (names.length === 0) return "no saved sessions";

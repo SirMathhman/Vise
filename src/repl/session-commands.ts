@@ -6,8 +6,7 @@ import type { ProfileCommands, SessionCommands } from "./session.ts";
  * The reserved name of the built-in profile. `default` is not a file under
  * `profiles/`; it is a constant resolved directly by the session, so there is
  * always a baseline persona even when `profiles/` is empty. A file named
- * `default.md` would be shadowed by this constant (the constant always wins),
- * the same way `auto` is reserved for sessions.
+ * `default.md` would be shadowed by this constant (the constant always wins).
  */
 const DEFAULT_PROFILE_NAME = "default";
 
@@ -144,6 +143,7 @@ export async function handleResumeCommand(
   const savedBody = saved.messages.slice(1);
   session.resetMessages(savedBody);
   session.setActiveProfile(saved.activeProfile);
+  session.setSessionName(arg);
   return {
     ok: true,
     value: `resumed session '${arg}' (${saved.messages.length - 1} messages)`,
@@ -153,9 +153,9 @@ export async function handleResumeCommand(
 /**
  * Handle `/save` and `/save <name>`. When name is omitted: lists all saved
  * sessions. When a name is provided: persists the current conversation
- * under that name (the fixed auto-save snapshot is separate and written
- * after every successful turn). Fails with a `malformed` error when the
- * name is invalid.
+ * under that name, adding a numeric suffix if the name is already taken.
+ * Auto-save continues independently under the session's first-message name.
+ * Fails with a `malformed` error when the name is invalid.
  */
 export async function handleSaveCommand(
   session: SessionCommands,
@@ -185,13 +185,18 @@ export async function handleSaveCommand(
     session.activeProfile(),
   );
   if (!saved.ok) return saved;
-  return { ok: true, value: `saved session '${arg}'` };
+  const finalName = saved.value;
+  if (finalName === arg) return { ok: true, value: `saved session '${arg}'` };
+  return {
+    ok: true,
+    value: `saved session '${finalName}' ('${arg}' was already taken)`,
+  };
 }
 
 /**
- * Handle `/delete <name>`. Deletes a named session snapshot. The `auto`
- * snapshot is reserved and cannot be deleted. Fails with a `malformed` error
- * when the session does not exist.
+ * Handle `/delete <name>`. Deletes a named session snapshot (including
+ * auto-saved ones, which are ordinary named snapshots). Fails with a
+ * `malformed` error when the session does not exist.
  */
 export async function handleDeleteCommand(
   session: SessionCommands,

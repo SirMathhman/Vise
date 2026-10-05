@@ -156,27 +156,36 @@ export interface SavedSession {
  * `/resume` command. Provided by the edge (the session performs no I/O).
  */
 export interface SessionSource {
-  /** Persist the current conversation under the fixed auto-save name. */
+  /**
+   * Persist the conversation under the given name (the auto-save path).
+   * Resolve a collision on the initial save; overwrite the resolved name on
+   * subsequent saves. The final name is returned. Fails with a `malformed`
+   * error when the name is invalid.
+   */
   save(
+    name: string,
     messages: Message[],
     activeProfile: string | undefined,
-  ): Promise<Result<void>>;
+    overwrite: boolean,
+  ): Promise<Result<string>>;
   /**
-   * Persist the current conversation under a user-chosen name. Fails with a
-   * `malformed` error when the name is invalid.
+   * Persist the current conversation under a user-chosen name (the manual
+   * `/save <name>` path). When `name` is already taken, a numeric suffix is
+   * appended and the final name is returned as the result value. Fails with
+   * a `malformed` error when the name is invalid.
    */
   saveNamed(
     name: string,
     messages: Message[],
     activeProfile: string | undefined,
-  ): Promise<Result<void>>;
+  ): Promise<Result<string>>;
   /** Load a saved session by name. Fails with a `malformed` error when not found. */
   load(name: string): Promise<Result<SavedSession>>;
   /** List all saved session names (without file extension). */
   list(): Promise<Result<string[]>>;
   /**
    * Delete a saved session by name. Fails with a `malformed` error when the
-   * session does not exist or when the name is the reserved auto-save name.
+   * session does not exist.
    */
   delete(name: string): Promise<Result<void>>;
 }
@@ -215,6 +224,12 @@ export interface SessionCommands {
    * system message at index 0 (invariant #6). Used by `/resume`.
    */
   resetMessages(messages: Message[]): void;
+  /**
+   * Set the auto-save session name. Used by `/resume` so a resumed
+   * conversation keeps writing to its own file rather than colliding into a
+   * freshly derived name.
+   */
+  setSessionName(name: string): void;
 }
 
 /**
@@ -241,6 +256,29 @@ export interface CompactionSource {
  * a normal turn only compacts when overflow is genuinely imminent.
  */
 const COMPACTION_THRESHOLD = 0.9;
+
+/**
+ * Derive an auto-save session name from a user-typed message. Pure: no I/O,
+ * no globals. Takes the message, trims, takes the first non-empty line,
+ * replaces path separators and dots with hyphens, collapses consecutive
+ * hyphens into one, drops leading/trailing hyphens, and truncates to 40
+ * characters. Returns a non-empty string; falls back to "session" when the
+ * result is blank after trimming.
+ */
+function deriveSessionName(message: string): string {
+  const trimmed = message.trim();
+  if (trimmed === "") return "session";
+  const firstLine = trimmed.split("\n")[0] ?? "";
+  const sanitized = firstLine
+    .replace(/[\\/:*?"<>|]/g, "-")
+    .replace(/\./g, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .trim();
+  if (sanitized === "") return "session";
+  const maxLen = 40;
+  return sanitized.length > maxLen ? sanitized.slice(0, maxLen) : sanitized;
+}
 
 /**
  * Edge-provided options for constructing a Session. Groups the optional
@@ -332,11 +370,19 @@ export class Session {
   private readonly sessionSource?: SessionSource;
   private readonly onMaxRounds?: () => Promise<boolean>;
   private activeProfile: string | undefined;
+  /** The stable auto-save name, derived from first input or set by `/resume`. */
+  private sessionName: string | undefined;
+  /**
+   * Whether this name has been persisted. A name can be assigned before its
+   * first save, so its presence alone cannot distinguish collision-safe
+   * initial saving from overwriting the session on subsequent saves.
+   */
+  private hasAutoSaved = false;
   /**
    * The AbortController for the turn in flight. A fresh controller is created
    * at the start of each normal turn; `interrupt()` aborts it so the in-flight
    * model call and tool rounds stop. `null` when no turn is running.
-   */
+  */
   private currentAbort: AbortController | null = null;
   private readonly profileCommands: ProfileCommands;
   private readonly sessionCommands: SessionCommands;
@@ -408,6 +454,10 @@ export class Session {
           this.messages.push(m);
         }
       },
+      setSessionName: (name) => {
+        this.sessionName = name;
+        this.hasAutoSaved = true;
+      },
     };
     this.compactionSource = {
       client: this.client,
@@ -437,6 +487,7 @@ export class Session {
       onMaxRounds: () => this.onMaxRounds,
       maybeAutoCompact: () => this.maybeAutoCompact(),
       save: () => this.saveSession(),
+      setSessionName: (name) => (this.sessionName ??= deriveSessionName(name)),
       setCurrentAbort: (controller) => {
         this.currentAbort = controller;
       },
@@ -514,6 +565,9 @@ export class Session {
     try {
       await this.runHooks(this.preTurnHooks);
       this.messages.push({ role: "user", content: line });
+      if (this.sessionName === undefined) {
+        this.sessionName = deriveSessionName(line);
+      }
       const auto = await this.maybeAutoCompact();
       const streamed = this.onToken !== undefined;
       const turn = await runTurn(
@@ -579,7 +633,6 @@ export class Session {
     return this.currentAbort?.signal;
   }
 
-
   /**
    * Run all hooks in the given list in parallel and push each non-blank
    * output as a user message, in config order. Shared by the pre-turn and
@@ -625,9 +678,9 @@ export class Session {
 
   /**
    * Auto-save the current conversation after a successful normal turn.
-   * Silently ignores I/O errors — a save failure must not interrupt the
-   * turn. The snapshot is written under the fixed auto-save name so the
-   * edge can always find the latest state.
+  * Silently ignores I/O errors — a save failure must not interrupt the
+  * turn. The snapshot is written under a stable name derived from the first
+  * user message, with collisions resolved on the initial save.
    */
   /**
    * The currently active profile name, or undefined when none is set.
@@ -640,6 +693,20 @@ export class Session {
 
   private async saveSession(): Promise<void> {
     if (!this.sessionSource) return;
-    await this.sessionSource.save([...this.messages], this.activeProfile);
+    if (this.sessionName === undefined) return;
+    try {
+      const saved = await this.sessionSource.save(
+        this.sessionName,
+        [...this.messages],
+        this.activeProfile,
+        this.hasAutoSaved,
+      );
+      if (saved.ok) {
+        this.sessionName = saved.value;
+        this.hasAutoSaved = true;
+      }
+    } catch {
+      // Persistence is best-effort; a rejected edge promise must not fail a turn.
+    }
   }
 }
