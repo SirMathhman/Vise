@@ -5,13 +5,14 @@ Full design rationale, invariants, and target layout live in [ARCHITECTURE.md](A
 
 ## Commands
 
-| Task       | Command             | Notes                                                                      |
-| ---------- | ------------------- | -------------------------------------------------------------------------- |
-| Run        | `bun run index.ts`  | Entry point. No build step — Bun transpiles TS on the fly.                 |
-| Install    | `bun install`       | Only dev deps are `@types/bun` and `typescript`; zero runtime deps.        |
-| Type-check | `bunx tsc --noEmit` | `typescript` is a dev dep (peer). No `typecheck` script in `package.json`. |
-| Lint       | `bun run lint`      | ESLint with typescript-eslint. Config in `eslint.config.js`.               |
-| Test       | `bun test`          | Bun's built-in `bun:test` runner; suites live in `test/`.                  |
+| Task       | Command             | Notes                                                                                               |
+| ---------- | ------------------- | --------------------------------------------------------------------------------------------------- |
+| Run        | `bun run index.ts`  | Entry point. No build step — Bun transpiles TS on the fly.                                          |
+| Web UI     | `bun run web`       | Starts the Bun HTTP/WebSocket server at `http://localhost:3000` by default. Set `PORT` to override. |
+| Install    | `bun install`       | Only dev deps are `@types/bun` and `typescript`; zero runtime deps.                                 |
+| Type-check | `bunx tsc --noEmit` | `typescript` is a dev dep (peer). No `typecheck` script in `package.json`.                          |
+| Lint       | `bun run lint`      | ESLint with typescript-eslint. Config in `eslint.config.js`.                                        |
+| Test       | `bun test`          | Bun's built-in `bun:test` runner; suites live in `test/`.                                           |
 
 ## Surface (product features an agent touches)
 
@@ -62,7 +63,9 @@ or the `ask_user` handler's `RlUserPrompter`).
 
 ## Current-state notes (code lags the architecture doc)
 
-- `index.ts` is now thin wiring: it constructs the edge services and the `TerminalDriver`, then calls `driver.run()`. The interactive terminal surface (readline line loop, Ctrl+C handling, the `> ` prompt marker, per-turn result rendering) lives in `src/driver/terminal.ts` (`TerminalDriver`) — this is the "frontend" seam; a different frontend (e.g. a pipe/script driver) plugs in by replacing that class without touching the core or the session. `src/driver/stream.ts` holds the streaming display state machine (`StreamDisplay`, the `onToken`/`onThinking`/`onPromptProgress` callbacks the core threads). There is no `src/cli.ts` yet — the TTY/pipe split is the main outstanding refactor. Don't add TTY/pipe special-casing into `index.ts`.
+- `src/wiring.ts` exports `createEdgeSession`, the shared factory for the LLM client, edge data sources, tool runner, and `Session`. Both `index.ts` (`TerminalDriver`) and `src/web/server.ts` use it, supplying frontend-specific streaming callbacks and user prompting. Keep transport-specific behavior in the respective driver, not in shared wiring or the core.
+- `index.ts` is thin terminal wiring: it constructs a `StreamDisplay`, readline prompter, and shared edge session, then calls `TerminalDriver.run()`. The interactive terminal surface lives in `src/driver/terminal.ts`. The web frontend is served by `src/web/server.ts` with its entry point in `src/web/main.ts`; static HTML, CSS, and browser JavaScript live in `web/`. It creates an independent `Session` per WebSocket connection and streams turn events over the socket. Start it with `bun run web` (default port 3000; `PORT` overrides). There is no `src/cli.ts` yet; the TTY/pipe split remains outstanding. Don't add TTY/pipe special-casing into `index.ts`.
+- **Web UI sessions panel:** The web frontend has a toggleable sessions panel (alongside the tools panel) that lists saved sessions, lets the user resume one (clicking a row sends `/resume <name>` and clears the chat log), and save the current conversation (freeform name input sends `/save <name>` and refreshes the list). The panel is populated by the same `/resume` list command that powers the terminal surface; the initial-load chain in `web/app.js` fetches the session list on connect (after model/profile/tool) so the panel is populated before the user opens it. No server changes were needed — the browser sends `/save` and `/resume` as regular lines through the existing `handleLine` path. No new core or edge code.
 - `src/core/engine.ts` mutates the `messages` array in place by design; it's a documented side channel, not a bug.
 - `RECENT_TURNS_TO_KEEP` in `src/repl/compaction.ts` and `MAX_TOOL_ROUNDS` in `src/core/engine.ts` are the compaction/tool-loop bounds. `COMPACTION_THRESHOLD = 0.9` in `src/repl/session.ts` drives `maybeAutoCompact()` — the auto-compact-before-every-turn guard that compares the live `context.lastPromptTokensUsed()` against `contextMax()`. The `ContextSource` interface (`lastPromptTokensUsed` + `contextMax`) is core-owned (`src/repl/session.ts`); `lastPromptTokensUsed` comes from the server's `usage.prompt_tokens` and is `undefined` until the first successful chat, so `maybeAutoCompact()` no-ops on cold start.
 - `API_KEY`, `URL`, `MODEL` are hardcoded constants in `src/client/llm.ts` (no env config by design — local-only tool).

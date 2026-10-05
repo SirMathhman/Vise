@@ -5,6 +5,7 @@
   "private": true,
   "scripts": {
     "start": "bun index.ts",
+    "web": "bun src/web/main.ts",
     "test": "bun test",
     "lint": "eslint src/ test/ index.ts"
   },

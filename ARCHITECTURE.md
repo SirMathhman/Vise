@@ -50,8 +50,9 @@ target architecture and the work that remains.
 Target module layout and dependency direction:
 
 ```
-index.ts            # entry point: parses argv, constructs driver, runs session
+index.ts            # terminal entry point: wires the shared edge session to TerminalDriver
 src/
+  wiring.ts         # shared edge factory: constructs client, sources, tools, and Session
   cli.ts            # argument parsing, subcommands, flag definitions
   driver/
     terminal.ts     # interactive TTY driver: prompt, echo, readline wiring
@@ -95,12 +96,21 @@ src/
   tools.ts          # edge-provided tool definitions (`Tool[]`) and `ToolRunner`
                     # implementation: all tool I/O (file ops, shell commands)
   workflows.ts      # edge-owned JSON workflow file I/O and validation
+  web/
+    main.ts         # web entry point (`bun run web`)
+    server.ts       # Bun HTTP/WebSocket driver; one Session per connection
+web/
+  index.html        # web UI shell
+  app.js            # browser WebSocket client and chat interaction
+  styles.css        # web UI styling
 ```
 
 Dependency direction (arrows point from dependent to dependency):
 
 ```
-index.ts ──> cli ──> driver/* ──> session ──> engine
+index.ts ──> wiring ──> session ──> engine
+src/web/main.ts ──> src/web/server.ts ──> wiring ──> session ──> engine
+index.ts ──> driver/terminal.ts ──> session
                                        │        │
                                        │        └──> client/llm  (transport)
                                        │
@@ -219,12 +229,23 @@ Rules:
 - Every file stays under 500 code lines and every function under 100 lines;
   when a module approaches that, split it along a natural seam.
 
-This is the shape the current code is growing into: `index.ts` is now thin
-wiring (constructs edge services and the `TerminalDriver`, then calls
-`driver.run()`), the interactive terminal driver lives in
-`src/driver/terminal.ts`, and the transport lives in `client/llm.ts`. The
-remaining seam is `driver/pipe.ts` (a non-TTY frontend for piped/script
-input), which will plug into the same `Session` without touching the core.
+Current implementation: `src/wiring.ts` constructs the shared edge services
+and `Session` via `createEdgeSession`. `index.ts` wires that session to the
+interactive `TerminalDriver`; `src/web/server.ts` is a second driver that
+serves `web/` and bridges browser turns and streaming events over WebSocket.
+Each web connection receives an independent edge session. The web UI is
+started with `bun run web` (default port 3000; `PORT` overrides it). The
+transport to the LLM remains in `src/client/llm.ts`. The non-TTY pipe/script
+driver and `cli.ts` remain future work.
+
+The web driver's successful `result` message may include a formatted `context`
+snapshot (`used / window tokens` and percentage). The browser renders the most
+recent successful snapshot in a persistent footer, retaining it when a result
+does not carry a new snapshot. The server obtains this through the session's
+read-only `/context` path after successful lines; context-window limits are
+queried live rather than cached across model changes. Keep this status
+reporting on the web edge: it is presentation state, not conversation state,
+and must not add a user/assistant message or trigger a model turn.
 
 ## Potential Problems
 
