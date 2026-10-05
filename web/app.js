@@ -446,8 +446,20 @@ function populateSessionsPanel(listText) {
       count++;
       const li = document.createElement("li");
       li.className = "session-row";
-      li.textContent = name;
-      li.addEventListener("click", () => resumeSession(name));
+
+      const label = document.createElement("span");
+      label.className = "session-name";
+      label.textContent = name;
+      label.addEventListener("click", () => resumeSession(name));
+      li.appendChild(label);
+
+      const del = document.createElement("button");
+      del.className = "session-delete";
+      del.textContent = "×";
+      del.title = `delete ${name}`;
+      del.addEventListener("click", () => deleteSession(name));
+      li.appendChild(del);
+
       sessionsList.appendChild(li);
     }
   }
@@ -462,6 +474,12 @@ function resumeSession(name) {
   addLine("user", `/resume ${name}`);
   setBusy(true);
   socket.send(JSON.stringify({ type: "line", text: `/resume ${name}` }));
+}
+
+function deleteSession(name) {
+  addLine("user", `/delete ${name}`);
+  setBusy(true);
+  socket.send(JSON.stringify({ type: "line", text: `/delete ${name}` }));
 }
 
 function saveSession() {
@@ -571,6 +589,11 @@ function handleResult(message) {
       log.textContent = "";
       addLine("system", message.value);
     } else if (message.value?.startsWith("saved session ")) {
+      addLine("system", message.value);
+      // Refresh the sessions list.
+      socket.send(JSON.stringify({ type: "line", text: "/resume" }));
+      pendingSessionList = true;
+    } else if (message.value?.startsWith("deleted session ")) {
       addLine("system", message.value);
       // Refresh the sessions list.
       socket.send(JSON.stringify({ type: "line", text: "/resume" }));

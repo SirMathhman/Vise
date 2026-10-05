@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type { Message } from "../src/core/errors.ts";
 import {
   AUTO_SAVE_NAME,
+  deleteSession,
   listSessions,
   loadSession,
   saveAutoSession,
@@ -208,5 +209,43 @@ describe("listSessions (edge)", () => {
     writeFileSync(join(base, "sessions", "notes.txt"), "x", "utf-8");
     const names = listSessions(base);
     expect(names).toEqual(["alpha", "auto", "zeta"]);
+  });
+});
+
+describe("deleteSession (edge)", () => {
+  test("removes an existing named session", () => {
+    const base = mkdtempSync(join(tmpDir, "del-exist-"));
+    saveNamedSession(base, "temp", [{ role: "system", content: "s" }], undefined);
+    expect(existsSync(join(base, "sessions", "temp.json"))).toBeTrue();
+    const result = deleteSession(base, "temp");
+    expect(result.ok).toBeTrue();
+    expect(existsSync(join(base, "sessions", "temp.json"))).toBeFalse();
+  });
+
+  test("returns an error when the session is not found", () => {
+    const base = mkdtempSync(join(tmpDir, "del-missing-"));
+    const result = deleteSession(base, "nope");
+    expect(result.ok).toBeFalse();
+    if (!result.ok) {
+      expect(result.error.kind).toBe("malformed");
+      if (result.error.kind === "malformed") {
+        expect(result.error.body).toContain("not found");
+      }
+    }
+  });
+
+  test("rejects the reserved auto name without removing the file", () => {
+    const base = mkdtempSync(join(tmpDir, "del-auto-"));
+    saveAutoSession(base, [{ role: "system", content: "s" }], undefined);
+    const result = deleteSession(base, AUTO_SAVE_NAME);
+    expect(result.ok).toBeFalse();
+    if (!result.ok) {
+      expect(result.error.kind).toBe("malformed");
+      if (result.error.kind === "malformed") {
+        expect(result.error.body).toContain("auto-save snapshot");
+      }
+    }
+    // The auto file must still exist.
+    expect(existsSync(join(base, "sessions", `${AUTO_SAVE_NAME}.json`))).toBeTrue();
   });
 });

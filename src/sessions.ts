@@ -1,4 +1,11 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import type { Message, Result, ViseError } from "./core/errors.ts";
 import type { SavedSession } from "./repl/session.ts";
@@ -152,4 +159,30 @@ export function listSessions(base: string): string[] {
     out.push(name);
   }
   return out;
+}
+
+/**
+ * Delete a named session snapshot by name. Fails with a `malformed` error when
+ * the session does not exist. The `auto` snapshot is reserved and cannot be
+ * deleted (it is rewritten after every successful turn, so deleting it would
+ * be immediately overwritten and could confuse the crash-recovery contract).
+ */
+export function deleteSession(base: string, name: string): Result<void> {
+  if (name === AUTO_SAVE_NAME) {
+    const error: ViseError = {
+      kind: "malformed",
+      body: `session '${name}' is the auto-save snapshot and cannot be deleted`,
+    };
+    return { ok: false, error };
+  }
+  const path = sessionPath(base, name);
+  if (!existsSync(path)) {
+    const error: ViseError = {
+      kind: "malformed",
+      body: `session '${name}' not found. Run '/resume' to see available sessions.`,
+    };
+    return { ok: false, error };
+  }
+  unlinkSync(path);
+  return { ok: true, value: undefined };
 }

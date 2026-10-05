@@ -30,7 +30,7 @@ authoritative definitions live in the source files linked.
 - `/profile` (list) / `/profile <name>` (set) / `/profile init <name>` (create) — via `ProfileSource`
 - `/note` (list) / `/note init <name>` (create) — via `NoteSource`
 - `/workflow` (list) / `/workflow <name> [input]` (run) / `/workflow init [--global] <name>` (create) — via `WorkflowSource`; JSON files live under `.vise/workflows/` or `~/.vise/workflows/`
-- `/save` (list) / `/save <name>` (persist) and `/resume` (list) / `/resume <name>` (restore) — via `SessionSource`
+- `/save` (list) / `/save <name>` (persist), `/resume` (list) / `/resume <name>` (restore), `/delete <name>` (delete) — via `SessionSource`
 
 **Model-facing tools** — defined in `src/tools.ts` (`tools: Tool[]`) with their
 implementations in `src/tools/files.ts`, `src/tools/shell.ts`,

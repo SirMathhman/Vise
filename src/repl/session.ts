@@ -21,14 +21,11 @@ import {
 } from "./commands.ts";
 import { okNoop, runCompaction } from "./compaction.ts";
 import {
+  handleDeleteCommand,
   handleProfileCommand,
   handleResumeCommand,
   handleSaveCommand,
 } from "./session-commands.ts";
-import {
-  dispatch,
-} from "./session-dispatch.ts";
-import type { SessionDispatch } from "./session-dispatch.ts";
 import { handleWorkflowCommand } from "./workflow-commands.ts";
 import type { WorkflowCommands } from "./workflow-commands.ts";
 
@@ -177,6 +174,11 @@ export interface SessionSource {
   load(name: string): Promise<Result<SavedSession>>;
   /** List all saved session names (without file extension). */
   list(): Promise<Result<string[]>>;
+  /**
+   * Delete a saved session by name. Fails with a `malformed` error when the
+   * session does not exist or when the name is the reserved auto-save name.
+   */
+  delete(name: string): Promise<Result<void>>;
 }
 
 /**
@@ -340,7 +342,6 @@ export class Session {
   private readonly sessionCommands: SessionCommands;
   private readonly compactionSource: CompactionSource;
   private readonly workflowCommands: WorkflowCommands;
-  private readonly sessionDispatch: SessionDispatch;
 
   constructor(
     client: Client,
@@ -440,42 +441,6 @@ export class Session {
         this.currentAbort = controller;
       },
     };
-    // The line dispatcher is a plain module-level function in
-    // `session-dispatch.ts`; the Session wires it to its own state with
-    // closures, so the dispatcher stays free of class-internal references
-    // (the `commands.ts` pattern). It is wired after `this.messages` exists
-    // so the closures can push/replace the conversation safely.
-    this.sessionDispatch = {
-      modelController: () => this.modelController,
-      toolController: () => this.toolController,
-      profileSource: () => this.profileSource,
-      noteSource: () => this.noteSource,
-      workflowSource: () => this.workflowSource,
-      sessionSource: () => this.sessionSource,
-      context: () => this.context,
-      preTurnHooks: () => this.preTurnHooks,
-      postTurnHooks: () => this.postTurnHooks,
-      // `runTurn` mutates the conversation in place (the engine's documented
-      // side channel), so the dispatcher holds the live array.
-      messages: () => this.messages,
-      client: () => this.client,
-      tools: () => this.tools,
-      toolDefs: () => this.toolDefs,
-      onToken: () => this.onToken,
-      onThinking: () => this.onThinking,
-      onPromptProgress: () => this.onPromptProgress,
-      onToolCall: () => this.onToolCall,
-      onMaxRounds: () => this.onMaxRounds,
-      profileCommands: () => this.profileCommands,
-      sessionCommands: () => this.sessionCommands,
-      workflowCommands: () => this.workflowCommands,
-      doCompact: () => this.doCompact(),
-      maybeAutoCompact: () => this.maybeAutoCompact(),
-      save: () => this.saveSession(),
-      setCurrentAbort: (controller) => {
-        this.currentAbort = controller;
-      },
-    };
   }
 
   /**
@@ -540,6 +505,9 @@ export class Session {
     }
     if (trimmed === "/save" || trimmed.startsWith("/save ")) {
       return handleSaveCommand(this.sessionCommands, trimmed);
+    }
+    if (trimmed === "/delete" || trimmed.startsWith("/delete ")) {
+      return handleDeleteCommand(this.sessionCommands, trimmed);
     }
     const abort = new AbortController();
     this.currentAbort = abort;

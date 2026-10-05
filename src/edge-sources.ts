@@ -15,6 +15,7 @@ import type {
   WorkflowSource,
 } from "./repl/session.ts";
 import {
+  deleteSession,
   listSessions,
   loadSession,
   saveAutoSession,
@@ -191,6 +192,10 @@ export class FileSessionSource implements SessionSource {
 
   async list(): Promise<Result<string[]>> {
     return { ok: true, value: listSessions(this.base) };
+  }
+
+  async delete(name: string): Promise<Result<void>> {
+    return deleteSession(this.base, name);
   }
 }
 

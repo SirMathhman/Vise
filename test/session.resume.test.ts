@@ -67,6 +67,19 @@ describe("Session /save and /resume (core)", () => {
       async list(): Promise<Result<string[]>> {
         return { ok: true, value: Object.keys(saved) };
       },
+      async delete(name: string): Promise<Result<void>> {
+        if (!saved[name]) {
+          return {
+            ok: false,
+            error: {
+              kind: "malformed" as const,
+              body: `session '${name}' not found`,
+            },
+          };
+        }
+        delete saved[name];
+        return { ok: true, value: undefined };
+      },
     };
   }
 
@@ -265,6 +278,12 @@ describe("Session /save and /resume (core)", () => {
       async list(): Promise<Result<string[]>> {
         return { ok: true, value: [] };
       },
+      async delete(): Promise<Result<void>> {
+        return {
+          ok: false,
+          error: { kind: "malformed" as const, body: "none" },
+        };
+      },
     };
     const session = new Session(client, noopTools, noToolDefs, {
       cwd: "/tmp",
@@ -276,5 +295,56 @@ describe("Session /save and /resume (core)", () => {
     const result = await session.handleLine("hello");
     // The turn still succeeds even though save() returned an error.
     if (result === "exit" || !result.ok) throw new Error("expected ok turn");
+  });
+
+  test("/delete <name> removes the session and reports success", async () => {
+    const ss = makeSessionSource(
+      { old: { messages: [{ role: "system", content: "s" }], activeProfile: undefined, savedAt: "t" } },
+      [],
+    );
+    const session = new Session(client, noopTools, noToolDefs, {
+      cwd: "/tmp",
+      context: noopContext,
+      preTurnHooks: [],
+      postTurnHooks: [],
+      sessionSource: ss,
+    });
+    const result = await session.handleLine("/delete old");
+    if (result === "exit" || !result.ok) throw new Error("expected ok result");
+    expect(result.value).toBe("deleted session 'old'");
+  });
+
+  test("/delete with no args returns a usage error", async () => {
+    const ss = makeSessionSource({}, []);
+    const session = new Session(client, noopTools, noToolDefs, {
+      cwd: "/tmp",
+      context: noopContext,
+      preTurnHooks: [],
+      postTurnHooks: [],
+      sessionSource: ss,
+    });
+    const result = await session.handleLine("/delete");
+    if (result === "exit" || result.ok) throw new Error("expected error result");
+    expect(result.error.kind).toBe("malformed");
+    if (result.error.kind === "malformed") {
+      expect(result.error.body).toContain("usage: /delete");
+    }
+  });
+
+  test("/delete <name> returns an error when the session is not found", async () => {
+    const ss = makeSessionSource({}, []);
+    const session = new Session(client, noopTools, noToolDefs, {
+      cwd: "/tmp",
+      context: noopContext,
+      preTurnHooks: [],
+      postTurnHooks: [],
+      sessionSource: ss,
+    });
+    const result = await session.handleLine("/delete nothere");
+    if (result === "exit" || result.ok) throw new Error("expected error result");
+    expect(result.error.kind).toBe("malformed");
+    if (result.error.kind === "malformed") {
+      expect(result.error.body).toContain("not found");
+    }
   });
 });

@@ -88,13 +88,15 @@ src/
                       # functions taking narrow controller/source interfaces
     session-commands.ts # leaf handlers for commands that need mutable conversation
                       # state: handleProfileCommand, handleResumeCommand,
-                      # handleSaveCommand — take ProfileCommands / SessionCommands
-                      # facade interfaces wired by Session via closures
+                      # handleSaveCommand, handleDeleteCommand — take
+                      # ProfileCommands / SessionCommands facade interfaces
+                      # wired by Session via closures
     compaction.ts       # leaf handler for compaction: runCompaction — takes a
                       # CompactionSource interface with the Client and a reset
                       # callback; no I/O, delegates to core's summarize/split
   tools.ts          # edge-provided tool definitions (`Tool[]`) and `ToolRunner`
                     # implementation: all tool I/O (file ops, shell commands)
+  sessions.ts       # edge-owned saved-conversation snapshot I/O and validation
   workflows.ts      # edge-owned JSON workflow file I/O and validation
   web/
     main.ts         # web entry point (`bun run web`)
@@ -176,6 +178,15 @@ Rules:
   notes via `/note init <name>`. The shared file I/O lives in `src/notes.ts`
   (edge); the `FileNoteSource` in `index.ts` implements `NoteSource`. Same
   edge-owns-I/O pattern as `ProfileSource`.
+- `SessionSource` is a core-owned type (`repl/session.ts`) for saving,
+  loading, listing, and deleting conversation snapshots. The edge
+  implementation (`src/sessions.ts`) stores one JSON snapshot per name under
+  `.vise/sessions/`; snapshots retain the active profile and timestamp. The
+  reserved `auto` snapshot is updated after successful turns and cannot be
+  overwritten by named saves or deleted. `/save`, `/resume`, and `/delete`
+  share this source and command layer. The web sessions panel must use these
+  same commands and store for save, resume, delete, and list refresh rather
+  than introducing a second persistence path.
 - `WorkflowSource` is a core-owned type (`repl/session.ts`) for listing,
   loading, and creating workflows. Workflow JSON lives under
   `.vise/workflows/` and `~/.vise/workflows/`; project workflows shadow
@@ -297,6 +308,12 @@ and must not add a user/assistant message or trigger a model turn.
   window; a depth cap or cost-aware guard is a future concern.
 - **Unbounded line input.** A piped file is unbounded. The core must process
   lines streaming, one at a time, and never buffer the whole input in memory.
+- **Session snapshot durability and deletion races.** Named snapshots are
+  user data. Persistence must preserve the reserved auto-save contract, reject
+  path traversal, report missing names accurately, and avoid corrupting a
+  usable snapshot if a write is interrupted. If multiple drivers or processes
+  mutate the same project store concurrently, define an explicit consistency
+  policy rather than silently relying on process-local serialization.
 - **Initial context seeding.** At startup the edge composes the conversation's
   first user message (after the system message) from the working directory: a
   capped directory tree, the project's `AGENTS.md` agent-instructions file when
@@ -366,9 +383,13 @@ and must not add a user/assistant message or trigger a model turn.
   model enumeration via `GET /v1/models` are now supported at runtime. Future
   work includes model parameter configuration (temperature, top_p), model
   aliasing, and persisting default model selection across invocations.
-- **Session state.** Conversation state (the growing `messages` array),
-  interrupt (Ctrl+C) handling, and clean termination state owned by
-  `session.ts`, exercisable without a real TTY.
+- **Session state and persistence.** Conversation state (the growing
+  `messages` array), interrupt (Ctrl+C) handling, and clean termination state
+  are owned by `session.ts`, exercisable without a real TTY. Saved snapshots
+  use the edge-owned `SessionSource`; keep storage validation and file I/O out
+  of the core. Before supporting concurrent writers or relying on snapshots
+  as durable backups, define atomic-write, schema-versioning, and cross-process
+  conflict policies.
 - **Tests.** Core tests first (pure, fast, no I/O — use a stub `Client`), then
   driver tests against piped input. A core test must never open a real
   stdin/stdout or make a real HTTP call.

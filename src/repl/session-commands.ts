@@ -187,3 +187,36 @@ export async function handleSaveCommand(
   if (!saved.ok) return saved;
   return { ok: true, value: `saved session '${arg}'` };
 }
+
+/**
+ * Handle `/delete <name>`. Deletes a named session snapshot. The `auto`
+ * snapshot is reserved and cannot be deleted. Fails with a `malformed` error
+ * when the session does not exist.
+ */
+export async function handleDeleteCommand(
+  session: SessionCommands,
+  line: string,
+): Promise<Result<string>> {
+  const sessionSource = session.sessionSource();
+  if (!sessionSource) {
+    return {
+      ok: false,
+      error: {
+        kind: "malformed",
+        body: "session persistence not supported by the current client",
+      },
+    };
+  }
+
+  const arg = line.slice("/delete".length).trim();
+  if (arg === "") {
+    return {
+      ok: false,
+      error: { kind: "malformed", body: "usage: /delete <name>" },
+    };
+  }
+
+  const deleted = await sessionSource.delete(arg);
+  if (!deleted.ok) return deleted;
+  return { ok: true, value: `deleted session '${arg}'` };
+}

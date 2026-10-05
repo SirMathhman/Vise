@@ -123,6 +123,7 @@ export function formatHelp(opts: {
     lines.push("/save <name>     save the current conversation under a name");
     lines.push("/resume          list saved sessions");
     lines.push("/resume <name>   resume a previously saved session");
+    lines.push("/delete <name>   delete a saved session");
   }
   if (opts.preTurnHookCount > 0) {
     lines.push("");
@@ -174,5 +175,5 @@ export function formatProfileList(
 export function formatSessionList(names: string[]): string {
   if (names.length === 0) return "no saved sessions";
   const lines = names.map((n) => `  ${n}`).join("\n");
-  return `saved sessions:\n${lines}\n\n/resume <name>  resume a session\n/save <name>   save the current conversation`;
+  return `saved sessions:\n${lines}\n\n/resume <name>  resume a session\n/save <name>   save the current conversation\n/delete <name> delete a saved session`;
 }
