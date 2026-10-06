@@ -51,6 +51,21 @@ export function formatModelList(models: string[], activeModel: string): string {
     .join("\n");
 }
 
+/**
+ * Render the list of available `reasoning_effort` levels, marking the active
+ * one with an asterisk. `active` is the effective level in use (`default` when
+ * nothing is set, since an unset value behaves like the template default).
+ */
+export function formatReasoningList(
+  levels: readonly string[],
+  active: string,
+): string {
+  if (levels.length === 0) return "no reasoning efforts available";
+  return levels
+    .map((level) => (level === active ? `* ${level} (active)` : `  ${level}`))
+    .join("\n");
+}
+
 /** Format the `/note` listing. Each line is a pre-formatted note entry. */
 export function formatNoteList(lines: string[]): string {
   if (lines.length === 0) return "no notes";
@@ -76,6 +91,7 @@ export function formatToolList(
 /** Render the available slash commands as a multi-line help text. */
 export function formatHelp(opts: {
   hasModel: boolean;
+  hasReasoning: boolean;
   hasTools: boolean;
   hasProfile: boolean;
   hasNotes: boolean;
@@ -94,6 +110,12 @@ export function formatHelp(opts: {
     lines.push(
       "/model          list available models",
       "/model <name>   switch to the named model",
+    );
+  }
+  if (opts.hasReasoning) {
+    lines.push(
+      "/reasoning         list available reasoning efforts",
+      "/reasoning <level> set the active reasoning effort",
     );
   }
   if (opts.hasTools) {

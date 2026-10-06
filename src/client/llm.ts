@@ -161,9 +161,35 @@ export async function streamChat(
   return { message, usage, sawData };
 }
 
+/**
+ * The valid llama.cpp `reasoning_effort` levels, in the order they are
+ * presented to the user. `default` keeps the chat template's built-in default;
+ * `none` disables reasoning/thinking; the remaining levels are forwarded to the
+ * Jinja chat template as-is. Exported so the terminal, web, and tests all
+ * share one source of truth for the set of accepted values.
+ */
+export const REASONING_EFFORTS = [
+  "default",
+  "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+] as const;
+
+export type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
+
 export class LlmClient implements Client {
   private lastPromptTokens: number | undefined;
   private currentModel: string = MODEL;
+  /**
+   * The active `reasoning_effort` level. `undefined` (or `"default"`) means
+   * the field is omitted from the request so the chat template uses its
+   * built-in default; any other value is forwarded as `reasoning_effort`.
+   */
+  private reasoningEffort: ReasoningEffort | undefined;
   private slotCacheDepth = 0;
   private readonly slotRequestTimeoutMs: number;
 
@@ -303,6 +329,22 @@ export class LlmClient implements Client {
   }
 
   /**
+   * The active `reasoning_effort` level, or `undefined` when none is set
+   * (the request omits the field and the template default applies).
+   */
+  getReasoningEffort(): ReasoningEffort | undefined {
+    return this.reasoningEffort;
+  }
+
+  /**
+   * Set the active `reasoning_effort` level. Pass `undefined` or `"default"`
+   * to fall back to the chat template's built-in default.
+   */
+  setReasoningEffort(effort: ReasoningEffort | undefined): void {
+    this.reasoningEffort = effort;
+  }
+
+  /**
    * Fetch the list of available model ids from the server via `GET /v1/models`.
    */
   async listModels(): Promise<Result<string[]>> {
@@ -409,6 +451,16 @@ export class LlmClient implements Client {
         type: "json_schema",
         json_schema: { schema: responseSchema },
       };
+    }
+    // `reasoning_effort` is forwarded to the Jinja chat template. `default`
+    // (and the unset case) omit the field so the template uses its built-in
+    // default; every other level — including `none`, which disables
+    // reasoning — is sent through.
+    if (
+      this.reasoningEffort !== undefined &&
+      this.reasoningEffort !== "default"
+    ) {
+      body.reasoning_effort = this.reasoningEffort;
     }
     try {
       const res = await fetch(URL, {

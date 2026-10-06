@@ -234,14 +234,24 @@ describe("Session /save and /resume (core)", () => {
   });
 
   test("auto-save after resume overwrites the resumed session", async () => {
-    const autoCalls: { name: string; messages: Message[]; overwrite: boolean }[] = [];
+    const autoCalls: {
+      name: string;
+      messages: Message[];
+      overwrite: boolean;
+    }[] = [];
     const savedMessages: Message[] = [
       { role: "system", content: "Working directory: /saved" },
       { role: "user", content: "earlier" },
       { role: "assistant", content: "earlier reply" },
     ];
     const ss = makeSessionSource(
-      { old: { messages: savedMessages, activeProfile: undefined, savedAt: "t" } },
+      {
+        old: {
+          messages: savedMessages,
+          activeProfile: undefined,
+          savedAt: "t",
+        },
+      },
       autoCalls,
     );
     const session = new Session(client, noopTools, noToolDefs, {
@@ -313,7 +323,11 @@ describe("Session /save and /resume (core)", () => {
   });
 
   test("auto-save runs after a successful turn and saves a copy of messages", async () => {
-    const autoCalls: { name: string; messages: Message[]; overwrite: boolean }[] = [];
+    const autoCalls: {
+      name: string;
+      messages: Message[];
+      overwrite: boolean;
+    }[] = [];
     const ss = makeSessionSource({}, autoCalls);
     const session = new Session(client, noopTools, noToolDefs, {
       cwd: "/tmp",
@@ -333,7 +347,11 @@ describe("Session /save and /resume (core)", () => {
   });
 
   test("auto-save resolves a collision once and reuses the resolved name", async () => {
-    const autoCalls: { name: string; messages: Message[]; overwrite: boolean }[] = [];
+    const autoCalls: {
+      name: string;
+      messages: Message[];
+      overwrite: boolean;
+    }[] = [];
     const ss = makeSessionSource(
       { hello: { messages: [], activeProfile: undefined, savedAt: "t" } },
       autoCalls,
@@ -346,9 +364,11 @@ describe("Session /save and /resume (core)", () => {
       sessionSource: ss,
     });
     const firstTurn = await session.handleLine("hello");
-    if (firstTurn === "exit" || !firstTurn.ok) throw new Error("expected first turn");
+    if (firstTurn === "exit" || !firstTurn.ok)
+      throw new Error("expected first turn");
     const secondTurn = await session.handleLine("again");
-    if (secondTurn === "exit" || !secondTurn.ok) throw new Error("expected second turn");
+    if (secondTurn === "exit" || !secondTurn.ok)
+      throw new Error("expected second turn");
     expect(autoCalls.map((call) => call.name)).toEqual(["hello-2", "hello-2"]);
     expect(autoCalls.map((call) => call.overwrite)).toEqual([false, true]);
   });

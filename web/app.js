@@ -13,6 +13,7 @@ const stopBtn = document.getElementById("stop");
 const status = document.getElementById("status");
 const modelSelect = document.getElementById("model");
 const profileSelect = document.getElementById("profile");
+const reasoningSelect = document.getElementById("reasoning");
 const toolsBtn = document.getElementById("tools-btn");
 const toolsPanel = document.getElementById("tools-panel");
 const toolsList = document.getElementById("tools-list");
@@ -44,6 +45,8 @@ let busy = false;
 let pendingModelList = false;
 /** True while waiting for the initial /profile list to populate the dropdown. */
 let pendingProfileList = false;
+/** True while waiting for the initial /reasoning list to mark the active level. */
+let pendingReasoningList = false;
 /** True while waiting for the initial /tool list to populate the tools panel. */
 let pendingToolList = false;
 /** True while waiting for the initial /resume list to populate the sessions panel. */
@@ -101,6 +104,7 @@ function setBusy(next) {
   stopBtn.disabled = !next;
   modelSelect.disabled = next;
   profileSelect.disabled = next;
+  reasoningSelect.disabled = next;
   toolsBtn.disabled = next;
   sessionsBtn.disabled = next;
 }
@@ -147,6 +151,15 @@ profileSelect.addEventListener("change", () => {
   addLine("user", `/profile ${name}`);
   setBusy(true);
   socket.send(JSON.stringify({ type: "line", text: `/profile ${name}` }));
+});
+
+reasoningSelect.addEventListener("change", () => {
+  const name = reasoningSelect.value;
+  if (!name) return;
+  pendingReasoningList = false;
+  addLine("user", `/reasoning ${name}`);
+  setBusy(true);
+  socket.send(JSON.stringify({ type: "line", text: `/reasoning ${name}` }));
 });
 
 toolsBtn.addEventListener("click", () => {
@@ -223,6 +236,7 @@ socket.addEventListener("open", () => {
   pendingProfileList = true;
   pendingToolList = true;
   pendingSessionList = true;
+  pendingReasoningList = true;
   setBusy(true);
   socket.send(JSON.stringify({ type: "line", text: "/model" }));
   // /profile is sent after /model resolves to keep the chain sequential.
@@ -321,6 +335,37 @@ function populateModelSelect(listText) {
     placeholder.textContent = "no active model";
     placeholder.disabled = true;
     modelSelect.insertBefore(placeholder, modelSelect.firstChild);
+  }
+}
+
+/**
+ * Populate the reasoning dropdown from the `/reasoning` list output and select
+ * the active level. Replaces the placeholder option with the real levels.
+ */
+function populateReasoningSelect(listText) {
+  reasoningSelect.textContent = "";
+  const lines = listText.split("\n");
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    if (trimmed === "no reasoning efforts available") {
+      reasoningSelect.value = "";
+      break;
+    }
+    const option = document.createElement("option");
+    if (line[0] === "*") {
+      // formatReasoningList: `* <level> (active)`
+      const raw = line.slice(1).trim();
+      option.value = raw.replace(/ \(active\)$/, "");
+      option.textContent = option.value;
+      reasoningSelect.appendChild(option);
+      reasoningSelect.value = option.value;
+    } else {
+      // formatReasoningList: `  <level>` (two leading spaces)
+      option.value = trimmed;
+      option.textContent = trimmed;
+      reasoningSelect.appendChild(option);
+    }
   }
 }
 
@@ -545,12 +590,27 @@ function handleResult(message) {
     pendingToolList = false;
     if (message.ok === true && message.value) {
       populateToolsPanel(message.value);
+      // Keep the composer busy while /reasoning is in flight.
+      setBusy(true);
+      socket.send(JSON.stringify({ type: "line", text: "/reasoning" }));
+      return;
+    }
+    setBusy(false);
+    return;
+  }
+  if (pendingReasoningList) {
+    pendingReasoningList = false;
+    if (message.ok === true && message.value) {
+      populateReasoningSelect(message.value);
       // Keep the composer busy while /resume is in flight.
       setBusy(true);
       socket.send(JSON.stringify({ type: "line", text: "/resume" }));
       return;
     }
+    // /reasoning failed — don't send /resume; leave the dropdown as-is.
     setBusy(false);
+    reasoningSelect.disabled = true;
+    addLine("error", message.error ?? "unknown error");
     return;
   }
   if (pendingSessionList) {
@@ -606,6 +666,15 @@ function handleResult(message) {
       removeProfilePlaceholder();
       profileSelect.value = name;
       addLine("system", `profile: ${name}`);
+    } else if (message.value?.startsWith("reasoning effort set to ")) {
+      const name = message.value.slice("reasoning effort set to ".length);
+      // The confirmation text drops the " (template default)" suffix; the
+      // raw level is what the dropdown option holds.
+      const level = name.replace(" (template default)", "");
+      if (reasoningSelect.querySelector(`option[value="${level}"]`)) {
+        reasoningSelect.value = level;
+      }
+      addLine("system", `reasoning: ${level}`);
     } else if (message.value === "profile cleared") {
       addProfilePlaceholder();
       profileSelect.value = "";

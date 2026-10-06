@@ -232,7 +232,13 @@ describe("listSessions (edge)", () => {
 
   test("lists .json files by name, sorted, excluding non-json files", () => {
     const base = mkdtempSync(join(tmpDir, "list-some-"));
-    saveAutoSession(base, "hello", [{ role: "system", content: "s" }], undefined, false);
+    saveAutoSession(
+      base,
+      "hello",
+      [{ role: "system", content: "s" }],
+      undefined,
+      false,
+    );
     saveNamedSession(
       base,
       "zeta",
@@ -281,7 +287,13 @@ describe("deleteSession (edge)", () => {
 
   test("deletes an auto-saved session like any other session", () => {
     const base = mkdtempSync(join(tmpDir, "del-auto-named-"));
-    saveAutoSession(base, "hello", [{ role: "system", content: "s" }], undefined, false);
+    saveAutoSession(
+      base,
+      "hello",
+      [{ role: "system", content: "s" }],
+      undefined,
+      false,
+    );
     const result = deleteSession(base, "hello");
     expect(result.ok).toBeTrue();
     expect(existsSync(join(base, "sessions", "hello.json"))).toBeFalse();

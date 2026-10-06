@@ -268,7 +268,11 @@ describe("runWorkflow (core)", () => {
     };
     const result = await runWorkflow({
       client,
-      tools: { async run() { return "out"; } },
+      tools: {
+        async run() {
+          return "out";
+        },
+      },
       toolDefs,
       messages: [{ role: "system", content: "system" }],
       name: "sample",

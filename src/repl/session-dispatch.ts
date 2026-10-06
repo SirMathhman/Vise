@@ -15,6 +15,7 @@ import { formatHelp } from "../output/format.ts";
 import {
   handleModelCommand,
   handleNotesCommand,
+  handleReasoningCommand,
   handleToolCommand,
   reportContext,
 } from "./commands.ts";
@@ -23,9 +24,7 @@ import {
   handleResumeCommand,
   handleSaveCommand,
 } from "./session-commands.ts";
-import {
-  handleWorkflowCommand,
-} from "./workflow-commands.ts";
+import { handleWorkflowCommand } from "./workflow-commands.ts";
 import type { WorkflowCommands } from "./workflow-commands.ts";
 import type {
   ContextSource,
@@ -35,6 +34,7 @@ import type {
   ProfileSource,
   PreTurnHook,
   PostTurnHook,
+  ReasoningController,
   SessionCommands,
   SessionSource,
   WorkflowSource,
@@ -66,6 +66,7 @@ export type LineResult =
  */
 export interface SessionDispatch {
   modelController(): ModelController | undefined;
+  reasoningController(): ReasoningController | undefined;
   toolController(): ToolController | undefined;
   profileSource(): ProfileSource | undefined;
   noteSource(): NoteSource | undefined;
@@ -136,6 +137,7 @@ export async function dispatch(
       ok: true,
       value: formatHelp({
         hasModel: !!session.modelController(),
+        hasReasoning: !!session.reasoningController(),
         hasTools: !!session.toolController(),
         hasProfile: !!session.profileSource(),
         hasNotes: !!session.noteSource(),
@@ -149,6 +151,9 @@ export async function dispatch(
   if (trimmed === "/compact") return session.doCompact();
   if (trimmed === "/model" || trimmed.startsWith("/model ")) {
     return handleModelCommand(session.modelController(), trimmed);
+  }
+  if (trimmed === "/reasoning" || trimmed.startsWith("/reasoning ")) {
+    return handleReasoningCommand(session.reasoningController(), trimmed);
   }
   if (trimmed === "/tool" || trimmed.startsWith("/tool ")) {
     const messages = session.messages();

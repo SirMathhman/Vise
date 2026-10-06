@@ -8,11 +8,7 @@ import type {
   ViseError,
 } from "../core/errors.ts";
 import { formatWorkflowList } from "../output/format.ts";
-import type {
-  PreTurnHook,
-  PostTurnHook,
-  WorkflowSource,
-} from "./session.ts";
+import type { PreTurnHook, PostTurnHook, WorkflowSource } from "./session.ts";
 
 /**
  * The outcome of a handled line. A successful turn carries the model's reply

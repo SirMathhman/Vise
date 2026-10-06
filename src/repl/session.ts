@@ -16,6 +16,7 @@ import { formatHelp } from "../output/format.ts";
 import {
   handleModelCommand,
   handleNotesCommand,
+  handleReasoningCommand,
   handleToolCommand,
   reportContext,
 } from "./commands.ts";
@@ -91,6 +92,18 @@ export interface ModelController {
   setModel(name: string): void;
   /** Retrieve available model names from the server. */
   listModels(): Promise<Result<string[]>>;
+}
+
+/**
+ * Controller for the active `reasoning_effort` level. Like `ModelController`,
+ * this is edge-owned mutable state surfaced to the core's `Session` through a
+ * narrow interface; the session performs no I/O and just delegates to it.
+ */
+export interface ReasoningController {
+  /** The active level, or `undefined` when none is set (template default). */
+  getReasoningEffort(): string | undefined;
+  /** Set the active level. Pass `undefined` or `"default"` to clear. */
+  setReasoningEffort(effort: string | undefined): void;
 }
 
 /**
@@ -290,6 +303,7 @@ export interface SessionOptions {
   cwd: string;
   context: ContextSource;
   modelController?: ModelController;
+  reasoningController?: ReasoningController;
   toolController?: ToolController;
   profileSource?: ProfileSource;
   noteSource?: NoteSource;
@@ -355,6 +369,7 @@ export class Session {
   private readonly toolDefs: Tool[];
   private readonly context: ContextSource;
   private readonly modelController?: ModelController;
+  private readonly reasoningController?: ReasoningController;
   private readonly toolController?: ToolController;
   private readonly profileSource?: ProfileSource;
   private readonly noteSource?: NoteSource;
@@ -382,7 +397,7 @@ export class Session {
    * The AbortController for the turn in flight. A fresh controller is created
    * at the start of each normal turn; `interrupt()` aborts it so the in-flight
    * model call and tool rounds stop. `null` when no turn is running.
-  */
+   */
   private currentAbort: AbortController | null = null;
   private readonly profileCommands: ProfileCommands;
   private readonly sessionCommands: SessionCommands;
@@ -400,6 +415,7 @@ export class Session {
     this.toolDefs = toolDefs;
     this.context = options.context;
     this.modelController = options.modelController;
+    this.reasoningController = options.reasoningController;
     this.toolController = options.toolController;
     this.profileSource = options.profileSource;
     this.noteSource = options.noteSource;
@@ -510,6 +526,7 @@ export class Session {
         ok: true,
         value: formatHelp({
           hasModel: !!this.modelController,
+          hasReasoning: !!this.reasoningController,
           hasTools: !!this.toolController,
           hasProfile: !!this.profileSource,
           hasNotes: !!this.noteSource,
@@ -523,6 +540,9 @@ export class Session {
     if (trimmed === "/compact") return this.doCompact();
     if (trimmed === "/model" || trimmed.startsWith("/model ")) {
       return handleModelCommand(this.modelController, trimmed);
+    }
+    if (trimmed === "/reasoning" || trimmed.startsWith("/reasoning ")) {
+      return handleReasoningCommand(this.reasoningController, trimmed);
     }
     if (trimmed === "/tool" || trimmed.startsWith("/tool ")) {
       return handleToolCommand(
@@ -678,9 +698,9 @@ export class Session {
 
   /**
    * Auto-save the current conversation after a successful normal turn.
-  * Silently ignores I/O errors — a save failure must not interrupt the
-  * turn. The snapshot is written under a stable name derived from the first
-  * user message, with collisions resolved on the initial save.
+   * Silently ignores I/O errors — a save failure must not interrupt the
+   * turn. The snapshot is written under a stable name derived from the first
+   * user message, with collisions resolved on the initial save.
    */
   /**
    * The currently active profile name, or undefined when none is set.

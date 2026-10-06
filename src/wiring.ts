@@ -162,6 +162,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     cwd,
     context: client,
     modelController: client,
+    reasoningController: client,
     toolController,
     profileSource,
     noteSource: new FileNoteSource(dataDir),

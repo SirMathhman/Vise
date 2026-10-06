@@ -1,12 +1,19 @@
 import type { ToolController } from "../core/engine.ts";
+import { REASONING_EFFORTS } from "../client/llm.ts";
 import type { Result } from "../core/errors.ts";
 import {
   formatContext,
   formatModelList,
   formatNoteList,
+  formatReasoningList,
   formatToolList,
 } from "../output/format.ts";
-import type { ContextSource, ModelController, NoteSource } from "./session.ts";
+import type {
+  ContextSource,
+  ModelController,
+  NoteSource,
+  ReasoningController,
+} from "./session.ts";
 
 /**
  * Render `/context`. Reads the max live on every call (at most one `/slots`
@@ -67,6 +74,63 @@ export async function handleModelCommand(
 
   modelController.setModel(arg);
   return { ok: true, value: `switched to model ${arg}` };
+}
+
+/**
+ * Handle `/reasoning` and `/reasoning <effort>`.
+ * When no argument: lists the available levels with the active one marked.
+ * When an argument is provided: validates it against the known levels and sets
+ * the active level. A value of `default` clears the setting so the chat
+ * template's built-in default applies.
+ */
+export function handleReasoningCommand(
+  reasoningController: ReasoningController | undefined,
+  line: string,
+): Result<string> {
+  if (!reasoningController) {
+    return {
+      ok: false,
+      error: {
+        kind: "malformed",
+        body: "reasoning effort not supported by the current client",
+      },
+    };
+  }
+
+  const arg = line.slice("/reasoning".length).trim();
+  if (arg === "") {
+    const current = reasoningController.getReasoningEffort() ?? "default";
+    return {
+      ok: true,
+      value: formatReasoningList(
+        REASONING_EFFORTS as unknown as string[],
+        current,
+      ),
+    };
+  }
+
+  const lower = arg.toLowerCase();
+  const known = REASONING_EFFORTS.some((e) => e === lower);
+  if (!known) {
+    return {
+      ok: false,
+      error: {
+        kind: "malformed",
+        body: `unknown reasoning effort '${arg}'. Run '/reasoning' to see available levels.`,
+      },
+    };
+  }
+
+  reasoningController.setReasoningEffort(
+    lower === "default" ? undefined : lower,
+  );
+  return {
+    ok: true,
+    value:
+      lower === "default"
+        ? "reasoning effort set to default (template default)"
+        : `reasoning effort set to ${lower}`,
+  };
 }
 
 /**
