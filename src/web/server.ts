@@ -37,6 +37,7 @@ import { createEdgeSession } from "../wiring.ts";
  */
 
 const WEB_DIR = resolve("web");
+const WEB_DIST_DIR = join(WEB_DIR, "dist");
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -51,7 +52,11 @@ const MIME: Record<string, string> = {
 function serveStatic(path: string): Response {
   const rel =
     path === "/" || path === "/index.html" ? "index.html" : path.slice(1);
-  const file = join(WEB_DIR, rel);
+  const root = rel.startsWith("dist/") ? WEB_DIST_DIR : WEB_DIR;
+  const relativePath = rel.startsWith("dist/")
+    ? rel.slice("dist/".length)
+    : rel;
+  const file = join(root, relativePath);
   if (!file.startsWith(WEB_DIR) || !readFileSync(file, "utf8")) {
     return new Response("not found", { status: 404 });
   }

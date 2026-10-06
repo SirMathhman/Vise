@@ -68,18 +68,30 @@
             <button id="ask-send" class="ask-send">send</button>
           </div>
         </div>
-        <div class="composer-row">
-          <input
-            id="input"
-            class="input"
-            type="text"
-            placeholder="type a message… (Enter to send, Shift+Enter for a newline)"
-            autocomplete="off"
-          />
-          <button id="send" class="send">send</button>
+        <div class="composer-input-wrap">
+          <ul
+            id="command-suggestions"
+            class="command-suggestions hidden"
+            role="listbox"
+            aria-label="Slash command suggestions"
+          ></ul>
+          <div class="composer-row">
+            <input
+              id="input"
+              class="input"
+              type="text"
+              placeholder="type a message… (Enter to send, Shift+Enter for a newline)"
+              autocomplete="off"
+              role="combobox"
+              aria-autocomplete="list"
+              aria-controls="command-suggestions"
+              aria-expanded="false"
+            />
+            <button id="send" class="send">send</button>
+          </div>
         </div>
       </section>
     </main>
-    <script type="module" src="app.js"></script>
+    <script type="module" src="dist/app.js"></script>
   </body>
 </html>

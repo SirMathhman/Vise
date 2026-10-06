@@ -103,7 +103,14 @@ src/
     server.ts       # Bun HTTP/WebSocket driver; one Session per connection
 web/
   index.html        # web UI shell
-  app.js            # browser WebSocket client and chat interaction
+  src/
+    app.ts          # browser entry point; compose focused UI modules
+    command-completions.ts # pure finite-choice slash-command completion
+    socket.ts       # typed WebSocket protocol and connection lifecycle (target)
+    panels.ts       # model/profile/tool/session UI state and rendering (target)
+    composer.ts     # input, keyboard navigation, and suggestions (target)
+    transcript.ts   # streamed conversation rendering and log operations
+  dist/app.js       # generated browser bundle (not hand-edited)
   styles.css        # web UI styling
 ```
 
@@ -402,9 +409,10 @@ and must not add a user/assistant message or trigger a model turn.
 - **Tests.** Core tests first (pure, fast, no I/O — use a stub `Client`), then
   driver tests against piped input. A core test must never open a real
   stdin/stdout or make a real HTTP call.
-- **Lint enforcement.** Add the linter rules that enforce the modularity
-  limits (function size, file size, no-`node:`-imports-in-core via an import
-  restriction rule).
+- **Lint enforcement.** Keep the configured file/function size limits and
+  core import restrictions aligned with the architecture invariants as modules
+  are added; browser JavaScript should remain included in lint with its own
+  environment globals.
 
 ## Performance
 
