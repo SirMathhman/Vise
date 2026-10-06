@@ -47,6 +47,7 @@ export interface WorkflowCommands {
   onPromptProgress(): ((progress: PromptProgress) => void) | undefined;
   onToolCall(): ((name: string, depth?: number) => void) | undefined;
   onMaxRounds(): (() => Promise<boolean>) | undefined;
+  isToolEnabled(): (name: string) => boolean;
   /** Run the auto-compaction guard and return its `Result`. */
   maybeAutoCompact(): Promise<Result<string>>;
   /** Persist the conversation after the turn (auto-save). */
@@ -164,6 +165,7 @@ export async function handleWorkflowCommand(
         onPromptProgress: session.onPromptProgress(),
         onToolCall: session.onToolCall(),
         onMaxRounds: session.onMaxRounds(),
+        isToolEnabled: session.isToolEnabled(),
         abort: abort.signal,
       },
     });

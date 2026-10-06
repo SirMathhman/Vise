@@ -1,3 +1,4 @@
+import { buildGrammar, encodeMessages, hideCalls, parseToolCalls } from "./tool-protocol.ts";
 import type { Client, Tool } from "../core/engine.ts";
 import type {
   AssistantMessage,
@@ -434,17 +435,25 @@ export class LlmClient implements Client {
     onPromptProgress?: (progress: PromptProgress) => void,
     responseSchema?: Record<string, unknown>,
     signal?: AbortSignal,
+    isToolEnabled?: (name: string) => boolean,
   ): Promise<Result<AssistantMessage>> {
+    // Tools travel as stable prompt text plus a per-request grammar (see
+    // tool-protocol.ts), never as the `tools` field: the grammar is not part
+    // of the prompt, so toggling a tool leaves the KV cache intact.
+    const useTools = !!tools && tools.length > 0 && !responseSchema;
     const body: Record<string, unknown> = {
       model: this.currentModel,
-      messages,
+      messages: useTools ? encodeMessages(messages, tools) : messages,
       stream: true,
       stream_options: { include_usage: true },
       return_progress: true,
     };
-    if (tools && tools.length > 0) {
-      body.tools = tools;
-      body.tool_choice = "auto";
+    if (useTools) {
+      body.grammar = buildGrammar(
+        tools
+          .map((t) => t.function.name)
+          .filter((n) => isToolEnabled?.(n) ?? true),
+      );
     }
     if (responseSchema) {
       body.response_format = {
@@ -488,7 +497,7 @@ export class LlmClient implements Client {
       }
       const acc = await streamChat(
         stream,
-        onToken,
+        useTools ? hideCalls(onToken) : onToken,
         onThinking,
         onPromptProgress,
         signal,
@@ -500,6 +509,19 @@ export class LlmClient implements Client {
         };
       }
       this.lastPromptTokens = acc.usage;
+      if (useTools) {
+        const parsed = parseToolCalls(acc.message.content);
+        return {
+          ok: true,
+          value: {
+            ...acc.message,
+            content: parsed.content,
+            ...(parsed.tool_calls.length > 0
+              ? { tool_calls: parsed.tool_calls }
+              : {}),
+          },
+        };
+      }
       return { ok: true, value: acc.message };
     } catch (err) {
       return {

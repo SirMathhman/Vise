@@ -33,6 +33,7 @@ export interface Client {
     onPromptProgress?: (progress: PromptProgress) => void,
     responseSchema?: Record<string, unknown>,
     signal?: AbortSignal,
+    isToolEnabled?: (name: string) => boolean,
   ): Promise<Result<AssistantMessage>>;
 }
 
@@ -51,6 +52,12 @@ export interface TurnCallbacks {
   onPromptProgress?: (progress: PromptProgress) => void;
   onToolCall?: (name: string, depth?: number) => void;
   onMaxRounds?: () => Promise<boolean>;
+  /**
+   * Whether a tool is currently enabled. The client restricts generation so
+   * disabled tools cannot be called, without altering the tool definitions
+   * (and therefore the prompt). When absent, every tool is allowed.
+   */
+  isToolEnabled?: (name: string) => boolean;
   /**
    * Aborts the turn when the user interrupts (e.g. Ctrl+C). The edge sets the
    * signal on interrupt; the core threads it to the in-flight model call and
@@ -191,6 +198,7 @@ export async function runTurn(
       callbacks.onPromptProgress,
       undefined,
       callbacks.abort,
+      callbacks.isToolEnabled,
     );
     if (callbacks.abort?.aborted) {
       return { ok: false, error: { kind: "interrupted" } };

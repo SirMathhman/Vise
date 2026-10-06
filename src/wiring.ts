@@ -140,6 +140,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
         onThinking: options.onThinking,
         onPromptProgress: options.onPromptProgress,
         onToolCall: options.onToolCall,
+        isToolEnabled: (name) => toolController.isEnabled(name),
       },
       (operation) => client.withPreservedSlotCache(operation),
       () => sessionRef.current.currentAbortSignal,

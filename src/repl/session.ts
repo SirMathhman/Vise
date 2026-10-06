@@ -371,6 +371,8 @@ export class Session {
   private readonly modelController?: ModelController;
   private readonly reasoningController?: ReasoningController;
   private readonly toolController?: ToolController;
+  private readonly isToolEnabled = (name: string): boolean =>
+    this.toolController?.isEnabled(name) ?? true;
   private readonly profileSource?: ProfileSource;
   private readonly noteSource?: NoteSource;
   private readonly workflowSource?: WorkflowSource;
@@ -501,6 +503,7 @@ export class Session {
       onPromptProgress: () => this.onPromptProgress,
       onToolCall: () => this.onToolCall,
       onMaxRounds: () => this.onMaxRounds,
+      isToolEnabled: () => this.isToolEnabled,
       maybeAutoCompact: () => this.maybeAutoCompact(),
       save: () => this.saveSession(),
       setSessionName: (name) => (this.sessionName ??= deriveSessionName(name)),
@@ -601,6 +604,7 @@ export class Session {
           onPromptProgress: this.onPromptProgress,
           onToolCall: this.onToolCall,
           onMaxRounds: this.onMaxRounds,
+          isToolEnabled: this.isToolEnabled,
           abort: abort.signal,
         },
       );
