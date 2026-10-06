@@ -23,7 +23,7 @@ export function renderToolPrompt(tools: Tool[]): string {
     `To call a tool, end your reply with ${CALL_OPEN}{"name":"<tool>","arguments":{...}}${CALL_CLOSE}.`,
     "You may emit several calls in a row. Results are returned in messages",
     `wrapped in ${RESPONSE_OPEN}...${RESPONSE_CLOSE}. A reply without a call is final.`,
-    "Only call tools that are currently enabled.",
+    "Tools may be enabled or disabled during the conversation; follow the most recent notice about a tool's state and never call a disabled tool.",
   ].join("\n");
 }
 
