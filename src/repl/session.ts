@@ -550,9 +550,9 @@ export class Session {
         trimmed,
         (name, enabled) => {
           // A tool's enabled state changed; tell the model so it stops calling
-          // disabled tools and knows to invoke newly-enabled ones. The full
-          // definition list is always sent regardless, so this is a state
-          // note, not a change to the tools offered.
+          // disabled tools and knows to invoke newly-enabled ones. The client
+          // already filters disabled tools from the request; this is a state
+          // note for the conversation history.
           this.messages.push({
             role: "user",
             content: enabled

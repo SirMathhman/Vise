@@ -105,3 +105,27 @@ describe("streamChat (edge)", () => {
     expect(thinking).toEqual(["Let me", " think"]);
   });
 });
+
+describe("LlmClient tool filter", () => {
+  test("omits disabled tools from the request body", async () => {
+    const { LlmClient } = await import("../src/client/llm.ts");
+    const original = globalThis.fetch;
+    let sent: { tools?: { function: { name: string } }[] } = {};
+    globalThis.fetch = (async (_url: unknown, init?: { body?: string }) => {
+      sent = JSON.parse(init?.body ?? "{}");
+      return new Response("", { status: 500 });
+    }) as unknown as typeof fetch;
+    try {
+      const client = new LlmClient();
+      client.setToolFilter((name) => name === "a");
+      const def = (name: string) => ({
+        type: "function" as const,
+        function: { name, description: "", parameters: {} },
+      });
+      await client.chat([], [def("a"), def("b")]);
+      expect(sent.tools?.map((t) => t.function.name)).toEqual(["a"]);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+});
