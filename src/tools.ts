@@ -420,9 +420,10 @@ const baseHandlers: Record<string, ToolHandler> = {
 
 /**
  * Edge implementation of the core `ToolController`. Tracks which tools are
- * enabled (default: all). `LlmClient` filters disabled tools out of each
- * request, so the server's tool-call grammar cannot produce them; `toolRunner`
- * also rejects them as a backstop. When the user toggles a tool, the `Session`
+ * enabled (default: all). The full set of tool definitions is always sent
+ * to the model regardless of enabled state — disabling a tool does not
+ * change the definitions offered; it only makes `toolRunner` reject
+ * invocations of that tool. When the user toggles a tool, the `Session`
  * injects a user message informing the model of the state change.
  */
 export class ToolSet implements ToolController {
@@ -461,8 +462,10 @@ export const toolController = new ToolSet(tools);
  * handler depends on edge services constructed in index.ts (e.g.
  * `run_subagent` needs the `Client` and `ProfileSource`); composing them here
  * keeps the wiring explicit and avoids a mutable module-level handler map.
- * Disabled tools are normally never offered to the model; as a backstop the
- * runner reports `error: tool <name> is disabled` if one is called anyway.
+ * The full set of tool definitions is always sent to the model regardless of
+ * enabled state — disabling a tool does not change the definitions; it only
+ * makes the runner report `error: tool <name> is disabled` if the model
+ * calls it.
  */
 export function createToolRunner(
   extra?: Record<string, ToolHandler>,

@@ -60,10 +60,10 @@ export interface TurnCallbacks {
 }
 
 /**
- * Controls which tools are enabled. Disabled tools are filtered out of the
- * definitions sent to the model (so they are absent from the server's
- * tool-call grammar); the `ToolRunner` also rejects them as a backstop. The
- * edge provides the
+ * Controls which tools are enabled. The full set of tool definitions is
+ * always sent to the model regardless of enabled state — disabling a tool
+ * does not change the definitions offered to the model; it only makes the
+ * `ToolRunner` reject invocations of that tool. The edge provides the
  * implementation (currently `ToolSet` in `tools.ts`); the core depends only
  * on this interface so it can be tested with a stub.
  */

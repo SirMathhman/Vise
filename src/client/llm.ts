@@ -426,13 +426,6 @@ export class LlmClient implements Client {
       };
     }
   }
-  private toolFilter?: (name: string) => boolean;
-
-  /** Restrict which tool definitions `chat` sends (and thus the grammar). */
-  setToolFilter(filter: (name: string) => boolean): void {
-    this.toolFilter = filter;
-  }
-
   async chat(
     messages: Message[],
     tools?: Tool[],
@@ -449,13 +442,8 @@ export class LlmClient implements Client {
       stream_options: { include_usage: true },
       return_progress: true,
     };
-    // Only enabled tools are sent: llama.cpp derives the tool-call grammar
-    // from `tools`, so a disabled tool cannot be generated at all.
-    const offered = this.toolFilter
-      ? tools?.filter((t) => this.toolFilter?.(t.function.name))
-      : tools;
-    if (offered && offered.length > 0) {
-      body.tools = offered;
+    if (tools && tools.length > 0) {
+      body.tools = tools;
       body.tool_choice = "auto";
     }
     if (responseSchema) {

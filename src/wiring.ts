@@ -102,7 +102,6 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
   );
 
   const client = new LlmClient();
-  client.setToolFilter((name) => toolController.isEnabled(name));
 
   // Single directory that holds every runtime data store (profiles/, notes/,
   // sessions/) so the working directory is not polluted by them. The edge I/O
