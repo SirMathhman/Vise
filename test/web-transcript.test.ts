@@ -126,3 +126,27 @@ describe("web transcript thinking", () => {
     }
   });
 });
+
+describe("web transcript subagent output", () => {
+  test("streams a subagent reply into one block, split by other events", () => {
+    const restoreDocument = installDocumentStub();
+    try {
+      const { log, children } = makeLog();
+      const transcript = createTranscript(log);
+      transcript.appendSubagentToken("Hel");
+      transcript.appendSubagentToken("lo");
+      transcript.appendToolCall("read_file", 1);
+      transcript.appendSubagentToken("Again");
+
+      expect(
+        children.map((line) => [line.className, line.textContent]),
+      ).toEqual([
+        ["line assistant subagent", "Hello"],
+        ["line tool", "tool: read_file (subagent)"],
+        ["line assistant subagent", "Again"],
+      ]);
+    } finally {
+      restoreDocument();
+    }
+  });
+});

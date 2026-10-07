@@ -52,6 +52,12 @@ export interface TurnCallbacks {
   onThinking?: (token: string) => void;
   onPromptProgress?: (progress: PromptProgress) => void;
   onToolCall?: (name: string, depth?: number) => void;
+  /**
+   * Plain-text stream of a subagent's reply. A frontend that can style it
+   * itself (the web UI) supplies this; when absent the subagent handler
+   * falls back to a dimmed, indented copy sent through `onToken`.
+   */
+  onSubagentToken?: (token: string) => void;
   onMaxRounds?: () => Promise<boolean>;
   /**
    * Whether a tool is currently enabled. The client restricts generation so

@@ -176,6 +176,7 @@ function makeConnectionState(ws: ServerWebSocket<unknown>): ConnectionState {
       }),
     onToolCall: (name, depth) => send({ type: "tool", name, depth }),
     onBurst: (active) => send({ type: "burst", active }),
+    onSubagentToken: (t) => send({ type: "subagent_token", text: t }),
     askUser: prompter,
     onMaxRounds: async () => {
       const answer = await prompter.ask({

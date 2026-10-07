@@ -181,6 +181,13 @@ body {
   white-space: normal;
 }
 
+.line.assistant.subagent {
+  color: var(--dim);
+  margin-left: 1.5rem;
+  padding-left: 0.5rem;
+  border-left: 2px solid var(--border);
+}
+
 .line.assistant > :first-child {
   margin-top: 0;
 }

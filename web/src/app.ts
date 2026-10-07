@@ -451,6 +451,9 @@ socket.addEventListener("message", (event: MessageEvent<string>) => {
     case "profile_tools":
       handleWhitelistReply(message);
       break;
+    case "subagent_token":
+      transcript.appendSubagentToken(message.text ?? "");
+      break;
     case "token":
       transcript.appendAssistantToken(message.text ?? "");
       break;

@@ -76,7 +76,9 @@ export function makeSubagentHandler(
     // not end in a newline.
     let subAtLineStart = true;
     const indentedOnToken = (token: string) => {
-      if (callbacks.onToken) {
+      if (callbacks.onSubagentToken) {
+        callbacks.onSubagentToken(token);
+      } else if (callbacks.onToken) {
         const out = subAtLineStart ? "  " + token : token;
         callbacks.onToken(dim(out));
       }

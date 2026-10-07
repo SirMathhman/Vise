@@ -67,6 +67,8 @@ export interface EdgeSessionOptions {
   onToolCall?: (name: string, depth?: number) => void;
   /** Notified when burst mode enters or leaves an act round. */
   onBurst?: (active: boolean) => void;
+  /** Plain-text subagent output, for frontends that style it themselves. */
+  onSubagentToken?: (token: string) => void;
   /** Collects the user's answer to an `ask_user` tool call. */
   askUser: UserPrompter;
   /** Prompts the user to continue past the maximum tool rounds. */
@@ -148,6 +150,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
           onThinking: options.onThinking,
           onPromptProgress: options.onPromptProgress,
           onToolCall: options.onToolCall,
+          onSubagentToken: options.onSubagentToken,
           isToolEnabled: (name) => toolController.isEnabled(name),
         },
         (operation) => client.withPreservedSlotCache(operation),

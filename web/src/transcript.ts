@@ -3,11 +3,36 @@ export interface TranscriptView {
   appendAssistantToken(text: string): void;
   appendThinkingToken(text: string): void;
   appendToolCall(name: string, depth?: number): void;
+  /** Append a subagent's streamed reply (a dimmed, indented block). */
+  appendSubagentToken(text: string): void;
   /** Mark subsequent tool calls as part of a burst (no thinking between). */
   setBurst(active: boolean): void;
   finishThinking(): void;
   flushAssistant(): void;
   clear(): void;
+}
+
+/** Show `raw` as sanitized HTML when a renderer is given, else verbatim. */
+function showMarkdown(
+  element: HTMLElement,
+  raw: string,
+  renderHtml?: (markdown: string) => string,
+): void {
+  if (renderHtml) element.innerHTML = renderHtml(raw);
+  else element.textContent = raw;
+}
+
+/** Click a thinking line to open or close it. */
+function enableThinkingToggle(log: HTMLElement): void {
+  log.addEventListener?.("click", (event) => {
+    const line = (event.target as HTMLElement | null)?.closest?.(
+      ".line.thinking",
+    );
+    if (!(line instanceof HTMLElement)) return;
+    line.className = line.className.endsWith(" open")
+      ? line.className.replace(/ open$/, "")
+      : `${line.className} open`;
+  });
 }
 
 /**
@@ -22,6 +47,8 @@ export function createTranscript(
   let activeAssistant: HTMLElement | null = null;
   let activeRaw = "";
   let activeThinking: HTMLElement | null = null;
+  let activeSubagent: HTMLElement | null = null;
+  let subagentRaw = "";
 
   // Thinking lines start collapsed and collapse again when the thinking ends.
   function endThinking(): void {
@@ -31,16 +58,7 @@ export function createTranscript(
     activeThinking = null;
   }
 
-  // Click a thinking line to open or close it.
-  log.addEventListener?.("click", (event) => {
-    const line = (event.target as HTMLElement | null)?.closest?.(
-      ".line.thinking",
-    );
-    if (!(line instanceof HTMLElement)) return;
-    line.className = line.className.endsWith(" open")
-      ? line.className.replace(/ open$/, "")
-      : `${line.className} open`;
-  });
+  enableThinkingToggle(log);
 
   function addLine(cls: string, text: string): HTMLDivElement {
     const div = document.createElement("div");
@@ -51,12 +69,26 @@ export function createTranscript(
     return div;
   }
 
-  function showAssistant(element: HTMLElement, raw: string): void {
-    if (renderHtml) element.innerHTML = renderHtml(raw);
-    else element.textContent = raw;
+  const showAssistant = (element: HTMLElement, raw: string): void =>
+    showMarkdown(element, raw, renderHtml);
+
+  function appendSubagentToken(text: string): void {
+    flushAssistant(true);
+    endThinking();
+    if (!activeSubagent) {
+      activeSubagent = document.createElement("div");
+      activeSubagent.className = "line assistant subagent";
+      log.appendChild(activeSubagent);
+      subagentRaw = "";
+    }
+    subagentRaw += text;
+    showAssistant(activeSubagent, subagentRaw);
+    log.scrollTop = log.scrollHeight;
   }
 
-  function flushAssistant(): void {
+  // `keepSubagent` lets a subagent block keep growing across its tokens.
+  function flushAssistant(keepSubagent = false): void {
+    if (!keepSubagent) activeSubagent = null;
     if (!activeAssistant) return;
     showAssistant(activeAssistant, activeRaw);
     activeAssistant = null;
@@ -87,6 +119,7 @@ export function createTranscript(
   return {
     addLine,
     appendAssistantToken,
+    appendSubagentToken,
     appendThinkingToken,
     appendToolCall(name: string, depth?: number): void {
       flushAssistant();
