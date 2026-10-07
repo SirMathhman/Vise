@@ -1,3 +1,4 @@
+import { createHooksPanel } from "./hooks-panel.ts";
 import { createWorkspace } from "./workspace.ts";
 import { setupComposer } from "./composer.ts";
 import { createPanels } from "./panels.ts";
@@ -67,6 +68,12 @@ const askSend = requiredElement<HTMLButtonElement>("ask-send");
 const transcript = createTranscript(log, renderMarkdown);
 const socket = new WebSocket(
   `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`,
+);
+const hooksPanel = createHooksPanel(
+  requiredElement<HTMLButtonElement>("hooks-btn"),
+  requiredElement<HTMLElement>("hooks-panel"),
+  requiredElement<HTMLElement>("hooks-text"),
+  (id) => socket.send(JSON.stringify({ type: "line", text: "/hooks", id })),
 );
 const workspace = createWorkspace(
   (msg) => {
@@ -380,6 +387,7 @@ function handleResult(message: ResultMessage): void {
   transcript.setBurst(false);
   hideAsk();
   renderContext(message);
+  if (hooksPanel.handle(message)) return;
   if (handleToolRefresh(message)) return;
   if (handleInitialResult(message)) return;
   if (handleToolToggleResult(message)) return;

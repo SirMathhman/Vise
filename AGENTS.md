@@ -25,7 +25,7 @@ authoritative definitions live in the source files linked.
 `src/output/format.ts`. To add one, handle it in `handleLine` and add it to
 `formatHelp`.
 
-- `/exit`, `/help`, `/context`, `/compact`, `/new` (fresh conversation; the old one stays auto-saved, the active profile is re-applied; web UI "new" button)
+- `/exit`, `/help`, `/context`, `/hooks` (the configured pre/post-turn hook commands from `.viserc.json`; web UI "hooks" button, read-only), `/compact`, `/new` (fresh conversation; the old one stays auto-saved, the active profile is re-applied; web UI "new" button)
 - `/model` (list) / `/model <name>` (switch) — via `ModelController`
 - `/burst` (status) / `/burst on|off` — burst mode: think once to plan, then tool calls run with a calls-only grammar (no thinking) until the model emits `<done/>`, a tool returns `error:`, or its tool-name probability is below `BURST_MIN_CONFIDENCE`; handled in `runTurn` via `TurnCallbacks.burst`
 - `/tool` (list, grouped by category) / `/tool <name|category> enable|disable` (a category toggles its whole group, including tools that start disabled such as `browser_run_code`) — via `ToolController`

@@ -12,7 +12,7 @@ import type {
   Result,
   ViseError,
 } from "../core/errors.ts";
-import { formatHelp } from "../output/format.ts";
+import { formatHelp, formatHooks } from "../output/format.ts";
 import {
   handleModelCommand,
   handleNotesCommand,
@@ -130,6 +130,8 @@ export interface SessionOptions {
   workflowSource?: WorkflowSource;
   preTurnHooks: PreTurnHook[];
   postTurnHooks: PostTurnHook[];
+  /** The hook command lines, for `/hooks` (the hook objects themselves only run). */
+  hookCommands?: { pre: string[]; post: string[] };
   /**
    * Edge-provided callback invoked with each token of the user turn's reply as
    * it streams in. The session performs no I/O itself (invariant #2); this is
@@ -202,6 +204,7 @@ export class Session {
   private readonly workflowSource?: WorkflowSource;
   private readonly preTurnHooks: PreTurnHook[];
   private readonly postTurnHooks: PostTurnHook[];
+  private readonly hookCommands: { pre: string[]; post: string[] };
   private readonly cwd: string;
   private readonly onToken?: (token: string) => void;
   private readonly onThinking?: (token: string) => void;
@@ -245,6 +248,7 @@ export class Session {
     this.workflowSource = options.workflowSource;
     this.preTurnHooks = options.preTurnHooks;
     this.postTurnHooks = options.postTurnHooks;
+    this.hookCommands = options.hookCommands ?? { pre: [], post: [] };
     this.cwd = options.cwd;
     this.onToken = options.onToken;
     this.onThinking = options.onThinking;
@@ -413,6 +417,9 @@ export class Session {
         }),
       };
     if (trimmed === "/context") return reportContext(this.context);
+    if (trimmed === "/hooks") {
+      return { ok: true, value: formatHooks(this.hookCommands) };
+    }
     if (trimmed === "/compact") return this.doCompact();
     if (trimmed === "/new") return this.newConversation();
     if (trimmed === "/model" || trimmed.startsWith("/model ")) {

@@ -902,3 +902,9 @@ body {
 .tools-list li.tool-category:first-child {
   margin-top: 0;
 }
+
+.hooks-text {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}

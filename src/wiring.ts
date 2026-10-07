@@ -204,6 +204,10 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     sessionSource,
     preTurnHooks,
     postTurnHooks,
+    hookCommands: {
+      pre: hookCommands.pre ?? [],
+      post: hookCommands.post ?? [],
+    },
     onToken: options.onToken,
     onThinking: options.onThinking,
     onPromptProgress: options.onPromptProgress,

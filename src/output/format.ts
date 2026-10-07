@@ -98,6 +98,18 @@ export function formatToolList(
     .join("\n");
 }
 
+/** Format the configured pre- and post-turn hook commands for `/hooks`. */
+export function formatHooks(hooks: { pre: string[]; post: string[] }): string {
+  const section = (label: string, commands: string[]): string =>
+    commands.length === 0
+      ? `${label}: none`
+      : `${label}:\n${commands.map((c) => `  ${c}`).join("\n")}`;
+  return [
+    section("pre-turn hooks (output injected before every turn)", hooks.pre),
+    section("post-turn hooks (output injected after every turn)", hooks.post),
+  ].join("\n");
+}
+
 /** Render the available slash commands as a multi-line help text. */
 export function formatHelp(opts: {
   hasModel: boolean;
@@ -116,6 +128,7 @@ export function formatHelp(opts: {
     "/context       show context window usage",
     "/compact       compact the conversation now",
     "/new           start a new conversation (the old one stays saved)",
+    "/hooks         show the configured pre/post-turn hook commands",
   ];
   if (opts.hasModel) {
     lines.push(
