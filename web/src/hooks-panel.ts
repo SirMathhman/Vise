@@ -44,7 +44,13 @@ const PHASES: { phase: Phase; label: string }[] = [
 export function createHooksPanel(
   body: HTMLElement,
   send: (msg: Record<string, unknown>) => void,
-): { handle(message: HooksMessage): boolean; refresh(): void } {
+  /** Told about each fresh hooks listing (other views of the hooks refresh from it). */
+  onUpdate: (hooks: HooksFields) => void,
+): {
+  handle(message: HooksMessage): boolean;
+  refresh(): void;
+  edit(line: string): void;
+} {
   const status = document.createElement("div");
   status.className = "pe-status";
   status.setAttribute("role", "status");
@@ -92,11 +98,13 @@ export function createHooksPanel(
   return {
     /** Ask the server for the current hooks (the panel just opened). */
     refresh: () => send({ type: "hooks_get" }),
+    edit,
     handle(message) {
       if (message.type === "hooks") {
         lists = { pre: message.pre ?? [], post: message.post ?? [] };
         profiles = message.profiles ?? [];
         render();
+        onUpdate(message);
         return true;
       }
       if (message.type === "result" && message.id === EDIT_ID) {

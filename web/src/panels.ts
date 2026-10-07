@@ -49,7 +49,9 @@ export function createPanels(actions: PanelActions): Panels {
       ),
     toolNames: () =>
       Array.from(
-        toolsList.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'),
+        toolsList.querySelectorAll<HTMLInputElement>(
+          'li:not(.tool-category) input[type="checkbox"]',
+        ),
         (el) => el.value,
       ),
   };

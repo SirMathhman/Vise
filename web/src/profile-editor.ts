@@ -1,6 +1,12 @@
+import type { HooksFields } from "./hooks-panel.ts";
 import { appendToolCategory, appendToolItem } from "./panels.ts";
+import { renderProfileHooks } from "./profile-hooks.ts";
 
 export interface ProfileEditorActions {
+  /** Ask the server for the hooks and their profile bindings. */
+  loadHooks(): void;
+  /** Send a `/hooks bind|unbind ...` line. */
+  editHook(line: string): void;
   /** Ask the server for a profile's whitelist (`/profile <name> tools`). */
   loadWhitelist(name: string): void;
   /** Save a whitelist; `undefined` lifts the restriction (all tools). */
@@ -16,6 +22,8 @@ export interface ProfileEditorActions {
 }
 
 export interface ProfileEditor {
+  /** Show the hooks with a checkbox for binding each to the selected profile. */
+  showHooks(hooks: HooksFields): void;
   /** Reload the profile list and the selected whitelist (the panel just opened). */
   refresh(): void;
   /** Briefly confirm a save (or report why it failed) next to the button. */
@@ -36,6 +44,10 @@ export function createProfileEditor(
   const list = document.getElementById("pe-tools") as HTMLUListElement;
   const save = document.getElementById("pe-save") as HTMLButtonElement;
   const status = document.getElementById("pe-status") as HTMLElement;
+  const hooksBox = document.getElementById("pe-hooks") as HTMLElement;
+  let hooks: HooksFields = {};
+  const drawHooks = (): void =>
+    renderProfileHooks(hooksBox, hooks, select.value, actions.editHook);
   let statusTimer: ReturnType<typeof setTimeout> | undefined;
   let waitingHint: ReturnType<typeof setTimeout> | undefined;
 
@@ -68,6 +80,7 @@ export function createProfileEditor(
 
   function loadSelected(): void {
     if (select.value) actions.loadWhitelist(select.value);
+    drawHooks();
   }
 
   /** Reload the profile list and the selected whitelist; call when the panel opens. */
@@ -83,6 +96,7 @@ export function createProfileEditor(
     }
     select.selectedIndex = Math.max(0, names.indexOf(active));
     loadSelected();
+    actions.loadHooks();
   }
   select.addEventListener("change", () => {
     status.textContent = "";
@@ -121,20 +135,33 @@ export function createProfileEditor(
 
   return {
     refresh: open,
+    showHooks(next) {
+      hooks = next;
+      drawHooks();
+    },
     showStatus: (text, error) => showStatus(text, error),
     showWhitelist(name, allowed) {
       if (name !== select.value) return;
-      list.textContent = "";
-      let category: string | undefined;
-      for (const tool of actions.toolNames()) {
-        const next = actions.toolCategory(tool);
-        if (next !== undefined && next !== category) {
-          category = next;
-          appendToolCategory(list, next);
-        }
-        appendToolItem(list, tool, allowed?.includes(tool) ?? true);
-      }
+      renderWhitelist(list, actions, allowed);
       refresh();
     },
   };
+}
+
+/** Fill `list` with the tool checkboxes, grouped by category, ticking those in `allowed` (all when undefined). */
+function renderWhitelist(
+  list: HTMLUListElement,
+  actions: ProfileEditorActions,
+  allowed: string[] | undefined,
+): void {
+  list.textContent = "";
+  let category: string | undefined;
+  for (const tool of actions.toolNames()) {
+    const next = actions.toolCategory(tool);
+    if (next !== undefined && next !== category) {
+      category = next;
+      appendToolCategory(list, next);
+    }
+    appendToolItem(list, tool, allowed?.includes(tool) ?? true);
+  }
 }

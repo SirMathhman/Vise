@@ -73,6 +73,7 @@ const hooksPanel = createHooksPanel(
   (msg) => {
     if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(msg));
   },
+  (hooks) => profileEditor.showHooks(hooks),
 );
 const workspace = createWorkspace(
   (msg) => {
@@ -152,6 +153,8 @@ function deleteSession(name: string): void {
 
 const panels = createPanels({ resumeSession, deleteSession });
 const profileEditor = createProfileEditor({
+  loadHooks: () => hooksPanel.refresh(),
+  editHook: (line) => hooksPanel.edit(line),
   loadWhitelist(name) {
     requestWhitelist(name, false);
   },
