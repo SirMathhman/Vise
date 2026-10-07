@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { ChromiumBackend } from "./browser/chromium.ts";
 import type { BrowserBackend } from "./browser/types.ts";
 import { BACKEND, LlmClient } from "./client/llm.ts";
-import { dataDirFor, noFolderRoot } from "./data-dir.ts";
+import { dataDirFor, globalDataDir, noFolderRoot } from "./data-dir.ts";
 import type { Client, ToolController, TurnCallbacks } from "./core/engine.ts";
 import type { PromptProgress } from "./core/errors.ts";
 import {
@@ -267,7 +267,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     reasoningController: client,
     toolController,
     profileSource,
-    noteSource: new FileNoteSource(dataDir),
+    noteSource: new FileNoteSource({ project: dataDir, global: globalDataDir }),
     workflowSource,
     sessionSource,
     preTurnHooks,

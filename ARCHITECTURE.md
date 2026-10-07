@@ -184,7 +184,7 @@ Rules:
   context; the model reads/writes notes through the `list_notes`/
   `read_note`/`save_note`/`delete_note` tools when it decides it needs them,
   and the user sees the same store via `/note` (list) and can create new
-  notes via `/note init <name> [category]`. The shared file I/O lives in `src/notes.ts`
+  notes via `/note init [--global] <name> [category]`. A note has a scope: `project` (`.vise/notes/`) or `global` (`~/.vise/notes/`, shared by every project and by no-folder sessions); the tools that act on one note require it. Notes are the standard memory and skill systems consolidated into one store (suggested categories `user-info`, `memories`, `skills`). The shared file I/O lives in `src/notes.ts`
   (edge); the `FileNoteSource` in `index.ts` implements `NoteSource`. Same
   edge-owns-I/O pattern as `ProfileSource`.
 - `SessionSource` is a core-owned type (`repl/session.ts`) for saving,

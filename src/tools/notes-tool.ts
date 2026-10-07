@@ -1,10 +1,13 @@
-import { dataDir as defaultDataDir } from "../data-dir.ts";
 import {
+  baseOf,
   deleteNote,
   formatNotes,
-  listNotes,
+  listAllNotes,
   readNote,
   saveNote,
+  scopeOf,
+  type NoteScope,
+  type NoteStores,
 } from "../notes.ts";
 import { errStr } from "./files.ts";
 
@@ -13,18 +16,24 @@ function categoryArg(args: Record<string, unknown>): string | undefined {
   return args.category === undefined ? undefined : String(args.category);
 }
 
+/** The required `scope` argument: `project` or `global`. */
+function scopeArg(args: Record<string, unknown>): NoteScope {
+  const scope = scopeOf(args.scope);
+  if (!scope) {
+    throw new Error('\'scope\' is required: "project" or "global"');
+  }
+  return scope;
+}
+
 export function listNotesTool(
   args: Record<string, unknown>,
-  dataDir: string = defaultDataDir,
+  stores: NoteStores,
 ): string {
   try {
     const category = String(args.category ?? "").trim();
-    const notes = listNotes(dataDir, category);
-    if (notes.length === 0) {
-      return category === ""
-        ? "no notes"
-        : `no notes in category '${category}'`;
-    }
+    const scope = args.scope === undefined ? undefined : scopeArg(args);
+    const notes = listAllNotes(stores, category, scope);
+    if (notes.length === 0) return "no notes";
     return formatNotes(notes);
   } catch (err) {
     return errStr(err);
@@ -33,11 +42,12 @@ export function listNotesTool(
 
 export function readNoteTool(
   args: Record<string, unknown>,
-  dataDir: string = defaultDataDir,
+  stores: NoteStores,
 ): string {
   const noteName = String(args.name ?? "");
   try {
-    return readNote(dataDir, noteName, categoryArg(args)) ?? "";
+    const base = baseOf(stores, scopeArg(args));
+    return readNote(base, noteName, categoryArg(args)) ?? "";
   } catch (err) {
     return errStr(err);
   }
@@ -45,15 +55,17 @@ export function readNoteTool(
 
 export function saveNoteTool(
   args: Record<string, unknown>,
-  dataDir: string = defaultDataDir,
+  stores: NoteStores,
 ): string {
   const noteName = String(args.name ?? "");
   const body = String(args.body ?? "");
   try {
-    const result = saveNote(dataDir, noteName, body, categoryArg(args), true);
+    const scope = scopeArg(args);
+    const base = baseOf(stores, scope);
+    const result = saveNote(base, noteName, body, categoryArg(args), true);
     return result === "replaced"
-      ? `saved note '${noteName}' (replaced the previous content)`
-      : `saved note '${noteName}'`;
+      ? `saved ${scope} note '${noteName}' (replaced the previous content)`
+      : `saved ${scope} note '${noteName}'`;
   } catch (err) {
     return errStr(err);
   }
@@ -61,12 +73,13 @@ export function saveNoteTool(
 
 export function deleteNoteTool(
   args: Record<string, unknown>,
-  dataDir: string = defaultDataDir,
+  stores: NoteStores,
 ): string {
   const noteName = String(args.name ?? "");
   try {
-    deleteNote(dataDir, noteName, categoryArg(args));
-    return `deleted note '${noteName}'`;
+    const scope = scopeArg(args);
+    deleteNote(baseOf(stores, scope), noteName, categoryArg(args));
+    return `deleted ${scope} note '${noteName}'`;
   } catch (err) {
     return errStr(err);
   }

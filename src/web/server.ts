@@ -19,7 +19,7 @@ import { handleNoteMessage } from "./notes-api.ts";
 import { SwitchableBrowser } from "../browser/switchable.ts";
 import { BrowserBridge } from "./browser-bridge.ts";
 import { type HookStore } from "../edge-sources.ts";
-import { dataDirFor, noFolderRoot } from "../data-dir.ts";
+import { dataDirFor, globalDataDir, noFolderRoot } from "../data-dir.ts";
 import { pickFolder, RootRegistry } from "./roots.ts";
 import { createEdgeSession } from "../wiring.ts";
 import { listDir, readTextFile, watchRoot } from "./files.ts";
@@ -502,7 +502,7 @@ function handleMessage(
   if (msg.type.startsWith("note")) {
     // The notes editor reads and writes the notes store directly; never queued behind a turn.
     const replies = handleNoteMessage(
-      conn.dataDir,
+      { project: conn.dataDir, global: globalDataDir },
       msg as unknown as Record<string, unknown>,
     );
     if (replies) {

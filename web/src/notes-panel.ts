@@ -2,6 +2,7 @@
 interface NoteEntry {
   name: string;
   category: string;
+  scope: string;
   summary: string;
 }
 
@@ -11,6 +12,7 @@ export interface NotesMessage {
   notes?: NoteEntry[];
   name?: string;
   category?: string;
+  scope?: string;
   body?: string;
   ok?: boolean;
   version?: number;
@@ -19,6 +21,7 @@ export interface NotesMessage {
 }
 
 const DEFAULT_CATEGORY = "default";
+const DEFAULT_SCOPE = "project";
 
 function make<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -31,7 +34,7 @@ function make<K extends keyof HTMLElementTagNameMap>(
   return element;
 }
 
-type NoteRef = { name: string; category: string };
+type NoteRef = { name: string; category: string; scope: string };
 
 /** Fill the note list (grouped under category headings) and the category suggestions. */
 function renderNotes(
@@ -45,9 +48,10 @@ function renderNotes(
   categories.textContent = "";
   let last = "";
   for (const note of notes) {
-    if (note.category !== last) {
-      last = note.category;
-      list.append(make("li", "note-group", note.category));
+    const group = `${note.scope} · ${note.category}`;
+    if (group !== last) {
+      last = group;
+      list.append(make("li", "note-group", group));
       if (note.category !== DEFAULT_CATEGORY) {
         categories.append(new Option(note.category));
       }
@@ -56,10 +60,12 @@ function renderNotes(
     const button = make("button", "note-item", note.name);
     button.title = note.summary;
     const selected =
-      current?.name === note.name && current.category === note.category;
+      current?.name === note.name &&
+      current.category === note.category &&
+      current.scope === note.scope;
     button.setAttribute("aria-current", String(selected));
     button.addEventListener("click", () =>
-      open({ name: note.name, category: note.category }),
+      open({ name: note.name, category: note.category, scope: note.scope }),
     );
     item.append(button);
     list.append(item);
@@ -67,10 +73,21 @@ function renderNotes(
   if (notes.length === 0) list.append(make("li", "note-group", "no notes yet"));
 }
 
+/** Whether a server message is about the note `ref`. */
+function isNote(ref: NoteRef | null, message: NotesMessage): boolean {
+  return (
+    ref !== null &&
+    ref.name === message.name &&
+    ref.category === message.category &&
+    ref.scope === message.scope
+  );
+}
+
 /** The save message: an edited note carries where it came from and the version it was loaded at. */
 function savePayload(
   name: string,
   category: string,
+  scope: string,
   body: string,
   current: NoteRef | null,
   version: number | undefined,
@@ -79,6 +96,7 @@ function savePayload(
     type: "note_save",
     name,
     category,
+    scope,
     body,
     ...(current ? { from: current, version } : {}),
   };
@@ -90,6 +108,10 @@ function buildUi() {
   const name = make("input", "save-input");
   name.placeholder = "name";
   name.autocomplete = "off";
+  const scope = make("select", "save-input");
+  scope.append(new Option("project (this project only)", "project"));
+  scope.append(new Option("global (every project)", "global"));
+  scope.setAttribute("aria-label", "scope");
   const category = make("input", "save-input");
   category.placeholder = `category (empty: ${DEFAULT_CATEGORY})`;
   category.setAttribute("list", "note-categories");
@@ -111,13 +133,14 @@ function buildUi() {
   const right = make("div", "notes-edit");
   const buttons = make("div", "save-row");
   buttons.append(saveBtn, deleteBtn, status);
-  right.append(name, category, categories, text, buttons);
+  right.append(name, scope, category, categories, text, buttons);
   const layout = make("div", "notes-layout");
   layout.append(left, right);
   return {
     layout,
     list,
     name,
+    scope,
     category,
     categories,
     text,
@@ -129,7 +152,7 @@ function buildUi() {
 }
 
 /**
- * The "notes" settings tab: a list of the project's notes grouped by category
+ * The "notes" settings tab: a list of the project's and the global notes grouped by scope and category
  * and an editor to create, edit, move/rename and delete them. It works on the
  * same notes store as the model's note tools and `/note`; the server reads and
  * writes it directly (`src/web/notes-api.ts`). Changing the name or category
@@ -142,7 +165,7 @@ export function createNotesPanel(
   refreshOn: HTMLElement[],
 ): { handle(message: NotesMessage): boolean } {
   /** The note being edited, or null for a new one. */
-  let current: { name: string; category: string } | null = null;
+  let current: NoteRef | null = null;
   /** The file version the editor loaded; a save fails if the note changed since. */
   let version: number | undefined;
   let notes: NoteEntry[] = [];
@@ -151,6 +174,7 @@ export function createNotesPanel(
     layout,
     list,
     name,
+    scope,
     category,
     categories,
     text,
@@ -165,9 +189,10 @@ export function createNotesPanel(
     status.classList.toggle("error", error);
   };
 
-  const edit = (target: { name: string; category: string } | null): void => {
+  const edit = (target: NoteRef | null): void => {
     current = target;
     name.value = target?.name ?? "";
+    scope.value = target?.scope ?? DEFAULT_SCOPE;
     category.value =
       target && target.category !== DEFAULT_CATEGORY ? target.category : "";
     text.value = "";
@@ -188,7 +213,13 @@ export function createNotesPanel(
   newBtn.addEventListener("click", () => edit(null));
   saveBtn.addEventListener("click", () => {
     say("saving…");
-    send(savePayload(name.value, category.value, text.value, current, version));
+    const fields = [
+      name.value,
+      category.value,
+      scope.value,
+      text.value,
+    ] as const;
+    send(savePayload(...fields, current, version));
   });
   deleteBtn.addEventListener("click", () => {
     if (!current || !confirm(`Delete note '${current.name}'?`)) return;
@@ -210,11 +241,7 @@ export function createNotesPanel(
           return true;
         case "note":
           // Ignore a reply for a note that is no longer the one being edited.
-          if (
-            current &&
-            current.name === message.name &&
-            current.category === message.category
-          ) {
+          if (isNote(current, message)) {
             text.value = message.body ?? "";
             version = message.version;
             saveBtn.disabled = false;
@@ -231,6 +258,7 @@ export function createNotesPanel(
             current = {
               name: message.name ?? "",
               category: message.category ?? DEFAULT_CATEGORY,
+              scope: message.scope ?? DEFAULT_SCOPE,
             };
             version = message.version;
             deleteBtn.disabled = false;

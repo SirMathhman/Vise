@@ -276,24 +276,24 @@ export async function handleNotesCommand(
   }
   const sub = arg.split(" ")[0];
   if (sub === "init") {
-    const [name, category, ...extra] = arg
-      .slice("init".length)
-      .trim()
-      .split(/\s+/);
+    const words = arg.slice("init".length).trim().split(/\s+/);
+    const global = words[0] === "--global";
+    const [name, category, ...extra] = global ? words.slice(1) : words;
     if (!name || extra.length > 0) {
       return {
         ok: false,
         error: {
           kind: "malformed",
-          body: "usage: /note init <name> [category]",
+          body: "usage: /note init [--global] <name> [category]",
         },
       };
     }
-    const result = await noteSource.initNote(name, category);
+    const scope = global ? "global" : "project";
+    const result = await noteSource.initNote(name, category, scope);
     if (!result.ok) return result;
     return {
       ok: true,
-      value: `initialized note '${name}'${category ? ` in category '${category}'` : ""}`,
+      value: `initialized ${scope} note '${name}'${category ? ` in category '${category}'` : ""}`,
     };
   }
   return {

@@ -1,13 +1,17 @@
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { globalDataDir } from "./data-dir.ts";
 import type { Message, Result } from "./core/errors.ts";
 import { buildInitialTree } from "./fs-tree.ts";
 import {
   formatNotes,
   formatNotesWithin,
   initNote,
-  listNotes,
+  listAllNotes,
+  baseOf,
+  type NoteScope,
+  type NoteStores,
 } from "./notes.ts";
 import {
   initProfile,
@@ -196,19 +200,23 @@ export class ShellHook implements PreTurnHook, PostTurnHook {
  * the user's view of the same store the model edits via tools.
  */
 export class FileNoteSource implements NoteSource {
-  constructor(private readonly base: string) {}
+  constructor(private readonly stores: NoteStores) {}
 
   async listNotes(): Promise<Result<string[]>> {
-    const notes = listNotes(this.base);
+    const notes = listAllNotes(this.stores);
     return {
       ok: true,
       value: notes.length === 0 ? [] : formatNotes(notes).split("\n"),
     };
   }
 
-  async initNote(name: string, category?: string): Promise<Result<string>> {
+  async initNote(
+    name: string,
+    category?: string,
+    scope: NoteScope = "project",
+  ): Promise<Result<string>> {
     try {
-      initNote(this.base, name, category);
+      initNote(baseOf(this.stores, scope), name, category);
       return { ok: true, value: name };
     } catch (err) {
       return {
@@ -446,11 +454,15 @@ export function loadAgentsMd(dir: string): string {
 export function buildInitialMessage(
   cwd: string | undefined,
   dataBase: string,
+  globalBase: string = globalDataDir,
 ): string {
   const initialTree = cwd === undefined ? "" : buildInitialTree(cwd);
   const agentsMd = cwd === undefined ? "" : loadAgentsMd(cwd);
   const availableProfiles = listProfiles(dataBase);
-  const availableNotes = listNotes(dataBase);
+  const availableNotes = listAllNotes({
+    project: dataBase,
+    global: globalBase,
+  });
   return (
     (cwd === undefined
       ? ""
@@ -462,7 +474,7 @@ export function buildInitialMessage(
       ? `\n\nHere are the available profiles:\n${availableProfiles.join(", ")}`
       : "") +
     (availableNotes.length > 0
-      ? `\n\nHere are the available notes, by category (list_notes with a category lists just that one):\n${formatNotesWithin(availableNotes, STARTUP_NOTE_LIMIT)}`
+      ? `\n\nHere are the available notes, by scope and category (global notes are shared by every project; list_notes with a scope and/or category lists just that group):\n${formatNotesWithin(availableNotes, STARTUP_NOTE_LIMIT)}`
       : "")
   );
 }

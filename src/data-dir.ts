@@ -17,6 +17,9 @@ export const dataDir = dataDirFor(process.cwd());
  */
 export const noFolderRoot = join(homedir(), ".vise", "no-folder");
 
+/** The data directory shared by every session and folder (global notes and workflows live here). */
+export const globalDataDir = join(homedir(), ".vise");
+
 /** The data directory of a session rooted at `root` (the web server hosts sessions with different roots). */
 export function dataDirFor(root: string): string {
   return join(root, ".vise");

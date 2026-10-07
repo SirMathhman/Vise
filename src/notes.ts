@@ -9,7 +9,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 /**
  * Shared note-file I/O for the edge. Notes are the project's store of short
@@ -33,10 +33,28 @@ export const DEFAULT_CATEGORY = "default";
 /** The placeholder body for a newly initialized note. */
 const NOTE_TEMPLATE = "TODO: describe this note\n\n# Body";
 
-/** A single listed note: its name, category and one-line summary. */
+/**
+ * Where a note is stored: with the project (its `.vise/notes/`) or globally
+ * (`~/.vise/notes/`, shared by every project and by sessions with no folder).
+ */
+export type NoteScope = "project" | "global";
+
+/** The two data directories a session's notes live under. */
+export interface NoteStores {
+  project: string;
+  global: string;
+}
+
+/** The scope a value names, or undefined when it is not exactly `project` or `global`. */
+export function scopeOf(value: unknown): NoteScope | undefined {
+  return value === "project" || value === "global" ? value : undefined;
+}
+
+/** A single listed note: its name, category, scope and one-line summary. */
 export interface NoteEntry {
   name: string;
   category: string;
+  scope: NoteScope;
   summary: string;
 }
 
@@ -84,7 +102,11 @@ function summaryOf(body: string): string {
 }
 
 /** The notes of one category, sorted by name. */
-function listCategory(base: string, category: string): NoteEntry[] {
+function listCategory(
+  base: string,
+  category: string,
+  scope: NoteScope,
+): NoteEntry[] {
   const dir = categoryDir(base, category);
   if (!existsSync(dir)) return [];
   const out: NoteEntry[] = [];
@@ -95,7 +117,12 @@ function listCategory(base: string, category: string): NoteEntry[] {
     // A stray directory named like a note must not break listing.
     if (!f.isFile() || !f.name.endsWith(".md")) continue;
     const body = readFileSync(join(dir, f.name), "utf8");
-    out.push({ name: f.name.slice(0, -3), category, summary: summaryOf(body) });
+    out.push({
+      name: f.name.slice(0, -3),
+      category,
+      scope,
+      summary: summaryOf(body),
+    });
   }
   return out;
 }
@@ -139,19 +166,23 @@ export function formatNotesWithin(
 ): string {
   const groups = new Map<string, NoteEntry[]>();
   for (const e of entries) {
-    groups.set(e.category, [...(groups.get(e.category) ?? []), e]);
+    const key = `${e.scope}/${e.category}`;
+    groups.set(key, [...(groups.get(key) ?? []), e]);
   }
   let left = maxNotes;
   const out: string[] = [];
-  for (const [category, notes] of groups) {
-    out.push(`${category} (${notes.length})`);
+  for (const [heading, notes] of groups) {
+    out.push(`${heading} (${notes.length})`);
     for (const n of notes.slice(0, left)) {
       out.push(`  ${formatNoteEntry(n)}`);
     }
     const hidden = notes.length - Math.min(notes.length, left);
     left = Math.max(0, left - notes.length);
     if (hidden > 0) {
-      out.push(`  ... ${hidden} more: list_notes with category '${category}'`);
+      const { scope, category } = notes[0]!;
+      out.push(
+        `  ... ${hidden} more: list_notes with scope '${scope}' and category '${category}'`,
+      );
     }
   }
   return out.join("\n");
@@ -161,11 +192,42 @@ export function formatNotesWithin(
  * List the notes under `base`: every category (`default` first, the rest by
  * name, notes by name), or just `category` when given.
  */
-export function listNotes(base: string, category?: string): NoteEntry[] {
+export function listNotes(
+  base: string,
+  category?: string,
+  scope: NoteScope = "project",
+): NoteEntry[] {
   if (category !== undefined && category.trim() !== "") {
-    return listCategory(base, categoryOf(category));
+    return listCategory(base, categoryOf(category), scope);
   }
-  return categoriesOf(base).flatMap((c) => listCategory(base, c));
+  return categoriesOf(base).flatMap((c) => listCategory(base, c, scope));
+}
+
+/** The data directory of one scope. */
+export function baseOf(stores: NoteStores, scope: NoteScope): string {
+  return stores[scope];
+}
+
+/**
+ * The notes of both scopes (project first), or of just `scope`. A project
+ * whose data directory is the global one (a session started in the home
+ * directory) lists those notes once, as global.
+ */
+export function listAllNotes(
+  stores: NoteStores,
+  category?: string,
+  scope?: NoteScope,
+): NoteEntry[] {
+  const same = resolve(stores.project) === resolve(stores.global);
+  const project =
+    scope === "global" || same
+      ? []
+      : listNotes(stores.project, category, "project");
+  const global =
+    scope === "project" && !same
+      ? []
+      : listNotes(stores.global, category, "global");
+  return [...project, ...global];
 }
 
 /**

@@ -181,9 +181,9 @@ export function formatHelp(opts: {
     );
   }
   if (opts.hasNotes) {
-    lines.push("/note            list all notes by category");
+    lines.push("/note            list all notes by scope and category");
     lines.push(
-      "/note init <name> [category]  create a new note with a placeholder body",
+      "/note init [--global] <name> [category]  create a new note (project unless --global) with a placeholder body",
     );
   }
   if (opts.hasWorkflows) {
