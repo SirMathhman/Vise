@@ -1,6 +1,10 @@
 import type { Result } from "../core/errors.ts";
 import { formatProfileList, formatSessionList } from "../output/format.ts";
-import type { ProfileCommands, SessionCommands } from "./session.ts";
+import type {
+  ProfileCommands,
+  ProfileSource,
+  SessionCommands,
+} from "./session.ts";
 
 /**
  * The reserved name of the built-in profile. `default` is not a file under
@@ -58,7 +62,16 @@ export async function handleProfileCommand(
     };
   }
 
-  const sub = arg.split(" ")[0];
+  const words = arg.split(/\s+/);
+  if (words[1] === "tools") {
+    return handleProfileTools(
+      session,
+      profileSource,
+      words[0] ?? "",
+      words.slice(2),
+    );
+  }
+  const sub = words[0];
   if (sub === "init") {
     const name = arg.slice("init".length).trim();
     if (name === "") {
@@ -78,6 +91,7 @@ export async function handleProfileCommand(
   if (arg === DEFAULT_PROFILE_NAME) {
     session.setActiveProfile(DEFAULT_PROFILE_NAME);
     session.pushMessage({ role: "user", content: DEFAULT_PROFILE_TEXT });
+    await applyWhitelist(session, profileSource, undefined);
     return { ok: true, value: `profile set to ${arg}` };
   }
 
@@ -94,10 +108,63 @@ export async function handleProfileCommand(
         "Profile cleared. Please disregard any previous profile instructions.",
     });
   }
+  await applyWhitelist(session, profileSource, body === "" ? undefined : arg);
   return {
     ok: true,
     value: body === "" ? "profile cleared" : `profile set to ${arg}`,
   };
+}
+
+/** Apply the named profile's tool whitelist (undefined name: lift it). */
+async function applyWhitelist(
+  session: ProfileCommands,
+  source: ProfileSource,
+  name: string | undefined,
+): Promise<void> {
+  const tools =
+    name !== undefined && source.profileTools
+      ? await source.profileTools(name)
+      : undefined;
+  session.applyProfileTools(tools?.ok ? tools.value : undefined);
+}
+
+/**
+ * Handle `/profile <name> tools`, `... tools all`, and `... tools a,b`: show,
+ * clear, or set a profile's tool whitelist. Editing the active profile's
+ * whitelist applies it immediately.
+ */
+async function handleProfileTools(
+  session: ProfileCommands,
+  source: ProfileSource,
+  name: string,
+  args: string[],
+): Promise<Result<string>> {
+  const fail = (body: string): Result<string> => ({
+    ok: false,
+    error: { kind: "malformed", body },
+  });
+  if (!source.profileTools || !source.setProfileTools) {
+    return fail("tool whitelists not supported by the current client");
+  }
+  const current = await source.profileTools(name);
+  if (!current.ok) return current;
+  const show = (tools: string[] | undefined): Result<string> => ({
+    ok: true,
+    value: `profile '${name}' tools: ${tools === undefined ? "all" : tools.join(", ") || "(none)"}`,
+  });
+  const list = args
+    .join(",")
+    .split(",")
+    .map((t) => t.trim())
+    .filter((t) => t !== "");
+  if (list.length === 0) return show(current.value);
+  const next = list.length === 1 && list[0] === "all" ? undefined : list;
+  const unknown = (next ?? []).filter((t) => !session.toolNames().includes(t));
+  if (unknown.length > 0) return fail(`unknown tool(s): ${unknown.join(", ")}`);
+  const saved = await source.setProfileTools(name, next);
+  if (!saved.ok) return saved;
+  if (session.activeProfile() === name) session.applyProfileTools(next);
+  return show(next);
 }
 
 /**

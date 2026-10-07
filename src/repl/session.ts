@@ -22,6 +22,7 @@ import {
   reportContext,
 } from "./commands.ts";
 import { okNoop, runCompaction } from "./compaction.ts";
+import { ProfileToolGate } from "./profile-tools.ts";
 import {
   handleDeleteCommand,
   handleProfileCommand,
@@ -264,16 +265,7 @@ export class Session {
     // handlers stay free of class-internal references (the `commands.ts`
     // pattern). They are wired after `this.messages` exists so the
     // closures can push/replace the conversation safely.
-    this.profileCommands = {
-      profileSource: () => this.profileSource,
-      activeProfile: () => this.activeProfile,
-      setActiveProfile: (name) => {
-        this.activeProfile = name;
-      },
-      pushMessage: (message) => {
-        this.messages.push(message);
-      },
-    };
+    this.profileCommands = this.buildProfileCommands(options.toolController);
     this.sessionCommands = {
       sessionSource: () => this.sessionSource,
       activeProfile: () => this.activeProfile,
@@ -329,6 +321,26 @@ export class Session {
       setCurrentAbort: (controller) => {
         this.currentAbort = controller;
       },
+    };
+  }
+
+  private buildProfileCommands(
+    toolController: ToolController | undefined,
+  ): ProfileCommands {
+    const profileTools = new ProfileToolGate(toolController, (m) =>
+      this.messages.push(m),
+    );
+    return {
+      profileSource: () => this.profileSource,
+      activeProfile: () => this.activeProfile,
+      setActiveProfile: (name) => {
+        this.activeProfile = name;
+      },
+      pushMessage: (message) => {
+        this.messages.push(message);
+      },
+      toolNames: () => profileTools.names(),
+      applyProfileTools: (tools) => profileTools.apply(tools),
     };
   }
 

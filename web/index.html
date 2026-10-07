@@ -35,6 +35,13 @@
           stop
         </button>
         <button
+          id="profiles-btn"
+          class="tools-btn"
+          title="Edit profiles (tool whitelists)"
+        >
+          profiles
+        </button>
+        <button
           id="sessions-btn"
           class="tools-btn"
           title="Toggle sessions panel"
@@ -43,6 +50,17 @@
         </button>
         <div id="tools-panel" class="tools-panel hidden">
           <ul id="tools-list" class="tools-list"></ul>
+        </div>
+        <div id="profiles-panel" class="tools-panel hidden">
+          <select id="pe-profile" class="model" title="Profile to edit"></select>
+          <label class="pe-restrict">
+            <input id="pe-restrict" type="checkbox" />
+            only allow selected tools
+          </label>
+          <ul id="pe-tools" class="tools-list" hidden></ul>
+          <div class="save-row">
+            <button id="pe-save" class="save-btn">save</button>
+          </div>
         </div>
         <div id="sessions-panel" class="tools-panel hidden">
           <ul id="sessions-list" class="tools-list"></ul>

@@ -130,6 +130,14 @@ body {
   cursor: pointer;
 }
 
+.pe-restrict {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+  cursor: pointer;
+}
+
 .model {
   background: var(--bg);
   color: var(--text);

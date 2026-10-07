@@ -131,6 +131,7 @@ export function formatHelp(opts: {
       "/profile <name>  set the active profile",
       "/profile default  activate the built-in default profile",
       "/profile init <name>  create a new profile with a placeholder body",
+      "/profile <name> tools [a,b|all]  show or set a profile's tool whitelist",
     );
   }
   if (opts.hasNotes) {

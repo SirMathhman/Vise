@@ -4,7 +4,13 @@ import { join } from "node:path";
 import type { Message, Result } from "./core/errors.ts";
 import { buildInitialTree } from "./fs-tree.ts";
 import { formatNoteEntry, initNote, listNotes } from "./notes.ts";
-import { initProfile, listProfiles, readProfile } from "./profiles.ts";
+import {
+  initProfile,
+  listProfiles,
+  readProfile,
+  readProfileTools,
+  setProfileTools,
+} from "./profiles.ts";
 import type {
   NoteSource,
   PostTurnHook,
@@ -48,6 +54,28 @@ export class FileProfileSource implements ProfileSource {
       };
     }
     return { ok: true, value: text };
+  }
+
+  async profileTools(name: string): Promise<Result<string[] | undefined>> {
+    return { ok: true, value: readProfileTools(this.base, name) };
+  }
+
+  async setProfileTools(
+    name: string,
+    tools: string[] | undefined,
+  ): Promise<Result<string>> {
+    try {
+      setProfileTools(this.base, name, tools);
+      return { ok: true, value: name };
+    } catch (err) {
+      return {
+        ok: false,
+        error: {
+          kind: "malformed",
+          body: err instanceof Error ? err.message : String(err),
+        },
+      };
+    }
   }
 
   async initProfile(name: string): Promise<Result<string>> {

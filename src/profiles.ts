@@ -1,4 +1,10 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { validName } from "./notes.ts";
 
@@ -17,7 +23,8 @@ import { validName } from "./notes.ts";
  */
 
 /** The placeholder body for a newly initialized profile. */
-const PROFILE_TEMPLATE = "TODO: describe the persona or instructions for this profile";
+const PROFILE_TEMPLATE =
+  "TODO: describe the persona or instructions for this profile";
 
 /** Path of the profiles directory under the base directory. */
 function profileDir(base: string): string {
@@ -43,13 +50,82 @@ export function listProfiles(base: string): string[] {
 }
 
 /**
- * Read a profile's full body. Returns the text, or undefined when no profile
- * of that name exists.
+ * A profile file split into its optional frontmatter and its body. The
+ * frontmatter is a `---` block at the top of the file; its `tools:` line is a
+ * comma-separated whitelist of the tools the profile may use, and any other
+ * frontmatter lines are kept verbatim in `meta` so rewriting never drops them.
+ */
+export interface ParsedProfile {
+  tools?: string[];
+  meta: string[];
+  body: string;
+}
+
+const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
+
+/** Split profile file text into frontmatter fields and body. */
+export function parseProfile(text: string): ParsedProfile {
+  const match = FRONTMATTER.exec(text);
+  if (!match) return { meta: [], body: text };
+  const meta: string[] = [];
+  let tools: string[] | undefined;
+  for (const line of (match[1] ?? "").split(/\r?\n/)) {
+    const m = /^tools:\s*(.*)$/.exec(line);
+    if (m) {
+      tools = (m[1] ?? "")
+        .split(",")
+        .map((t) => t.trim())
+        .filter((t) => t !== "");
+    } else {
+      meta.push(line);
+    }
+  }
+  return { tools, meta, body: text.slice(match[0].length) };
+}
+
+/** Rebuild profile file text from its parts (no frontmatter when empty). */
+function renderProfile(parsed: ParsedProfile): string {
+  const lines = [...parsed.meta];
+  if (parsed.tools !== undefined) {
+    lines.push(`tools: ${parsed.tools.join(", ")}`);
+  }
+  if (lines.length === 0) return parsed.body;
+  return `---\n${lines.join("\n")}\n---\n${parsed.body}`;
+}
+
+/**
+ * Read a profile's body (frontmatter removed). Returns the text, or undefined
+ * when no profile of that name exists.
  */
 export function readProfile(base: string, name: string): string | undefined {
   const p = profilePath(base, name);
   if (!existsSync(p)) return undefined;
-  return readFileSync(p, "utf8");
+  return parseProfile(readFileSync(p, "utf8")).body;
+}
+
+/** A profile's tool whitelist, or undefined when it has none (or no file). */
+export function readProfileTools(
+  base: string,
+  name: string,
+): string[] | undefined {
+  const p = profilePath(base, name);
+  if (!existsSync(p)) return undefined;
+  return parseProfile(readFileSync(p, "utf8")).tools;
+}
+
+/**
+ * Set (or, with undefined, clear) a profile's tool whitelist, preserving its
+ * body and other frontmatter. Throws an `Error` when the profile is missing.
+ */
+export function setProfileTools(
+  base: string,
+  name: string,
+  tools: string[] | undefined,
+): void {
+  const p = profilePath(base, name);
+  if (!existsSync(p)) throw new Error(`profile '${name}' not found`);
+  const parsed = parseProfile(readFileSync(p, "utf8"));
+  writeFileSync(p, renderProfile({ ...parsed, tools }), "utf8");
 }
 
 /**
@@ -64,7 +140,11 @@ export function saveProfile(base: string, name: string, body: string): void {
     throw new Error(`profile '${name}' already exists`);
   }
   mkdirSync(profileDir(base), { recursive: true });
-  writeFileSync(profilePath(base, name), body.replace(/\s+$/, "") + "\n", "utf8");
+  writeFileSync(
+    profilePath(base, name),
+    body.replace(/\s+$/, "") + "\n",
+    "utf8",
+  );
 }
 
 /**

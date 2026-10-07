@@ -1,6 +1,7 @@
 import { setupComposer } from "./composer.ts";
 import { createPanels } from "./panels.ts";
 import { renderMarkdown } from "./markdown.ts";
+import { createProfileEditor } from "./profile-editor.ts";
 import { createTranscript } from "./transcript.ts";
 
 interface ResultMessage {
@@ -65,6 +66,9 @@ let pendingToolList = false;
 let pendingSessionList = false;
 let pendingToolToggle: string | null = null;
 let pendingBurstSync = false;
+// Replies to editor-side requests, in the order they were sent.
+type EditorReply = "tools" | { name: string; save: boolean };
+const editorReplies: EditorReply[] = [];
 
 function setStatus(text: string): void {
   status.textContent = text;
@@ -100,6 +104,22 @@ function deleteSession(name: string): void {
 }
 
 const panels = createPanels({ resumeSession, deleteSession });
+const profileEditor = createProfileEditor({
+  loadWhitelist(name) {
+    editorReplies.push({ name, save: false });
+    requestLine(`/profile ${name} tools`);
+  },
+  saveWhitelist(name, tools) {
+    editorReplies.push({ name, save: true });
+    requestLine(`/profile ${name} tools ${tools ? tools.join(",") : "all"}`);
+  },
+  toolNames: () => panels.toolNames(),
+  profileNames: () =>
+    Array.from(profileSelect.options, (o) => o.value).filter(
+      (v) => v !== "" && v !== "default",
+    ),
+  activeProfile: () => profileSelect.value,
+});
 function selectValues(select: HTMLSelectElement): string[] {
   return Array.from(select.options)
     .filter((option) => option.value && !option.disabled)
@@ -163,6 +183,28 @@ function requestLine(text: string): void {
 
 function setBurstPressed(on: boolean): void {
   burstBtn.setAttribute("aria-pressed", String(on));
+}
+
+function refreshTools(): void {
+  editorReplies.push("tools");
+  requestLine("/tool");
+}
+
+function handleEditorResult(message: ResultMessage): boolean {
+  const next = editorReplies.shift();
+  if (next === undefined) return false;
+  if (next === "tools") {
+    if (message.ok && message.value) panels.populateToolsPanel(message.value);
+    return true;
+  }
+  const { name, save } = next;
+  if (message.ok && message.value) {
+    profileEditor.showWhitelist(name, message.value);
+    if (save) refreshTools();
+  } else {
+    transcript.addLine("error", message.error ?? "unknown error");
+  }
+  return true;
 }
 
 function handleInitialResult(message: ResultMessage): boolean {
@@ -269,6 +311,7 @@ function handleCommandResult(message: ResultMessage): void {
     panels.removeProfilePlaceholder();
     profileSelect.value = name;
     transcript.addLine("system", `profile: ${name}`);
+    refreshTools();
   } else if (message.value?.startsWith("reasoning effort set to ")) {
     const name = message.value.slice("reasoning effort set to ".length);
     const level = name.replace(" (template default)", "");
@@ -280,6 +323,7 @@ function handleCommandResult(message: ResultMessage): void {
     panels.addProfilePlaceholder();
     profileSelect.value = "";
     transcript.addLine("system", "profile cleared");
+    refreshTools();
   } else if (!message.streamed && message.value) {
     transcript.addLine("assistant", message.value);
   }
@@ -294,6 +338,7 @@ function handleResult(message: ResultMessage): void {
   transcript.setBurst(false);
   hideAsk();
   renderContext(message);
+  if (handleEditorResult(message)) return;
   if (handleInitialResult(message)) return;
   if (handleToolToggleResult(message)) return;
   setBusy(false);

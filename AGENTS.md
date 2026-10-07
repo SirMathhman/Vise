@@ -28,7 +28,7 @@ authoritative definitions live in the source files linked.
 - `/model` (list) / `/model <name>` (switch) — via `ModelController`
 - `/burst` (status) / `/burst on|off` — burst mode: think once to plan, then tool calls run with a calls-only grammar (no thinking) until the model emits `<done/>`, a tool returns `error:`, or its tool-name probability is below `BURST_MIN_CONFIDENCE`; handled in `runTurn` via `TurnCallbacks.burst`
 - `/tool` (list) / `/tool <name> enable|disable` — via `ToolController`
-- `/profile` (list) / `/profile <name>` (set) / `/profile init <name>` (create) — via `ProfileSource`
+- `/profile` (list) / `/profile <name>` (set) / `/profile init <name>` (create) — via `ProfileSource`; `/profile <name> tools [a,b|all]` shows/sets a tool whitelist stored as `tools:` frontmatter in the profile `.md` (applied on switch via `ProfileToolGate`, prior tool states restored on leaving; web UI "profiles" panel edits it)
 - `/note` (list) / `/note init <name>` (create) — via `NoteSource`
 - `/workflow` (list) / `/workflow <name> [input]` (run) / `/workflow init [--global] <name>` (create) — via `WorkflowSource`; JSON files live under `.vise/workflows/` or `~/.vise/workflows/`
 - `/save` (list) / `/save <name>` (persist), `/resume` (list) / `/resume <name>` (restore), `/delete <name>` (delete) — via `SessionSource`

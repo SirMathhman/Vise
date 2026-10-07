@@ -36,6 +36,13 @@ export interface ProfileSource {
    * `malformed` error when the name is invalid or the profile already exists.
    */
   initProfile(name: string): Promise<Result<string>>;
+  /** The profile's tool whitelist, or undefined when it has none. */
+  profileTools?(name: string): Promise<Result<string[] | undefined>>;
+  /** Set (or clear with undefined) the profile's tool whitelist. */
+  setProfileTools?(
+    name: string,
+    tools: string[] | undefined,
+  ): Promise<Result<string>>;
 }
 
 /**
@@ -170,6 +177,13 @@ export interface ProfileCommands {
   activeProfile(): string | undefined;
   setActiveProfile(name: string | undefined): void;
   pushMessage(message: Message): void;
+  /** Names of every known tool (for validating a whitelist). */
+  toolNames(): string[];
+  /**
+   * Enable only `tools` (remembering the prior states), or, with undefined,
+   * restore the states remembered before a whitelist was applied.
+   */
+  applyProfileTools(tools: string[] | undefined): void;
 }
 
 /**
