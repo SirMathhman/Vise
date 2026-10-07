@@ -1,5 +1,7 @@
 import { getPort } from "./config.ts";
 
+const PAIR_RETRY_MS = 1500;
+
 /**
  * The sidebar: a control strip (hand the current tab to Vise, see and release
  * the tabs Vise has) above the Vise web UI embedded from the local server.
@@ -11,6 +13,8 @@ const el = <T extends HTMLElement>(id: string): T =>
 const frame = el<HTMLIFrameElement>("app");
 const offline = el("offline");
 let loaded = false;
+/** Whether the Vise page has answered with a token this time (a stored one may be stale). */
+let paired = false;
 
 /** Show the UI when the server answers, otherwise the "not running" notice. */
 async function load(): Promise<void> {
@@ -29,8 +33,24 @@ async function load(): Promise<void> {
   if (!loaded) {
     frame.src = `${origin}/?ui=sidebar`;
     loaded = true;
+    void pair(origin);
   }
 }
+
+/** Ask the embedded Vise page for the pairing token until the extension has it. */
+async function pair(origin: string): Promise<void> {
+  if (paired) return;
+  frame.contentWindow?.postMessage({ type: "vise-hello" }, origin);
+  setTimeout(() => void pair(origin), PAIR_RETRY_MS);
+}
+
+window.addEventListener("message", (event: MessageEvent) => {
+  const data = event.data as { type?: string; token?: unknown } | null;
+  if (data?.type !== "vise-token" || typeof data.token !== "string") return;
+  if (event.source !== frame.contentWindow) return;
+  paired = true;
+  void browser.storage.local.set({ token: data.token });
+});
 
 interface Status {
   connected: boolean;

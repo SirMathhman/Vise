@@ -1,5 +1,6 @@
 import { createBrowserView } from "./browser-view.ts";
 import { createExplorer } from "./explorer.ts";
+import { pairWithExtension } from "./pairing.ts";
 import { setupSessionRoot } from "./session-root.ts";
 import type { BrowserTab } from "./open-tabs.ts";
 
@@ -41,6 +42,7 @@ export function createWorkspace(
   const sidebar = new URLSearchParams(location.search).get("ui") === "sidebar";
   if (sidebar) {
     document.body.classList.add("sidebar");
+    pairWithExtension();
     root.classList.add("hidden");
   }
   // A session with no working directory has no project tree to list.

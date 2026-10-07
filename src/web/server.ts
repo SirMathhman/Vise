@@ -10,6 +10,7 @@ import { BrowserSettingsStore } from "../browser/settings.ts";
 import { ExtensionBackend } from "../browser/extension.ts";
 import type { BrowserBackend } from "../browser/types.ts";
 import { ExtensionHub, isExtensionOrigin } from "./ext-hub.ts";
+import { loadExtensionToken, tokensMatch } from "./ext-token.ts";
 import { handleNoteMessage } from "./notes-api.ts";
 import { SwitchableBrowser } from "../browser/switchable.ts";
 import { BrowserBridge } from "./browser-bridge.ts";
@@ -149,6 +150,37 @@ class WebDisplay {
   }
 }
 
+/** The JSON APIs the page uses (explorer, folder chooser, extension pairing); null when `url` is not one. */
+function serveApi(
+  req: Request,
+  url: URL,
+  port: number,
+  roots: RootRegistry,
+  extensionToken: string,
+): Response | Promise<Response> | null {
+  if (url.pathname === "/api/ext-token") {
+    // Only the Vise page itself (never a bare request) may read the pairing token.
+    const origin = req.headers.get("origin");
+    if (origin === null || !isLocalOrigin(origin, port)) {
+      return new Response("forbidden", { status: 403 });
+    }
+    return Response.json({ token: extensionToken });
+  }
+  if (url.pathname === "/api/fs" || url.pathname === "/api/file") {
+    return serveExplorer(url, roots);
+  }
+  if (url.pathname === "/api/pick-folder" && req.method === "POST") {
+    // Opens the OS folder dialog; only the Vise page itself may ask.
+    if (!isLocalOrigin(req.headers.get("origin"), port)) {
+      return new Response("forbidden", { status: 403 });
+    }
+    return pickFolder(roots.defaultRoot).then((path) =>
+      Response.json({ path }),
+    );
+  }
+  return null;
+}
+
 /**
  * Decide what a WebSocket upgrade carries, or refuse it. `/ext` is the Firefox
  * extension (only a `moz-extension://` page can send that Origin); `/ws` is a
@@ -160,10 +192,15 @@ function socketData(
   origin: string | null,
   port: number,
   roots: RootRegistry,
+  extensionToken: string,
 ): WsData | Response {
   const refuse = new Response("forbidden", { status: 403 });
   if (url.pathname === "/ext") {
+    // The extension's Origin is not enough (another extension could send it): it must also know the pairing token.
     if (!isExtensionOrigin(origin)) return refuse;
+    if (!tokensMatch(url.searchParams.get("token"), extensionToken)) {
+      return refuse;
+    }
     return { ext: true, root: "", noFolder: false, sidebar: false };
   }
   // Browsers don't apply CORS to WebSockets: refuse other sites' pages.
@@ -188,6 +225,7 @@ export function startWebServer(port = 3000): void {
   // The Firefox extension's connection, and the browser sessions in its sidebar use.
   const extensionHub = new ExtensionHub();
   const extensionBrowser = new ExtensionBackend(extensionHub);
+  const extensionToken = loadExtensionToken();
   const state = new Map<ServerWebSocket<WsData>, ConnectionState>();
   const server = Bun.serve<WsData>({
     port,
@@ -199,23 +237,19 @@ export function startWebServer(port = 3000): void {
         return new Response("forbidden", { status: 403 });
       }
       if (url.pathname === "/ext" || url.pathname === "/ws") {
-        const data = socketData(url, req.headers.get("origin"), port, roots);
+        const data = socketData(
+          url,
+          req.headers.get("origin"),
+          port,
+          roots,
+          extensionToken,
+        );
         if (data instanceof Response) return data;
         server.upgrade(req, { data });
         return;
       }
-      if (url.pathname === "/api/fs" || url.pathname === "/api/file") {
-        return serveExplorer(url, roots);
-      }
-      if (url.pathname === "/api/pick-folder" && req.method === "POST") {
-        // Opens the OS folder dialog; only the Vise page itself may ask.
-        if (!isLocalOrigin(req.headers.get("origin"), port)) {
-          return new Response("forbidden", { status: 403 });
-        }
-        return pickFolder(roots.defaultRoot).then((path) =>
-          Response.json({ path }),
-        );
-      }
+      const api = serveApi(req, url, port, roots, extensionToken);
+      if (api) return api;
       return serveStatic(url.pathname);
     },
     websocket: {

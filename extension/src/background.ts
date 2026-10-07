@@ -1,4 +1,4 @@
-import { getPort } from "./config.ts";
+import { getPort, getToken } from "./config.ts";
 import { ops } from "./ops.ts";
 import { grant, onOwnedChanged, ownedIds, release } from "./tabs.ts";
 
@@ -18,11 +18,12 @@ function send(message: Record<string, unknown>): void {
 }
 
 async function handle(raw: string): Promise<void> {
-  const request = JSON.parse(raw) as {
-    id: number;
-    op: string;
-    params?: Record<string, unknown>;
-  };
+  let request: { id: number; op: string; params?: Record<string, unknown> };
+  try {
+    request = JSON.parse(raw);
+  } catch {
+    return;
+  }
   const op = ops[request.op];
   try {
     if (!op) throw new Error(`unknown operation ${request.op}`);
@@ -38,7 +39,16 @@ async function handle(raw: string): Promise<void> {
 }
 
 async function connect(): Promise<void> {
-  const ws = new WebSocket(`ws://127.0.0.1:${await getPort()}/ext`);
+  // Not paired yet: the sidebar hands over the token the first time it loads.
+  const token = await getToken();
+  if (!token) {
+    setTimeout(() => void connect(), 2000);
+    return;
+  }
+  const port = await getPort();
+  const ws = new WebSocket(
+    `ws://127.0.0.1:${port}/ext?token=${encodeURIComponent(token)}`,
+  );
   socket = ws;
   ws.addEventListener("open", () => {
     retry = 0;

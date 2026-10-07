@@ -7,6 +7,15 @@ declare const __VISE_PORT__: number | undefined;
 export const DEFAULT_PORT =
   typeof __VISE_PORT__ === "number" ? __VISE_PORT__ : 3000;
 
+declare const __VISE_TOKEN__: string | undefined;
+
+/** The pairing token the sidebar received from Vise, or a test build's baked-in one. */
+export async function getToken(): Promise<string | null> {
+  const { token } = await browser.storage.local.get("token");
+  if (typeof token === "string" && token !== "") return token;
+  return typeof __VISE_TOKEN__ === "string" ? __VISE_TOKEN__ : null;
+}
+
 /** The configured port (set on the options page), or the default. */
 export async function getPort(): Promise<number> {
   const { port } = await browser.storage.local.get("port");

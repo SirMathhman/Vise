@@ -8,6 +8,7 @@ import type { ExtensionLink } from "../browser/extension.ts";
  *   extension → server: { id, ok:true, result } | { id, ok:false, error }
  *                       { event:"tabs" }     the tabs Vise may use changed
  * There is one extension at a time: a newer connection replaces the old one.
+ * A connection must carry the pairing token (`src/web/ext-token.ts`) to be accepted at all.
  */
 
 /** The slice of a WebSocket the hub uses. */
@@ -47,7 +48,9 @@ export class ExtensionHub implements ExtensionLink {
     const old = this.socket;
     this.socket = socket;
     if (old && old !== socket) {
-      this.failAll("the extension reconnected");
+      this.failAll(
+        "the extension reconnected (the last action may or may not have run)",
+      );
       old.close();
     }
     this.notify();
@@ -57,7 +60,9 @@ export class ExtensionHub implements ExtensionLink {
   detach(socket: ExtensionSocket): void {
     if (this.socket !== socket) return;
     this.socket = null;
-    this.failAll("the extension disconnected");
+    this.failAll(
+      "the extension disconnected (the last action may or may not have run)",
+    );
     this.notify();
   }
 
