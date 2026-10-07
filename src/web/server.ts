@@ -319,7 +319,7 @@ async function handleProfileTools(
   reply({ ok: true, tools: saved.value ?? null });
 }
 
-/** Send the connection the hooks with their profile bindings (a pure read; never queued behind a turn). */
+/** Send the connection the global hooks and each profile's own hooks (a pure read; never queued behind a turn). */
 async function pushHooks(conn: ConnectionState): Promise<void> {
   conn.send({ type: "hooks", ...(await conn.session.hooksView()) });
 }

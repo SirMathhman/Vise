@@ -43,9 +43,9 @@ export interface ProfileSource {
     name: string,
     tools: string[] | undefined,
   ): Promise<Result<string>>;
-  /** The hook commands bound to each profile (profiles with none are omitted). */
-  hookBindings?(): Promise<Result<Record<string, string[]>>>;
-  /** Set (or clear with an empty list) the hook commands bound to a profile. */
+  /** The hooks each profile owns, as `pre:<command>` / `post:<command>` entries (profiles with none are omitted). */
+  profileHooks?(): Promise<Result<Record<string, string[]>>>;
+  /** Set (or clear with an empty list) the hooks a profile owns. */
   setProfileHooks?(name: string, hooks: string[]): Promise<Result<string>>;
 }
 
@@ -131,7 +131,7 @@ export interface HookSource {
   create(command: string): PreTurnHook & PostTurnHook;
   /** Persist the full pre/post command lists. */
   save(hooks: { pre: string[]; post: string[] }): Result<void>;
-  /** Tell views of the hooks that something about them changed (e.g. a profile binding). */
+  /** Tell views of the hooks that something about them changed (e.g. a profile's own hooks). */
   notify?(): void;
 }
 

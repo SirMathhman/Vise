@@ -81,7 +81,7 @@ export class FileProfileSource implements ProfileSource {
     }
   }
 
-  async hookBindings(): Promise<Result<Record<string, string[]>>> {
+  async profileHooks(): Promise<Result<Record<string, string[]>>> {
     return { ok: true, value: readAllProfileHooks(this.base) };
   }
 
@@ -364,7 +364,7 @@ export class HookStore implements HookSource {
     return () => this.listeners.delete(listener);
   }
 
-  /** Refresh every view of the hooks (e.g. after a profile binding changed). */
+  /** Refresh every view of the hooks (e.g. after a profile's own hooks changed). */
   notify(): void {
     for (const listener of this.listeners) listener();
   }

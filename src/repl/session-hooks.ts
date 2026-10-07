@@ -55,7 +55,10 @@ export class SessionHooks {
   applicable(phase: HookPhase): AnyHook[] {
     const global: AnyHook[] = phase === "pre" ? this.pre : this.post;
     const active = this.activeProfile();
-    const owned = active ? (this.profileHooks[active]?.[phase] ?? []) : [];
+    // A command already running globally is not run a second time for the profile.
+    const owned = (
+      active ? (this.profileHooks[active]?.[phase] ?? []) : []
+    ).filter((c) => !global.some((g) => g.command === c));
     const make = this.source?.create.bind(this.source);
     return make ? [...global, ...owned.map((c) => make(c))] : global;
   }
@@ -69,12 +72,12 @@ export class SessionHooks {
     return outputs.filter((o) => o.trim() !== "");
   }
 
-  /** `/hooks` and its add / remove / bind / unbind forms. */
+  /** `/hooks` and its add / remove / `profile <name>` forms. */
   command(line: string): Promise<Result<string>> {
     return handleHooksCommand(line, this.state());
   }
 
-  /** Every hook with the profiles it is bound to, plus the profile names. */
+  /** The global hooks and each profile's own hooks, plus the profile names. */
   view(): Promise<HooksView> {
     return hooksView(this.state());
   }

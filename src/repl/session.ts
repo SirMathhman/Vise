@@ -533,7 +533,7 @@ export class Session {
     return this.currentAbort?.signal;
   }
 
-  /** Every hook with its profile bindings, plus the profile names (for the web panel). */
+  /** The global hooks and each profile's own hooks, plus the profile names (for the web panel). */
   hooksView(): ReturnType<SessionHooks["view"]> {
     return this.hooks.view();
   }

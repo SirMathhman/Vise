@@ -53,7 +53,7 @@ export function listProfiles(base: string): string[] {
  * A profile file split into its optional frontmatter and its body. The
  * frontmatter is a `---` block at the top of the file; its `tools:` line is a
  * comma-separated whitelist of the tools the profile may use, its `hooks:` line
- * is a JSON array of the hook commands bound to the profile, and any other
+ * is a JSON array of the hooks the profile owns (`pre:<command>` / `post:<command>`, run only while it is active), and any other
  * frontmatter lines are kept verbatim in `meta` so rewriting never drops them.
  */
 export interface ParsedProfile {
@@ -152,7 +152,7 @@ export function setProfileTools(
   writeFileSync(p, renderProfile({ ...parsed, tools }), "utf8");
 }
 
-/** The hook commands bound to every profile that has any, by profile name. */
+/** The hooks each profile owns (profiles with none are omitted), by profile name. */
 export function readAllProfileHooks(base: string): Record<string, string[]> {
   const out: Record<string, string[]> = {};
   for (const name of listProfiles(base)) {
@@ -164,7 +164,7 @@ export function readAllProfileHooks(base: string): Record<string, string[]> {
 }
 
 /**
- * Set (or, with undefined or an empty list, clear) the hook commands bound to
+ * Set (or, with undefined or an empty list, clear) the hooks owned by
  * a profile, preserving its body and other frontmatter. Throws an `Error` when
  * the profile is missing.
  */
@@ -176,8 +176,8 @@ export function setProfileHooks(
   const p = profilePath(base, name);
   if (!existsSync(p)) throw new Error(`profile '${name}' not found`);
   const parsed = parseProfile(readFileSync(p, "utf8"));
-  const bound = hooks && hooks.length > 0 ? hooks : undefined;
-  writeFileSync(p, renderProfile({ ...parsed, hooks: bound }), "utf8");
+  const owned = hooks && hooks.length > 0 ? hooks : undefined;
+  writeFileSync(p, renderProfile({ ...parsed, hooks: owned }), "utf8");
 }
 
 /**

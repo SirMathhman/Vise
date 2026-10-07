@@ -69,7 +69,7 @@ function joinProfileHooks(hooks: HookCommands): string[] {
 export async function readProfileHooks(
   profiles: ProfileSource | undefined,
 ): Promise<Record<string, HookCommands>> {
-  const result = await profiles?.hookBindings?.();
+  const result = await profiles?.profileHooks?.();
   if (!result?.ok) return {};
   return Object.fromEntries(
     Object.entries(result.value).map(([name, keys]) => [
@@ -180,7 +180,7 @@ async function profileCommand(
   rest: string,
 ): Promise<Result<string>> {
   const profiles = state.profiles;
-  if (!profiles?.setProfileHooks || !profiles.hookBindings) {
+  if (!profiles?.setProfileHooks || !profiles.profileHooks) {
     return fail("profile hooks not supported by the current client");
   }
   const names = await profiles.listProfiles();

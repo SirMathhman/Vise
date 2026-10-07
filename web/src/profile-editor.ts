@@ -3,7 +3,7 @@ import { appendToolCategory, appendToolItem } from "./panels.ts";
 import { renderHookLists } from "./hook-lists.ts";
 
 export interface ProfileEditorActions {
-  /** Ask the server for the hooks and their profile bindings. */
+  /** Ask the server for the global hooks and each profile's own hooks. */
   loadHooks(): void;
   /** Send a `/hooks profile <name> add|remove ...` line. */
   editHook(line: string): void;
