@@ -30,12 +30,25 @@ export type GoalEvent =
 /** The same unmet step this many times in a row ends the turn as blocked. */
 const MAX_SAME_STEP = 4;
 
+/** After this many automatic continues in one turn, the user is asked whether to go on. */
+const CONTINUES_BEFORE_ASKING = 8;
+
+/** What the tracker needs from its surroundings while it loops. */
+export interface GoalHooks {
+  /** Ask the user whether to keep going after many continues; without it the turn stops there. */
+  confirmMore?: () => Promise<boolean>;
+  /** Run before each continue (the session compacts a conversation that is getting full). */
+  beforeContinue?: () => Promise<unknown>;
+}
+
 const toolResults = (messages: Message[]): number =>
   messages.filter((m) => m.role === "tool").length;
 
 export class GoalTracker {
   goal: Goal | undefined;
   private on: boolean;
+  /** The notes this tracker added to push the model back to work: not the user's words, so never saved or summarised. */
+  private readonly notes = new WeakSet<Message>();
 
   constructor(
     enabled: boolean,
@@ -43,6 +56,9 @@ export class GoalTracker {
   ) {
     this.on = enabled;
   }
+
+  /** Whether a message is one of the tracker's own continue notes. */
+  isNote = (message: Message): boolean => this.notes.has(message);
 
   get enabled(): boolean {
     return this.on;
@@ -66,13 +82,21 @@ export class GoalTracker {
     toolDefs: Tool[],
     runTurn: () => Promise<Result<string>>,
     signal: AbortSignal,
+    hooks: GoalHooks = {},
   ): Promise<Result<string>> {
     const interrupted: Result<string> = {
       ok: false,
       error: { kind: "interrupted" },
     };
     if (!this.on) return runTurn();
-    this.goal = await deriveGoal(client, messages, toolDefs, this.goal, signal);
+    this.goal = await deriveGoal(
+      client,
+      messages,
+      toolDefs,
+      this.goal,
+      signal,
+      this.isNote,
+    );
     if (signal.aborted) return interrupted;
     if (this.goal) {
       this.emit?.({
@@ -85,6 +109,7 @@ export class GoalTracker {
     let step = "";
     let repeats = 0;
     let results = toolResults(messages);
+    let continues = 0;
     while (turn.ok && this.goal) {
       const verdict = await checkGoal(
         client,
@@ -117,6 +142,19 @@ export class GoalTracker {
         });
         return turn;
       }
+      if (continues > 0 && continues % CONTINUES_BEFORE_ASKING === 0) {
+        const more = (await hooks.confirmMore?.()) ?? false;
+        if (!more) {
+          this.emit?.({
+            kind: "verdict",
+            verdict: "blocked",
+            detail: `${verdict.detail} (stopped after ${continues} automatic continues)`,
+            continuing: false,
+          });
+          return turn;
+        }
+      }
+      continues += 1;
       step = verdict.detail;
       results = toolResults(messages);
       this.emit?.({
@@ -125,10 +163,13 @@ export class GoalTracker {
         detail: verdict.detail,
         continuing: true,
       });
-      messages.push({
+      await hooks.beforeContinue?.();
+      const note: Message = {
         role: "user",
         content: continueNote(this.goal, verdict),
-      });
+      };
+      this.notes.add(note);
+      messages.push(note);
       turn = await runTurn();
     }
     return turn;

@@ -79,10 +79,24 @@ async function ask(
 const text = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
 
+/** What the user last said (skipping `skip`ped messages, such as the notes that send the model back to work). */
+function lastUserText(
+  messages: Message[],
+  skip: (m: Message) => boolean,
+): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m && m.role === "user" && !skip(m)) return m.content.trim();
+  }
+  return "";
+}
+
 /**
  * The goal for the user's latest message: the current goal when the message
- * continues it ("?", "ok", new details), otherwise a new one. Returns the
- * current goal unchanged (or undefined) when the model cannot be asked.
+ * continues it ("?", "ok", new details), otherwise a new one. When the model
+ * cannot be asked (or answers nothing usable) the goal is simply what the user
+ * said, never the previous goal: a stale goal must not hijack an unrelated
+ * message.
  */
 export async function deriveGoal(
   client: Client,
@@ -90,6 +104,7 @@ export async function deriveGoal(
   toolDefs: Tool[],
   current: Goal | undefined,
   signal?: AbortSignal,
+  skip: (m: Message) => boolean = () => false,
 ): Promise<Goal | undefined> {
   const known = current
     ? `Current goal: ${current.text} (done when: ${current.doneWhen})`
@@ -103,8 +118,11 @@ export async function deriveGoal(
     signal,
   );
   const goal = text(reply?.["goal"]);
-  if (goal === "") return current;
-  return { text: goal, doneWhen: text(reply?.["done_when"]) };
+  if (goal !== "") return { text: goal, doneWhen: text(reply?.["done_when"]) };
+  const said = lastUserText(messages, skip).slice(0, 400);
+  return said === ""
+    ? undefined
+    : { text: said, doneWhen: "the request has been fully handled" };
 }
 
 /** Whether the goal has been accomplished, judged from what actually happened in the conversation. */

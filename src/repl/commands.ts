@@ -138,6 +138,13 @@ export function handleReasoningCommand(
  * once to plan, then run tool calls without thinking in between). `onChange`
  * fires only when the state actually changes.
  */
+/** The message that tells the model burst mode was switched (appended, never edited into the prompt, so the cache is kept). */
+export function burstNotice(on: boolean): string {
+  return on
+    ? "Burst mode is now on. Think once to plan, then carry the plan out with tool calls; you will not be able to think between calls. Your plan is kept in your earlier <plan> message: keep following it, one dependent call after another, until every step is done. When the plan is complete output <done/>. If a tool errors you will get to think again."
+    : "Burst mode is now off. You may think before each step again.";
+}
+
 export function handleBurstCommand(
   isOn: () => boolean,
   onChange: (on: boolean) => void,

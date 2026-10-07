@@ -18,6 +18,7 @@ import { SessionHooks } from "./session-hooks.ts";
 import {
   handleModelCommand,
   handleNotesCommand,
+  burstNotice,
   handleBurstCommand,
   handleReasoningCommand,
   handleToolCommand,
@@ -312,7 +313,7 @@ export class Session {
     };
     this.compactionSource = {
       client: this.client,
-      messages: () => [...this.messages],
+      messages: () => this.messages.filter((m) => !this.goals.isNote(m)),
       resetMessages: (body) => {
         this.messages.length = 0;
         this.messages.push(this.systemMessage);
@@ -389,13 +390,7 @@ export class Session {
       () => this.burst,
       (on) => {
         this.burst = on;
-        // Appended (never edited into the prompt) so the cache is kept.
-        this.messages.push({
-          role: "user",
-          content: on
-            ? "Burst mode is now on. Think once to plan, then carry the plan out with tool calls; you will not be able to think between calls. Your plan is kept in your earlier <plan> message: keep following it, one dependent call after another, until every step is done. When the plan is complete output <done/>. If a tool errors you will get to think again."
-            : "Burst mode is now off. You may think before each step again.",
-        });
+        this.messages.push({ role: "user", content: burstNotice(on) });
       },
       line,
     );
@@ -438,6 +433,10 @@ export class Session {
             this.turnCallbacks(abort.signal),
           ),
         abort.signal,
+        {
+          confirmMore: this.onMaxRounds,
+          beforeContinue: () => this.maybeAutoCompact(),
+        },
       );
       if (!turn.ok) return turn;
       await this.runHooks("post");
@@ -681,7 +680,7 @@ export class Session {
       const saved = await this.sessionSource.save(
         this.sessionId,
         this.sessionName,
-        [...this.messages],
+        this.messages.filter((m) => !this.goals.isNote(m)),
         this.activeProfile,
       );
       if (saved.ok) this.sessionId = saved.value;
