@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
+import { noFolderRoot } from "../data-dir.ts";
 import { HookStore } from "../edge-sources.ts";
 
 /**
@@ -26,6 +27,8 @@ export class RootRegistry {
     if (!param) return this.defaultRoot;
     if (!isAbsolute(param)) return null;
     const root = resolve(param);
+    // The no-folder stores directory is not a project a session can be rooted in.
+    if (root.toLowerCase() === noFolderRoot.toLowerCase()) return null;
     try {
       return statSync(root).isDirectory() ? root : null;
     } catch {

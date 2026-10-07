@@ -24,6 +24,8 @@ export interface Tool {
   deferred?: boolean;
   /** Group the tool belongs to (files, shell, browser, ...); shown in the prompt index and searchable. */
   category?: string;
+  /** Needs a file system or shell: absent from a session with no working directory. */
+  requiresFileSystem?: boolean;
 }
 
 /**

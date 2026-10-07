@@ -29,16 +29,28 @@ import { killProcess, runPowershell, waitForProcess } from "./tools/shell.ts";
 const inCategory = (category: string, defs: Tool[]): Tool[] =>
   defs.map((t) => ({ ...t, category }));
 
+/** Flag tools (all of `defs`, or just the `only` names) as needing a file system. */
+const needsFileSystem = (defs: Tool[], only?: string[]): Tool[] =>
+  defs.map((t) =>
+    only === undefined || only.includes(t.function.name)
+      ? { ...t, requiresFileSystem: true }
+      : t,
+  );
+
 /** Tool definitions exposed to the model, in prompt order. */
 const allTools: Tool[] = [
-  ...inCategory("files", fileTools),
-  ...inCategory("shell", shellTools),
+  ...inCategory("files", needsFileSystem(fileTools)),
+  ...inCategory("shell", needsFileSystem(shellTools)),
   ...inCategory("notes", noteTools),
   ...inCategory(
     "agent",
     agentTools.filter((t) => t.function.name !== "run_subagent"),
   ),
-  ...inCategory("browser", browserTools),
+  ...inCategory(
+    "browser",
+    // Its Playwright snippet runs with the user's full privileges, files included.
+    needsFileSystem(browserTools, ["browser_run_code"]),
+  ),
   ...inCategory(
     "agent",
     agentTools.filter((t) => t.function.name === "run_subagent"),
@@ -87,10 +99,9 @@ function resolveAgainstRoot(
   };
 }
 
-/** The tools that need a file system or a shell: absent from a session with no working directory. */
-const FILE_SYSTEM_CATEGORIES = ["files", "shell"];
+/** Whether a tool is absent from a session with no working directory. */
 export const isFileSystemTool = (tool: Tool): boolean =>
-  FILE_SYSTEM_CATEGORIES.includes(tool.category ?? "");
+  tool.requiresFileSystem === true;
 
 /** The built-in handlers for a session whose root directory is `root`. */
 function baseHandlers(root: string): Record<string, ToolHandler> {
@@ -174,16 +185,16 @@ export function createToolRunner(
   extra: Record<string, ToolHandler> | undefined,
   toolController: ToolController,
   root: string = process.cwd(),
-  fileSystem = true,
+  toolDefs: Tool[] = tools,
 ): ToolRunner {
   const handlers: Record<string, ToolHandler> = {
     ...baseHandlers(root),
     ...extra,
   };
-  if (!fileSystem) {
-    for (const tool of tools) {
-      if (isFileSystemTool(tool)) delete handlers[tool.function.name];
-    }
+  // A tool that is not offered to the session has no handler either.
+  const offered = new Set(toolDefs.map((t) => t.function.name));
+  for (const name of Object.keys(handlers)) {
+    if (!offered.has(name)) delete handlers[name];
   }
   return {
     async run(name, args): Promise<string> {

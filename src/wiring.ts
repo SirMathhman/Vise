@@ -210,7 +210,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     },
     toolController,
     root,
-    !options.noFolder,
+    sessionTools,
   );
 
   const initialMessage = buildInitialMessage(cwd, dataDir);
