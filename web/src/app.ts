@@ -158,7 +158,7 @@ const hideSuggestions = setupComposer(
   () => ({
     models: selectValues(modelSelect),
     profiles: selectValues(profileSelect),
-    sessions: panels.sessionNames(),
+    sessions: panels.sessions(),
     tools: panels.toolNames(),
   }),
   sendLine,
@@ -401,9 +401,15 @@ burstBtn.addEventListener("click", () => {
   sendLine(`/burst ${on ? "on" : "off"}`);
 });
 toolsBtn.addEventListener("click", () => toolsPanel.classList.toggle("hidden"));
-sessionsBtn.addEventListener("click", () =>
-  sessionsPanel.classList.toggle("hidden"),
-);
+sessionsBtn.addEventListener("click", () => {
+  sessionsPanel.classList.toggle("hidden");
+  // Turns auto-save in the background, so refresh the list when it opens.
+  if (!sessionsPanel.classList.contains("hidden")) {
+    pendingSessionList = true;
+    setBusy(true);
+    requestLine("/resume");
+  }
+});
 saveBtn.addEventListener("click", saveSession);
 saveName.addEventListener("keydown", (event: KeyboardEvent) => {
   if (event.key === "Enter") {

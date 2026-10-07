@@ -115,55 +115,49 @@ export interface PostTurnHook {
 }
 
 /**
- * A snapshot of a conversation at a point in time, persisted for later
- * resumption. The `messages` array includes the system message; `activeProfile`
- * is the profile name that was active when the snapshot was taken (undefined
- * when no profile was set).
+ * A saved conversation snapshot. `id` is the generated file id (a uuid) and
+ * `name` the human-readable label; the label can change, the id never does.
+ * `activeProfile` is the profile active at save time (undefined when none).
  */
 export interface SavedSession {
+  id: string;
+  name: string;
   messages: Message[];
   activeProfile: string | undefined;
   savedAt: string;
 }
 
+/** One row of the saved-session listing. */
+export interface SessionEntry {
+  id: string;
+  name: string;
+}
+
 /**
- * Source of saved session snapshots. The session calls `save` after every
- * successful normal turn (auto-save) and calls `load`/`list` for the
- * `/resume` command. Provided by the edge (the session performs no I/O).
+ * Source of saved session snapshots, keyed by generated id. The session calls
+ * `save` after every successful normal turn (auto-save) and for `/save`, and
+ * `load`/`list`/`delete` for `/resume` and `/delete`. A `ref` is a full id or
+ * the unique leading characters of one. Provided by the edge (the session
+ * performs no I/O).
  */
 export interface SessionSource {
   /**
-   * Persist the conversation under the given name (the auto-save path).
-   * Resolve a collision on the initial save; overwrite the resolved name on
-   * subsequent saves. The final name is returned. Fails with a `malformed`
-   * error when the name is invalid.
+   * Persist the conversation. With no `id` a new session is created and its
+   * new id returned; with an `id` that session is overwritten (and renamed to
+   * `name`). Fails with a `malformed` error when the name is blank.
    */
   save(
-    name: string,
-    messages: Message[],
-    activeProfile: string | undefined,
-    overwrite: boolean,
-  ): Promise<Result<string>>;
-  /**
-   * Persist the current conversation under a user-chosen name (the manual
-   * `/save <name>` path). When `name` is already taken, a numeric suffix is
-   * appended and the final name is returned as the result value. Fails with
-   * a `malformed` error when the name is invalid.
-   */
-  saveNamed(
+    id: string | undefined,
     name: string,
     messages: Message[],
     activeProfile: string | undefined,
   ): Promise<Result<string>>;
-  /** Load a saved session by name. Fails with a `malformed` error when not found. */
-  load(name: string): Promise<Result<SavedSession>>;
-  /** List all saved session names (without file extension). */
-  list(): Promise<Result<string[]>>;
-  /**
-   * Delete a saved session by name. Fails with a `malformed` error when the
-   * session does not exist.
-   */
-  delete(name: string): Promise<Result<void>>;
+  /** Load a saved session by id or unique id prefix. */
+  load(ref: string): Promise<Result<SavedSession>>;
+  /** List all saved sessions (id and display name). */
+  list(): Promise<Result<SessionEntry[]>>;
+  /** Delete a saved session by id or prefix; returns the full id. */
+  delete(ref: string): Promise<Result<string>>;
 }
 
 /**
@@ -207,12 +201,10 @@ export interface SessionCommands {
    * system message at index 0 (invariant #6). Used by `/resume`.
    */
   resetMessages(messages: Message[]): void;
-  /**
-   * Set the auto-save session name. Used by `/resume` so a resumed
-   * conversation keeps writing to its own file rather than colliding into a
-   * freshly derived name.
-   */
-  setSessionName(name: string): void;
+  /** The id and display name of the conversation's session, once it has one. */
+  currentSession(): { id: string | undefined; name: string | undefined };
+  /** Point the conversation at a session (undefined: it has none yet). */
+  setSession(id: string | undefined, name: string | undefined): void;
 }
 
 /**

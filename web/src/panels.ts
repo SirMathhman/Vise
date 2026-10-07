@@ -11,7 +11,7 @@ export interface Panels {
   populateSessionsPanel(text: string): void;
   populateToolsPanel(text: string): void;
   removeProfilePlaceholder(): void;
-  sessionNames(): string[];
+  sessions(): { id: string; name: string }[];
   toolNames(): string[];
 }
 
@@ -36,10 +36,10 @@ export function createPanels(actions: PanelActions): Panels {
       populateSessionsPanel(sessionsList, text, actions),
     populateToolsPanel: (text) => populateToolsPanel(toolsList, text),
     removeProfilePlaceholder: () => removeProfilePlaceholder(profileSelect),
-    sessionNames: () =>
+    sessions: () =>
       Array.from(
-        sessionsList.querySelectorAll(".session-name"),
-        (el) => el.textContent ?? "",
+        sessionsList.querySelectorAll<HTMLElement>(".session-name"),
+        (el) => ({ id: el.dataset.id ?? "", name: el.textContent ?? "" }),
       ),
     toolNames: () =>
       Array.from(
@@ -192,22 +192,26 @@ function populateSessionsPanel(
   list.textContent = "";
   let count = 0;
   for (const line of listText.split("\n")) {
-    if (!line.startsWith("  ") || line.startsWith("    ")) continue;
-    const name = line.trim();
-    if (!name) continue;
+    // Rows look like `  <name>  (<uuid>)`; the id is what /resume and /delete take.
+    const row = /^ {2}(.+?) {2}\(([0-9a-f-]+)\)$/.exec(line);
+    if (!row) continue;
+    const name = row[1] ?? "";
+    const id = row[2] ?? "";
     count++;
     const item = document.createElement("li");
     item.className = "session-row";
     const label = document.createElement("span");
     label.className = "session-name";
     label.textContent = name;
-    label.addEventListener("click", () => actions.resumeSession(name));
+    label.dataset.id = id;
+    label.title = id;
+    label.addEventListener("click", () => actions.resumeSession(id));
     item.appendChild(label);
     const del = document.createElement("button");
     del.className = "session-delete";
     del.textContent = "×";
-    del.title = `delete ${name}`;
-    del.addEventListener("click", () => actions.deleteSession(name));
+    del.title = `delete ${name} (${id})`;
+    del.addEventListener("click", () => actions.deleteSession(id));
     item.appendChild(del);
     list.appendChild(item);
   }

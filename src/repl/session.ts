@@ -58,6 +58,7 @@ export type {
   PreTurnHook,
   PostTurnHook,
   SavedSession,
+  SessionEntry,
   SessionSource,
   ProfileCommands,
   SessionCommands,
@@ -210,14 +211,10 @@ export class Session {
   private readonly sessionSource?: SessionSource;
   private readonly onMaxRounds?: () => Promise<boolean>;
   private activeProfile: string | undefined;
-  /** The stable auto-save name, derived from first input or set by `/resume`. */
+  /** The session's display name: derived from the first input, or renamed. */
   private sessionName: string | undefined;
-  /**
-   * Whether this name has been persisted. A name can be assigned before its
-   * first save, so its presence alone cannot distinguish collision-safe
-   * initial saving from overwriting the session on subsequent saves.
-   */
-  private hasAutoSaved = false;
+  /** The generated id of the session file; undefined until the first save. */
+  private sessionId: string | undefined;
   /**
    * The AbortController for the turn in flight. A fresh controller is created
    * at the start of each normal turn; `interrupt()` aborts it so the in-flight
@@ -291,9 +288,10 @@ export class Session {
           this.messages.push(m);
         }
       },
-      setSessionName: (name) => {
+      currentSession: () => ({ id: this.sessionId, name: this.sessionName }),
+      setSession: (id, name) => {
+        this.sessionId = id;
         this.sessionName = name;
-        this.hasAutoSaved = true;
       },
     };
     this.compactionSource = {
@@ -601,7 +599,7 @@ export class Session {
       this.messages.push({ role: "user", content: this.initialMessage });
     }
     this.sessionName = undefined;
-    this.hasAutoSaved = false;
+    this.sessionId = undefined;
     const profile = this.activeProfile;
     if (profile !== undefined) {
       const applied = await handleProfileCommand(
@@ -624,15 +622,12 @@ export class Session {
     if (this.sessionName === undefined) return;
     try {
       const saved = await this.sessionSource.save(
+        this.sessionId,
         this.sessionName,
         [...this.messages],
         this.activeProfile,
-        this.hasAutoSaved,
       );
-      if (saved.ok) {
-        this.sessionName = saved.value;
-        this.hasAutoSaved = true;
-      }
+      if (saved.ok) this.sessionId = saved.value;
     } catch {
       // Persistence is best-effort; a rejected edge promise must not fail a turn.
     }

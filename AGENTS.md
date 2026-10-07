@@ -31,7 +31,7 @@ authoritative definitions live in the source files linked.
 - `/profile` (list) / `/profile <name>` (set) / `/profile init <name>` (create) — via `ProfileSource`; `/profile <name> tools [a,b|all]` shows/sets a tool whitelist stored as `tools:` frontmatter in the profile `.md` (applied on switch via `ProfileToolGate`, prior tool states restored on leaving; web UI "profiles" panel edits it)
 - `/note` (list) / `/note init <name>` (create) — via `NoteSource`
 - `/workflow` (list) / `/workflow <name> [input]` (run) / `/workflow init [--global] <name>` (create) — via `WorkflowSource`; JSON files live under `.vise/workflows/` or `~/.vise/workflows/`
-- `/save` (list) / `/save <name>` (persist), `/resume` (list) / `/resume <name>` (restore), `/delete <name>` (delete) — via `SessionSource`
+- `/save` (list) / `/save <name>` (name the current session and save it), `/resume` (list, shows name and uuid) / `/resume <id>` (restore; a unique id prefix works), `/delete <id>` (delete) — via `SessionSource`. Sessions are stored as `.vise/sessions/<uuid>.json` with the display name inside the file; commands never take the name
 
 **Model-facing tools** — defined in `src/tools.ts` (`tools: Tool[]`) with their
 implementations in `src/tools/files.ts`, `src/tools/shell.ts`,

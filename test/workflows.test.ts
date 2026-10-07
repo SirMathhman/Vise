@@ -369,12 +369,9 @@ describe("Session /workflow command (core)", () => {
       context,
       workflowSource: source,
       sessionSource: {
-        async save(name) {
+        async save(_id, name) {
           autoSavedNames.push(name);
-          return { ok: true, value: name };
-        },
-        async saveNamed(name) {
-          return { ok: true, value: name };
+          return { ok: true, value: "session-id" };
         },
         async load() {
           return { ok: false, error: { kind: "malformed", body: "unused" } };
@@ -383,7 +380,7 @@ describe("Session /workflow command (core)", () => {
           return { ok: true, value: [] };
         },
         async delete() {
-          return { ok: true, value: undefined };
+          return { ok: true, value: "session-id" };
         },
       },
       preTurnHooks: [],

@@ -17,6 +17,7 @@ import type {
   PreTurnHook,
   ProfileSource,
   SavedSession,
+  SessionEntry,
   SessionSource,
   WorkflowSource,
 } from "./repl/session.ts";
@@ -24,8 +25,7 @@ import {
   deleteSession,
   listSessions,
   loadSession,
-  saveAutoSession,
-  saveNamedSession,
+  saveSession,
 } from "./sessions.ts";
 import { initWorkflow, listWorkflows, loadWorkflow } from "./workflows.ts";
 
@@ -200,32 +200,24 @@ export class FileSessionSource implements SessionSource {
   constructor(private readonly base: string) {}
 
   async save(
-    name: string,
-    messages: Message[],
-    activeProfile: string | undefined,
-    overwrite: boolean,
-  ): Promise<Result<string>> {
-    return saveAutoSession(this.base, name, messages, activeProfile, overwrite);
-  }
-
-  async saveNamed(
+    id: string | undefined,
     name: string,
     messages: Message[],
     activeProfile: string | undefined,
   ): Promise<Result<string>> {
-    return saveNamedSession(this.base, name, messages, activeProfile);
+    return saveSession(this.base, id, name, messages, activeProfile);
   }
 
-  async load(name: string): Promise<Result<SavedSession>> {
-    return loadSession(this.base, name);
+  async load(ref: string): Promise<Result<SavedSession>> {
+    return loadSession(this.base, ref);
   }
 
-  async list(): Promise<Result<string[]>> {
+  async list(): Promise<Result<SessionEntry[]>> {
     return { ok: true, value: listSessions(this.base) };
   }
 
-  async delete(name: string): Promise<Result<void>> {
-    return deleteSession(this.base, name);
+  async delete(ref: string): Promise<Result<string>> {
+    return deleteSession(this.base, ref);
   }
 }
 

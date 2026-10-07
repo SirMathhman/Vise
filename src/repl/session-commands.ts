@@ -196,9 +196,9 @@ export async function handleResumeCommand(
 
   const arg = line.slice("/resume".length).trim();
   if (arg === "") {
-    const names = await sessionSource.list();
-    if (!names.ok) return names;
-    return { ok: true, value: formatSessionList(names.value) };
+    const entries = await sessionSource.list();
+    if (!entries.ok) return entries;
+    return { ok: true, value: formatSessionList(entries.value) };
   }
 
   const loaded = await sessionSource.load(arg);
@@ -213,19 +213,20 @@ export async function handleResumeCommand(
   const savedBody = saved.messages.slice(1);
   session.resetMessages(savedBody);
   session.setActiveProfile(saved.activeProfile);
-  session.setSessionName(arg);
+  // A resumed conversation keeps writing to its own session.
+  session.setSession(saved.id, saved.name);
   return {
     ok: true,
-    value: `resumed session '${arg}' (${saved.messages.length - 1} messages)`,
+    value: `resumed session '${saved.name}' (${saved.id}, ${saved.messages.length - 1} messages)`,
   };
 }
 
 /**
  * Handle `/save` and `/save <name>`. When name is omitted: lists all saved
- * sessions. When a name is provided: persists the current conversation
- * under that name, adding a numeric suffix if the name is already taken.
- * Auto-save continues independently under the session's first-message name.
- * Fails with a `malformed` error when the name is invalid.
+ * sessions. When a name is given: names the current conversation's session
+ * (renaming it if it already has one, creating it otherwise) and saves it.
+ * Auto-save keeps updating that same session. Fails with a `malformed` error
+ * when the name is blank.
  */
 export async function handleSaveCommand(
   session: SessionCommands,
@@ -244,28 +245,26 @@ export async function handleSaveCommand(
 
   const arg = line.slice("/save".length).trim();
   if (arg === "") {
-    const names = await sessionSource.list();
-    if (!names.ok) return names;
-    return { ok: true, value: formatSessionList(names.value) };
+    const entries = await sessionSource.list();
+    if (!entries.ok) return entries;
+    return { ok: true, value: formatSessionList(entries.value) };
   }
 
-  const saved = await sessionSource.saveNamed(
+  const saved = await sessionSource.save(
+    session.currentSession().id,
     arg,
     session.messages(),
     session.activeProfile(),
   );
   if (!saved.ok) return saved;
-  const finalName = saved.value;
-  if (finalName === arg) return { ok: true, value: `saved session '${arg}'` };
-  return {
-    ok: true,
-    value: `saved session '${finalName}' ('${arg}' was already taken)`,
-  };
+  session.setSession(saved.value, arg);
+  return { ok: true, value: `saved session '${arg}' (${saved.value})` };
 }
 
 /**
- * Handle `/delete <name>`. Deletes a named session snapshot (including
- * auto-saved ones, which are ordinary named snapshots). Fails with a
+ * Handle `/delete <id>`. Deletes a saved session (including auto-saved ones).
+ * Deleting the conversation's own session detaches it, so the next auto-save
+ * starts a new session instead of resurrecting the deleted one. Fails with a
  * `malformed` error when the session does not exist.
  */
 export async function handleDeleteCommand(
@@ -287,11 +286,14 @@ export async function handleDeleteCommand(
   if (arg === "") {
     return {
       ok: false,
-      error: { kind: "malformed", body: "usage: /delete <name>" },
+      error: { kind: "malformed", body: "usage: /delete <id>" },
     };
   }
 
   const deleted = await sessionSource.delete(arg);
   if (!deleted.ok) return deleted;
-  return { ok: true, value: `deleted session '${arg}'` };
+  if (session.currentSession().id === deleted.value) {
+    session.setSession(undefined, undefined);
+  }
+  return { ok: true, value: `deleted session ${deleted.value}` };
 }

@@ -4,7 +4,7 @@ import type { CommandSuggestion } from "./command-completions.ts";
 export interface ComposerChoices {
   models: string[];
   profiles: string[];
-  sessions: string[];
+  sessions: { id: string; name: string }[];
   tools: string[];
 }
 
@@ -63,9 +63,10 @@ export function setupComposer(
         label: name,
         value: name,
       })),
-      sessions: available.sessions.map((name) => ({
+      sessions: available.sessions.map(({ id, name }) => ({
         label: name,
-        value: name,
+        value: id,
+        description: id.slice(0, 8),
       })),
       tools: available.tools.map((name) => ({ label: name, value: name })),
     });

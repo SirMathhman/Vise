@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -13,8 +14,7 @@ import {
   deleteSession,
   listSessions,
   loadSession,
-  saveAutoSession,
-  saveNamedSession,
+  saveSession,
 } from "../src/sessions.ts";
 
 let tmpDir: string;
@@ -27,288 +27,189 @@ afterAll(() => {
   rmSync(tmpDir, { recursive: true, force: true });
 });
 
-describe("saveAutoSession (edge)", () => {
-  test("writes a snapshot under the given name and creates the directory", () => {
-    const base = mkdtempSync(join(tmpDir, "auto-"));
-    const messages: Message[] = [
-      { role: "system", content: "Working directory: /tmp" },
-      { role: "user", content: "hi" },
-      { role: "assistant", content: "yo" },
-    ];
-    const result = saveAutoSession(base, "hello", messages, undefined, false);
-    expect(result.ok).toBeTrue();
-    if (result.ok) {
-      const p = join(base, "sessions", "hello.json");
-      expect(existsSync(p)).toBeTrue();
-      const loaded = loadSession(base, "hello");
-      expect(loaded.ok).toBeTrue();
-      if (loaded.ok) {
-        expect(loaded.value.messages.length).toBe(3);
-        expect(loaded.value.messages[0]?.role).toBe("system");
-        expect(loaded.value.activeProfile).toBeUndefined();
-      }
-    }
+/** A fresh base directory per test, so tests cannot see each other's files. */
+function freshBase(): string {
+  return mkdtempSync(join(tmpDir, "case-"));
+}
+
+const messages: Message[] = [
+  { role: "system", content: "sys" },
+  { role: "user", content: "hello" },
+];
+
+function idOf(result: { ok: boolean; value?: string }): string {
+  if (!result.ok || result.value === undefined) throw new Error("save failed");
+  return result.value;
+}
+
+describe("saveSession (edge)", () => {
+  test("creates the directory and names the file by a generated uuid", () => {
+    const base = freshBase();
+    const id = idOf(
+      saveSession(base, undefined, "My work", messages, undefined),
+    );
+    expect(id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(readdirSync(join(base, "sessions"))).toEqual([`${id}.json`]);
   });
 
-  test("first autosave resolves collisions and later autosave overwrites", () => {
-    const base = mkdtempSync(join(tmpDir, "auto-overwrite-"));
-    const first: Message[] = [{ role: "system", content: "s" }];
-    const second: Message[] = [
-      { role: "system", content: "s" },
-      { role: "user", content: "hi" },
-      { role: "assistant", content: "yo" },
-    ];
-    const result1 = saveAutoSession(base, "hello", first, undefined, false);
-    expect(result1).toEqual({ ok: true, value: "hello" });
-    const collision = saveAutoSession(base, "hello", first, undefined, false);
-    expect(collision).toEqual({ ok: true, value: "hello-2" });
-    const result2 = saveAutoSession(base, "hello-2", second, undefined, true);
-    expect(result2).toEqual({ ok: true, value: "hello-2" });
-    const loaded = loadSession(base, "hello-2");
-    expect(loaded.ok).toBeTrue();
-    if (loaded.ok) {
-      expect(loaded.value.messages.length).toBe(3);
-    }
+  test("keeps the display name out of the file name, whatever it contains", () => {
+    const base = freshBase();
+    const id = idOf(
+      saveSession(
+        base,
+        undefined,
+        "weird: name/with *chars* ",
+        messages,
+        undefined,
+      ),
+    );
+    expect(existsSync(join(base, "sessions", `${id}.json`))).toBe(true);
+    const loaded = loadSession(base, id);
+    expect(loaded.ok && loaded.value.name).toBe("weird: name/with *chars*");
+  });
+
+  test("an id overwrites that session and can rename it", () => {
+    const base = freshBase();
+    const id = idOf(saveSession(base, undefined, "first", messages, undefined));
+    const again = idOf(saveSession(base, id, "renamed", messages, undefined));
+    expect(again).toBe(id);
+    expect(listSessions(base)).toEqual([{ id, name: "renamed" }]);
+  });
+
+  test("two sessions may share a display name", () => {
+    const base = freshBase();
+    const a = idOf(saveSession(base, undefined, "same", messages, undefined));
+    const b = idOf(saveSession(base, undefined, "same", messages, undefined));
+    expect(a).not.toBe(b);
+    expect(listSessions(base)).toHaveLength(2);
+  });
+
+  test("rejects a blank name", () => {
+    const result = saveSession(
+      freshBase(),
+      undefined,
+      "   ",
+      messages,
+      undefined,
+    );
+    expect(result.ok).toBe(false);
+  });
+
+  test("rejects an id that is not path-safe", () => {
+    const result = saveSession(
+      freshBase(),
+      "../evil",
+      "x",
+      messages,
+      undefined,
+    );
+    expect(result.ok).toBe(false);
   });
 
   test("saves the active profile when present", () => {
-    const base = mkdtempSync(join(tmpDir, "auto-profile-"));
-    const messages: Message[] = [
-      { role: "system", content: "Working directory: /tmp" },
-    ];
-    const result = saveAutoSession(base, "hello", messages, "persona", false);
-    expect(result.ok).toBeTrue();
-    if (result.ok) {
-      const loaded = loadSession(base, "hello");
-      expect(loaded.ok).toBeTrue();
-      if (loaded.ok) {
-        expect(loaded.value.activeProfile).toBe("persona");
-      }
-    }
-  });
-});
-
-describe("saveNamedSession (edge)", () => {
-  test("writes a named snapshot", () => {
-    const base = mkdtempSync(join(tmpDir, "named-"));
-    const messages: Message[] = [
-      { role: "system", content: "Working directory: /tmp" },
-      { role: "user", content: "hi" },
-    ];
-    const result = saveNamedSession(base, "mywork", messages, "persona");
-    expect(result.ok).toBeTrue();
-    if (result.ok) {
-      const p = join(base, "sessions", "mywork.json");
-      expect(existsSync(p)).toBeTrue();
-      const loaded = loadSession(base, "mywork");
-      expect(loaded.ok).toBeTrue();
-      if (loaded.ok) {
-        expect(loaded.value.activeProfile).toBe("persona");
-      }
-    }
-  });
-
-  test("appends a numeric suffix when the requested name already exists", () => {
-    const base = mkdtempSync(join(tmpDir, "named-collision-"));
-    const messages: Message[] = [
-      { role: "system", content: "Working directory: /tmp" },
-    ];
-    const first = saveNamedSession(base, "mywork", messages, undefined);
-    const second = saveNamedSession(base, "mywork", messages, undefined);
-    expect(first).toEqual({ ok: true, value: "mywork" });
-    expect(second).toEqual({ ok: true, value: "mywork-2" });
-  });
-
-  test("rejects names with path separators", () => {
-    const base = mkdtempSync(join(tmpDir, "named-slash-"));
-    const messages: Message[] = [
-      { role: "system", content: "Working directory: /tmp" },
-    ];
-    const result = saveNamedSession(base, "a/b", messages, undefined);
-    expect(result.ok).toBeFalse();
-    if (!result.ok) {
-      expect(result.error.kind).toBe("malformed");
-    }
-    const result2 = saveNamedSession(base, "a\\b", messages, undefined);
-    expect(result2.ok).toBeFalse();
-    if (!result2.ok) {
-      expect(result2.error.kind).toBe("malformed");
-    }
-  });
-
-  test("rejects dot-only names (path traversal)", () => {
-    const base = mkdtempSync(join(tmpDir, "named-dots-"));
-    const messages: Message[] = [
-      { role: "system", content: "Working directory: /tmp" },
-    ];
-    const result = saveNamedSession(base, "..", messages, undefined);
-    expect(result.ok).toBeFalse();
-    if (!result.ok) {
-      expect(result.error.kind).toBe("malformed");
-    }
+    const base = freshBase();
+    const id = idOf(saveSession(base, undefined, "p", messages, "plan"));
+    const loaded = loadSession(base, id);
+    expect(loaded.ok && loaded.value.activeProfile).toBe("plan");
   });
 });
 
 describe("loadSession (edge)", () => {
+  test("loads by full id and by unique prefix", () => {
+    const base = freshBase();
+    const id = idOf(saveSession(base, undefined, "n", messages, undefined));
+    const full = loadSession(base, id);
+    const prefix = loadSession(base, id.slice(0, 8));
+    expect(full.ok && full.value.messages).toEqual(messages);
+    expect(prefix.ok && prefix.value.id).toBe(id);
+  });
+
   test("returns an error when the session is not found", () => {
-    const base = mkdtempSync(join(tmpDir, "load-missing-"));
-    const result = loadSession(base, "nope");
-    expect(result.ok).toBeFalse();
-    if (!result.ok) {
-      expect(result.error.kind).toBe("malformed");
-      if (result.error.kind === "malformed") {
-        expect(result.error.body).toContain("not found");
-      }
+    const result = loadSession(freshBase(), "abcdef");
+    expect(result.ok).toBe(false);
+    if (!result.ok && result.error.kind === "malformed") {
+      expect(result.error.body).toContain("not found");
+    }
+  });
+
+  test("returns an error for a reference that is not an id", () => {
+    const result = loadSession(freshBase(), "My work");
+    expect(result.ok).toBe(false);
+  });
+
+  test("returns an error when a prefix matches several sessions", () => {
+    const base = freshBase();
+    mkdirSync(join(base, "sessions"));
+    for (const id of ["abc00000-0000", "abc11111-0000"]) {
+      writeFileSync(
+        join(base, "sessions", `${id}.json`),
+        JSON.stringify({ name: id, messages: [], savedAt: "" }),
+      );
+    }
+    const result = loadSession(base, "abc");
+    expect(result.ok).toBe(false);
+    if (!result.ok && result.error.kind === "malformed") {
+      expect(result.error.body).toContain("ambiguous");
     }
   });
 
   test("returns an error when the file is not valid JSON", () => {
-    const base = mkdtempSync(join(tmpDir, "load-badjson-"));
-    mkdirSync(join(base, "sessions"), { recursive: true });
-    writeFileSync(join(base, "sessions", "bad.json"), "not json{", "utf-8");
-    const result = loadSession(base, "bad");
-    expect(result.ok).toBeFalse();
-    if (!result.ok) {
-      expect(result.error.kind).toBe("malformed");
-      if (result.error.kind === "malformed") {
-        expect(result.error.body).toContain("invalid JSON");
-      }
+    const base = freshBase();
+    mkdirSync(join(base, "sessions"));
+    writeFileSync(join(base, "sessions", "bad0.json"), "{ not json");
+    const result = loadSession(base, "bad0");
+    expect(result.ok).toBe(false);
+    if (!result.ok && result.error.kind === "malformed") {
+      expect(result.error.body).toContain("invalid JSON");
     }
   });
 
   test("returns an error when the shape is missing messages", () => {
-    const base = mkdtempSync(join(tmpDir, "load-shape-"));
-    mkdirSync(join(base, "sessions"), { recursive: true });
+    const base = freshBase();
+    mkdirSync(join(base, "sessions"));
     writeFileSync(
-      join(base, "sessions", "shape.json"),
-      JSON.stringify({ activeProfile: "x", savedAt: "t" }),
-      "utf-8",
+      join(base, "sessions", "bad1.json"),
+      JSON.stringify({ x: 1 }),
     );
-    const result = loadSession(base, "shape");
-    expect(result.ok).toBeFalse();
-    if (!result.ok) {
-      expect(result.error.kind).toBe("malformed");
-      if (result.error.kind === "malformed") {
-        expect(result.error.body).toContain("corrupted");
-      }
-    }
-  });
-
-  test("loads a session with no active profile without a false corruption error", () => {
-    const base = mkdtempSync(join(tmpDir, "load-noprofile-"));
-    const messages: Message[] = [
-      { role: "system", content: "Working directory: /tmp" },
-      { role: "user", content: "hi" },
-    ];
-    const saved = saveNamedSession(base, "noprofile", messages, undefined);
-    expect(saved.ok).toBeTrue();
-    const result = loadSession(base, "noprofile");
-    expect(result.ok).toBeTrue();
-    if (result.ok) {
-      expect(result.value.activeProfile).toBeUndefined();
-      expect(result.value.messages.length).toBe(2);
-    }
-  });
-
-  test("loads a session with an active profile intact", () => {
-    const base = mkdtempSync(join(tmpDir, "load-profile-"));
-    const messages: Message[] = [
-      { role: "system", content: "Working directory: /tmp" },
-    ];
-    saveNamedSession(base, "withprofile", messages, "persona");
-    const result = loadSession(base, "withprofile");
-    expect(result.ok).toBeTrue();
-    if (result.ok) {
-      expect(result.value.activeProfile).toBe("persona");
-    }
+    expect(loadSession(base, "bad1").ok).toBe(false);
   });
 });
 
 describe("listSessions (edge)", () => {
   test("returns an empty array when the directory does not exist", () => {
-    const base = mkdtempSync(join(tmpDir, "list-none-"));
-    expect(listSessions(base)).toEqual([]);
+    expect(listSessions(join(freshBase(), "nope"))).toEqual([]);
   });
 
-  test("lists .json files by name, sorted, excluding non-json files", () => {
-    const base = mkdtempSync(join(tmpDir, "list-some-"));
-    saveAutoSession(
-      base,
-      "hello",
-      [{ role: "system", content: "s" }],
-      undefined,
-      false,
-    );
-    saveNamedSession(
-      base,
-      "zeta",
-      [{ role: "system", content: "s" }],
-      undefined,
-    );
-    saveNamedSession(
-      base,
-      "alpha",
-      [{ role: "system", content: "s" }],
-      undefined,
-    );
-    // A non-json file must not appear in the list.
-    writeFileSync(join(base, "sessions", "notes.txt"), "x", "utf-8");
-    const names = listSessions(base);
-    expect(names).toEqual(["alpha", "hello", "zeta"]);
+  test("lists id and name, sorted by name, excluding non-json files", () => {
+    const base = freshBase();
+    const b = idOf(saveSession(base, undefined, "beta", messages, undefined));
+    const a = idOf(saveSession(base, undefined, "alpha", messages, undefined));
+    writeFileSync(join(base, "sessions", "notes.txt"), "ignore me");
+    expect(listSessions(base)).toEqual([
+      { id: a, name: "alpha" },
+      { id: b, name: "beta" },
+    ]);
+  });
+
+  test("lists an unreadable file under its id so it can still be deleted", () => {
+    const base = freshBase();
+    mkdirSync(join(base, "sessions"));
+    writeFileSync(join(base, "sessions", "dead.json"), "garbage");
+    expect(listSessions(base)).toEqual([{ id: "dead", name: "dead" }]);
   });
 });
 
 describe("deleteSession (edge)", () => {
-  test("removes an existing named session", () => {
-    const base = mkdtempSync(join(tmpDir, "del-exist-"));
-    saveNamedSession(
-      base,
-      "temp",
-      [{ role: "system", content: "s" }],
-      undefined,
-    );
-    expect(existsSync(join(base, "sessions", "temp.json"))).toBeTrue();
-    const result = deleteSession(base, "temp");
-    expect(result.ok).toBeTrue();
-    expect(existsSync(join(base, "sessions", "temp.json"))).toBeFalse();
+  test("removes a session by id or prefix and returns the full id", () => {
+    const base = freshBase();
+    const id = idOf(saveSession(base, undefined, "gone", messages, undefined));
+    const deleted = deleteSession(base, id.slice(0, 8));
+    expect(deleted.ok && deleted.value).toBe(id);
+    expect(existsSync(join(base, "sessions", `${id}.json`))).toBe(false);
   });
 
   test("returns an error when the session is not found", () => {
-    const base = mkdtempSync(join(tmpDir, "del-missing-"));
-    const result = deleteSession(base, "nope");
-    expect(result.ok).toBeFalse();
-    if (!result.ok) {
-      expect(result.error.kind).toBe("malformed");
-      if (result.error.kind === "malformed") {
-        expect(result.error.body).toContain("not found");
-      }
-    }
-  });
-
-  test("deletes an auto-saved session like any other session", () => {
-    const base = mkdtempSync(join(tmpDir, "del-auto-named-"));
-    saveAutoSession(
-      base,
-      "hello",
-      [{ role: "system", content: "s" }],
-      undefined,
-      false,
-    );
-    const result = deleteSession(base, "hello");
-    expect(result.ok).toBeTrue();
-    expect(existsSync(join(base, "sessions", "hello.json"))).toBeFalse();
-  });
-});
-
-describe("session names with trailing whitespace (edge)", () => {
-  test("a file saved with a trailing space lists, loads and deletes by its trimmed name", () => {
-    const base = mkdtempSync(join(tmpdir(), "vise-sessions-ws-"));
-    mkdirSync(join(base, "sessions"));
-    const file = join(base, "sessions", "Say hello .json");
-    writeFileSync(file, JSON.stringify({ messages: [], savedAt: "" }));
-    expect(listSessions(base)).toEqual(["Say hello"]);
-    expect(loadSession(base, "Say hello").ok).toBe(true);
-    expect(deleteSession(base, "Say hello").ok).toBe(true);
-    expect(existsSync(file)).toBe(false);
+    const result = deleteSession(freshBase(), "abcdef");
+    expect(result.ok).toBe(false);
   });
 });

@@ -1,4 +1,5 @@
 import type { ViseError } from "../core/errors.ts";
+import type { SessionEntry } from "../repl/ports.ts";
 
 /** Render a structured error as a single line for the terminal. */
 export function formatError(err: ViseError): string {
@@ -196,12 +197,17 @@ export function formatProfileList(
 
 /**
  * Render the list of saved sessions as a multi-line string. Each line is
- * `  <name>  <savedAt>`. Auto-saved sessions (named from the conversation's
- * first message) and manually saved sessions are listed together, sorted by
- * name.
+ * `  <name>  (<id>)`: the display name and the uuid that /resume and /delete
+ * take. Auto-saved sessions (named from the conversation's first message) and
+ * renamed ones are listed together, sorted by name.
  */
-export function formatSessionList(names: string[]): string {
-  if (names.length === 0) return "no saved sessions";
-  const lines = names.map((n) => `  ${n}`).join("\n");
-  return `saved sessions:\n${lines}\n\n/resume <name>  resume a session\n/save <name>   save the current conversation\n/delete <name> delete a saved session`;
+export function formatSessionList(entries: SessionEntry[]): string {
+  if (entries.length === 0) return "no saved sessions";
+  const lines = entries.map((e) => `  ${e.name}  (${e.id})`).join("\n");
+  return `saved sessions:
+${lines}
+
+/resume <id>  resume a session (an id prefix is enough)
+/save <name>  name the current session and save it
+/delete <id>  delete a saved session`;
 }
