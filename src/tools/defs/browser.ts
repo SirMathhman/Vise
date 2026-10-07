@@ -59,7 +59,7 @@ export const browserTools: Tool[] = [
     function: {
       name: "browser_read",
       description:
-        "Read a browser tab's current page: its visible text followed by an outline of the visible interactive elements, each with a ref such as e3. The outline is always shown in full. A long page's text is saved to a temp file and only its start is shown: search or page through the rest with search_temp and read_temp. After an action that changes the page without loading it (a search, a filter), first call browser_wait_for_text with a word you expect in the new content (or browser_wait_for_idle if you cannot name one); otherwise the read may show the old content. Pass a ref to browser_click, browser_hover, browser_drag or browser_type. Refs are valid until the page navigates; read again for fresh ones.",
+        "Read a browser tab's current page: its visible text followed by an outline of the visible interactive elements, each with a ref such as e3. The outline is always shown in full. A long page's text is saved to a temp file and only its start is shown: search or page through the rest with search_temp and read_temp. After an action that changes the page without loading it (a search, a filter), first call browser_wait_for_text with a word you expect in the new content (or browser_wait_for_idle if you cannot name one); otherwise the read may show the old content. Form fields show their label, and a drop-down shows its options: choose one with browser_select (a drop-down cannot be clicked open or typed into). Pass a ref to browser_click, browser_hover, browser_drag or browser_type. Refs are valid until the page navigates; read again for fresh ones.",
       parameters: {
         type: "object",
         properties: {
@@ -349,6 +349,37 @@ export const browserTools: Tool[] = [
           },
         },
         required: ["tab"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "browser_select",
+      description:
+        "Choose an option in a drop-down (<select>) in a browser tab. A native drop-down list cannot be opened with browser_click or filled with browser_type, so use this. browser_read lists each drop-down's options (`select \"Country\" value=\"...\" options: A | B | C`). 'option' is the option's visible text (or its value): an exact match is preferred, otherwise a part of the text works. For a multi-select pass 'options' (a list). The page's own change handlers run, so dependent fields (a state list after a country) update; browser_read again afterwards for fresh refs and options.",
+      parameters: {
+        type: "object",
+        properties: {
+          tab: {
+            type: "integer",
+            description: "Tab number from browser_open or browser_tabs",
+          },
+          ref: {
+            type: "string",
+            description: "Ref of the drop-down from browser_read",
+          },
+          option: {
+            type: "string",
+            description: "Visible text (or value) of the option to choose",
+          },
+          options: {
+            type: "array",
+            items: { type: "string" },
+            description: "Several options, for a multi-select",
+          },
+        },
+        required: ["tab", "ref"],
       },
     },
   },

@@ -139,6 +139,18 @@ export class ChromiumBackend implements BrowserBackend {
     );
   }
 
+  async selectOption(
+    id: number,
+    ref: string,
+    wanted: string[],
+  ): Promise<string[]> {
+    const chosen = await this.inTab(id, (cdp, session) =>
+      actions.selectOption(cdp, session, ref, wanted),
+    );
+    if (chosen === undefined) throw new Error("a dialog is open on that tab");
+    return chosen;
+  }
+
   async screenshot(id: number, fullPage: boolean): Promise<string> {
     const data = await this.inTab(id, async (cdp, session) => {
       const shot = await cdp.send<{ data: string }>(

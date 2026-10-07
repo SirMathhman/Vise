@@ -23,8 +23,17 @@ export const SNAPSHOT_SCRIPT = `(() => {
     if (!ref) { ref = 'e' + window.__viseNext++; el.setAttribute('data-vise-ref', ref); }
     const tag = el.tagName.toLowerCase();
     const role = el.getAttribute('role') || (tag === 'a' ? 'link' : tag === 'input' ? (el.type || 'text') + ' input' : tag);
-    const name = (el.getAttribute('aria-label') || el.innerText || el.value || el.placeholder || el.title || el.alt || '').replace(/\\s+/g, ' ').trim().slice(0, 80);
+    const field = tag === 'input' || tag === 'select' || tag === 'textarea';
+    const labelled = el.getAttribute('aria-labelledby');
+    const label = field ? ((el.labels && el.labels[0] && el.labels[0].innerText) || (labelled && (document.getElementById(labelled.split(' ')[0]) || {}).innerText) || '') : '';
+    const own = tag === 'select' ? '' : (el.innerText || el.value || '');
+    const name = (el.getAttribute('aria-label') || label || own || el.placeholder || el.title || el.alt || '').replace(/\\s+/g, ' ').trim().slice(0, 80);
     let extra = '';
+    if (tag === 'select') {
+      const opts = [...el.options].map((o) => o.text.replace(/\\s+/g, ' ').trim().slice(0, 40));
+      const chosen = el.selectedIndex >= 0 ? opts[el.selectedIndex] : '';
+      extra += (chosen ? ' value="' + chosen + '"' : '') + ' options: ' + opts.slice(0, 25).join(' | ') + (opts.length > 25 ? ' | ... ' + (opts.length - 25) + ' more' : '');
+    }
     if (tag === 'a' && el.href) extra += ' -> ' + el.href.slice(0, 100);
     if ((tag === 'input' || tag === 'textarea') && el.value && el.type !== 'password') extra += ' value="' + el.value.slice(0, 40) + '"';
     if (el.disabled) extra += ' (disabled)';
@@ -121,4 +130,71 @@ export function fileInputProblem(
     return "that file input accepts only one file";
   }
   return null;
+}
+
+/**
+ * Chooses options of the `<select>` behind `ref` by value or visible text
+ * (exact first, then a case-insensitive part of the text) and fires the
+ * `input` and `change` events a user's choice would. A native drop-down list
+ * cannot be driven by clicks or typing, so this is how options get chosen.
+ * Returns `{ selected: [...] }` or `{ error, options? }`.
+ */
+export function selectScript(ref: string, wanted: string[]): string {
+  return `((ref, wanted) => {
+    const el = document.querySelector('[data-vise-ref="' + ref + '"]');
+    if (!el) return { error: 'missing' };
+    if (el.tagName !== 'SELECT') return { error: 'notselect' };
+    const opts = [...el.options];
+    const list = opts.map((o) => o.text.replace(/\\s+/g, ' ').trim());
+    if (el.disabled) return { error: 'disabled', options: list };
+    const norm = (s) => s.replace(/\\s+/g, ' ').trim().toLowerCase();
+    const pick = (w) => opts.find((o) => !o.disabled && o.value === w)
+      || opts.find((o) => !o.disabled && norm(o.text) === norm(w))
+      || opts.find((o) => !o.disabled && norm(o.text).includes(norm(w)));
+    const chosen = wanted.map(pick);
+    const bad = wanted.filter((_, i) => !chosen[i]);
+    if (bad.length > 0) return { error: 'nooption', bad, options: list };
+    if (!el.multiple && chosen.length > 1) return { error: 'single', options: list };
+    el.scrollIntoView({ block: 'center' });
+    el.focus();
+    if (el.multiple) { for (const o of opts) o.selected = chosen.includes(o); }
+    else el.selectedIndex = opts.indexOf(chosen[0]);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    return { selected: chosen.map((o) => o.text.replace(/\\s+/g, ' ').trim()) };
+  })(${JSON.stringify(ref)}, ${JSON.stringify(wanted)})`;
+}
+
+/** What `selectScript` answered, as the chosen texts; throws an `Error` fit to show the model when it could not choose. */
+export function selectedOrThrow(
+  ref: string,
+  result: {
+    selected?: string[];
+    error?: string;
+    bad?: string[];
+    options?: string[];
+  },
+): string[] {
+  if (result.selected) return result.selected;
+  const options = (result.options ?? []).slice(0, 60).join(" | ");
+  switch (result.error) {
+    case "missing":
+      throw new Error(
+        `unknown element ${ref}: call browser_read for fresh refs`,
+      );
+    case "notselect":
+      throw new Error(
+        `${ref} is not a drop-down (<select>); use browser_click or browser_type`,
+      );
+    case "disabled":
+      throw new Error(
+        `${ref} is disabled (an earlier choice may enable it). Options: ${options}`,
+      );
+    case "single":
+      throw new Error(`${ref} takes one choice. Options: ${options}`);
+    default:
+      throw new Error(
+        `no option matching ${(result.bad ?? []).map((b) => JSON.stringify(b)).join(", ")} in ${ref}. Options: ${options}`,
+      );
+  }
 }

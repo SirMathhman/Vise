@@ -113,6 +113,26 @@ function ref(args: Record<string, unknown>, name = "ref"): string {
   return value;
 }
 
+/** Choose the option(s) named in `args` in the drop-down behind `ref`. */
+async function select(
+  browser: BrowserBackend,
+  id: number,
+  ref: string,
+  args: Record<string, unknown>,
+): Promise<string> {
+  if (!browser.selectOption) {
+    throw new Error("this browser cannot choose drop-down options");
+  }
+  const wanted = Array.isArray(args["options"])
+    ? args["options"].map(String)
+    : args["option"] !== undefined
+      ? [String(args["option"])]
+      : [];
+  if (wanted.length === 0) throw new Error("'option' is required");
+  const chosen = await browser.selectOption(id, ref, wanted);
+  return `selected ${chosen.map((c) => JSON.stringify(c)).join(", ")}`;
+}
+
 /** Take a screenshot of a tab and put it in the outbox for the model. */
 async function screenshot(
   browser: BrowserBackend,
@@ -243,6 +263,8 @@ export function makeBrowserHandlers(
         (id) => upload(browser, id, ref(args), args["paths"], cwd),
         "",
       ),
+    browser_select: (args) =>
+      onTab(args, (id) => select(browser, id, ref(args), args), "", true),
     browser_screenshot: (args) =>
       onTab(args, (id) => screenshot(browser, images, id, args), ""),
     browser_handle_dialog: (args) =>

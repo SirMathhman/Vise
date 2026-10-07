@@ -5,6 +5,8 @@ import {
   focusScript,
   fileInputProblem,
   fileInputScript,
+  selectedOrThrow,
+  selectScript,
   SNAPSHOT_SCRIPT,
 } from "../../src/browser/page-scripts.ts";
 import {
@@ -210,6 +212,17 @@ export const ops: Record<string, (params: Params) => Promise<unknown>> = {
       await act(id, insertTextScript(text));
     }
     if (press) await act(id, press);
+  },
+
+  async selectOption({ tab, ref, wanted }) {
+    const id = requireOwned(tab);
+    const name = checkRef(ref);
+    const list = Array.isArray(wanted) ? wanted.map(String) : [];
+    const result = await run<Parameters<typeof selectedOrThrow>[1]>(
+      id,
+      selectScript(name, list),
+    );
+    return selectedOrThrow(name, result);
   },
 
   async screenshot({ tab }) {

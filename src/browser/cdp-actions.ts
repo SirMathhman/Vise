@@ -5,6 +5,8 @@ import {
   fileInputProblem,
   fileInputScript,
   focusScript,
+  selectedOrThrow,
+  selectScript,
   REF_PATTERN,
   SNAPSHOT_SCRIPT,
 } from "./page-scripts.ts";
@@ -120,6 +122,21 @@ export async function uploadFiles(
     { files: paths, objectId: result.objectId },
     sessionId,
   );
+}
+
+/** Choose options of the `<select>` behind `ref`. */
+export async function selectOption(
+  cdp: CdpConnection,
+  sessionId: string,
+  ref: string,
+  wanted: string[],
+): Promise<string[]> {
+  const result = await evaluate<Parameters<typeof selectedOrThrow>[1]>(
+    cdp,
+    sessionId,
+    selectScript(checkRef(ref), wanted),
+  );
+  return selectedOrThrow(ref, result);
 }
 
 export async function hover(

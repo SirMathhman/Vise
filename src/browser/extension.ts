@@ -110,6 +110,10 @@ export class ExtensionBackend implements BrowserBackend {
     await this.tab("click", { tab: id, ref });
   }
 
+  selectOption(id: number, ref: string, wanted: string[]): Promise<string[]> {
+    return this.tab("selectOption", { tab: id, ref, wanted });
+  }
+
   /** Only the visible part: the extension can capture just what the window shows. */
   screenshot(id: number): Promise<string> {
     return this.tab("screenshot", { tab: id });

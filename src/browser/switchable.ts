@@ -126,6 +126,14 @@ export class SwitchableBrowser implements BrowserBackend {
       ? inner.uploadFiles(id, ref, paths)
       : Promise.reject(new Error("this browser engine cannot upload files"));
   }
+  selectOption(id: number, ref: string, wanted: string[]): Promise<string[]> {
+    const inner = this.inner;
+    return inner.selectOption
+      ? inner.selectOption(id, ref, wanted)
+      : Promise.reject(
+          new Error("this browser engine cannot choose drop-down options"),
+        );
+  }
   screenshot(id: number, fullPage: boolean): Promise<string> {
     const inner = this.inner;
     return inner.screenshot

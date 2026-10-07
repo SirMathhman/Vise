@@ -145,6 +145,18 @@ export class FirefoxBackend implements BrowserBackend {
     );
   }
 
+  async selectOption(
+    id: number,
+    ref: string,
+    wanted: string[],
+  ): Promise<string[]> {
+    const chosen = await this.inTab(id, (bidi, context) =>
+      actions.selectOption(bidi, context, ref, wanted),
+    );
+    if (chosen === undefined) throw new Error("a dialog is open on that tab");
+    return chosen;
+  }
+
   async screenshot(id: number, fullPage: boolean): Promise<string> {
     const data = await this.inTab(id, async (bidi, context) => {
       const shot = await bidi.send<{ data: string }>(

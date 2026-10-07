@@ -80,6 +80,12 @@ export interface BrowserBackend {
    * `fullPage`, where the engine can). Optional: a backend that cannot leaves it out.
    */
   screenshot?(id: number, fullPage: boolean): Promise<string>;
+  /**
+   * Choose options of a `<select>` by value or visible text; returns the texts
+   * chosen and throws with the available options when none matches. Optional:
+   * a backend that cannot leaves it out.
+   */
+  selectOption?(id: number, ref: string, wanted: string[]): Promise<string[]>;
   /** The dialog currently blocking a tab, if any. */
   pendingDialog(id: number): DialogInfo | null;
   /** Accept or dismiss the blocking dialog (`promptText` answers a prompt). */
