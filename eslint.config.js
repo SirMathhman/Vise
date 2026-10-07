@@ -3,7 +3,7 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: ["node_modules/**", "sessions/**", "web/dist/**"],
+    ignores: ["node_modules/**", "sessions/**", "web/dist/**", "extension/dist/**"],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
@@ -46,6 +46,19 @@ export default tseslint.config(
   },
   {
     files: ["src/**/*.ts", "index.ts"],
+    rules: {
+      "max-lines": [
+        "error",
+        { max: 500, skipBlankLines: true, skipComments: true },
+      ],
+      "max-lines-per-function": [
+        "error",
+        { max: 100, skipBlankLines: true, skipComments: true },
+      ],
+    },
+  },
+  {
+    files: ["extension/src/**/*.ts"],
     rules: {
       "max-lines": [
         "error",

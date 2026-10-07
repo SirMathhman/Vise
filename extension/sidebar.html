@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Vise</title>
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        font:
+          13px system-ui,
+          sans-serif;
+        color: #e6e6e6;
+        background: #15171c;
+      }
+      #strip {
+        padding: 6px 8px;
+        border-bottom: 1px solid #333;
+      }
+      #strip button {
+        font: inherit;
+        cursor: pointer;
+      }
+      #status {
+        color: #9aa0a6;
+        margin-left: 6px;
+      }
+      #owned {
+        list-style: none;
+        margin: 4px 0 0;
+        padding: 0;
+      }
+      #owned li {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        padding: 1px 0;
+      }
+      #owned span {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      iframe {
+        flex: 1;
+        width: 100%;
+        border: 0;
+      }
+      #offline {
+        padding: 16px;
+      }
+      [hidden] {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="strip">
+      <button id="give" title="Let Vise use the tab you are looking at">
+        Give Vise this tab
+      </button>
+      <span id="status"></span>
+      <ul id="owned"></ul>
+    </div>
+    <div id="offline" hidden>
+      Vise is not running. Start it with <code>bun run web</code>.
+      <button id="retry">retry</button>
+    </div>
+    <iframe id="app" hidden title="Vise"></iframe>
+    <script src="dist/sidebar.js"></script>
+  </body>
+</html>

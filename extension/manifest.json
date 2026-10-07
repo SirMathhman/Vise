@@ -1,0 +1,25 @@
+{
+  "manifest_version": 2,
+  "name": "Vise",
+  "version": "0.1.0",
+  "description": "Chat with Vise in a sidebar; its agent works in the tabs you give it.",
+  "permissions": ["tabs", "storage", "<all_urls>"],
+  "background": { "scripts": ["dist/background.js"], "persistent": true },
+  "sidebar_action": {
+    "default_title": "Vise",
+    "default_panel": "sidebar.html",
+    "open_at_install": false
+  },
+  "browser_action": { "default_title": "Vise" },
+  "options_ui": { "page": "options.html", "open_in_tab": false },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["dist/dialogs.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "browser_specific_settings": {
+    "gecko": { "id": "vise@local", "strict_min_version": "115.0" }
+  }
+}

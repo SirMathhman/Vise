@@ -10,11 +10,14 @@
     "dev:web": "bun run scripts/dev-web.ts",
     "typecheck:web": "tsc --project web/tsconfig.json",
     "test": "bun test",
-    "lint": "eslint src/ test/ index.ts web/"
+    "lint": "eslint src/ test/ index.ts web/ extension/",
+    "build:ext": "bun scripts/build-ext.ts",
+    "typecheck:ext": "tsc --project extension/tsconfig.json"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/bun": "latest",
+    "@types/firefox-webext-browser": "^143.0.1",
     "eslint": "^10.11.0",
     "typescript-eslint": "^8.71.0"
   },
