@@ -145,3 +145,40 @@ describe("tool enablement is per session (edge)", () => {
     expect(b.toolController.isEnabled("read_file")).toBe(true);
   });
 });
+
+describe("lazy /profile (core)", () => {
+  test("only the last /profile before a turn reaches the conversation", async () => {
+    let seen: string[] = [];
+    const client: Client = {
+      async chat(messages) {
+        seen = messages.map((m) => m.content);
+        return { ok: true, value: { content: "reply" } };
+      },
+    };
+    const profileSource = {
+      listProfiles: async () => ({ ok: true as const, value: ["a", "b", "c"] }),
+      loadProfile: async (n: string) => ({
+        ok: true as const,
+        value: `body of ${n}`,
+      }),
+      initProfile: async (n: string) => ({ ok: true as const, value: n }),
+    };
+    const session = new Session(client, { run: async () => "out" }, [], {
+      cwd: "/tmp",
+      context: {
+        lastPromptTokensUsed: () => undefined,
+        async contextMax() {
+          return { ok: true, value: 100_000 };
+        },
+      },
+      preTurnHooks: [],
+      postTurnHooks: [],
+      profileSource,
+    });
+    for (const p of ["a", "b", "c"]) await session.handleLine(`/profile ${p}`);
+    expect(session.getActiveProfile()).toBe("c");
+    await session.handleLine("hello");
+    expect(seen.filter((c) => c.startsWith("body of "))).toEqual(["body of c"]);
+    expect(seen.indexOf("body of c")).toBeLessThan(seen.indexOf("hello"));
+  });
+});

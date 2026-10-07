@@ -189,6 +189,7 @@ export class Session {
   private readonly reasoningController?: ReasoningController;
   private readonly toolController?: ToolController;
   private burst = false;
+  private pendingProfile: Message[] = [];
   private readonly isToolEnabled = (name: string): boolean =>
     this.toolController?.isEnabled(name) ?? true;
   private readonly profileSource?: ProfileSource;
@@ -275,8 +276,12 @@ export class Session {
       pushMessage: (message) => {
         this.messages.push(message);
       },
-      messages: () => [...this.messages],
+      messages: () => {
+        this.flushPendingProfile();
+        return [...this.messages];
+      },
       resetMessages: (body) => {
+        this.pendingProfile = [];
         this.messages.length = 0;
         this.messages.push(this.systemMessage);
         for (const m of body) {
@@ -327,17 +332,21 @@ export class Session {
   private buildProfileCommands(
     toolController: ToolController | undefined,
   ): ProfileCommands {
+    // Switching profile is lazy: its messages wait in `pendingProfile` until
+    // the next turn, and each switch discards the previous switch's messages,
+    // so only the last `/profile` before a turn reaches the conversation.
     const profileTools = new ProfileToolGate(toolController, (m) =>
-      this.messages.push(m),
+      this.pendingProfile.push(m),
     );
     return {
       profileSource: () => this.profileSource,
       activeProfile: () => this.activeProfile,
       setActiveProfile: (name) => {
         this.activeProfile = name;
+        this.pendingProfile = [];
       },
       pushMessage: (message) => {
-        this.messages.push(message);
+        this.pendingProfile.push(message);
       },
       toolNames: () => profileTools.names(),
       applyProfileTools: (tools) => profileTools.apply(tools),
@@ -437,6 +446,7 @@ export class Session {
       return handleNotesCommand(this.noteSource, trimmed);
     }
     if (trimmed === "/workflow" || trimmed.startsWith("/workflow ")) {
+      this.flushPendingProfile();
       return handleWorkflowCommand(this.workflowCommands, trimmed);
     }
     if (trimmed === "/resume" || trimmed.startsWith("/resume ")) {
@@ -451,6 +461,7 @@ export class Session {
     const abort = new AbortController();
     this.currentAbort = abort;
     try {
+      this.flushPendingProfile();
       await this.runHooks(this.preTurnHooks);
       this.messages.push({ role: "user", content: line });
       if (this.sessionName === undefined) {
@@ -570,6 +581,12 @@ export class Session {
    */
   getActiveProfile(): string | undefined {
     return this.activeProfile;
+  }
+
+  /** Move the last profile switch's messages into the conversation. */
+  private flushPendingProfile(): void {
+    this.messages.push(...this.pendingProfile);
+    this.pendingProfile = [];
   }
 
   private async saveSession(): Promise<void> {
