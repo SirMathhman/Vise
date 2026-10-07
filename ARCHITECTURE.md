@@ -401,6 +401,18 @@ Besides the browsers Vise launches itself, the agent can work in the user's own 
 
 ## Future Work
 
+- **One turn-admission state machine per conversation.** Which line runs, which
+  are held, and which steers are pending is a single piece of state with
+  explicit states (`idle`, `running`, `draining`) and transitions: submit,
+  hold, unhold, steer, finish. It lives in one module (`repl/turn-queue.ts`,
+  pure, no I/O) that the web connection and the terminal both drive, instead
+  of `running`/`chain`/`held` booleans and arrays mutated from `web/line.ts`,
+  `web/queue-commands.ts` and `web/server.ts`. A steer is accepted or refused
+  atomically with the transition that ends the turn, so no steer can land
+  after the last drain and wait for an unrelated later turn. The terminal gets
+  `/steer` and `/queue` from the same module, and the browser's `steer-ui.ts`
+  mirrors only the `queue` message, never its own copy of the rules.
+
 - **Pictures are blobs referenced by id.** Done: a `Picture` carries a content
   hash, type (sniffed from the bytes) and size; the bytes live in the shared
   `ImageStore` and are resolved to a data URI only when a request is built.
