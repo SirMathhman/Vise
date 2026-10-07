@@ -6,6 +6,14 @@
  * folder as a new session in this tab (the page reloads onto it; the old
  * conversation stays auto-saved and the explorer is read-only).
  */
+/** The page address for a session rooted at `root` (or "none"); the sidebar mode carries over. */
+function sessionUrl(root: string): string {
+  const query = new URLSearchParams({ root });
+  const ui = new URLSearchParams(window.location.search).get("ui");
+  if (ui) query.set("ui", ui);
+  return `/?${query.toString()}`;
+}
+
 export function setupSessionRoot(
   button: HTMLButtonElement,
   noFolderButton: HTMLButtonElement,
@@ -17,7 +25,7 @@ export function setupSessionRoot(
       const res = await fetch("/api/pick-folder", { method: "POST" });
       const body = (await res.json()) as { path?: string | null };
       if (body.path) {
-        window.location.assign(`/?root=${encodeURIComponent(body.path)}`);
+        window.location.assign(sessionUrl(body.path));
       }
     } finally {
       button.disabled = false;
@@ -25,7 +33,7 @@ export function setupSessionRoot(
   });
   // A session with no working directory at all (no file or shell tools).
   noFolderButton.addEventListener("click", () => {
-    window.location.assign("/?root=none");
+    window.location.assign(sessionUrl("none"));
   });
   return (path) => {
     if (path === "") {

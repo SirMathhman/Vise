@@ -282,6 +282,10 @@ A session is rooted at one directory, fixed when it starts (terminal: the workin
 
 The integrated browser sits behind the `BrowserBackend` interface (`src/browser/types.ts`); tools and the web bridge never see a protocol. `ChromiumBackend` speaks CDP; `FirefoxBackend` speaks WebDriver BiDi (Firefox removed CDP in v129). Page logic that is protocol-independent (the element snapshot and ref scripts in `page-scripts.ts`) is shared; input, evaluation, dialogs, tab events and the live view are reimplemented per protocol. BiDi has no screencast, so the Firefox live view polls `captureScreenshot`. Firefox can be launched by Vise (private profile, killed by profile name on close) or attached to by port (never killed; only one BiDi client may be attached). The web server holds one `SwitchableBrowser` so the engine is a runtime setting rather than a startup flag.
 
+## Firefox extension
+
+Besides the browsers Vise launches itself, the agent can work in the user's own Firefox through an extension (`extension/`). It is deliberately thin: the Bun server keeps the model loop, tools, notes and hooks, and the extension is only UI (the Vise web page in a sidebar) and hands (browser operations in real tabs). The two meet over one WebSocket (`/ext`, requests `{id, op, params}` answered by `{id, ok, result|error}`, plus `{event:"tabs"}`). The server side is `ExtensionBackend`, a third `BrowserBackend` built on the `ExtensionLink` interface that `src/web/ext-hub.ts` implements, so `src/browser/` does not depend on the web layer. A session opened by the sidebar page (`?ui=sidebar`) uses it; other sessions keep their own headless browser. Trust: the extension, not the server, limits the agent to tabs it opened or was handed, and `/ext` accepts only an extension Origin plus the usual loopback/Host checks; any other installed extension could also connect (a pairing token would be the hardening). Input is synthetic, so some sites will not respond.
+
 ## Potential Problems
 
 - **Forced process exit.** Any `process.exit()` anywhere will truncate

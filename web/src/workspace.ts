@@ -37,6 +37,12 @@ export function createWorkspace(
   handle(message: WorkspaceMessage): boolean;
 } {
   const root = el<HTMLElement>("workspace");
+  // In the Firefox extension's sidebar the browser is the user's own window: no file tree or live view.
+  const sidebar = new URLSearchParams(location.search).get("ui") === "sidebar";
+  if (sidebar) {
+    document.body.classList.add("sidebar");
+    root.classList.add("hidden");
+  }
   // A session with no working directory has no project tree to list.
   let noFolder = false;
   const listProject = (): void => {
@@ -76,6 +82,7 @@ export function createWorkspace(
     },
     sync: () => send({ type: "browser_tabs" }),
     handle(message) {
+      if (sidebar && message.type.startsWith("browser_")) return true;
       switch (message.type) {
         case "root":
           showRoot(message.path ?? "");

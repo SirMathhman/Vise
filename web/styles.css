@@ -1012,6 +1012,21 @@ body:has(#workspace:not(.hidden)) #files-btn {
   display: none;
 }
 
+/* Narrow panel inside the Firefox extension's sidebar. */
+.sidebar #files-btn,
+.sidebar #workspace {
+  display: none;
+}
+
+.sidebar .bar {
+  flex-wrap: wrap;
+}
+
+.sidebar .workspace.hidden ~ #app {
+  max-width: none;
+  margin: 0;
+}
+
 .menu-btn {
   font-size: 1.1rem;
 }
