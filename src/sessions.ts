@@ -28,9 +28,20 @@ function sessionDir(base: string): string {
   return join(base, "sessions");
 }
 
-/** Path of a single session file. */
+/**
+ * Path of a single session file. Names are matched ignoring surrounding
+ * whitespace, because older auto-saved files can end in a space (the derived
+ * name was cut at a fixed length) while every command and UI trims the name
+ * it shows or receives.
+ */
 function sessionPath(base: string, name: string): string {
-  return join(sessionDir(base), `${name}.json`);
+  const dir = sessionDir(base);
+  const exact = join(dir, `${name}.json`);
+  if (existsSync(exact) || !existsSync(dir)) return exact;
+  const match = readdirSync(dir).find(
+    (f) => f.endsWith(".json") && f.slice(0, -5).trim() === name.trim(),
+  );
+  return match === undefined ? exact : join(dir, match);
 }
 
 /**
@@ -190,8 +201,8 @@ export function listSessions(base: string): string[] {
   const out: string[] = [];
   for (const f of readdirSync(dir).sort()) {
     if (!f.endsWith(".json")) continue;
-    const name = f.slice(0, -".json".length);
-    out.push(name);
+    const name = f.slice(0, -".json".length).trim();
+    if (!out.includes(name)) out.push(name);
   }
   return out;
 }

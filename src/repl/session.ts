@@ -105,7 +105,10 @@ function deriveSessionName(message: string): string {
     .trim();
   if (sanitized === "") return "session";
   const maxLen = 40;
-  return sanitized.length > maxLen ? sanitized.slice(0, maxLen) : sanitized;
+  // Trim again after cutting, so the name never ends in a space.
+  return sanitized.length > maxLen
+    ? sanitized.slice(0, maxLen).trimEnd()
+    : sanitized;
 }
 
 /**

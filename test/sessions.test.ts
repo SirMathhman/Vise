@@ -299,3 +299,16 @@ describe("deleteSession (edge)", () => {
     expect(existsSync(join(base, "sessions", "hello.json"))).toBeFalse();
   });
 });
+
+describe("session names with trailing whitespace (edge)", () => {
+  test("a file saved with a trailing space lists, loads and deletes by its trimmed name", () => {
+    const base = mkdtempSync(join(tmpdir(), "vise-sessions-ws-"));
+    mkdirSync(join(base, "sessions"));
+    const file = join(base, "sessions", "Say hello .json");
+    writeFileSync(file, JSON.stringify({ messages: [], savedAt: "" }));
+    expect(listSessions(base)).toEqual(["Say hello"]);
+    expect(loadSession(base, "Say hello").ok).toBe(true);
+    expect(deleteSession(base, "Say hello").ok).toBe(true);
+    expect(existsSync(file)).toBe(false);
+  });
+});
