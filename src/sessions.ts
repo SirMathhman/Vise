@@ -2,6 +2,7 @@ import {
   existsSync,
   mkdirSync,
   readdirSync,
+  statSync,
   readFileSync,
   unlinkSync,
   writeFileSync,
@@ -138,6 +139,20 @@ export function loadSession(base: string, ref: string): Result<SavedSession> {
   } catch {
     return failure(`session '${id}' is corrupted (invalid JSON)`);
   }
+}
+
+/** The id of the session saved most recently (by the time its file was last written), if there is one. */
+export function latestSessionId(base: string): string | undefined {
+  let best: { id: string; time: number } | undefined;
+  for (const id of savedIds(base)) {
+    try {
+      const time = statSync(join(sessionDir(base), `${id}.json`)).mtimeMs;
+      if (!best || time > best.time) best = { id, time };
+    } catch {
+      // unreadable: not a candidate
+    }
+  }
+  return best?.id;
 }
 
 /**

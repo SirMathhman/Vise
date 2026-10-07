@@ -1,6 +1,7 @@
 import { createAttachments } from "./attachments.ts";
 import { createHooksPanel } from "./hooks-panel.ts";
 import type { ResultMessage, ServerMessage } from "./server-message.ts";
+import { replayHistory, showImage } from "./history.ts";
 import { appendPicture } from "./lightbox.ts";
 import { createGoalUi } from "./goal-ui.ts";
 import { createSettingsPanels } from "./settings-panels.ts";
@@ -505,12 +506,11 @@ socket.addEventListener("message", (event: MessageEvent<string>) => {
     case "thinking":
       transcript.appendThinkingToken(message.text ?? "");
       break;
+    case "history":
+      replayHistory(transcript, message);
+      break;
     case "image":
-      appendPicture(
-        transcript,
-        `/api/image/${message.id}`,
-        message.label ?? "image",
-      );
+      showImage(transcript, message);
       break;
     case "tool":
       transcript.appendToolCall(

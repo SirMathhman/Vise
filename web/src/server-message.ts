@@ -1,3 +1,4 @@
+import type { HistoryEntry } from "./history.ts";
 import type { HooksFields } from "./hooks-panel.ts";
 
 /** The fields of a message from the server that the page reads (see the protocol in `src/web/server.ts`). */
@@ -18,6 +19,7 @@ export interface ServerMessage extends ResultMessage, HooksFields {
   name?: string;
   depth?: number;
   id?: string;
+  entries?: HistoryEntry[];
   label?: string;
   width?: number;
   height?: number;

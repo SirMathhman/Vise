@@ -24,6 +24,7 @@ export class PendingImages {
     return {
       role: "user",
       content,
+      typed: true,
       ...(attached.length > 0 ? { images: attached } : {}),
     };
   }

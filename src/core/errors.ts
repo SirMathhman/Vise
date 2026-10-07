@@ -23,6 +23,8 @@ export interface Picture {
 export interface Message {
   role: "system" | "user" | "assistant" | "tool";
   content: string;
+  /** Set on a user message the user actually typed (as opposed to context the session added), so a restored conversation can show only the former. */
+  typed?: boolean;
   /** Pictures that came with this message (a screenshot a tool took, an image the user attached). */
   images?: Picture[];
   tool_calls?: ToolCall[];

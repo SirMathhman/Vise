@@ -12,6 +12,7 @@ import { ExtensionHub, isExtensionOrigin } from "./ext-hub.ts";
 import { loadExtensionToken, tokensMatch } from "./ext-token.ts";
 import { handleNoteMessage } from "./notes-api.ts";
 import { queueLine } from "./line.ts";
+import { queueAutoResume } from "./resume.ts";
 import { imageStore } from "../image-store.ts";
 import { NoteStore } from "../note-store.ts";
 import { SwitchableBrowser } from "../browser/switchable.ts";
@@ -47,6 +48,7 @@ import { listDir, readTextFile, watchRoot } from "./files.ts";
  *                     { type:"progress", total, cache, processed, time_ms }
  *                     { type:"tool", name, depth?, text } a tool call began (text: icon, name and a short detail)
  *                     { type:"image", id, mime, label, bytes, width?, height? } a tool produced a picture (fetch it from /api/image/<id>)
+ *                     { type:"history", name, entries } the folder's latest saved session was restored on connect (`src/web/history.ts`)
  *                     { type:"result", ok:true, value, streamed?, compactionWarning? }
  *                     { type:"result", ok:false, error }
  *                     { type:"ask", question, options, multiSelect? }
@@ -319,6 +321,7 @@ export function startWebServer(port = 3000): void {
           offHooks();
           roots.release(root);
         };
+        queueAutoResume(conn);
         state.set(ws, conn);
       },
       message(ws, message) {
