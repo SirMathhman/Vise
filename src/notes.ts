@@ -85,10 +85,14 @@ function listCategory(base: string, category: string): NoteEntry[] {
   const dir = categoryDir(base, category);
   if (!existsSync(dir)) return [];
   const out: NoteEntry[] = [];
-  for (const f of readdirSync(dir).sort()) {
-    if (!f.endsWith(".md")) continue;
-    const body = readFileSync(join(dir, f), "utf8");
-    out.push({ name: f.slice(0, -3), category, summary: summaryOf(body) });
+  const files = readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
+    a.name < b.name ? -1 : 1,
+  );
+  for (const f of files) {
+    // A stray directory named like a note must not break listing.
+    if (!f.isFile() || !f.name.endsWith(".md")) continue;
+    const body = readFileSync(join(dir, f.name), "utf8");
+    out.push({ name: f.name.slice(0, -3), category, summary: summaryOf(body) });
   }
   return out;
 }
@@ -117,17 +121,37 @@ export function formatNoteEntry(e: NoteEntry): string {
  * tool, the `/note` command and the startup message.
  */
 export function formatNotes(entries: NoteEntry[]): string {
+  return formatNotesWithin(entries, Number.POSITIVE_INFINITY);
+}
+
+/**
+ * Like `formatNotes`, but lists at most `maxNotes` notes in total (in group
+ * order); every category still gets its heading and count, and the rest are
+ * summarised as a pointer to `list_notes`. Bounds the startup message however
+ * many notes there are.
+ */
+export function formatNotesWithin(
+  entries: NoteEntry[],
+  maxNotes: number,
+): string {
   const groups = new Map<string, NoteEntry[]>();
   for (const e of entries) {
     groups.set(e.category, [...(groups.get(e.category) ?? []), e]);
   }
-  return [...groups]
-    .map(
-      ([category, notes]) =>
-        `${category} (${notes.length})\n` +
-        notes.map((n) => `  ${formatNoteEntry(n)}`).join("\n"),
-    )
-    .join("\n");
+  let left = maxNotes;
+  const out: string[] = [];
+  for (const [category, notes] of groups) {
+    out.push(`${category} (${notes.length})`);
+    for (const n of notes.slice(0, left)) {
+      out.push(`  ${formatNoteEntry(n)}`);
+    }
+    const hidden = notes.length - Math.min(notes.length, left);
+    left = Math.max(0, left - notes.length);
+    if (hidden > 0) {
+      out.push(`  ... ${hidden} more: list_notes with category '${category}'`);
+    }
+  }
+  return out.join("\n");
 }
 
 /**

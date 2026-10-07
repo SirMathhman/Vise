@@ -25,7 +25,7 @@ const slashCommands: [string, string, boolean][] = [
   ["/tool", "list or toggle tools", true],
   ["/hooks", "list or edit pre/post-turn hooks", true],
   ["/profile", "list, switch, or create profiles", true],
-  ["/note", "list or create notes", true],
+  ["/note", "list notes, or create one: init <name> [category]", true],
   ["/workflow", "list, run, or create workflows", true],
   ["/save", "list or save sessions", true],
   ["/resume", "list or resume sessions", true],

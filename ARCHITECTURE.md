@@ -177,14 +177,14 @@ Rules:
   Same edge-owns-I/O pattern as `ProfileSource`.
 - `NoteSource` is a core-owned type (`repl/session.ts`) for the `/note`
   command. A note is the project's store of short facts and how-to
-  procedures: one `.md` file per note under a flat `.vise/notes/` directory, the
+  procedures: one `.md` file per note under `.vise/notes/` (a subdirectory per category; notes directly in it are `default`), the
   filename (minus extension) is the note name, the first non-empty line is
   its one-line summary (shown by listing), the rest is the body. Note names
   are unique. Recall is all on-demand — nothing is auto-injected into
   context; the model reads/writes notes through the `list_notes`/
   `read_note`/`save_note`/`delete_note` tools when it decides it needs them,
   and the user sees the same store via `/note` (list) and can create new
-  notes via `/note init <name>`. The shared file I/O lives in `src/notes.ts`
+  notes via `/note init <name> [category]`. The shared file I/O lives in `src/notes.ts`
   (edge); the `FileNoteSource` in `index.ts` implements `NoteSource`. Same
   edge-owns-I/O pattern as `ProfileSource`.
 - `SessionSource` is a core-owned type (`repl/session.ts`) for saving,

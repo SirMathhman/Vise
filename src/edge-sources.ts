@@ -3,7 +3,12 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Message, Result } from "./core/errors.ts";
 import { buildInitialTree } from "./fs-tree.ts";
-import { formatNotes, initNote, listNotes } from "./notes.ts";
+import {
+  formatNotes,
+  formatNotesWithin,
+  initNote,
+  listNotes,
+} from "./notes.ts";
 import {
   initProfile,
   listProfiles,
@@ -31,6 +36,9 @@ import {
   saveSession,
 } from "./sessions.ts";
 import { initWorkflow, listWorkflows, loadWorkflow } from "./workflows.ts";
+
+/** Most notes the startup message lists (the rest are reached with `list_notes`). */
+const STARTUP_NOTE_LIMIT = 30;
 
 /**
  * Edge implementation of ProfileSource backed by a `profiles/` directory of
@@ -454,7 +462,7 @@ export function buildInitialMessage(
       ? `\n\nHere are the available profiles:\n${availableProfiles.join(", ")}`
       : "") +
     (availableNotes.length > 0
-      ? `\n\nHere are the available notes, by category (list_notes with a category lists just that one):\n${formatNotes(availableNotes)}`
+      ? `\n\nHere are the available notes, by category (list_notes with a category lists just that one):\n${formatNotesWithin(availableNotes, STARTUP_NOTE_LIMIT)}`
       : "")
   );
 }
