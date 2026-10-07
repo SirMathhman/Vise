@@ -100,11 +100,7 @@ export class FileProfileSource implements ProfileSource {
  * The command is read from `.viserc.json` in the working directory.
  */
 export class ShellHook implements PreTurnHook, PostTurnHook {
-  private readonly command: string;
-
-  constructor(command: string) {
-    this.command = command;
-  }
+  constructor(readonly command: string) {}
 
   async run(): Promise<string> {
     try {

@@ -184,8 +184,8 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
         contextMax: () => client.contextMax(),
         lastPromptTokens: () => client.lastPromptTokensUsed(),
         activeProfile: () => sessionRef.current.getActiveProfile(),
-        preTurnHooks: hookCommands.pre ?? [],
-        postTurnHooks: hookCommands.post ?? [],
+        preTurnHooks: preTurnHooks.map((h) => h.command),
+        postTurnHooks: postTurnHooks.map((h) => h.command),
       }),
     },
     toolController,
@@ -204,10 +204,6 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     sessionSource,
     preTurnHooks,
     postTurnHooks,
-    hookCommands: {
-      pre: hookCommands.pre ?? [],
-      post: hookCommands.post ?? [],
-    },
     onToken: options.onToken,
     onThinking: options.onThinking,
     onPromptProgress: options.onPromptProgress,
@@ -224,7 +220,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     browser,
     toolController,
     profileSource,
-    preTurnHooks: hookCommands.pre ?? [],
-    postTurnHooks: hookCommands.post ?? [],
+    preTurnHooks: preTurnHooks.map((h) => h.command),
+    postTurnHooks: postTurnHooks.map((h) => h.command),
   };
 }

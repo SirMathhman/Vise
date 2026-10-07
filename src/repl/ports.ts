@@ -99,6 +99,8 @@ export interface WorkflowSource {
  * by the edge (the session performs no I/O).
  */
 export interface PreTurnHook {
+  /** The command line the hook runs, shown by `/hooks` and `self`. */
+  readonly command: string;
   /** Run the pre-turn hook command and return its combined output. */
   run(): Promise<string>;
 }
@@ -110,6 +112,8 @@ export interface PreTurnHook {
  * sees it in the next turn. Provided by the edge (the session performs no I/O).
  */
 export interface PostTurnHook {
+  /** The command line the hook runs, shown by `/hooks` and `self`. */
+  readonly command: string;
   /** Run the post-turn hook command and return its combined output. */
   run(): Promise<string>;
 }
