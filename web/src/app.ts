@@ -1,4 +1,5 @@
 import { createHooksPanel, type HooksFields } from "./hooks-panel.ts";
+import { createSettingsPanels } from "./settings-panels.ts";
 import { createWorkspace } from "./workspace.ts";
 import { setupComposer } from "./composer.ts";
 import { createPanels } from "./panels.ts";
@@ -68,20 +69,18 @@ const transcript = createTranscript(log, renderMarkdown);
 const socket = new WebSocket(
   `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws${location.search}`,
 );
+const sendMessage = (msg: Record<string, unknown>): void => {
+  if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(msg));
+};
 const hooksPanel = createHooksPanel(
   requiredElement<HTMLElement>("hooks-body"),
-  (msg) => {
-    if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(msg));
-  },
+  sendMessage,
   (hooks) => profileEditor.showHooks(hooks),
 );
-const workspace = createWorkspace(
-  (msg) => {
-    if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(msg));
-  },
-  renderMarkdown,
-  setStatus,
-);
+const settingsPanels = createSettingsPanels(sendMessage);
+const workspace = createWorkspace(sendMessage, renderMarkdown, setStatus);
+/** The parts of the page that own some of the server messages. */
+const serverPanels = [hooksPanel, settingsPanels, workspace];
 
 let pendingModelList = false;
 let pendingProfileList = false;
@@ -500,7 +499,7 @@ socket.addEventListener("message", (event: MessageEvent<string>) => {
   } catch {
     return;
   }
-  if (hooksPanel.handle(message) || workspace.handle(message)) return;
+  if (serverPanels.some((panel) => panel.handle(message))) return;
   switch (message.type) {
     case "profile_tools":
       handleWhitelistReply(message);

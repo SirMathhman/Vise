@@ -50,7 +50,7 @@ export function saveNoteTool(
   const noteName = String(args.name ?? "");
   const body = String(args.body ?? "");
   try {
-    saveNote(dataDir, noteName, body, categoryArg(args));
+    saveNote(dataDir, noteName, body, categoryArg(args), true);
     return `saved note '${noteName}'`;
   } catch (err) {
     return errStr(err);

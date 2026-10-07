@@ -3,6 +3,8 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  renameSync,
+  rmdirSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -69,7 +71,7 @@ export function validName(name: string): boolean {
 }
 
 /** The category a possibly-absent argument names: trimmed, `default` when empty. */
-function categoryOf(category: unknown): string {
+export function categoryOf(category: unknown): string {
   const text = typeof category === "string" ? category.trim() : "";
   return text === "" ? DEFAULT_CATEGORY : text;
 }
@@ -211,14 +213,15 @@ export function readNote(
 
 /**
  * Save a note in `category` (default when omitted). Throws an `Error` (caught
- * by the caller into a string result) when a name is invalid or the note
- * already exists in that category.
+ * by the caller into a string result) when a name is invalid, or the note
+ * already exists in that category and `overwrite` is not set.
  */
 export function saveNote(
   base: string,
   name: string,
   body: string,
   category?: string,
+  overwrite = false,
 ): void {
   const where = categoryOf(category);
   if (!validName(name)) {
@@ -227,7 +230,7 @@ export function saveNote(
   if (!validName(where)) {
     throw new Error(`invalid note category '${where}'`);
   }
-  if (existsSync(notePath(base, name, where))) {
+  if (!overwrite && existsSync(notePath(base, name, where))) {
     throw new Error(`note '${name}' already exists in category '${where}'`);
   }
   mkdirSync(categoryDir(base, where), { recursive: true });
@@ -247,6 +250,16 @@ export function initNote(base: string, name: string, category?: string): void {
   saveNote(base, name, NOTE_TEMPLATE, category);
 }
 
+/** Remove a category's directory once its last note is gone (the default category is the notes directory itself). */
+function pruneCategory(base: string, category: string): void {
+  if (category === DEFAULT_CATEGORY) return;
+  try {
+    rmdirSync(categoryDir(base, category)); // only succeeds when empty
+  } catch {
+    // not empty (or already gone)
+  }
+}
+
 /**
  * Delete a note by name (resolved like `readNote`). Throws an `Error` when no
  * note of that name exists or the name is ambiguous.
@@ -261,4 +274,37 @@ export function deleteNote(
     throw new Error(`note '${name}' not found`);
   }
   unlinkSync(notePath(base, name, found));
+  pruneCategory(base, found);
+}
+
+/** Where a note lives: its name and category. */
+export interface NoteRef {
+  name: string;
+  category?: string;
+}
+
+/**
+ * Move or rename a note. Throws an `Error` when the source is missing, a
+ * name/category is invalid, or the destination already exists.
+ */
+export function moveNote(base: string, from: NoteRef, to: NoteRef): void {
+  const source = categoryOf(from.category);
+  const target = categoryOf(to.category);
+  if (!validName(to.name)) throw new Error(`invalid note name '${to.name}'`);
+  if (!validName(target)) throw new Error(`invalid note category '${target}'`);
+  if (!validName(from.name) || !validName(source)) {
+    throw new Error(`note '${from.name}' not found`);
+  }
+  if (!existsSync(notePath(base, from.name, source))) {
+    throw new Error(`note '${from.name}' not found`);
+  }
+  if (existsSync(notePath(base, to.name, target))) {
+    throw new Error(`note '${to.name}' already exists in category '${target}'`);
+  }
+  mkdirSync(categoryDir(base, target), { recursive: true });
+  renameSync(
+    notePath(base, from.name, source),
+    notePath(base, to.name, target),
+  );
+  pruneCategory(base, source);
 }

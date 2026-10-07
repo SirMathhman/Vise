@@ -149,6 +149,64 @@ body {
   flex: 0 1 14rem;
 }
 
+.notes-layout {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.notes-side {
+  flex: 0 0 14rem;
+  max-height: 22rem;
+  overflow-y: auto;
+}
+
+.notes-edit {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.note-text {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+  padding: 0.4rem 0.6rem;
+}
+
+.note-group {
+  color: var(--dim);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 0.5rem;
+}
+
+.note-item {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-left: 2px solid transparent;
+  color: var(--text);
+  font: inherit;
+  padding: 0.15rem 0.5rem;
+  cursor: pointer;
+}
+
+.note-item:hover,
+.note-item[aria-current="true"] {
+  border-left-color: var(--accent);
+  background: var(--bg);
+}
+
 .setting-hint {
   color: var(--dim);
   font-size: 0.8rem;

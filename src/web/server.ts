@@ -7,10 +7,11 @@ import type { AskRequest, UserPrompter } from "../tools/ask-user.ts";
 import type { LineResult } from "../repl/session.ts";
 import { saveProfileWhitelist } from "../repl/profile-tools.ts";
 import { BrowserSettingsStore } from "../browser/settings.ts";
+import { handleNoteMessage } from "./notes-api.ts";
 import { SwitchableBrowser } from "../browser/switchable.ts";
 import { BrowserBridge } from "./browser-bridge.ts";
 import { type HookStore } from "../edge-sources.ts";
-import { noFolderRoot } from "../data-dir.ts";
+import { dataDirFor, noFolderRoot } from "../data-dir.ts";
 import { pickFolder, RootRegistry } from "./roots.ts";
 import { createEdgeSession } from "../wiring.ts";
 import { listDir, readTextFile, watchRoot } from "./files.ts";
@@ -264,6 +265,8 @@ interface ConnectionState {
   bridge: BrowserBridge;
   /** Stops the project-tree watcher; set once the connection opens. */
   unwatch: () => void;
+  /** The session's data directory (its notes live there). */
+  dataDir: string;
 }
 
 function makeConnectionState(
@@ -319,6 +322,7 @@ function makeConnectionState(
     chain: Promise.resolve(),
     bridge: new BrowserBridge(browser, send, browser),
     unwatch: () => {},
+    dataDir: dataDirFor(root),
   };
 }
 
@@ -385,6 +389,17 @@ function handleMessage(
     // Browser view traffic never queues behind a model turn.
     void conn.bridge.handle(msg as unknown as Record<string, unknown>);
     return;
+  }
+  if (msg.type.startsWith("note")) {
+    // The notes editor reads and writes the notes store directly; never queued behind a turn.
+    const replies = handleNoteMessage(
+      conn.dataDir,
+      msg as unknown as Record<string, unknown>,
+    );
+    if (replies) {
+      for (const reply of replies) send(reply);
+      return;
+    }
   }
   if (msg.type === "hooks_get") {
     // A pure read of the live hook lists; never queued behind a model turn.

@@ -1,14 +1,10 @@
-import {
-  type BrowserSettingsFields,
-  createBrowserSettings,
-} from "./browser-settings.ts";
 import { createBrowserView } from "./browser-view.ts";
 import { createExplorer } from "./explorer.ts";
 import { setupSessionRoot } from "./session-root.ts";
 import type { BrowserTab } from "./open-tabs.ts";
 
 /** The slice of a server message the workspace reacts to. */
-interface WorkspaceMessage extends BrowserSettingsFields {
+interface WorkspaceMessage {
   type: string;
   path?: string;
   tab?: number;
@@ -50,10 +46,6 @@ export function createWorkspace(
     el<HTMLButtonElement>("open-folder-btn"),
     el<HTMLButtonElement>("no-folder-btn"),
     el<HTMLElement>("root-label"),
-  );
-  const browserSettings = createBrowserSettings(
-    el<HTMLElement>("browser-settings-body"),
-    send,
   );
   const browser = createBrowserView(
     el<HTMLElement>("files-browser"),
@@ -102,9 +94,6 @@ export function createWorkspace(
             root.classList.remove("hidden");
             listProject();
           }
-          return true;
-        case "browser_settings":
-          browserSettings.handle(message);
           return true;
         case "browser_frame":
           browser.frame(message.tab ?? -1, message.data ?? "");
