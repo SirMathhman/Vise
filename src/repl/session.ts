@@ -13,7 +13,7 @@ import type {
   ViseError,
 } from "../core/errors.ts";
 import { formatHelp } from "../output/format.ts";
-import { handleHooksCommand } from "./hooks-commands.ts";
+import { SessionHooks } from "./session-hooks.ts";
 import {
   handleModelCommand,
   handleNotesCommand,
@@ -205,9 +205,7 @@ export class Session {
   private readonly profileSource?: ProfileSource;
   private readonly noteSource?: NoteSource;
   private readonly workflowSource?: WorkflowSource;
-  private readonly preTurnHooks: PreTurnHook[];
-  private readonly postTurnHooks: PostTurnHook[];
-  private readonly hookSource?: HookSource;
+  private readonly hooks: SessionHooks;
   private readonly cwd: string;
   private readonly onToken?: (token: string) => void;
   private readonly onThinking?: (token: string) => void;
@@ -249,9 +247,7 @@ export class Session {
     this.profileSource = options.profileSource;
     this.noteSource = options.noteSource;
     this.workflowSource = options.workflowSource;
-    this.preTurnHooks = options.preTurnHooks;
-    this.postTurnHooks = options.postTurnHooks;
-    this.hookSource = options.hookSource;
+    this.hooks = new SessionHooks(options, () => this.activeProfile);
     this.cwd = options.cwd;
     this.onToken = options.onToken;
     this.onThinking = options.onThinking;
@@ -321,8 +317,8 @@ export class Session {
       // `runWorkflow` mutates the conversation in place (the engine's
       // documented side channel), so the handler holds the live array.
       messages: () => this.messages,
-      preTurnHooks: () => this.preTurnHooks,
-      postTurnHooks: () => this.postTurnHooks,
+      preTurnHooks: () => this.hooks.applicable(this.hooks.pre),
+      postTurnHooks: () => this.hooks.applicable(this.hooks.post),
       onToken: () => this.onToken,
       onThinking: () => this.onThinking,
       onPromptProgress: () => this.onPromptProgress,
@@ -415,13 +411,13 @@ export class Session {
           hasNotes: !!this.noteSource,
           hasWorkflows: !!this.workflowSource,
           hasSessions: !!this.sessionSource,
-          preTurnHookCount: this.preTurnHooks.length,
-          postTurnHookCount: this.postTurnHooks.length,
+          preTurnHookCount: this.hooks.pre.length,
+          postTurnHookCount: this.hooks.post.length,
         }),
       };
     if (trimmed === "/context") return reportContext(this.context);
     if (trimmed === "/hooks" || trimmed.startsWith("/hooks ")) {
-      return this.hooksCommand(trimmed);
+      return this.hooks.command(trimmed);
     }
     if (trimmed === "/compact") return this.doCompact();
     if (trimmed === "/new") return this.newConversation();
@@ -458,6 +454,7 @@ export class Session {
     }
     if (trimmed === "/workflow" || trimmed.startsWith("/workflow ")) {
       this.flushPendingProfile();
+      await this.hooks.refresh();
       return handleWorkflowCommand(this.workflowCommands, trimmed);
     }
     if (trimmed === "/resume" || trimmed.startsWith("/resume ")) {
@@ -473,7 +470,8 @@ export class Session {
     this.currentAbort = abort;
     try {
       this.flushPendingProfile();
-      await this.runHooks(this.preTurnHooks);
+      await this.hooks.refresh();
+      await this.runHooks(this.hooks.pre);
       this.messages.push({ role: "user", content: line });
       if (this.sessionName === undefined) {
         this.sessionName = deriveSessionName(line);
@@ -488,7 +486,7 @@ export class Session {
         this.turnCallbacks(abort.signal),
       );
       if (!turn.ok) return turn;
-      await this.runHooks(this.postTurnHooks);
+      await this.runHooks(this.hooks.post);
       await this.saveSession();
       // A failed auto-compact is non-fatal: proceed with the (uncut)
       // conversation and let the edge report that compaction did not happen.
@@ -536,20 +534,16 @@ export class Session {
     return this.currentAbort?.signal;
   }
 
-  /** `/hooks` and its `add` / `remove` forms, over the live hook lists. */
-  private hooksCommand(line: string): Result<string> {
-    return handleHooksCommand(line, {
-      pre: this.preTurnHooks,
-      post: this.postTurnHooks,
-      source: this.hookSource,
-    });
+  /** Every hook with its profile bindings, plus the profile names (for the web panel). */
+  hooksView(): ReturnType<SessionHooks["view"]> {
+    return this.hooks.view();
   }
 
   /** The current hook command lines (live: edits show up at once). */
   hookCommands(): { pre: string[]; post: string[] } {
     return {
-      pre: this.preTurnHooks.map((h) => h.command),
-      post: this.postTurnHooks.map((h) => h.command),
+      pre: this.hooks.pre.map((h) => h.command),
+      post: this.hooks.post.map((h) => h.command),
     };
   }
 
@@ -560,12 +554,8 @@ export class Session {
    * injection logic live in one place.
    */
   private async runHooks(hooks: PreTurnHook[] | PostTurnHook[]): Promise<void> {
-    if (hooks.length === 0) return;
-    const outputs = await Promise.all(hooks.map((h) => h.run()));
-    for (const output of outputs) {
-      if (output.trim() !== "") {
-        this.messages.push({ role: "user", content: output });
-      }
+    for (const output of await this.hooks.run(hooks)) {
+      this.messages.push({ role: "user", content: output });
     }
   }
 

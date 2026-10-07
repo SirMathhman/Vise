@@ -52,11 +52,13 @@ export function listProfiles(base: string): string[] {
 /**
  * A profile file split into its optional frontmatter and its body. The
  * frontmatter is a `---` block at the top of the file; its `tools:` line is a
- * comma-separated whitelist of the tools the profile may use, and any other
+ * comma-separated whitelist of the tools the profile may use, its `hooks:` line
+ * is a JSON array of the hook commands bound to the profile, and any other
  * frontmatter lines are kept verbatim in `meta` so rewriting never drops them.
  */
 export interface ParsedProfile {
   tools?: string[];
+  hooks?: string[];
   meta: string[];
   body: string;
 }
@@ -69,7 +71,14 @@ export function parseProfile(text: string): ParsedProfile {
   if (!match) return { meta: [], body: text };
   const meta: string[] = [];
   let tools: string[] | undefined;
+  let hooks: string[] | undefined;
   for (const line of (match[1] ?? "").split(/\r?\n/)) {
+    const h = /^hooks:\s*(\[.*\])\s*$/.exec(line);
+    const parsedHooks = h ? parseHookList(h[1] ?? "") : undefined;
+    if (parsedHooks) {
+      hooks = parsedHooks;
+      continue;
+    }
     const m = /^tools:\s*(.*)$/.exec(line);
     if (m) {
       tools = (m[1] ?? "")
@@ -80,12 +89,27 @@ export function parseProfile(text: string): ParsedProfile {
       meta.push(line);
     }
   }
-  return { tools, meta, body: text.slice(match[0].length) };
+  return { tools, hooks, meta, body: text.slice(match[0].length) };
+}
+
+/** A `hooks:` value: a JSON array of command strings, or undefined when it is anything else. */
+function parseHookList(json: string): string[] | undefined {
+  try {
+    const value: unknown = JSON.parse(json);
+    return Array.isArray(value) && value.every((c) => typeof c === "string")
+      ? value
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Rebuild profile file text from its parts (no frontmatter when empty). */
 function renderProfile(parsed: ParsedProfile): string {
   const lines = [...parsed.meta];
+  if (parsed.hooks !== undefined) {
+    lines.push(`hooks: ${JSON.stringify(parsed.hooks)}`);
+  }
   if (parsed.tools !== undefined) {
     lines.push(`tools: ${parsed.tools.join(", ")}`);
   }
@@ -126,6 +150,34 @@ export function setProfileTools(
   if (!existsSync(p)) throw new Error(`profile '${name}' not found`);
   const parsed = parseProfile(readFileSync(p, "utf8"));
   writeFileSync(p, renderProfile({ ...parsed, tools }), "utf8");
+}
+
+/** The hook commands bound to every profile that has any, by profile name. */
+export function readAllProfileHooks(base: string): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const name of listProfiles(base)) {
+    const text = readFileSync(profilePath(base, name), "utf8");
+    const hooks = parseProfile(text).hooks;
+    if (hooks && hooks.length > 0) out[name] = hooks;
+  }
+  return out;
+}
+
+/**
+ * Set (or, with undefined or an empty list, clear) the hook commands bound to
+ * a profile, preserving its body and other frontmatter. Throws an `Error` when
+ * the profile is missing.
+ */
+export function setProfileHooks(
+  base: string,
+  name: string,
+  hooks: string[] | undefined,
+): void {
+  const p = profilePath(base, name);
+  if (!existsSync(p)) throw new Error(`profile '${name}' not found`);
+  const parsed = parseProfile(readFileSync(p, "utf8"));
+  const bound = hooks && hooks.length > 0 ? hooks : undefined;
+  writeFileSync(p, renderProfile({ ...parsed, hooks: bound }), "utf8");
 }
 
 /**

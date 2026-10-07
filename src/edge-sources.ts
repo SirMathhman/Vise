@@ -7,8 +7,10 @@ import { formatNoteEntry, initNote, listNotes } from "./notes.ts";
 import {
   initProfile,
   listProfiles,
+  readAllProfileHooks,
   readProfile,
   readProfileTools,
+  setProfileHooks,
   setProfileTools,
 } from "./profiles.ts";
 import type {
@@ -67,6 +69,28 @@ export class FileProfileSource implements ProfileSource {
   ): Promise<Result<string>> {
     try {
       setProfileTools(this.base, name, tools);
+      return { ok: true, value: name };
+    } catch (err) {
+      return {
+        ok: false,
+        error: {
+          kind: "malformed",
+          body: err instanceof Error ? err.message : String(err),
+        },
+      };
+    }
+  }
+
+  async hookBindings(): Promise<Result<Record<string, string[]>>> {
+    return { ok: true, value: readAllProfileHooks(this.base) };
+  }
+
+  async setProfileHooks(
+    name: string,
+    hooks: string[],
+  ): Promise<Result<string>> {
+    try {
+      setProfileHooks(this.base, name, hooks);
       return { ok: true, value: name };
     } catch (err) {
       return {
@@ -340,6 +364,11 @@ export class HookStore implements HookSource {
     return () => this.listeners.delete(listener);
   }
 
+  /** Refresh every view of the hooks (e.g. after a profile binding changed). */
+  notify(): void {
+    for (const listener of this.listeners) listener();
+  }
+
   create(command: string): ShellHook {
     return new ShellHook(command);
   }
@@ -370,7 +399,7 @@ export class HookStore implements HookSource {
         },
       };
     }
-    for (const listener of this.listeners) listener();
+    this.notify();
     return { ok: true, value: undefined };
   }
 }
