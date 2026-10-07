@@ -29,6 +29,8 @@ export function createPanels(actions: PanelActions): Panels {
   ) as HTMLUListElement;
 
   const categories = new Map<string, string>();
+  /** The tools of the last listing, in order: the data source for `toolNames()` (never the DOM). */
+  const names: string[] = [];
 
   return {
     toolCategory: (name) => categories.get(name),
@@ -40,20 +42,14 @@ export function createPanels(actions: PanelActions): Panels {
     populateSessionsPanel: (text) =>
       populateSessionsPanel(sessionsList, text, actions),
     populateToolsPanel: (text) =>
-      populateToolsPanel(toolsList, text, categories),
+      populateToolsPanel(toolsList, text, categories, names),
     removeProfilePlaceholder: () => removeProfilePlaceholder(profileSelect),
     sessions: () =>
       Array.from(
         sessionsList.querySelectorAll<HTMLElement>(".session-name"),
         (el) => ({ id: el.dataset.id ?? "", name: el.textContent ?? "" }),
       ),
-    toolNames: () =>
-      Array.from(
-        toolsList.querySelectorAll<HTMLInputElement>(
-          'li:not(.tool-category) input[type="checkbox"]',
-        ),
-        (el) => el.value,
-      ),
+    toolNames: () => [...names],
   };
 }
 
@@ -182,9 +178,11 @@ function populateToolsPanel(
   list: HTMLUListElement,
   listText: string,
   categories: Map<string, string>,
+  names: string[],
 ): void {
   list.textContent = "";
   categories.clear();
+  names.length = 0;
   let category: string | undefined;
   let count = 0;
   for (const line of listText.split("\n")) {
@@ -205,6 +203,7 @@ function populateToolsPanel(
     const enabled = line[0] === "*";
     const raw = enabled ? line.slice(1).trim() : line.trimStart();
     const name = raw.replace(/ \(enabled\)$/, "").replace(/ \(disabled\)$/, "");
+    names.push(name);
     if (category !== undefined) categories.set(name, category);
     appendToolItem(list, name, enabled);
   }
