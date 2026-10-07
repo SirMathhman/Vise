@@ -154,9 +154,10 @@ async function runToolStep(
     content: generated.value.content,
   });
   options.callbacks.onToolCall?.(step.name, 0);
+  const run = options.tools.run.bind(options.tools);
   let output: string;
   try {
-    output = await options.tools.run(step.name, args.value);
+    output = await run(step.name, args.value, options.callbacks.abort);
   } catch (error) {
     output = `error: ${error instanceof Error ? error.message : String(error)}`;
   }

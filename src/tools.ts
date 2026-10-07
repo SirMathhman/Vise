@@ -73,6 +73,7 @@ export const tools: Tool[] = deferTools([
 /** A single tool handler, mapping a tool's arguments to its result text. */
 export type ToolHandler = (
   args: Record<string, unknown>,
+  signal?: AbortSignal,
 ) => string | Promise<string>;
 
 /** Edge-provided tool implementations for the tools that need no edge
@@ -214,7 +215,7 @@ export function createToolRunner(
     if (!offered.has(name)) delete handlers[name];
   }
   return {
-    async run(name, args): Promise<string> {
+    async run(name, args, signal): Promise<string> {
       const handler = handlers[name];
       if (handler === undefined) {
         return `error: unknown tool ${name}`;
@@ -222,7 +223,7 @@ export function createToolRunner(
       if (!toolController.isEnabled(name)) {
         return `error: tool ${name} is disabled`;
       }
-      const result = await handler(args);
+      const result = await handler(args, signal);
       // The temp tools bound their own output; everything else too big to show is saved instead.
       if (TEMP_TOOLS.has(name) || !isTooLarge(result)) return result;
       // With nowhere to save it, a big result is cut rather than let through whole.

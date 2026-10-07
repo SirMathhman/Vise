@@ -5,6 +5,8 @@ import { dataDir } from "../data-dir.ts";
 import { BidiConnection } from "./bidi.ts";
 import * as actions from "./bidi-actions.ts";
 import { dispatchInput, startScreencast } from "./bidi-view.ts";
+import { probeScript } from "./page-scripts.ts";
+import type { PageProbe } from "./probe.ts";
 import {
   killBrowsersUsing,
   removeProfile,
@@ -198,6 +200,16 @@ export class FirefoxBackend implements BrowserBackend {
       "document.body ? document.body.innerText : ''",
     );
     return text ?? "";
+  }
+
+  async pageProbe(id: number, needle?: string): Promise<PageProbe> {
+    const bidi = await this.connection();
+    const probe = await actions.evalJson<PageProbe>(
+      bidi,
+      this.context(id),
+      probeScript(needle),
+    );
+    return probe ?? { contains: false, fingerprint: "" };
   }
 
   async startScreencast(

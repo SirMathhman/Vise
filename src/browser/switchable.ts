@@ -1,5 +1,6 @@
 import { ChromiumBackend } from "./chromium.ts";
 import { findFirefox, FirefoxBackend } from "./firefox.ts";
+import { textProbe, type PageProbe } from "./probe.ts";
 import type { BrowserSettings, BrowserSettingsStore } from "./settings.ts";
 import type {
   BrowserBackend,
@@ -151,6 +152,12 @@ export class SwitchableBrowser implements BrowserBackend {
   }
   readText(id: number): Promise<string> {
     return this.inner.readText(id);
+  }
+  async pageProbe(id: number, needle?: string): Promise<PageProbe> {
+    const inner = this.inner;
+    return inner.pageProbe
+      ? inner.pageProbe(id, needle)
+      : textProbe(await inner.readText(id), needle);
   }
   startScreencast(
     id: number,

@@ -5,7 +5,9 @@ import { dataDir } from "../data-dir.ts";
 import { CdpConnection } from "./cdp.ts";
 import * as actions from "./cdp-actions.ts";
 import { dispatchInput, startScreencast } from "./cdp-view.ts";
+import { probeScript } from "./page-scripts.ts";
 import { PlaywrightSession } from "./playwright.ts";
+import type { PageProbe } from "./probe.ts";
 import {
   killBrowsersUsing,
   killTree,
@@ -227,6 +229,16 @@ export class ChromiumBackend implements BrowserBackend {
       this.tab(id).sessionId,
     );
     return result.value ?? "";
+  }
+
+  async pageProbe(id: number, needle?: string): Promise<PageProbe> {
+    const cdp = await this.connection();
+    const { result } = await cdp.send<{ result: { value?: PageProbe } }>(
+      "Runtime.evaluate",
+      { expression: probeScript(needle), returnByValue: true },
+      this.tab(id).sessionId,
+    );
+    return result.value ?? { contains: false, fingerprint: "" };
   }
 
   async startScreencast(

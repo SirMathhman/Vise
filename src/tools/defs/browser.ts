@@ -59,7 +59,7 @@ export const browserTools: Tool[] = [
     function: {
       name: "browser_read",
       description:
-        "Read a browser tab's current page: its visible text followed by an outline of the visible interactive elements, each with a ref such as e3. The outline is always shown in full. A long page's text is saved to a temp file and only its start is shown: search or page through the rest with search_temp and read_temp. After an action that changes the page without loading it (a search, a filter), wait with browser_wait_for_text or browser_wait_for_idle before reading, or the read may show the old content. Pass a ref to browser_click, browser_hover, browser_drag or browser_type. Refs are valid until the page navigates; read again for fresh ones.",
+        "Read a browser tab's current page: its visible text followed by an outline of the visible interactive elements, each with a ref such as e3. The outline is always shown in full. A long page's text is saved to a temp file and only its start is shown: search or page through the rest with search_temp and read_temp. After an action that changes the page without loading it (a search, a filter), first call browser_wait_for_text with a word you expect in the new content (or browser_wait_for_idle if you cannot name one); otherwise the read may show the old content. Pass a ref to browser_click, browser_hover, browser_drag or browser_type. Refs are valid until the page navigates; read again for fresh ones.",
       parameters: {
         type: "object",
         properties: {
@@ -129,7 +129,7 @@ export const browserTools: Tool[] = [
     function: {
       name: "browser_wait_for_idle",
       description:
-        "Wait until a browser tab's page has stopped changing (its visible text unchanged for about half a second), then return. Use it when there is no particular text to wait for, for example after a click that reloads a list. A page that keeps updating on its own never settles; the wait then ends after the timeout and says so.",
+        "Wait until a browser tab's page has stopped changing (its visible text unchanged for about half a second), then return. Use it only when there is no particular text to wait for; prefer browser_wait_for_text, because a page can sit unchanged for a moment before its update starts (a page that has not changed at all is only called settled after 1.5 seconds). It cannot see changes that leave the visible text alone, such as images. A page that keeps updating on its own never settles; the wait then ends after the timeout and says so.",
       parameters: {
         type: "object",
         properties: {

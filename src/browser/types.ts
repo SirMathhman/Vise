@@ -5,6 +5,8 @@
  * `ChromiumBackend` (Chrome DevTools Protocol).
  */
 
+import type { PageProbe } from "./probe.ts";
+
 /** One open page. `id` is a small stable number the model can quote back. */
 export interface TabInfo {
   id: number;
@@ -78,6 +80,12 @@ export interface BrowserBackend {
   closeTab(id: number): Promise<void>;
   /** The visible text of a tab's page. */
   readText(id: number): Promise<string>;
+  /**
+   * A cheap look at a tab's page for the wait tools: whether `needle` is on it,
+   * and a fingerprint that changes when the page does, computed in the page so
+   * each look is a few bytes. Optional: without it the tools read the whole text.
+   */
+  pageProbe?(id: number, needle?: string): Promise<PageProbe>;
   /**
    * Resize the tab's viewport to `width` x `height` CSS pixels and stream its
    * frames to `onFrame` until the returned function is called.

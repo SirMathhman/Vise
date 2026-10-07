@@ -60,3 +60,22 @@ export function focusScript(ref: string, selectAll: boolean): string {
     return true;
   })(${JSON.stringify(ref)}, ${selectAll})`;
 }
+
+/**
+ * A cheap look at the page for the wait tools (see `src/browser/probe.ts`):
+ * whether `needle` is on it (case- and whitespace-insensitive), and a
+ * fingerprint of its text and element count that changes when the page does.
+ * Computed in the page so a poll sends a few bytes, not the whole text.
+ */
+export function probeScript(needle?: string): string {
+  return `((needle) => {
+    const norm = (s) => s.replace(/\\s+/g, ' ').toLowerCase();
+    const page = norm(document.body ? document.body.innerText : '');
+    let h = 5381;
+    for (let i = 0; i < page.length; i++) h = ((h << 5) + h + page.charCodeAt(i)) | 0;
+    return {
+      contains: needle !== null && page.includes(norm(needle)),
+      fingerprint: page.length + ':' + h + ':' + document.getElementsByTagName('*').length,
+    };
+  })(${JSON.stringify(needle ?? null)})`;
+}

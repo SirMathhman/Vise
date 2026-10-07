@@ -1,3 +1,4 @@
+import type { PageProbe } from "./probe.ts";
 import type {
   BrowserBackend,
   BrowserInput,
@@ -109,6 +110,10 @@ export class ExtensionBackend implements BrowserBackend {
 
   readText(id: number): Promise<string> {
     return this.tab("readText", { tab: id });
+  }
+
+  pageProbe(id: number, needle?: string): Promise<PageProbe> {
+    return this.tab("probe", { tab: id, needle });
   }
 
   startScreencast(

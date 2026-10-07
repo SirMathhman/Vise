@@ -53,7 +53,12 @@ export interface Client {
  * the core depends only on this interface so it can be tested with a stub.
  */
 export interface ToolRunner {
-  run(name: string, args: Record<string, unknown>): Promise<string>;
+  /** `signal` aborts a long-running tool (a wait) when the user interrupts the turn. */
+  run(
+    name: string,
+    args: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<string>;
 }
 
 export interface TurnCallbacks {
@@ -372,7 +377,7 @@ ${reply.content}`
             string,
             unknown
           >;
-          output = await tools.run(tc.function.name, args);
+          output = await tools.run(tc.function.name, args, callbacks.abort);
         } catch {
           output = `error: failed to execute ${tc.function.name}`;
         }

@@ -3,7 +3,10 @@ import { waitHandlers } from "./browser-wait.ts";
 import { errStr } from "./files.ts";
 import { isTooLarge, truncateInline, type TempStore } from "./temp-store.ts";
 
-type Handler = (args: Record<string, unknown>) => Promise<string>;
+type Handler = (
+  args: Record<string, unknown>,
+  signal?: AbortSignal,
+) => Promise<string>;
 
 function formatTab(tab: TabInfo): string {
   return `tab ${tab.id}: ${tab.title || "(untitled)"} - ${tab.url}`;
@@ -27,6 +30,16 @@ function checkUrl(value: unknown): string | null {
 function tabId(args: Record<string, unknown>): number | null {
   const id = args["tab"];
   return typeof id === "number" && Number.isInteger(id) ? id : null;
+}
+
+/** The element outline is always shown in full, so it is bounded here (its script already stops at 200 elements). */
+const MAX_OUTLINE_CHARS = 30_000;
+
+function clip(outline: string): string {
+  return outline.length <= MAX_OUTLINE_CHARS
+    ? outline
+    : `${outline.slice(0, MAX_OUTLINE_CHARS)}
+[... outline cut at ${MAX_OUTLINE_CHARS} characters]`;
 }
 
 /** Run a browser action, turning any failure into the tool's `error:` string. */
@@ -119,7 +132,7 @@ export function makeBrowserHandlers(
             : temp
               ? temp.spill("browser_read", text)
               : truncateInline(text, "there is nowhere to save it");
-          const elements = await browser.snapshot(id);
+          const elements = clip(await browser.snapshot(id));
           return `${shown}\n\nInteractive elements (use the ref with browser_click, browser_type, ...):\n${elements || "(none)"}`;
         },
         "",

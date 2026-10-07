@@ -231,8 +231,11 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
         profileSource,
         cwd,
         {
-          run: (name: string, args: Record<string, unknown>) =>
-            toolRunner.run(name, args),
+          run: (
+            name: string,
+            args: Record<string, unknown>,
+            signal?: AbortSignal,
+          ) => toolRunner.run(name, args, signal),
         },
         sessionTools,
         subagentCallbacks(options, toolController, client),

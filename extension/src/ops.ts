@@ -1,5 +1,6 @@
 import { centerScript as _unused } from "../../src/browser/page-scripts.ts";
 import {
+  probeScript,
   REF_PATTERN,
   focusScript,
   SNAPSHOT_SCRIPT,
@@ -142,6 +143,13 @@ export const ops: Record<string, (params: Params) => Promise<unknown>> = {
       "document.body ? document.body.innerText : ''",
     );
     return text ?? "";
+  },
+
+  async probe({ tab, needle }) {
+    return run<unknown>(
+      requireOwned(tab),
+      probeScript(typeof needle === "string" ? needle : undefined),
+    );
   },
 
   async snapshot({ tab }) {
