@@ -468,6 +468,17 @@ Besides the browsers Vise launches itself, the agent can work in the user's own 
   core import restrictions aligned with the architecture invariants as modules
   are added; browser JavaScript should remain included in lint with its own
   environment globals.
+- **Finding things without blind scrolling.** `browser_read` lists only what is
+  in the viewport (capped at 200 with the count of what is left out, a modal
+  first) while its text covers the whole page. A `browser_find` helper should
+  scroll until given text appears, or report the nearest ref and how far away
+  it is; `browser_scroll` could end by waiting for lazy-loaded content;
+  `SNAPSHOT_SCRIPT` should become a typed function (stringified) with unit
+  tests of the cap and the in-view rules; elements inside iframes and shadow
+  roots are not handled (`elementFromPoint` sees only their host); a sticky
+  header can still cover a click target after the scroll into view; and the
+  scrollable-panel scan runs `getComputedStyle` over many elements per snapshot.
+
 - **Page actions are data, not backend methods.** Done for `select`: a
   `PageAction` in `page-scripts.ts` runs through one optional backend
   capability, `runPageAction`, implemented once per protocol and forwarded once

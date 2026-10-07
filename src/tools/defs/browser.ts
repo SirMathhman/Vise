@@ -334,7 +334,7 @@ export const browserTools: Tool[] = [
     function: {
       name: "browser_screenshot",
       description:
-        "Take a screenshot of a browser tab: the picture is shown to you with this tool's result. Use it to check how a page or a UI you are building actually looks (layout, colours, spacing, whether something rendered), which the text from browser_read cannot tell you. full_page captures the whole scrollable page instead of just the visible part (not available in the Firefox extension, which shows only the visible part).",
+        "Take a screenshot of a browser tab (what is in view, like the element list of browser_read, unless full_page is set): the picture is shown to you with this tool's result. Use it to check how a page or a UI you are building actually looks (layout, colours, spacing, whether something rendered), which the text from browser_read cannot tell you. full_page captures the whole scrollable page instead of just the visible part (not available in the Firefox extension, which shows only the visible part).",
       parameters: {
         type: "object",
         properties: {
@@ -388,7 +388,7 @@ export const browserTools: Tool[] = [
     function: {
       name: "browser_scroll",
       description:
-        "Scroll a browser tab so other parts of the page come into view. browser_read lists only the elements that are clearly inside the viewport (and says how many more are above, below or to the side), so when what you need is not listed, scroll to it: 'down' and 'up' scroll vertically, 'right' and 'left' horizontally, one page-sized step by default (or 'amount' pixels); 'top' and 'bottom' jump to the very start or end. Scrolling moves the whole page; to scroll a panel inside the page (a results list, a modal), pass the ref of any element in it or the ref browser_read gives for the scrollable area. Afterwards call browser_read: the elements in view have changed, so earlier refs of ones now out of view are no longer listed.",
+        "Scroll a browser tab so other parts of the page come into view. browser_read lists only the elements that are clearly inside the viewport (and says how many more are above, below or to the side), so when what you need is not listed, scroll to it: 'down' and 'up' scroll vertically, 'right' and 'left' horizontally, one page-sized step by default (or 'amount' pixels); 'top' and 'bottom' jump to the very start or end. Scrolling moves the whole page; to scroll a panel inside the page (a results list, a modal), pass the ref of any element in it or the ref browser_read gives for the scrollable area. Afterwards call browser_read: the elements in view have changed. A ref you already have still works when you use it (the page scrolls to the element first), so there is no need to scroll just to click something you were already given.",
       parameters: {
         type: "object",
         properties: {

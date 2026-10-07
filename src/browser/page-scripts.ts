@@ -8,13 +8,19 @@
 /** Matches `e` followed by digits; the only ref shape the tools accept. */
 export const REF_PATTERN = /^e\d+$/;
 
+/** How many elements the outline lists. */
 const MAX_ELEMENTS = 200;
+
+/** How many in-view elements the scan looks at before it stops (it still says that more exist). */
+const MAX_SCANNED = 1000;
 
 /** Returns one line per visible interactive element: `<ref> <role> "<name>" ...`. */
 export const SNAPSHOT_SCRIPT = `(() => {
   const SEL = 'a[href],button,input:not([type=hidden]),select,textarea,summary,[role=button],[role=link],[role=checkbox],[role=tab],[role=menuitem],[onclick],[onmouseover],[onmouseenter],[ondrop],[ondragover],[draggable=true],[contenteditable=""],[contenteditable=true],[tabindex]:not([tabindex="-1"])';
   window.__viseNext = window.__viseNext || 1;
   const lines = [];
+  const cands = [];
+  let scanCut = false;
   const vw = window.innerWidth, vh = window.innerHeight;
   const out = { above: 0, below: 0, left: 0, right: 0, covered: 0 };
   for (const el of document.querySelectorAll(SEL)) {
@@ -35,6 +41,13 @@ export const SNAPSHOT_SCRIPT = `(() => {
     const top = document.elementFromPoint(px, py);
     const swatch = (el.type === 'checkbox' || el.type === 'radio') && el.parentElement && el.parentElement.contains(top);
     if (top && !(el.contains(top) || swatch || (el.labels && [...el.labels].some((l) => l.contains(top))))) { out.covered++; continue; }
+    // In view and usable: a candidate. Every one is counted, so a cut list can say how much it left out; the scan itself stops at a bound.
+    cands.push({ el, modal: !!el.closest('[role=dialog],[aria-modal=true],dialog[open]') });
+    if (cands.length >= ${MAX_SCANNED}) { scanCut = true; break; }
+  }
+  // A modal, if one is open, comes first; then the page in document order. Only the listed ones get a ref.
+  cands.sort((a, b) => Number(b.modal) - Number(a.modal));
+  for (const { el } of cands.slice(0, ${MAX_ELEMENTS})) {
     let ref = el.getAttribute('data-vise-ref');
     if (!ref) { ref = 'e' + window.__viseNext++; el.setAttribute('data-vise-ref', ref); }
     const tag = el.tagName.toLowerCase();
@@ -55,10 +68,10 @@ export const SNAPSHOT_SCRIPT = `(() => {
     if (el.disabled) extra += ' (disabled)';
     if (el.checked) extra += ' (checked)';
     lines.push(ref + ' ' + role + (name ? ' "' + name + '"' : '') + extra);
-    if (lines.length >= ${MAX_ELEMENTS}) break;
   }
   // What the list leaves out, and how to reach it.
   const notes = [];
+  if (cands.length > ${MAX_ELEMENTS} || scanCut) notes.push((cands.length - ${MAX_ELEMENTS}) + (scanCut ? '+' : '') + ' more elements in view are not listed (the list holds ${MAX_ELEMENTS}); scroll so that fewer are in view, or use browser_scroll to the part you need');
   const hidden = [out.below && out.below + ' below', out.above && out.above + ' above', out.right && out.right + ' to the right', out.left && out.left + ' to the left', out.covered && out.covered + ' hidden behind or clipped by another element'].filter(Boolean);
   if (hidden.length) notes.push('not listed (outside the viewport or hidden): ' + hidden.join(', ') + '. Use browser_scroll to bring them into view');
   const root = document.scrollingElement || document.documentElement;
