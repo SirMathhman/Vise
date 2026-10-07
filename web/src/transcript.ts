@@ -10,7 +10,14 @@ export interface TranscriptView {
   clear(): void;
 }
 
-export function createTranscript(log: HTMLElement): TranscriptView {
+/**
+ * `renderHtml`, when given, turns assistant markdown into sanitized HTML; when
+ * omitted, assistant text is shown verbatim.
+ */
+export function createTranscript(
+  log: HTMLElement,
+  renderHtml?: (markdown: string) => string,
+): TranscriptView {
   let burstActive = false;
   let activeAssistant: HTMLElement | null = null;
   let activeRaw = "";
@@ -26,7 +33,9 @@ export function createTranscript(log: HTMLElement): TranscriptView {
 
   // Click a thinking line to open or close it.
   log.addEventListener?.("click", (event) => {
-    const line = (event.target as HTMLElement | null)?.closest?.(".line.thinking");
+    const line = (event.target as HTMLElement | null)?.closest?.(
+      ".line.thinking",
+    );
     if (!(line instanceof HTMLElement)) return;
     line.className = line.className.endsWith(" open")
       ? line.className.replace(/ open$/, "")
@@ -42,9 +51,14 @@ export function createTranscript(log: HTMLElement): TranscriptView {
     return div;
   }
 
+  function showAssistant(element: HTMLElement, raw: string): void {
+    if (renderHtml) element.innerHTML = renderHtml(raw);
+    else element.textContent = raw;
+  }
+
   function flushAssistant(): void {
     if (!activeAssistant) return;
-    activeAssistant.textContent = activeRaw;
+    showAssistant(activeAssistant, activeRaw);
     activeAssistant = null;
     activeRaw = "";
   }
@@ -58,7 +72,7 @@ export function createTranscript(log: HTMLElement): TranscriptView {
       activeRaw = "";
     }
     activeRaw += text;
-    activeAssistant.textContent = activeRaw;
+    showAssistant(activeAssistant, activeRaw);
     log.scrollTop = log.scrollHeight;
   }
 
@@ -77,7 +91,10 @@ export function createTranscript(log: HTMLElement): TranscriptView {
     appendToolCall(name: string, depth?: number): void {
       flushAssistant();
       endThinking();
-      const line = addLine("tool", `tool: ${name}${depth ? " (subagent)" : ""}`);
+      const line = addLine(
+        "tool",
+        `tool: ${name}${depth ? " (subagent)" : ""}`,
+      );
       if (burstActive) line.className += " burst";
     },
     setBurst(active: boolean): void {

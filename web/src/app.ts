@@ -1,5 +1,6 @@
 import { setupComposer } from "./composer.ts";
 import { createPanels } from "./panels.ts";
+import { renderMarkdown } from "./markdown.ts";
 import { createTranscript } from "./transcript.ts";
 
 interface ResultMessage {
@@ -52,7 +53,7 @@ const askOptions = requiredElement<HTMLUListElement>("ask-options");
 const askAnswer = requiredElement<HTMLInputElement>("ask-answer");
 const askSend = requiredElement<HTMLButtonElement>("ask-send");
 
-const transcript = createTranscript(log);
+const transcript = createTranscript(log, renderMarkdown);
 const socket = new WebSocket(
   `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`,
 );

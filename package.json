@@ -19,5 +19,9 @@
   },
   "peerDependencies": {
     "typescript": "^5"
+  },
+  "dependencies": {
+    "dompurify": "^3.4.16",
+    "marked": "^18.1.0"
   }
 }

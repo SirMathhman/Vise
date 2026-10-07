@@ -162,6 +162,96 @@ body {
 
 .line.assistant {
   color: var(--text);
+  white-space: normal;
+}
+
+.line.assistant > :first-child {
+  margin-top: 0;
+}
+
+.line.assistant > :last-child {
+  margin-bottom: 0;
+}
+
+.line.assistant p,
+.line.assistant ul,
+.line.assistant ol,
+.line.assistant blockquote,
+.line.assistant pre,
+.line.assistant table {
+  margin: 0.5em 0;
+}
+
+.line.assistant ul,
+.line.assistant ol {
+  padding-left: 1.5rem;
+}
+
+.line.assistant h1,
+.line.assistant h2,
+.line.assistant h3,
+.line.assistant h4 {
+  margin: 0.8em 0 0.3em;
+  line-height: 1.25;
+}
+
+.line.assistant h1 {
+  font-size: 1.3em;
+}
+
+.line.assistant h2 {
+  font-size: 1.15em;
+}
+
+.line.assistant h3,
+.line.assistant h4 {
+  font-size: 1em;
+}
+
+.line.assistant a {
+  color: var(--accent);
+}
+
+.line.assistant code {
+  font-family: ui-monospace, Consolas, monospace;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0.05em 0.3em;
+}
+
+.line.assistant pre {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.6rem 0.8rem;
+  overflow-x: auto;
+}
+
+.line.assistant pre code {
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.line.assistant blockquote {
+  border-left: 3px solid var(--border);
+  padding-left: 0.8rem;
+  color: var(--dim);
+}
+
+.line.assistant table {
+  border-collapse: collapse;
+}
+
+.line.assistant th,
+.line.assistant td {
+  border: 1px solid var(--border);
+  padding: 0.25rem 0.6rem;
+}
+
+.line.assistant th {
+  background: var(--panel);
 }
 
 .line.thinking {
