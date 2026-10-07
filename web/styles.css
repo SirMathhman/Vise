@@ -79,6 +79,11 @@ body {
   cursor: pointer;
 }
 
+.tools-btn[aria-pressed="true"] {
+  background: var(--border);
+  font-weight: 600;
+}
+
 .tools-btn:disabled {
   opacity: 0.4;
   cursor: default;

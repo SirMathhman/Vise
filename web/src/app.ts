@@ -38,6 +38,7 @@ const modelSelect = requiredElement<HTMLSelectElement>("model");
 const profileSelect = requiredElement<HTMLSelectElement>("profile");
 const reasoningSelect = requiredElement<HTMLSelectElement>("reasoning");
 const toolsBtn = requiredElement<HTMLButtonElement>("tools-btn");
+const burstBtn = requiredElement<HTMLButtonElement>("burst-btn");
 const toolsPanel = requiredElement<HTMLElement>("tools-panel");
 const sessionsBtn = requiredElement<HTMLButtonElement>("sessions-btn");
 const sessionsPanel = requiredElement<HTMLElement>("sessions-panel");
@@ -75,6 +76,7 @@ function setBusy(next: boolean): void {
   profileSelect.disabled = next;
   reasoningSelect.disabled = next;
   toolsBtn.disabled = next;
+  burstBtn.disabled = next;
   sessionsBtn.disabled = next;
 }
 
@@ -240,6 +242,10 @@ function handleCommandResult(message: ResultMessage): void {
     transcript.addLine("system", message.value);
     pendingSessionList = true;
     requestLine("/resume");
+  } else if (message.value?.startsWith("burst mode ")) {
+    const on = message.value.endsWith(" on");
+    burstBtn.setAttribute("aria-pressed", String(on));
+    transcript.addLine("system", `burst: ${on ? "on" : "off"}`);
   } else if (message.value?.startsWith("switched to model ")) {
     modelSelect.value = message.value.slice("switched to model ".length);
     transcript.addLine("system", `model: ${modelSelect.value}`);
@@ -299,6 +305,10 @@ reasoningSelect.addEventListener("change", () => {
   if (!reasoningSelect.value) return;
   pendingReasoningList = false;
   sendLine(`/reasoning ${reasoningSelect.value}`);
+});
+burstBtn.addEventListener("click", () => {
+  const on = burstBtn.getAttribute("aria-pressed") !== "true";
+  sendLine(`/burst ${on ? "on" : "off"}`);
 });
 toolsBtn.addEventListener("click", () => toolsPanel.classList.toggle("hidden"));
 sessionsBtn.addEventListener("click", () =>
