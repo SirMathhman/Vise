@@ -3,7 +3,8 @@
  * the page (the server binds a connection to the root it was opened with).
  * "open folder…" asks the server to show the operating system's folder chooser
  * (a web page cannot learn a folder's absolute path itself) and opens the chosen
- * folder as a new session in a new tab, leaving this one where it is.
+ * folder as a new session in this tab (the page reloads onto it; the old
+ * conversation stays auto-saved and the explorer is read-only).
  */
 export function setupSessionRoot(
   button: HTMLButtonElement,
@@ -15,7 +16,7 @@ export function setupSessionRoot(
       const res = await fetch("/api/pick-folder", { method: "POST" });
       const body = (await res.json()) as { path?: string | null };
       if (body.path) {
-        window.open(`/?root=${encodeURIComponent(body.path)}`, "_blank");
+        window.location.assign(`/?root=${encodeURIComponent(body.path)}`);
       }
     } finally {
       button.disabled = false;
@@ -23,6 +24,6 @@ export function setupSessionRoot(
   });
   return (path) => {
     label.textContent = path;
-    label.title = `This session is fixed to ${path}. Use "open folder…" to start another session in a different folder.`;
+    label.title = `This session is fixed to ${path}. Use "open folder…" to start a new session in a different folder.`;
   };
 }
