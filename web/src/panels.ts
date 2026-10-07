@@ -13,6 +13,8 @@ export interface Panels {
   removeProfilePlaceholder(): void;
   sessions(): { id: string; name: string }[];
   toolNames(): string[];
+  /** The category a tool was listed under (set by the last tools listing). */
+  toolCategory(name: string): string | undefined;
 }
 
 export function createPanels(actions: PanelActions): Panels {
@@ -26,7 +28,10 @@ export function createPanels(actions: PanelActions): Panels {
     "sessions-list",
   ) as HTMLUListElement;
 
+  const categories = new Map<string, string>();
+
   return {
+    toolCategory: (name) => categories.get(name),
     addProfilePlaceholder: () => addProfilePlaceholder(profileSelect),
     populateModelSelect: (text) => populateModelSelect(modelSelect, text),
     populateProfileSelect: (text) => populateProfileSelect(profileSelect, text),
@@ -34,7 +39,8 @@ export function createPanels(actions: PanelActions): Panels {
       populateReasoningSelect(reasoningSelect, text),
     populateSessionsPanel: (text) =>
       populateSessionsPanel(sessionsList, text, actions),
-    populateToolsPanel: (text) => populateToolsPanel(toolsList, text),
+    populateToolsPanel: (text) =>
+      populateToolsPanel(toolsList, text, categories),
     removeProfilePlaceholder: () => removeProfilePlaceholder(profileSelect),
     sessions: () =>
       Array.from(
@@ -111,6 +117,14 @@ function populateReasoningSelect(
   }
 }
 
+/** A non-interactive category heading row inside a tool list. */
+export function appendToolCategory(list: HTMLUListElement, name: string): void {
+  const item = document.createElement("li");
+  item.className = "tool-category";
+  item.textContent = name;
+  list.appendChild(item);
+}
+
 /** One tool as a checkbox row; unchecked rows are dimmed. */
 export function appendToolItem(
   list: HTMLUListElement,
@@ -129,8 +143,14 @@ export function appendToolItem(
   list.appendChild(item);
 }
 
-function populateToolsPanel(list: HTMLUListElement, listText: string): void {
+function populateToolsPanel(
+  list: HTMLUListElement,
+  listText: string,
+  categories: Map<string, string>,
+): void {
   list.textContent = "";
+  categories.clear();
+  let category: string | undefined;
   let count = 0;
   for (const line of listText.split("\n")) {
     const trimmed = line.trim();
@@ -139,10 +159,18 @@ function populateToolsPanel(list: HTMLUListElement, listText: string): void {
       count = -1;
       break;
     }
+    // `[category]` lines head the group of tools that follows.
+    const heading = /^\[(.+)\]$/.exec(trimmed);
+    if (heading) {
+      category = heading[1];
+      appendToolCategory(list, category ?? "");
+      continue;
+    }
     count++;
     const enabled = line[0] === "*";
     const raw = enabled ? line.slice(1).trim() : line.trimStart();
     const name = raw.replace(/ \(enabled\)$/, "").replace(/ \(disabled\)$/, "");
+    if (category !== undefined) categories.set(name, category);
     appendToolItem(list, name, enabled);
   }
   if (count === 0)

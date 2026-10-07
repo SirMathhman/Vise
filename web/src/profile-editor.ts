@@ -1,4 +1,4 @@
-import { appendToolItem } from "./panels.ts";
+import { appendToolCategory, appendToolItem } from "./panels.ts";
 
 export interface ProfileEditorActions {
   /** Ask the server for a profile's whitelist (`/profile <name> tools`). */
@@ -7,6 +7,8 @@ export interface ProfileEditorActions {
   saveWhitelist(name: string, tools: string[] | undefined): void;
   /** Names of the tools the whitelist can be chosen from. */
   toolNames(): string[];
+  /** The category a tool belongs to, for grouping the list. */
+  toolCategory(name: string): string | undefined;
   /** Names of the profiles that can have a whitelist. */
   profileNames(): string[];
   /** The profile currently active, preselected when the panel opens. */
@@ -112,12 +114,7 @@ export function createProfileEditor(
     // behind a running turn; say so instead of looking dead.
     showStatus("saving…");
     waitingHint = setTimeout(
-      () =>
-        showStatus(
-          "still waiting for the server…",
-          false,
-          true,
-        ),
+      () => showStatus("still waiting for the server…", false, true),
       4000,
     );
     actions.saveWhitelist(select.value, all ? undefined : tools);
@@ -128,7 +125,13 @@ export function createProfileEditor(
     showWhitelist(name, allowed) {
       if (name !== select.value) return;
       list.textContent = "";
+      let category: string | undefined;
       for (const tool of actions.toolNames()) {
+        const next = actions.toolCategory(tool);
+        if (next !== undefined && next !== category) {
+          category = next;
+          appendToolCategory(list, next);
+        }
         appendToolItem(list, tool, allowed?.includes(tool) ?? true);
       }
       refresh();

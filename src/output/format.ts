@@ -79,13 +79,22 @@ export function formatNoteList(lines: string[]): string {
  * `(disabled)`.
  */
 export function formatToolList(
-  tools: { name: string; enabled: boolean }[],
+  tools: { name: string; enabled: boolean; category?: string }[],
 ): string {
   if (tools.length === 0) return "no tools available";
-  return tools
-    .map((t) =>
-      t.enabled ? `* ${t.name} (enabled)` : `  ${t.name} (disabled)`,
-    )
+  const row = (t: { name: string; enabled: boolean }): string =>
+    t.enabled ? `* ${t.name} (enabled)` : `  ${t.name} (disabled)`;
+  // Tools without categories (e.g. a minimal controller) keep the flat form.
+  if (tools.every((t) => t.category === undefined)) {
+    return tools.map(row).join("\n");
+  }
+  const groups = new Map<string, typeof tools>();
+  for (const t of tools) {
+    const key = t.category ?? "other";
+    groups.set(key, [...(groups.get(key) ?? []), t]);
+  }
+  return [...groups]
+    .flatMap(([category, group]) => [`[${category}]`, ...group.map(row)])
     .join("\n");
 }
 

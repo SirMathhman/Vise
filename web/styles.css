@@ -890,3 +890,15 @@ body {
   object-fit: fill;
   user-select: none;
 }
+
+.tools-list li.tool-category {
+  color: var(--dim);
+  font-size: 0.8em;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-top: 0.4rem;
+}
+
+.tools-list li.tool-category:first-child {
+  margin-top: 0;
+}

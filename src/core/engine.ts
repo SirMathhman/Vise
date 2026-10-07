@@ -98,7 +98,7 @@ export interface TurnCallbacks {
  */
 export interface ToolController {
   /** All known tools with their enabled state, in definition order. */
-  list(): { name: string; enabled: boolean }[];
+  list(): { name: string; enabled: boolean; category?: string }[];
   /** Enable or disable a tool by name. */
   set(name: string, enabled: boolean): void;
   /** Whether a tool is currently enabled. */

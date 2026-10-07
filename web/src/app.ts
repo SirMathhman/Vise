@@ -153,6 +153,7 @@ const profileEditor = createProfileEditor({
     requestWhitelist(name, true, tools);
   },
   toolNames: () => panels.toolNames(),
+  toolCategory: (name) => panels.toolCategory(name),
   profileNames: () =>
     Array.from(profileSelect.options, (o) => o.value).filter(
       (v) => v !== "" && v !== "default",

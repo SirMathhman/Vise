@@ -97,10 +97,11 @@ export class ToolSet implements ToolController {
     for (const name of initiallyDisabled) this.disabled.add(name);
   }
 
-  list(): { name: string; enabled: boolean }[] {
+  list(): { name: string; enabled: boolean; category?: string }[] {
     return this.defs.map((t) => ({
       name: t.function.name,
       enabled: !this.disabled.has(t.function.name),
+      category: t.category,
     }));
   }
 
