@@ -6,7 +6,12 @@ import type { BrowserBackend } from "./browser/types.ts";
 import { BACKEND, LlmClient } from "./client/llm.ts";
 import { dataDirFor, globalDataDir, noFolderRoot } from "./data-dir.ts";
 import { GLOBAL_PROMPT } from "./global-prompt.ts";
-import type { Client, ToolController, TurnCallbacks } from "./core/engine.ts";
+import type {
+  Client,
+  ToolCallListener,
+  ToolController,
+  TurnCallbacks,
+} from "./core/engine.ts";
 import type { PromptProgress } from "./core/errors.ts";
 import {
   buildInitialMessage,
@@ -78,11 +83,7 @@ export interface EdgeSessionOptions {
   /** Surfaced with prompt-processing progress during the silent prefill. */
   onPromptProgress?: (progress: PromptProgress) => void;
   /** Notified of each tool invocation before execution. */
-  onToolCall?: (
-    name: string,
-    depth?: number,
-    args?: Record<string, unknown>,
-  ) => void;
+  onToolCall?: ToolCallListener;
   /** Notified when burst mode enters or leaves an act round. */
   onBurst?: (active: boolean) => void;
   /** Told the goal, each verdict on it, and when goal checking is switched. */

@@ -62,15 +62,18 @@ export interface ToolRunner {
   ): Promise<string>;
 }
 
+/** Told that a tool call is starting: its name, how deep in subagents it is, and its parsed arguments (for display). */
+export type ToolCallListener = (
+  name: string,
+  depth?: number,
+  args?: Record<string, unknown>,
+) => void;
+
 export interface TurnCallbacks {
   onToken?: (token: string) => void;
   onThinking?: (token: string) => void;
   onPromptProgress?: (progress: PromptProgress) => void;
-  onToolCall?: (
-    name: string,
-    depth?: number,
-    args?: Record<string, unknown>,
-  ) => void;
+  onToolCall?: ToolCallListener;
   /**
    * Plain-text stream of a subagent's reply. A frontend that can style it
    * itself (the web UI) supplies this; when absent the subagent handler

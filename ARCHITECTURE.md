@@ -77,6 +77,8 @@ src/
     markdown.ts     # per-line markdown-aware terminal styling for streamed
                     # output; pure state machine over one completed line plus
                     # fence state; imports only from color.ts
+    tool-line.ts    # pure one-line display of a tool call (icon, name, detail
+                    # from arguments); shared by terminal and web
   repl/
     session.ts        # orchestrates: lines in, results out; owns conversation
                       # state (the growing messages array); defines the core-owned
@@ -398,6 +400,14 @@ Besides the browsers Vise launches itself, the agent can work in the user's own 
   limit across model transitions.
 
 ## Future Work
+
+- **Tool display metadata lives on the tool.** `output/tool-line.ts` keeps a
+  name-keyed icon map and the list of arguments worth showing, apart from the
+  `Tool` definitions, so a new tool silently gets the generic icon. A `Tool`
+  should carry its own `display` (icon, arguments to show, which are sensitive)
+  once the display sites can reach the definitions. Done already: one named
+  `ToolCallListener` type, workflow steps pass their arguments, and typed text
+  (`browser_type`) is shown only as a length.
 
 - **Structured list payloads for UI panels.** Tool categories (and every other
   list the web UI renders) should reach the browser as typed data, e.g. a

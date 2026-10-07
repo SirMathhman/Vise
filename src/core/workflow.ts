@@ -153,7 +153,7 @@ async function runToolStep(
     role: "assistant",
     content: generated.value.content,
   });
-  options.callbacks.onToolCall?.(step.name, 0);
+  options.callbacks.onToolCall?.(step.name, 0, args.value);
   const run = options.tools.run.bind(options.tools);
   let output: string;
   try {

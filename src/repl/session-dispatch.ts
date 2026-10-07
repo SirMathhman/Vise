@@ -1,6 +1,7 @@
 import type {
   Client,
   Tool,
+  ToolCallListener,
   ToolController,
   ToolRunner,
 } from "../core/engine.ts";
@@ -84,9 +85,7 @@ export interface SessionDispatch {
   onToken(): ((token: string) => void) | undefined;
   onThinking(): ((token: string) => void) | undefined;
   onPromptProgress(): ((progress: PromptProgress) => void) | undefined;
-  onToolCall():
-    | ((name: string, depth?: number, args?: Record<string, unknown>) => void)
-    | undefined;
+  onToolCall(): ToolCallListener | undefined;
   onMaxRounds(): ((question: string) => Promise<boolean>) | undefined;
   /** The pre-wired command-handler facades. */
   profileCommands(): ProfileCommands;

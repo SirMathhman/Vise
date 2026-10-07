@@ -77,6 +77,9 @@ function clip(text: string, max: number): string {
   return flat.length > max ? `${flat.slice(0, max)}…` : flat;
 }
 
+/** Arguments whose value is never echoed (it may be a password): only its length is shown. */
+const SENSITIVE: Record<string, string> = { browser_type: "text" };
+
 function partOf(key: string, value: unknown): string | undefined {
   if (Array.isArray(value)) {
     const items = value.filter((v): v is string => typeof v === "string");
@@ -88,12 +91,18 @@ function partOf(key: string, value: unknown): string | undefined {
 }
 
 /** A short description of what a call does, from its arguments ("" when there is nothing to show). */
-export function toolDetail(args: Record<string, unknown> | undefined): string {
+export function toolDetail(
+  args: Record<string, unknown> | undefined,
+  name = "",
+): string {
   if (!args) return "";
   const parts: string[] = [];
   if (typeof args["tab"] === "number") parts.push(`tab ${args["tab"]}`);
   for (const key of SHOWN) {
-    const part = partOf(key, args[key]);
+    const hidden = SENSITIVE[name] === key && typeof args[key] === "string";
+    const part = hidden
+      ? `${(args[key] as string).length} characters`
+      : partOf(key, args[key]);
     if (part) parts.push(part);
   }
   return clip(parts.join(" · "), DETAIL_MAX);
@@ -104,6 +113,6 @@ export function formatToolCall(
   name: string,
   args?: Record<string, unknown>,
 ): string {
-  const detail = toolDetail(args);
+  const detail = toolDetail(args, name);
   return `${toolIcon(name)} ${name}${detail ? ` · ${detail}` : ""}`;
 }

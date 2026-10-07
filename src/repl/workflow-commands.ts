@@ -1,6 +1,7 @@
 import type {
   Client,
   Tool,
+  ToolCallListener,
   ToolRunner,
   TurnCallbacks,
 } from "../core/engine.ts";
@@ -50,9 +51,7 @@ export interface WorkflowCommands {
   onToken(): ((token: string) => void) | undefined;
   onThinking(): ((token: string) => void) | undefined;
   onPromptProgress(): ((progress: PromptProgress) => void) | undefined;
-  onToolCall():
-    | ((name: string, depth?: number, args?: Record<string, unknown>) => void)
-    | undefined;
+  onToolCall(): ToolCallListener | undefined;
   onMaxRounds(): ((question: string) => Promise<boolean>) | undefined;
   /** The between-rounds upkeep (compaction, saving, progress) for a turn run under `signal`. */
   roundHook(signal: AbortSignal): TurnCallbacks["onRound"];

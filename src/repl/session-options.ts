@@ -1,4 +1,4 @@
-import type { ToolController } from "../core/engine.ts";
+import type { ToolCallListener, ToolController } from "../core/engine.ts";
 import type { PromptProgress } from "../core/errors.ts";
 import type { GoalEvent } from "./goal-loop.ts";
 import type {
@@ -66,11 +66,7 @@ export interface SessionOptions {
    */
   onPromptProgress?: (progress: PromptProgress) => void;
   /** Edge-provided notification for each tool invocation before execution. */
-  onToolCall?: (
-    name: string,
-    depth?: number,
-    args?: Record<string, unknown>,
-  ) => void;
+  onToolCall?: ToolCallListener;
   /** Notified when burst mode enters or leaves an act round. */
   onBurst?: (active: boolean) => void;
   /** Told the goal, each verdict on it, and when goal checking is switched. */

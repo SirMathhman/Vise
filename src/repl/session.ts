@@ -1,6 +1,7 @@
 import type {
   Client,
   Tool,
+  ToolCallListener,
   ToolController,
   ToolRunner,
   TurnCallbacks,
@@ -155,11 +156,7 @@ export class Session {
   private readonly onToken?: (token: string) => void;
   private readonly onThinking?: (token: string) => void;
   private readonly onPromptProgress?: (progress: PromptProgress) => void;
-  private readonly onToolCall?: (
-    name: string,
-    depth?: number,
-    args?: Record<string, unknown>,
-  ) => void;
+  private readonly onToolCall?: ToolCallListener;
   private readonly onBurst?: (active: boolean) => void;
   private readonly initialMessage?: string;
   private readonly sessionSource?: SessionSource;
