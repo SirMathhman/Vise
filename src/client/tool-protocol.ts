@@ -134,6 +134,7 @@ export function parseReply(
   return {
     ...message,
     content: parsed.content,
+    ...(thinkingText ? { reasoning: thinkingText } : {}),
     ...(parsed.tool_calls.length > 0 ? { tool_calls: parsed.tool_calls } : {}),
   };
 }

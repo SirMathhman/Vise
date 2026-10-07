@@ -82,3 +82,28 @@ describe("web transcript ordering", () => {
     }
   });
 });
+
+describe("web transcript burst marking", () => {
+  test("announces a burst once and marks its tool calls", () => {
+    const restoreDocument = installDocumentStub();
+    try {
+      const { log, children } = makeLog();
+      const transcript = createTranscript(log);
+      transcript.appendToolCall("a");
+      transcript.setBurst(true);
+      transcript.setBurst(true);
+      transcript.appendToolCall("b");
+      transcript.setBurst(false);
+      transcript.appendToolCall("c");
+
+      expect(children.map((line) => line.className)).toEqual([
+        "line tool",
+        "line burst",
+        "line tool burst",
+        "line tool",
+      ]);
+    } finally {
+      restoreDocument();
+    }
+  });
+});

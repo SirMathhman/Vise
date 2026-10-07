@@ -16,6 +16,7 @@ interface ServerMessage extends ResultMessage {
   text?: string;
   name?: string;
   depth?: number;
+  active?: boolean;
   question?: string;
   options?: string[];
 }
@@ -288,6 +289,8 @@ function handleCommandResult(message: ResultMessage): void {
 
 function handleResult(message: ResultMessage): void {
   transcript.flushAssistant();
+  burstBtn.classList.remove("bursting");
+  transcript.setBurst(false);
   hideAsk();
   renderContext(message);
   if (handleInitialResult(message)) return;
@@ -385,6 +388,10 @@ socket.addEventListener("message", (event: MessageEvent<string>) => {
       break;
     case "tool":
       transcript.appendToolCall(message.name ?? "unknown", message.depth);
+      break;
+    case "burst":
+      burstBtn.classList.toggle("bursting", !!message.active);
+      transcript.setBurst(!!message.active);
       break;
     case "progress":
       break;

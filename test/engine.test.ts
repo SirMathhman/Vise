@@ -335,4 +335,45 @@ describe("runTurn burst mode (core)", () => {
     );
     expect(acts).toEqual([false, true, false]);
   });
+  test("announces entering and leaving act rounds", async () => {
+    const events: boolean[] = [];
+    const replies: Record<string, unknown>[] = [
+      { tool_calls: [call("a")] },
+      { tool_calls: [call("b")] },
+      { done: true },
+      { content: "ok" },
+    ];
+    let i = 0;
+    const client: Client = {
+      async chat() {
+        return { ok: true, value: { content: "", ...replies[i++] } };
+      },
+    };
+    await runTurn(
+      client,
+      { run: async () => "fine" },
+      [{ role: "user", content: "x" }],
+      [],
+      { burst: true, onBurst: (a) => events.push(a) },
+    );
+    expect(events).toEqual([true, false]);
+  });
+  test("keeps the plan round's reasoning in history", async () => {
+    const replies: Record<string, unknown>[] = [
+      { tool_calls: [call("a")], reasoning: "step one then two" },
+      { content: "ok" },
+    ];
+    let i = 0;
+    const client: Client = {
+      async chat() {
+        return { ok: true, value: { content: "", ...replies[i++] } };
+      },
+    };
+    const messages: Message[] = [{ role: "user", content: "x" }];
+    await runTurn(client, { run: async () => "fine" }, messages, [], {
+      burst: true,
+    });
+    expect(messages[1]?.content).toContain("<plan>");
+    expect(messages[1]?.content).toContain("step one then two");
+  });
 });

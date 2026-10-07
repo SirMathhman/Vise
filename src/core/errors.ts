@@ -15,6 +15,8 @@ export interface Message {
 export interface AssistantMessage {
   content: string;
   tool_calls?: ToolCall[];
+  /** The model's reasoning text, when the client captured it (tool mode). */
+  reasoning?: string;
   /** Burst mode: the model signalled that its plan is complete. */
   done?: boolean;
   /**

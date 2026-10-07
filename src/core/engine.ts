@@ -65,6 +65,8 @@ export interface TurnCallbacks {
    * signals the plan is done, or when its tool choice is uncertain.
    */
   burst?: boolean;
+  /** Notified when burst mode enters (true) or leaves (false) an act round. */
+  onBurst?: (active: boolean) => void;
   /**
    * Aborts the turn when the user interrupts (e.g. Ctrl+C). The edge sets the
    * signal on interrupt; the core threads it to the in-flight model call and
@@ -91,6 +93,12 @@ export interface ToolController {
 }
 
 const MAX_TOOL_ROUNDS = 100;
+
+/**
+ * Burst mode: the plan round's reasoning is kept in history (capped to this
+ * many trailing characters) so act rounds, which cannot think, can follow it.
+ */
+const PLAN_MAX_CHARS = 4000;
 
 /** Burst mode: below this tool-choice probability, think again. */
 export const BURST_MIN_CONFIDENCE = 0.5;
@@ -184,6 +192,10 @@ export async function runTurn(
   let rounds = 0;
   // True while a burst-mode plan is being executed without thinking.
   let act = false;
+  let announced = false;
+  const setBurst = (on: boolean): void => {
+    if (on !== announced) callbacks.onBurst?.((announced = on));
+  };
   while (true) {
     if (rounds >= MAX_TOOL_ROUNDS) {
       if (callbacks.onMaxRounds) {
@@ -228,12 +240,20 @@ export async function runTurn(
     ) {
       // Plan complete or choice uncertain: discard the reply and think.
       act = false;
+      setBurst(false);
       continue;
     }
+    if (act) setBurst(true);
     if (reply.tool_calls && reply.tool_calls.length > 0) {
+      const plan = callbacks.burst && !act ? reply.reasoning?.trim() : "";
       messages.push({
         role: "assistant",
-        content: reply.content,
+        content: plan
+          ? `<plan>
+${plan.slice(-PLAN_MAX_CHARS)}
+</plan>
+${reply.content}`
+          : reply.content,
         tool_calls: reply.tool_calls,
       });
       let failed = false;
@@ -253,6 +273,7 @@ export async function runTurn(
         messages.push({ role: "tool", content: output, tool_call_id: tc.id });
       }
       act = !!callbacks.burst && !failed;
+      if (!act) setBurst(false);
     } else {
       messages.push({ role: "assistant", content: reply.content });
       return { ok: true, value: reply.content };

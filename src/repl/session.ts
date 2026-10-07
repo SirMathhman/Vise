@@ -152,6 +152,8 @@ export interface SessionOptions {
   onPromptProgress?: (progress: PromptProgress) => void;
   /** Edge-provided notification for each tool invocation before execution. */
   onToolCall?: (name: string, depth?: number) => void;
+  /** Notified when burst mode enters or leaves an act round. */
+  onBurst?: (active: boolean) => void;
   /**
    * Initial context injected as the first user message after the system
    * message. Provided by the edge at construction time; typically contains
@@ -198,6 +200,7 @@ export class Session {
   private readonly onThinking?: (token: string) => void;
   private readonly onPromptProgress?: (progress: PromptProgress) => void;
   private readonly onToolCall?: (name: string, depth?: number) => void;
+  private readonly onBurst?: (active: boolean) => void;
   private readonly initialMessage?: string;
   private readonly sessionSource?: SessionSource;
   private readonly onMaxRounds?: () => Promise<boolean>;
@@ -244,6 +247,7 @@ export class Session {
     this.onThinking = options.onThinking;
     this.onPromptProgress = options.onPromptProgress;
     this.onToolCall = options.onToolCall;
+    this.onBurst = options.onBurst;
     this.initialMessage = options.initialMessage;
     this.sessionSource = options.sessionSource;
     this.onMaxRounds = options.onMaxRounds;
@@ -334,6 +338,7 @@ export class Session {
       onThinking: this.onThinking,
       onPromptProgress: this.onPromptProgress,
       onToolCall: this.onToolCall,
+      onBurst: this.onBurst,
       onMaxRounds: this.onMaxRounds,
       isToolEnabled: this.isToolEnabled,
       burst: this.burst,
@@ -350,7 +355,7 @@ export class Session {
         this.messages.push({
           role: "user",
           content: on
-            ? "Burst mode is now on. Think once to plan, then carry the plan out with tool calls; you will not be able to think between calls. When the plan is complete output <done/>. If a tool errors you will get to think again."
+            ? "Burst mode is now on. Think once to plan, then carry the plan out with tool calls; you will not be able to think between calls. Your plan is kept in your earlier <plan> message: keep following it, one dependent call after another, until every step is done. When the plan is complete output <done/>. If a tool errors you will get to think again."
             : "Burst mode is now off. You may think before each step again.",
         });
       },

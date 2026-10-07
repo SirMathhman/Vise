@@ -3,12 +3,15 @@ export interface TranscriptView {
   appendAssistantToken(text: string): void;
   appendThinkingToken(text: string): void;
   appendToolCall(name: string, depth?: number): void;
+  /** Mark subsequent tool calls as part of a burst (no thinking between). */
+  setBurst(active: boolean): void;
   finishThinking(): void;
   flushAssistant(): void;
   clear(): void;
 }
 
 export function createTranscript(log: HTMLElement): TranscriptView {
+  let burstActive = false;
   let activeAssistant: HTMLElement | null = null;
   let activeRaw = "";
   let activeThinking: HTMLElement | null = null;
@@ -57,7 +60,16 @@ export function createTranscript(log: HTMLElement): TranscriptView {
     appendToolCall(name: string, depth?: number): void {
       flushAssistant();
       activeThinking = null;
-      addLine("tool", `tool: ${name}${depth ? " (subagent)" : ""}`);
+      const line = addLine("tool", `tool: ${name}${depth ? " (subagent)" : ""}`);
+      if (burstActive) line.className += " burst";
+    },
+    setBurst(active: boolean): void {
+      if (active && !burstActive) {
+        flushAssistant();
+        activeThinking = null;
+        addLine("burst", "⚡ burst: running the plan without thinking");
+      }
+      burstActive = active;
     },
     finishThinking(): void {
       activeThinking = null;

@@ -173,6 +173,7 @@ function makeConnectionState(ws: ServerWebSocket<unknown>): ConnectionState {
         time_ms: p.time_ms,
       }),
     onToolCall: (name, depth) => send({ type: "tool", name, depth }),
+    onBurst: (active) => send({ type: "burst", active }),
     askUser: prompter,
     onMaxRounds: async () => {
       const answer = await prompter.ask({

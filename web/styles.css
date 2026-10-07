@@ -173,6 +173,32 @@ body {
   color: var(--accent);
 }
 
+.line.burst {
+  color: var(--user);
+  font-weight: 600;
+}
+
+.line.tool.burst {
+  margin-left: 1.5rem;
+  border-left: 2px solid var(--user);
+  padding-left: 0.5rem;
+}
+
+.tools-btn.bursting {
+  border-color: var(--user);
+  color: var(--user);
+  animation: burst-pulse 0.8s ease-in-out infinite alternate;
+}
+
+@keyframes burst-pulse {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.5;
+  }
+}
+
 .line.error {
   color: var(--error);
 }

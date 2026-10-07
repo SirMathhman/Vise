@@ -64,6 +64,8 @@ export interface EdgeSessionOptions {
   onPromptProgress?: (progress: PromptProgress) => void;
   /** Notified of each tool invocation before execution. */
   onToolCall?: (name: string, depth?: number) => void;
+  /** Notified when burst mode enters or leaves an act round. */
+  onBurst?: (active: boolean) => void;
   /** Collects the user's answer to an `ask_user` tool call. */
   askUser: UserPrompter;
   /** Prompts the user to continue past the maximum tool rounds. */
@@ -175,6 +177,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     onThinking: options.onThinking,
     onPromptProgress: options.onPromptProgress,
     onToolCall: options.onToolCall,
+    onBurst: options.onBurst,
     initialMessage,
     onMaxRounds: options.onMaxRounds,
   });
