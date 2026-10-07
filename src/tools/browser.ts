@@ -88,7 +88,7 @@ export function makeBrowserHandlers(
       guarded(async () => {
         const tabs = await browser.listTabs();
         return tabs.length === 0
-          ? "no tabs open"
+          ? `no tabs open${browser.noTabsHint ? `. ${browser.noTabsHint}` : ""}`
           : tabs.map(formatTab).join("\n");
       }),
     browser_navigate: (args) =>

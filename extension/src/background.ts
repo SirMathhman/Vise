@@ -1,4 +1,4 @@
-import { getPort, getToken } from "./config.ts";
+import { BUILD, getPort, getToken } from "./config.ts";
 import { ops } from "./ops.ts";
 import { grant, isOwned, onOwnedChanged, ownedIds, release } from "./tabs.ts";
 
@@ -129,6 +129,7 @@ async function status(windowId?: number): Promise<unknown> {
   }
   const current = await activeTab(windowId);
   return {
+    build: BUILD,
     link,
     linkNote,
     tabs,

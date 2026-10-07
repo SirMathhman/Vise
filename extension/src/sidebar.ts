@@ -1,4 +1,4 @@
-import { getPort } from "./config.ts";
+import { BUILD, getPort } from "./config.ts";
 
 const PAIR_RETRY_MS = 1500;
 
@@ -16,6 +16,8 @@ const frame = el<HTMLIFrameElement>("app");
 const offline = el("offline");
 let loaded = false;
 let serverOrigin = "";
+/** Whether the last attempt to reach the Vise server worked. */
+let serverUp = false;
 /** Whether the Vise page has answered with a token this time (a stored one may be stale). */
 let paired = false;
 /** The browser window this sidebar belongs to: "the current tab" means this window's. */
@@ -26,7 +28,9 @@ async function load(): Promise<void> {
   serverOrigin = `http://127.0.0.1:${await getPort()}`;
   try {
     await fetch(serverOrigin, { mode: "no-cors" });
+    serverUp = true;
   } catch {
+    serverUp = false;
     loaded = false;
     frame.hidden = true;
     offline.hidden = false;
@@ -58,10 +62,12 @@ window.addEventListener("message", (event: MessageEvent) => {
 });
 
 interface Status {
-  link: "no-token" | "connecting" | "connected" | "closed";
-  linkNote: string;
+  /** The build of the background page; an older one answers differently or not at all. */
+  build?: string;
+  link?: "no-token" | "connecting" | "connected" | "closed";
+  linkNote?: string;
   tabs: { id: number; title: string; url: string }[];
-  current: {
+  current?: {
     title: string;
     url: string;
     owned: boolean;
@@ -75,6 +81,13 @@ function verdict(status: Status): {
   text: string;
   help: string;
 } {
+  if (status.build !== BUILD) {
+    return {
+      level: "bad",
+      text: "✕ The Vise extension is out of date",
+      help: "This sidebar was updated but the extension's background page is still an older build, so they disagree. Open about:debugging → This Firefox → click Reload next to Vise, then reopen this sidebar.",
+    };
+  }
   if (status.link === "no-token") {
     return {
       level: "bad",
@@ -125,8 +138,22 @@ function verdict(status: Status): {
   };
 }
 
+/** One line of explicit checks, so it is plain which link in the chain is broken. */
+function checks(status: Status): string {
+  const mark = (ok: boolean): string => (ok ? "✓" : "✕");
+  const current = status.build === BUILD;
+  return [
+    `Server ${mark(serverUp)}`,
+    `Extension ${mark(current)}${current ? "" : " (old build)"}`,
+    `Pairing ${current ? mark(status.link !== "no-token") : "?"}`,
+    `Link ${current ? mark(status.link === "connected") : "?"}`,
+    `Shared tabs ${status.tabs.length}`,
+  ].join(" · ");
+}
+
 function render(status: Status): void {
   const { level, text, help } = verdict(status);
+  el("checks").textContent = checks(status);
   const badge = el("badge");
   badge.className = level;
   el("badge-text").textContent = text;
@@ -168,6 +195,8 @@ async function refresh(): Promise<void> {
     el("badge-text").textContent = "✕ The Vise extension is not responding";
     el("badge-help").textContent =
       `Reload it from about:debugging (${reason}).`;
+    el("checks").textContent =
+      `Server ${serverUp ? "✓" : "✕"} · Extension ✕ (not responding)`;
   }
 }
 

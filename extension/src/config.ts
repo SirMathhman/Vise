@@ -1,3 +1,9 @@
+declare const __VISE_BUILD__: string | undefined;
+
+/** Identifies the build all of the extension's scripts came from ("dev" when unstamped). */
+export const BUILD =
+  typeof __VISE_BUILD__ === "string" ? __VISE_BUILD__ : "dev";
+
 declare const __VISE_PORT__: number | undefined;
 
 /**

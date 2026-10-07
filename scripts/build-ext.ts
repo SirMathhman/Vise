@@ -6,6 +6,8 @@ const result = await Bun.build({
   outdir: "./extension/dist",
   target: "browser",
   minify: false,
+  // The same stamp goes into every script, so the sidebar can tell when the background page is an older build.
+  define: { __VISE_BUILD__: JSON.stringify(String(Date.now())) },
 });
 if (!result.success) {
   for (const log of result.logs) console.error(log);

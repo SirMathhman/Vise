@@ -45,6 +45,8 @@ export interface DialogInfo {
 }
 
 export interface BrowserBackend {
+  /** What to tell the model when it lists no tabs, if that needs explaining (e.g. nothing has been shared with it). */
+  readonly noTabsHint?: string;
   /** True once the browser has been launched (listing tabs never launches it by itself). */
   readonly running: boolean;
   /** Open a new tab at `url` and wait for it to load. */

@@ -32,6 +32,10 @@ const NO_LIVE_VIEW =
 export class ExtensionBackend implements BrowserBackend {
   constructor(private readonly link: ExtensionLink) {}
 
+  /** The tabs here are only the ones the user shared, so an empty list needs explaining. */
+  readonly noTabsHint =
+    "Vise can only see tabs the user shares with it, and none are shared yet. Ask the user to open the Vise sidebar in Firefox, switch to the page in question and press 'Give Vise this tab' (the sidebar's banner must say 'Connected to this tab'). Or open a new tab yourself with browser_open.";
+
   get running(): boolean {
     return this.link.connected;
   }
