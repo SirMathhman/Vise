@@ -17,6 +17,7 @@ import {
 } from "./edge-sources.ts";
 import type { ProfileSource } from "./repl/ports.ts";
 import { Session } from "./repl/session.ts";
+import type { GoalEvent } from "./repl/goal-loop.ts";
 import { makeBrowserHandlers } from "./tools/browser.ts";
 import { makeAskUserHandler, type UserPrompter } from "./tools/ask-user.ts";
 import { makeSearchToolsHandler } from "./tools/search-tools.ts";
@@ -74,6 +75,10 @@ export interface EdgeSessionOptions {
   onToolCall?: (name: string, depth?: number) => void;
   /** Notified when burst mode enters or leaves an act round. */
   onBurst?: (active: boolean) => void;
+  /** Told the goal, each verdict on it, and when goal checking is switched. */
+  onGoal?: (event: GoalEvent) => void;
+  /** Whether each turn is checked against a goal (default on). */
+  goalChecking?: boolean;
   /** Plain-text subagent output, for frontends that style it themselves. */
   onSubagentToken?: (token: string) => void;
   /** Collects the user's answer to an `ask_user` tool call. */
@@ -116,6 +121,28 @@ export interface EdgeSession {
   preTurnHooks: string[];
   /** The post-turn hook commands from `.viserc.json`. */
   postTurnHooks: string[];
+}
+
+/** The notifications a frontend wants from a session (streamed tokens, tool calls, burst, goals). */
+function displayCallbacks(
+  options: EdgeSessionOptions,
+): Pick<
+  EdgeSessionOptions,
+  | "onToken"
+  | "onThinking"
+  | "onPromptProgress"
+  | "onToolCall"
+  | "onBurst"
+  | "onGoal"
+> {
+  return {
+    onToken: options.onToken,
+    onThinking: options.onThinking,
+    onPromptProgress: options.onPromptProgress,
+    onToolCall: options.onToolCall,
+    onBurst: options.onBurst,
+    onGoal: options.onGoal,
+  };
 }
 
 /**
@@ -227,11 +254,9 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     preTurnHooks,
     postTurnHooks,
     hookSource: hookStore,
-    onToken: options.onToken,
-    onThinking: options.onThinking,
-    onPromptProgress: options.onPromptProgress,
-    onToolCall: options.onToolCall,
-    onBurst: options.onBurst,
+    ...displayCallbacks(options),
+    // Every turn is checked against a goal unless the frontend opts out.
+    goalChecking: options.goalChecking ?? true,
     initialMessage,
     onMaxRounds: options.onMaxRounds,
   });

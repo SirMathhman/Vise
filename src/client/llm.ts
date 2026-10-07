@@ -334,7 +334,11 @@ export class LlmClient implements Client {
     const useTools = !!tools && tools.length > 0 && !responseSchema;
     const body: Record<string, unknown> = {
       model: this.currentModel,
-      messages: useTools ? encodeMessages(messages, tools) : messages,
+      // A schema-constrained request (a one-off question about the conversation)
+      // still encodes the conversation as the tool protocol does, so it shares
+      // the prompt prefix, and llama.cpp's cache, with the normal turns.
+      messages:
+        tools && tools.length > 0 ? encodeMessages(messages, tools) : messages,
       ...(act
         ? { stream: false }
         : {

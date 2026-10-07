@@ -6,6 +6,7 @@ import type {
   TurnCallbacks,
 } from "../core/engine.ts";
 import { runTurn } from "../core/engine.ts";
+import { GoalTracker, handleGoalCommand, type GoalEvent } from "./goal-loop.ts";
 import type {
   Message,
   PromptProgress,
@@ -166,6 +167,10 @@ export interface SessionOptions {
   onToolCall?: (name: string, depth?: number) => void;
   /** Notified when burst mode enters or leaves an act round. */
   onBurst?: (active: boolean) => void;
+  /** Told the goal, each verdict on it, and when goal checking is switched. */
+  onGoal?: (event: GoalEvent) => void;
+  /** Whether each turn is checked against a goal (default off here; the edge wiring turns it on). */
+  goalChecking?: boolean;
   /**
    * Initial context injected as the first user message after the system
    * message. Provided by the edge at construction time; typically contains
@@ -200,6 +205,7 @@ export class Session {
   private readonly reasoningController?: ReasoningController;
   private readonly toolController?: ToolController;
   private burst = false;
+  private readonly goals: GoalTracker;
   private pendingProfile: Message[] = [];
   private readonly isToolEnabled = (name: string): boolean =>
     this.toolController?.isEnabled(name) ?? true;
@@ -255,6 +261,7 @@ export class Session {
     this.onPromptProgress = options.onPromptProgress;
     this.onToolCall = options.onToolCall;
     this.onBurst = options.onBurst;
+    this.goals = new GoalTracker(options.goalChecking ?? false, options.onGoal);
     this.initialMessage = options.initialMessage;
     this.sessionSource = options.sessionSource;
     this.onMaxRounds = options.onMaxRounds;
@@ -290,6 +297,7 @@ export class Session {
       },
       resetMessages: (body) => {
         this.pendingProfile = [];
+        this.goals.goal = undefined;
         this.messages.length = 0;
         this.messages.push(this.systemMessage);
         for (const m of body) {
@@ -403,6 +411,66 @@ export class Session {
    */
   async handleLine(line: string): Promise<LineResult> {
     const trimmed = line.trim();
+    // Not awaited: a normal turn must create its abort controller synchronously (see `interrupt`).
+    const command = this.slashCommand(trimmed);
+    if (command !== undefined) return command;
+    const abort = new AbortController();
+    this.currentAbort = abort;
+    try {
+      this.flushPendingProfile();
+      await this.runHooks("pre");
+      this.messages.push({ role: "user", content: line });
+      if (this.sessionName === undefined) {
+        this.sessionName = deriveSessionName(line);
+      }
+      const auto = await this.maybeAutoCompact();
+      const streamed = this.onToken !== undefined;
+      const turn = await this.goals.run(
+        this.client,
+        this.messages,
+        this.toolDefs,
+        () =>
+          runTurn(
+            this.client,
+            this.tools,
+            this.messages,
+            this.toolDefs,
+            this.turnCallbacks(abort.signal),
+          ),
+        abort.signal,
+      );
+      if (!turn.ok) return turn;
+      await this.runHooks("post");
+      await this.saveSession();
+      // A failed auto-compact is non-fatal: proceed with the (uncut)
+      // conversation and let the edge report that compaction did not happen.
+      // The `streamed` flag tells the edge the reply text (if any) was
+      // already written token-by-token, so it only needs to emit the trailing
+      // newline rather than re-print.
+      if (auto.ok) {
+        return { ok: true, value: turn.value, streamed };
+      }
+      return {
+        ok: true,
+        value: turn.value,
+        streamed,
+        compactionWarning: auto.error,
+      };
+    } finally {
+      this.currentAbort = null;
+    }
+  }
+
+  private async workflowLine(trimmed: string): Promise<LineResult> {
+    this.flushPendingProfile();
+    await this.hooks.refresh();
+    return handleWorkflowCommand(this.workflowCommands, trimmed);
+  }
+
+  /** Run a slash command; undefined when `trimmed` is not one (it is then a normal turn). */
+  private slashCommand(
+    trimmed: string,
+  ): LineResult | Promise<LineResult> | undefined {
     if (trimmed === "/exit") return "exit";
     if (trimmed === "/help")
       return {
@@ -431,6 +499,9 @@ export class Session {
     if (trimmed === "/reasoning" || trimmed.startsWith("/reasoning ")) {
       return handleReasoningCommand(this.reasoningController, trimmed);
     }
+    if (trimmed === "/goal" || trimmed.startsWith("/goal ")) {
+      return handleGoalCommand(this.goals, trimmed);
+    }
     if (trimmed === "/burst" || trimmed.startsWith("/burst ")) {
       return this.burstCommand(trimmed);
     }
@@ -457,9 +528,7 @@ export class Session {
       return handleNotesCommand(this.noteSource, trimmed);
     }
     if (trimmed === "/workflow" || trimmed.startsWith("/workflow ")) {
-      this.flushPendingProfile();
-      await this.hooks.refresh();
-      return handleWorkflowCommand(this.workflowCommands, trimmed);
+      return this.workflowLine(trimmed);
     }
     if (trimmed === "/resume" || trimmed.startsWith("/resume ")) {
       return handleResumeCommand(this.sessionCommands, trimmed);
@@ -470,44 +539,7 @@ export class Session {
     if (trimmed === "/delete" || trimmed.startsWith("/delete ")) {
       return handleDeleteCommand(this.sessionCommands, trimmed);
     }
-    const abort = new AbortController();
-    this.currentAbort = abort;
-    try {
-      this.flushPendingProfile();
-      await this.runHooks("pre");
-      this.messages.push({ role: "user", content: line });
-      if (this.sessionName === undefined) {
-        this.sessionName = deriveSessionName(line);
-      }
-      const auto = await this.maybeAutoCompact();
-      const streamed = this.onToken !== undefined;
-      const turn = await runTurn(
-        this.client,
-        this.tools,
-        this.messages,
-        this.toolDefs,
-        this.turnCallbacks(abort.signal),
-      );
-      if (!turn.ok) return turn;
-      await this.runHooks("post");
-      await this.saveSession();
-      // A failed auto-compact is non-fatal: proceed with the (uncut)
-      // conversation and let the edge report that compaction did not happen.
-      // The `streamed` flag tells the edge the reply text (if any) was
-      // already written token-by-token, so it only needs to emit the trailing
-      // newline rather than re-print.
-      if (auto.ok) {
-        return { ok: true, value: turn.value, streamed };
-      }
-      return {
-        ok: true,
-        value: turn.value,
-        streamed,
-        compactionWarning: auto.error,
-      };
-    } finally {
-      this.currentAbort = null;
-    }
+    return undefined;
   }
 
   /**
@@ -535,6 +567,11 @@ export class Session {
    */
   get currentAbortSignal(): AbortSignal | undefined {
     return this.currentAbort?.signal;
+  }
+
+  /** Whether turns are checked against a goal (for the edge to show the setting). */
+  goalChecking(): boolean {
+    return this.goals.enabled;
   }
 
   /** The global hooks and each profile's own hooks, plus the profile names (for the web panel). */
@@ -612,6 +649,7 @@ export class Session {
    */
   private async newConversation(): Promise<Result<string>> {
     this.pendingProfile = [];
+    this.goals.goal = undefined;
     this.messages.length = 0;
     this.messages.push(this.systemMessage);
     if (this.initialMessage) {

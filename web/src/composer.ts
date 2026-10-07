@@ -22,6 +22,7 @@ const slashCommands: [string, string, boolean][] = [
   ["/reasoning", "list or set reasoning effort", true],
   ["/new", "start a new conversation", false],
   ["/burst", "toggle plan-then-act burst mode", true],
+  ["/goal", "show or toggle goal checking (on, off, clear)", true],
   ["/tool", "list or toggle tools", true],
   ["/hooks", "list or edit pre/post-turn hooks", true],
   ["/profile", "list, switch, or create profiles", true],
