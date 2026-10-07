@@ -16,10 +16,11 @@ import {
   readNoteTool,
   saveNoteTool,
 } from "./tools/notes-tool.ts";
+import { deferTools, searchToolsDef } from "./tools/search-tools.ts";
 import { killProcess, runPowershell, waitForProcess } from "./tools/shell.ts";
 
 /** Tool definitions exposed to the model. */
-export const tools: Tool[] = [
+const allTools: Tool[] = [
   {
     type: "function",
     function: {
@@ -389,6 +390,9 @@ export const tools: Tool[] = [
     },
   },
 ];
+
+/** The tool list the app uses: `search_tools` added and the non-core tools deferred. */
+export const tools: Tool[] = deferTools([...allTools, searchToolsDef]);
 
 /** A single tool handler, mapping a tool's arguments to its result text. */
 export type ToolHandler = (

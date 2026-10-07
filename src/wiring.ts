@@ -19,6 +19,7 @@ import type { ProfileSource } from "./repl/ports.ts";
 import { Session } from "./repl/session.ts";
 import { makeBrowserHandlers } from "./tools/browser.ts";
 import { makeAskUserHandler, type UserPrompter } from "./tools/ask-user.ts";
+import { makeSearchToolsHandler } from "./tools/search-tools.ts";
 import { makeSelfHandler } from "./tools/self.ts";
 import { makeSubagentHandler } from "./tools/subagent.ts";
 import { createToolRunner, ToolSet, tools } from "./tools.ts";
@@ -172,6 +173,9 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
         () => sessionRef.current.currentAbortSignal,
       ),
       ask_user: makeAskUserHandler(options.askUser),
+      search_tools: makeSearchToolsHandler(tools, (name) =>
+        toolController.isEnabled(name),
+      ),
       ...makeBrowserHandlers(browser),
       self: makeSelfHandler({
         backend: BACKEND,

@@ -17,6 +17,11 @@ export interface Tool {
     description: string;
     parameters: Record<string, unknown>;
   };
+  /**
+   * Deferred tools are listed in the prompt by name and summary only; the
+   * model fetches the full signature with `search_tools`. They stay callable.
+   */
+  deferred?: boolean;
 }
 
 /**

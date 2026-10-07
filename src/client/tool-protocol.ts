@@ -15,9 +15,31 @@ export const DONE = "<done/>";
 const RESPONSE_OPEN = "<tool_response>\n";
 const RESPONSE_CLOSE = "\n</tool_response>";
 
-/** The system-prompt section describing every tool and the call format. */
+/** First sentence of a description: the one-line summary shown for deferred tools. */
+function summarize(description: string): string {
+  const end = description.search(/[.!?](\s|$)/);
+  return end < 0 ? description : description.slice(0, end + 1);
+}
+
+/**
+ * The system-prompt section describing the tools and the call format. Deferred
+ * tools get an index line (name and summary) instead of a full signature; the
+ * model fetches the signature with `search_tools` and calls the tool normally.
+ */
 export function renderToolPrompt(tools: Tool[]): string {
-  const defs = tools.map((t) => JSON.stringify(t.function)).join("\n");
+  const visible = tools.filter((t) => !t.deferred);
+  const deferred = tools.filter((t) => t.deferred);
+  const defs = visible.map((t) => JSON.stringify(t.function)).join("\n");
+  const index =
+    deferred.length === 0
+      ? []
+      : [
+          "",
+          "These tools exist but their signatures are not listed here. To use one, first call search_tools with its name or a keyword to get its signature, then call it like any other tool:",
+          ...deferred.map(
+            (t) => `- ${t.function.name}: ${summarize(t.function.description)}`,
+          ),
+        ];
   return [
     "# Tools",
     "",
@@ -27,6 +49,7 @@ export function renderToolPrompt(tools: Tool[]): string {
     "<tools>",
     defs,
     "</tools>",
+    ...index,
     "",
     `For each function call, return a json object with function name and arguments within ${CALL_OPEN}${CALL_CLOSE} XML tags:`,
     `${CALL_OPEN}\n{"name": <function-name>, "arguments": <args-json-object>}\n${CALL_CLOSE}`,
