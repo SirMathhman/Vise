@@ -122,7 +122,11 @@ async function loadDirectory(
       error?: string;
     };
     if (!res.ok || !body.entries) {
-      showMessage(list, body.error ?? "Unable to read this directory.", "error");
+      showMessage(
+        list,
+        body.error ?? "Unable to read this directory.",
+        "error",
+      );
       return;
     }
     entries = body.entries;

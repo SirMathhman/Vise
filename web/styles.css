@@ -733,3 +733,7 @@ body {
     min-height: 0;
   }
 }
+
+.workspace.hidden {
+  display: none;
+}
