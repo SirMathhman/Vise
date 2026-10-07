@@ -62,6 +62,7 @@ let pendingReasoningList = false;
 let pendingToolList = false;
 let pendingSessionList = false;
 let pendingToolToggle: string | null = null;
+let pendingBurstSync = false;
 
 function setStatus(text: string): void {
   status.textContent = text;
@@ -158,7 +159,18 @@ function requestLine(text: string): void {
   socket.send(JSON.stringify({ type: "line", text }));
 }
 
+function setBurstPressed(on: boolean): void {
+  burstBtn.setAttribute("aria-pressed", String(on));
+}
+
 function handleInitialResult(message: ResultMessage): boolean {
+  if (pendingBurstSync) {
+    // The session may already have burst on (e.g. after a page reload).
+    pendingBurstSync = false;
+    if (message.ok) setBurstPressed(message.value?.endsWith(" on") ?? false);
+    setBusy(false);
+    return true;
+  }
   if (pendingModelList) {
     pendingModelList = false;
     if (message.ok && message.value) {
@@ -213,7 +225,8 @@ function handleInitialResult(message: ResultMessage): boolean {
     pendingSessionList = false;
     if (message.ok && message.value)
       panels.populateSessionsPanel(message.value);
-    setBusy(false);
+    pendingBurstSync = true;
+    requestLine("/burst");
     return true;
   }
   return false;
@@ -244,7 +257,7 @@ function handleCommandResult(message: ResultMessage): void {
     requestLine("/resume");
   } else if (message.value?.startsWith("burst mode ")) {
     const on = message.value.endsWith(" on");
-    burstBtn.setAttribute("aria-pressed", String(on));
+    setBurstPressed(on);
     transcript.addLine("system", `burst: ${on ? "on" : "off"}`);
   } else if (message.value?.startsWith("switched to model ")) {
     modelSelect.value = message.value.slice("switched to model ".length);
