@@ -9,6 +9,7 @@ Full design rationale, invariants, and target layout live in [ARCHITECTURE.md](A
 | ---------- | ------------------- | --------------------------------------------------------------------------------------------------- |
 | Run        | `bun run index.ts`  | Entry point. No build step — Bun transpiles TS on the fly.                                          |
 | Web UI     | `bun run web`       | Starts the Bun HTTP/WebSocket server at `http://localhost:3000` by default. Set `PORT` to override. |
+| Web dev   | `bun run dev:web`   | Builds the browser bundle, then watches and restarts the Bun server when server-side files change. |
 | Install    | `bun install`       | Server and core have zero runtime deps; the only runtime deps are `marked` and `dompurify`, bundled into the web UI (`web/src/markdown.ts`).                                 |
 | Type-check | `bunx tsc --noEmit` | Server/core/tests (adds the DOM lib for the web tests; excludes `web/`). Browser code: `bun run typecheck:web` (`web/tsconfig.json`, DOM lib). |
 | Lint       | `bun run lint`      | ESLint with typescript-eslint. Config in `eslint.config.js`.                                        |
