@@ -1,7 +1,12 @@
 import { stat } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import type { BrowserBackend, TabInfo } from "../browser/types.ts";
-import { selectedOrThrow } from "../browser/page-scripts.ts";
+import {
+  SCROLL_DIRECTIONS,
+  scrollSummary,
+  selectedOrThrow,
+  type ScrollDirection,
+} from "../browser/page-scripts.ts";
 import { waitHandlers } from "./browser-wait.ts";
 import { TabWatcher } from "./tab-watch.ts";
 import { describeImage, type ImageOutbox } from "./images.ts";
@@ -112,6 +117,35 @@ function ref(args: Record<string, unknown>, name = "ref"): string {
   const value = str(args, name);
   if (!value) throw new Error(`'${name}' is required (e.g. "e3")`);
   return value;
+}
+
+/** Scroll the page (or the area around `args.ref`) the way `args.direction` says. */
+async function scroll(
+  browser: BrowserBackend,
+  id: number,
+  args: Record<string, unknown>,
+): Promise<string> {
+  if (!browser.runPageAction) throw new Error("this browser cannot scroll");
+  const direction = String(args["direction"] ?? "") as ScrollDirection;
+  if (!SCROLL_DIRECTIONS.includes(direction)) {
+    throw new Error(
+      `'direction' must be one of ${SCROLL_DIRECTIONS.join(", ")}`,
+    );
+  }
+  const ref = str(args, "ref");
+  const amount =
+    typeof args["amount"] === "number" ? args["amount"] : undefined;
+  const result = await browser.runPageAction(id, {
+    name: "scroll",
+    ref,
+    direction,
+    amount,
+  });
+  return scrollSummary(
+    direction,
+    result as Parameters<typeof scrollSummary>[1],
+    ref,
+  );
 }
 
 /** Choose the option(s) named in `args` in the drop-down behind `ref`. */
@@ -274,6 +308,8 @@ export function makeBrowserHandlers(
       ),
     browser_select: (args) =>
       onTab(args, (id) => select(browser, id, ref(args), args), "", true),
+    browser_scroll: (args) =>
+      onTab(args, (id) => scroll(browser, id, args), ""),
     browser_screenshot: (args) =>
       onTab(args, (id) => screenshot(browser, images, id, args), ""),
     browser_handle_dialog: (args) =>

@@ -15,10 +15,26 @@ export const SNAPSHOT_SCRIPT = `(() => {
   const SEL = 'a[href],button,input:not([type=hidden]),select,textarea,summary,[role=button],[role=link],[role=checkbox],[role=tab],[role=menuitem],[onclick],[onmouseover],[onmouseenter],[ondrop],[ondragover],[draggable=true],[contenteditable=""],[contenteditable=true],[tabindex]:not([tabindex="-1"])';
   window.__viseNext = window.__viseNext || 1;
   const lines = [];
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const out = { above: 0, below: 0, left: 0, right: 0, covered: 0 };
   for (const el of document.querySelectorAll(SEL)) {
     const r = el.getBoundingClientRect();
     const st = getComputedStyle(el);
     if (!r.width || !r.height || st.visibility === 'hidden' || st.display === 'none') continue;
+    // Only what is clearly in view: at least half of the element (or a large part of a big one) inside the viewport, and not covered by something else.
+    const shownW = Math.min(r.right, vw) - Math.max(r.left, 0);
+    const shownH = Math.min(r.bottom, vh) - Math.max(r.top, 0);
+    const shown = shownW > 0 && shownH > 0 ? shownW * shownH : 0;
+    if (shown < 0.5 * r.width * r.height && shown < 40000) {
+      const cy = r.top + r.height / 2, cx = r.left + r.width / 2;
+      if (cy >= vh) out.below++; else if (cy < 0) out.above++; else if (cx >= vw) out.right++; else out.left++;
+      continue;
+    }
+    const px = Math.min(Math.max(Math.max(r.left, 0) + shownW / 2, 0), vw - 1);
+    const py = Math.min(Math.max(Math.max(r.top, 0) + shownH / 2, 0), vh - 1);
+    const top = document.elementFromPoint(px, py);
+    const swatch = (el.type === 'checkbox' || el.type === 'radio') && el.parentElement && el.parentElement.contains(top);
+    if (top && !(el.contains(top) || swatch || (el.labels && [...el.labels].some((l) => l.contains(top))))) { out.covered++; continue; }
     let ref = el.getAttribute('data-vise-ref');
     if (!ref) { ref = 'e' + window.__viseNext++; el.setAttribute('data-vise-ref', ref); }
     const tag = el.tagName.toLowerCase();
@@ -41,7 +57,28 @@ export const SNAPSHOT_SCRIPT = `(() => {
     lines.push(ref + ' ' + role + (name ? ' "' + name + '"' : '') + extra);
     if (lines.length >= ${MAX_ELEMENTS}) break;
   }
-  return lines.join('\\n');
+  // What the list leaves out, and how to reach it.
+  const notes = [];
+  const hidden = [out.below && out.below + ' below', out.above && out.above + ' above', out.right && out.right + ' to the right', out.left && out.left + ' to the left', out.covered && out.covered + ' hidden behind or clipped by another element'].filter(Boolean);
+  if (hidden.length) notes.push('not listed (outside the viewport or hidden): ' + hidden.join(', ') + '. Use browser_scroll to bring them into view');
+  const root = document.scrollingElement || document.documentElement;
+  const span = (pos, size, view, before, after) => 'showing ' + Math.round(pos) + '-' + Math.round(Math.min(pos + view, size)) + ' of ' + size + (pos > 1 ? ' (more ' + before + ')' : '') + (pos + view < size - 1 ? ' (more ' + after + ')' : '');
+  if (root.scrollHeight > vh + 1) notes.push('page vertically ' + span(root.scrollTop, root.scrollHeight, vh, 'above', 'below'));
+  if (root.scrollWidth > vw + 1) notes.push('page horizontally ' + span(root.scrollLeft, root.scrollWidth, vw, 'to the left', 'to the right'));
+  let panels = 0;
+  for (const el of document.querySelectorAll('div,ul,ol,section,main,aside,nav,table,form')) {
+    if (panels >= 5) break;
+    if (el.clientHeight < 120 || el.clientWidth < 150 || el.scrollHeight <= el.clientHeight + 20) continue;
+    if (!/(auto|scroll|overlay)/.test(getComputedStyle(el).overflowY)) continue;
+    const r = el.getBoundingClientRect();
+    if (r.bottom <= 0 || r.top >= vh || r.right <= 0 || r.left >= vw) continue;
+    let ref = el.getAttribute('data-vise-ref');
+    if (!ref) { ref = 'e' + window.__viseNext++; el.setAttribute('data-vise-ref', ref); }
+    const title = (el.getAttribute('aria-label') || (el.innerText || '').trim().split('\\n')[0] || '').slice(0, 40);
+    notes.push('scrollable area ' + ref + (title ? ' "' + title + '"' : '') + ' ' + span(el.scrollTop, el.scrollHeight, el.clientHeight, 'above', 'below') + '; scroll it with browser_scroll and this ref');
+    panels++;
+  }
+  return lines.concat(notes.map((n) => '[' + n + ']')).join('\\n');
 })()`;
 
 /** Scrolls the element into view and returns the centre of its box, or null when the ref is gone. */
@@ -206,20 +243,154 @@ export function selectedOrThrow(
  * method. The extension builds the script itself from the named action (it
  * never runs script text sent by the server).
  */
-export type PageAction = { name: "select"; ref: string; wanted: string[] };
+export type PageAction =
+  | { name: "select"; ref: string; wanted: string[] }
+  | {
+      name: "scroll";
+      /** An element inside the area to scroll; without one, the page (or its largest scrollable area). */
+      ref?: string;
+      direction: ScrollDirection;
+      /** Pixels; a page-sized step (80% of the visible height or width) when absent. */
+      amount?: number;
+    };
+
+export const SCROLL_DIRECTIONS = [
+  "up",
+  "down",
+  "left",
+  "right",
+  "top",
+  "bottom",
+] as const;
+export type ScrollDirection = (typeof SCROLL_DIRECTIONS)[number];
 
 /** The script for an action; throws when its ref is not a valid one or the action is unknown. */
 export function pageActionScript(action: PageAction): string {
   if (typeof action !== "object" || action === null) {
     throw new Error("invalid page action");
   }
-  if (!REF_PATTERN.test(String(action.ref))) {
+  if (action.ref !== undefined && !REF_PATTERN.test(String(action.ref))) {
     throw new Error(`invalid ref: ${String(action.ref)}`);
   }
   switch (action.name) {
     case "select":
+      if (action.ref === undefined)
+        throw new Error("a drop-down ref is required");
       return selectScript(action.ref, [...action.wanted].map(String));
+    case "scroll":
+      if (!SCROLL_DIRECTIONS.includes(action.direction)) {
+        throw new Error(
+          `direction must be one of ${SCROLL_DIRECTIONS.join(", ")}`,
+        );
+      }
+      return scrollScript(
+        action.ref,
+        action.direction,
+        Number(action.amount) || 0,
+      );
     default:
-      throw new Error(`unknown page action: ${String(action.name)}`);
+      throw new Error(
+        `unknown page action: ${String((action as { name: unknown }).name)}`,
+      );
   }
+}
+
+/**
+ * Scrolls the page, or the scrollable area around `ref` (or, when the page
+ * itself cannot scroll that way, the largest scrollable area in view), by one
+ * page-sized step or `amount` pixels, or to the very start or end. Answers with
+ * where it ended up, so the model knows what is left to reach.
+ */
+export function scrollScript(
+  ref: string | undefined,
+  direction: ScrollDirection,
+  amount: number,
+): string {
+  return `((ref, dir, amount) => {
+    const vertical = dir === 'up' || dir === 'down' || dir === 'top' || dir === 'bottom';
+    const canScroll = (el) => {
+      const st = getComputedStyle(el);
+      return vertical
+        ? /(auto|scroll|overlay)/.test(st.overflowY) && el.scrollHeight > el.clientHeight + 1
+        : /(auto|scroll|overlay)/.test(st.overflowX) && el.scrollWidth > el.clientWidth + 1;
+    };
+    const root = document.scrollingElement || document.documentElement;
+    let target = null;
+    if (ref) {
+      let el = document.querySelector('[data-vise-ref="' + ref + '"]');
+      if (!el) return { error: 'missing' };
+      for (; el && el !== document.body && el !== document.documentElement; el = el.parentElement) {
+        if (canScroll(el)) { target = el; break; }
+      }
+    }
+    if (!target) {
+      const rootCan = vertical ? root.scrollHeight > window.innerHeight + 1 : root.scrollWidth > window.innerWidth + 1;
+      if (rootCan) target = root;
+      else {
+        let best = 0;
+        for (const el of document.querySelectorAll('div,ul,ol,section,main,aside,nav,table,form')) {
+          if (!canScroll(el)) continue;
+          const r = el.getBoundingClientRect();
+          const w = Math.min(r.right, window.innerWidth) - Math.max(r.left, 0);
+          const h = Math.min(r.bottom, window.innerHeight) - Math.max(r.top, 0);
+          if (w > 0 && h > 0 && w * h > best) { best = w * h; target = el; }
+        }
+      }
+    }
+    if (!target) return { error: 'nothing' };
+    const isRoot = target === root;
+    const view = vertical ? (isRoot ? window.innerHeight : target.clientHeight) : (isRoot ? window.innerWidth : target.clientWidth);
+    const total = vertical ? target.scrollHeight : target.scrollWidth;
+    const read = () => (vertical ? target.scrollTop : target.scrollLeft);
+    const before = read();
+    const step = amount > 0 ? amount : Math.round(view * 0.8);
+    const delta = dir === 'up' || dir === 'left' ? -step : dir === 'top' ? -total : dir === 'bottom' ? total : step;
+    const options = { behavior: 'instant' };
+    if (vertical) options.top = delta; else options.left = delta;
+    (isRoot ? window : target).scrollBy(options);
+    const after = read();
+    return { moved: Math.round(after - before), from: Math.round(after), to: Math.round(Math.min(after + view, total)), total, area: isRoot ? '' : (target.getAttribute('data-vise-ref') || 'a scrollable area') };
+  })(${JSON.stringify(ref ?? null)}, ${JSON.stringify(direction)}, ${JSON.stringify(amount)})`;
+}
+
+/** What `scrollScript` answered, as a sentence for the model; throws when nothing could be scrolled. */
+export function scrollSummary(
+  direction: ScrollDirection,
+  result: {
+    error?: string;
+    moved?: number;
+    from?: number;
+    to?: number;
+    total?: number;
+    area?: string;
+  },
+  ref?: string,
+): string {
+  if (result.error === "missing") {
+    throw new Error(`unknown element ${ref}: call browser_read for fresh refs`);
+  }
+  if (result.error || result.moved === undefined) {
+    throw new Error(
+      "nothing on this page scrolls that way (browser_read lists scrollable areas with their refs)",
+    );
+  }
+  const where = result.area ? `area ${result.area}` : "the page";
+  const axis =
+    direction === "up" ||
+    direction === "down" ||
+    direction === "top" ||
+    direction === "bottom"
+      ? "vertically"
+      : "horizontally";
+  const edge = (before: string, after: string): string =>
+    `${(result.from ?? 0) > 1 ? ` (more ${before})` : ""}${(result.to ?? 0) < (result.total ?? 0) - 1 ? ` (more ${after})` : ""}`;
+  const where2 =
+    axis === "vertically"
+      ? edge("above", "below")
+      : edge("to the left", "to the right");
+  const moved =
+    result.moved === 0
+      ? `could not scroll ${direction} any further`
+      : `scrolled ${direction} ${Math.abs(result.moved)}px`;
+  return `${moved}; ${where} now shows ${axis} ${result.from}-${result.to} of ${result.total}${where2}. Call browser_read to see what is in view now.`;
 }

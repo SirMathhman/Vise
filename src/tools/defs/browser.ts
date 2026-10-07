@@ -59,7 +59,7 @@ export const browserTools: Tool[] = [
     function: {
       name: "browser_read",
       description:
-        "Read a browser tab's current page: its visible text followed by an outline of the visible interactive elements, each with a ref such as e3. The outline is always shown in full. A long page's text is saved to a temp file and only its start is shown: search or page through the rest with search_temp and read_temp. After an action that changes the page without loading it (a search, a filter), first call browser_wait_for_text with a word you expect in the new content (or browser_wait_for_idle if you cannot name one); otherwise the read may show the old content. Form fields show their label, and a drop-down shows its options: choose one with browser_select (a drop-down cannot be clicked open or typed into). Pass a ref to browser_click, browser_hover, browser_drag or browser_type. Refs are valid until the page navigates; read again for fresh ones.",
+        "Read a browser tab's current page: its text followed by an outline of the interactive elements that are clearly inside the viewport right now, each with a ref such as e3 (the text covers the whole page, the outline only what is on screen; the outline ends with notes on how many more elements lie above, below or to the side, how far the page is scrolled, and any scrollable panels). Use browser_scroll to bring other parts into view. The outline is always shown in full. A long page's text is saved to a temp file and only its start is shown: search or page through the rest with search_temp and read_temp. After an action that changes the page without loading it (a search, a filter), first call browser_wait_for_text with a word you expect in the new content (or browser_wait_for_idle if you cannot name one); otherwise the read may show the old content. Form fields show their label, and a drop-down shows its options: choose one with browser_select (a drop-down cannot be clicked open or typed into). Pass a ref to browser_click, browser_hover, browser_drag or browser_type. Refs are valid until the page navigates; read again for fresh ones.",
       parameters: {
         type: "object",
         properties: {
@@ -380,6 +380,39 @@ export const browserTools: Tool[] = [
           },
         },
         required: ["tab", "ref"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "browser_scroll",
+      description:
+        "Scroll a browser tab so other parts of the page come into view. browser_read lists only the elements that are clearly inside the viewport (and says how many more are above, below or to the side), so when what you need is not listed, scroll to it: 'down' and 'up' scroll vertically, 'right' and 'left' horizontally, one page-sized step by default (or 'amount' pixels); 'top' and 'bottom' jump to the very start or end. Scrolling moves the whole page; to scroll a panel inside the page (a results list, a modal), pass the ref of any element in it or the ref browser_read gives for the scrollable area. Afterwards call browser_read: the elements in view have changed, so earlier refs of ones now out of view are no longer listed.",
+      parameters: {
+        type: "object",
+        properties: {
+          tab: {
+            type: "integer",
+            description: "Tab number from browser_open or browser_tabs",
+          },
+          direction: {
+            type: "string",
+            enum: ["up", "down", "left", "right", "top", "bottom"],
+            description: "Which way to scroll",
+          },
+          amount: {
+            type: "integer",
+            description:
+              "Pixels to scroll (optional; default one page-sized step)",
+          },
+          ref: {
+            type: "string",
+            description:
+              "Ref of an element inside the panel to scroll, or of a scrollable area from browser_read (optional; default the page)",
+          },
+        },
+        required: ["tab", "direction"],
       },
     },
   },
