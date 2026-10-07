@@ -1,5 +1,6 @@
 import type { ToolController } from "../core/engine.ts";
-import type { Message } from "../core/errors.ts";
+import type { Message, Result } from "../core/errors.ts";
+import type { ProfileSource } from "./ports.ts";
 
 /**
  * Applies a profile's tool whitelist to the `ToolController`. Entering a
@@ -56,4 +57,40 @@ function enabledNames(controller: ToolController): string {
     .filter((t) => t.enabled)
     .map((t) => t.name);
   return names.length === 0 ? "(none)" : names.join(", ");
+}
+
+/**
+ * Validate and save a profile's tool whitelist (`undefined` clears it). Only
+ * the profile file is written: the live conversation and tool states are
+ * untouched, so editing a profile that is in use changes nothing until it is
+ * switched to again. Shared by the `/profile <name> tools` command and the web
+ * server's direct (unqueued) save.
+ */
+export async function saveProfileWhitelist(
+  source: ProfileSource,
+  knownTools: string[],
+  name: string,
+  tools: string[] | undefined,
+): Promise<Result<string[] | undefined>> {
+  if (!source.setProfileTools) {
+    return {
+      ok: false,
+      error: {
+        kind: "malformed",
+        body: "tool whitelists not supported by the current client",
+      },
+    };
+  }
+  const unknown = (tools ?? []).filter((t) => !knownTools.includes(t));
+  if (unknown.length > 0) {
+    return {
+      ok: false,
+      error: {
+        kind: "malformed",
+        body: `unknown tool(s): ${unknown.join(", ")}`,
+      },
+    };
+  }
+  const saved = await source.setProfileTools(name, tools);
+  return saved.ok ? { ok: true, value: tools } : saved;
 }

@@ -21,6 +21,7 @@ interface ServerMessage extends ResultMessage {
   name?: string;
   depth?: number;
   active?: boolean;
+  tools?: string[] | null;
   question?: string;
   options?: string[];
 }
@@ -68,17 +69,31 @@ let pendingToolList = false;
 let pendingSessionList = false;
 let pendingToolToggle: string | null = null;
 let pendingBurstSync = false;
-// Editor-side requests awaiting their reply, keyed by request id. They share
-// the connection's queue with the model's turns, so replies are matched by id,
-// never by arrival order.
-type EditorReply = "tools" | { name: string; save: boolean };
-const editorReplies = new Map<string, EditorReply>();
+// The tools panel refresh is a queued line; its reply is matched by id because
+// the connection also carries the model's turns.
+const toolRefreshes = new Set<string>();
+// Whitelist reads/writes bypass the turn queue (`profile_tools` messages).
+const whitelistRequests = new Map<string, { name: string; save: boolean }>();
 let nextRequestId = 0;
 
-function requestEditor(text: string, reply: EditorReply): void {
+function requestToolRefresh(): void {
   const id = `ed${nextRequestId++}`;
-  editorReplies.set(id, reply);
-  socket.send(JSON.stringify({ type: "line", text, id }));
+  toolRefreshes.add(id);
+  socket.send(JSON.stringify({ type: "line", text: "/tool", id }));
+}
+
+function requestWhitelist(name: string, save: boolean, tools?: string[]): void {
+  const id = `ed${nextRequestId++}`;
+  whitelistRequests.set(id, { name, save });
+  socket.send(
+    JSON.stringify({
+      type: "profile_tools",
+      id,
+      name,
+      read: !save,
+      tools: tools ?? null,
+    }),
+  );
 }
 
 function setStatus(text: string): void {
@@ -117,13 +132,10 @@ function deleteSession(name: string): void {
 const panels = createPanels({ resumeSession, deleteSession });
 const profileEditor = createProfileEditor({
   loadWhitelist(name) {
-    requestEditor(`/profile ${name} tools`, { name, save: false });
+    requestWhitelist(name, false);
   },
   saveWhitelist(name, tools) {
-    requestEditor(`/profile ${name} tools ${tools ? tools.join(",") : "all"}`, {
-      name,
-      save: true,
-    });
+    requestWhitelist(name, true, tools);
   },
   toolNames: () => panels.toolNames(),
   profileNames: () =>
@@ -197,32 +209,24 @@ function setBurstPressed(on: boolean): void {
   burstBtn.setAttribute("aria-pressed", String(on));
 }
 
-function refreshTools(): void {
-  requestEditor("/tool", "tools");
+function handleToolRefresh(message: ResultMessage): boolean {
+  if (message.id === undefined || !toolRefreshes.delete(message.id))
+    return false;
+  if (message.ok && message.value) panels.populateToolsPanel(message.value);
+  return true;
 }
 
-function handleEditorResult(message: ResultMessage): boolean {
-  const next =
-    message.id === undefined ? undefined : editorReplies.get(message.id);
-  if (message.id !== undefined) editorReplies.delete(message.id);
-  if (next === undefined) return false;
-  if (next === "tools") {
-    if (message.ok && message.value) panels.populateToolsPanel(message.value);
-    return true;
-  }
-  const { name, save } = next;
-  if (message.ok && message.value) {
-    profileEditor.showWhitelist(name, message.value);
-    if (save) {
-      profileEditor.showStatus("saved ✓");
-      refreshTools();
-    }
+function handleWhitelistReply(message: ServerMessage): void {
+  const request = message.id ? whitelistRequests.get(message.id) : undefined;
+  if (!request || !message.id) return;
+  whitelistRequests.delete(message.id);
+  if (message.ok) {
+    profileEditor.showWhitelist(request.name, message.tools ?? undefined);
+    if (request.save) profileEditor.showStatus("saved ✓");
   } else {
     const reason = message.error ?? "unknown error";
     profileEditor.showStatus(`failed: ${reason}`, true);
-    transcript.addLine("error", reason);
   }
-  return true;
 }
 
 function handleInitialResult(message: ResultMessage): boolean {
@@ -329,7 +333,7 @@ function handleCommandResult(message: ResultMessage): void {
     panels.removeProfilePlaceholder();
     profileSelect.value = name;
     transcript.addLine("system", `profile: ${name}`);
-    refreshTools();
+    requestToolRefresh();
   } else if (message.value?.startsWith("reasoning effort set to ")) {
     const name = message.value.slice("reasoning effort set to ".length);
     const level = name.replace(" (template default)", "");
@@ -341,7 +345,7 @@ function handleCommandResult(message: ResultMessage): void {
     panels.addProfilePlaceholder();
     profileSelect.value = "";
     transcript.addLine("system", "profile cleared");
-    refreshTools();
+    requestToolRefresh();
   } else if (!message.streamed && message.value) {
     transcript.addLine("assistant", message.value);
   }
@@ -356,7 +360,7 @@ function handleResult(message: ResultMessage): void {
   transcript.setBurst(false);
   hideAsk();
   renderContext(message);
-  if (handleEditorResult(message)) return;
+  if (handleToolRefresh(message)) return;
   if (handleInitialResult(message)) return;
   if (handleToolToggleResult(message)) return;
   setBusy(false);
@@ -444,6 +448,9 @@ socket.addEventListener("message", (event: MessageEvent<string>) => {
     return;
   }
   switch (message.type) {
+    case "profile_tools":
+      handleWhitelistReply(message);
+      break;
     case "token":
       transcript.appendAssistantToken(message.text ?? "");
       break;

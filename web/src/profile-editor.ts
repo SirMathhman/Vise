@@ -16,16 +16,8 @@ export interface ProfileEditorActions {
 export interface ProfileEditor {
   /** Briefly confirm a save (or report why it failed) next to the button. */
   showStatus(text: string, error?: boolean): void;
-  /** Show the server's answer (`profile 'x' tools: a, b` or `... all`). */
-  showWhitelist(name: string, text: string): void;
-}
-
-/** The `a, b` or `all` part of a `profile 'x' tools: …` reply. */
-function parseWhitelist(text: string): string[] | undefined {
-  const value = text.slice(text.indexOf("tools:") + "tools:".length).trim();
-  if (value === "all") return undefined;
-  if (value === "(none)") return [];
-  return value.split(",").map((t) => t.trim());
+  /** Show a profile's whitelist; `undefined` means every tool is allowed. */
+  showWhitelist(name: string, tools: string[] | undefined): void;
 }
 
 /**
@@ -122,7 +114,7 @@ export function createProfileEditor(
     waitingHint = setTimeout(
       () =>
         showStatus(
-          "still waiting: the server is busy with another request",
+          "still waiting for the server…",
           false,
           true,
         ),
@@ -133,9 +125,8 @@ export function createProfileEditor(
 
   return {
     showStatus: (text, error) => showStatus(text, error),
-    showWhitelist(name, text) {
+    showWhitelist(name, allowed) {
       if (name !== select.value) return;
-      const allowed = parseWhitelist(text);
       list.textContent = "";
       for (const tool of actions.toolNames()) {
         appendToolItem(list, tool, allowed?.includes(tool) ?? true);

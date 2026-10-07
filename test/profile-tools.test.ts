@@ -121,6 +121,14 @@ describe("Session profile tool whitelist (core)", () => {
     });
     expect(whitelists.open).toBeUndefined();
   });
+  test("editing the active profile's whitelist leaves live tool state alone", async () => {
+    const { session, controller, whitelists } = make();
+    await session.handleLine("/profile strict");
+    const before = controller.list();
+    await session.handleLine("/profile strict tools read_file,delete_file");
+    expect(whitelists.strict).toEqual(["read_file", "delete_file"]);
+    expect(controller.list()).toEqual(before);
+  });
 });
 
 describe("tool enablement is per session (edge)", () => {

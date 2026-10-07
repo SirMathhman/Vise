@@ -1,5 +1,6 @@
 import type { Result } from "../core/errors.ts";
 import { formatProfileList, formatSessionList } from "../output/format.ts";
+import { saveProfileWhitelist } from "./profile-tools.ts";
 import type {
   ProfileCommands,
   ProfileSource,
@@ -130,8 +131,9 @@ async function applyWhitelist(
 
 /**
  * Handle `/profile <name> tools`, `... tools all`, and `... tools a,b`: show,
- * clear, or set a profile's tool whitelist. Editing the active profile's
- * whitelist applies it immediately.
+ * clear, or set a profile's tool whitelist. Only the profile file changes;
+ * the whitelist applies the next time the profile is switched to, so editing
+ * the active profile leaves the conversation untouched.
  */
 async function handleProfileTools(
   session: ProfileCommands,
@@ -159,12 +161,13 @@ async function handleProfileTools(
     .filter((t) => t !== "");
   if (list.length === 0) return show(current.value);
   const next = list.length === 1 && list[0] === "all" ? undefined : list;
-  const unknown = (next ?? []).filter((t) => !session.toolNames().includes(t));
-  if (unknown.length > 0) return fail(`unknown tool(s): ${unknown.join(", ")}`);
-  const saved = await source.setProfileTools(name, next);
-  if (!saved.ok) return saved;
-  if (session.activeProfile() === name) session.applyProfileTools(next);
-  return show(next);
+  const saved = await saveProfileWhitelist(
+    source,
+    session.toolNames(),
+    name,
+    next,
+  );
+  return saved.ok ? show(next) : saved;
 }
 
 /**

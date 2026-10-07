@@ -13,6 +13,7 @@ import {
   loadHookCommands,
   ShellHook,
 } from "./edge-sources.ts";
+import type { ProfileSource } from "./repl/ports.ts";
 import { Session } from "./repl/session.ts";
 import { makeAskUserHandler, type UserPrompter } from "./tools/ask-user.ts";
 import { makeSelfHandler } from "./tools/self.ts";
@@ -80,6 +81,8 @@ export interface EdgeSession {
   client: Client;
   /** The model-facing tool enable/disable controller. */
   toolController: ToolController;
+  /** The profile store (also used for unqueued whitelist edits). */
+  profileSource: ProfileSource;
   /** The pre-turn hook commands from `.viserc.json`. */
   preTurnHooks: string[];
   /** The post-turn hook commands from `.viserc.json`. */
@@ -192,6 +195,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     session,
     client,
     toolController,
+    profileSource,
     preTurnHooks: hookCommands.pre ?? [],
     postTurnHooks: hookCommands.post ?? [],
   };

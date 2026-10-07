@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { formatCompactionFailure, formatError } from "../output/format.ts";
 import type { AskRequest, UserPrompter } from "../tools/ask-user.ts";
 import type { LineResult } from "../repl/session.ts";
+import { saveProfileWhitelist } from "../repl/profile-tools.ts";
 import { createEdgeSession } from "../wiring.ts";
 
 /**
@@ -149,6 +150,7 @@ interface ConnectionState {
   prompter: WebUserPrompter;
   display: WebDisplay;
   session: ReturnType<typeof createEdgeSession>["session"];
+  edge: ReturnType<typeof createEdgeSession>;
   chain: Promise<void>;
 }
 
@@ -190,8 +192,52 @@ function makeConnectionState(ws: ServerWebSocket<unknown>): ConnectionState {
     prompter,
     display,
     session: edge.session,
+    edge,
     chain: Promise.resolve(),
   };
+}
+
+interface WireMessage {
+  type: string;
+  text?: string;
+  id?: string;
+  name?: string;
+  /** `profile_tools` write: the whitelist, or null for all tools. */
+  tools?: string[] | null;
+  /** `profile_tools`: read the current whitelist instead of writing one. */
+  read?: boolean;
+}
+
+/**
+ * Read or write a profile's tool whitelist. It writes only the profile file,
+ * so it is instant, works while a turn is running, and never touches the
+ * conversation history.
+ */
+async function handleProfileTools(
+  conn: ConnectionState,
+  msg: WireMessage,
+): Promise<void> {
+  const { edge, send } = conn;
+  const name = msg.name ?? "";
+  const reply = (fields: Record<string, unknown>): void =>
+    send({ type: "profile_tools", id: msg.id, name, ...fields });
+  const fail = (error: string): void => reply({ ok: false, error });
+  const source = edge.profileSource;
+  if (!source.profileTools) return fail("tool whitelists not supported");
+  if (msg.read) {
+    const current = await source.profileTools(name);
+    if (!current.ok) return fail(formatError(current.error));
+    return reply({ ok: true, tools: current.value ?? null });
+  }
+  const names = edge.toolController.list().map((t) => t.name);
+  const saved = await saveProfileWhitelist(
+    source,
+    names,
+    name,
+    msg.tools ?? undefined,
+  );
+  if (!saved.ok) return fail(formatError(saved.error));
+  reply({ ok: true, tools: saved.value ?? null });
 }
 
 function handleMessage(
@@ -199,7 +245,7 @@ function handleMessage(
   message: string | Buffer<ArrayBuffer> | null,
 ): void {
   const { send, prompter, display, session } = conn;
-  let msg: { type: string; text?: string; id?: string };
+  let msg: WireMessage;
   try {
     msg = JSON.parse(String(message));
   } catch {
@@ -211,6 +257,11 @@ function handleMessage(
   }
   if (msg.type === "ask_answer") {
     prompter.settle(msg.text ?? "");
+    return;
+  }
+  if (msg.type === "profile_tools") {
+    // Straight to the profile file, never queued behind a model turn.
+    void handleProfileTools(conn, msg);
     return;
   }
   if (msg.type !== "line" || typeof msg.text !== "string") return;
