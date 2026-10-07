@@ -1,5 +1,10 @@
 import type { Tool } from "../core/engine.ts";
-import type { AssistantMessage, Message, ToolCall } from "../core/errors.ts";
+import type {
+  AssistantMessage,
+  Message,
+  Picture,
+  ToolCall,
+} from "../core/errors.ts";
 
 /**
  * Prompt-text tool-call protocol. Tool definitions are rendered into the
@@ -175,23 +180,38 @@ export function parseReply(
   };
 }
 
+/** Turns a picture reference into the `data:` URI sent to the model (undefined when its file is gone). */
+export type ImageResolver = (picture: Picture) => string | undefined;
+
 /** A message body with its pictures: plain text, or text and image parts when there are any. */
-export function withImages(message: Message, text: string): unknown {
+export function withImages(
+  message: Message,
+  text: string,
+  resolve?: ImageResolver,
+): unknown {
   if (!message.images || message.images.length === 0) return text;
   return [
     { type: "text", text },
-    ...message.images.map((image) => ({
-      type: "image_url",
-      image_url: { url: image.uri },
-    })),
+    ...message.images.map((image) => {
+      const url = resolve?.(image);
+      return url
+        ? { type: "image_url", image_url: { url } }
+        : {
+            type: "text",
+            text: `[image ${image.label} is no longer available]`,
+          };
+    }),
   ];
 }
 
 /** Messages as the server takes them when no tools are in play: the same, with pictures as image parts. */
-export function plainMessages(messages: Message[]): Record<string, unknown>[] {
+export function plainMessages(
+  messages: Message[],
+  resolve?: ImageResolver,
+): Record<string, unknown>[] {
   return messages.map((m) => ({
     role: m.role,
-    content: withImages(m, m.content),
+    content: withImages(m, m.content, resolve),
     ...(m.tool_calls ? { tool_calls: m.tool_calls } : {}),
     ...(m.tool_call_id ? { tool_call_id: m.tool_call_id } : {}),
   }));
@@ -201,12 +221,17 @@ export function plainMessages(messages: Message[]): Record<string, unknown>[] {
 export function encodeMessages(
   messages: Message[],
   tools: Tool[],
+  resolve?: ImageResolver,
 ): Record<string, unknown>[] {
   const out: Record<string, unknown>[] = messages.map((m) => {
     if (m.role === "tool") {
       return {
         role: "user",
-        content: withImages(m, `${RESPONSE_OPEN}${m.content}${RESPONSE_CLOSE}`),
+        content: withImages(
+          m,
+          `${RESPONSE_OPEN}${m.content}${RESPONSE_CLOSE}`,
+          resolve,
+        ),
       };
     }
     const calls = (m.tool_calls ?? [])
@@ -217,7 +242,10 @@ ${JSON.stringify({ name: c.function.name, arguments: safeParse(c.function.argume
 ${CALL_CLOSE}`,
       )
       .join("");
-    return { role: m.role, content: withImages(m, m.content + calls) };
+    return {
+      role: m.role,
+      content: withImages(m, m.content + calls, resolve),
+    };
   });
   const prompt = renderToolPrompt(tools);
   const first = out[0];

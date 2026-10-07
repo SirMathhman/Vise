@@ -17,7 +17,7 @@ export interface ServerMessage extends ResultMessage, HooksFields {
   text?: string;
   name?: string;
   depth?: number;
-  uri?: string;
+  id?: string;
   label?: string;
   width?: number;
   height?: number;

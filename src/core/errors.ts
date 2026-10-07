@@ -4,10 +4,18 @@ export interface ToolCall {
   function: { name: string; arguments: string };
 }
 
-/** A picture the model can see: a data URI (`data:image/png;base64,...`) with what to call it when shown to the user. */
+/**
+ * A picture the model can see, by reference: the id (a SHA-256) of its bytes in
+ * the image store, so conversations and saved sessions stay small. `label` is
+ * what to call it when shown to the user.
+ */
 export interface Picture {
-  uri: string;
+  id: string;
+  /** The type of the bytes (`image/png`, `image/jpeg`, `image/gif` or `image/webp`). */
+  mime: string;
   label: string;
+  /** Size of the picture file in bytes. */
+  bytes: number;
   width?: number;
   height?: number;
 }

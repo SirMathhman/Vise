@@ -125,6 +125,6 @@ export function formatPicture(picture: Picture): string {
     picture.width && picture.height
       ? ` · ${picture.width}x${picture.height}`
       : "";
-  const kb = Math.max(1, Math.round((picture.uri.length * 0.75) / 1000));
+  const kb = Math.max(1, Math.round(picture.bytes / 1000));
   return `📷 ${picture.label}${size} · ${kb} KB`;
 }

@@ -6,6 +6,7 @@ import type { BrowserBackend } from "./browser/types.ts";
 import { BACKEND, LlmClient } from "./client/llm.ts";
 import { dataDirFor, globalDataDir, noFolderRoot } from "./data-dir.ts";
 import { GLOBAL_PROMPT } from "./global-prompt.ts";
+import { imageStore } from "./image-store.ts";
 import type {
   Client,
   Tool,
@@ -73,6 +74,22 @@ import { createToolRunner, isFileSystemTool, ToolSet, tools } from "./tools.ts";
 
 /** Tools that run unsandboxed code and so start disabled; the user opts in with `/tool <name> enable`. */
 const RISKY_TOOLS = ["browser_run_code"];
+
+/** The session's picture plumbing: where tools queue the pictures they produce, and the loader for `/image`. */
+function imagePlumbing(
+  client: LlmClient,
+  cwd: string | undefined,
+): { images: ImageOutbox; imageSource: FileImageSource } {
+  client.imageResolver = (picture) => imageStore.dataUri(picture);
+  return {
+    images: new ImageOutbox(imageStore),
+    imageSource: new FileImageSource(
+      cwd,
+      () => client.supportsVision(),
+      imageStore,
+    ),
+  };
+}
 
 /** A `ToolRunner` that defers to one built later (see the cycle between the runner and `run_subagent`). */
 function lazily(get: () => ToolRunner): ToolRunner {
@@ -280,7 +297,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
   // `sessionRef` holder is filled before any turn runs.
   const sessionRef = { current: null as unknown as Session };
   const { toolController, modelController } = controls(client, sessionTools);
-  const images = new ImageOutbox();
+  const { images, imageSource } = imagePlumbing(client, cwd);
   // Tool results too big to show go here instead; the temp tools read them back.
   const temp = new TempStore();
   const toolRunner = createToolRunner(
@@ -329,7 +346,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     toolController,
     profileSource,
     noteSource: new FileNoteSource({ project: dataDir, global: globalDataDir }),
-    imageSource: new FileImageSource(cwd, () => client.supportsVision()),
+    imageSource,
     workflowSource,
     sessionSource,
     preTurnHooks,

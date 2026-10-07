@@ -2,7 +2,7 @@ import { stat } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import type { BrowserBackend, TabInfo } from "../browser/types.ts";
 import { waitHandlers } from "./browser-wait.ts";
-import { describeImage, toImage, type ImageOutbox } from "./images.ts";
+import { describeImage, type ImageOutbox } from "./images.ts";
 import { errStr } from "./files.ts";
 import { isTooLarge, truncateInline, type TempStore } from "./temp-store.ts";
 
@@ -124,9 +124,7 @@ async function screenshot(
     throw new Error("this browser cannot take screenshots");
   }
   const png = Buffer.from(await browser.screenshot(id, fullPage), "base64");
-  const image = toImage(png, "image/png", `tab ${id}`);
-  images.push(image);
-  return `screenshot of ${describeImage(image)}`;
+  return `screenshot of ${describeImage(images.add(png, `tab ${id}`))}`;
 }
 
 /** Appended to an action's result when it left a JavaScript dialog open. */

@@ -401,6 +401,21 @@ Besides the browsers Vise launches itself, the agent can work in the user's own 
 
 ## Future Work
 
+- **Pictures are blobs referenced by id.** Done: a `Picture` carries a content
+  hash, type (sniffed from the bytes) and size; the bytes live in the shared
+  `ImageStore` and are resolved to a data URI only when a request is built.
+  Still to do: a per-root store behind a port in `repl/ports.ts`, sweeping
+  unreferenced files when a session is deleted, letting compaction drop a
+  picture's bytes while keeping its reference, an opt-out from persisting
+  screenshots of sensitive pages, and collecting pictures per tool call (the
+  result carrying them) instead of from a shared outbox, so concurrent tool
+  calls could not take each other's pictures.
+
+- **Vision tools are absent, not disabled.** While the active model cannot see
+  images, `view_image` and `browser_screenshot` should not be listed in the
+  prompt at all (the grammar already excludes disabled tools); changing the
+  model rebuilds that section once, at a point where the cache is invalid anyway.
+
 - **Tool display metadata lives on the tool.** `output/tool-line.ts` keeps a
   name-keyed icon map and the list of arguments worth showing, apart from the
   `Tool` definitions, so a new tool silently gets the generic icon. A `Tool`

@@ -1,5 +1,6 @@
 import {
   encodeMessages,
+  type ImageResolver,
   plainMessages,
   hideCalls,
   nameConfidence,
@@ -63,6 +64,8 @@ export type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
 export class LlmClient implements Client {
   private lastPromptTokens: number | undefined;
   private currentModel: string = MODEL;
+  /** Turns the pictures in the conversation into what is sent to the model (set by the edge, which owns the image files). */
+  imageResolver?: ImageResolver;
   /**
    * The active `reasoning_effort` level. `undefined` (or `"default"`) means
    * the field is omitted from the request so the chat template uses its
@@ -372,8 +375,8 @@ export class LlmClient implements Client {
       // the prompt prefix, and llama.cpp's cache, with the normal turns.
       messages:
         tools && tools.length > 0
-          ? encodeMessages(messages, tools)
-          : plainMessages(messages),
+          ? encodeMessages(messages, tools, this.imageResolver)
+          : plainMessages(messages, this.imageResolver),
       ...(act
         ? { stream: false }
         : {

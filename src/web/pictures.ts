@@ -1,5 +1,6 @@
 import type { Picture } from "../core/errors.ts";
-import { imageSize, MAX_IMAGE_BYTES } from "../tools/images.ts";
+import { imageStore, sniffImage } from "../image-store.ts";
+import { MAX_IMAGE_BYTES } from "../tools/images.ts";
 
 /** Most pictures that may come with one message. */
 export const MAX_PICTURES = 6;
@@ -9,8 +10,10 @@ const DATA_URI =
 
 /**
  * The pictures a browser attached to a message: each a base64 data URI of a
- * png, jpeg, gif or webp within the size limit. The page is not trusted, so
- * every field is checked; throws an `Error` fit to show when one is not valid.
+ * png, jpeg, gif or webp within the size limit, kept in the image store. The
+ * page is not trusted, so every field is checked, and the type the page
+ * declares must be what the bytes really are; throws an `Error` fit to show
+ * when one is not valid.
  */
 export function acceptPictures(raw: unknown): Picture[] {
   if (raw === undefined || raw === null) return [];
@@ -26,23 +29,19 @@ export function acceptPictures(raw: unknown): Picture[] {
         : {};
     const uri = typeof fields["uri"] === "string" ? fields["uri"] : "";
     const match = DATA_URI.exec(uri);
-    if (!match) {
-      throw new Error(
-        `attached image ${index + 1} is not a png, jpeg, gif or webp`,
-      );
-    }
+    const which = `attached image ${index + 1}`;
+    if (!match) throw new Error(`${which} is not a png, jpeg, gif or webp`);
     const bytes = Buffer.from(match[2]!, "base64");
     if (bytes.length > MAX_IMAGE_BYTES) {
       throw new Error(
-        `attached image ${index + 1} is too large (the limit is ${MAX_IMAGE_BYTES / 1_000_000} MB)`,
+        `${which} is too large (the limit is ${MAX_IMAGE_BYTES / 1_000_000} MB)`,
       );
+    }
+    if (sniffImage(bytes) !== match[1]) {
+      throw new Error(`${which} is not really a ${match[1]!.slice(6)} file`);
     }
     const name =
       typeof fields["label"] === "string" ? fields["label"].trim() : "";
-    return {
-      uri,
-      label: (name || `image ${index + 1}`).slice(0, 80),
-      ...(imageSize(bytes, match[1]!) ?? {}),
-    };
+    return imageStore.put(bytes, (name || `image ${index + 1}`).slice(0, 80));
   });
 }

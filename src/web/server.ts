@@ -12,6 +12,7 @@ import { ExtensionHub, isExtensionOrigin } from "./ext-hub.ts";
 import { loadExtensionToken, tokensMatch } from "./ext-token.ts";
 import { handleNoteMessage } from "./notes-api.ts";
 import { queueLine } from "./line.ts";
+import { imageStore } from "../image-store.ts";
 import { NoteStore } from "../note-store.ts";
 import { SwitchableBrowser } from "../browser/switchable.ts";
 import { BrowserBridge } from "./browser-bridge.ts";
@@ -45,7 +46,7 @@ import { listDir, readTextFile, watchRoot } from "./files.ts";
  *                     { type:"thinking", text }     a streamed thinking token
  *                     { type:"progress", total, cache, processed, time_ms }
  *                     { type:"tool", name, depth?, text } a tool call began (text: icon, name and a short detail)
- *                     { type:"image", uri, label, width?, height? } a tool produced a picture (a data URI)
+ *                     { type:"image", id, mime, label, bytes, width?, height? } a tool produced a picture (fetch it from /api/image/<id>)
  *                     { type:"result", ok:true, value, streamed?, compactionWarning? }
  *                     { type:"result", ok:false, error }
  *                     { type:"ask", question, options, multiSelect? }
@@ -154,6 +155,23 @@ class WebDisplay {
 }
 
 /** The JSON APIs the page uses (explorer, folder chooser, extension pairing); null when `url` is not one. */
+/** A stored picture by id (`/api/image/<sha256>`), for the page's thumbnails. Only the Vise page may load it. */
+function serveImage(url: URL, port: number, req: Request): Response {
+  const site = req.headers.get("sec-fetch-site");
+  if (site !== null && site !== "same-origin") {
+    return new Response("forbidden", { status: 403 });
+  }
+  const found = imageStore.find(url.pathname.slice("/api/image/".length));
+  if (!found) return new Response("not found", { status: 404 });
+  return new Response(new Uint8Array(found.bytes), {
+    headers: {
+      "content-type": found.mime,
+      "cache-control": "private, max-age=31536000, immutable",
+      "x-content-type-options": "nosniff",
+    },
+  });
+}
+
 function serveApi(
   req: Request,
   url: URL,
@@ -170,6 +188,7 @@ function serveApi(
     }
     return Response.json({ token: extensionToken });
   }
+  if (url.pathname.startsWith("/api/image/")) return serveImage(url, port, req);
   if (url.pathname === "/api/fs" || url.pathname === "/api/file") {
     return serveExplorer(url, roots);
   }

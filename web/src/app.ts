@@ -506,7 +506,11 @@ socket.addEventListener("message", (event: MessageEvent<string>) => {
       transcript.appendThinkingToken(message.text ?? "");
       break;
     case "image":
-      appendPicture(transcript, message.uri ?? "", message.label ?? "image");
+      appendPicture(
+        transcript,
+        `/api/image/${message.id}`,
+        message.label ?? "image",
+      );
       break;
     case "tool":
       transcript.appendToolCall(
