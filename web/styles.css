@@ -369,8 +369,10 @@ body {
   gap: 0.75rem;
 }
 
+/* The one hiding rule: !important so no component's own `display` can override it. */
+[hidden],
 .hidden {
-  display: none;
+  display: none !important;
 }
 
 .ask {
@@ -380,10 +382,6 @@ body {
   padding: 0.5rem;
   border: 1px solid var(--border);
   border-radius: 6px;
-}
-
-.ask.hidden {
-  display: none;
 }
 
 .ask-question {
@@ -426,11 +424,6 @@ body {
 
 .composer-input-wrap {
   position: relative;
-}
-
-/* `display: flex` below would otherwise override the shared .hidden rule. */
-.command-suggestions.hidden {
-  display: none;
 }
 
 .command-suggestions {
@@ -734,18 +727,10 @@ body {
   }
 }
 
-.workspace.hidden {
-  display: none;
-}
-
 .fs-children {
   margin: 0;
   padding: 0 0 0 1rem;
   list-style: none;
-}
-
-.fs-children.hidden {
-  display: none;
 }
 
 .fs-dir {
@@ -771,10 +756,6 @@ body {
 .fs-head .tools-btn {
   margin: 0.2rem 0.5rem;
   white-space: nowrap;
-}
-
-.files-viewer.hidden {
-  display: none;
 }
 
 .md-view {
@@ -866,10 +847,6 @@ body {
   background: #fff;
 }
 
-.files-frame.hidden {
-  display: none;
-}
-
 .browser-view {
   flex: 1;
   min-height: 0;
@@ -877,10 +854,6 @@ body {
   background: #fff;
   outline: none;
   position: relative;
-}
-
-.browser-view.hidden {
-  display: none;
 }
 
 .browser-view img {
@@ -978,10 +951,3 @@ body {
   border-bottom-color: var(--accent);
 }
 
-.tab-page.hidden {
-  display: none;
-}
-
-.fs-url.hidden {
-  display: none;
-}

@@ -23,6 +23,7 @@ const slashCommands: [string, string, boolean][] = [
   ["/new", "start a new conversation", false],
   ["/burst", "toggle plan-then-act burst mode", true],
   ["/tool", "list or toggle tools", true],
+  ["/hooks", "list or edit pre/post-turn hooks", true],
   ["/profile", "list, switch, or create profiles", true],
   ["/note", "list or create notes", true],
   ["/workflow", "list, run, or create workflows", true],
