@@ -52,10 +52,8 @@ const status = requiredElement<HTMLElement>("status");
 const modelSelect = requiredElement<HTMLSelectElement>("model");
 const profileSelect = requiredElement<HTMLSelectElement>("profile");
 const reasoningSelect = requiredElement<HTMLSelectElement>("reasoning");
-const toolsBtn = requiredElement<HTMLButtonElement>("tools-btn");
 const newBtn = requiredElement<HTMLButtonElement>("new-btn");
 const burstBtn = requiredElement<HTMLButtonElement>("burst-btn");
-const sessionsBtn = requiredElement<HTMLButtonElement>("sessions-btn");
 const saveName = requiredElement<HTMLInputElement>("save-name");
 const saveBtn = requiredElement<HTMLButtonElement>("save-btn");
 const filesBtn = requiredElement<HTMLButtonElement>("files-btn");
@@ -130,10 +128,8 @@ function setBusy(next: boolean): void {
   modelSelect.disabled = next;
   profileSelect.disabled = next;
   reasoningSelect.disabled = next;
-  toolsBtn.disabled = next;
   burstBtn.disabled = next;
   newBtn.disabled = next;
-  sessionsBtn.disabled = next;
 }
 
 function sendLine(text: string): void {
@@ -432,7 +428,9 @@ registerHeaderPanels({
     hooksPanel.refresh();
   },
   // Turns auto-save in the background, so refresh the list when it opens.
+  // While a turn runs the list is left as it was (the refresh would queue behind the turn).
   sessions: () => {
+    if (input.disabled) return;
     pendingSessionList = true;
     setBusy(true);
     requestLine("/resume");
