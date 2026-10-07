@@ -24,6 +24,8 @@ const display = new StreamDisplay();
 // terminal-specific display callbacks and prompter; the web driver supplies
 // WebSocket-based ones.
 const edge = createEdgeSession({
+  // `--no-folder`: a session without a working directory (no file or shell tools).
+  noFolder: process.argv.includes("--no-folder"),
   onToken: display.onToken,
   onThinking: display.onThinking,
   onPromptProgress: display.onPromptProgress,

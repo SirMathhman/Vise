@@ -34,7 +34,7 @@ const DEFAULT_PROFILE =
 export function makeSubagentHandler(
   client: Client,
   profileSource: ProfileSource,
-  cwd: string,
+  cwd: string | undefined,
   tools: ToolRunner,
   toolDefs: Tool[],
   callbacks: TurnCallbacks = {},
@@ -62,7 +62,10 @@ export function makeSubagentHandler(
 
     const systemMessage = {
       role: "system" as const,
-      content: `Working directory: ${cwd}`,
+      content:
+        cwd === undefined
+          ? "This session has no working directory and no file system access."
+          : `Working directory: ${cwd}`,
     };
 
     // Indent and dim every line of the subagent's streamed output so it is

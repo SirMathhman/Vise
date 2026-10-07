@@ -123,7 +123,8 @@ function deriveSessionName(message: string): string {
  * a new optional field, not a new positional parameter.
  */
 export interface SessionOptions {
-  cwd: string;
+  /** The working directory; absent for a session with no file system. */
+  cwd?: string;
   context: ContextSource;
   modelController?: ModelController;
   reasoningController?: ReasoningController;
@@ -206,7 +207,7 @@ export class Session {
   private readonly noteSource?: NoteSource;
   private readonly workflowSource?: WorkflowSource;
   private readonly hooks: SessionHooks;
-  private readonly cwd: string;
+  private readonly cwd?: string;
   private readonly onToken?: (token: string) => void;
   private readonly onThinking?: (token: string) => void;
   private readonly onPromptProgress?: (progress: PromptProgress) => void;
@@ -259,7 +260,10 @@ export class Session {
     this.onMaxRounds = options.onMaxRounds;
     this.systemMessage = {
       role: "system",
-      content: `Working directory: ${options.cwd}`,
+      content:
+        options.cwd === undefined
+          ? "This session has no working directory and no file system access."
+          : `Working directory: ${options.cwd}`,
     };
     this.messages = [this.systemMessage];
     if (this.initialMessage !== undefined && this.initialMessage !== "") {

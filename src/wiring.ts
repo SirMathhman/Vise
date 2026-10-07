@@ -1,9 +1,10 @@
 import { join } from "node:path";
+import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { ChromiumBackend } from "./browser/chromium.ts";
 import type { BrowserBackend } from "./browser/types.ts";
 import { BACKEND, LlmClient } from "./client/llm.ts";
-import { dataDirFor } from "./data-dir.ts";
+import { dataDirFor, noFolderRoot } from "./data-dir.ts";
 import type { Client, ToolController } from "./core/engine.ts";
 import type { PromptProgress } from "./core/errors.ts";
 import {
@@ -21,7 +22,7 @@ import { makeAskUserHandler, type UserPrompter } from "./tools/ask-user.ts";
 import { makeSearchToolsHandler } from "./tools/search-tools.ts";
 import { makeSelfHandler } from "./tools/self.ts";
 import { makeSubagentHandler } from "./tools/subagent.ts";
-import { createToolRunner, ToolSet, tools } from "./tools.ts";
+import { createToolRunner, isFileSystemTool, ToolSet, tools } from "./tools.ts";
 
 /**
  * Shared edge wiring for the Vise frontends (the interactive terminal driver
@@ -92,6 +93,11 @@ export interface EdgeSessionOptions {
   hookStore?: HookStore;
   /** The directory the session is rooted at; defaults to the process working directory. */
   root?: string;
+  /**
+   * A session with no working directory: the file and shell tools do not exist
+   * for it. Its stores and hooks live in a generated directory (`noFolderRoot`).
+   */
+  noFolder?: boolean;
 }
 
 /** The edge services a frontend needs after construction. */
@@ -122,10 +128,18 @@ export interface EdgeSession {
 export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
   // The session root: fixed for the life of the session (the web server hosts
   // sessions with different roots in one process).
-  const cwd = options.root ?? process.cwd();
-  const dataDir = dataDirFor(cwd);
+  const root = options.noFolder
+    ? noFolderRoot
+    : (options.root ?? process.cwd());
+  if (options.noFolder) mkdirSync(root, { recursive: true });
+  // The working directory the model sees; none for a session without one.
+  const cwd = options.noFolder ? undefined : root;
+  const sessionTools = options.noFolder
+    ? tools.filter((t) => !isFileSystemTool(t))
+    : tools;
+  const dataDir = dataDirFor(root);
   // Sessions that share a store share the same live hook arrays.
-  const hookStore = options.hookStore ?? new HookStore(cwd);
+  const hookStore = options.hookStore ?? new HookStore(root);
   const preTurnHooks = hookStore.pre;
   const postTurnHooks = hookStore.post;
 
@@ -155,7 +169,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     current: null as unknown as Session,
   };
   // Tool enablement is per session: each connection gets its own ToolSet.
-  const toolController = new ToolSet(tools, RISKY_TOOLS);
+  const toolController = new ToolSet(sessionTools, RISKY_TOOLS);
   const toolRunner = createToolRunner(
     {
       run_subagent: makeSubagentHandler(
@@ -166,7 +180,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
           run: (name: string, args: Record<string, unknown>) =>
             toolRunner.run(name, args),
         },
-        tools,
+        sessionTools,
         {
           onToken: options.onToken,
           onThinking: options.onThinking,
@@ -179,7 +193,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
         () => sessionRef.current.currentAbortSignal,
       ),
       ask_user: makeAskUserHandler(options.askUser),
-      search_tools: makeSearchToolsHandler(tools, (name) =>
+      search_tools: makeSearchToolsHandler(sessionTools, (name) =>
         toolController.isEnabled(name),
       ),
       ...makeBrowserHandlers(browser),
@@ -195,11 +209,12 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
       }),
     },
     toolController,
-    cwd,
+    root,
+    !options.noFolder,
   );
 
   const initialMessage = buildInitialMessage(cwd, dataDir);
-  const session = new Session(client, toolRunner, tools, {
+  const session = new Session(client, toolRunner, sessionTools, {
     cwd,
     context: client,
     modelController: client,

@@ -435,13 +435,18 @@ export function loadAgentsMd(dir: string): string {
  * edge value built at construction (invariant #2); the `Session` receives the
  * result as an opaque `initialMessage` string and injects it once.
  */
-export function buildInitialMessage(cwd: string, dataBase: string): string {
-  const initialTree = buildInitialTree(cwd);
-  const agentsMd = loadAgentsMd(cwd);
+export function buildInitialMessage(
+  cwd: string | undefined,
+  dataBase: string,
+): string {
+  const initialTree = cwd === undefined ? "" : buildInitialTree(cwd);
+  const agentsMd = cwd === undefined ? "" : loadAgentsMd(cwd);
   const availableProfiles = listProfiles(dataBase);
   const availableNotes = listNotes(dataBase);
   return (
-    `Here is the initial directory structure of the working directory:\n${initialTree}` +
+    (cwd === undefined
+      ? ""
+      : `Here is the initial directory structure of the working directory:\n${initialTree}`) +
     (agentsMd !== ""
       ? `\n\nHere are the agent instructions for this project (AGENTS.md):\n${agentsMd}`
       : "") +

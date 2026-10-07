@@ -19,8 +19,8 @@ export interface SelfInfo {
   backend: string;
   /** The model's identifier, read live (the model can switch via `/model`). */
   model: () => string;
-  /** The working directory the agent operates in. */
-  cwd: string;
+  /** The working directory the agent operates in; absent when it has none. */
+  cwd: string | undefined;
   /** The model's maximum context window in tokens, queried live. */
   contextMax: () => Promise<Result<number>>;
   /** The server's token count of the most recent prompt (how full the context is). */
@@ -61,7 +61,7 @@ export function makeSelfHandler(
     const lines: string[] = ["self:"];
     lines.push(`  backend: ${info.backend}`);
     lines.push(`  model: ${info.model()}`);
-    lines.push(`  working directory: ${info.cwd}`);
+    lines.push(`  working directory: ${info.cwd ?? "none (no file system)"}`);
 
     const max = await info.contextMax();
     if (max.ok) {

@@ -87,6 +87,11 @@ function resolveAgainstRoot(
   };
 }
 
+/** The tools that need a file system or a shell: absent from a session with no working directory. */
+const FILE_SYSTEM_CATEGORIES = ["files", "shell"];
+export const isFileSystemTool = (tool: Tool): boolean =>
+  FILE_SYSTEM_CATEGORIES.includes(tool.category ?? "");
+
 /** The built-in handlers for a session whose root directory is `root`. */
 function baseHandlers(root: string): Record<string, ToolHandler> {
   const notes = dataDirFor(root);
@@ -169,11 +174,17 @@ export function createToolRunner(
   extra: Record<string, ToolHandler> | undefined,
   toolController: ToolController,
   root: string = process.cwd(),
+  fileSystem = true,
 ): ToolRunner {
   const handlers: Record<string, ToolHandler> = {
     ...baseHandlers(root),
     ...extra,
   };
+  if (!fileSystem) {
+    for (const tool of tools) {
+      if (isFileSystemTool(tool)) delete handlers[tool.function.name];
+    }
+  }
   return {
     async run(name, args): Promise<string> {
       const handler = handlers[name];

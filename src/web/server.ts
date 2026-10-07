@@ -10,6 +10,7 @@ import type { BrowserBackend } from "../browser/types.ts";
 import { ChromiumBackend } from "../browser/chromium.ts";
 import { BrowserBridge } from "./browser-bridge.ts";
 import { type HookStore } from "../edge-sources.ts";
+import { noFolderRoot } from "../data-dir.ts";
 import { pickFolder, RootRegistry } from "./roots.ts";
 import { createEdgeSession } from "../wiring.ts";
 import { listDir, readTextFile, watchRoot } from "./files.ts";
@@ -166,9 +167,12 @@ export function startWebServer(port = 3000): void {
           return new Response("forbidden", { status: 403 });
         }
         // The root is fixed here, when the connection opens, and never changes.
-        const root = roots.resolve(url.searchParams.get("root"));
+        // `?root=none` is a session with no working directory at all.
+        const param = url.searchParams.get("root");
+        const noFolder = param === "none";
+        const root = noFolder ? noFolderRoot : roots.resolve(param);
         if (!root) return new Response("bad root", { status: 400 });
-        server.upgrade(req, { data: { root } });
+        server.upgrade(req, { data: { root, noFolder } });
         return;
       }
       if (url.pathname === "/api/fs" || url.pathname === "/api/file") {
@@ -187,16 +191,22 @@ export function startWebServer(port = 3000): void {
     },
     websocket: {
       open(ws) {
-        const root = ws.data.root;
+        const { root, noFolder } = ws.data;
         const hookStore = roots.acquire(root);
-        const conn = makeConnectionState(ws, browser, hookStore, root);
-        conn.send({ type: "root", path: root });
+        const conn = makeConnectionState(
+          ws,
+          browser,
+          hookStore,
+          root,
+          noFolder,
+        );
+        conn.send({ type: "root", path: noFolder ? "" : root, noFolder });
         // Tell the browser's file explorer whenever the project tree changes.
         // Any connection's hook edit refreshes every open hooks panel.
         const offHooks = hookStore.onChange(() => void pushHooks(conn));
-        const stopWatching = watchRoot(root, () =>
-          conn.send({ type: "fs_changed" }),
-        );
+        const stopWatching = noFolder
+          ? () => {}
+          : watchRoot(root, () => conn.send({ type: "fs_changed" }));
         conn.unwatch = () => {
           stopWatching();
           offHooks();
@@ -235,6 +245,8 @@ export function startWebServer(port = 3000): void {
 /** What a WebSocket carries from the upgrade: the session root it was opened with. */
 interface WsData {
   root: string;
+  /** No working directory: `root` is then only the generated store directory. */
+  noFolder: boolean;
 }
 
 interface ConnectionState {
@@ -255,6 +267,7 @@ function makeConnectionState(
   browser: BrowserBackend,
   hookStore: HookStore,
   root: string,
+  noFolder: boolean,
 ): ConnectionState {
   const send = (msg: Record<string, unknown>): void => {
     if (ws.readyState === 1) ws.send(JSON.stringify(msg)); // readyState 1 = OPEN
@@ -265,6 +278,7 @@ function makeConnectionState(
     browser,
     hookStore,
     root,
+    noFolder,
     onToken: (t) => {
       display.onToken(t);
       send({ type: "token", text: t });

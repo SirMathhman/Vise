@@ -11,6 +11,7 @@ interface WorkspaceMessage {
   tabs?: BrowserTab[];
   data?: string;
   message?: string;
+  noFolder?: boolean;
 }
 
 function el<T extends HTMLElement>(id: string): T {
@@ -36,8 +37,14 @@ export function createWorkspace(
   handle(message: WorkspaceMessage): boolean;
 } {
   const root = el<HTMLElement>("workspace");
+  // A session with no working directory has no project tree to list.
+  let noFolder = false;
+  const listProject = (): void => {
+    if (!noFolder) void explorer.open("");
+  };
   const showRoot = setupSessionRoot(
     el<HTMLButtonElement>("open-folder-btn"),
+    el<HTMLButtonElement>("no-folder-btn"),
     el<HTMLElement>("root-label"),
   );
   const browser = createBrowserView(
@@ -65,15 +72,18 @@ export function createWorkspace(
   return {
     toggle() {
       root.classList.toggle("hidden");
-      if (!root.classList.contains("hidden")) void explorer.open("");
+      if (!root.classList.contains("hidden")) listProject();
     },
     sync: () => send({ type: "browser_tabs" }),
     handle(message) {
       switch (message.type) {
         case "root":
           showRoot(message.path ?? "");
+          noFolder = message.noFolder === true;
+          document.body.classList.toggle("no-folder", noFolder);
           // The server serves a root only once a session is open on it, so list the project now.
-          if (!root.classList.contains("hidden")) void explorer.open("");
+          if (noFolder) root.classList.add("hidden");
+          else if (!root.classList.contains("hidden")) listProject();
           return true;
         case "fs_changed":
           void explorer.reload();
@@ -82,7 +92,7 @@ export function createWorkspace(
           // The agent opening a tab brings the workspace up so the user sees it.
           if (explorer.syncBrowserTabs(message.tabs ?? [])) {
             root.classList.remove("hidden");
-            void explorer.open("");
+            listProject();
           }
           return true;
         case "browser_frame":

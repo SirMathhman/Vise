@@ -927,6 +927,11 @@ body:has(#workspace:not(.hidden)) #files-btn {
   border-bottom-color: var(--accent);
 }
 
+/* A session with no working directory has no project tree. */
+.no-folder .fs-tree {
+  display: none;
+}
+
 .topbar-item:disabled {
   opacity: 0.4;
   cursor: default;
