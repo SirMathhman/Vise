@@ -616,12 +616,94 @@ body {
   text-decoration: underline;
 }
 
+.shell {
+  display: flex;
+  height: 100%;
+}
+
+.shell > #app {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.workspace {
+  flex: 1.4 1 0;
+  min-width: 0;
+  display: flex;
+  border-right: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.workspace.hidden ~ #app {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.fs-tree {
+  flex: 0 0 14rem;
+  overflow: auto;
+  padding: 0.5rem 0.75rem;
+  border-right: 1px solid var(--border);
+}
+
+.fs-viewer {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.fs-tabs {
+  display: flex;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+}
+
+.fs-tab {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.6rem;
+  cursor: pointer;
+  white-space: nowrap;
+  color: var(--dim);
+  border-right: 1px solid var(--border);
+}
+
+.fs-tab.active {
+  color: var(--text);
+  background: var(--bg);
+  box-shadow: inset 0 -2px var(--accent);
+}
+
+.fs-tab-close {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
 .files-viewer {
-  margin: 0.5rem 0 0;
-  padding: 0.5rem;
-  max-height: 40vh;
+  flex: 1;
+  margin: 0;
+  padding: 0.5rem 0.75rem;
   overflow: auto;
   white-space: pre;
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  background: var(--bg);
+}
+
+.fs-row.open {
+  color: var(--accent);
+}
+
+@media (max-width: 800px) {
+  .shell {
+    flex-direction: column;
+  }
+  .workspace {
+    flex: 1 1 50%;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
 }

@@ -7,6 +7,17 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
+    <div id="shell" class="shell">
+      <aside id="workspace" class="workspace hidden">
+        <nav class="fs-tree">
+          <div id="files-path" class="files-path"></div>
+          <ul id="files-list" class="tools-list"></ul>
+        </nav>
+        <section class="fs-viewer">
+          <div id="files-tabs" class="fs-tabs" role="tablist"></div>
+          <pre id="files-viewer" class="files-viewer"></pre>
+        </section>
+      </aside>
     <main id="app">
       <header class="bar">
         <span class="brand">vise</span>
@@ -58,11 +69,6 @@
         <button id="files-btn" class="tools-btn" title="Toggle file explorer">
           files
         </button>
-        <div id="files-panel" class="tools-panel hidden">
-          <div id="files-path" class="files-path"></div>
-          <ul id="files-list" class="tools-list"></ul>
-          <pre id="files-viewer" class="files-viewer hidden"></pre>
-        </div>
         <div id="tools-panel" class="tools-panel hidden">
           <ul id="tools-list" class="tools-list"></ul>
         </div>
@@ -134,6 +140,7 @@
         </div>
       </section>
     </main>
+    </div>
     <script type="module" src="dist/app.js"></script>
   </body>
 </html>
