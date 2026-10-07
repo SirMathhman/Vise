@@ -1,17 +1,17 @@
-import { spawn, spawnSync } from "node:child_process";
-import {
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-} from "node:fs";
+import { spawn } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
 import { dataDir } from "../data-dir.ts";
 import { CdpConnection } from "./cdp.ts";
 import * as actions from "./cdp-actions.ts";
 import { dispatchInput, startScreencast } from "./cdp-view.ts";
 import { PlaywrightSession } from "./playwright.ts";
+import {
+  killBrowsersUsing,
+  killTree,
+  removeProfile,
+  sweepStaleProfiles,
+} from "./processes.ts";
 import type {
   BrowserBackend,
   BrowserInput,
@@ -272,25 +272,12 @@ export class ChromiumBackend implements BrowserBackend {
     const pid = this.browserPid;
     this.browserPid = null;
     if (pid !== null) {
-      spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"], {
-        windowsHide: true,
-      });
+      killTree(pid);
     } else if (this.profile) {
       // Launch failed or was cut short before the pid was known.
       killBrowsersUsing(basename(this.profile));
     }
-    if (this.profile) {
-      try {
-        rmSync(this.profile, {
-          recursive: true,
-          force: true,
-          maxRetries: 10,
-          retryDelay: 100,
-        });
-      } catch {
-        // a helper still holds a file; the stale profile is harmless
-      }
-    }
+    if (this.profile) removeProfile(this.profile);
     this.profile = null;
   }
 
@@ -441,49 +428,4 @@ async function readPortFile(file: string): Promise<[string, string]> {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   throw new Error("browser did not start (no DevToolsActivePort)");
-}
-
-/** True when a process with this pid is running. */
-function isAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** Remove profiles left by Vise processes that are no longer running. */
-function sweepStaleProfiles(): void {
-  if (!existsSync(dataDir)) return;
-  for (const name of readdirSync(dataDir)) {
-    const pid = Number(name.replace("browser-profile-", ""));
-    if (!name.startsWith("browser-profile-") || isAlive(pid)) continue;
-    // A crashed run leaves its headless browser holding the profile; reap it first.
-    killBrowsersUsing(name);
-    try {
-      rmSync(join(dataDir, name), { recursive: true, force: true });
-    } catch {
-      // a straggler helper still holds a file; try again next launch
-    }
-  }
-}
-
-/**
- * Kill every Edge/Chrome process whose command line names this profile
- * directory. Matching on the (pid-unique) profile name finds a browser whose
- * owner died without recording its pid, and cannot hit a reused pid.
- */
-function killBrowsersUsing(profileName: string): void {
-  const script =
-    "Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'msedge.exe' -or $_.Name -eq 'chrome.exe') -and $_.CommandLine -like '*" +
-    profileName +
-    "*' -and $_.CommandLine -notlike '*--type=*' } | ForEach-Object { taskkill /PID $_.ProcessId /T /F | Out-Null }";
-  spawnSync(
-    "powershell.exe",
-    ["-NoProfile", "-NonInteractive", "-Command", script],
-    {
-      windowsHide: true,
-    },
-  );
 }
