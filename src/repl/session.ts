@@ -593,9 +593,10 @@ export class Session {
    * Exposed for the edge's `self` tool, which reports the agent's identity
    * (the session's active-profile state is otherwise private).
    */
-  getActiveProfile(): string | undefined {
-    return this.activeProfile;
-  }
+  /** The id of the saved session this conversation writes to, once it has one. */
+  getSessionId = (): string | undefined => this.sessionId;
+
+  getActiveProfile = (): string | undefined => this.activeProfile;
 
   /**
    * Start a fresh conversation: the system message and project map only, a new

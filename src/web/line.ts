@@ -1,6 +1,8 @@
 import type { Picture } from "../core/errors.ts";
 import { formatCompactionFailure, formatError } from "../output/format.ts";
 import type { LineResult, Session } from "../repl/session.ts";
+import { loadSession } from "../sessions.ts";
+import type { SessionLease } from "./leases.ts";
 import { acceptPictures } from "./pictures.ts";
 
 /** What a web connection's turns need to run: the session, how streaming is tracked, and a way to reply. */
@@ -16,8 +18,21 @@ export interface LineConnection {
   display: LineDisplay;
   send: Send;
   edge: { canSeeImages: () => Promise<boolean> };
+  /** The folder's saved sessions and which of them this connection has open. */
+  dataDir: string;
+  lease: SessionLease;
   /** Lines run one after another: each waits for the previous turn. */
   chain: Promise<void>;
+}
+
+/** An error when `/resume <session>` names a session another connection has open; undefined otherwise. */
+function openElsewhere(conn: LineConnection, line: string): string | undefined {
+  const ref = /^\/resume\s+(\S+)/.exec(line.trim())?.[1];
+  if (!ref) return undefined;
+  const saved = loadSession(conn.dataDir, ref);
+  return saved.ok && conn.lease.heldByOther(saved.value.id)
+    ? `session '${saved.value.name}' is open in another tab; close that tab or resume another session`
+    : undefined;
 }
 
 /**
@@ -52,7 +67,14 @@ export function queueLine(
         reply("the active model cannot see images (switch with /model)");
         return;
       }
+      const taken = openElsewhere(conn, text);
+      if (taken) {
+        reply(taken);
+        return;
+      }
       await handleLine(session, display, send, text, id, pictures);
+      // Whatever session the conversation now writes to is this connection's to keep.
+      conn.lease.follow(session.getSessionId());
     })
     .catch((error: unknown) => reply(String(error)));
 }

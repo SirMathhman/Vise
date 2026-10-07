@@ -25,7 +25,9 @@ export function replayHistory(
   restored: { name?: string; entries?: HistoryEntry[] },
 ): void {
   transcript.clear();
-  transcript.addLine("system", `resumed session '${restored.name ?? ""}'`);
+  if (restored.name) {
+    transcript.addLine("system", `resumed session '${restored.name}'`);
+  }
   for (const entry of restored.entries ?? []) {
     switch (entry.kind) {
       case "user":

@@ -12,6 +12,7 @@ import { ExtensionHub, isExtensionOrigin } from "./ext-hub.ts";
 import { loadExtensionToken, tokensMatch } from "./ext-token.ts";
 import { handleNoteMessage } from "./notes-api.ts";
 import { queueLine } from "./line.ts";
+import { SessionLease } from "./leases.ts";
 import { queueAutoResume } from "./resume.ts";
 import { imageStore } from "../image-store.ts";
 import { NoteStore } from "../note-store.ts";
@@ -341,6 +342,7 @@ export function startWebServer(port = 3000): void {
         const conn = state.get(ws);
         if (!conn) return;
         conn.unwatch();
+        conn.lease.release();
         conn.edge.cleanup();
         void conn.bridge.dispose();
         conn.session.interrupt();
@@ -387,6 +389,8 @@ interface ConnectionState {
   unwatch: () => void;
   /** The session's data directory (its notes live there). */
   dataDir: string;
+  /** The saved sessions this connection works in (one connection at a time per session). */
+  lease: SessionLease;
 }
 
 function makeConnectionState(
@@ -455,6 +459,7 @@ function makeConnectionState(
     bridge: new BrowserBridge(browser, send, shared),
     unwatch: () => {},
     dataDir: dataDirFor(root),
+    lease: new SessionLease(root),
   };
 }
 
