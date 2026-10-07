@@ -951,3 +951,13 @@ body {
   border-bottom-color: var(--accent);
 }
 
+
+.root-label {
+  margin-left: auto;
+  color: var(--dim);
+  font-size: 0.85em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl; /* keep the end of a long path visible */
+}

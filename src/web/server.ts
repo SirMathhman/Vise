@@ -9,7 +9,8 @@ import { saveProfileWhitelist } from "../repl/profile-tools.ts";
 import type { BrowserBackend } from "../browser/types.ts";
 import { ChromiumBackend } from "../browser/chromium.ts";
 import { BrowserBridge } from "./browser-bridge.ts";
-import { HookStore } from "../edge-sources.ts";
+import { type HookStore } from "../edge-sources.ts";
+import { pickFolder, RootRegistry } from "./roots.ts";
 import { createEdgeSession } from "../wiring.ts";
 import { listDir, readTextFile, watchRoot } from "./files.ts";
 
@@ -87,9 +88,13 @@ function isLocalHost(host: string | null, port: number): boolean {
   return host === `localhost:${port}` || host === `127.0.0.1:${port}`;
 }
 
-/** Read-only explorer API: `/api/fs?path=` lists a directory, `/api/file?path=` reads a file. */
-function serveExplorer(url: URL): Response {
-  const root = process.cwd();
+/** Read-only explorer API: `/api/fs?path=` lists a directory, `/api/file?path=` reads a file (both take the session `root`). */
+function serveExplorer(url: URL, roots: RootRegistry): Response {
+  // The session root the page was opened with; only roots in use are served.
+  const root = roots.resolve(url.searchParams.get("root"));
+  if (!root || !roots.isActive(root)) {
+    return Response.json({ error: "unknown root" }, { status: 403 });
+  }
   const rel = url.searchParams.get("path") ?? "";
   const result =
     url.pathname === "/api/fs" ? listDir(root, rel) : readTextFile(root, rel);
@@ -143,10 +148,10 @@ class WebDisplay {
 export function startWebServer(port = 3000): void {
   // One browser shared by every connection; it launches on first tool use.
   const browser = new ChromiumBackend();
-  // One hook store for every connection, so a hook edit is seen by all of them.
-  const hookStore = new HookStore();
-  const state = new Map<ServerWebSocket<unknown>, ConnectionState>();
-  const server = Bun.serve({
+  // Sessions are rooted where they were opened; the default is where the server started.
+  const roots = new RootRegistry(process.cwd());
+  const state = new Map<ServerWebSocket<WsData>, ConnectionState>();
+  const server = Bun.serve<WsData>({
     port,
     hostname: "127.0.0.1",
     fetch(req, server) {
@@ -160,26 +165,42 @@ export function startWebServer(port = 3000): void {
         if (!isLocalOrigin(req.headers.get("origin"), port)) {
           return new Response("forbidden", { status: 403 });
         }
-        server.upgrade(req);
+        // The root is fixed here, when the connection opens, and never changes.
+        const root = roots.resolve(url.searchParams.get("root"));
+        if (!root) return new Response("bad root", { status: 400 });
+        server.upgrade(req, { data: { root } });
         return;
       }
       if (url.pathname === "/api/fs" || url.pathname === "/api/file") {
-        return serveExplorer(url);
+        return serveExplorer(url, roots);
+      }
+      if (url.pathname === "/api/pick-folder" && req.method === "POST") {
+        // Opens the OS folder dialog; only the Vise page itself may ask.
+        if (!isLocalOrigin(req.headers.get("origin"), port)) {
+          return new Response("forbidden", { status: 403 });
+        }
+        return pickFolder(roots.defaultRoot).then((path) =>
+          Response.json({ path }),
+        );
       }
       return serveStatic(url.pathname);
     },
     websocket: {
       open(ws) {
-        const conn = makeConnectionState(ws, browser, hookStore);
+        const root = ws.data.root;
+        const hookStore = roots.acquire(root);
+        const conn = makeConnectionState(ws, browser, hookStore, root);
+        conn.send({ type: "root", path: root });
         // Tell the browser's file explorer whenever the project tree changes.
         // Any connection's hook edit refreshes every open hooks panel.
         const offHooks = hookStore.onChange(() => void pushHooks(conn));
-        const stopWatching = watchRoot(process.cwd(), () =>
+        const stopWatching = watchRoot(root, () =>
           conn.send({ type: "fs_changed" }),
         );
         conn.unwatch = () => {
           stopWatching();
           offHooks();
+          roots.release(root);
         };
         state.set(ws, conn);
       },
@@ -211,8 +232,13 @@ export function startWebServer(port = 3000): void {
   }
 }
 
+/** What a WebSocket carries from the upgrade: the session root it was opened with. */
+interface WsData {
+  root: string;
+}
+
 interface ConnectionState {
-  ws: ServerWebSocket<unknown>;
+  ws: ServerWebSocket<WsData>;
   send: (msg: Record<string, unknown>) => void;
   prompter: WebUserPrompter;
   display: WebDisplay;
@@ -225,9 +251,10 @@ interface ConnectionState {
 }
 
 function makeConnectionState(
-  ws: ServerWebSocket<unknown>,
+  ws: ServerWebSocket<WsData>,
   browser: BrowserBackend,
   hookStore: HookStore,
+  root: string,
 ): ConnectionState {
   const send = (msg: Record<string, unknown>): void => {
     if (ws.readyState === 1) ws.send(JSON.stringify(msg)); // readyState 1 = OPEN
@@ -237,6 +264,7 @@ function makeConnectionState(
   const edge = createEdgeSession({
     browser,
     hookStore,
+    root,
     onToken: (t) => {
       display.onToken(t);
       send({ type: "token", text: t });

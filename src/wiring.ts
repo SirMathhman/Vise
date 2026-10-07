@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { ChromiumBackend } from "./browser/chromium.ts";
 import type { BrowserBackend } from "./browser/types.ts";
 import { BACKEND, LlmClient } from "./client/llm.ts";
-import { dataDir } from "./data-dir.ts";
+import { dataDirFor } from "./data-dir.ts";
 import type { Client, ToolController } from "./core/engine.ts";
 import type { PromptProgress } from "./core/errors.ts";
 import {
@@ -90,6 +90,8 @@ export interface EdgeSessionOptions {
    * connection (edits are then seen by all); otherwise a private one is made.
    */
   hookStore?: HookStore;
+  /** The directory the session is rooted at; defaults to the process working directory. */
+  root?: string;
 }
 
 /** The edge services a frontend needs after construction. */
@@ -118,9 +120,12 @@ export interface EdgeSession {
  * closures.
  */
 export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
-  const cwd = process.cwd();
+  // The session root: fixed for the life of the session (the web server hosts
+  // sessions with different roots in one process).
+  const cwd = options.root ?? process.cwd();
+  const dataDir = dataDirFor(cwd);
   // Sessions that share a store share the same live hook arrays.
-  const hookStore = options.hookStore ?? new HookStore();
+  const hookStore = options.hookStore ?? new HookStore(cwd);
   const preTurnHooks = hookStore.pre;
   const postTurnHooks = hookStore.post;
 
@@ -190,6 +195,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
       }),
     },
     toolController,
+    cwd,
   );
 
   const initialMessage = buildInitialMessage(cwd, dataDir);

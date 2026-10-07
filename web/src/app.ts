@@ -66,7 +66,7 @@ const askSend = requiredElement<HTMLButtonElement>("ask-send");
 
 const transcript = createTranscript(log, renderMarkdown);
 const socket = new WebSocket(
-  `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`,
+  `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws${location.search}`,
 );
 const hooksPanel = createHooksPanel(
   requiredElement<HTMLElement>("hooks-body"),

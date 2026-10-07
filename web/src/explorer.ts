@@ -158,7 +158,7 @@ async function fetchEntries(
   // On a refresh the old rows stay until the new ones arrive (no flicker).
   if (ul.childElementCount === 0) showMessage(ul, "Loading…", "loading");
   try {
-    const res = await fetch(`/api/fs?path=${encodeURIComponent(path)}`);
+    const res = await fetch(api("/api/fs", path));
     const body = (await res.json()) as {
       entries?: DirEntry[];
       error?: string;
@@ -335,7 +335,7 @@ function dirRow(
 /** Read a file's text through the API; null when it cannot be read. */
 async function readFile(path: string): Promise<string | null> {
   try {
-    const res = await fetch(`/api/file?path=${encodeURIComponent(path)}`);
+    const res = await fetch(api("/api/file", path));
     const body: unknown = await res.json();
     if (typeof body === "string") return body;
     return (body as { error?: string }).error ?? null;
@@ -400,4 +400,12 @@ function tabLabel(file: OpenFile): string {
   if (file.mode === "url") return new URL(file.path).host;
   if (file.mode === "browser") return file.title || file.text || "browser";
   return file.path.slice(file.path.lastIndexOf("/") + 1);
+}
+
+/** An explorer API URL for `path`, scoped to this page's session root (the `root` query parameter, when given). */
+function api(endpoint: string, path: string): string {
+  const params = new URLSearchParams({ path });
+  const root = new URLSearchParams(location.search).get("root");
+  if (root) params.set("root", root);
+  return `${endpoint}?${params}`;
 }

@@ -1,4 +1,4 @@
-import { dataDir } from "../data-dir.ts";
+import { dataDir as defaultDataDir } from "../data-dir.ts";
 import {
   deleteNote,
   formatNoteEntry,
@@ -8,7 +8,10 @@ import {
 } from "../notes.ts";
 import { errStr } from "./files.ts";
 
-export function listNotesTool(_args: Record<string, unknown>): string {
+export function listNotesTool(
+  _args: Record<string, unknown>,
+  dataDir: string = defaultDataDir,
+): string {
   try {
     const notes = listNotes(dataDir);
     if (notes.length === 0) return "no notes";
@@ -18,7 +21,10 @@ export function listNotesTool(_args: Record<string, unknown>): string {
   }
 }
 
-export function readNoteTool(args: Record<string, unknown>): string {
+export function readNoteTool(
+  args: Record<string, unknown>,
+  dataDir: string = defaultDataDir,
+): string {
   const noteName = String(args.name ?? "");
   try {
     return readNote(dataDir, noteName) ?? "";
@@ -27,7 +33,10 @@ export function readNoteTool(args: Record<string, unknown>): string {
   }
 }
 
-export function saveNoteTool(args: Record<string, unknown>): string {
+export function saveNoteTool(
+  args: Record<string, unknown>,
+  dataDir: string = defaultDataDir,
+): string {
   const noteName = String(args.name ?? "");
   const body = String(args.body ?? "");
   try {
@@ -38,7 +47,10 @@ export function saveNoteTool(args: Record<string, unknown>): string {
   }
 }
 
-export function deleteNoteTool(args: Record<string, unknown>): string {
+export function deleteNoteTool(
+  args: Record<string, unknown>,
+  dataDir: string = defaultDataDir,
+): string {
   const noteName = String(args.name ?? "");
   try {
     deleteNote(dataDir, noteName);

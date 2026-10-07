@@ -1,4 +1,6 @@
+import { resolve } from "node:path";
 import type { Tool, ToolController, ToolRunner } from "./core/engine.ts";
+import { dataDirFor } from "./data-dir.ts";
 import { agentTools } from "./tools/defs/agent.ts";
 import { browserTools } from "./tools/defs/browser.ts";
 import { fileTools } from "./tools/defs/files.ts";
@@ -61,23 +63,50 @@ export type ToolHandler = (
  * via createToolRunner.
  */
 
-const baseHandlers: Record<string, ToolHandler> = {
-  list_directory: listDirectory,
-  read_file: readFile,
-  create_file: createFile,
-  edit_file: editFile,
-  delete_file: deleteFile,
-  delete_directory: deleteDirectory,
-  run_powershell: runPowershell,
-  wait_for_process: waitForProcess,
-  kill_process: killProcess,
-  find_files: findFiles,
-  search_files: searchFiles,
-  list_notes: listNotesTool,
-  read_note: readNoteTool,
-  save_note: saveNoteTool,
-  delete_note: deleteNoteTool,
-};
+/**
+ * Resolve the named path arguments against the session `root`, so a relative
+ * path (or a missing one, meaning "here") means a place inside the root no
+ * matter what the process working directory is. Absolute paths pass through.
+ */
+function rooted(
+  root: string,
+  keys: string[],
+  handler: ToolHandler,
+): ToolHandler {
+  return (args) => {
+    const next = { ...args };
+    for (const key of keys) {
+      const value = args[key];
+      if (value === undefined) next[key] = root;
+      else if (typeof value === "string" && value !== "") {
+        next[key] = resolve(root, value);
+      }
+    }
+    return handler(next);
+  };
+}
+
+/** The built-in handlers for a session whose root directory is `root`. */
+function baseHandlers(root: string): Record<string, ToolHandler> {
+  const notes = dataDirFor(root);
+  return {
+    list_directory: rooted(root, ["path"], listDirectory),
+    read_file: rooted(root, ["path"], readFile),
+    create_file: rooted(root, ["path"], createFile),
+    edit_file: rooted(root, ["path"], editFile),
+    delete_file: rooted(root, ["path"], deleteFile),
+    delete_directory: rooted(root, ["path"], deleteDirectory),
+    run_powershell: (args) => runPowershell(args, root),
+    wait_for_process: waitForProcess,
+    kill_process: killProcess,
+    find_files: rooted(root, ["root"], findFiles),
+    search_files: rooted(root, ["path"], searchFiles),
+    list_notes: (args) => listNotesTool(args, notes),
+    read_note: (args) => readNoteTool(args, notes),
+    save_note: (args) => saveNoteTool(args, notes),
+    delete_note: (args) => deleteNoteTool(args, notes),
+  };
+}
 
 /**
  * Edge implementation of the core `ToolController`. Tracks which tools are
@@ -138,8 +167,12 @@ export class ToolSet implements ToolController {
 export function createToolRunner(
   extra: Record<string, ToolHandler> | undefined,
   toolController: ToolController,
+  root: string = process.cwd(),
 ): ToolRunner {
-  const handlers: Record<string, ToolHandler> = { ...baseHandlers, ...extra };
+  const handlers: Record<string, ToolHandler> = {
+    ...baseHandlers(root),
+    ...extra,
+  };
   return {
     async run(name, args): Promise<string> {
       const handler = handlers[name];

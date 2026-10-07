@@ -1,10 +1,12 @@
 import { createBrowserView } from "./browser-view.ts";
 import { createExplorer } from "./explorer.ts";
+import { setupSessionRoot } from "./session-root.ts";
 import type { BrowserTab } from "./open-tabs.ts";
 
 /** The slice of a server message the workspace reacts to. */
 interface WorkspaceMessage {
   type: string;
+  path?: string;
   tab?: number;
   tabs?: BrowserTab[];
   data?: string;
@@ -34,6 +36,10 @@ export function createWorkspace(
   handle(message: WorkspaceMessage): boolean;
 } {
   const root = el<HTMLElement>("workspace");
+  const showRoot = setupSessionRoot(
+    el<HTMLButtonElement>("open-folder-btn"),
+    el<HTMLElement>("root-label"),
+  );
   const browser = createBrowserView(
     el<HTMLElement>("files-browser"),
     el<HTMLImageElement>("files-browser-img"),
@@ -56,9 +62,6 @@ export function createWorkspace(
     },
   );
 
-  // The workspace is visible by default, so list the project right away.
-  if (!root.classList.contains("hidden")) void explorer.open("");
-
   return {
     toggle() {
       root.classList.toggle("hidden");
@@ -67,6 +70,11 @@ export function createWorkspace(
     sync: () => send({ type: "browser_tabs" }),
     handle(message) {
       switch (message.type) {
+        case "root":
+          showRoot(message.path ?? "");
+          // The server serves a root only once a session is open on it, so list the project now.
+          if (!root.classList.contains("hidden")) void explorer.open("");
+          return true;
         case "fs_changed":
           void explorer.reload();
           return true;

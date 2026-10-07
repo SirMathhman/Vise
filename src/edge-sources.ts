@@ -125,7 +125,11 @@ export class FileProfileSource implements ProfileSource {
  * The command is read from `.viserc.json` in the working directory.
  */
 export class ShellHook implements PreTurnHook, PostTurnHook {
-  constructor(readonly command: string) {}
+  /** `cwd` is the session root the hook runs in. */
+  constructor(
+    readonly command: string,
+    private readonly cwd?: string,
+  ) {}
 
   async run(): Promise<string> {
     try {
@@ -134,12 +138,11 @@ export class ShellHook implements PreTurnHook, PostTurnHook {
         stdout: string;
         stderr: string;
       }>((resolve, reject) => {
-        const proc = spawn("powershell.exe", [
-          "-NoProfile",
-          "-NonInteractive",
-          "-Command",
-          this.command,
-        ]);
+        const proc = spawn(
+          "powershell.exe",
+          ["-NoProfile", "-NonInteractive", "-Command", this.command],
+          { cwd: this.cwd },
+        );
         let stdout = "";
         let stderr = "";
         let timedOut = false;
@@ -309,8 +312,11 @@ export class FileWorkflowSource implements WorkflowSource {
  * single command string or an array of command strings. An array produces
  * one hook per entry; all hooks of a kind run in parallel each turn.
  */
-export function loadHookCommands(): { pre?: string[]; post?: string[] } {
-  const configPath = join(process.cwd(), ".viserc.json");
+export function loadHookCommands(root: string = process.cwd()): {
+  pre?: string[];
+  post?: string[];
+} {
+  const configPath = join(root, ".viserc.json");
   if (!existsSync(configPath)) return {};
   try {
     const raw = readFileSync(configPath, "utf8");
@@ -352,10 +358,11 @@ export class HookStore implements HookSource {
   readonly post: ShellHook[];
   private readonly listeners = new Set<() => void>();
 
-  constructor() {
-    const commands = loadHookCommands();
-    this.pre = (commands.pre ?? []).map((c) => new ShellHook(c));
-    this.post = (commands.post ?? []).map((c) => new ShellHook(c));
+  /** The hooks of the project at `root` (its `.viserc.json`); defaults to the working directory. */
+  constructor(private readonly root: string = process.cwd()) {
+    const commands = loadHookCommands(root);
+    this.pre = (commands.pre ?? []).map((c) => new ShellHook(c, root));
+    this.post = (commands.post ?? []).map((c) => new ShellHook(c, root));
   }
 
   /** Be told after every successful save (frontends refresh their hook views). */
@@ -370,11 +377,11 @@ export class HookStore implements HookSource {
   }
 
   create(command: string): ShellHook {
-    return new ShellHook(command);
+    return new ShellHook(command, this.root);
   }
 
   save(hooks: { pre: string[]; post: string[] }): Result<void> {
-    const configPath = join(process.cwd(), ".viserc.json");
+    const configPath = join(this.root, ".viserc.json");
     try {
       const config: Record<string, unknown> = existsSync(configPath)
         ? JSON.parse(readFileSync(configPath, "utf8"))

@@ -7,4 +7,9 @@ import { join } from "node:path";
  * excludes `.vise/` from the startup directory tree (dotfiles are skipped by
  * `fs-tree.ts`).
  */
-export const dataDir = join(process.cwd(), ".vise");
+export const dataDir = dataDirFor(process.cwd());
+
+/** The data directory of a session rooted at `root` (the web server hosts sessions with different roots). */
+export function dataDirFor(root: string): string {
+  return join(root, ".vise");
+}
