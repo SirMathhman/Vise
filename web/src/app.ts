@@ -63,6 +63,7 @@ const explorer = createExplorer(
     mdView: requiredElement<HTMLElement>("files-md"),
     frame: requiredElement<HTMLIFrameElement>("files-frame"),
     urlForm: requiredElement<HTMLFormElement>("files-url-form"),
+    addrForm: requiredElement<HTMLFormElement>("files-addr-form"),
     modeBtn: requiredElement<HTMLButtonElement>("files-mode"),
     renderMarkdown,
   },

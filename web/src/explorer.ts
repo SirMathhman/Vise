@@ -17,6 +17,8 @@ interface MarkdownView {
   mdView: HTMLElement;
   frame: HTMLIFrameElement;
   urlForm: HTMLFormElement;
+  /** Address bar for the active URL tab; navigates that tab in place. */
+  addrForm: HTMLFormElement;
   modeBtn: HTMLButtonElement;
   renderMarkdown(source: string): string;
 }
@@ -68,12 +70,15 @@ export function createExplorer(
   function openUrl(raw: string): void {
     const url = normalizeUrl(raw);
     if (!url) return;
-    const existing = files.findIndex((f) => f.path === url);
-    if (existing < 0) files.push({ path: url, text: "", mode: "url" });
-    activate(existing < 0 ? files.length - 1 : existing);
+    activate(urlTabIndex(files, url));
   }
 
-  bindUrlForm(md.urlForm, openUrl);
+  bindUrlForm(md.urlForm, openUrl, true);
+  bindUrlForm(
+    md.addrForm,
+    (raw) => navigateTab(files[active], raw, md.frame) && redraw(),
+    false,
+  );
 
   async function openFile(path: string): Promise<void> {
     const existing = files.findIndex((f) => f.path === path);
@@ -123,10 +128,7 @@ export function createExplorer(
   }
 
   md.modeBtn.addEventListener("click", () => {
-    const file = files[active];
-    if (!file || file.mode === "url") return;
-    file.mode = file.mode === "markdown" ? "text" : "markdown";
-    renderViewer(files[active], viewer, md);
+    if (toggleMode(files[active])) renderViewer(files[active], viewer, md);
   });
 
   /** Re-highlight tree rows after the open set changes. */
@@ -242,6 +244,11 @@ function renderViewer(
   viewer.classList.toggle("hidden", rendered || url);
   md.mdView.classList.toggle("hidden", !rendered);
   md.frame.classList.toggle("hidden", !url);
+  md.addrForm.classList.toggle("hidden", !url);
+  if (file && url) {
+    (md.addrForm.elements.namedItem("url") as HTMLInputElement).value =
+      file.path;
+  }
   if (file && rendered) md.mdView.innerHTML = md.renderMarkdown(file.text);
   // Only (re)load the frame when its target changes, so tab switches don't reset the page.
   if (file && url && md.frame.getAttribute("src") !== file.path) {
@@ -329,13 +336,14 @@ async function readFile(path: string): Promise<string | null> {
 /** Call `onOpen` with the typed URL when the form is submitted, then clear the field. */
 function bindUrlForm(
   form: HTMLFormElement,
-  onOpen: (url: string) => void,
+  onOpen: (url: string) => unknown,
+  clear: boolean,
 ): void {
   form.addEventListener("submit", (e) => {
     e.preventDefault();
     const input = form.elements.namedItem("url") as HTMLInputElement;
     onOpen(input.value);
-    input.value = "";
+    if (clear) input.value = "";
   });
 }
 
@@ -348,4 +356,32 @@ async function rereadFiles(files: OpenFile[]): Promise<void> {
       if (text !== null) file.text = text;
     }),
   );
+}
+
+/** Point a URL tab at a new address in place. False when the tab or address is unusable. */
+function navigateTab(
+  file: OpenFile | undefined,
+  raw: string,
+  frame: HTMLIFrameElement,
+): boolean {
+  const url = normalizeUrl(raw);
+  if (!url || file?.mode !== "url") return false;
+  file.path = url;
+  // Setting src explicitly also reloads when the address is unchanged.
+  frame.setAttribute("src", url);
+  return true;
+}
+
+/** Flip a file between text and rendered markdown. False for URL tabs or no tab. */
+function toggleMode(file: OpenFile | undefined): boolean {
+  if (!file || file.mode === "url") return false;
+  file.mode = file.mode === "markdown" ? "text" : "markdown";
+  return true;
+}
+
+/** Index of the tab showing `url`, adding one when none exists. */
+function urlTabIndex(files: OpenFile[], url: string): number {
+  const index = files.findIndex((f) => f.path === url);
+  if (index >= 0) return index;
+  return files.push({ path: url, text: "", mode: "url" }) - 1;
 }

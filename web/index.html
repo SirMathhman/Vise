@@ -32,6 +32,16 @@
               title="Toggle markdown / text view"
             ></button>
           </div>
+          <form id="files-addr-form" class="fs-url hidden">
+            <input
+              name="url"
+              class="save-input"
+              type="text"
+              aria-label="Address of this tab"
+              autocomplete="off"
+            />
+            <button type="submit" class="save-btn">go</button>
+          </form>
           <pre id="files-viewer" class="files-viewer"></pre>
           <iframe id="files-frame" class="files-frame hidden" title="Web page"></iframe>
           <div id="files-md" class="files-viewer md-view hidden"></div>
