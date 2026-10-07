@@ -11,6 +11,8 @@ interface ResultMessage {
   context?: string;
   streamed?: boolean;
   compactionWarning?: string;
+  /** Echo of the request id, set for editor-side requests only. */
+  id?: string;
 }
 
 interface ServerMessage extends ResultMessage {
@@ -66,9 +68,18 @@ let pendingToolList = false;
 let pendingSessionList = false;
 let pendingToolToggle: string | null = null;
 let pendingBurstSync = false;
-// Replies to editor-side requests, in the order they were sent.
+// Editor-side requests awaiting their reply, keyed by request id. They share
+// the connection's queue with the model's turns, so replies are matched by id,
+// never by arrival order.
 type EditorReply = "tools" | { name: string; save: boolean };
-const editorReplies: EditorReply[] = [];
+const editorReplies = new Map<string, EditorReply>();
+let nextRequestId = 0;
+
+function requestEditor(text: string, reply: EditorReply): void {
+  const id = `ed${nextRequestId++}`;
+  editorReplies.set(id, reply);
+  socket.send(JSON.stringify({ type: "line", text, id }));
+}
 
 function setStatus(text: string): void {
   status.textContent = text;
@@ -106,12 +117,13 @@ function deleteSession(name: string): void {
 const panels = createPanels({ resumeSession, deleteSession });
 const profileEditor = createProfileEditor({
   loadWhitelist(name) {
-    editorReplies.push({ name, save: false });
-    requestLine(`/profile ${name} tools`);
+    requestEditor(`/profile ${name} tools`, { name, save: false });
   },
   saveWhitelist(name, tools) {
-    editorReplies.push({ name, save: true });
-    requestLine(`/profile ${name} tools ${tools ? tools.join(",") : "all"}`);
+    requestEditor(`/profile ${name} tools ${tools ? tools.join(",") : "all"}`, {
+      name,
+      save: true,
+    });
   },
   toolNames: () => panels.toolNames(),
   profileNames: () =>
@@ -186,12 +198,13 @@ function setBurstPressed(on: boolean): void {
 }
 
 function refreshTools(): void {
-  editorReplies.push("tools");
-  requestLine("/tool");
+  requestEditor("/tool", "tools");
 }
 
 function handleEditorResult(message: ResultMessage): boolean {
-  const next = editorReplies.shift();
+  const next =
+    message.id === undefined ? undefined : editorReplies.get(message.id);
+  if (message.id !== undefined) editorReplies.delete(message.id);
   if (next === undefined) return false;
   if (next === "tools") {
     if (message.ok && message.value) panels.populateToolsPanel(message.value);

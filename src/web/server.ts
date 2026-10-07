@@ -199,7 +199,7 @@ function handleMessage(
   message: string | Buffer<ArrayBuffer> | null,
 ): void {
   const { send, prompter, display, session } = conn;
-  let msg: { type: string; text?: string };
+  let msg: { type: string; text?: string; id?: string };
   try {
     msg = JSON.parse(String(message));
   } catch {
@@ -215,7 +215,7 @@ function handleMessage(
   }
   if (msg.type !== "line" || typeof msg.text !== "string") return;
   conn.chain = conn.chain
-    .then(() => handleLine(session, display, send, msg.text ?? ""))
+    .then(() => handleLine(session, display, send, msg.text ?? "", msg.id))
     .catch((error: unknown) => {
       send({ type: "result", ok: false, error: String(error) });
     });
@@ -226,6 +226,7 @@ async function handleLine(
   display: WebDisplay,
   send: (msg: Record<string, unknown>) => void,
   line: string,
+  id?: string,
 ): Promise<void> {
   display.reset();
   const result: LineResult = await session.handleLine(line);
@@ -246,6 +247,7 @@ async function handleLine(
       type: "result",
       ok: true,
       value: result.value,
+      ...(id === undefined ? {} : { id }),
       streamed: display.wasStreamed,
       context,
       ...(result.compactionWarning
@@ -257,7 +259,12 @@ async function handleLine(
         : {}),
     });
   } else {
-    send({ type: "result", ok: false, error: formatError(result.error) });
+    send({
+      type: "result",
+      ok: false,
+      error: formatError(result.error),
+      ...(id === undefined ? {} : { id }),
+    });
   }
 }
 

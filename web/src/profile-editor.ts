@@ -43,6 +43,19 @@ export function createProfileEditor(
   const save = document.getElementById("pe-save") as HTMLButtonElement;
   const status = document.getElementById("pe-status") as HTMLElement;
   let statusTimer: ReturnType<typeof setTimeout> | undefined;
+  let waitingHint: ReturnType<typeof setTimeout> | undefined;
+
+  // `pending` keeps the text up until the reply replaces it; otherwise it
+  // clears itself after a few seconds.
+  function showStatus(text: string, error = false, pending = false): void {
+    clearTimeout(statusTimer);
+    if (!pending) clearTimeout(waitingHint);
+    status.textContent = text;
+    status.classList.toggle("error", error);
+    if (text !== "saving…" && !pending) {
+      statusTimer = setTimeout(() => (status.textContent = ""), 3000);
+    }
+  }
   const checkAll = document.getElementById("pe-check-all") as HTMLButtonElement;
   const uncheckAll = document.getElementById(
     "pe-uncheck-all",
@@ -103,16 +116,23 @@ export function createProfileEditor(
     // Every tool ticked means no restriction.
     const tools = checked();
     const all = tools.length === actions.toolNames().length;
+    // Requests share one queue with the model's turns, so a save can wait
+    // behind a running turn; say so instead of looking dead.
+    showStatus("saving…");
+    waitingHint = setTimeout(
+      () =>
+        showStatus(
+          "still waiting: the server is busy with another request",
+          false,
+          true,
+        ),
+      4000,
+    );
     actions.saveWhitelist(select.value, all ? undefined : tools);
   });
 
   return {
-    showStatus(text, error = false) {
-      clearTimeout(statusTimer);
-      status.textContent = text;
-      status.classList.toggle("error", error);
-      statusTimer = setTimeout(() => (status.textContent = ""), 3000);
-    },
+    showStatus: (text, error) => showStatus(text, error),
     showWhitelist(name, text) {
       if (name !== select.value) return;
       const allowed = parseWhitelist(text);
