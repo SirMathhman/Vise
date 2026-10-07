@@ -63,7 +63,9 @@ export class RlUserPrompter implements UserPrompter {
         });
         lines.push("");
       }
-      lines.push(multiSelect ? "Answer (separate multiple with commas): " : "Answer: ");
+      lines.push(
+        multiSelect ? "Answer (separate multiple with commas): " : "Answer: ",
+      );
 
       const answerLine = lines[lines.length - 1] as string;
       process.stdout.write(red("ask_user: "));
@@ -119,7 +121,9 @@ export function makeAskUserHandler(
       options = raw.filter((o): o is string => typeof o === "string");
     }
 
-    const multiSelect = typeof args["multi_select"] === "boolean" && args["multi_select"] === true;
+    const multiSelect =
+      typeof args["multi_select"] === "boolean" &&
+      args["multi_select"] === true;
 
     const answer = await prompter.ask({ question, options, multiSelect });
     if (answer === "") {

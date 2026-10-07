@@ -23,13 +23,22 @@ export const fileTools: Tool[] = [
     type: "function",
     function: {
       name: "read_file",
-      description: "Read the full contents of a file from a given path",
+      description:
+        "Read a file from a given path. A small file is returned whole. A file over 250 lines (or about 20,000 characters) is returned as its first 250 lines with a note saying how many remain; pass `offset` (and optionally `limit`) to read further, or use search_files to find what you need.",
       parameters: {
         type: "object",
         properties: {
           path: {
             type: "string",
             description: "Path of the file to read",
+          },
+          offset: {
+            type: "integer",
+            description: "Line to start at, counting from 1 (optional)",
+          },
+          limit: {
+            type: "integer",
+            description: "How many lines to read, at most 250 (optional)",
           },
         },
         required: ["path"],

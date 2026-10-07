@@ -1,8 +1,12 @@
 import type { BrowserBackend, TabInfo } from "../browser/types.ts";
 import { errStr } from "./files.ts";
 
-/** Page text returned to the model is capped so one tool result cannot fill the context. */
-const MAX_TEXT_CHARS = 20_000;
+/**
+ * Page text is returned whole up to this size: a long page is not cut here but
+ * saved to a temp file by the tool runner (see `TempStore`), where the model can
+ * search and page through all of it. The cap only guards against absurd pages.
+ */
+const MAX_TEXT_CHARS = 2_000_000;
 
 type Handler = (args: Record<string, unknown>) => Promise<string>;
 

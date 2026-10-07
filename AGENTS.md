@@ -46,7 +46,8 @@ register it in the `baseHandlers` map in `src/tools.ts` (or pass it as an
 on edge services constructed later, such as the subagent handler's `Client`
 or the `ask_user` handler's `RlUserPrompter`).
 
-- Files: `list_directory`, `read_file`, `create_file`, `edit_file`,
+- Large tool results (more than 250 lines or about 20,000 characters, `isTooLarge` in `src/tools/temp-store.ts`) are not shown to the model: `createToolRunner` saves them to the session's temp directory (`TempStore`, under the OS temp folder `vise/<id>`; not persistent: removed by `EdgeSession.cleanup()` when the session ends, stale ones swept after a day) and returns the first lines plus how to read the rest. The temp tools `read_temp` (name, offset, limit; at most 250 lines), `search_temp` (regex over one or all saved files, at most 100 matches) and `list_temp` are core tools (`CORE_TOOLS`), are not file-system tools, and so exist in every session including ones with no working directory; their own output is bounded and never spilled.
+- Files (`read_file` takes optional `offset`/`limit` lines; a file over 250 lines or about 20,000 characters comes back as its first 250 lines with a pointer to the rest, a small one whole): `list_directory`, `read_file`, `create_file`, `edit_file`,
   `delete_file`, `delete_directory`, `find_files` (recursive regex name match),
   `search_files` (recursive regex content search, file or directory)
 - Shell: `run_powershell` (Windows-only, foreground 60s SIGTERM timeout; `background: true` spawns a background process and returns a numeric process id), `wait_for_process` (block on a background process up to a timeout, in ms), `kill_process` (SIGTERM a background process)

@@ -21,6 +21,9 @@ const CORE_TOOLS = new Set([
   "run_powershell",
   "ask_user",
   "search_tools",
+  "read_temp",
+  "search_temp",
+  "list_temp",
 ]);
 
 const MAX_RESULTS = 5;

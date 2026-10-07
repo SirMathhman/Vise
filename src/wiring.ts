@@ -21,6 +21,7 @@ import {
   IN_TURN_COMPACTION_THRESHOLD,
 } from "./repl/compaction.ts";
 import { Session } from "./repl/session.ts";
+import { TempStore, tempHandlers } from "./tools/temp-store.ts";
 import type { GoalEvent } from "./repl/goal-loop.ts";
 import { makeBrowserHandlers } from "./tools/browser.ts";
 import { makeAskUserHandler, type UserPrompter } from "./tools/ask-user.ts";
@@ -121,6 +122,8 @@ export interface EdgeSession {
   toolController: ToolController;
   /** The profile store (also used for unqueued whitelist edits). */
   profileSource: ProfileSource;
+  /** Delete the session's temp directory (big tool results saved for the model). */
+  cleanup: () => void;
   /** The pre-turn hook commands from `.viserc.json`. */
   preTurnHooks: string[];
   /** The post-turn hook commands from `.viserc.json`. */
@@ -219,6 +222,8 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
   };
   // Tool enablement is per session: each connection gets its own ToolSet.
   const toolController = new ToolSet(sessionTools, RISKY_TOOLS);
+  // Tool results too big to show go here instead; the temp tools read them back.
+  const temp = new TempStore();
   const toolRunner = createToolRunner(
     {
       run_subagent: makeSubagentHandler(
@@ -239,6 +244,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
         toolController.isEnabled(name),
       ),
       ...makeBrowserHandlers(browser),
+      ...tempHandlers(temp),
       self: makeSelfHandler({
         backend: BACKEND,
         model: () => client.getModel(),
@@ -253,6 +259,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     toolController,
     root,
     sessionTools,
+    temp,
   );
 
   const initialMessage = buildInitialMessage(cwd, dataDir);
@@ -283,6 +290,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     browser,
     toolController,
     profileSource,
+    cleanup: () => temp.dispose(),
     preTurnHooks: preTurnHooks.map((h) => h.command),
     postTurnHooks: postTurnHooks.map((h) => h.command),
   };

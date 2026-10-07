@@ -5,6 +5,7 @@ import { agentTools } from "./tools/defs/agent.ts";
 import { browserTools } from "./tools/defs/browser.ts";
 import { fileTools } from "./tools/defs/files.ts";
 import { noteTools } from "./tools/defs/notes.ts";
+import { tempTools } from "./tools/defs/temp.ts";
 import { shellTools } from "./tools/defs/shell.ts";
 import {
   createFile,
@@ -24,6 +25,7 @@ import {
 } from "./tools/notes-tool.ts";
 import { deferTools, searchToolsDef } from "./tools/search-tools.ts";
 import { killProcess, runPowershell, waitForProcess } from "./tools/shell.ts";
+import { isTooLarge, type TempStore } from "./tools/temp-store.ts";
 
 /** Tag every tool in a definition group with its category. */
 const inCategory = (category: string, defs: Tool[]): Tool[] =>
@@ -42,6 +44,7 @@ const allTools: Tool[] = [
   ...inCategory("files", needsFileSystem(fileTools)),
   ...inCategory("shell", needsFileSystem(shellTools)),
   ...inCategory("notes", noteTools),
+  ...inCategory("temp", tempTools),
   ...inCategory(
     "agent",
     agentTools.filter((t) => t.function.name !== "run_subagent"),
@@ -125,6 +128,8 @@ function baseHandlers(root: string): Record<string, ToolHandler> {
   };
 }
 
+const TEMP_TOOLS = new Set(["read_temp", "search_temp", "list_temp"]);
+
 /**
  * Edge implementation of the core `ToolController`. Tracks which tools are
  * enabled (default: all). The full set of tool definitions is always sent
@@ -186,6 +191,8 @@ export function createToolRunner(
   toolController: ToolController,
   root: string = process.cwd(),
   toolDefs: Tool[] = tools,
+  /** Where a result too big to show goes instead (the temp tools read it back). */
+  spill?: TempStore,
 ): ToolRunner {
   const handlers: Record<string, ToolHandler> = {
     ...baseHandlers(root),
@@ -205,7 +212,11 @@ export function createToolRunner(
       if (!toolController.isEnabled(name)) {
         return `error: tool ${name} is disabled`;
       }
-      return handler(args);
+      const result = await handler(args);
+      // The temp tools bound their own output; everything else too big to show is saved instead.
+      return spill && !TEMP_TOOLS.has(name) && isTooLarge(result)
+        ? spill.spill(name, result)
+        : result;
     },
   };
 }

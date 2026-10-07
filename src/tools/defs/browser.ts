@@ -59,7 +59,7 @@ export const browserTools: Tool[] = [
     function: {
       name: "browser_read",
       description:
-        "Read a browser tab's current page: its visible text (long pages are truncated) followed by an outline of the visible interactive elements, each with a ref such as e3. Pass a ref to browser_click, browser_hover, browser_drag or browser_type. Refs are valid until the page navigates; read again for fresh ones.",
+        "Read a browser tab's current page: its visible text (a long page is saved to a temp file; search or page through it with search_temp and read_temp) followed by an outline of the visible interactive elements, each with a ref such as e3. Pass a ref to browser_click, browser_hover, browser_drag or browser_type. Refs are valid until the page navigates; read again for fresh ones.",
       parameters: {
         type: "object",
         properties: {

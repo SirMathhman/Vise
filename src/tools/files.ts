@@ -1,3 +1,4 @@
+import { isTooLarge, MAX_CHARS, MAX_LINES } from "./temp-store.ts";
 import {
   existsSync,
   mkdirSync,
@@ -23,9 +24,37 @@ export function listDirectory(args: Record<string, unknown>): string {
   }
 }
 
+/**
+ * Read a file, or `limit` lines of it from line `offset`. A small file comes
+ * back whole; a big one (or a range) comes back as at most `MAX_LINES` lines
+ * and `MAX_CHARS` characters with a header and a pointer to the rest, so one
+ * read can never flood the context.
+ */
 export function readFile(args: Record<string, unknown>): string {
   try {
-    return readFileSync(String(args.path ?? ""), "utf8");
+    const text = readFileSync(String(args.path ?? ""), "utf8");
+    const ranged =
+      typeof args.offset === "number" || typeof args.limit === "number";
+    if (!ranged && !isTooLarge(text)) return text;
+    const all = text.split(/\r?\n/);
+    const num = (v: unknown, fallback: number): number =>
+      typeof v === "number" && Number.isFinite(v) ? Math.floor(v) : fallback;
+    const from = Math.max(1, num(args.offset, 1));
+    if (all.length < from) {
+      return `error: the file has ${all.length} lines; there is nothing at line ${from}`;
+    }
+    const count = Math.min(MAX_LINES, Math.max(1, num(args.limit, MAX_LINES)));
+    let shown = all.slice(from - 1, from - 1 + count).join("\n");
+    let last = Math.min(all.length, from - 1 + count);
+    if (shown.length > MAX_CHARS) {
+      shown = shown.slice(0, MAX_CHARS);
+      last = from - 1 + shown.split("\n").length;
+    }
+    const more =
+      last < all.length
+        ? `\n[${all.length - last} more lines: continue with offset ${last + 1}]`
+        : "";
+    return `[lines ${from}-${last} of ${all.length}]\n${shown}${more}`;
   } catch (err) {
     return errStr(err);
   }

@@ -307,6 +307,7 @@ export function startWebServer(port = 3000): void {
         const conn = state.get(ws);
         if (!conn) return;
         conn.unwatch();
+        conn.edge.cleanup();
         void conn.bridge.dispose();
         conn.session.interrupt();
         conn.prompter.settle("");
