@@ -215,7 +215,8 @@ export function parseToolCalls(content: string): {
 
 /**
  * Wrap a token callback so streamed output stops at the first call delimiter
- * (call text is parsed from the final message, not shown to the user).
+ * (call text is parsed from the final message, not shown to the user) and the
+ * `DONE` marker is dropped wherever it appears.
  */
 export function hideCalls(
   onToken?: (token: string) => void,
@@ -223,26 +224,31 @@ export function hideCalls(
   if (!onToken) return undefined;
   let held = "";
   let hidden = false;
+  const show = (text: string): void => {
+    const clean = text.replaceAll(DONE, "");
+    if (clean) onToken(clean);
+  };
   return (token) => {
     if (hidden) return;
     held += token;
     const at = held.indexOf(CALL_OPEN);
     if (at >= 0) {
       hidden = true;
-      if (at > 0) onToken(held.slice(0, at));
+      show(held.slice(0, at));
       return;
     }
-    // Keep back any tail that could still become the delimiter.
+    // Keep back any tail that could still become a delimiter or marker.
     let keep = 0;
     for (let n = Math.min(CALL_OPEN.length - 1, held.length); n > 0; n--) {
-      if (CALL_OPEN.startsWith(held.slice(held.length - n))) {
+      const tail = held.slice(held.length - n);
+      if (CALL_OPEN.startsWith(tail) || DONE.startsWith(tail)) {
         keep = n;
         break;
       }
     }
     const emit = held.slice(0, held.length - keep);
     held = held.slice(held.length - keep);
-    if (emit) onToken(emit);
+    show(emit);
   };
 }
 

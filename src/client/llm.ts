@@ -346,7 +346,8 @@ export class LlmClient implements Client {
     if (useTools) {
       Object.assign(body, toolRequestFields(tools, isToolEnabled, act));
     }
-    const thought = collectThinking(onThinking);
+    // An act round shows the user nothing; its reasoning is only captured.
+    const thought = collectThinking(act ? undefined : onThinking);
     if (responseSchema) {
       body.response_format = {
         type: "json_schema",

@@ -75,3 +75,12 @@ describe("burst helpers (edge)", () => {
     expect(g).not.toContain("t0");
   });
 });
+
+describe("hideCalls done marker (edge)", () => {
+  test("drops <done/> even when split across tokens", () => {
+    const seen: string[] = [];
+    const f = hideCalls((t) => seen.push(t));
+    for (const t of ["a<do", "ne/>b"]) f?.(t);
+    expect(seen.join("")).toBe("ab");
+  });
+});
