@@ -124,7 +124,7 @@ function deriveSessionName(message: string): string {
 }
 
 export type { SessionOptions } from "./session-options.ts";
-import type { SessionOptions } from "./session-options.ts";
+import { systemMessageFor, type SessionOptions } from "./session-options.ts";
 
 /**
  * Owns the conversation state (the growing messages array) and handles
@@ -202,13 +202,7 @@ export class Session {
     this.initialMessage = options.initialMessage;
     this.sessionSource = options.sessionSource;
     this.onMaxRounds = options.onMaxRounds;
-    this.systemMessage = {
-      role: "system",
-      content:
-        options.cwd === undefined
-          ? "This session has no working directory and no file system access."
-          : `Working directory: ${options.cwd}`,
-    };
+    this.systemMessage = systemMessageFor(options);
     this.messages = [this.systemMessage];
     if (this.initialMessage !== undefined && this.initialMessage !== "") {
       this.messages.push({ role: "user", content: this.initialMessage });

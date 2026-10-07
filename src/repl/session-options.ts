@@ -21,6 +21,11 @@ import type {
  * a new optional field, not a new positional parameter.
  */
 export interface SessionOptions {
+  /**
+   * Instructions that lead the system message whatever the profile (the edge
+   * supplies them; absent, the system message is just the working directory line).
+   */
+  systemPrompt?: string;
   /** The working directory; absent for a session with no file system. */
   cwd?: string;
   context: ContextSource;
@@ -83,4 +88,16 @@ export interface SessionOptions {
    * (subagents), the turn ends without prompting.
    */
   onMaxRounds?: (question: string) => Promise<boolean>;
+}
+
+/** The system message: the edge's instructions (if any), then where the session works. */
+export function systemMessageFor(
+  options: Pick<SessionOptions, "cwd" | "systemPrompt">,
+): { role: "system"; content: string } {
+  const where =
+    options.cwd === undefined
+      ? "This session has no working directory and no file system access."
+      : `Working directory: ${options.cwd}`;
+  const lead = options.systemPrompt ? `${options.systemPrompt}\n\n` : "";
+  return { role: "system", content: lead + where };
 }

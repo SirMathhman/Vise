@@ -5,6 +5,7 @@ import { ChromiumBackend } from "./browser/chromium.ts";
 import type { BrowserBackend } from "./browser/types.ts";
 import { BACKEND, LlmClient } from "./client/llm.ts";
 import { dataDirFor, globalDataDir, noFolderRoot } from "./data-dir.ts";
+import { GLOBAL_PROMPT } from "./global-prompt.ts";
 import type { Client, ToolController, TurnCallbacks } from "./core/engine.ts";
 import type { PromptProgress } from "./core/errors.ts";
 import {
@@ -277,6 +278,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     // Every turn is checked against a goal unless the frontend opts out.
     goalChecking: options.goalChecking ?? true,
     initialMessage,
+    systemPrompt: GLOBAL_PROMPT,
     onMaxRounds: options.onMaxRounds,
   });
   sessionRef.current = session;
