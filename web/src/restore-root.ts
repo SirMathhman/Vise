@@ -6,7 +6,10 @@
  * browser: it is remembered when the server confirms a folder (`rememberRoot`)
  * and put back into the address here, before the page connects.
  *
- * Imported first by `app.ts`, so it acts before anything connects.
+ * Imported (through `workspace.ts`) before `app.ts` runs, so it acts before anything
+ * connects: when it redirects, it then holds the module graph back for good (a
+ * top-level `await` that never resolves), so the page being left never opens a
+ * connection, and no throwaway session is created on the server.
  */
 
 const KEY = "vise-root";
@@ -35,4 +38,5 @@ const saved = remembered();
 if (!params.has("root") && saved && saved !== NO_FOLDER) {
   params.set("root", saved);
   location.replace(`${location.pathname}?${params.toString()}`);
+  await new Promise<never>(() => undefined);
 }
