@@ -28,6 +28,9 @@ export class SwitchableBrowser implements BrowserBackend {
   private current: BrowserSettings;
   private readonly tabListeners = new Set<() => void>();
   private readonly settingsListeners = new Set<() => void>();
+  private readonly beforeSwitch = new Set<() => Promise<void> | void>();
+  /** Switches run one at a time, in the order they were asked for. */
+  private queue: Promise<unknown> = Promise.resolve();
 
   constructor(
     initial: BrowserSettings,
@@ -50,10 +53,33 @@ export class SwitchableBrowser implements BrowserBackend {
     return findFirefox() !== undefined;
   }
 
-  /** Switch engine/port: close the running browser, persist, and tell listeners. Returns an error message or null. */
-  async configure(next: BrowserSettings): Promise<string | null> {
+  /**
+   * Switch engine/port: close the running browser, persist, and tell listeners.
+   * Returns an error message or null. Calls are serialized, and asking for the
+   * settings already in effect does nothing (it would only close the tabs).
+   */
+  configure(next: BrowserSettings): Promise<string | null> {
+    const run = this.queue.then(() => this.apply(next));
+    this.queue = run.catch(() => undefined);
+    return run;
+  }
+
+  /** Be told just before the browser is closed by a switch (views of it must let go first). */
+  onBeforeSwitch(listener: () => Promise<void> | void): () => void {
+    this.beforeSwitch.add(listener);
+    return () => this.beforeSwitch.delete(listener);
+  }
+
+  private async apply(next: BrowserSettings): Promise<string | null> {
+    if (
+      next.engine === this.current.engine &&
+      next.firefoxPort === this.current.firefoxPort
+    ) {
+      return null;
+    }
     const saveError = this.store?.save(next) ?? null;
     if (saveError) return `could not save the browser settings: ${saveError}`;
+    for (const listener of this.beforeSwitch) await listener();
     const old = this.inner;
     this.offInner();
     this.current = next;

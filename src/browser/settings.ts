@@ -27,7 +27,12 @@ export function parseSettings(raw: unknown): BrowserSettings | string {
     r["engine"] === "firefox" ? "firefox" : "chromium";
   const port = r["firefoxPort"];
   if (port === undefined || port === null || port === "") return { engine };
-  const n = Number(port);
+  // Digits only: Number() would accept `true`, hex and exponent forms.
+  const n =
+    typeof port === "number" ||
+    (typeof port === "string" && /^\d+$/.test(port.trim()))
+      ? Number(port)
+      : NaN;
   if (!Number.isInteger(n) || n < 1 || n > 65535) {
     return "the Firefox port must be a whole number from 1 to 65535";
   }

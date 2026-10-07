@@ -89,6 +89,7 @@ export class BrowserBridge {
   private watchedTab: number | null = null;
   private readonly offTabs: () => void;
   private readonly offSettings: () => void;
+  private readonly offBeforeSwitch: () => void;
 
   /** `settings` (the shared switchable browser) enables the engine-settings messages. */
   constructor(
@@ -99,12 +100,16 @@ export class BrowserBridge {
     this.offTabs = browser.onTabsChanged(() => void this.pushTabs());
     this.offSettings =
       settings?.onSettingsChanged(() => this.pushSettings()) ?? (() => {});
+    // The live view belongs to the browser about to be closed: let go of it first.
+    this.offBeforeSwitch =
+      settings?.onBeforeSwitch(() => this.unwatch()) ?? (() => {});
   }
 
   /** Release the screencast and the tab-change subscription. */
   async dispose(): Promise<void> {
     this.offTabs();
     this.offSettings();
+    this.offBeforeSwitch();
     await this.unwatch();
   }
 
