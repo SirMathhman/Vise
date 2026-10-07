@@ -616,6 +616,16 @@ body {
   text-decoration: underline;
 }
 
+.fs-message {
+  color: var(--dim);
+  list-style: none;
+  padding: 0.2rem 0;
+}
+
+.fs-message.error {
+  color: var(--error);
+}
+
 .shell {
   display: flex;
   height: 100%;

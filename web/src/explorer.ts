@@ -24,25 +24,14 @@ export function createExplorer(
   let active = -1;
 
   async function open(path: string): Promise<void> {
-    const res = await fetch(`/api/fs?path=${encodeURIComponent(path)}`);
-    const body = (await res.json()) as { entries?: DirEntry[]; error?: string };
-    list.textContent = "";
-    if (!res.ok || !body.entries) {
-      list.appendChild(document.createElement("li")).textContent =
-        body.error ?? "error";
-      return;
-    }
-    pathEl.textContent = `/${path}`;
-    if (path) addRow("..", "", true, () => void open(parentOf(path)));
-    for (const entry of body.entries) {
-      const child = path ? `${path}/${entry.name}` : entry.name;
-      addRow(
-        entry.name,
-        child,
-        entry.dir,
-        () => void (entry.dir ? open(child) : openFile(child)),
-      );
-    }
+    await loadDirectory(
+      path,
+      pathEl,
+      list,
+      addRow,
+      (child) => void open(child),
+      (child) => void openFile(child),
+    );
   }
 
   function addRow(
@@ -108,6 +97,65 @@ export function createExplorer(
   }
 
   return { open };
+}
+
+async function loadDirectory(
+  path: string,
+  pathEl: HTMLElement,
+  list: HTMLUListElement,
+  addRow: (
+    name: string,
+    path: string,
+    dir: boolean,
+    onClick: () => void,
+  ) => void,
+  openDirectory: (path: string) => void,
+  openFile: (path: string) => void,
+): Promise<void> {
+  list.textContent = "";
+  showMessage(list, "Loading…", "loading");
+  let entries: DirEntry[];
+  try {
+    const res = await fetch(`/api/fs?path=${encodeURIComponent(path)}`);
+    const body = (await res.json()) as {
+      entries?: DirEntry[];
+      error?: string;
+    };
+    if (!res.ok || !body.entries) {
+      showMessage(list, body.error ?? "Unable to read this directory.", "error");
+      return;
+    }
+    entries = body.entries;
+  } catch {
+    showMessage(list, "Unable to load this directory.", "error");
+    return;
+  }
+
+  pathEl.textContent = `/${path}`;
+  list.textContent = "";
+  if (path) addRow("..", "", true, () => openDirectory(parentOf(path)));
+  if (entries.length === 0) {
+    showMessage(list, "No files or folders in this directory.", "empty");
+    return;
+  }
+  for (const entry of entries) {
+    const child = path ? `${path}/${entry.name}` : entry.name;
+    addRow(entry.name, child, entry.dir, () =>
+      entry.dir ? openDirectory(child) : openFile(child),
+    );
+  }
+}
+
+function showMessage(
+  list: HTMLUListElement,
+  text: string,
+  state: "loading" | "empty" | "error",
+): void {
+  const item = document.createElement("li");
+  item.className = `fs-message ${state}`;
+  item.setAttribute("role", state === "error" ? "alert" : "status");
+  item.textContent = text;
+  list.replaceChildren(item);
 }
 
 function parentOf(path: string): string {

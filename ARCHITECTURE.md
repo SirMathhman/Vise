@@ -101,6 +101,7 @@ src/
   web/
     main.ts         # web entry point (`bun run web`)
     server.ts       # Bun HTTP/WebSocket driver; one Session per connection
+    files.ts        # workspace-confined read-only handlers for `/api/fs` and `/api/file`
 web/
   index.html        # web UI shell
   src/
@@ -108,6 +109,7 @@ web/
     command-completions.ts # pure finite-choice slash-command completion
     socket.ts       # typed WebSocket protocol and connection lifecycle (target)
     panels.ts       # model/profile/tool/session UI state and rendering (target)
+    explorer.ts     # read-only file tree and tabbed file viewer over the explorer API
     composer.ts     # input, keyboard navigation, and suggestions (target)
     transcript.ts   # streamed conversation rendering and log operations
   dist/app.js       # generated browser bundle (not hand-edited)
@@ -254,10 +256,14 @@ Current implementation: `src/wiring.ts` constructs the shared edge services
 and `Session` via `createEdgeSession`. `index.ts` wires that session to the
 interactive `TerminalDriver`; `src/web/server.ts` is a second driver that
 serves `web/` and bridges browser turns and streaming events over WebSocket.
-Each web connection receives an independent edge session. The web UI is
-started with `bun run web` (default port 3000; `PORT` overrides it). The
-transport to the LLM remains in `src/client/llm.ts`. The non-TTY pipe/script
-driver and `cli.ts` remain future work.
+Each web connection receives an independent edge session. The web driver also
+exposes a read-only workspace explorer: `src/web/files.ts` confines `/api/fs`
+and `/api/file` requests to the working directory, while `web/src/explorer.ts`
+renders the directory tree and tabbed file viewer. The web UI is started with
+`bun run web` (default port 3000; `PORT` overrides it); `bun run dev:web`
+rebuilds the browser bundle and restarts the watched server on source changes.
+The transport to the LLM remains in `src/client/llm.ts`. The non-TTY
+pipe/script driver and `cli.ts` remain future work.
 
 The web driver's successful `result` message may include a formatted `context`
 snapshot (`used / window tokens` and percentage). The browser renders the most
