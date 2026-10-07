@@ -1,3 +1,4 @@
+import type { PageAction } from "./page-scripts.ts";
 import { ChromiumBackend } from "./chromium.ts";
 import { findFirefox, FirefoxBackend } from "./firefox.ts";
 import { textProbe, type PageProbe } from "./probe.ts";
@@ -126,12 +127,12 @@ export class SwitchableBrowser implements BrowserBackend {
       ? inner.uploadFiles(id, ref, paths)
       : Promise.reject(new Error("this browser engine cannot upload files"));
   }
-  selectOption(id: number, ref: string, wanted: string[]): Promise<string[]> {
+  runPageAction(id: number, action: PageAction): Promise<unknown> {
     const inner = this.inner;
-    return inner.selectOption
-      ? inner.selectOption(id, ref, wanted)
+    return inner.runPageAction
+      ? inner.runPageAction(id, action)
       : Promise.reject(
-          new Error("this browser engine cannot choose drop-down options"),
+          new Error("this browser engine cannot run page actions"),
         );
   }
   screenshot(id: number, fullPage: boolean): Promise<string> {

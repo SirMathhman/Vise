@@ -5,7 +5,11 @@ import { dataDir } from "../data-dir.ts";
 import { CdpConnection } from "./cdp.ts";
 import * as actions from "./cdp-actions.ts";
 import { dispatchInput, startScreencast } from "./cdp-view.ts";
-import { probeScript } from "./page-scripts.ts";
+import {
+  pageActionScript,
+  probeScript,
+  type PageAction,
+} from "./page-scripts.ts";
 import { PlaywrightSession } from "./playwright.ts";
 import type { PageProbe } from "./probe.ts";
 import {
@@ -139,16 +143,10 @@ export class ChromiumBackend implements BrowserBackend {
     );
   }
 
-  async selectOption(
-    id: number,
-    ref: string,
-    wanted: string[],
-  ): Promise<string[]> {
-    const chosen = await this.inTab(id, (cdp, session) =>
-      actions.selectOption(cdp, session, ref, wanted),
+  runPageAction(id: number, action: PageAction): Promise<unknown> {
+    return this.inTab(id, (cdp, session) =>
+      actions.evaluate(cdp, session, pageActionScript(action)),
     );
-    if (chosen === undefined) throw new Error("a dialog is open on that tab");
-    return chosen;
   }
 
   async screenshot(id: number, fullPage: boolean): Promise<string> {

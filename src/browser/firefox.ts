@@ -5,7 +5,11 @@ import { dataDir } from "../data-dir.ts";
 import { BidiConnection } from "./bidi.ts";
 import * as actions from "./bidi-actions.ts";
 import { dispatchInput, startScreencast } from "./bidi-view.ts";
-import { probeScript } from "./page-scripts.ts";
+import {
+  pageActionScript,
+  probeScript,
+  type PageAction,
+} from "./page-scripts.ts";
 import type { PageProbe } from "./probe.ts";
 import {
   killBrowsersUsing,
@@ -145,16 +149,10 @@ export class FirefoxBackend implements BrowserBackend {
     );
   }
 
-  async selectOption(
-    id: number,
-    ref: string,
-    wanted: string[],
-  ): Promise<string[]> {
-    const chosen = await this.inTab(id, (bidi, context) =>
-      actions.selectOption(bidi, context, ref, wanted),
+  runPageAction(id: number, action: PageAction): Promise<unknown> {
+    return this.inTab(id, (bidi, context) =>
+      actions.evalJson(bidi, context, pageActionScript(action)),
     );
-    if (chosen === undefined) throw new Error("a dialog is open on that tab");
-    return chosen;
   }
 
   async screenshot(id: number, fullPage: boolean): Promise<string> {

@@ -1,6 +1,7 @@
 import { stat } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import type { BrowserBackend, TabInfo } from "../browser/types.ts";
+import { selectedOrThrow } from "../browser/page-scripts.ts";
 import { waitHandlers } from "./browser-wait.ts";
 import { TabWatcher } from "./tab-watch.ts";
 import { describeImage, type ImageOutbox } from "./images.ts";
@@ -120,7 +121,7 @@ async function select(
   ref: string,
   args: Record<string, unknown>,
 ): Promise<string> {
-  if (!browser.selectOption) {
+  if (!browser.runPageAction) {
     throw new Error("this browser cannot choose drop-down options");
   }
   const wanted = Array.isArray(args["options"])
@@ -129,7 +130,15 @@ async function select(
       ? [String(args["option"])]
       : [];
   if (wanted.length === 0) throw new Error("'option' is required");
-  const chosen = await browser.selectOption(id, ref, wanted);
+  const result = await browser.runPageAction(id, {
+    name: "select",
+    ref,
+    wanted,
+  });
+  const chosen = selectedOrThrow(
+    ref,
+    result as Parameters<typeof selectedOrThrow>[1],
+  );
   return `selected ${chosen.map((c) => JSON.stringify(c)).join(", ")}`;
 }
 

@@ -468,6 +468,18 @@ Besides the browsers Vise launches itself, the agent can work in the user's own 
   core import restrictions aligned with the architecture invariants as modules
   are added; browser JavaScript should remain included in lint with its own
   environment globals.
+- **Page actions are data, not backend methods.** Done for `select`: a
+  `PageAction` in `page-scripts.ts` runs through one optional backend
+  capability, `runPageAction`, implemented once per protocol and forwarded once
+  by `SwitchableBrowser`; the extension builds the script from the named action
+  and never runs script text from the server. Still to do: move the other
+  widgets (combobox, checkbox/radio, date and contenteditable setters, the
+  first step of `uploadFiles`) onto it. Snapshot refs should carry a
+  page-generation stamp so a ref from before a re-render fails with "page
+  changed, read again" instead of acting on the wrong element; the outline
+  should be paged or filtered (by region or field) rather than capped
+  silently, and tool results should report repeated identical failures so the
+  loop can stop and ask the user.
 
 ## Performance
 

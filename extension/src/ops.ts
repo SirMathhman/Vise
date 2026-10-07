@@ -5,8 +5,8 @@ import {
   focusScript,
   fileInputProblem,
   fileInputScript,
-  selectedOrThrow,
-  selectScript,
+  pageActionScript,
+  type PageAction,
   SNAPSHOT_SCRIPT,
 } from "../../src/browser/page-scripts.ts";
 import {
@@ -214,15 +214,9 @@ export const ops: Record<string, (params: Params) => Promise<unknown>> = {
     if (press) await act(id, press);
   },
 
-  async selectOption({ tab, ref, wanted }) {
-    const id = requireOwned(tab);
-    const name = checkRef(ref);
-    const list = Array.isArray(wanted) ? wanted.map(String) : [];
-    const result = await run<Parameters<typeof selectedOrThrow>[1]>(
-      id,
-      selectScript(name, list),
-    );
-    return selectedOrThrow(name, result);
+  async pageAction({ tab, action }) {
+    // The script is built here from the named action; script text from the server is never run.
+    return run(requireOwned(tab), pageActionScript(action as PageAction));
   },
 
   async screenshot({ tab }) {

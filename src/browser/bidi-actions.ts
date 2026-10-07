@@ -5,8 +5,6 @@ import {
   fileInputProblem,
   fileInputScript,
   focusScript,
-  selectedOrThrow,
-  selectScript,
   REF_PATTERN,
   SNAPSHOT_SCRIPT,
 } from "./page-scripts.ts";
@@ -231,21 +229,6 @@ export async function uploadFiles(
     element: { sharedId },
     files: paths,
   });
-}
-
-/** Choose options of the `<select>` behind `ref`. */
-export async function selectOption(
-  bidi: BidiConnection,
-  context: string,
-  ref: string,
-  wanted: string[],
-): Promise<string[]> {
-  const result = await evalJson<Parameters<typeof selectedOrThrow>[1]>(
-    bidi,
-    context,
-    selectScript(checkRef(ref), wanted),
-  );
-  return selectedOrThrow(ref, result);
 }
 
 export interface TypeOptions {

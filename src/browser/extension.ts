@@ -1,3 +1,4 @@
+import type { PageAction } from "./page-scripts.ts";
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
 import type { PageProbe } from "./probe.ts";
@@ -110,8 +111,8 @@ export class ExtensionBackend implements BrowserBackend {
     await this.tab("click", { tab: id, ref });
   }
 
-  selectOption(id: number, ref: string, wanted: string[]): Promise<string[]> {
-    return this.tab("selectOption", { tab: id, ref, wanted });
+  runPageAction(id: number, action: PageAction): Promise<unknown> {
+    return this.tab("pageAction", { tab: id, action });
   }
 
   /** Only the visible part: the extension can capture just what the window shows. */

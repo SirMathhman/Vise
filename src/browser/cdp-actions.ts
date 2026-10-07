@@ -5,8 +5,6 @@ import {
   fileInputProblem,
   fileInputScript,
   focusScript,
-  selectedOrThrow,
-  selectScript,
   REF_PATTERN,
   SNAPSHOT_SCRIPT,
 } from "./page-scripts.ts";
@@ -32,7 +30,7 @@ const KEYS: Record<string, { code: string; keyCode: number; text: string }> = {
 
 export const PRESSABLE_KEYS = Object.keys(KEYS);
 
-async function evaluate<T>(
+export async function evaluate<T>(
   cdp: CdpConnection,
   sessionId: string,
   expression: string,
@@ -122,21 +120,6 @@ export async function uploadFiles(
     { files: paths, objectId: result.objectId },
     sessionId,
   );
-}
-
-/** Choose options of the `<select>` behind `ref`. */
-export async function selectOption(
-  cdp: CdpConnection,
-  sessionId: string,
-  ref: string,
-  wanted: string[],
-): Promise<string[]> {
-  const result = await evaluate<Parameters<typeof selectedOrThrow>[1]>(
-    cdp,
-    sessionId,
-    selectScript(checkRef(ref), wanted),
-  );
-  return selectedOrThrow(ref, result);
 }
 
 export async function hover(

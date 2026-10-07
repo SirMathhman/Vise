@@ -5,6 +5,7 @@
  * `ChromiumBackend` (Chrome DevTools Protocol).
  */
 
+import type { PageAction } from "./page-scripts.ts";
 import type { PageProbe } from "./probe.ts";
 
 /** One open page. `id` is a small stable number the model can quote back. */
@@ -81,11 +82,10 @@ export interface BrowserBackend {
    */
   screenshot?(id: number, fullPage: boolean): Promise<string>;
   /**
-   * Choose options of a `<select>` by value or visible text; returns the texts
-   * chosen and throws with the available options when none matches. Optional:
-   * a backend that cannot leaves it out.
+   * Run a page action (see `PageAction` in `page-scripts.ts`) in a tab and
+   * return what its script answered. Optional: a backend that cannot leaves it out.
    */
-  selectOption?(id: number, ref: string, wanted: string[]): Promise<string[]>;
+  runPageAction?(id: number, action: PageAction): Promise<unknown>;
   /** The dialog currently blocking a tab, if any. */
   pendingDialog(id: number): DialogInfo | null;
   /** Accept or dismiss the blocking dialog (`promptText` answers a prompt). */

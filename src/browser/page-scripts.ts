@@ -198,3 +198,28 @@ export function selectedOrThrow(
       );
   }
 }
+
+/**
+ * Page actions: an action on one ref'd element, run as a script in the page
+ * that answers with JSON. A new widget gets one entry here (and a tool); every
+ * backend runs it through `BrowserBackend.runPageAction`, so none needs its own
+ * method. The extension builds the script itself from the named action (it
+ * never runs script text sent by the server).
+ */
+export type PageAction = { name: "select"; ref: string; wanted: string[] };
+
+/** The script for an action; throws when its ref is not a valid one or the action is unknown. */
+export function pageActionScript(action: PageAction): string {
+  if (typeof action !== "object" || action === null) {
+    throw new Error("invalid page action");
+  }
+  if (!REF_PATTERN.test(String(action.ref))) {
+    throw new Error(`invalid ref: ${String(action.ref)}`);
+  }
+  switch (action.name) {
+    case "select":
+      return selectScript(action.ref, [...action.wanted].map(String));
+    default:
+      throw new Error(`unknown page action: ${String(action.name)}`);
+  }
+}
