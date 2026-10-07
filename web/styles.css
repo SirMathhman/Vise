@@ -737,3 +737,21 @@ body {
 .workspace.hidden {
   display: none;
 }
+
+.fs-children {
+  margin: 0;
+  padding: 0 0 0 1rem;
+  list-style: none;
+}
+
+.fs-children.hidden {
+  display: none;
+}
+
+.fs-dir {
+  user-select: none;
+}
+
+.fs-tree li {
+  display: block;
+}
