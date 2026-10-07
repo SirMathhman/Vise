@@ -5,6 +5,7 @@ import type {
   ContextSource,
   HookSource,
   ModelController,
+  ImageSource,
   NoteSource,
   PostTurnHook,
   PreTurnHook,
@@ -34,6 +35,8 @@ export interface SessionOptions {
   toolController?: ToolController;
   profileSource?: ProfileSource;
   noteSource?: NoteSource;
+  /** Loads the image files `/image <path>` attaches; without it that command is unavailable. */
+  imageSource?: ImageSource;
   workflowSource?: WorkflowSource;
   preTurnHooks: PreTurnHook[];
   postTurnHooks: PostTurnHook[];

@@ -1,6 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { basename, extname, isAbsolute, resolve } from "node:path";
-import type { Picture } from "../core/errors.ts";
+import type { Picture, Result } from "../core/errors.ts";
+import type { ImageSource } from "../repl/ports.ts";
 import { errStr } from "./files.ts";
 
 /**
@@ -141,4 +142,34 @@ export function makeImageHandlers(
       }
     },
   };
+}
+
+/** The `/image <path>` command's loader: reads the file, but only when the active model can see it. */
+export class FileImageSource implements ImageSource {
+  constructor(
+    /** What relative paths are resolved against; without one they must be absolute. */
+    private readonly cwd: string | undefined,
+    private readonly canSee: () => Promise<boolean>,
+  ) {}
+
+  async load(path: string): Promise<Result<Picture>> {
+    const fail = (body: string): Result<Picture> => ({
+      ok: false,
+      error: { kind: "malformed", body },
+    });
+    if (!(await this.canSee())) {
+      return fail("the active model cannot see images (switch with /model)");
+    }
+    if (!this.cwd && !isAbsolute(path)) {
+      return fail("there is no working directory, use an absolute path");
+    }
+    try {
+      return {
+        ok: true,
+        value: await readImageFile(this.cwd ? resolve(this.cwd, path) : path),
+      };
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : String(err));
+    }
+  }
 }

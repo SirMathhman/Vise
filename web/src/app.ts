@@ -1,3 +1,4 @@
+import { createAttachments } from "./attachments.ts";
 import { createHooksPanel } from "./hooks-panel.ts";
 import type { ResultMessage, ServerMessage } from "./server-message.ts";
 import { appendPicture } from "./lightbox.ts";
@@ -41,6 +42,14 @@ const askAnswer = requiredElement<HTMLInputElement>("ask-answer");
 const askSend = requiredElement<HTMLButtonElement>("ask-send");
 
 const transcript = createTranscript(log, renderMarkdown);
+const attachments = createAttachments({
+  input: requiredElement("input"),
+  dropZone: requiredElement("log").closest("main") ?? document.body,
+  list: requiredElement("attachments"),
+  button: requiredElement("attach"),
+  picker: requiredElement("attach-picker"),
+  say: (message) => transcript.addLine("error", message),
+});
 const socket = new WebSocket(
   `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws${location.search}`,
 );
@@ -114,11 +123,16 @@ function setBusy(next: boolean): void {
 }
 
 function sendLine(text: string): void {
-  if (!text.trim()) return;
+  const images = attachments.take();
+  // A picture alone is a message too.
+  const body =
+    text.trim() || (images.length > 0 ? "(see the attached image)" : "");
+  if (!body) return;
   hideSuggestions();
   setBusy(true);
-  transcript.addLine("user", text);
-  socket.send(JSON.stringify({ type: "line", text }));
+  transcript.addLine("user", body);
+  for (const image of images) appendPicture(transcript, image.uri, image.label);
+  socket.send(JSON.stringify({ type: "line", text: body, images }));
 }
 
 function resumeSession(name: string): void {

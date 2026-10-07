@@ -1,3 +1,4 @@
+import type { Picture } from "../core/errors.ts";
 import type { Client } from "../core/engine.ts";
 import type { Workflow, WorkflowScope } from "../core/workflow.ts";
 import type { Message, Result } from "../core/errors.ts";
@@ -89,6 +90,11 @@ export interface NoteSource {
     category?: string,
     scope?: "project" | "global",
   ): Promise<Result<string>>;
+}
+
+/** Edge-owned loading of an image file the user attaches with `/image <path>`. */
+export interface ImageSource {
+  load(path: string): Promise<Result<Picture>>;
 }
 
 /** Edge-owned workflow listing, loading, and creation. */

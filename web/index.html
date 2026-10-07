@@ -244,7 +244,24 @@
               role="listbox"
               aria-label="Slash command suggestions"
             ></ul>
+            <div id="attachments" class="attachments hidden"></div>
             <div class="composer-row">
+              <button
+                id="attach"
+                class="attach"
+                type="button"
+                title="Attach images (or paste or drop them)"
+                aria-label="Attach images"
+              >
+                📎
+              </button>
+              <input
+                id="attach-picker"
+                type="file"
+                accept="image/png,image/jpeg,image/gif,image/webp"
+                multiple
+                hidden
+              />
               <input
                 id="input"
                 class="input"

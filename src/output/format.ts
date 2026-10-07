@@ -164,6 +164,7 @@ export function formatHelp(opts: {
   );
   lines.push(
     "/goal [on|off|clear]  check each turn against a goal and keep going until it is met",
+    "/image <path>   attach an image file to your next message (clear: /image clear)",
   );
   if (opts.hasTools) {
     lines.push("/tool            list available tools");

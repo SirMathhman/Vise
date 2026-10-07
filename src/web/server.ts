@@ -2,13 +2,8 @@ import type { ServerWebSocket } from "bun";
 import { readFileSync } from "node:fs";
 import { extname, join } from "node:path";
 import { resolve } from "node:path";
-import {
-  formatCompactionFailure,
-  formatError,
-  formatGoalEvent,
-} from "../output/format.ts";
+import { formatError, formatGoalEvent } from "../output/format.ts";
 import type { AskRequest, UserPrompter } from "../tools/ask-user.ts";
-import type { LineResult } from "../repl/session.ts";
 import { saveProfileWhitelist } from "../repl/profile-tools.ts";
 import { BrowserSettingsStore } from "../browser/settings.ts";
 import { ExtensionBackend } from "../browser/extension.ts";
@@ -16,6 +11,7 @@ import type { BrowserBackend } from "../browser/types.ts";
 import { ExtensionHub, isExtensionOrigin } from "./ext-hub.ts";
 import { loadExtensionToken, tokensMatch } from "./ext-token.ts";
 import { handleNoteMessage } from "./notes-api.ts";
+import { queueLine } from "./line.ts";
 import { NoteStore } from "../note-store.ts";
 import { SwitchableBrowser } from "../browser/switchable.ts";
 import { BrowserBridge } from "./browser-bridge.ts";
@@ -449,6 +445,8 @@ interface WireMessage {
   tools?: string[] | null;
   /** `profile_tools`: read the current whitelist instead of writing one. */
   read?: boolean;
+  /** `line`: pictures attached to the message (data URIs; checked by `acceptPictures`). */
+  images?: unknown;
 }
 
 /**
@@ -492,7 +490,7 @@ function handleMessage(
   conn: ConnectionState,
   message: string | Buffer<ArrayBuffer> | null,
 ): void {
-  const { send, prompter, display, session } = conn;
+  const { send, prompter, session } = conn;
   let msg: WireMessage;
   try {
     msg = JSON.parse(String(message));
@@ -534,58 +532,7 @@ function handleMessage(
     return;
   }
   if (msg.type !== "line" || typeof msg.text !== "string") return;
-  conn.chain = conn.chain
-    .then(() => handleLine(session, display, send, msg.text ?? "", msg.id))
-    .catch((error: unknown) => {
-      send({ type: "result", ok: false, error: String(error) });
-    });
-}
-
-async function handleLine(
-  session: ReturnType<typeof createEdgeSession>["session"],
-  display: WebDisplay,
-  send: (msg: Record<string, unknown>) => void,
-  line: string,
-  id?: string,
-): Promise<void> {
-  display.reset();
-  const result: LineResult = await session.handleLine(line);
-  if (result === "exit") {
-    send({ type: "exit" });
-    return;
-  }
-  if (result.ok) {
-    // Read the live context fill after a successful turn so the client can
-    // display it. "/context" is a pure read (no model call, no conversation
-    // change), so this is safe to call inline.
-    let context: string | undefined;
-    const ctxResult = await session.handleLine("/context");
-    if (ctxResult !== "exit" && ctxResult.ok) {
-      context = ctxResult.value;
-    }
-    send({
-      type: "result",
-      ok: true,
-      value: result.value,
-      ...(id === undefined ? {} : { id }),
-      streamed: display.wasStreamed,
-      context,
-      ...(result.compactionWarning
-        ? {
-            compactionWarning: formatCompactionFailure(
-              result.compactionWarning,
-            ),
-          }
-        : {}),
-    });
-  } else {
-    send({
-      type: "result",
-      ok: false,
-      error: formatError(result.error),
-      ...(id === undefined ? {} : { id }),
-    });
-  }
+  queueLine(conn, msg.text, msg.id, msg.images);
 }
 
 export { startWebServer as default };

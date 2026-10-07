@@ -32,7 +32,11 @@ import { Session } from "./repl/session.ts";
 import { TempStore, tempHandlers } from "./tools/temp-store.ts";
 import type { GoalEvent } from "./repl/goal-loop.ts";
 import { makeBrowserHandlers } from "./tools/browser.ts";
-import { ImageOutbox, makeImageHandlers } from "./tools/images.ts";
+import {
+  FileImageSource,
+  ImageOutbox,
+  makeImageHandlers,
+} from "./tools/images.ts";
 import { makeAskUserHandler, type UserPrompter } from "./tools/ask-user.ts";
 import { makeSearchToolsHandler } from "./tools/search-tools.ts";
 import { makeSelfHandler } from "./tools/self.ts";
@@ -168,6 +172,8 @@ export interface EdgeSession {
   session: Session;
   /** The LLM transport (the sole network-I/O module). */
   client: Client;
+  /** Whether the active model can see images (asked live; the model can change). */
+  canSeeImages: () => Promise<boolean>;
   /** The integrated browser; the frontend closes it on shutdown. */
   browser: BrowserBackend;
   /** The model-facing tool enable/disable controller. */
@@ -272,9 +278,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
   // The `self` and `run_subagent` handlers also read the `Session` (active
   // profile, in-flight abort signal) that is constructed after the runner; the
   // `sessionRef` holder is filled before any turn runs.
-  const sessionRef: { current: Session } = {
-    current: null as unknown as Session,
-  };
+  const sessionRef = { current: null as unknown as Session };
   const { toolController, modelController } = controls(client, sessionTools);
   const images = new ImageOutbox();
   // Tool results too big to show go here instead; the temp tools read them back.
@@ -325,6 +329,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     toolController,
     profileSource,
     noteSource: new FileNoteSource({ project: dataDir, global: globalDataDir }),
+    imageSource: new FileImageSource(cwd, () => client.supportsVision()),
     workflowSource,
     sessionSource,
     preTurnHooks,
@@ -344,6 +349,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
   return {
     session,
     client,
+    canSeeImages: () => client.supportsVision(),
     browser,
     toolController,
     profileSource,

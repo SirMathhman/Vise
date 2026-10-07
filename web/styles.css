@@ -1157,3 +1157,45 @@ body:has(#workspace:not(.hidden)) #files-btn {
   max-height: 96vh;
   object-fit: contain;
 }
+
+.attach {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: inherit;
+  cursor: pointer;
+  padding: 0 0.6rem;
+}
+
+.attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.3rem 0;
+}
+
+.attachment {
+  position: relative;
+}
+
+.attachment img {
+  display: block;
+  height: 56px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.attachment button {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  line-height: 1;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--panel, #222);
+  color: inherit;
+  cursor: pointer;
+}

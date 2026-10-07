@@ -1,3 +1,4 @@
+import type { Picture } from "../core/errors.ts";
 import type {
   Client,
   Tool,
@@ -125,6 +126,7 @@ function deriveSessionName(message: string): string {
 }
 
 export type { SessionOptions } from "./session-options.ts";
+import { PendingImages } from "./image-command.ts";
 import { systemMessageFor, type SessionOptions } from "./session-options.ts";
 
 /**
@@ -158,6 +160,8 @@ export class Session {
   private readonly onPromptProgress?: (progress: PromptProgress) => void;
   private readonly onToolCall?: ToolCallListener;
   private readonly onImage?: SessionOptions["onImage"];
+  /** Images attached with `/image`, for the next message. */
+  private readonly attachments: PendingImages;
   private readonly onBurst?: (active: boolean) => void;
   private readonly initialMessage?: string;
   private readonly sessionSource?: SessionSource;
@@ -200,6 +204,7 @@ export class Session {
     this.onPromptProgress = options.onPromptProgress;
     this.onToolCall = options.onToolCall;
     this.onImage = options.onImage;
+    this.attachments = new PendingImages(options.imageSource);
     this.onBurst = options.onBurst;
     this.goals = new GoalTracker(options.goalChecking ?? false, options.onGoal);
     this.initialMessage = options.initialMessage;
@@ -347,7 +352,7 @@ export class Session {
       () => this.burst,
       (on) => {
         this.burst = on;
-        this.messages.push({ role: "user", content: burstNotice(on) });
+        this.notify(burstNotice(on));
       },
       line,
     );
@@ -361,7 +366,7 @@ export class Session {
    * conversation — and the failure is carried as `compactionWarning` on the
    * successful result so the edge can surface it (the session performs no I/O).
    */
-  async handleLine(line: string): Promise<LineResult> {
+  async handleLine(line: string, images: Picture[] = []): Promise<LineResult> {
     const trimmed = line.trim();
     // Not awaited: a normal turn must create its abort controller synchronously (see `interrupt`).
     const command = this.slashCommand(trimmed);
@@ -371,7 +376,7 @@ export class Session {
     try {
       this.flushPendingProfile();
       await this.runHooks("pre");
-      this.messages.push({ role: "user", content: line });
+      this.messages.push(this.attachments.message(line, images));
       if (this.sessionName === undefined) {
         this.sessionName = deriveSessionName(line);
       }
@@ -449,6 +454,9 @@ export class Session {
       return this.hooks.command(trimmed);
     }
     if (trimmed === "/compact") return this.doCompact();
+    if (trimmed === "/image" || trimmed.startsWith("/image ")) {
+      return this.attachments.command(trimmed);
+    }
     if (trimmed === "/new") return this.newConversation();
     if (trimmed === "/model" || trimmed.startsWith("/model ")) {
       return handleModelCommand(this.modelController, trimmed);
@@ -471,10 +479,7 @@ export class Session {
           // disabled tools and knows to invoke newly-enabled ones. The full
           // definition list is always sent regardless, so this is a state
           // note, not a change to the tools offered.
-          this.messages.push({
-            role: "user",
-            content: toggleNotice(names, enabled),
-          });
+          this.notify(toggleNotice(names, enabled));
         },
       );
     }
@@ -508,11 +513,8 @@ export class Session {
    * interrupt (turn in flight) or exit (idle prompt).
    */
   interrupt(): boolean {
-    if (this.currentAbort) {
-      this.currentAbort.abort();
-      return true;
-    }
-    return false;
+    this.currentAbort?.abort();
+    return this.currentAbort !== null;
   }
 
   /**
