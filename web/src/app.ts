@@ -59,6 +59,11 @@ const explorer = createExplorer(
   requiredElement<HTMLUListElement>("files-list"),
   requiredElement<HTMLElement>("files-tabs"),
   requiredElement<HTMLPreElement>("files-viewer"),
+  {
+    mdView: requiredElement<HTMLElement>("files-md"),
+    modeBtn: requiredElement<HTMLButtonElement>("files-mode"),
+    renderMarkdown,
+  },
 );
 const contextEl = requiredElement<HTMLElement>("context");
 const ask = requiredElement<HTMLElement>("ask");

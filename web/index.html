@@ -14,8 +14,16 @@
           <ul id="files-list" class="tools-list"></ul>
         </nav>
         <section class="fs-viewer">
-          <div id="files-tabs" class="fs-tabs" role="tablist"></div>
+          <div class="fs-head">
+            <div id="files-tabs" class="fs-tabs" role="tablist"></div>
+            <button
+              id="files-mode"
+              class="tools-btn hidden"
+              title="Toggle markdown / text view"
+            ></button>
+          </div>
           <pre id="files-viewer" class="files-viewer"></pre>
+          <div id="files-md" class="files-viewer md-view hidden"></div>
         </section>
       </aside>
     <main id="app">

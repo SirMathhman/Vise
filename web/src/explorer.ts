@@ -6,7 +6,18 @@ interface DirEntry {
 interface OpenFile {
   path: string;
   text: string;
+  /** Markdown files can show rendered or as raw text. */
+  mode: "text" | "markdown";
 }
+
+/** Markdown rendering pieces: the rendered view, the toggle button, the renderer. */
+interface MarkdownView {
+  mdView: HTMLElement;
+  modeBtn: HTMLButtonElement;
+  renderMarkdown(source: string): string;
+}
+
+const isMarkdown = (path: string): boolean => /\.(md|markdown)$/i.test(path);
 
 /**
  * Read-only file workspace over `/api/fs` and `/api/file`, rooted at the
@@ -19,6 +30,7 @@ export function createExplorer(
   list: HTMLUListElement,
   tabs: HTMLElement,
   viewer: HTMLPreElement,
+  md: MarkdownView,
 ): { open(path: string): Promise<void> } {
   const files: OpenFile[] = [];
   let active = -1;
@@ -83,29 +95,36 @@ export function createExplorer(
       typeof body === "string"
         ? body
         : ((body as { error?: string }).error ?? "error");
-    files.push({ path, text });
+    files.push({ path, text, mode: isMarkdown(path) ? "markdown" : "text" });
     activate(files.length - 1);
     markOpen();
   }
 
   function activate(index: number): void {
     active = index;
-    viewer.textContent = files[index]?.text ?? "";
-    renderTabs();
+    showActive();
+    drawTabs(tabs, files, active, activate, close);
   }
 
   function close(index: number): void {
     files.splice(index, 1);
     if (files.length === 0) active = -1;
     else if (active > index || active >= files.length) active--;
-    viewer.textContent = files[active]?.text ?? "";
-    renderTabs();
+    showActive();
+    drawTabs(tabs, files, active, activate, close);
     markOpen();
   }
 
-  function renderTabs(): void {
-    drawTabs(tabs, files, active, activate, close);
+  function showActive(): void {
+    renderViewer(files[active], viewer, md);
   }
+
+  md.modeBtn.addEventListener("click", () => {
+    const file = files[active];
+    if (!file) return;
+    file.mode = file.mode === "markdown" ? "text" : "markdown";
+    showActive();
+  });
 
   /** Re-highlight tree rows after the open set changes. */
   function markOpen(): void {
@@ -189,4 +208,19 @@ function drawTabs(
     });
     tabs.appendChild(tab);
   });
+}
+
+/** Show a file as text or rendered markdown, and sync the mode toggle. */
+function renderViewer(
+  file: OpenFile | undefined,
+  viewer: HTMLPreElement,
+  md: MarkdownView,
+): void {
+  const rendered = file?.mode === "markdown";
+  viewer.textContent = file?.text ?? "";
+  viewer.classList.toggle("hidden", rendered);
+  md.mdView.classList.toggle("hidden", !rendered);
+  if (file && rendered) md.mdView.innerHTML = md.renderMarkdown(file.text);
+  md.modeBtn.classList.toggle("hidden", !file || !isMarkdown(file.path));
+  md.modeBtn.textContent = rendered ? "view text" : "view markdown";
 }
