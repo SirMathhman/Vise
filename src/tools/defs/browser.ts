@@ -59,13 +59,87 @@ export const browserTools: Tool[] = [
     function: {
       name: "browser_read",
       description:
-        "Read a browser tab's current page: its visible text (a long page is saved to a temp file; search or page through it with search_temp and read_temp) followed by an outline of the visible interactive elements, each with a ref such as e3. Pass a ref to browser_click, browser_hover, browser_drag or browser_type. Refs are valid until the page navigates; read again for fresh ones.",
+        "Read a browser tab's current page: its visible text followed by an outline of the visible interactive elements, each with a ref such as e3. The outline is always shown in full. A long page's text is saved to a temp file and only its start is shown: search or page through the rest with search_temp and read_temp. After an action that changes the page without loading it (a search, a filter), wait with browser_wait_for_text or browser_wait_for_idle before reading, or the read may show the old content. Pass a ref to browser_click, browser_hover, browser_drag or browser_type. Refs are valid until the page navigates; read again for fresh ones.",
       parameters: {
         type: "object",
         properties: {
           tab: {
             type: "integer",
             description: "Tab number from browser_open or browser_tabs",
+          },
+        },
+        required: ["tab"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "browser_wait_for_text",
+      description:
+        "Wait until some text is visible on a browser tab's page (case-insensitive), then return. Use it after an action that updates the page without loading a new one, such as submitting a search, to be sure the new content is there before browser_read. Fails after the timeout if the text never appears.",
+      parameters: {
+        type: "object",
+        properties: {
+          tab: {
+            type: "integer",
+            description: "Tab number from browser_open or browser_tabs",
+          },
+          text: {
+            type: "string",
+            description: "The text to wait for",
+          },
+          timeout_seconds: {
+            type: "number",
+            description: "How long to wait at most, up to 60. Default 10.",
+          },
+        },
+        required: ["tab", "text"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "browser_wait_for_text_gone",
+      description:
+        "Wait until some text is no longer visible on a browser tab's page (case-insensitive), then return. Use it to wait out a 'Loading...' message or a spinner label. Fails after the timeout if the text stays.",
+      parameters: {
+        type: "object",
+        properties: {
+          tab: {
+            type: "integer",
+            description: "Tab number from browser_open or browser_tabs",
+          },
+          text: {
+            type: "string",
+            description: "The text that should disappear",
+          },
+          timeout_seconds: {
+            type: "number",
+            description: "How long to wait at most, up to 60. Default 10.",
+          },
+        },
+        required: ["tab", "text"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "browser_wait_for_idle",
+      description:
+        "Wait until a browser tab's page has stopped changing (its visible text unchanged for about half a second), then return. Use it when there is no particular text to wait for, for example after a click that reloads a list. A page that keeps updating on its own never settles; the wait then ends after the timeout and says so.",
+      parameters: {
+        type: "object",
+        properties: {
+          tab: {
+            type: "integer",
+            description: "Tab number from browser_open or browser_tabs",
+          },
+          timeout_seconds: {
+            type: "number",
+            description: "How long to wait at most, up to 60. Default 10.",
           },
         },
         required: ["tab"],

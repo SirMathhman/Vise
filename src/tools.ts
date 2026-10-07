@@ -132,7 +132,13 @@ function baseHandlers(root: string): Record<string, ToolHandler> {
   };
 }
 
-const TEMP_TOOLS = new Set(["read_temp", "search_temp", "list_temp"]);
+/** Tools that bound their own output: the temp tools, and browser_read (which saves a long page's text itself and always shows its element outline). */
+const TEMP_TOOLS = new Set([
+  "read_temp",
+  "search_temp",
+  "list_temp",
+  "browser_read",
+]);
 
 /**
  * Edge implementation of the core `ToolController`. Tracks which tools are

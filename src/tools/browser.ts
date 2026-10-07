@@ -1,12 +1,7 @@
 import type { BrowserBackend, TabInfo } from "../browser/types.ts";
+import { waitHandlers } from "./browser-wait.ts";
 import { errStr } from "./files.ts";
-
-/**
- * Page text is returned whole up to this size: a long page is not cut here but
- * saved to a temp file by the tool runner (see `TempStore`), where the model can
- * search and page through all of it. The cap only guards against absurd pages.
- */
-const MAX_TEXT_CHARS = 2_000_000;
+import { isTooLarge, truncateInline, type TempStore } from "./temp-store.ts";
 
 type Handler = (args: Record<string, unknown>) => Promise<string>;
 
@@ -63,6 +58,8 @@ function dialogNote(browser: BrowserBackend, id: number): string {
  */
 export function makeBrowserHandlers(
   browser: BrowserBackend,
+  /** Where a long page's text is saved; without one it is cut to the limits instead. */
+  temp?: TempStore,
 ): Record<string, Handler> {
   /** Validate `tab`, run `action`, and report `done` plus any dialog it opened. */
   const onTab = (
@@ -76,6 +73,11 @@ export function makeBrowserHandlers(
       const out = (await action(id)) ?? done;
       return `${out}${dialogNote(browser, id)}`;
     });
+  const text = (args: Record<string, unknown>): string => {
+    const value = str(args, "text");
+    if (!value) throw new Error("'text' is required");
+    return value;
+  };
   const ref = (args: Record<string, unknown>, name = "ref"): string => {
     const value = str(args, name);
     if (!value) throw new Error(`'${name}' is required (e.g. "e3")`);
@@ -110,15 +112,19 @@ export function makeBrowserHandlers(
         async (id) => {
           const text =
             (await browser.readText(id)).trim() || "(page has no text)";
-          const clipped =
-            text.length <= MAX_TEXT_CHARS
-              ? text
-              : `${text.slice(0, MAX_TEXT_CHARS)}\n[truncated: ${text.length} characters total]`;
+          // The two parts are bounded separately: a long page's text is saved to a temp file
+          // (its start stays here), while the elements the model must act on are always shown.
+          const shown = !isTooLarge(text)
+            ? text
+            : temp
+              ? temp.spill("browser_read", text)
+              : truncateInline(text, "there is nowhere to save it");
           const elements = await browser.snapshot(id);
-          return `${clipped}\n\nInteractive elements (use the ref with browser_click, browser_type, ...):\n${elements || "(none)"}`;
+          return `${shown}\n\nInteractive elements (use the ref with browser_click, browser_type, ...):\n${elements || "(none)"}`;
         },
         "",
       ),
+    ...waitHandlers(browser, onTab, text),
     browser_click: (args) =>
       onTab(args, (id) => browser.click(id, ref(args)), "clicked"),
     browser_hover: (args) =>
