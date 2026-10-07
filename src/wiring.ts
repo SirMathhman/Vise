@@ -196,7 +196,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
   const postTurnHooks = hookStore.post;
 
   const client = new LlmClient();
-  const browser = options.browser ?? new ChromiumBackend();
+  const browser: BrowserBackend = options.browser ?? new ChromiumBackend();
 
   // Single directory that holds every runtime data store (profiles/, notes/,
   // sessions/) so the working directory is not polluted by them. The edge I/O
@@ -230,13 +230,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
         client,
         profileSource,
         cwd,
-        {
-          run: (
-            name: string,
-            args: Record<string, unknown>,
-            signal?: AbortSignal,
-          ) => toolRunner.run(name, args, signal),
-        },
+        { run: (name, args, signal) => toolRunner.run(name, args, signal) },
         sessionTools,
         subagentCallbacks(options, toolController, client),
         (operation) => client.withPreservedSlotCache(operation),
@@ -286,6 +280,8 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     onMaxRounds: options.onMaxRounds,
   });
   sessionRef.current = session;
+  // A browser the user shares with the agent tells it when a tab is given or taken back.
+  const offShare = browser.onUserShare?.((text) => session.notify(text));
 
   return {
     session,
@@ -293,7 +289,10 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     browser,
     toolController,
     profileSource,
-    cleanup: () => temp.dispose(),
+    cleanup: () => {
+      offShare?.();
+      temp.dispose();
+    },
     preTurnHooks: preTurnHooks.map((h) => h.command),
     postTurnHooks: postTurnHooks.map((h) => h.command),
   };

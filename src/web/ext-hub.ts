@@ -1,4 +1,4 @@
-import type { ExtensionLink } from "../browser/extension.ts";
+import type { ExtensionLink, ShareEvent } from "../browser/extension.ts";
 
 /**
  * The server's end of the Firefox extension's WebSocket (`/ext`). The
@@ -38,6 +38,7 @@ export class ExtensionHub implements ExtensionLink {
   private nextId = 1;
   private readonly pending = new Map<number, Pending>();
   private readonly listeners = new Set<() => void>();
+  private readonly shareListeners = new Set<(event: ShareEvent) => void>();
 
   get connected(): boolean {
     return this.socket !== null;
@@ -80,6 +81,11 @@ export class ExtensionHub implements ExtensionLink {
     });
   }
 
+  onShare(listener: (event: ShareEvent) => void): () => void {
+    this.shareListeners.add(listener);
+    return () => this.shareListeners.delete(listener);
+  }
+
   onEvent(listener: () => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -93,6 +99,7 @@ export class ExtensionHub implements ExtensionLink {
       result?: unknown;
       error?: string;
       event?: string;
+      tab?: ShareEvent["tab"];
     };
     try {
       msg = JSON.parse(raw);
@@ -100,6 +107,13 @@ export class ExtensionHub implements ExtensionLink {
       return;
     }
     if (msg.event === "tabs") {
+      this.notify();
+      return;
+    }
+    if ((msg.event === "shared" || msg.event === "released") && msg.tab) {
+      for (const listener of this.shareListeners) {
+        listener({ kind: msg.event, tab: msg.tab });
+      }
       this.notify();
       return;
     }

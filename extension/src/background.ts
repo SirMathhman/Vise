@@ -170,7 +170,24 @@ async function give(windowId?: number): Promise<GiveResult> {
   }
   const already = isOwned(tab.id);
   grant(tab.id);
+  // The agent is told, so it need not discover the tab by listing tabs.
+  if (!already) {
+    send({
+      event: "shared",
+      tab: { id: tab.id, title: tab.title ?? "", url: tab.url ?? "" },
+    });
+  }
   return { ok: true, tab: name, already };
+}
+
+/** The user takes a tab back from Vise: release it and tell the agent. */
+async function giveBack(tabId: number): Promise<void> {
+  const tab = await browser.tabs.get(tabId).catch(() => undefined);
+  release(tabId);
+  send({
+    event: "released",
+    tab: { id: tabId, title: tab?.title ?? "", url: tab?.url ?? "" },
+  });
 }
 
 /** Forget the stored pairing token and reconnect (the sidebar then pairs again). */
@@ -186,7 +203,7 @@ browser.runtime.onMessage.addListener(
     if (message.type === "give") return give(message.windowId);
     if (message.type === "repair") return repair();
     if (message.type === "release" && typeof message.tab === "number") {
-      release(message.tab);
+      return giveBack(message.tab);
     }
     return undefined;
   },

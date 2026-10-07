@@ -16,6 +16,21 @@ import type {
  * layer.
  */
 
+/** The user handed a tab to Vise, or took one back (not something the agent did itself). */
+export interface ShareEvent {
+  kind: "shared" | "released";
+  tab: { id: number; title: string; url: string };
+}
+
+/** What the model is told about a share event. */
+export function describeShare(event: ShareEvent): string {
+  const { id, title, url } = event.tab;
+  const what = `tab ${id}: ${title || "(untitled)"} - ${url}`;
+  return event.kind === "shared"
+    ? `[The user shared a browser tab with you: ${what}. You can read and act on it with the browser tools.]`
+    : `[The user stopped sharing a browser tab with you: ${what}. You can no longer use it.]`;
+}
+
 /** A request/response channel to the connected extension. */
 export interface ExtensionLink {
   /** Whether an extension is connected right now. */
@@ -24,6 +39,8 @@ export interface ExtensionLink {
   call(op: string, params?: Record<string, unknown>): Promise<unknown>;
   /** Be told when the extension's tabs change or it connects/disconnects. */
   onEvent(listener: () => void): () => void;
+  /** Be told when the user shares or unshares a tab. */
+  onShare?(listener: (event: ShareEvent) => void): () => void;
 }
 
 const NO_LIVE_VIEW =
@@ -131,6 +148,13 @@ export class ExtensionBackend implements BrowserBackend {
 
   onTabsChanged(listener: () => void): () => void {
     return this.link.onEvent(listener);
+  }
+
+  onUserShare(listener: (message: string) => void): () => void {
+    return (
+      this.link.onShare?.((event) => listener(describeShare(event))) ??
+      (() => undefined)
+    );
   }
 
   /** The browser belongs to the user: there is nothing for Vise to shut down. */

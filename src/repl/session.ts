@@ -31,7 +31,7 @@ import {
   IN_TURN_COMPACTION_THRESHOLD,
   runCompaction,
 } from "./compaction.ts";
-import { makeRoundHook } from "./round-hooks.ts";
+import { makeRoundHook, NoticeQueue } from "./round-hooks.ts";
 import { ProfileToolGate } from "./profile-tools.ts";
 import {
   handleDeleteCommand,
@@ -145,6 +145,7 @@ export class Session {
   private burst = false;
   private readonly goals: GoalTracker;
   private pendingProfile: Message[] = [];
+  private readonly notices = new NoticeQueue();
   private readonly isToolEnabled = (name: string): boolean =>
     this.toolController?.isEnabled(name) ?? true;
   private readonly profileSource?: ProfileSource;
@@ -339,7 +340,7 @@ export class Session {
           this.onMaxRounds,
         ),
     };
-    return makeRoundHook(deps, this.onToken);
+    return makeRoundHook(deps, this.onToken, this.notices);
   }
 
   private burstCommand(line: string): Result<string> {
@@ -527,9 +528,7 @@ export class Session {
   }
 
   /** Whether turns are checked against a goal (for the edge to show the setting). */
-  goalChecking(): boolean {
-    return this.goals.enabled;
-  }
+  goalChecking = (): boolean => this.goals.enabled;
 
   /** The global hooks and each profile's own hooks, plus the profile names (for the web panel). */
   hooksView(): ReturnType<SessionHooks["view"]> {
@@ -625,7 +624,11 @@ export class Session {
   }
 
   /** Move the last profile switch's messages into the conversation. */
+  /** Tell the model something the user did (a shared tab); it is added before the next model call, never between a tool call and its result. */
+  notify = (text: string): void => this.notices.add(text);
+
   private flushPendingProfile(): void {
+    this.notices.drainInto(this.messages);
     this.messages.push(...this.pendingProfile);
     this.pendingProfile = [];
   }

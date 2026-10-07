@@ -98,6 +98,11 @@ export interface BrowserBackend {
   ): Promise<() => Promise<void>>;
   /** Forward a mouse or keyboard event to a tab. */
   sendInput(id: number, input: BrowserInput): Promise<void>;
+  /**
+   * Be told, as text for the model, when the user hands the agent a tab or takes
+   * one back (only a backend where the user shares their own browser has this).
+   */
+  onUserShare?(listener: (message: string) => void): () => void;
   /** Be told when tabs open, close, or change; returns an unsubscribe function. */
   onTabsChanged(listener: () => void): () => void;
   /** Shut the browser down. Safe to call when it never started. */

@@ -24,14 +24,34 @@ export interface RoundDeps {
   progress: () => Promise<string | undefined>;
 }
 
+/**
+ * Things the user did that the model should know about (a tab they shared),
+ * collected as they happen and added to the conversation at a safe moment: at
+ * the start of a turn, or between rounds, never between a tool call and its result.
+ */
+export class NoticeQueue {
+  private items: Message[] = [];
+
+  add(text: string): void {
+    this.items.push({ role: "user", content: text });
+  }
+
+  drainInto(messages: Message[]): void {
+    messages.push(...this.items.splice(0));
+  }
+}
+
 /** A fresh hook for one user message: its counter spans every turn the message causes. */
 export function makeRoundHook(
   deps: RoundDeps,
   /** Shows the reason a turn was stopped (the reply was streamed, so nothing else would). */
   announce?: (text: string) => void,
+  /** Added to the conversation before each round. */
+  notices?: NoticeQueue,
 ): (round: number, messages: Message[]) => Promise<string | undefined> {
   const hook = upkeep(deps);
   return async (round, messages) => {
+    notices?.drainInto(messages);
     const stop = await hook(round, messages);
     if (stop !== undefined)
       announce?.(`
