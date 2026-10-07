@@ -98,27 +98,28 @@ export function formatToolList(
     .join("\n");
 }
 
-/** One hook for display: its command and the profiles it is bound to. */
-interface HookLine {
-  command: string;
-  profiles: string[];
-}
-
-/** Format the configured pre- and post-turn hooks (numbered, with any profile bindings) for `/hooks`. */
-export function formatHooks(hooks: {
-  pre: HookLine[];
-  post: HookLine[];
-}): string {
-  const row = (h: HookLine, i: number): string =>
-    `  ${i + 1}. ${h.command}` +
-    (h.profiles.length > 0 ? `  [only with: ${h.profiles.join(", ")}]` : "");
-  const section = (label: string, lines: HookLine[]): string =>
-    lines.length === 0
+/**
+ * Format hook commands (numbered, by phase) for `/hooks`. `scope` replaces the
+ * default "output injected before/after every turn" wording, e.g. for a
+ * profile's own hooks.
+ */
+export function formatHooks(
+  hooks: { pre: string[]; post: string[] },
+  scope?: string,
+): string {
+  const section = (label: string, commands: string[]): string =>
+    commands.length === 0
       ? `${label}: none`
-      : `${label}:\n${lines.map(row).join("\n")}`;
+      : `${label}:\n${commands.map((c, i) => `  ${i + 1}. ${c}`).join("\n")}`;
   return [
-    section("pre-turn hooks (output injected before every turn)", hooks.pre),
-    section("post-turn hooks (output injected after every turn)", hooks.post),
+    section(
+      `pre-turn hooks (${scope ?? "output injected before every turn"})`,
+      hooks.pre,
+    ),
+    section(
+      `post-turn hooks (${scope ?? "output injected after every turn"})`,
+      hooks.post,
+    ),
   ].join("\n");
 }
 
@@ -143,7 +144,7 @@ export function formatHelp(opts: {
     "/hooks         show the configured pre/post-turn hook commands",
     '/hooks add pre|post "<command>"  add a hook (saved to .viserc.json)',
     "/hooks remove pre|post <number>  remove a hook",
-    "/hooks bind|unbind pre|post <number> <profile>  run a hook only with some profiles",
+    "/hooks profile <name> [add|remove pre|post ...]  hooks that run only with a profile",
   ];
   if (opts.hasModel) {
     lines.push(

@@ -1,11 +1,11 @@
 import type { Result } from "../core/errors.ts";
 import {
+  type HookCommands,
   type HookPhase,
   handleHooksCommand,
-  hookApplies,
   type HooksView,
   hooksView,
-  readBindings,
+  readProfileHooks,
 } from "./hooks-commands.ts";
 import type {
   HookSource,
@@ -17,14 +17,14 @@ import type {
 type AnyHook = PreTurnHook | PostTurnHook;
 
 /**
- * The session's hooks: the live pre/post lists, which of them apply under the
- * active profile, and the `/hooks` command. A hook bound to no profile always
- * runs; a bound hook runs only while one of its profiles is active. Bindings
- * live in the profile files, so they are re-read (`refresh`) before each turn
- * and workflow rather than cached for the whole session.
+ * The session's hooks: the live global pre/post lists (they run with every
+ * profile), the hooks the active profile owns (they run only while it is
+ * active, after the global ones), and the `/hooks` command. A profile's hooks
+ * live in its file, so they are re-read (`refresh`) before each turn and
+ * workflow rather than cached for the whole session.
  */
 export class SessionHooks {
-  private bindings: Record<string, string[]> = {};
+  private profileHooks: Record<string, HookCommands> = {};
 
   readonly pre: PreTurnHook[];
   readonly post: PostTurnHook[];
@@ -46,17 +46,18 @@ export class SessionHooks {
     this.profiles = options.profileSource;
   }
 
-  /** Re-read the profile bindings; call before the hooks of a turn or workflow run. */
+  /** Re-read the profiles' own hooks; call before the hooks of a turn or workflow run. */
   async refresh(): Promise<void> {
-    this.bindings = await readBindings(this.profiles);
+    this.profileHooks = await readProfileHooks(this.profiles);
   }
 
-  /** The hooks of a phase that run under the active profile. */
+  /** The hooks of a phase that run now: every global hook, then the active profile's own. */
   applicable(phase: HookPhase): AnyHook[] {
-    const list: AnyHook[] = phase === "pre" ? this.pre : this.post;
-    return list.filter((h) =>
-      hookApplies(phase, h.command, this.activeProfile(), this.bindings),
-    );
+    const global: AnyHook[] = phase === "pre" ? this.pre : this.post;
+    const active = this.activeProfile();
+    const owned = active ? (this.profileHooks[active]?.[phase] ?? []) : [];
+    const make = this.source?.create.bind(this.source);
+    return make ? [...global, ...owned.map((c) => make(c))] : global;
   }
 
   /** Run a phase's applicable hooks in parallel; returns their non-blank outputs in config order. */
