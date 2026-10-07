@@ -42,11 +42,31 @@ string ::= "\"" ( [^"\\\x7F\x00-\x1F] | "\\" ( ["\\/bfnrt] | "u" [0-9a-fA-F]{4} 
 number ::= "-"? ( [0-9] | [1-9] [0-9]* ) ( "." [0-9]+ )? ( [eE] [-+]? [0-9]+ )?`;
 
 /**
- * Lazy GBNF grammar, mirroring how llama.cpp constrains native tool calls:
- * output is unconstrained until `CALL_OPEN` appears (see `GRAMMAR_TRIGGERS`),
- * and from there on must be calls whose `name` is restricted to `enabled`.
- * Returns undefined when no tool is enabled; the runner then rejects any
- * call text that slips through.
+ * Rules for `text`: any characters (reasoning, `</think>`, plain reply) that
+ * never contain `CALL_OPEN`. One rule per prefix length of the delimiter; a
+ * mismatch falls back to the start (or to state 1 on `<`), which is exact
+ * because the delimiter's only `<` is its first character.
+ */
+function textRules(): string[] {
+  const p = CALL_OPEN;
+  const rules: string[] = [];
+  for (let k = 0; k < p.length; k++) {
+    const next = k === 0 ? "" : (p[k] ?? "");
+    const alts = [`[^<${next}] t0`, `"<" t1`];
+    if (k > 0 && k < p.length - 1) alts.push(`"${next}" t${k + 1}`);
+    rules.push(`t${k} ::= ( ${alts.join(" | ")} )?`);
+  }
+  return rules;
+}
+
+/**
+ * GBNF grammar: `text` (which cannot contain `CALL_OPEN`) followed by any
+ * number of calls whose `name` is restricted to `enabled`. The model can
+ * therefore think, answer in plain text, or call an enabled tool — and never
+ * call a disabled one. llama.cpp ignores lazy-grammar triggers on this
+ * endpoint, so the grammar itself carries the optionality. Returns undefined
+ * when no tool is enabled; the runner then rejects any call text that slips
+ * through.
  */
 export function buildGrammar(enabled: string[]): string | undefined {
   if (enabled.length === 0) return undefined;
@@ -54,37 +74,18 @@ export function buildGrammar(enabled: string[]): string | undefined {
     `"${s.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
   const nameRule = enabled.map((n) => lit(`"${n}"`));
   return [
-    "root ::= call+",
+    "root ::= t0 call*",
+    ...textRules(),
     `call ::= "${CALL_OPEN}" ws "{" ws "\\"name\\"" ws ":" ws name ws "," ws "\\"arguments\\"" ws ":" ws object ws "}" ws "${CALL_CLOSE}" ws`,
     `name ::= ${nameRule.join(" | ")}`,
     JSON_VALUE_RULES,
   ].join("\n");
 }
 
-// llama.cpp trigger types: 0 = word, 3 = full-buffer pattern.
-const WORD_TRIGGER = [{ type: 0, value: CALL_OPEN }];
-// With thinking on, the output starts inside the reasoning block; only start
-// constraining once it has closed, or a mention of the delimiter while
-// thinking would trap the model in the grammar.
-const AFTER_THINKING_TRIGGER = [
-  {
-    type: 3,
-    value: String.raw`[\s\S]*</think>[\s\S]*?(<tool_call>[\s\S]*)`,
-  },
-];
-
 /** Request fields that restrict calls to `enabled` tools (none if empty). */
-export function toolRequestFields(
-  enabled: string[],
-  thinking: boolean,
-): Record<string, unknown> {
+export function toolRequestFields(enabled: string[]): Record<string, unknown> {
   const grammar = buildGrammar(enabled);
-  if (grammar === undefined) return {};
-  return {
-    grammar,
-    grammar_lazy: true,
-    grammar_triggers: thinking ? AFTER_THINKING_TRIGGER : WORD_TRIGGER,
-  };
+  return grammar === undefined ? {} : { grammar };
 }
 
 /**

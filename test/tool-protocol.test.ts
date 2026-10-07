@@ -20,6 +20,12 @@ describe("tool protocol (edge)", () => {
     expect(buildGrammar([])).toBeUndefined();
   });
 
+  test("grammar allows free text before calls", () => {
+    const g = buildGrammar(["a"]) ?? "";
+    expect(g).toContain("root ::= t0 call*");
+    expect(g).toContain("t10 ::=");
+  });
+
   test("prompt prefix is independent of which tools are enabled", () => {
     const tools = [def("a"), def("b")];
     const msgs = [{ role: "system" as const, content: "sys" }];

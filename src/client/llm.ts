@@ -473,7 +473,6 @@ export class LlmClient implements Client {
           tools
             .map((t) => t.function.name)
             .filter((n) => isToolEnabled?.(n) ?? true),
-          this.reasoningEffort !== "none",
         ),
       );
     }
