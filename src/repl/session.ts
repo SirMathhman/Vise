@@ -3,6 +3,7 @@ import type {
   Tool,
   ToolController,
   ToolRunner,
+  TurnCallbacks,
 } from "../core/engine.ts";
 import { runTurn } from "../core/engine.ts";
 import type { Workflow, WorkflowScope } from "../core/workflow.ts";
@@ -16,6 +17,7 @@ import { formatHelp } from "../output/format.ts";
 import {
   handleModelCommand,
   handleNotesCommand,
+  handleBurstCommand,
   handleReasoningCommand,
   handleToolCommand,
   reportContext,
@@ -371,6 +373,7 @@ export class Session {
   private readonly modelController?: ModelController;
   private readonly reasoningController?: ReasoningController;
   private readonly toolController?: ToolController;
+  private burst = false;
   private readonly isToolEnabled = (name: string): boolean =>
     this.toolController?.isEnabled(name) ?? true;
   private readonly profileSource?: ProfileSource;
@@ -513,6 +516,36 @@ export class Session {
     };
   }
 
+  private turnCallbacks(abort: AbortSignal): TurnCallbacks {
+    return {
+      onToken: this.onToken,
+      onThinking: this.onThinking,
+      onPromptProgress: this.onPromptProgress,
+      onToolCall: this.onToolCall,
+      onMaxRounds: this.onMaxRounds,
+      isToolEnabled: this.isToolEnabled,
+      burst: this.burst,
+      abort,
+    };
+  }
+
+  private burstCommand(line: string): Result<string> {
+    return handleBurstCommand(
+      () => this.burst,
+      (on) => {
+        this.burst = on;
+        // Appended (never edited into the prompt) so the cache is kept.
+        this.messages.push({
+          role: "user",
+          content: on
+            ? "Burst mode is now on. Think once to plan, then carry the plan out with tool calls; you will not be able to think between calls. When the plan is complete output <done/>. If a tool errors you will get to think again."
+            : "Burst mode is now off. You may think before each step again.",
+        });
+      },
+      line,
+    );
+  }
+
   /**
    * Handle a single non-empty line. Returns "exit" when the line is `/exit`;
    * a formatted context line for `/context`; a compaction note for `/compact`;
@@ -546,6 +579,9 @@ export class Session {
     }
     if (trimmed === "/reasoning" || trimmed.startsWith("/reasoning ")) {
       return handleReasoningCommand(this.reasoningController, trimmed);
+    }
+    if (trimmed === "/burst" || trimmed.startsWith("/burst ")) {
+      return this.burstCommand(trimmed);
     }
     if (trimmed === "/tool" || trimmed.startsWith("/tool ")) {
       return handleToolCommand(
@@ -598,15 +634,7 @@ export class Session {
         this.tools,
         this.messages,
         this.toolDefs,
-        {
-          onToken: this.onToken,
-          onThinking: this.onThinking,
-          onPromptProgress: this.onPromptProgress,
-          onToolCall: this.onToolCall,
-          onMaxRounds: this.onMaxRounds,
-          isToolEnabled: this.isToolEnabled,
-          abort: abort.signal,
-        },
+        this.turnCallbacks(abort.signal),
       );
       if (!turn.ok) return turn;
       await this.runHooks(this.postTurnHooks);

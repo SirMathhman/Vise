@@ -34,6 +34,7 @@ export interface Client {
     responseSchema?: Record<string, unknown>,
     signal?: AbortSignal,
     isToolEnabled?: (name: string) => boolean,
+    act?: boolean,
   ): Promise<Result<AssistantMessage>>;
 }
 
@@ -58,6 +59,12 @@ export interface TurnCallbacks {
    * (and therefore the prompt). When absent, every tool is allowed.
    */
   isToolEnabled?: (name: string) => boolean;
+  /**
+   * Burst mode: think once to plan, then run tool calls without thinking in
+   * between. The loop returns to thinking when a tool errors, when the model
+   * signals the plan is done, or when its tool choice is uncertain.
+   */
+  burst?: boolean;
   /**
    * Aborts the turn when the user interrupts (e.g. Ctrl+C). The edge sets the
    * signal on interrupt; the core threads it to the in-flight model call and
@@ -84,6 +91,9 @@ export interface ToolController {
 }
 
 const MAX_TOOL_ROUNDS = 100;
+
+/** Burst mode: below this tool-choice probability, think again. */
+export const BURST_MIN_CONFIDENCE = 0.5;
 
 /**
  * The text appended to the conversation to request a summary of it. Kept
@@ -172,6 +182,8 @@ export async function runTurn(
   callbacks: TurnCallbacks = {},
 ): Promise<Result<string>> {
   let rounds = 0;
+  // True while a burst-mode plan is being executed without thinking.
+  let act = false;
   while (true) {
     if (rounds >= MAX_TOOL_ROUNDS) {
       if (callbacks.onMaxRounds) {
@@ -199,6 +211,7 @@ export async function runTurn(
       undefined,
       callbacks.abort,
       callbacks.isToolEnabled,
+      act,
     );
     if (callbacks.abort?.aborted) {
       return { ok: false, error: { kind: "interrupted" } };
@@ -207,12 +220,23 @@ export async function runTurn(
       return { ok: false, error: result.error };
     }
     const reply = result.value;
+    if (
+      act &&
+      (reply.done ||
+        !reply.tool_calls?.length ||
+        (reply.confidence ?? 1) < BURST_MIN_CONFIDENCE)
+    ) {
+      // Plan complete or choice uncertain: discard the reply and think.
+      act = false;
+      continue;
+    }
     if (reply.tool_calls && reply.tool_calls.length > 0) {
       messages.push({
         role: "assistant",
         content: reply.content,
         tool_calls: reply.tool_calls,
       });
+      let failed = false;
       for (const tc of reply.tool_calls) {
         callbacks.onToolCall?.(tc.function.name, 0);
         let output: string;
@@ -225,8 +249,10 @@ export async function runTurn(
         } catch {
           output = `error: failed to execute ${tc.function.name}`;
         }
+        failed ||= output.startsWith("error:");
         messages.push({ role: "tool", content: output, tool_call_id: tc.id });
       }
+      act = !!callbacks.burst && !failed;
     } else {
       messages.push({ role: "assistant", content: reply.content });
       return { ok: true, value: reply.content };

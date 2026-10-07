@@ -89,6 +89,13 @@ export function getArgumentSuggestions(
   const listCommands: Record<string, [CompletionChoice[], string]> = {
     "/model": [choices.models, "switch to model"],
     "/profile": [choices.profiles, "switch to profile"],
+    "/burst": [
+      [
+        { label: "on", value: "on" },
+        { label: "off", value: "off" },
+      ],
+      "burst mode",
+    ],
     "/reasoning": [
       reasoningLevels.map((value) => ({ label: value, value })),
       "reasoning effort",

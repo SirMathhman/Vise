@@ -15,6 +15,13 @@ export interface Message {
 export interface AssistantMessage {
   content: string;
   tool_calls?: ToolCall[];
+  /** Burst mode: the model signalled that its plan is complete. */
+  done?: boolean;
+  /**
+   * Burst mode: lowest probability (0..1) among the tokens that chose each
+   * called tool's name. Undefined when no probabilities were requested.
+   */
+  confidence?: number;
 }
 
 /**

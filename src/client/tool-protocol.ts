@@ -10,6 +10,8 @@ import type { AssistantMessage, Message, ToolCall } from "../core/errors.ts";
  */
 export const CALL_OPEN = "<tool_call>";
 export const CALL_CLOSE = "</tool_call>";
+/** Emitted in act mode when the plan is complete (see `buildGrammar`). */
+export const DONE = "<done/>";
 const RESPONSE_OPEN = "<tool_response>\n";
 const RESPONSE_CLOSE = "\n</tool_response>";
 
@@ -68,24 +70,41 @@ function textRules(): string[] {
  * when no tool is enabled; the runner then rejects any call text that slips
  * through.
  */
-export function buildGrammar(enabled: string[]): string | undefined {
+export function buildGrammar(
+  enabled: string[],
+  act = false,
+): string | undefined {
+  if (act && enabled.length === 0) return `root ::= "${DONE}"`;
   if (enabled.length === 0) return undefined;
   const lit = (s: string): string =>
     `"${s.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
   const nameRule = enabled.map((n) => lit(`"${n}"`));
   return [
-    "root ::= t0 call*",
-    ...textRules(),
+    act ? `root ::= call+ | "${DONE}"` : "root ::= t0 call*",
+    ...(act ? [] : textRules()),
     `call ::= "${CALL_OPEN}" ws "{" ws "\\"name\\"" ws ":" ws name ws "," ws "\\"arguments\\"" ws ":" ws object ws "}" ws "${CALL_CLOSE}" ws`,
     `name ::= ${nameRule.join(" | ")}`,
     JSON_VALUE_RULES,
   ].join("\n");
 }
 
-/** Request fields that restrict calls to `enabled` tools (none if empty). */
-export function toolRequestFields(enabled: string[]): Record<string, unknown> {
-  const grammar = buildGrammar(enabled);
-  return grammar === undefined ? {} : { grammar };
+/**
+ * Request fields that restrict calls to the enabled `tools`. In `act` mode the
+ * model may only call a tool or emit `DONE` — it cannot think or answer — and
+ * token probabilities are requested so the engine can escalate an uncertain
+ * choice back to thinking.
+ */
+export function toolRequestFields(
+  tools: Tool[],
+  isToolEnabled?: (name: string) => boolean,
+  act = false,
+): Record<string, unknown> {
+  const enabled = tools
+    .map((t) => t.function.name)
+    .filter((n) => isToolEnabled?.(n) ?? true);
+  const grammar = buildGrammar(enabled, act);
+  if (grammar === undefined) return {};
+  return act ? { grammar, logprobs: true, top_logprobs: 1 } : { grammar };
 }
 
 /**
@@ -96,7 +115,17 @@ export function toolRequestFields(enabled: string[]): Record<string, unknown> {
 export function parseReply(
   message: AssistantMessage,
   thinkingText: string,
+  act = false,
 ): AssistantMessage {
+  if (act && (message.content.includes(DONE) || thinkingText.includes(DONE))) {
+    return { ...message, content: "", done: true };
+  }
+  // Outside act mode the marker is just stray text (the model was told about
+  // it); drop it so it never reaches the user.
+  message = {
+    ...message,
+    content: message.content.replaceAll(DONE, "").trim(),
+  };
   let parsed = parseToolCalls(message.content);
   if (parsed.tool_calls.length === 0 && message.content.trim() === "") {
     const at = thinkingText.indexOf(CALL_OPEN);
@@ -215,4 +244,34 @@ export function hideCalls(
     held = held.slice(held.length - keep);
     if (emit) onToken(emit);
   };
+}
+
+/** A generated token with its log probability (llama.cpp `logprobs`). */
+export interface TokenLogprob {
+  token: string;
+  logprob: number;
+}
+
+/**
+ * Lowest token probability inside any `"name":"<tool>"` value of the output:
+ * how sure the model was when it chose each tool. Tokens that the grammar
+ * forced report probability 1, so only genuine choices pull this down.
+ */
+export function nameConfidence(tokens: TokenLogprob[]): number | undefined {
+  const text = tokens.map((t) => t.token).join("");
+  const spans = [...text.matchAll(/"name"\s*:\s*"([^"]*)"/g)].map((m) => {
+    const end = m.index + m[0].length - 1;
+    return [end - (m[1]?.length ?? 0), end] as const;
+  });
+  let min: number | undefined;
+  let at = 0;
+  for (const t of tokens) {
+    const start = at;
+    at += t.token.length;
+    if (spans.some(([s, e]) => start < e && at > s)) {
+      const p = Math.exp(t.logprob);
+      min = min === undefined ? p : Math.min(min, p);
+    }
+  }
+  return min;
 }

@@ -282,3 +282,57 @@ describe("runSubagent (core)", () => {
     }
   });
 });
+
+describe("runTurn burst mode (core)", () => {
+  const call = (name: string) => ({
+    type: "function" as const,
+    id: "c",
+    function: { name, arguments: "{}" },
+  });
+  const run = async (
+    replies: Record<string, unknown>[],
+    output: string,
+  ): Promise<boolean[]> => {
+    const acts: boolean[] = [];
+    let i = 0;
+    const client: Client = {
+      async chat(_m, _t, _a, _b, _c, _d, _e, _f, act) {
+        acts.push(!!act);
+        return { ok: true, value: { content: "", ...replies[i++] } };
+      },
+    };
+    const runner: ToolRunner = { run: async () => output };
+    await runTurn(client, runner, [{ role: "user", content: "x" }], [], {
+      burst: true,
+    });
+    return acts;
+  };
+
+  test("thinks first, acts after a successful call, thinks after done", async () => {
+    const acts = await run(
+      [{ tool_calls: [call("a")] }, { done: true }, { content: "ok" }],
+      "fine",
+    );
+    expect(acts).toEqual([false, true, false]);
+  });
+
+  test("returns to thinking after a tool error", async () => {
+    const acts = await run(
+      [{ tool_calls: [call("a")] }, { content: "ok" }],
+      "error: boom",
+    );
+    expect(acts).toEqual([false, false]);
+  });
+
+  test("discards a low-confidence act reply and thinks again", async () => {
+    const acts = await run(
+      [
+        { tool_calls: [call("a")] },
+        { tool_calls: [call("b")], confidence: 0.1 },
+        { content: "ok" },
+      ],
+      "fine",
+    );
+    expect(acts).toEqual([false, true, false]);
+  });
+});

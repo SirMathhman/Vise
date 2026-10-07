@@ -26,6 +26,7 @@ authoritative definitions live in the source files linked.
 
 - `/exit`, `/help`, `/context`, `/compact`
 - `/model` (list) / `/model <name>` (switch) — via `ModelController`
+- `/burst` (status) / `/burst on|off` — burst mode: think once to plan, then tool calls run with a calls-only grammar (no thinking) until the model emits `<done/>`, a tool returns `error:`, or its tool-name probability is below `BURST_MIN_CONFIDENCE`; handled in `runTurn` via `TurnCallbacks.burst`
 - `/tool` (list) / `/tool <name> enable|disable` — via `ToolController`
 - `/profile` (list) / `/profile <name>` (set) / `/profile init <name>` (create) — via `ProfileSource`
 - `/note` (list) / `/note init <name>` (create) — via `NoteSource`

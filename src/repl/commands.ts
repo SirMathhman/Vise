@@ -134,6 +134,30 @@ export function handleReasoningCommand(
 }
 
 /**
+ * Handle `/burst`, `/burst on`, and `/burst off`: the burst-mode toggle (think
+ * once to plan, then run tool calls without thinking in between). `onChange`
+ * fires only when the state actually changes.
+ */
+export function handleBurstCommand(
+  isOn: () => boolean,
+  onChange: (on: boolean) => void,
+  line: string,
+): Result<string> {
+  const arg = line.slice("/burst".length).trim().toLowerCase();
+  if (arg === "")
+    return { ok: true, value: `burst mode is ${isOn() ? "on" : "off"}` };
+  if (arg !== "on" && arg !== "off") {
+    return {
+      ok: false,
+      error: { kind: "malformed", body: "usage: /burst [on|off]" },
+    };
+  }
+  const on = arg === "on";
+  if (on !== isOn()) onChange(on);
+  return { ok: true, value: `burst mode ${arg}` };
+}
+
+/**
  * Handle `/tool`, `/tool <name> enable`, and `/tool <name> disable`.
  * When no name is given: lists every tool with its current enabled state.
  * When a name and a verb are given: toggles that tool. The full set of tool

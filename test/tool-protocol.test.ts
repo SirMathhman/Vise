@@ -3,6 +3,8 @@ import {
   buildGrammar,
   encodeMessages,
   hideCalls,
+  nameConfidence,
+  parseReply,
   parseToolCalls,
 } from "../src/client/tool-protocol.ts";
 import type { Tool } from "../src/core/engine.ts";
@@ -47,5 +49,29 @@ describe("tool protocol (edge)", () => {
     const f = hideCalls((t) => seen.push(t));
     for (const t of ["he", "llo <to", "ol_call>{}"]) f?.(t);
     expect(seen.join("")).toBe("hello ");
+  });
+});
+
+describe("burst helpers (edge)", () => {
+  test("nameConfidence uses only tokens inside the tool name", () => {
+    const toks = [
+      { token: "<tool_call>", logprob: -9 },
+      { token: '{"name":"', logprob: 0 },
+      { token: "list", logprob: Math.log(0.4) },
+      { token: "_dir", logprob: 0 },
+      { token: '","arguments":{}}', logprob: -5 },
+    ];
+    expect(nameConfidence(toks)).toBeCloseTo(0.4);
+  });
+
+  test("done marker is detected and stripped", () => {
+    expect(parseReply({ content: "<done/>" }, "", true).done).toBe(true);
+    expect(parseReply({ content: "all <done/>" }, "").content).toBe("all");
+  });
+
+  test("act grammar allows only calls or done", () => {
+    const g = buildGrammar(["a"], true) ?? "";
+    expect(g).toContain('root ::= call+ | "<done/>"');
+    expect(g).not.toContain("t0");
   });
 });

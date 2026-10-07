@@ -118,6 +118,9 @@ export function formatHelp(opts: {
       "/reasoning <level> set the active reasoning effort",
     );
   }
+  lines.push(
+    "/burst [on|off]  think once to plan, then run tool calls without thinking",
+  );
   if (opts.hasTools) {
     lines.push("/tool            list available tools");
     lines.push("/tool <name> enable|disable  enable or disable a tool");
