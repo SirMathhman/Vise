@@ -1,5 +1,5 @@
 import type { Tool } from "../core/engine.ts";
-import type { Message, ToolCall } from "../core/errors.ts";
+import type { AssistantMessage, Message, ToolCall } from "../core/errors.ts";
 
 /**
  * Prompt-text tool-call protocol. Tool definitions are rendered into the
@@ -36,23 +36,70 @@ string ::= "\"" ( [^"\\\x7F\x00-\x1F] | "\\" ( ["\\/bfnrt] | "u" [0-9a-fA-F]{4} 
 number ::= "-"? ( [0-9] | [1-9] [0-9]* ) ( "." [0-9]+ )? ( [eE] [-+]? [0-9]+ )?`;
 
 /**
- * GBNF grammar: free text (which cannot open a call delimiter) optionally
- * followed by calls whose `name` is restricted to `enabled`. With no enabled
- * tools only the free text is permitted.
+ * Lazy GBNF grammar, mirroring how llama.cpp constrains native tool calls:
+ * output is unconstrained until `CALL_OPEN` appears (see `GRAMMAR_TRIGGERS`),
+ * and from there on must be calls whose `name` is restricted to `enabled`.
+ * Returns undefined when no tool is enabled; the runner then rejects any
+ * call text that slips through.
  */
-export function buildGrammar(enabled: string[]): string {
-  const text = `text ::= ( [^<] | "<" [^|｜] )*`;
-  if (enabled.length === 0) return `root ::= text\n${text}\n`;
+export function buildGrammar(enabled: string[]): string | undefined {
+  if (enabled.length === 0) return undefined;
   const lit = (s: string): string =>
     `"${s.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
   const nameRule = enabled.map((n) => lit(`"${n}"`));
   return [
-    "root ::= text call*",
-    text,
+    "root ::= call+",
     `call ::= "${CALL_OPEN}" ws "{" ws "\\"name\\"" ws ":" ws name ws "," ws "\\"arguments\\"" ws ":" ws object ws "}" ws "${CALL_CLOSE}" ws`,
     `name ::= ${nameRule.join(" | ")}`,
     JSON_VALUE_RULES,
   ].join("\n");
+}
+
+// llama.cpp trigger types: 0 = word, 3 = full-buffer pattern.
+const WORD_TRIGGER = [{ type: 0, value: CALL_OPEN }];
+// With thinking on, the output starts inside the reasoning block; only start
+// constraining once it has closed, or a mention of the delimiter while
+// thinking would trap the model in the grammar.
+const AFTER_THINKING_TRIGGER = [
+  {
+    type: 3,
+    value: String.raw`[\s\S]*</think>[\s\S]*?(<\|tool_call\|>[\s\S]*)`,
+  },
+];
+
+/** Request fields that restrict calls to `enabled` tools (none if empty). */
+export function toolRequestFields(
+  enabled: string[],
+  thinking: boolean,
+): Record<string, unknown> {
+  const grammar = buildGrammar(enabled);
+  if (grammar === undefined) return {};
+  return {
+    grammar,
+    grammar_lazy: true,
+    grammar_triggers: thinking ? AFTER_THINKING_TRIGGER : WORD_TRIGGER,
+  };
+}
+
+/**
+ * Extract tool calls from a reply. A model that skips its reasoning block and
+ * opens with a call has it reported as reasoning text by the server, so fall
+ * back to the reasoning text when the content holds no call.
+ */
+export function parseReply(
+  message: AssistantMessage,
+  thinkingText: string,
+): AssistantMessage {
+  let parsed = parseToolCalls(message.content);
+  if (parsed.tool_calls.length === 0 && message.content.trim() === "") {
+    const at = thinkingText.indexOf(CALL_OPEN);
+    if (at >= 0) parsed = parseToolCalls(thinkingText.slice(at));
+  }
+  return {
+    ...message,
+    content: parsed.content,
+    ...(parsed.tool_calls.length > 0 ? { tool_calls: parsed.tool_calls } : {}),
+  };
 }
 
 /** Convert conversation history into the plain-text protocol for the server. */

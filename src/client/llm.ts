@@ -1,4 +1,9 @@
-import { buildGrammar, encodeMessages, hideCalls, parseToolCalls } from "./tool-protocol.ts";
+import {
+  encodeMessages,
+  hideCalls,
+  parseReply,
+  toolRequestFields,
+} from "./tool-protocol.ts";
 import type { Client, Tool } from "../core/engine.ts";
 import type {
   AssistantMessage,
@@ -427,6 +432,19 @@ export class LlmClient implements Client {
       };
     }
   }
+  private applyReasoningEffort(body: Record<string, unknown>): void {
+    // `reasoning_effort` is forwarded to the Jinja chat template. `default`
+    // (and the unset case) omit the field so the template uses its built-in
+    // default; every other level — including `none`, which disables
+    // reasoning — is sent through.
+    if (
+      this.reasoningEffort !== undefined &&
+      this.reasoningEffort !== "default"
+    ) {
+      body.reasoning_effort = this.reasoningEffort;
+    }
+  }
+
   async chat(
     messages: Message[],
     tools?: Tool[],
@@ -449,28 +467,24 @@ export class LlmClient implements Client {
       return_progress: true,
     };
     if (useTools) {
-      body.grammar = buildGrammar(
-        tools
-          .map((t) => t.function.name)
-          .filter((n) => isToolEnabled?.(n) ?? true),
+      Object.assign(
+        body,
+        toolRequestFields(
+          tools
+            .map((t) => t.function.name)
+            .filter((n) => isToolEnabled?.(n) ?? true),
+          this.reasoningEffort !== "none",
+        ),
       );
     }
+    let thinkingText = "";
     if (responseSchema) {
       body.response_format = {
         type: "json_schema",
         json_schema: { schema: responseSchema },
       };
     }
-    // `reasoning_effort` is forwarded to the Jinja chat template. `default`
-    // (and the unset case) omit the field so the template uses its built-in
-    // default; every other level — including `none`, which disables
-    // reasoning — is sent through.
-    if (
-      this.reasoningEffort !== undefined &&
-      this.reasoningEffort !== "default"
-    ) {
-      body.reasoning_effort = this.reasoningEffort;
-    }
+    this.applyReasoningEffort(body);
     try {
       const res = await fetch(URL, {
         method: "POST",
@@ -498,7 +512,12 @@ export class LlmClient implements Client {
       const acc = await streamChat(
         stream,
         useTools ? hideCalls(onToken) : onToken,
-        onThinking,
+        useTools
+          ? (t) => {
+              thinkingText += t;
+              onThinking?.(t);
+            }
+          : onThinking,
         onPromptProgress,
         signal,
       );
@@ -510,16 +529,9 @@ export class LlmClient implements Client {
       }
       this.lastPromptTokens = acc.usage;
       if (useTools) {
-        const parsed = parseToolCalls(acc.message.content);
         return {
           ok: true,
-          value: {
-            ...acc.message,
-            content: parsed.content,
-            ...(parsed.tool_calls.length > 0
-              ? { tool_calls: parsed.tool_calls }
-              : {}),
-          },
+          value: parseReply(acc.message, thinkingText),
         };
       }
       return { ok: true, value: acc.message };

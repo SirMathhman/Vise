@@ -17,7 +17,7 @@ describe("tool protocol (edge)", () => {
     const g = buildGrammar(["read_file"]);
     expect(g).toContain('"\\"read_file\\""');
     expect(g).not.toContain("delete_file");
-    expect(buildGrammar([])).not.toContain("call");
+    expect(buildGrammar([])).toBeUndefined();
   });
 
   test("prompt prefix is independent of which tools are enabled", () => {
