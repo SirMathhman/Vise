@@ -191,7 +191,15 @@ export function startWebServer(port = 3000): void {
     },
   });
   console.log(`vise web: http://localhost:${port}`);
-  void server;
+  // Ctrl+C / termination: close the browser before the loop drains, so it never outlives us.
+  for (const signal of ["SIGINT", "SIGTERM", "SIGBREAK"] as const) {
+    process.once(signal, () => {
+      void browser.close().finally(() => {
+        server.stop(true);
+        process.exitCode = 130;
+      });
+    });
+  }
 }
 
 interface ConnectionState {

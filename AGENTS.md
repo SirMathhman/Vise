@@ -52,6 +52,7 @@ or the `ask_user` handler's `RlUserPrompter`).
 - Notes: `list_notes`, `read_note`, `save_note`, `delete_note`
 - Subagents: `run_subagent` (runs a subagent — a fresh, isolated conversation with its own profile — to perform a task and return its final result; the subagent can use all the same tools, including `run_subagent`)
 - User interaction: `ask_user` (pauses the turn, prompts the user with a question and optional predefined choices, and returns the user's answer as the tool result; the user may pick a choice or type a free-form reply; `multi_select: true` lets the user select multiple choices, separated by commas)
+- Browser: `browser_open`, `browser_tabs`, `browser_navigate`, `browser_read` (an integrated headless Edge/Chrome driven over CDP; handlers in `src/tools/browser.ts` depend only on the `BrowserBackend` interface in `src/browser/types.ts`, `ChromiumBackend` is the sole implementation and is imported only in `src/wiring.ts` and `src/web/server.ts`; the web server shares one browser across connections and the workspace shows it live via the `browser_*` WebSocket messages in `src/web/browser-bridge.ts`; the frontend must `close()` the browser on shutdown, and the next launch reaps browsers orphaned by a crashed run)
 - Self: `self` (reports the agent's own live state — backend, active model, working directory, context-window fill, active profile, and pre/post-turn hook commands — so the model can confirm which model and profile it is acting as or how full its context is)
 
 ## Hard rules (from the architecture invariants)
