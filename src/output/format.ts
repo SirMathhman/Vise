@@ -134,7 +134,9 @@ export function formatHelp(opts: {
   );
   if (opts.hasTools) {
     lines.push("/tool            list available tools");
-    lines.push("/tool <name> enable|disable  enable or disable a tool");
+    lines.push(
+      "/tool <name|category> enable|disable  enable or disable a tool or a whole category",
+    );
   }
   if (opts.hasProfile) {
     lines.push(

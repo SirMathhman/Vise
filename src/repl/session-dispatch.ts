@@ -17,6 +17,7 @@ import {
   handleNotesCommand,
   handleReasoningCommand,
   handleToolCommand,
+  toggleNotice,
   reportContext,
 } from "./commands.ts";
 import {
@@ -160,17 +161,9 @@ export async function dispatch(
     return handleToolCommand(
       session.toolController(),
       trimmed,
-      (name, enabled) => {
-        // A tool's enabled state changed; tell the model so it stops calling
-        // disabled tools and knows to invoke newly-enabled ones. The full
-        // definition list is always sent regardless, so this is a state
-        // note, not a change to the tools offered.
-        messages.push({
-          role: "user",
-          content: enabled
-            ? `Tool '${name}' is now enabled. You may call it.`
-            : `Tool '${name}' is now disabled. Do not call it; if asked, say it is disabled.`,
-        });
+      (names, enabled) => {
+        // Tools' enabled state changed; tell the model (see `toggleNotice`).
+        messages.push({ role: "user", content: toggleNotice(names, enabled) });
       },
     );
   }

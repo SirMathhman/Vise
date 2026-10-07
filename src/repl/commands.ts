@@ -170,7 +170,7 @@ export function handleBurstCommand(
 export function handleToolCommand(
   toolController: ToolController | undefined,
   line: string,
-  onToggle?: (name: string, enabled: boolean) => void,
+  onToggle?: (names: string[], enabled: boolean) => void,
 ): Result<string> {
   if (!toolController) {
     return {
@@ -201,8 +201,17 @@ export function handleToolCommand(
       },
     };
   }
-  const known = toolController.list().some((t) => t.name === name);
-  if (!known) {
+  // A tool name toggles that tool; otherwise a category name toggles its whole group.
+  const all = toolController.list();
+  const isTool = all.some((t) => t.name === name);
+  const enabled = verb === "enable";
+  // Enabling a category leaves opt-in tools (e.g. browser_run_code) off; they need their own name.
+  const names = isTool
+    ? [name]
+    : all
+        .filter((t) => t.category === name && !(enabled && t.optIn))
+        .map((t) => t.name);
+  if (!isTool && !all.some((t) => t.category === name)) {
     return {
       ok: false,
       error: {
@@ -212,10 +221,27 @@ export function handleToolCommand(
     };
   }
 
-  const enabled = verb === "enable";
-  toolController.set(name, enabled);
-  onToggle?.(name, enabled);
-  return { ok: true, value: `${name} ${verb}d` };
+  for (const n of names) toolController.set(n, enabled);
+  onToggle?.(names, enabled);
+  return {
+    ok: true,
+    value: isTool
+      ? `${name} ${verb}d`
+      : `category '${name}' ${verb}d (${names.length} tools)`,
+  };
+}
+
+/** The note telling the model that tools were enabled or disabled. */
+export function toggleNotice(names: string[], enabled: boolean): string {
+  if (names.length === 1) {
+    return enabled
+      ? `Tool '${names[0]}' is now enabled. You may call it.`
+      : `Tool '${names[0]}' is now disabled. Do not call it; if asked, say it is disabled.`;
+  }
+  const list = names.map((n) => `'${n}'`).join(", ");
+  return enabled
+    ? `Tools ${list} are now enabled. You may call them.`
+    : `Tools ${list} are now disabled. Do not call them; if asked, say they are disabled.`;
 }
 
 /**

@@ -117,12 +117,45 @@ function populateReasoningSelect(
   }
 }
 
-/** A non-interactive category heading row inside a tool list. */
-export function appendToolCategory(list: HTMLUListElement, name: string): void {
+/**
+ * A category heading row inside a tool list. With `toggle`, it carries a
+ * checkbox (value = the category name) that enables or disables the group.
+ */
+export function appendToolCategory(
+  list: HTMLUListElement,
+  name: string,
+  toggle = false,
+): void {
   const item = document.createElement("li");
   item.className = "tool-category";
-  item.textContent = name;
+  if (toggle) {
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.value = name;
+    checkbox.title = `Enable or disable every ${name} tool`;
+    const label = document.createElement("label");
+    label.append(checkbox, document.createTextNode(name));
+    item.appendChild(label);
+  } else {
+    item.textContent = name;
+  }
   list.appendChild(item);
+}
+
+/** Tick each category checkbox when all its tools are on; leave it mixed when only some are. */
+function syncCategoryToggles(list: HTMLUListElement): void {
+  for (const head of list.querySelectorAll<HTMLElement>("li.tool-category")) {
+    const toggle = head.querySelector<HTMLInputElement>("input");
+    if (!toggle) continue;
+    const states: boolean[] = [];
+    for (let row = head.nextElementSibling; row; row = row.nextElementSibling) {
+      if (row.classList.contains("tool-category")) break;
+      const box = row.querySelector<HTMLInputElement>("input");
+      if (box) states.push(box.checked);
+    }
+    toggle.checked = states.every(Boolean);
+    toggle.indeterminate = toggle.checked ? false : states.some(Boolean);
+  }
 }
 
 /** One tool as a checkbox row; unchecked rows are dimmed. */
@@ -163,7 +196,7 @@ function populateToolsPanel(
     const heading = /^\[(.+)\]$/.exec(trimmed);
     if (heading) {
       category = heading[1];
-      appendToolCategory(list, category ?? "");
+      appendToolCategory(list, category ?? "", true);
       continue;
     }
     count++;
@@ -176,6 +209,7 @@ function populateToolsPanel(
   if (count === 0)
     list.appendChild(document.createElement("li")).textContent =
       "no tools available";
+  syncCategoryToggles(list);
 }
 
 function populateProfileSelect(

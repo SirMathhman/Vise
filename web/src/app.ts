@@ -439,7 +439,11 @@ requiredElement<HTMLUListElement>("tools-list").addEventListener(
     const checkbox = event.target;
     if (!(checkbox instanceof HTMLInputElement) || !checkbox.value) return;
     const verb = checkbox.checked ? "enable" : "disable";
-    checkbox.closest("li")?.classList.toggle("disabled", !checkbox.checked);
+    // A category checkbox toggles the whole group; the refreshed list shows the result.
+    const row = checkbox.closest("li");
+    if (!row?.classList.contains("tool-category")) {
+      row?.classList.toggle("disabled", !checkbox.checked);
+    }
     pendingToolToggle = checkbox.value;
     sendLine(`/tool ${checkbox.value} ${verb}`);
   },

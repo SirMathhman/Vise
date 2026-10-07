@@ -28,7 +28,7 @@ authoritative definitions live in the source files linked.
 - `/exit`, `/help`, `/context`, `/compact`, `/new` (fresh conversation; the old one stays auto-saved, the active profile is re-applied; web UI "new" button)
 - `/model` (list) / `/model <name>` (switch) — via `ModelController`
 - `/burst` (status) / `/burst on|off` — burst mode: think once to plan, then tool calls run with a calls-only grammar (no thinking) until the model emits `<done/>`, a tool returns `error:`, or its tool-name probability is below `BURST_MIN_CONFIDENCE`; handled in `runTurn` via `TurnCallbacks.burst`
-- `/tool` (list) / `/tool <name> enable|disable` — via `ToolController`
+- `/tool` (list, grouped by category) / `/tool <name|category> enable|disable` (a category toggles its whole group; opt-in tools such as `browser_run_code` are never switched on by a category, only by name) — via `ToolController`
 - `/profile` (list) / `/profile <name>` (set) / `/profile init <name>` (create) — via `ProfileSource`; `/profile <name> tools [a,b|all]` shows/sets a tool whitelist stored as `tools:` frontmatter in the profile `.md` (applied on switch via `ProfileToolGate`, prior tool states restored on leaving; web UI "profiles" panel edits it)
 - `/note` (list) / `/note init <name>` (create) — via `NoteSource`
 - `/workflow` (list) / `/workflow <name> [input]` (run) / `/workflow init [--global] <name>` (create) — via `WorkflowSource`; JSON files live under `.vise/workflows/` or `~/.vise/workflows/`
