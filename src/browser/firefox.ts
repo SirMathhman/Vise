@@ -228,9 +228,12 @@ export class FirefoxBackend implements BrowserBackend {
     if (launching) {
       try {
         const bidi = await launching;
-        // An attached Firefox belongs to the user: disconnect and leave it running.
         if (this.options.port === undefined) {
           await bidi.send("browser.close").catch(() => undefined);
+        } else {
+          // An attached Firefox belongs to the user: end our session (it allows
+          // only one at a time) and leave the browser running.
+          await bidi.send("session.end").catch(() => undefined);
         }
         bidi.close();
       } catch {
@@ -373,7 +376,16 @@ export class FirefoxBackend implements BrowserBackend {
 
   private async connect(): Promise<BidiConnection> {
     const port = this.options.port ?? (await this.launch());
-    const bidi = await BidiConnection.connect(`ws://127.0.0.1:${port}/session`);
+    const bidi = await BidiConnection.connect(
+      `ws://127.0.0.1:${port}/session`,
+    ).catch((error: unknown) => {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        /active sessions/i.test(reason)
+          ? "Firefox already has a WebDriver client attached (it allows only one)"
+          : `cannot attach to Firefox on port ${port}: ${reason}`,
+      );
+    });
     this.trackDialogs(bidi);
     await this.watchTabs(bidi);
     return bidi;
