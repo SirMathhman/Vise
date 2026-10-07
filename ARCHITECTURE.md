@@ -274,6 +274,10 @@ queried live rather than cached across model changes. Keep this status
 reporting on the web edge: it is presentation state, not conversation state,
 and must not add a user/assistant message or trigger a model turn.
 
+## Session roots
+
+A session is rooted at one directory, fixed when it starts (terminal: the working directory; web: the `?root=` query, validated by `RootRegistry`). The root is a **default, not a sandbox**: it sets where relative tool paths resolve, the cwd of `run_powershell` and hooks, and the data directory (`dataDirFor(root)`). Absolute paths and `..` in tools still escape it. Only the web file explorer confines to the root (realpath containment, and only for roots with an open session). Hooks come from the root's `.viserc.json`, so opening a folder trusts its hooks. The shared browser profile lives under the server start directory, not under any session root. Enforcing confinement for tools would be a future `RootPolicy` at the edge.
+
 ## Potential Problems
 
 - **Forced process exit.** Any `process.exit()` anywhere will truncate

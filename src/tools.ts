@@ -66,9 +66,10 @@ export type ToolHandler = (
 /**
  * Resolve the named path arguments against the session `root`, so a relative
  * path (or a missing one, meaning "here") means a place inside the root no
- * matter what the process working directory is. Absolute paths pass through.
+ * matter what the process working directory is. This is a default, not a
+ * sandbox: absolute paths and `..` still reach outside the root.
  */
-function rooted(
+function resolveAgainstRoot(
   root: string,
   keys: string[],
   handler: ToolHandler,
@@ -77,8 +78,8 @@ function rooted(
     const next = { ...args };
     for (const key of keys) {
       const value = args[key];
-      if (value === undefined) next[key] = root;
-      else if (typeof value === "string" && value !== "") {
+      if (value === undefined || value === "") next[key] = root;
+      else if (typeof value === "string") {
         next[key] = resolve(root, value);
       }
     }
@@ -90,17 +91,17 @@ function rooted(
 function baseHandlers(root: string): Record<string, ToolHandler> {
   const notes = dataDirFor(root);
   return {
-    list_directory: rooted(root, ["path"], listDirectory),
-    read_file: rooted(root, ["path"], readFile),
-    create_file: rooted(root, ["path"], createFile),
-    edit_file: rooted(root, ["path"], editFile),
-    delete_file: rooted(root, ["path"], deleteFile),
-    delete_directory: rooted(root, ["path"], deleteDirectory),
+    list_directory: resolveAgainstRoot(root, ["path"], listDirectory),
+    read_file: resolveAgainstRoot(root, ["path"], readFile),
+    create_file: resolveAgainstRoot(root, ["path"], createFile),
+    edit_file: resolveAgainstRoot(root, ["path"], editFile),
+    delete_file: resolveAgainstRoot(root, ["path"], deleteFile),
+    delete_directory: resolveAgainstRoot(root, ["path"], deleteDirectory),
     run_powershell: (args) => runPowershell(args, root),
     wait_for_process: waitForProcess,
     kill_process: killProcess,
-    find_files: rooted(root, ["root"], findFiles),
-    search_files: rooted(root, ["path"], searchFiles),
+    find_files: resolveAgainstRoot(root, ["root"], findFiles),
+    search_files: resolveAgainstRoot(root, ["path"], searchFiles),
     list_notes: (args) => listNotesTool(args, notes),
     read_note: (args) => readNoteTool(args, notes),
     save_note: (args) => saveNoteTool(args, notes),
