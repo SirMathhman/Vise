@@ -16,7 +16,7 @@ const MAX_SCANNED = 1000;
 
 /** Returns one line per visible interactive element: `<ref> <role> "<name>" ...`. */
 export const SNAPSHOT_SCRIPT = `(() => {
-  const SEL = 'a[href],button,input:not([type=hidden]),select,textarea,summary,[role=button],[role=link],[role=checkbox],[role=tab],[role=menuitem],[onclick],[onmouseover],[onmouseenter],[ondrop],[ondragover],[draggable=true],[contenteditable=""],[contenteditable=true],[tabindex]:not([tabindex="-1"])';
+  const SEL = 'a[href],button,input:not([type=hidden]),select,textarea,summary,[role=button],[role=link],[role=checkbox],[role=radio],[role=tab],[role=menuitem],[onclick],[onmouseover],[onmouseenter],[ondrop],[ondragover],[draggable=true],[contenteditable=""],[contenteditable=true],[tabindex]:not([tabindex="-1"])';
   window.__viseNext = window.__viseNext || 1;
   const lines = [];
   const cands = [];
@@ -24,8 +24,13 @@ export const SNAPSHOT_SCRIPT = `(() => {
   const vw = window.innerWidth, vh = window.innerHeight;
   const out = { above: 0, below: 0, left: 0, right: 0, covered: 0 };
   for (const el of document.querySelectorAll(SEL)) {
-    const r = el.getBoundingClientRect();
-    const st = getComputedStyle(el);
+    let r = el.getBoundingClientRect();
+    let st = getComputedStyle(el);
+    // Styled radios and checkboxes hide the real input (zero box, 1px, or display:none) behind a visible label: that label is what can be seen and clicked.
+    if ((el.type === 'radio' || el.type === 'checkbox') && (r.width < 8 || r.height < 8 || st.display === 'none') && el.labels && el.labels[0]) {
+      const lr = el.labels[0].getBoundingClientRect();
+      if (lr.width && lr.height) { r = lr; st = getComputedStyle(el.labels[0]); }
+    }
     if (!r.width || !r.height || st.visibility === 'hidden' || st.display === 'none') continue;
     // Only what is clearly in view: at least half of the element (or a large part of a big one) inside the viewport, and not covered by something else.
     const shownW = Math.min(r.right, vw) - Math.max(r.left, 0);
@@ -100,7 +105,11 @@ export function centerScript(ref: string): string {
     const el = document.querySelector('[data-vise-ref="' + ref + '"]');
     if (!el) return null;
     el.scrollIntoView({ block: 'center', inline: 'center' });
-    const r = el.getBoundingClientRect();
+    let r = el.getBoundingClientRect();
+    if ((el.type === 'radio' || el.type === 'checkbox') && (r.width < 8 || r.height < 8 || getComputedStyle(el).display === 'none') && el.labels && el.labels[0]) {
+      const lr = el.labels[0].getBoundingClientRect();
+      if (lr.width && lr.height) r = lr;
+    }
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   })(${JSON.stringify(ref)})`;
 }
