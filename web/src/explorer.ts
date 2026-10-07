@@ -9,12 +9,14 @@ interface OpenFile {
   path: string;
   text: string;
   /** Markdown files can show rendered or as raw text. */
-  mode: "text" | "markdown";
+  mode: "text" | "markdown" | "url";
 }
 
-/** Markdown rendering pieces: the rendered view, the toggle button, the renderer. */
+/** Extra viewer pieces: rendered markdown, its toggle, the URL iframe and its form. */
 interface MarkdownView {
   mdView: HTMLElement;
+  frame: HTMLIFrameElement;
+  urlForm: HTMLFormElement;
   modeBtn: HTMLButtonElement;
   renderMarkdown(source: string): string;
 }
@@ -62,6 +64,17 @@ export function createExplorer(
     }
   }
 
+  /** Open a URL as a tab that renders the page in an iframe. */
+  function openUrl(raw: string): void {
+    const url = normalizeUrl(raw);
+    if (!url) return;
+    const existing = files.findIndex((f) => f.path === url);
+    if (existing < 0) files.push({ path: url, text: "", mode: "url" });
+    activate(existing < 0 ? files.length - 1 : existing);
+  }
+
+  bindUrlForm(md.urlForm, openUrl);
+
   async function openFile(path: string): Promise<void> {
     const existing = files.findIndex((f) => f.path === path);
     if (existing >= 0) return activate(existing);
@@ -76,7 +89,7 @@ export function createExplorer(
   }
 
   function redraw(): void {
-    showActive();
+    renderViewer(files[active], viewer, md);
     drawTabs(tabs, files, active, activate, close, tabMenu);
     markOpen();
   }
@@ -109,15 +122,11 @@ export function createExplorer(
     ]);
   }
 
-  function showActive(): void {
-    renderViewer(files[active], viewer, md);
-  }
-
   md.modeBtn.addEventListener("click", () => {
     const file = files[active];
-    if (!file) return;
+    if (!file || file.mode === "url") return;
     file.mode = file.mode === "markdown" ? "text" : "markdown";
-    showActive();
+    renderViewer(files[active], viewer, md);
   });
 
   /** Re-highlight tree rows after the open set changes. */
@@ -133,12 +142,7 @@ export function createExplorer(
   /** Re-list the tree (keeping expanded folders) and re-read every open file. */
   async function reload(): Promise<void> {
     void open("");
-    await Promise.all(
-      files.map(async (file) => {
-        const text = await readFile(file.path);
-        if (text !== null) file.text = text;
-      }),
-    );
+    await rereadFiles(files);
     renderViewer(files[active], viewer, md);
   }
 
@@ -200,7 +204,11 @@ function drawTabs(
     tab.className = i === active ? "fs-tab active" : "fs-tab";
     tab.title = file.path;
     tab.setAttribute("role", "tab");
-    tab.append(file.path.slice(file.path.lastIndexOf("/") + 1));
+    tab.append(
+      file.mode === "url"
+        ? new URL(file.path).host
+        : file.path.slice(file.path.lastIndexOf("/") + 1),
+    );
     const x = document.createElement("button");
     x.className = "fs-tab-close";
     x.textContent = "×";
@@ -229,12 +237,34 @@ function renderViewer(
   md: MarkdownView,
 ): void {
   const rendered = file?.mode === "markdown";
-  viewer.textContent = file?.text ?? "";
-  viewer.classList.toggle("hidden", rendered);
+  const url = file?.mode === "url";
+  viewer.textContent = url ? "" : (file?.text ?? "");
+  viewer.classList.toggle("hidden", rendered || url);
   md.mdView.classList.toggle("hidden", !rendered);
+  md.frame.classList.toggle("hidden", !url);
   if (file && rendered) md.mdView.innerHTML = md.renderMarkdown(file.text);
-  md.modeBtn.classList.toggle("hidden", !file || !isMarkdown(file.path));
+  // Only (re)load the frame when its target changes, so tab switches don't reset the page.
+  if (file && url && md.frame.getAttribute("src") !== file.path) {
+    md.frame.setAttribute("src", file.path);
+  }
+  if (!url && md.frame.hasAttribute("src")) md.frame.removeAttribute("src");
+  md.modeBtn.classList.toggle("hidden", !file || url || !isMarkdown(file.path));
   md.modeBtn.textContent = rendered ? "view text" : "view markdown";
+}
+
+/** Add a scheme when missing: http for local hosts, https otherwise. Null if not a valid URL. */
+function normalizeUrl(raw: string): string | null {
+  const text = raw.trim();
+  if (!text) return null;
+  const local = /^(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(text);
+  const full = /^[a-z][a-z0-9+.-]*:\/\//i.test(text)
+    ? text
+    : `${local ? "http" : "https"}://${text}`;
+  try {
+    return new URL(full).href;
+  } catch {
+    return null;
+  }
 }
 
 function fileRow(
@@ -294,4 +324,28 @@ async function readFile(path: string): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+/** Call `onOpen` with the typed URL when the form is submitted, then clear the field. */
+function bindUrlForm(
+  form: HTMLFormElement,
+  onOpen: (url: string) => void,
+): void {
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const input = form.elements.namedItem("url") as HTMLInputElement;
+    onOpen(input.value);
+    input.value = "";
+  });
+}
+
+/** Refresh the text of every open file tab from disk (URL tabs are left alone). */
+async function rereadFiles(files: OpenFile[]): Promise<void> {
+  await Promise.all(
+    files.map(async (file) => {
+      if (file.mode === "url") return;
+      const text = await readFile(file.path);
+      if (text !== null) file.text = text;
+    }),
+  );
 }

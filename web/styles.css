@@ -847,3 +847,25 @@ body {
   color: var(--dim);
   cursor: default;
 }
+
+.fs-url {
+  display: flex;
+  gap: 0.4rem;
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.fs-url .save-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.files-frame {
+  flex: 1;
+  border: none;
+  background: #fff;
+}
+
+.files-frame.hidden {
+  display: none;
+}

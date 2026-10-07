@@ -14,6 +14,16 @@
           <ul id="files-list" class="tools-list"></ul>
         </nav>
         <section class="fs-viewer">
+          <form id="files-url-form" class="fs-url">
+            <input
+              name="url"
+              class="save-input"
+              type="text"
+              placeholder="open a URL… (e.g. localhost:5173)"
+              autocomplete="off"
+            />
+            <button class="save-btn">open</button>
+          </form>
           <div class="fs-head">
             <div id="files-tabs" class="fs-tabs" role="tablist"></div>
             <button
@@ -23,6 +33,7 @@
             ></button>
           </div>
           <pre id="files-viewer" class="files-viewer"></pre>
+          <iframe id="files-frame" class="files-frame hidden" title="Web page"></iframe>
           <div id="files-md" class="files-viewer md-view hidden"></div>
         </section>
       </aside>
