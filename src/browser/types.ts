@@ -12,15 +12,59 @@ export interface TabInfo {
   title: string;
 }
 
+/** A user input event forwarded to a tab; coordinates are page CSS pixels. */
+export type BrowserInput =
+  | {
+      kind: "mouse";
+      type: "move" | "down" | "up" | "wheel";
+      x: number;
+      y: number;
+      button: "left" | "middle" | "right" | "none";
+      clickCount: number;
+      deltaX: number;
+      deltaY: number;
+      modifiers: number;
+    }
+  | {
+      kind: "key";
+      type: "down" | "up";
+      key: string;
+      code: string;
+      keyCode: number;
+      text: string;
+      modifiers: number;
+    };
+
+/** One screencast frame: a base64-encoded JPEG of the tab's viewport. */
+export type FrameListener = (jpegBase64: string) => void;
+
 export interface BrowserBackend {
+  /** True once the browser has been launched (listing tabs never launches it by itself). */
+  readonly running: boolean;
   /** Open a new tab at `url` and wait for it to load. */
   openTab(url: string): Promise<TabInfo>;
   /** All open page tabs. */
   listTabs(): Promise<TabInfo[]>;
   /** Navigate an existing tab and wait for it to load. */
   navigate(id: number, url: string): Promise<TabInfo>;
+  /** Close a tab. */
+  closeTab(id: number): Promise<void>;
   /** The visible text of a tab's page. */
   readText(id: number): Promise<string>;
+  /**
+   * Resize the tab's viewport to `width` x `height` CSS pixels and stream its
+   * frames to `onFrame` until the returned function is called.
+   */
+  startScreencast(
+    id: number,
+    width: number,
+    height: number,
+    onFrame: FrameListener,
+  ): Promise<() => Promise<void>>;
+  /** Forward a mouse or keyboard event to a tab. */
+  sendInput(id: number, input: BrowserInput): Promise<void>;
+  /** Be told when tabs open, close, or change; returns an unsubscribe function. */
+  onTabsChanged(listener: () => void): () => void;
   /** Shut the browser down. Safe to call when it never started. */
   close(): Promise<void>;
 }

@@ -1,15 +1,10 @@
+import type { BrowserView } from "./browser-view.ts";
+import { type BrowserTab, OpenTabs, type OpenFile } from "./open-tabs.ts";
 import { showMenu } from "./tab-menu.ts";
 
 interface DirEntry {
   name: string;
   dir: boolean;
-}
-
-interface OpenFile {
-  path: string;
-  text: string;
-  /** Markdown files can show rendered or as raw text. */
-  mode: "text" | "markdown" | "url";
 }
 
 /** Extra viewer pieces: rendered markdown, its toggle, the URL iframe and its form. */
@@ -20,6 +15,9 @@ interface MarkdownView {
   /** Address bar for the active URL tab; navigates that tab in place. */
   addrForm: HTMLFormElement;
   modeBtn: HTMLButtonElement;
+  /** Pane holding the integrated browser's live view, and its controller. */
+  pane: HTMLElement;
+  browser: BrowserView;
   renderMarkdown(source: string): string;
 }
 
@@ -37,9 +35,13 @@ export function createExplorer(
   tabs: HTMLElement,
   viewer: HTMLPreElement,
   md: MarkdownView,
-): { open(path: string): Promise<void>; reload(): Promise<void> } {
-  const files: OpenFile[] = [];
-  let active = -1;
+): {
+  open(path: string): Promise<void>;
+  reload(): Promise<void>;
+  /** Mirror the integrated browser's tabs; true when a new one appeared. */
+  syncBrowserTabs(tabs: BrowserTab[]): boolean;
+} {
+  const set = new OpenTabs();
   /** Directories the user has expanded; kept so a refresh restores them. */
   const expanded = new Set<string>();
 
@@ -59,7 +61,7 @@ export function createExplorer(
           : fileRow(
               entry.name,
               child,
-              files.some((f) => f.path === child),
+              set.has(child),
               () => void openFile(child),
             ),
       );
@@ -69,51 +71,45 @@ export function createExplorer(
   /** Open a URL as a tab that renders the page in an iframe. */
   function openUrl(raw: string): void {
     const url = normalizeUrl(raw);
-    if (!url) return;
-    activate(urlTabIndex(files, url));
+    if (url) activate(set.urlIndex(url));
   }
 
   bindUrlForm(md.urlForm, openUrl, true);
   bindUrlForm(
     md.addrForm,
-    (raw) => navigateTab(files[active], raw, md.frame) && redraw(),
+    (raw) => navigateTab(set.current, raw, md) && redraw(),
     false,
   );
 
   async function openFile(path: string): Promise<void> {
-    const existing = files.findIndex((f) => f.path === path);
+    const existing = set.indexOf(path);
     if (existing >= 0) return activate(existing);
     const text = (await readFile(path)) ?? "unable to read file";
-    files.push({ path, text, mode: isMarkdown(path) ? "markdown" : "text" });
-    activate(files.length - 1);
+    const mode = isMarkdown(path) ? "markdown" : "text";
+    activate(set.add({ path, text, mode }));
   }
 
   function activate(index: number): void {
-    active = index;
+    set.active = index;
     redraw();
   }
 
   function redraw(): void {
-    renderViewer(files[active], viewer, md);
-    drawTabs(tabs, files, active, activate, close, tabMenu);
+    renderViewer(set.current, viewer, md);
+    drawTabs(tabs, set.files, set.active, activate, close, tabMenu);
     markOpen();
+  }
+
+  /** Keep only tabs where `keep(i)` holds; closing a browser tab also closes it for real. */
+  function retain(keep: (i: number) => boolean): void {
+    for (const gone of set.retain(keep)) {
+      if (gone.mode === "browser") md.browser.close(browserId(gone));
+    }
+    redraw();
   }
 
   function close(index: number): void {
     retain((i) => i !== index);
-  }
-
-  /** Keep only tabs where `keep(i)` holds. Focus stays on its tab if it survives, else moves to the nearest survivor. */
-  function retain(keep: (i: number) => boolean): void {
-    const focused = files[active];
-    const kept = files.filter((_, i) => keep(i));
-    const old = active;
-    files.splice(0, files.length, ...kept);
-    active =
-      focused && kept.includes(focused)
-        ? kept.indexOf(focused)
-        : Math.min(old, kept.length - 1);
-    redraw();
   }
 
   function tabMenu(index: number, x: number, y: number): void {
@@ -121,34 +117,37 @@ export function createExplorer(
       { label: "Close all", run: () => retain(() => false) },
       {
         label: "Close all to right",
-        disabled: index === files.length - 1,
+        disabled: index === set.files.length - 1,
         run: () => retain((i) => i <= index),
       },
     ]);
   }
 
   md.modeBtn.addEventListener("click", () => {
-    if (toggleMode(files[active])) renderViewer(files[active], viewer, md);
+    if (toggleMode(set.current)) renderViewer(set.current, viewer, md);
   });
 
   /** Re-highlight tree rows after the open set changes. */
   function markOpen(): void {
     for (const row of list.querySelectorAll<HTMLElement>("[data-path]")) {
-      row.classList.toggle(
-        "open",
-        files.some((f) => f.path === row.dataset.path),
-      );
+      row.classList.toggle("open", set.has(row.dataset.path ?? ""));
     }
+  }
+
+  function syncBrowserTabs(browserTabs: BrowserTab[]): boolean {
+    const added = set.sync(browserTabs);
+    redraw();
+    return added;
   }
 
   /** Re-list the tree (keeping expanded folders) and re-read every open file. */
   async function reload(): Promise<void> {
     void open("");
-    await rereadFiles(files);
-    renderViewer(files[active], viewer, md);
+    await rereadFiles(set.files);
+    renderViewer(set.current, viewer, md);
   }
 
-  return { open, reload };
+  return { open, reload, syncBrowserTabs };
 }
 
 /** Fetch a directory's entries, showing loading/error/empty messages in `ul`; null when there is nothing to list. */
@@ -206,11 +205,7 @@ function drawTabs(
     tab.className = i === active ? "fs-tab active" : "fs-tab";
     tab.title = file.path;
     tab.setAttribute("role", "tab");
-    tab.append(
-      file.mode === "url"
-        ? new URL(file.path).host
-        : file.path.slice(file.path.lastIndexOf("/") + 1),
-    );
+    tab.append(tabLabel(file));
     const x = document.createElement("button");
     x.className = "fs-tab-close";
     x.textContent = "×";
@@ -240,23 +235,39 @@ function renderViewer(
 ): void {
   const rendered = file?.mode === "markdown";
   const url = file?.mode === "url";
-  viewer.textContent = url ? "" : (file?.text ?? "");
-  viewer.classList.toggle("hidden", rendered || url);
+  const live = file?.mode === "browser";
+  viewer.textContent = url || live ? "" : (file?.text ?? "");
+  viewer.classList.toggle("hidden", rendered || url || live);
   md.mdView.classList.toggle("hidden", !rendered);
   md.frame.classList.toggle("hidden", !url);
-  md.addrForm.classList.toggle("hidden", !url);
-  if (file && url) {
-    (md.addrForm.elements.namedItem("url") as HTMLInputElement).value =
-      file.path;
-  }
+  md.pane.classList.toggle("hidden", !live);
+  md.addrForm.classList.toggle("hidden", !url && !live);
+  if (file && (url || live))
+    showAddress(md.addrForm, url ? file.path : file.text);
   if (file && rendered) md.mdView.innerHTML = md.renderMarkdown(file.text);
   // Only (re)load the frame when its target changes, so tab switches don't reset the page.
   if (file && url && md.frame.getAttribute("src") !== file.path) {
     md.frame.setAttribute("src", file.path);
   }
   if (!url && md.frame.hasAttribute("src")) md.frame.removeAttribute("src");
-  md.modeBtn.classList.toggle("hidden", !file || url || !isMarkdown(file.path));
+  if (file && live) md.browser.show(browserId(file));
+  else md.browser.hide();
+  md.modeBtn.classList.toggle(
+    "hidden",
+    !file || url || live || !isMarkdown(file.path),
+  );
   md.modeBtn.textContent = rendered ? "view text" : "view markdown";
+}
+
+/** The browser tab number behind a `browser:<id>` workspace tab. */
+function browserId(file: OpenFile): number {
+  return Number(file.path.slice("browser:".length));
+}
+
+/** Show an address in the bar unless the user is typing in it. */
+function showAddress(form: HTMLFormElement, address: string): void {
+  const input = form.elements.namedItem("url") as HTMLInputElement;
+  if (document.activeElement !== input) input.value = address;
 }
 
 /** Add a scheme when missing: http for local hosts, https otherwise. Null if not a valid URL. */
@@ -351,37 +362,42 @@ function bindUrlForm(
 async function rereadFiles(files: OpenFile[]): Promise<void> {
   await Promise.all(
     files.map(async (file) => {
-      if (file.mode === "url") return;
+      if (file.mode === "url" || file.mode === "browser") return;
       const text = await readFile(file.path);
       if (text !== null) file.text = text;
     }),
   );
 }
 
-/** Point a URL tab at a new address in place. False when the tab or address is unusable. */
+/** Point a URL or browser tab at a new address in place. False when nothing needs redrawing. */
 function navigateTab(
   file: OpenFile | undefined,
   raw: string,
-  frame: HTMLIFrameElement,
+  md: MarkdownView,
 ): boolean {
   const url = normalizeUrl(raw);
-  if (!url || file?.mode !== "url") return false;
+  if (!url || !file) return false;
+  if (file.mode === "browser") {
+    md.browser.navigate(browserId(file), url);
+    return false;
+  }
+  if (file.mode !== "url") return false;
   file.path = url;
   // Setting src explicitly also reloads when the address is unchanged.
-  frame.setAttribute("src", url);
+  md.frame.setAttribute("src", url);
   return true;
 }
 
 /** Flip a file between text and rendered markdown. False for URL tabs or no tab. */
 function toggleMode(file: OpenFile | undefined): boolean {
-  if (!file || file.mode === "url") return false;
+  if (!file || file.mode === "url" || file.mode === "browser") return false;
   file.mode = file.mode === "markdown" ? "text" : "markdown";
   return true;
 }
 
-/** Index of the tab showing `url`, adding one when none exists. */
-function urlTabIndex(files: OpenFile[], url: string): number {
-  const index = files.findIndex((f) => f.path === url);
-  if (index >= 0) return index;
-  return files.push({ path: url, text: "", mode: "url" }) - 1;
+/** What a tab is called: a page's host/title, or a file's base name. */
+function tabLabel(file: OpenFile): string {
+  if (file.mode === "url") return new URL(file.path).host;
+  if (file.mode === "browser") return file.title || file.text || "browser";
+  return file.path.slice(file.path.lastIndexOf("/") + 1);
 }

@@ -8,6 +8,7 @@ import type { LineResult } from "../repl/session.ts";
 import { saveProfileWhitelist } from "../repl/profile-tools.ts";
 import type { BrowserBackend } from "../browser/types.ts";
 import { ChromiumBackend } from "../browser/chromium.ts";
+import { BrowserBridge } from "./browser-bridge.ts";
 import { createEdgeSession } from "../wiring.ts";
 import { listDir, readTextFile, watchRoot } from "./files.ts";
 
@@ -70,6 +71,15 @@ function serveStatic(path: string): Response {
       "Content-Type": MIME[extname(file)] ?? "application/octet-stream",
     },
   });
+}
+
+/** Non-browser clients send no Origin; browsers must come from the Vise page itself. */
+function isLocalOrigin(origin: string | null, port: number): boolean {
+  return (
+    origin === null ||
+    origin === `http://localhost:${port}` ||
+    origin === `http://127.0.0.1:${port}`
+  );
 }
 
 function isLocalHost(host: string | null, port: number): boolean {
@@ -143,6 +153,10 @@ export function startWebServer(port = 3000): void {
         return new Response("forbidden", { status: 403 });
       }
       if (url.pathname === "/ws") {
+        // Browsers don't apply CORS to WebSockets: refuse other sites' pages.
+        if (!isLocalOrigin(req.headers.get("origin"), port)) {
+          return new Response("forbidden", { status: 403 });
+        }
         server.upgrade(req);
         return;
       }
@@ -169,6 +183,7 @@ export function startWebServer(port = 3000): void {
         const conn = state.get(ws);
         if (!conn) return;
         conn.unwatch();
+        void conn.bridge.dispose();
         conn.session.interrupt();
         conn.prompter.settle("");
         state.delete(ws);
@@ -187,6 +202,7 @@ interface ConnectionState {
   session: ReturnType<typeof createEdgeSession>["session"];
   edge: ReturnType<typeof createEdgeSession>;
   chain: Promise<void>;
+  bridge: BrowserBridge;
   /** Stops the project-tree watcher; set once the connection opens. */
   unwatch: () => void;
 }
@@ -236,6 +252,7 @@ function makeConnectionState(
     session: edge.session,
     edge,
     chain: Promise.resolve(),
+    bridge: new BrowserBridge(browser, send),
     unwatch: () => {},
   };
 }
@@ -292,6 +309,11 @@ function handleMessage(
   try {
     msg = JSON.parse(String(message));
   } catch {
+    return;
+  }
+  if (msg.type.startsWith("browser_")) {
+    // Browser view traffic never queues behind a model turn.
+    void conn.bridge.handle(msg as unknown as Record<string, unknown>);
     return;
   }
   if (msg.type === "interrupt") {

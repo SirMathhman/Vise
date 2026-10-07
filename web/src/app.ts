@@ -1,4 +1,4 @@
-import { createExplorer } from "./explorer.ts";
+import { createWorkspace } from "./workspace.ts";
 import { setupComposer } from "./composer.ts";
 import { createPanels } from "./panels.ts";
 import { renderMarkdown } from "./markdown.ts";
@@ -25,6 +25,10 @@ interface ServerMessage extends ResultMessage {
   tools?: string[] | null;
   question?: string;
   options?: string[];
+  tab?: number;
+  tabs?: { id: number; url: string; title: string }[];
+  data?: string;
+  message?: string;
 }
 
 function requiredElement<T extends HTMLElement>(id: string): T {
@@ -53,21 +57,6 @@ const sessionsPanel = requiredElement<HTMLElement>("sessions-panel");
 const saveName = requiredElement<HTMLInputElement>("save-name");
 const saveBtn = requiredElement<HTMLButtonElement>("save-btn");
 const filesBtn = requiredElement<HTMLButtonElement>("files-btn");
-const workspace = requiredElement<HTMLElement>("workspace");
-const explorer = createExplorer(
-  requiredElement<HTMLElement>("files-path"),
-  requiredElement<HTMLUListElement>("files-list"),
-  requiredElement<HTMLElement>("files-tabs"),
-  requiredElement<HTMLPreElement>("files-viewer"),
-  {
-    mdView: requiredElement<HTMLElement>("files-md"),
-    frame: requiredElement<HTMLIFrameElement>("files-frame"),
-    urlForm: requiredElement<HTMLFormElement>("files-url-form"),
-    addrForm: requiredElement<HTMLFormElement>("files-addr-form"),
-    modeBtn: requiredElement<HTMLButtonElement>("files-mode"),
-    renderMarkdown,
-  },
-);
 const contextEl = requiredElement<HTMLElement>("context");
 const ask = requiredElement<HTMLElement>("ask");
 const askQuestion = requiredElement<HTMLElement>("ask-question");
@@ -78,6 +67,13 @@ const askSend = requiredElement<HTMLButtonElement>("ask-send");
 const transcript = createTranscript(log, renderMarkdown);
 const socket = new WebSocket(
   `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`,
+);
+const workspace = createWorkspace(
+  (msg) => {
+    if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(msg));
+  },
+  renderMarkdown,
+  setStatus,
 );
 
 let pendingModelList = false;
@@ -338,6 +334,7 @@ function handleCommandResult(message: ResultMessage): void {
   } else if (message.value?.startsWith("saved session ")) {
     transcript.addLine("system", message.value);
     pendingSessionList = true;
+    workspace.sync();
     requestLine("/resume");
   } else if (message.value?.startsWith("deleted session ")) {
     transcript.addLine("system", message.value);
@@ -418,10 +415,7 @@ burstBtn.addEventListener("click", () => {
   sendLine(`/burst ${on ? "on" : "off"}`);
 });
 toolsBtn.addEventListener("click", () => toolsPanel.classList.toggle("hidden"));
-filesBtn.addEventListener("click", () => {
-  workspace.classList.toggle("hidden");
-  if (!workspace.classList.contains("hidden")) void explorer.open("");
-});
+filesBtn.addEventListener("click", () => workspace.toggle());
 sessionsBtn.addEventListener("click", () => {
   sessionsPanel.classList.toggle("hidden");
   // Turns auto-save in the background, so refresh the list when it opens.
@@ -480,12 +474,10 @@ socket.addEventListener("message", (event: MessageEvent<string>) => {
   } catch {
     return;
   }
+  if (workspace.handle(message)) return;
   switch (message.type) {
     case "profile_tools":
       handleWhitelistReply(message);
-      break;
-    case "fs_changed":
-      void explorer.reload();
       break;
     case "subagent_token":
       transcript.appendSubagentToken(message.text ?? "");

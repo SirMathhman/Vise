@@ -9,7 +9,13 @@ import {
 import { join } from "node:path";
 import { dataDir } from "../data-dir.ts";
 import { CdpConnection } from "./cdp.ts";
-import type { BrowserBackend, TabInfo } from "./types.ts";
+import { dispatchInput, startScreencast } from "./cdp-view.ts";
+import type {
+  BrowserBackend,
+  BrowserInput,
+  FrameListener,
+  TabInfo,
+} from "./types.ts";
 
 /** Chromium-family browsers, in preference order (Edge ships with Windows 11). */
 const CANDIDATES = [
@@ -18,6 +24,9 @@ const CANDIDATES = [
   "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
   "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
 ];
+
+/** Browser-owned pages (welcome, sync prompts, devtools) are not the agent's tabs. */
+const BROWSER_INTERNAL = /^(edge|chrome|devtools|chrome-extension):\/\//;
 
 const LOAD_TIMEOUT_MS = 15_000;
 const LAUNCH_TIMEOUT_MS = 15_000;
@@ -47,6 +56,13 @@ export class ChromiumBackend implements BrowserBackend {
   private profile: string | null = null;
   private readonly tabs = new Map<number, Tab>();
   private nextTabId = 1;
+  private readonly changeListeners = new Set<() => void>();
+  /** The blank tab the browser starts with; never shown to the agent or the UI. */
+  private startupTargets = new Set<string>();
+
+  get running(): boolean {
+    return this.launching !== null;
+  }
 
   async openTab(url: string): Promise<TabInfo> {
     const cdp = await this.connection();
@@ -63,7 +79,12 @@ export class ChromiumBackend implements BrowserBackend {
     const { targetInfos } = await cdp.send<{ targetInfos: TargetInfo[] }>(
       "Target.getTargets",
     );
-    const pages = targetInfos.filter((t) => t.type === "page");
+    const pages = targetInfos.filter(
+      (t) =>
+        t.type === "page" &&
+        !this.startupTargets.has(t.targetId) &&
+        !BROWSER_INTERNAL.test(t.url),
+    );
     const live = new Set(pages.map((t) => t.targetId));
     for (const [id, tab] of this.tabs) {
       if (!live.has(tab.targetId)) this.tabs.delete(id);
@@ -91,6 +112,12 @@ export class ChromiumBackend implements BrowserBackend {
     return this.info(cdp, id);
   }
 
+  async closeTab(id: number): Promise<void> {
+    const cdp = await this.connection();
+    await cdp.send("Target.closeTarget", { targetId: this.tab(id).targetId });
+    this.tabs.delete(id);
+  }
+
   async readText(id: number): Promise<string> {
     const cdp = await this.connection();
     const { result } = await cdp.send<{ result: { value?: string } }>(
@@ -102,6 +129,26 @@ export class ChromiumBackend implements BrowserBackend {
       this.tab(id).sessionId,
     );
     return result.value ?? "";
+  }
+
+  async startScreencast(
+    id: number,
+    width: number,
+    height: number,
+    onFrame: FrameListener,
+  ): Promise<() => Promise<void>> {
+    const cdp = await this.connection();
+    return startScreencast(cdp, this.tab(id).sessionId, width, height, onFrame);
+  }
+
+  async sendInput(id: number, input: BrowserInput): Promise<void> {
+    const cdp = await this.connection();
+    await dispatchInput(cdp, this.tab(id).sessionId, input);
+  }
+
+  onTabsChanged(listener: () => void): () => void {
+    this.changeListeners.add(listener);
+    return () => this.changeListeners.delete(listener);
   }
 
   async close(): Promise<void> {
@@ -192,6 +239,31 @@ export class ChromiumBackend implements BrowserBackend {
     });
   }
 
+  /** Remember the startup tab, then turn target events into tab-change notifications. */
+  private async watchTargets(cdp: CdpConnection): Promise<void> {
+    const { targetInfos } = await cdp.send<{ targetInfos: TargetInfo[] }>(
+      "Target.getTargets",
+    );
+    this.startupTargets = new Set(
+      targetInfos.filter((t) => t.type === "page").map((t) => t.targetId),
+    );
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const notify = (): void => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        for (const listener of this.changeListeners) listener();
+      }, 100);
+    };
+    for (const event of [
+      "Target.targetCreated",
+      "Target.targetInfoChanged",
+      "Target.targetDestroyed",
+    ]) {
+      cdp.on(event, notify);
+    }
+    await cdp.send("Target.setDiscoverTargets", { discover: true });
+  }
+
   private connection(): Promise<CdpConnection> {
     this.launching ??= this.launch().catch((error: unknown) => {
       // A failed launch must not poison later attempts.
@@ -220,6 +292,8 @@ export class ChromiumBackend implements BrowserBackend {
         "--remote-debugging-port=0",
         `--user-data-dir=${profile}`,
         "--no-first-run",
+        // A fresh profile must not pick up the user's OS account (Edge signs in implicitly).
+        "--disable-sync",
         "--no-default-browser-check",
         "about:blank",
       ],
@@ -232,6 +306,7 @@ export class ChromiumBackend implements BrowserBackend {
       processInfo: { id: number; type: string }[];
     }>("SystemInfo.getProcessInfo");
     this.browserPid = processInfo.find((p) => p.type === "browser")?.id ?? null;
+    await this.watchTargets(cdp);
     return cdp;
   }
 }
