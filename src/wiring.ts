@@ -17,7 +17,7 @@ import { Session } from "./repl/session.ts";
 import { makeAskUserHandler, type UserPrompter } from "./tools/ask-user.ts";
 import { makeSelfHandler } from "./tools/self.ts";
 import { makeSubagentHandler } from "./tools/subagent.ts";
-import { createToolRunner, toolController, tools } from "./tools.ts";
+import { createToolRunner, ToolSet, tools } from "./tools.ts";
 
 /**
  * Shared edge wiring for the Vise frontends (the interactive terminal driver
@@ -127,38 +127,43 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
   const sessionRef: { current: Session } = {
     current: null as unknown as Session,
   };
-  const toolRunner = createToolRunner({
-    run_subagent: makeSubagentHandler(
-      client,
-      profileSource,
-      cwd,
-      {
-        run: (name: string, args: Record<string, unknown>) =>
-          toolRunner.run(name, args),
-      },
-      tools,
-      {
-        onToken: options.onToken,
-        onThinking: options.onThinking,
-        onPromptProgress: options.onPromptProgress,
-        onToolCall: options.onToolCall,
-        isToolEnabled: (name) => toolController.isEnabled(name),
-      },
-      (operation) => client.withPreservedSlotCache(operation),
-      () => sessionRef.current.currentAbortSignal,
-    ),
-    ask_user: makeAskUserHandler(options.askUser),
-    self: makeSelfHandler({
-      backend: BACKEND,
-      model: () => client.getModel(),
-      cwd,
-      contextMax: () => client.contextMax(),
-      lastPromptTokens: () => client.lastPromptTokensUsed(),
-      activeProfile: () => sessionRef.current.getActiveProfile(),
-      preTurnHooks: hookCommands.pre ?? [],
-      postTurnHooks: hookCommands.post ?? [],
-    }),
-  });
+  // Tool enablement is per session: each connection gets its own ToolSet.
+  const toolController = new ToolSet(tools);
+  const toolRunner = createToolRunner(
+    {
+      run_subagent: makeSubagentHandler(
+        client,
+        profileSource,
+        cwd,
+        {
+          run: (name: string, args: Record<string, unknown>) =>
+            toolRunner.run(name, args),
+        },
+        tools,
+        {
+          onToken: options.onToken,
+          onThinking: options.onThinking,
+          onPromptProgress: options.onPromptProgress,
+          onToolCall: options.onToolCall,
+          isToolEnabled: (name) => toolController.isEnabled(name),
+        },
+        (operation) => client.withPreservedSlotCache(operation),
+        () => sessionRef.current.currentAbortSignal,
+      ),
+      ask_user: makeAskUserHandler(options.askUser),
+      self: makeSelfHandler({
+        backend: BACKEND,
+        model: () => client.getModel(),
+        cwd,
+        contextMax: () => client.contextMax(),
+        lastPromptTokens: () => client.lastPromptTokensUsed(),
+        activeProfile: () => sessionRef.current.getActiveProfile(),
+        preTurnHooks: hookCommands.pre ?? [],
+        postTurnHooks: hookCommands.post ?? [],
+      }),
+    },
+    toolController,
+  );
 
   const initialMessage = buildInitialMessage(cwd, dataDir);
   const session = new Session(client, toolRunner, tools, {

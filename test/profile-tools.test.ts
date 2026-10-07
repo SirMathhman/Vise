@@ -122,3 +122,18 @@ describe("Session profile tool whitelist (core)", () => {
     expect(whitelists.open).toBeUndefined();
   });
 });
+
+describe("tool enablement is per session (edge)", () => {
+  test("one session's tool state does not leak into another", async () => {
+    const { createEdgeSession } = await import("../src/wiring.ts");
+    const options = {
+      askUser: { ask: async () => "" },
+      onMaxRounds: async () => false,
+    };
+    const a = createEdgeSession(options);
+    const b = createEdgeSession(options);
+    a.toolController.set("read_file", false);
+    expect(a.toolController.isEnabled("read_file")).toBe(false);
+    expect(b.toolController.isEnabled("read_file")).toBe(true);
+  });
+});

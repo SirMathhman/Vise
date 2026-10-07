@@ -454,21 +454,22 @@ export class ToolSet implements ToolController {
   }
 }
 
-export const toolController = new ToolSet(tools);
-
 /**
  * Build a `ToolRunner` composing the static base handlers with any extra
  * handlers supplied at construction time. The extras are for tools whose
  * handler depends on edge services constructed in index.ts (e.g.
  * `run_subagent` needs the `Client` and `ProfileSource`); composing them here
  * keeps the wiring explicit and avoids a mutable module-level handler map.
+ * The `toolController` is per session (never module-global), so one web
+ * connection toggling tools or switching profile cannot affect another.
  * The full set of tool definitions is always sent to the model regardless of
  * enabled state — disabling a tool does not change the definitions; it only
  * makes the runner report `error: tool <name> is disabled` if the model
  * calls it.
  */
 export function createToolRunner(
-  extra?: Record<string, ToolHandler>,
+  extra: Record<string, ToolHandler> | undefined,
+  toolController: ToolController,
 ): ToolRunner {
   const handlers: Record<string, ToolHandler> = { ...baseHandlers, ...extra };
   return {
