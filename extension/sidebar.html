@@ -26,12 +26,39 @@
         font: inherit;
         cursor: pointer;
       }
-      #status {
+      #badge {
+        padding: 5px 8px;
+        border-radius: 5px;
+        margin-bottom: 6px;
+      }
+      #badge.ok {
+        background: #1d3a26;
+        color: #8fe3a4;
+      }
+      #badge.warn {
+        background: #3d3519;
+        color: #f0d77a;
+      }
+      #badge.bad {
+        background: #44211f;
+        color: #ffb3ad;
+      }
+      #badge-text {
+        font-weight: 600;
+      }
+      #badge-help {
+        font-size: 12px;
+        margin-top: 2px;
+      }
+      #current {
         color: #9aa0a6;
-        margin-left: 6px;
+        margin-bottom: 6px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
       #notice {
-        margin-top: 4px;
+        margin-top: 6px;
         padding: 3px 6px;
         border-radius: 4px;
       }
@@ -75,10 +102,21 @@
   </head>
   <body>
     <div id="strip">
+      <div id="badge" class="bad" role="status">
+        <div id="badge-text">✕ Not connected to Vise</div>
+        <div id="badge-help"></div>
+      </div>
+      <div id="current"></div>
       <button id="give" title="Let Vise use the tab you are looking at">
         Give Vise this tab
       </button>
-      <span id="status"></span>
+      <button
+        id="repair"
+        hidden
+        title="Forget the stored pairing token and pair again"
+      >
+        Re-pair
+      </button>
       <div id="notice" role="status" hidden></div>
       <ul id="owned"></ul>
     </div>

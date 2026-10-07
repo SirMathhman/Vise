@@ -5,11 +5,17 @@ import { grant, isOwned, onOwnedChanged, ownedIds, release } from "./tabs.ts";
 /**
  * The extension's background page: holds the WebSocket to the Vise server
  * (`/ext`), runs the operations the server asks for on the tabs Vise may use,
- * and answers the sidebar's control strip.
+ * and answers the sidebar's status widget and control strip.
  */
+
+/** Where the link to the Vise server stands, for the sidebar to explain. */
+type Link = "no-token" | "connecting" | "connected" | "closed";
 
 let socket: WebSocket | null = null;
 let retry = 0;
+let link: Link = "connecting";
+/** Why the link is down, in words the user can act on. */
+let linkNote = "";
 
 function send(message: Record<string, unknown>): void {
   if (socket?.readyState === WebSocket.OPEN) {
@@ -38,40 +44,80 @@ async function handle(raw: string): Promise<void> {
   }
 }
 
+function setLink(next: Link, note = ""): void {
+  link = next;
+  linkNote = note;
+  notifySidebar();
+}
+
 async function connect(): Promise<void> {
   // Not paired yet: the sidebar hands over the token the first time it loads.
   const token = await getToken();
   if (!token) {
+    setLink("no-token");
     setTimeout(() => void connect(), 2000);
     return;
   }
+  setLink("connecting");
   const port = await getPort();
   const ws = new WebSocket(
     `ws://127.0.0.1:${port}/ext?token=${encodeURIComponent(token)}`,
   );
   socket = ws;
+  let opened = false;
   ws.addEventListener("open", () => {
+    opened = true;
     retry = 0;
-    announce();
+    setLink("connected");
+    send({ event: "tabs" });
   });
   ws.addEventListener("message", (event) => void handle(String(event.data)));
   ws.addEventListener("close", () => {
     if (socket === ws) socket = null;
-    announce();
+    setLink(
+      "closed",
+      opened
+        ? "The Vise server closed the connection."
+        : `Could not connect to the Vise server on port ${port}: it is not running, or it rejected the pairing token.`,
+    );
     // Keep trying: the server may simply not be running yet.
     setTimeout(() => void connect(), Math.min(30_000, 1000 * 2 ** retry++));
   });
 }
 
-/** Tell the server and the sidebar that the connection or the tab set changed. */
-function announce(): void {
-  send({ event: "tabs" });
+/** Tell the sidebar that something it shows changed. */
+function notifySidebar(): void {
   void browser.runtime.sendMessage({ type: "changed" }).catch(() => undefined);
 }
 
-onOwnedChanged(announce);
+/** Tell the server and the sidebar that the tabs Vise may use changed. */
+function announce(): void {
+  send({ event: "tabs" });
+  notifySidebar();
+}
 
-async function status(): Promise<unknown> {
+onOwnedChanged(announce);
+// The sidebar shows the tab being looked at, so follow tab switches and loads.
+browser.tabs.onActivated.addListener(notifySidebar);
+browser.tabs.onUpdated.addListener((_id, _change, tab) => {
+  if (tab.active) notifySidebar();
+});
+
+/** The tab the user is looking at in a window (the sidebar's own window when given). */
+async function activeTab(windowId?: number): Promise<browser.tabs.Tab | null> {
+  const [tab] = await browser.tabs.query(
+    windowId === undefined
+      ? { active: true, lastFocusedWindow: true }
+      : { active: true, windowId },
+  );
+  return tab ?? null;
+}
+
+/** Vise only drives web pages; browser-internal pages cannot be scripted. */
+const isWebPage = (url: string | undefined): boolean =>
+  /^https?:/.test(url ?? "");
+
+async function status(windowId?: number): Promise<unknown> {
   const tabs = [];
   for (const id of ownedIds()) {
     try {
@@ -81,7 +127,21 @@ async function status(): Promise<unknown> {
       release(id);
     }
   }
-  return { connected: socket?.readyState === WebSocket.OPEN, tabs };
+  const current = await activeTab(windowId);
+  return {
+    link,
+    linkNote,
+    tabs,
+    current:
+      current?.id === undefined
+        ? null
+        : {
+            title: current.title ?? "",
+            url: current.url ?? "",
+            owned: isOwned(current.id),
+            usable: isWebPage(current.url),
+          },
+  };
 }
 
 /** The answer to "give Vise this tab": exactly one of success or an error message. */
@@ -95,17 +155,13 @@ interface GiveResult {
 }
 
 /** Hand the window's active tab over to Vise. */
-async function give(): Promise<GiveResult> {
-  const [tab] = await browser.tabs.query({
-    active: true,
-    lastFocusedWindow: true,
-  });
+async function give(windowId?: number): Promise<GiveResult> {
+  const tab = await activeTab(windowId);
   if (tab?.id === undefined) {
     return { ok: false, error: "Could not find the active tab." };
   }
   const name = tab.title || tab.url || "this tab";
-  // Vise only drives web pages; browser-internal pages cannot be scripted.
-  if (!/^https?:/.test(tab.url ?? "")) {
+  if (!isWebPage(tab.url)) {
     return {
       ok: false,
       error: `Vise can only use web pages (http or https), and "${name}" is not one.`,
@@ -116,11 +172,18 @@ async function give(): Promise<GiveResult> {
   return { ok: true, tab: name, already };
 }
 
-/** What the sidebar's control strip asks for. */
+/** Forget the stored pairing token and reconnect (the sidebar then pairs again). */
+async function repair(): Promise<void> {
+  await browser.storage.local.remove("token");
+  socket?.close();
+}
+
+/** What the sidebar asks for. */
 browser.runtime.onMessage.addListener(
-  (message: { type: string; tab?: number }) => {
-    if (message.type === "status") return status();
-    if (message.type === "give") return give();
+  (message: { type: string; tab?: number; windowId?: number }) => {
+    if (message.type === "status") return status(message.windowId);
+    if (message.type === "give") return give(message.windowId);
+    if (message.type === "repair") return repair();
     if (message.type === "release" && typeof message.tab === "number") {
       release(message.tab);
     }
@@ -132,5 +195,17 @@ browser.runtime.onMessage.addListener(
 browser.browserAction.onClicked.addListener(
   () => void browser.sidebarAction.toggle(),
 );
+
+// Test builds only (`define`): open the sidebar page in a tab so the pairing flow can run without a sidebar.
+declare const __VISE_TEST_SIDEBAR_TAB__: boolean | undefined;
+if (
+  typeof __VISE_TEST_SIDEBAR_TAB__ !== "undefined" &&
+  __VISE_TEST_SIDEBAR_TAB__
+) {
+  void browser.tabs.create({
+    url: browser.runtime.getURL("sidebar.html"),
+    active: false,
+  });
+}
 
 void connect();

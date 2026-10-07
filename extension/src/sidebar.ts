@@ -3,8 +3,10 @@ import { getPort } from "./config.ts";
 const PAIR_RETRY_MS = 1500;
 
 /**
- * The sidebar: a control strip (hand the current tab to Vise, see and release
- * the tabs Vise has) above the Vise web UI embedded from the local server.
+ * The sidebar: a status widget that always says whether Vise is connected and
+ * whether it can see the tab being looked at, a control strip (hand the current
+ * tab to Vise, see and release the tabs Vise has), and the Vise web UI embedded
+ * from the local server.
  */
 
 const el = <T extends HTMLElement>(id: string): T =>
@@ -13,14 +15,17 @@ const el = <T extends HTMLElement>(id: string): T =>
 const frame = el<HTMLIFrameElement>("app");
 const offline = el("offline");
 let loaded = false;
+let serverOrigin = "";
 /** Whether the Vise page has answered with a token this time (a stored one may be stale). */
 let paired = false;
+/** The browser window this sidebar belongs to: "the current tab" means this window's. */
+let windowId: number | undefined;
 
 /** Show the UI when the server answers, otherwise the "not running" notice. */
 async function load(): Promise<void> {
-  const origin = `http://127.0.0.1:${await getPort()}`;
+  serverOrigin = `http://127.0.0.1:${await getPort()}`;
   try {
-    await fetch(origin, { mode: "no-cors" });
+    await fetch(serverOrigin, { mode: "no-cors" });
   } catch {
     loaded = false;
     frame.hidden = true;
@@ -31,17 +36,17 @@ async function load(): Promise<void> {
   offline.hidden = true;
   frame.hidden = false;
   if (!loaded) {
-    frame.src = `${origin}/?ui=sidebar`;
+    frame.src = `${serverOrigin}/?ui=sidebar`;
     loaded = true;
-    void pair(origin);
+    void pair();
   }
 }
 
 /** Ask the embedded Vise page for the pairing token until the extension has it. */
-async function pair(origin: string): Promise<void> {
+function pair(): void {
   if (paired) return;
-  frame.contentWindow?.postMessage({ type: "vise-hello" }, origin);
-  setTimeout(() => void pair(origin), PAIR_RETRY_MS);
+  frame.contentWindow?.postMessage({ type: "vise-hello" }, serverOrigin);
+  setTimeout(pair, PAIR_RETRY_MS);
 }
 
 window.addEventListener("message", (event: MessageEvent) => {
@@ -53,17 +58,84 @@ window.addEventListener("message", (event: MessageEvent) => {
 });
 
 interface Status {
-  connected: boolean;
+  link: "no-token" | "connecting" | "connected" | "closed";
+  linkNote: string;
   tabs: { id: number; title: string; url: string }[];
+  current: {
+    title: string;
+    url: string;
+    owned: boolean;
+    usable: boolean;
+  } | null;
 }
 
-async function refresh(): Promise<void> {
-  const status = (await browser.runtime.sendMessage({
-    type: "status",
-  })) as Status;
-  el("status").textContent = status.connected
-    ? `connected, ${status.tabs.length} tab(s)`
-    : "not connected to Vise";
+/** The one-line verdict and (when something is wrong) what to do about it. */
+function verdict(status: Status): {
+  level: "ok" | "warn" | "bad";
+  text: string;
+  help: string;
+} {
+  if (status.link === "no-token") {
+    return {
+      level: "bad",
+      text: "✕ Not connected to Vise",
+      help: "Not paired yet: waiting for the Vise page below to hand over its pairing token. If this stays, restart `bun run web` (the page may be out of date), then press Re-pair.",
+    };
+  }
+  if (status.link === "connecting") {
+    return {
+      level: "bad",
+      text: "✕ Not connected to Vise",
+      help: "Connecting…",
+    };
+  }
+  if (status.link === "closed") {
+    return {
+      level: "bad",
+      text: "✕ Not connected to Vise",
+      help: `${status.linkNote} If you restarted Vise or deleted ~/.vise/ext-token, press Re-pair.`,
+    };
+  }
+  const current = status.current;
+  if (!current) {
+    return {
+      level: "warn",
+      text: "○ Connected to Vise",
+      help: "There is no active tab to share.",
+    };
+  }
+  if (current.owned) {
+    return {
+      level: "ok",
+      text: "● Connected to this tab",
+      help: "Vise can see and control it.",
+    };
+  }
+  if (!current.usable) {
+    return {
+      level: "warn",
+      text: "○ Not connected to this tab",
+      help: "Vise can only use web pages (http or https), not this kind of page.",
+    };
+  }
+  return {
+    level: "warn",
+    text: "○ Not connected to this tab",
+    help: "Vise cannot see it yet. Press “Give Vise this tab”.",
+  };
+}
+
+function render(status: Status): void {
+  const { level, text, help } = verdict(status);
+  const badge = el("badge");
+  badge.className = level;
+  el("badge-text").textContent = text;
+  el("badge-help").textContent = help;
+  el("current").textContent = status.current
+    ? `Current tab: ${status.current.title || status.current.url}`
+    : "";
+  // Re-pairing only helps while the link is down.
+  el("repair").hidden = status.link === "connected";
   const list = el("owned");
   list.textContent = "";
   for (const tab of status.tabs) {
@@ -80,6 +152,22 @@ async function refresh(): Promise<void> {
     });
     item.append(title, drop);
     list.append(item);
+  }
+}
+
+async function refresh(): Promise<void> {
+  try {
+    const status = (await browser.runtime.sendMessage({
+      type: "status",
+      windowId,
+    })) as Status;
+    render(status);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    el("badge").className = "bad";
+    el("badge-text").textContent = "✕ The Vise extension is not responding";
+    el("badge-help").textContent =
+      `Reload it from about:debugging (${reason}).`;
   }
 }
 
@@ -103,23 +191,32 @@ function notify(ok: boolean, text: string): void {
   noticeTimer = setTimeout(() => (notice.hidden = true), 6000);
 }
 
+/** Describe a "give" answer; an old background page may answer without the tab's name. */
+function describeGive(result: GiveResult): { ok: boolean; text: string } {
+  if (!result.ok) {
+    return {
+      ok: false,
+      text: result.error ?? "Could not give this tab to Vise.",
+    };
+  }
+  const name = result.tab ? `"${result.tab}"` : "this tab";
+  return {
+    ok: true,
+    text: result.already
+      ? `Vise already has ${name}.`
+      : `Vise can now use ${name}.`,
+  };
+}
+
 el("give").addEventListener("click", () => {
   const button = el<HTMLButtonElement>("give");
   button.disabled = true;
   browser.runtime
-    .sendMessage({ type: "give" })
+    .sendMessage({ type: "give", windowId })
     .then((result: GiveResult | undefined) => {
       if (!result) throw new Error("the extension did not answer");
-      if (result.ok) {
-        notify(
-          true,
-          result.already
-            ? `Vise already has "${result.tab}".`
-            : `Vise can now use "${result.tab}".`,
-        );
-      } else {
-        notify(false, result.error ?? "Could not give this tab to Vise.");
-      }
+      const { ok, text } = describeGive(result);
+      notify(ok, text);
     })
     .catch((error: unknown) => {
       const reason = error instanceof Error ? error.message : String(error);
@@ -130,11 +227,22 @@ el("give").addEventListener("click", () => {
       void refresh();
     });
 });
+
+el("repair").addEventListener("click", () => {
+  paired = false;
+  void browser.runtime.sendMessage({ type: "repair" }).then(() => {
+    pair();
+    void refresh();
+  });
+});
 el("retry").addEventListener("click", () => void load());
 browser.runtime.onMessage.addListener((message: { type: string }) => {
   if (message.type === "changed") void refresh();
 });
 
+void browser.windows.getCurrent().then((window) => {
+  windowId = window.id;
+  void refresh();
+});
 void load();
-void refresh();
 setInterval(() => void refresh(), 3000);
