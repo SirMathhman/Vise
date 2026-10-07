@@ -50,3 +50,14 @@ browser.tabs.onUpdated.addListener(
   },
   { properties: ["status", "title"] },
 );
+// A tab that a tab Vise controls opens (a link with target=_blank, window.open: "Apply on company
+// website") is part of the same task, so the agent may use it too (the user can still release it).
+browser.tabs.onCreated.addListener((tab) => {
+  if (
+    tab.id !== undefined &&
+    tab.openerTabId !== undefined &&
+    owned.has(tab.openerTabId)
+  ) {
+    grant(tab.id);
+  }
+});

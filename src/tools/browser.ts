@@ -2,6 +2,7 @@ import { stat } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import type { BrowserBackend, TabInfo } from "../browser/types.ts";
 import { waitHandlers } from "./browser-wait.ts";
+import { TabWatcher } from "./tab-watch.ts";
 import { describeImage, type ImageOutbox } from "./images.ts";
 import { errStr } from "./files.ts";
 import { isTooLarge, truncateInline, type TempStore } from "./temp-store.ts";
@@ -136,6 +137,28 @@ function dialogNote(browser: BrowserBackend, id: number): string {
 }
 
 /**
+ * Validate `tab`, run `action`, and report `done` plus any dialog it opened.
+ * With `watch`, also tell the model about tabs the action made the page open.
+ */
+function tabRunner(browser: BrowserBackend) {
+  const watcher = new TabWatcher(browser);
+  return (
+    args: Record<string, unknown>,
+    action: (id: number) => Promise<string | void>,
+    done: string,
+    watch = false,
+  ): Promise<string> =>
+    guarded(async () => {
+      const id = tabId(args);
+      if (id === null) return "error: an integer 'tab' is required";
+      if (watch) await watcher.mark();
+      const out = (await action(id)) ?? done;
+      const popups = watch ? await watcher.opened(formatTab) : "";
+      return `${out}${dialogNote(browser, id)}${popups}`;
+    });
+}
+
+/**
  * Edge handlers for the browser tools, bound to one `BrowserBackend`. They
  * depend only on the backend-neutral interface, so swapping in another
  * browser engine does not change them.
@@ -149,18 +172,7 @@ export function makeBrowserHandlers(
   /** Where a screenshot goes so the model sees it. */
   images?: ImageOutbox,
 ): Record<string, Handler> {
-  /** Validate `tab`, run `action`, and report `done` plus any dialog it opened. */
-  const onTab = (
-    args: Record<string, unknown>,
-    action: (id: number) => Promise<string | void>,
-    done: string,
-  ): Promise<string> =>
-    guarded(async () => {
-      const id = tabId(args);
-      if (id === null) return "error: an integer 'tab' is required";
-      const out = (await action(id)) ?? done;
-      return `${out}${dialogNote(browser, id)}`;
-    });
+  const onTab = tabRunner(browser);
   return {
     browser_open: (args) =>
       guarded(async () => {
@@ -204,7 +216,7 @@ export function makeBrowserHandlers(
       ),
     ...waitHandlers(browser, onTab, text),
     browser_click: (args) =>
-      onTab(args, (id) => browser.click(id, ref(args)), "clicked"),
+      onTab(args, (id) => browser.click(id, ref(args)), "clicked", true),
     browser_hover: (args) =>
       onTab(args, (id) => browser.hover(id, ref(args)), "hovered"),
     browser_drag: (args) =>
@@ -212,6 +224,7 @@ export function makeBrowserHandlers(
         args,
         (id) => browser.drag(id, ref(args, "from_ref"), ref(args, "to_ref")),
         "dragged",
+        true,
       ),
     browser_type: (args) =>
       onTab(
@@ -222,6 +235,7 @@ export function makeBrowserHandlers(
             key: str(args, "key"),
           }),
         "typed",
+        true,
       ),
     browser_upload: (args) =>
       onTab(
