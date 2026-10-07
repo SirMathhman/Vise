@@ -7,6 +7,9 @@ import type { AskRequest, UserPrompter } from "../tools/ask-user.ts";
 import type { LineResult } from "../repl/session.ts";
 import { saveProfileWhitelist } from "../repl/profile-tools.ts";
 import { BrowserSettingsStore } from "../browser/settings.ts";
+import { ExtensionBackend } from "../browser/extension.ts";
+import type { BrowserBackend } from "../browser/types.ts";
+import { ExtensionHub, isExtensionOrigin } from "./ext-hub.ts";
 import { handleNoteMessage } from "./notes-api.ts";
 import { SwitchableBrowser } from "../browser/switchable.ts";
 import { BrowserBridge } from "./browser-bridge.ts";
@@ -146,6 +149,34 @@ class WebDisplay {
   }
 }
 
+/**
+ * Decide what a WebSocket upgrade carries, or refuse it. `/ext` is the Firefox
+ * extension (only a `moz-extension://` page can send that Origin); `/ws` is a
+ * chat session, whose root is fixed here, when the connection opens, and never
+ * changes (`?root=none` is a session with no working directory at all).
+ */
+function socketData(
+  url: URL,
+  origin: string | null,
+  port: number,
+  roots: RootRegistry,
+): WsData | Response {
+  const refuse = new Response("forbidden", { status: 403 });
+  if (url.pathname === "/ext") {
+    if (!isExtensionOrigin(origin)) return refuse;
+    return { ext: true, root: "", noFolder: false, sidebar: false };
+  }
+  // Browsers don't apply CORS to WebSockets: refuse other sites' pages.
+  if (!isLocalOrigin(origin, port)) return refuse;
+  const param = url.searchParams.get("root");
+  const noFolder = param === "none";
+  const root = noFolder ? noFolderRoot : roots.resolve(param);
+  if (!root) return new Response("bad root", { status: 400 });
+  // `?ui=sidebar` is the page inside the Firefox extension: its browser is the user's own.
+  const sidebar = url.searchParams.get("ui") === "sidebar";
+  return { ext: false, root, noFolder, sidebar };
+}
+
 /** Start the web driver: serve the UI and accept WebSocket connections. */
 export function startWebServer(port = 3000): void {
   // One browser shared by every connection; it launches on first tool use.
@@ -154,6 +185,9 @@ export function startWebServer(port = 3000): void {
   const browser = new SwitchableBrowser(settingsStore.load(), settingsStore);
   // Sessions are rooted where they were opened; the default is where the server started.
   const roots = new RootRegistry(process.cwd());
+  // The Firefox extension's connection, and the browser sessions in its sidebar use.
+  const extensionHub = new ExtensionHub();
+  const extensionBrowser = new ExtensionBackend(extensionHub);
   const state = new Map<ServerWebSocket<WsData>, ConnectionState>();
   const server = Bun.serve<WsData>({
     port,
@@ -164,18 +198,10 @@ export function startWebServer(port = 3000): void {
       if (!isLocalHost(req.headers.get("host"), port)) {
         return new Response("forbidden", { status: 403 });
       }
-      if (url.pathname === "/ws") {
-        // Browsers don't apply CORS to WebSockets: refuse other sites' pages.
-        if (!isLocalOrigin(req.headers.get("origin"), port)) {
-          return new Response("forbidden", { status: 403 });
-        }
-        // The root is fixed here, when the connection opens, and never changes.
-        // `?root=none` is a session with no working directory at all.
-        const param = url.searchParams.get("root");
-        const noFolder = param === "none";
-        const root = noFolder ? noFolderRoot : roots.resolve(param);
-        if (!root) return new Response("bad root", { status: 400 });
-        server.upgrade(req, { data: { root, noFolder } });
+      if (url.pathname === "/ext" || url.pathname === "/ws") {
+        const data = socketData(url, req.headers.get("origin"), port, roots);
+        if (data instanceof Response) return data;
+        server.upgrade(req, { data });
         return;
       }
       if (url.pathname === "/api/fs" || url.pathname === "/api/file") {
@@ -194,14 +220,19 @@ export function startWebServer(port = 3000): void {
     },
     websocket: {
       open(ws) {
-        const { root, noFolder } = ws.data;
+        if (ws.data.ext) {
+          extensionHub.attach(ws);
+          return;
+        }
+        const { root, noFolder, sidebar } = ws.data;
         const hookStore = roots.acquire(root);
         const conn = makeConnectionState(
           ws,
-          browser,
+          sidebar ? extensionBrowser : browser,
           hookStore,
           root,
           noFolder,
+          sidebar ? undefined : browser,
         );
         conn.send({ type: "root", path: noFolder ? "" : root, noFolder });
         // The shared browser's engine setting, for the settings panel.
@@ -220,11 +251,19 @@ export function startWebServer(port = 3000): void {
         state.set(ws, conn);
       },
       message(ws, message) {
+        if (ws.data.ext) {
+          extensionHub.handleMessage(String(message));
+          return;
+        }
         const conn = state.get(ws);
         if (!conn) return;
         handleMessage(conn, message);
       },
       close(ws) {
+        if (ws.data.ext) {
+          extensionHub.detach(ws);
+          return;
+        }
         const conn = state.get(ws);
         if (!conn) return;
         conn.unwatch();
@@ -249,6 +288,10 @@ export function startWebServer(port = 3000): void {
 
 /** What a WebSocket carries from the upgrade: the session root it was opened with. */
 interface WsData {
+  /** The Firefox extension's own connection (`/ext`), not a chat session. */
+  ext: boolean;
+  /** A session in the extension's sidebar: it drives the user's real browser. */
+  sidebar: boolean;
   root: string;
   /** No working directory: `root` is then only the generated store directory. */
   noFolder: boolean;
@@ -271,10 +314,12 @@ interface ConnectionState {
 
 function makeConnectionState(
   ws: ServerWebSocket<WsData>,
-  browser: SwitchableBrowser,
+  browser: BrowserBackend,
   hookStore: HookStore,
   root: string,
   noFolder: boolean,
+  /** The shared headless browser, when this session uses it (enables the engine settings). */
+  shared?: SwitchableBrowser,
 ): ConnectionState {
   const send = (msg: Record<string, unknown>): void => {
     if (ws.readyState === 1) ws.send(JSON.stringify(msg)); // readyState 1 = OPEN
@@ -320,7 +365,7 @@ function makeConnectionState(
     session: edge.session,
     edge,
     chain: Promise.resolve(),
-    bridge: new BrowserBridge(browser, send, browser),
+    bridge: new BrowserBridge(browser, send, shared),
     unwatch: () => {},
     dataDir: dataDirFor(root),
   };
