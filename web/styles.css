@@ -130,6 +130,16 @@ body {
   cursor: pointer;
 }
 
+.pe-status {
+  align-self: center;
+  color: var(--user);
+  font-size: 0.85em;
+}
+
+.pe-status.error {
+  color: var(--error);
+}
+
 .pe-bulk {
   display: flex;
   gap: 0.4rem;

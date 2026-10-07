@@ -200,9 +200,14 @@ function handleEditorResult(message: ResultMessage): boolean {
   const { name, save } = next;
   if (message.ok && message.value) {
     profileEditor.showWhitelist(name, message.value);
-    if (save) refreshTools();
+    if (save) {
+      profileEditor.showStatus("saved ✓");
+      refreshTools();
+    }
   } else {
-    transcript.addLine("error", message.error ?? "unknown error");
+    const reason = message.error ?? "unknown error";
+    profileEditor.showStatus(`failed: ${reason}`, true);
+    transcript.addLine("error", reason);
   }
   return true;
 }

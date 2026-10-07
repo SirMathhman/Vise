@@ -14,6 +14,8 @@ export interface ProfileEditorActions {
 }
 
 export interface ProfileEditor {
+  /** Briefly confirm a save (or report why it failed) next to the button. */
+  showStatus(text: string, error?: boolean): void;
   /** Show the server's answer (`profile 'x' tools: a, b` or `... all`). */
   showWhitelist(name: string, text: string): void;
 }
@@ -39,6 +41,8 @@ export function createProfileEditor(
   const select = document.getElementById("pe-profile") as HTMLSelectElement;
   const list = document.getElementById("pe-tools") as HTMLUListElement;
   const save = document.getElementById("pe-save") as HTMLButtonElement;
+  const status = document.getElementById("pe-status") as HTMLElement;
+  let statusTimer: ReturnType<typeof setTimeout> | undefined;
   const checkAll = document.getElementById("pe-check-all") as HTMLButtonElement;
   const uncheckAll = document.getElementById(
     "pe-uncheck-all",
@@ -74,7 +78,10 @@ export function createProfileEditor(
     select.selectedIndex = Math.max(0, names.indexOf(active));
     loadSelected();
   });
-  select.addEventListener("change", loadSelected);
+  select.addEventListener("change", () => {
+    status.textContent = "";
+    loadSelected();
+  });
   const setAll = (on: boolean): void => {
     for (const box of list.querySelectorAll<HTMLInputElement>("input")) {
       box.checked = on;
@@ -100,6 +107,12 @@ export function createProfileEditor(
   });
 
   return {
+    showStatus(text, error = false) {
+      clearTimeout(statusTimer);
+      status.textContent = text;
+      status.classList.toggle("error", error);
+      statusTimer = setTimeout(() => (status.textContent = ""), 3000);
+    },
     showWhitelist(name, text) {
       if (name !== select.value) return;
       const allowed = parseWhitelist(text);
