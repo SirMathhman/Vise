@@ -2,6 +2,7 @@ import type { Client, Tool } from "../core/engine.ts";
 import type { Message, Result } from "../core/errors.ts";
 import {
   checkGoal,
+  checkProgress,
   continueNote,
   deriveGoal,
   type Goal,
@@ -36,7 +37,7 @@ const CONTINUES_BEFORE_ASKING = 8;
 /** What the tracker needs from its surroundings while it loops. */
 export interface GoalHooks {
   /** Ask the user whether to keep going after many continues; without it the turn stops there. */
-  confirmMore?: () => Promise<boolean>;
+  confirmMore?: (question: string) => Promise<boolean>;
   /** Run before each continue (the session compacts a conversation that is getting full). */
   beforeContinue?: () => Promise<unknown>;
 }
@@ -47,6 +48,8 @@ const toolResults = (messages: Message[]): number =>
 export class GoalTracker {
   goal: Goal | undefined;
   private on: boolean;
+  /** Set when a mid-turn progress check found the work stuck: the turn is over and no verdict follows. */
+  private halted: string | undefined;
   /** The notes this tracker added to push the model back to work: not the user's words, so never saved or summarised. */
   private readonly notes = new WeakSet<Message>();
 
@@ -55,6 +58,49 @@ export class GoalTracker {
     private readonly emit?: (event: GoalEvent) => void,
   ) {
     this.on = enabled;
+  }
+
+  /**
+   * Mid-turn: is the work getting anywhere? Returns the reason to stop the turn
+   * when it is not (and remembers it, so `run` ends the turn instead of judging
+   * it); undefined to carry on, or when there is no goal to measure against.
+   */
+  async progress(
+    client: Client,
+    messages: Message[],
+    toolDefs: Tool[],
+    signal: AbortSignal,
+  ): Promise<string | undefined> {
+    if (!this.on || !this.goal) return undefined;
+    const progress = await checkProgress(
+      client,
+      messages,
+      toolDefs,
+      this.goal,
+      signal,
+    );
+    if (progress.kind !== "stuck") return undefined;
+    this.halted = progress.detail || "the same steps keep repeating";
+    return `Stopped: this does not seem to be getting anywhere. ${this.halted}`;
+  }
+
+  /** End the turn the progress check stopped: tell the edge, and keep the goal for the user's reply. */
+  private halt(turn: Result<string>): Result<string> {
+    this.block(
+      `${this.halted} (the work was stopped because it was not getting anywhere)`,
+    );
+    this.halted = undefined;
+    return turn;
+  }
+
+  /** Tell the edge the turn ends because the user is needed (or the work is going nowhere). */
+  private block(detail: string): void {
+    this.emit?.({
+      kind: "verdict",
+      verdict: "blocked",
+      detail,
+      continuing: false,
+    });
   }
 
   /** Whether a message is one of the tracker's own continue notes. */
@@ -106,6 +152,7 @@ export class GoalTracker {
       });
     }
     let turn = await runTurn();
+    if (this.halted !== undefined) return this.halt(turn);
     let step = "";
     let repeats = 0;
     let results = toolResults(messages);
@@ -134,23 +181,20 @@ export class GoalTracker {
       repeats = sameStep ? repeats + 1 : 0;
       const idle = toolResults(messages) === results;
       if (sameStep && (idle || repeats >= MAX_SAME_STEP)) {
-        this.emit?.({
-          kind: "verdict",
-          verdict: "blocked",
-          detail: `${verdict.detail} (it is not getting anywhere with this step)`,
-          continuing: false,
-        });
+        this.block(
+          `${verdict.detail} (it is not getting anywhere with this step)`,
+        );
         return turn;
       }
       if (continues > 0 && continues % CONTINUES_BEFORE_ASKING === 0) {
-        const more = (await hooks.confirmMore?.()) ?? false;
+        const more =
+          (await hooks.confirmMore?.(
+            `The goal still is not met after ${continues} automatic continues. Keep going?`,
+          )) ?? false;
         if (!more) {
-          this.emit?.({
-            kind: "verdict",
-            verdict: "blocked",
-            detail: `${verdict.detail} (stopped after ${continues} automatic continues)`,
-            continuing: false,
-          });
+          this.block(
+            `${verdict.detail} (stopped after ${continues} automatic continues)`,
+          );
           return turn;
         }
       }
@@ -171,6 +215,7 @@ export class GoalTracker {
       this.notes.add(note);
       messages.push(note);
       turn = await runTurn();
+      if (this.halted !== undefined) return this.halt(turn);
     }
     return turn;
   }

@@ -6,7 +6,7 @@ import type {
   TurnCallbacks,
 } from "../core/engine.ts";
 import { runTurn } from "../core/engine.ts";
-import { GoalTracker, handleGoalCommand, type GoalEvent } from "./goal-loop.ts";
+import { GoalTracker, handleGoalCommand } from "./goal-loop.ts";
 import type {
   Message,
   PromptProgress,
@@ -25,7 +25,8 @@ import {
   reportContext,
   toggleNotice,
 } from "./commands.ts";
-import { okNoop, runCompaction } from "./compaction.ts";
+import { autoCompact, runCompaction } from "./compaction.ts";
+import { makeRoundHook } from "./round-hooks.ts";
 import { ProfileToolGate } from "./profile-tools.ts";
 import {
   handleDeleteCommand,
@@ -76,9 +77,6 @@ import type {
   ReasoningController,
   NoteSource,
   WorkflowSource,
-  HookSource,
-  PreTurnHook,
-  PostTurnHook,
   SessionSource,
   ProfileCommands,
   SessionCommands,
@@ -91,6 +89,9 @@ import type {
  * a normal turn only compacts when overflow is genuinely imminent.
  */
 const COMPACTION_THRESHOLD = 0.9;
+
+/** Inside a long turn the context can grow by a whole page read per round, so compaction starts earlier. */
+const IN_TURN_COMPACTION_THRESHOLD = 0.75;
 
 /**
  * Derive an auto-save session name from a user-typed message. Pure: no I/O,
@@ -118,76 +119,8 @@ function deriveSessionName(message: string): string {
     : sanitized;
 }
 
-/**
- * Edge-provided options for constructing a Session. Groups the optional
- * edge services (model controller, profile source, hooks) and the required
- * context source + cwd into a single object, so adding a new service is
- * a new optional field, not a new positional parameter.
- */
-export interface SessionOptions {
-  /** The working directory; absent for a session with no file system. */
-  cwd?: string;
-  context: ContextSource;
-  modelController?: ModelController;
-  reasoningController?: ReasoningController;
-  toolController?: ToolController;
-  profileSource?: ProfileSource;
-  noteSource?: NoteSource;
-  workflowSource?: WorkflowSource;
-  preTurnHooks: PreTurnHook[];
-  postTurnHooks: PostTurnHook[];
-  /** Persists hook edits (`/hooks add|remove`); without it hooks are read-only. */
-  hookSource?: HookSource;
-  /**
-   * Edge-provided callback invoked with each token of the user turn's reply as
-   * it streams in. The session performs no I/O itself (invariant #2); this is
-   * the edge's sink for streamed tokens. When absent, replies are not
-   * streamed. Used only for normal user turns, not for compaction or other
-   * internal model calls.
-   */
-  onToken?: (token: string) => void;
-  /**
-   * Edge-provided callback invoked with each token of the model's thinking
-   * (reasoning_content) as it streams in, before the reply content. The
-   * session performs no I/O itself (invariant #2); this is the edge's sink
-   * for streamed thinking tokens, so the edge can show a live count without
-   * printing the thinking text. Used for all model calls including tool
-   * rounds.
-   */
-  onThinking?: (token: string) => void;
-  /**
-   * Edge-provided callback invoked with the prompt-processing progress
-   * reported in every streaming chunk (llama.cpp `return_progress`). The
-   * session performs no I/O itself (invariant #2); this is the edge's sink
-   * for the live prompt count, so it can show how many prompt tokens are
-   * being computed during the silent prefill. Used for all model calls
-   * including tool rounds.
-   */
-  onPromptProgress?: (progress: PromptProgress) => void;
-  /** Edge-provided notification for each tool invocation before execution. */
-  onToolCall?: (name: string, depth?: number) => void;
-  /** Notified when burst mode enters or leaves an act round. */
-  onBurst?: (active: boolean) => void;
-  /** Told the goal, each verdict on it, and when goal checking is switched. */
-  onGoal?: (event: GoalEvent) => void;
-  /** Whether each turn is checked against a goal (default off here; the edge wiring turns it on). */
-  goalChecking?: boolean;
-  /**
-   * Initial context injected as the first user message after the system
-   * message. Provided by the edge at construction time; typically contains
-   * the working directory's initial file structure so the model has a
-   * starting map of the project without calling tools.
-   */
-  initialMessage?: string;
-  sessionSource?: SessionSource;
-  /**
-   * Edge-provided callback invoked when the tool loop reaches its maximum
-   * rounds. Prompts the user to continue; returns true to reset the round
-   * counter and keep going, false to end the turn with an error. When absent
-   * (subagents), the turn ends without prompting.
-   */
-  onMaxRounds?: () => Promise<boolean>;
-}
+export type { SessionOptions } from "./session-options.ts";
+import type { SessionOptions } from "./session-options.ts";
 
 /**
  * Owns the conversation state (the growing messages array) and handles
@@ -222,7 +155,7 @@ export class Session {
   private readonly onBurst?: (active: boolean) => void;
   private readonly initialMessage?: string;
   private readonly sessionSource?: SessionSource;
-  private readonly onMaxRounds?: () => Promise<boolean>;
+  private readonly onMaxRounds?: (question: string) => Promise<boolean>;
   private activeProfile: string | undefined;
   /** The session's display name: derived from the first input, or renamed. */
   private sessionName: string | undefined;
@@ -299,11 +232,7 @@ export class Session {
       resetMessages: (body) => {
         this.pendingProfile = [];
         this.goals.goal = undefined;
-        this.messages.length = 0;
-        this.messages.push(this.systemMessage);
-        for (const m of body) {
-          this.messages.push(m);
-        }
+        this.replaceConversation(body);
       },
       currentSession: () => ({ id: this.sessionId, name: this.sessionName }),
       setSession: (id, name) => {
@@ -314,13 +243,7 @@ export class Session {
     this.compactionSource = {
       client: this.client,
       messages: () => this.messages.filter((m) => !this.goals.isNote(m)),
-      resetMessages: (body) => {
-        this.messages.length = 0;
-        this.messages.push(this.systemMessage);
-        for (const m of body) {
-          this.messages.push(m);
-        }
-      },
+      resetMessages: (body) => this.replaceConversation(body),
     };
     this.workflowCommands = {
       workflowSource: () => this.workflowSource,
@@ -347,6 +270,12 @@ export class Session {
     };
   }
 
+  /** Replace the conversation with the system message and `body`. */
+  private replaceConversation(body: Message[]): void {
+    this.messages.length = 0;
+    this.messages.push(this.systemMessage, ...body);
+  }
+
   private buildProfileCommands(
     toolController: ToolController | undefined,
   ): ProfileCommands {
@@ -371,8 +300,12 @@ export class Session {
     };
   }
 
-  private turnCallbacks(abort: AbortSignal): TurnCallbacks {
+  private turnCallbacks(
+    abort: AbortSignal,
+    onRound?: TurnCallbacks["onRound"],
+  ): TurnCallbacks {
     return {
+      onRound,
       onToken: this.onToken,
       onThinking: this.onThinking,
       onPromptProgress: this.onPromptProgress,
@@ -420,6 +353,24 @@ export class Session {
       }
       const auto = await this.maybeAutoCompact();
       const streamed = this.onToken !== undefined;
+      // Between rounds of a long turn: keep the context from overflowing, save, check progress.
+      const roundHook = makeRoundHook({
+        compact: () =>
+          autoCompact(
+            this.compactionSource,
+            this.context,
+            IN_TURN_COMPACTION_THRESHOLD,
+            true,
+          ),
+        save: () => this.saveSession(),
+        progress: () =>
+          this.goals.progress(
+            this.client,
+            this.messages,
+            this.toolDefs,
+            abort.signal,
+          ),
+      });
       const turn = await this.goals.run(
         this.client,
         this.messages,
@@ -430,7 +381,7 @@ export class Session {
             this.tools,
             this.messages,
             this.toolDefs,
-            this.turnCallbacks(abort.signal),
+            this.turnCallbacks(abort.signal, roundHook),
           ),
         abort.signal,
         {
@@ -606,13 +557,12 @@ export class Session {
    * compaction as `/compact`. Best-effort: any failure is returned so the
    * caller can log it, but never blocks the turn.
    */
-  private async maybeAutoCompact(): Promise<Result<string>> {
-    const lastUsed = this.context.lastPromptTokensUsed();
-    if (lastUsed === undefined) return okNoop();
-    const max = await this.context.contextMax();
-    if (!max.ok) return max;
-    if (lastUsed < COMPACTION_THRESHOLD * max.value) return okNoop();
-    return this.doCompact();
+  private maybeAutoCompact(): Promise<Result<string>> {
+    return autoCompact(
+      this.compactionSource,
+      this.context,
+      COMPACTION_THRESHOLD,
+    );
   }
 
   /**

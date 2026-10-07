@@ -46,5 +46,4 @@ export type ViseError =
   | { kind: "interrupted" };
 
 export type Result<T> =
-  | { ok: true; value: T }
-  | { ok: false; error: ViseError };
+  { ok: true; value: T } | { ok: false; error: ViseError };

@@ -67,7 +67,15 @@ export interface TurnCallbacks {
    * falls back to a dimmed, indented copy sent through `onToken`.
    */
   onSubagentToken?: (token: string) => void;
-  onMaxRounds?: () => Promise<boolean>;
+  /** Asked when a turn has run `MAX_TOOL_ROUNDS` rounds (and by other long-running loops); `question` says what is being asked. */
+  onMaxRounds?: (question: string) => Promise<boolean>;
+  /**
+   * Called before each model round after the first, with the number of rounds
+   * this turn has run. It is where long turns get their upkeep (compacting a
+   * filling conversation, saving, checking that the work is going somewhere).
+   * Returning a reason ends the turn there; undefined carries on.
+   */
+  onRound?: (round: number) => Promise<string | undefined>;
   /**
    * Whether a tool is currently enabled. The client restricts generation so
    * disabled tools cannot be called, without altering the tool definitions
@@ -111,7 +119,8 @@ export interface ToolController {
   isEnabled(name: string): boolean;
 }
 
-const MAX_TOOL_ROUNDS = 100;
+/** A turn can legitimately make hundreds of tool calls; past this many rounds the user is asked whether to go on. */
+const MAX_TOOL_ROUNDS = 500;
 
 /**
  * Burst mode: the plan round's reasoning is kept in history (capped to this
@@ -191,6 +200,61 @@ export async function summarize(
 }
 
 /**
+ * The upkeep step before a model round (see `TurnCallbacks.onRound`): returns
+ * the result that ends the turn (interrupted, or stopped for a reason), or
+ * undefined to carry on.
+ */
+async function betweenRounds(
+  callbacks: TurnCallbacks,
+  messages: Message[],
+  rounds: number,
+): Promise<Result<string> | undefined> {
+  if (rounds === 0 || !callbacks.onRound) return undefined;
+  const stop = await callbacks.onRound(rounds);
+  if (callbacks.abort?.aborted) {
+    return { ok: false, error: { kind: "interrupted" } };
+  }
+  if (stop === undefined) return undefined;
+  // Kept in the conversation so the model (and the next turn) knows why it stopped.
+  messages.push({ role: "assistant", content: stop });
+  return { ok: true, value: stop };
+}
+
+/**
+ * Split inside one long turn, for when the conversation is too big but has too
+ * few user messages to split by turns: the turn's opening user message and its
+ * last `keepRounds` rounds (an assistant message with its tool results) are
+ * kept verbatim, and everything before them, earlier turns and earlier rounds
+ * alike, is to be summarized. Nothing to summarize when the turn has no more
+ * than `keepRounds` rounds. Pure.
+ */
+export function splitWithinTurn(
+  messages: Message[],
+  keepRounds: number,
+): CompactionSplit {
+  let start = -1;
+  for (let i = messages.length - 1; i >= 0 && start < 0; i--) {
+    if (messages[i]?.role === "user") start = i;
+  }
+  const opening = messages[start];
+  const rounds: number[] = [];
+  for (let i = start + 1; i < messages.length; i++) {
+    if (messages[i]?.role === "assistant") rounds.push(i);
+  }
+  const tail = rounds[rounds.length - keepRounds];
+  if (!opening || tail === undefined || rounds.length <= keepRounds) {
+    return { toSummarize: [], recent: messages.slice() };
+  }
+  return {
+    toSummarize: [
+      ...messages.slice(0, start),
+      ...messages.slice(start + 1, tail),
+    ],
+    recent: [opening, ...messages.slice(tail)],
+  };
+}
+
+/**
  * Pure core pipeline: takes the accumulated conversation and a user line,
  * runs the model, dispatches any tool calls through `tools`, and returns the
  * assistant's final content. Mutates `messages` (appending assistant and
@@ -218,7 +282,9 @@ export async function runTurn(
   while (true) {
     if (rounds >= MAX_TOOL_ROUNDS) {
       if (callbacks.onMaxRounds) {
-        const keepGoing = await callbacks.onMaxRounds();
+        const keepGoing = await callbacks.onMaxRounds(
+          `This turn has run ${rounds} rounds of tool calls. Keep going?`,
+        );
         if (keepGoing) {
           rounds = 0;
           continue;
@@ -232,6 +298,8 @@ export async function runTurn(
     if (callbacks.abort?.aborted) {
       return { ok: false, error: { kind: "interrupted" } };
     }
+    const between = await betweenRounds(callbacks, messages, rounds);
+    if (between) return between;
     rounds += 1;
     const result = await client.chat(
       messages,

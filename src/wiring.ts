@@ -84,7 +84,7 @@ export interface EdgeSessionOptions {
   /** Collects the user's answer to an `ask_user` tool call. */
   askUser: UserPrompter;
   /** Prompts the user to continue past the maximum tool rounds. */
-  onMaxRounds: () => Promise<boolean>;
+  onMaxRounds: (question: string) => Promise<boolean>;
   /**
    * The integrated browser the browser tools drive. Shared across sessions
    * when given (the web server passes one); otherwise a private Chromium is

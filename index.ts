@@ -32,9 +32,9 @@ const edge = createEdgeSession({
   onToolCall: display.onToolCall,
   onGoal: display.onGoal,
   askUser: rlPrompter,
-  onMaxRounds: async () => {
+  onMaxRounds: async (question) => {
     const answer = await rlPrompter.ask({
-      question: "Maximum tool rounds reached. Continue?",
+      question,
       options: ["Continue", "Stop"],
     });
     const a = answer.trim().toLowerCase();

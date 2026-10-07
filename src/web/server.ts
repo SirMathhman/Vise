@@ -396,9 +396,9 @@ function makeConnectionState(
     },
     onSubagentToken: (t) => send({ type: "subagent_token", text: t }),
     askUser: prompter,
-    onMaxRounds: async () => {
+    onMaxRounds: async (question) => {
       const answer = await prompter.ask({
-        question: "Maximum tool rounds reached. Continue?",
+        question,
         options: ["Continue", "Stop"],
       });
       const a = answer.trim().toLowerCase();

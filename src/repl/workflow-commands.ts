@@ -46,7 +46,7 @@ export interface WorkflowCommands {
   onThinking(): ((token: string) => void) | undefined;
   onPromptProgress(): ((progress: PromptProgress) => void) | undefined;
   onToolCall(): ((name: string, depth?: number) => void) | undefined;
-  onMaxRounds(): (() => Promise<boolean>) | undefined;
+  onMaxRounds(): ((question: string) => Promise<boolean>) | undefined;
   isToolEnabled(): (name: string) => boolean;
   /** Run the auto-compaction guard and return its `Result`. */
   maybeAutoCompact(): Promise<Result<string>>;

@@ -147,6 +147,50 @@ export async function checkGoal(
   return { kind: "yes", detail };
 }
 
+/** Whether a long-running turn is getting anywhere. */
+export interface Progress {
+  kind: "progressing" | "stuck";
+  detail: string;
+}
+
+const PROGRESS_SCHEMA = {
+  type: "object",
+  properties: {
+    progress: { enum: ["progressing", "stuck"] },
+    detail: { type: "string" },
+  },
+  required: ["progress", "detail"],
+  additionalProperties: false,
+};
+
+/**
+ * Mid-turn: is the agent making real progress toward the goal, or repeating
+ * itself, failing the same way, or going in circles? Fails open ("progressing")
+ * so a broken check can never cut work short.
+ */
+export async function checkProgress(
+  client: Client,
+  messages: Message[],
+  toolDefs: Tool[],
+  goal: Goal,
+  signal?: AbortSignal,
+): Promise<Progress> {
+  const reply = await ask(
+    client,
+    messages,
+    toolDefs,
+    `[progress check, not from the user] Goal: ${goal.text}
+Done when: ${goal.doneWhen}
+This turn has been running for a long time. Judging only from the recent tool calls and their results: is real headway being made toward the goal, or are the same steps being repeated, the same errors hit, or the work going in circles? Reply with JSON. "progress": "progressing" if each recent step moved the work forward, "stuck" if not. "detail": one sentence saying why.`,
+    PROGRESS_SCHEMA,
+    signal,
+  );
+  const detail = text(reply?.["detail"]);
+  return reply?.["progress"] === "stuck"
+    ? { kind: "stuck", detail }
+    : { kind: "progressing", detail };
+}
+
 /** The message that sends the model back to work after a "no" verdict. */
 export function continueNote(goal: Goal, verdict: Verdict): string {
   return `Your goal is not met yet: ${goal.text}\nNext step: ${verdict.detail}\nDo it now by calling the tool, without describing it first.`;

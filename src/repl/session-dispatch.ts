@@ -85,7 +85,7 @@ export interface SessionDispatch {
   onThinking(): ((token: string) => void) | undefined;
   onPromptProgress(): ((progress: PromptProgress) => void) | undefined;
   onToolCall(): ((name: string, depth?: number) => void) | undefined;
-  onMaxRounds(): (() => Promise<boolean>) | undefined;
+  onMaxRounds(): ((question: string) => Promise<boolean>) | undefined;
   /** The pre-wired command-handler facades. */
   profileCommands(): ProfileCommands;
   sessionCommands(): SessionCommands;
