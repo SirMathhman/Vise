@@ -28,6 +28,8 @@ interface ServerMessage extends ResultMessage {
   options?: string[];
   tab?: number;
   tabs?: { id: number; url: string; title: string }[];
+  pre?: string[];
+  post?: string[];
   data?: string;
   message?: string;
 }
@@ -72,8 +74,10 @@ const socket = new WebSocket(
 const hooksPanel = createHooksPanel(
   requiredElement<HTMLButtonElement>("hooks-btn"),
   requiredElement<HTMLElement>("hooks-panel"),
-  requiredElement<HTMLElement>("hooks-text"),
-  (id) => socket.send(JSON.stringify({ type: "line", text: "/hooks", id })),
+  requiredElement<HTMLElement>("hooks-body"),
+  (msg) => {
+    if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(msg));
+  },
 );
 const workspace = createWorkspace(
   (msg) => {
@@ -387,7 +391,6 @@ function handleResult(message: ResultMessage): void {
   transcript.setBurst(false);
   hideAsk();
   renderContext(message);
-  if (hooksPanel.handle(message)) return;
   if (handleToolRefresh(message)) return;
   if (handleInitialResult(message)) return;
   if (handleToolToggleResult(message)) return;
@@ -496,7 +499,7 @@ socket.addEventListener("message", (event: MessageEvent<string>) => {
   } catch {
     return;
   }
-  if (workspace.handle(message)) return;
+  if (hooksPanel.handle(message) || workspace.handle(message)) return;
   switch (message.type) {
     case "profile_tools":
       handleWhitelistReply(message);

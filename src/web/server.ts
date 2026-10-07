@@ -324,6 +324,11 @@ function handleMessage(
     void conn.bridge.handle(msg as unknown as Record<string, unknown>);
     return;
   }
+  if (msg.type === "hooks_get") {
+    // A pure read of the live hook lists; never queued behind a model turn.
+    send({ type: "hooks", ...conn.session.hookCommands() });
+    return;
+  }
   if (msg.type === "interrupt") {
     session.interrupt();
     return;
