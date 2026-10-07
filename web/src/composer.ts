@@ -20,6 +20,7 @@ const slashCommands: [string, string, boolean][] = [
   ["/compact", "compact the conversation", false],
   ["/model", "list or switch models", true],
   ["/reasoning", "list or set reasoning effort", true],
+  ["/new", "start a new conversation", false],
   ["/burst", "toggle plan-then-act burst mode", true],
   ["/tool", "list or toggle tools", true],
   ["/profile", "list, switch, or create profiles", true],

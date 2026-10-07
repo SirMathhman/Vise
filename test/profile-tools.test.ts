@@ -182,3 +182,47 @@ describe("lazy /profile (core)", () => {
     expect(seen.indexOf("body of c")).toBeLessThan(seen.indexOf("hello"));
   });
 });
+
+describe("/new (core)", () => {
+  test("starts a fresh conversation but re-applies the active profile", async () => {
+    let seen: string[] = [];
+    const client: Client = {
+      async chat(messages) {
+        seen = messages.map((m) => m.content);
+        return { ok: true, value: { content: "reply" } };
+      },
+    };
+    const profileSource = {
+      listProfiles: async () => ({ ok: true as const, value: ["a"] }),
+      loadProfile: async () => ({ ok: true as const, value: "body of a" }),
+      initProfile: async (n: string) => ({ ok: true as const, value: n }),
+    };
+    const session = new Session(client, { run: async () => "out" }, [], {
+      cwd: "/tmp",
+      context: {
+        lastPromptTokensUsed: () => undefined,
+        async contextMax() {
+          return { ok: true, value: 100_000 };
+        },
+      },
+      preTurnHooks: [],
+      postTurnHooks: [],
+      profileSource,
+      initialMessage: "project map",
+    });
+    await session.handleLine("/profile a");
+    await session.handleLine("first conversation");
+    expect(await session.handleLine("/new")).toEqual({
+      ok: true,
+      value: "started a new conversation",
+    });
+    await session.handleLine("second conversation");
+    expect(seen).toEqual([
+      "Working directory: /tmp",
+      "project map",
+      "body of a",
+      "second conversation",
+    ]);
+    expect(session.getActiveProfile()).toBe("a");
+  });
+});

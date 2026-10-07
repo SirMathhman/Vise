@@ -44,6 +44,7 @@ const modelSelect = requiredElement<HTMLSelectElement>("model");
 const profileSelect = requiredElement<HTMLSelectElement>("profile");
 const reasoningSelect = requiredElement<HTMLSelectElement>("reasoning");
 const toolsBtn = requiredElement<HTMLButtonElement>("tools-btn");
+const newBtn = requiredElement<HTMLButtonElement>("new-btn");
 const burstBtn = requiredElement<HTMLButtonElement>("burst-btn");
 const toolsPanel = requiredElement<HTMLElement>("tools-panel");
 const sessionsBtn = requiredElement<HTMLButtonElement>("sessions-btn");
@@ -110,6 +111,7 @@ function setBusy(next: boolean): void {
   reasoningSelect.disabled = next;
   toolsBtn.disabled = next;
   burstBtn.disabled = next;
+  newBtn.disabled = next;
   sessionsBtn.disabled = next;
 }
 
@@ -310,7 +312,10 @@ function handleToolToggleResult(message: ResultMessage): boolean {
 }
 
 function handleCommandResult(message: ResultMessage): void {
-  if (message.value?.startsWith("resumed session ")) {
+  if (message.value === "started a new conversation") {
+    transcript.clear();
+    transcript.addLine("system", message.value);
+  } else if (message.value?.startsWith("resumed session ")) {
     transcript.clear();
     transcript.addLine("system", message.value);
   } else if (message.value?.startsWith("saved session ")) {
@@ -390,6 +395,7 @@ reasoningSelect.addEventListener("change", () => {
   pendingReasoningList = false;
   sendLine(`/reasoning ${reasoningSelect.value}`);
 });
+newBtn.addEventListener("click", () => sendLine("/new"));
 burstBtn.addEventListener("click", () => {
   const on = burstBtn.getAttribute("aria-pressed") !== "true";
   sendLine(`/burst ${on ? "on" : "off"}`);

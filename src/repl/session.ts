@@ -412,6 +412,7 @@ export class Session {
       };
     if (trimmed === "/context") return reportContext(this.context);
     if (trimmed === "/compact") return this.doCompact();
+    if (trimmed === "/new") return this.newConversation();
     if (trimmed === "/model" || trimmed.startsWith("/model ")) {
       return handleModelCommand(this.modelController, trimmed);
     }
@@ -581,6 +582,32 @@ export class Session {
    */
   getActiveProfile(): string | undefined {
     return this.activeProfile;
+  }
+
+  /**
+   * Start a fresh conversation: the system message and project map only, a new
+   * auto-save name (the old conversation is already auto-saved), and the
+   * active profile re-applied to the new conversation. Burst mode, the model
+   * and tool enablement are left as they are.
+   */
+  private async newConversation(): Promise<Result<string>> {
+    this.pendingProfile = [];
+    this.messages.length = 0;
+    this.messages.push(this.systemMessage);
+    if (this.initialMessage) {
+      this.messages.push({ role: "user", content: this.initialMessage });
+    }
+    this.sessionName = undefined;
+    this.hasAutoSaved = false;
+    const profile = this.activeProfile;
+    if (profile !== undefined) {
+      const applied = await handleProfileCommand(
+        this.profileCommands,
+        `/profile ${profile}`,
+      );
+      if (!applied.ok) return applied;
+    }
+    return { ok: true, value: "started a new conversation" };
   }
 
   /** Move the last profile switch's messages into the conversation. */

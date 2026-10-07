@@ -105,6 +105,7 @@ export function formatHelp(opts: {
     "/help          show this help",
     "/context       show context window usage",
     "/compact       compact the conversation now",
+    "/new           start a new conversation (the old one stays saved)",
   ];
   if (opts.hasModel) {
     lines.push(

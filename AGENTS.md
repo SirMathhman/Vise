@@ -24,7 +24,7 @@ authoritative definitions live in the source files linked.
 `src/output/format.ts`. To add one, handle it in `handleLine` and add it to
 `formatHelp`.
 
-- `/exit`, `/help`, `/context`, `/compact`
+- `/exit`, `/help`, `/context`, `/compact`, `/new` (fresh conversation; the old one stays auto-saved, the active profile is re-applied; web UI "new" button)
 - `/model` (list) / `/model <name>` (switch) — via `ModelController`
 - `/burst` (status) / `/burst on|off` — burst mode: think once to plan, then tool calls run with a calls-only grammar (no thinking) until the model emits `<done/>`, a tool returns `error:`, or its tool-name probability is below `BURST_MIN_CONFIDENCE`; handled in `runTurn` via `TurnCallbacks.burst`
 - `/tool` (list) / `/tool <name> enable|disable` — via `ToolController`
