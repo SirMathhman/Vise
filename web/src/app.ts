@@ -3,6 +3,7 @@ import { createWorkspace } from "./workspace.ts";
 import { setupComposer } from "./composer.ts";
 import { createPanels } from "./panels.ts";
 import { renderMarkdown } from "./markdown.ts";
+import { setupPanelSwitch } from "./panel-switch.ts";
 import { createProfileEditor } from "./profile-editor.ts";
 import { createTranscript } from "./transcript.ts";
 
@@ -424,6 +425,7 @@ burstBtn.addEventListener("click", () => {
   const on = burstBtn.getAttribute("aria-pressed") !== "true";
   sendLine(`/burst ${on ? "on" : "off"}`);
 });
+setupPanelSwitch();
 toolsBtn.addEventListener("click", () => toolsPanel.classList.toggle("hidden"));
 filesBtn.addEventListener("click", () => workspace.toggle());
 sessionsBtn.addEventListener("click", () => {
