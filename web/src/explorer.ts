@@ -1,3 +1,5 @@
+import { showMenu } from "./tab-menu.ts";
+
 interface DirEntry {
   name: string;
   dir: boolean;
@@ -46,44 +48,16 @@ export function createExplorer(
     for (const entry of entries) {
       const child = path ? `${path}/${entry.name}` : entry.name;
       ul.appendChild(
-        entry.dir ? dirRow(entry.name, child) : fileRow(entry.name, child),
+        entry.dir
+          ? dirRow(entry.name, (children) => void open(child, children))
+          : fileRow(
+              entry.name,
+              child,
+              files.some((f) => f.path === child),
+              () => void openFile(child),
+            ),
       );
     }
-  }
-
-  function fileRow(name: string, path: string): HTMLLIElement {
-    const item = document.createElement("li");
-    item.className = "fs-row";
-    item.dataset.path = path;
-    item.classList.toggle(
-      "open",
-      files.some((f) => f.path === path),
-    );
-    item.textContent = name;
-    item.addEventListener("click", () => void openFile(path));
-    return item;
-  }
-
-  /** A collapsible directory: click toggles; children load on first expand. */
-  function dirRow(name: string, path: string): HTMLLIElement {
-    const item = document.createElement("li");
-    const head = document.createElement("div");
-    head.className = "fs-row fs-dir";
-    head.textContent = `▸ ${name}`;
-    const children = document.createElement("ul");
-    children.className = "fs-children hidden";
-    let loaded = false;
-    head.addEventListener("click", () => {
-      const expand = children.classList.contains("hidden");
-      children.classList.toggle("hidden", !expand);
-      head.textContent = `${expand ? "▾" : "▸"} ${name}`;
-      if (expand && !loaded) {
-        loaded = true;
-        void open(path, children);
-      }
-    });
-    item.append(head, children);
-    return item;
   }
 
   async function openFile(path: string): Promise<void> {
@@ -97,22 +71,45 @@ export function createExplorer(
         : ((body as { error?: string }).error ?? "error");
     files.push({ path, text, mode: isMarkdown(path) ? "markdown" : "text" });
     activate(files.length - 1);
-    markOpen();
   }
 
   function activate(index: number): void {
     active = index;
+    refresh();
+  }
+
+  function refresh(): void {
     showActive();
-    drawTabs(tabs, files, active, activate, close);
+    drawTabs(tabs, files, active, activate, close, tabMenu);
+    markOpen();
   }
 
   function close(index: number): void {
-    files.splice(index, 1);
-    if (files.length === 0) active = -1;
-    else if (active > index || active >= files.length) active--;
-    showActive();
-    drawTabs(tabs, files, active, activate, close);
-    markOpen();
+    retain((i) => i !== index);
+  }
+
+  /** Keep only tabs where `keep(i)` holds. Focus stays on its tab if it survives, else moves to the nearest survivor. */
+  function retain(keep: (i: number) => boolean): void {
+    const focused = files[active];
+    const kept = files.filter((_, i) => keep(i));
+    const old = active;
+    files.splice(0, files.length, ...kept);
+    active =
+      focused && kept.includes(focused)
+        ? kept.indexOf(focused)
+        : Math.min(old, kept.length - 1);
+    refresh();
+  }
+
+  function tabMenu(index: number, x: number, y: number): void {
+    showMenu(x, y, [
+      { label: "Close all", run: () => retain(() => false) },
+      {
+        label: "Close all to right",
+        disabled: index === files.length - 1,
+        run: () => retain((i) => i <= index),
+      },
+    ]);
   }
 
   function showActive(): void {
@@ -185,6 +182,7 @@ function drawTabs(
   active: number,
   onActivate: (i: number) => void,
   onClose: (i: number) => void,
+  onMenu: (i: number, x: number, y: number) => void,
 ): void {
   tabs.textContent = "";
   files.forEach((file, i) => {
@@ -206,6 +204,10 @@ function drawTabs(
     tab.addEventListener("auxclick", (e) => {
       if (e.button === 1) onClose(i);
     });
+    tab.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      onMenu(i, e.clientX, e.clientY);
+    });
     tabs.appendChild(tab);
   });
 }
@@ -223,4 +225,44 @@ function renderViewer(
   if (file && rendered) md.mdView.innerHTML = md.renderMarkdown(file.text);
   md.modeBtn.classList.toggle("hidden", !file || !isMarkdown(file.path));
   md.modeBtn.textContent = rendered ? "view text" : "view markdown";
+}
+
+function fileRow(
+  name: string,
+  path: string,
+  isOpen: boolean,
+  onOpen: () => void,
+): HTMLLIElement {
+  const item = document.createElement("li");
+  item.className = "fs-row";
+  item.dataset.path = path;
+  item.classList.toggle("open", isOpen);
+  item.textContent = name;
+  item.addEventListener("click", onOpen);
+  return item;
+}
+
+/** A collapsible directory: click toggles; `load` fills the children on first expand. */
+function dirRow(
+  name: string,
+  load: (children: HTMLUListElement) => void,
+): HTMLLIElement {
+  const item = document.createElement("li");
+  const head = document.createElement("div");
+  head.className = "fs-row fs-dir";
+  head.textContent = `▸ ${name}`;
+  const children = document.createElement("ul");
+  children.className = "fs-children hidden";
+  let loaded = false;
+  head.addEventListener("click", () => {
+    const expand = children.classList.contains("hidden");
+    children.classList.toggle("hidden", !expand);
+    head.textContent = `${expand ? "▾" : "▸"} ${name}`;
+    if (expand && !loaded) {
+      loaded = true;
+      load(children);
+    }
+  });
+  item.append(head, children);
+  return item;
 }
