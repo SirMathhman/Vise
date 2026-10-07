@@ -1,4 +1,4 @@
-import type { Tool } from "../core/engine.ts";
+import type { Tool } from "../../core/engine.ts";
 
 /** Model-facing definitions for the integrated-browser tools (handlers: `browser.ts`). */
 export const browserTools: Tool[] = [
