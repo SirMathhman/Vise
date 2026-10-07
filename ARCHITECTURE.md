@@ -387,6 +387,15 @@ and must not add a user/assistant message or trigger a model turn.
 
 ## Future Work
 
+- **Structured list payloads for UI panels.** Tool categories (and every other
+  list the web UI renders) should reach the browser as typed data, e.g. a
+  `{type:"tools", items:[{name,enabled,category}]}` WebSocket message built
+  from `ToolController.list()`, not by re-parsing `formatToolList` text.
+  `formatToolList` stays terminal-only; the web client stops regexing `[x]`
+  headings and `(enabled)` suffixes. Until then the text format is a wire
+  protocol and must be pinned by a golden test shared by server and web
+  parser. Category names are a closed vocabulary (lowercase, no brackets,
+  `other` reserved for uncategorised) validated at registration.
 - **Engine (done).** `core/engine.ts` already contains `runTurn`,
   `splitForCompaction`, and `summarize`; it is pure and unit-testable with a
   stub `Client`.
