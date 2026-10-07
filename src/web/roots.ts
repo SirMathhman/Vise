@@ -58,6 +58,66 @@ export class RootRegistry {
   }
 }
 
+/** The Windows Explorer-style folder chooser (IFileOpenDialog in folder mode), via COM interop. */
+const FOLDER_DIALOG_CS = `
+using System;
+using System.Runtime.InteropServices;
+public static class FolderPicker {
+  [ComImport, Guid("DC1C5A9C-E88A-4dde-A5A1-60F82A20AEF7")] class FileOpenDialogCom {}
+  [ComImport, Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IShellItem {
+    void BindToHandler(IntPtr pbc, ref Guid bhid, ref Guid riid, out IntPtr ppv);
+    void GetParent(out IShellItem ppsi);
+    void GetDisplayName(uint sigdnName, out IntPtr ppszName);
+    void GetAttributes(uint mask, out uint attribs);
+    void Compare(IShellItem psi, uint hint, out int order);
+  }
+  [ComImport, Guid("42f85136-db7e-439c-85f1-e4075d135fc8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IFileOpenDialog {
+    [PreserveSig] int Show(IntPtr parent);
+    void SetFileTypes(uint c, IntPtr f);
+    void SetFileTypeIndex(uint i);
+    void GetFileTypeIndex(out uint i);
+    void Advise(IntPtr p, out uint c);
+    void Unadvise(uint c);
+    void SetOptions(uint o);
+    void GetOptions(out uint o);
+    void SetDefaultFolder(IShellItem s);
+    void SetFolder(IShellItem s);
+    void GetFolder(out IShellItem s);
+    void GetCurrentSelection(out IShellItem s);
+    void SetFileName([MarshalAs(UnmanagedType.LPWStr)] string n);
+    void GetFileName(out IntPtr n);
+    void SetTitle([MarshalAs(UnmanagedType.LPWStr)] string t);
+    void SetOkButtonLabel([MarshalAs(UnmanagedType.LPWStr)] string t);
+    void SetFileNameLabel([MarshalAs(UnmanagedType.LPWStr)] string t);
+    void GetResult(out IShellItem s);
+  }
+  [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
+  static extern void SHCreateItemFromParsingName(string path, IntPtr bc, ref Guid riid, out IShellItem item);
+  [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+  public static string Pick(string start, string title) {
+    var dlg = (IFileOpenDialog)new FileOpenDialogCom();
+    dlg.SetOptions(0x20 | 0x40);
+    dlg.SetTitle(title);
+    try {
+      var iid = new Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE");
+      IShellItem folder;
+      SHCreateItemFromParsingName(start, IntPtr.Zero, ref iid, out folder);
+      dlg.SetFolder(folder);
+    } catch (Exception) {}
+    if (dlg.Show(GetForegroundWindow()) != 0) return "";
+    IShellItem item;
+    dlg.GetResult(out item);
+    IntPtr name;
+    item.GetDisplayName(0x80058000, out name);
+    var path = Marshal.PtrToStringUni(name);
+    Marshal.FreeCoTaskMem(name);
+    return path;
+  }
+}
+`;
+
 /**
  * Show the operating system's folder chooser on this machine (the server runs
  * locally, so its dialog is the user's) and return the chosen directory, or
@@ -66,21 +126,15 @@ export class RootRegistry {
  */
 export function pickFolder(startDir: string): Promise<string | null> {
   const script = [
-    "Add-Type -AssemblyName System.Windows.Forms",
-    "$owner = New-Object System.Windows.Forms.Form",
-    "$owner.TopMost = $true",
-    "$dialog = New-Object System.Windows.Forms.FolderBrowserDialog",
-    "$dialog.Description = 'Choose the root folder for a new Vise session'",
-    `$dialog.SelectedPath = '${startDir.replaceAll("'", "''")}'`,
-    "if ($dialog.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) { $dialog.SelectedPath }",
-  ].join("; ");
+    `Add-Type -TypeDefinition @'${FOLDER_DIALOG_CS}'@`,
+    `[FolderPicker]::Pick('${startDir.replaceAll("'", "''")}', 'Choose the root folder for a new Vise session')`,
+  ].join("\n");
+  const encoded = Buffer.from(script, "utf16le").toString("base64");
   return new Promise((done) => {
     const proc = spawn(
       "powershell.exe",
-      ["-NoProfile", "-STA", "-Command", script],
-      {
-        windowsHide: false,
-      },
+      ["-NoProfile", "-STA", "-EncodedCommand", encoded],
+      { windowsHide: true },
     );
     let out = "";
     proc.stdout.on("data", (chunk: Buffer) => {
