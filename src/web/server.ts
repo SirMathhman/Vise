@@ -49,6 +49,7 @@ import { listDir, readTextFile, watchRoot } from "./files.ts";
  *                     { type:"thinking", text }     a streamed thinking token
  *                     { type:"progress", total, cache, processed, time_ms }
  *                     { type:"tool", name, depth?, text } a tool call began (text: icon, name and a short detail)
+ *                     { type:"image", uri, label, width?, height? } a tool produced a picture (a data URI)
  *                     { type:"result", ok:true, value, streamed?, compactionWarning? }
  *                     { type:"result", ok:false, error }
  *                     { type:"ask", question, options, multiSelect? }
@@ -402,6 +403,7 @@ function makeConnectionState(
         processed: p.processed,
         time_ms: p.time_ms,
       }),
+    onImage: (picture) => send({ type: "image", ...picture }),
     onToolCall: (name, depth, args) =>
       send({ type: "tool", name, depth, text: formatToolCall(name, args) }),
     onBurst: (active) => send({ type: "burst", active }),

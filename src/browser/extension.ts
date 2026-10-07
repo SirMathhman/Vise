@@ -110,6 +110,11 @@ export class ExtensionBackend implements BrowserBackend {
     await this.tab("click", { tab: id, ref });
   }
 
+  /** Only the visible part: the extension can capture just what the window shows. */
+  screenshot(id: number): Promise<string> {
+    return this.tab("screenshot", { tab: id });
+  }
+
   /** The extension cannot read the disk, so the files travel to it in the message. */
   async uploadFiles(id: number, ref: string, paths: string[]): Promise<void> {
     const files = [];

@@ -139,6 +139,19 @@ export class ChromiumBackend implements BrowserBackend {
     );
   }
 
+  async screenshot(id: number, fullPage: boolean): Promise<string> {
+    const data = await this.inTab(id, async (cdp, session) => {
+      const shot = await cdp.send<{ data: string }>(
+        "Page.captureScreenshot",
+        { format: "png", captureBeyondViewport: fullPage },
+        session,
+      );
+      return shot.data;
+    });
+    if (data === undefined) throw new Error("a dialog is open on that tab");
+    return data;
+  }
+
   async hover(id: number, ref: string): Promise<void> {
     await this.inTab(id, (cdp, session) => actions.hover(cdp, session, ref));
   }

@@ -1,3 +1,4 @@
+import type { Picture } from "../core/errors.ts";
 import type {
   Client,
   Tool,
@@ -52,6 +53,7 @@ export interface WorkflowCommands {
   onThinking(): ((token: string) => void) | undefined;
   onPromptProgress(): ((progress: PromptProgress) => void) | undefined;
   onToolCall(): ToolCallListener | undefined;
+  onImage(): ((image: Picture) => void) | undefined;
   onMaxRounds(): ((question: string) => Promise<boolean>) | undefined;
   /** The between-rounds upkeep (compaction, saving, progress) for a turn run under `signal`. */
   roundHook(signal: AbortSignal): TurnCallbacks["onRound"];
@@ -172,6 +174,7 @@ export async function handleWorkflowCommand(
         onThinking: session.onThinking(),
         onPromptProgress: session.onPromptProgress(),
         onToolCall: session.onToolCall(),
+        onImage: session.onImage(),
         onMaxRounds: session.onMaxRounds(),
         onRound: session.roundHook(abort.signal),
         isToolEnabled: session.isToolEnabled(),

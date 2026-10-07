@@ -224,6 +224,38 @@ export class LlmClient implements Client {
   }
 
   /**
+   * Whether a model can see images: the server (in router mode) lists a
+   * multimodal projector among the model's arguments, or (single model) its
+   * `/props` report vision. False when that cannot be found out.
+   */
+  async supportsVision(model: string = this.currentModel): Promise<boolean> {
+    const headers = { authorization: `Bearer ${API_KEY}` };
+    try {
+      const listed = await fetch("http://localhost:8080/v1/models", {
+        headers,
+      });
+      if (listed.ok) {
+        const body = (await listed.json()) as {
+          data?: { id: string; status?: { args?: string[] } }[];
+        };
+        const args = body.data?.find((m) => m.id === model)?.status?.args;
+        if (args) return args.some((a) => a === "--mmproj" || a === "-mm");
+      }
+      const props = await fetch(
+        `http://localhost:8080/props?model=${encodeURIComponent(model)}`,
+        { headers },
+      );
+      if (!props.ok) return false;
+      const info = (await props.json()) as {
+        modalities?: { vision?: boolean };
+      };
+      return info.modalities?.vision === true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Fetch the list of available model ids from the server via `GET /v1/models`.
    */
   async listModels(): Promise<Result<string[]>> {

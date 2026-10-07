@@ -2,6 +2,7 @@ import { stat } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import type { BrowserBackend, TabInfo } from "../browser/types.ts";
 import { waitHandlers } from "./browser-wait.ts";
+import { describeImage, toImage, type ImageOutbox } from "./images.ts";
 import { errStr } from "./files.ts";
 import { isTooLarge, truncateInline, type TempStore } from "./temp-store.ts";
 
@@ -111,6 +112,23 @@ function ref(args: Record<string, unknown>, name = "ref"): string {
   return value;
 }
 
+/** Take a screenshot of a tab and put it in the outbox for the model. */
+async function screenshot(
+  browser: BrowserBackend,
+  images: ImageOutbox | undefined,
+  id: number,
+  args: Record<string, unknown>,
+): Promise<string> {
+  const fullPage = args["full_page"] === true;
+  if (!browser.screenshot || !images) {
+    throw new Error("this browser cannot take screenshots");
+  }
+  const png = Buffer.from(await browser.screenshot(id, fullPage), "base64");
+  const image = toImage(png, "image/png", `tab ${id}`);
+  images.push(image);
+  return `screenshot of ${describeImage(image)}`;
+}
+
 /** Appended to an action's result when it left a JavaScript dialog open. */
 function dialogNote(browser: BrowserBackend, id: number): string {
   const dialog = browser.pendingDialog(id);
@@ -130,6 +148,8 @@ export function makeBrowserHandlers(
   temp?: TempStore,
   /** What relative upload paths are resolved against; without one they must be absolute. */
   cwd?: string,
+  /** Where a screenshot goes so the model sees it. */
+  images?: ImageOutbox,
 ): Record<string, Handler> {
   /** Validate `tab`, run `action`, and report `done` plus any dialog it opened. */
   const onTab = (
@@ -211,6 +231,8 @@ export function makeBrowserHandlers(
         (id) => upload(browser, id, ref(args), args["paths"], cwd),
         "",
       ),
+    browser_screenshot: (args) =>
+      onTab(args, (id) => screenshot(browser, images, id, args), ""),
     browser_handle_dialog: (args) =>
       onTab(
         args,

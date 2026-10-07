@@ -1,0 +1,32 @@
+import type { HooksFields } from "./hooks-panel.ts";
+
+/** The fields of a message from the server that the page reads (see the protocol in `src/web/server.ts`). */
+export interface ResultMessage {
+  ok?: boolean;
+  value?: string;
+  error?: string;
+  context?: string;
+  streamed?: boolean;
+  compactionWarning?: string;
+  /** Echo of the request id, set for editor-side requests only. */
+  id?: string;
+}
+
+export interface ServerMessage extends ResultMessage, HooksFields {
+  type: string;
+  text?: string;
+  name?: string;
+  depth?: number;
+  uri?: string;
+  label?: string;
+  width?: number;
+  height?: number;
+  active?: boolean;
+  tools?: string[] | null;
+  question?: string;
+  options?: string[];
+  tab?: number;
+  tabs?: { id: number; url: string; title: string }[];
+  data?: string;
+  message?: string;
+}

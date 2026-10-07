@@ -212,6 +212,20 @@ export const ops: Record<string, (params: Params) => Promise<unknown>> = {
     if (press) await act(id, press);
   },
 
+  async screenshot({ tab }) {
+    const id = requireOwned(tab);
+    // Only the visible tab of a window can be captured, so bring this one forward first.
+    const shown = await browser.tabs.update(id, { active: true });
+    await sleep(150);
+    const url = await browser.tabs.captureVisibleTab(
+      shown.windowId ?? browser.windows.WINDOW_ID_CURRENT,
+      {
+        format: "png",
+      },
+    );
+    return url.slice(url.indexOf(",") + 1);
+  },
+
   async closeTab({ tab }) {
     const id = requireOwned(tab);
     release(id);

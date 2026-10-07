@@ -145,6 +145,18 @@ export class FirefoxBackend implements BrowserBackend {
     );
   }
 
+  async screenshot(id: number, fullPage: boolean): Promise<string> {
+    const data = await this.inTab(id, async (bidi, context) => {
+      const shot = await bidi.send<{ data: string }>(
+        "browsingContext.captureScreenshot",
+        { context, origin: fullPage ? "document" : "viewport" },
+      );
+      return shot.data;
+    });
+    if (data === undefined) throw new Error("a dialog is open on that tab");
+    return data;
+  }
+
   async hover(id: number, ref: string): Promise<void> {
     await this.inTab(id, (bidi, context) => actions.hover(bidi, context, ref));
   }

@@ -5,7 +5,9 @@ import { NoteStore } from "./note-store.ts";
 import { agentTools } from "./tools/defs/agent.ts";
 import { browserTools } from "./tools/defs/browser.ts";
 import { fileTools } from "./tools/defs/files.ts";
+import { imageTools } from "./tools/defs/images.ts";
 import { noteTools } from "./tools/defs/notes.ts";
+import type { ImageOutbox } from "./tools/images.ts";
 import { tempTools } from "./tools/defs/temp.ts";
 import { shellTools } from "./tools/defs/shell.ts";
 import {
@@ -44,9 +46,18 @@ const needsFileSystem = (defs: Tool[], only?: string[]): Tool[] =>
       : t,
   );
 
+/** Flag tools (all of `defs`, or just the `only` names) as needing a model that can see images. */
+const needsVision = (defs: Tool[], only?: string[]): Tool[] =>
+  defs.map((t) =>
+    only === undefined || only.includes(t.function.name)
+      ? { ...t, requiresVision: true }
+      : t,
+  );
+
 /** Tool definitions exposed to the model, in prompt order. */
 const allTools: Tool[] = [
   ...inCategory("files", needsFileSystem(fileTools)),
+  ...inCategory("files", needsVision(needsFileSystem(imageTools))),
   ...inCategory("shell", needsFileSystem(shellTools)),
   ...inCategory("notes", noteTools),
   ...inCategory("temp", tempTools),
@@ -57,7 +68,9 @@ const allTools: Tool[] = [
   ...inCategory(
     "browser",
     // Its Playwright snippet runs with the user's full privileges, files included.
-    needsFileSystem(browserTools, ["browser_run_code"]),
+    needsVision(needsFileSystem(browserTools, ["browser_run_code"]), [
+      "browser_screenshot",
+    ]),
   ),
   ...inCategory(
     "agent",
@@ -208,6 +221,8 @@ export function createToolRunner(
   toolDefs: Tool[] = tools,
   /** Where a result too big to show goes instead (the temp tools read it back). */
   spill?: TempStore,
+  /** Where tools put the pictures they produce; the runner hands them over with the result. */
+  images?: ImageOutbox,
 ): ToolRunner {
   const handlers: Record<string, ToolHandler> = {
     ...baseHandlers(root),
@@ -219,6 +234,7 @@ export function createToolRunner(
     if (!offered.has(name)) delete handlers[name];
   }
   return {
+    takeImages: () => images?.take() ?? [],
     async run(name, args, signal): Promise<string> {
       const handler = handlers[name];
       if (handler === undefined) {

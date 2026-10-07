@@ -5,7 +5,7 @@ export interface ToolCall {
 }
 
 /** A picture the model can see: a data URI (`data:image/png;base64,...`) with what to call it when shown to the user. */
-export interface ImageData {
+export interface Picture {
   uri: string;
   label: string;
   width?: number;
@@ -16,7 +16,7 @@ export interface Message {
   role: "system" | "user" | "assistant" | "tool";
   content: string;
   /** Pictures that came with this message (a screenshot a tool took, an image the user attached). */
-  images?: ImageData[];
+  images?: Picture[];
   tool_calls?: ToolCall[];
   tool_call_id?: string;
 }

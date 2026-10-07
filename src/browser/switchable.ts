@@ -126,6 +126,14 @@ export class SwitchableBrowser implements BrowserBackend {
       ? inner.uploadFiles(id, ref, paths)
       : Promise.reject(new Error("this browser engine cannot upload files"));
   }
+  screenshot(id: number, fullPage: boolean): Promise<string> {
+    const inner = this.inner;
+    return inner.screenshot
+      ? inner.screenshot(id, fullPage)
+      : Promise.reject(
+          new Error("this browser engine cannot take screenshots"),
+        );
+  }
   hover(id: number, ref: string): Promise<void> {
     return this.inner.hover(id, ref);
   }

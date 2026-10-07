@@ -1,4 +1,6 @@
-import { createHooksPanel, type HooksFields } from "./hooks-panel.ts";
+import { createHooksPanel } from "./hooks-panel.ts";
+import type { ResultMessage, ServerMessage } from "./server-message.ts";
+import { appendPicture } from "./lightbox.ts";
 import { createGoalUi } from "./goal-ui.ts";
 import { createSettingsPanels } from "./settings-panels.ts";
 import { createWorkspace } from "./workspace.ts";
@@ -8,32 +10,6 @@ import { renderMarkdown } from "./markdown.ts";
 import { registerHeaderPanels } from "./panel-switch.ts";
 import { createProfileEditor } from "./profile-editor.ts";
 import { createTranscript } from "./transcript.ts";
-
-interface ResultMessage {
-  ok?: boolean;
-  value?: string;
-  error?: string;
-  context?: string;
-  streamed?: boolean;
-  compactionWarning?: string;
-  /** Echo of the request id, set for editor-side requests only. */
-  id?: string;
-}
-
-interface ServerMessage extends ResultMessage, HooksFields {
-  type: string;
-  text?: string;
-  name?: string;
-  depth?: number;
-  active?: boolean;
-  tools?: string[] | null;
-  question?: string;
-  options?: string[];
-  tab?: number;
-  tabs?: { id: number; url: string; title: string }[];
-  data?: string;
-  message?: string;
-}
 
 function requiredElement<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -514,6 +490,9 @@ socket.addEventListener("message", (event: MessageEvent<string>) => {
       break;
     case "thinking":
       transcript.appendThinkingToken(message.text ?? "");
+      break;
+    case "image":
+      appendPicture(transcript, message.uri ?? "", message.label ?? "image");
       break;
     case "tool":
       transcript.appendToolCall(

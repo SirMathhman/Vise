@@ -157,6 +157,7 @@ export class Session {
   private readonly onThinking?: (token: string) => void;
   private readonly onPromptProgress?: (progress: PromptProgress) => void;
   private readonly onToolCall?: ToolCallListener;
+  private readonly onImage?: SessionOptions["onImage"];
   private readonly onBurst?: (active: boolean) => void;
   private readonly initialMessage?: string;
   private readonly sessionSource?: SessionSource;
@@ -198,6 +199,7 @@ export class Session {
     this.onThinking = options.onThinking;
     this.onPromptProgress = options.onPromptProgress;
     this.onToolCall = options.onToolCall;
+    this.onImage = options.onImage;
     this.onBurst = options.onBurst;
     this.goals = new GoalTracker(options.goalChecking ?? false, options.onGoal);
     this.initialMessage = options.initialMessage;
@@ -257,6 +259,7 @@ export class Session {
       onThinking: () => this.onThinking,
       onPromptProgress: () => this.onPromptProgress,
       onToolCall: () => this.onToolCall,
+      onImage: () => this.onImage,
       onMaxRounds: () => this.onMaxRounds,
       roundHook: (signal) => this.roundHook(signal),
       isToolEnabled: () => this.isToolEnabled,
@@ -306,6 +309,7 @@ export class Session {
       onThinking: this.onThinking,
       onPromptProgress: this.onPromptProgress,
       onToolCall: this.onToolCall,
+      onImage: this.onImage,
       onBurst: this.onBurst,
       onMaxRounds: this.onMaxRounds,
       isToolEnabled: this.isToolEnabled,

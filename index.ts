@@ -30,6 +30,7 @@ const edge = createEdgeSession({
   onThinking: display.onThinking,
   onPromptProgress: display.onPromptProgress,
   onToolCall: display.onToolCall,
+  onImage: display.onImage,
   onGoal: display.onGoal,
   askUser: rlPrompter,
   onMaxRounds: async (question) => {

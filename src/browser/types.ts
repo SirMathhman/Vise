@@ -75,6 +75,11 @@ export interface BrowserBackend {
    * stands for. Optional: a backend that cannot do it leaves it out.
    */
   uploadFiles?(id: number, ref: string, paths: string[]): Promise<void>;
+  /**
+   * A PNG screenshot of the tab as base64 (the whole scrollable page when
+   * `fullPage`, where the engine can). Optional: a backend that cannot leaves it out.
+   */
+  screenshot?(id: number, fullPage: boolean): Promise<string>;
   /** The dialog currently blocking a tab, if any. */
   pendingDialog(id: number): DialogInfo | null;
   /** Accept or dismiss the blocking dialog (`promptText` answers a prompt). */

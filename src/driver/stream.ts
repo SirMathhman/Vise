@@ -1,7 +1,8 @@
 import type { PromptProgress } from "../core/errors.ts";
 import { dim } from "../output/color.ts";
 import { formatGoalEvent } from "../output/format.ts";
-import { formatToolCall } from "../output/tool-line.ts";
+import { formatPicture, formatToolCall } from "../output/tool-line.ts";
+import type { Picture } from "../core/errors.ts";
 import type { GoalEvent } from "../repl/goal-loop.ts";
 import { renderLine } from "../output/markdown.ts";
 
@@ -92,6 +93,12 @@ export class StreamDisplay {
       process.stdout.write(text);
     }
     this.lastProcessed = progress.processed;
+  };
+
+  /** Display a picture a tool produced as a caption (a terminal cannot show it). */
+  onImage = (picture: Picture): void => {
+    if (this.contentWritten) this.flushMdLine();
+    process.stdout.write(dim(formatPicture(picture)) + "\n");
   };
 
   /** Display a tool invocation as a visible event between model rounds. */

@@ -1,5 +1,5 @@
 import type { ToolCallListener, ToolController } from "../core/engine.ts";
-import type { PromptProgress } from "../core/errors.ts";
+import type { Picture, PromptProgress } from "../core/errors.ts";
 import type { GoalEvent } from "./goal-loop.ts";
 import type {
   ContextSource,
@@ -67,6 +67,8 @@ export interface SessionOptions {
   onPromptProgress?: (progress: PromptProgress) => void;
   /** Edge-provided notification for each tool invocation before execution. */
   onToolCall?: ToolCallListener;
+  /** A tool produced a picture for the user to see (the model gets it with the result). */
+  onImage?: (image: Picture) => void;
   /** Notified when burst mode enters or leaves an act round. */
   onBurst?: (active: boolean) => void;
   /** Told the goal, each verdict on it, and when goal checking is switched. */

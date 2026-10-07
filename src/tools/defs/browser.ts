@@ -329,4 +329,27 @@ export const browserTools: Tool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "browser_screenshot",
+      description:
+        "Take a screenshot of a browser tab: the picture is shown to you with this tool's result. Use it to check how a page or a UI you are building actually looks (layout, colours, spacing, whether something rendered), which the text from browser_read cannot tell you. full_page captures the whole scrollable page instead of just the visible part (not available in the Firefox extension, which shows only the visible part).",
+      parameters: {
+        type: "object",
+        properties: {
+          tab: {
+            type: "integer",
+            description: "Tab number from browser_open or browser_tabs",
+          },
+          full_page: {
+            type: "boolean",
+            description:
+              "Capture the whole page, not just the visible part (default false)",
+          },
+        },
+        required: ["tab"],
+      },
+    },
+  },
 ];

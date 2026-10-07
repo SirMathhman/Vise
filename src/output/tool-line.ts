@@ -1,3 +1,5 @@
+import type { Picture } from "../core/errors.ts";
+
 /**
  * How a tool call is shown to the user: an icon, the tool's name and a short
  * detail taken from its arguments (the tab, the address, the path, the
@@ -115,4 +117,14 @@ export function formatToolCall(
 ): string {
   const detail = toolDetail(args, name);
   return `${toolIcon(name)} ${name}${detail ? ` · ${detail}` : ""}`;
+}
+
+/** The one-line form of a picture shown to the user: `📷 <label> · <width>x<height> · <size> KB`. */
+export function formatPicture(picture: Picture): string {
+  const size =
+    picture.width && picture.height
+      ? ` · ${picture.width}x${picture.height}`
+      : "";
+  const kb = Math.max(1, Math.round((picture.uri.length * 0.75) / 1000));
+  return `📷 ${picture.label}${size} · ${kb} KB`;
 }

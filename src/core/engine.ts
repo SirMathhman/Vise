@@ -1,6 +1,6 @@
 import type {
   AssistantMessage,
-  ImageData,
+  Picture,
   Message,
   PromptProgress,
   Result,
@@ -64,7 +64,7 @@ export interface ToolRunner {
     signal?: AbortSignal,
   ): Promise<string>;
   /** The pictures the last `run` produced (handed over once): they travel with its result. */
-  takeImages?(): ImageData[];
+  takeImages?(): Picture[];
 }
 
 /** Told that a tool call is starting: its name, how deep in subagents it is, and its parsed arguments (for display). */
@@ -80,7 +80,7 @@ export interface TurnCallbacks {
   onPromptProgress?: (progress: PromptProgress) => void;
   onToolCall?: ToolCallListener;
   /** A tool produced a picture (for the user to see; the model already gets it with the result). */
-  onImage?: (image: ImageData) => void;
+  onImage?: (image: Picture) => void;
   /**
    * Plain-text stream of a subagent's reply. A frontend that can style it
    * itself (the web UI) supplies this; when absent the subagent handler

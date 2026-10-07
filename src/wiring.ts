@@ -8,11 +8,13 @@ import { dataDirFor, globalDataDir, noFolderRoot } from "./data-dir.ts";
 import { GLOBAL_PROMPT } from "./global-prompt.ts";
 import type {
   Client,
+  Tool,
   ToolCallListener,
+  ToolRunner,
   ToolController,
   TurnCallbacks,
 } from "./core/engine.ts";
-import type { PromptProgress } from "./core/errors.ts";
+import type { Picture, PromptProgress } from "./core/errors.ts";
 import {
   buildInitialMessage,
   HookStore,
@@ -21,7 +23,7 @@ import {
   FileSessionSource,
   FileWorkflowSource,
 } from "./edge-sources.ts";
-import type { ProfileSource } from "./repl/ports.ts";
+import type { ModelController, ProfileSource } from "./repl/ports.ts";
 import {
   compactInPlace,
   IN_TURN_COMPACTION_THRESHOLD,
@@ -30,6 +32,7 @@ import { Session } from "./repl/session.ts";
 import { TempStore, tempHandlers } from "./tools/temp-store.ts";
 import type { GoalEvent } from "./repl/goal-loop.ts";
 import { makeBrowserHandlers } from "./tools/browser.ts";
+import { ImageOutbox, makeImageHandlers } from "./tools/images.ts";
 import { makeAskUserHandler, type UserPrompter } from "./tools/ask-user.ts";
 import { makeSearchToolsHandler } from "./tools/search-tools.ts";
 import { makeSelfHandler } from "./tools/self.ts";
@@ -67,6 +70,47 @@ import { createToolRunner, isFileSystemTool, ToolSet, tools } from "./tools.ts";
 /** Tools that run unsandboxed code and so start disabled; the user opts in with `/tool <name> enable`. */
 const RISKY_TOOLS = ["browser_run_code"];
 
+/** A `ToolRunner` that defers to one built later (see the cycle between the runner and `run_subagent`). */
+function lazily(get: () => ToolRunner): ToolRunner {
+  return {
+    run: (name, args, signal) => get().run(name, args, signal),
+    takeImages: () => get().takeImages?.() ?? [],
+  };
+}
+
+/**
+ * The session's tool switches and model controller. Tool enablement is per
+ * session (each connection gets its own `ToolSet`). Tools that need a model
+ * with vision start off; the model's capability turns them on, and on again or
+ * off again whenever the model is switched.
+ */
+function controls(
+  client: LlmClient,
+  sessionTools: Tool[],
+): { toolController: ToolSet; modelController: ModelController } {
+  const visionTools = sessionTools
+    .filter((t) => t.requiresVision)
+    .map((t) => t.function.name);
+  const toolController = new ToolSet(sessionTools, [
+    ...RISKY_TOOLS,
+    ...visionTools,
+  ]);
+  const syncVision = async (): Promise<void> => {
+    const sees = await client.supportsVision();
+    for (const name of visionTools) toolController.set(name, sees);
+  };
+  void syncVision();
+  const modelController: ModelController = {
+    getModel: () => client.getModel(),
+    setModel: (name) => {
+      client.setModel(name);
+      void syncVision();
+    },
+    listModels: () => client.listModels(),
+  };
+  return { toolController, modelController };
+}
+
 /**
  * Frontend-specific collaborators passed into `createEdgeSession`. These are
  * the seams that differ between the terminal and web frontends: how streamed
@@ -84,6 +128,8 @@ export interface EdgeSessionOptions {
   onPromptProgress?: (progress: PromptProgress) => void;
   /** Notified of each tool invocation before execution. */
   onToolCall?: ToolCallListener;
+  /** A tool produced a picture (a screenshot, a viewed file) for the user to see. */
+  onImage?: (image: Picture) => void;
   /** Notified when burst mode enters or leaves an act round. */
   onBurst?: (active: boolean) => void;
   /** Told the goal, each verdict on it, and when goal checking is switched. */
@@ -147,6 +193,7 @@ function subagentCallbacks(
     onThinking: options.onThinking,
     onPromptProgress: options.onPromptProgress,
     onToolCall: options.onToolCall,
+    onImage: options.onImage,
     onSubagentToken: options.onSubagentToken,
     isToolEnabled: (name) => toolController.isEnabled(name),
     onRound: (_round, messages) =>
@@ -163,6 +210,7 @@ function displayCallbacks(
   | "onThinking"
   | "onPromptProgress"
   | "onToolCall"
+  | "onImage"
   | "onBurst"
   | "onGoal"
 > {
@@ -171,6 +219,7 @@ function displayCallbacks(
     onThinking: options.onThinking,
     onPromptProgress: options.onPromptProgress,
     onToolCall: options.onToolCall,
+    onImage: options.onImage,
     onBurst: options.onBurst,
     onGoal: options.onGoal,
   };
@@ -226,8 +275,8 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
   const sessionRef: { current: Session } = {
     current: null as unknown as Session,
   };
-  // Tool enablement is per session: each connection gets its own ToolSet.
-  const toolController = new ToolSet(sessionTools, RISKY_TOOLS);
+  const { toolController, modelController } = controls(client, sessionTools);
+  const images = new ImageOutbox();
   // Tool results too big to show go here instead; the temp tools read them back.
   const temp = new TempStore();
   const toolRunner = createToolRunner(
@@ -236,7 +285,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
         client,
         profileSource,
         cwd,
-        { run: (name, args, signal) => toolRunner.run(name, args, signal) },
+        lazily(() => toolRunner),
         sessionTools,
         subagentCallbacks(options, toolController, client),
         (operation) => client.withPreservedSlotCache(operation),
@@ -246,7 +295,8 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
       search_tools: makeSearchToolsHandler(sessionTools, (name) =>
         toolController.isEnabled(name),
       ),
-      ...makeBrowserHandlers(browser, temp, cwd),
+      ...makeBrowserHandlers(browser, temp, cwd, images),
+      ...makeImageHandlers(images, cwd),
       ...tempHandlers(temp),
       self: makeSelfHandler({
         backend: BACKEND,
@@ -263,13 +313,14 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     root,
     sessionTools,
     temp,
+    images,
   );
 
   const initialMessage = buildInitialMessage(cwd, dataDir);
   const session = new Session(client, toolRunner, sessionTools, {
     cwd,
     context: client,
-    modelController: client,
+    modelController,
     reasoningController: client,
     toolController,
     profileSource,
