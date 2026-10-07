@@ -1,5 +1,6 @@
 import type { Result } from "../core/errors.ts";
 import {
+  type HookPhase,
   handleHooksCommand,
   hookApplies,
   type HooksView,
@@ -50,17 +51,19 @@ export class SessionHooks {
     this.bindings = await readBindings(this.profiles);
   }
 
-  /** The hooks of `list` that run under the active profile. */
-  applicable<T extends AnyHook>(list: T[]): T[] {
+  /** The hooks of a phase that run under the active profile. */
+  applicable(phase: HookPhase): AnyHook[] {
+    const list: AnyHook[] = phase === "pre" ? this.pre : this.post;
     return list.filter((h) =>
-      hookApplies(h.command, this.activeProfile(), this.bindings),
+      hookApplies(phase, h.command, this.activeProfile(), this.bindings),
     );
   }
 
-  /** Run the applicable hooks in parallel; returns their non-blank outputs in config order. */
-  async run(list: AnyHook[]): Promise<string[]> {
+  /** Run a phase's applicable hooks in parallel; returns their non-blank outputs in config order. */
+  async run(phase: HookPhase): Promise<string[]> {
+    await this.refresh();
     const outputs = await Promise.all(
-      this.applicable(list).map((h) => h.run()),
+      this.applicable(phase).map((h) => h.run()),
     );
     return outputs.filter((o) => o.trim() !== "");
   }

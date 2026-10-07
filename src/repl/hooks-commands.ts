@@ -52,35 +52,48 @@ export async function readBindings(
   return result?.ok ? result.value : {};
 }
 
+export type HookPhase = "pre" | "post";
+
+/**
+ * The key a hook's binding is stored under in a profile's `hooks:` line:
+ * `pre:<command>` or `post:<command>`, so the same command in both phases
+ * (or re-added later in another phase) never shares a binding.
+ */
+export function bindingKey(phase: HookPhase, command: string): string {
+  return `${phase}:${command}`;
+}
+
 /**
  * Whether a hook runs under `activeProfile`: a hook bound to no profile always
  * runs; a bound hook runs only while one of its profiles is active.
  */
 export function hookApplies(
+  phase: HookPhase,
   command: string,
   activeProfile: string | undefined,
   bindings: Record<string, string[]>,
 ): boolean {
-  const bound = Object.values(bindings).some((c) => c.includes(command));
+  const key = bindingKey(phase, command);
+  const bound = Object.values(bindings).some((c) => c.includes(key));
   if (!bound) return true;
   return (
-    activeProfile !== undefined && !!bindings[activeProfile]?.includes(command)
+    activeProfile !== undefined && !!bindings[activeProfile]?.includes(key)
   );
 }
 
 /** Every hook with its bindings and the available profile names. */
 export async function hooksView(state: HooksState): Promise<HooksView> {
   const bindings = await readBindings(state.profiles);
-  const line = (command: string): HookLine => ({
+  const line = (phase: HookPhase, command: string): HookLine => ({
     command,
     profiles: Object.keys(bindings).filter((p) =>
-      bindings[p]?.includes(command),
+      bindings[p]?.includes(bindingKey(phase, command)),
     ),
   });
   const names = await state.profiles?.listProfiles();
   return {
-    pre: state.pre.map((h) => line(h.command)),
-    post: state.post.map((h) => line(h.command)),
+    pre: state.pre.map((h) => line("pre", h.command)),
+    post: state.post.map((h) => line("post", h.command)),
     profiles: names?.ok ? names.value : [],
   };
 }
@@ -125,6 +138,11 @@ export async function handleHooksCommand(
   if (verb === "add") {
     const command = unquote(rest);
     if (command === "") return fail(USAGE);
+    if (hooks.some((h) => h.command === command)) {
+      return fail(`a ${label} hook with that command already exists`);
+    }
+    // A leftover binding for this command must not attach itself to the new hook.
+    await dropBindingsFor(state, phase === "pre" ? "pre" : "post", command);
     hooks.push(source.create(command));
     const saved = persist(state, source);
     if (!saved.ok) {
@@ -147,7 +165,7 @@ export async function handleHooksCommand(
     hooks.splice(index, 0, hook);
     return saved;
   }
-  await dropBindingsFor(state, hook.command);
+  await dropBindingsFor(state, phase === "pre" ? "pre" : "post", hook.command);
   return {
     ok: true,
     value: `removed ${label} hook ${index + 1}: ${hook.command}`,
@@ -183,10 +201,11 @@ async function bindHook(
     );
   }
   const bindings = await readBindings(profiles);
+  const key = bindingKey(isPre ? "pre" : "post", hook.command);
   const current = bindings[profile] ?? [];
   const next = bind
-    ? [...new Set([...current, hook.command])]
-    : current.filter((c) => c !== hook.command);
+    ? [...new Set([...current, key])]
+    : current.filter((c) => c !== key);
   const saved = await profiles.setProfileHooks(profile, next);
   if (!saved.ok) return saved;
   state.source?.notify?.();
@@ -198,23 +217,21 @@ async function bindHook(
   };
 }
 
-/** A removed hook's command stops being bound anywhere (unless another hook shares it). */
+/** Forget every profile's binding for a hook of this phase and command (a removed hook, or a stale entry before the command is added again). */
 async function dropBindingsFor(
   state: HooksState,
+  phase: HookPhase,
   command: string,
 ): Promise<void> {
   const profiles = state.profiles;
   if (!profiles?.setProfileHooks) return;
-  const stillUsed = [...state.pre, ...state.post].some(
-    (h) => h.command === command,
-  );
-  if (stillUsed) return;
+  const key = bindingKey(phase, command);
   const bindings = await readBindings(profiles);
-  for (const [profile, commands] of Object.entries(bindings)) {
-    if (commands.includes(command)) {
+  for (const [profile, keys] of Object.entries(bindings)) {
+    if (keys.includes(key)) {
       await profiles.setProfileHooks(
         profile,
-        commands.filter((c) => c !== command),
+        keys.filter((k) => k !== key),
       );
     }
   }

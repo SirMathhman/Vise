@@ -317,8 +317,8 @@ export class Session {
       // `runWorkflow` mutates the conversation in place (the engine's
       // documented side channel), so the handler holds the live array.
       messages: () => this.messages,
-      preTurnHooks: () => this.hooks.applicable(this.hooks.pre),
-      postTurnHooks: () => this.hooks.applicable(this.hooks.post),
+      preTurnHooks: () => this.hooks.applicable("pre"),
+      postTurnHooks: () => this.hooks.applicable("post"),
       onToken: () => this.onToken,
       onThinking: () => this.onThinking,
       onPromptProgress: () => this.onPromptProgress,
@@ -470,8 +470,7 @@ export class Session {
     this.currentAbort = abort;
     try {
       this.flushPendingProfile();
-      await this.hooks.refresh();
-      await this.runHooks(this.hooks.pre);
+      await this.runHooks("pre");
       this.messages.push({ role: "user", content: line });
       if (this.sessionName === undefined) {
         this.sessionName = deriveSessionName(line);
@@ -486,7 +485,7 @@ export class Session {
         this.turnCallbacks(abort.signal),
       );
       if (!turn.ok) return turn;
-      await this.runHooks(this.hooks.post);
+      await this.runHooks("post");
       await this.saveSession();
       // A failed auto-compact is non-fatal: proceed with the (uncut)
       // conversation and let the edge report that compaction did not happen.
@@ -553,8 +552,8 @@ export class Session {
    * post-turn paths so the parallel execution, non-blank filter, and
    * injection logic live in one place.
    */
-  private async runHooks(hooks: PreTurnHook[] | PostTurnHook[]): Promise<void> {
-    for (const output of await this.hooks.run(hooks)) {
+  private async runHooks(phase: "pre" | "post"): Promise<void> {
+    for (const output of await this.hooks.run(phase)) {
       this.messages.push({ role: "user", content: output });
     }
   }
