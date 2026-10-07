@@ -1,3 +1,4 @@
+import type { GoalEvent } from "../repl/goal-loop.ts";
 import type { ViseError } from "../core/errors.ts";
 import type { SessionEntry } from "../repl/ports.ts";
 
@@ -255,4 +256,26 @@ ${lines}
 /resume <id>  resume a session (an id prefix is enough)
 /save <name>  name the current session and save it
 /delete <id>  delete a saved session`;
+}
+
+/** How a goal event is shown: one line, and whether it is good news, a nudge or a request for the user. */
+export interface GoalLine {
+  text: string;
+  level: "info" | "ok" | "warn" | "ask";
+}
+
+/** The line shown for a goal event (undefined for events that show nothing, like the setting changing). */
+export function formatGoalEvent(event: GoalEvent): GoalLine | undefined {
+  if (event.kind === "goal") {
+    return { text: `goal: ${event.goal}`, level: "info" };
+  }
+  if (event.kind === "setting") return undefined;
+  const detail = event.detail === "" ? "" : ` — ${event.detail}`;
+  if (event.verdict === "yes") {
+    return { text: `✓ goal met${detail}`, level: "ok" };
+  }
+  if (event.verdict === "blocked") {
+    return { text: `✋ needs you${detail}`, level: "ask" };
+  }
+  return { text: `↻ not done yet, continuing${detail}`, level: "warn" };
 }

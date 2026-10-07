@@ -256,6 +256,23 @@ body {
   word-break: break-word;
 }
 
+.line.system.goal-info {
+  color: var(--dim);
+}
+
+.line.system.goal-ok {
+  color: #8fe3a4;
+}
+
+.line.system.goal-warn {
+  color: #f0d77a;
+}
+
+.line.system.goal-ask {
+  color: #ffb3ad;
+  font-weight: 600;
+}
+
 .line.user {
   color: var(--user);
 }

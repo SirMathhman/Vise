@@ -2,7 +2,11 @@ import type { ServerWebSocket } from "bun";
 import { readFileSync } from "node:fs";
 import { extname, join } from "node:path";
 import { resolve } from "node:path";
-import { formatCompactionFailure, formatError } from "../output/format.ts";
+import {
+  formatCompactionFailure,
+  formatError,
+  formatGoalEvent,
+} from "../output/format.ts";
 import type { AskRequest, UserPrompter } from "../tools/ask-user.ts";
 import type { LineResult } from "../repl/session.ts";
 import { saveProfileWhitelist } from "../repl/profile-tools.ts";
@@ -270,6 +274,7 @@ export function startWebServer(port = 3000): void {
           sidebar ? undefined : browser,
         );
         conn.send({ type: "root", path: noFolder ? "" : root, noFolder });
+        conn.send({ type: "goal_state", enabled: conn.session.goalChecking() });
         // The shared browser's engine setting, for the settings panel.
         void conn.bridge.handle({ type: "browser_settings_get" });
         // Tell the browser's file explorer whenever the project tree changes.
@@ -381,6 +386,14 @@ function makeConnectionState(
       }),
     onToolCall: (name, depth) => send({ type: "tool", name, depth }),
     onBurst: (active) => send({ type: "burst", active }),
+    onGoal: (event) => {
+      if (event.kind === "setting") {
+        send({ type: "goal_state", enabled: event.enabled });
+        return;
+      }
+      const line = formatGoalEvent(event);
+      if (line) send({ type: "goal", ...line });
+    },
     onSubagentToken: (t) => send({ type: "subagent_token", text: t }),
     askUser: prompter,
     onMaxRounds: async () => {

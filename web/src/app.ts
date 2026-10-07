@@ -1,4 +1,5 @@
 import { createHooksPanel, type HooksFields } from "./hooks-panel.ts";
+import { createGoalUi } from "./goal-ui.ts";
 import { createSettingsPanels } from "./settings-panels.ts";
 import { createWorkspace } from "./workspace.ts";
 import { setupComposer } from "./composer.ts";
@@ -80,7 +81,8 @@ const hooksPanel = createHooksPanel(
 const settingsPanels = createSettingsPanels(sendMessage);
 const workspace = createWorkspace(sendMessage, renderMarkdown, setStatus);
 /** The parts of the page that own some of the server messages. */
-const serverPanels = [hooksPanel, settingsPanels, workspace];
+const goalUi = createGoalUi(transcript.addLine, sendMessage);
+const serverPanels = [hooksPanel, settingsPanels, workspace, goalUi];
 
 let pendingModelList = false;
 let pendingProfileList = false;

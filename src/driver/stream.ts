@@ -1,5 +1,7 @@
 import type { PromptProgress } from "../core/errors.ts";
 import { dim } from "../output/color.ts";
+import { formatGoalEvent } from "../output/format.ts";
+import type { GoalEvent } from "../repl/goal-loop.ts";
 import { renderLine } from "../output/markdown.ts";
 
 /**
@@ -103,6 +105,19 @@ export class StreamDisplay {
     }
     if (this.contentWritten) this.flushMdLine();
     process.stdout.write(dim(`${"  ".repeat(depth)}tool: ${name}`) + "\n");
+  };
+
+  /** Display the goal and each verdict on it as a visible event between model rounds. */
+  onGoal = (event: GoalEvent): void => {
+    const line = formatGoalEvent(event);
+    if (!line) return;
+    if (this.promptActive || this.thinkingActive) {
+      this.promptActive = false;
+      this.thinkingActive = false;
+      process.stdout.write("\n");
+    }
+    if (this.contentWritten) this.flushMdLine();
+    process.stdout.write(dim(line.text) + "\n");
   };
 
   /** Reset all state at the start of a new user turn. */
