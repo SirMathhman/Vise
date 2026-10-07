@@ -8,13 +8,11 @@ import type { Client, ToolController } from "./core/engine.ts";
 import type { PromptProgress } from "./core/errors.ts";
 import {
   buildInitialMessage,
-  FileHookSource,
+  HookStore,
   FileNoteSource,
   FileProfileSource,
   FileSessionSource,
   FileWorkflowSource,
-  loadHookCommands,
-  ShellHook,
 } from "./edge-sources.ts";
 import type { ProfileSource } from "./repl/ports.ts";
 import { Session } from "./repl/session.ts";
@@ -87,6 +85,11 @@ export interface EdgeSessionOptions {
    * created, and it only launches when a browser tool is first used.
    */
   browser?: BrowserBackend;
+  /**
+   * The hook lists and their store. The web server passes one shared by every
+   * connection (edits are then seen by all); otherwise a private one is made.
+   */
+  hookStore?: HookStore;
 }
 
 /** The edge services a frontend needs after construction. */
@@ -116,13 +119,10 @@ export interface EdgeSession {
  */
 export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
   const cwd = process.cwd();
-  const hookCommands = loadHookCommands();
-  const preTurnHooks = (hookCommands.pre ?? []).map(
-    (cmd) => new ShellHook(cmd),
-  );
-  const postTurnHooks = (hookCommands.post ?? []).map(
-    (cmd) => new ShellHook(cmd),
-  );
+  // Sessions that share a store share the same live hook arrays.
+  const hookStore = options.hookStore ?? new HookStore();
+  const preTurnHooks = hookStore.pre;
+  const postTurnHooks = hookStore.post;
 
   const client = new LlmClient();
   const browser = options.browser ?? new ChromiumBackend();
@@ -205,7 +205,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     sessionSource,
     preTurnHooks,
     postTurnHooks,
-    hookSource: new FileHookSource(),
+    hookSource: hookStore,
     onToken: options.onToken,
     onThinking: options.onThinking,
     onPromptProgress: options.onPromptProgress,

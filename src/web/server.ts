@@ -9,6 +9,7 @@ import { saveProfileWhitelist } from "../repl/profile-tools.ts";
 import type { BrowserBackend } from "../browser/types.ts";
 import { ChromiumBackend } from "../browser/chromium.ts";
 import { BrowserBridge } from "./browser-bridge.ts";
+import { HookStore } from "../edge-sources.ts";
 import { createEdgeSession } from "../wiring.ts";
 import { listDir, readTextFile, watchRoot } from "./files.ts";
 
@@ -142,6 +143,8 @@ class WebDisplay {
 export function startWebServer(port = 3000): void {
   // One browser shared by every connection; it launches on first tool use.
   const browser = new ChromiumBackend();
+  // One hook store for every connection, so a hook edit is seen by all of them.
+  const hookStore = new HookStore();
   const state = new Map<ServerWebSocket<unknown>, ConnectionState>();
   const server = Bun.serve({
     port,
@@ -167,11 +170,19 @@ export function startWebServer(port = 3000): void {
     },
     websocket: {
       open(ws) {
-        const conn = makeConnectionState(ws, browser);
+        const conn = makeConnectionState(ws, browser, hookStore);
         // Tell the browser's file explorer whenever the project tree changes.
-        conn.unwatch = watchRoot(process.cwd(), () =>
+        // Any connection's hook edit refreshes every open hooks panel.
+        const offHooks = hookStore.onChange(() =>
+          conn.send({ type: "hooks", ...conn.session.hookCommands() }),
+        );
+        const stopWatching = watchRoot(process.cwd(), () =>
           conn.send({ type: "fs_changed" }),
         );
+        conn.unwatch = () => {
+          stopWatching();
+          offHooks();
+        };
         state.set(ws, conn);
       },
       message(ws, message) {
@@ -218,6 +229,7 @@ interface ConnectionState {
 function makeConnectionState(
   ws: ServerWebSocket<unknown>,
   browser: BrowserBackend,
+  hookStore: HookStore,
 ): ConnectionState {
   const send = (msg: Record<string, unknown>): void => {
     if (ws.readyState === 1) ws.send(JSON.stringify(msg)); // readyState 1 = OPEN
@@ -226,6 +238,7 @@ function makeConnectionState(
   const display = new WebDisplay();
   const edge = createEdgeSession({
     browser,
+    hookStore,
     onToken: (t) => {
       display.onToken(t);
       send({ type: "token", text: t });

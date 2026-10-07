@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Message, Result } from "./core/errors.ts";
 import { buildInitialTree } from "./fs-tree.ts";
@@ -315,11 +315,31 @@ export function loadHookCommands(): { pre?: string[]; post?: string[] } {
 }
 
 /**
- * Edge implementation of `HookSource`: hooks are `ShellHook`s and the lists
- * are saved into the `preTurnCommand` / `postTurnCommand` keys of
- * `.viserc.json`, leaving any other keys in the file alone.
+ * The process-wide hook store: the live pre/post hook lists every session
+ * shares (so an edit made in one browser tab is in effect everywhere at once),
+ * plus the `HookSource` that builds hooks and saves the lists into the
+ * `preTurnCommand` / `postTurnCommand` keys of `.viserc.json`, leaving any
+ * other keys alone. Create one per process and hand it to every
+ * `createEdgeSession`. The write is a temp file plus rename, so a crash
+ * mid-write cannot corrupt the config.
  */
-export class FileHookSource implements HookSource {
+export class HookStore implements HookSource {
+  readonly pre: ShellHook[];
+  readonly post: ShellHook[];
+  private readonly listeners = new Set<() => void>();
+
+  constructor() {
+    const commands = loadHookCommands();
+    this.pre = (commands.pre ?? []).map((c) => new ShellHook(c));
+    this.post = (commands.post ?? []).map((c) => new ShellHook(c));
+  }
+
+  /** Be told after every successful save (frontends refresh their hook views). */
+  onChange(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
   create(command: string): ShellHook {
     return new ShellHook(command);
   }
@@ -337,8 +357,9 @@ export class FileHookSource implements HookSource {
         if (list.length === 0) delete config[key];
         else config[key] = list;
       }
-      writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
-      return { ok: true, value: undefined };
+      const temp = `${configPath}.tmp`;
+      writeFileSync(temp, `${JSON.stringify(config, null, 2)}\n`);
+      renameSync(temp, configPath);
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       return {
@@ -349,6 +370,8 @@ export class FileHookSource implements HookSource {
         },
       };
     }
+    for (const listener of this.listeners) listener();
+    return { ok: true, value: undefined };
   }
 }
 
