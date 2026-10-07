@@ -70,6 +70,11 @@ export interface BrowserBackend {
     text: string,
     options: { replace: boolean; key?: string },
   ): Promise<void>;
+  /**
+   * Put local files (absolute paths) into the file input that element `ref`
+   * stands for. Optional: a backend that cannot do it leaves it out.
+   */
+  uploadFiles?(id: number, ref: string, paths: string[]): Promise<void>;
   /** The dialog currently blocking a tab, if any. */
   pendingDialog(id: number): DialogInfo | null;
   /** Accept or dismiss the blocking dialog (`promptText` answers a prompt). */

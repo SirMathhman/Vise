@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import { basename } from "node:path";
 import type { PageProbe } from "./probe.ts";
 import type {
   BrowserBackend,
@@ -63,6 +65,9 @@ export interface ExtensionLink {
   onShare?(listener: (event: ShareEvent) => void): () => void;
 }
 
+/** Largest total upload sent through the extension (the data goes over a WebSocket as base64). */
+const MAX_UPLOAD_BYTES = 10_000_000;
+
 const NO_LIVE_VIEW =
   "the Firefox extension works in your real browser window, so there is no live view";
 
@@ -103,6 +108,27 @@ export class ExtensionBackend implements BrowserBackend {
 
   async click(id: number, ref: string): Promise<void> {
     await this.tab("click", { tab: id, ref });
+  }
+
+  /** The extension cannot read the disk, so the files travel to it in the message. */
+  async uploadFiles(id: number, ref: string, paths: string[]): Promise<void> {
+    const files = [];
+    let total = 0;
+    for (const path of paths) {
+      const bytes = await readFile(path);
+      total += bytes.length;
+      if (total > MAX_UPLOAD_BYTES) {
+        throw new Error(
+          `the files are too large to send to the Firefox extension (limit ${MAX_UPLOAD_BYTES / 1_000_000} MB in total)`,
+        );
+      }
+      files.push({
+        name: basename(path),
+        type: Bun.file(path).type.split(";")[0],
+        data: bytes.toString("base64"),
+      });
+    }
+    await this.tab("uploadFiles", { tab: id, ref, files });
   }
 
   async hover(id: number, ref: string): Promise<void> {

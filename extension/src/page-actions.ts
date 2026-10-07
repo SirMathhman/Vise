@@ -34,6 +34,32 @@ const withRef = (ref: string, body: string): string =>
   ${body}
 })(${JSON.stringify(ref)})`;
 
+/** One file to put into a file input: its bytes travel base64-encoded. */
+export interface UploadFile {
+  name: string;
+  type: string;
+  data: string;
+}
+
+/** Fills the input tagged by `fileInputScript` with the files and fires the events a user's choice would. */
+export function uploadScript(files: UploadFile[]): string {
+  return `((files) => {
+  const input = document.querySelector('[data-vise-file]');
+  if (!input) return { ok: false, error: 'the file input disappeared' };
+  const transfer = new DataTransfer();
+  for (const f of files) {
+    const text = atob(f.data);
+    const bytes = new Uint8Array(text.length);
+    for (let i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i);
+    transfer.items.add(new File([bytes], f.name, { type: f.type }));
+  }
+  input.files = transfer.files;
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+  return { ok: true };
+})(${JSON.stringify(files)})`;
+}
+
 /** Scroll the element into view, press and release the mouse on it, then click it. */
 export function clickScript(ref: string): string {
   return withRef(

@@ -1,6 +1,9 @@
 import type { CdpConnection } from "./cdp.ts";
 import {
   centerScript,
+  FILE_INPUT_SELECTOR,
+  fileInputProblem,
+  fileInputScript,
   focusScript,
   REF_PATTERN,
   SNAPSHOT_SCRIPT,
@@ -88,6 +91,35 @@ export function snapshot(
   sessionId: string,
 ): Promise<string> {
   return evaluate<string>(cdp, sessionId, SNAPSHOT_SCRIPT);
+}
+
+/** Put files into the file input behind `ref` (the browser reads them from disk). */
+export async function uploadFiles(
+  cdp: CdpConnection,
+  sessionId: string,
+  ref: string,
+  paths: string[],
+): Promise<void> {
+  const status = await evaluate<string>(
+    cdp,
+    sessionId,
+    fileInputScript(checkRef(ref)),
+  );
+  const problem = fileInputProblem(status, ref, paths.length);
+  if (problem) throw new Error(problem);
+  const { result } = await cdp.send<{ result: { objectId?: string } }>(
+    "Runtime.evaluate",
+    {
+      expression: `document.querySelector(${JSON.stringify(FILE_INPUT_SELECTOR)})`,
+    },
+    sessionId,
+  );
+  if (!result.objectId) throw new Error("the file input disappeared");
+  await cdp.send(
+    "DOM.setFileInputFiles",
+    { files: paths, objectId: result.objectId },
+    sessionId,
+  );
 }
 
 export async function hover(

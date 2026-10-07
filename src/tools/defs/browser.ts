@@ -193,6 +193,34 @@ export const browserTools: Tool[] = [
   {
     type: "function",
     function: {
+      name: "browser_upload",
+      description:
+        "Attach local files to a file upload field in a browser tab (a resume, a photo). A file picker cannot be driven with browser_click, so use this instead. 'ref' is the file input or the upload button/label next to it, from browser_read; 'paths' are the files on this computer (relative to the working directory, or absolute). The page's own handlers run as if the user had chosen the files; then click the page's submit/next button as usual.",
+      parameters: {
+        type: "object",
+        properties: {
+          tab: {
+            type: "integer",
+            description: "Tab number from browser_open or browser_tabs",
+          },
+          ref: {
+            type: "string",
+            description:
+              "Ref of the file input, or of the upload button or label for it, from browser_read",
+          },
+          paths: {
+            type: "array",
+            items: { type: "string" },
+            description: "Paths of the files to attach",
+          },
+        },
+        required: ["tab", "ref", "paths"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "browser_drag",
       description:
         "Drag one element onto another in a browser tab, both named by refs from browser_read.",

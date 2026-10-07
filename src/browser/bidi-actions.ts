@@ -1,6 +1,9 @@
 import type { BidiConnection } from "./bidi.ts";
 import {
   centerScript,
+  FILE_INPUT_SELECTOR,
+  fileInputProblem,
+  fileInputScript,
   focusScript,
   REF_PATTERN,
   SNAPSHOT_SCRIPT,
@@ -195,6 +198,37 @@ export async function drag(
   }
   path.push({ type: "pointerUp", button: 0 });
   await pointer(bidi, context, path);
+}
+
+/** Put files into the file input behind `ref` (the browser reads them from disk). */
+export async function uploadFiles(
+  bidi: BidiConnection,
+  context: string,
+  ref: string,
+  paths: string[],
+): Promise<void> {
+  const status = await evalJson<string>(
+    bidi,
+    context,
+    fileInputScript(checkRef(ref)),
+  );
+  const problem = fileInputProblem(status, ref, paths.length);
+  if (problem) throw new Error(problem);
+  const found = await bidi.send<{
+    type: string;
+    result?: { sharedId?: string };
+  }>("script.evaluate", {
+    expression: `document.querySelector(${JSON.stringify(FILE_INPUT_SELECTOR)})`,
+    target: { context },
+    awaitPromise: false,
+  });
+  const sharedId = found.result?.sharedId;
+  if (!sharedId) throw new Error("the file input disappeared");
+  await bidi.send("input.setFiles", {
+    context,
+    element: { sharedId },
+    files: paths,
+  });
 }
 
 export interface TypeOptions {

@@ -139,6 +139,12 @@ export class FirefoxBackend implements BrowserBackend {
     await this.inTab(id, (bidi, context) => actions.click(bidi, context, ref));
   }
 
+  async uploadFiles(id: number, ref: string, paths: string[]): Promise<void> {
+    await this.inTab(id, (bidi, context) =>
+      actions.uploadFiles(bidi, context, ref, paths),
+    );
+  }
+
   async hover(id: number, ref: string): Promise<void> {
     await this.inTab(id, (bidi, context) => actions.hover(bidi, context, ref));
   }

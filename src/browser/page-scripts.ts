@@ -79,3 +79,46 @@ export function probeScript(needle?: string): string {
     };
   })(${JSON.stringify(needle ?? null)})`;
 }
+
+/** Attribute that marks the file input an upload is aimed at (so each backend can select it). */
+export const FILE_INPUT_SELECTOR = "[data-vise-file]";
+
+/**
+ * Finds the file input that the element `ref` stands for - the input itself, the
+ * one a label points at, or one inside or next to a styled "upload" button - and
+ * tags it. Returns 'missing' (no such ref), 'none' (no file input there),
+ * 'single' or 'multiple'.
+ */
+export function fileInputScript(ref: string): string {
+  return `((ref) => {
+    for (const old of document.querySelectorAll('[data-vise-file]')) old.removeAttribute('data-vise-file');
+    const el = document.querySelector('[data-vise-ref="' + ref + '"]');
+    if (!el) return 'missing';
+    const isFile = (e) => !!e && e.tagName === 'INPUT' && e.type === 'file';
+    let input = isFile(el) ? el : el.tagName === 'LABEL' ? el.control : null;
+    for (let p = el, depth = 0; !isFile(input) && p && depth < 4; p = p.parentElement, depth++) {
+      input = p.querySelector('input[type=file]');
+    }
+    if (!isFile(input)) return 'none';
+    input.setAttribute('data-vise-file', '1');
+    return input.multiple ? 'multiple' : 'single';
+  })(${JSON.stringify(ref)})`;
+}
+
+/** The error to report for a `fileInputScript` result and a number of files, or null when the upload can go ahead. */
+export function fileInputProblem(
+  status: string,
+  ref: string,
+  count: number,
+): string | null {
+  if (status === "missing") {
+    return `unknown element ${ref}: call browser_read for fresh refs`;
+  }
+  if (status === "none") {
+    return `${ref} is not a file input and no file input was found with it`;
+  }
+  if (status === "single" && count > 1) {
+    return "that file input accepts only one file";
+  }
+  return null;
+}

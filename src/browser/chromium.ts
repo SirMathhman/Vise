@@ -133,6 +133,12 @@ export class ChromiumBackend implements BrowserBackend {
     await this.inTab(id, (cdp, session) => actions.click(cdp, session, ref));
   }
 
+  async uploadFiles(id: number, ref: string, paths: string[]): Promise<void> {
+    await this.inTab(id, (cdp, session) =>
+      actions.uploadFiles(cdp, session, ref, paths),
+    );
+  }
+
   async hover(id: number, ref: string): Promise<void> {
     await this.inTab(id, (cdp, session) => actions.hover(cdp, session, ref));
   }

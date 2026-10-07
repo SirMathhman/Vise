@@ -120,6 +120,12 @@ export class SwitchableBrowser implements BrowserBackend {
   click(id: number, ref: string): Promise<void> {
     return this.inner.click(id, ref);
   }
+  uploadFiles(id: number, ref: string, paths: string[]): Promise<void> {
+    const inner = this.inner;
+    return inner.uploadFiles
+      ? inner.uploadFiles(id, ref, paths)
+      : Promise.reject(new Error("this browser engine cannot upload files"));
+  }
   hover(id: number, ref: string): Promise<void> {
     return this.inner.hover(id, ref);
   }

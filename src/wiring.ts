@@ -240,7 +240,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
       search_tools: makeSearchToolsHandler(sessionTools, (name) =>
         toolController.isEnabled(name),
       ),
-      ...makeBrowserHandlers(browser, temp),
+      ...makeBrowserHandlers(browser, temp, cwd),
       ...tempHandlers(temp),
       self: makeSelfHandler({
         backend: BACKEND,

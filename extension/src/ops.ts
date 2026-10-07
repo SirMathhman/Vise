@@ -3,6 +3,8 @@ import {
   probeScript,
   REF_PATTERN,
   focusScript,
+  fileInputProblem,
+  fileInputScript,
   SNAPSHOT_SCRIPT,
 } from "../../src/browser/page-scripts.ts";
 import {
@@ -13,6 +15,8 @@ import {
   keyScript,
   PRESSABLE_KEYS,
   type ActionResult,
+  type UploadFile,
+  uploadScript,
 } from "./page-actions.ts";
 import { grant, ownedIds, release, requireOwned } from "./tabs.ts";
 
@@ -167,6 +171,16 @@ export const ops: Record<string, (params: Params) => Promise<unknown>> = {
 
   async hover({ tab, ref }) {
     await act(requireOwned(tab), hoverScript(checkRef(ref)));
+  },
+
+  async uploadFiles({ tab, ref, files }) {
+    const id = requireOwned(tab);
+    const list = Array.isArray(files) ? (files as UploadFile[]) : [];
+    const name = checkRef(ref);
+    const status = await run<string>(id, fileInputScript(name));
+    const problem = fileInputProblem(status, name, list.length);
+    if (problem) throw new Error(problem);
+    await act(id, uploadScript(list));
   },
 
   async drag({ tab, from, to }) {

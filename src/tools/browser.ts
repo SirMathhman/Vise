@@ -1,3 +1,5 @@
+import { stat } from "node:fs/promises";
+import { isAbsolute, resolve } from "node:path";
 import type { BrowserBackend, TabInfo } from "../browser/types.ts";
 import { waitHandlers } from "./browser-wait.ts";
 import { errStr } from "./files.ts";
@@ -56,6 +58,59 @@ function str(args: Record<string, unknown>, name: string): string | undefined {
   return typeof value === "string" && value !== "" ? value : undefined;
 }
 
+/** The absolute paths of the files to upload; each must exist and be a file. */
+async function uploadPaths(value: unknown, cwd?: string): Promise<string[]> {
+  const given = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? [value]
+      : [];
+  if (given.length === 0 || given.some((p) => typeof p !== "string" || !p)) {
+    throw new Error("'paths' must list at least one file path");
+  }
+  const paths: string[] = [];
+  for (const raw of given as string[]) {
+    if (!cwd && !isAbsolute(raw)) {
+      throw new Error(
+        `${raw}: there is no working directory, use an absolute path`,
+      );
+    }
+    const path = cwd ? resolve(cwd, raw) : raw;
+    const info = await stat(path).catch(() => null);
+    if (!info?.isFile()) throw new Error(`${path} is not a file`);
+    paths.push(path);
+  }
+  return paths;
+}
+
+/** Attach the files at `paths` to the file input behind `ref`. */
+async function upload(
+  browser: BrowserBackend,
+  id: number,
+  ref: string,
+  paths: unknown,
+  cwd?: string,
+): Promise<string> {
+  if (!browser.uploadFiles) throw new Error("this browser cannot upload files");
+  const files = await uploadPaths(paths, cwd);
+  await browser.uploadFiles(id, ref, files);
+  return `uploaded ${files.length} file${files.length === 1 ? "" : "s"}`;
+}
+
+/** The required string argument 'text'. */
+function text(args: Record<string, unknown>): string {
+  const value = str(args, "text");
+  if (!value) throw new Error("'text' is required");
+  return value;
+}
+
+/** The required element ref argument (named `name`). */
+function ref(args: Record<string, unknown>, name = "ref"): string {
+  const value = str(args, name);
+  if (!value) throw new Error(`'${name}' is required (e.g. "e3")`);
+  return value;
+}
+
 /** Appended to an action's result when it left a JavaScript dialog open. */
 function dialogNote(browser: BrowserBackend, id: number): string {
   const dialog = browser.pendingDialog(id);
@@ -73,6 +128,8 @@ export function makeBrowserHandlers(
   browser: BrowserBackend,
   /** Where a long page's text is saved; without one it is cut to the limits instead. */
   temp?: TempStore,
+  /** What relative upload paths are resolved against; without one they must be absolute. */
+  cwd?: string,
 ): Record<string, Handler> {
   /** Validate `tab`, run `action`, and report `done` plus any dialog it opened. */
   const onTab = (
@@ -86,16 +143,6 @@ export function makeBrowserHandlers(
       const out = (await action(id)) ?? done;
       return `${out}${dialogNote(browser, id)}`;
     });
-  const text = (args: Record<string, unknown>): string => {
-    const value = str(args, "text");
-    if (!value) throw new Error("'text' is required");
-    return value;
-  };
-  const ref = (args: Record<string, unknown>, name = "ref"): string => {
-    const value = str(args, name);
-    if (!value) throw new Error(`'${name}' is required (e.g. "e3")`);
-    return value;
-  };
   return {
     browser_open: (args) =>
       guarded(async () => {
@@ -157,6 +204,12 @@ export function makeBrowserHandlers(
             key: str(args, "key"),
           }),
         "typed",
+      ),
+    browser_upload: (args) =>
+      onTab(
+        args,
+        (id) => upload(browser, id, ref(args), args["paths"], cwd),
+        "",
       ),
     browser_handle_dialog: (args) =>
       onTab(
