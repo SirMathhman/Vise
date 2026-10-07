@@ -42,11 +42,9 @@ const PHASES: { phase: Phase; label: string }[] = [
  * terminal commands (hooks in `.viserc.json`, bindings in the profile files).
  */
 export function createHooksPanel(
-  button: HTMLButtonElement,
-  panel: HTMLElement,
   body: HTMLElement,
   send: (msg: Record<string, unknown>) => void,
-): { handle(message: HooksMessage): boolean } {
+): { handle(message: HooksMessage): boolean; refresh(): void } {
   const status = document.createElement("div");
   status.className = "pe-status";
   status.setAttribute("role", "status");
@@ -91,12 +89,9 @@ export function createHooksPanel(
     body.appendChild(status);
   }
 
-  button.addEventListener("click", () => {
-    panel.classList.toggle("hidden");
-    if (!panel.classList.contains("hidden")) send({ type: "hooks_get" });
-  });
-
   return {
+    /** Ask the server for the current hooks (the panel just opened). */
+    refresh: () => send({ type: "hooks_get" }),
     handle(message) {
       if (message.type === "hooks") {
         lists = { pre: message.pre ?? [], post: message.post ?? [] };

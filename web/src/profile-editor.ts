@@ -16,6 +16,8 @@ export interface ProfileEditorActions {
 }
 
 export interface ProfileEditor {
+  /** Reload the profile list and the selected whitelist (the panel just opened). */
+  refresh(): void;
   /** Briefly confirm a save (or report why it failed) next to the button. */
   showStatus(text: string, error?: boolean): void;
   /** Show a profile's whitelist; `undefined` means every tool is allowed. */
@@ -30,8 +32,6 @@ export interface ProfileEditor {
 export function createProfileEditor(
   actions: ProfileEditorActions,
 ): ProfileEditor {
-  const button = document.getElementById("profiles-btn") as HTMLButtonElement;
-  const panel = document.getElementById("profiles-panel") as HTMLElement;
   const select = document.getElementById("pe-profile") as HTMLSelectElement;
   const list = document.getElementById("pe-tools") as HTMLUListElement;
   const save = document.getElementById("pe-save") as HTMLButtonElement;
@@ -70,9 +70,8 @@ export function createProfileEditor(
     if (select.value) actions.loadWhitelist(select.value);
   }
 
-  button.addEventListener("click", () => {
-    panel.classList.toggle("hidden");
-    if (panel.classList.contains("hidden")) return;
+  /** Reload the profile list and the selected whitelist; call when the panel opens. */
+  function open(): void {
     const active = actions.activeProfile();
     select.textContent = "";
     const names = actions.profileNames();
@@ -84,7 +83,7 @@ export function createProfileEditor(
     }
     select.selectedIndex = Math.max(0, names.indexOf(active));
     loadSelected();
-  });
+  }
   select.addEventListener("change", () => {
     status.textContent = "";
     loadSelected();
@@ -121,6 +120,7 @@ export function createProfileEditor(
   });
 
   return {
+    refresh: open,
     showStatus: (text, error) => showStatus(text, error),
     showWhitelist(name, allowed) {
       if (name !== select.value) return;

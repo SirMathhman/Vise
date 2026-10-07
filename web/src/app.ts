@@ -3,7 +3,7 @@ import { createWorkspace } from "./workspace.ts";
 import { setupComposer } from "./composer.ts";
 import { createPanels } from "./panels.ts";
 import { renderMarkdown } from "./markdown.ts";
-import { setupPanelSwitch } from "./panel-switch.ts";
+import { registerHeaderPanels } from "./panel-switch.ts";
 import { createProfileEditor } from "./profile-editor.ts";
 import { createTranscript } from "./transcript.ts";
 
@@ -53,9 +53,7 @@ const reasoningSelect = requiredElement<HTMLSelectElement>("reasoning");
 const toolsBtn = requiredElement<HTMLButtonElement>("tools-btn");
 const newBtn = requiredElement<HTMLButtonElement>("new-btn");
 const burstBtn = requiredElement<HTMLButtonElement>("burst-btn");
-const toolsPanel = requiredElement<HTMLElement>("tools-panel");
 const sessionsBtn = requiredElement<HTMLButtonElement>("sessions-btn");
-const sessionsPanel = requiredElement<HTMLElement>("sessions-panel");
 const saveName = requiredElement<HTMLInputElement>("save-name");
 const saveBtn = requiredElement<HTMLButtonElement>("save-btn");
 const filesBtn = requiredElement<HTMLButtonElement>("files-btn");
@@ -71,8 +69,6 @@ const socket = new WebSocket(
   `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`,
 );
 const hooksPanel = createHooksPanel(
-  requiredElement<HTMLButtonElement>("hooks-btn"),
-  requiredElement<HTMLElement>("hooks-panel"),
   requiredElement<HTMLElement>("hooks-body"),
   (msg) => {
     if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(msg));
@@ -425,18 +421,18 @@ burstBtn.addEventListener("click", () => {
   const on = burstBtn.getAttribute("aria-pressed") !== "true";
   sendLine(`/burst ${on ? "on" : "off"}`);
 });
-setupPanelSwitch();
-toolsBtn.addEventListener("click", () => toolsPanel.classList.toggle("hidden"));
-filesBtn.addEventListener("click", () => workspace.toggle());
-sessionsBtn.addEventListener("click", () => {
-  sessionsPanel.classList.toggle("hidden");
+// Header dropdown panels: at most one open; each says what to refresh on open.
+registerHeaderPanels({
+  profiles: () => profileEditor.refresh(),
+  hooks: () => hooksPanel.refresh(),
   // Turns auto-save in the background, so refresh the list when it opens.
-  if (!sessionsPanel.classList.contains("hidden")) {
+  sessions: () => {
     pendingSessionList = true;
     setBusy(true);
     requestLine("/resume");
-  }
+  },
 });
+filesBtn.addEventListener("click", () => workspace.toggle());
 saveBtn.addEventListener("click", saveSession);
 saveName.addEventListener("keydown", (event: KeyboardEvent) => {
   if (event.key === "Enter") {
