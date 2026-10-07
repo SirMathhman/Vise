@@ -121,13 +121,10 @@ export function createTranscript(
     appendAssistantToken,
     appendSubagentToken,
     appendThinkingToken,
-    appendToolCall(name: string, depth?: number): void {
+    appendToolCall(label: string, depth?: number): void {
       flushAssistant();
       endThinking();
-      const line = addLine(
-        "tool",
-        `tool: ${name}${depth ? " (subagent)" : ""}`,
-      );
+      const line = addLine("tool", `${label}${depth ? " (subagent)" : ""}`);
       if (burstActive) line.className += " burst";
     },
     setBurst(active: boolean): void {

@@ -50,7 +50,9 @@ export interface WorkflowCommands {
   onToken(): ((token: string) => void) | undefined;
   onThinking(): ((token: string) => void) | undefined;
   onPromptProgress(): ((progress: PromptProgress) => void) | undefined;
-  onToolCall(): ((name: string, depth?: number) => void) | undefined;
+  onToolCall():
+    | ((name: string, depth?: number, args?: Record<string, unknown>) => void)
+    | undefined;
   onMaxRounds(): ((question: string) => Promise<boolean>) | undefined;
   /** The between-rounds upkeep (compaction, saving, progress) for a turn run under `signal`. */
   roundHook(signal: AbortSignal): TurnCallbacks["onRound"];

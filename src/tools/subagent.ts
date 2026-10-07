@@ -92,8 +92,8 @@ export function makeSubagentHandler(
       runSubagent(client, tools, toolDefs, systemMessage, profileText, task, {
         ...callbacks,
         onToken: indentedOnToken,
-        onToolCall: (name) => {
-          callbacks.onToolCall?.(name, 1);
+        onToolCall: (name, _depth, args) => {
+          callbacks.onToolCall?.(name, 1, args);
         },
         // Forward the parent turn's live abort signal so a subagent's
         // in-flight model call is interrupted together with the parent's

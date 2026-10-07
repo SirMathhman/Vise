@@ -3,6 +3,7 @@ import type {
   Message,
   PromptProgress,
   Result,
+  ToolCall,
 } from "./errors.ts";
 
 /**
@@ -65,7 +66,11 @@ export interface TurnCallbacks {
   onToken?: (token: string) => void;
   onThinking?: (token: string) => void;
   onPromptProgress?: (progress: PromptProgress) => void;
-  onToolCall?: (name: string, depth?: number) => void;
+  onToolCall?: (
+    name: string,
+    depth?: number,
+    args?: Record<string, unknown>,
+  ) => void;
   /**
    * Plain-text stream of a subagent's reply. A frontend that can style it
    * itself (the web UI) supplies this; when absent the subagent handler
@@ -290,6 +295,23 @@ export function splitWithinTurn(
  * it returns `true` the counter resets and the loop continues; if `false` the
  * turn ends with an error. When omitted (subagents), the turn ends silently.
  */
+/** Tell the display a tool call is starting. */
+function announceTool(callbacks: TurnCallbacks, tc: ToolCall): void {
+  callbacks.onToolCall?.(tc.function.name, 0, parseArgs(tc.function.arguments));
+}
+
+/** A tool call's arguments as an object for display; undefined when they are not valid JSON. */
+function parseArgs(raw: string): Record<string, unknown> | undefined {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return typeof parsed === "object" && parsed !== null
+      ? (parsed as Record<string, unknown>)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function runTurn(
   client: Client,
   tools: ToolRunner,
@@ -370,7 +392,7 @@ ${reply.content}`
       });
       let failed = false;
       for (const tc of reply.tool_calls) {
-        callbacks.onToolCall?.(tc.function.name, 0);
+        announceTool(callbacks, tc);
         let output: string;
         try {
           const args = JSON.parse(tc.function.arguments) as Record<

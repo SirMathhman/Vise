@@ -1,6 +1,7 @@
 import type { PromptProgress } from "../core/errors.ts";
 import { dim } from "../output/color.ts";
 import { formatGoalEvent } from "../output/format.ts";
+import { formatToolCall } from "../output/tool-line.ts";
 import type { GoalEvent } from "../repl/goal-loop.ts";
 import { renderLine } from "../output/markdown.ts";
 
@@ -94,7 +95,11 @@ export class StreamDisplay {
   };
 
   /** Display a tool invocation as a visible event between model rounds. */
-  onToolCall = (name: string, depth = 0): void => {
+  onToolCall = (
+    name: string,
+    depth = 0,
+    args?: Record<string, unknown>,
+  ): void => {
     if (this.promptActive) {
       this.promptActive = false;
       process.stdout.write("\n");
@@ -104,7 +109,9 @@ export class StreamDisplay {
       process.stdout.write("\n");
     }
     if (this.contentWritten) this.flushMdLine();
-    process.stdout.write(dim(`${"  ".repeat(depth)}tool: ${name}`) + "\n");
+    process.stdout.write(
+      dim(`${"  ".repeat(depth)}${formatToolCall(name, args)}`) + "\n",
+    );
   };
 
   /** Display the goal and each verdict on it as a visible event between model rounds. */

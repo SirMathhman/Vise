@@ -23,6 +23,7 @@ import { type HookStore } from "../edge-sources.ts";
 import { dataDirFor, globalDataDir, noFolderRoot } from "../data-dir.ts";
 import { pickFolder, RootRegistry } from "./roots.ts";
 import { createEdgeSession } from "../wiring.ts";
+import { formatToolCall } from "../output/tool-line.ts";
 import { listDir, readTextFile, watchRoot } from "./files.ts";
 
 /**
@@ -47,7 +48,7 @@ import { listDir, readTextFile, watchRoot } from "./files.ts";
  *   server → browser: { type:"token", text }        a streamed reply token
  *                     { type:"thinking", text }     a streamed thinking token
  *                     { type:"progress", total, cache, processed, time_ms }
- *                     { type:"tool", name, depth? } a tool call began
+ *                     { type:"tool", name, depth?, text } a tool call began (text: icon, name and a short detail)
  *                     { type:"result", ok:true, value, streamed?, compactionWarning? }
  *                     { type:"result", ok:false, error }
  *                     { type:"ask", question, options, multiSelect? }
@@ -401,7 +402,8 @@ function makeConnectionState(
         processed: p.processed,
         time_ms: p.time_ms,
       }),
-    onToolCall: (name, depth) => send({ type: "tool", name, depth }),
+    onToolCall: (name, depth, args) =>
+      send({ type: "tool", name, depth, text: formatToolCall(name, args) }),
     onBurst: (active) => send({ type: "burst", active }),
     onGoal: (event) => {
       if (event.kind === "setting") {

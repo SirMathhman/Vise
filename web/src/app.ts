@@ -516,7 +516,10 @@ socket.addEventListener("message", (event: MessageEvent<string>) => {
       transcript.appendThinkingToken(message.text ?? "");
       break;
     case "tool":
-      transcript.appendToolCall(message.name ?? "unknown", message.depth);
+      transcript.appendToolCall(
+        message.text ?? message.name ?? "unknown",
+        message.depth,
+      );
       break;
     case "burst":
       burstBtn.classList.toggle("bursting", !!message.active);

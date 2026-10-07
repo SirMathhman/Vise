@@ -78,7 +78,11 @@ export interface EdgeSessionOptions {
   /** Surfaced with prompt-processing progress during the silent prefill. */
   onPromptProgress?: (progress: PromptProgress) => void;
   /** Notified of each tool invocation before execution. */
-  onToolCall?: (name: string, depth?: number) => void;
+  onToolCall?: (
+    name: string,
+    depth?: number,
+    args?: Record<string, unknown>,
+  ) => void;
   /** Notified when burst mode enters or leaves an act round. */
   onBurst?: (active: boolean) => void;
   /** Told the goal, each verdict on it, and when goal checking is switched. */
