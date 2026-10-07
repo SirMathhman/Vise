@@ -28,9 +28,14 @@ export interface SelfInfo {
   /** The currently active profile name, or undefined when none is set. */
   activeProfile: () => string | undefined;
   /** The pre-turn hook commands from `.viserc.json` (output runs before each turn). */
-  preTurnHooks: string[];
+  preTurnHooks: string[] | (() => string[]);
   /** The post-turn hook commands from `.viserc.json` (output runs after each turn). */
-  postTurnHooks: string[];
+  postTurnHooks: string[] | (() => string[]);
+}
+
+/** A hook list given directly, or as a getter so edits show up live. */
+function listOf(hooks: string[] | (() => string[])): string[] {
+  return typeof hooks === "function" ? hooks() : hooks;
 }
 
 /**
@@ -66,8 +71,10 @@ export function makeSelfHandler(
     }
 
     lines.push(`  active profile: ${info.activeProfile() ?? "none"}`);
-    lines.push(`  ${formatHooks("pre-turn hooks", info.preTurnHooks)}`);
-    lines.push(`  ${formatHooks("post-turn hooks", info.postTurnHooks)}`);
+    lines.push(`  ${formatHooks("pre-turn hooks", listOf(info.preTurnHooks))}`);
+    lines.push(
+      `  ${formatHooks("post-turn hooks", listOf(info.postTurnHooks))}`,
+    );
 
     return lines.join("\n");
   };

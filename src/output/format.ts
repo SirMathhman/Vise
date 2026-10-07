@@ -103,7 +103,7 @@ export function formatHooks(hooks: { pre: string[]; post: string[] }): string {
   const section = (label: string, commands: string[]): string =>
     commands.length === 0
       ? `${label}: none`
-      : `${label}:\n${commands.map((c) => `  ${c}`).join("\n")}`;
+      : `${label}:\n${commands.map((c, i) => `  ${i + 1}. ${c}`).join("\n")}`;
   return [
     section("pre-turn hooks (output injected before every turn)", hooks.pre),
     section("post-turn hooks (output injected after every turn)", hooks.post),
@@ -129,6 +129,8 @@ export function formatHelp(opts: {
     "/compact       compact the conversation now",
     "/new           start a new conversation (the old one stays saved)",
     "/hooks         show the configured pre/post-turn hook commands",
+    '/hooks add pre|post "<command>"  add a hook (saved to .viserc.json)',
+    "/hooks remove pre|post <number>  remove a hook",
   ];
   if (opts.hasModel) {
     lines.push(

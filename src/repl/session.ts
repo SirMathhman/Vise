@@ -12,7 +12,8 @@ import type {
   Result,
   ViseError,
 } from "../core/errors.ts";
-import { formatHelp, formatHooks } from "../output/format.ts";
+import { formatHelp } from "../output/format.ts";
+import { handleHooksCommand } from "./hooks-commands.ts";
 import {
   handleModelCommand,
   handleNotesCommand,
@@ -56,6 +57,7 @@ export type {
   ReasoningController,
   NoteSource,
   WorkflowSource,
+  HookSource,
   PreTurnHook,
   PostTurnHook,
   SavedSession,
@@ -72,6 +74,7 @@ import type {
   ReasoningController,
   NoteSource,
   WorkflowSource,
+  HookSource,
   PreTurnHook,
   PostTurnHook,
   SessionSource,
@@ -130,6 +133,8 @@ export interface SessionOptions {
   workflowSource?: WorkflowSource;
   preTurnHooks: PreTurnHook[];
   postTurnHooks: PostTurnHook[];
+  /** Persists hook edits (`/hooks add|remove`); without it hooks are read-only. */
+  hookSource?: HookSource;
   /**
    * Edge-provided callback invoked with each token of the user turn's reply as
    * it streams in. The session performs no I/O itself (invariant #2); this is
@@ -202,6 +207,7 @@ export class Session {
   private readonly workflowSource?: WorkflowSource;
   private readonly preTurnHooks: PreTurnHook[];
   private readonly postTurnHooks: PostTurnHook[];
+  private readonly hookSource?: HookSource;
   private readonly cwd: string;
   private readonly onToken?: (token: string) => void;
   private readonly onThinking?: (token: string) => void;
@@ -245,6 +251,7 @@ export class Session {
     this.workflowSource = options.workflowSource;
     this.preTurnHooks = options.preTurnHooks;
     this.postTurnHooks = options.postTurnHooks;
+    this.hookSource = options.hookSource;
     this.cwd = options.cwd;
     this.onToken = options.onToken;
     this.onThinking = options.onThinking;
@@ -413,7 +420,9 @@ export class Session {
         }),
       };
     if (trimmed === "/context") return reportContext(this.context);
-    if (trimmed === "/hooks") return this.hooksCommand();
+    if (trimmed === "/hooks" || trimmed.startsWith("/hooks ")) {
+      return this.hooksCommand(trimmed);
+    }
     if (trimmed === "/compact") return this.doCompact();
     if (trimmed === "/new") return this.newConversation();
     if (trimmed === "/model" || trimmed.startsWith("/model ")) {
@@ -527,14 +536,20 @@ export class Session {
     return this.currentAbort?.signal;
   }
 
-  /** `/hooks`: the configured hook commands. */
-  private hooksCommand(): LineResult {
+  /** `/hooks` and its `add` / `remove` forms, over the live hook lists. */
+  private hooksCommand(line: string): Result<string> {
+    return handleHooksCommand(line, {
+      pre: this.preTurnHooks,
+      post: this.postTurnHooks,
+      source: this.hookSource,
+    });
+  }
+
+  /** The current hook command lines (live: edits show up at once). */
+  hookCommands(): { pre: string[]; post: string[] } {
     return {
-      ok: true,
-      value: formatHooks({
-        pre: this.preTurnHooks.map((h) => h.command),
-        post: this.postTurnHooks.map((h) => h.command),
-      }),
+      pre: this.preTurnHooks.map((h) => h.command),
+      post: this.postTurnHooks.map((h) => h.command),
     };
   }
 

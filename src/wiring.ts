@@ -8,6 +8,7 @@ import type { Client, ToolController } from "./core/engine.ts";
 import type { PromptProgress } from "./core/errors.ts";
 import {
   buildInitialMessage,
+  FileHookSource,
   FileNoteSource,
   FileProfileSource,
   FileSessionSource,
@@ -184,8 +185,8 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
         contextMax: () => client.contextMax(),
         lastPromptTokens: () => client.lastPromptTokensUsed(),
         activeProfile: () => sessionRef.current.getActiveProfile(),
-        preTurnHooks: preTurnHooks.map((h) => h.command),
-        postTurnHooks: postTurnHooks.map((h) => h.command),
+        preTurnHooks: () => preTurnHooks.map((h) => h.command),
+        postTurnHooks: () => postTurnHooks.map((h) => h.command),
       }),
     },
     toolController,
@@ -204,6 +205,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     sessionSource,
     preTurnHooks,
     postTurnHooks,
+    hookSource: new FileHookSource(),
     onToken: options.onToken,
     onThinking: options.onThinking,
     onPromptProgress: options.onPromptProgress,

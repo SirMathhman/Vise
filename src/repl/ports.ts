@@ -119,6 +119,17 @@ export interface PostTurnHook {
 }
 
 /**
+ * Store for the hook command lists (`.viserc.json`). Provided by the edge: it
+ * builds runnable hooks and persists the lists; the session only edits them.
+ */
+export interface HookSource {
+  /** Build a runnable hook for a command line. */
+  create(command: string): PreTurnHook & PostTurnHook;
+  /** Persist the full pre/post command lists. */
+  save(hooks: { pre: string[]; post: string[] }): Result<void>;
+}
+
+/**
  * A saved conversation snapshot. `id` is the generated file id (a uuid) and
  * `name` the human-readable label; the label can change, the id never does.
  * `activeProfile` is the profile active at save time (undefined when none).

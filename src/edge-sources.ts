@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Message, Result } from "./core/errors.ts";
 import { buildInitialTree } from "./fs-tree.ts";
@@ -12,6 +12,7 @@ import {
   setProfileTools,
 } from "./profiles.ts";
 import type {
+  HookSource,
   NoteSource,
   PostTurnHook,
   PreTurnHook,
@@ -311,6 +312,44 @@ export function loadHookCommands(): { pre?: string[]; post?: string[] } {
     // Malformed config: fall back to no hooks.
   }
   return {};
+}
+
+/**
+ * Edge implementation of `HookSource`: hooks are `ShellHook`s and the lists
+ * are saved into the `preTurnCommand` / `postTurnCommand` keys of
+ * `.viserc.json`, leaving any other keys in the file alone.
+ */
+export class FileHookSource implements HookSource {
+  create(command: string): ShellHook {
+    return new ShellHook(command);
+  }
+
+  save(hooks: { pre: string[]; post: string[] }): Result<void> {
+    const configPath = join(process.cwd(), ".viserc.json");
+    try {
+      const config: Record<string, unknown> = existsSync(configPath)
+        ? JSON.parse(readFileSync(configPath, "utf8"))
+        : {};
+      for (const [key, list] of [
+        ["preTurnCommand", hooks.pre],
+        ["postTurnCommand", hooks.post],
+      ] as const) {
+        if (list.length === 0) delete config[key];
+        else config[key] = list;
+      }
+      writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
+      return { ok: true, value: undefined };
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      return {
+        ok: false,
+        error: {
+          kind: "malformed",
+          body: `cannot save .viserc.json: ${reason}`,
+        },
+      };
+    }
+  }
 }
 
 /**
