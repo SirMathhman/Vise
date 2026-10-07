@@ -39,6 +39,19 @@ async function guarded(action: () => Promise<string>): Promise<string> {
   }
 }
 
+function str(args: Record<string, unknown>, name: string): string | undefined {
+  const value = args[name];
+  return typeof value === "string" && value !== "" ? value : undefined;
+}
+
+/** Appended to an action's result when it left a JavaScript dialog open. */
+function dialogNote(browser: BrowserBackend, id: number): string {
+  const dialog = browser.pendingDialog(id);
+  return dialog
+    ? `\n[a ${dialog.type} dialog is open: "${dialog.message}" - call browser_handle_dialog]`
+    : "";
+}
+
 /**
  * Edge handlers for the browser tools, bound to one `BrowserBackend`. They
  * depend only on the backend-neutral interface, so swapping in another
@@ -47,6 +60,23 @@ async function guarded(action: () => Promise<string>): Promise<string> {
 export function makeBrowserHandlers(
   browser: BrowserBackend,
 ): Record<string, Handler> {
+  /** Validate `tab`, run `action`, and report `done` plus any dialog it opened. */
+  const onTab = (
+    args: Record<string, unknown>,
+    action: (id: number) => Promise<string | void>,
+    done: string,
+  ): Promise<string> =>
+    guarded(async () => {
+      const id = tabId(args);
+      if (id === null) return "error: an integer 'tab' is required";
+      const out = (await action(id)) ?? done;
+      return `${out}${dialogNote(browser, id)}`;
+    });
+  const ref = (args: Record<string, unknown>, name = "ref"): string => {
+    const value = str(args, name);
+    if (!value) throw new Error(`'${name}' is required (e.g. "e3")`);
+    return value;
+  };
   return {
     browser_open: (args) =>
       guarded(async () => {
@@ -71,12 +101,52 @@ export function makeBrowserHandlers(
         return formatTab(await browser.navigate(id, url));
       }),
     browser_read: (args) =>
-      guarded(async () => {
-        const id = tabId(args);
-        if (id === null) return "error: browser_read needs an integer 'tab'";
-        const text = (await browser.readText(id)).trim();
-        if (text.length <= MAX_TEXT_CHARS) return text || "(page has no text)";
-        return `${text.slice(0, MAX_TEXT_CHARS)}\n[truncated: ${text.length} characters total]`;
-      }),
+      onTab(
+        args,
+        async (id) => {
+          const text =
+            (await browser.readText(id)).trim() || "(page has no text)";
+          const clipped =
+            text.length <= MAX_TEXT_CHARS
+              ? text
+              : `${text.slice(0, MAX_TEXT_CHARS)}\n[truncated: ${text.length} characters total]`;
+          const elements = await browser.snapshot(id);
+          return `${clipped}\n\nInteractive elements (use the ref with browser_click, browser_type, ...):\n${elements || "(none)"}`;
+        },
+        "",
+      ),
+    browser_click: (args) =>
+      onTab(args, (id) => browser.click(id, ref(args)), "clicked"),
+    browser_hover: (args) =>
+      onTab(args, (id) => browser.hover(id, ref(args)), "hovered"),
+    browser_drag: (args) =>
+      onTab(
+        args,
+        (id) => browser.drag(id, ref(args, "from_ref"), ref(args, "to_ref")),
+        "dragged",
+      ),
+    browser_type: (args) =>
+      onTab(
+        args,
+        (id) =>
+          browser.typeText(id, str(args, "ref"), str(args, "text") ?? "", {
+            replace: args["replace"] === true,
+            key: str(args, "key"),
+          }),
+        "typed",
+      ),
+    browser_handle_dialog: (args) =>
+      onTab(
+        args,
+        (id) =>
+          browser.handleDialog(
+            id,
+            args["accept"] !== false,
+            str(args, "prompt_text"),
+          ),
+        "dialog handled",
+      ),
+    browser_run_code: (args) =>
+      onTab(args, (id) => browser.runCode(id, ref(args, "code")), "done"),
   };
 }

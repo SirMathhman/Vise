@@ -9,10 +9,13 @@ import {
 import { basename, join } from "node:path";
 import { dataDir } from "../data-dir.ts";
 import { CdpConnection } from "./cdp.ts";
+import * as actions from "./cdp-actions.ts";
 import { dispatchInput, startScreencast } from "./cdp-view.ts";
+import { PlaywrightSession } from "./playwright.ts";
 import type {
   BrowserBackend,
   BrowserInput,
+  DialogInfo,
   FrameListener,
   TabInfo,
 } from "./types.ts";
@@ -59,6 +62,11 @@ export class ChromiumBackend implements BrowserBackend {
   private readonly changeListeners = new Set<() => void>();
   /** The blank tab the browser starts with; never shown to the agent or the UI. */
   private startupTargets = new Set<string>();
+  /** Dialogs waiting for an answer, by CDP session; they block a tab's script until handled. */
+  private readonly dialogs = new Map<string, DialogInfo>();
+  private readonly dialogWaiters = new Set<(sessionId: string) => void>();
+  private wsUrl = "";
+  private readonly playwright = new PlaywrightSession(() => this.wsUrl);
 
   get running(): boolean {
     return this.launching !== null;
@@ -112,6 +120,96 @@ export class ChromiumBackend implements BrowserBackend {
     return this.info(cdp, id);
   }
 
+  async snapshot(id: number): Promise<string> {
+    const outline = await this.inTab(id, (cdp, session) =>
+      actions.snapshot(cdp, session),
+    );
+    return outline ?? "(a dialog opened while reading the page)";
+  }
+
+  async click(id: number, ref: string): Promise<void> {
+    await this.inTab(id, (cdp, session) => actions.click(cdp, session, ref));
+  }
+
+  async hover(id: number, ref: string): Promise<void> {
+    await this.inTab(id, (cdp, session) => actions.hover(cdp, session, ref));
+  }
+
+  async drag(id: number, fromRef: string, toRef: string): Promise<void> {
+    await this.inTab(id, (cdp, session) =>
+      actions.drag(cdp, session, fromRef, toRef),
+    );
+  }
+
+  async typeText(
+    id: number,
+    ref: string | undefined,
+    text: string,
+    options: { replace: boolean; key?: string },
+  ): Promise<void> {
+    await this.inTab(id, (cdp, session) =>
+      actions.typeText(cdp, session, ref, text, options),
+    );
+  }
+
+  pendingDialog(id: number): DialogInfo | null {
+    return this.dialogs.get(this.tab(id).sessionId) ?? null;
+  }
+
+  async handleDialog(
+    id: number,
+    accept: boolean,
+    promptText?: string,
+  ): Promise<void> {
+    const cdp = await this.connection();
+    const { sessionId } = this.tab(id);
+    if (!this.dialogs.has(sessionId)) throw new Error("no dialog is open");
+    await cdp.send(
+      "Page.handleJavaScriptDialog",
+      { accept, promptText },
+      sessionId,
+    );
+  }
+
+  async runCode(id: number, code: string): Promise<string> {
+    await this.connection();
+    return this.playwright.run(this.tab(id).targetId, code);
+  }
+
+  /**
+   * Run a page action on a tab. Refuses while a dialog blocks the tab, and
+   * returns as soon as an action opens one (the action would otherwise hang
+   * until the dialog is answered).
+   */
+  private async inTab<T>(
+    id: number,
+    run: (cdp: CdpConnection, sessionId: string) => Promise<T>,
+  ): Promise<T | undefined> {
+    const cdp = await this.connection();
+    const { sessionId } = this.tab(id);
+    const blocked = this.dialogs.get(sessionId);
+    if (blocked) {
+      throw new Error(
+        `a ${blocked.type} dialog is open ("${blocked.message}"): call browser_handle_dialog first`,
+      );
+    }
+    let release = (): void => undefined;
+    const opened = new Promise<undefined>((resolve) => {
+      const waiter = (session: string): void => {
+        if (session === sessionId) resolve(undefined);
+      };
+      this.dialogWaiters.add(waiter);
+      release = () => this.dialogWaiters.delete(waiter);
+    });
+    const running = run(cdp, sessionId);
+    running.catch(() => undefined);
+    try {
+      return await Promise.race([running, opened]);
+    } finally {
+      release();
+    }
+  }
+
   async closeTab(id: number): Promise<void> {
     const cdp = await this.connection();
     await cdp.send("Target.closeTarget", { targetId: this.tab(id).targetId });
@@ -155,6 +253,8 @@ export class ChromiumBackend implements BrowserBackend {
     const launching = this.launching;
     this.launching = null;
     this.tabs.clear();
+    this.dialogs.clear();
+    await this.playwright.close();
     if (launching) {
       try {
         const cdp = await launching;
@@ -242,6 +342,20 @@ export class ChromiumBackend implements BrowserBackend {
     });
   }
 
+  private trackDialogs(cdp: CdpConnection): void {
+    cdp.on("Page.javascriptDialogOpening", (params, sessionId) => {
+      if (!sessionId) return;
+      this.dialogs.set(sessionId, {
+        type: String(params["type"]),
+        message: String(params["message"]),
+      });
+      for (const waiter of this.dialogWaiters) waiter(sessionId);
+    });
+    cdp.on("Page.javascriptDialogClosed", (_params, sessionId) => {
+      if (sessionId) this.dialogs.delete(sessionId);
+    });
+  }
+
   /** Remember the startup tab, then turn target events into tab-change notifications. */
   private async watchTargets(cdp: CdpConnection): Promise<void> {
     const { targetInfos } = await cdp.send<{ targetInfos: TargetInfo[] }>(
@@ -309,6 +423,8 @@ export class ChromiumBackend implements BrowserBackend {
       processInfo: { id: number; type: string }[];
     }>("SystemInfo.getProcessInfo");
     this.browserPid = processInfo.find((p) => p.type === "browser")?.id ?? null;
+    this.wsUrl = `ws://127.0.0.1:${port}${path}`;
+    this.trackDialogs(cdp);
     await this.watchTargets(cdp);
     return cdp;
   }

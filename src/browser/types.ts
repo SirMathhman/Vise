@@ -38,6 +38,12 @@ export type BrowserInput =
 /** One screencast frame: a base64-encoded JPEG of the tab's viewport. */
 export type FrameListener = (jpegBase64: string) => void;
 
+/** A JavaScript dialog (alert/confirm/prompt/beforeunload) waiting for an answer. */
+export interface DialogInfo {
+  type: string;
+  message: string;
+}
+
 export interface BrowserBackend {
   /** True once the browser has been launched (listing tabs never launches it by itself). */
   readonly running: boolean;
@@ -47,6 +53,25 @@ export interface BrowserBackend {
   listTabs(): Promise<TabInfo[]>;
   /** Navigate an existing tab and wait for it to load. */
   navigate(id: number, url: string): Promise<TabInfo>;
+  /** Outline of the visible interactive elements, each tagged with a ref (e1, e2, ...). */
+  snapshot(id: number): Promise<string>;
+  /** Click, hover over, or drag between elements named by ref. */
+  click(id: number, ref: string): Promise<void>;
+  hover(id: number, ref: string): Promise<void>;
+  drag(id: number, fromRef: string, toRef: string): Promise<void>;
+  /** Type into an element (or the focused one when `ref` is omitted), optionally pressing a key after. */
+  typeText(
+    id: number,
+    ref: string | undefined,
+    text: string,
+    options: { replace: boolean; key?: string },
+  ): Promise<void>;
+  /** The dialog currently blocking a tab, if any. */
+  pendingDialog(id: number): DialogInfo | null;
+  /** Accept or dismiss the blocking dialog (`promptText` answers a prompt). */
+  handleDialog(id: number, accept: boolean, promptText?: string): Promise<void>;
+  /** Run a Playwright snippet (`page` in scope) against a tab; returns its JSON result. */
+  runCode(id: number, code: string): Promise<string>;
   /** Close a tab. */
   closeTab(id: number): Promise<void>;
   /** The visible text of a tab's page. */
