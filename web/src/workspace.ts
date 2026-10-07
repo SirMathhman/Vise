@@ -1,6 +1,7 @@
 import { createBrowserView } from "./browser-view.ts";
 import { createExplorer } from "./explorer.ts";
 import { pairWithExtension } from "./pairing.ts";
+import { rememberRoot } from "./restore-root.ts";
 import { setupSessionRoot } from "./session-root.ts";
 import type { BrowserTab } from "./open-tabs.ts";
 
@@ -13,6 +14,7 @@ interface WorkspaceMessage {
   data?: string;
   message?: string;
   noFolder?: boolean;
+  badRoot?: string;
 }
 
 function el<T extends HTMLElement>(id: string): T {
@@ -88,6 +90,10 @@ export function createWorkspace(
       switch (message.type) {
         case "root":
           showRoot(message.path ?? "");
+          rememberRoot(message.path ?? "");
+          if (message.badRoot) {
+            onError(`folder not available, so no folder: ${message.badRoot}`);
+          }
           noFolder = message.noFolder === true;
           document.body.classList.toggle("no-folder", noFolder);
           // The server serves a root only once a session is open on it, so list the project now.

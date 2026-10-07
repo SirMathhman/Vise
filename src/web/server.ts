@@ -210,13 +210,26 @@ function socketData(
   }
   // Browsers don't apply CORS to WebSockets: refuse other sites' pages.
   if (!isLocalOrigin(origin, port)) return refuse;
+  // A page starts with no folder unless its address names one; a folder that is gone falls back to none.
   const param = url.searchParams.get("root");
-  const noFolder = param === "none";
-  const root = noFolder ? noFolderRoot : roots.resolve(param);
-  if (!root) return new Response("bad root", { status: 400 });
+  const named = param !== null && param !== "" && param !== "none";
+  const dir = named ? roots.resolve(param) : null;
+  const noFolder = dir === null;
+  const root = dir ?? noFolderRoot;
+  const badRoot = named && noFolder ? param : undefined;
   // `?ui=sidebar` is the page inside the Firefox extension: its browser is the user's own.
   const sidebar = url.searchParams.get("ui") === "sidebar";
-  return { ext: false, root, noFolder, sidebar };
+  return { ext: false, root, noFolder, sidebar, badRoot };
+}
+
+/** Tells the page which folder its session is on (none, or one that was asked for but is gone). */
+function rootMessage(data: WsData): Record<string, unknown> {
+  return {
+    type: "root",
+    path: data.noFolder ? "" : data.root,
+    noFolder: data.noFolder,
+    badRoot: data.badRoot,
+  };
 }
 
 /** Start the web driver: serve the UI and accept WebSocket connections. */
@@ -273,7 +286,7 @@ export function startWebServer(port = 3000): void {
           noFolder,
           sidebar ? undefined : browser,
         );
-        conn.send({ type: "root", path: noFolder ? "" : root, noFolder });
+        conn.send(rootMessage(ws.data));
         conn.send({ type: "goal_state", enabled: conn.session.goalChecking() });
         // The shared browser's engine setting, for the settings panel.
         void conn.bridge.handle({ type: "browser_settings_get" });
@@ -329,6 +342,8 @@ export function startWebServer(port = 3000): void {
 
 /** What a WebSocket carries from the upgrade: the session root it was opened with. */
 interface WsData {
+  /** A folder the page asked for that is not available (it fell back to no folder). */
+  badRoot?: string;
   /** The Firefox extension's own connection (`/ext`), not a chat session. */
   ext: boolean;
   /** A session in the extension's sidebar: it drives the user's real browser. */

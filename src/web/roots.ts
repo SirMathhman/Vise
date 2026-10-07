@@ -38,7 +38,7 @@ export class RootRegistry {
 
   /** Whether sessions are using `root` (the explorer API serves only such roots). */
   isActive(root: string): boolean {
-    return root === this.defaultRoot || (this.stores.get(root)?.refs ?? 0) > 0;
+    return (this.stores.get(root)?.refs ?? 0) > 0;
   }
 
   /** Register a connection on `root`; returns that root's shared hook store. */
