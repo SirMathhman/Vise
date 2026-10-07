@@ -107,3 +107,22 @@ describe("web transcript burst marking", () => {
     }
   });
 });
+
+describe("web transcript thinking", () => {
+  test("collapses an opened thinking line when the thinking ends", () => {
+    const restoreDocument = installDocumentStub();
+    try {
+      const { log, children } = makeLog();
+      const transcript = createTranscript(log);
+      transcript.appendThinkingToken("Reasoning.");
+      // Simulate the user opening it mid-stream.
+      const line = children[0];
+      if (line) line.className = "line thinking open";
+      transcript.appendAssistantToken("Answer.");
+
+      expect(children[0]?.className).toBe("line thinking");
+    } finally {
+      restoreDocument();
+    }
+  });
+});

@@ -16,6 +16,23 @@ export function createTranscript(log: HTMLElement): TranscriptView {
   let activeRaw = "";
   let activeThinking: HTMLElement | null = null;
 
+  // Thinking lines start collapsed and collapse again when the thinking ends.
+  function endThinking(): void {
+    if (activeThinking) {
+      activeThinking.className = activeThinking.className.replace(/ open$/, "");
+    }
+    activeThinking = null;
+  }
+
+  // Click a thinking line to open or close it.
+  log.addEventListener?.("click", (event) => {
+    const line = (event.target as HTMLElement | null)?.closest?.(".line.thinking");
+    if (!(line instanceof HTMLElement)) return;
+    line.className = line.className.endsWith(" open")
+      ? line.className.replace(/ open$/, "")
+      : `${line.className} open`;
+  });
+
   function addLine(cls: string, text: string): HTMLDivElement {
     const div = document.createElement("div");
     div.className = `line ${cls}`;
@@ -33,7 +50,7 @@ export function createTranscript(log: HTMLElement): TranscriptView {
   }
 
   function appendAssistantToken(text: string): void {
-    activeThinking = null;
+    endThinking();
     if (!activeAssistant) {
       activeAssistant = document.createElement("div");
       activeAssistant.className = "line assistant";
@@ -59,27 +76,27 @@ export function createTranscript(log: HTMLElement): TranscriptView {
     appendThinkingToken,
     appendToolCall(name: string, depth?: number): void {
       flushAssistant();
-      activeThinking = null;
+      endThinking();
       const line = addLine("tool", `tool: ${name}${depth ? " (subagent)" : ""}`);
       if (burstActive) line.className += " burst";
     },
     setBurst(active: boolean): void {
       if (active && !burstActive) {
         flushAssistant();
-        activeThinking = null;
+        endThinking();
         addLine("burst", "⚡ burst: running the plan without thinking");
       }
       burstActive = active;
     },
     finishThinking(): void {
-      activeThinking = null;
+      endThinking();
     },
     flushAssistant,
     clear(): void {
       log.textContent = "";
       activeAssistant = null;
       activeRaw = "";
-      activeThinking = null;
+      endThinking();
     },
   };
 }

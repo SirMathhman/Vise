@@ -167,6 +167,25 @@ body {
 .line.thinking {
   color: var(--dim);
   font-style: italic;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.line.thinking::before {
+  content: "▸  thinking: ";
+  font-style: normal;
+}
+
+.line.thinking.open {
+  white-space: pre-wrap;
+  overflow: visible;
+}
+
+.line.thinking.open::before {
+  content: "▾  thinking:\A";
+  white-space: pre;
 }
 
 .line.tool {
