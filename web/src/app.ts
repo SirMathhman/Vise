@@ -87,20 +87,25 @@ let pendingProfileList = false;
 let pendingReasoningList = false;
 let pendingToolList = false;
 let pendingSessionList = false;
-let pendingToolToggle: string | null = null;
 let pendingBurstSync = false;
 // The tools panel refresh is a queued line; its reply is matched by id because
 // the connection also carries the model's turns.
 const toolRefreshes = new Set<string>();
+// Tool toggles are lines too, matched by id: one made while a turn runs answers after the turn,
+// and must be neither taken for the turn's result nor change the busy state.
+const toolToggles = new Set<string>();
 // Whitelist reads/writes bypass the turn queue (`profile_tools` messages).
 const whitelistRequests = new Map<string, { name: string; save: boolean }>();
 let nextRequestId = 0;
 
-function requestToolRefresh(): void {
+/** Send a line whose reply is matched by id (it may arrive after a running turn's). */
+function requestTracked(text: string, ids: Set<string>): void {
   const id = `ed${nextRequestId++}`;
-  toolRefreshes.add(id);
-  socket.send(JSON.stringify({ type: "line", text: "/tool", id }));
+  ids.add(id);
+  socket.send(JSON.stringify({ type: "line", text, id }));
 }
+
+const requestToolRefresh = (): void => requestTracked("/tool", toolRefreshes);
 
 function requestWhitelist(name: string, save: boolean, tools?: string[]): void {
   const id = `ed${nextRequestId++}`;
@@ -321,13 +326,11 @@ function handleInitialResult(message: ResultMessage): boolean {
 }
 
 function handleToolToggleResult(message: ResultMessage): boolean {
-  if (!pendingToolToggle) return false;
-  pendingToolToggle = null;
-  if (message.ok) transcript.addLine("system", message.value ?? "");
-  else transcript.addLine("error", message.error ?? "unknown error");
-  requestLine("/tool");
-  pendingToolList = true;
-  setBusy(false);
+  if (message.id === undefined || !toolToggles.delete(message.id)) return false;
+  if (!message.ok)
+    transcript.addLine("error", message.error ?? "unknown error");
+  else if (!input.disabled) transcript.addLine("system", message.value ?? "");
+  requestToolRefresh();
   return true;
 }
 
@@ -381,14 +384,14 @@ function handleCommandResult(message: ResultMessage): void {
 }
 
 function handleResult(message: ResultMessage): void {
+  // Answers to side requests leave the turn in flight (its stream, prompt and busy state) alone.
+  if (handleToolRefresh(message) || handleToolToggleResult(message)) return;
   transcript.flushAssistant();
   burstBtn.classList.remove("bursting");
   transcript.setBurst(false);
   hideAsk();
   renderContext(message);
-  if (handleToolRefresh(message)) return;
   if (handleInitialResult(message)) return;
-  if (handleToolToggleResult(message)) return;
   setBusy(false);
   if (message.ok) handleCommandResult(message);
   else transcript.addLine("error", message.error ?? "unknown error");
@@ -464,8 +467,7 @@ requiredElement<HTMLUListElement>("tools-list").addEventListener(
     } else {
       row?.classList.toggle("disabled", !checkbox.checked);
     }
-    pendingToolToggle = checkbox.value;
-    sendLine(`/tool ${checkbox.value} ${verb}`);
+    requestTracked(`/tool ${checkbox.value} ${verb}`, toolToggles);
   },
 );
 askSend.addEventListener("click", submitAsk);
