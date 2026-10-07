@@ -30,6 +30,19 @@
         color: #9aa0a6;
         margin-left: 6px;
       }
+      #notice {
+        margin-top: 4px;
+        padding: 3px 6px;
+        border-radius: 4px;
+      }
+      #notice.ok {
+        background: #1d3a26;
+        color: #8fe3a4;
+      }
+      #notice.error {
+        background: #44211f;
+        color: #ffb3ad;
+      }
       #owned {
         list-style: none;
         margin: 4px 0 0;
@@ -66,6 +79,7 @@
         Give Vise this tab
       </button>
       <span id="status"></span>
+      <div id="notice" role="status" hidden></div>
       <ul id="owned"></ul>
     </div>
     <div id="offline" hidden>

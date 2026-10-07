@@ -22,6 +22,10 @@ export function grant(tabId: number): void {
   changed();
 }
 
+export function isOwned(tabId: number): boolean {
+  return owned.has(tabId);
+}
+
 export function release(tabId: number): void {
   if (owned.delete(tabId)) changed();
 }

@@ -83,8 +83,52 @@ async function refresh(): Promise<void> {
   }
 }
 
+/** What the background answers to "give": success, or an error to show. */
+interface GiveResult {
+  ok: boolean;
+  tab?: string;
+  already?: boolean;
+  error?: string;
+}
+
+let noticeTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** Show a success (✓) or error (✕) message under the button for a few seconds. */
+function notify(ok: boolean, text: string): void {
+  const notice = el("notice");
+  notice.className = ok ? "ok" : "error";
+  notice.textContent = `${ok ? "✓" : "✕"} ${text}`;
+  notice.hidden = false;
+  clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(() => (notice.hidden = true), 6000);
+}
+
 el("give").addEventListener("click", () => {
-  void browser.runtime.sendMessage({ type: "give" }).then(refresh);
+  const button = el<HTMLButtonElement>("give");
+  button.disabled = true;
+  browser.runtime
+    .sendMessage({ type: "give" })
+    .then((result: GiveResult | undefined) => {
+      if (!result) throw new Error("the extension did not answer");
+      if (result.ok) {
+        notify(
+          true,
+          result.already
+            ? `Vise already has "${result.tab}".`
+            : `Vise can now use "${result.tab}".`,
+        );
+      } else {
+        notify(false, result.error ?? "Could not give this tab to Vise.");
+      }
+    })
+    .catch((error: unknown) => {
+      const reason = error instanceof Error ? error.message : String(error);
+      notify(false, `Could not give this tab to Vise (${reason}).`);
+    })
+    .finally(() => {
+      button.disabled = false;
+      void refresh();
+    });
 });
 el("retry").addEventListener("click", () => void load());
 browser.runtime.onMessage.addListener((message: { type: string }) => {

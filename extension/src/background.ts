@@ -1,6 +1,6 @@
 import { getPort, getToken } from "./config.ts";
 import { ops } from "./ops.ts";
-import { grant, onOwnedChanged, ownedIds, release } from "./tabs.ts";
+import { grant, isOwned, onOwnedChanged, ownedIds, release } from "./tabs.ts";
 
 /**
  * The extension's background page: holds the WebSocket to the Vise server
@@ -84,15 +84,36 @@ async function status(): Promise<unknown> {
   return { connected: socket?.readyState === WebSocket.OPEN, tabs };
 }
 
+/** The answer to "give Vise this tab": exactly one of success or an error message. */
+interface GiveResult {
+  ok: boolean;
+  /** The tab's title or address, when there is one. */
+  tab?: string;
+  /** The tab was already Vise's. */
+  already?: boolean;
+  error?: string;
+}
+
 /** Hand the window's active tab over to Vise. */
-async function give(): Promise<unknown> {
+async function give(): Promise<GiveResult> {
   const [tab] = await browser.tabs.query({
     active: true,
     lastFocusedWindow: true,
   });
-  if (tab?.id === undefined) return { ok: false, error: "no active tab" };
+  if (tab?.id === undefined) {
+    return { ok: false, error: "Could not find the active tab." };
+  }
+  const name = tab.title || tab.url || "this tab";
+  // Vise only drives web pages; browser-internal pages cannot be scripted.
+  if (!/^https?:/.test(tab.url ?? "")) {
+    return {
+      ok: false,
+      error: `Vise can only use web pages (http or https), and "${name}" is not one.`,
+    };
+  }
+  const already = isOwned(tab.id);
   grant(tab.id);
-  return { ok: true };
+  return { ok: true, tab: name, already };
 }
 
 /** What the sidebar's control strip asks for. */
