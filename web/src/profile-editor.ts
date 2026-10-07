@@ -1,11 +1,11 @@
 import type { HooksFields } from "./hooks-panel.ts";
 import { appendToolCategory, appendToolItem } from "./panels.ts";
-import { renderProfileHooks } from "./profile-hooks.ts";
+import { renderHookLists } from "./hook-lists.ts";
 
 export interface ProfileEditorActions {
   /** Ask the server for the hooks and their profile bindings. */
   loadHooks(): void;
-  /** Send a `/hooks bind|unbind ...` line. */
+  /** Send a `/hooks profile <name> add|remove ...` line. */
   editHook(line: string): void;
   /** Ask the server for a profile's whitelist (`/profile <name> tools`). */
   loadWhitelist(name: string): void;
@@ -22,7 +22,7 @@ export interface ProfileEditorActions {
 }
 
 export interface ProfileEditor {
-  /** Show the hooks with a checkbox for binding each to the selected profile. */
+  /** Show the selected profile's own hooks (and add/remove them). */
   showHooks(hooks: HooksFields): void;
   /** Reload the profile list and the selected whitelist (the panel just opened). */
   refresh(): void;
@@ -47,7 +47,8 @@ export function createProfileEditor(
   const hooksBox = document.getElementById("pe-hooks") as HTMLElement;
   let hooks: HooksFields = {};
   const drawHooks = (): void =>
-    renderProfileHooks(hooksBox, hooks, select.value, actions.editHook);
+    renderOwnHooks(hooksBox, hooks, select.value, actions.editHook);
+
   let statusTimer: ReturnType<typeof setTimeout> | undefined;
   let waitingHint: ReturnType<typeof setTimeout> | undefined;
 
@@ -164,4 +165,21 @@ function renderWhitelist(
     }
     appendToolItem(list, tool, allowed?.includes(tool) ?? true);
   }
+}
+
+/** The selected profile's own hooks: they run only while it is active, in addition to the global ones. */
+function renderOwnHooks(
+  box: HTMLElement,
+  hooks: HooksFields,
+  name: string,
+  edit: (line: string) => void,
+): void {
+  box.textContent = "";
+  if (!name) return;
+  const own = hooks.profileHooks?.[name] ?? { pre: [], post: [] };
+  const labels = {
+    pre: `pre-turn hooks for '${name}' (run only while this profile is active)`,
+    post: `post-turn hooks for '${name}' (run only while this profile is active)`,
+  };
+  renderHookLists(box, own, `/hooks profile ${name}`, labels, edit);
 }
