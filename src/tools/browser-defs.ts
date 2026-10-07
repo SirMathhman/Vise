@@ -209,7 +209,7 @@ export const browserTools: Tool[] = [
     function: {
       name: "browser_run_code",
       description:
-        "Run a Playwright snippet against a browser tab. The snippet is the body of an async function with `page` (a Playwright Page) in scope; `return` a value to get it back as JSON. Example: return await page.title(). Times out after 30 seconds. Prefer the other browser tools for simple actions.",
+        "Run a Playwright snippet against a browser tab. The snippet is the body of an async function with `page` (a Playwright Page) in scope; `return` a value to get it back as JSON. Example: return await page.title(). Times out after 30 seconds. WARNING: the snippet runs in a Node process with the full privileges of the user (file system, network, child processes), not just in the page. Disabled by default; the user enables it with /tool browser_run_code enable. Prefer the other browser tools for simple actions.",
       parameters: {
         type: "object",
         properties: {

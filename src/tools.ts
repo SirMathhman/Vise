@@ -432,8 +432,10 @@ export class ToolSet implements ToolController {
   private readonly defs: Tool[];
   private readonly disabled = new Set<string>();
 
-  constructor(defs: Tool[]) {
+  /** `initiallyDisabled` names tools that start off until the user enables them. */
+  constructor(defs: Tool[], initiallyDisabled: string[] = []) {
     this.defs = defs;
+    for (const name of initiallyDisabled) this.disabled.add(name);
   }
 
   list(): { name: string; enabled: boolean }[] {

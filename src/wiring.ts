@@ -51,6 +51,9 @@ import { createToolRunner, ToolSet, tools } from "./tools.ts";
  * `src/edge-sources.ts` — this file only wires them together.
  */
 
+/** Tools that run unsandboxed code and so start disabled; the user opts in with `/tool <name> enable`. */
+const RISKY_TOOLS = ["browser_run_code"];
+
 /**
  * Frontend-specific collaborators passed into `createEdgeSession`. These are
  * the seams that differ between the terminal and web frontends: how streamed
@@ -145,7 +148,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     current: null as unknown as Session,
   };
   // Tool enablement is per session: each connection gets its own ToolSet.
-  const toolController = new ToolSet(tools);
+  const toolController = new ToolSet(tools, RISKY_TOOLS);
   const toolRunner = createToolRunner(
     {
       run_subagent: makeSubagentHandler(
