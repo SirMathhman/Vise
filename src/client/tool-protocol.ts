@@ -8,21 +8,27 @@ import type { AssistantMessage, Message, ToolCall } from "../core/errors.ts";
  * GBNF grammar, which is not part of the prompt — so enabling or disabling a
  * tool never changes the prompt prefix and never invalidates the KV cache.
  */
-export const CALL_OPEN = "<|tool_call|>";
-export const CALL_CLOSE = "<|/tool_call|>";
-const RESPONSE_OPEN = "<|tool_response|>";
-const RESPONSE_CLOSE = "<|/tool_response|>";
+export const CALL_OPEN = "<tool_call>";
+export const CALL_CLOSE = "</tool_call>";
+const RESPONSE_OPEN = "<tool_response>\n";
+const RESPONSE_CLOSE = "\n</tool_response>";
 
 /** The system-prompt section describing every tool and the call format. */
 export function renderToolPrompt(tools: Tool[]): string {
   const defs = tools.map((t) => JSON.stringify(t.function)).join("\n");
   return [
-    "You can call tools. Available tools (one JSON definition per line):",
-    defs,
+    "# Tools",
     "",
-    `To call a tool, end your reply with ${CALL_OPEN}{"name":"<tool>","arguments":{...}}${CALL_CLOSE}.`,
-    "You may emit several calls in a row. Results are returned in messages",
-    `wrapped in ${RESPONSE_OPEN}...${RESPONSE_CLOSE}. A reply without a call is final.`,
+    "You may call one or more functions to assist with the user query, only when they are actually needed; answer directly otherwise.",
+    "",
+    "You are provided with function signatures within <tools></tools> XML tags:",
+    "<tools>",
+    defs,
+    "</tools>",
+    "",
+    `For each function call, return a json object with function name and arguments within ${CALL_OPEN}${CALL_CLOSE} XML tags:`,
+    `${CALL_OPEN}\n{"name": <function-name>, "arguments": <args-json-object>}\n${CALL_CLOSE}`,
+    "Function results are returned in <tool_response></tool_response> tags.",
     "Tools may be enabled or disabled during the conversation; follow the most recent notice about a tool's state and never call a disabled tool.",
   ].join("\n");
 }
@@ -63,7 +69,7 @@ const WORD_TRIGGER = [{ type: 0, value: CALL_OPEN }];
 const AFTER_THINKING_TRIGGER = [
   {
     type: 3,
-    value: String.raw`[\s\S]*</think>[\s\S]*?(<\|tool_call\|>[\s\S]*)`,
+    value: String.raw`[\s\S]*</think>[\s\S]*?(<tool_call>[\s\S]*)`,
   },
 ];
 
@@ -117,7 +123,9 @@ export function encodeMessages(
     const calls = (m.tool_calls ?? [])
       .map(
         (c) =>
-          `${CALL_OPEN}${JSON.stringify({ name: c.function.name, arguments: safeParse(c.function.arguments) })}${CALL_CLOSE}`,
+          `${CALL_OPEN}
+${JSON.stringify({ name: c.function.name, arguments: safeParse(c.function.arguments) })}
+${CALL_CLOSE}`,
       )
       .join("");
     return { role: m.role, content: m.content + calls };

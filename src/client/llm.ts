@@ -478,6 +478,7 @@ export class LlmClient implements Client {
       );
     }
     let thinkingText = "";
+    const hiddenThinking = hideCalls(onThinking);
     if (responseSchema) {
       body.response_format = {
         type: "json_schema",
@@ -515,7 +516,7 @@ export class LlmClient implements Client {
         useTools
           ? (t) => {
               thinkingText += t;
-              onThinking?.(t);
+              hiddenThinking?.(t);
             }
           : onThinking,
         onPromptProgress,

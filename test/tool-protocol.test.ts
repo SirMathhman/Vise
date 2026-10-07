@@ -29,7 +29,7 @@ describe("tool protocol (edge)", () => {
 
   test("parses calls out of content", () => {
     const r = parseToolCalls(
-      'hi <|tool_call|>{"name":"a","arguments":{"x":1}}<|/tool_call|>',
+      'hi <tool_call>\n{"name":"a","arguments":{"x":1}}\n</tool_call>',
     );
     expect(r.content).toBe("hi");
     expect(r.tool_calls[0]?.function.name).toBe("a");
@@ -39,7 +39,7 @@ describe("tool protocol (edge)", () => {
   test("hideCalls stops streaming at the delimiter", () => {
     const seen: string[] = [];
     const f = hideCalls((t) => seen.push(t));
-    for (const t of ["he", "llo <|to", "ol_call|>{}"]) f?.(t);
+    for (const t of ["he", "llo <to", "ol_call>{}"]) f?.(t);
     expect(seen.join("")).toBe("hello ");
   });
 });
