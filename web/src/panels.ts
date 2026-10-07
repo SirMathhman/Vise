@@ -111,6 +111,24 @@ function populateReasoningSelect(
   }
 }
 
+/** One tool as a checkbox row; unchecked rows are dimmed. */
+export function appendToolItem(
+  list: HTMLUListElement,
+  name: string,
+  checked: boolean,
+): void {
+  const item = document.createElement("li");
+  if (!checked) item.classList.add("disabled");
+  const checkbox = document.createElement("input");
+  checkbox.type = "checkbox";
+  checkbox.value = name;
+  checkbox.checked = checked;
+  const label = document.createElement("label");
+  label.append(checkbox, document.createTextNode(name));
+  item.appendChild(label);
+  list.appendChild(item);
+}
+
 function populateToolsPanel(list: HTMLUListElement, listText: string): void {
   list.textContent = "";
   let count = 0;
@@ -125,16 +143,7 @@ function populateToolsPanel(list: HTMLUListElement, listText: string): void {
     const enabled = line[0] === "*";
     const raw = enabled ? line.slice(1).trim() : line.trimStart();
     const name = raw.replace(/ \(enabled\)$/, "").replace(/ \(disabled\)$/, "");
-    const item = document.createElement("li");
-    if (!enabled) item.classList.add("disabled");
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.value = name;
-    checkbox.checked = enabled;
-    const label = document.createElement("label");
-    label.append(checkbox, document.createTextNode(name));
-    item.appendChild(label);
-    list.appendChild(item);
+    appendToolItem(list, name, enabled);
   }
   if (count === 0)
     list.appendChild(document.createElement("li")).textContent =

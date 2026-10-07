@@ -1,3 +1,5 @@
+import { appendToolItem } from "./panels.ts";
+
 export interface ProfileEditorActions {
   /** Ask the server for a profile's whitelist (`/profile <name> tools`). */
   loadWhitelist(name: string): void;
@@ -35,7 +37,6 @@ export function createProfileEditor(
   const button = document.getElementById("profiles-btn") as HTMLButtonElement;
   const panel = document.getElementById("profiles-panel") as HTMLElement;
   const select = document.getElementById("pe-profile") as HTMLSelectElement;
-  const restrict = document.getElementById("pe-restrict") as HTMLInputElement;
   const list = document.getElementById("pe-tools") as HTMLUListElement;
   const save = document.getElementById("pe-save") as HTMLButtonElement;
 
@@ -45,10 +46,9 @@ export function createProfileEditor(
       (el) => el.value,
     );
 
+  // A profile must allow at least one tool.
   function refresh(): void {
-    list.hidden = !restrict.checked;
-    // A restriction must allow at least one tool.
-    save.disabled = restrict.checked && checked().length === 0;
+    save.disabled = checked().length === 0;
   }
 
   function loadSelected(): void {
@@ -71,30 +71,28 @@ export function createProfileEditor(
     loadSelected();
   });
   select.addEventListener("change", loadSelected);
-  restrict.addEventListener("change", refresh);
-  list.addEventListener("change", refresh);
+  list.addEventListener("change", (event) => {
+    const box = event.target;
+    if (box instanceof HTMLInputElement) {
+      box.closest("li")?.classList.toggle("disabled", !box.checked);
+    }
+    refresh();
+  });
   save.addEventListener("click", () => {
     if (!select.value) return;
-    actions.saveWhitelist(
-      select.value,
-      restrict.checked ? checked() : undefined,
-    );
+    // Every tool ticked means no restriction.
+    const tools = checked();
+    const all = tools.length === actions.toolNames().length;
+    actions.saveWhitelist(select.value, all ? undefined : tools);
   });
 
   return {
     showWhitelist(name, text) {
       if (name !== select.value) return;
       const allowed = parseWhitelist(text);
-      restrict.checked = allowed !== undefined;
       list.textContent = "";
       for (const tool of actions.toolNames()) {
-        const checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.value = tool;
-        checkbox.checked = allowed?.includes(tool) ?? false;
-        const label = document.createElement("label");
-        label.append(checkbox, document.createTextNode(tool));
-        list.appendChild(document.createElement("li")).appendChild(label);
+        appendToolItem(list, tool, allowed?.includes(tool) ?? true);
       }
       refresh();
     },
