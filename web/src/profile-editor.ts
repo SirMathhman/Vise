@@ -39,6 +39,10 @@ export function createProfileEditor(
   const select = document.getElementById("pe-profile") as HTMLSelectElement;
   const list = document.getElementById("pe-tools") as HTMLUListElement;
   const save = document.getElementById("pe-save") as HTMLButtonElement;
+  const checkAll = document.getElementById("pe-check-all") as HTMLButtonElement;
+  const uncheckAll = document.getElementById(
+    "pe-uncheck-all",
+  ) as HTMLButtonElement;
 
   const checked = (): string[] =>
     Array.from(
@@ -71,6 +75,15 @@ export function createProfileEditor(
     loadSelected();
   });
   select.addEventListener("change", loadSelected);
+  const setAll = (on: boolean): void => {
+    for (const box of list.querySelectorAll<HTMLInputElement>("input")) {
+      box.checked = on;
+      box.closest("li")?.classList.toggle("disabled", !on);
+    }
+    refresh();
+  };
+  checkAll.addEventListener("click", () => setAll(true));
+  uncheckAll.addEventListener("click", () => setAll(false));
   list.addEventListener("change", (event) => {
     const box = event.target;
     if (box instanceof HTMLInputElement) {

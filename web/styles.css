@@ -130,6 +130,12 @@ body {
   cursor: pointer;
 }
 
+.pe-bulk {
+  display: flex;
+  gap: 0.4rem;
+  margin: 0.5rem 0;
+}
+
 .model {
   background: var(--bg);
   color: var(--text);
