@@ -981,3 +981,7 @@ body {
 .tab-page.hidden {
   display: none;
 }
+
+.fs-url.hidden {
+  display: none;
+}

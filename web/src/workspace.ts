@@ -56,6 +56,9 @@ export function createWorkspace(
     },
   );
 
+  // The workspace is visible by default, so list the project right away.
+  if (!root.classList.contains("hidden")) void explorer.open("");
+
   return {
     toggle() {
       root.classList.toggle("hidden");
