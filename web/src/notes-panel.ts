@@ -67,6 +67,23 @@ function renderNotes(
   if (notes.length === 0) list.append(make("li", "note-group", "no notes yet"));
 }
 
+/** The save message: an edited note carries where it came from and the version it was loaded at. */
+function savePayload(
+  name: string,
+  category: string,
+  body: string,
+  current: NoteRef | null,
+  version: number | undefined,
+): Record<string, unknown> {
+  return {
+    type: "note_save",
+    name,
+    category,
+    body,
+    ...(current ? { from: current, version } : {}),
+  };
+}
+
 /** The panel's elements: the note list on the left, the editor on the right. */
 function buildUi() {
   const list = make("ul", "tools-list");
@@ -171,13 +188,7 @@ export function createNotesPanel(
   newBtn.addEventListener("click", () => edit(null));
   saveBtn.addEventListener("click", () => {
     say("saving…");
-    send({
-      type: "note_save",
-      name: name.value,
-      category: category.value,
-      body: text.value,
-      ...(current ? { from: current, version } : {}),
-    });
+    send(savePayload(name.value, category.value, text.value, current, version));
   });
   deleteBtn.addEventListener("click", () => {
     if (!current || !confirm(`Delete note '${current.name}'?`)) return;
