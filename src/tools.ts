@@ -90,26 +90,22 @@ const baseHandlers: Record<string, ToolHandler> = {
 export class ToolSet implements ToolController {
   private readonly defs: Tool[];
   private readonly disabled = new Set<string>();
-  private readonly optIn: Set<string>;
 
   /** `initiallyDisabled` names tools that start off until the user enables them. */
   constructor(defs: Tool[], initiallyDisabled: string[] = []) {
     this.defs = defs;
     for (const name of initiallyDisabled) this.disabled.add(name);
-    this.optIn = new Set(initiallyDisabled);
   }
 
   list(): {
     name: string;
     enabled: boolean;
     category?: string;
-    optIn?: boolean;
   }[] {
     return this.defs.map((t) => ({
       name: t.function.name,
       enabled: !this.disabled.has(t.function.name),
       category: t.category,
-      optIn: this.optIn.has(t.function.name) || undefined,
     }));
   }
 

@@ -205,13 +205,10 @@ export function handleToolCommand(
   const all = toolController.list();
   const isTool = all.some((t) => t.name === name);
   const enabled = verb === "enable";
-  // Enabling a category leaves opt-in tools (e.g. browser_run_code) off; they need their own name.
   const names = isTool
     ? [name]
-    : all
-        .filter((t) => t.category === name && !(enabled && t.optIn))
-        .map((t) => t.name);
-  if (!isTool && !all.some((t) => t.category === name)) {
+    : all.filter((t) => t.category === name).map((t) => t.name);
+  if (names.length === 0) {
     return {
       ok: false,
       error: {

@@ -102,8 +102,6 @@ export interface ToolController {
     name: string;
     enabled: boolean;
     category?: string;
-    /** Starts disabled and is never switched on by a category toggle, only by name. */
-    optIn?: boolean;
   }[];
   /** Enable or disable a tool by name. */
   set(name: string, enabled: boolean): void;
