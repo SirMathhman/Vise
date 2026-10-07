@@ -158,8 +158,9 @@ function serveApi(
   roots: RootRegistry,
   extensionToken: string,
 ): Response | Promise<Response> | null {
-  if (url.pathname === "/api/ext-token") {
-    // Only the Vise page itself (never a bare request) may read the pairing token.
+  if (url.pathname === "/api/ext-token" && req.method === "POST") {
+    // Only the Vise page itself may read the pairing token. It must be a POST: browsers send no
+    // Origin on a same-origin GET, but always send one on a POST.
     const origin = req.headers.get("origin");
     if (origin === null || !isLocalOrigin(origin, port)) {
       return new Response("forbidden", { status: 403 });
