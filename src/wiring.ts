@@ -5,7 +5,7 @@ import { ChromiumBackend } from "./browser/chromium.ts";
 import type { BrowserBackend } from "./browser/types.ts";
 import { BACKEND, LlmClient } from "./client/llm.ts";
 import { dataDirFor, noFolderRoot } from "./data-dir.ts";
-import type { Client, ToolController } from "./core/engine.ts";
+import type { Client, ToolController, TurnCallbacks } from "./core/engine.ts";
 import type { PromptProgress } from "./core/errors.ts";
 import {
   buildInitialMessage,
@@ -16,6 +16,10 @@ import {
   FileWorkflowSource,
 } from "./edge-sources.ts";
 import type { ProfileSource } from "./repl/ports.ts";
+import {
+  compactInPlace,
+  IN_TURN_COMPACTION_THRESHOLD,
+} from "./repl/compaction.ts";
 import { Session } from "./repl/session.ts";
 import type { GoalEvent } from "./repl/goal-loop.ts";
 import { makeBrowserHandlers } from "./tools/browser.ts";
@@ -123,6 +127,24 @@ export interface EdgeSession {
   postTurnHooks: string[];
 }
 
+/** What a subagent's turns report and use: the frontend's display callbacks, the tool state, and upkeep for its own conversation (it can outgrow the window too). */
+function subagentCallbacks(
+  options: EdgeSessionOptions,
+  toolController: ToolController,
+  client: LlmClient,
+): TurnCallbacks {
+  return {
+    onToken: options.onToken,
+    onThinking: options.onThinking,
+    onPromptProgress: options.onPromptProgress,
+    onToolCall: options.onToolCall,
+    onSubagentToken: options.onSubagentToken,
+    isToolEnabled: (name) => toolController.isEnabled(name),
+    onRound: (_round, messages) =>
+      compactInPlace(client, client, messages, IN_TURN_COMPACTION_THRESHOLD),
+  };
+}
+
 /** The notifications a frontend wants from a session (streamed tokens, tool calls, burst, goals). */
 function displayCallbacks(
   options: EdgeSessionOptions,
@@ -208,14 +230,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
             toolRunner.run(name, args),
         },
         sessionTools,
-        {
-          onToken: options.onToken,
-          onThinking: options.onThinking,
-          onPromptProgress: options.onPromptProgress,
-          onToolCall: options.onToolCall,
-          onSubagentToken: options.onSubagentToken,
-          isToolEnabled: (name) => toolController.isEnabled(name),
-        },
+        subagentCallbacks(options, toolController, client),
         (operation) => client.withPreservedSlotCache(operation),
         () => sessionRef.current.currentAbortSignal,
       ),

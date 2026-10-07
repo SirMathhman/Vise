@@ -1,4 +1,9 @@
-import type { Client, Tool, ToolRunner } from "../core/engine.ts";
+import type {
+  Client,
+  Tool,
+  ToolRunner,
+  TurnCallbacks,
+} from "../core/engine.ts";
 import { runWorkflow } from "../core/workflow.ts";
 import type { WorkflowScope } from "../core/workflow.ts";
 import type {
@@ -47,6 +52,8 @@ export interface WorkflowCommands {
   onPromptProgress(): ((progress: PromptProgress) => void) | undefined;
   onToolCall(): ((name: string, depth?: number) => void) | undefined;
   onMaxRounds(): ((question: string) => Promise<boolean>) | undefined;
+  /** The between-rounds upkeep (compaction, saving, progress) for a turn run under `signal`. */
+  roundHook(signal: AbortSignal): TurnCallbacks["onRound"];
   isToolEnabled(): (name: string) => boolean;
   /** Run the auto-compaction guard and return its `Result`. */
   maybeAutoCompact(): Promise<Result<string>>;
@@ -165,6 +172,7 @@ export async function handleWorkflowCommand(
         onPromptProgress: session.onPromptProgress(),
         onToolCall: session.onToolCall(),
         onMaxRounds: session.onMaxRounds(),
+        onRound: session.roundHook(abort.signal),
         isToolEnabled: session.isToolEnabled(),
         abort: abort.signal,
       },

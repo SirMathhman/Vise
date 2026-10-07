@@ -75,7 +75,7 @@ export interface TurnCallbacks {
    * filling conversation, saving, checking that the work is going somewhere).
    * Returning a reason ends the turn there; undefined carries on.
    */
-  onRound?: (round: number) => Promise<string | undefined>;
+  onRound?: (round: number, messages: Message[]) => Promise<string | undefined>;
   /**
    * Whether a tool is currently enabled. The client restricts generation so
    * disabled tools cannot be called, without altering the tool definitions
@@ -210,7 +210,7 @@ async function betweenRounds(
   rounds: number,
 ): Promise<Result<string> | undefined> {
   if (rounds === 0 || !callbacks.onRound) return undefined;
-  const stop = await callbacks.onRound(rounds);
+  const stop = await callbacks.onRound(rounds, messages);
   if (callbacks.abort?.aborted) {
     return { ok: false, error: { kind: "interrupted" } };
   }
@@ -220,17 +220,29 @@ async function betweenRounds(
   return { ok: true, value: stop };
 }
 
+/** A rough token count for messages (about 3.5 characters a token); only ever used to size budgets. */
+export function approxTokens(messages: Message[]): number {
+  let chars = 0;
+  for (const m of messages) {
+    chars += m.content.length;
+    if (m.tool_calls) chars += JSON.stringify(m.tool_calls).length;
+  }
+  return Math.ceil(chars / 3.5);
+}
+
 /**
  * Split inside one long turn, for when the conversation is too big but has too
  * few user messages to split by turns: the turn's opening user message and its
  * last `keepRounds` rounds (an assistant message with its tool results) are
- * kept verbatim, and everything before them, earlier turns and earlier rounds
- * alike, is to be summarized. Nothing to summarize when the turn has no more
- * than `keepRounds` rounds. Pure.
+ * kept verbatim (fewer when those alone would exceed `maxTailTokens`), and
+ * everything before them, earlier turns and earlier rounds alike, is to be
+ * summarized. Nothing to summarize when the turn has no more than `keepRounds`
+ * rounds and they fit the budget. Pure.
  */
 export function splitWithinTurn(
   messages: Message[],
   keepRounds: number,
+  maxTailTokens = Number.POSITIVE_INFINITY,
 ): CompactionSplit {
   let start = -1;
   for (let i = messages.length - 1; i >= 0 && start < 0; i--) {
@@ -241,8 +253,16 @@ export function splitWithinTurn(
   for (let i = start + 1; i < messages.length; i++) {
     if (messages[i]?.role === "assistant") rounds.push(i);
   }
-  const tail = rounds[rounds.length - keepRounds];
-  if (!opening || tail === undefined || rounds.length <= keepRounds) {
+  // The kept rounds: the last `keepRounds`, fewer when they alone are too big for `maxTailTokens`.
+  let from = Math.max(0, rounds.length - keepRounds);
+  while (
+    from < rounds.length - 1 &&
+    approxTokens(messages.slice(rounds[from])) > maxTailTokens
+  ) {
+    from++;
+  }
+  const tail = rounds[from];
+  if (!opening || tail === undefined || from === 0) {
     return { toSummarize: [], recent: messages.slice() };
   }
   return {

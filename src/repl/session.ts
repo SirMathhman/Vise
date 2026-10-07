@@ -25,7 +25,12 @@ import {
   reportContext,
   toggleNotice,
 } from "./commands.ts";
-import { autoCompact, runCompaction } from "./compaction.ts";
+import {
+  addedSinceLastCall,
+  autoCompact,
+  IN_TURN_COMPACTION_THRESHOLD,
+  runCompaction,
+} from "./compaction.ts";
 import { makeRoundHook } from "./round-hooks.ts";
 import { ProfileToolGate } from "./profile-tools.ts";
 import {
@@ -90,8 +95,7 @@ import type {
  */
 const COMPACTION_THRESHOLD = 0.9;
 
-/** Inside a long turn the context can grow by a whole page read per round, so compaction starts earlier. */
-const IN_TURN_COMPACTION_THRESHOLD = 0.75;
+type OnRound = TurnCallbacks["onRound"];
 
 /**
  * Derive an auto-save session name from a user-typed message. Pure: no I/O,
@@ -147,7 +151,6 @@ export class Session {
   private readonly noteSource?: NoteSource;
   private readonly workflowSource?: WorkflowSource;
   private readonly hooks: SessionHooks;
-  private readonly cwd?: string;
   private readonly onToken?: (token: string) => void;
   private readonly onThinking?: (token: string) => void;
   private readonly onPromptProgress?: (progress: PromptProgress) => void;
@@ -189,7 +192,6 @@ export class Session {
     this.noteSource = options.noteSource;
     this.workflowSource = options.workflowSource;
     this.hooks = new SessionHooks(options, () => this.activeProfile);
-    this.cwd = options.cwd;
     this.onToken = options.onToken;
     this.onThinking = options.onThinking;
     this.onPromptProgress = options.onPromptProgress;
@@ -260,6 +262,7 @@ export class Session {
       onPromptProgress: () => this.onPromptProgress,
       onToolCall: () => this.onToolCall,
       onMaxRounds: () => this.onMaxRounds,
+      roundHook: (signal) => this.roundHook(signal),
       isToolEnabled: () => this.isToolEnabled,
       maybeAutoCompact: () => this.maybeAutoCompact(),
       save: () => this.saveSession(),
@@ -300,10 +303,7 @@ export class Session {
     };
   }
 
-  private turnCallbacks(
-    abort: AbortSignal,
-    onRound?: TurnCallbacks["onRound"],
-  ): TurnCallbacks {
+  private turnCallbacks(abort: AbortSignal, onRound?: OnRound): TurnCallbacks {
     return {
       onRound,
       onToken: this.onToken,
@@ -316,6 +316,30 @@ export class Session {
       burst: this.burst,
       abort,
     };
+  }
+
+  /** Between rounds of a long turn: keep the context from overflowing, save, check progress (one per user message). */
+  private roundHook(signal: AbortSignal): OnRound {
+    const deps = {
+      compact: (messages: Message[]) =>
+        autoCompact(
+          this.compactionSource,
+          this.context,
+          IN_TURN_COMPACTION_THRESHOLD,
+          true,
+          addedSinceLastCall(messages),
+        ),
+      save: () => this.saveSession(),
+      progress: () =>
+        this.goals.progress(
+          this.client,
+          this.messages,
+          this.toolDefs,
+          signal,
+          this.onMaxRounds,
+        ),
+    };
+    return makeRoundHook(deps, this.onToken);
   }
 
   private burstCommand(line: string): Result<string> {
@@ -353,24 +377,7 @@ export class Session {
       }
       const auto = await this.maybeAutoCompact();
       const streamed = this.onToken !== undefined;
-      // Between rounds of a long turn: keep the context from overflowing, save, check progress.
-      const roundHook = makeRoundHook({
-        compact: () =>
-          autoCompact(
-            this.compactionSource,
-            this.context,
-            IN_TURN_COMPACTION_THRESHOLD,
-            true,
-          ),
-        save: () => this.saveSession(),
-        progress: () =>
-          this.goals.progress(
-            this.client,
-            this.messages,
-            this.toolDefs,
-            abort.signal,
-          ),
-      });
+      const roundHook = this.roundHook(abort.signal);
       const turn = await this.goals.run(
         this.client,
         this.messages,

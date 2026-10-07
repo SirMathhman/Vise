@@ -1,9 +1,11 @@
 import {
+  approxTokens,
   splitForCompaction,
   splitWithinTurn,
   summarize,
 } from "../core/engine.ts";
 import type { Message, Result } from "../core/errors.ts";
+import type { Client } from "../core/engine.ts";
 import type { ContextSource } from "./ports.ts";
 import type { CompactionSource } from "./session.ts";
 
@@ -16,6 +18,12 @@ const RECENT_TURNS_TO_KEEP = 2;
 
 /** Compacting inside one long turn: how many of its latest rounds (an assistant message with its tool results) stay verbatim. */
 const ROUNDS_TO_KEEP = 10;
+
+/** Compacting inside a turn: the verbatim tail may take at most this share of the context window. */
+const TAIL_SHARE = 0.25;
+
+/** Inside a long turn the context can grow by a whole page read per round, so compaction starts earlier than between turns. */
+export const IN_TURN_COMPACTION_THRESHOLD = 0.75;
 
 /**
  * A successful no-op compaction result: nothing needed to be compacted.
@@ -33,13 +41,54 @@ export async function autoCompact(
   context: ContextSource,
   threshold: number,
   withinTurn = false,
+  /** Tokens added since the last prompt was measured (the last round's reply and tool results). */
+  pending = 0,
 ): Promise<Result<string>> {
   const lastUsed = context.lastPromptTokensUsed();
   if (lastUsed === undefined) return okNoop();
   const max = await context.contextMax();
-  if (!max.ok) return max;
-  if (lastUsed < threshold * max.value) return okNoop();
-  return runCompaction(source, withinTurn);
+  // Mid-turn, not being able to measure just means no compaction this round.
+  if (!max.ok) return withinTurn ? okNoop() : max;
+  if (lastUsed + pending < threshold * max.value) return okNoop();
+  // The verbatim tail may take a quarter of the window, so what is summarized (and the request to do it) fits.
+  return runCompaction(source, withinTurn, TAIL_SHARE * max.value);
+}
+
+/** Tokens added to the conversation since the last model call: its reply and the tool results that followed. */
+export function addedSinceLastCall(messages: Message[]): number {
+  let from = messages.length - 1;
+  while (from > 0 && messages[from]?.role !== "assistant") from--;
+  return approxTokens(messages.slice(from));
+}
+
+/**
+ * Upkeep for a conversation that has no session around it (a subagent's): compact
+ * it in place when the last prompt passed the threshold. Returns a reason to end
+ * the turn when compacting fails, since going on would only overflow the window.
+ */
+export async function compactInPlace(
+  client: Client,
+  context: ContextSource,
+  messages: Message[],
+  threshold: number,
+): Promise<string | undefined> {
+  const source: CompactionSource = {
+    client,
+    messages: () => [...messages],
+    resetMessages: (body) => {
+      messages.splice(1, messages.length, ...body); // the first message is the system message
+    },
+  };
+  const result = await autoCompact(
+    source,
+    context,
+    threshold,
+    true,
+    addedSinceLastCall(messages),
+  );
+  return result.ok
+    ? undefined
+    : "Stopped: the conversation is too long and could not be compacted.";
 }
 
 /**
@@ -52,6 +101,7 @@ export async function autoCompact(
 export async function runCompaction(
   source: CompactionSource,
   withinTurn = false,
+  tailBudget = Number.POSITIVE_INFINITY,
 ): Promise<Result<string>> {
   const conversation = source.messages().slice(1); // drop the system message
   // Turns are the natural unit, but one turn can hold hundreds of tool calls:
@@ -59,7 +109,7 @@ export async function runCompaction(
   const byTurns = (): ReturnType<typeof splitForCompaction> =>
     splitForCompaction(conversation, RECENT_TURNS_TO_KEEP);
   const inTurn = (): ReturnType<typeof splitForCompaction> =>
-    splitWithinTurn(conversation, ROUNDS_TO_KEEP);
+    splitWithinTurn(conversation, ROUNDS_TO_KEEP, tailBudget);
   let split = withinTurn ? inTurn() : byTurns();
   if (split.toSummarize.length === 0) split = withinTurn ? byTurns() : inTurn();
   if (split.toSummarize.length === 0) {

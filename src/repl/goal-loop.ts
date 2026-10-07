@@ -70,6 +70,7 @@ export class GoalTracker {
     messages: Message[],
     toolDefs: Tool[],
     signal: AbortSignal,
+    ask?: (question: string) => Promise<boolean>,
   ): Promise<string | undefined> {
     if (!this.on || !this.goal) return undefined;
     const progress = await checkProgress(
@@ -80,8 +81,14 @@ export class GoalTracker {
       signal,
     );
     if (progress.kind !== "stuck") return undefined;
-    this.halted = progress.detail || "the same steps keep repeating";
-    return `Stopped: this does not seem to be getting anywhere. ${this.halted}`;
+    const why = progress.detail || "the same steps keep repeating";
+    // One model opinion must not end the user's task: repetitive work (paging, scrolling) can be right.
+    const keepGoing = await ask?.(
+      `This does not seem to be getting anywhere: ${why} Keep going?`,
+    );
+    if (keepGoing) return undefined;
+    this.halted = why;
+    return `Stopped: this does not seem to be getting anywhere. ${why}`;
   }
 
   /** End the turn the progress check stopped: tell the edge, and keep the goal for the user's reply. */
@@ -135,6 +142,7 @@ export class GoalTracker {
       error: { kind: "interrupted" },
     };
     if (!this.on) return runTurn();
+    this.halted = undefined;
     this.goal = await deriveGoal(
       client,
       messages,
