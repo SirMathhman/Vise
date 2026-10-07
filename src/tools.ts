@@ -23,18 +23,31 @@ import {
 import { deferTools, searchToolsDef } from "./tools/search-tools.ts";
 import { killProcess, runPowershell, waitForProcess } from "./tools/shell.ts";
 
+/** Tag every tool in a definition group with its category. */
+const inCategory = (category: string, defs: Tool[]): Tool[] =>
+  defs.map((t) => ({ ...t, category }));
+
 /** Tool definitions exposed to the model, in prompt order. */
 const allTools: Tool[] = [
-  ...fileTools,
-  ...shellTools,
-  ...noteTools,
-  ...agentTools.filter((t) => t.function.name !== "run_subagent"),
-  ...browserTools,
-  ...agentTools.filter((t) => t.function.name === "run_subagent"),
+  ...inCategory("files", fileTools),
+  ...inCategory("shell", shellTools),
+  ...inCategory("notes", noteTools),
+  ...inCategory(
+    "agent",
+    agentTools.filter((t) => t.function.name !== "run_subagent"),
+  ),
+  ...inCategory("browser", browserTools),
+  ...inCategory(
+    "agent",
+    agentTools.filter((t) => t.function.name === "run_subagent"),
+  ),
 ];
 
 /** The tool list the app uses: `search_tools` added and the non-core tools deferred. */
-export const tools: Tool[] = deferTools([...allTools, searchToolsDef]);
+export const tools: Tool[] = deferTools([
+  ...allTools,
+  { ...searchToolsDef, category: "search" },
+]);
 
 /** A single tool handler, mapping a tool's arguments to its result text. */
 export type ToolHandler = (

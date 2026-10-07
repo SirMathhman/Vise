@@ -30,7 +30,7 @@ export const searchToolsDef: Tool = {
   function: {
     name: "search_tools",
     description:
-      "Look up the full signature of a deferred tool. The system prompt lists deferred tools by name with a one-line summary only; call this with a keyword (e.g. 'browser click') or exact tool names (comma-separated), then call the tool you found exactly like any other. Returns up to 5 matches.",
+      "Look up the full signature of a deferred tool. The system prompt lists deferred tools by name with a one-line summary only; call this with a keyword (e.g. 'browser click'), a category name from the index (e.g. 'browser', returns that whole group), or exact tool names (comma-separated), then call the tool you found exactly like any other. Returns up to 5 matches.",
     parameters: {
       type: "object",
       properties: {
@@ -90,7 +90,10 @@ export function makeSearchToolsHandler(
     }
     const names = query.split(",").map((n) => n.trim());
     const exact = defs.filter((t) => names.includes(t.function.name));
-    const found = exact.length > 0 ? exact : rank(defs, query);
+    // A bare category name returns the whole group.
+    const group = defs.filter((t) => t.category === query.trim().toLowerCase());
+    const found =
+      exact.length > 0 ? exact : group.length > 0 ? group : rank(defs, query);
     if (found.length === 0) return `no tools match "${query}"`;
     return found
       .map(

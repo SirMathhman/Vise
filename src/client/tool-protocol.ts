@@ -21,6 +21,21 @@ function summarize(description: string): string {
   return end < 0 ? description : description.slice(0, end + 1);
 }
 
+/** Index lines for deferred tools: a `[category]` heading, then `- name: summary` per tool. */
+function byCategory(deferred: Tool[]): string[] {
+  const groups = new Map<string, Tool[]>();
+  for (const t of deferred) {
+    const key = t.category ?? "other";
+    groups.set(key, [...(groups.get(key) ?? []), t]);
+  }
+  return [...groups].flatMap(([category, group]) => [
+    `[${category}]`,
+    ...group.map(
+      (t) => `- ${t.function.name}: ${summarize(t.function.description)}`,
+    ),
+  ]);
+}
+
 /**
  * The system-prompt section describing the tools and the call format. Deferred
  * tools get an index line (name and summary) instead of a full signature; the
@@ -35,10 +50,8 @@ export function renderToolPrompt(tools: Tool[]): string {
       ? []
       : [
           "",
-          "These tools exist but their signatures are not listed here. To use one, first call search_tools with its name or a keyword to get its signature, then call it like any other tool:",
-          ...deferred.map(
-            (t) => `- ${t.function.name}: ${summarize(t.function.description)}`,
-          ),
+          "These tools exist but their signatures are not listed here, grouped by category. To use one, first call search_tools with its name, a keyword, or its category name (to get the whole group) for its signature, then call it like any other tool:",
+          ...byCategory(deferred),
         ];
   return [
     "# Tools",

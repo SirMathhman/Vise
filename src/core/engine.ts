@@ -22,6 +22,8 @@ export interface Tool {
    * model fetches the full signature with `search_tools`. They stay callable.
    */
   deferred?: boolean;
+  /** Group the tool belongs to (files, shell, browser, ...); shown in the prompt index and searchable. */
+  category?: string;
 }
 
 /**
