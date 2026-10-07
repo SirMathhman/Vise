@@ -7,6 +7,82 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
+    <nav id="topbar" class="topbar">
+      <button
+        id="files-btn"
+        class="topbar-item"
+        title="Toggle file explorer"
+      >
+        files
+      </button>
+      <button id="sessions-btn" class="topbar-item" title="Saved sessions">
+        sessions
+      </button>
+      <button
+        id="settings-btn"
+        class="topbar-item"
+        title="Settings: profiles and hooks"
+      >
+        settings
+      </button>
+      <button
+        id="open-folder-btn"
+        class="topbar-item"
+        title="Start a new session rooted in another folder (opens a new tab)"
+      >
+        open folder…
+      </button>
+      <span id="root-label" class="root-label"></span>
+      <div id="sessions-panel" class="tools-panel hidden">
+        <ul id="sessions-list" class="tools-list"></ul>
+        <div class="save-row">
+          <input
+            id="save-name"
+            class="save-input"
+            type="text"
+            placeholder="session name…"
+            autocomplete="off"
+          />
+          <button id="save-btn" class="save-btn">save</button>
+        </div>
+      </div>
+      <div id="settings-panel" class="tools-panel hidden">
+        <div class="tabs" role="tablist">
+          <button
+            class="tab active"
+            role="tab"
+            data-tab="settings-profiles"
+          >
+            profiles
+          </button>
+          <button class="tab" role="tab" data-tab="settings-hooks">
+            hooks
+          </button>
+        </div>
+        <div id="settings-profiles" class="tab-page">
+          <select
+            id="pe-profile"
+            class="model"
+            title="Profile to edit"
+          ></select>
+          <div class="pe-bulk">
+            <button id="pe-check-all" class="tools-btn">check all</button>
+            <button id="pe-uncheck-all" class="tools-btn">
+              uncheck all
+            </button>
+          </div>
+          <ul id="pe-tools" class="tools-list"></ul>
+          <div id="pe-hooks"></div>
+          <div class="save-row">
+            <button id="pe-save" class="save-btn">save</button>
+            <span id="pe-status" class="pe-status" role="status"></span>
+          </div>
+        </div>
+        <div id="settings-hooks" class="tab-page hidden">
+          <div id="hooks-body"></div>
+        </div>
+      </div>
+    </nav>
     <div id="shell" class="shell">
       <aside id="workspace" class="workspace">
         <nav class="fs-tree">
@@ -59,82 +135,6 @@
         </section>
       </aside>
       <main id="app">
-        <nav id="topbar" class="topbar">
-          <button
-            id="files-btn"
-            class="topbar-item"
-            title="Toggle file explorer"
-          >
-            files
-          </button>
-          <button id="sessions-btn" class="topbar-item" title="Saved sessions">
-            sessions
-          </button>
-          <button
-            id="settings-btn"
-            class="topbar-item"
-            title="Settings: profiles and hooks"
-          >
-            settings
-          </button>
-          <button
-            id="open-folder-btn"
-            class="topbar-item"
-            title="Start a new session rooted in another folder (opens a new tab)"
-          >
-            open folder…
-          </button>
-          <span id="root-label" class="root-label"></span>
-          <div id="sessions-panel" class="tools-panel hidden">
-            <ul id="sessions-list" class="tools-list"></ul>
-            <div class="save-row">
-              <input
-                id="save-name"
-                class="save-input"
-                type="text"
-                placeholder="session name…"
-                autocomplete="off"
-              />
-              <button id="save-btn" class="save-btn">save</button>
-            </div>
-          </div>
-          <div id="settings-panel" class="tools-panel hidden">
-            <div class="tabs" role="tablist">
-              <button
-                class="tab active"
-                role="tab"
-                data-tab="settings-profiles"
-              >
-                profiles
-              </button>
-              <button class="tab" role="tab" data-tab="settings-hooks">
-                hooks
-              </button>
-            </div>
-            <div id="settings-profiles" class="tab-page">
-              <select
-                id="pe-profile"
-                class="model"
-                title="Profile to edit"
-              ></select>
-              <div class="pe-bulk">
-                <button id="pe-check-all" class="tools-btn">check all</button>
-                <button id="pe-uncheck-all" class="tools-btn">
-                  uncheck all
-                </button>
-              </div>
-              <ul id="pe-tools" class="tools-list"></ul>
-              <div id="pe-hooks"></div>
-              <div class="save-row">
-                <button id="pe-save" class="save-btn">save</button>
-                <span id="pe-status" class="pe-status" role="status"></span>
-              </div>
-            </div>
-            <div id="settings-hooks" class="tab-page hidden">
-              <div id="hooks-body"></div>
-            </div>
-          </div>
-        </nav>
         <header class="bar">
           <span class="brand">vise</span>
           <select id="model" class="model" title="Switch model">
