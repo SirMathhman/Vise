@@ -50,8 +50,10 @@ export function saveNoteTool(
   const noteName = String(args.name ?? "");
   const body = String(args.body ?? "");
   try {
-    saveNote(dataDir, noteName, body, categoryArg(args), true);
-    return `saved note '${noteName}'`;
+    const result = saveNote(dataDir, noteName, body, categoryArg(args), true);
+    return result === "replaced"
+      ? `saved note '${noteName}' (replaced the previous content)`
+      : `saved note '${noteName}'`;
   } catch (err) {
     return errStr(err);
   }

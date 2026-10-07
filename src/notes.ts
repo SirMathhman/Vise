@@ -5,6 +5,7 @@ import {
   readFileSync,
   renameSync,
   rmdirSync,
+  statSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -214,7 +215,8 @@ export function readNote(
 /**
  * Save a note in `category` (default when omitted). Throws an `Error` (caught
  * by the caller into a string result) when a name is invalid, or the note
- * already exists in that category and `overwrite` is not set.
+ * already exists in that category and `overwrite` is not set. Returns whether
+ * the note was newly created or replaced an existing one.
  */
 export function saveNote(
   base: string,
@@ -222,7 +224,7 @@ export function saveNote(
   body: string,
   category?: string,
   overwrite = false,
-): void {
+): "created" | "replaced" {
   const where = categoryOf(category);
   if (!validName(name)) {
     throw new Error(`invalid note name '${name}'`);
@@ -230,7 +232,8 @@ export function saveNote(
   if (!validName(where)) {
     throw new Error(`invalid note category '${where}'`);
   }
-  if (!overwrite && existsSync(notePath(base, name, where))) {
+  const existed = existsSync(notePath(base, name, where));
+  if (!overwrite && existed) {
     throw new Error(`note '${name}' already exists in category '${where}'`);
   }
   mkdirSync(categoryDir(base, where), { recursive: true });
@@ -239,6 +242,22 @@ export function saveNote(
     body.replace(/\s+$/, "") + "\n",
     "utf8",
   );
+  return existed ? "replaced" : "created";
+}
+
+/**
+ * A token that changes whenever the note's file does (its modification time),
+ * or undefined when there is no such note. An editor sends back the token it
+ * loaded with, so a save can tell that the note changed underneath it.
+ */
+export function noteVersion(base: string, ref: NoteRef): number | undefined {
+  const where = categoryOf(ref.category);
+  if (!validName(ref.name) || !validName(where)) return undefined;
+  try {
+    return statSync(notePath(base, ref.name, where)).mtimeMs;
+  } catch {
+    return undefined;
+  }
 }
 
 /**

@@ -13,6 +13,7 @@ export interface NotesMessage {
   category?: string;
   body?: string;
   ok?: boolean;
+  version?: number;
   deleted?: boolean;
   error?: string;
 }
@@ -125,6 +126,8 @@ export function createNotesPanel(
 ): { handle(message: NotesMessage): boolean } {
   /** The note being edited, or null for a new one. */
   let current: { name: string; category: string } | null = null;
+  /** The file version the editor loaded; a save fails if the note changed since. */
+  let version: number | undefined;
   let notes: NoteEntry[] = [];
 
   const {
@@ -151,6 +154,9 @@ export function createNotesPanel(
     category.value =
       target && target.category !== DEFAULT_CATEGORY ? target.category : "";
     text.value = "";
+    version = undefined;
+    // An existing note cannot be saved until its text has arrived (it would save a blank body).
+    saveBtn.disabled = target !== null;
     deleteBtn.disabled = target === null;
     say("");
     renderList();
@@ -170,7 +176,7 @@ export function createNotesPanel(
       name: name.value,
       category: category.value,
       body: text.value,
-      ...(current ? { from: current } : {}),
+      ...(current ? { from: current, version } : {}),
     });
   });
   deleteBtn.addEventListener("click", () => {
@@ -193,7 +199,15 @@ export function createNotesPanel(
           return true;
         case "note":
           // Ignore a reply for a note that is no longer the one being edited.
-          if (current?.name === message.name) text.value = message.body ?? "";
+          if (
+            current &&
+            current.name === message.name &&
+            current.category === message.category
+          ) {
+            text.value = message.body ?? "";
+            version = message.version;
+            saveBtn.disabled = false;
+          }
           return true;
         case "note_result":
           if (!message.ok) {
@@ -207,6 +221,7 @@ export function createNotesPanel(
               name: message.name ?? "",
               category: message.category ?? DEFAULT_CATEGORY,
             };
+            version = message.version;
             deleteBtn.disabled = false;
             say("saved");
           }

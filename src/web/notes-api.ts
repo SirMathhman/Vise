@@ -3,6 +3,7 @@ import {
   deleteNote,
   listNotes,
   moveNote,
+  noteVersion,
   readNote,
   saveNote,
 } from "../notes.ts";
@@ -13,12 +14,14 @@ import {
  * turn). Wire protocol (JSON):
  *   browser → server: { type:"notes_list" }
  *                     { type:"note_get", name, category }
- *                     { type:"note_save", name, category, body, from?:{ name, category } }
- *                         creates or replaces; `from` (the note being edited) makes a changed name/category a move
+ *                     { type:"note_save", name, category, body, from?:{ name, category }, version? }
+ *                         `from` is the note being edited: only then may an existing file be replaced, and a
+ *                         changed name/category is a move. Without `from` an existing name is an error.
+ *                         `version` (from `note`/`note_result`) makes the save fail if the note changed on disk since it was loaded
  *                     { type:"note_delete", name, category }
  *   server → browser: { type:"notes", notes:[{ name, category, summary }] }
- *                     { type:"note", name, category, body }
- *                     { type:"note_result", ok, deleted?, error?, name?, category? }   after a save or delete
+ *                     { type:"note", name, category, body, version }
+ *                     { type:"note_result", ok, deleted?, error?, name?, category?, version? }   after a save or delete
  */
 
 type Reply = Record<string, unknown>;
@@ -52,15 +55,33 @@ function save(dataDir: string, msg: Record<string, unknown>): Reply[] {
   const category = categoryOf(str(msg["category"]));
   if (name === "") return failure(new Error("a note needs a name"));
   try {
+    // Only a note being edited (`from`) may replace a file; a new note must not clobber one.
     const from = refOf(msg["from"]);
+    const loaded = msg["version"];
+    if (from && typeof loaded === "number") {
+      if (noteVersion(dataDir, from) !== loaded) {
+        throw new Error(
+          "this note changed since you opened it (the model or another tab edited it): select it again to reload",
+        );
+      }
+    }
     if (from && (from.name !== name || from.category !== category)) {
       moveNote(dataDir, from, { name, category });
     }
-    saveNote(dataDir, name, str(msg["body"]), category, true);
+    saveNote(dataDir, name, str(msg["body"]), category, from !== undefined);
   } catch (error) {
     return failure(error);
   }
-  return [{ type: "note_result", ok: true, name, category }, list(dataDir)];
+  return [
+    {
+      type: "note_result",
+      ok: true,
+      name,
+      category,
+      version: noteVersion(dataDir, { name, category }),
+    },
+    list(dataDir),
+  ];
 }
 
 /**
@@ -80,7 +101,15 @@ export function handleNoteMessage(
     if (type === "note_get") {
       const body = readNote(dataDir, name, category);
       if (body === undefined) throw new Error(`note '${name}' not found`);
-      return [{ type: "note", name, category, body }];
+      return [
+        {
+          type: "note",
+          name,
+          category,
+          body,
+          version: noteVersion(dataDir, { name, category }),
+        },
+      ];
     }
     if (type === "note_save") return save(dataDir, msg);
     if (type === "note_delete") {
