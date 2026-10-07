@@ -69,6 +69,10 @@ function serveStatic(path: string): Response {
   });
 }
 
+function isLocalHost(host: string | null, port: number): boolean {
+  return host === `localhost:${port}` || host === `127.0.0.1:${port}`;
+}
+
 /** Read-only explorer API: `/api/fs?path=` lists a directory, `/api/file?path=` reads a file. */
 function serveExplorer(url: URL): Response {
   const root = process.cwd();
@@ -126,8 +130,13 @@ export function startWebServer(port = 3000): void {
   const state = new Map<ServerWebSocket<unknown>, ConnectionState>();
   const server = Bun.serve({
     port,
+    hostname: "127.0.0.1",
     fetch(req, server) {
       const url = new URL(req.url);
+      // Loopback bind plus a Host allow-list blocks DNS-rebinding reads.
+      if (!isLocalHost(req.headers.get("host"), port)) {
+        return new Response("forbidden", { status: 403 });
+      }
       if (url.pathname === "/ws") {
         server.upgrade(req);
         return;

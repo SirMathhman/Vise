@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { relative, resolve, sep } from "node:path";
 
 /**
@@ -17,13 +17,22 @@ export interface DirEntry {
 export type ExplorerResult<T> =
   { ok: true; value: T } | { ok: false; error: string; status: number };
 
-/** Resolve `rel` under `root`, or null when it would leave the root. */
+/**
+ * Resolve `rel` under `root`, or null when it would leave the root. Symlinks
+ * and junctions are resolved first, so a link pointing outside is refused;
+ * a missing target is also null, so existence outside the root never leaks.
+ */
 function confine(root: string, rel: string): string | null {
-  const abs = resolve(root, rel);
-  const back = relative(root, abs);
-  if (back === ".." || back.startsWith(`..${sep}`) || resolve(back) === back)
+  try {
+    const realRoot = realpathSync(root);
+    const abs = realpathSync(resolve(realRoot, rel));
+    const back = relative(realRoot, abs);
+    if (back === ".." || back.startsWith(`..${sep}`) || resolve(back) === back)
+      return null;
+    return abs;
+  } catch {
     return null;
-  return abs;
+  }
 }
 
 /** List a directory: directories first, then files, each alphabetical. */
@@ -33,7 +42,7 @@ export function listDir(
 ): ExplorerResult<{ root: string; entries: DirEntry[] }> {
   const abs = confine(root, rel);
   if (abs === null)
-    return { ok: false, error: "path outside root", status: 400 };
+    return { ok: false, error: "path outside root or missing", status: 400 };
   try {
     const entries = readdirSync(abs, { withFileTypes: true })
       .map((e) => ({ name: e.name, dir: e.isDirectory() }))
@@ -53,7 +62,7 @@ export function readTextFile(
 ): ExplorerResult<string> {
   const abs = confine(root, rel);
   if (abs === null)
-    return { ok: false, error: "path outside root", status: 400 };
+    return { ok: false, error: "path outside root or missing", status: 400 };
   try {
     const stat = statSync(abs);
     if (!stat.isFile()) return { ok: false, error: "not a file", status: 400 };
