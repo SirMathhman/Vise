@@ -175,16 +175,38 @@ export function parseReply(
   };
 }
 
+/** A message body with its pictures: plain text, or text and image parts when there are any. */
+export function withImages(message: Message, text: string): unknown {
+  if (!message.images || message.images.length === 0) return text;
+  return [
+    { type: "text", text },
+    ...message.images.map((image) => ({
+      type: "image_url",
+      image_url: { url: image.uri },
+    })),
+  ];
+}
+
+/** Messages as the server takes them when no tools are in play: the same, with pictures as image parts. */
+export function plainMessages(messages: Message[]): Record<string, unknown>[] {
+  return messages.map((m) => ({
+    role: m.role,
+    content: withImages(m, m.content),
+    ...(m.tool_calls ? { tool_calls: m.tool_calls } : {}),
+    ...(m.tool_call_id ? { tool_call_id: m.tool_call_id } : {}),
+  }));
+}
+
 /** Convert conversation history into the plain-text protocol for the server. */
 export function encodeMessages(
   messages: Message[],
   tools: Tool[],
-): Record<string, string>[] {
-  const out: Record<string, string>[] = messages.map((m) => {
+): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = messages.map((m) => {
     if (m.role === "tool") {
       return {
         role: "user",
-        content: `${RESPONSE_OPEN}${m.content}${RESPONSE_CLOSE}`,
+        content: withImages(m, `${RESPONSE_OPEN}${m.content}${RESPONSE_CLOSE}`),
       };
     }
     const calls = (m.tool_calls ?? [])
@@ -195,12 +217,12 @@ ${JSON.stringify({ name: c.function.name, arguments: safeParse(c.function.argume
 ${CALL_CLOSE}`,
       )
       .join("");
-    return { role: m.role, content: m.content + calls };
+    return { role: m.role, content: withImages(m, m.content + calls) };
   });
   const prompt = renderToolPrompt(tools);
   const first = out[0];
   if (first && first.role === "system") {
-    first.content = `${first.content}\n\n${prompt}`;
+    first.content = `${String(first.content)}\n\n${prompt}`;
   } else {
     out.unshift({ role: "system", content: prompt });
   }

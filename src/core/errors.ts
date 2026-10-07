@@ -4,9 +4,19 @@ export interface ToolCall {
   function: { name: string; arguments: string };
 }
 
+/** A picture the model can see: a data URI (`data:image/png;base64,...`) with what to call it when shown to the user. */
+export interface ImageData {
+  uri: string;
+  label: string;
+  width?: number;
+  height?: number;
+}
+
 export interface Message {
   role: "system" | "user" | "assistant" | "tool";
   content: string;
+  /** Pictures that came with this message (a screenshot a tool took, an image the user attached). */
+  images?: ImageData[];
   tool_calls?: ToolCall[];
   tool_call_id?: string;
 }

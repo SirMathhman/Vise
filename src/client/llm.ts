@@ -1,5 +1,6 @@
 import {
   encodeMessages,
+  plainMessages,
   hideCalls,
   nameConfidence,
   parseReply,
@@ -338,7 +339,9 @@ export class LlmClient implements Client {
       // still encodes the conversation as the tool protocol does, so it shares
       // the prompt prefix, and llama.cpp's cache, with the normal turns.
       messages:
-        tools && tools.length > 0 ? encodeMessages(messages, tools) : messages,
+        tools && tools.length > 0
+          ? encodeMessages(messages, tools)
+          : plainMessages(messages),
       ...(act
         ? { stream: false }
         : {

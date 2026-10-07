@@ -517,8 +517,9 @@ socket.addEventListener("message", (event: MessageEvent<string>) => {
       break;
     case "tool":
       transcript.appendToolCall(
-        message.text ?? message.name ?? "unknown",
+        message.name ?? "unknown",
         message.depth,
+        message.text,
       );
       break;
     case "burst":

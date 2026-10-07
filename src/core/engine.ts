@@ -1,5 +1,6 @@
 import type {
   AssistantMessage,
+  ImageData,
   Message,
   PromptProgress,
   Result,
@@ -27,6 +28,8 @@ export interface Tool {
   category?: string;
   /** Needs a file system or shell: absent from a session with no working directory. */
   requiresFileSystem?: boolean;
+  /** Produces or needs pictures: usable only while the active model can see images. */
+  requiresVision?: boolean;
 }
 
 /**
@@ -60,6 +63,8 @@ export interface ToolRunner {
     args: Record<string, unknown>,
     signal?: AbortSignal,
   ): Promise<string>;
+  /** The pictures the last `run` produced (handed over once): they travel with its result. */
+  takeImages?(): ImageData[];
 }
 
 /** Told that a tool call is starting: its name, how deep in subagents it is, and its parsed arguments (for display). */
@@ -74,6 +79,8 @@ export interface TurnCallbacks {
   onThinking?: (token: string) => void;
   onPromptProgress?: (progress: PromptProgress) => void;
   onToolCall?: ToolCallListener;
+  /** A tool produced a picture (for the user to see; the model already gets it with the result). */
+  onImage?: (image: ImageData) => void;
   /**
    * Plain-text stream of a subagent's reply. A frontend that can style it
    * itself (the web UI) supplies this; when absent the subagent handler
@@ -233,11 +240,14 @@ async function betweenRounds(
   return { ok: true, value: stop };
 }
 
+/** What a picture counts for in `approxTokens`, in characters (about 4000 tokens; the server is set to 1k-16k per image). */
+const IMAGE_CHARS = 14_000;
+
 /** A rough token count for messages (about 3.5 characters a token); only ever used to size budgets. */
 export function approxTokens(messages: Message[]): number {
   let chars = 0;
   for (const m of messages) {
-    chars += m.content.length;
+    chars += m.content.length + (m.images?.length ?? 0) * IMAGE_CHARS;
     if (m.tool_calls) chars += JSON.stringify(m.tool_calls).length;
   }
   return Math.ceil(chars / 3.5);
@@ -298,6 +308,23 @@ export function splitWithinTurn(
  * it returns `true` the counter resets and the loop continues; if `false` the
  * turn ends with an error. When omitted (subagents), the turn ends silently.
  */
+/** The conversation message for a tool's result, carrying any pictures the tool produced. */
+function toolResult(
+  output: string,
+  id: string,
+  tools: ToolRunner,
+  callbacks: TurnCallbacks,
+): Message {
+  const images = tools.takeImages?.() ?? [];
+  for (const image of images) callbacks.onImage?.(image);
+  return {
+    role: "tool",
+    content: output,
+    tool_call_id: id,
+    ...(images.length > 0 ? { images } : {}),
+  };
+}
+
 /** Tell the display a tool call is starting. */
 function announceTool(callbacks: TurnCallbacks, tc: ToolCall): void {
   callbacks.onToolCall?.(tc.function.name, 0, parseArgs(tc.function.arguments));
@@ -407,7 +434,7 @@ ${reply.content}`
           output = `error: failed to execute ${tc.function.name}`;
         }
         failed ||= output.startsWith("error:");
-        messages.push({ role: "tool", content: output, tool_call_id: tc.id });
+        messages.push(toolResult(output, tc.id, tools, callbacks));
       }
       act = !!callbacks.burst && !failed;
       if (!act) setBurst(false);

@@ -2,7 +2,8 @@ export interface TranscriptView {
   addLine(cls: string, text: string): HTMLDivElement;
   appendAssistantToken(text: string): void;
   appendThinkingToken(text: string): void;
-  appendToolCall(name: string, depth?: number): void;
+  /** `text` is the finished line (icon, name, detail); without it the line is just `tool: <name>`. */
+  appendToolCall(name: string, depth?: number, text?: string): void;
   /** Append a subagent's streamed reply (a dimmed, indented block). */
   appendSubagentToken(text: string): void;
   /** Mark subsequent tool calls as part of a burst (no thinking between). */
@@ -121,10 +122,13 @@ export function createTranscript(
     appendAssistantToken,
     appendSubagentToken,
     appendThinkingToken,
-    appendToolCall(label: string, depth?: number): void {
+    appendToolCall(name: string, depth?: number, text?: string): void {
       flushAssistant();
       endThinking();
-      const line = addLine("tool", `${label}${depth ? " (subagent)" : ""}`);
+      const line = addLine(
+        "tool",
+        `${text ?? `tool: ${name}`}${depth ? " (subagent)" : ""}`,
+      );
       if (burstActive) line.className += " burst";
     },
     setBurst(active: boolean): void {
