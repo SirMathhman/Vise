@@ -35,6 +35,6 @@ export function setupSessionRoot(
       return;
     }
     label.textContent = path;
-    label.title = `This session is fixed to ${path}. Use "open folder…" to start a new session in a different folder.`;
+    label.title = `This session is fixed to ${path}. Open the ☰ menu to start a new session in a different folder.`;
   };
 }

@@ -932,6 +932,56 @@ body:has(#workspace:not(.hidden)) #files-btn {
   display: none;
 }
 
+.menu-btn {
+  font-size: 1.1rem;
+}
+
+.menu-panel {
+  right: auto;
+  width: min(26rem, 100%);
+}
+
+.menu-heading {
+  color: var(--dim);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0.5rem 0 0.25rem;
+}
+
+.menu-action {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  padding: 0.4rem 0.6rem;
+  margin-bottom: 0.4rem;
+  cursor: pointer;
+}
+
+.menu-action:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.menu-action:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.menu-title {
+  display: block;
+}
+
+.menu-hint {
+  display: block;
+  color: var(--dim);
+  font-size: 0.8rem;
+}
+
 .topbar-item:disabled {
   opacity: 0.4;
   cursor: default;

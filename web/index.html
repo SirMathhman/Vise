@@ -9,14 +9,19 @@
   <body>
     <nav id="topbar" class="topbar">
       <button
+        id="sessions-btn"
+        class="topbar-item menu-btn"
+        aria-label="Sessions menu"
+        title="Sessions: start a new one or resume a saved one"
+      >
+        &#9776;
+      </button>
+      <button
         id="files-btn"
         class="topbar-item"
         title="Toggle file explorer"
       >
         files
-      </button>
-      <button id="sessions-btn" class="topbar-item" title="Saved sessions">
-        sessions
       </button>
       <button
         id="settings-btn"
@@ -25,22 +30,32 @@
       >
         settings
       </button>
-      <button
-        id="open-folder-btn"
-        class="topbar-item"
-        title="Start a new session rooted in another folder (replaces this page)"
-      >
-        open folder…
-      </button>
-      <button
-        id="no-folder-btn"
-        class="topbar-item"
-        title="Start a new session with no working directory (no file or shell tools)"
-      >
-        no folder
-      </button>
       <span id="root-label" class="root-label"></span>
-      <div id="sessions-panel" class="tools-panel hidden">
+      <div id="sessions-panel" class="tools-panel menu-panel hidden">
+        <div class="menu-heading">Start a new session</div>
+        <button
+          id="open-folder-btn"
+          class="menu-action"
+          title="Replaces this page; the current conversation stays saved"
+        >
+          <span class="menu-title">Open folder&hellip;</span>
+          <span class="menu-hint"
+            >Work in a project: file and shell tools, rooted in the folder you
+            pick.</span
+          >
+        </button>
+        <button
+          id="no-folder-btn"
+          class="menu-action"
+          title="Replaces this page; the current conversation stays saved"
+        >
+          <span class="menu-title">No folder</span>
+          <span class="menu-hint"
+            >Just chat: no file or shell tools, nothing to read or
+            change.</span
+          >
+        </button>
+        <div class="menu-heading">Saved sessions</div>
         <ul id="sessions-list" class="tools-list"></ul>
         <div class="save-row">
           <input
