@@ -67,7 +67,7 @@ export function formatReasoningList(
     .join("\n");
 }
 
-/** Format the `/note` listing. Each line is a pre-formatted note entry. */
+/** Format the `/note` listing: lines already grouped by category. */
 export function formatNoteList(lines: string[]): string {
   if (lines.length === 0) return "no notes";
   return lines.join("\n");
@@ -177,8 +177,10 @@ export function formatHelp(opts: {
     );
   }
   if (opts.hasNotes) {
-    lines.push("/note            list all notes");
-    lines.push("/note init <name>  create a new note with a placeholder body");
+    lines.push("/note            list all notes by category");
+    lines.push(
+      "/note init <name> [category]  create a new note with a placeholder body",
+    );
   }
   if (opts.hasWorkflows) {
     lines.push("/workflow                 list available workflows");

@@ -269,16 +269,25 @@ export async function handleNotesCommand(
   }
   const sub = arg.split(" ")[0];
   if (sub === "init") {
-    const name = arg.slice("init".length).trim();
-    if (name === "") {
+    const [name, category, ...extra] = arg
+      .slice("init".length)
+      .trim()
+      .split(/\s+/);
+    if (!name || extra.length > 0) {
       return {
         ok: false,
-        error: { kind: "malformed", body: "usage: /note init <name>" },
+        error: {
+          kind: "malformed",
+          body: "usage: /note init <name> [category]",
+        },
       };
     }
-    const result = await noteSource.initNote(name);
+    const result = await noteSource.initNote(name, category);
     if (!result.ok) return result;
-    return { ok: true, value: `initialized note '${name}'` };
+    return {
+      ok: true,
+      value: `initialized note '${name}'${category ? ` in category '${category}'` : ""}`,
+    };
   }
   return {
     ok: false,

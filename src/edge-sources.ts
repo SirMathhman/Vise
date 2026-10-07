@@ -3,7 +3,7 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Message, Result } from "./core/errors.ts";
 import { buildInitialTree } from "./fs-tree.ts";
-import { formatNoteEntry, initNote, listNotes } from "./notes.ts";
+import { formatNotes, initNote, listNotes } from "./notes.ts";
 import {
   initProfile,
   listProfiles,
@@ -194,13 +194,13 @@ export class FileNoteSource implements NoteSource {
     const notes = listNotes(this.base);
     return {
       ok: true,
-      value: notes.map(formatNoteEntry),
+      value: notes.length === 0 ? [] : formatNotes(notes).split("\n"),
     };
   }
 
-  async initNote(name: string): Promise<Result<string>> {
+  async initNote(name: string, category?: string): Promise<Result<string>> {
     try {
-      initNote(this.base, name);
+      initNote(this.base, name, category);
       return { ok: true, value: name };
     } catch (err) {
       return {
@@ -454,9 +454,7 @@ export function buildInitialMessage(
       ? `\n\nHere are the available profiles:\n${availableProfiles.join(", ")}`
       : "") +
     (availableNotes.length > 0
-      ? `\n\nHere are the available notes:\n${availableNotes
-          .map(formatNoteEntry)
-          .join("\n")}`
+      ? `\n\nHere are the available notes, by category (list_notes with a category lists just that one):\n${formatNotes(availableNotes)}`
       : "")
   );
 }

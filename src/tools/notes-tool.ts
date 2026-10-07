@@ -1,21 +1,31 @@
 import { dataDir as defaultDataDir } from "../data-dir.ts";
 import {
   deleteNote,
-  formatNoteEntry,
+  formatNotes,
   listNotes,
   readNote,
   saveNote,
 } from "../notes.ts";
 import { errStr } from "./files.ts";
 
+/** The optional `category` argument (undefined when absent). */
+function categoryArg(args: Record<string, unknown>): string | undefined {
+  return args.category === undefined ? undefined : String(args.category);
+}
+
 export function listNotesTool(
-  _args: Record<string, unknown>,
+  args: Record<string, unknown>,
   dataDir: string = defaultDataDir,
 ): string {
   try {
-    const notes = listNotes(dataDir);
-    if (notes.length === 0) return "no notes";
-    return notes.map(formatNoteEntry).join("\n");
+    const category = String(args.category ?? "").trim();
+    const notes = listNotes(dataDir, category);
+    if (notes.length === 0) {
+      return category === ""
+        ? "no notes"
+        : `no notes in category '${category}'`;
+    }
+    return formatNotes(notes);
   } catch (err) {
     return errStr(err);
   }
@@ -27,7 +37,7 @@ export function readNoteTool(
 ): string {
   const noteName = String(args.name ?? "");
   try {
-    return readNote(dataDir, noteName) ?? "";
+    return readNote(dataDir, noteName, categoryArg(args)) ?? "";
   } catch (err) {
     return errStr(err);
   }
@@ -40,7 +50,7 @@ export function saveNoteTool(
   const noteName = String(args.name ?? "");
   const body = String(args.body ?? "");
   try {
-    saveNote(dataDir, noteName, body);
+    saveNote(dataDir, noteName, body, categoryArg(args));
     return `saved note '${noteName}'`;
   } catch (err) {
     return errStr(err);
@@ -53,7 +63,7 @@ export function deleteNoteTool(
 ): string {
   const noteName = String(args.name ?? "");
   try {
-    deleteNote(dataDir, noteName);
+    deleteNote(dataDir, noteName, categoryArg(args));
     return `deleted note '${noteName}'`;
   } catch (err) {
     return errStr(err);

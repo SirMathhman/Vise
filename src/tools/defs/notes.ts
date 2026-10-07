@@ -7,10 +7,16 @@ export const noteTools: Tool[] = [
     function: {
       name: "list_notes",
       description:
-        "List all notes with their one-line summaries. Notes are short facts or how-to procedures stored for this project. Use this to see what is known before relying on or writing a note.",
+        "List notes grouped by category, with their one-line summaries. Notes are short facts or how-to procedures stored for this project. Pass a category to list only that group (useful when there are many notes). Use this to see what is known before relying on or writing a note.",
       parameters: {
         type: "object",
-        properties: {},
+        properties: {
+          category: {
+            type: "string",
+            description:
+              "Only list this category (optional; default lists every category)",
+          },
+        },
       },
     },
   },
@@ -19,13 +25,18 @@ export const noteTools: Tool[] = [
     function: {
       name: "read_note",
       description:
-        "Read the full body of a note by name. Call list_notes first to see what is available.",
+        "Read the full body of a note by name. Call list_notes first to see what is available. Pass the category if the name exists in several.",
       parameters: {
         type: "object",
         properties: {
           name: {
             type: "string",
             description: "Name of the note to read",
+          },
+          category: {
+            type: "string",
+            description:
+              "Category of the note (optional; default category first, otherwise the only one containing it)",
           },
         },
         required: ["name"],
@@ -37,7 +48,7 @@ export const noteTools: Tool[] = [
     function: {
       name: "save_note",
       description:
-        "Save a new note for this project. The first non-empty line of body becomes the note's one-line summary (shown in list_notes); the rest is the body. Note names must be unique.",
+        "Save a new note for this project. The first non-empty line of body becomes the note's one-line summary (shown in list_notes); the rest is the body. Note names must be unique within a category. Give a category to group related notes (any name; it is created on first use); without one the note goes in the 'default' category.",
       parameters: {
         type: "object",
         properties: {
@@ -50,6 +61,11 @@ export const noteTools: Tool[] = [
             type: "string",
             description:
               "Note contents. The first non-empty line is its summary.",
+          },
+          category: {
+            type: "string",
+            description:
+              "Category to file the note under (optional; default: 'default')",
           },
         },
         required: ["name", "body"],
@@ -67,6 +83,11 @@ export const noteTools: Tool[] = [
           name: {
             type: "string",
             description: "Name of the note to delete",
+          },
+          category: {
+            type: "string",
+            description:
+              "Category of the note (optional; needed only if the name exists in several)",
           },
         },
         required: ["name"],

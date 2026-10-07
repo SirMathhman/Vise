@@ -81,10 +81,10 @@ export interface ReasoningController {
  * the note tools. Provided by the edge (the session performs no I/O).
  */
 export interface NoteSource {
-  /** List all notes with their one-line summaries. */
+  /** List all notes grouped by category, with their one-line summaries. */
   listNotes(): Promise<Result<string[]>>;
-  /** Initialize a new note with a placeholder template body. */
-  initNote(name: string): Promise<Result<string>>;
+  /** Initialize a new note (in `category`, default when omitted) with a placeholder template body. */
+  initNote(name: string, category?: string): Promise<Result<string>>;
 }
 
 /** Edge-owned workflow listing, loading, and creation. */
