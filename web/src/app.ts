@@ -426,8 +426,10 @@ burstBtn.addEventListener("click", () => {
 });
 // Header dropdown panels: at most one open; each says what to refresh on open.
 registerHeaderPanels({
-  profiles: () => profileEditor.refresh(),
-  hooks: () => hooksPanel.refresh(),
+  settings: () => {
+    profileEditor.refresh();
+    hooksPanel.refresh();
+  },
   // Turns auto-save in the background, so refresh the list when it opens.
   sessions: () => {
     pendingSessionList = true;

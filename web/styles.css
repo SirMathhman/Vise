@@ -922,3 +922,62 @@ body {
   font-size: 0.85em;
   cursor: pointer;
 }
+
+/* Top bar: view and settings entries as menu items, not boxed buttons. */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 0 1rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  position: relative;
+}
+
+.topbar-item {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--dim);
+  font: inherit;
+  padding: 0.4rem 0;
+  cursor: pointer;
+}
+
+.topbar-item:hover,
+.topbar-item[aria-expanded="true"],
+.shell:has(#workspace:not(.hidden)) #files-btn {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.topbar-item:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.tabs {
+  display: flex;
+  gap: 1rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0.5rem;
+}
+
+.tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--dim);
+  font: inherit;
+  padding: 0.2rem 0;
+  cursor: pointer;
+}
+
+.tab.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.tab-page.hidden {
+  display: none;
+}

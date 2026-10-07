@@ -43,146 +43,169 @@
             <button type="submit" class="save-btn">go</button>
           </form>
           <pre id="files-viewer" class="files-viewer"></pre>
-          <iframe id="files-frame" class="files-frame hidden" title="Web page"></iframe>
+          <iframe
+            id="files-frame"
+            class="files-frame hidden"
+            title="Web page"
+          ></iframe>
           <div id="files-browser" class="browser-view hidden" tabindex="0">
-            <img id="files-browser-img" alt="Integrated browser" draggable="false" />
+            <img
+              id="files-browser-img"
+              alt="Integrated browser"
+              draggable="false"
+            />
           </div>
           <div id="files-md" class="files-viewer md-view hidden"></div>
         </section>
       </aside>
-    <main id="app">
-      <header class="bar">
-        <span class="brand">vise</span>
-        <select id="model" class="model" title="Switch model">
-          <option value="">loading…</option>
-        </select>
-        <select id="profile" class="model" title="Switch profile">
-          <option value="">loading…</option>
-        </select>
-        <select id="reasoning" class="model" title="Set the reasoning effort">
-          <option value="">loading…</option>
-        </select>
-        <button id="tools-btn" class="tools-btn" title="Toggle tools panel">
-          tools
-        </button>
-        <button
-          id="burst-btn"
-          class="tools-btn"
-          aria-pressed="false"
-          title="Burst mode: think once to plan, then run tool calls without thinking"
-        >
-          burst
-        </button>
-        <span id="status" class="status"></span>
-        <button id="stop" class="stop" title="Interrupt the current turn">
-          stop
-        </button>
-        <button
-          id="profiles-btn"
-          class="tools-btn"
-          title="Edit profiles (tool whitelists)"
-        >
-          profiles
-        </button>
-        <button
-          id="new-btn"
-          class="tools-btn"
-          title="Start a new conversation (the old one stays in saved sessions)"
-        >
-          new
-        </button>
-        <button
-          id="sessions-btn"
-          class="tools-btn"
-          title="Toggle sessions panel"
-        >
-          sessions
-        </button>
-        <button id="files-btn" class="tools-btn" title="Toggle file explorer">
-          files
-        </button>
-        <button
-          id="hooks-btn"
-          class="tools-btn"
-          title="Show and edit the pre/post-turn hooks"
-        >
-          hooks
-        </button>
-        <div id="hooks-panel" class="tools-panel hidden">
-          <div id="hooks-body"></div>
-        </div>
-        <div id="tools-panel" class="tools-panel hidden">
-          <ul id="tools-list" class="tools-list"></ul>
-        </div>
-        <div id="profiles-panel" class="tools-panel hidden">
-          <select id="pe-profile" class="model" title="Profile to edit"></select>
-          <div class="pe-bulk">
-            <button id="pe-check-all" class="tools-btn">check all</button>
-            <button id="pe-uncheck-all" class="tools-btn">uncheck all</button>
+      <main id="app">
+        <nav id="topbar" class="topbar">
+          <button
+            id="files-btn"
+            class="topbar-item"
+            title="Toggle file explorer"
+          >
+            files
+          </button>
+          <button id="sessions-btn" class="topbar-item" title="Saved sessions">
+            sessions
+          </button>
+          <button
+            id="settings-btn"
+            class="topbar-item"
+            title="Settings: profiles and hooks"
+          >
+            settings
+          </button>
+          <div id="sessions-panel" class="tools-panel hidden">
+            <ul id="sessions-list" class="tools-list"></ul>
+            <div class="save-row">
+              <input
+                id="save-name"
+                class="save-input"
+                type="text"
+                placeholder="session name…"
+                autocomplete="off"
+              />
+              <button id="save-btn" class="save-btn">save</button>
+            </div>
           </div>
-          <ul id="pe-tools" class="tools-list"></ul>
-          <div id="pe-hooks"></div>
-          <div class="save-row">
-            <button id="pe-save" class="save-btn">save</button>
-            <span id="pe-status" class="pe-status" role="status"></span>
+          <div id="settings-panel" class="tools-panel hidden">
+            <div class="tabs" role="tablist">
+              <button
+                class="tab active"
+                role="tab"
+                data-tab="settings-profiles"
+              >
+                profiles
+              </button>
+              <button class="tab" role="tab" data-tab="settings-hooks">
+                hooks
+              </button>
+            </div>
+            <div id="settings-profiles" class="tab-page">
+              <select
+                id="pe-profile"
+                class="model"
+                title="Profile to edit"
+              ></select>
+              <div class="pe-bulk">
+                <button id="pe-check-all" class="tools-btn">check all</button>
+                <button id="pe-uncheck-all" class="tools-btn">
+                  uncheck all
+                </button>
+              </div>
+              <ul id="pe-tools" class="tools-list"></ul>
+              <div id="pe-hooks"></div>
+              <div class="save-row">
+                <button id="pe-save" class="save-btn">save</button>
+                <span id="pe-status" class="pe-status" role="status"></span>
+              </div>
+            </div>
+            <div id="settings-hooks" class="tab-page hidden">
+              <div id="hooks-body"></div>
+            </div>
           </div>
-        </div>
-        <div id="sessions-panel" class="tools-panel hidden">
-          <ul id="sessions-list" class="tools-list"></ul>
-          <div class="save-row">
-            <input
-              id="save-name"
-              class="save-input"
-              type="text"
-              placeholder="session name…"
-              autocomplete="off"
-            />
-            <button id="save-btn" class="save-btn">save</button>
+        </nav>
+        <header class="bar">
+          <span class="brand">vise</span>
+          <select id="model" class="model" title="Switch model">
+            <option value="">loading…</option>
+          </select>
+          <select id="profile" class="model" title="Switch profile">
+            <option value="">loading…</option>
+          </select>
+          <select id="reasoning" class="model" title="Set the reasoning effort">
+            <option value="">loading…</option>
+          </select>
+          <button id="tools-btn" class="tools-btn" title="Toggle tools panel">
+            tools
+          </button>
+          <button
+            id="burst-btn"
+            class="tools-btn"
+            aria-pressed="false"
+            title="Burst mode: think once to plan, then run tool calls without thinking"
+          >
+            burst
+          </button>
+          <span id="status" class="status"></span>
+          <button id="stop" class="stop" title="Interrupt the current turn">
+            stop
+          </button>
+          <button
+            id="new-btn"
+            class="tools-btn"
+            title="Start a new conversation (the old one stays in saved sessions)"
+          >
+            new
+          </button>
+          <div id="tools-panel" class="tools-panel hidden">
+            <ul id="tools-list" class="tools-list"></ul>
           </div>
-        </div>
-      </header>
-      <section id="log" class="log" aria-live="polite"></section>
-      <footer class="context-bar">
-        <span id="context" class="context"></span>
-      </footer>
-      <section class="composer">
-        <div id="ask" class="ask hidden">
-          <div id="ask-question" class="ask-question"></div>
-          <ul id="ask-options" class="ask-options"></ul>
-          <div class="ask-row">
-            <input
-              id="ask-answer"
-              class="ask-answer"
-              type="text"
-              placeholder="or type a reply…"
-            />
-            <button id="ask-send" class="ask-send">send</button>
+        </header>
+        <section id="log" class="log" aria-live="polite"></section>
+        <footer class="context-bar">
+          <span id="context" class="context"></span>
+        </footer>
+        <section class="composer">
+          <div id="ask" class="ask hidden">
+            <div id="ask-question" class="ask-question"></div>
+            <ul id="ask-options" class="ask-options"></ul>
+            <div class="ask-row">
+              <input
+                id="ask-answer"
+                class="ask-answer"
+                type="text"
+                placeholder="or type a reply…"
+              />
+              <button id="ask-send" class="ask-send">send</button>
+            </div>
           </div>
-        </div>
-        <div class="composer-input-wrap">
-          <ul
-            id="command-suggestions"
-            class="command-suggestions hidden"
-            role="listbox"
-            aria-label="Slash command suggestions"
-          ></ul>
-          <div class="composer-row">
-            <input
-              id="input"
-              class="input"
-              type="text"
-              placeholder="type a message… (Enter to send, Shift+Enter for a newline)"
-              autocomplete="off"
-              role="combobox"
-              aria-autocomplete="list"
-              aria-controls="command-suggestions"
-              aria-expanded="false"
-            />
-            <button id="send" class="send">send</button>
+          <div class="composer-input-wrap">
+            <ul
+              id="command-suggestions"
+              class="command-suggestions hidden"
+              role="listbox"
+              aria-label="Slash command suggestions"
+            ></ul>
+            <div class="composer-row">
+              <input
+                id="input"
+                class="input"
+                type="text"
+                placeholder="type a message… (Enter to send, Shift+Enter for a newline)"
+                autocomplete="off"
+                role="combobox"
+                aria-autocomplete="list"
+                aria-controls="command-suggestions"
+                aria-expanded="false"
+              />
+              <button id="send" class="send">send</button>
+            </div>
           </div>
-        </div>
-      </section>
-    </main>
+        </section>
+      </main>
     </div>
     <script type="module" src="dist/app.js"></script>
   </body>

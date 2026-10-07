@@ -44,14 +44,13 @@ export function createPanelGroup(): PanelGroup {
   };
 }
 
-/** What to refresh when each header panel opens (the tools panel needs nothing). */
+/** What to refresh when each panel opens (the tools panel needs nothing). */
 interface HeaderPanelHooks {
-  profiles: () => void;
-  hooks: () => void;
+  settings: () => void;
   sessions: () => void;
 }
 
-/** Register the header dropdown panels (tools, profiles, hooks, sessions) in one group. */
+/** Register the dropdown panels (tools in the header; sessions and settings in the top bar) in one group. */
 export function registerHeaderPanels(onOpen: HeaderPanelHooks): void {
   const group = createPanelGroup();
   const el = <T extends HTMLElement>(id: string): T => {
@@ -61,15 +60,32 @@ export function registerHeaderPanels(onOpen: HeaderPanelHooks): void {
   };
   const panels: [string, (() => void) | undefined][] = [
     ["tools", undefined],
-    ["profiles", onOpen.profiles],
-    ["hooks", onOpen.hooks],
     ["sessions", onOpen.sessions],
+    ["settings", onOpen.settings],
   ];
+  setupTabs(el("settings-panel"));
   for (const [name, open] of panels) {
     group.register({
       button: el<HTMLButtonElement>(`${name}-btn`),
       panel: el(`${name}-panel`),
       onOpen: open,
+    });
+  }
+}
+
+/** Settings tabs: a tab button (`data-tab` = a page id) shows its page and hides the others. */
+function setupTabs(panel: HTMLElement): void {
+  const tabs = panel.querySelectorAll<HTMLButtonElement>(".tab");
+  for (const tab of tabs) {
+    tab.addEventListener("click", () => {
+      for (const other of tabs) {
+        const on = other === tab;
+        other.classList.toggle("active", on);
+        other.setAttribute("aria-selected", String(on));
+        document
+          .getElementById(other.dataset["tab"] ?? "")
+          ?.classList.toggle("hidden", !on);
+      }
     });
   }
 }
