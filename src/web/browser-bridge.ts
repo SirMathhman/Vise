@@ -1,3 +1,5 @@
+import { parseSettings } from "../browser/settings.ts";
+import type { SwitchableBrowser } from "../browser/switchable.ts";
 import type { BrowserBackend, BrowserInput } from "../browser/types.ts";
 
 /**
@@ -10,8 +12,11 @@ import type { BrowserBackend, BrowserInput } from "../browser/types.ts";
  *                     { type:"browser_input", tab, input }
  *                     { type:"browser_navigate", tab, url }
  *                     { type:"browser_close", tab }
+ *                     { type:"browser_settings_get" }
+ *                     { type:"browser_settings_set", engine, firefoxPort? }  switch engine (all connections are told)
  *   server → browser: { type:"browser_tabs", tabs }
  *                     { type:"browser_frame", tab, data }          base64 JPEG
+ *                     { type:"browser_settings", engine, firefoxPort?, firefoxFound }
  *                     { type:"browser_error", message }
  */
 
@@ -83,17 +88,23 @@ export class BrowserBridge {
   private stopWatching: (() => Promise<void>) | null = null;
   private watchedTab: number | null = null;
   private readonly offTabs: () => void;
+  private readonly offSettings: () => void;
 
+  /** `settings` (the shared switchable browser) enables the engine-settings messages. */
   constructor(
     private readonly browser: BrowserBackend,
     private readonly send: Send,
+    private readonly settings?: SwitchableBrowser,
   ) {
     this.offTabs = browser.onTabsChanged(() => void this.pushTabs());
+    this.offSettings =
+      settings?.onSettingsChanged(() => this.pushSettings()) ?? (() => {});
   }
 
   /** Release the screencast and the tab-change subscription. */
   async dispose(): Promise<void> {
     this.offTabs();
+    this.offSettings();
     await this.unwatch();
   }
 
@@ -118,6 +129,8 @@ export class BrowserBridge {
   ): Promise<void> {
     const tab = num(msg["tab"], -1);
     if (type === "browser_tabs") await this.pushTabs();
+    else if (type === "browser_settings_get") this.pushSettings();
+    else if (type === "browser_settings_set") await this.setSettings(msg);
     else if (type === "browser_unwatch") await this.unwatch();
     else if (type === "browser_watch") {
       await this.watch(tab, clampSize(msg["width"]), clampSize(msg["height"]));
@@ -129,6 +142,23 @@ export class BrowserBridge {
     } else if (type === "browser_navigate" && typeof msg["url"] === "string") {
       await this.browser.navigate(tab, msg["url"]);
     }
+  }
+
+  private pushSettings(): void {
+    const settings = this.settings;
+    if (!settings) return;
+    this.send({
+      type: "browser_settings",
+      ...settings.settings,
+      firefoxFound: settings.firefoxFound,
+    });
+  }
+
+  private async setSettings(msg: Record<string, unknown>): Promise<void> {
+    const parsed = parseSettings(msg);
+    if (typeof parsed === "string") throw new Error(parsed);
+    const error = await this.settings?.configure(parsed);
+    if (error) throw new Error(error);
   }
 
   /** Push the tab list; an unlaunched browser has none and must not be started just to ask. */

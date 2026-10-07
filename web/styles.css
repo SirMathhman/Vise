@@ -133,6 +133,28 @@ body {
   cursor: pointer;
 }
 
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.setting-row > span {
+  flex: 0 0 8rem;
+  color: var(--dim);
+}
+
+.setting-row .save-input {
+  flex: 0 1 14rem;
+}
+
+.setting-hint {
+  color: var(--dim);
+  font-size: 0.8rem;
+  margin-bottom: 0.5rem;
+}
+
 .pe-status {
   align-self: center;
   color: var(--user);

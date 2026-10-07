@@ -6,8 +6,8 @@ import { formatCompactionFailure, formatError } from "../output/format.ts";
 import type { AskRequest, UserPrompter } from "../tools/ask-user.ts";
 import type { LineResult } from "../repl/session.ts";
 import { saveProfileWhitelist } from "../repl/profile-tools.ts";
-import type { BrowserBackend } from "../browser/types.ts";
-import { ChromiumBackend } from "../browser/chromium.ts";
+import { BrowserSettingsStore } from "../browser/settings.ts";
+import { SwitchableBrowser } from "../browser/switchable.ts";
 import { BrowserBridge } from "./browser-bridge.ts";
 import { type HookStore } from "../edge-sources.ts";
 import { noFolderRoot } from "../data-dir.ts";
@@ -148,7 +148,9 @@ class WebDisplay {
 /** Start the web driver: serve the UI and accept WebSocket connections. */
 export function startWebServer(port = 3000): void {
   // One browser shared by every connection; it launches on first tool use.
-  const browser = new ChromiumBackend();
+  // Its engine (Chromium or Firefox) is a global setting changed from the UI.
+  const settingsStore = new BrowserSettingsStore();
+  const browser = new SwitchableBrowser(settingsStore.load(), settingsStore);
   // Sessions are rooted where they were opened; the default is where the server started.
   const roots = new RootRegistry(process.cwd());
   const state = new Map<ServerWebSocket<WsData>, ConnectionState>();
@@ -201,6 +203,8 @@ export function startWebServer(port = 3000): void {
           noFolder,
         );
         conn.send({ type: "root", path: noFolder ? "" : root, noFolder });
+        // The shared browser's engine setting, for the settings panel.
+        void conn.bridge.handle({ type: "browser_settings_get" });
         // Tell the browser's file explorer whenever the project tree changes.
         // Any connection's hook edit refreshes every open hooks panel.
         const offHooks = hookStore.onChange(() => void pushHooks(conn));
@@ -264,7 +268,7 @@ interface ConnectionState {
 
 function makeConnectionState(
   ws: ServerWebSocket<WsData>,
-  browser: BrowserBackend,
+  browser: SwitchableBrowser,
   hookStore: HookStore,
   root: string,
   noFolder: boolean,
@@ -313,7 +317,7 @@ function makeConnectionState(
     session: edge.session,
     edge,
     chain: Promise.resolve(),
-    bridge: new BrowserBridge(browser, send),
+    bridge: new BrowserBridge(browser, send, browser),
     unwatch: () => {},
   };
 }
