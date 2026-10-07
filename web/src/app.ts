@@ -1,4 +1,4 @@
-import { createHooksPanel } from "./hooks-panel.ts";
+import { createHooksPanel, type HooksFields } from "./hooks-panel.ts";
 import { createWorkspace } from "./workspace.ts";
 import { setupComposer } from "./composer.ts";
 import { createPanels } from "./panels.ts";
@@ -17,7 +17,7 @@ interface ResultMessage {
   id?: string;
 }
 
-interface ServerMessage extends ResultMessage {
+interface ServerMessage extends ResultMessage, HooksFields {
   type: string;
   text?: string;
   name?: string;
@@ -28,8 +28,6 @@ interface ServerMessage extends ResultMessage {
   options?: string[];
   tab?: number;
   tabs?: { id: number; url: string; title: string }[];
-  pre?: string[];
-  post?: string[];
   data?: string;
   message?: string;
 }

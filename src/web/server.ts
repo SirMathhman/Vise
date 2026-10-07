@@ -173,9 +173,7 @@ export function startWebServer(port = 3000): void {
         const conn = makeConnectionState(ws, browser, hookStore);
         // Tell the browser's file explorer whenever the project tree changes.
         // Any connection's hook edit refreshes every open hooks panel.
-        const offHooks = hookStore.onChange(() =>
-          conn.send({ type: "hooks", ...conn.session.hookCommands() }),
-        );
+        const offHooks = hookStore.onChange(() => void pushHooks(conn));
         const stopWatching = watchRoot(process.cwd(), () =>
           conn.send({ type: "fs_changed" }),
         );
@@ -321,6 +319,11 @@ async function handleProfileTools(
   reply({ ok: true, tools: saved.value ?? null });
 }
 
+/** Send the connection the hooks with their profile bindings (a pure read; never queued behind a turn). */
+async function pushHooks(conn: ConnectionState): Promise<void> {
+  conn.send({ type: "hooks", ...(await conn.session.hooksView()) });
+}
+
 function handleMessage(
   conn: ConnectionState,
   message: string | Buffer<ArrayBuffer> | null,
@@ -339,7 +342,7 @@ function handleMessage(
   }
   if (msg.type === "hooks_get") {
     // A pure read of the live hook lists; never queued behind a model turn.
-    send({ type: "hooks", ...conn.session.hookCommands() });
+    void pushHooks(conn);
     return;
   }
   if (msg.type === "interrupt") {

@@ -903,3 +903,22 @@ body {
   margin-top: 0;
 }
 
+
+.hook-bindings {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  align-items: center;
+  margin-left: 0.5rem;
+}
+
+.hook-chip {
+  background: none;
+  color: var(--accent);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 0.5rem;
+  font: inherit;
+  font-size: 0.85em;
+  cursor: pointer;
+}
