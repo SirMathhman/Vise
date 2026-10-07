@@ -1,5 +1,7 @@
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { ChromiumBackend } from "./browser/chromium.ts";
+import type { BrowserBackend } from "./browser/types.ts";
 import { BACKEND, LlmClient } from "./client/llm.ts";
 import { dataDir } from "./data-dir.ts";
 import type { Client, ToolController } from "./core/engine.ts";
@@ -15,6 +17,7 @@ import {
 } from "./edge-sources.ts";
 import type { ProfileSource } from "./repl/ports.ts";
 import { Session } from "./repl/session.ts";
+import { makeBrowserHandlers } from "./tools/browser.ts";
 import { makeAskUserHandler, type UserPrompter } from "./tools/ask-user.ts";
 import { makeSelfHandler } from "./tools/self.ts";
 import { makeSubagentHandler } from "./tools/subagent.ts";
@@ -73,6 +76,12 @@ export interface EdgeSessionOptions {
   askUser: UserPrompter;
   /** Prompts the user to continue past the maximum tool rounds. */
   onMaxRounds: () => Promise<boolean>;
+  /**
+   * The integrated browser the browser tools drive. Shared across sessions
+   * when given (the web server passes one); otherwise a private Chromium is
+   * created, and it only launches when a browser tool is first used.
+   */
+  browser?: BrowserBackend;
 }
 
 /** The edge services a frontend needs after construction. */
@@ -81,6 +90,8 @@ export interface EdgeSession {
   session: Session;
   /** The LLM transport (the sole network-I/O module). */
   client: Client;
+  /** The integrated browser; the frontend closes it on shutdown. */
+  browser: BrowserBackend;
   /** The model-facing tool enable/disable controller. */
   toolController: ToolController;
   /** The profile store (also used for unqueued whitelist edits). */
@@ -109,6 +120,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
   );
 
   const client = new LlmClient();
+  const browser = options.browser ?? new ChromiumBackend();
 
   // Single directory that holds every runtime data store (profiles/, notes/,
   // sessions/) so the working directory is not polluted by them. The edge I/O
@@ -157,6 +169,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
         () => sessionRef.current.currentAbortSignal,
       ),
       ask_user: makeAskUserHandler(options.askUser),
+      ...makeBrowserHandlers(browser),
       self: makeSelfHandler({
         backend: BACKEND,
         model: () => client.getModel(),
@@ -197,6 +210,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
   return {
     session,
     client,
+    browser,
     toolController,
     profileSource,
     preTurnHooks: hookCommands.pre ?? [],

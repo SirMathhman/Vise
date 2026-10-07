@@ -45,5 +45,8 @@ const edge = createEdgeSession({
 // a pipe/script driver (see ARCHITECTURE.md) does not touch the core or the
 // session. The driver takes the same `rl` and `rlPrompter` so the ask_user
 // handler and the onMaxRounds callback share one prompter instance.
+// A launched browser holds the event loop open, so close it when input ends.
+rl.once("close", () => void edge.browser.close());
+
 const driver = new TerminalDriver(edge.session, display, rl);
 driver.run();

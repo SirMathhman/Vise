@@ -1,4 +1,5 @@
 import type { Tool, ToolController, ToolRunner } from "./core/engine.ts";
+import { browserTools } from "./tools/browser-defs.ts";
 import {
   createFile,
   deleteDirectory,
@@ -362,6 +363,7 @@ export const tools: Tool[] = [
       },
     },
   },
+  ...browserTools,
   {
     type: "function",
     function: {

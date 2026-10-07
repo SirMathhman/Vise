@@ -6,6 +6,8 @@ import { formatCompactionFailure, formatError } from "../output/format.ts";
 import type { AskRequest, UserPrompter } from "../tools/ask-user.ts";
 import type { LineResult } from "../repl/session.ts";
 import { saveProfileWhitelist } from "../repl/profile-tools.ts";
+import type { BrowserBackend } from "../browser/types.ts";
+import { ChromiumBackend } from "../browser/chromium.ts";
 import { createEdgeSession } from "../wiring.ts";
 import { listDir, readTextFile, watchRoot } from "./files.ts";
 
@@ -128,6 +130,8 @@ class WebDisplay {
 
 /** Start the web driver: serve the UI and accept WebSocket connections. */
 export function startWebServer(port = 3000): void {
+  // One browser shared by every connection; it launches on first tool use.
+  const browser = new ChromiumBackend();
   const state = new Map<ServerWebSocket<unknown>, ConnectionState>();
   const server = Bun.serve({
     port,
@@ -149,7 +153,7 @@ export function startWebServer(port = 3000): void {
     },
     websocket: {
       open(ws) {
-        const conn = makeConnectionState(ws);
+        const conn = makeConnectionState(ws, browser);
         // Tell the browser's file explorer whenever the project tree changes.
         conn.unwatch = watchRoot(process.cwd(), () =>
           conn.send({ type: "fs_changed" }),
@@ -187,13 +191,17 @@ interface ConnectionState {
   unwatch: () => void;
 }
 
-function makeConnectionState(ws: ServerWebSocket<unknown>): ConnectionState {
+function makeConnectionState(
+  ws: ServerWebSocket<unknown>,
+  browser: BrowserBackend,
+): ConnectionState {
   const send = (msg: Record<string, unknown>): void => {
     if (ws.readyState === 1) ws.send(JSON.stringify(msg)); // readyState 1 = OPEN
   };
   const prompter = new WebUserPrompter(send);
   const display = new WebDisplay();
   const edge = createEdgeSession({
+    browser,
     onToken: (t) => {
       display.onToken(t);
       send({ type: "token", text: t });
