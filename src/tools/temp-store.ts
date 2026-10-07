@@ -5,6 +5,7 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -31,6 +32,9 @@ const PREVIEW_CHARS = 2_000;
 const MAX_MATCHES = 100;
 const MAX_MATCH_CHARS = 300;
 const STALE_MS = 24 * 60 * 60 * 1000;
+
+/** A live session marks its folder as in use this often, so another process starting up never sweeps it. */
+const HEARTBEAT_MS = 60 * 60 * 1000;
 
 /** Temp file names are `<tool>-<n>`: one path-safe segment, never a path. */
 const VALID_NAME = /^[\w.-]+$/;
@@ -61,6 +65,13 @@ export function isTooLarge(text: string): boolean {
   return text.length > MAX_CHARS || countLines(text) > MAX_LINES;
 }
 
+/** `text` cut to what is allowed to be shown, for when it cannot be saved (or there is nowhere to save it). */
+export function truncateInline(text: string, why: string): string {
+  const head = text.split(/\r?\n/).slice(0, MAX_LINES).join("\n");
+  const shown = head.length > MAX_CHARS ? head.slice(0, MAX_CHARS) : head;
+  return `${shown}\n[... output too large to show (${countLines(text)} lines, ${text.length} characters) and ${why}; only the start is shown.]`;
+}
+
 /** The start of `text`: a few lines, and never more than `PREVIEW_CHARS` characters. */
 function preview(text: string): string {
   const head = text.split(/\r?\n/).slice(0, PREVIEW_LINES).join("\n");
@@ -71,6 +82,7 @@ function preview(text: string): string {
 
 export class TempStore {
   private dir: string | undefined;
+  private heartbeat: ReturnType<typeof setInterval> | undefined;
   private count = 0;
   /** What each file came from, for `list_temp`. */
   private readonly sources = new Map<string, string>();
@@ -82,16 +94,42 @@ export class TempStore {
     if (this.dir === undefined) {
       sweepStale(this.base);
       const dir = join(this.base, randomBytes(6).toString("hex"));
-      mkdirSync(dir, { recursive: true });
+      mkdirSync(dir, { recursive: true, mode: 0o700 });
       this.dir = dir;
+      // Never keeps the process alive; only keeps this session's folder from looking abandoned.
+      this.heartbeat = setInterval(() => this.touch(), HEARTBEAT_MS);
+      this.heartbeat.unref();
     }
     return this.dir;
+  }
+
+  /** Mark the folder as in use (its modification time is what the sweep goes by). */
+  private touch(): void {
+    if (!this.dir) return;
+    try {
+      const now = new Date();
+      utimesSync(this.dir, now, now);
+    } catch {
+      // the folder is gone; the next read reports it
+    }
   }
 
   /** Save a result and return what the model sees instead: its start, its size, and how to read the rest. */
   spill(tool: string, text: string): string {
     const name = `${tool}-${++this.count}`;
-    writeFileSync(join(this.ensure(), name), text, "utf8");
+    try {
+      writeFileSync(join(this.ensure(), name), text, {
+        encoding: "utf8",
+        mode: 0o600,
+      });
+    } catch (err) {
+      // A full disk or a locked folder must not lose the result: show what is allowed instead.
+      return truncateInline(
+        text,
+        `could not be saved (${err instanceof Error ? err.message : String(err)})`,
+      );
+    }
+    this.touch();
     this.sources.set(name, tool);
     return `${preview(text)}\n[... output too large to show: ${countLines(text)} lines, ${text.length} characters. Saved as '${name}'. Read part of it with read_temp (name, offset, limit) or find things in it with search_temp (pattern, name).]`;
   }
@@ -106,7 +144,13 @@ export class TempStore {
     if (!VALID_NAME.test(name) || !this.sources.has(name)) {
       return `error: no temp file named '${name}'. Saved: ${this.list().join(", ") || "none"}`;
     }
-    return readFileSync(join(this.ensure(), name), "utf8").split(/\r?\n/);
+    try {
+      this.touch();
+      return readFileSync(join(this.ensure(), name), "utf8").split(/\r?\n/);
+    } catch {
+      this.sources.delete(name);
+      return `error: temp file '${name}' is no longer available (temp files do not survive a restart or a cleanup)`;
+    }
   }
 
   /** `limit` lines of a saved file starting at line `offset` (1-based), with a header and a pointer to the rest. */
@@ -119,12 +163,18 @@ export class TempStore {
     if (slice.length === 0) {
       return `error: '${name}' has ${all.length} lines; there is nothing at line ${from}`;
     }
-    const last = from + slice.length - 1;
+    let shown = slice.join("\n");
+    let last = from + slice.length - 1;
+    if (shown.length > MAX_CHARS) {
+      // Wide lines: the line limit alone could still be far more than a spilled result was allowed to be.
+      shown = shown.slice(0, MAX_CHARS);
+      last = from + shown.split("\n").length - 1;
+    }
     const more =
       last < all.length
         ? `\n[${all.length - last} more lines: continue with offset ${last + 1}]`
         : "";
-    return `[${name}: lines ${from}-${last} of ${all.length}]\n${slice.join("\n")}${more}`;
+    return `[${name}: lines ${from}-${last} of ${all.length}]\n${shown}${more}`;
   }
 
   /** Matching lines of one saved file, or of all of them. */
@@ -171,6 +221,7 @@ export class TempStore {
 
   /** Delete the session's temp directory. */
   dispose(): void {
+    clearInterval(this.heartbeat);
     if (this.dir) rmSync(this.dir, { recursive: true, force: true });
     this.dir = undefined;
     this.sources.clear();

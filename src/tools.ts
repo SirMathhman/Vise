@@ -25,7 +25,11 @@ import {
 } from "./tools/notes-tool.ts";
 import { deferTools, searchToolsDef } from "./tools/search-tools.ts";
 import { killProcess, runPowershell, waitForProcess } from "./tools/shell.ts";
-import { isTooLarge, type TempStore } from "./tools/temp-store.ts";
+import {
+  isTooLarge,
+  truncateInline,
+  type TempStore,
+} from "./tools/temp-store.ts";
 
 /** Tag every tool in a definition group with its category. */
 const inCategory = (category: string, defs: Tool[]): Tool[] =>
@@ -214,9 +218,11 @@ export function createToolRunner(
       }
       const result = await handler(args);
       // The temp tools bound their own output; everything else too big to show is saved instead.
-      return spill && !TEMP_TOOLS.has(name) && isTooLarge(result)
+      if (TEMP_TOOLS.has(name) || !isTooLarge(result)) return result;
+      // With nowhere to save it, a big result is cut rather than let through whole.
+      return spill
         ? spill.spill(name, result)
-        : result;
+        : truncateInline(result, "there is nowhere to save it");
     },
   };
 }
