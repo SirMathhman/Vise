@@ -1,3 +1,4 @@
+import { createExplorer } from "./explorer.ts";
 import { setupComposer } from "./composer.ts";
 import { createPanels } from "./panels.ts";
 import { renderMarkdown } from "./markdown.ts";
@@ -51,6 +52,13 @@ const sessionsBtn = requiredElement<HTMLButtonElement>("sessions-btn");
 const sessionsPanel = requiredElement<HTMLElement>("sessions-panel");
 const saveName = requiredElement<HTMLInputElement>("save-name");
 const saveBtn = requiredElement<HTMLButtonElement>("save-btn");
+const filesBtn = requiredElement<HTMLButtonElement>("files-btn");
+const filesPanel = requiredElement<HTMLElement>("files-panel");
+const explorer = createExplorer(
+  requiredElement<HTMLElement>("files-path"),
+  requiredElement<HTMLUListElement>("files-list"),
+  requiredElement<HTMLPreElement>("files-viewer"),
+);
 const contextEl = requiredElement<HTMLElement>("context");
 const ask = requiredElement<HTMLElement>("ask");
 const askQuestion = requiredElement<HTMLElement>("ask-question");
@@ -401,6 +409,10 @@ burstBtn.addEventListener("click", () => {
   sendLine(`/burst ${on ? "on" : "off"}`);
 });
 toolsBtn.addEventListener("click", () => toolsPanel.classList.toggle("hidden"));
+filesBtn.addEventListener("click", () => {
+  filesPanel.classList.toggle("hidden");
+  if (!filesPanel.classList.contains("hidden")) void explorer.open("");
+});
 sessionsBtn.addEventListener("click", () => {
   sessionsPanel.classList.toggle("hidden");
   // Turns auto-save in the background, so refresh the list when it opens.

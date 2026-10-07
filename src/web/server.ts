@@ -7,6 +7,7 @@ import type { AskRequest, UserPrompter } from "../tools/ask-user.ts";
 import type { LineResult } from "../repl/session.ts";
 import { saveProfileWhitelist } from "../repl/profile-tools.ts";
 import { createEdgeSession } from "../wiring.ts";
+import { listDir, readTextFile } from "./files.ts";
 
 /**
  * Web frontend driver (the "frontend" seam, sibling to `TerminalDriver`).
@@ -68,6 +69,17 @@ function serveStatic(path: string): Response {
   });
 }
 
+/** Read-only explorer API: `/api/fs?path=` lists a directory, `/api/file?path=` reads a file. */
+function serveExplorer(url: URL): Response {
+  const root = process.cwd();
+  const rel = url.searchParams.get("path") ?? "";
+  const result =
+    url.pathname === "/api/fs" ? listDir(root, rel) : readTextFile(root, rel);
+  if (!result.ok)
+    return Response.json({ error: result.error }, { status: result.status });
+  return Response.json(result.value);
+}
+
 /**
  * Edge implementation of UserPrompter over a WebSocket. When the model calls
  * `ask_user` (or the max-tool-rounds callback fires), it sends an `ask`
@@ -119,6 +131,9 @@ export function startWebServer(port = 3000): void {
       if (url.pathname === "/ws") {
         server.upgrade(req);
         return;
+      }
+      if (url.pathname === "/api/fs" || url.pathname === "/api/file") {
+        return serveExplorer(url);
       }
       return serveStatic(url.pathname);
     },

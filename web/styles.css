@@ -601,3 +601,27 @@ body {
     margin-left: 0;
   }
 }
+
+.files-path {
+  color: var(--dim);
+  margin-bottom: 0.4rem;
+  word-break: break-all;
+}
+
+.fs-row {
+  cursor: pointer;
+}
+
+.fs-row:hover {
+  text-decoration: underline;
+}
+
+.files-viewer {
+  margin: 0.5rem 0 0;
+  padding: 0.5rem;
+  max-height: 40vh;
+  overflow: auto;
+  white-space: pre;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
