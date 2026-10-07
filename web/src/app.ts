@@ -481,6 +481,9 @@ socket.addEventListener("message", (event: MessageEvent<string>) => {
     case "profile_tools":
       handleWhitelistReply(message);
       break;
+    case "fs_changed":
+      void explorer.reload();
+      break;
     case "subagent_token":
       transcript.appendSubagentToken(message.text ?? "");
       break;

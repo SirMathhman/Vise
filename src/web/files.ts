@@ -1,4 +1,10 @@
-import { readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import {
+  readdirSync,
+  watch,
+  readFileSync,
+  realpathSync,
+  statSync,
+} from "node:fs";
 import { relative, resolve, sep } from "node:path";
 
 /**
@@ -74,5 +80,37 @@ export function readTextFile(
     return { ok: true, value: buf.toString("utf8") };
   } catch {
     return { ok: false, error: "cannot read file", status: 404 };
+  }
+}
+
+/** Path segments whose changes are noise for the explorer. */
+const IGNORED = new Set([".git", "node_modules"]);
+
+/**
+ * Call `onChange` (debounced) whenever something under `root` changes, whoever
+ * made the change — the agent's tools, a shell command, or the user. Returns
+ * a function that stops watching. Platforms without recursive watch support
+ * simply never fire.
+ */
+export function watchRoot(root: string, onChange: () => void): () => void {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const watcher = watch(root, { recursive: true }, (_event, name) => {
+      if (
+        name &&
+        String(name)
+          .split(sep)
+          .some((p) => IGNORED.has(p))
+      )
+        return;
+      clearTimeout(timer);
+      timer = setTimeout(onChange, 150);
+    });
+    return () => {
+      clearTimeout(timer);
+      watcher.close();
+    };
+  } catch {
+    return () => {};
   }
 }

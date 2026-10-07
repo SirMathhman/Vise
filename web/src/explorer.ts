@@ -33,9 +33,11 @@ export function createExplorer(
   tabs: HTMLElement,
   viewer: HTMLPreElement,
   md: MarkdownView,
-): { open(path: string): Promise<void> } {
+): { open(path: string): Promise<void>; reload(): Promise<void> } {
   const files: OpenFile[] = [];
   let active = -1;
+  /** Directories the user has expanded; kept so a refresh restores them. */
+  const expanded = new Set<string>();
 
   /** Fill `ul` with the entries of directory `path` (lazy; called on first expand). */
   async function open(
@@ -49,7 +51,7 @@ export function createExplorer(
       const child = path ? `${path}/${entry.name}` : entry.name;
       ul.appendChild(
         entry.dir
-          ? dirRow(entry.name, (children) => void open(child, children))
+          ? dirRow(entry.name, child, expanded, (c) => void open(child, c))
           : fileRow(
               entry.name,
               child,
@@ -63,22 +65,17 @@ export function createExplorer(
   async function openFile(path: string): Promise<void> {
     const existing = files.findIndex((f) => f.path === path);
     if (existing >= 0) return activate(existing);
-    const res = await fetch(`/api/file?path=${encodeURIComponent(path)}`);
-    const body: unknown = await res.json();
-    const text =
-      typeof body === "string"
-        ? body
-        : ((body as { error?: string }).error ?? "error");
+    const text = (await readFile(path)) ?? "unable to read file";
     files.push({ path, text, mode: isMarkdown(path) ? "markdown" : "text" });
     activate(files.length - 1);
   }
 
   function activate(index: number): void {
     active = index;
-    refresh();
+    redraw();
   }
 
-  function refresh(): void {
+  function redraw(): void {
     showActive();
     drawTabs(tabs, files, active, activate, close, tabMenu);
     markOpen();
@@ -98,7 +95,7 @@ export function createExplorer(
       focused && kept.includes(focused)
         ? kept.indexOf(focused)
         : Math.min(old, kept.length - 1);
-    refresh();
+    redraw();
   }
 
   function tabMenu(index: number, x: number, y: number): void {
@@ -133,7 +130,19 @@ export function createExplorer(
     }
   }
 
-  return { open };
+  /** Re-list the tree (keeping expanded folders) and re-read every open file. */
+  async function reload(): Promise<void> {
+    void open("");
+    await Promise.all(
+      files.map(async (file) => {
+        const text = await readFile(file.path);
+        if (text !== null) file.text = text;
+      }),
+    );
+    renderViewer(files[active], viewer, md);
+  }
+
+  return { open, reload };
 }
 
 /** Fetch a directory's entries, showing loading/error/empty messages in `ul`; null when there is nothing to list. */
@@ -141,7 +150,8 @@ async function fetchEntries(
   path: string,
   ul: HTMLUListElement,
 ): Promise<DirEntry[] | null> {
-  showMessage(ul, "Loading…", "loading");
+  // On a refresh the old rows stay until the new ones arrive (no flicker).
+  if (ul.childElementCount === 0) showMessage(ul, "Loading…", "loading");
   try {
     const res = await fetch(`/api/fs?path=${encodeURIComponent(path)}`);
     const body = (await res.json()) as {
@@ -245,6 +255,8 @@ function fileRow(
 /** A collapsible directory: click toggles; `load` fills the children on first expand. */
 function dirRow(
   name: string,
+  path: string,
+  expanded: Set<string>,
   load: (children: HTMLUListElement) => void,
 ): HTMLLIElement {
   const item = document.createElement("li");
@@ -254,15 +266,32 @@ function dirRow(
   const children = document.createElement("ul");
   children.className = "fs-children hidden";
   let loaded = false;
-  head.addEventListener("click", () => {
-    const expand = children.classList.contains("hidden");
-    children.classList.toggle("hidden", !expand);
-    head.textContent = `${expand ? "▾" : "▸"} ${name}`;
-    if (expand && !loaded) {
+  const setOpen = (open: boolean): void => {
+    children.classList.toggle("hidden", !open);
+    head.textContent = `${open ? "▾" : "▸"} ${name}`;
+    if (open) expanded.add(path);
+    else expanded.delete(path);
+    if (open && !loaded) {
       loaded = true;
       load(children);
     }
-  });
+  };
+  head.addEventListener("click", () =>
+    setOpen(children.classList.contains("hidden")),
+  );
+  if (expanded.has(path)) setOpen(true);
   item.append(head, children);
   return item;
+}
+
+/** Read a file's text through the API; null when it cannot be read. */
+async function readFile(path: string): Promise<string | null> {
+  try {
+    const res = await fetch(`/api/file?path=${encodeURIComponent(path)}`);
+    const body: unknown = await res.json();
+    if (typeof body === "string") return body;
+    return (body as { error?: string }).error ?? null;
+  } catch {
+    return null;
+  }
 }

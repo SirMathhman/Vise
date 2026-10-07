@@ -7,7 +7,7 @@ import type { AskRequest, UserPrompter } from "../tools/ask-user.ts";
 import type { LineResult } from "../repl/session.ts";
 import { saveProfileWhitelist } from "../repl/profile-tools.ts";
 import { createEdgeSession } from "../wiring.ts";
-import { listDir, readTextFile } from "./files.ts";
+import { listDir, readTextFile, watchRoot } from "./files.ts";
 
 /**
  * Web frontend driver (the "frontend" seam, sibling to `TerminalDriver`).
@@ -35,6 +35,7 @@ import { listDir, readTextFile } from "./files.ts";
  *                     { type:"result", ok:true, value, streamed?, compactionWarning? }
  *                     { type:"result", ok:false, error }
  *                     { type:"ask", question, options, multiSelect? }
+ *                     { type:"fs_changed" }          something under the project root changed
  *                     { type:"exit" }                the line was /exit
  */
 
@@ -148,7 +149,12 @@ export function startWebServer(port = 3000): void {
     },
     websocket: {
       open(ws) {
-        state.set(ws, makeConnectionState(ws));
+        const conn = makeConnectionState(ws);
+        // Tell the browser's file explorer whenever the project tree changes.
+        conn.unwatch = watchRoot(process.cwd(), () =>
+          conn.send({ type: "fs_changed" }),
+        );
+        state.set(ws, conn);
       },
       message(ws, message) {
         const conn = state.get(ws);
@@ -158,6 +164,7 @@ export function startWebServer(port = 3000): void {
       close(ws) {
         const conn = state.get(ws);
         if (!conn) return;
+        conn.unwatch();
         conn.session.interrupt();
         conn.prompter.settle("");
         state.delete(ws);
@@ -176,6 +183,8 @@ interface ConnectionState {
   session: ReturnType<typeof createEdgeSession>["session"];
   edge: ReturnType<typeof createEdgeSession>;
   chain: Promise<void>;
+  /** Stops the project-tree watcher; set once the connection opens. */
+  unwatch: () => void;
 }
 
 function makeConnectionState(ws: ServerWebSocket<unknown>): ConnectionState {
@@ -219,6 +228,7 @@ function makeConnectionState(ws: ServerWebSocket<unknown>): ConnectionState {
     session: edge.session,
     edge,
     chain: Promise.resolve(),
+    unwatch: () => {},
   };
 }
 
