@@ -370,6 +370,9 @@ and must not add a user/assistant message or trigger a model turn.
   cross-callback ordering invariants (e.g. flush any partial content line
   before a counter or tool event starts a fresh line, so buffered content is
   never emitted after that event), not in module-level `let`s in `index.ts`.
+  The web transcript (`web/src/transcript.ts`) owns the equivalent browser
+  ordering: streamed assistant text is finalized before thinking or tool-call
+  entries are appended, so the visible log follows server event order.
 - **Dynamic model switching and context awareness.** Model switching
   via `/model` changes the active model on the client. Because context
   limits and token usages vary per model, the session must query `contextMax`

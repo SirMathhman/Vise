@@ -1,4 +1,14 @@
-export function createTranscript(log: HTMLElement) {
+export interface TranscriptView {
+  addLine(cls: string, text: string): HTMLDivElement;
+  appendAssistantToken(text: string): void;
+  appendThinkingToken(text: string): void;
+  appendToolCall(name: string, depth?: number): void;
+  finishThinking(): void;
+  flushAssistant(): void;
+  clear(): void;
+}
+
+export function createTranscript(log: HTMLElement): TranscriptView {
   let activeAssistant: HTMLElement | null = null;
   let activeRaw = "";
   let activeThinking: HTMLElement | null = null;
@@ -12,7 +22,15 @@ export function createTranscript(log: HTMLElement) {
     return div;
   }
 
+  function flushAssistant(): void {
+    if (!activeAssistant) return;
+    activeAssistant.textContent = activeRaw;
+    activeAssistant = null;
+    activeRaw = "";
+  }
+
   function appendAssistantToken(text: string): void {
+    activeThinking = null;
     if (!activeAssistant) {
       activeAssistant = document.createElement("div");
       activeAssistant.className = "line assistant";
@@ -26,6 +44,7 @@ export function createTranscript(log: HTMLElement) {
 
   function appendThinkingToken(text: string): void {
     if (!text) return;
+    flushAssistant();
     if (!activeThinking) activeThinking = addLine("thinking", "");
     activeThinking.textContent += text;
     log.scrollTop = log.scrollHeight;
@@ -35,16 +54,15 @@ export function createTranscript(log: HTMLElement) {
     addLine,
     appendAssistantToken,
     appendThinkingToken,
+    appendToolCall(name: string, depth?: number): void {
+      flushAssistant();
+      activeThinking = null;
+      addLine("tool", `tool: ${name}${depth ? " (subagent)" : ""}`);
+    },
     finishThinking(): void {
       activeThinking = null;
     },
-    flushAssistant(): void {
-      if (activeAssistant) {
-        activeAssistant.textContent = activeRaw;
-        activeAssistant = null;
-        activeRaw = "";
-      }
-    },
+    flushAssistant,
     clear(): void {
       log.textContent = "";
       activeAssistant = null;

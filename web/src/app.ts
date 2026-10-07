@@ -361,11 +361,7 @@ socket.addEventListener("message", (event: MessageEvent<string>) => {
       transcript.appendThinkingToken(message.text ?? "");
       break;
     case "tool":
-      transcript.finishThinking();
-      transcript.addLine(
-        "tool",
-        `tool: ${message.name ?? "unknown"}${message.depth ? " (subagent)" : ""}`,
-      );
+      transcript.appendToolCall(message.name ?? "unknown", message.depth);
       break;
     case "progress":
       break;
