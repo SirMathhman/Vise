@@ -1,40 +1,26 @@
-import {
-  baseOf,
-  deleteNote,
-  formatNotes,
-  listAllNotes,
-  readNote,
-  saveNote,
-  scopeOf,
-  type NoteScope,
-  type NoteStores,
-} from "../notes.ts";
+import { NoteStore, requireScope, type NoteId } from "../note-store.ts";
+import { formatNotes } from "../notes-format.ts";
 import { errStr } from "./files.ts";
 
-/** The optional `category` argument (undefined when absent). */
-function categoryArg(args: Record<string, unknown>): string | undefined {
-  return args.category === undefined ? undefined : String(args.category);
-}
-
-/** The required `scope` argument: `project` or `global`. */
-function scopeArg(args: Record<string, unknown>): NoteScope {
-  const scope = scopeOf(args.scope);
-  if (!scope) {
-    throw new Error('\'scope\' is required: "project" or "global"');
-  }
-  return scope;
+/** The note an argument set names: its required scope, optional category, and name. */
+function idOf(args: Record<string, unknown>): NoteId {
+  return {
+    scope: requireScope(args.scope),
+    category: args.category === undefined ? undefined : String(args.category),
+    name: String(args.name ?? ""),
+  };
 }
 
 export function listNotesTool(
   args: Record<string, unknown>,
-  stores: NoteStores,
+  store: NoteStore,
 ): string {
   try {
     const category = String(args.category ?? "").trim();
-    const scope = args.scope === undefined ? undefined : scopeArg(args);
-    const notes = listAllNotes(stores, category, scope);
-    if (notes.length === 0) return "no notes";
-    return formatNotes(notes);
+    const scope =
+      args.scope === undefined ? undefined : requireScope(args.scope);
+    const notes = store.list(category, scope);
+    return notes.length === 0 ? "no notes" : formatNotes(notes);
   } catch (err) {
     return errStr(err);
   }
@@ -42,12 +28,10 @@ export function listNotesTool(
 
 export function readNoteTool(
   args: Record<string, unknown>,
-  stores: NoteStores,
+  store: NoteStore,
 ): string {
-  const noteName = String(args.name ?? "");
   try {
-    const base = baseOf(stores, scopeArg(args));
-    return readNote(base, noteName, categoryArg(args)) ?? "";
+    return store.read(idOf(args)) ?? "";
   } catch (err) {
     return errStr(err);
   }
@@ -55,17 +39,14 @@ export function readNoteTool(
 
 export function saveNoteTool(
   args: Record<string, unknown>,
-  stores: NoteStores,
+  store: NoteStore,
 ): string {
-  const noteName = String(args.name ?? "");
-  const body = String(args.body ?? "");
   try {
-    const scope = scopeArg(args);
-    const base = baseOf(stores, scope);
-    const result = saveNote(base, noteName, body, categoryArg(args), true);
+    const id = idOf(args);
+    const result = store.save(id, String(args.body ?? ""), true);
     return result === "replaced"
-      ? `saved ${scope} note '${noteName}' (replaced the previous content)`
-      : `saved ${scope} note '${noteName}'`;
+      ? `saved ${id.scope} note '${id.name}' (replaced the previous content)`
+      : `saved ${id.scope} note '${id.name}'`;
   } catch (err) {
     return errStr(err);
   }
@@ -73,13 +54,12 @@ export function saveNoteTool(
 
 export function deleteNoteTool(
   args: Record<string, unknown>,
-  stores: NoteStores,
+  store: NoteStore,
 ): string {
-  const noteName = String(args.name ?? "");
   try {
-    const scope = scopeArg(args);
-    deleteNote(baseOf(stores, scope), noteName, categoryArg(args));
-    return `deleted ${scope} note '${noteName}'`;
+    const id = idOf(args);
+    store.delete(id);
+    return `deleted ${id.scope} note '${id.name}'`;
   } catch (err) {
     return errStr(err);
   }

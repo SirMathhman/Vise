@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import type { Tool, ToolController, ToolRunner } from "./core/engine.ts";
 import { dataDirFor, globalDataDir } from "./data-dir.ts";
-import type { NoteStores } from "./notes.ts";
+import { NoteStore } from "./note-store.ts";
 import { agentTools } from "./tools/defs/agent.ts";
 import { browserTools } from "./tools/defs/browser.ts";
 import { fileTools } from "./tools/defs/files.ts";
@@ -114,10 +114,10 @@ export const isFileSystemTool = (tool: Tool): boolean =>
 
 /** The built-in handlers for a session whose root directory is `root`. */
 function baseHandlers(root: string): Record<string, ToolHandler> {
-  const notes: NoteStores = {
+  const notes = new NoteStore({
     project: dataDirFor(root),
     global: globalDataDir,
-  };
+  });
   return {
     list_directory: resolveAgainstRoot(root, ["path"], listDirectory),
     read_file: resolveAgainstRoot(root, ["path"], readFile),

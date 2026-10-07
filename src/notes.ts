@@ -9,7 +9,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 
 /**
  * Shared note-file I/O for the edge. Notes are the project's store of short
@@ -139,56 +139,6 @@ function categoriesOf(base: string): string[] {
 }
 
 /**
- * Render one listed note as its presentation line: `<name> — <summary>`.
- */
-export function formatNoteEntry(e: NoteEntry): string {
-  return `${e.name} — ${e.summary}`;
-}
-
-/**
- * Render notes grouped by category (in the order given): a heading with the
- * note count, then one indented line per note. Shared by the `list_notes`
- * tool, the `/note` command and the startup message.
- */
-export function formatNotes(entries: NoteEntry[]): string {
-  return formatNotesWithin(entries, Number.POSITIVE_INFINITY);
-}
-
-/**
- * Like `formatNotes`, but lists at most `maxNotes` notes in total (in group
- * order); every category still gets its heading and count, and the rest are
- * summarised as a pointer to `list_notes`. Bounds the startup message however
- * many notes there are.
- */
-export function formatNotesWithin(
-  entries: NoteEntry[],
-  maxNotes: number,
-): string {
-  const groups = new Map<string, NoteEntry[]>();
-  for (const e of entries) {
-    const key = `${e.scope}/${e.category}`;
-    groups.set(key, [...(groups.get(key) ?? []), e]);
-  }
-  let left = maxNotes;
-  const out: string[] = [];
-  for (const [heading, notes] of groups) {
-    out.push(`${heading} (${notes.length})`);
-    for (const n of notes.slice(0, left)) {
-      out.push(`  ${formatNoteEntry(n)}`);
-    }
-    const hidden = notes.length - Math.min(notes.length, left);
-    left = Math.max(0, left - notes.length);
-    if (hidden > 0) {
-      const { scope, category } = notes[0]!;
-      out.push(
-        `  ... ${hidden} more: list_notes with scope '${scope}' and category '${category}'`,
-      );
-    }
-  }
-  return out.join("\n");
-}
-
-/**
  * List the notes under `base`: every category (`default` first, the rest by
  * name, notes by name), or just `category` when given.
  */
@@ -201,33 +151,6 @@ export function listNotes(
     return listCategory(base, categoryOf(category), scope);
   }
   return categoriesOf(base).flatMap((c) => listCategory(base, c, scope));
-}
-
-/** The data directory of one scope. */
-export function baseOf(stores: NoteStores, scope: NoteScope): string {
-  return stores[scope];
-}
-
-/**
- * The notes of both scopes (project first), or of just `scope`. A project
- * whose data directory is the global one (a session started in the home
- * directory) lists those notes once, as global.
- */
-export function listAllNotes(
-  stores: NoteStores,
-  category?: string,
-  scope?: NoteScope,
-): NoteEntry[] {
-  const same = resolve(stores.project) === resolve(stores.global);
-  const project =
-    scope === "global" || same
-      ? []
-      : listNotes(stores.project, category, "project");
-  const global =
-    scope === "project" && !same
-      ? []
-      : listNotes(stores.global, category, "global");
-  return [...project, ...global];
 }
 
 /**

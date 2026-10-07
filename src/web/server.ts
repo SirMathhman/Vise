@@ -16,6 +16,7 @@ import type { BrowserBackend } from "../browser/types.ts";
 import { ExtensionHub, isExtensionOrigin } from "./ext-hub.ts";
 import { loadExtensionToken, tokensMatch } from "./ext-token.ts";
 import { handleNoteMessage } from "./notes-api.ts";
+import { NoteStore } from "../note-store.ts";
 import { SwitchableBrowser } from "../browser/switchable.ts";
 import { BrowserBridge } from "./browser-bridge.ts";
 import { type HookStore } from "../edge-sources.ts";
@@ -502,7 +503,7 @@ function handleMessage(
   if (msg.type.startsWith("note")) {
     // The notes editor reads and writes the notes store directly; never queued behind a turn.
     const replies = handleNoteMessage(
-      { project: conn.dataDir, global: globalDataDir },
+      new NoteStore({ project: conn.dataDir, global: globalDataDir }),
       msg as unknown as Record<string, unknown>,
     );
     if (replies) {

@@ -4,15 +4,9 @@ import { join } from "node:path";
 import { globalDataDir } from "./data-dir.ts";
 import type { Message, Result } from "./core/errors.ts";
 import { buildInitialTree } from "./fs-tree.ts";
-import {
-  formatNotes,
-  formatNotesWithin,
-  initNote,
-  listAllNotes,
-  baseOf,
-  type NoteScope,
-  type NoteStores,
-} from "./notes.ts";
+import { formatNotes, formatNotesWithin } from "./notes-format.ts";
+import { NoteStore } from "./note-store.ts";
+import type { NoteScope, NoteStores } from "./notes.ts";
 import {
   initProfile,
   listProfiles,
@@ -200,10 +194,14 @@ export class ShellHook implements PreTurnHook, PostTurnHook {
  * the user's view of the same store the model edits via tools.
  */
 export class FileNoteSource implements NoteSource {
-  constructor(private readonly stores: NoteStores) {}
+  private readonly store: NoteStore;
+
+  constructor(stores: NoteStores) {
+    this.store = new NoteStore(stores);
+  }
 
   async listNotes(): Promise<Result<string[]>> {
-    const notes = listAllNotes(this.stores);
+    const notes = this.store.list();
     return {
       ok: true,
       value: notes.length === 0 ? [] : formatNotes(notes).split("\n"),
@@ -216,7 +214,7 @@ export class FileNoteSource implements NoteSource {
     scope: NoteScope = "project",
   ): Promise<Result<string>> {
     try {
-      initNote(baseOf(this.stores, scope), name, category);
+      this.store.init({ scope, category, name });
       return { ok: true, value: name };
     } catch (err) {
       return {
@@ -459,10 +457,10 @@ export function buildInitialMessage(
   const initialTree = cwd === undefined ? "" : buildInitialTree(cwd);
   const agentsMd = cwd === undefined ? "" : loadAgentsMd(cwd);
   const availableProfiles = listProfiles(dataBase);
-  const availableNotes = listAllNotes({
+  const availableNotes = new NoteStore({
     project: dataBase,
     global: globalBase,
-  });
+  }).list();
   return (
     (cwd === undefined
       ? ""
