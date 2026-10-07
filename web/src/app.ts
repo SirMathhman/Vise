@@ -4,6 +4,9 @@ import type { ResultMessage, ServerMessage } from "./server-message.ts";
 import { replayHistory, showImage } from "./history.ts";
 import { appendPicture } from "./lightbox.ts";
 import { createGoalUi } from "./goal-ui.ts";
+import { createAskUi } from "./ask-ui.ts";
+import { createSteerUi } from "./steer-ui.ts";
+import { bindToolToggles } from "./tool-toggles.ts";
 import { createSettingsPanels } from "./settings-panels.ts";
 import { createWorkspace } from "./workspace.ts";
 import { setupComposer } from "./composer.ts";
@@ -36,11 +39,6 @@ const saveName = requiredElement<HTMLInputElement>("save-name");
 const saveBtn = requiredElement<HTMLButtonElement>("save-btn");
 const filesBtn = requiredElement<HTMLButtonElement>("files-btn");
 const contextEl = requiredElement<HTMLElement>("context");
-const ask = requiredElement<HTMLElement>("ask");
-const askQuestion = requiredElement<HTMLElement>("ask-question");
-const askOptions = requiredElement<HTMLUListElement>("ask-options");
-const askAnswer = requiredElement<HTMLInputElement>("ask-answer");
-const askSend = requiredElement<HTMLButtonElement>("ask-send");
 
 const transcript = createTranscript(log, renderMarkdown);
 const attachments = createAttachments({
@@ -57,6 +55,16 @@ const socket = new WebSocket(
 const sendMessage = (msg: Record<string, unknown>): void => {
   if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(msg));
 };
+const askUi = createAskUi(
+  {
+    box: requiredElement("ask"),
+    question: requiredElement("ask-question"),
+    options: requiredElement("ask-options"),
+    answer: requiredElement("ask-answer"),
+    send: requiredElement("ask-send"),
+  },
+  sendMessage,
+);
 const hooksPanel = createHooksPanel(
   requiredElement<HTMLElement>("hooks-body"),
   sendMessage,
@@ -66,7 +74,18 @@ const settingsPanels = createSettingsPanels(sendMessage);
 const workspace = createWorkspace(sendMessage, renderMarkdown, setStatus);
 /** The parts of the page that own some of the server messages. */
 const goalUi = createGoalUi(transcript.addLine, sendMessage);
-const serverPanels = [hooksPanel, settingsPanels, workspace, goalUi];
+const steerUi = createSteerUi({
+  sendMessage,
+  started: (text) => {
+    steerUi.setRunning(!text.startsWith("/"));
+    setBusy(true);
+  },
+  notice: (text) => transcript.addLine("system", text),
+  list: requiredElement("queue"),
+  steerBtn: requiredElement("steer-btn"),
+  queueBtn: requiredElement("queue-btn"),
+});
+const serverPanels = [hooksPanel, settingsPanels, workspace, goalUi, steerUi];
 
 let pendingModelList = false;
 let pendingProfileList = false;
@@ -113,8 +132,11 @@ function setStatus(text: string): void {
 
 function setBusy(next: boolean): void {
   if (next) hideSuggestions();
-  input.disabled = next;
+  if (!next) steerUi.setRunning(false);
+  // While a turn runs the composer stays usable: steer it or queue behind it.
+  input.disabled = next && !steerUi.running;
   send.disabled = next;
+  send.classList.toggle("hidden", steerUi.running);
   stopBtn.disabled = !next;
   modelSelect.disabled = next;
   profileSelect.disabled = next;
@@ -123,16 +145,40 @@ function setBusy(next: boolean): void {
   newBtn.disabled = next;
 }
 
-function sendLine(text: string): void {
+/**
+ * Send a line. While a turn runs, plain words steer it (reach the agent before
+ * its next step) unless `queue` asks to wait until the task is done; commands
+ * always wait.
+ */
+function sendLine(text: string, queue = false): void {
+  const running = steerUi.running;
   const images = attachments.take();
   // A picture alone is a message too.
   const body =
     text.trim() || (images.length > 0 ? "(see the attached image)" : "");
   if (!body) return;
   hideSuggestions();
+  const show = (cls = "user"): void => {
+    transcript.addLine(cls, body);
+    for (const image of images) appendPicture(transcript, image.uri, image.label);
+  };
+  // Commands about the queue itself act at once, whatever is running.
+  if (/^\/(steer|queue)(\s|$)/.test(body)) {
+    socket.send(JSON.stringify({ type: "line", text: body }));
+    return;
+  }
+  if (running && (queue || body.startsWith("/"))) {
+    steerUi.hold(body, images, show);
+    return;
+  }
+  if (running) {
+    show("user steer");
+    steerUi.steer(body, images);
+    return;
+  }
+  steerUi.setRunning(!body.startsWith("/"));
   setBusy(true);
-  transcript.addLine("user", body);
-  for (const image of images) appendPicture(transcript, image.uri, image.label);
+  show();
   socket.send(JSON.stringify({ type: "line", text: body, images }));
 }
 
@@ -185,31 +231,6 @@ function saveSession(): void {
   if (!name) return;
   saveName.value = "";
   sendLine(`/save ${name}`);
-}
-
-function submitAsk(): void {
-  const answer = askAnswer.value;
-  askAnswer.value = "";
-  hideAsk();
-  socket.send(JSON.stringify({ type: "ask_answer", text: answer }));
-}
-
-function showAsk(message: ServerMessage): void {
-  askQuestion.textContent = message.question ?? "";
-  askOptions.textContent = "";
-  (message.options ?? []).forEach((option, index) => {
-    const item = document.createElement("li");
-    item.textContent = `${index + 1}. ${option}`;
-    askOptions.appendChild(item);
-  });
-  ask.classList.remove("hidden");
-  askAnswer.focus();
-}
-
-function hideAsk(): void {
-  ask.classList.add("hidden");
-  askQuestion.textContent = "";
-  askOptions.textContent = "";
 }
 
 function renderContext(message: ResultMessage): void {
@@ -320,7 +341,7 @@ function handleToolToggleResult(message: ResultMessage): boolean {
   if (message.id === undefined || !toolToggles.delete(message.id)) return false;
   if (!message.ok)
     transcript.addLine("error", message.error ?? "unknown error");
-  else if (!input.disabled) transcript.addLine("system", message.value ?? "");
+  else if (!input.disabled && !steerUi.running) transcript.addLine("system", message.value ?? "");
   requestToolRefresh();
   return true;
 }
@@ -380,7 +401,7 @@ function handleResult(message: ResultMessage): void {
   transcript.flushAssistant();
   burstBtn.classList.remove("bursting");
   transcript.setBurst(false);
-  hideAsk();
+  askUi.hide();
   renderContext(message);
   if (handleInitialResult(message)) return;
   setBusy(false);
@@ -390,6 +411,14 @@ function handleResult(message: ResultMessage): void {
 
 send.addEventListener("click", () => {
   sendLine(input.value);
+  input.value = "";
+});
+requiredElement("steer-btn").addEventListener("click", () => {
+  sendLine(input.value);
+  input.value = "";
+});
+requiredElement("queue-btn").addEventListener("click", () => {
+  sendLine(input.value, true);
   input.value = "";
 });
 stopBtn.addEventListener("click", () =>
@@ -424,7 +453,7 @@ registerHeaderPanels({
   // Turns auto-save in the background, so refresh the list when it opens.
   // While a turn runs the list is left as it was (the refresh would queue behind the turn).
   sessions: () => {
-    if (input.disabled) return;
+    if (input.disabled || steerUi.running) return;
     pendingSessionList = true;
     setBusy(true);
     requestLine("/resume");
@@ -438,36 +467,9 @@ saveName.addEventListener("keydown", (event: KeyboardEvent) => {
     saveSession();
   }
 });
-requiredElement<HTMLUListElement>("tools-list").addEventListener(
-  "change",
-  (event) => {
-    const checkbox = event.target;
-    if (!(checkbox instanceof HTMLInputElement) || !checkbox.value) return;
-    const verb = checkbox.checked ? "enable" : "disable";
-    const row = checkbox.closest("li");
-    if (row?.classList.contains("tool-category")) {
-      // Show the whole group switching at once; the refreshed list then
-      // corrects anything the server kept (opt-in tools stay off).
-      checkbox.indeterminate = false;
-      for (let r = row.nextElementSibling; r; r = r.nextElementSibling) {
-        if (r.classList.contains("tool-category")) break;
-        const box = r.querySelector<HTMLInputElement>("input");
-        if (box) box.checked = checkbox.checked;
-        r.classList.toggle("disabled", !checkbox.checked);
-      }
-    } else {
-      row?.classList.toggle("disabled", !checkbox.checked);
-    }
-    requestTracked(`/tool ${checkbox.value} ${verb}`, toolToggles);
-  },
+bindToolToggles(requiredElement("tools-list"), (line) =>
+  requestTracked(line, toolToggles),
 );
-askSend.addEventListener("click", submitAsk);
-askAnswer.addEventListener("keydown", (event: KeyboardEvent) => {
-  if (event.key === "Enter") {
-    event.preventDefault();
-    submitAsk();
-  }
-});
 
 socket.addEventListener("open", () => {
   setStatus("connected");
@@ -530,7 +532,7 @@ socket.addEventListener("message", (event: MessageEvent<string>) => {
       handleResult(message);
       break;
     case "ask":
-      showAsk(message);
+      askUi.show(message);
       break;
     case "exit":
       transcript.finishThinking();

@@ -244,6 +244,7 @@
               role="listbox"
               aria-label="Slash command suggestions"
             ></ul>
+            <div id="queue" class="queue hidden" aria-live="polite"></div>
             <div id="attachments" class="attachments hidden"></div>
             <div class="composer-row">
               <button
@@ -266,7 +267,7 @@
                 id="input"
                 class="input"
                 type="text"
-                placeholder="type a message… (Enter to send, Shift+Enter for a newline)"
+                placeholder="type a message… (Enter sends; while the agent works: Enter steers, Ctrl+Enter queues)"
                 autocomplete="off"
                 role="combobox"
                 aria-autocomplete="list"
@@ -274,6 +275,22 @@
                 aria-expanded="false"
               />
               <button id="send" class="send">send</button>
+              <button
+                id="queue-btn"
+                class="queue-btn hidden"
+                type="button"
+                title="Wait until the whole task is done, then send (Ctrl+Enter)"
+              >
+                queue
+              </button>
+              <button
+                id="steer-btn"
+                class="send hidden"
+                type="button"
+                title="Tell the agent now: it reads this before its next step (Enter)"
+              >
+                steer
+              </button>
             </div>
           </div>
         </section>

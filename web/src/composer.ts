@@ -20,6 +20,8 @@ const slashCommands: [string, string, boolean][] = [
   ["/compact", "compact the conversation", false],
   ["/model", "list or switch models", true],
   ["/reasoning", "list or set reasoning effort", true],
+  ["/steer", "tell the agent now, before its next step", true],
+  ["/queue", "list held messages, or: clear, remove <number>", true],
   ["/new", "start a new conversation", false],
   ["/burst", "toggle plan-then-act burst mode", true],
   ["/goal", "show or toggle goal checking (on, off, clear)", true],
@@ -37,7 +39,7 @@ export function setupComposer(
   input: HTMLInputElement,
   suggestions: HTMLUListElement,
   choices: () => ComposerChoices,
-  sendLine: (text: string) => void,
+  sendLine: (text: string, queue?: boolean) => void,
 ): () => void {
   const state: ComposerState = { visible: [], active: 0 };
 
@@ -131,7 +133,7 @@ function handleComposerKey(
   event: KeyboardEvent,
   state: ComposerState,
   input: HTMLInputElement,
-  sendLine: (text: string) => void,
+  sendLine: (text: string, queue?: boolean) => void,
   acceptSuggestion: () => void,
   moveSuggestion: (direction: number) => void,
   hideSuggestions: () => void,
@@ -160,7 +162,8 @@ function handleComposerKey(
   }
   if (event.key === "Enter" && !event.shiftKey) {
     event.preventDefault();
-    sendLine(input.value);
+    // Ctrl/Cmd+Enter holds the message back while the agent works (it steers otherwise).
+    sendLine(input.value, event.ctrlKey || event.metaKey);
     input.value = "";
   }
 }

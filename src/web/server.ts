@@ -11,7 +11,9 @@ import type { BrowserBackend } from "../browser/types.ts";
 import { ExtensionHub, isExtensionOrigin } from "./ext-hub.ts";
 import { loadExtensionToken, tokensMatch } from "./ext-token.ts";
 import { handleNoteMessage } from "./notes-api.ts";
-import { queueLine } from "./line.ts";
+import { queueLine, steerLine, unqueue } from "./line.ts";
+import type { HeldLine } from "./line.ts";
+import { handleQueueCommand } from "./queue-commands.ts";
 import { SessionLease } from "./leases.ts";
 import { queueAutoResume } from "./resume.ts";
 import { imageStore } from "../image-store.ts";
@@ -44,6 +46,9 @@ import { listDir, readTextFile, watchRoot } from "./files.ts";
  *   browser → server: { type:"line", text }        a user line
  *                     { type:"ask_answer", text }   answer to an ask/max-rounds
  *                     { type:"interrupt" }          abort the in-flight turn
+ *                     { type:"steer", text, images? } reach the agent before its next step
+ *                     { type:"line", text, qid }    qid: hold until the work in flight is done (shown in the queue)
+ *                     { type:"unqueue", qid }       remove a held line
  *   server → browser: { type:"token", text }        a streamed reply token
  *                     { type:"thinking", text }     a streamed thinking token
  *                     { type:"progress", total, cache, processed, time_ms }
@@ -53,6 +58,9 @@ import { listDir, readTextFile, watchRoot } from "./files.ts";
  *                     { type:"result", ok:true, value, streamed?, compactionWarning? }
  *                     { type:"result", ok:false, error }
  *                     { type:"ask", question, options, multiSelect? }
+ *                     { type:"line_started", text, qid? } a line's turn began (a held line leaves the queue)
+ *                     { type:"queue", items:[{qid,text}] } the lines being held
+ *                     { type:"notice", text }       a short system note for the chat log
  *                     { type:"fs_changed" }          something under the project root changed
  *                     { type:"exit" }                the line was /exit
  */
@@ -384,6 +392,8 @@ interface ConnectionState {
   session: ReturnType<typeof createEdgeSession>["session"];
   edge: ReturnType<typeof createEdgeSession>;
   chain: Promise<void>;
+  held: HeldLine[];
+  running: boolean;
   bridge: BrowserBridge;
   /** Stops the project-tree watcher; set once the connection opens. */
   unwatch: () => void;
@@ -456,6 +466,8 @@ function makeConnectionState(
     session: edge.session,
     edge,
     chain: Promise.resolve(),
+    held: [],
+    running: false,
     bridge: new BrowserBridge(browser, send, shared),
     unwatch: () => {},
     dataDir: dataDirFor(root),
@@ -474,6 +486,8 @@ interface WireMessage {
   read?: boolean;
   /** `line`: pictures attached to the message (data URIs; checked by `acceptPictures`). */
   images?: unknown;
+  /** `line`: the page's id for a message held until the work in flight is done; `unqueue`: the one to remove. */
+  qid?: string;
 }
 
 /**
@@ -558,8 +572,19 @@ function handleMessage(
     void handleProfileTools(conn, msg);
     return;
   }
-  if (msg.type !== "line" || typeof msg.text !== "string") return;
-  queueLine(conn, msg.text, msg.id, msg.images);
+  if (typeof msg.text !== "string") {
+    if (msg.type === "unqueue" && typeof msg.qid === "string") {
+      unqueue(conn, msg.qid);
+    }
+    return;
+  }
+  if (msg.type === "steer") {
+    steerLine(conn, msg.text, msg.images);
+    return;
+  }
+  if (msg.type !== "line") return;
+  if (handleQueueCommand(conn, msg.text)) return;
+  queueLine(conn, msg.text, msg.id, msg.images, msg.qid);
 }
 
 export { startWebServer as default };

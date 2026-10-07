@@ -32,12 +32,29 @@ export interface RoundDeps {
 export class NoticeQueue {
   private items: Message[] = [];
 
+  /** Messages the user sent to steer a running turn; they join the conversation like any notice. */
+  private steers = new Set<Message>();
+
   add(text: string): void {
     this.items.push({ role: "user", content: text });
   }
 
+  steer(message: Message): void {
+    this.items.push(message);
+    this.steers.add(message);
+  }
+
   drainInto(messages: Message[]): void {
     messages.push(...this.items.splice(0));
+    this.steers.clear();
+  }
+
+  /** Steering messages no round picked up (the turn ended first), removed from the queue so the caller can run them as turns of their own. */
+  takeSteers(): Message[] {
+    const left = this.items.filter((m) => this.steers.has(m));
+    this.items = this.items.filter((m) => !this.steers.has(m));
+    this.steers.clear();
+    return left;
   }
 }
 

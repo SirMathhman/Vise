@@ -31,4 +31,7 @@ export interface ServerMessage extends ResultMessage, HooksFields {
   tabs?: { id: number; url: string; title: string }[];
   data?: string;
   message?: string;
+  /** `queue`: the lines held until the work in flight is done. `line_started`: which held line began. */
+  items?: { qid: string; text: string }[];
+  qid?: string;
 }

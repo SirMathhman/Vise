@@ -148,7 +148,8 @@ export class Session {
   private burst = false;
   private readonly goals: GoalTracker;
   private pendingProfile: Message[] = [];
-  private readonly notices = new NoticeQueue();
+  /** What reaches the model between rounds: notices and the user's steering words. */
+  readonly notices = new NoticeQueue();
   private readonly isToolEnabled = (name: string): boolean =>
     this.toolController?.isEnabled(name) ?? true;
   private readonly profileSource?: ProfileSource;
