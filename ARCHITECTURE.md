@@ -278,6 +278,10 @@ and must not add a user/assistant message or trigger a model turn.
 
 A session is rooted at one directory, fixed when it starts (terminal: the working directory; web: the `?root=` query, validated by `RootRegistry`). The root is a **default, not a sandbox**: it sets where relative tool paths resolve, the cwd of `run_powershell` and hooks, and the data directory (`dataDirFor(root)`). Absolute paths and `..` in tools still escape it. Only the web file explorer confines to the root (realpath containment, and only for roots with an open session). Hooks come from the root's `.viserc.json`, so opening a folder trusts its hooks. The shared browser profile lives under the server start directory, not under any session root. Enforcing confinement for tools would be a future `RootPolicy` at the edge.
 
+## Browser engines
+
+The integrated browser sits behind the `BrowserBackend` interface (`src/browser/types.ts`); tools and the web bridge never see a protocol. `ChromiumBackend` speaks CDP; `FirefoxBackend` speaks WebDriver BiDi (Firefox removed CDP in v129). Page logic that is protocol-independent (the element snapshot and ref scripts in `page-scripts.ts`) is shared; input, evaluation, dialogs, tab events and the live view are reimplemented per protocol. BiDi has no screencast, so the Firefox live view polls `captureScreenshot`. Firefox can be launched by Vise (private profile, killed by profile name on close) or attached to by port (never killed; only one BiDi client may be attached). The web server holds one `SwitchableBrowser` so the engine is a runtime setting rather than a startup flag.
+
 ## Potential Problems
 
 - **Forced process exit.** Any `process.exit()` anywhere will truncate
