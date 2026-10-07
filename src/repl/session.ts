@@ -623,10 +623,10 @@ export class Session {
     return { ok: true, value: "started a new conversation" };
   }
 
-  /** Move the last profile switch's messages into the conversation. */
   /** Tell the model something the user did (a shared tab); it is added before the next model call, never between a tool call and its result. */
   notify = (text: string): void => this.notices.add(text);
 
+  /** Move the last profile switch's messages (and any waiting notices) into the conversation. */
   private flushPendingProfile(): void {
     this.notices.drainInto(this.messages);
     this.messages.push(...this.pendingProfile);
