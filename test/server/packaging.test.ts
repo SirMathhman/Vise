@@ -1,13 +1,17 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 import { runnerPath } from "../../src/browser/chromium/playwright.ts";
 import { runMaintenance } from "../../src/build/maintenance.ts";
 
 test("the runner is used where it is when run from source", () => {
   expect(
-    runnerPath("C:/repo/src/browser/chromium/playwright-runner.mjs", "unused", false),
+    runnerPath(
+      "C:/repo/src/browser/chromium/playwright-runner.mjs",
+      "unused",
+      false,
+    ),
   ).toBe("C:/repo/src/browser/chromium/playwright-runner.mjs");
 });
 
@@ -29,4 +33,17 @@ test("an embedded runner is written out once, per version, for node to read", ()
 test("only the maintenance flags stop Vise from starting", async () => {
   expect(await runMaintenance(["bun", "index.ts", "--no-folder"])).toBe(false);
   expect(await runMaintenance(["bun", "index.ts", "--version"])).toBe(true);
+});
+
+describe("window worker entry", () => {
+  test("the compiled build's Worker literal is relative to the entry points' shared folder", () => {
+    // In the compiled exe a worker is found relative to the folder the entry points share,
+    // not to the file that spawns it; a mismatch only shows when the window opens.
+    const desktop = readFileSync("src/web/desktop/desktop.ts", "utf8");
+    const build = readFileSync("scripts/build-exe.ts", "utf8");
+    const literal = /new Worker\("([^"]+)"\)/.exec(desktop)?.[1];
+    const entry = /entry, "([^"]+window-worker\.ts)"/.exec(build)?.[1];
+    expect(entry).toBeDefined();
+    expect(literal).toBe(`./${posix.relative("src/web", entry ?? "")}`);
+  });
 });

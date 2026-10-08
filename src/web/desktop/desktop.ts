@@ -91,9 +91,10 @@ export function openWindow(
   url: string,
   onEvent: (event: WindowEvent) => void,
 ): () => void {
-  // Bun embeds a worker only when the compiled build names it as a plain literal; from source the path is relative to this file.
+  // Bun embeds a worker only when the compiled build names it as a plain literal, relative to the folder
+  // the entry points share (src/web, see scripts/build-exe.ts); from source the path is relative to this file.
   let worker: Worker;
-  if (VERSION !== "dev") worker = new Worker("./window-worker.ts");
+  if (VERSION !== "dev") worker = new Worker("./desktop/window-worker.ts");
   else worker = new Worker(new URL("./window-worker.ts", import.meta.url));
   const watchdog = setTimeout(
     () =>
