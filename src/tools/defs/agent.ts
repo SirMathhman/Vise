@@ -8,7 +8,7 @@ export const agentTools: Tool[] = [
     function: {
       name: "ask_user",
       description:
-        "Ask the user a question and wait for their answer. Use this when you need clarification or a decision from the user before continuing. You may provide predefined choices the user can pick from, or leave options empty for a free-form question. The user's reply is returned as the tool result.",
+        "Ask the user a question and wait for their answer. Use this when you need clarification or a decision from the user before continuing. You may provide predefined choices the user can pick from, or leave options empty for a free-form question. To ask several things at once, pass `questions`: a list of {question, options, multi_select}, asked one after another, with every answer returned together. The user's reply is returned as the tool result.",
       parameters: {
         type: "object",
         properties: {
@@ -22,13 +22,27 @@ export const agentTools: Tool[] = [
             description:
               "Optional predefined choices to present alongside the question. The user may also type a free-form answer. Empty array means free-form only.",
           },
+          questions: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                question: { type: "string" },
+                options: { type: "array", items: { type: "string" } },
+                multi_select: { type: "boolean" },
+              },
+              required: ["question"],
+            },
+            description:
+              "Several questions to ask in a row (instead of `question`). Each may have its own options and multi_select. All the answers come back together.",
+          },
           multi_select: {
             type: "boolean",
             description:
               "Set true to allow the user to select more than one choice. The user separates selected numbers with commas in their reply. Defaults to false (single selection).",
           },
         },
-        required: ["question"],
+        required: [],
       },
     },
   },

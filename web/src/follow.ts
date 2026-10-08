@@ -43,6 +43,18 @@ export function createFollower(
   });
   // `load` does not bubble, so listen while it travels down to the picture.
   log.addEventListener?.("load", follow, true);
+  // Anything else that grows the log (a reply re-rendered as markdown, a box or
+  // thinking line opening or closing, a bar changing) must keep it following
+  // too, whether or not the code that changed it remembered to say so.
+  if (typeof MutationObserver === "function") {
+    new MutationObserver(follow).observe(log, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: true,
+    });
+  }
+  if (typeof ResizeObserver === "function") new ResizeObserver(follow).observe(log);
   return {
     follow,
     jump(): void {

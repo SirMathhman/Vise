@@ -110,25 +110,51 @@ export function makeAskUserHandler(
   prompter: UserPrompter,
 ): (args: Record<string, unknown>) => Promise<string> {
   return async (args) => {
-    const question = args["question"];
-    if (typeof question !== "string" || question.trim() === "") {
-      return "error: ask_user requires a non-empty 'question' argument";
+    const asked = readQuestions(args);
+    if (typeof asked === "string") return asked;
+    const answers: string[] = [];
+    for (const request of asked) {
+      const answer = await prompter.ask(request);
+      if (answer === "") {
+        const done = answers.length > 0 ? ` (answered so far: ${answers.join("; ")})` : "";
+        return `error: ask_user was cancelled (no input received)${done}`;
+      }
+      answers.push(answer);
     }
-
-    const raw = args["options"];
-    let options: string[] = [];
-    if (Array.isArray(raw)) {
-      options = raw.filter((o): o is string => typeof o === "string");
-    }
-
-    const multiSelect =
-      typeof args["multi_select"] === "boolean" &&
-      args["multi_select"] === true;
-
-    const answer = await prompter.ask({ question, options, multiSelect });
-    if (answer === "") {
-      return "error: ask_user was cancelled (no input received)";
-    }
-    return `user replied: ${answer}`;
+    if (asked.length === 1) return `user replied: ${answers[0]}`;
+    return answers.map((a, i) => `${i + 1}. ${asked[i]?.question} → ${a}`).join("\n");
   };
+}
+
+/** One question's arguments as a request, or an error message. */
+function readRequest(args: Record<string, unknown>): AskRequest | string {
+  const question = args["question"];
+  if (typeof question !== "string" || question.trim() === "") {
+    return "error: ask_user requires a non-empty 'question' argument";
+  }
+  const raw = args["options"];
+  const options = Array.isArray(raw) ? raw.filter((o): o is string => typeof o === "string") : [];
+  return { question, options, multiSelect: args["multi_select"] === true };
+}
+
+/**
+ * The questions of a call: `questions` (a list, asked one after another) or
+ * the single `question`. Returns an error message when there is none usable.
+ */
+export function readQuestions(args: Record<string, unknown>): AskRequest[] | string {
+  const list = args["questions"];
+  if (list === undefined) {
+    const one = readRequest(args);
+    return typeof one === "string" ? one : [one];
+  }
+  if (!Array.isArray(list) || list.length === 0) {
+    return "error: ask_user 'questions' must be a non-empty list of {question, options?, multi_select?}";
+  }
+  const requests: AskRequest[] = [];
+  for (const item of list) {
+    const one = readRequest(typeof item === "object" && item !== null ? (item as Record<string, unknown>) : {});
+    if (typeof one === "string") return one;
+    requests.push(one);
+  }
+  return requests;
 }

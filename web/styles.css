@@ -398,6 +398,11 @@ body {
   font-style: normal;
 }
 
+/* Rendered markdown is made of blocks, which would keep their height while transparent. */
+.line.thinking.rendered:not(.open) > * {
+  display: none;
+}
+
 .line.thinking.open {
   color: var(--dim);
   user-select: text;
