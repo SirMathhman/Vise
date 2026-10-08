@@ -39,4 +39,6 @@ export interface ServerMessage extends ResultMessage, HooksFields {
   cache?: number;
   processed?: number;
   time_ms?: number;
+  /** `progress`: which model request this belongs to (a new number is a new request). */
+  request?: number;
 }

@@ -61,6 +61,16 @@ export type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
 export class LlmClient implements Client {
   private lastPromptTokens: number | undefined;
   private currentModel: string = config.llmModel;
+  private requestSeq = 0;
+
+  /** Tag one request's progress reports with its number, so a display knows where a request ends. */
+  private numbered(
+    report?: (progress: PromptProgress) => void,
+  ): ((progress: PromptProgress) => void) | undefined {
+    if (!report) return undefined;
+    const request = ++this.requestSeq;
+    return (progress) => report({ ...progress, request });
+  }
   /** Turns the pictures in the conversation into what is sent to the model (set by the edge, which owns the image files). */
   imageResolver?: ImageResolver;
   /**
@@ -425,7 +435,7 @@ export class LlmClient implements Client {
             stream,
             useTools ? hideCalls(onToken) : onToken,
             thinking,
-            onPromptProgress,
+            this.numbered(onPromptProgress),
             signal,
           );
       if (!acc.sawData) {

@@ -57,6 +57,8 @@ export interface PromptProgress {
   cache: number;
   processed: number;
   time_ms: number;
+  /** Which request this belongs to (set by the client; a new number is a new request). */
+  request?: number;
 }
 
 export type ViseError =
