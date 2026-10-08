@@ -11,6 +11,7 @@ import { runWorkflow } from "../../core/workflow.ts";
 import type { WorkflowScope } from "../../core/workflow.ts";
 import type { Message, Result, ViseError } from "../../core/errors.ts";
 import { formatWorkflowList } from "../../output/format.ts";
+import type { WorkflowProfileScope } from "./workflow-profiles.ts";
 import type { PreTurnHook, PostTurnHook, WorkflowSource } from "../session.ts";
 
 /**
@@ -60,6 +61,8 @@ export interface WorkflowCommands {
   save(): Promise<void>;
   /** Set the autosave name from the workflow's conversational request. */
   setSessionName(name: string): void;
+  /** Profile switching for the run, and the way back to the profile active now. */
+  profileScope(): WorkflowProfileScope;
   /** Store the per-turn AbortController (the source of truth for interrupt). */
   setCurrentAbort(controller: AbortController | null): void;
 }
@@ -151,6 +154,7 @@ export async function handleWorkflowCommand(
   // dispatched) and cleared in a `finally`.
   const abort = new AbortController();
   session.setCurrentAbort(abort);
+  const scope = session.profileScope();
   try {
     const messages = session.messages();
     await runHooks(session.preTurnHooks(), messages);
@@ -165,6 +169,7 @@ export async function handleWorkflowCommand(
       name,
       workflow: loaded.value,
       request,
+      profiles: scope.profiles,
       callbacks: {
         onToken: session.onToken(),
         onThinking: session.onThinking(),
@@ -190,6 +195,8 @@ export async function handleWorkflowCommand(
       compactionWarning: auto.error,
     };
   } finally {
+    // A workflow that switched profile gives you back the one you had.
+    if (loaded.value.steps.some((s) => s.type === "profile")) await scope.restore(scope.active);
     session.setCurrentAbort(null);
   }
 }

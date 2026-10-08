@@ -1,9 +1,16 @@
 import type { Client, Tool, ToolRunner, TurnCallbacks } from "./engine.ts";
 import { runTurn } from "./engine.ts";
 import type { Message, Result } from "./errors.ts";
+import {
+  checkToolAvailability,
+  runProfileStep,
+  type WorkflowProfiles,
+} from "./workflow-profiles.ts";
 
 export type WorkflowStep =
   | { type: "instruction"; text: string }
+  /** Switch to this profile from here on (its instructions and tool list), as `/profile <name>` does. */
+  | { type: "profile"; name: string }
   | {
       type: "tool";
       name: string;
@@ -43,6 +50,8 @@ interface WorkflowRunOptions {
   workflow: Workflow;
   request: string;
   callbacks: TurnCallbacks;
+  /** Switching profiles; when given, the tool steps are checked against the profiles before anything runs. */
+  profiles?: WorkflowProfiles;
 }
 
 /** Execute workflow steps in order, then ask the model for a final response. */
@@ -50,6 +59,10 @@ export async function runWorkflow(
   options: WorkflowRunOptions,
 ): Promise<Result<string>> {
   const { messages, name, workflow, request } = options;
+  if (options.profiles) {
+    const checked = await checkToolAvailability(workflow, options.profiles);
+    if (!checked.ok) return checked;
+  }
   messages.push({
     role: "user",
     content: `Run workflow '${name}'. User request: ${request || "(none)"}`,
@@ -66,7 +79,10 @@ export async function runWorkflow(
       continue;
     }
 
-    const result = await runToolStep(options, index + 1, step);
+    const result =
+      step.type === "profile"
+        ? await runProfileStep(options.profiles, step.name)
+        : await runToolStep(options, index + 1, step);
     if (!result.ok) return result;
   }
 

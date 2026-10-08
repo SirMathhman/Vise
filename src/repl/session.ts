@@ -34,6 +34,7 @@ import {
   handleSaveCommand,
 } from "./commands/session-commands.ts";
 import { handleSearchCommand } from "./commands/search-command.ts";
+import { workflowProfileScope } from "./commands/workflow-profiles.ts";
 import { findBuiltin, type BuiltinCommand } from "./commands/registry.ts";
 import { resolveShortcut } from "./commands/shortcut-command.ts";
 import { handleWorkflowCommand } from "./commands/workflow-commands.ts";
@@ -238,6 +239,10 @@ export class Session {
       maybeAutoCompact: () => this.maybeAutoCompact(),
       save: () => this.saveSession(),
       setSessionName: (name) => (this.sessionName ??= deriveSessionName(name)),
+      profileScope: () =>
+        workflowProfileScope(this.profileCommands, this.opts.toolController, () =>
+          this.flushPendingProfile(),
+        ),
       setCurrentAbort: (controller) => {
         this.currentAbort = controller;
       },

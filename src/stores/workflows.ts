@@ -165,7 +165,7 @@ function validateWorkflow(value: unknown): Result<Workflow> {
     const step = validateStep(raw);
     if (!step) {
       return fail(
-        "workflow step must be an instruction with non-empty text or a tool with a name and args object",
+        "workflow step must be an instruction with non-empty text, a profile with a name, or a tool with a name and args object",
       );
     }
     steps.push(step);
@@ -182,6 +182,13 @@ function validateStep(value: unknown): WorkflowStep | undefined {
     step.text.trim() !== ""
   ) {
     return { type: "instruction", text: step.text };
+  }
+  if (
+    step.type === "profile" &&
+    typeof step.name === "string" &&
+    step.name.trim() !== ""
+  ) {
+    return { type: "profile", name: step.name };
   }
   if (
     step.type === "tool" &&

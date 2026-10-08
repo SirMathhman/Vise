@@ -1,5 +1,6 @@
 type Step =
   | { type: "instruction"; text: string }
+  | { type: "profile"; name: string }
   | {
       type: "tool";
       name: string;
@@ -21,6 +22,7 @@ export interface WorkflowsMessage {
   scope?: string;
   steps?: Step[];
   toolDefs?: ToolInfo[];
+  profiles?: string[];
   ok?: boolean;
   deleted?: boolean;
   error?: string;
@@ -45,6 +47,7 @@ function make<K extends keyof HTMLElementTagNameMap>(
 function stepRow(
   step: Step,
   tools: () => ToolInfo[],
+  profiles: () => string[],
   move: (by: number) => void,
   drop: () => void,
 ) {
@@ -52,12 +55,26 @@ function stepRow(
   const kind = make("select", "save-input");
   kind.append(new Option("instruction", "instruction"));
   kind.append(new Option("tool call", "tool"));
+  kind.append(new Option("switch profile", "profile"));
   kind.value = step.type;
   const text = make("textarea", "note-text");
   text.rows = 3;
   text.placeholder = "{{input}} is replaced by the workflow's input";
   const toolName = make("select", "save-input");
   toolName.setAttribute("aria-label", "tool");
+  const profileName = make("select", "save-input");
+  profileName.setAttribute("aria-label", "profile");
+  const savedProfile = step.type === "profile" ? step.name : "";
+  // A profile the list does not know (the list may not have arrived) stays selectable.
+  const fillProfiles = (selected: string): void => {
+    const names = profiles();
+    profileName.textContent = "";
+    const choices =
+      selected && !names.includes(selected) ? [selected, ...names] : names;
+    for (const name of choices) profileName.append(new Option(name, name));
+    profileName.value = selected || profileName.options[0]?.value || "";
+  };
+  fillProfiles(savedProfile);
   const argsBox = make("div", "wf-args");
   let saved = step.type === "tool" ? step : undefined;
   // A tool the list does not know (the list may not have arrived) stays selectable.
@@ -86,9 +103,10 @@ function stepRow(
   if (step.type === "instruction") text.value = step.text;
   const show = (): void => {
     const isTool = kind.value === "tool";
-    text.hidden = isTool;
+    text.hidden = kind.value !== "instruction";
     toolName.hidden = !isTool;
     argsBox.hidden = !isTool;
+    profileName.hidden = kind.value !== "profile";
   };
   kind.addEventListener("change", show);
   show();
@@ -103,11 +121,12 @@ function stepRow(
     button.addEventListener("click", action);
     bar.append(button);
   }
-  row.append(kind, text, toolName, argsBox, bar);
+  row.append(kind, text, profileName, toolName, argsBox, bar);
   const read = (): Step => {
     if (kind.value === "instruction") {
       return { type: "instruction", text: text.value };
     }
+    if (kind.value === "profile") return { type: "profile", name: profileName.value };
     return {
       type: "tool",
       name: toolName.value,
@@ -123,6 +142,7 @@ function stepRow(
     }
     fillTools(chosen);
     argRows = argsFor();
+    fillProfiles(profileName.value);
   };
   return { row, read, refreshTools };
 }
@@ -153,13 +173,18 @@ function renderList(
 }
 
 /** The ordered, editable step rows inside `box`. */
-function createStepList(box: HTMLElement, tools: () => ToolInfo[]) {
+function createStepList(
+  box: HTMLElement,
+  tools: () => ToolInfo[],
+  profiles: () => string[],
+) {
   let rows: ReturnType<typeof stepRow>[] = [];
   function add(step: Step): void {
     const index = (): number => rows.indexOf(entry);
     const entry = stepRow(
       step,
       tools,
+      profiles,
       (by) => {
         const from = index();
         const to = from + by;
@@ -241,11 +266,10 @@ export function createWorkflowsPanel(
   refreshOn: HTMLElement[],
 ): { handle(message: WorkflowsMessage): boolean } {
   let current: Ref | null = null;
-  let entries: WorkflowEntry[] = [];
+  let entries: WorkflowEntry[] = [], profileNames: string[] = [], toolInfos: ToolInfo[] = [];
   const ui = buildUi();
   const { list, name, scope, saveBtn, deleteBtn, status } = ui;
-  let toolInfos: ToolInfo[] = [];
-  const steps = createStepList(ui.stepsBox, () => toolInfos);
+  const steps = createStepList(ui.stepsBox, () => toolInfos, () => profileNames);
 
   const say = (message: string, error = false): void => {
     status.textContent = message;
@@ -308,6 +332,7 @@ export function createWorkflowsPanel(
       switch (message.type) {
         case "workflow_tools":
           toolInfos = message.toolDefs ?? [];
+          profileNames = message.profiles ?? [];
           steps.refreshTools();
           return true;
         case "workflows":

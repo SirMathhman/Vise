@@ -5,6 +5,7 @@ import {
   saveWorkflowAt,
 } from "../../stores/workflows.ts";
 import type { ViseError } from "../../core/errors.ts";
+import { listProfiles } from "../../stores/profiles.ts";
 import { tools } from "../../tools.ts";
 import { formatError } from "../../output/format.ts";
 
@@ -19,7 +20,7 @@ import { formatError } from "../../output/format.ts";
  *                     { type:"workflow_save", name, scope, steps, replace? }   `replace` only when editing an existing one
  *                     { type:"workflow_delete", name, scope }
  *   server → browser: { type:"workflows", workflows:[{ name, scope, active }] }
- *                     { type:"workflow_tools", toolDefs:[{ name, params:[{ name, required, description }] }] }
+ *                     { type:"workflow_tools", profiles:[name], toolDefs:[{ name, params:[{ name, required, description }] }] }
  *                     { type:"workflow", name, scope, steps }
  *                     { type:"workflow_result", ok, deleted?, error?, name?, scope? }   after a save or delete
  */
@@ -44,9 +45,10 @@ const why = (error: ViseError): string =>
   error.kind === "malformed" ? error.body : formatError(error);
 
 /** Every tool with the arguments it takes, for the editor's tool and argument pickers. */
-function toolList(): Reply {
+function toolList(bases: WorkflowBases): Reply {
   return {
     type: "workflow_tools",
+    profiles: ["default", ...listProfiles(bases.project)],
     toolDefs: tools.map((t) => {
       const parameters = t.function.parameters as {
         properties?: Record<string, { description?: string }>;
@@ -77,7 +79,7 @@ export function handleWorkflowMessage(
 ): Reply[] | null {
   const type = msg["type"];
   if (type === "workflows_list") return [list(bases)];
-  if (type === "workflow_tools") return [toolList()];
+  if (type === "workflow_tools") return [toolList(bases)];
   if (
     type !== "workflow_get" &&
     type !== "workflow_save" &&
