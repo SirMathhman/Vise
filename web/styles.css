@@ -384,6 +384,7 @@ body {
 /* Collapsed (the default): only the header shows; the text appears when the line is opened. */
 .line.thinking {
   color: transparent;
+  user-select: none;
   font-style: italic;
   cursor: pointer;
   white-space: nowrap;
@@ -399,6 +400,7 @@ body {
 
 .line.thinking.open {
   color: var(--dim);
+  user-select: text;
   white-space: pre-wrap;
   overflow: visible;
 }

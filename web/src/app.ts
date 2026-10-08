@@ -80,7 +80,7 @@ const settingsPanels = createSettingsPanels(sendMessage);
 const workspace = createWorkspace(sendMessage, renderMarkdown, setStatus);
 /** The parts of the page that own some of the server messages. */
 const goalUi = createGoalUi(transcript.addLine, sendMessage);
-const promptProgress = createPromptProgress(transcript.addLine);
+const promptProgress = createPromptProgress(transcript.addLine, transcript.removeLine);
 const steerUi = createSteerUi({
   sendMessage,
   notice: (text) => transcript.addLine("system", text),

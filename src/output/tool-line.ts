@@ -7,49 +7,14 @@ import type { Picture } from "../core/errors.ts";
  * command...). Pure; shared by the terminal display and the web server.
  */
 
-const ICONS: Record<string, string> = {
-  list_directory: "📂",
-  read_file: "📄",
-  create_file: "🆕",
-  edit_file: "📝",
-  delete_file: "🗑",
-  delete_directory: "🗑",
-  find_files: "🔎",
-  search_files: "🔎",
-  run_powershell: "💻",
-  wait_for_process: "⏳",
-  kill_process: "⛔",
-  list_notes: "📓",
-  read_note: "📓",
-  save_note: "📝",
-  delete_note: "🗑",
-  read_temp: "🗃",
-  search_temp: "🗃",
-  list_temp: "🗃",
-  run_subagent: "🤖",
-  ask_user: "❓",
-  search_tools: "🧰",
-  self: "🪞",
-  browser_open: "🌐",
-  browser_tabs: "🗂",
-  browser_navigate: "🧭",
-  browser_read: "👁",
-  browser_wait_for_text: "⏳",
-  browser_wait_for_text_gone: "⏳",
-  browser_wait_for_idle: "⏳",
-  browser_click: "👆",
-  browser_hover: "👆",
-  browser_drag: "✋",
-  browser_type: "🔤",
-  browser_upload: "📎",
-  browser_handle_dialog: "💬",
-  browser_run_code: "🧪",
-};
-
-/** The icon for a tool (a wrench for one without its own). */
-export function toolIcon(name: string): string {
-  return ICONS[name] ?? "🔧";
+/** How a tool is shown: a readable name and an icon (a `Tool`'s `display`). */
+export interface ToolDisplay {
+  label: string;
+  icon: string;
 }
+
+/** Finds a tool's display by its name (the edge builds it from the tool definitions; see `tools/display.ts`). */
+export type DisplayLookup = (name: string) => ToolDisplay | undefined;
 
 /** The arguments worth showing, in display order (long bodies and code are left out). */
 const SHOWN = [
@@ -109,19 +74,21 @@ export function toolDetail(
   return clip(parts.join(" · "), config.toolLineDetailMax);
 }
 
-/** A tool's name as a person reads it: `read_file` is "Read file", `browser_wait_for_text` is "Browser wait for text". */
+/** A readable name made from an identifier, for a tool that declares no display of its own: `read_file` is "Read file". */
 export function toolLabel(name: string): string {
   const words = name.replace(/_/g, " ").trim();
   return words === "" ? name : words[0]!.toUpperCase() + words.slice(1);
 }
 
-/** The one-line form: `<icon> <Name> · <detail>`. */
+/** The one-line form: `<icon> <Name> · <detail>`; a tool with no display of its own gets a wrench and a name made from its identifier. */
 export function formatToolCall(
   name: string,
   args?: Record<string, unknown>,
+  displayOf?: DisplayLookup,
 ): string {
+  const shown = displayOf?.(name) ?? { label: toolLabel(name), icon: "🔧" };
   const detail = toolDetail(args, name);
-  return `${toolIcon(name)} ${toolLabel(name)}${detail ? ` · ${detail}` : ""}`;
+  return `${shown.icon} ${shown.label}${detail ? ` · ${detail}` : ""}`;
 }
 
 /** The one-line form of a picture shown to the user: `📷 <label> · <width>x<height> · <size> KB`. */

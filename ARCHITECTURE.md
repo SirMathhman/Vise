@@ -554,14 +554,7 @@ single-module target.
   prompt at all (the grammar already excludes disabled tools); changing the
   model rebuilds that section once, at a point where the cache is invalid anyway.
 
-- **Tool display metadata lives on the tool.** `output/tool-line.ts` keeps a
-  name-keyed icon map and the list of arguments worth showing, apart from the
-  `Tool` definitions, so a new tool silently gets the generic icon. A `Tool`
-  should carry its own `display` (icon, arguments to show, which are sensitive)
-  once the display sites can reach the definitions. Done already: one named
-  `ToolCallListener` type, workflow steps pass their arguments, and typed text
-  (`browser_type`) is shown only as a length.
-
+- **Tool display metadata lives on the tool.** Done for the label and the icon: a `Tool` carries `display: { label, icon }`, tests require every tool to have one, and the display code takes a lookup built from the definitions (`src/tools/display.ts`). Still to do: the arguments worth showing and the sensitive ones (`SHOWN` and `SENSITIVE` in `output/tool-line.ts` are still name-keyed), and the same readable names in error messages that name a tool.
 - **Structured list payloads for UI panels.** Tool categories (and every other
   list the web UI renders) should reach the browser as typed data, e.g. a
   `{type:"tools", items:[{name,enabled,category}]}` WebSocket message built

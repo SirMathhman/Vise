@@ -58,11 +58,12 @@ interface Bar {
 /**
  * Shows llama.cpp's prompt processing in the chat log, as the terminal does:
  * one line per model call that fills a bar while the call reads its new tokens
- * (labelled by what the call is for), and ends as a summary once done.
+ * (labelled by what the call is for), and goes away when the call is done.
  * The silent wait before the first token is otherwise a blank screen.
  */
 export function createPromptProgress(
   addLine: (cls: string, text: string) => HTMLElement,
+  removeLine: (element: HTMLElement) => void,
 ): { handle(message: ServerMessage): void } {
   let open: Bar | null = null;
 
@@ -92,9 +93,9 @@ export function createPromptProgress(
       open.fill.style.width = `${view.pct}%`;
       open.bar.setAttribute("aria-valuenow", String(Math.round(view.pct)));
       open.label.textContent = view.text;
-      // A finished call has nothing left to show: the bar goes away.
+      // A finished call has nothing left to show: the bar goes away (and is no part of the conversation's record).
       if (view.done) {
-        open.line.remove();
+        removeLine(open.line);
         open = null;
       }
     },

@@ -4,6 +4,7 @@ import type { Tool } from "../../core/engine.ts";
 export const agentTools: Tool[] = [
   {
     type: "function",
+    display: { label: "Ask you", icon: "❓" },
     function: {
       name: "ask_user",
       description:
@@ -33,6 +34,7 @@ export const agentTools: Tool[] = [
   },
   {
     type: "function",
+    display: { label: "Check own state", icon: "🪞" },
     function: {
       name: "self",
       description:
@@ -45,6 +47,7 @@ export const agentTools: Tool[] = [
   },
   {
     type: "function",
+    display: { label: "Run helper agent", icon: "🤖" },
     function: {
       name: "run_subagent",
       description:

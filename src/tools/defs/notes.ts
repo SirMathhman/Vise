@@ -12,6 +12,7 @@ const scopeProperty = {
 export const noteTools: Tool[] = [
   {
     type: "function",
+    display: { label: "List notes", icon: "📓" },
     function: {
       name: "list_notes",
       description:
@@ -35,6 +36,7 @@ export const noteTools: Tool[] = [
   },
   {
     type: "function",
+    display: { label: "Read note", icon: "📓" },
     function: {
       name: "read_note",
       description:
@@ -59,6 +61,7 @@ export const noteTools: Tool[] = [
   },
   {
     type: "function",
+    display: { label: "Save note", icon: "📝" },
     function: {
       name: "save_note",
       description:
@@ -89,6 +92,7 @@ export const noteTools: Tool[] = [
   },
   {
     type: "function",
+    display: { label: "Delete note", icon: "🗑" },
     function: {
       name: "delete_note",
       description: "Delete a note by name. Use with care.",

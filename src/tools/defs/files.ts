@@ -4,6 +4,7 @@ import type { Tool } from "../../core/engine.ts";
 export const fileTools: Tool[] = [
   {
     type: "function",
+    display: { label: "List folder", icon: "📂" },
     function: {
       name: "list_directory",
       description: "List the files and directories in a given path",
@@ -21,6 +22,7 @@ export const fileTools: Tool[] = [
   },
   {
     type: "function",
+    display: { label: "Read file", icon: "📄" },
     function: {
       name: "read_file",
       description:
@@ -47,6 +49,7 @@ export const fileTools: Tool[] = [
   },
   {
     type: "function",
+    display: { label: "Create file", icon: "🆕" },
     function: {
       name: "create_file",
       description:
@@ -69,6 +72,7 @@ export const fileTools: Tool[] = [
   },
   {
     type: "function",
+    display: { label: "Edit file", icon: "📝" },
     function: {
       name: "edit_file",
       description:
@@ -97,6 +101,7 @@ export const fileTools: Tool[] = [
   },
   {
     type: "function",
+    display: { label: "Delete file", icon: "🗑" },
     function: {
       name: "delete_file",
       description: "Delete the file at the given path",
@@ -114,6 +119,7 @@ export const fileTools: Tool[] = [
   },
   {
     type: "function",
+    display: { label: "Delete folder", icon: "🗑" },
     function: {
       name: "delete_directory",
       description:
@@ -132,6 +138,7 @@ export const fileTools: Tool[] = [
   },
   {
     type: "function",
+    display: { label: "Find files", icon: "🔎" },
     function: {
       name: "find_files",
       description:
@@ -156,6 +163,7 @@ export const fileTools: Tool[] = [
   },
   {
     type: "function",
+    display: { label: "Search in files", icon: "🔎" },
     function: {
       name: "search_files",
       description:

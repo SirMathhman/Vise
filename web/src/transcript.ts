@@ -18,20 +18,37 @@ export interface TranscriptView {
   clear(): void;
   /** Jump to the newest line and follow new ones again. */
   scrollToBottom(): void;
+  /** Take a transient line (a progress bar) out of the log and out of the record of the conversation. */
+  removeLine(element: HTMLElement): void;
   /** The conversation as data (kind, text, id), in order; the elements only show it. */
   lines(): readonly ChatLine[];
 }
 
-/** Click a thinking line to open or close it. */
+/** Mark a thinking line as a button that opens and closes it; while closed its text is hidden from assistive technology too. */
+function setThinkingState(line: HTMLElement, open: boolean): void {
+  line.setAttribute?.("role", "button");
+  line.setAttribute?.("tabindex", "0");
+  line.setAttribute?.("aria-expanded", String(open));
+  if (open) line.removeAttribute?.("aria-label");
+  else line.setAttribute?.("aria-label", "Thinking (collapsed)");
+}
+
+/** Click (or Enter, or Space) on a thinking line to open or close it. */
 function enableThinkingToggle(log: HTMLElement): void {
-  log.addEventListener?.("click", (event) => {
-    const line = (event.target as HTMLElement | null)?.closest?.(
-      ".line.thinking",
-    );
+  const toggle = (event: Event): void => {
+    const line = (event.target as HTMLElement | null)?.closest?.(".line.thinking");
     if (!(line instanceof HTMLElement)) return;
-    line.className = line.className.endsWith(" open")
-      ? line.className.replace(/ open$/, "")
-      : `${line.className} open`;
+    const open = !line.className.endsWith(" open");
+    line.className = open ? `${line.className} open` : line.className.replace(/ open$/, "");
+    setThinkingState(line, open);
+  };
+  log.addEventListener?.("click", toggle);
+  log.addEventListener?.("keydown", (event) => {
+    const key = (event as KeyboardEvent).key;
+    if (key === "Enter" || key === " ") {
+      event.preventDefault();
+      toggle(event);
+    }
   });
 }
 
@@ -71,10 +88,24 @@ function finishBlock(
   block.element = null;
 }
 
+/** A new thinking line: collapsed, and operable as a button. */
+function startThinking(addLine: (cls: string, text: string) => HTMLElement): HTMLElement {
+  const line = addLine("thinking", "");
+  setThinkingState(line, false);
+  return line;
+}
+
+/** Take a transient line out of the log and out of the record of the conversation. */
+function removeRecorded(model: LineModel, element: HTMLElement): void {
+  model.remove(element);
+  element.remove();
+}
+
 /** A thinking line ended: it collapses again and its text is final. */
 function finishThinking(model: LineModel, line: HTMLElement | null): void {
   if (!line) return;
   line.className = line.className.replace(/ open$/, "");
+  setThinkingState(line, false);
   model.settle(line, line.textContent ?? "");
 }
 
@@ -155,7 +186,7 @@ export function createTranscript(
   function appendThinkingToken(text: string): void {
     if (!text) return;
     flushAssistant();
-    if (!activeThinking) activeThinking = addLine("thinking", "");
+    if (!activeThinking) activeThinking = startThinking(addLine);
     activeThinking.textContent += text;
     follow();
   }
@@ -194,5 +225,6 @@ export function createTranscript(
     },
     scrollToBottom: jump,
     lines: () => model.lines,
+    removeLine: (element) => removeRecorded(model, element),
   };
 }

@@ -25,6 +25,7 @@ import { dataDirFor, globalDataDir, noFolderRoot } from "../data-dir.ts";
 import { pickFolder, RootRegistry } from "./roots.ts";
 import { createEdgeSession } from "../wiring.ts";
 import { formatToolCall } from "../output/tool-line.ts";
+import { displayOfTool } from "../tools/display.ts";
 import { listDir, readTextFile, watchRoot } from "./files.ts";
 
 /**
@@ -418,7 +419,7 @@ function makeConnectionState(
       }),
     onImage: (picture) => send({ type: "image", ...picture }),
     onToolCall: (name, depth, args) =>
-      send({ type: "tool", name, depth, text: formatToolCall(name, args) }),
+      send({ type: "tool", name, depth, text: formatToolCall(name, args, displayOfTool) }),
     onBurst: (active) => send({ type: "burst", active }),
     onGoal: (event) => {
       if (event.kind === "setting") {

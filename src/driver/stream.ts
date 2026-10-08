@@ -3,6 +3,7 @@ import { describeCall } from "../core/progress.ts";
 import { dim } from "../output/color.ts";
 import { formatGoalEvent } from "../output/format.ts";
 import { formatPicture, formatToolCall } from "../output/tool-line.ts";
+import { displayOfTool } from "../tools/display.ts";
 import type { Picture } from "../core/errors.ts";
 import type { GoalEvent } from "../repl/goal-loop.ts";
 import { renderLine } from "../output/markdown.ts";
@@ -119,7 +120,7 @@ export class StreamDisplay {
     }
     if (this.contentWritten) this.flushMdLine();
     process.stdout.write(
-      dim(`${"  ".repeat(depth)}${formatToolCall(name, args)}`) + "\n",
+      dim(`${"  ".repeat(depth)}${formatToolCall(name, args, displayOfTool)}`) + "\n",
     );
   };
 

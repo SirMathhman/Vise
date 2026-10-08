@@ -4,6 +4,7 @@ import type { Tool } from "../../core/engine.ts";
 export const shellTools: Tool[] = [
   {
     type: "function",
+    display: { label: "Run PowerShell", icon: "💻" },
     function: {
       name: "run_powershell",
       description:
@@ -27,6 +28,7 @@ export const shellTools: Tool[] = [
   },
   {
     type: "function",
+    display: { label: "Wait for process", icon: "⏳" },
     function: {
       name: "wait_for_process",
       description:
@@ -50,6 +52,7 @@ export const shellTools: Tool[] = [
   },
   {
     type: "function",
+    display: { label: "Stop process", icon: "⛔" },
     function: {
       name: "kill_process",
       description:

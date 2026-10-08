@@ -20,6 +20,8 @@ export interface Tool {
     description: string;
     parameters: Record<string, unknown>;
   };
+  /** How a call of this tool is shown to the user: a readable name and an icon (the model and `/tool` use the real name). */
+  display?: { label: string; icon: string };
   /**
    * Deferred tools are listed in the prompt by name and summary only; the
    * model fetches the full signature with `search_tools`. They stay callable.

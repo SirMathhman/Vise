@@ -4,6 +4,7 @@ import type { Tool } from "../../core/engine.ts";
 export const browserTools: Tool[] = [
   {
     type: "function",
+    display: { label: "Open page", icon: "🌐" },
     function: {
       name: "browser_open",
       description:
@@ -22,6 +23,7 @@ export const browserTools: Tool[] = [
   },
   {
     type: "function",
+    display: { label: "List tabs", icon: "🗂" },
     function: {
       name: "browser_tabs",
       description:
@@ -34,6 +36,7 @@ export const browserTools: Tool[] = [
   },
   {
     type: "function",
+    display: { label: "Go to page", icon: "🧭" },
     function: {
       name: "browser_navigate",
       description:
@@ -56,6 +59,7 @@ export const browserTools: Tool[] = [
   },
   {
     type: "function",
+    display: { label: "Read page", icon: "👁" },
     function: {
       name: "browser_read",
       description:
@@ -74,6 +78,7 @@ export const browserTools: Tool[] = [
   },
   {
     type: "function",
+    display: { label: "Wait for text", icon: "⏳" },
     function: {
       name: "browser_wait_for_text",
       description:
@@ -100,6 +105,7 @@ export const browserTools: Tool[] = [
   },
   {
     type: "function",
+    display: { label: "Wait for text to go", icon: "⏳" },
     function: {
       name: "browser_wait_for_text_gone",
       description:
@@ -126,6 +132,7 @@ export const browserTools: Tool[] = [
   },
   {
     type: "function",
+    display: { label: "Wait for page to settle", icon: "⏳" },
     function: {
       name: "browser_wait_for_idle",
       description:
@@ -148,6 +155,7 @@ export const browserTools: Tool[] = [
   },
   {
     type: "function",
+    display: { label: "Click", icon: "👆" },
     function: {
       name: "browser_click",
       description:
@@ -170,6 +178,7 @@ export const browserTools: Tool[] = [
   },
   {
     type: "function",
+    display: { label: "Hover", icon: "👆" },
     function: {
       name: "browser_hover",
       description:
@@ -192,6 +201,7 @@ export const browserTools: Tool[] = [
   },
   {
     type: "function",
+    display: { label: "Upload files", icon: "📎" },
     function: {
       name: "browser_upload",
       description:
@@ -220,6 +230,7 @@ export const browserTools: Tool[] = [
   },
   {
     type: "function",
+    display: { label: "Drag", icon: "✋" },
     function: {
       name: "browser_drag",
       description:
@@ -246,6 +257,7 @@ export const browserTools: Tool[] = [
   },
   {
     type: "function",
+    display: { label: "Type", icon: "🔤" },
     function: {
       name: "browser_type",
       description:
@@ -282,6 +294,7 @@ export const browserTools: Tool[] = [
   },
   {
     type: "function",
+    display: { label: "Answer dialog", icon: "💬" },
     function: {
       name: "browser_handle_dialog",
       description:
@@ -308,6 +321,7 @@ export const browserTools: Tool[] = [
   },
   {
     type: "function",
+    display: { label: "Run browser code", icon: "🧪" },
     function: {
       name: "browser_run_code",
       description:
@@ -331,6 +345,7 @@ export const browserTools: Tool[] = [
   },
   {
     type: "function",
+    display: { label: "Take screenshot", icon: "📷" },
     function: {
       name: "browser_screenshot",
       description:
@@ -354,6 +369,7 @@ export const browserTools: Tool[] = [
   },
   {
     type: "function",
+    display: { label: "Choose option", icon: "🔽" },
     function: {
       name: "browser_select",
       description:
@@ -385,6 +401,7 @@ export const browserTools: Tool[] = [
   },
   {
     type: "function",
+    display: { label: "Scroll page", icon: "📜" },
     function: {
       name: "browser_scroll",
       description:

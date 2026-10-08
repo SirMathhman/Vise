@@ -21,6 +21,8 @@ export interface LineModel {
   add(cls: string, text: string, element: HTMLElement): ChatLine;
   /** A streamed line ended: record what it finally says. */
   settle(element: HTMLElement, text: string): void;
+  /** A transient line (a progress bar) went away: it is not conversation content, so its record goes too. */
+  remove(element: HTMLElement): void;
   clear(): void;
 }
 
@@ -39,6 +41,10 @@ export function createLineModel(): LineModel {
     settle(element, text) {
       const line = byElement.get(element);
       if (line) line.text = text;
+    },
+    remove(element) {
+      const line = byElement.get(element);
+      if (line) lines.splice(lines.indexOf(line), 1);
     },
     clear() {
       lines.length = 0;

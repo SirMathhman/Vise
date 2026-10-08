@@ -30,6 +30,7 @@ const CORE_TOOLS = new Set([
 
 export const searchToolsDef: Tool = {
   type: "function",
+  display: { label: "Look up tools", icon: "🧰" },
   function: {
     name: "search_tools",
     description:

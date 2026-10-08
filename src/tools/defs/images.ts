@@ -4,6 +4,7 @@ import type { Tool } from "../../core/engine.ts";
 export const imageTools: Tool[] = [
   {
     type: "function",
+    display: { label: "View image", icon: "🖼" },
     function: {
       name: "view_image",
       description:

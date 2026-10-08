@@ -1,6 +1,7 @@
 import { config } from "../config.ts";
 import type { Message } from "../core/errors.ts";
 import { formatToolCall } from "../output/tool-line.ts";
+import { displayOfTool } from "../tools/display.ts";
 
 /**
  * A saved conversation as the lines the web page shows when it restores it:
@@ -73,7 +74,7 @@ export function historyEntries(messages: Message[]): HistoryEntry[] {
         bodies.push({
           kind: "tool",
           name: call.function.name,
-          text: formatToolCall(call.function.name, args),
+          text: formatToolCall(call.function.name, args, displayOfTool),
         });
       }
     } else if (m.role === "tool") {
