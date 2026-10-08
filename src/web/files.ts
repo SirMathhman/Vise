@@ -8,7 +8,7 @@ import {
   existsSync,
 } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { relative, resolve, sep } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 
 /**
  * Read-only file explorer backend for the web UI. Paths are relative to the
@@ -88,7 +88,7 @@ export function readTextFile(
 
 /** True when `root` contains a `.git` entry (directory or file). */
 export function isGitRoot(root: string): boolean {
-  return existsSync(root + "/.git") || existsSync(root + ".git");
+  return existsSync(join(root, ".git"));
 }
 
 /**
