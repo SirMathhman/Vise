@@ -23,19 +23,62 @@
       <button
         id="settings-btn"
         class="topbar-item"
-        title="Settings: profiles and hooks"
+        title="Settings"
       >
         settings
       </button>
       <span id="root-label" class="root-label"></span>
     </nav>
-    <section id="page" class="page hidden" aria-label="Sessions and settings">
+    <section id="sessions-page" class="page hidden" aria-label="Sessions">
+      <div class="page-head">
+        <h1 class="page-title">sessions</h1>
+        <button id="sessions-close" class="tools-btn" title="Back to the chat (Escape)">
+          &larr; back to chat
+        </button>
+      </div>
+      <div class="page-body">
+        <div class="menu-page">
+        <div class="menu-heading">Start a new session</div>
+        <button
+          id="open-folder-btn"
+          class="menu-action"
+          title="Replaces this page; the current conversation stays saved"
+        >
+          <span class="menu-title">Open folder&hellip;</span>
+          <span class="menu-hint"
+            >Work in a project: file and shell tools, rooted in the folder you
+            pick.</span
+          >
+        </button>
+        <button
+          id="no-folder-btn"
+          class="menu-action"
+          title="Replaces this page; the current conversation stays saved"
+        >
+          <span class="menu-title">No folder</span>
+          <span class="menu-hint"
+            >Just chat: no file or shell tools, nothing to read or change.</span
+          >
+        </button>
+        <div class="menu-heading">Saved sessions</div>
+        <ul id="sessions-list" class="tools-list"></ul>
+        <div class="save-row">
+          <input
+            id="save-name"
+            class="save-input"
+            type="text"
+            placeholder="session name…"
+            autocomplete="off"
+          />
+          <button id="save-btn" class="save-btn">save</button>
+        </div>
+        </div>
+      </div>
+    </section>
+    <section id="settings-page" class="page hidden" aria-label="Settings">
       <div class="page-head">
         <div class="tabs" role="tablist">
-          <button class="tab active" role="tab" data-tab="settings-sessions">
-            sessions
-          </button>
-          <button class="tab" role="tab" data-tab="settings-profiles">
+          <button class="tab active" role="tab" data-tab="settings-profiles">
             profiles
           </button>
           <button
@@ -74,43 +117,7 @@
         </button>
       </div>
       <div class="page-body">
-        <div id="settings-sessions" class="tab-page menu-page">
-        <div class="menu-heading">Start a new session</div>
-        <button
-          id="open-folder-btn"
-          class="menu-action"
-          title="Replaces this page; the current conversation stays saved"
-        >
-          <span class="menu-title">Open folder&hellip;</span>
-          <span class="menu-hint"
-            >Work in a project: file and shell tools, rooted in the folder you
-            pick.</span
-          >
-        </button>
-        <button
-          id="no-folder-btn"
-          class="menu-action"
-          title="Replaces this page; the current conversation stays saved"
-        >
-          <span class="menu-title">No folder</span>
-          <span class="menu-hint"
-            >Just chat: no file or shell tools, nothing to read or change.</span
-          >
-        </button>
-        <div class="menu-heading">Saved sessions</div>
-        <ul id="sessions-list" class="tools-list"></ul>
-        <div class="save-row">
-          <input
-            id="save-name"
-            class="save-input"
-            type="text"
-            placeholder="session name…"
-            autocomplete="off"
-          />
-          <button id="save-btn" class="save-btn">save</button>
-        </div>
-        </div>
-        <div id="settings-profiles" class="tab-page hidden">
+        <div id="settings-profiles" class="tab-page">
           <select
             id="pe-profile"
             class="model"

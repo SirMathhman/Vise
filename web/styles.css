@@ -1617,3 +1617,11 @@ body.page-open .shell {
 .menu-page {
   max-width: 34rem;
 }
+
+.page-title {
+  margin: 0;
+  font: inherit;
+  color: var(--text);
+  padding: 0.2rem 0;
+  border-bottom: 2px solid var(--accent);
+}
