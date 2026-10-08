@@ -1,11 +1,11 @@
 import type { Database } from "bun:sqlite";
 import { join, resolve } from "node:path";
-import type { Message, Result, ViseError } from "./core/errors.ts";
-import type { SavedSession, SearchHit, SessionEntry } from "./repl/ports.ts";
-import { importLegacySessions } from "./db/import-json.ts";
-import { openDb, tryDb } from "./db/open.ts";
-import { SESSION_MIGRATIONS } from "./db/session-schema.ts";
-import { readMessages, writeSession } from "./db/session-write.ts";
+import type { Message, Result, ViseError } from "../core/errors.ts";
+import type { SavedSession, SearchHit, SessionEntry } from "../repl/ports.ts";
+import { importLegacySessions } from "../db/session/import-json.ts";
+import { openDb, tryDb } from "../db/open.ts";
+import { SESSION_MIGRATIONS } from "../db/session/session-schema.ts";
+import { readMessages, writeSession } from "../db/session/session-write.ts";
 
 /**
  * Shared session I/O for the edge. A session is a saved snapshot of the

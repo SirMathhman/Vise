@@ -1,6 +1,6 @@
 import { config } from "../config.ts";
 import type { Picture } from "../core/errors.ts";
-import { imageStore, sniffImage } from "../image-store.ts";
+import { imageStore, sniffImage } from "../stores/image-store.ts";
 
 /** Most pictures that may come with one message. */
 

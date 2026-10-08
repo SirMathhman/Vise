@@ -1,7 +1,7 @@
-import "../settings-init.ts";
+import "../settings/settings-init.ts";
 import { config } from "../config.ts";
-import { missingBuildOutput } from "../build-check.ts";
-import { runMaintenance } from "../maintenance.ts";
+import { missingBuildOutput } from "../build/build-check.ts";
+import { runMaintenance } from "../build/maintenance.ts";
 import {
   hideOwnConsole,
   logPath,

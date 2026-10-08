@@ -6,9 +6,9 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
-import { applySettings, fileValue, SPEC } from "./config.ts";
-import type { Spec } from "./config.ts";
-import { globalDataDir } from "./data-dir.ts";
+import { applySettings, fileValue, SPEC } from "../config.ts";
+import type { Spec } from "../config.ts";
+import { globalDataDir } from "../data-dir.ts";
 
 /** The user's settings file: shared by every project, outside any dev directory. */
 export const settingsPath = join(globalDataDir, ".env");

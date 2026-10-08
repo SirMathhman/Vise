@@ -1,9 +1,9 @@
 import type { Database } from "bun:sqlite";
 import { join } from "node:path";
-import type { AuditReader, AuditReport, AuditTopic } from "../core/audit.ts";
-import { globalDataDir } from "../data-dir.ts";
+import type { AuditReader, AuditReport, AuditTopic } from "../../core/audit.ts";
+import { globalDataDir } from "../../data-dir.ts";
 import { AUDIT_MIGRATIONS } from "./audit-schema.ts";
-import { openDb } from "./open.ts";
+import { openDb } from "../open.ts";
 
 type Row = Record<string, number | string | null>;
 

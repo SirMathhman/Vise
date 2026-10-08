@@ -7,9 +7,9 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { validName } from "./notes.ts";
-import type { Workflow, WorkflowScope, WorkflowStep } from "./core/workflow.ts";
+import type { Workflow, WorkflowScope, WorkflowStep } from "../core/workflow.ts";
 
-export type { WorkflowScope } from "./core/workflow.ts";
+export type { WorkflowScope } from "../core/workflow.ts";
 
 export interface WorkflowEntry {
   name: string;

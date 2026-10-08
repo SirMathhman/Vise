@@ -8,7 +8,7 @@ import {
   readProfile,
   readProfileTools,
   setProfileTools,
-} from "../src/profiles.ts";
+} from "../src/stores/profiles.ts";
 import { ToolSet } from "../src/tools.ts";
 import type { ContextSource } from "../src/repl/session.ts";
 import { Session } from "../src/repl/session.ts";

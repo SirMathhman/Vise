@@ -1,9 +1,9 @@
 import type { Database } from "bun:sqlite";
 import { join } from "node:path";
-import { config } from "../config.ts";
-import { globalDataDir } from "../data-dir.ts";
+import { config } from "../../config.ts";
+import { globalDataDir } from "../../data-dir.ts";
 import { AUDIT_MIGRATIONS } from "./audit-schema.ts";
-import { openDb, tryDb } from "./open.ts";
+import { openDb, tryDb } from "../open.ts";
 
 /** The tables keyed by `session_id`, in the order their rows are removed. */
 export const BY_SESSION = [

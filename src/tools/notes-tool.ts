@@ -1,5 +1,5 @@
-import { NoteStore, requireScope, type NoteId } from "../note-store.ts";
-import { formatNotes } from "../notes-format.ts";
+import { NoteStore, requireScope, type NoteId } from "../stores/note-store.ts";
+import { formatNotes } from "../stores/notes-format.ts";
 import { errStr } from "./files.ts";
 
 /** The note an argument set names: its required scope, optional category, and name. */

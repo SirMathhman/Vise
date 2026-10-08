@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import type { Message } from "../core/errors.ts";
+import type { Message } from "../../core/errors.ts";
 
 /**
  * Write (or overwrite) one session and all its messages in a single

@@ -18,7 +18,7 @@ import {
   loadSession,
   saveSession,
   searchSessions,
-} from "../src/sessions.ts";
+} from "../src/stores/sessions.ts";
 
 let tmpDir: string;
 

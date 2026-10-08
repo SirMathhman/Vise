@@ -1,4 +1,4 @@
-import type { Migration } from "./migrate.ts";
+import type { Migration } from "../migrate.ts";
 
 /**
  * Schema of the global audit database `~/.vise/audit.db`: an append-only

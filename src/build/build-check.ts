@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { VERSION } from "./version.ts";
+import { VERSION } from "../version.ts";
 
 /**
  * When run from source, a message telling which build to run if `file`
@@ -12,7 +12,7 @@ export function missingBuildOutput(
   command: string,
 ): string | undefined {
   if (VERSION !== "dev") return undefined;
-  return existsSync(join(import.meta.dir, "..", file))
+  return existsSync(join(import.meta.dir, "..", "..", file))
     ? undefined
     : `${file} is missing: run \`${command}\` first.`;
 }

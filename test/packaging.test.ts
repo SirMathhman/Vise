@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runnerPath } from "../src/browser/playwright.ts";
-import { runMaintenance } from "../src/maintenance.ts";
+import { runMaintenance } from "../src/build/maintenance.ts";
 
 test("the runner is used where it is when run from source", () => {
   expect(

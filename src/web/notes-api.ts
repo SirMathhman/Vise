@@ -1,5 +1,5 @@
-import { NoteStore, requireScope, type NoteId } from "../note-store.ts";
-import { categoryOf } from "../notes.ts";
+import { NoteStore, requireScope, type NoteId } from "../stores/note-store.ts";
+import { categoryOf } from "../stores/notes.ts";
 
 /**
  * The web UI's notes editor. It talks to the same stores as the model's note

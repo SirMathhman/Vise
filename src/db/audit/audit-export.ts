@@ -1,8 +1,8 @@
 import { join } from "node:path";
-import type { Result } from "../core/errors.ts";
-import { globalDataDir } from "../data-dir.ts";
+import type { Result } from "../../core/errors.ts";
+import { globalDataDir } from "../../data-dir.ts";
 import { AUDIT_MIGRATIONS } from "./audit-schema.ts";
-import { openDb, tryDb } from "./open.ts";
+import { openDb, tryDb } from "../open.ts";
 
 const TABLES = [
   "audit_turns",

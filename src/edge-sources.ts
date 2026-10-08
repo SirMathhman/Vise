@@ -6,9 +6,9 @@ import { globalDataDir } from "./data-dir.ts";
 import type { SearchHit } from "./repl/ports.ts";
 import type { Message, Result } from "./core/errors.ts";
 import { buildInitialTree } from "./fs-tree.ts";
-import { formatNotes, formatNotesWithin } from "./notes-format.ts";
-import { NoteStore } from "./note-store.ts";
-import type { NoteScope, NoteStores } from "./notes.ts";
+import { formatNotes, formatNotesWithin } from "./stores/notes-format.ts";
+import { NoteStore } from "./stores/note-store.ts";
+import type { NoteScope, NoteStores } from "./stores/notes.ts";
 import {
   initProfile,
   listProfiles,
@@ -17,7 +17,7 @@ import {
   readProfileTools,
   setProfileHooks,
   setProfileTools,
-} from "./profiles.ts";
+} from "./stores/profiles.ts";
 import type {
   HookSource,
   NoteSource,
@@ -35,8 +35,8 @@ import {
   loadSession,
   saveSession,
   searchSessions,
-} from "./sessions.ts";
-import { initWorkflow, listWorkflows, loadWorkflow } from "./workflows.ts";
+} from "./stores/sessions.ts";
+import { initWorkflow, listWorkflows, loadWorkflow } from "./stores/workflows.ts";
 
 /** Most notes the startup message lists (the rest are reached with `list_notes`). */
 

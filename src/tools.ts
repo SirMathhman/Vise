@@ -3,7 +3,7 @@ import { noAudit, type AuditSink } from "./core/audit.ts";
 import type { Tool, ToolController, ToolRunner } from "./core/engine.ts";
 import { auditCall, auditRefused } from "./tools/audit-call.ts";
 import { dataDirFor, globalDataDir } from "./data-dir.ts";
-import { NoteStore } from "./note-store.ts";
+import { NoteStore } from "./stores/note-store.ts";
 import { agentTools } from "./tools/defs/agent.ts";
 import { browserTools } from "./tools/defs/browser.ts";
 import { fileTools } from "./tools/defs/files.ts";

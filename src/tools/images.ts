@@ -2,7 +2,7 @@ import { config } from "../config.ts";
 import { readFile, stat } from "node:fs/promises";
 import { basename, extname, isAbsolute, resolve } from "node:path";
 import type { Picture, Result } from "../core/errors.ts";
-import type { ImageStore } from "../image-store.ts";
+import type { ImageStore } from "../stores/image-store.ts";
 import type { ImageSource } from "../repl/ports.ts";
 import { errStr } from "./files.ts";
 

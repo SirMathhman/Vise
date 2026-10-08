@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Picture } from "./core/errors.ts";
-import { globalDataDir } from "./data-dir.ts";
+import type { Picture } from "../core/errors.ts";
+import { globalDataDir } from "../data-dir.ts";
 
 /**
  * Pictures kept as files, by the hash of their bytes (`<id>.<ext>`), so a

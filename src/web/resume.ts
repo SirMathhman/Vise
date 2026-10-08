@@ -1,4 +1,4 @@
-import { loadSession, latestSessionId } from "../sessions.ts";
+import { loadSession, latestSessionId } from "../stores/sessions.ts";
 import type { Session } from "../repl/session.ts";
 import { historyEntries } from "./history.ts";
 import type { SessionLease } from "./leases.ts";

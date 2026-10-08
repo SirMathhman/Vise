@@ -13,11 +13,11 @@ import {
 import type { Message } from "../src/core/errors.ts";
 import { runCompaction } from "../src/repl/compaction.ts";
 import { createToolRunner, ToolSet } from "../src/tools.ts";
-import { SqliteAuditSink } from "../src/db/audit-store.ts";
-import { SqliteAuditReader } from "../src/db/audit-query.ts";
-import { exportAudit } from "../src/db/audit-export.ts";
-import { BY_SESSION, pruneAudit } from "../src/db/audit-prune.ts";
-import { AUDIT_MIGRATIONS } from "../src/db/audit-schema.ts";
+import { SqliteAuditSink } from "../src/db/audit/audit-store.ts";
+import { SqliteAuditReader } from "../src/db/audit/audit-query.ts";
+import { exportAudit } from "../src/db/audit/audit-export.ts";
+import { BY_SESSION, pruneAudit } from "../src/db/audit/audit-prune.ts";
+import { AUDIT_MIGRATIONS } from "../src/db/audit/audit-schema.ts";
 import { closeAllDbs, openDb } from "../src/db/open.ts";
 import { Session, type LineResult } from "../src/repl/session.ts";
 import type { ContextSource } from "../src/repl/session.ts";

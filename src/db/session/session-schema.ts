@@ -1,4 +1,4 @@
-import type { Migration } from "./migrate.ts";
+import type { Migration } from "../migrate.ts";
 
 /** Schema of the per-project `<root>/.vise/vise.db` (saved conversations). */
 export const SESSION_MIGRATIONS: Migration[] = [
