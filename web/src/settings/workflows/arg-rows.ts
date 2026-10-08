@@ -1,5 +1,15 @@
-/** An argument of a tool step: a fixed value, or one the model supplies (with a hint for it). */
-export type ArgValue = unknown;
+/** One argument a tool takes. */
+export interface ToolParam {
+  name: string;
+  required: boolean;
+  description: string;
+}
+
+/** A tool and the arguments it takes. */
+export interface ToolInfo {
+  name: string;
+  params: ToolParam[];
+}
 
 function make<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -31,69 +41,79 @@ function hintOf(value: unknown): string | undefined {
   return typeof hint === "string" ? hint : undefined;
 }
 
+type Mode = "unset" | "fixed" | "model";
+
+/** How a saved value reads as a row. A step from before arguments could be fixed treated its values as hints. */
+function initial(
+  param: ToolParam,
+  args: Record<string, unknown>,
+  exact: boolean,
+): { mode: Mode; text: string } {
+  if (!(param.name in args)) {
+    return { mode: param.required ? "model" : "unset", text: "" };
+  }
+  const value = args[param.name];
+  const hint = hintOf(value);
+  if (exact && hint === undefined) return { mode: "fixed", text: shown(value) };
+  return { mode: "model", text: hint ?? (exact ? "" : shown(value)) };
+}
+
 /**
- * The argument rows of a tool step: name, "fixed" or "model provides", and the
- * value (fixed) or the hint for the model. A step written before arguments
- * could be fixed treated its values as hints, so those load as model-provided.
+ * The argument rows of a tool step: one per argument the tool takes (the names
+ * are not editable), each "not set" (optional ones only), a "fixed value", or
+ * "model provides" with an optional hint for the model. Arguments in `args`
+ * that the tool does not take are kept as extra rows so they can be seen and
+ * removed ("not set").
  */
 export function createArgRows(
   box: HTMLElement,
+  params: ToolParam[],
   args: Record<string, unknown>,
   exact: boolean,
 ) {
-  const rows: { row: HTMLElement; read: () => [string, unknown] }[] = [];
-  function add(name: string, value: unknown): void {
+  box.textContent = "";
+  const known = new Set(params.map((p) => p.name));
+  const extras: ToolParam[] = Object.keys(args)
+    .filter((name) => !known.has(name))
+    .map((name) => ({
+      name,
+      required: false,
+      description: "(not an argument of this tool)",
+    }));
+  const rows = [...params, ...extras].map((param) => {
+    const start = initial(param, args, exact);
     const row = make("div", "save-row");
-    const key = make("input", "save-input");
-    key.placeholder = "argument";
-    key.value = name;
+    const label = make("span");
+    label.textContent = param.required ? `${param.name} *` : param.name;
+    label.title = param.description;
     const mode = make("select", "save-input");
+    if (!param.required) mode.append(new Option("not set", "unset"));
     mode.append(new Option("fixed value", "fixed"));
     mode.append(new Option("model provides", "model"));
-    const hint = hintOf(value);
-    const isModel = exact ? hint !== undefined : true;
-    mode.value = isModel ? "model" : "fixed";
+    mode.value = start.mode;
     const text = make("input", "save-input");
-    if (isModel) text.value = hint ?? (exact ? "" : shown(value));
-    else text.value = shown(value);
-    const label = (): void => {
+    text.value = start.text;
+    const refresh = (): void => {
+      text.hidden = mode.value === "unset";
       text.placeholder =
         mode.value === "model" ? "hint for the model (optional)" : "value";
     };
-    mode.addEventListener("change", label);
-    label();
-    const remove = make("button", "tools-btn");
-    remove.type = "button";
-    remove.textContent = "✕";
-    remove.setAttribute("aria-label", "Remove argument");
-    const entry = {
-      row,
-      read: (): [string, unknown] => [
-        key.value.trim(),
-        mode.value === "model"
-          ? { $model: text.value }
-          : fixedValue(text.value),
-      ],
-    };
-    remove.addEventListener("click", () => {
-      rows.splice(rows.indexOf(entry), 1);
-      row.remove();
-    });
-    row.append(key, mode, text, remove);
-    rows.push(entry);
+    mode.addEventListener("change", refresh);
+    refresh();
+    row.append(label, mode, text);
     box.append(row);
-  }
-  for (const [name, value] of Object.entries(args)) add(name, value);
+    return { name: param.name, mode, text };
+  });
   return {
-    add: (): void => add("", ""),
-    /** The arguments as saved; a blank or repeated name is an error for the user. */
+    /** The arguments as saved; unset ones are left out. */
     read(): Record<string, unknown> {
       const result: Record<string, unknown> = {};
-      for (const entry of rows) {
-        const [name, value] = entry.read();
-        if (name === "") throw new Error("an argument has no name");
-        if (name in result) throw new Error(`argument '${name}' is given twice`);
-        result[name] = value;
+      for (const { name, mode, text } of rows) {
+        if (mode.value === "unset") continue;
+        result[name] =
+          mode.value === "model"
+            ? { $model: text.value }
+            : fixedValue(text.value);
       }
       return result;
     },

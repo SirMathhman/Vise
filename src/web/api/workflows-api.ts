@@ -5,6 +5,7 @@ import {
   saveWorkflowAt,
 } from "../../stores/workflows.ts";
 import type { ViseError } from "../../core/errors.ts";
+import { tools } from "../../tools.ts";
 import { formatError } from "../../output/format.ts";
 
 /**
@@ -13,10 +14,12 @@ import { formatError } from "../../output/format.ts";
  * directly (never through a model turn).
  * Wire protocol (JSON):
  *   browser → server: { type:"workflows_list" }
+ *                     { type:"workflow_tools" }
  *                     { type:"workflow_get", name, scope }
  *                     { type:"workflow_save", name, scope, steps, replace? }   `replace` only when editing an existing one
  *                     { type:"workflow_delete", name, scope }
  *   server → browser: { type:"workflows", workflows:[{ name, scope, active }] }
+ *                     { type:"workflow_tools", toolDefs:[{ name, params:[{ name, required, description }] }] }
  *                     { type:"workflow", name, scope, steps }
  *                     { type:"workflow_result", ok, deleted?, error?, name?, scope? }   after a save or delete
  */
@@ -40,6 +43,29 @@ const list = (bases: WorkflowBases): Reply => ({
 const why = (error: ViseError): string =>
   error.kind === "malformed" ? error.body : formatError(error);
 
+/** Every tool with the arguments it takes, for the editor's tool and argument pickers. */
+function toolList(): Reply {
+  return {
+    type: "workflow_tools",
+    toolDefs: tools.map((t) => {
+      const parameters = t.function.parameters as {
+        properties?: Record<string, { description?: string }>;
+        required?: string[];
+      };
+      return {
+        name: t.function.name,
+        params: Object.entries(parameters.properties ?? {}).map(
+          ([name, spec]) => ({
+            name,
+            required: parameters.required?.includes(name) ?? false,
+            description: spec.description ?? "",
+          }),
+        ),
+      };
+    }),
+  };
+}
+
 const failed = (error: string): Reply[] => [
   { type: "workflow_result", ok: false, error },
 ];
@@ -51,6 +77,7 @@ export function handleWorkflowMessage(
 ): Reply[] | null {
   const type = msg["type"];
   if (type === "workflows_list") return [list(bases)];
+  if (type === "workflow_tools") return [toolList()];
   if (
     type !== "workflow_get" &&
     type !== "workflow_save" &&

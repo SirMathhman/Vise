@@ -20,12 +20,13 @@ export interface WorkflowsMessage {
   name?: string;
   scope?: string;
   steps?: Step[];
+  toolDefs?: ToolInfo[];
   ok?: boolean;
   deleted?: boolean;
   error?: string;
 }
 
-import { createArgRows } from "./arg-rows.ts";
+import { createArgRows, type ToolInfo } from "./arg-rows.ts";
 
 type Ref = { name: string; scope: string };
 
@@ -41,7 +42,12 @@ function make<K extends keyof HTMLElementTagNameMap>(
 }
 
 /** One editable step row; `read()` returns the step or throws a message for the user. */
-function stepRow(step: Step, move: (by: number) => void, drop: () => void) {
+function stepRow(
+  step: Step,
+  tools: () => ToolInfo[],
+  move: (by: number) => void,
+  drop: () => void,
+) {
   const row = make("div", "wf-step");
   const kind = make("select", "save-input");
   kind.append(new Option("instruction", "instruction"));
@@ -49,23 +55,35 @@ function stepRow(step: Step, move: (by: number) => void, drop: () => void) {
   kind.value = step.type;
   const text = make("textarea", "note-text");
   text.rows = 3;
-  const toolName = make("input", "save-input");
-  toolName.placeholder = "tool name";
+  const toolName = make("select", "save-input");
+  toolName.setAttribute("aria-label", "tool");
+  // A tool the list does not know (the list may not have arrived) stays selectable.
+  const names = tools().map((t) => t.name);
+  const current = step.type === "tool" ? step.name : "";
+  const choices = current && !names.includes(current) ? [current, ...names] : names;
+  for (const name of choices) toolName.append(new Option(name, name));
+  toolName.value = current || toolName.options[0]?.value || "";
   const argsBox = make("div", "wf-args");
-  const addArg = make("button", "tools-btn", "+ add argument");
-  addArg.type = "button";
-  const argRows =
-    step.type === "tool"
-      ? createArgRows(argsBox, step.args, step.exact === true)
-      : createArgRows(argsBox, {}, true);
-  addArg.addEventListener("click", argRows.add);
+  const saved = step.type === "tool" ? step : undefined;
+  const argsFor = (): ReturnType<typeof createArgRows> => {
+    const same = saved !== undefined && saved.name === toolName.value;
+    return createArgRows(
+      argsBox,
+      tools().find((t) => t.name === toolName.value)?.params ?? [],
+      same ? saved.args : {},
+      same && saved.exact === true,
+    );
+  };
+  let argRows = argsFor();
+  toolName.addEventListener("change", () => {
+    argRows = argsFor();
+  });
   if (step.type === "instruction") text.value = step.text;
-  else toolName.value = step.name;
   const show = (): void => {
     const isTool = kind.value === "tool";
     text.hidden = isTool;
     toolName.hidden = !isTool;
-    argsBox.hidden = addArg.hidden = !isTool;
+    argsBox.hidden = !isTool;
   };
   kind.addEventListener("change", show);
   show();
@@ -80,7 +98,7 @@ function stepRow(step: Step, move: (by: number) => void, drop: () => void) {
     button.addEventListener("click", action);
     bar.append(button);
   }
-  row.append(kind, text, toolName, argsBox, addArg, bar);
+  row.append(kind, text, toolName, argsBox, bar);
   const read = (): Step => {
     if (kind.value === "instruction") {
       return { type: "instruction", text: text.value };
@@ -121,12 +139,13 @@ function renderList(
 }
 
 /** The ordered, editable step rows inside `box`. */
-function createStepList(box: HTMLElement) {
+function createStepList(box: HTMLElement, tools: () => ToolInfo[]) {
   let rows: ReturnType<typeof stepRow>[] = [];
   function add(step: Step): void {
     const index = (): number => rows.indexOf(entry);
     const entry = stepRow(
       step,
+      tools,
       (by) => {
         const from = index();
         const to = from + by;
@@ -210,7 +229,8 @@ export function createWorkflowsPanel(
   let entries: WorkflowEntry[] = [];
   const ui = buildUi();
   const { list, name, scope, saveBtn, deleteBtn, status } = ui;
-  const steps = createStepList(ui.stepsBox);
+  let toolInfos: ToolInfo[] = [];
+  const steps = createStepList(ui.stepsBox, () => toolInfos);
 
   const say = (message: string, error = false): void => {
     status.textContent = message;
@@ -261,12 +281,16 @@ export function createWorkflowsPanel(
     trigger.addEventListener("click", () => send({ type: "workflows_list" }));
   }
 
+  send({ type: "workflow_tools" });
   body.append(ui.layout);
   edit(null);
 
   return {
     handle(message) {
       switch (message.type) {
+        case "workflow_tools":
+          toolInfos = message.toolDefs ?? [];
+          return true;
         case "workflows":
           entries = message.workflows ?? [];
           renderAll();
