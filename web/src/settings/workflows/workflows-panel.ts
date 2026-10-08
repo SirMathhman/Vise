@@ -57,23 +57,27 @@ function stepRow(
   text.rows = 3;
   const toolName = make("select", "save-input");
   toolName.setAttribute("aria-label", "tool");
-  // A tool the list does not know (the list may not have arrived) stays selectable.
-  const names = tools().map((t) => t.name);
-  const current = step.type === "tool" ? step.name : "";
-  const choices = current && !names.includes(current) ? [current, ...names] : names;
-  for (const name of choices) toolName.append(new Option(name, name));
-  toolName.value = current || toolName.options[0]?.value || "";
   const argsBox = make("div", "wf-args");
-  const saved = step.type === "tool" ? step : undefined;
+  let saved = step.type === "tool" ? step : undefined;
+  // A tool the list does not know (the list may not have arrived) stays selectable.
+  const fillTools = (selected: string): void => {
+    const names = tools().map((t) => t.name);
+    toolName.textContent = "";
+    const choices =
+      selected && !names.includes(selected) ? [selected, ...names] : names;
+    for (const name of choices) toolName.append(new Option(name, name));
+    toolName.value = selected || toolName.options[0]?.value || "";
+  };
   const argsFor = (): ReturnType<typeof createArgRows> => {
-    const same = saved !== undefined && saved.name === toolName.value;
+    const from = saved?.name === toolName.value ? saved : undefined;
     return createArgRows(
       argsBox,
       tools().find((t) => t.name === toolName.value)?.params ?? [],
-      same ? saved.args : {},
-      same && saved.exact === true,
+      from?.args ?? {},
+      from?.exact === true,
     );
   };
+  fillTools(saved?.name ?? "");
   let argRows = argsFor();
   toolName.addEventListener("change", () => {
     argRows = argsFor();
@@ -110,7 +114,16 @@ function stepRow(
       exact: true,
     };
   };
-  return { row, read };
+  /** The tool list arrived or changed: refill the choices, keeping what is chosen and entered. */
+  const refreshTools = (): void => {
+    const chosen = toolName.value;
+    if (kind.value === "tool" && chosen) {
+      saved = { type: "tool", name: chosen, args: argRows.read(), exact: true };
+    }
+    fillTools(chosen);
+    argRows = argsFor();
+  };
+  return { row, read, refreshTools };
 }
 
 const isRef = (ref: Ref | null, message: Partial<Ref>): boolean =>
@@ -170,6 +183,7 @@ function createStepList(box: HTMLElement, tools: () => ToolInfo[]) {
       for (const step of steps) add(step);
     },
     read: (): Step[] => rows.map((r) => r.read()),
+    refreshTools: (): void => rows.forEach((r) => r.refreshTools()),
   };
 }
 
@@ -278,7 +292,10 @@ export function createWorkflowsPanel(
     send({ type: "workflow_delete", ...target });
   });
   for (const trigger of refreshOn) {
-    trigger.addEventListener("click", () => send({ type: "workflows_list" }));
+    trigger.addEventListener("click", () => {
+      send({ type: "workflows_list" });
+      send({ type: "workflow_tools" }); // the first request may have gone out before the connection opened
+    });
   }
 
   send({ type: "workflow_tools" });
@@ -290,6 +307,7 @@ export function createWorkflowsPanel(
       switch (message.type) {
         case "workflow_tools":
           toolInfos = message.toolDefs ?? [];
+          steps.refreshTools();
           return true;
         case "workflows":
           entries = message.workflows ?? [];
