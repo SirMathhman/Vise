@@ -496,13 +496,59 @@ body {
 
 .ask-options {
   margin: 0;
-  padding-left: 1.2rem;
-  color: var(--dim);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
   list-style: none;
 }
 
 .ask-options li {
   list-style: none;
+}
+
+/* A choice is a button: click it, press its number, or arrow to it and press Enter. */
+.ask-option {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  width: 100%;
+  text-align: left;
+  background: none;
+  color: inherit;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.3rem 0.6rem;
+  cursor: pointer;
+}
+
+.ask-option:hover,
+.ask-option.active,
+.ask-option:focus-visible {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  outline: none;
+}
+
+.ask-option.selected {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.ask-option.selected::after {
+  content: "✓";
+  margin-left: auto;
+  color: var(--accent);
+}
+
+.ask-key {
+  flex: none;
+  min-width: 1.4em;
+  text-align: center;
+  font-size: 0.8em;
+  color: var(--accent);
+  border: 1px solid currentColor;
+  border-radius: 4px;
 }
 
 .ask-row {
