@@ -534,6 +534,18 @@ Vise ships as two compiled executables (`vise.exe` web, `vise-cli.exe` terminal)
   should be paged or filtered (by region or field) rather than capped
   silently, and tool results should report repeated identical failures so the
   loop can stop and ask the user.
+- **Page actions are data, not backend methods.** Every page-script action
+  (`uploadFiles`, `selectOption`, future combobox, checkbox/radio, date and
+  contenteditable setters) should be a pure `PageAction` in `page-scripts.ts`
+  (script name plus JSON args, JSON result) run through one optional backend
+  capability, `runPageAction(tabId, ref, action)`, implemented once per
+  protocol (CDP, BiDi, extension) and forwarded once by `SwitchableBrowser`.
+  Adding a widget then touches only the script and the tool, not five backends.
+  Snapshot refs carry a page-generation stamp so a ref from before a re-render
+  fails with "page changed, read again" instead of acting on the wrong
+  element; the outline is paged or filtered (by region or field) rather than
+  capped silently, and tool results report repeated identical failures so the
+  loop can stop and ask the user.
 
 ## Performance
 

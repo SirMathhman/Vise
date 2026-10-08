@@ -34,4 +34,9 @@ export interface ServerMessage extends ResultMessage, HooksFields {
   /** `queue`: the lines held until the work in flight is done. `line_started`: which held line began. */
   items?: { qid: string; text: string }[];
   qid?: string;
+  /** `progress`: llama.cpp prompt processing (tokens). */
+  total?: number;
+  cache?: number;
+  processed?: number;
+  time_ms?: number;
 }

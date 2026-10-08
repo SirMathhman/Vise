@@ -5,6 +5,7 @@ import { replayHistory, showImage } from "./history.ts";
 import { appendPicture } from "./lightbox.ts";
 import { createGoalUi } from "./goal-ui.ts";
 import { createAskUi } from "./ask-ui.ts";
+import { createPromptProgress } from "./prompt-progress.ts";
 import { createSteerUi } from "./steer-ui.ts";
 import { bindToolToggles } from "./tool-toggles.ts";
 import { createSettingsPanels } from "./settings-panels.ts";
@@ -74,6 +75,7 @@ const settingsPanels = createSettingsPanels(sendMessage);
 const workspace = createWorkspace(sendMessage, renderMarkdown, setStatus);
 /** The parts of the page that own some of the server messages. */
 const goalUi = createGoalUi(transcript.addLine, sendMessage);
+const promptProgress = createPromptProgress(transcript.addLine);
 const steerUi = createSteerUi({
   sendMessage,
   started: (text) => {
@@ -526,6 +528,7 @@ socket.addEventListener("message", (event: MessageEvent<string>) => {
       transcript.setBurst(!!message.active);
       break;
     case "progress":
+      promptProgress.handle(message);
       break;
     case "result":
       transcript.finishThinking();
