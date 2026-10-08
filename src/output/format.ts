@@ -10,6 +10,9 @@ export function formatError(err: ViseError): string {
     return `vise: ${err.cause}`;
   } else if (err.kind === "interrupted") {
     return "vise: interrupted";
+  } else if (err.kind === "storage") {
+    const hint = err.hint ? ` (${err.hint})` : "";
+    return `vise: could not ${err.op} ${err.path}: ${err.cause}${hint}`;
   } else {
     return `vise: ${err.body}`;
   }
@@ -38,6 +41,8 @@ export function formatCompactionFailure(err: ViseError): string {
     return `vise: auto-compact skipped (network): ${err.cause}`;
   } else if (err.kind === "interrupted") {
     return "vise: auto-compact skipped: interrupted";
+  } else if (err.kind === "storage") {
+    return `vise: auto-compact skipped: could not ${err.op} ${err.path}: ${err.cause}`;
   } else {
     return `vise: auto-compact skipped: ${err.body}`;
   }

@@ -16,10 +16,12 @@ import { writeSession } from "./session-write.ts";
  * count must equal the file's), and only then deleted. A file that is not
  * valid is left where it is; one whose id already has a row (an import that
  * stopped before the delete) is just removed, the database copy being newer.
+ * Returns a line for each file that was kept.
  */
-export function importLegacySessions(db: Database, base: string): void {
+export function importLegacySessions(db: Database, base: string): string[] {
+  const skipped: string[] = [];
   const dir = join(base, "sessions");
-  if (!existsSync(dir)) return;
+  if (!existsSync(dir)) return skipped;
   for (const file of readdirSync(dir)) {
     if (!file.endsWith(".json")) continue;
     const id = file.slice(0, -".json".length);
@@ -27,7 +29,7 @@ export function importLegacySessions(db: Database, base: string): void {
     try {
       importOne(db, join(dir, file), id);
     } catch (e) {
-      console.error(`session import: kept ${file}: ${String(e)}`);
+      skipped.push(`${file}: ${String(e)}`);
     }
   }
   try {
@@ -35,6 +37,7 @@ export function importLegacySessions(db: Database, base: string): void {
   } catch {
     // files were kept; leave the directory
   }
+  return skipped;
 }
 
 function importOne(db: Database, path: string, id: string): void {

@@ -25,8 +25,9 @@ export interface ResumeConnection {
 export function queueAutoResume(conn: ResumeConnection): void {
   conn.chain = conn.chain
     .then(async () => {
-      const id = latestSessionId(conn.dataDir);
-      if (!id) return;
+      const latest = latestSessionId(conn.dataDir);
+      if (!latest.ok || !latest.value) return;
+      const id = latest.value;
       const saved = loadSession(conn.dataDir, id);
       if (!saved.ok) return;
       if (!conn.lease.claim(id)) {

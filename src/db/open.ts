@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import type { Result } from "../core/errors.ts";
 import { migrate, type Migration } from "./migrate.ts";
 
 /**
@@ -11,19 +12,43 @@ import { migrate, type Migration } from "./migrate.ts";
  */
 const open = new Map<string, Database>();
 
+/** Run a database step, turning a thrown SQLite/IO error into a `storage` error. */
+export function tryDb<T>(op: string, path: string, fn: () => T): Result<T> {
+  try {
+    return { ok: true, value: fn() };
+  } catch (e) {
+    const cause = e instanceof Error ? e.message : String(e);
+    return {
+      ok: false,
+      error: { kind: "storage", op, path, cause, hint: hintFor(cause) },
+    };
+  }
+}
+
+function hintFor(cause: string): string | undefined {
+  if (/locked|busy/i.test(cause)) return "close other Vise windows using it";
+  if (/readonly|permission|EACCES|EPERM/i.test(cause)) {
+    return "check the folder is writable";
+  }
+  if (/full/i.test(cause)) return "free some disk space";
+  return undefined;
+}
+
 /** Open (or reuse) the database at `path`, creating it and applying `migrations`. */
-export function openDb(path: string, migrations: Migration[]): Database {
+export function openDb(path: string, migrations: Migration[]): Result<Database> {
   const key = path === ":memory:" ? path : resolve(path);
   const cached = open.get(key);
-  if (cached) return cached;
-  if (key !== ":memory:") mkdirSync(dirname(key), { recursive: true });
-  const db = new Database(key, { create: true });
-  db.exec("PRAGMA journal_mode = WAL");
-  db.exec("PRAGMA foreign_keys = ON");
-  db.exec("PRAGMA busy_timeout = 5000");
-  migrate(db, migrations);
-  open.set(key, db);
-  return db;
+  if (cached) return { ok: true, value: cached };
+  return tryDb("open", key, () => {
+    if (key !== ":memory:") mkdirSync(dirname(key), { recursive: true });
+    const db = new Database(key, { create: true });
+    db.exec("PRAGMA journal_mode = WAL");
+    db.exec("PRAGMA foreign_keys = ON");
+    db.exec("PRAGMA busy_timeout = 5000");
+    migrate(db, migrations);
+    open.set(key, db);
+    return db;
+  });
 }
 
 /** Close every connection (tests on Windows cannot delete an open database file). */

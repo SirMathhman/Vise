@@ -251,7 +251,7 @@ export class FileSessionSource implements SessionSource {
   }
 
   async list(): Promise<Result<SessionEntry[]>> {
-    return { ok: true, value: listSessions(this.base) };
+    return listSessions(this.base);
   }
 
   async delete(ref: string): Promise<Result<string>> {

@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
 import {
   existsSync,
   mkdirSync,
@@ -39,6 +40,10 @@ const messages: Message[] = [
   { role: "user", content: "hello" },
 ];
 
+function ok<T>(value: T): { ok: true; value: T } {
+  return { ok: true, value };
+}
+
 function idOf(result: { ok: boolean; value?: string }): string {
   if (!result.ok || result.value === undefined) throw new Error("save failed");
   return result.value;
@@ -75,7 +80,7 @@ describe("saveSession (edge)", () => {
     const id = idOf(saveSession(base, undefined, "first", messages, undefined));
     const again = idOf(saveSession(base, id, "renamed", messages, undefined));
     expect(again).toBe(id);
-    expect(listSessions(base)).toEqual([{ id, name: "renamed" }]);
+    expect(listSessions(base)).toEqual(ok([{ id, name: "renamed" }]));
   });
 
   test("two sessions may share a display name", () => {
@@ -83,7 +88,8 @@ describe("saveSession (edge)", () => {
     const a = idOf(saveSession(base, undefined, "same", messages, undefined));
     const b = idOf(saveSession(base, undefined, "same", messages, undefined));
     expect(a).not.toBe(b);
-    expect(listSessions(base)).toHaveLength(2);
+    const listed = listSessions(base);
+    expect(listed.ok && listed.value).toHaveLength(2);
   });
 
   test("rejects a blank name", () => {
@@ -154,17 +160,19 @@ describe("loadSession (edge)", () => {
 
 describe("listSessions (edge)", () => {
   test("returns an empty array when the directory does not exist", () => {
-    expect(listSessions(join(freshBase(), "nope"))).toEqual([]);
+    expect(listSessions(join(freshBase(), "nope"))).toEqual(ok([]));
   });
 
   test("lists id and name, sorted by name", () => {
     const base = freshBase();
     const b = idOf(saveSession(base, undefined, "beta", messages, undefined));
     const a = idOf(saveSession(base, undefined, "alpha", messages, undefined));
-    expect(listSessions(base)).toEqual([
-      { id: a, name: "alpha" },
-      { id: b, name: "beta" },
-    ]);
+    expect(listSessions(base)).toEqual(
+      ok([
+        { id: a, name: "alpha" },
+        { id: b, name: "beta" },
+      ]),
+    );
   });
 
   test("latestSessionId is the most recently saved", async () => {
@@ -172,10 +180,10 @@ describe("listSessions (edge)", () => {
     const first = idOf(saveSession(base, undefined, "a", messages, undefined));
     await Bun.sleep(5);
     const second = idOf(saveSession(base, undefined, "b", messages, undefined));
-    expect(latestSessionId(base)).toBe(second);
+    expect(latestSessionId(base)).toEqual(ok(second));
     await Bun.sleep(5);
     saveSession(base, first, "a", messages, undefined);
-    expect(latestSessionId(base)).toBe(first);
+    expect(latestSessionId(base)).toEqual(ok(first));
   });
 });
 
@@ -240,9 +248,29 @@ describe("legacy JSON import", () => {
     const base = freshBase();
     const bad = legacy(base, "bad0.json", "{ not json");
     const noMessages = legacy(base, "bad1.json", JSON.stringify({ x: 1 }));
-    expect(listSessions(base)).toEqual([]);
+    expect(listSessions(base)).toEqual(ok([]));
     expect(existsSync(bad)).toBe(true);
     expect(existsSync(noMessages)).toBe(true);
+  });
+});
+
+describe("storage failures", () => {
+  test("a corrupt column is returned as a storage error, not thrown", () => {
+    const base = freshBase();
+    const id = idOf(saveSession(base, undefined, "x", messages, undefined));
+    const db = new Database(join(base, "vise.db"));
+    db.query("UPDATE messages SET images = '{bad' WHERE seq = 1").run();
+    db.close();
+    closeAllDbs();
+    const loaded = loadSession(base, id);
+    expect(!loaded.ok && loaded.error.kind).toBe("storage");
+  });
+
+  test("an unopenable database is returned as a storage error", () => {
+    const base = freshBase();
+    mkdirSync(join(base, "vise.db"));
+    const saved = saveSession(base, undefined, "x", messages, undefined);
+    expect(!saved.ok && saved.error.kind).toBe("storage");
   });
 });
 
@@ -252,7 +280,7 @@ describe("deleteSession (edge)", () => {
     const id = idOf(saveSession(base, undefined, "gone", messages, undefined));
     const deleted = deleteSession(base, id.slice(0, 8));
     expect(deleted.ok && deleted.value).toBe(id);
-    expect(listSessions(base)).toEqual([]);
+    expect(listSessions(base)).toEqual(ok([]));
   });
 
   test("returns an error when the session is not found", () => {

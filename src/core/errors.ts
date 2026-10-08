@@ -95,6 +95,8 @@ export type ViseError =
   | { kind: "http"; status: number; body: string }
   | { kind: "network"; cause: string }
   | { kind: "malformed"; body: string }
+  /** A local store (the SQLite databases) failed: what was being done, to which file, why, and what may help. */
+  | { kind: "storage"; op: string; path: string; cause: string; hint?: string }
   | { kind: "interrupted" };
 
 export type Result<T> =
