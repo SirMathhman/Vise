@@ -45,7 +45,9 @@ import {
 } from "./tools/images.ts";
 import { makeAskUserHandler, type UserPrompter } from "./tools/agent/ask-user.ts";
 import { makeSearchToolsHandler } from "./tools/search-tools.ts";
-import { makeSelfHandler } from "./tools/agent/self.ts";
+import { makeSelfHandler, type SelfInfo } from "./tools/agent/self.ts";
+import { makeTodoHandler, TodoBoard } from "./tools/agent/todo.ts";
+import type { TodoItem } from "./core/todos.ts";
 import { currentSubagentDepth, makeSubagentHandler } from "./tools/agent/subagent.ts";
 import { createToolRunner, isFileSystemTool, ToolSet, tools } from "./tools.ts";
 
@@ -161,6 +163,8 @@ export interface EdgeSessionOptions {
   onImage?: (image: Picture) => void;
   /** Notified when burst mode enters or leaves an act round. */
   onBurst?: (active: boolean) => void;
+  /** The agent's todo list changed (a `todo_write` call, a resume, `/new`). */
+  onTodos?: (items: TodoItem[]) => void;
   /** Told the goal, each verdict on it, and when goal checking is switched. */
   onGoal?: (event: GoalEvent) => void;
   /** Whether each turn is checked against a goal (default on). */
@@ -294,6 +298,25 @@ function wireClientSinks(
   client.setAuditSink(audit);
 }
 
+/** The live facts the `self` tool reports. */
+function selfInfo(
+  client: LlmClient,
+  cwd: string | undefined,
+  session: () => Session,
+  hookStore: HookStore,
+): SelfInfo {
+  return {
+    backend: BACKEND,
+    model: () => client.getModel(),
+    cwd,
+    contextMax: () => client.contextMax(),
+    lastPromptTokens: () => client.lastPromptTokensUsed(),
+    activeProfile: () => session().getActiveProfile(),
+    preTurnHooks: () => hookStore.pre.map((h) => h.command),
+    postTurnHooks: () => hookStore.post.map((h) => h.command),
+  };
+}
+
 /**
  * Construct the full edge stack: the `LlmClient`, every edge data source, the
  * composed `ToolRunner`, and the `Session`. Shared by the terminal and web
@@ -344,6 +367,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
   const { images, imageSource } = imagePlumbing(client, cwd);
   // Tool results too big to show go here instead; the temp tools read them back.
   const temp = new TempStore();
+  const todos = new TodoBoard(options.onTodos);
   const toolRunner = createToolRunner(
     {
       run_subagent: makeSubagentHandler(
@@ -358,22 +382,16 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
         (name) => toolController.baselineEnabled(name),
       ),
       ask_user: makeAskUserHandler(options.askUser),
+      todo_write: makeTodoHandler(todos),
       search_tools: makeSearchToolsHandler(sessionTools, (name) =>
         toolController.isEnabled(name),
       ),
       ...makeBrowserHandlers(browser, temp, cwd, images),
       ...makeImageHandlers(images, cwd),
       ...tempHandlers(temp),
-      self: makeSelfHandler({
-        backend: BACKEND,
-        model: () => client.getModel(),
-        cwd,
-        contextMax: () => client.contextMax(),
-        lastPromptTokens: () => client.lastPromptTokensUsed(),
-        activeProfile: () => sessionRef.current.getActiveProfile(),
-        preTurnHooks: () => hookStore.pre.map((h) => h.command),
-        postTurnHooks: () => hookStore.post.map((h) => h.command),
-      }),
+      self: makeSelfHandler(
+        selfInfo(client, cwd, () => sessionRef.current, hookStore),
+      ),
     },
     toolController,
     root,
@@ -395,6 +413,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     imageSource,
     workflowSource,
     sessionSource,
+    todos,
     ...audit,
     preTurnHooks: hookStore.pre,
     postTurnHooks: hookStore.post,

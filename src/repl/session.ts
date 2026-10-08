@@ -24,11 +24,7 @@ import {
   reportContext,
   toggleNotice,
 } from "./commands/commands.ts";
-import {
-  addedSinceLastCall,
-  autoCompact,
-  runCompaction,
-} from "./turn/compaction.ts";
+import { addedSinceLastCall, autoCompact, runCompaction } from "./turn/compaction.ts";
 import { makeRoundHook, NoticeQueue } from "./turn/round-hooks.ts";
 import { ProfileToolGate } from "./profile-tools.ts";
 import {
@@ -205,6 +201,7 @@ export class Session {
         this.replaceConversation(body);
       },
       currentSession: () => ({ id: this.sessionId, name: this.sessionName }),
+      todos: this.opts.todos,
       setSession: (id, name) => {
         this.sessionId = id;
         this.sessionName = name;
@@ -594,6 +591,7 @@ export class Session {
   private async newConversation(): Promise<Result<string>> {
     this.pendingProfile = [];
     this.goals.goal = undefined;
+    this.opts.todos?.set([]);
     const oldMessages = [...this.messages];
     this.messages.length = 0;
     this.messages.push(this.systemMessage);
@@ -630,14 +628,14 @@ export class Session {
   }
 
   private async saveSession(): Promise<void> {
-    if (!this.sessionSource) return;
-    if (this.sessionName === undefined) return;
+    if (!this.sessionSource || this.sessionName === undefined) return;
     try {
       const saved = await this.sessionSource.save(
         this.sessionId,
         this.sessionName,
         this.messages.filter((m) => !this.goals.isNote(m)),
         this.activeProfile,
+        this.opts.todos?.get(),
       );
       if (saved.ok) this.sessionId = saved.value;
     } catch {

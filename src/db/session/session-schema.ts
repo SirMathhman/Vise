@@ -24,4 +24,6 @@ export const SESSION_MIGRATIONS: Migration[] = [
   CREATE INDEX sessions_updated ON sessions(updated_at);
   CREATE VIRTUAL TABLE message_fts USING fts5(content, session_id UNINDEXED);
   `,
+  // The agent's todo list, as JSON.
+  `ALTER TABLE sessions ADD COLUMN todos TEXT`,
 ];

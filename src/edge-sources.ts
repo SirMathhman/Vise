@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { globalDataDir } from "./data-dir.ts";
 import type { SearchHit } from "./repl/ports.ts";
 import type { Message, Result } from "./core/errors.ts";
+import type { TodoItem } from "./core/todos.ts";
 import { buildInitialTree } from "./fs-tree.ts";
 import { formatNotes, formatNotesWithin } from "./stores/notes-format.ts";
 import { NoteStore } from "./stores/note-store.ts";
@@ -244,8 +245,9 @@ export class FileSessionSource implements SessionSource {
     name: string,
     messages: Message[],
     activeProfile: string | undefined,
+    todos?: TodoItem[],
   ): Promise<Result<string>> {
-    return saveSession(this.base, id, name, messages, activeProfile);
+    return saveSession(this.base, id, name, messages, activeProfile, todos);
   }
 
   async load(ref: string): Promise<Result<SavedSession>> {

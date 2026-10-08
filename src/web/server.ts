@@ -464,6 +464,7 @@ function makeConnectionState(
         text: formatToolCall(name, args, displayOfTool),
       }),
     onBurst: (active) => send({ type: "burst", active }),
+    onTodos: (items) => send({ type: "todos", todos: items }),
     onGoal: (event) => {
       if (event.kind === "setting") {
         send({ type: "goal_state", enabled: event.enabled });

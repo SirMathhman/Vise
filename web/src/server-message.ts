@@ -51,6 +51,8 @@ export interface ServerMessage extends ResultMessage, HooksFields {
   /** `generating`: set on the report that follows a call's end (the context fill, not a generation). */
   used?: number;
   done?: boolean;
+  /** `todos`: the agent's todo list. */
+  todos?: { content: string; status: string }[];
   /** `state`: a line is running on the server, and whether it can be steered. */
   running?: boolean;
   steerable?: boolean;

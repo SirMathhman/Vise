@@ -4,6 +4,7 @@ import type { ResultMessage, ServerMessage } from "./server-message.ts";
 import { replayHistory, showImage } from "./log/history.ts";
 import { appendPicture } from "./log/lightbox.ts";
 import { createGoalUi } from "./status/goal-ui.ts";
+import { createTodoUi } from "./status/todo-ui.ts";
 import { createAskUi } from "./composer/ask-ui.ts";
 import { createCompactionMarker } from "./status/compaction-ui.ts";
 import { createGenerating } from "./status/generating.ts";
@@ -101,7 +102,15 @@ const steerUi = createSteerUi({
   steerBtn: requiredElement("steer-btn"),
   queueBtn: requiredElement("queue-btn"),
 });
-const serverPanels = [hooksPanel, settingsPanels, workspace, goalUi, steerUi];
+const todoUi = createTodoUi(requiredElement("todos"));
+const serverPanels = [
+  hooksPanel,
+  settingsPanels,
+  workspace,
+  goalUi,
+  steerUi,
+  todoUi,
+];
 
 let pendingModelList = false;
 let pendingProfileList = false;

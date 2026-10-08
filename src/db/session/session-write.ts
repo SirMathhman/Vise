@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import type { Message } from "../../core/errors.ts";
+import type { TodoItem } from "../../core/todos.ts";
 
 /**
  * Write (or overwrite) one session and all its messages in a single
@@ -13,14 +14,15 @@ export function writeSession(
   messages: Message[],
   activeProfile: string | undefined,
   savedAt: string = new Date().toISOString(),
+  todos: TodoItem[] = [],
 ): void {
   db.transaction(() => {
     db.query(
-      `INSERT INTO sessions (id, name, active_profile, created_at, updated_at)
-       VALUES (?1, ?2, ?3, ?4, ?4)
+      `INSERT INTO sessions (id, name, active_profile, created_at, updated_at, todos)
+       VALUES (?1, ?2, ?3, ?4, ?4, ?5)
        ON CONFLICT(id) DO UPDATE SET
-         name = ?2, active_profile = ?3, updated_at = ?4`,
-    ).run(id, name, activeProfile ?? null, savedAt);
+         name = ?2, active_profile = ?3, updated_at = ?4, todos = ?5`,
+    ).run(id, name, activeProfile ?? null, savedAt, JSON.stringify(todos));
     db.query("DELETE FROM messages WHERE session_id = ?").run(id);
     db.query("DELETE FROM message_fts WHERE session_id = ?").run(id);
     const insert = db.query(

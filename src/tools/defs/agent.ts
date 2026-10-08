@@ -61,6 +61,36 @@ export const agentTools: Tool[] = [
   },
   {
     type: "function",
+    display: { label: "Update todo list", icon: "📋" },
+    function: {
+      name: "todo_write",
+      description:
+        "Keep a todo list for a multi-step task. Each call replaces the whole list; send every item every time, with its current status (pending, in_progress or completed). Keep one item in_progress while you work on it and mark it completed as soon as it is done. The list is shown to the user and saved with the session.",
+      parameters: {
+        type: "object",
+        properties: {
+          todos: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                content: { type: "string", description: "The step, briefly." },
+                status: {
+                  type: "string",
+                  enum: ["pending", "in_progress", "completed"],
+                },
+              },
+              required: ["content", "status"],
+            },
+            description: "The complete todo list. An empty list clears it.",
+          },
+        },
+        required: ["todos"],
+      },
+    },
+  },
+  {
+    type: "function",
     display: { label: "Run helper agent", icon: "🤖" },
     function: {
       name: "run_subagent",

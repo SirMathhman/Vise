@@ -1,6 +1,7 @@
 import type { AuditSink } from "../core/audit.ts";
 import type { Picture } from "../core/errors.ts";
 import type { Client } from "../core/engine.ts";
+import type { TodoItem, TodoStore } from "../core/todos.ts";
 import type { Workflow, WorkflowScope } from "../core/workflow.ts";
 import type { Message, Result } from "../core/errors.ts";
 
@@ -156,6 +157,8 @@ export interface SavedSession {
   name: string;
   messages: Message[];
   activeProfile: string | undefined;
+  /** The agent's todo list at save time. */
+  todos?: TodoItem[];
   savedAt: string;
 }
 
@@ -190,6 +193,7 @@ export interface SessionSource {
     name: string,
     messages: Message[],
     activeProfile: string | undefined,
+    todos?: TodoItem[],
   ): Promise<Result<string>>;
   /** Load a saved session by id or unique id prefix. */
   load(ref: string): Promise<Result<SavedSession>>;
@@ -246,6 +250,8 @@ export interface SessionCommands {
   currentSession(): { id: string | undefined; name: string | undefined };
   /** Point the conversation at a session (undefined: it has none yet). */
   setSession(id: string | undefined, name: string | undefined): void;
+  /** The agent's todo list (saved with the session). */
+  todos: TodoStore | undefined;
 }
 
 /**

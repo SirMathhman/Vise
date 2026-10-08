@@ -5,6 +5,7 @@ import type {
 } from "../core/engine.ts";
 import type { AuditReader, AuditSink } from "../core/audit.ts";
 import type { Picture } from "../core/errors.ts";
+import type { TodoStore } from "../core/todos.ts";
 import type { GoalEvent } from "./turn/goal-loop.ts";
 import type {
   ContextSource,
@@ -91,6 +92,8 @@ export interface SessionOptions {
    */
   initialMessage?: string;
   sessionSource?: SessionSource;
+  /** The agent's todo list: saved with the session, restored on resume, cleared by `/new`. */
+  todos?: TodoStore;
   /** Where the audit log of this conversation goes (nothing is recorded when absent). */
   auditSink?: AuditSink;
   /** Answers `/audit` from the audit log (absent when the log is off). */

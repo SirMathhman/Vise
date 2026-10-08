@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { join, resolve } from "node:path";
 import type { Message, Result, ViseError } from "../core/errors.ts";
+import { parseTodos, type TodoItem } from "../core/todos.ts";
 import type { SavedSession, SearchHit, SessionEntry } from "../repl/ports.ts";
 import { importLegacySessions } from "../db/session/import-json.ts";
 import { openDb, tryDb } from "../db/open.ts";
@@ -94,6 +95,7 @@ export function saveSession(
   name: string,
   messages: Message[],
   activeProfile: string | undefined,
+  todos: TodoItem[] = [],
 ): Result<string> {
   const trimmed = name.trim();
   if (trimmed === "") return failure("a session name cannot be blank");
@@ -102,7 +104,15 @@ export function saveSession(
   }
   const finalId = id ?? crypto.randomUUID();
   return withDb(base, "save a session in", (db) => {
-    writeSession(db, finalId, trimmed, messages, activeProfile);
+    writeSession(
+      db,
+      finalId,
+      trimmed,
+      messages,
+      activeProfile,
+      undefined,
+      todos,
+    );
     return { ok: true, value: finalId };
   });
 }
@@ -112,6 +122,18 @@ interface SessionRow {
   name: string;
   active_profile: string | null;
   updated_at: string;
+  todos: string | null;
+}
+
+/** The todo list stored with a session; a missing or damaged value is an empty list. */
+function storedTodos(json: string | null): TodoItem[] {
+  if (json === null) return [];
+  try {
+    const parsed = parseTodos(JSON.parse(json));
+    return parsed.ok ? parsed.value : [];
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -124,7 +146,7 @@ export function loadSession(base: string, ref: string): Result<SavedSession> {
     if (!resolved.ok) return resolved;
     const row = db
       .query(
-        "SELECT id, name, active_profile, updated_at FROM sessions WHERE id = ?",
+        "SELECT id, name, active_profile, updated_at, todos FROM sessions WHERE id = ?",
       )
       .get(resolved.value) as SessionRow | null;
     if (!row) return failure(`session '${ref}' not found.`);
@@ -135,6 +157,7 @@ export function loadSession(base: string, ref: string): Result<SavedSession> {
         name: row.name,
         messages: readMessages(db, row.id),
         activeProfile: row.active_profile ?? undefined,
+        todos: storedTodos(row.todos),
         savedAt: row.updated_at,
       },
     };
