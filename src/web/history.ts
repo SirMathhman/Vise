@@ -9,12 +9,20 @@ import { formatToolCall } from "../output/tool-line.ts";
  * session put into the conversation itself (the directory tree, notices, a
  * profile's text, hook output) is left out.
  */
-export type HistoryEntry =
+type EntryBody =
   | { kind: "user"; text: string; images: { id: string; label: string }[] }
   | { kind: "assistant"; text: string }
   | { kind: "tool"; name: string; text: string }
   | { kind: "image"; id: string; label: string }
   | { kind: "note"; text: string };
+
+/**
+ * `seq` is the entry's position among all the lines of the conversation (0 is
+ * the first), the same whether or not the earlier ones are sent, so a page can
+ * ask for "the lines before seq N". The note that stands for the lines left out
+ * has `seq` -1.
+ */
+export type HistoryEntry = EntryBody & { seq: number };
 
 /** The most lines restored at once; older ones are summarised as a count. */
 
@@ -49,20 +57,20 @@ function typedByUser(
 
 export function historyEntries(messages: Message[]): HistoryEntry[] {
   const marked = messages.some((m) => m.typed === true);
-  const entries: HistoryEntry[] = [];
+  const bodies: EntryBody[] = [];
   messages.forEach((m, index) => {
     if (m.role === "user" && typedByUser(m, index, marked)) {
-      entries.push({
+      bodies.push({
         kind: "user",
         text: m.content,
         images: (m.images ?? []).map((i) => ({ id: i.id, label: i.label })),
       });
     } else if (m.role === "assistant") {
       const text = m.content.replace(PLAN, "").trim();
-      if (text) entries.push({ kind: "assistant", text });
+      if (text) bodies.push({ kind: "assistant", text });
       for (const call of m.tool_calls ?? []) {
         const args = parseArgs(call.function.arguments);
-        entries.push({
+        bodies.push({
           kind: "tool",
           name: call.function.name,
           text: formatToolCall(call.function.name, args),
@@ -70,14 +78,15 @@ export function historyEntries(messages: Message[]): HistoryEntry[] {
       }
     } else if (m.role === "tool") {
       for (const image of m.images ?? []) {
-        entries.push({ kind: "image", id: image.id, label: image.label });
+        bodies.push({ kind: "image", id: image.id, label: image.label });
       }
     }
   });
+  const entries: HistoryEntry[] = bodies.map((body, seq) => ({ ...body, seq }));
   if (entries.length <= config.historyMaxEntries) return entries;
   const cut = entries.length - config.historyMaxEntries;
   return [
-    { kind: "note", text: `(${cut} earlier lines are not shown)` },
+    { kind: "note", text: `(${cut} earlier lines are not shown)`, seq: -1 },
     ...entries.slice(cut),
   ];
 }

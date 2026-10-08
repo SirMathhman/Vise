@@ -2,12 +2,16 @@ import { appendPicture } from "./lightbox.ts";
 import type { TranscriptView } from "./transcript.ts";
 
 /** One restored line of the conversation (the shape `src/web/history.ts` sends). */
-export type HistoryEntry =
+export type HistoryEntry = (
   | { kind: "user"; text: string; images: { id: string; label: string }[] }
   | { kind: "assistant"; text: string }
   | { kind: "tool"; name: string; text: string }
   | { kind: "image"; id: string; label: string }
-  | { kind: "note"; text: string };
+  | { kind: "note"; text: string }
+) & {
+  /** Position among all the conversation's lines (-1 for the "earlier lines are not shown" note); the cursor for paging. */
+  seq: number;
+};
 
 const imageUrl = (id: string): string => `/api/image/${id}`;
 

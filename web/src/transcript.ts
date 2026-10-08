@@ -1,3 +1,5 @@
+import { createLineModel } from "./chat-lines.ts";
+import type { ChatLine, LineModel } from "./chat-lines.ts";
 import { createFollower, nextFrame } from "./follow.ts";
 import { createStreamRenderer, showMarkdown } from "./stream-render.ts";
 
@@ -16,6 +18,8 @@ export interface TranscriptView {
   clear(): void;
   /** Jump to the newest line and follow new ones again. */
   scrollToBottom(): void;
+  /** The conversation as data (kind, text, id), in order; the elements only show it. */
+  lines(): readonly ChatLine[];
 }
 
 /** Click a thinking line to open or close it. */
@@ -38,14 +42,40 @@ interface Block {
 }
 
 /** Add `text` to a block, starting its element at the end of the log when it has none. */
-function extend(log: HTMLElement, block: Block, className: string, text: string): void {
+function extend(
+  log: HTMLElement,
+  model: LineModel,
+  block: Block,
+  className: string,
+  text: string,
+): void {
   if (!block.element) {
     block.element = document.createElement("div");
-    block.element.className = className;
+    block.element.className = `line ${className}`;
     log.appendChild(block.element);
+    model.add(className, "", block.element);
     block.raw = "";
   }
   block.raw += text;
+}
+
+/** A streamed reply ended: show it whole, record what it says, and let the next one start a new line. */
+function finishBlock(
+  model: LineModel,
+  block: Block,
+  renderHtml?: (markdown: string) => string,
+): void {
+  if (!block.element) return;
+  showMarkdown(block.element, block.raw, renderHtml);
+  model.settle(block.element, block.raw);
+  block.element = null;
+}
+
+/** A thinking line ended: it collapses again and its text is final. */
+function finishThinking(model: LineModel, line: HTMLElement | null): void {
+  if (!line) return;
+  line.className = line.className.replace(/ open$/, "");
+  model.settle(line, line.textContent ?? "");
 }
 
 /**
@@ -63,23 +93,24 @@ export function createTranscript(
   const assistant: Block = { element: null, raw: "" };
   const subagent: Block = { element: null, raw: "" };
   let activeThinking: HTMLElement | null = null;
+  const model = createLineModel();
   const stream = createStreamRenderer(renderHtml);
   const { follow, jump } = createFollower(log, onPinned);
   let renderQueued = false;
 
   // Thinking lines start collapsed and collapse again when the thinking ends.
   function endThinking(): void {
-    if (activeThinking) activeThinking.className = activeThinking.className.replace(/ open$/, "");
+    finishThinking(model, activeThinking);
     activeThinking = null;
   }
 
   enableThinkingToggle(log);
-
   function addLine(cls: string, text: string): HTMLDivElement {
     const div = document.createElement("div");
     div.className = `line ${cls}`;
     div.textContent = text;
     log.appendChild(div);
+    model.add(cls, text, div);
     follow();
     return div;
   }
@@ -101,27 +132,23 @@ export function createTranscript(
   function appendSubagentToken(text: string): void {
     flushAssistant(true);
     endThinking();
-    extend(log, subagent, "line assistant subagent", text);
+    extend(log, model, subagent, "assistant subagent", text);
     queueRender();
   }
 
   // `keepSubagent` lets a subagent block keep growing across its tokens.
   function flushAssistant(keepSubagent = false): void {
-    if (!keepSubagent && subagent.element) {
-      showMarkdown(subagent.element, subagent.raw, renderHtml);
-      subagent.element = null;
-    }
+    if (!keepSubagent) finishBlock(model, subagent, renderHtml);
     if (!assistant.element) return;
     // The whole reply is rendered once more, so the parts rendered separately while it streamed join up.
-    showMarkdown(assistant.element, assistant.raw, renderHtml);
-    assistant.element = null;
+    finishBlock(model, assistant, renderHtml);
     stream.reset();
     follow();
   }
 
   function appendAssistantToken(text: string): void {
     endThinking();
-    extend(log, assistant, "line assistant", text);
+    extend(log, model, assistant, "assistant", text);
     queueRender();
   }
 
@@ -141,11 +168,10 @@ export function createTranscript(
     appendToolCall(name: string, depth?: number, text?: string): void {
       flushAssistant();
       endThinking();
-      const line = addLine(
-        "tool",
+      addLine(
+        burstActive ? "tool burst" : "tool",
         `${text ?? `tool: ${name}`}${depth ? " (subagent)" : ""}`,
       );
-      if (burstActive) line.className += " burst";
     },
     setBurst(active: boolean): void {
       if (active && !burstActive) {
@@ -162,9 +188,11 @@ export function createTranscript(
       assistant.element = null;
       subagent.element = null;
       stream.reset();
+      model.clear();
       endThinking();
       jump();
     },
     scrollToBottom: jump,
+    lines: () => model.lines,
   };
 }

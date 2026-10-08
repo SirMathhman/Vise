@@ -1,4 +1,4 @@
-import { stableCut } from "./stream-split.ts";
+import { createCutScanner } from "./stream-split.ts";
 
 /** Show `raw` as sanitized HTML when a renderer is given, else verbatim. */
 export function showMarkdown(
@@ -10,7 +10,7 @@ export function showMarkdown(
   else element.textContent = raw;
 }
 
-/** The finished and the still-open part of a long streaming reply (see `stableCut`). */
+/** The finished and the still-open part of a long streaming reply (see `createCutScanner`). */
 interface Split {
   frozen: HTMLElement;
   tail: HTMLElement;
@@ -29,13 +29,14 @@ export function createStreamRenderer(renderHtml?: (markdown: string) => string):
   reset(): void;
 } {
   let split: Split | null = null;
+  let scan = createCutScanner();
   return {
     render(element, raw): void {
       if (!renderHtml) {
         element.textContent = raw;
         return;
       }
-      const cut = stableCut(raw);
+      const cut = scan(raw);
       if (cut === 0 && !split) {
         element.innerHTML = renderHtml(raw);
         return;
@@ -58,6 +59,7 @@ export function createStreamRenderer(renderHtml?: (markdown: string) => string):
     },
     reset(): void {
       split = null;
+      scan = createCutScanner();
     },
   };
 }

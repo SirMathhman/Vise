@@ -32,3 +32,34 @@ test("the cut never moves back as the reply grows", () => {
     previous = cut;
   }
 });
+
+import { createCutScanner } from "../web/src/stream-split.ts";
+
+test("a fence is closed only by the same character at least as long", () => {
+  const before = long(8);
+  const open = `${before}\`\`\`\`md\nexample:\n\n\`\`\`ts\ninner\n\`\`\`\n\nstill inside the outer fence\n\n`;
+  expect(stableCut(open)).toBe(before.length);
+  const tilde = `${before}~~~\ntext\n\n\`\`\`\nnot a closer\n\n`;
+  expect(stableCut(tilde)).toBe(before.length);
+});
+
+test("a blank line inside a list is not a cut point; the next plain paragraph is", () => {
+  const before = long(8);
+  const list = `${before}- one\n\n- two\n\n- three\n\n`;
+  expect(stableCut(`${list}`)).toBe(before.length);
+  expect(stableCut(`${list}A new paragraph.\n`)).toBe(list.length);
+});
+
+test("a reply with reference links or raw HTML is left to the final render", () => {
+  const withRef = `${long(4)}[docs]: https://example.com\n\n${long(6)}`;
+  expect(stableCut(withRef)).toBeLessThanOrEqual(long(4).length);
+  const withHtml = `${long(4)}<details>\n\ninner\n\n</details>\n\n${long(6)}`;
+  expect(stableCut(withHtml)).toBeLessThanOrEqual(long(4).length);
+});
+
+test("scanning as the text grows gives the same cut as scanning it whole", () => {
+  const full = `${long(10)}\`\`\`ts\na\n\nb\n\`\`\`\n\n- x\n\n- y\n\nlast paragraph here and more\n\n${long(3)}`;
+  const scan = createCutScanner();
+  for (let end = 1; end < full.length; end += 53) scan(full.slice(0, end));
+  expect(scan(full)).toBe(stableCut(full));
+});

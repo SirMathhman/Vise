@@ -620,6 +620,19 @@ single-module target.
 
 ## Performance
 
+- **The web chat log.** Appending a line, streaming a reply and scrolling must
+  cost the same at 100 lines and at 10,000. Measure with `?bench=<lines>` on
+  the page (`web/src/bench.ts`, development only): per-line cost, frame time
+  while a long reply streams, cost of 50 scroll jumps, DOM size, heap. Done:
+  follow the bottom only while reading there, one render per frame with the
+  finished part of a long reply rendered once, lazy pictures, no live region.
+  The conversation is also kept as data (`web/src/chat-lines.ts`), so the next
+  steps need no rewrite: keep only the newest lines mounted (older ones rebuilt
+  from the data, a spacer standing for them), then page older history from the
+  server by `seq` instead of the 400-line cap. Do not rely on
+  `content-visibility` with one guessed height per line: it makes the
+  scrollbar jump.
+
 Obvious concerns only — real optimization should be profiler-driven.
 
 - **Throughput of the pipe path is I/O-bound.** The only things that could
