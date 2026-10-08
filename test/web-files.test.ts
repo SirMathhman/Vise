@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { annotateIgnored, isGitRoot, listDir, readTextFile } from "../src/web/files.ts";
+import { annotateIgnored, isGitRoot, listDir, readTextFile, type DirEntry } from "../src/web/files.ts";
 
 const root = process.cwd();
 
