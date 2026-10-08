@@ -6,6 +6,7 @@ import { showMenu } from "./tab-menu.ts";
 interface DirEntry {
   name: string;
   dir: boolean;
+  ignored?: boolean;
 }
 
 /** Extra viewer pieces: rendered markdown, its toggle, the URL iframe and its form. */
@@ -58,12 +59,13 @@ export function createExplorer(
       const child = path ? `${path}/${entry.name}` : entry.name;
       ul.appendChild(
         entry.dir
-          ? dirRow(entry.name, child, expanded, (c) => void open(child, c))
+          ? dirRow(entry.name, child, expanded, (c) => void open(child, c), entry.ignored)
           : fileRow(
               entry.name,
               child,
               set.has(child),
               () => void openFile(child),
+              entry.ignored,
             ),
       );
     }
@@ -291,11 +293,13 @@ function fileRow(
   path: string,
   isOpen: boolean,
   onOpen: () => void,
+  ignored?: boolean,
 ): HTMLLIElement {
   const item = document.createElement("li");
   item.className = "fs-row";
   item.dataset.path = path;
   item.classList.toggle("open", isOpen);
+  if (ignored) item.classList.add("fs-ignored");
   const icon = document.createElement("span");
   icon.className = "fs-icon";
   icon.textContent = emojiFor(name);
@@ -311,10 +315,12 @@ function dirRow(
   path: string,
   expanded: Set<string>,
   load: (children: HTMLUListElement) => void,
+  ignored?: boolean,
 ): HTMLLIElement {
   const item = document.createElement("li");
   const head = document.createElement("div");
   head.className = "fs-row fs-dir";
+  if (ignored) head.classList.add("fs-ignored");
   const icon = document.createElement("span");
   icon.className = "fs-icon";
   icon.textContent = "▸";

@@ -5,7 +5,9 @@ import {
   readFileSync,
   realpathSync,
   statSync,
+  existsSync,
 } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { relative, resolve, sep } from "node:path";
 
 /**
@@ -18,6 +20,7 @@ import { relative, resolve, sep } from "node:path";
 export interface DirEntry {
   name: string;
   dir: boolean;
+  ignored?: boolean;
 }
 
 export type ExplorerResult<T> =
@@ -81,6 +84,48 @@ export function readTextFile(
   } catch {
     return { ok: false, error: "cannot read file", status: 404 };
   }
+}
+
+/** True when `root` contains a `.git` entry (directory or file). */
+export function isGitRoot(root: string): boolean {
+  return existsSync(root + "/.git") || existsSync(root + ".git");
+}
+
+/**
+ * Annotate entries with `ignored: true` for those git has marked as ignored.
+ * Returns the same array unchanged when the root is not a git repo or git
+ * is unavailable.
+ */
+export function annotateIgnored(
+  root: string,
+  rel: string,
+  entries: DirEntry[],
+): DirEntry[] {
+  if (!isGitRoot(root) || entries.length === 0) return entries;
+  const paths = entries.map((e) => (rel ? rel + "/" + e.name : e.name));
+  const stdin = paths.join("\n") + "\n";
+  let stdout: string;
+  try {
+    const result = spawnSync(
+      "git",
+      ["check-ignore", "--stdin"],
+      { input: stdin, cwd: root, encoding: "utf8" },
+    );
+    if (result.status !== 0) return entries;
+    stdout = result.stdout;
+  } catch {
+    return entries;
+  }
+  const ignoredSet = new Set(
+    stdout
+      .split("\n")
+      .filter((l) => l.length > 0),
+  );
+  return entries.map((e, i) =>
+    ignoredSet.has(paths[i]!)
+      ? { name: e.name, dir: e.dir, ignored: true }
+      : { name: e.name, dir: e.dir },
+  );
 }
 
 /** Path segments whose changes are noise for the explorer. */

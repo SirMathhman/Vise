@@ -26,7 +26,7 @@ import { pickFolder, RootRegistry } from "./roots.ts";
 import { createEdgeSession } from "../wiring.ts";
 import { formatToolCall, summarizeToolResult } from "../output/tool-line.ts";
 import { displayOfTool } from "../tools/display.ts";
-import { listDir, readTextFile, watchRoot } from "./files.ts";
+import { listDir, readTextFile, watchRoot, annotateIgnored, type DirEntry } from "./files.ts";
 
 /**
  * Web frontend driver (the "frontend" seam, sibling to `TerminalDriver`).
@@ -94,6 +94,11 @@ function serveExplorer(url: URL, roots: RootRegistry): Response {
     url.pathname === "/api/fs" ? listDir(root, rel) : readTextFile(root, rel);
   if (!result.ok)
     return Response.json({ error: result.error }, { status: result.status });
+  if (url.pathname === "/api/fs") {
+    const value = result.value as { root: string; entries: DirEntry[] };
+    value.entries = annotateIgnored(root, rel, value.entries);
+    return Response.json(value);
+  }
   return Response.json(result.value);
 }
 

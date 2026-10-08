@@ -825,6 +825,10 @@ body {
   text-decoration: underline;
 }
 
+.fs-row.fs-ignored {
+  opacity: 0.4;
+}
+
 /* One emoji before a file's name; fixed width keeps the names aligned. */
 .fs-icon {
   display: inline-block;

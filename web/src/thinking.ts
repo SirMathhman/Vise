@@ -7,12 +7,17 @@ function setThinkingState(line: HTMLElement, open: boolean): void {
   else line.setAttribute?.("aria-label", "Thinking (collapsed)");
 }
 
-/** Click (or Enter, or Space) on a thinking line to open or close it. */
+/**
+ * Press (or Enter, or Space) on a thinking line to open or close it. While the
+ * model streams, the log keeps scrolling and growing under the pointer, so a
+ * press and its release can land on different elements and the browser then
+ * sends no click to the line: the press itself does the toggle, and the click
+ * that follows it is ignored. A click on its own (no press before it) still toggles.
+ */
 export function enableThinkingToggle(log: HTMLElement): void {
+  let pressed = false;
   const toggle = (event: Event): void => {
-    const line = (event.target as HTMLElement | null)?.closest?.(
-      ".line.thinking",
-    );
+    const line = (event.target as HTMLElement | null)?.closest?.(".line.thinking");
     if (!(line instanceof HTMLElement)) return;
     const open = !line.className.endsWith(" open");
     line.className = open
@@ -20,7 +25,20 @@ export function enableThinkingToggle(log: HTMLElement): void {
       : line.className.replace(/ open$/, "");
     setThinkingState(line, open);
   };
-  log.addEventListener?.("click", toggle);
+  log.addEventListener?.("pointerdown", (event) => {
+    if ((event as PointerEvent).button !== 0) return;
+    const line = (event.target as HTMLElement | null)?.closest?.(".line.thinking");
+    if (!line) return;
+    pressed = true;
+    toggle(event);
+  });
+  log.addEventListener?.("click", (event) => {
+    if (pressed) {
+      pressed = false;
+      return;
+    }
+    toggle(event);
+  });
   log.addEventListener?.("keydown", (event) => {
     const key = (event as KeyboardEvent).key;
     if (key === "Enter" || key === " ") {
@@ -57,19 +75,27 @@ export function createThinking(deps: ThinkingDeps): {
   let line: HTMLElement | null = null;
   let raw = "";
   let tokens = 0;
+  /** The line's one text node, grown in place: replacing it on every token would pull the text out from under a press on it. */
+  let text: Text | null = null;
 
   return {
     active: () => line !== null,
-    append(text) {
+    append(piece) {
       if (!line) {
         line = deps.addLine("thinking", "");
         setThinkingState(line, false);
         raw = "";
         tokens = 0;
+        text = null;
+        if (typeof document !== "undefined" && typeof line.append === "function") {
+          text = document.createTextNode("");
+          line.append(text);
+        }
       }
-      raw += text;
+      raw += piece;
       tokens += 1;
-      line.textContent += text;
+      if (text) text.appendData(piece);
+      else line.textContent += piece;
       line.setAttribute?.("data-meta", thinkingMeta(tokens));
       deps.follow();
     },
