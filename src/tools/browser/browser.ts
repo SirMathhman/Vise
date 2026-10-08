@@ -1,18 +1,18 @@
-import { config } from "../config.ts";
+import { config } from "../../config.ts";
 import { stat } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
-import type { BrowserBackend, TabInfo } from "../browser/types.ts";
+import type { BrowserBackend, TabInfo } from "../../browser/types.ts";
 import {
   SCROLL_DIRECTIONS,
   scrollSummary,
   selectedOrThrow,
   type ScrollDirection,
-} from "../browser/page-scripts.ts";
+} from "../../browser/page-scripts.ts";
 import { waitHandlers } from "./browser-wait.ts";
 import { TabWatcher } from "./tab-watch.ts";
-import { describeImage, type ImageOutbox } from "./images.ts";
-import { errStr } from "./files.ts";
-import { isTooLarge, truncateInline, type TempStore } from "./temp-store.ts";
+import { describeImage, type ImageOutbox } from "../images.ts";
+import { errStr } from "../files.ts";
+import { isTooLarge, truncateInline, type TempStore } from "../temp-store.ts";
 
 type Handler = (
   args: Record<string, unknown>,

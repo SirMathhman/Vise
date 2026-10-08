@@ -1,4 +1,4 @@
-import type { GoalEvent } from "../repl/goal-loop.ts";
+import type { GoalEvent } from "../repl/turn/goal-loop.ts";
 import type { ViseError } from "../core/errors.ts";
 import type { SessionEntry } from "../repl/ports.ts";
 

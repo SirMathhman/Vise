@@ -1,6 +1,6 @@
 import type { Interface } from "node:readline";
 import { createInterface } from "node:readline";
-import { red } from "../output/color.ts";
+import { red } from "../../output/color.ts";
 
 /**
  * Edge-owned interface for asking the user a question mid-turn. The LLM

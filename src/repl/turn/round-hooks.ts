@@ -1,6 +1,6 @@
-import { config } from "../config.ts";
-import type { Message, Result } from "../core/errors.ts";
-import { formatError } from "../output/format.ts";
+import { config } from "../../config.ts";
+import type { Message, Result } from "../../core/errors.ts";
+import { formatError } from "../../output/format.ts";
 
 /**
  * Upkeep for turns that run for hundreds of tool calls. The engine calls the

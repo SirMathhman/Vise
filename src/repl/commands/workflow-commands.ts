@@ -1,4 +1,4 @@
-import type { Picture } from "../core/errors.ts";
+import type { Picture } from "../../core/errors.ts";
 import type {
   Client,
   Tool,
@@ -6,12 +6,12 @@ import type {
   ToolResultListener,
   ToolRunner,
   TurnCallbacks,
-} from "../core/engine.ts";
-import { runWorkflow } from "../core/workflow.ts";
-import type { WorkflowScope } from "../core/workflow.ts";
-import type { Message, Result, ViseError } from "../core/errors.ts";
-import { formatWorkflowList } from "../output/format.ts";
-import type { PreTurnHook, PostTurnHook, WorkflowSource } from "./session.ts";
+} from "../../core/engine.ts";
+import { runWorkflow } from "../../core/workflow.ts";
+import type { WorkflowScope } from "../../core/workflow.ts";
+import type { Message, Result, ViseError } from "../../core/errors.ts";
+import { formatWorkflowList } from "../../output/format.ts";
+import type { PreTurnHook, PostTurnHook, WorkflowSource } from "../session.ts";
 
 /**
  * The outcome of a handled line. A successful turn carries the model's reply

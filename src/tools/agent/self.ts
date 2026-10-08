@@ -1,5 +1,5 @@
-import type { Result } from "../core/errors.ts";
-import { formatContext, formatError } from "../output/format.ts";
+import type { Result } from "../../core/errors.ts";
+import { formatContext, formatError } from "../../output/format.ts";
 
 /**
  * The facts the `self` tool reports about the running agent, gathered at call

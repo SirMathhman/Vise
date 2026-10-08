@@ -3,11 +3,11 @@ import {
   type AuditReader,
   type AuditSink,
   type AuditTopic,
-} from "../core/audit.ts";
+} from "../../core/audit.ts";
 import type { GoalEvent } from "./goal-loop.ts";
-import type { Message, Result, ViseError } from "../core/errors.ts";
-import { formatAuditReport } from "../output/audit-format.ts";
-import { formatError } from "../output/format.ts";
+import type { Message, Result, ViseError } from "../../core/errors.ts";
+import { formatAuditReport } from "../../output/audit-format.ts";
+import { formatError } from "../../output/format.ts";
 
 /**
  * The session's side of the audit log: ids for the conversation and the turn

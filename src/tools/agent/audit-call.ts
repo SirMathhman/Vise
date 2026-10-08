@@ -1,4 +1,4 @@
-import type { AuditSink } from "../core/audit.ts";
+import type { AuditSink } from "../../core/audit.ts";
 import { currentSubagentDepth } from "./subagent.ts";
 
 /** Run a tool handler and record the call: its whole result (or the exception) and how long it took. */

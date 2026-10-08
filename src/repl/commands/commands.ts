@@ -1,19 +1,19 @@
-import type { ToolController } from "../core/engine.ts";
-import { REASONING_EFFORTS } from "../client/llm.ts";
-import type { Result } from "../core/errors.ts";
+import type { ToolController } from "../../core/engine.ts";
+import { REASONING_EFFORTS } from "../../client/llm.ts";
+import type { Result } from "../../core/errors.ts";
 import {
   formatContext,
   formatModelList,
   formatNoteList,
   formatReasoningList,
   formatToolList,
-} from "../output/format.ts";
+} from "../../output/format.ts";
 import type {
   ContextSource,
   ModelController,
   NoteSource,
   ReasoningController,
-} from "./session.ts";
+} from "../session.ts";
 
 /**
  * Render `/context`. Reads the max live on every call (at most one `/slots`

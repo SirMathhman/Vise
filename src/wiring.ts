@@ -33,20 +33,20 @@ import {
   FileWorkflowSource,
 } from "./edge-sources.ts";
 import type { ModelController, ProfileSource } from "./repl/ports.ts";
-import { compactInPlace } from "./repl/compaction.ts";
+import { compactInPlace } from "./repl/turn/compaction.ts";
 import { Session } from "./repl/session.ts";
 import { TempStore, tempHandlers } from "./tools/temp-store.ts";
-import type { GoalEvent } from "./repl/goal-loop.ts";
-import { makeBrowserHandlers } from "./tools/browser.ts";
+import type { GoalEvent } from "./repl/turn/goal-loop.ts";
+import { makeBrowserHandlers } from "./tools/browser/browser.ts";
 import {
   FileImageSource,
   ImageOutbox,
   makeImageHandlers,
 } from "./tools/images.ts";
-import { makeAskUserHandler, type UserPrompter } from "./tools/ask-user.ts";
+import { makeAskUserHandler, type UserPrompter } from "./tools/agent/ask-user.ts";
 import { makeSearchToolsHandler } from "./tools/search-tools.ts";
-import { makeSelfHandler } from "./tools/self.ts";
-import { currentSubagentDepth, makeSubagentHandler } from "./tools/subagent.ts";
+import { makeSelfHandler } from "./tools/agent/self.ts";
+import { currentSubagentDepth, makeSubagentHandler } from "./tools/agent/subagent.ts";
 import { createToolRunner, isFileSystemTool, ToolSet, tools } from "./tools.ts";
 
 /**

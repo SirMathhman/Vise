@@ -1,5 +1,5 @@
-import { config } from "../config.ts";
-import type { BrowserBackend, TabInfo } from "../browser/types.ts";
+import { config } from "../../config.ts";
+import type { BrowserBackend, TabInfo } from "../../browser/types.ts";
 
 /**
  * Notices tabs a page opens by itself (a link with `target=_blank`, a

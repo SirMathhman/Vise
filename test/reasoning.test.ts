@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { LlmClient, REASONING_EFFORTS } from "../src/client/llm.ts";
-import { handleReasoningCommand } from "../src/repl/commands.ts";
+import { handleReasoningCommand } from "../src/repl/commands/commands.ts";
 import type { ReasoningController } from "../src/repl/session.ts";
 
 type FetchCall = { url: string; method: string; body?: string };

@@ -11,7 +11,7 @@ import {
   type ToolRunner,
 } from "../src/core/engine.ts";
 import type { Message } from "../src/core/errors.ts";
-import { runCompaction } from "../src/repl/compaction.ts";
+import { runCompaction } from "../src/repl/turn/compaction.ts";
 import { createToolRunner, ToolSet } from "../src/tools.ts";
 import { SqliteAuditSink } from "../src/db/audit/audit-store.ts";
 import { SqliteAuditReader } from "../src/db/audit/audit-query.ts";

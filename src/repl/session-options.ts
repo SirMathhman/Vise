@@ -5,7 +5,7 @@ import type {
 } from "../core/engine.ts";
 import type { AuditReader, AuditSink } from "../core/audit.ts";
 import type { Picture } from "../core/errors.ts";
-import type { GoalEvent } from "./goal-loop.ts";
+import type { GoalEvent } from "./turn/goal-loop.ts";
 import type {
   ContextSource,
   HookSource,

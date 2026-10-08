@@ -1,5 +1,5 @@
-import type { Message, Picture, Result } from "../core/errors.ts";
-import type { ImageSource } from "./ports.ts";
+import type { Message, Picture, Result } from "../../core/errors.ts";
+import type { ImageSource } from "../ports.ts";
 
 /**
  * Images the user has attached to their next message with `/image <path>`

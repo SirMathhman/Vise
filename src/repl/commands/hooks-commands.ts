@@ -1,11 +1,11 @@
-import type { Result } from "../core/errors.ts";
-import { formatHooks } from "../output/format.ts";
+import type { Result } from "../../core/errors.ts";
+import { formatHooks } from "../../output/format.ts";
 import type {
   HookSource,
   PostTurnHook,
   PreTurnHook,
   ProfileSource,
-} from "./ports.ts";
+} from "../ports.ts";
 
 /** The live global hook lists (mutated in place), the store that persists them, and the profiles that can own hooks. */
 export interface HooksState {

@@ -2,8 +2,8 @@ import { expect, test } from "bun:test";
 import type { Client, Tool, ToolRunner } from "../src/core/engine.ts";
 import { Session } from "../src/repl/session.ts";
 import { createToolRunner, ToolSet } from "../src/tools.ts";
-import { withToolScope } from "../src/tools/agent-scope.ts";
-import { makeSubagentHandler } from "../src/tools/subagent.ts";
+import { withToolScope } from "../src/tools/agent/agent-scope.ts";
+import { makeSubagentHandler } from "../src/tools/agent/subagent.ts";
 
 const def = (name: string): Tool => ({
   type: "function",

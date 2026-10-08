@@ -1,6 +1,6 @@
-import type { Result } from "../core/errors.ts";
-import { formatSearchHits } from "../output/audit-format.ts";
-import type { SessionCommands } from "./ports.ts";
+import type { Result } from "../../core/errors.ts";
+import { formatSearchHits } from "../../output/audit-format.ts";
+import type { SessionCommands } from "../ports.ts";
 
 /** `/search <text>`: the saved sessions whose messages mention the text. */
 export async function handleSearchCommand(

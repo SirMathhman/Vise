@@ -1,13 +1,13 @@
-import { config } from "../config.ts";
-import type { Client, Tool } from "../core/engine.ts";
-import type { Message, Result } from "../core/errors.ts";
+import { config } from "../../config.ts";
+import type { Client, Tool } from "../../core/engine.ts";
+import type { Message, Result } from "../../core/errors.ts";
 import {
   checkGoal,
   checkProgress,
   continueNote,
   deriveGoal,
   type Goal,
-} from "../core/goal.ts";
+} from "../../core/goal.ts";
 
 /**
  * Runs each user turn against a goal (see `src/core/goal.ts`): the goal is set

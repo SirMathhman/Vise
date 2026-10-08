@@ -20,14 +20,14 @@ import {
   handleToolCommand,
   toggleNotice,
   reportContext,
-} from "./commands.ts";
+} from "./commands/commands.ts";
 import {
   handleProfileCommand,
   handleResumeCommand,
   handleSaveCommand,
-} from "./session-commands.ts";
-import { handleWorkflowCommand } from "./workflow-commands.ts";
-import type { WorkflowCommands } from "./workflow-commands.ts";
+} from "./commands/session-commands.ts";
+import { handleWorkflowCommand } from "./commands/workflow-commands.ts";
+import type { WorkflowCommands } from "./commands/workflow-commands.ts";
 import type {
   ContextSource,
   ModelController,

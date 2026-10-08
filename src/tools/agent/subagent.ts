@@ -4,12 +4,12 @@ import type {
   Tool,
   ToolRunner,
   TurnCallbacks,
-} from "../core/engine.ts";
-import { runSubagent } from "../core/engine.ts";
+} from "../../core/engine.ts";
+import { runSubagent } from "../../core/engine.ts";
 import { withToolScope } from "./agent-scope.ts";
-import { dim } from "../output/color.ts";
-import { formatError } from "../output/format.ts";
-import type { ProfileSource } from "../repl/session.ts";
+import { dim } from "../../output/color.ts";
+import { formatError } from "../../output/format.ts";
+import type { ProfileSource } from "../../repl/session.ts";
 
 /** How many subagents deep the code running now is (0 in the main conversation); follows the work across awaits. */
 const subagentDepth = new AsyncLocalStorage<number>();

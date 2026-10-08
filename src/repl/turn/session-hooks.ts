@@ -1,5 +1,5 @@
-import { noAudit, type AuditSink } from "../core/audit.ts";
-import type { Result } from "../core/errors.ts";
+import { noAudit, type AuditSink } from "../../core/audit.ts";
+import type { Result } from "../../core/errors.ts";
 import {
   type HookCommands,
   type HookPhase,
@@ -7,13 +7,13 @@ import {
   type HooksView,
   hooksView,
   readProfileHooks,
-} from "./hooks-commands.ts";
+} from "../commands/hooks-commands.ts";
 import type {
   HookSource,
   PostTurnHook,
   PreTurnHook,
   ProfileSource,
-} from "./ports.ts";
+} from "../ports.ts";
 
 type AnyHook = PreTurnHook | PostTurnHook;
 

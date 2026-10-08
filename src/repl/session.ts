@@ -8,12 +8,12 @@ import type {
   TurnCallbacks,
 } from "../core/engine.ts";
 import { runTurn } from "../core/engine.ts";
-import { SessionAudit } from "./session-audit.ts";
+import { SessionAudit } from "./turn/session-audit.ts";
 import { deriveSessionName } from "./session-name.ts";
-import { GoalTracker, handleGoalCommand } from "./goal-loop.ts";
+import { GoalTracker, handleGoalCommand } from "./turn/goal-loop.ts";
 import type { Message, Result, ViseError } from "../core/errors.ts";
 import { formatHelp } from "../output/format.ts";
-import { SessionHooks } from "./session-hooks.ts";
+import { SessionHooks } from "./turn/session-hooks.ts";
 import {
   handleModelCommand,
   handleNotesCommand,
@@ -23,23 +23,23 @@ import {
   handleToolCommand,
   reportContext,
   toggleNotice,
-} from "./commands.ts";
+} from "./commands/commands.ts";
 import {
   addedSinceLastCall,
   autoCompact,
   runCompaction,
-} from "./compaction.ts";
-import { makeRoundHook, NoticeQueue } from "./round-hooks.ts";
+} from "./turn/compaction.ts";
+import { makeRoundHook, NoticeQueue } from "./turn/round-hooks.ts";
 import { ProfileToolGate } from "./profile-tools.ts";
 import {
   handleDeleteCommand,
   handleProfileCommand,
   handleResumeCommand,
   handleSaveCommand,
-} from "./session-commands.ts";
-import { handleSearchCommand } from "./search-command.ts";
-import { handleWorkflowCommand } from "./workflow-commands.ts";
-import type { WorkflowCommands } from "./workflow-commands.ts";
+} from "./commands/session-commands.ts";
+import { handleSearchCommand } from "./commands/search-command.ts";
+import { handleWorkflowCommand } from "./commands/workflow-commands.ts";
+import type { WorkflowCommands } from "./commands/workflow-commands.ts";
 
 /**
  * The outcome of a handled line. A successful turn carries the model's reply
@@ -96,7 +96,7 @@ import type {
 type OnRound = TurnCallbacks["onRound"];
 
 export type { SessionOptions } from "./session-options.ts";
-import { PendingImages } from "./image-command.ts";
+import { PendingImages } from "./commands/image-command.ts";
 import { systemMessageFor, type SessionOptions } from "./session-options.ts";
 
 /**

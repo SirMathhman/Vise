@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Message } from "../src/core/errors.ts";
-import { NoticeQueue } from "../src/repl/round-hooks.ts";
+import { NoticeQueue } from "../src/repl/turn/round-hooks.ts";
 
 const steer = (content: string): Message => ({
   role: "user",

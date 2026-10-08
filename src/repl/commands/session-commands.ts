@@ -1,11 +1,11 @@
-import type { Result } from "../core/errors.ts";
-import { formatProfileList, formatSessionList } from "../output/format.ts";
-import { saveProfileWhitelist } from "./profile-tools.ts";
+import type { Result } from "../../core/errors.ts";
+import { formatProfileList, formatSessionList } from "../../output/format.ts";
+import { saveProfileWhitelist } from "../profile-tools.ts";
 import type {
   ProfileCommands,
   ProfileSource,
   SessionCommands,
-} from "./session.ts";
+} from "../session.ts";
 
 /**
  * The reserved name of the built-in profile. `default` is not a file under

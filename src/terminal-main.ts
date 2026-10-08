@@ -1,7 +1,7 @@
 import { createInterface } from "node:readline";
 import { TerminalDriver } from "./driver/terminal.ts";
 import { StreamDisplay } from "./driver/stream.ts";
-import { RlUserPrompter } from "./tools/ask-user.ts";
+import { RlUserPrompter } from "./tools/agent/ask-user.ts";
 import { createEdgeSession } from "./wiring.ts";
 
 // Shared prompter for mid-turn user questions: used by the ask_user tool and

@@ -1,14 +1,14 @@
-import { config } from "../config.ts";
+import { config } from "../../config.ts";
 import {
   approxTokens,
   splitForCompaction,
   splitWithinTurn,
   summarize,
-} from "../core/engine.ts";
-import type { Message, Result } from "../core/errors.ts";
-import type { Client } from "../core/engine.ts";
-import type { ContextSource } from "./ports.ts";
-import type { CompactionSource } from "./session.ts";
+} from "../../core/engine.ts";
+import type { Message, Result } from "../../core/errors.ts";
+import type { Client } from "../../core/engine.ts";
+import type { ContextSource } from "../ports.ts";
+import type { CompactionSource } from "../session.ts";
 
 /**
  * How many complete turns (starting from a user message) to keep verbatim after

@@ -1,6 +1,6 @@
-import { config } from "../config.ts";
-import { textProbe, type PageProbe } from "../browser/probe.ts";
-import type { BrowserBackend } from "../browser/types.ts";
+import { config } from "../../config.ts";
+import { textProbe, type PageProbe } from "../../browser/probe.ts";
+import type { BrowserBackend } from "../../browser/types.ts";
 
 /**
  * Waiting for a page to change. Pages that update without loading (single-page

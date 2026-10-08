@@ -9,7 +9,7 @@ import {
 } from "../output/tool-line.ts";
 import { displayOfTool } from "../tools/display.ts";
 import type { Picture } from "../core/errors.ts";
-import type { GoalEvent } from "../repl/goal-loop.ts";
+import type { GoalEvent } from "../repl/turn/goal-loop.ts";
 import { renderLine } from "../output/markdown.ts";
 
 /**

@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { noAudit, type AuditSink } from "./core/audit.ts";
 import type { Tool, ToolController, ToolRunner } from "./core/engine.ts";
-import { auditCall, auditRefused } from "./tools/audit-call.ts";
+import { auditCall, auditRefused } from "./tools/agent/audit-call.ts";
 import { dataDirFor, globalDataDir } from "./data-dir.ts";
 import { NoteStore } from "./stores/note-store.ts";
 import { agentTools } from "./tools/defs/agent.ts";
@@ -28,7 +28,7 @@ import {
   readNoteTool,
   saveNoteTool,
 } from "./tools/notes-tool.ts";
-import { currentToolScope } from "./tools/agent-scope.ts";
+import { currentToolScope } from "./tools/agent/agent-scope.ts";
 import { deferTools, searchToolsDef } from "./tools/search-tools.ts";
 import { killProcess, runPowershell, waitForProcess } from "./tools/shell.ts";
 import {

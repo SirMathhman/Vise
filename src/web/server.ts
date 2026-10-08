@@ -1,7 +1,7 @@
 import { config } from "../config.ts";
 import type { ServerWebSocket } from "bun";
 import { formatContext, formatError, formatGoalEvent } from "../output/format.ts";
-import type { AskRequest, UserPrompter } from "../tools/ask-user.ts";
+import type { AskRequest, UserPrompter } from "../tools/agent/ask-user.ts";
 import { saveProfileWhitelist } from "../repl/profile-tools.ts";
 import { BrowserSettingsStore } from "../browser/settings.ts";
 import { ExtensionBackend } from "../browser/extension.ts";

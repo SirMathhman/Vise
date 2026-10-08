@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { makeSelfHandler, type SelfInfo } from "../src/tools/self.ts";
+import { makeSelfHandler, type SelfInfo } from "../src/tools/agent/self.ts";
 
 /** A SelfInfo with fixed state, used to assert the handler renders each field. */
 function makeInfo(overrides: Partial<SelfInfo> = {}): SelfInfo {

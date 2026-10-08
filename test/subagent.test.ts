@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { Client, Tool, ToolRunner } from "../src/core/engine.ts";
 import type { Message, Result } from "../src/core/errors.ts";
 import type { ProfileSource } from "../src/repl/session.ts";
-import { makeSubagentHandler } from "../src/tools/subagent.ts";
+import { makeSubagentHandler } from "../src/tools/agent/subagent.ts";
 
 const noopTools: ToolRunner = {
   async run(_name, _args) {

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { makeAskUserHandler, type AskRequest } from "../src/tools/ask-user.ts";
+import { makeAskUserHandler, type AskRequest } from "../src/tools/agent/ask-user.ts";
 
 test("several questions are asked in turn and answered together", async () => {
   const asked: string[] = [];
