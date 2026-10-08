@@ -109,13 +109,19 @@ export function toolDetail(
   return clip(parts.join(" · "), config.toolLineDetailMax);
 }
 
-/** The one-line form: `<icon> <name> · <detail>`. */
+/** A tool's name as a person reads it: `read_file` is "Read file", `browser_wait_for_text` is "Browser wait for text". */
+export function toolLabel(name: string): string {
+  const words = name.replace(/_/g, " ").trim();
+  return words === "" ? name : words[0]!.toUpperCase() + words.slice(1);
+}
+
+/** The one-line form: `<icon> <Name> · <detail>`. */
 export function formatToolCall(
   name: string,
   args?: Record<string, unknown>,
 ): string {
   const detail = toolDetail(args, name);
-  return `${toolIcon(name)} ${name}${detail ? ` · ${detail}` : ""}`;
+  return `${toolIcon(name)} ${toolLabel(name)}${detail ? ` · ${detail}` : ""}`;
 }
 
 /** The one-line form of a picture shown to the user: `📷 <label> · <width>x<height> · <size> KB`. */

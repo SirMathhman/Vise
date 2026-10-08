@@ -381,27 +381,30 @@ body {
   background: var(--panel);
 }
 
+/* Collapsed (the default): only the header shows; the text appears when the line is opened. */
 .line.thinking {
-  color: var(--dim);
+  color: transparent;
   font-style: italic;
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: clip;
 }
 
 .line.thinking::before {
-  content: "▸  thinking: ";
+  content: "▸  Thinking";
+  color: var(--dim);
   font-style: normal;
 }
 
 .line.thinking.open {
+  color: var(--dim);
   white-space: pre-wrap;
   overflow: visible;
 }
 
 .line.thinking.open::before {
-  content: "▾  thinking:\A";
+  content: "▾  Thinking\A";
   white-space: pre;
 }
 
@@ -1294,10 +1297,6 @@ body:has(#workspace:not(.hidden)) #files-btn {
 .progress-fill {
   background: var(--accent);
   transition: width 0.15s linear;
-}
-
-.line.progress.done {
-  opacity: 0.55;
 }
 
 .progress-label {

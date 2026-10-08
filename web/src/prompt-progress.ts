@@ -92,8 +92,9 @@ export function createPromptProgress(
       open.fill.style.width = `${view.pct}%`;
       open.bar.setAttribute("aria-valuenow", String(Math.round(view.pct)));
       open.label.textContent = view.text;
+      // A finished call has nothing left to show: the bar goes away.
       if (view.done) {
-        open.line.classList.add("done");
+        open.line.remove();
         open = null;
       }
     },
