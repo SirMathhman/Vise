@@ -3,6 +3,7 @@ import type {
   ToolController,
   ToolResultListener,
 } from "../core/engine.ts";
+import type { AuditSink } from "../core/audit.ts";
 import type { Picture } from "../core/errors.ts";
 import type { GoalEvent } from "./goal-loop.ts";
 import type {
@@ -90,6 +91,8 @@ export interface SessionOptions {
    */
   initialMessage?: string;
   sessionSource?: SessionSource;
+  /** Where the audit log of this conversation goes (nothing is recorded when absent). */
+  auditSink?: AuditSink;
   /**
    * Edge-provided callback invoked when the tool loop reaches its maximum
    * rounds. Prompts the user to continue; returns true to reset the round

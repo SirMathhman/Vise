@@ -1,7 +1,6 @@
 import { config } from "./config.ts";
-import { join } from "node:path";
+import { SqliteAuditSink } from "./db/audit-store.ts";
 import { mkdirSync } from "node:fs";
-import { homedir } from "node:os";
 import { ChromiumBackend } from "./browser/chromium.ts";
 import type { BrowserBackend } from "./browser/types.ts";
 import { BACKEND, LlmClient } from "./client/llm.ts";
@@ -281,8 +280,6 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
   const dataDir = dataDirFor(root);
   // Sessions that share a store share the same live hook arrays.
   const hookStore = options.hookStore ?? new HookStore(root);
-  const preTurnHooks = hookStore.pre;
-  const postTurnHooks = hookStore.post;
 
   const client = new LlmClient();
   // Every model call of this session (reply, goal check, compaction...) reports here.
@@ -296,10 +293,8 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
   // data sources at `.vise/` relocates all three stores under it.
   const profileSource = new FileProfileSource(dataDir);
   const sessionSource = new FileSessionSource(dataDir);
-  const workflowSource = new FileWorkflowSource(
-    dataDir,
-    join(homedir(), ".vise"),
-  );
+  const audit = config.auditEnabled ? new SqliteAuditSink(root) : undefined;
+  const workflowSource = new FileWorkflowSource(dataDir, globalDataDir);
 
   // The subagent handler needs the ToolRunner for recursion, and the runner
   // needs the handler. Break the cycle with a lazily-resolving structural
@@ -341,8 +336,8 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
         contextMax: () => client.contextMax(),
         lastPromptTokens: () => client.lastPromptTokensUsed(),
         activeProfile: () => sessionRef.current.getActiveProfile(),
-        preTurnHooks: () => preTurnHooks.map((h) => h.command),
-        postTurnHooks: () => postTurnHooks.map((h) => h.command),
+        preTurnHooks: () => hookStore.pre.map((h) => h.command),
+        postTurnHooks: () => hookStore.post.map((h) => h.command),
       }),
     },
     toolController,
@@ -364,8 +359,9 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     imageSource,
     workflowSource,
     sessionSource,
-    preTurnHooks,
-    postTurnHooks,
+    auditSink: audit,
+    preTurnHooks: hookStore.pre,
+    postTurnHooks: hookStore.post,
     hookSource: hookStore,
     ...displayCallbacks(options),
     // Every turn is checked against a goal unless the frontend opts out.
@@ -387,9 +383,10 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     profileSource,
     cleanup: () => {
       offShare?.();
+      session.endAudit();
       temp.dispose();
     },
-    preTurnHooks: preTurnHooks.map((h) => h.command),
-    postTurnHooks: postTurnHooks.map((h) => h.command),
+    preTurnHooks: hookStore.pre.map((h) => h.command),
+    postTurnHooks: hookStore.post.map((h) => h.command),
   };
 }

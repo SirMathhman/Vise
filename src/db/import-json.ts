@@ -41,12 +41,16 @@ export function importLegacySessions(db: Database, base: string): string[] {
 }
 
 function importOne(db: Database, path: string, id: string): void {
-  const raw = JSON.parse(readFileSync(path, "utf-8")) as Record<string, unknown>;
+  const raw = JSON.parse(readFileSync(path, "utf-8")) as Record<
+    string,
+    unknown
+  >;
   if (!Array.isArray(raw.messages)) throw new Error("no messages array");
   const messages = raw.messages as Message[];
   const exists = db.query("SELECT 1 FROM sessions WHERE id = ?").get(id);
   if (!exists) {
-    const name = typeof raw.name === "string" && raw.name.trim() ? raw.name : id;
+    const name =
+      typeof raw.name === "string" && raw.name.trim() ? raw.name : id;
     const profile =
       typeof raw.activeProfile === "string" ? raw.activeProfile : undefined;
     const savedAt =

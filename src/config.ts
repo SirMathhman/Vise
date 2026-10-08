@@ -98,6 +98,13 @@ export const SPEC = {
     "compact between turns at (fraction full)",
     { min: 0.1 },
   ),
+  auditEnabled: n(
+    "VISE_AUDIT",
+    1,
+    "Audit log",
+    "record an audit log in ~/.vise/audit.db (1 = on, 0 = off)",
+    { min: 0 },
+  ),
   saveEvery: n(
     "VISE_SAVE_EVERY_ROUNDS",
     25,

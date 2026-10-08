@@ -10,6 +10,8 @@ import type {
   TurnCallbacks,
 } from "../core/engine.ts";
 import { runTurn } from "../core/engine.ts";
+import { SessionAudit } from "./session-audit.ts";
+import { deriveSessionName } from "./session-name.ts";
 import { GoalTracker, handleGoalCommand } from "./goal-loop.ts";
 import type { Message, Result, ViseError } from "../core/errors.ts";
 import { formatHelp } from "../output/format.ts";
@@ -94,32 +96,6 @@ import type {
 
 type OnRound = TurnCallbacks["onRound"];
 
-/**
- * Derive an auto-save session name from a user-typed message. Pure: no I/O,
- * no globals. Takes the message, trims, takes the first non-empty line,
- * replaces path separators and dots with hyphens, collapses consecutive
- * hyphens into one, drops leading/trailing hyphens, and truncates to 40
- * characters. Returns a non-empty string; falls back to "session" when the
- * result is blank after trimming.
- */
-function deriveSessionName(message: string): string {
-  const trimmed = message.trim();
-  if (trimmed === "") return "session";
-  const firstLine = trimmed.split("\n")[0] ?? "";
-  const sanitized = firstLine
-    .replace(/[\\/:*?"<>|]/g, "-")
-    .replace(/\./g, "-")
-    .replace(/-{2,}/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .trim();
-  if (sanitized === "") return "session";
-  const maxLen = 40;
-  // Trim again after cutting, so the name never ends in a space.
-  return sanitized.length > maxLen
-    ? sanitized.slice(0, maxLen).trimEnd()
-    : sanitized;
-}
-
 export type { SessionOptions } from "./session-options.ts";
 import { PendingImages } from "./image-command.ts";
 import { systemMessageFor, type SessionOptions } from "./session-options.ts";
@@ -151,6 +127,7 @@ export class Session {
   private readonly noteSource?: NoteSource;
   private readonly workflowSource?: WorkflowSource;
   private readonly hooks: SessionHooks;
+  private readonly audit: SessionAudit;
   private readonly onToken?: (token: string) => void;
   private readonly onThinking?: (token: string) => void;
   private readonly onToolCall?: ToolCallListener;
@@ -195,6 +172,7 @@ export class Session {
     this.noteSource = options.noteSource;
     this.workflowSource = options.workflowSource;
     this.hooks = new SessionHooks(options, () => this.activeProfile);
+    this.audit = new SessionAudit(options.auditSink);
     this.onToken = options.onToken;
     this.onThinking = options.onThinking;
     this.onToolCall = options.onToolCall;
@@ -233,12 +211,14 @@ export class Session {
       resetMessages: (body) => {
         this.pendingProfile = [];
         this.goals.goal = undefined;
+        this.audit.restart(this.messages);
         this.replaceConversation(body);
       },
       currentSession: () => ({ id: this.sessionId, name: this.sessionName }),
       setSession: (id, name) => {
         this.sessionId = id;
         this.sessionName = name;
+        if (id !== undefined) this.audit.link(id);
       },
     };
     this.compactionSource = {
@@ -275,8 +255,10 @@ export class Session {
 
   /** Replace the conversation with the system message and `body`. */
   private replaceConversation(body: Message[]): void {
+    this.audit.messages(this.messages); // what is about to go (compaction) is on record first
     this.messages.length = 0;
     this.messages.push(this.systemMessage, ...body);
+    this.audit.skip(this.messages.length);
   }
 
   private buildProfileCommands(
@@ -322,14 +304,16 @@ export class Session {
   /** Between rounds of a long turn: keep the context from overflowing, save, check progress (one per user message). */
   private roundHook(signal: AbortSignal): OnRound {
     const deps = {
-      compact: (messages: Message[]) =>
-        autoCompact(
+      compact: (messages: Message[]) => {
+        this.audit.messages(this.messages);
+        return autoCompact(
           this.compactionSource,
           this.context,
           config.inTurnCompactionThreshold,
           true,
           addedSinceLastCall(messages),
-        ),
+        );
+      },
       save: () => this.saveSession(),
       progress: () =>
         this.goals.progress(
@@ -366,9 +350,12 @@ export class Session {
     const trimmed = line.trim();
     // Not awaited: a normal turn must create its abort controller synchronously (see `interrupt`).
     const command = this.slashCommand(trimmed);
-    if (command !== undefined) return command;
+    if (command !== undefined) {
+      return this.audit.command(trimmed, command, () => this.messages);
+    }
     const abort = new AbortController();
     this.currentAbort = abort;
+    this.audit.turnStart(line);
     try {
       this.flushPendingProfile();
       await this.runHooks("pre");
@@ -397,6 +384,7 @@ export class Session {
           beforeContinue: () => this.maybeAutoCompact(),
         },
       );
+      this.audit.turnResult(turn);
       if (!turn.ok) return turn;
       await this.runHooks("post");
       await this.saveSession();
@@ -416,6 +404,8 @@ export class Session {
       };
     } finally {
       this.currentAbort = null;
+      this.audit.messages(this.messages);
+      this.audit.turnEnd(this.sessionId);
     }
   }
 
@@ -603,6 +593,7 @@ export class Session {
   private async newConversation(): Promise<Result<string>> {
     this.pendingProfile = [];
     this.goals.goal = undefined;
+    const oldMessages = [...this.messages];
     this.messages.length = 0;
     this.messages.push(this.systemMessage);
     if (this.initialMessage) {
@@ -610,6 +601,7 @@ export class Session {
     }
     this.sessionName = undefined;
     this.sessionId = undefined;
+    this.audit.restart(oldMessages);
     const profile = this.activeProfile;
     if (profile !== undefined) {
       const applied = await handleProfileCommand(
@@ -623,6 +615,11 @@ export class Session {
 
   /** Tell the model something the user did (a shared tab); it is added before the next model call, never between a tool call and its result. */
   notify = (text: string): void => this.notices.add(text);
+
+  /** The audit record of this conversation ends (the session is closing). */
+  endAudit(): void {
+    this.audit.end();
+  }
 
   /** Move the last profile switch's messages (and any waiting notices) into the conversation. */
   private flushPendingProfile(): void {
