@@ -68,14 +68,14 @@ describe("generation progress", () => {
       () => time,
     );
     g.text('<tool_call>{"name":"create_file"');
-    g.tokens(5); // first report (nothing reported yet, 250 ms rule)
+    g.tokens(5); // first report (nothing reported yet, 250 ms rule); the call began here
     g.tokens(10); // too soon, too few
     time += 300;
     g.tokens(11); // 250 ms passed
     g.done();
     expect(got.map((p) => [p.tokens, p.done, p.tool])).toEqual([
-      [5, false, "create_file"],
-      [11, false, "create_file"],
+      [0, false, "create_file"],
+      [6, false, "create_file"],
       [11, true, undefined],
     ]);
     expect(got[0]?.request).toBe(7);
@@ -143,7 +143,7 @@ test("a tool call is reported as soon as its name is known, even when it is shor
   g.text('<tool_call>{"name":"read_file"');
   g.tokens(2); // too few tokens and too soon, but the tool is now known
   g.tokens(3); // same tool: nothing new
-  expect(got.map((p) => [p.tokens, p.tool])).toEqual([[1, undefined], [2, "read_file"]]);
+  expect(got.map((p) => [p.tokens, p.tool])).toEqual([[1, undefined], [0, "read_file"]]);
 });
 
 test("a subagent call names its profile first", async () => {
@@ -162,4 +162,54 @@ test("read_file numbers its lines", async () => {
   writeFileSync(path, "one\ntwo\nthree\n");
   expect(readFile({ path })).toBe("1 | one\n2 | two\n3 | three");
   expect(readFile({ path, offset: 2, limit: 1 })).toContain("2 | two");
+});
+
+test("each call in one reply counts its own tokens, not the ones before it", () => {
+  const got: GenerationProgress[] = [];
+  const g = generationReporter((p) => got.push(p), 1, "reply", () => 0);
+  g.tokens(30); // thinking and text before any call
+  g.text('<tool_call>{"name":"read_file"');
+  g.tokens(40);
+  g.text('}</tool_call><tool_call>{"name":"edit_file"');
+  g.tokens(100);
+  g.tokens(130);
+  expect(got.filter((p) => p.tool).map((p) => [p.tool, p.tokens])).toEqual([
+    ["read_file", 0],
+    ["edit_file", 0],
+    ["edit_file", 30],
+  ]);
+});
+
+test("nothing is reported while the prompt is still being read (no tokens written yet)", async () => {
+  const seen: number[] = [];
+  await streamChat(
+    sse([
+      { choices: [{ delta: {} }], prompt_progress: { total: 10, cache: 0, processed: 5, time_ms: 1 }, timings: { predicted_n: 0 } },
+      { choices: [{ delta: { content: "a" } }], timings: { predicted_n: 1 } },
+    ]),
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    { text: () => {}, tokens: (n) => seen.push(n) },
+  );
+  expect(seen).toEqual([1]);
+});
+
+test("a profile switch tells the model what it gained and lost", async () => {
+  const { ProfileToolGate } = await import("../src/repl/profile-tools.ts");
+  const states = new Map([["read_file", true], ["browser_open", false], ["create_file", true]]);
+  const controller = {
+    list: () => [...states].map(([name, enabled]) => ({ name, enabled })),
+    set: (n: string, e: boolean) => void states.set(n, e),
+    isEnabled: (n: string) => states.get(n) === true,
+  };
+  const sent: string[] = [];
+  const gate = new ProfileToolGate(controller, (m) => sent.push(String(m.content)));
+  gate.apply(["read_file", "browser_open"]);
+  expect(sent[0]).toContain("Newly available: browser_open");
+  expect(sent[0]).toContain("No longer available: create_file");
+  gate.apply(undefined);
+  expect(sent[1]).toContain("Newly available: create_file");
+  expect(sent[1]).toContain("No longer available: browser_open");
 });

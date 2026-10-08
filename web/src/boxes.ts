@@ -20,8 +20,8 @@ export interface Boxes {
 }
 
 export function createBoxes(log: HTMLElement): Boxes {
-  const open: { details: HTMLDetailsElement; body: HTMLElement; foot: HTMLElement }[] = [];
-  let lastFoot: HTMLElement | undefined;
+  const open: { details: HTMLDetailsElement; body: HTMLElement; head: HTMLElement; foot: HTMLElement }[] = [];
+  let lastBox: { head: HTMLElement; foot: HTMLElement } | undefined;
   const boxes: Boxes = {
     container: () => open[open.length - 1]?.body ?? log,
     begin(title) {
@@ -37,8 +37,8 @@ export function createBoxes(log: HTMLElement): Boxes {
       foot.className = "box-context";
       details.append(head, body, foot);
       boxes.container().appendChild(details);
-      open.push({ details, body, foot });
-      lastFoot = foot;
+      open.push({ details, body, head, foot });
+      lastBox = { head, foot };
     },
     end() {
       const box = open.pop();
@@ -47,8 +47,10 @@ export function createBoxes(log: HTMLElement): Boxes {
       box.details.classList.add("done");
     },
     meta(text) {
-      const foot = open[open.length - 1]?.foot ?? lastFoot;
-      if (foot) foot.textContent = text;
+      const box = open[open.length - 1] ?? lastBox;
+      if (!box) return;
+      box.foot.textContent = text;
+      box.head.setAttribute("data-meta", ` · ${text}`);
     },
     endAll() {
       while (open.length > 0) boxes.end();

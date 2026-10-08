@@ -1508,3 +1508,10 @@ body:has(#workspace:not(.hidden)) #files-btn {
 #log {
   overflow-anchor: none;
 }
+
+/* A collapsed box has no footer to show, so its header carries the context fill instead. */
+.box:not([open]) > .box-title::after {
+  content: attr(data-meta);
+  color: var(--dim);
+  font-style: normal;
+}

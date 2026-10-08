@@ -29,22 +29,34 @@ export function generationReporter(
   let count = 0;
   let reportedTokens = 0;
   let reportedAt = 0;
-  let announced: string | undefined;
+  /** How many calls have begun in this reply, and the token count where the latest began (a reply can hold several calls). */
+  let opens = 0;
+  let announcedOpens = 0;
+  let startedOpens = 0;
+  let callStart = 0;
   const report = (done: boolean): void => {
     const tool = done ? undefined : toolBeingCalled(tail);
-    sink({ request, purpose, tokens: count, done, ...(tool ? { tool } : {}) });
+    // Inside a call, only what that call has written counts; not the calls (or the thinking) before it.
+    const tokens = tool === undefined ? count : Math.max(0, count - callStart);
+    sink({ request, purpose, tokens, done, ...(tool ? { tool } : {}) });
   };
   return {
     text(piece) {
+      opens += (tail + piece).split(CALL_OPEN).length - tail.split(CALL_OPEN).length;
       tail = (tail + piece).slice(-600);
     },
     tokens(n) {
       count = n;
+      // A new call starts its own count at the token where it began.
+      if (opens > startedOpens) {
+        callStart = n;
+        startedOpens = opens;
+      }
       // A call to a tool is reported the moment its name is known, however short the call is.
-      const tool = toolBeingCalled(tail);
-      const named = tool !== undefined && tool !== announced;
-      announced = tool;
-      if (!named && n - reportedTokens < EVERY_TOKENS && now() - reportedAt < EVERY_MS) return;
+      const named = opens > announcedOpens && toolBeingCalled(tail) !== undefined;
+      if (named) announcedOpens = opens;
+      if (!named && n - reportedTokens < EVERY_TOKENS && now() - reportedAt < EVERY_MS)
+        return;
       reportedTokens = n;
       reportedAt = now();
       report(false);

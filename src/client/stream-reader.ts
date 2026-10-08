@@ -101,7 +101,7 @@ export async function streamChat(
       onToken?.(piece);
     }
     const generated = chunk.timings?.predicted_n;
-    if (generated !== undefined) generation?.tokens(generated);
+    if (generated !== undefined && generated > 0) generation?.tokens(generated);
     const deltas = delta?.tool_calls;
     if (deltas) {
       for (const tc of deltas) {

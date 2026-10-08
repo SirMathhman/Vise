@@ -29,16 +29,18 @@ export class ProfileToolGate {
     if (!controller) return;
     if (tools === undefined) {
       if (!this.snapshot) return;
+      const before = enabledSet(controller);
       for (const [name, enabled] of this.snapshot)
         controller.set(name, enabled);
       this.snapshot = undefined;
       controller.setBaseline?.(undefined);
       this.push({
         role: "user",
-        content: `The profile's tool restriction was lifted. Enabled tools: ${enabledNames(controller)}.`,
+        content: `The profile's tool restriction was lifted. ${changeNote(before, controller)}`,
       });
       return;
     }
+    const before = enabledSet(controller);
     this.snapshot ??= new Map(
       controller.list().map((t) => [t.name, t.enabled]),
     );
@@ -48,9 +50,30 @@ export class ProfileToolGate {
       controller.set(t.name, allowed.has(t.name));
     this.push({
       role: "user",
-      content: `This profile restricts tools. Enabled tools: ${enabledNames(controller)}. All other tools are disabled; do not call them.`,
+      content: `This profile restricts tools. ${changeNote(before, controller)} All other tools are disabled; do not call them.`,
     });
   }
+}
+
+function enabledSet(controller: ToolController): Set<string> {
+  return new Set(controller.list().filter((t) => t.enabled).map((t) => t.name));
+}
+
+/**
+ * What a change of tools means for the model: what it can call now, what it
+ * gained (with a pointer to `search_tools`, since a tool the system prompt lists
+ * only by name has to be looked up before it can be used well) and what it lost.
+ */
+export function changeNote(before: Set<string>, controller: ToolController): string {
+  const now = enabledSet(controller);
+  const gained = [...now].filter((n) => !before.has(n));
+  const lost = [...before].filter((n) => !now.has(n));
+  const parts = [`Enabled tools: ${enabledNames(controller)}.`];
+  if (gained.length > 0) {
+    parts.push(`Newly available: ${gained.join(", ")} (use search_tools to see how to call any of them).`);
+  }
+  if (lost.length > 0) parts.push(`No longer available: ${lost.join(", ")}.`);
+  return parts.join(" ");
 }
 
 function enabledNames(controller: ToolController): string {
