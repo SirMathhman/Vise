@@ -42,3 +42,12 @@ test("a blank secret keeps the saved one; a bad file value falls back to the def
   saveSettings({ VISE_SHELL_TIMEOUT_MS: "1000" }, path);
   expect(readFileSync(path, "utf8")).toContain("OTHER=keep");
 });
+
+test("a secret can be cleared explicitly, and quotes in a hand-written file are dropped", () => {
+  const path = file();
+  writeFileSync(path, 'VISE_LLM_API_KEY="abc"\n');
+  loadSettingsFile(path);
+  expect(config.llmApiKey).toBe("abc");
+  expect(saveSettings({}, path, ["VISE_LLM_API_KEY"])).toBeUndefined();
+  expect(config.llmApiKey).toBe("");
+});

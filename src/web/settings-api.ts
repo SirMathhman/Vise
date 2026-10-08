@@ -19,7 +19,8 @@ export function handleSettingsMessage(
       if (typeof value === "string") values[name] = value;
     }
   }
-  const error = saveSettings(values);
+  const clear = Array.isArray(msg.clear) ? msg.clear.filter((n): n is string => typeof n === "string") : [];
+  const error = saveSettings(values, undefined, clear);
   return [
     { type: "env", ...describeSettings(), ...(error ? { error } : { saved: true }) },
   ];

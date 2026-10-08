@@ -10,12 +10,14 @@ export const settingsPath = join(globalDataDir, ".env");
 const HEADER =
   "# Vise settings. Edited from the settings page (or by hand); a missing or empty value uses the default.\n";
 
-/** `NAME=value` lines (comments and blank lines skipped). */
+const NAME_LINE = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$/;
+
+/** `NAME=value` lines (comments and blank lines skipped; one pair of quotes around a value is dropped). */
 export function parseEnv(text: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const line of text.split(/\r?\n/)) {
-    const match = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$/.exec(line);
-    if (match) out[match[1]!] = match[2]!.trim();
+    const match = NAME_LINE.exec(line);
+    if (match) out[match[1]!] = match[2]!.trim().replace(/^(["'])(.*)\1$/, "$2");
   }
   return out;
 }
@@ -46,16 +48,29 @@ function problem(spec: Spec, value: string): string | undefined {
 
 /**
  * Save the values the page sent (variable name to text; "" means the default)
- * and apply them at once. Unknown names are refused; a secret that comes back
- * empty is left as it was. Lines of the file that are not Vise settings are kept.
- * Returns an error message, or undefined when saved.
+ * and apply them at once. The page sends only what it changed. Unknown names
+ * are refused; a secret that comes back empty is left as it was unless it is
+ * listed in `clear`. Lines of the file that are not Vise settings are kept, and
+ * a file that exists but cannot be read is never overwritten. Returns an error
+ * message, or undefined when saved.
  */
 export function saveSettings(
   values: Record<string, string>,
   path = settingsPath,
+  clear: string[] = [],
 ): string | undefined {
   const specs = new Map(Object.values(SPEC).map((s: Spec) => [s.env, s]));
-  const next = readValues(path);
+  let text = "";
+  try {
+    if (existsSync(path)) text = readFileSync(path, "utf8");
+  } catch (error) {
+    return `could not read ${path}: ${error instanceof Error ? error.message : String(error)}`;
+  }
+  const next = parseEnv(text);
+  for (const name of clear) {
+    if (!specs.has(name)) return `unknown setting ${name}`;
+    delete next[name];
+  }
   for (const [name, raw] of Object.entries(values)) {
     const spec = specs.get(name);
     if (!spec) return `unknown setting ${name}`;
@@ -66,21 +81,21 @@ export function saveSettings(
     if (value === "") delete next[name];
     else next[name] = value;
   }
-  const others = existsSync(path)
-    ? readFileSync(path, "utf8")
-        .split(/\r?\n/)
-        .filter((l) => {
-          const name = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(l)?.[1];
-          return name !== undefined && !specs.has(name);
-        })
-    : [];
+  const others = text
+    .split(/\r?\n/)
+    .filter((line) => {
+      const name = NAME_LINE.exec(line)?.[1];
+      return name !== undefined && !specs.has(name);
+    });
   const lines = Object.entries(next)
     .filter(([name]) => specs.has(name))
     .map(([name, value]) => `${name}=${value}`);
   try {
     mkdirSync(dirname(path), { recursive: true });
     const temp = `${path}.tmp`;
-    writeFileSync(temp, `${HEADER}${[...lines, ...others].join("\n")}\n`);
+    const body = [...lines, ...others].join("\n");
+    // The file can hold the API key: owner-only where the system supports it.
+    writeFileSync(temp, `${HEADER}${body}\n`, { mode: 0o600 });
     renameSync(temp, path);
   } catch (error) {
     return `could not write ${path}: ${error instanceof Error ? error.message : String(error)}`;

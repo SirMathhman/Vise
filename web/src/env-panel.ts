@@ -33,6 +33,10 @@ export function createEnvPanel(
   openers: HTMLElement[],
 ): { handle(message: EnvMessage): boolean } {
   const inputs = new Map<string, HTMLInputElement>();
+  /** What each box held when it was drawn. */
+  const shown = new Map<string, string>();
+  /** Secrets the user asked to clear. */
+  const clearing = new Set<string>();
   const status = document.createElement("div");
   status.className = "pe-status";
   status.setAttribute("role", "status");
@@ -41,6 +45,8 @@ export function createEnvPanel(
 
   function render(fields: EnvField[]): void {
     inputs.clear();
+    shown.clear();
+    clearing.clear();
     body.textContent = "";
     body.append(where);
     let group = "";
@@ -75,7 +81,19 @@ export function createEnvPanel(
       }
       input.title = field.env;
       inputs.set(field.env, input);
+      shown.set(field.env, input.value);
       row.append(name, input);
+      if (field.secret && field.set) {
+        const clear = document.createElement("button");
+        clear.type = "button";
+        clear.className = "tools-btn";
+        clear.textContent = "clear";
+        clear.addEventListener("click", () => {
+          clearing.add(field.env);
+          input.placeholder = "will be cleared on save";
+        });
+        row.append(clear);
+      }
       box.append(row);
     }
     const save = document.createElement("button");
@@ -83,9 +101,12 @@ export function createEnvPanel(
     save.textContent = "save";
     save.addEventListener("click", () => {
       const values: Record<string, string> = {};
-      for (const [env, input] of inputs) values[env] = input.value;
+      // Only what changed, so a stale page cannot revert other settings.
+      for (const [env, input] of inputs) {
+        if (input.value !== (shown.get(env) ?? "")) values[env] = input.value;
+      }
       status.textContent = "saving…";
-      send({ type: "env_set", values });
+      send({ type: "env_set", values, clear: [...clearing] });
     });
     const row = document.createElement("div");
     row.className = "save-row";

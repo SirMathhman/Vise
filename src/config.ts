@@ -127,7 +127,7 @@ const processEnv: Record<string, string | undefined> =
 let fileValues: Record<string, string> = {};
 
 function resolve(spec: Spec): string | number {
-  const raw = (fileValues[spec.env] ?? processEnv[spec.env])?.trim();
+  const raw = fileValues[spec.env]?.trim() || processEnv[spec.env]?.trim();
   if (!raw) return spec.def;
   if (typeof spec.def === "string") return raw;
   const value = Number(raw);

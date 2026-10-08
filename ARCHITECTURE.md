@@ -288,6 +288,33 @@ The integrated browser sits behind the `BrowserBackend` interface (`src/browser/
 
 Besides the browsers Vise launches itself, the agent can work in the user's own Firefox through an extension (`extension/`). It is deliberately thin: the Bun server keeps the model loop, tools, notes and hooks, and the extension is only UI (the Vise web page in a sidebar) and hands (browser operations in real tabs). The two meet over one WebSocket (`/ext`, requests `{id, op, params}` answered by `{id, ok, result|error}`, plus `{event:"tabs"}`). The server side is `ExtensionBackend`, a third `BrowserBackend` built on the `ExtensionLink` interface that `src/web/ext-hub.ts` implements, so `src/browser/` does not depend on the web layer. A session opened by the sidebar page (`?ui=sidebar`) uses it; other sessions keep their own headless browser. Trust: the extension, not the server, limits the agent to tabs it opened or was handed, and `/ext` accepts only an extension Origin plus a pairing token (a random secret the server keeps and hands only to the Vise page, which passes it to the sidebar, so another extension or local process posing as the extension cannot become the hands) on top of the usual loopback/Host checks. Input is synthetic, so some sites will not respond.
 
+## Settings
+
+One declarative `SPEC` table (`src/config.ts`) is the only description of a
+tunable: variable name, default, minimum, group, label, `secret`, `restart`.
+The settings file loader, the validator, the settings page and `.env.example`
+are all derived from it, never restated. Ideal shape:
+
+- **Live by construction.** Code reads `config.x` at the point of use, never
+  into a module constant, a constructor field or a closure; a setting that must
+  be read once is marked `restart` and the page says so. A lint rule forbids
+  assigning `config.*` at module scope outside an allow-list.
+- **Precedence is the conventional one:** process environment, then the user
+  settings file, then the default (an explicit launch-time override beats a
+  saved preference). The page shows the effective value and its source
+  (default, file, environment); an environment-sourced value is shown locked.
+- **Secrets** live in a mode-0600 file or the OS credential store, are never
+  sent to a page, and can be explicitly cleared. Changing the LLM address does
+  not silently forward a stored key to a new host without the page saying so.
+- **Pure core stays pure.** The core receives values as parameters; only edge
+  code imports `config`. Code shared with the Firefox extension takes its
+  limits as arguments (the extension has no file or `process`), so `config.ts`
+  is never bundled into the extension.
+- **Saves are patches.** The page sends only the fields it changed, the server
+  merges against the current file under one writer, and every open settings
+  page is pushed the result (as for hooks), so a stale page cannot revert a
+  newer change.
+
 ## Potential Problems
 
 - **Forced process exit.** Any `process.exit()` anywhere will truncate
