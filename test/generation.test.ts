@@ -145,3 +145,21 @@ test("a tool call is reported as soon as its name is known, even when it is shor
   g.tokens(3); // same tool: nothing new
   expect(got.map((p) => [p.tokens, p.tool])).toEqual([[1, undefined], [2, "read_file"]]);
 });
+
+test("a subagent call names its profile first", async () => {
+  const { formatToolCall } = await import("../src/output/tool-line.ts");
+  expect(formatToolCall("run_subagent", { profile: "explore", task: "find the follow code" })).toContain(
+    "· explore · find the follow code",
+  );
+});
+
+test("read_file numbers its lines", async () => {
+  const { readFile } = await import("../src/tools/files.ts");
+  const { mkdtempSync, writeFileSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  const path = join(mkdtempSync(join(tmpdir(), "vise-read-")), "a.txt");
+  writeFileSync(path, "one\ntwo\nthree\n");
+  expect(readFile({ path })).toBe("1 | one\n2 | two\n3 | three");
+  expect(readFile({ path, offset: 2, limit: 1 })).toContain("2 | two");
+});

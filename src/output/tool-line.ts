@@ -32,6 +32,7 @@ const SHOWN = [
   "scope",
   "category",
   "name",
+  "profile",
   "task",
   "question",
   "text",

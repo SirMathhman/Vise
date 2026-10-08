@@ -27,6 +27,18 @@ export function listDirectory(args: Record<string, unknown>): string {
 }
 
 /**
+ * Lines of a file with their numbers in front (`  12 | text`), counted from
+ * `from`, so the model reads a line's place instead of guessing it. The numbers
+ * are not part of the file; the tool's description says so.
+ */
+export function numberLines(lines: string[], from: number): string {
+  const width = String(from + lines.length - 1).length;
+  return lines
+    .map((line, i) => `${String(from + i).padStart(width)} | ${line}`)
+    .join("\n");
+}
+
+/**
  * Read a file, or `limit` lines of it from line `offset`. A small file comes
  * back whole; a big one (or a range) comes back as at most `MAX_LINES` lines
  * and `MAX_CHARS` characters with a header and a pointer to the rest, so one
@@ -41,7 +53,12 @@ export function readFile(args: Record<string, unknown>): string {
     const ranged =
       numberArg(args.offset) !== undefined ||
       numberArg(args.limit) !== undefined;
-    if (!ranged && !isTooLarge(text)) return text;
+    if (!ranged && !isTooLarge(text)) {
+      if (text === "") return text;
+      const whole = text.split(/\r?\n/);
+      const endsWithNewline = whole[whole.length - 1] === "";
+      return numberLines(endsWithNewline ? whole.slice(0, -1) : whole, 1);
+    }
     const all = text.split(/\r?\n/);
     const num = (v: unknown, fallback: number): number =>
       Math.floor(numberArg(v) ?? fallback);
@@ -63,7 +80,7 @@ export function readFile(args: Record<string, unknown>): string {
       last < all.length
         ? `\n[${all.length - last} more lines: continue with offset ${last + 1}]`
         : "";
-    return `[lines ${from}-${last} of ${all.length}]\n${shown}${more}`;
+    return `[lines ${from}-${last} of ${all.length}]\n${numberLines(shown.split("\n"), from)}${more}`;
   } catch (err) {
     return errStr(err);
   }

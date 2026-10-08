@@ -11,7 +11,7 @@ export interface Boxes {
   begin(title: string): void;
   /** The innermost open box is done: collapse it. */
   end(): void;
-  /** Label the innermost open box (or the last one that closed) with `text`, e.g. its context fill. */
+  /** Show `text` (its context fill) at the bottom of the innermost open box, or of the last one that closed. */
   meta(text: string): void;
   /** Collapse every open box (the turn ended without closing them). */
   endAll(): void;
@@ -20,8 +20,8 @@ export interface Boxes {
 }
 
 export function createBoxes(log: HTMLElement): Boxes {
-  const open: { details: HTMLDetailsElement; body: HTMLElement; head: HTMLElement }[] = [];
-  let lastHead: HTMLElement | undefined;
+  const open: { details: HTMLDetailsElement; body: HTMLElement; foot: HTMLElement }[] = [];
+  let lastFoot: HTMLElement | undefined;
   const boxes: Boxes = {
     container: () => open[open.length - 1]?.body ?? log,
     begin(title) {
@@ -33,10 +33,12 @@ export function createBoxes(log: HTMLElement): Boxes {
       head.textContent = title;
       const body = document.createElement("div");
       body.className = "box-body";
-      details.append(head, body);
+      const foot = document.createElement("div");
+      foot.className = "box-context";
+      details.append(head, body, foot);
       boxes.container().appendChild(details);
-      open.push({ details, body, head });
-      lastHead = head;
+      open.push({ details, body, foot });
+      lastFoot = foot;
     },
     end() {
       const box = open.pop();
@@ -45,7 +47,8 @@ export function createBoxes(log: HTMLElement): Boxes {
       box.details.classList.add("done");
     },
     meta(text) {
-      (open[open.length - 1]?.head ?? lastHead)?.setAttribute("data-meta", text);
+      const foot = open[open.length - 1]?.foot ?? lastFoot;
+      if (foot) foot.textContent = text;
     },
     endAll() {
       while (open.length > 0) boxes.end();

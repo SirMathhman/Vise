@@ -26,7 +26,7 @@ export const fileTools: Tool[] = [
     function: {
       name: "read_file",
       description:
-        "Read a file from a given path. A small file is returned whole. A file over 250 lines (or about 20,000 characters) is returned as its first 250 lines with a note saying how many remain; pass `offset` (and optionally `limit`) to read further, or use search_files to find what you need.",
+        "Read a file from a given path. Every line comes with its line number in front ('  12 | text'); the number and the bar are not part of the file, so leave them out of edit_file's old_string. A small file is returned whole. A file over 250 lines (or about 20,000 characters) is returned as its first 250 lines with a note saying how many remain; pass `offset` (and optionally `limit`) to read further, or use search_files to find what you need.",
       parameters: {
         type: "object",
         properties: {

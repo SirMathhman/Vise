@@ -252,7 +252,7 @@ function renderContext(message: ResultMessage): void {
 
 /** A model call's context fill: the header's for the main conversation, the open box's for a subagent. */
 function showContext(purpose: string | undefined, text: string): void {
-  if (purpose === "subagent") return transcript.setBoxMeta(` · ${text.replace(/^context: /, "")}`);
+  if (purpose === "subagent") return transcript.setBoxMeta(text);
   contextEl.textContent = text;
   const match = text.match(/\(([\d.]+)%\)$/);
   if (match) contextEl.classList.toggle("warning", Number(match[1]) >= 90);
