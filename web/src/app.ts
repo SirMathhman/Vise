@@ -62,14 +62,9 @@ const sendMessage = (msg: Record<string, unknown>): void => {
   if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(msg));
 };
 const askUi = createAskUi(
-  {
-    box: requiredElement("ask"),
-    question: requiredElement("ask-question"),
-    options: requiredElement("ask-options"),
-    answer: requiredElement("ask-answer"),
-    send: requiredElement("ask-send"),
-  },
+  { box: requiredElement("ask"), question: requiredElement("ask-question"), options: requiredElement("ask-options"), answer: requiredElement("ask-answer"), send: requiredElement("ask-send"), composer: input },
   sendMessage,
+  announce,
 );
 const hooksPanel = createHooksPanel(
   requiredElement<HTMLElement>("hooks-body"),
@@ -475,6 +470,7 @@ socket.addEventListener("open", () => {
 });
 socket.addEventListener("close", () => {
   setStatus("disconnected");
+  askUi.hide(); // an answer would go nowhere
   transcript.flushAssistant();
   resetBusy();
 });

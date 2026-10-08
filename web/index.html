@@ -237,7 +237,7 @@
           <button id="jump-latest" class="jump-latest hidden" type="button" title="Scroll to the newest message">↓ latest</button>
         </footer>
         <section class="composer">
-          <div id="ask" class="ask hidden">
+          <div id="ask" class="ask hidden" tabindex="-1" role="group" aria-labelledby="ask-question">
             <div id="ask-question" class="ask-question"></div>
             <ul id="ask-options" class="ask-options"></ul>
             <div class="ask-row">
@@ -246,6 +246,7 @@
                 class="ask-answer"
                 type="text"
                 placeholder="or type a reply…"
+                aria-label="Your reply"
               />
               <button id="ask-send" class="ask-send">send</button>
             </div>

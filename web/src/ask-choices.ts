@@ -18,21 +18,47 @@ export function answerFrom(
   return [...picked, ...(text ? [text] : [])].join(", ");
 }
 
-/** What a key does while a question with choices is open. */
-export type AskKey =
+/** What a key press does while a question is open. */
+export type AskEffect =
   | { type: "pick"; index: number }
+  | { type: "pickActive" }
   | { type: "move"; by: 1 | -1 }
-  | { type: "enter" }
+  | { type: "confirm" }
+  | { type: "focusInput" }
   | { type: "none" };
 
-/** Keys 1-9 choose the numbered choice, the arrows move the highlight, Enter confirms it. */
-export function askKey(key: string, choiceCount: number): AskKey {
-  if (/^[1-9]$/.test(key)) {
-    const index = Number(key) - 1;
-    return index < choiceCount ? { type: "pick", index } : { type: "none" };
+/** What the decision needs to know about the key and the question. */
+export interface AskKeyState {
+  key: string;
+  /** Ctrl, Cmd or Alt is held: a shortcut, never a reply. */
+  modified: boolean;
+  /** The key went to the reply box, where every character is part of the reply. */
+  typing: boolean;
+  /** The key went to the question's own box (nothing in it focused). */
+  onBox: boolean;
+  choiceCount: number;
+  multi: boolean;
+  selectedCount: number;
+}
+
+/**
+ * What a key does: 1-9 choose the numbered choice, Space chooses the
+ * highlighted one, the arrows move the highlight, Enter sends the typed reply or
+ * confirms the choice (several allowed: sends what is ticked), and a letter
+ * moves into the reply box. In the reply box, digits and Space are just text.
+ */
+export function decideKey(s: AskKeyState): AskEffect {
+  if (!s.typing && /^[1-9]$/.test(s.key)) {
+    const index = Number(s.key) - 1;
+    if (index < s.choiceCount) return { type: "pick", index };
   }
-  if (key === "ArrowDown") return { type: "move", by: 1 };
-  if (key === "ArrowUp") return { type: "move", by: -1 };
-  if (key === "Enter") return { type: "enter" };
+  if (!s.typing && s.key === " " && s.choiceCount > 0) return { type: "pickActive" };
+  if (s.choiceCount > 0 && (s.key === "ArrowDown" || s.key === "ArrowUp")) {
+    return { type: "move", by: s.key === "ArrowDown" ? 1 : -1 };
+  }
+  if (s.key === "Enter" && (s.typing || s.onBox || (s.multi && s.selectedCount > 0))) {
+    return { type: "confirm" };
+  }
+  if (!s.typing && !s.modified && s.key.length === 1) return { type: "focusInput" };
   return { type: "none" };
 }

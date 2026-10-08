@@ -1374,3 +1374,15 @@ body:has(#workspace:not(.hidden)) #files-btn {
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+/* A question that arrived while the user was typing does not take the keyboard: it says it is waiting. */
+.ask[data-waiting] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.ask[data-waiting] .ask-question::after {
+  content: "  (waiting: click here or press Tab to answer)";
+  font-weight: 400;
+  color: var(--dim);
+}
