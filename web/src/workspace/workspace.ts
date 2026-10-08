@@ -75,6 +75,8 @@ export function createWorkspace(
       modeBtn: el<HTMLButtonElement>("files-mode"),
       pane: el<HTMLElement>("files-browser"),
       browser,
+      svg: el<HTMLElement>("files-svg"),
+      svgImg: el<HTMLImageElement>("files-svg-img"),
       renderMarkdown,
     },
   );

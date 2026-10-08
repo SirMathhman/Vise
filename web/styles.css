@@ -1094,6 +1094,21 @@ body {
   user-select: none;
 }
 
+.files-svg {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.75rem;
+  background: var(--bg);
+}
+
+.files-svg img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  margin: auto;
+}
+
 .tools-list li.tool-category {
   color: var(--dim);
   font-size: 0.8em;

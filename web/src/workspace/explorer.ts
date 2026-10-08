@@ -1,6 +1,12 @@
 import type { BrowserView } from "./browser-view.ts";
 import { emojiFor } from "./file-icons.ts";
-import { type BrowserTab, OpenTabs, type OpenFile } from "./open-tabs.ts";
+import {
+  type BrowserTab,
+  OpenTabs,
+  type OpenFile,
+  isMarkdown,
+  viewerMode,
+} from "./open-tabs.ts";
 import { showMenu } from "./tab-menu.ts";
 
 interface DirEntry {
@@ -20,10 +26,11 @@ interface MarkdownView {
   /** Pane holding the integrated browser's live view, and its controller. */
   pane: HTMLElement;
   browser: BrowserView;
+  /** Pane holding a rendered svg image, and the picture inside it. */
+  svg: HTMLElement;
+  svgImg: HTMLImageElement;
   renderMarkdown(source: string): string;
 }
-
-const isMarkdown = (path: string): boolean => /\.(md|markdown)$/i.test(path);
 
 /**
  * Read-only file workspace over `/api/fs` and `/api/file`, rooted at the
@@ -85,11 +92,7 @@ export function createExplorer(
   );
 
   async function openFile(path: string): Promise<void> {
-    const existing = set.indexOf(path);
-    if (existing >= 0) return activate(existing);
-    const text = (await readFile(path)) ?? "unable to read file";
-    const mode = isMarkdown(path) ? "markdown" : "text";
-    activate(set.add({ path, text, mode }));
+    await openFileTab(set, path, activate);
   }
 
   function activate(index: number): void {
@@ -230,7 +233,7 @@ function drawTabs(
   });
 }
 
-/** Show a file as text or rendered markdown, and sync the mode toggle. */
+/** Show a file as text, rendered markdown, or a rendered svg image, and sync the mode toggle. */
 function renderViewer(
   file: OpenFile | undefined,
   viewer: HTMLPreElement,
@@ -239,15 +242,23 @@ function renderViewer(
   const rendered = file?.mode === "markdown";
   const url = file?.mode === "url";
   const live = file?.mode === "browser";
-  viewer.textContent = url || live ? "" : (file?.text ?? "");
-  viewer.classList.toggle("hidden", rendered || url || live);
+  const svg = file?.mode === "svg";
+  viewer.textContent = url || live || svg ? "" : (file?.text ?? "");
+  viewer.classList.toggle("hidden", rendered || url || live || svg);
   md.mdView.classList.toggle("hidden", !rendered);
   md.frame.classList.toggle("hidden", !url);
   md.pane.classList.toggle("hidden", !live);
+  md.svg.classList.toggle("hidden", !svg);
   md.addrForm.classList.toggle("hidden", !url && !live);
   if (file && (url || live))
     showAddress(md.addrForm, url ? file.path : file.text);
   if (file && rendered) md.mdView.innerHTML = md.renderMarkdown(file.text);
+  // Only (re)load the picture when the file changes, so tab switches don't re-decode it.
+  if (file && svg && md.svgImg.getAttribute("src") !== svgUri(file.text)) {
+    md.svgImg.setAttribute("src", svgUri(file.text));
+  }
+  if (!svg && md.svgImg.hasAttribute("src"))
+    md.svgImg.removeAttribute("src");
   // Only (re)load the frame when its target changes, so tab switches don't reset the page.
   if (file && url && md.frame.getAttribute("src") !== file.path) {
     md.frame.setAttribute("src", file.path);
@@ -257,9 +268,19 @@ function renderViewer(
   else md.browser.hide();
   md.modeBtn.classList.toggle(
     "hidden",
-    !file || url || live || !isMarkdown(file.path),
+    !file || url || live || svg || !isMarkdown(file.path),
   );
   md.modeBtn.textContent = rendered ? "view text" : "view markdown";
+}
+
+/**
+ * A data URI that renders the svg text as an image. Loaded through <img>
+ * (not inlined in the DOM), the image context runs no scripts and no SMIL: an svg
+ * with <animate> or <script> renders as a still frame, which is the price of
+ * keeping embedded markup from executing.
+ */
+function svgUri(text: string): string {
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(text)}`;
 }
 
 /** The browser tab number behind a `browser:<id>` workspace tab. */
@@ -346,6 +367,24 @@ function dirRow(
   return item;
 }
 
+/** Open a file as a tab: focus it if already open, else read it and pick its viewer mode. */
+async function openFileTab(
+  set: OpenTabs,
+  path: string,
+  activate: (index: number) => void,
+): Promise<void> {
+  const existing = set.indexOf(path);
+  if (existing >= 0) return activate(existing);
+  const text = await readFile(path);
+  // A file that could not be read is shown as plain text with the error.
+  if (text === null) {
+    activate(set.add({ path, text: "unable to read file", mode: "text" }));
+    return;
+  }
+  const mode = viewerMode(path);
+  activate(set.add({ path, text, mode }));
+}
+
 /** Read a file's text through the API; null when it cannot be read. */
 async function readFile(path: string): Promise<string | null> {
   try {
@@ -402,9 +441,15 @@ function navigateTab(
   return true;
 }
 
-/** Flip a file between text and rendered markdown. False for URL tabs or no tab. */
+/** Flip a file between text and rendered markdown. False for URL, browser, svg, or no tab. */
 function toggleMode(file: OpenFile | undefined): boolean {
-  if (!file || file.mode === "url" || file.mode === "browser") return false;
+  if (
+    !file ||
+    file.mode === "url" ||
+    file.mode === "browser" ||
+    file.mode === "svg"
+  )
+    return false;
   file.mode = file.mode === "markdown" ? "text" : "markdown";
   return true;
 }

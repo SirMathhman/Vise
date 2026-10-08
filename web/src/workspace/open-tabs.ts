@@ -2,10 +2,25 @@
 export interface OpenFile {
   path: string;
   text: string;
-  /** Markdown files can show rendered or as raw text. */
-  mode: "text" | "markdown" | "url" | "browser";
+  /** Markdown files can show rendered or as raw text; svg files render as an image. */
+  mode: "text" | "markdown" | "svg" | "url" | "browser";
   /** Browser tabs: the page title (`text` holds the current URL). */
   title?: string;
+}
+
+/** How a file is viewed, decided from its name (the `mode` of a non-URL tab). */
+export type FileMode = "text" | "markdown" | "svg";
+
+/** True when the name ends in a markdown extension. */
+export const isMarkdown = (path: string): boolean =>
+  /\.(md|markdown)$/i.test(path);
+
+/** True when the name ends in an svg extension. */
+export const isSvg = (path: string): boolean => /\.svg$/i.test(path);
+
+/** The viewer mode for a file name: markdown, svg, or plain text. */
+export function viewerMode(path: string): FileMode {
+  return isMarkdown(path) ? "markdown" : isSvg(path) ? "svg" : "text";
 }
 
 /** A tab of the integrated browser, as the server reports it. */
