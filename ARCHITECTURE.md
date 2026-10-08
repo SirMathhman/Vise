@@ -1,9 +1,10 @@
 # Vise — Architecture
 
-This document describes the ideal architecture that `vise` is working toward.
-It deliberately points well ahead of the current code. It is not a changelog:
-completed work is visible in the git log; this document only describes the
-target architecture and the work that remains.
+This document describes the architecture that `vise` is working toward. The
+layout and the design sections (settings, packaging, the desktop window,
+steering) describe what exists and end with what is still to do; the rest
+points ahead of the current code. It is not a changelog: completed work is
+visible in the git log. `AGENTS.md` has the file-level details.
 
 ## Definitions
 
@@ -50,9 +51,23 @@ target architecture and the work that remains.
 Target module layout and dependency direction:
 
 ```
-index.ts            # terminal entry point: wires the shared edge session to TerminalDriver
+index.ts            # terminal entry point: settings, maintenance flags, then terminal-main.ts
 src/
+  terminal-main.ts  # terminal wiring: readline, TerminalDriver over the shared edge session
   wiring.ts         # shared edge factory: constructs client, sources, tools, and Session
+  edge-sources.ts   # edge implementations of the core-owned sources (profiles, notes,
+                    # hooks and the live HookStore, the initial context message)
+  config.ts         # live settings: the SPEC table and `config.x` reads
+  settings-file.ts  # user-level settings file (~/.vise/.env): load, validate, save
+  settings-init.ts  # imported first by each entry so settings apply before anything reads them
+  maintenance.ts    # --version, --install-extension, --setup-playwright
+  version.ts        # build-time VERSION ("dev" from source)
+  build-check.ts    # clear error when a build output is missing from source
+  extension-assets.ts # the Firefox extension's files, embedded for --install-extension
+  note-store.ts, notes.ts, image-store.ts  # edge stores: notes (by scope/category), pictures
+  browser/          # BrowserBackend implementations (CDP, WebDriver BiDi, extension link),
+                    # page scripts shared by all, the switchable shared browser
+  tools/            # tool handlers per domain (files, shell, notes, browser, subagent...) and defs/
   cli.ts            # argument parsing, subcommands, flag definitions
   driver/
     terminal.ts     # interactive TTY driver: prompt, echo, readline wiring
@@ -101,9 +116,16 @@ src/
   sessions.ts       # edge-owned saved-conversation snapshot I/O and validation
   workflows.ts      # edge-owned JSON workflow file I/O and validation
   web/
-    main.ts         # web entry point (`bun run web`)
+    main.ts         # web entry point (`bun run web`, vise.exe): settings, maintenance flags,
+                    # port choice, server, and in the compiled build the desktop window
     server.ts       # Bun HTTP/WebSocket driver; one Session per connection
+    assets.ts       # the page's files (embedded when compiled); the only static paths served
     files.ts        # workspace-confined read-only handlers for `/api/fs` and `/api/file`
+    line.ts         # a connection's lines: the turn chain, steering, the held queue
+    queue-commands.ts # /steer and /queue, handled at once
+    settings-api.ts, notes-api.ts, browser-bridge.ts  # panels' messages, never queued behind a turn
+    port.ts         # busy-port fallback
+    desktop.ts, window-worker.ts  # the native window (see "Desktop window")
 web/
   index.html        # web UI shell
   src/
@@ -114,6 +136,8 @@ web/
     explorer.ts     # read-only file tree and tabbed file viewer over the explorer API
     composer.ts     # input, keyboard navigation, and suggestions (target)
     transcript.ts   # streamed conversation rendering and log operations
+    steer-ui.ts, prompt-progress.ts, env-panel.ts, hooks-panel.ts, notes-panel.ts,
+    profile-editor.ts  # focused UI modules (steer/queue, llama.cpp prompt bar, settings tabs)
   dist/app.js       # generated browser bundle (not hand-edited)
   styles.css        # web UI styling
 ```
@@ -167,12 +191,12 @@ Rules:
 
 - `ProfileSource` is a core-owned type (`repl/session.ts`) for loading profile
   text at runtime. The edge provides the implementation (`FileProfileSource`
-  in `index.ts`, backed by `.vise/profiles/*.md` files). Same pattern as
+  in `src/edge-sources.ts`, backed by `.vise/profiles/*.md` files). Same pattern as
   `ModelController`: core owns the interface, edge does the I/O.
 - `PreTurnHook` and `PostTurnHook` are core-owned types (`repl/session.ts`)
   that run configured shell commands before and after every chat turn and
   return their combined output. The edge provides the implementation
-  (`ShellHook` in `index.ts`, spawning `powershell.exe` with the command
+  (`ShellHook` in `src/edge-sources.ts`, spawning `powershell.exe` with the command
   from `.viserc.json`). Multiple hooks of the same kind run in parallel;
   each hook's output is injected as its own user message, in config order —
   pre-turn before the user's input, post-turn after the assistant's reply.
@@ -187,7 +211,7 @@ Rules:
   `read_note`/`save_note`/`delete_note` tools when it decides it needs them,
   and the user sees the same store via `/note` (list) and can create new
   notes via `/note init [--global] <name> [category]`. A note has a scope: `project` (`.vise/notes/`) or `global` (`~/.vise/notes/`, shared by every project and by no-folder sessions); the tools that act on one note require it. Notes are the standard memory and skill systems consolidated into one store (suggested categories `user-info`, `memories`, `skills`). The shared file I/O lives in `src/notes.ts`
-  (edge); the `FileNoteSource` in `index.ts` implements `NoteSource`. Same
+  (edge); the `FileNoteSource` in `src/edge-sources.ts` implements `NoteSource`. Same
   edge-owns-I/O pattern as `ProfileSource`.
 - `SessionSource` is a core-owned type (`repl/session.ts`) for saving,
   loading, listing, and deleting conversation snapshots. The edge
@@ -237,7 +261,7 @@ Rules:
   constant, and any other name is loaded from `.vise/profiles/<name>.md` via
   `ProfileSource` — the same edge I/O as `/profile`. The edge handler
   (`src/tools/subagent.ts` `makeSubagentHandler`) performs the `ProfileSource`
-  I/O and calls the core; it is registered in `index.ts` by passing it as the
+  I/O and calls the core; it is registered in `src/wiring.ts` by passing it as the
   `run_subagent` `extra` handler to `createToolRunner` because its handler
   depends on the `Client` and `ProfileSource`.
   Same edge-owns-I/O pattern as `ProfileSource`.
@@ -246,23 +270,24 @@ Rules:
   tool result. The `UserPrompter` interface is edge-owned (`src/tools/ask-user.ts`)
   — unlike `ProfileSource` or `ToolController`, nothing in the core references
   this type. The edge handler (`makeAskUserHandler` in `src/tools/ask-user.ts`)
-  is registered in `index.ts` as the `ask_user` `extra` handler to
-  `createToolRunner` because its dependency (`RlUserPrompter`) requires the
-  readline interface constructed there. This is the variant of the
+  is registered in `src/wiring.ts` as the `ask_user` `extra` handler to
+  `createToolRunner`; its dependency is the `UserPrompter` the driver passes to
+  `createEdgeSession` (`RlUserPrompter` over the terminal's readline in
+  `terminal-main.ts`, `WebUserPrompter` in the web server). This is the variant of the
   `createToolRunner` extras pattern where a tool handler depends on an
   edge-owned interface rather than a core-owned one.
 - Every file stays under 500 code lines and every function under 100 lines;
   when a module approaches that, split it along a natural seam.
 
 Current implementation: `src/wiring.ts` constructs the shared edge services
-and `Session` via `createEdgeSession`. `index.ts` wires that session to the
+and `Session` via `createEdgeSession`. `src/terminal-main.ts` (started by `index.ts`) wires that session to the
 interactive `TerminalDriver`; `src/web/server.ts` is a second driver that
 serves `web/` and bridges browser turns and streaming events over WebSocket.
 Each web connection receives an independent edge session. The web driver also
 exposes a read-only workspace explorer: `src/web/files.ts` confines `/api/fs`
 and `/api/file` requests to the working directory, while `web/src/explorer.ts`
 renders the directory tree and tabbed file viewer. The web UI is started with
-`bun run web` (default port 3000; `PORT` overrides it); `bun run dev:web`
+`bun run web` (default port 3000, a setting; a busy port falls back to a free one); `bun run dev:web`
 rebuilds the browser bundle and restarts the watched server on source changes.
 The transport to the LLM remains in `src/client/llm.ts`. The non-TTY
 pipe/script driver and `cli.ts` remain future work.
@@ -290,34 +315,95 @@ Besides the browsers Vise launches itself, the agent can work in the user's own 
 
 ## Settings
 
-One declarative `SPEC` table (`src/config.ts`) is the only description of a
-tunable: variable name, default, minimum, group, label, `secret`, `restart`.
-The settings file loader, the validator, the settings page and `.env.example`
-are all derived from it, never restated. Ideal shape:
+One declarative `SPEC` table (`src/config.ts`) describes every tunable:
+variable name, default, minimum, group, label, `secret`, `restart`. The live
+values, the file loader and validator (`src/settings-file.ts`), the settings
+page's "general" tab and `.env.example` all follow it.
 
-- **Live by construction.** Code reads `config.x` at the point of use, never
-  into a module constant, a constructor field or a closure; a setting that must
-  be read once is marked `restart` and the page says so. A lint rule forbids
-  assigning `config.*` at module scope outside an allow-list.
-- **Precedence is the conventional one:** process environment, then the user
-  settings file, then the default (an explicit launch-time override beats a
-  saved preference). The page shows the effective value and its source
-  (default, file, environment); an environment-sourced value is shown locked.
-- **Secrets** live in a mode-0600 file or the OS credential store, are never
-  sent to a page, and can be explicitly cleared. Changing the LLM address does
-  not silently forward a stored key to a new host without the page saying so.
-- **Pure core stays pure.** The core receives values as parameters; only edge
-  code imports `config`. Code shared with the Firefox extension takes its
-  limits as arguments (the extension has no file or `process`), so `config.ts`
-  is never bundled into the extension.
-- **Saves are patches.** The page sends only the fields it changed, the server
-  merges against the current file under one writer, and every open settings
-  page is pushed the result (as for hooks), so a stale page cannot revert a
-  newer change.
+- **Live.** Code reads `config.x` at the point of use, never into a module
+  constant, constructor field or closure, so a value saved from the page applies
+  at once. Only `restart` settings (the port, the page-snapshot limits baked
+  into a script shared with the Firefox extension) are read once.
+- **Where values come from.** The user-level file `~/.vise/.env` (shared by
+  every project, outside any dev directory), then the process environment, then
+  the default. The file wins so that a value saved from the page can never be
+  silently overridden by a stale launch-time variable. A missing, empty or
+  invalid value falls back to the default; Vise never fails to start over a
+  setting.
+- **Secrets.** The API key is never sent to the page (only whether one is set),
+  the file is written owner-only and atomically, a blank key box keeps the saved
+  key, and an explicit "clear" removes it.
+- **Saves are patches.** The page sends only the fields it changed, so a stale
+  page cannot revert another setting; a file that exists but cannot be read is
+  never overwritten.
+- **Pure core stays pure.** The core receives values as parameters and keeps its
+  few constants (`MAX_TOOL_ROUNDS` and friends); only edge code imports
+  `config`.
+
+Still to do: show each setting's effective value and source on the page; push a
+save to every open settings page (as hooks do); a lint rule against module-scope
+`config.*` reads; `config.ts` is bundled into the Firefox extension through
+`page-scripts.ts`, so code shared with the extension should take its limits as
+arguments instead; and say so on the page when the LLM address changes while a
+key is stored.
 
 ## Packaging
 
-Vise ships as two compiled executables (`vise.exe` web, `vise-cli.exe` terminal) built by `scripts/build-exe.ts`. Everything a build embeds (page files, extension, Playwright runner) is a generated or fixed-map asset imported with `type: "file"`; the server serves only paths in a fixed map (`src/web/assets.ts`), never a filesystem path derived from the request. Build outputs (`web/dist`, `extension/dist`) are prerequisites that are verified up front: a missing one fails with the command that creates it, never an opaque module-resolution error. A build's identity is `package version + commit + dirty marker`; anything extracted to disk (`~/.vise/runtime/<id>`) is keyed by that identity, superseded folders are pruned, and compiled-versus-source mode is decided by one build-time flag, not by sniffing paths. Updating is replacing the executable; the Firefox extension and `playwright-core` are re-installed by the maintenance flags, and the extension reports a version mismatch with its server. Assets are served with a content-hash ETag so a replaced executable never shows a stale page.
+Vise ships as two compiled executables built by `scripts/build-exe.ts`
+(`bun run build:exe`): `vise.exe` (web server and window) and `vise-cli.exe`
+(terminal). Everything a build embeds (the page's files, the Firefox extension,
+the Playwright runner script, the window library's DLL) is imported with
+`type: "file"`; the server serves only the paths in a fixed map
+(`src/web/assets.ts`), never a filesystem path derived from the request. Build
+outputs (`web/dist`, `extension/dist`) are prerequisites, and running from
+source without one fails with the command that creates it
+(`src/build-check.ts`). A build's identity is `package version + commit`
+(plus `-dirty` for uncommitted changes), stamped as `VISE_VERSION`; compiled
+versus source is decided by that one flag, and anything extracted to disk
+(`~/.vise/runtime/<version>`) is keyed by it and superseded folders are pruned.
+All user state lives outside the executable (`<project>/.vise`, `~/.vise`),
+so updating means replacing it; `--install-extension` and `--setup-playwright`
+refresh the pieces that cannot live inside it.
+
+Still to do: serve assets with a content-hash ETag so a replaced executable
+never shows a stale page; have the extension report a version mismatch with its
+server; sign the executables after the header patch (the patch invalidates any
+earlier signature).
+
+## Desktop window
+
+The compiled `vise.exe` shows Vise in its own native window instead of a
+browser tab. The server keeps the main thread; the window runs on a worker
+thread (`src/web/window-worker.ts`) because the webview library's `run` blocks
+until the window closes. The worker binds the WebView2 DLL with `bun:ffi` and
+reports typed events (`ready`, `closed`, `failed`; `src/web/desktop.ts`).
+Closing the window shuts the server down and the program ends; a window that
+cannot start (WebView2 runtime missing, DLL not loading, no window within 10
+seconds) is fatal and visible (a message box, exit code 1), so Vise never runs
+unseen. `vise.exe` is a GUI-subsystem program (the build patches the PE header),
+so it has no console: console output goes to `~/.vise/vise.log` and the
+maintenance flags print to the terminal that started it or to a redirect.
+`--no-window` serves only, for a browser; `vise-cli.exe` is unchanged.
+
+**Server location is a preference, not an identity.** A busy port never stops
+startup: the server takes the next free port (any free one if none is near),
+shows a note in the page, and the Firefox extension finds it again by probing
+`/api/vise-hello` on its configured port and the 100 above. The port is chosen
+in settings (restart-only).
+
+## Steering and queueing
+
+A message sent while a turn runs is either **steering** or **queued**; the
+terminal has no input mid-turn, so both are web features. Steering is added to
+the conversation as the user's words before the model's next round
+(`NoticeQueue`, drained by the round hook, never between a tool call and its
+result); words the turn ended without reading run as turns of their own. A queued
+line (`qid` on the `line` message) waits for everything before it, including
+automatic goal continues, is listed by the server (`queue` message) and can be
+removed until it starts. `/steer` and `/queue` act at once, never behind the
+turn. The turn-admission state is spread over `web/line.ts`,
+`web/queue-commands.ts` and `web/server.ts`; see Future Work for the
+single-module target.
 
 ## Potential Problems
 
@@ -329,15 +415,12 @@ Vise ships as two compiled executables (`vise.exe` web, `vise-cli.exe` terminal)
   the pattern spreads. The client already returns `Result<string>` with
   structured error variants; the remaining surface is the driver formatting
   those variants for display — keep that formatting in `output/format.ts`
-  once it exists, not inline in `index.ts`.
-- **One file doing every job.** `index.ts` is currently a thin entry
-  and driver layer that also hosts the edge service implementations
-  (`FileProfileSource`, `ShellHook`, `loadHookCommands`). The transport,
-  tool dispatch, engine, and session are already extracted into their
-  own modules. What remains is the driver split (TTY vs. pipe) and the
-  `cli.ts` surface. As the driver layer splits, those edge service
-  implementations move out of `index.ts` into the driver modules that
-  construct the `Session`; until then, `index.ts` is their home.
+  once it exists, not inline in the entry point.
+- **One file doing every job.** Done for the entries: `index.ts` and
+  `src/web/main.ts` only apply settings, handle maintenance flags and hand over;
+  the edge service implementations live in `src/edge-sources.ts` and the shared
+  wiring in `src/wiring.ts`. What remains is the driver split (TTY vs. pipe)
+  and the `cli.ts` surface.
 - **Pure core vs. network I/O.** The core's fundamental operation is an HTTP
   round-trip, which is I/O. The resolution is the `Client` interface: the
   core owns the _type_, the edge provides the _implementation_. Do not
@@ -391,7 +474,7 @@ Vise ships as two compiled executables (`vise.exe` web, `vise-cli.exe` terminal)
   (profiles, notes, sessions) live under a single `.vise/` directory to keep
   the working directory clean; the dot name also excludes `.vise/` from the
   startup directory tree (dotfiles are skipped). The composition is a named
-  edge function (`buildInitialMessage` in `index.ts`); adding a new section is
+  edge function (`buildInitialMessage` in `src/edge-sources.ts`); adding a new section is
   a two-line addition inside that function, not a new nested ternary at the
   call site. The `Session` receives the result as an opaque `initialMessage`
   string and injects it once; it never re-reads the directory, files, or
@@ -420,7 +503,7 @@ Vise ships as two compiled executables (`vise.exe` web, `vise-cli.exe` terminal)
   driver object (e.g. `driver/stream.ts` `StreamDisplay`) that owns the
   cross-callback ordering invariants (e.g. flush any partial content line
   before a counter or tool event starts a fresh line, so buffered content is
-  never emitted after that event), not in module-level `let`s in `index.ts`.
+  never emitted after that event), not in module-level `let`s in an entry point.
   The web transcript (`web/src/transcript.ts`) owns the equivalent browser
   ordering: streamed assistant text is finalized before thinking or tool-call
   entries are appended, so the visible log follows server event order.
@@ -533,18 +616,6 @@ Vise ships as two compiled executables (`vise.exe` web, `vise-cli.exe` terminal)
   changed, read again" instead of acting on the wrong element; the outline
   should be paged or filtered (by region or field) rather than capped
   silently, and tool results should report repeated identical failures so the
-  loop can stop and ask the user.
-- **Page actions are data, not backend methods.** Every page-script action
-  (`uploadFiles`, `selectOption`, future combobox, checkbox/radio, date and
-  contenteditable setters) should be a pure `PageAction` in `page-scripts.ts`
-  (script name plus JSON args, JSON result) run through one optional backend
-  capability, `runPageAction(tabId, ref, action)`, implemented once per
-  protocol (CDP, BiDi, extension) and forwarded once by `SwitchableBrowser`.
-  Adding a widget then touches only the script and the tool, not five backends.
-  Snapshot refs carry a page-generation stamp so a ref from before a re-render
-  fails with "page changed, read again" instead of acting on the wrong
-  element; the outline is paged or filtered (by region or field) rather than
-  capped silently, and tool results report repeated identical failures so the
   loop can stop and ask the user.
 
 ## Performance
