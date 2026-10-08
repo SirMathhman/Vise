@@ -122,6 +122,12 @@ export async function runCompaction(
     content: `Here is a summary of our conversation so far: ${summary.value}`,
   };
   const recent = split.recent;
+  source.audit?.record({
+    kind: "compaction",
+    summarized: split.toSummarize.length,
+    kept: recent.length,
+    summary: summary.value,
+  });
   source.resetMessages([framed, ...recent]);
   return {
     ok: true,

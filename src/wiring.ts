@@ -1,4 +1,5 @@
 import { config } from "./config.ts";
+import { noAudit, type AuditSink } from "./core/audit.ts";
 import { SqliteAuditSink } from "./db/audit-store.ts";
 import { mkdirSync } from "node:fs";
 import { ChromiumBackend } from "./browser/chromium.ts";
@@ -43,7 +44,7 @@ import {
 import { makeAskUserHandler, type UserPrompter } from "./tools/ask-user.ts";
 import { makeSearchToolsHandler } from "./tools/search-tools.ts";
 import { makeSelfHandler } from "./tools/self.ts";
-import { makeSubagentHandler } from "./tools/subagent.ts";
+import { currentSubagentDepth, makeSubagentHandler } from "./tools/subagent.ts";
 import { createToolRunner, isFileSystemTool, ToolSet, tools } from "./tools.ts";
 
 /**
@@ -215,8 +216,16 @@ function subagentCallbacks(
   options: EdgeSessionOptions,
   toolController: ToolController,
   client: LlmClient,
+  audit: AuditSink,
 ): TurnCallbacks {
   return {
+    // The subagent's own conversation is kept in the audit log (without its system message).
+    onSubagentDone: (messages) => {
+      const depth = currentSubagentDepth();
+      for (const message of messages.slice(1)) {
+        audit.record({ kind: "message", message, depth });
+      }
+    },
     onToken: options.onToken,
     onThinking: options.onThinking,
     onToolCall: options.onToolCall,
@@ -258,6 +267,17 @@ function displayCallbacks(
   };
 }
 
+/** Where the client reports each model call: prompt progress, generation, the audit log. */
+function wireClientSinks(
+  client: LlmClient,
+  options: EdgeSessionOptions,
+  audit: AuditSink,
+): void {
+  client.setProgressSink(options.onPromptProgress);
+  client.setGenerationSink(options.onGenerating);
+  client.setAuditSink(audit);
+}
+
 /**
  * Construct the full edge stack: the `LlmClient`, every edge data source, the
  * composed `ToolRunner`, and the `Session`. Shared by the terminal and web
@@ -282,9 +302,9 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
   const hookStore = options.hookStore ?? new HookStore(root);
 
   const client = new LlmClient();
+  const auditSink = config.auditEnabled ? new SqliteAuditSink(root) : noAudit;
   // Every model call of this session (reply, goal check, compaction...) reports here.
-  client.setProgressSink(options.onPromptProgress);
-  client.setGenerationSink(options.onGenerating);
+  wireClientSinks(client, options, auditSink);
   const browser: BrowserBackend = options.browser ?? new ChromiumBackend();
 
   // Single directory that holds every runtime data store (profiles/, notes/,
@@ -293,7 +313,6 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
   // data sources at `.vise/` relocates all three stores under it.
   const profileSource = new FileProfileSource(dataDir);
   const sessionSource = new FileSessionSource(dataDir);
-  const audit = config.auditEnabled ? new SqliteAuditSink(root) : undefined;
   const workflowSource = new FileWorkflowSource(dataDir, globalDataDir);
 
   // The subagent handler needs the ToolRunner for recursion, and the runner
@@ -317,7 +336,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
         cwd,
         lazily(() => toolRunner),
         sessionTools,
-        subagentCallbacks(options, toolController, client),
+        subagentCallbacks(options, toolController, client, auditSink),
         (operation) => client.withPreservedSlotCache(operation),
         () => sessionRef.current.currentAbortSignal,
         (name) => toolController.baselineEnabled(name),
@@ -345,6 +364,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     sessionTools,
     temp,
     images,
+    auditSink,
   );
 
   const initialMessage = buildInitialMessage(cwd, dataDir);
@@ -359,7 +379,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     imageSource,
     workflowSource,
     sessionSource,
-    auditSink: audit,
+    auditSink,
     preTurnHooks: hookStore.pre,
     postTurnHooks: hookStore.post,
     hookSource: hookStore,

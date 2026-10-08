@@ -14,6 +14,9 @@ import type { ProfileSource } from "../repl/session.ts";
 /** How many subagents deep the code running now is (0 in the main conversation); follows the work across awaits. */
 const subagentDepth = new AsyncLocalStorage<number>();
 
+/** How many subagents deep the code running now is. */
+export const currentSubagentDepth = (): number => subagentDepth.getStore() ?? 0;
+
 /**
  * The built-in "default" profile. Every subagent that does not name a custom
  * profile receives this text as its defining instructions, so there is always

@@ -49,4 +49,36 @@ export const AUDIT_MIGRATIONS: Migration[] = [
   CREATE INDEX audit_events_session ON audit_events(session_id, id);
   CREATE INDEX audit_events_name ON audit_events(name);
   `,
+  `
+  ALTER TABLE audit_messages ADD COLUMN depth INTEGER NOT NULL DEFAULT 0;
+  CREATE TABLE audit_model_calls (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id    TEXT NOT NULL,
+    turn_id       TEXT,
+    ts            TEXT NOT NULL,
+    purpose       TEXT NOT NULL,
+    model         TEXT NOT NULL,
+    ms            INTEGER NOT NULL,
+    prompt_tokens INTEGER,
+    content       TEXT,
+    reasoning     TEXT,
+    tool_calls    INTEGER,
+    error         TEXT
+  );
+  CREATE TABLE audit_tool_calls (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    turn_id    TEXT,
+    ts         TEXT NOT NULL,
+    name       TEXT NOT NULL,
+    args       TEXT,
+    result     TEXT NOT NULL,
+    ok         INTEGER NOT NULL,
+    ms         INTEGER NOT NULL,
+    depth      INTEGER NOT NULL
+  );
+  CREATE INDEX audit_model_calls_session ON audit_model_calls(session_id, id);
+  CREATE INDEX audit_tool_calls_session ON audit_tool_calls(session_id, id);
+  CREATE INDEX audit_tool_calls_name ON audit_tool_calls(name, ok);
+  `,
 ];

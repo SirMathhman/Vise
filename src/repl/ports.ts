@@ -1,3 +1,4 @@
+import type { AuditSink } from "../core/audit.ts";
 import type { Picture } from "../core/errors.ts";
 import type { Client } from "../core/engine.ts";
 import type { Workflow, WorkflowScope } from "../core/workflow.ts";
@@ -254,4 +255,6 @@ export interface CompactionSource {
    * system message at index 0 (invariant #6). Used after summarizing.
    */
   resetMessages(messages: Message[]): void;
+  /** Told what each compaction did (the audit log). */
+  audit?: AuditSink;
 }

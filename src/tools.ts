@@ -1,5 +1,7 @@
 import { resolve } from "node:path";
+import { noAudit, type AuditSink } from "./core/audit.ts";
 import type { Tool, ToolController, ToolRunner } from "./core/engine.ts";
+import { auditCall, auditRefused } from "./tools/audit-call.ts";
 import { dataDirFor, globalDataDir } from "./data-dir.ts";
 import { NoteStore } from "./note-store.ts";
 import { agentTools } from "./tools/defs/agent.ts";
@@ -233,6 +235,8 @@ export function createToolRunner(
   spill?: TempStore,
   /** Where tools put the pictures they produce; the runner hands them over with the result. */
   images?: ImageOutbox,
+  /** Hears every tool call with its whole result and how long it took. */
+  audit: AuditSink = noAudit,
 ): ToolRunner {
   const handlers: Record<string, ToolHandler> = {
     ...baseHandlers(root),
@@ -248,14 +252,17 @@ export function createToolRunner(
     async run(name, args, signal): Promise<string> {
       const handler = handlers[name];
       if (handler === undefined) {
-        return `error: unknown tool ${name}`;
+        return auditRefused(audit, name, args, `error: unknown tool ${name}`);
       }
       // A subagent limited by its profile may use exactly its listed tools; anyone else, what the session has enabled.
       const limited = currentToolScope();
       if (limited ? !limited.has(name) : !toolController.isEnabled(name)) {
-        return `error: tool ${name} is ${limited ? "not available to this agent" : "disabled"}`;
+        const why = limited ? "not available to this agent" : "disabled";
+        return auditRefused(audit, name, args, `error: tool ${name} is ${why}`);
       }
-      const result = await handler(args, signal);
+      const result = await auditCall(audit, name, args, () =>
+        handler(args, signal),
+      );
       // The temp tools bound their own output; everything else too big to show is saved instead.
       if (TEMP_TOOLS.has(name) || !isTooLarge(result)) return result;
       // With nowhere to save it, a big result is cut rather than let through whole.

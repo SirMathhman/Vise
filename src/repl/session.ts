@@ -3,8 +3,6 @@ import type { Picture } from "../core/errors.ts";
 import type {
   Client,
   Tool,
-  ToolCallListener,
-  ToolResultListener,
   ToolController,
   ToolRunner,
   TurnCallbacks,
@@ -127,18 +125,12 @@ export class Session {
   private readonly noteSource?: NoteSource;
   private readonly workflowSource?: WorkflowSource;
   private readonly hooks: SessionHooks;
+  private readonly opts: SessionOptions;
   private readonly audit: SessionAudit;
-  private readonly onToken?: (token: string) => void;
-  private readonly onThinking?: (token: string) => void;
-  private readonly onToolCall?: ToolCallListener;
-  private readonly onToolResult?: ToolResultListener;
-  private readonly onImage?: SessionOptions["onImage"];
   /** Images attached with `/image`, for the next message. */
   private readonly attachments: PendingImages;
-  private readonly onBurst?: (active: boolean) => void;
   private readonly initialMessage?: string;
   private readonly sessionSource?: SessionSource;
-  private readonly onMaxRounds?: (question: string) => Promise<boolean>;
   private activeProfile: string | undefined;
   /** The session's display name: derived from the first input, or renamed. */
   private sessionName: string | undefined;
@@ -171,19 +163,16 @@ export class Session {
     this.profileSource = options.profileSource;
     this.noteSource = options.noteSource;
     this.workflowSource = options.workflowSource;
+    this.opts = options;
     this.hooks = new SessionHooks(options, () => this.activeProfile);
     this.audit = new SessionAudit(options.auditSink);
-    this.onToken = options.onToken;
-    this.onThinking = options.onThinking;
-    this.onToolCall = options.onToolCall;
-    this.onToolResult = options.onToolResult;
-    this.onImage = options.onImage;
     this.attachments = new PendingImages(options.imageSource);
-    this.onBurst = options.onBurst;
-    this.goals = new GoalTracker(options.goalChecking ?? false, options.onGoal);
+    this.goals = new GoalTracker(options.goalChecking ?? false, (event) => {
+      this.audit.goal(event);
+      options.onGoal?.(event);
+    });
     this.initialMessage = options.initialMessage;
     this.sessionSource = options.sessionSource;
-    this.onMaxRounds = options.onMaxRounds;
     this.systemMessage = systemMessageFor(options);
     this.messages = [this.systemMessage];
     if (this.initialMessage !== undefined && this.initialMessage !== "") {
@@ -223,6 +212,7 @@ export class Session {
     };
     this.compactionSource = {
       client: this.client,
+      audit: this.audit.sink,
       messages: () => this.messages.filter((m) => !this.goals.isNote(m)),
       resetMessages: (body) => this.replaceConversation(body),
     };
@@ -236,12 +226,12 @@ export class Session {
       messages: () => this.messages,
       preTurnHooks: () => this.hooks.applicable("pre"),
       postTurnHooks: () => this.hooks.applicable("post"),
-      onToken: () => this.onToken,
-      onThinking: () => this.onThinking,
-      onToolCall: () => this.onToolCall,
-      onToolResult: () => this.onToolResult,
-      onImage: () => this.onImage,
-      onMaxRounds: () => this.onMaxRounds,
+      onToken: () => this.opts.onToken,
+      onThinking: () => this.opts.onThinking,
+      onToolCall: () => this.opts.onToolCall,
+      onToolResult: () => this.opts.onToolResult,
+      onImage: () => this.opts.onImage,
+      onMaxRounds: () => this.opts.onMaxRounds,
       roundHook: (signal) => this.roundHook(signal),
       isToolEnabled: () => this.isToolEnabled,
       maybeAutoCompact: () => this.maybeAutoCompact(),
@@ -288,13 +278,13 @@ export class Session {
   private turnCallbacks(abort: AbortSignal, onRound?: OnRound): TurnCallbacks {
     return {
       onRound,
-      onToken: this.onToken,
-      onThinking: this.onThinking,
-      onToolCall: this.onToolCall,
-      onToolResult: this.onToolResult,
-      onImage: this.onImage,
-      onBurst: this.onBurst,
-      onMaxRounds: this.onMaxRounds,
+      onToken: this.opts.onToken,
+      onThinking: this.opts.onThinking,
+      onToolCall: this.opts.onToolCall,
+      onToolResult: this.opts.onToolResult,
+      onImage: this.opts.onImage,
+      onBurst: this.opts.onBurst,
+      onMaxRounds: this.opts.onMaxRounds,
       isToolEnabled: this.isToolEnabled,
       burst: this.burst,
       abort,
@@ -321,10 +311,10 @@ export class Session {
           this.messages,
           this.toolDefs,
           signal,
-          this.onMaxRounds,
+          this.opts.onMaxRounds,
         ),
     };
-    return makeRoundHook(deps, this.onToken, this.notices);
+    return makeRoundHook(deps, this.opts.onToken, this.notices);
   }
 
   private burstCommand(line: string): Result<string> {
@@ -364,7 +354,7 @@ export class Session {
         this.sessionName = deriveSessionName(line);
       }
       const auto = await this.maybeAutoCompact();
-      const streamed = this.onToken !== undefined;
+      const streamed = this.opts.onToken !== undefined;
       const roundHook = this.roundHook(abort.signal);
       const turn = await this.goals.run(
         this.client,
@@ -380,12 +370,15 @@ export class Session {
           ),
         abort.signal,
         {
-          confirmMore: this.onMaxRounds,
+          confirmMore: this.opts.onMaxRounds,
           beforeContinue: () => this.maybeAutoCompact(),
         },
       );
       this.audit.turnResult(turn);
-      if (!turn.ok) return turn;
+      if (!turn.ok) {
+        await this.saveSession(); // what the turn did before it failed is kept too
+        return turn;
+      }
       await this.runHooks("post");
       await this.saveSession();
       // A failed auto-compact is non-fatal: proceed with the (uncut)
@@ -402,6 +395,9 @@ export class Session {
         streamed,
         compactionWarning: auto.error,
       };
+    } catch (e) {
+      this.audit.turnThrew(e);
+      throw e;
     } finally {
       this.currentAbort = null;
       this.audit.messages(this.messages);

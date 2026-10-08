@@ -1,3 +1,4 @@
+import { noAudit, type AuditSink } from "../core/audit.ts";
 import type { Result } from "../core/errors.ts";
 import {
   type HookCommands,
@@ -30,6 +31,7 @@ export class SessionHooks {
   readonly post: PostTurnHook[];
   private readonly source: HookSource | undefined;
   private readonly profiles: ProfileSource | undefined;
+  private readonly audit: AuditSink;
 
   constructor(
     options: {
@@ -37,6 +39,7 @@ export class SessionHooks {
       postTurnHooks: PostTurnHook[];
       hookSource?: HookSource;
       profileSource?: ProfileSource;
+      auditSink?: AuditSink;
     },
     private readonly activeProfile: () => string | undefined,
   ) {
@@ -44,6 +47,7 @@ export class SessionHooks {
     this.post = options.postTurnHooks;
     this.source = options.hookSource;
     this.profiles = options.profileSource;
+    this.audit = options.auditSink ?? noAudit;
   }
 
   /** Re-read the profiles' own hooks; call before the hooks of a turn or workflow run. */
@@ -67,7 +71,18 @@ export class SessionHooks {
   async run(phase: HookPhase): Promise<string[]> {
     await this.refresh();
     const outputs = await Promise.all(
-      this.applicable(phase).map((h) => h.run()),
+      this.applicable(phase).map(async (h) => {
+        const started = performance.now();
+        const output = await h.run();
+        this.audit.record({
+          kind: "hook_run",
+          phase,
+          command: h.command,
+          ms: performance.now() - started,
+          output,
+        });
+        return output;
+      }),
     );
     return outputs.filter((o) => o.trim() !== "");
   }

@@ -103,6 +103,8 @@ export interface TurnCallbacks {
    * falls back to a dimmed, indented copy sent through `onToken`.
    */
   onSubagentToken?: (token: string, depth?: number) => void;
+  /** A subagent's turn is over: its whole private conversation (system message first), for the record. */
+  onSubagentDone?: (messages: Message[]) => void;
   /** Asked when a turn has run `MAX_TOOL_ROUNDS` rounds (and by other long-running loops); `question` says what is being asked. */
   onMaxRounds?: (question: string) => Promise<boolean>;
   /**
@@ -499,11 +501,13 @@ export async function runSubagent(
     messages.push({ role: "user", content: profileText });
   }
   messages.push({ role: "user", content: task });
-  return runTurn(
+  const result = await runTurn(
     client.as?.("subagent") ?? client,
     tools,
     messages,
     toolDefs,
     callbacks,
   );
+  callbacks.onSubagentDone?.(messages);
+  return result;
 }

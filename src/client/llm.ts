@@ -1,4 +1,6 @@
 import { config } from "../config.ts";
+import { noAudit, type AuditSink } from "../core/audit.ts";
+import { formatError } from "../output/format.ts";
 import {
   encodeMessages,
   type ImageResolver,
@@ -92,6 +94,13 @@ export class LlmClient implements Client {
     sink: ((progress: PromptProgress) => void) | undefined,
   ): void {
     this.progressSink = sink;
+  }
+
+  /** Hears one record per model call: its purpose, duration and reply (set by the edge). */
+  private auditSink: AuditSink = noAudit;
+
+  setAuditSink(sink: AuditSink): void {
+    this.auditSink = sink;
   }
 
   /** The same client with its calls labelled by what they are for (see `Client.as`). */
@@ -440,7 +449,29 @@ export class LlmClient implements Client {
     }
   }
 
+  /** One model call, recorded in the audit log whatever its outcome. */
   async chat(
+    ...args: Parameters<LlmClient["send"]>
+  ): Promise<Result<AssistantMessage>> {
+    const started = performance.now();
+    const model = this.currentModel;
+    const result = await this.send(...args);
+    const reply = result.ok ? result.value : undefined;
+    this.auditSink.record({
+      kind: "model_call",
+      purpose: args[9] ?? "reply",
+      model,
+      ms: performance.now() - started,
+      promptTokens: result.ok ? this.lastPromptTokens : undefined,
+      content: reply?.content,
+      reasoning: reply?.reasoning,
+      toolCalls: reply?.tool_calls?.length,
+      error: result.ok ? undefined : formatError(result.error),
+    });
+    return result;
+  }
+
+  private async send(
     messages: Message[],
     tools?: Tool[],
     onToken?: (token: string) => void,
