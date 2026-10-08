@@ -1,6 +1,7 @@
 import { config } from "../config.ts";
 import { type ChildProcess, spawn } from "node:child_process";
 import { errStr } from "./files.ts";
+import { selfKillRefusal } from "./self-kill-guard.ts";
 
 /**
  * Foreground commands that do not finish within this window are killed.
@@ -119,6 +120,8 @@ export async function runPowershell(
 ): Promise<string> {
   const command = String(args.command ?? "");
   if (command === "") return `error: command must not be empty`;
+  const refusal = selfKillRefusal(command);
+  if (refusal) return refusal;
   const background = args.background === true;
   try {
     if (background) {

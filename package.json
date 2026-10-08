@@ -22,6 +22,7 @@
     "@types/firefox-webext-browser": "^143.0.1",
     "eslint": "^10.11.0",
     "prettier": "^3.9.9",
+    "rcedit": "^5.0.2",
     "typescript-eslint": "^8.71.0"
   },
   "peerDependencies": {

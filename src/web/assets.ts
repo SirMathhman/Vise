@@ -4,6 +4,8 @@
 import indexHtml from "../../web/index.html" with { type: "file" };
 // @ts-expect-error TypeScript has no type for a CSS import; with `type: "file"` it is a path.
 import stylesCss from "../../web/styles.css" with { type: "file" };
+// @ts-expect-error TypeScript has no type for an SVG import; with `type: "file"` it is a path.
+import iconSvg from "../../assets/icon.svg" with { type: "file" };
 import appJs from "../../web/dist/app.js" with { type: "file" };
 
 // Bun types HTML and JS imports as bundles; with `type: "file"` they are paths.
@@ -16,6 +18,7 @@ export const WEB_ASSETS: Readonly<
   "/": { file: path(indexHtml), type: "text/html; charset=utf-8" },
   "/index.html": { file: path(indexHtml), type: "text/html; charset=utf-8" },
   "/styles.css": { file: path(stylesCss), type: "text/css; charset=utf-8" },
+  "/icon.svg": { file: path(iconSvg), type: "image/svg+xml" },
   "/dist/app.js": { file: path(appJs), type: "text/javascript; charset=utf-8" },
 };
 
