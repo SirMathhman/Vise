@@ -3,10 +3,13 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  renameSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
+import type { Result } from "../core/errors.ts";
+import { formatError } from "../output/format.ts";
 import { validName } from "./notes.ts";
 import type { Workflow, WorkflowScope, WorkflowStep } from "../core/workflow.ts";
 
@@ -71,13 +74,33 @@ export function initWorkflow(base: string, name: string): void {
   );
 }
 
+const fail = <T>(body: string): Result<T> => ({
+  ok: false,
+  error: { kind: "malformed", body },
+});
+
+/** Run a file step, turning a thrown I/O error into a failed `Result`. */
+function tryIo<T>(op: string, name: string, run: () => T): Result<T> {
+  try {
+    return { ok: true, value: run() };
+  } catch (e) {
+    return fail(`could not ${op} workflow '${name}': ${String(e)}`);
+  }
+}
+
 /** The workflow stored under exactly `base` (no project/global fallback), for the editor. */
-export function readWorkflowAt(base: string, name: string): Workflow {
+export function readWorkflowAt(base: string, name: string): Result<Workflow> {
   const path = workflowPath(base, name);
   if (!validName(name) || !existsSync(path)) {
-    throw new Error(`workflow '${name}' not found`);
+    return fail(`workflow '${name}' not found`);
   }
-  return parseWorkflow(readFileSync(path, "utf8"));
+  const text = tryIo("read", name, () => readFileSync(path, "utf8"));
+  if (!text.ok) return text;
+  try {
+    return validateWorkflow(JSON.parse(text.value));
+  } catch (e) {
+    return fail(`workflow '${name}' is not valid JSON: ${String(e)}`);
+  }
 }
 
 /** Write a workflow from the editor; a new workflow may not replace an existing one. */
@@ -86,23 +109,33 @@ export function saveWorkflowAt(
   name: string,
   steps: unknown,
   replace: boolean,
-): void {
-  if (!validName(name)) throw new Error(`invalid workflow name '${name}'`);
+): Result<string> {
+  if (!validName(name)) return fail(`invalid workflow name '${name}'`);
   const path = workflowPath(base, name);
   if (!replace && existsSync(path)) {
-    throw new Error(`workflow '${name}' already exists`);
+    return fail(`workflow '${name}' already exists`);
   }
   const workflow = validateWorkflow({ steps });
-  mkdirSync(join(base, "workflows"), { recursive: true });
-  writeFileSync(path, `${JSON.stringify(workflow, null, 2)}
+  if (!workflow.ok) return workflow;
+  return tryIo("save", name, () => {
+    mkdirSync(join(base, "workflows"), { recursive: true });
+    const temp = `${path}.tmp`;
+    writeFileSync(temp, `${JSON.stringify(workflow.value, null, 2)}
 `, "utf8");
+    renameSync(temp, path); // never leaves a half-written workflow
+    return name;
+  });
 }
 
-export function deleteWorkflowAt(base: string, name: string): void {
-  if (!validName(name) || !existsSync(workflowPath(base, name))) {
-    throw new Error(`workflow '${name}' not found`);
+export function deleteWorkflowAt(base: string, name: string): Result<string> {
+  const path = workflowPath(base, name);
+  if (!validName(name) || !existsSync(path)) {
+    return fail(`workflow '${name}' not found`);
   }
-  unlinkSync(workflowPath(base, name));
+  return tryIo("delete", name, () => {
+    unlinkSync(path);
+    return name;
+  });
 }
 
 function namesAt(base: string): string[] {
@@ -115,25 +148,34 @@ function namesAt(base: string): string[] {
 }
 
 function parseWorkflow(text: string): Workflow {
-  return validateWorkflow(JSON.parse(text));
+  const result = validateWorkflow(JSON.parse(text));
+  if (!result.ok) throw new Error(formatError(result.error));
+  return result.value;
 }
 
-function validateWorkflow(value: unknown): Workflow {
+function validateWorkflow(value: unknown): Result<Workflow> {
   if (
     typeof value !== "object" ||
     value === null ||
     !Array.isArray((value as { steps?: unknown }).steps)
   ) {
-    throw new Error("workflow must be a JSON object with a steps array");
+    return fail("workflow must be a JSON object with a steps array");
   }
-  const steps = (value as { steps: unknown[] }).steps.map(validateStep);
-  return { steps };
+  const steps: WorkflowStep[] = [];
+  for (const raw of (value as { steps: unknown[] }).steps) {
+    const step = validateStep(raw);
+    if (!step) {
+      return fail(
+        "workflow step must be an instruction with non-empty text or a tool with a name and args object",
+      );
+    }
+    steps.push(step);
+  }
+  return { ok: true, value: { steps } };
 }
 
-function validateStep(value: unknown): WorkflowStep {
-  if (typeof value !== "object" || value === null) {
-    throw new Error("workflow step must be an object");
-  }
+function validateStep(value: unknown): WorkflowStep | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
   const step = value as Record<string, unknown>;
   if (
     step.type === "instruction" &&
@@ -156,7 +198,5 @@ function validateStep(value: unknown): WorkflowStep {
       args: step.args as Record<string, unknown>,
     };
   }
-  throw new Error(
-    "workflow step must be an instruction with non-empty text or a tool with a name and args object",
-  );
+  return undefined;
 }

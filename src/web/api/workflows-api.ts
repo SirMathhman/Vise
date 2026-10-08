@@ -4,7 +4,8 @@ import {
   readWorkflowAt,
   saveWorkflowAt,
 } from "../../stores/workflows.ts";
-import type { WorkflowScope } from "../../core/workflow.ts";
+import type { ViseError } from "../../core/errors.ts";
+import { formatError } from "../../output/format.ts";
 
 /**
  * The web UI's workflow editor. It reads and writes the same JSON files as
@@ -31,15 +32,17 @@ export interface WorkflowBases {
 const str = (value: unknown): string =>
   typeof value === "string" ? value : "";
 
-function scopeOf(value: unknown): WorkflowScope {
-  if (value === "project" || value === "global") return value;
-  throw new Error("scope must be 'project' or 'global'");
-}
-
 const list = (bases: WorkflowBases): Reply => ({
   type: "workflows",
   workflows: listWorkflows(bases.project, bases.global),
 });
+
+const why = (error: ViseError): string =>
+  error.kind === "malformed" ? error.body : formatError(error);
+
+const failed = (error: string): Reply[] => [
+  { type: "workflow_result", ok: false, error },
+];
 
 /** Handle one workflow message; null when `msg` is not a workflow message. */
 export function handleWorkflowMessage(
@@ -55,25 +58,25 @@ export function handleWorkflowMessage(
   ) {
     return null;
   }
-  try {
-    const scope = scopeOf(msg["scope"]);
-    const name = str(msg["name"]).trim();
-    const base = bases[scope];
-    if (type === "workflow_get") {
-      const { steps } = readWorkflowAt(base, name);
-      return [{ type: "workflow", name, scope, steps }];
-    }
-    if (type === "workflow_delete") {
-      deleteWorkflowAt(base, name);
-      return [
-        { type: "workflow_result", ok: true, deleted: true, name, scope },
-        list(bases),
-      ];
-    }
-    saveWorkflowAt(base, name, msg["steps"], msg["replace"] === true);
-    return [{ type: "workflow_result", ok: true, name, scope }, list(bases)];
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return [{ type: "workflow_result", ok: false, error: message }];
+  const scope = msg["scope"];
+  if (scope !== "project" && scope !== "global") {
+    return failed("scope must be 'project' or 'global'");
   }
+  const name = str(msg["name"]).trim();
+  const base = bases[scope];
+  if (type === "workflow_get") {
+    const read = readWorkflowAt(base, name);
+    if (!read.ok) return failed(why(read.error));
+    return [{ type: "workflow", name, scope, steps: read.value.steps }];
+  }
+  const done =
+    type === "workflow_delete"
+      ? deleteWorkflowAt(base, name)
+      : saveWorkflowAt(base, name, msg["steps"], msg["replace"] === true);
+  if (!done.ok) return failed(why(done.error));
+  const deleted = type === "workflow_delete" ? { deleted: true } : {};
+  return [
+    { type: "workflow_result", ok: true, ...deleted, name, scope },
+    list(bases),
+  ];
 }
