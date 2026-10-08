@@ -1565,3 +1565,10 @@ body:has(#workspace:not(.hidden)) #files-btn {
   opacity: 0.6;
   text-decoration: line-through;
 }
+
+.wf-step {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.4rem;
+  margin-bottom: 0.4rem;
+}

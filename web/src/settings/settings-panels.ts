@@ -4,9 +4,16 @@ import {
 } from "./browser-settings.ts";
 import { createEnvPanel, type EnvMessage } from "./env-panel.ts";
 import { createNotesPanel, type NotesMessage } from "./notes-panel.ts";
+import {
+  createWorkflowsPanel,
+  type WorkflowsMessage,
+} from "./workflows/workflows-panel.ts";
 
 /** The slice of a server message the settings tabs react to. */
-type SettingsMessage = NotesMessage & BrowserSettingsFields & EnvMessage;
+type SettingsMessage = NotesMessage &
+  WorkflowsMessage &
+  BrowserSettingsFields &
+  EnvMessage;
 
 function el<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -31,13 +38,21 @@ export function createSettingsPanels(
     el("settings-btn"),
     el("notes-tab"),
   ]);
+  const workflows = createWorkflowsPanel(el("workflows-body"), send, [
+    el("settings-btn"),
+    el("workflows-tab"),
+  ]);
   return {
     handle(message) {
       if (message.type === "browser_settings") {
         browser.handle(message);
         return true;
       }
-      return general.handle(message) || notes.handle(message);
+      return (
+        general.handle(message) ||
+        notes.handle(message) ||
+        workflows.handle(message)
+      );
     },
   };
 }

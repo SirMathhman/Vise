@@ -8,7 +8,7 @@ import { ExtensionBackend } from "../browser/extension.ts";
 import type { BrowserBackend } from "../browser/types.ts";
 import { ExtensionHub, isExtensionOrigin } from "./ext/ext-hub.ts";
 import { loadExtensionToken, tokensMatch } from "./ext/ext-token.ts";
-import { handleNoteMessage } from "./api/notes-api.ts";
+import { handleEditorMessage } from "./api/editors.ts";
 import { serveAsset } from "./assets.ts";
 import { queueLine, steerLine, unqueue } from "./conn/line.ts";
 import type { HeldLine } from "./conn/line.ts";
@@ -17,11 +17,10 @@ import { handleQueueCommand } from "./conn/queue-commands.ts";
 import { SessionLease } from "./conn/leases.ts";
 import { queueAutoResume } from "./conn/resume.ts";
 import { imageStore } from "../stores/image-store.ts";
-import { NoteStore } from "../stores/note-store.ts";
 import { SwitchableBrowser } from "../browser/switchable.ts";
 import { BrowserBridge } from "./ext/browser-bridge.ts";
 import { type HookStore } from "../edge-sources.ts";
-import { dataDirFor, globalDataDir, noFolderRoot } from "../data-dir.ts";
+import { dataDirFor, noFolderRoot } from "../data-dir.ts";
 import { pickFolder, RootRegistry } from "./api/roots.ts";
 import { createEdgeSession } from "../wiring.ts";
 import { formatToolCall, summarizeToolResult } from "../output/tool-line.ts";
@@ -586,16 +585,11 @@ function handleMessage(
       send(reply);
     return;
   }
-  if (msg.type.startsWith("note")) {
-    // The notes editor reads and writes the notes store directly; never queued behind a turn.
-    const replies = handleNoteMessage(
-      new NoteStore({ project: conn.dataDir, global: globalDataDir }),
-      msg as unknown as Record<string, unknown>,
-    );
-    if (replies) {
-      for (const reply of replies) send(reply);
-      return;
-    }
+  if (msg.type.startsWith("note") || msg.type.startsWith("workflow")) {
+    // The notes and workflow editors read and write their stores directly; never queued behind a turn.
+    const replies = handleEditorMessage(conn.dataDir, msg as never);
+    for (const reply of replies ?? []) send(reply);
+    if (replies) return;
   }
   if (msg.type === "hooks_get") {
     // A pure read of the live hook lists; never queued behind a model turn.

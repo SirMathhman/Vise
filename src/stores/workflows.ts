@@ -3,6 +3,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -70,6 +71,40 @@ export function initWorkflow(base: string, name: string): void {
   );
 }
 
+/** The workflow stored under exactly `base` (no project/global fallback), for the editor. */
+export function readWorkflowAt(base: string, name: string): Workflow {
+  const path = workflowPath(base, name);
+  if (!validName(name) || !existsSync(path)) {
+    throw new Error(`workflow '${name}' not found`);
+  }
+  return parseWorkflow(readFileSync(path, "utf8"));
+}
+
+/** Write a workflow from the editor; a new workflow may not replace an existing one. */
+export function saveWorkflowAt(
+  base: string,
+  name: string,
+  steps: unknown,
+  replace: boolean,
+): void {
+  if (!validName(name)) throw new Error(`invalid workflow name '${name}'`);
+  const path = workflowPath(base, name);
+  if (!replace && existsSync(path)) {
+    throw new Error(`workflow '${name}' already exists`);
+  }
+  const workflow = validateWorkflow({ steps });
+  mkdirSync(join(base, "workflows"), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(workflow, null, 2)}
+`, "utf8");
+}
+
+export function deleteWorkflowAt(base: string, name: string): void {
+  if (!validName(name) || !existsSync(workflowPath(base, name))) {
+    throw new Error(`workflow '${name}' not found`);
+  }
+  unlinkSync(workflowPath(base, name));
+}
+
 function namesAt(base: string): string[] {
   const dir = join(base, "workflows");
   if (!existsSync(dir)) return [];
@@ -80,7 +115,10 @@ function namesAt(base: string): string[] {
 }
 
 function parseWorkflow(text: string): Workflow {
-  const value: unknown = JSON.parse(text);
+  return validateWorkflow(JSON.parse(text));
+}
+
+function validateWorkflow(value: unknown): Workflow {
   if (
     typeof value !== "object" ||
     value === null ||
