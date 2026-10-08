@@ -501,13 +501,15 @@ export async function runSubagent(
     messages.push({ role: "user", content: profileText });
   }
   messages.push({ role: "user", content: task });
-  const result = await runTurn(
-    client.as?.("subagent") ?? client,
-    tools,
-    messages,
-    toolDefs,
-    callbacks,
-  );
-  callbacks.onSubagentDone?.(messages);
-  return result;
+  try {
+    return await runTurn(
+      client.as?.("subagent") ?? client,
+      tools,
+      messages,
+      toolDefs,
+      callbacks,
+    );
+  } finally {
+    callbacks.onSubagentDone?.(messages);
+  }
 }

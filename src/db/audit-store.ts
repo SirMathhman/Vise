@@ -1,7 +1,9 @@
 import type { Database } from "bun:sqlite";
 import { join } from "node:path";
 import type { AuditEvent, AuditSink } from "../core/audit.ts";
+import { config } from "../config.ts";
 import { globalDataDir } from "../data-dir.ts";
+import { pruneAudit } from "./audit-prune.ts";
 import { AUDIT_MIGRATIONS } from "./audit-schema.ts";
 import { openDb, tryDb } from "./open.ts";
 
@@ -39,6 +41,8 @@ export class SqliteAuditSink implements AuditSink {
   private queue: { event: AuditEvent; ts: string }[] = [];
   private timer: ReturnType<typeof setTimeout> | undefined;
   private warned = false;
+  /** Events lost because a write failed. */
+  dropped = 0;
   private readonly path: string;
   private session = "";
   private turn: string | null = null;
@@ -68,6 +72,7 @@ export class SqliteAuditSink implements AuditSink {
     this.queue = [];
     if (batch.length === 0) return;
     const opened = openDb(this.path, AUDIT_MIGRATIONS);
+    if (opened.ok) pruneOnce(opened.value, this.path);
     const written = opened.ok
       ? tryDb("write the audit log", this.path, () =>
           opened.value.transaction(() => {
@@ -75,6 +80,7 @@ export class SqliteAuditSink implements AuditSink {
           })(),
         )
       : opened;
+    if (!written.ok) this.dropped += batch.length;
     if (!written.ok && !this.warned) {
       this.warned = true;
       console.error(
@@ -95,6 +101,18 @@ export class SqliteAuditSink implements AuditSink {
     (WRITERS[e.kind] as Writer<typeof e.kind>)(db, e as never, at, this.root);
     if (e.kind === "turn_end") this.turn = null;
   }
+}
+
+/** Old conversations go once per run, the first time the log is opened. */
+const pruned = new Set<string>();
+
+function pruneOnce(db: Database, path: string): void {
+  if (pruned.has(path) || config.auditRetentionDays <= 0) return;
+  pruned.add(path);
+  const cutoff = new Date(Date.now() - config.auditRetentionDays * 86_400_000);
+  tryDb("prune the audit log", path, () =>
+    pruneAudit(db, cutoff.toISOString()),
+  );
 }
 
 type Writer<K extends AuditEvent["kind"]> = (
@@ -134,6 +152,7 @@ const WRITERS: { [K in AuditEvent["kind"]]: Writer<K> } = {
   },
   message: (db, e, at) => {
     const m = e.message;
+    index(db, at, "message", m.content);
     db.query(
       `INSERT INTO audit_messages
          (session_id, turn_id, ts, role, content, typed, tool_calls, tool_call_id, images, depth)
@@ -171,6 +190,7 @@ const WRITERS: { [K in AuditEvent["kind"]]: Writer<K> } = {
     );
   },
   tool_call: (db, e, at) => {
+    index(db, at, "tool", e.result);
     db.query(
       `INSERT INTO audit_tool_calls
          (session_id, turn_id, ts, name, args, result, ok, ms, depth)
@@ -192,6 +212,14 @@ const WRITERS: { [K in AuditEvent["kind"]]: Writer<K> } = {
   goal: (db, e, at) => event(db, at, "goal", e),
   event: (db, e, at) => event(db, at, e.name, e.payload),
 };
+
+/** Make text findable by `/audit search`. */
+function index(db: Database, at: Place, kind: string, text: string): void {
+  if (text === "") return;
+  db.query(
+    "INSERT INTO audit_fts (text, kind, session_id) VALUES (?, ?, ?)",
+  ).run(clip(text), kind, at.session);
+}
 
 /** The free-form table: for the rare, low-volume things. */
 function event(db: Database, at: Place, name: string, payload: unknown): void {

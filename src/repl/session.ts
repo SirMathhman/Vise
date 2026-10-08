@@ -37,6 +37,7 @@ import {
   handleResumeCommand,
   handleSaveCommand,
 } from "./session-commands.ts";
+import { handleSearchCommand } from "./search-command.ts";
 import { handleWorkflowCommand } from "./workflow-commands.ts";
 import type { WorkflowCommands } from "./workflow-commands.ts";
 
@@ -165,7 +166,7 @@ export class Session {
     this.workflowSource = options.workflowSource;
     this.opts = options;
     this.hooks = new SessionHooks(options, () => this.activeProfile);
-    this.audit = new SessionAudit(options.auditSink);
+    this.audit = new SessionAudit(options.auditSink, options.auditReader);
     this.attachments = new PendingImages(options.imageSource);
     this.goals = new GoalTracker(options.goalChecking ?? false, (event) => {
       this.audit.goal(event);
@@ -427,6 +428,7 @@ export class Session {
           hasNotes: !!this.noteSource,
           hasWorkflows: !!this.workflowSource,
           hasSessions: !!this.sessionSource,
+          hasAudit: this.audit.enabled,
           preTurnHookCount: this.hooks.pre.length,
           postTurnHookCount: this.hooks.post.length,
         }),
@@ -483,7 +485,10 @@ export class Session {
     if (trimmed === "/delete" || trimmed.startsWith("/delete ")) {
       return handleDeleteCommand(this.sessionCommands, trimmed);
     }
-    return undefined;
+    if (trimmed === "/search" || trimmed.startsWith("/search ")) {
+      return handleSearchCommand(this.sessionCommands, trimmed);
+    }
+    return this.audit.slash(trimmed);
   }
 
   /**

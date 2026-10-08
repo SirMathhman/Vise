@@ -213,18 +213,21 @@ Rules:
   notes via `/note init [--global] <name> [category]`. A note has a scope: `project` (`.vise/notes/`) or `global` (`~/.vise/notes/`, shared by every project and by no-folder sessions); the tools that act on one note require it. Notes are the standard memory and skill systems consolidated into one store (suggested categories `user-info`, `memories`, `skills`). The shared file I/O lives in `src/notes.ts`
   (edge); the `FileNoteSource` in `src/edge-sources.ts` implements `NoteSource`. Same
   edge-owns-I/O pattern as `ProfileSource`.
-- `SessionSource` is a core-owned type (`repl/session.ts`) for saving,
-  loading, listing, and deleting conversation snapshots. The edge
-  implementation (`src/sessions.ts`) stores one JSON snapshot per name under
-  `.vise/sessions/`; snapshots retain the active profile and timestamp.
-  Successful turns auto-save to a name derived from the conversation's first
-  user message; an initial collision receives a numeric suffix, and later
-  auto-saves overwrite that stable name. Manual `/save <name>` creates a
-  separate snapshot and uses the same suffix policy on collision. Resuming a
-  session continues auto-saving under its existing name. `/save`, `/resume`,
-  and `/delete` share this source and command layer. The web sessions panel
-  must use these same commands and store for save, resume, delete, and list
-  refresh rather than introducing a second persistence path.
+- `SessionSource` is a core-owned type (`repl/ports.ts`) for saving,
+  loading, listing, deleting and searching conversation snapshots. The edge
+  implementation (`src/sessions.ts`, over `src/db/`) stores them in the
+  project's SQLite database `.vise/vise.db`: a `sessions` row (uuid id, display
+  name, active profile, times) and its `messages` rows, rewritten in one
+  transaction per save, with an FTS5 index for `/search`. Successful and failed
+  turns auto-save under the conversation's id; `/save <name>` names it. An
+  id prefix is enough to resume or delete. Schema versions are
+  `PRAGMA user_version` with append-only migrations (`src/db/migrate.ts`); one
+  connection per database file is shared by every web connection
+  (`src/db/open.ts`); storage failures come back as the `storage` `ViseError`,
+  never thrown. Old `.vise/sessions/<uuid>.json` files are imported once,
+  verified by message count, then deleted. `/save`, `/resume`, `/delete`,
+  `/search` and the web sessions panel share this source; there is no second
+  persistence path.
 - `WorkflowSource` is a core-owned type (`repl/session.ts`) for listing,
   loading, and creating workflows. Workflow JSON lives under
   `.vise/workflows/` and `~/.vise/workflows/`; project workflows shadow
@@ -404,6 +407,43 @@ removed until it starts. `/steer` and `/queue` act at once, never behind the
 turn. The turn-admission state is spread over `web/line.ts`,
 `web/queue-commands.ts` and `web/server.ts`; see Future Work for the
 single-module target.
+
+## Audit log
+
+An append-only record of everything the agent did, in the global
+`~/.vise/audit.db` (one database across projects, each conversation tagged with
+its root). Turn it off with `VISE_AUDIT=0`; `VISE_AUDIT_RETENTION_DAYS` deletes
+whole conversations older than that, once per run.
+
+- **Capture** is a write-only port: the core defines the typed `AuditEvent`
+  union and `AuditSink` (`src/core/audit.ts`, pure; `record` never throws and
+  never waits on I/O). Each fact has one emitter: model calls
+  `LlmClient.chat`, tool calls `createToolRunner` (`src/tools/audit-call.ts`,
+  with the whole result before any is saved aside as too large), hook runs
+  `SessionHooks.run`, compactions `runCompaction`, goal events the
+  `GoalTracker` emit, subagent conversations `TurnCallbacks.onSubagentDone`
+  (also when the subagent fails), and the conversation's messages, turns,
+  commands and saved-id links `SessionAudit` (`src/repl/session-audit.ts`),
+  which picks messages up by position because the engine appends in place.
+- **Storage:** `SqliteAuditSink` (`src/db/audit-store.ts`) stamps the time on
+  `record`, queues, and writes in one transaction after 250 ms, at the end of a
+  turn or conversation. Events arrive in order, so the sink itself follows
+  which conversation and turn they belong to; each kind has its own writer.
+  Text fields are cut at 200,000 characters. A failed write drops that batch,
+  counted in `dropped`, and warns once. Tables: `audit_sessions`,
+  `audit_turns`, `audit_messages` (with subagent `depth`), `audit_model_calls`,
+  `audit_tool_calls`, the low-volume `audit_events` (commands, hooks,
+  compactions, goals), and the `audit_fts` search index.
+- **Query** is a separate read port, `AuditReader` (`report`, `search`; core
+  types in `src/core/audit.ts`, `SqliteAuditReader` in `src/db/audit-query.ts`)
+  returning data that `src/output/audit-format.ts` renders. `/audit`,
+  `/audit tools|models|errors|hooks` and `/audit search <text>` use it, and
+  `--audit-export <id>` (`src/db/audit-export.ts`) prints a whole conversation
+  as JSON.
+- **Retention:** `pruneAudit` (`src/db/audit-prune.ts`) removes a conversation
+  from every table in one transaction and vacuums.
+- Arguments and results are stored verbatim, so a tool result that held a
+  secret is in the log in plaintext; there is no redaction yet.
 
 ## Potential Problems
 

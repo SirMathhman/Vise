@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { globalDataDir } from "./data-dir.ts";
+import type { SearchHit } from "./repl/ports.ts";
 import type { Message, Result } from "./core/errors.ts";
 import { buildInitialTree } from "./fs-tree.ts";
 import { formatNotes, formatNotesWithin } from "./notes-format.ts";
@@ -33,6 +34,7 @@ import {
   listSessions,
   loadSession,
   saveSession,
+  searchSessions,
 } from "./sessions.ts";
 import { initWorkflow, listWorkflows, loadWorkflow } from "./workflows.ts";
 
@@ -256,6 +258,10 @@ export class FileSessionSource implements SessionSource {
 
   async delete(ref: string): Promise<Result<string>> {
     return deleteSession(this.base, ref);
+  }
+
+  async search(text: string): Promise<Result<SearchHit[]>> {
+    return searchSessions(this.base, text);
   }
 }
 

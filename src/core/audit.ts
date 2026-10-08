@@ -61,3 +61,39 @@ export interface AuditSink {
 
 /** The sink used when nothing is recording. */
 export const noAudit: AuditSink = { record: () => undefined };
+
+/** What `/audit` can show. */
+export type AuditTopic = "summary" | "tools" | "models" | "errors" | "hooks";
+
+/** The answer to an `/audit` question, as data (the edge formats it for the screen). */
+export type AuditReport =
+  | { topic: "summary"; counts: Record<string, number> }
+  | {
+      topic: "tools";
+      rows: { name: string; calls: number; failures: number; avgMs: number }[];
+    }
+  | {
+      topic: "models";
+      rows: {
+        purpose: string;
+        calls: number;
+        errors: number;
+        avgMs: number;
+        maxPromptTokens: number;
+      }[];
+    }
+  | { topic: "errors"; rows: { what: string; detail: string }[] }
+  | {
+      topic: "hooks";
+      rows: { phase: string; command: string; ms: number; output: string }[];
+    }
+  | {
+      topic: "search";
+      rows: { kind: string; session: string; snippet: string }[];
+    };
+
+/** Read side of the audit log: questions about one conversation, and a search over all of them. */
+export interface AuditReader {
+  report(session: string, topic: AuditTopic): AuditReport;
+  search(text: string): AuditReport;
+}

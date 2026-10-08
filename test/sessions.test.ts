@@ -17,6 +17,7 @@ import {
   listSessions,
   loadSession,
   saveSession,
+  searchSessions,
 } from "../src/sessions.ts";
 
 let tmpDir: string;
@@ -271,6 +272,41 @@ describe("storage failures", () => {
     mkdirSync(join(base, "vise.db"));
     const saved = saveSession(base, undefined, "x", messages, undefined);
     expect(!saved.ok && saved.error.kind).toBe("storage");
+  });
+});
+
+describe("searchSessions (edge)", () => {
+  test("finds the sessions whose messages mention a phrase", () => {
+    const base = freshBase();
+    const hit = idOf(
+      saveSession(
+        base,
+        undefined,
+        "fruit",
+        [{ role: "user", content: "I like green apples" }],
+        undefined,
+      ),
+    );
+    saveSession(base, undefined, "other", messages, undefined);
+    const found = searchSessions(base, "green apples");
+    expect(found.ok && found.value.map((h) => h.id)).toEqual([hit]);
+    expect(found.ok && found.value[0]?.snippet).toContain("[green apples]");
+  });
+
+  test("a deleted session no longer matches", () => {
+    const base = freshBase();
+    const id = idOf(
+      saveSession(
+        base,
+        undefined,
+        "gone",
+        [{ role: "user", content: "zebra" }],
+        undefined,
+      ),
+    );
+    deleteSession(base, id);
+    const found = searchSessions(base, "zebra");
+    expect(found.ok && found.value).toEqual([]);
   });
 });
 

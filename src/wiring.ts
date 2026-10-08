@@ -1,5 +1,6 @@
 import { config } from "./config.ts";
-import { noAudit, type AuditSink } from "./core/audit.ts";
+import { noAudit, type AuditReader, type AuditSink } from "./core/audit.ts";
+import { SqliteAuditReader } from "./db/audit-query.ts";
 import { SqliteAuditSink } from "./db/audit-store.ts";
 import { mkdirSync } from "node:fs";
 import { ChromiumBackend } from "./browser/chromium.ts";
@@ -267,6 +268,19 @@ function displayCallbacks(
   };
 }
 
+/** The audit log of a session rooted at `root`: where events go and how `/audit` reads them (nothing when the log is off). */
+function auditFor(root: string): {
+  auditSink: AuditSink;
+  auditReader?: AuditReader;
+} {
+  if (!config.auditEnabled) return { auditSink: noAudit };
+  const sink = new SqliteAuditSink(root);
+  return {
+    auditSink: sink,
+    auditReader: new SqliteAuditReader(() => sink.flush()),
+  };
+}
+
 /** Where the client reports each model call: prompt progress, generation, the audit log. */
 function wireClientSinks(
   client: LlmClient,
@@ -302,9 +316,9 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
   const hookStore = options.hookStore ?? new HookStore(root);
 
   const client = new LlmClient();
-  const auditSink = config.auditEnabled ? new SqliteAuditSink(root) : noAudit;
+  const audit = auditFor(root);
   // Every model call of this session (reply, goal check, compaction...) reports here.
-  wireClientSinks(client, options, auditSink);
+  wireClientSinks(client, options, audit.auditSink);
   const browser: BrowserBackend = options.browser ?? new ChromiumBackend();
 
   // Single directory that holds every runtime data store (profiles/, notes/,
@@ -336,7 +350,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
         cwd,
         lazily(() => toolRunner),
         sessionTools,
-        subagentCallbacks(options, toolController, client, auditSink),
+        subagentCallbacks(options, toolController, client, audit.auditSink),
         (operation) => client.withPreservedSlotCache(operation),
         () => sessionRef.current.currentAbortSignal,
         (name) => toolController.baselineEnabled(name),
@@ -364,7 +378,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     sessionTools,
     temp,
     images,
-    auditSink,
+    audit.auditSink,
   );
 
   const initialMessage = buildInitialMessage(cwd, dataDir);
@@ -379,7 +393,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     imageSource,
     workflowSource,
     sessionSource,
-    auditSink,
+    ...audit,
     preTurnHooks: hookStore.pre,
     postTurnHooks: hookStore.post,
     hookSource: hookStore,

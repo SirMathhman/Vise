@@ -14,8 +14,12 @@ import type { Message } from "../src/core/errors.ts";
 import { runCompaction } from "../src/repl/compaction.ts";
 import { createToolRunner, ToolSet } from "../src/tools.ts";
 import { SqliteAuditSink } from "../src/db/audit-store.ts";
-import { closeAllDbs } from "../src/db/open.ts";
-import { Session } from "../src/repl/session.ts";
+import { SqliteAuditReader } from "../src/db/audit-query.ts";
+import { exportAudit } from "../src/db/audit-export.ts";
+import { pruneAudit } from "../src/db/audit-prune.ts";
+import { AUDIT_MIGRATIONS } from "../src/db/audit-schema.ts";
+import { closeAllDbs, openDb } from "../src/db/open.ts";
+import { Session, type LineResult } from "../src/repl/session.ts";
 import type { ContextSource } from "../src/repl/session.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "vise-audit-"));
@@ -257,5 +261,107 @@ describe("what the capture points record", () => {
     await s.handleLine("hello");
     expect(saves).toHaveLength(1);
     expect(saves[0]?.some((m) => m.content === "hello")).toBe(true);
+  });
+});
+
+/** The text of a command's answer ("" when it failed). */
+function out(result: LineResult): string {
+  return result !== "exit" && result.ok ? result.value : "";
+}
+
+describe("reading the audit log", () => {
+  function logged(name: string) {
+    const path = join(dir, `${name}.db`);
+    const sink = new SqliteAuditSink("/proj", path);
+    const reader = new SqliteAuditReader(() => sink.flush(), path);
+    return { path, sink, reader };
+  }
+  const reply: Client = {
+    chat: async () => ({ ok: true, value: { content: "the answer is 42" } }),
+  };
+
+  test("/audit summarises the conversation and /audit search finds its text", async () => {
+    const { sink, reader } = logged("read1");
+    const s = new Session(reply, tools, [], {
+      ...base,
+      auditSink: sink,
+      auditReader: reader,
+    });
+    await s.handleLine("what is it");
+    const summary = await s.handleLine("/audit");
+    expect(out(summary)).toContain("turns: 1");
+    const found = await s.handleLine("/audit search 42");
+    expect(out(found)).toContain("[42]");
+    expect(out(await s.handleLine("/audit bogus"))).toBe("");
+  });
+
+  test("/audit errors lists a failed turn", async () => {
+    const { sink, reader } = logged("read2");
+    const down: Client = {
+      chat: async () => ({
+        ok: false,
+        error: { kind: "network", cause: "down" },
+      }),
+    };
+    const s = new Session(down, tools, [], {
+      ...base,
+      auditSink: sink,
+      auditReader: reader,
+    });
+    await s.handleLine("hello");
+    const errors = await s.handleLine("/audit errors");
+    expect(out(errors)).toContain("down");
+  });
+
+  test("/audit says so when the log is off", async () => {
+    const s = new Session(reply, tools, [], base);
+    const result = await s.handleLine("/audit");
+    expect(out(result)).toBe("");
+  });
+
+  test("pruning removes whole old conversations and keeps recent ones", () => {
+    const { path, sink } = logged("prune");
+    sink.record({ kind: "session_start", session: "old" });
+    sink.record({
+      kind: "message",
+      message: { role: "user", content: "old news" },
+    });
+    sink.record({ kind: "session_end" });
+    sink.record({ kind: "session_start", session: "new" });
+    sink.record({
+      kind: "message",
+      message: { role: "user", content: "fresh" },
+    });
+    sink.close();
+    const db = openDb(path, AUDIT_MIGRATIONS);
+    if (!db.ok) throw new Error("open failed");
+    db.value
+      .query(
+        "UPDATE audit_sessions SET started_at = '2000-01-01', ended_at = '2000-01-02' WHERE id = 'old'",
+      )
+      .run();
+    expect(pruneAudit(db.value, "2020-01-01")).toBe(1);
+    const left = db.value.query("SELECT session_id FROM audit_messages").all();
+    expect(left).toEqual([{ session_id: "new" }]);
+    expect(
+      db.value
+        .query("SELECT COUNT(*) n FROM audit_fts WHERE audit_fts MATCH 'old'")
+        .get(),
+    ).toEqual({ n: 0 });
+  });
+
+  test("an export holds everything recorded for a conversation", () => {
+    const { path, sink } = logged("export");
+    sink.record({ kind: "session_start", session: "abc123" });
+    sink.record({ kind: "turn_start", turn: "t", text: "hi" });
+    sink.record({ kind: "message", message: { role: "user", content: "hi" } });
+    sink.record({ kind: "turn_end", outcome: "ok" });
+    const data = exportAudit("abc", path);
+    expect(data.ok && data.value).toMatchObject({
+      session: { id: "abc123", root: "/proj" },
+      turns: [{ user_text: "hi", outcome: "ok" }],
+      messages: [{ content: "hi" }],
+    });
+    expect(exportAudit("zzz", path).ok).toBe(false);
   });
 });

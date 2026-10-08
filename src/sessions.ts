@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { join, resolve } from "node:path";
 import type { Message, Result, ViseError } from "./core/errors.ts";
-import type { SavedSession, SessionEntry } from "./repl/ports.ts";
+import type { SavedSession, SearchHit, SessionEntry } from "./repl/ports.ts";
 import { importLegacySessions } from "./db/import-json.ts";
 import { openDb, tryDb } from "./db/open.ts";
 import { SESSION_MIGRATIONS } from "./db/session-schema.ts";
@@ -159,6 +159,23 @@ export function listSessions(base: string): Result<SessionEntry[]> {
       .all() as SessionEntry[];
     rows.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
     return { ok: true, value: rows };
+  });
+}
+
+/** The saved sessions whose messages contain `text` (as a phrase), best match first. */
+export function searchSessions(base: string, text: string): Result<SearchHit[]> {
+  const phrase = `"${text.replace(/"/g, '""')}"`;
+  return withDb(base, "search sessions in", (db) => {
+    const rows = db
+      .query(
+        `SELECT s.id id, s.name name, snippet(message_fts, 0, '[', ']', '...', 12) snippet
+         FROM message_fts f JOIN sessions s ON s.id = f.session_id
+         WHERE message_fts MATCH ? ORDER BY rank LIMIT 50`,
+      )
+      .all(phrase) as SearchHit[];
+    const seen = new Set<string>();
+    const hits = rows.filter((r) => !seen.has(r.id) && !!seen.add(r.id));
+    return { ok: true, value: hits };
   });
 }
 

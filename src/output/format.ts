@@ -138,6 +138,7 @@ export function formatHelp(opts: {
   hasNotes: boolean;
   hasWorkflows: boolean;
   hasSessions: boolean;
+  hasAudit?: boolean;
   preTurnHookCount: number;
   postTurnHookCount: number;
 }): string {
@@ -204,6 +205,12 @@ export function formatHelp(opts: {
     lines.push("/resume          list saved sessions");
     lines.push("/resume <name>   resume a previously saved session");
     lines.push("/delete <name>   delete a saved session");
+    lines.push("/search <text>   find saved sessions that mention the text");
+  }
+  if (opts.hasAudit) {
+    lines.push("/audit           what the agent did in this conversation");
+    lines.push("/audit tools|models|errors|hooks   details");
+    lines.push("/audit search <text>   search every recorded conversation");
   }
   if (opts.preTurnHookCount > 0) {
     lines.push("");

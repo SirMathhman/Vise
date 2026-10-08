@@ -81,4 +81,15 @@ export const AUDIT_MIGRATIONS: Migration[] = [
   CREATE INDEX audit_tool_calls_session ON audit_tool_calls(session_id, id);
   CREATE INDEX audit_tool_calls_name ON audit_tool_calls(name, ok);
   `,
+  `
+  CREATE INDEX audit_turns_time ON audit_turns(started_at);
+  CREATE INDEX audit_messages_ts ON audit_messages(ts);
+  CREATE INDEX audit_messages_turn ON audit_messages(turn_id);
+  CREATE INDEX audit_model_calls_ts ON audit_model_calls(ts);
+  CREATE INDEX audit_model_calls_turn ON audit_model_calls(turn_id);
+  CREATE INDEX audit_tool_calls_ts ON audit_tool_calls(ts);
+  CREATE INDEX audit_tool_calls_turn ON audit_tool_calls(turn_id);
+  CREATE INDEX audit_events_ts ON audit_events(ts);
+  CREATE VIRTUAL TABLE audit_fts USING fts5(text, kind UNINDEXED, session_id UNINDEXED);
+  `,
 ];

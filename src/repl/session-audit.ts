@@ -1,6 +1,12 @@
-import { noAudit, type AuditSink } from "../core/audit.ts";
+import {
+  noAudit,
+  type AuditReader,
+  type AuditSink,
+  type AuditTopic,
+} from "../core/audit.ts";
 import type { GoalEvent } from "./goal-loop.ts";
 import type { Message, Result, ViseError } from "../core/errors.ts";
+import { formatAuditReport } from "../output/audit-format.ts";
 import { formatError } from "../output/format.ts";
 
 /**
@@ -17,7 +23,10 @@ export class SessionAudit {
   private outcome: "ok" | "failed" | "interrupted" = "failed";
   private failure: string | undefined;
 
-  constructor(readonly sink: AuditSink = noAudit) {
+  constructor(
+    readonly sink: AuditSink = noAudit,
+    private readonly reader?: AuditReader,
+  ) {
     this.sink.record({ kind: "session_start", session: this.session });
   }
 
@@ -118,7 +127,42 @@ export class SessionAudit {
     this.linked = undefined;
     this.sink.record({ kind: "session_start", session: this.session });
   }
+
+  /** Whether `/audit` has a log to read. */
+  get enabled(): boolean {
+    return this.reader !== undefined;
+  }
+
+  /** `/audit [tools|models|errors|hooks]` and `/audit search <text>`; undefined when `line` is not an audit command. */
+  slash(line: string): Result<string> | undefined {
+    if (line !== "/audit" && !line.startsWith("/audit ")) return undefined;
+    const arg = line.slice("/audit".length).trim();
+    const fail = (body: string): Result<string> => ({
+      ok: false,
+      error: { kind: "malformed", body },
+    });
+    if (!this.reader) return fail("the audit log is off (VISE_AUDIT=0)");
+    const topic = arg === "" ? "summary" : arg;
+    try {
+      if (arg === "search" || arg.startsWith("search ")) {
+        const text = arg.slice("search".length).trim();
+        if (text === "") return fail("usage: /audit search <text>");
+        return { ok: true, value: formatAuditReport(this.reader.search(text)) };
+      }
+      if (!TOPICS.includes(topic as AuditTopic)) {
+        return fail(
+          `usage: /audit [${TOPICS.join("|")}] or /audit search <text>`,
+        );
+      }
+      const report = this.reader.report(this.session, topic as AuditTopic);
+      return { ok: true, value: formatAuditReport(report) };
+    } catch (e) {
+      return fail(`could not read the audit log: ${String(e)}`);
+    }
+  }
 }
+
+const TOPICS: AuditTopic[] = ["summary", "tools", "models", "errors", "hooks"];
 
 function outcomeOf(error: ViseError): "failed" | "interrupted" {
   return error.kind === "interrupted" ? "interrupted" : "failed";

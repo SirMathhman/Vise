@@ -105,6 +105,13 @@ export const SPEC = {
     "record an audit log in ~/.vise/audit.db (1 = on, 0 = off)",
     { min: 0 },
   ),
+  auditRetentionDays: n(
+    "VISE_AUDIT_RETENTION_DAYS",
+    0,
+    "Audit log",
+    "delete audit records older than this many days (0 = keep forever)",
+    { min: 0 },
+  ),
   saveEvery: n(
     "VISE_SAVE_EVERY_ROUNDS",
     25,

@@ -159,6 +159,13 @@ export interface SavedSession {
   savedAt: string;
 }
 
+/** A saved session that mentions the text searched for. */
+export interface SearchHit {
+  id: string;
+  name: string;
+  snippet: string;
+}
+
 /** One row of the saved-session listing. */
 export interface SessionEntry {
   id: string;
@@ -190,6 +197,8 @@ export interface SessionSource {
   list(): Promise<Result<SessionEntry[]>>;
   /** Delete a saved session by id or prefix; returns the full id. */
   delete(ref: string): Promise<Result<string>>;
+  /** The saved sessions whose messages mention `text`, with a snippet of where. */
+  search?(text: string): Promise<Result<SearchHit[]>>;
 }
 
 /**
