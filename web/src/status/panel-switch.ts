@@ -8,6 +8,8 @@ interface PanelSpec {
 
 export interface PanelGroup {
   register(spec: PanelSpec): void;
+  /** Close every registered dropdown. */
+  closeAll(): void;
 }
 
 /**
@@ -27,6 +29,7 @@ export function createPanelGroup(): PanelGroup {
     if (event.key === "Escape") specs.forEach(close);
   });
   return {
+    closeAll: () => specs.forEach(close),
     register(spec) {
       const { button, panel, onOpen } = spec;
       button.setAttribute("aria-controls", panel.id);
@@ -44,48 +47,88 @@ export function createPanelGroup(): PanelGroup {
   };
 }
 
-/** What to refresh when each panel opens (the tools panel needs nothing). */
+/** What to refresh when the sessions and settings page opens from each of its buttons. */
 interface HeaderPanelHooks {
   settings: () => void;
   sessions: () => void;
 }
 
-/** Register the dropdown panels (tools in the header; sessions and settings in the top bar) in one group. */
+const el = <T extends HTMLElement>(id: string): T => {
+  const found = document.getElementById(id);
+  if (!found) throw new Error(`Missing required element #${id}`);
+  return found as T;
+};
+
+/**
+ * Register the header's one dropdown (tools, which has to stay quick to toggle)
+ * and the sessions-and-settings page: a full-width view that replaces the chat
+ * while it is open. The ☰ button opens it on the sessions tab and "settings" on
+ * the last settings tab; the same button, Escape or "back to chat" close it.
+ */
 export function registerHeaderPanels(onOpen: HeaderPanelHooks): void {
   const group = createPanelGroup();
-  const el = <T extends HTMLElement>(id: string): T => {
-    const found = document.getElementById(id);
-    if (!found) throw new Error(`Missing required element #${id}`);
-    return found as T;
-  };
-  const panels: [string, (() => void) | undefined][] = [
-    ["tools", undefined],
-    ["sessions", onOpen.sessions],
-    ["settings", onOpen.settings],
+  group.register({
+    button: el<HTMLButtonElement>("tools-btn"),
+    panel: el("tools-panel"),
+  });
+  const page = el("page");
+  const select = setupTabs(page);
+  const openers: [HTMLButtonElement, string, () => void][] = [
+    [el("sessions-btn"), "settings-sessions", onOpen.sessions],
+    [el("settings-btn"), "settings-profiles", onOpen.settings],
   ];
-  setupTabs(el("settings-panel"));
-  for (const [name, open] of panels) {
-    group.register({
-      button: el<HTMLButtonElement>(`${name}-btn`),
-      panel: el(`${name}-panel`),
-      onOpen: open,
+  let lastSettingsTab = "settings-profiles";
+  let openedBy: HTMLButtonElement | undefined;
+  const close = (): void => {
+    page.classList.add("hidden");
+    document.body.classList.remove("page-open");
+    openedBy = undefined;
+    for (const [button] of openers) button.setAttribute("aria-expanded", "false");
+  };
+  for (const [button, tab, refresh] of openers) {
+    button.setAttribute("aria-controls", "page");
+    button.setAttribute("aria-expanded", "false");
+    button.addEventListener("click", () => {
+      // The button that opened the page closes it again.
+      const closing = openedBy === button;
+      group.closeAll();
+      close();
+      if (closing) return;
+      openedBy = button;
+      page.classList.remove("hidden");
+      document.body.classList.add("page-open");
+      button.setAttribute("aria-expanded", "true");
+      select(tab === "settings-profiles" ? lastSettingsTab : tab);
+      refresh();
     });
   }
+  page.addEventListener("click", (event) => {
+    const tab = (event.target as HTMLElement).closest<HTMLElement>(".tab");
+    const name = tab?.dataset["tab"];
+    if (name && name !== "settings-sessions") lastSettingsTab = name;
+  });
+  el("page-close").addEventListener("click", close);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") close();
+  });
 }
 
-/** Settings tabs: a tab button (`data-tab` = a page id) shows its page and hides the others. */
-function setupTabs(panel: HTMLElement): void {
-  const tabs = panel.querySelectorAll<HTMLButtonElement>(".tab");
+/** Page tabs: a tab button (`data-tab` = a page id) shows its page and hides the others. Returns a function that selects a tab by id. */
+function setupTabs(page: HTMLElement): (id: string) => void {
+  const tabs = page.querySelectorAll<HTMLButtonElement>(".tab");
+  const select = (id: string): void => {
+    page.dataset["tab"] = id;
+    for (const other of tabs) {
+      const on = other.dataset["tab"] === id;
+      other.classList.toggle("active", on);
+      other.setAttribute("aria-selected", String(on));
+      document
+        .getElementById(other.dataset["tab"] ?? "")
+        ?.classList.toggle("hidden", !on);
+    }
+  };
   for (const tab of tabs) {
-    tab.addEventListener("click", () => {
-      for (const other of tabs) {
-        const on = other === tab;
-        other.classList.toggle("active", on);
-        other.setAttribute("aria-selected", String(on));
-        document
-          .getElementById(other.dataset["tab"] ?? "")
-          ?.classList.toggle("hidden", !on);
-      }
-    });
+    tab.addEventListener("click", () => select(tab.dataset["tab"] ?? ""));
   }
+  return select;
 }

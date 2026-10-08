@@ -28,7 +28,53 @@
         settings
       </button>
       <span id="root-label" class="root-label"></span>
-      <div id="sessions-panel" class="tools-panel menu-panel hidden">
+    </nav>
+    <section id="page" class="page hidden" aria-label="Sessions and settings">
+      <div class="page-head">
+        <div class="tabs" role="tablist">
+          <button class="tab active" role="tab" data-tab="settings-sessions">
+            sessions
+          </button>
+          <button class="tab" role="tab" data-tab="settings-profiles">
+            profiles
+          </button>
+          <button
+            id="general-tab"
+            class="tab"
+            role="tab"
+            data-tab="settings-general"
+          >
+            general
+          </button>
+          <button class="tab" role="tab" data-tab="settings-hooks">
+            hooks
+          </button>
+          <button class="tab" role="tab" data-tab="settings-browser">
+            browser
+          </button>
+          <button
+            id="notes-tab"
+            class="tab"
+            role="tab"
+            data-tab="settings-notes"
+          >
+            notes
+          </button>
+          <button
+            id="workflows-tab"
+            class="tab"
+            role="tab"
+            data-tab="settings-workflows"
+          >
+            workflows
+          </button>
+        </div>
+        <button id="page-close" class="tools-btn" title="Back to the chat (Escape)">
+          &larr; back to chat
+        </button>
+      </div>
+      <div class="page-body">
+        <div id="settings-sessions" class="tab-page menu-page">
         <div class="menu-heading">Start a new session</div>
         <button
           id="open-folder-btn"
@@ -63,44 +109,8 @@
           />
           <button id="save-btn" class="save-btn">save</button>
         </div>
-      </div>
-      <div id="settings-panel" class="tools-panel hidden">
-        <div class="tabs" role="tablist">
-          <button class="tab active" role="tab" data-tab="settings-profiles">
-            profiles
-          </button>
-          <button
-            id="general-tab"
-            class="tab"
-            role="tab"
-            data-tab="settings-general"
-          >
-            general
-          </button>
-          <button class="tab" role="tab" data-tab="settings-hooks">
-            hooks
-          </button>
-          <button class="tab" role="tab" data-tab="settings-browser">
-            browser
-          </button>
-          <button
-            id="notes-tab"
-            class="tab"
-            role="tab"
-            data-tab="settings-notes"
-          >
-            notes
-          </button>
-          <button
-            id="workflows-tab"
-            class="tab"
-            role="tab"
-            data-tab="settings-workflows"
-          >
-            workflows
-          </button>
         </div>
-        <div id="settings-profiles" class="tab-page">
+        <div id="settings-profiles" class="tab-page hidden">
           <select
             id="pe-profile"
             class="model"
@@ -133,7 +143,7 @@
           <div id="workflows-body"></div>
         </div>
       </div>
-    </nav>
+    </section>
     <div id="shell" class="shell">
       <aside id="workspace" class="workspace">
         <nav class="fs-tree">
