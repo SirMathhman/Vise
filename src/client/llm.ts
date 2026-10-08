@@ -88,22 +88,47 @@ export class LlmClient implements Client {
   /** Hears the prompt processing of every model call of this client (set by the edge): the one place progress is reported. */
   private progressSink?: (progress: PromptProgress) => void;
 
-  setProgressSink(sink: ((progress: PromptProgress) => void) | undefined): void {
+  setProgressSink(
+    sink: ((progress: PromptProgress) => void) | undefined,
+  ): void {
     this.progressSink = sink;
   }
 
   /** The same client with its calls labelled by what they are for (see `Client.as`). */
   as(purpose: CallPurpose): Client {
     return {
-      chat: (messages, tools, onToken, onThinking, onProgress, schema, signal, isToolEnabled, act) =>
-        this.chat(messages, tools, onToken, onThinking, onProgress, schema, signal, isToolEnabled, act, purpose),
+      chat: (
+        messages,
+        tools,
+        onToken,
+        onThinking,
+        onProgress,
+        schema,
+        signal,
+        isToolEnabled,
+        act,
+      ) =>
+        this.chat(
+          messages,
+          tools,
+          onToken,
+          onThinking,
+          onProgress,
+          schema,
+          signal,
+          isToolEnabled,
+          act,
+          purpose,
+        ),
     };
   }
 
   /** Hears how much each model call has generated so far (set by the edge). */
   private generationSink?: (progress: GenerationProgress) => void;
 
-  setGenerationSink(sink: ((progress: GenerationProgress) => void) | undefined): void {
+  setGenerationSink(
+    sink: ((progress: GenerationProgress) => void) | undefined,
+  ): void {
     this.generationSink = sink;
   }
 
@@ -443,7 +468,10 @@ export class LlmClient implements Client {
     // An act round shows the user nothing; its reasoning is only captured.
     const thought = collectThinking(act ? undefined : onThinking);
     if (responseSchema) {
-      body.response_format = { type: "json_schema", json_schema: { schema: responseSchema } };
+      body.response_format = {
+        type: "json_schema",
+        json_schema: { schema: responseSchema },
+      };
     }
     this.applyReasoningEffort(body);
     try {
@@ -471,9 +499,10 @@ export class LlmClient implements Client {
         };
       }
       const thinking = useTools ? thought.sink : onThinking;
-      const generation = this.generationSink && !act
-        ? generationReporter(this.generationSink, request, purpose)
-        : undefined;
+      const generation =
+        this.generationSink && !act
+          ? generationReporter(this.generationSink, request, purpose)
+          : undefined;
       const acc = await readReply(
         act
           ? () => readJsonReply(res, thinking)

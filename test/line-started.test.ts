@@ -3,7 +3,10 @@ import { queueLine } from "../src/web/line.ts";
 import type { LineConnection } from "../src/web/line.ts";
 import { NoticeQueue } from "../src/repl/round-hooks.ts";
 
-function fakeConnection(canSee = true): { conn: LineConnection; sent: Record<string, unknown>[] } {
+function fakeConnection(canSee = true): {
+  conn: LineConnection;
+  sent: Record<string, unknown>[];
+} {
   const sent: Record<string, unknown>[] = [];
   const conn = {
     session: {
@@ -24,7 +27,11 @@ function fakeConnection(canSee = true): { conn: LineConnection; sent: Record<str
 }
 
 const summary = (sent: Record<string, unknown>[]): string[] =>
-  sent.map((m) => (m.type === "state" ? `state:${m.running ? "run" : "idle"}` : `${m.type}${m.id ? `:${m.id}` : ""}`));
+  sent.map((m) =>
+    m.type === "state"
+      ? `state:${m.running ? "run" : "idle"}`
+      : `${m.type}${m.id ? `:${m.id}` : ""}`,
+  );
 
 test("a user line is announced as started and running, then idle; a background request (with an id) never changes the state", async () => {
   const { conn, sent } = fakeConnection();
@@ -51,7 +58,9 @@ test("a command is not steerable, a plain line is", async () => {
 
 test("a refused line still ends in an idle state, so the page can never stay locked", async () => {
   const { conn, sent } = fakeConnection(false);
-  queueLine(conn, "look", undefined, [{ uri: "data:image/png;base64,AAAA", label: "x" }]);
+  queueLine(conn, "look", undefined, [
+    { uri: "data:image/png;base64,AAAA", label: "x" },
+  ]);
   await conn.chain;
   expect(summary(sent).at(-1)).toBe("state:idle");
   expect(sent.some((m) => m.type === "result" && m.ok === false)).toBe(true);

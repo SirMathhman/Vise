@@ -10,10 +10,14 @@ function setThinkingState(line: HTMLElement, open: boolean): void {
 /** Click (or Enter, or Space) on a thinking line to open or close it. */
 export function enableThinkingToggle(log: HTMLElement): void {
   const toggle = (event: Event): void => {
-    const line = (event.target as HTMLElement | null)?.closest?.(".line.thinking");
+    const line = (event.target as HTMLElement | null)?.closest?.(
+      ".line.thinking",
+    );
     if (!(line instanceof HTMLElement)) return;
     const open = !line.className.endsWith(" open");
-    line.className = open ? `${line.className} open` : line.className.replace(/ open$/, "");
+    line.className = open
+      ? `${line.className} open`
+      : line.className.replace(/ open$/, "");
     setThinkingState(line, open);
   };
   log.addEventListener?.("click", toggle);
@@ -45,7 +49,11 @@ export interface ThinkingDeps {
  * counts the tokens as they arrive, the text streams in verbatim (so a long
  * stretch stays cheap), and when the stretch ends it is rendered as markdown.
  */
-export function createThinking(deps: ThinkingDeps): { append(text: string): void; end(): void; active(): boolean } {
+export function createThinking(deps: ThinkingDeps): {
+  append(text: string): void;
+  end(): void;
+  active(): boolean;
+} {
   let line: HTMLElement | null = null;
   let raw = "";
   let tokens = 0;

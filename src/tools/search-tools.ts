@@ -27,7 +27,6 @@ const CORE_TOOLS = new Set([
   "list_temp",
 ]);
 
-
 export const searchToolsDef: Tool = {
   type: "function",
   display: { label: "Look up tools", icon: "🧰" },

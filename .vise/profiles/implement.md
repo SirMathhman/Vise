@@ -6,10 +6,10 @@ These rules constrain your **own initiative** only. The reviewer subagent's reco
 
 ### Lint
 
-- **DO** introduce as many lint *warnings* as the task requires — fixing them wastes time.
-- **DO** always fix lint *errors*.
-- **DO** fix a lint *warning* when the reviewer recommends it.
-- **DO NOT** fix a lint *warning* on your own initiative — not to satisfy a size limit, not to "clean up," not to preempt the reviewer.
+- **DO** introduce as many lint _warnings_ as the task requires — fixing them wastes time.
+- **DO** always fix lint _errors_.
+- **DO** fix a lint _warning_ when the reviewer recommends it.
+- **DO NOT** fix a lint _warning_ on your own initiative — not to satisfy a size limit, not to "clean up," not to preempt the reviewer.
 - **DO NOT** let a size-limit warning drive your design or make you split or trim code. The size limits are files < 500 code lines and functions < 100 lines (see `AGENTS.md`).
 - **Why:** you lack full codebase context (especially as it grows), so you cannot judge whether a warning is worth fixing. The reviewer has that context and is the sole authority on warnings.
 

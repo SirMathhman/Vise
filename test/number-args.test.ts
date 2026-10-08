@@ -8,7 +8,10 @@ import { readFile } from "../src/tools/files.ts";
 
 const bigFile = (): string => {
   const path = join(mkdtempSync(join(tmpdir(), "vise-read-")), "big.txt");
-  writeFileSync(path, Array.from({ length: 600 }, (_, i) => `line ${i + 1}`).join("\n"));
+  writeFileSync(
+    path,
+    Array.from({ length: 600 }, (_, i) => `line ${i + 1}`).join("\n"),
+  );
   return path;
 };
 
@@ -32,9 +35,13 @@ test("a range given as text reads that range, not the start of the file", () => 
 
 test("an argument that is not a number is refused, not ignored", () => {
   const path = bigFile();
-  expect(readFile({ path, offset: "the middle" })).toBe('error: offset must be a number (got "the middle")');
+  expect(readFile({ path, offset: "the middle" })).toBe(
+    'error: offset must be a number (got "the middle")',
+  );
 });
 
 test("the call line shows the range for a range given as text too", () => {
-  expect(toolDetail({ path: "a.ts", offset: "300", limit: "5" }, "read_file")).toBe("a.ts · lines 300–304");
+  expect(
+    toolDetail({ path: "a.ts", offset: "300", limit: "5" }, "read_file"),
+  ).toBe("a.ts · lines 300–304");
 });

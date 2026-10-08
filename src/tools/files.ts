@@ -35,17 +35,24 @@ export function listDirectory(args: Record<string, unknown>): string {
 export function readFile(args: Record<string, unknown>): string {
   try {
     const text = readFileSync(String(args.path ?? ""), "utf8");
-    const refused = badNumber("offset", args.offset) ?? badNumber("limit", args.limit);
+    const refused =
+      badNumber("offset", args.offset) ?? badNumber("limit", args.limit);
     if (refused) return refused;
-    const ranged = numberArg(args.offset) !== undefined || numberArg(args.limit) !== undefined;
+    const ranged =
+      numberArg(args.offset) !== undefined ||
+      numberArg(args.limit) !== undefined;
     if (!ranged && !isTooLarge(text)) return text;
     const all = text.split(/\r?\n/);
-    const num = (v: unknown, fallback: number): number => Math.floor(numberArg(v) ?? fallback);
+    const num = (v: unknown, fallback: number): number =>
+      Math.floor(numberArg(v) ?? fallback);
     const from = Math.max(1, num(args.offset, 1));
     if (all.length < from) {
       return `error: the file has ${all.length} lines; there is nothing at line ${from}`;
     }
-    const count = Math.min(config.resultMaxLines, Math.max(1, num(args.limit, config.resultMaxLines)));
+    const count = Math.min(
+      config.resultMaxLines,
+      Math.max(1, num(args.limit, config.resultMaxLines)),
+    );
     let shown = all.slice(from - 1, from - 1 + count).join("\n");
     let last = Math.min(all.length, from - 1 + count);
     if (shown.length > config.resultMaxChars) {

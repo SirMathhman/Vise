@@ -47,7 +47,9 @@ if (!(await runMaintenance())) {
       let closeWindow = (): void => {};
       // Stop the server (waiting at most 5 s), then end the window thread so the event loop drains.
       const finish = (afterStop: () => void = () => {}): void => {
-        const patience = new Promise((resolve) => setTimeout(resolve, 5000).unref());
+        const patience = new Promise((resolve) =>
+          setTimeout(resolve, 5000).unref(),
+        );
         void Promise.race([stop(), patience]).finally(() => {
           afterStop();
           closeWindow();

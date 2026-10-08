@@ -26,7 +26,10 @@ export function hideOwnConsole(): void {
   if (process.platform !== "win32") return;
   try {
     const { symbols } = dlopen("kernel32.dll", {
-      GetConsoleProcessList: { args: [FFIType.ptr, FFIType.u32], returns: FFIType.u32 },
+      GetConsoleProcessList: {
+        args: [FFIType.ptr, FFIType.u32],
+        returns: FFIType.u32,
+      },
       GetConsoleWindow: { args: [], returns: FFIType.ptr },
     });
     const user32 = dlopen("user32.dll", {
@@ -46,7 +49,9 @@ export function logToFile(path: string = logPath): void {
     (level: string) =>
     (...parts: unknown[]): void => {
       try {
-        const text = parts.map((p) => (typeof p === "string" ? p : Bun.inspect(p))).join(" ");
+        const text = parts
+          .map((p) => (typeof p === "string" ? p : Bun.inspect(p)))
+          .join(" ");
         appendFileSync(path, `${new Date().toISOString()} ${level} ${text}\n`);
       } catch {
         // Logging must never break the program.
@@ -60,9 +65,7 @@ export function logToFile(path: string = logPath): void {
 
 /** What the window thread reports (see `window-worker.ts`). */
 export type WindowEvent =
-  | { type: "ready" }
-  | { type: "closed" }
-  | { type: "failed"; reason: string };
+  { type: "ready" } | { type: "closed" } | { type: "failed"; reason: string };
 
 /** The event a message from the window thread stands for; anything unexpected is a failure. */
 export function parseWindowEvent(data: unknown): WindowEvent {
@@ -93,7 +96,11 @@ export function openWindow(
   if (VERSION !== "dev") worker = new Worker("./window-worker.ts");
   else worker = new Worker(new URL("./window-worker.ts", import.meta.url));
   const watchdog = setTimeout(
-    () => onEvent({ type: "failed", reason: "the window did not appear within 10 seconds" }),
+    () =>
+      onEvent({
+        type: "failed",
+        reason: "the window did not appear within 10 seconds",
+      }),
     START_TIMEOUT_MS,
   );
   const report = (event: WindowEvent): void => {
@@ -103,7 +110,10 @@ export function openWindow(
   worker.onmessage = (message) => report(parseWindowEvent(message.data));
   worker.onerror = (event) => report({ type: "failed", reason: event.message });
   worker.onmessageerror = () =>
-    report({ type: "failed", reason: "the window thread sent an unreadable message" });
+    report({
+      type: "failed",
+      reason: "the window thread sent an unreadable message",
+    });
   worker.postMessage({ url });
   return () => {
     clearTimeout(watchdog);
@@ -149,7 +159,9 @@ export function useParentConsole(): void {
     if (!symbols.AttachConsole(0xffffffff)) return;
     const out = openSync("CONOUT$", "w");
     const print = (...parts: unknown[]): void => {
-      const text = parts.map((p) => (typeof p === "string" ? p : Bun.inspect(p)));
+      const text = parts.map((p) =>
+        typeof p === "string" ? p : Bun.inspect(p),
+      );
       writeSync(out, `${text.join(" ")}\r\n`);
     };
     console.log = print;

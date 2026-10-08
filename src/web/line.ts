@@ -173,8 +173,7 @@ export function steerLine(
         typed: true,
         ...(pictures.length > 0 ? { images: pictures } : {}),
       });
-    }
-    else queueLine(conn, text, undefined, images);
+    } else queueLine(conn, text, undefined, images);
   })();
 }
 
@@ -194,17 +193,28 @@ async function runLine(
   conn.steerable = !background && !text.startsWith("/");
   try {
     if (!background) {
-      send({ type: "line_started", text, ...(qid === undefined ? {} : { qid }) });
+      send({
+        type: "line_started",
+        text,
+        ...(qid === undefined ? {} : { qid }),
+      });
       publishState(conn);
     }
     await handleLine(session, display, send, text, id, pictures);
     // Steering the model never read runs as turns of its own. The empty check
     // and `running = false` happen with no await between them, so a steer
     // either lands in this loop or sees `running` false and starts a turn.
-    for (let left = session.notices.takeSteers(); left.length > 0; ) {
+    for (let left = session.notices.takeSteers(); left.length > 0;) {
       for (const steer of left) {
         send({ type: "line_started", text: steer.content });
-        await handleLine(session, display, send, steer.content, undefined, steer.images);
+        await handleLine(
+          session,
+          display,
+          send,
+          steer.content,
+          undefined,
+          steer.images,
+        );
       }
       left = session.notices.takeSteers();
     }

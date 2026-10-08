@@ -10,7 +10,8 @@ import pkg from "../package.json" with { type: "json" };
  */
 function run(command: string, args: string[]): void {
   const result = spawnSync(command, args, { stdio: "inherit", shell: true });
-  if (result.status !== 0) throw new Error(`${command} ${args.join(" ")} failed`);
+  if (result.status !== 0)
+    throw new Error(`${command} ${args.join(" ")} failed`);
 }
 
 /** Change a Windows exe from the console subsystem (3) to the GUI subsystem (2) in its PE header. */
@@ -18,7 +19,8 @@ function setGuiSubsystem(file: string): void {
   const bytes = readFileSync(file);
   const header = bytes.readUInt32LE(0x3c);
   const field = header + 0x5c;
-  if (bytes.readUInt16LE(field) !== 3) throw new Error(`${file}: unexpected subsystem`);
+  if (bytes.readUInt16LE(field) !== 3)
+    throw new Error(`${file}: unexpected subsystem`);
   bytes.writeUInt16LE(2, field);
   writeFileSync(file, bytes);
 }
@@ -28,7 +30,10 @@ const git = spawnSync("git", ["rev-parse", "--short", "HEAD"], {
 });
 const commit = git.status === 0 ? git.stdout.trim() : "unknown";
 // A build from uncommitted changes must not share an identity with the commit.
-const dirty = spawnSync("git", ["status", "--porcelain"], { encoding: "utf8" }).stdout.trim() !== "";
+const dirty =
+  spawnSync("git", ["status", "--porcelain"], {
+    encoding: "utf8",
+  }).stdout.trim() !== "";
 const version = `${pkg.version}+${commit}${dirty ? "-dirty" : ""}`;
 
 run("bun", ["run", "build:web"]);
@@ -39,7 +44,10 @@ for (const [entry, outfile] of [
   ["index.ts", "out/vise-cli.exe"],
 ] as const) {
   const result = await Bun.build({
-    entrypoints: entry === "src/web/main.ts" ? [entry, "src/web/window-worker.ts"] : [entry],
+    entrypoints:
+      entry === "src/web/main.ts"
+        ? [entry, "src/web/window-worker.ts"]
+        : [entry],
     compile: { outfile },
     define: { VISE_VERSION: JSON.stringify(version) },
   });

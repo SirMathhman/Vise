@@ -2,7 +2,6 @@ import { config } from "./config.ts";
 import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-
 /**
  * Build a capped initial directory structure as a multi-line string for
  * injection into the conversation at startup.
@@ -30,7 +29,12 @@ export function buildInitialTree(dir: string): string {
     // `depth` is the number of directory levels below root whose children
     // we are about to enumerate. When depth reaches MAX_DEPTH, the children
     // would be at MAX_DEPTH + 1 levels below root, which is beyond the cap.
-    if (truncated || depth >= config.treeMaxDepth || entries >= config.treeMaxEntries) return;
+    if (
+      truncated ||
+      depth >= config.treeMaxDepth ||
+      entries >= config.treeMaxEntries
+    )
+      return;
 
     let items: string[];
     try {

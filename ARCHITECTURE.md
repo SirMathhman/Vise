@@ -518,7 +518,7 @@ single-module target.
 - **One labelled model-call channel.** Every model call (reply, goal derivation,
   goal check, progress check, compaction summary, workflow step, subagent round)
   is a `ChatRequest` object `{ messages, tools?, schema?, act?, signal?,
-  purpose }` handed to `Client.chat`, replacing the nine positional parameters.
+purpose }` handed to `Client.chat`, replacing the nine positional parameters.
   Prompt progress and streaming do not travel as per-call callbacks threaded
   through core helpers: the client owns a per-session `CallObserver` sink, and
   every call reports `{ call, purpose, tokens... }` to it, including

@@ -17,7 +17,11 @@ import type {
   ToolController,
   TurnCallbacks,
 } from "./core/engine.ts";
-import type { GenerationProgress, Picture, PromptProgress } from "./core/errors.ts";
+import type {
+  GenerationProgress,
+  Picture,
+  PromptProgress,
+} from "./core/errors.ts";
 import {
   buildInitialMessage,
   HookStore,
@@ -27,9 +31,7 @@ import {
   FileWorkflowSource,
 } from "./edge-sources.ts";
 import type { ModelController, ProfileSource } from "./repl/ports.ts";
-import {
-  compactInPlace,
-} from "./repl/compaction.ts";
+import { compactInPlace } from "./repl/compaction.ts";
 import { Session } from "./repl/session.ts";
 import { TempStore, tempHandlers } from "./tools/temp-store.ts";
 import type { GoalEvent } from "./repl/goal-loop.ts";
@@ -224,7 +226,12 @@ function subagentCallbacks(
     onSubagentToken: options.onSubagentToken,
     isToolEnabled: (name) => toolController.isEnabled(name),
     onRound: (_round, messages) =>
-      compactInPlace(client, client, messages, config.inTurnCompactionThreshold),
+      compactInPlace(
+        client,
+        client,
+        messages,
+        config.inTurnCompactionThreshold,
+      ),
   };
 }
 
@@ -310,7 +317,9 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
   const toolRunner = createToolRunner(
     {
       run_subagent: makeSubagentHandler(
-        client, profileSource, cwd,
+        client,
+        profileSource,
+        cwd,
         lazily(() => toolRunner),
         sessionTools,
         subagentCallbacks(options, toolController, client),

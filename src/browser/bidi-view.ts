@@ -42,7 +42,8 @@ export async function startScreencast(
     } catch {
       // the tab is navigating or gone; try again on the next tick
     }
-    if (!stopped) timer = setTimeout(() => void capture(), config.liveViewFrameMs);
+    if (!stopped)
+      timer = setTimeout(() => void capture(), config.liveViewFrameMs);
   };
   void capture();
   return async () => {

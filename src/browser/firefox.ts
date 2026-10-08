@@ -31,7 +31,6 @@ const CANDIDATES = [
   "C:/Program Files (x86)/Mozilla Firefox/firefox.exe",
 ];
 
-
 /** Where Firefox records the port of its BiDi server once it is listening. */
 const PORT_FILE = "WebDriverBiDiServer.json";
 

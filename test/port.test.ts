@@ -1,8 +1,16 @@
 import { expect, test } from "bun:test";
 import { createServer } from "node:net";
-import { anyFreePort, choosePort, isPortFree, suggestPort } from "../src/web/port.ts";
+import {
+  anyFreePort,
+  choosePort,
+  isPortFree,
+  suggestPort,
+} from "../src/web/port.ts";
 
-const taken = (...ports: number[]) => async (p: number) => !ports.includes(p);
+const taken =
+  (...ports: number[]) =>
+  async (p: number) =>
+    !ports.includes(p);
 
 test("a free port is used as it is, with no note", async () => {
   expect(await choosePort(3000, taken())).toEqual({ port: 3000 });

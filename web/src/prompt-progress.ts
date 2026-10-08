@@ -16,7 +16,10 @@ export interface ProgressView {
  * prompt), not the whole conversation the server already holds.
  */
 export function describeProgress(
-  message: Pick<ServerMessage, "total" | "cache" | "processed" | "time_ms" | "purpose">,
+  message: Pick<
+    ServerMessage,
+    "total" | "cache" | "processed" | "time_ms" | "purpose"
+  >,
 ): ProgressView | undefined {
   const report: PromptProgress = {
     total: message.total ?? 0,
@@ -88,8 +91,12 @@ export function createPromptProgress(
     handle(message) {
       const view = describeProgress(message);
       if (!view) return;
-      const shown = open && { request: open.request, attached: open.line.isConnected };
-      if (!open || startsNewBar(shown, message.request)) open = start(message.request);
+      const shown = open && {
+        request: open.request,
+        attached: open.line.isConnected,
+      };
+      if (!open || startsNewBar(shown, message.request))
+        open = start(message.request);
       open.fill.style.width = `${view.pct}%`;
       open.bar.setAttribute("aria-valuenow", String(Math.round(view.pct)));
       open.label.textContent = view.text;

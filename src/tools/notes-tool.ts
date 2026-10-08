@@ -45,7 +45,9 @@ export function saveNoteTool(
     const id = idOf(args);
     // An empty note is never what was meant: a model that sent its text under another name must be told, not thanked.
     if (typeof args.body !== "string" || args.body.trim() === "") {
-      const other = ["content", "text", "note"].find((key) => typeof args[key] === "string");
+      const other = ["content", "text", "note"].find(
+        (key) => typeof args[key] === "string",
+      );
       return other
         ? `error: save_note takes the note's text as 'body', not '${other}'; nothing was saved`
         : "error: save_note needs a non-empty 'body' (the note's text); nothing was saved";

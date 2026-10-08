@@ -54,7 +54,9 @@ export async function findServerPort(): Promise<number> {
   if (await isVise(preferred)) return preferred;
   const ports = Array.from({ length: SCAN_RANGE + 1 }, (_, i) => preferred + i);
   const answers = await Promise.all(
-    ports.map(async (port) => (port !== preferred && port <= 65535 && (await isVise(port)) ? port : 0)),
+    ports.map(async (port) =>
+      port !== preferred && port <= 65535 && (await isVise(port)) ? port : 0,
+    ),
   );
   return answers.find((port) => port > 0) ?? preferred;
 }

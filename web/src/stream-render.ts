@@ -23,7 +23,9 @@ interface Split {
  * (up to `stableCut`) once and only its open tail again on each update, so the
  * cost of a token does not grow with the length of the reply.
  */
-export function createStreamRenderer(renderHtml?: (markdown: string) => string): {
+export function createStreamRenderer(
+  renderHtml?: (markdown: string) => string,
+): {
   render(element: HTMLElement, raw: string): void;
   /** The reply ended: forget how it was split. */
   reset(): void;

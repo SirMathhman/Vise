@@ -38,7 +38,6 @@ const CANDIDATES = [
 /** Browser-owned pages (welcome, sync prompts, devtools) are not the agent's tabs. */
 const BROWSER_INTERNAL = /^(edge|chrome|devtools|chrome-extension):\/\//;
 
-
 interface TargetInfo {
   targetId: string;
   type: string;

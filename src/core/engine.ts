@@ -83,7 +83,11 @@ export type ToolCallListener = (
 ) => void;
 
 /** Told that a tool call finished: its name, how deep in subagents it is, and the result the model got (for display). */
-export type ToolResultListener = (name: string, depth: number, result: string) => void;
+export type ToolResultListener = (
+  name: string,
+  depth: number,
+  result: string,
+) => void;
 
 export interface TurnCallbacks {
   onToken?: (token: string) => void;
@@ -456,7 +460,9 @@ ${reply.content}`
           output = `error: failed to execute ${tc.function.name}`;
         }
         failed ||= output.startsWith("error:");
-        messages.push(toolResult(tc.function.name, output, tc.id, tools, callbacks));
+        messages.push(
+          toolResult(tc.function.name, output, tc.id, tools, callbacks),
+        );
       }
       act = !!callbacks.burst && !failed;
       if (!act) setBurst(false);
@@ -493,5 +499,11 @@ export async function runSubagent(
     messages.push({ role: "user", content: profileText });
   }
   messages.push({ role: "user", content: task });
-  return runTurn(client.as?.("subagent") ?? client, tools, messages, toolDefs, callbacks);
+  return runTurn(
+    client.as?.("subagent") ?? client,
+    tools,
+    messages,
+    toolDefs,
+    callbacks,
+  );
 }

@@ -10,7 +10,9 @@ import appJs from "../../web/dist/app.js" with { type: "file" };
 const path = (imported: unknown): string => imported as string;
 
 /** The only files the server serves, by request path. */
-export const WEB_ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
+export const WEB_ASSETS: Readonly<
+  Record<string, { file: string; type: string }>
+> = {
   "/": { file: path(indexHtml), type: "text/html; charset=utf-8" },
   "/index.html": { file: path(indexHtml), type: "text/html; charset=utf-8" },
   "/styles.css": { file: path(stylesCss), type: "text/css; charset=utf-8" },

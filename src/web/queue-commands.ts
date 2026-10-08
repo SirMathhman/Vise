@@ -16,7 +16,8 @@ export function handleQueueCommand(
   const say = (text: string): void => conn.send({ type: "notice", text });
   if (command === "steer") {
     if (rest.trim()) steerLine(conn, rest.trim(), undefined);
-    else say("usage: /steer <message> (sent to the agent before its next step)");
+    else
+      say("usage: /steer <message> (sent to the agent before its next step)");
     return true;
   }
   const arg = rest.trim();

@@ -2,7 +2,6 @@ import { config } from "../config.ts";
 import type { Picture } from "../core/errors.ts";
 import { imageStore, sniffImage } from "../image-store.ts";
 
-
 /** Most pictures that may come with one message. */
 
 const DATA_URI =
@@ -20,7 +19,9 @@ export function acceptPictures(raw: unknown): Picture[] {
   if (!Array.isArray(raw))
     throw new Error("the attached images must be a list");
   if (raw.length > config.maxPictures) {
-    throw new Error(`at most ${config.maxPictures} images can come with one message`);
+    throw new Error(
+      `at most ${config.maxPictures} images can come with one message`,
+    );
   }
   return raw.map((item: unknown, index): Picture => {
     const fields =

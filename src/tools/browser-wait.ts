@@ -15,7 +15,6 @@ import type { BrowserBackend } from "../browser/types.ts";
 /** A page that has not changed at all is only called settled after this long: an update may still be coming. */
 /** One probe must not hang the wait (a blocking dialog can stall a page's script). */
 
-
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -176,7 +175,8 @@ export async function waitForIdle(
         changedAt = elapsed;
       }
       return (
-        elapsed - changedAt >= config.waitQuietMs && (changed || elapsed >= config.waitMinIdleMs)
+        elapsed - changedAt >= config.waitQuietMs &&
+        (changed || elapsed >= config.waitMinIdleMs)
       );
     },
   );

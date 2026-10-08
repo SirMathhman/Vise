@@ -57,7 +57,11 @@ export async function runBench(
         transcript.flushAssistant();
         break;
       case 2:
-        transcript.appendToolCall("read_file", 0, `📄 read_file · src/file${i}.ts`);
+        transcript.appendToolCall(
+          "read_file",
+          0,
+          `📄 read_file · src/file${i}.ts`,
+        );
         break;
       default:
         transcript.appendThinkingToken(`thinking about step ${i} `.repeat(8));
@@ -73,7 +77,8 @@ export async function runBench(
   const frames: number[] = [];
   let last = await frame();
   for (let k = 0; k < 400; k++) {
-    for (let t = 0; t < 10; t++) transcript.appendAssistantToken(`${REPLY}word${k}-${t} `);
+    for (let t = 0; t < 10; t++)
+      transcript.appendAssistantToken(`${REPLY}word${k}-${t} `);
     const now = await frame();
     frames.push(now - last);
     last = now;
@@ -86,7 +91,9 @@ export async function runBench(
     log.scrollTop = k % 2 === 0 ? 0 : log.scrollHeight;
     void log.scrollHeight; // forces the layout the jump needs
   }
-  const heap = (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory;
+  const heap = (
+    performance as unknown as { memory?: { usedJSHeapSize: number } }
+  ).memory;
   const result: Bench = {
     lines,
     appendMeanMs: costs.reduce((a, b) => a + b, 0) / Math.max(costs.length, 1),

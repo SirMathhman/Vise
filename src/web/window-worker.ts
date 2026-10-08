@@ -20,12 +20,18 @@ function show(url: string): void {
     webview_create: { args: [FFIType.i32, FFIType.ptr], returns: FFIType.ptr },
     webview_destroy: { args: [FFIType.ptr], returns: FFIType.void },
     webview_run: { args: [FFIType.ptr], returns: FFIType.void },
-    webview_set_title: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.void },
+    webview_set_title: {
+      args: [FFIType.ptr, FFIType.ptr],
+      returns: FFIType.void,
+    },
     webview_set_size: {
       args: [FFIType.ptr, FFIType.i32, FFIType.i32, FFIType.i32],
       returns: FFIType.void,
     },
-    webview_navigate: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.void },
+    webview_navigate: {
+      args: [FFIType.ptr, FFIType.ptr],
+      returns: FFIType.void,
+    },
   });
   const view = lib.webview_create(0, null);
   // Without the WebView2 runtime there is no window to give back.

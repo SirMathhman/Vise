@@ -38,7 +38,6 @@ const SHOWN = [
   "key",
 ] as const;
 
-
 function clip(text: string, max: number): string {
   const flat = text.replace(/\s+/g, " ").trim();
   return flat.length > max ? `${flat.slice(0, max)}…` : flat;
@@ -50,7 +49,9 @@ const SENSITIVE: Record<string, string> = { browser_type: "text" };
 function partOf(key: string, value: unknown): string | undefined {
   if (Array.isArray(value)) {
     const items = value.filter((v): v is string => typeof v === "string");
-    return items.length > 0 ? clip(items.join(", "), config.toolLinePartMax) : undefined;
+    return items.length > 0
+      ? clip(items.join(", "), config.toolLinePartMax)
+      : undefined;
   }
   if (typeof value !== "string" || value.trim() === "") return undefined;
   const shown = clip(value, config.toolLinePartMax);
@@ -78,7 +79,10 @@ export function toolDetail(
 }
 
 /** Which lines a read asks for, when it asks for a range: `lines 40–159` (a read is capped at the longest a result may be). */
-function readRange(name: string, args: Record<string, unknown>): string | undefined {
+function readRange(
+  name: string,
+  args: Record<string, unknown>,
+): string | undefined {
   if (name !== "read_file" && name !== "read_temp") return undefined;
   const offset = numberArg(args["offset"]);
   const limit = numberArg(args["limit"]);
@@ -86,11 +90,13 @@ function readRange(name: string, args: Record<string, unknown>): string | undefi
   if (Number.isNaN(offset) || Number.isNaN(limit)) return undefined;
   const from = offset === undefined ? 1 : Math.max(1, Math.floor(offset));
   const cap = config.resultMaxLines;
-  const count = limit === undefined ? cap : Math.min(cap, Math.max(1, Math.floor(limit)));
+  const count =
+    limit === undefined ? cap : Math.min(cap, Math.max(1, Math.floor(limit)));
   return `lines ${from}–${from + count - 1}`;
 }
 
-const lineCount = (text: string): number => (text === "" ? 0 : text.split(/\r?\n/).length);
+const lineCount = (text: string): number =>
+  text === "" ? 0 : text.split(/\r?\n/).length;
 
 /**
  * What a finished call came to, in a few words, to show beside it: which lines
@@ -99,7 +105,10 @@ const lineCount = (text: string): number => (text === "" ? 0 : text.split(/\r?\n
  * the model got, so a result saved to a file because it was too long still
  * reports its real size.
  */
-export function summarizeToolResult(name: string, result: string): string | undefined {
+export function summarizeToolResult(
+  name: string,
+  result: string,
+): string | undefined {
   const text = result.trim();
   if (text.startsWith("error:")) return clip(text, 80);
   if (name === "read_file" || name === "read_temp") {
@@ -107,7 +116,12 @@ export function summarizeToolResult(name: string, result: string): string | unde
     if (header) return `lines ${header[1]}–${header[2]} of ${header[3]}`;
     return name === "read_file" ? `${lineCount(text)} lines` : undefined;
   }
-  if (name !== "find_files" && name !== "search_files" && name !== "search_temp") return undefined;
+  if (
+    name !== "find_files" &&
+    name !== "search_files" &&
+    name !== "search_temp"
+  )
+    return undefined;
   if (text === "no matches") return "no matches";
   const saved = /output too large to show: (\d+) lines/.exec(text)?.[1];
   const more = /\[(\d+) more matches/.exec(text)?.[1];

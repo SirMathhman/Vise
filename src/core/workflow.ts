@@ -132,7 +132,9 @@ async function runToolStep(
       JSON.stringify(schema),
     ].join("\n"),
   });
-  const generated = await (options.client.as?.("workflow") ?? options.client).chat(
+  const generated = await (
+    options.client.as?.("workflow") ?? options.client
+  ).chat(
     options.messages,
     undefined,
     undefined,
@@ -156,7 +158,11 @@ async function runToolStep(
   options.callbacks.onToolCall?.(step.name, 0, args.value);
   let output: string;
   try {
-    output = await options.tools.run(step.name, args.value, options.callbacks.abort);
+    output = await options.tools.run(
+      step.name,
+      args.value,
+      options.callbacks.abort,
+    );
   } catch (error) {
     output = `error: ${error instanceof Error ? error.message : String(error)}`;
   }

@@ -89,7 +89,10 @@ describe("renderLine (markdown)", () => {
   test("styles links (no ANSI when NO_COLOR)", () => {
     process.env.NO_COLOR = "1";
     try {
-      const [styled] = renderLine("see [Vise](https://example.com) docs", false);
+      const [styled] = renderLine(
+        "see [Vise](https://example.com) docs",
+        false,
+      );
       expect(styled).toBe("see Vise(https://example.com) docs");
     } finally {
       delete process.env.NO_COLOR;
@@ -148,8 +151,13 @@ describe("renderLine (markdown)", () => {
     const saved = process.env.FORCE_COLOR;
     process.env.FORCE_COLOR = "1";
     try {
-      const [styled] = renderLine("see [Vise](https://example.com) docs", false);
-      expect(styled).toBe("see \x1b[36mVise\x1b[0m\x1b[2m(https://example.com)\x1b[0m docs");
+      const [styled] = renderLine(
+        "see [Vise](https://example.com) docs",
+        false,
+      );
+      expect(styled).toBe(
+        "see \x1b[36mVise\x1b[0m\x1b[2m(https://example.com)\x1b[0m docs",
+      );
     } finally {
       if (saved === undefined) delete process.env.FORCE_COLOR;
       else process.env.FORCE_COLOR = saved;

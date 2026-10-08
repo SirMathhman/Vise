@@ -1,7 +1,13 @@
 import { config } from "../config.ts";
 import { type ChildProcess, spawn } from "node:child_process";
 import { createInterface } from "node:readline";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { globalDataDir } from "../data-dir.ts";
 import { VERSION } from "../version.ts";
@@ -63,7 +69,9 @@ export class PlaywrightSession {
     return new Promise<string>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(new Error(`snippet timed out after ${config.playwrightTimeoutMs} ms`));
+        reject(
+          new Error(`snippet timed out after ${config.playwrightTimeoutMs} ms`),
+        );
         this.stop();
       }, config.playwrightTimeoutMs);
       this.pending.set(id, { resolve, reject, timer });

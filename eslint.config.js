@@ -3,7 +3,12 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: ["node_modules/**", "sessions/**", "web/dist/**", "extension/dist/**"],
+    ignores: [
+      "node_modules/**",
+      "sessions/**",
+      "web/dist/**",
+      "extension/dist/**",
+    ],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,

@@ -10,7 +10,10 @@ import { VERSION } from "./version.ts";
 export const extensionDir = join(globalDataDir, "extension");
 
 async function installExtension(): Promise<string> {
-  const missing = missingBuildOutput("extension/dist/background.js", "bun run build:ext");
+  const missing = missingBuildOutput(
+    "extension/dist/background.js",
+    "bun run build:ext",
+  );
   if (missing) {
     process.exitCode = 1;
     return missing;
@@ -25,10 +28,14 @@ async function installExtension(): Promise<string> {
 }
 
 function setupPlaywright(): string {
-  const run = spawnSync("npm", ["install", "--prefix", globalDataDir, "playwright-core"], {
-    stdio: "inherit",
-    shell: true,
-  });
+  const run = spawnSync(
+    "npm",
+    ["install", "--prefix", globalDataDir, "playwright-core"],
+    {
+      stdio: "inherit",
+      shell: true,
+    },
+  );
   if (run.status !== 0) {
     process.exitCode = 1;
     return "could not install playwright-core: npm failed or is not on the PATH (browser_run_code needs node and npm).";
@@ -36,7 +43,11 @@ function setupPlaywright(): string {
   return `playwright-core installed in ${globalDataDir}; enable browser_run_code with /tool browser_run_code enable.`;
 }
 
-const MAINTENANCE_FLAGS = ["--version", "--install-extension", "--setup-playwright"];
+const MAINTENANCE_FLAGS = [
+  "--version",
+  "--install-extension",
+  "--setup-playwright",
+];
 
 /**
  * The flags that do a job and end the program instead of starting Vise:

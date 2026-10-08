@@ -1,4 +1,8 @@
-import type { ToolCallListener, ToolController, ToolResultListener } from "../core/engine.ts";
+import type {
+  ToolCallListener,
+  ToolController,
+  ToolResultListener,
+} from "../core/engine.ts";
 import type { Picture } from "../core/errors.ts";
 import type { GoalEvent } from "./goal-loop.ts";
 import type {

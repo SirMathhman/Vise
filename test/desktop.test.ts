@@ -22,7 +22,12 @@ test("from source the window opens only on request", () => {
 });
 
 test("console output goes to the log file", () => {
-  const saved = { log: console.log, error: console.error, warn: console.warn, info: console.info };
+  const saved = {
+    log: console.log,
+    error: console.error,
+    warn: console.warn,
+    info: console.info,
+  };
   const path = join(mkdtempSync(join(tmpdir(), "vise-log-")), "vise.log");
   try {
     logToFile(path);

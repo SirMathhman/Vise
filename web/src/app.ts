@@ -63,7 +63,14 @@ const sendMessage = (msg: Record<string, unknown>): void => {
   if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(msg));
 };
 const askUi = createAskUi(
-  { box: requiredElement("ask"), question: requiredElement("ask-question"), options: requiredElement("ask-options"), answer: requiredElement("ask-answer"), send: requiredElement("ask-send"), composer: input },
+  {
+    box: requiredElement("ask"),
+    question: requiredElement("ask-question"),
+    options: requiredElement("ask-options"),
+    answer: requiredElement("ask-answer"),
+    send: requiredElement("ask-send"),
+    composer: input,
+  },
   sendMessage,
   announce,
 );
@@ -75,8 +82,15 @@ const hooksPanel = createHooksPanel(
 const settingsPanels = createSettingsPanels(sendMessage);
 const workspace = createWorkspace(sendMessage, renderMarkdown, setStatus);
 /** The parts of the page that own some of the server messages. */
-const goalUi = createGoalUi(transcript.addLine, transcript.addCollapsed, sendMessage);
-const promptProgress = createPromptProgress(transcript.addLine, transcript.removeLine);
+const goalUi = createGoalUi(
+  transcript.addLine,
+  transcript.addCollapsed,
+  sendMessage,
+);
+const promptProgress = createPromptProgress(
+  transcript.addLine,
+  transcript.removeLine,
+);
 const generating = createGenerating(transcript.addLine, transcript.removeLine);
 const steerUi = createSteerUi({
   sendMessage,
@@ -138,7 +152,13 @@ const busyUi = createBusy({
   setSteering: (on) => steerUi.setRunning(on),
   hideSuggestions: () => hideSuggestions(),
 });
-const { state: busy, isBusy, render: renderBusy, endLoading, reset: resetBusy } = busyUi;
+const {
+  state: busy,
+  isBusy,
+  render: renderBusy,
+  endLoading,
+  reset: resetBusy,
+} = busyUi;
 
 /**
  * Send a line. While a turn runs, plain words steer it (reach the agent before
@@ -155,7 +175,8 @@ function sendLine(text: string, queue = false): void {
   hideSuggestions();
   const show = (cls = "user"): void => {
     transcript.addLine(cls, body);
-    for (const image of images) appendPicture(transcript, image.uri, image.label);
+    for (const image of images)
+      appendPicture(transcript, image.uri, image.label);
   };
   // Commands about the queue itself act at once, whatever is running.
   if (/^\/(steer|queue)(\s|$)/.test(body)) {
@@ -507,8 +528,14 @@ socket.addEventListener("message", (event: MessageEvent<string>) => {
       break;
     case "tool":
       // A subagent's work goes in a box opened by its line (nested in the box of the subagent that started it).
-      if (message.name === "run_subagent") transcript.beginBox(message.text ?? "Run helper agent");
-      else transcript.appendToolCall(message.name ?? "unknown", undefined, message.text);
+      if (message.name === "run_subagent")
+        transcript.beginBox(message.text ?? "Run helper agent");
+      else
+        transcript.appendToolCall(
+          message.name ?? "unknown",
+          undefined,
+          message.text,
+        );
       break;
     case "tool_result":
       if (message.name === "run_subagent") transcript.endBox();

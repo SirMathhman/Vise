@@ -9,7 +9,10 @@ export function shouldShowWriting(done: boolean, quietForMs: number): boolean {
 }
 
 /** The line's text: what is being written and how much so far. */
-export function describeWriting(tokens: number, tool: string | undefined): string {
+export function describeWriting(
+  tokens: number,
+  tool: string | undefined,
+): string {
   const what = tool ? `Writing ${tool}` : "Writing";
   return `${what} · ${tokens.toLocaleString("en-US")} tokens`;
 }

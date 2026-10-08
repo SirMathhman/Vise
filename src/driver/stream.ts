@@ -2,7 +2,11 @@ import type { PromptProgress } from "../core/errors.ts";
 import { describeCall } from "../core/progress.ts";
 import { dim } from "../output/color.ts";
 import { formatGoalEvent } from "../output/format.ts";
-import { formatPicture, formatToolCall, summarizeToolResult } from "../output/tool-line.ts";
+import {
+  formatPicture,
+  formatToolCall,
+  summarizeToolResult,
+} from "../output/tool-line.ts";
 import { displayOfTool } from "../tools/display.ts";
 import type { Picture } from "../core/errors.ts";
 import type { GoalEvent } from "../repl/goal-loop.ts";
@@ -87,7 +91,9 @@ export class StreamDisplay {
     const shown = describeCall(progress) ?? "";
     const text = dim(shown);
     if (this.promptActive) {
-      process.stdout.write("\r" + " ".repeat(this.lastText.length + 1) + "\r" + text);
+      process.stdout.write(
+        "\r" + " ".repeat(this.lastText.length + 1) + "\r" + text,
+      );
     } else {
       if (this.contentWritten) {
         this.flushMdLine();
@@ -128,7 +134,8 @@ export class StreamDisplay {
     }
     if (this.contentWritten) this.flushMdLine();
     process.stdout.write(
-      dim(`${"  ".repeat(depth)}${formatToolCall(name, args, displayOfTool)}`) + "\n",
+      dim(`${"  ".repeat(depth)}${formatToolCall(name, args, displayOfTool)}`) +
+        "\n",
     );
   };
 

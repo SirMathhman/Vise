@@ -19,7 +19,8 @@ export function createLogView(
   jumpButton.addEventListener("click", () => transcript.scrollToBottom());
   const bench = new URLSearchParams(location.search).get("bench");
   if (bench) {
-    (window as unknown as { __transcript: TranscriptView }).__transcript = transcript;
+    (window as unknown as { __transcript: TranscriptView }).__transcript =
+      transcript;
     // A development tool: clamp what a link can ask for so it cannot freeze the page.
     const lines = Math.min(Math.max(Math.floor(Number(bench)) || 0, 1), 20_000);
     void import("./bench.ts").then((m) => m.runBench(transcript, lines));

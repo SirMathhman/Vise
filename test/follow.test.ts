@@ -9,13 +9,19 @@ function fakeLog() {
     clientHeight: 400,
     addEventListener: (type: string, fn: () => void) => listeners.set(type, fn),
   };
-  return { log: log as unknown as HTMLElement, raw: log, fire: (type: string) => listeners.get(type)?.() };
+  return {
+    log: log as unknown as HTMLElement,
+    raw: log,
+    fire: (type: string) => listeners.get(type)?.(),
+  };
 }
 
 test("follows the bottom, one scroll per frame", () => {
   const { log, raw } = fakeLog();
   const frames: (() => void)[] = [];
-  const { follow } = createFollower(log, undefined, (work) => frames.push(work));
+  const { follow } = createFollower(log, undefined, (work) =>
+    frames.push(work),
+  );
   follow();
   follow();
   follow();
@@ -28,7 +34,11 @@ test("a scroll up between a new line and the frame wins: the reader is not yanke
   const { log, raw, fire } = fakeLog();
   const frames: (() => void)[] = [];
   const changes: boolean[] = [];
-  const { follow } = createFollower(log, (pinned) => changes.push(pinned), (work) => frames.push(work));
+  const { follow } = createFollower(
+    log,
+    (pinned) => changes.push(pinned),
+    (work) => frames.push(work),
+  );
   follow();
   raw.scrollTop = 100; // the reader scrolls up before the frame
   fire("scroll");
@@ -40,7 +50,9 @@ test("a scroll up between a new line and the frame wins: the reader is not yanke
 test("jumping resumes following, and a picture that loads follows too", () => {
   const { log, raw, fire } = fakeLog();
   const frames: (() => void)[] = [];
-  const { follow, jump } = createFollower(log, undefined, (work) => frames.push(work));
+  const { follow, jump } = createFollower(log, undefined, (work) =>
+    frames.push(work),
+  );
   raw.scrollTop = 0;
   fire("scroll");
   follow();

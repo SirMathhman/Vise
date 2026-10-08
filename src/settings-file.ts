@@ -1,4 +1,10 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { applySettings, fileValue, SPEC } from "./config.ts";
 import type { Spec } from "./config.ts";
@@ -17,7 +23,8 @@ export function parseEnv(text: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const line of text.split(/\r?\n/)) {
     const match = NAME_LINE.exec(line);
-    if (match) out[match[1]!] = match[2]!.trim().replace(/^(["'])(.*)\1$/, "$2");
+    if (match)
+      out[match[1]!] = match[2]!.trim().replace(/^(["'])(.*)\1$/, "$2");
   }
   return out;
 }
@@ -81,12 +88,10 @@ export function saveSettings(
     if (value === "") delete next[name];
     else next[name] = value;
   }
-  const others = text
-    .split(/\r?\n/)
-    .filter((line) => {
-      const name = NAME_LINE.exec(line)?.[1];
-      return name !== undefined && !specs.has(name);
-    });
+  const others = text.split(/\r?\n/).filter((line) => {
+    const name = NAME_LINE.exec(line)?.[1];
+    return name !== undefined && !specs.has(name);
+  });
   const lines = Object.entries(next)
     .filter(([name]) => specs.has(name))
     .map(([name, value]) => `${name}=${value}`);

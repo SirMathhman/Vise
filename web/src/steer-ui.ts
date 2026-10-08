@@ -92,7 +92,8 @@ export function createSteerUi(deps: {
         return true;
       }
       if (message.type === "line_started") {
-        const entry = message.qid === undefined ? undefined : held.get(message.qid);
+        const entry =
+          message.qid === undefined ? undefined : held.get(message.qid);
         if (message.qid !== undefined) held.delete(message.qid);
         entry?.show();
         return true;

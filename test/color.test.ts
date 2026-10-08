@@ -6,7 +6,10 @@ import { cyan, dim, red } from "../src/output/color.ts";
  * afterward. `isEnabled()` in `color.ts` reads `process.env` per call, so the
  * color helpers are deterministic under these overrides.
  */
-function withEnv(vars: Record<string, string | undefined>, fn: () => void): void {
+function withEnv(
+  vars: Record<string, string | undefined>,
+  fn: () => void,
+): void {
   const saved: Record<string, string | undefined> = {};
   for (const key of Object.keys(vars)) {
     saved[key] = process.env[key];

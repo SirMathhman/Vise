@@ -11,11 +11,7 @@ import type {
 } from "../core/engine.ts";
 import { runTurn } from "../core/engine.ts";
 import { GoalTracker, handleGoalCommand } from "./goal-loop.ts";
-import type {
-  Message,
-  Result,
-  ViseError,
-} from "../core/errors.ts";
+import type { Message, Result, ViseError } from "../core/errors.ts";
 import { formatHelp } from "../output/format.ts";
 import { SessionHooks } from "./session-hooks.ts";
 import {

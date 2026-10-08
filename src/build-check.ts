@@ -7,7 +7,10 @@ import { VERSION } from "./version.ts";
  * (relative to the repo root, e.g. `web/dist/app.js`) is missing; undefined
  * when it is there or in a compiled build, which carries its files inside.
  */
-export function missingBuildOutput(file: string, command: string): string | undefined {
+export function missingBuildOutput(
+  file: string,
+  command: string,
+): string | undefined {
   if (VERSION !== "dev") return undefined;
   return existsSync(join(import.meta.dir, "..", file))
     ? undefined

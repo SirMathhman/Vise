@@ -63,7 +63,9 @@ export function createEnvPanel(
       const row = document.createElement("label");
       row.className = "setting-row";
       const name = document.createElement("span");
-      name.textContent = field.restart ? `${field.label} (after restart)` : field.label;
+      name.textContent = field.restart
+        ? `${field.label} (after restart)`
+        : field.label;
       const input = document.createElement("input");
       input.className = "save-input";
       input.autocomplete = "off";

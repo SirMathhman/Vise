@@ -1088,7 +1088,6 @@ body {
   margin-top: 0;
 }
 
-
 .hook-bindings {
   display: inline-flex;
   flex-wrap: wrap;
@@ -1232,7 +1231,6 @@ body:has(#workspace:not(.hidden)) #files-btn {
   color: var(--text);
   border-bottom-color: var(--accent);
 }
-
 
 .root-label {
   margin-left: auto;

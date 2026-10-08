@@ -241,11 +241,17 @@ function rootMessage(data: WsData): Record<string, unknown> {
 /** Start the web driver: serve the UI and accept WebSocket connections. */
 /** Show `note` in the page after the restored conversation, which replaces the chat log. */
 function queueNote(conn: ConnectionState, note?: string): void {
-  if (note) conn.chain = conn.chain.then(() => conn.send({ type: "notice", text: note }));
+  if (note)
+    conn.chain = conn.chain.then(() =>
+      conn.send({ type: "notice", text: note }),
+    );
 }
 
 /** `note` is shown in each page that connects (e.g. that the wanted port was busy). */
-export function startWebServer(port = config.port, note?: string): () => Promise<void> {
+export function startWebServer(
+  port = config.port,
+  note?: string,
+): () => Promise<void> {
   // One browser shared by every connection; it launches on first tool use.
   // Its engine (Chromium or Firefox) is a global setting changed from the UI.
   const settingsStore = new BrowserSettingsStore();
@@ -348,7 +354,10 @@ export function startWebServer(port = config.port, note?: string): () => Promise
   const shutdown = (): Promise<void> =>
     browser.close().finally(() => void server.stop(true));
   for (const signal of ["SIGINT", "SIGTERM", "SIGBREAK"] as const) {
-    process.once(signal, () => void shutdown().finally(() => (process.exitCode = 130)));
+    process.once(
+      signal,
+      () => void shutdown().finally(() => (process.exitCode = 130)),
+    );
   }
   return shutdown;
 }
@@ -430,7 +439,12 @@ function makeConnectionState(
       }),
     onImage: (picture) => send({ type: "image", ...picture }),
     onToolCall: (name, depth, args) =>
-      send({ type: "tool", name, depth, text: formatToolCall(name, args, displayOfTool) }),
+      send({
+        type: "tool",
+        name,
+        depth,
+        text: formatToolCall(name, args, displayOfTool),
+      }),
     onBurst: (active) => send({ type: "burst", active }),
     onGoal: (event) => {
       if (event.kind === "setting") {
@@ -440,11 +454,13 @@ function makeConnectionState(
       const line = formatGoalEvent(event);
       if (line) send({ type: "goal", ...line });
     },
-    onSubagentToken: (t, depth) => send({ type: "subagent_token", text: t, depth }),
+    onSubagentToken: (t, depth) =>
+      send({ type: "subagent_token", text: t, depth }),
     onToolResult: (name, depth, result) => {
       const text = summarizeToolResult(name, result);
       // A finished subagent always reports (it closes its box); other tools only when there is something to say.
-      if (text !== undefined || name === "run_subagent") send({ type: "tool_result", name, depth, text });
+      if (text !== undefined || name === "run_subagent")
+        send({ type: "tool_result", name, depth, text });
     },
     askUser: prompter,
     onMaxRounds: async (question) => {
@@ -545,7 +561,10 @@ function handleMessage(
   }
   if (msg.type === "env_get" || msg.type === "env_set") {
     // Settings read and write the user-level settings file directly; never queued behind a turn.
-    for (const reply of handleSettingsMessage(msg as unknown as Record<string, unknown>) ?? []) send(reply);
+    for (const reply of handleSettingsMessage(
+      msg as unknown as Record<string, unknown>,
+    ) ?? [])
+      send(reply);
     return;
   }
   if (msg.type.startsWith("note")) {

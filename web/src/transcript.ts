@@ -87,7 +87,11 @@ export function createTranscript(
     endThinking();
   }
 
-  function addCollapsed(cls: string, title: string, detail: string): HTMLElement {
+  function addCollapsed(
+    cls: string,
+    title: string,
+    detail: string,
+  ): HTMLElement {
     const box = buildCollapsed(cls, title, detail);
     boxes.container().appendChild(box);
     model.add(cls, detail ? `${title} — ${detail}` : title, box);
@@ -117,9 +121,19 @@ export function createTranscript(
       lastTool.textContent = `${lastTool.textContent ?? ""} → ${text}`;
       model.settle(lastTool, lastTool.textContent);
     },
-    beginBox(title: string): void { settle(); boxes.begin(title); follow(); },
-    endBox(): void { settle(); boxes.end(); },
-    endBoxes(): void { settle(); boxes.endAll(); },
+    beginBox(title: string): void {
+      settle();
+      boxes.begin(title);
+      follow();
+    },
+    endBox(): void {
+      settle();
+      boxes.end();
+    },
+    endBoxes(): void {
+      settle();
+      boxes.endAll();
+    },
     setBurst(active: boolean): void {
       if (active && !burstActive) {
         settle();

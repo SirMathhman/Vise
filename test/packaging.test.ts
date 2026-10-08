@@ -6,9 +6,9 @@ import { runnerPath } from "../src/browser/playwright.ts";
 import { runMaintenance } from "../src/maintenance.ts";
 
 test("the runner is used where it is when run from source", () => {
-  expect(runnerPath("C:/repo/src/browser/playwright-runner.mjs", "unused", false)).toBe(
-    "C:/repo/src/browser/playwright-runner.mjs",
-  );
+  expect(
+    runnerPath("C:/repo/src/browser/playwright-runner.mjs", "unused", false),
+  ).toBe("C:/repo/src/browser/playwright-runner.mjs");
 });
 
 test("an embedded runner is written out once, per version, for node to read", () => {
@@ -21,7 +21,9 @@ test("an embedded runner is written out once, per version, for node to read", ()
   expect(first).toContain(join(home, "runtime"));
   expect(readFileSync(first, "utf8")).toBe("export {};");
   writeFileSync(embedded, "changed");
-  expect(readFileSync(runnerPath(embedded, home, true), "utf8")).toBe("export {};");
+  expect(readFileSync(runnerPath(embedded, home, true), "utf8")).toBe(
+    "export {};",
+  );
 });
 
 test("only the maintenance flags stop Vise from starting", async () => {

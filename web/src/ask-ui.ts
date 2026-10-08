@@ -2,7 +2,11 @@ import { answerFrom, decideKey } from "./ask-choices.ts";
 import type { ServerMessage } from "./server-message.ts";
 
 /** A choice as a button with its number (keys 1-9 choose it); a toggle when several may be chosen. */
-function choiceButton(choice: string, index: number, multi: boolean): HTMLButtonElement {
+function choiceButton(
+  choice: string,
+  index: number,
+  multi: boolean,
+): HTMLButtonElement {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "ask-option";
@@ -35,7 +39,12 @@ function renderChoices(
 
 /** Give the keyboard back to what had it before the question (unless that is gone or inside the question). */
 function restoreFocus(before: Element | null, box: HTMLElement): void {
-  if (before instanceof HTMLElement && before.isConnected && !box.contains(before)) before.focus();
+  if (
+    before instanceof HTMLElement &&
+    before.isConnected &&
+    !box.contains(before)
+  )
+    before.focus();
 }
 
 /**
@@ -91,12 +100,15 @@ export function createAskUi(
   }
 
   /** Send what the user has chosen or typed. */
-  const submit = (): void => reply(answerFrom(choices, selected, answer.value, multi));
+  const submit = (): void =>
+    reply(answerFrom(choices, selected, answer.value, multi));
 
   function highlight(index: number, focus = true): void {
     if (buttons.length === 0) return;
     active = (index + buttons.length) % buttons.length;
-    buttons.forEach((button, i) => button.classList.toggle("active", i === active));
+    buttons.forEach((button, i) =>
+      button.classList.toggle("active", i === active),
+    );
     if (focus) buttons[active]?.focus();
   }
 
@@ -154,7 +166,8 @@ export function createAskUi(
       buttons.push(...renderChoices(options, choices, multi, pick));
       box.classList.remove("hidden");
       announce(`Question: ${message.question ?? ""}`);
-      const writing = document.activeElement === composer && composer.value.trim() !== "";
+      const writing =
+        document.activeElement === composer && composer.value.trim() !== "";
       before = document.activeElement;
       if (writing) {
         // Someone is typing: leave the keyboard alone and say a question is waiting.

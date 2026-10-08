@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { type AskRequest, makeAskUserHandler, type UserPrompter } from "../src/tools/ask-user.ts";
+import {
+  type AskRequest,
+  makeAskUserHandler,
+  type UserPrompter,
+} from "../src/tools/ask-user.ts";
 
 /** A UserPrompter that records each call and returns a fixed answer. */
 function stubPrompter(answer: string): {
@@ -22,7 +26,9 @@ describe("makeAskUserHandler (edge)", () => {
     const handler = makeAskUserHandler(prompter);
     const result = await handler({ question: "Continue?" });
     expect(result).toBe("user replied: yes");
-    expect(calls).toEqual([{ question: "Continue?", options: [], multiSelect: false }]);
+    expect(calls).toEqual([
+      { question: "Continue?", options: [], multiSelect: false },
+    ]);
   });
 
   test("passes options through to the prompter", async () => {
@@ -39,14 +45,18 @@ describe("makeAskUserHandler (edge)", () => {
     const { prompter } = stubPrompter("x");
     const handler = makeAskUserHandler(prompter);
     const result = await handler({});
-    expect(result).toBe("error: ask_user requires a non-empty 'question' argument");
+    expect(result).toBe(
+      "error: ask_user requires a non-empty 'question' argument",
+    );
   });
 
   test("returns an error string when the question is empty", async () => {
     const { prompter } = stubPrompter("x");
     const handler = makeAskUserHandler(prompter);
     const result = await handler({ question: "   " });
-    expect(result).toBe("error: ask_user requires a non-empty 'question' argument");
+    expect(result).toBe(
+      "error: ask_user requires a non-empty 'question' argument",
+    );
   });
 
   test("returns an error string when the prompter receives no input", async () => {
@@ -65,13 +75,17 @@ describe("makeAskUserHandler (edge)", () => {
       multi_select: true,
     });
     expect(result).toBe("user replied: 1,3");
-    expect(calls).toEqual([{ question: "Pick any", options: ["a", "b", "c"], multiSelect: true }]);
+    expect(calls).toEqual([
+      { question: "Pick any", options: ["a", "b", "c"], multiSelect: true },
+    ]);
   });
 
   test("defaults multi_select to false when not provided", async () => {
     const { prompter, calls } = stubPrompter("x");
     const handler = makeAskUserHandler(prompter);
     await handler({ question: "Pick", options: ["a", "b"] });
-    expect(calls).toEqual([{ question: "Pick", options: ["a", "b"], multiSelect: false }]);
+    expect(calls).toEqual([
+      { question: "Pick", options: ["a", "b"], multiSelect: false },
+    ]);
   });
 });

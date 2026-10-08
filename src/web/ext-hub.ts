@@ -18,7 +18,6 @@ export interface ExtensionSocket {
   close(): void;
 }
 
-
 export const NOT_CONNECTED =
   "the Vise Firefox extension is not connected to this server, so no Firefox tab can be used. Tell the user to open the Vise sidebar in Firefox and read the red status banner at its top: it says whether the extension is missing (load extension/manifest.json at about:debugging), out of date (Reload it there), not paired (press Re-pair) or cannot reach the server.";
 

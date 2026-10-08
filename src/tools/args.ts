@@ -6,8 +6,10 @@
  */
 export function numberArg(value: unknown): number | undefined {
   if (value === undefined || value === null) return undefined;
-  if (typeof value === "number") return Number.isFinite(value) ? value : Number.NaN;
-  if (typeof value === "string" && /^\s*-?\d+(\.\d+)?\s*$/.test(value)) return Number(value);
+  if (typeof value === "number")
+    return Number.isFinite(value) ? value : Number.NaN;
+  if (typeof value === "string" && /^\s*-?\d+(\.\d+)?\s*$/.test(value))
+    return Number(value);
   return Number.NaN;
 }
 
