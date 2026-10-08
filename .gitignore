@@ -17,6 +17,7 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # runtime session state (auto-save snapshot + user-saved sessions)
 .vise/sessions/
+.vise/vise.db*
 
 # dotenv environment variable files
 .env

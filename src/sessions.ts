@@ -1,47 +1,42 @@
-import {
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  statSync,
-  readFileSync,
-  unlinkSync,
-  writeFileSync,
-} from "node:fs";
+import type { Database } from "bun:sqlite";
 import { join } from "node:path";
 import type { Message, Result, ViseError } from "./core/errors.ts";
 import type { SavedSession, SessionEntry } from "./repl/ports.ts";
+import { importLegacySessions } from "./db/import-json.ts";
+import { openDb } from "./db/open.ts";
+import { SESSION_MIGRATIONS } from "./db/session-schema.ts";
+import { readMessages, writeSession } from "./db/session-write.ts";
 
 /**
- * Shared session-file I/O for the edge. A session is a saved snapshot of the
- * conversation, stored one `.json` file per session under `sessions/`. The
- * file is named by a generated id (a uuid), never by anything the user typed:
- * the human-readable name is a field inside the file, so odd characters,
- * trailing spaces or duplicate names can never break a lookup. Every
- * conversation is auto-saved after each successful turn under its id.
+ * Shared session I/O for the edge. A session is a saved snapshot of the
+ * conversation, stored in the project's SQLite database (`<base>/vise.db`).
+ * It is keyed by a generated id (a uuid), never by anything the user typed:
+ * the human-readable name is a column, so odd characters, trailing spaces or
+ * duplicate names can never break a lookup. Every conversation is auto-saved
+ * after each successful turn under its id, in one transaction.
  *
  * This module is edge I/O (invariant #2). It is shared by the `SessionSource`
- * implementation in `edge-sources.ts` and the session commands.
+ * implementation in `edge-sources.ts` and the web resume path.
  */
 
-/** Path of the sessions directory under the base directory. */
-function sessionDir(base: string): string {
-  return join(base, "sessions");
-}
-
-/** Session ids are uuids; anything else is not a path-safe file stem. */
+/** Session ids are uuids; anything else is not a valid reference. */
 const ID_PATTERN = /^[0-9a-f-]{1,36}$/;
+
+/** Bases whose old JSON sessions have already been imported by this process. */
+const imported = new Set<string>();
+
+/** The session database under `base`, importing old `.json` sessions on first use. */
+function sessionDb(base: string): Database {
+  const db = openDb(join(base, "vise.db"), SESSION_MIGRATIONS);
+  if (!imported.has(base)) {
+    imported.add(base);
+    importLegacySessions(db, base);
+  }
+  return db;
+}
 
 function failure(body: string): { ok: false; error: ViseError } {
   return { ok: false, error: { kind: "malformed", body } };
-}
-
-/** The ids of every saved session file. */
-function savedIds(base: string): string[] {
-  const dir = sessionDir(base);
-  if (!existsSync(dir)) return [];
-  return readdirSync(dir)
-    .filter((f) => f.endsWith(".json"))
-    .map((f) => f.slice(0, -".json".length));
 }
 
 /**
@@ -49,18 +44,20 @@ function savedIds(base: string): string[] {
  * id or the leading characters of one (like a short git hash); it must match
  * exactly one session.
  */
-function resolveId(base: string, ref: string): Result<string> {
+function resolveId(db: Database, ref: string): Result<string> {
   const wanted = ref.trim().toLowerCase();
   if (!ID_PATTERN.test(wanted)) {
     return failure(
       `'${ref}' is not a session id. Run '/resume' to see available sessions.`,
     );
   }
-  const ids = savedIds(base);
-  if (ids.includes(wanted)) return { ok: true, value: wanted };
-  const matches = ids.filter((id) => id.startsWith(wanted));
+  const exact = db.query("SELECT id FROM sessions WHERE id = ?").get(wanted);
+  if (exact) return { ok: true, value: wanted };
+  const matches = db
+    .query("SELECT id FROM sessions WHERE substr(id, 1, ?) = ? LIMIT 2")
+    .all(wanted.length, wanted) as { id: string }[];
   if (matches.length === 1 && matches[0] !== undefined) {
-    return { ok: true, value: matches[0] };
+    return { ok: true, value: matches[0].id };
   }
   if (matches.length > 1) {
     return failure(`session id '${ref}' is ambiguous; use more characters.`);
@@ -74,7 +71,7 @@ function resolveId(base: string, ref: string): Result<string> {
  * Write a session snapshot. With no `id` a new session is created under a
  * fresh uuid; with an `id` that session is overwritten (the auto-save and
  * `/save <name>` rename paths). Returns the id. Fails with a `malformed`
- * error when the name is blank. Creates `sessions/` if it does not exist.
+ * error when the name is blank.
  */
 export function saveSession(
   base: string,
@@ -88,93 +85,58 @@ export function saveSession(
   if (id !== undefined && !ID_PATTERN.test(id)) {
     return failure(`invalid session id '${id}'`);
   }
-  const dir = sessionDir(base);
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   const finalId = id ?? crypto.randomUUID();
-  const saved = {
-    name: trimmed,
-    messages,
-    activeProfile,
-    savedAt: new Date().toISOString(),
-  };
-  writeFileSync(
-    join(dir, `${finalId}.json`),
-    JSON.stringify(saved, null, 2),
-    "utf-8",
-  );
+  writeSession(sessionDb(base), finalId, trimmed, messages, activeProfile);
   return { ok: true, value: finalId };
+}
+
+interface SessionRow {
+  id: string;
+  name: string;
+  active_profile: string | null;
+  updated_at: string;
 }
 
 /**
  * Load a session by id (or unique id prefix). Fails with a `malformed` error
- * when the session does not exist or the file is not valid.
+ * when the session does not exist.
  */
 export function loadSession(base: string, ref: string): Result<SavedSession> {
-  const resolved = resolveId(base, ref);
+  const db = sessionDb(base);
+  const resolved = resolveId(db, ref);
   if (!resolved.ok) return resolved;
-  const id = resolved.value;
-  try {
-    const raw = JSON.parse(
-      readFileSync(join(sessionDir(base), `${id}.json`), "utf-8"),
-    ) as Record<string, unknown>;
-    if (
-      !Array.isArray(raw.messages) ||
-      (raw.activeProfile !== undefined && typeof raw.activeProfile !== "string")
-    ) {
-      return failure(
-        `session '${id}' is corrupted (missing messages or invalid shape)`,
-      );
-    }
-    return {
-      ok: true,
-      value: {
-        id,
-        name: typeof raw.name === "string" ? raw.name : id,
-        messages: raw.messages as Message[],
-        activeProfile:
-          typeof raw.activeProfile === "string" ? raw.activeProfile : undefined,
-        savedAt: typeof raw.savedAt === "string" ? raw.savedAt : "",
-      },
-    };
-  } catch {
-    return failure(`session '${id}' is corrupted (invalid JSON)`);
-  }
+  const row = db
+    .query(
+      "SELECT id, name, active_profile, updated_at FROM sessions WHERE id = ?",
+    )
+    .get(resolved.value) as SessionRow | null;
+  if (!row) return failure(`session '${ref}' not found.`);
+  return {
+    ok: true,
+    value: {
+      id: row.id,
+      name: row.name,
+      messages: readMessages(db, row.id),
+      activeProfile: row.active_profile ?? undefined,
+      savedAt: row.updated_at,
+    },
+  };
 }
 
-/** The id of the session saved most recently (by the time its file was last written), if there is one. */
+/** The id of the session saved most recently, if there is one. */
 export function latestSessionId(base: string): string | undefined {
-  let best: { id: string; time: number } | undefined;
-  for (const id of savedIds(base)) {
-    try {
-      const time = statSync(join(sessionDir(base), `${id}.json`)).mtimeMs;
-      if (!best || time > best.time) best = { id, time };
-    } catch {
-      // unreadable: not a candidate
-    }
-  }
-  return best?.id;
+  const row = sessionDb(base)
+    .query("SELECT id FROM sessions ORDER BY updated_at DESC, id LIMIT 1")
+    .get() as { id: string } | null;
+  return row?.id;
 }
 
-/**
- * List every saved session (id and display name), sorted by name then id.
- * Returns an empty array when the directory does not exist; unreadable files
- * are listed under their id so they can still be deleted.
- */
+/** List every saved session (id and display name), sorted by name then id. */
 export function listSessions(base: string): SessionEntry[] {
-  const entries: SessionEntry[] = [];
-  for (const id of savedIds(base)) {
-    let name = id;
-    try {
-      const raw = JSON.parse(
-        readFileSync(join(sessionDir(base), `${id}.json`), "utf-8"),
-      ) as Record<string, unknown>;
-      if (typeof raw.name === "string") name = raw.name;
-    } catch {
-      // keep the id as the display name
-    }
-    entries.push({ id, name });
-  }
-  return entries.sort(
+  const rows = sessionDb(base)
+    .query("SELECT id, name FROM sessions")
+    .all() as SessionEntry[];
+  return rows.sort(
     (a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id),
   );
 }
@@ -184,8 +146,12 @@ export function listSessions(base: string): SessionEntry[] {
  * with a `malformed` error when the session does not exist.
  */
 export function deleteSession(base: string, ref: string): Result<string> {
-  const resolved = resolveId(base, ref);
+  const db = sessionDb(base);
+  const resolved = resolveId(db, ref);
   if (!resolved.ok) return resolved;
-  unlinkSync(join(sessionDir(base), `${resolved.value}.json`));
+  db.transaction(() => {
+    db.query("DELETE FROM message_fts WHERE session_id = ?").run(resolved.value);
+    db.query("DELETE FROM sessions WHERE id = ?").run(resolved.value);
+  })();
   return resolved;
 }

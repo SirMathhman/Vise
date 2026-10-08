@@ -3,15 +3,16 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Message } from "../src/core/errors.ts";
+import { closeAllDbs } from "../src/db/open.ts";
 import {
   deleteSession,
+  latestSessionId,
   listSessions,
   loadSession,
   saveSession,
@@ -24,6 +25,7 @@ beforeAll(() => {
 });
 
 afterAll(() => {
+  closeAllDbs();
   rmSync(tmpDir, { recursive: true, force: true });
 });
 
@@ -43,13 +45,14 @@ function idOf(result: { ok: boolean; value?: string }): string {
 }
 
 describe("saveSession (edge)", () => {
-  test("creates the directory and names the file by a generated uuid", () => {
+  test("creates the database and keys the session by a generated uuid", () => {
     const base = freshBase();
     const id = idOf(
       saveSession(base, undefined, "My work", messages, undefined),
     );
     expect(id).toMatch(/^[0-9a-f-]{36}$/);
-    expect(readdirSync(join(base, "sessions"))).toEqual([`${id}.json`]);
+    expect(existsSync(join(base, "vise.db"))).toBe(true);
+    expect(existsSync(join(base, "sessions"))).toBe(false);
   });
 
   test("keeps the display name out of the file name, whatever it contains", () => {
@@ -63,7 +66,6 @@ describe("saveSession (edge)", () => {
         undefined,
       ),
     );
-    expect(existsSync(join(base, "sessions", `${id}.json`))).toBe(true);
     const loaded = loadSession(base, id);
     expect(loaded.ok && loaded.value.name).toBe("weird: name/with *chars*");
   });
@@ -139,39 +141,14 @@ describe("loadSession (edge)", () => {
 
   test("returns an error when a prefix matches several sessions", () => {
     const base = freshBase();
-    mkdirSync(join(base, "sessions"));
     for (const id of ["abc00000-0000", "abc11111-0000"]) {
-      writeFileSync(
-        join(base, "sessions", `${id}.json`),
-        JSON.stringify({ name: id, messages: [], savedAt: "" }),
-      );
+      saveSession(base, id, id, messages, undefined);
     }
     const result = loadSession(base, "abc");
     expect(result.ok).toBe(false);
     if (!result.ok && result.error.kind === "malformed") {
       expect(result.error.body).toContain("ambiguous");
     }
-  });
-
-  test("returns an error when the file is not valid JSON", () => {
-    const base = freshBase();
-    mkdirSync(join(base, "sessions"));
-    writeFileSync(join(base, "sessions", "bad0.json"), "{ not json");
-    const result = loadSession(base, "bad0");
-    expect(result.ok).toBe(false);
-    if (!result.ok && result.error.kind === "malformed") {
-      expect(result.error.body).toContain("invalid JSON");
-    }
-  });
-
-  test("returns an error when the shape is missing messages", () => {
-    const base = freshBase();
-    mkdirSync(join(base, "sessions"));
-    writeFileSync(
-      join(base, "sessions", "bad1.json"),
-      JSON.stringify({ x: 1 }),
-    );
-    expect(loadSession(base, "bad1").ok).toBe(false);
   });
 });
 
@@ -180,22 +157,92 @@ describe("listSessions (edge)", () => {
     expect(listSessions(join(freshBase(), "nope"))).toEqual([]);
   });
 
-  test("lists id and name, sorted by name, excluding non-json files", () => {
+  test("lists id and name, sorted by name", () => {
     const base = freshBase();
     const b = idOf(saveSession(base, undefined, "beta", messages, undefined));
     const a = idOf(saveSession(base, undefined, "alpha", messages, undefined));
-    writeFileSync(join(base, "sessions", "notes.txt"), "ignore me");
     expect(listSessions(base)).toEqual([
       { id: a, name: "alpha" },
       { id: b, name: "beta" },
     ]);
   });
 
-  test("lists an unreadable file under its id so it can still be deleted", () => {
+  test("latestSessionId is the most recently saved", async () => {
     const base = freshBase();
-    mkdirSync(join(base, "sessions"));
-    writeFileSync(join(base, "sessions", "dead.json"), "garbage");
-    expect(listSessions(base)).toEqual([{ id: "dead", name: "dead" }]);
+    const first = idOf(saveSession(base, undefined, "a", messages, undefined));
+    await Bun.sleep(5);
+    const second = idOf(saveSession(base, undefined, "b", messages, undefined));
+    expect(latestSessionId(base)).toBe(second);
+    await Bun.sleep(5);
+    saveSession(base, first, "a", messages, undefined);
+    expect(latestSessionId(base)).toBe(first);
+  });
+});
+
+describe("round trip", () => {
+  test("keeps tool calls, tool ids, images and typed marks", () => {
+    const base = freshBase();
+    const full: Message[] = [
+      { role: "system", content: "sys" },
+      { role: "user", content: "hi", typed: true },
+      {
+        role: "assistant",
+        content: "",
+        tool_calls: [
+          {
+            type: "function",
+            id: "c1",
+            function: { name: "read_file", arguments: '{"path":"a"}' },
+          },
+        ],
+      },
+      {
+        role: "tool",
+        content: "ok",
+        tool_call_id: "c1",
+        images: [{ id: "ab", mime: "image/png", label: "x", bytes: 3 }],
+      },
+    ];
+    const id = idOf(saveSession(base, undefined, "rt", full, undefined));
+    const loaded = loadSession(base, id);
+    expect(loaded.ok && loaded.value.messages).toEqual(full);
+  });
+});
+
+describe("legacy JSON import", () => {
+  function legacy(base: string, file: string, body: string): string {
+    mkdirSync(join(base, "sessions"), { recursive: true });
+    const path = join(base, "sessions", file);
+    writeFileSync(path, body);
+    return path;
+  }
+
+  test("imports a valid file once and deletes it", () => {
+    const base = freshBase();
+    const path = legacy(
+      base,
+      "abc123.json",
+      JSON.stringify({
+        name: "old",
+        messages,
+        activeProfile: "plan",
+        savedAt: "2020-01-01T00:00:00.000Z",
+      }),
+    );
+    const loaded = loadSession(base, "abc123");
+    expect(loaded.ok && loaded.value.messages).toEqual(messages);
+    expect(loaded.ok && loaded.value.activeProfile).toBe("plan");
+    expect(loaded.ok && loaded.value.savedAt).toBe("2020-01-01T00:00:00.000Z");
+    expect(existsSync(path)).toBe(false);
+  });
+
+  test("keeps a file that is not valid", () => {
+    const base = freshBase();
+    const bad = legacy(base, "bad0.json", "{ not json");
+    const noMessages = legacy(base, "bad1.json", JSON.stringify({ x: 1 }));
+    expect(listSessions(base)).toEqual([]);
+    expect(existsSync(bad)).toBe(true);
+    expect(existsSync(noMessages)).toBe(true);
   });
 });
 
@@ -205,7 +252,7 @@ describe("deleteSession (edge)", () => {
     const id = idOf(saveSession(base, undefined, "gone", messages, undefined));
     const deleted = deleteSession(base, id.slice(0, 8));
     expect(deleted.ok && deleted.value).toBe(id);
-    expect(existsSync(join(base, "sessions", `${id}.json`))).toBe(false);
+    expect(listSessions(base)).toEqual([]);
   });
 
   test("returns an error when the session is not found", () => {
