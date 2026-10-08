@@ -58,3 +58,18 @@ test("a client that does not label is simply used as it is", async () => {
   const result = await summarize(plain, [{ role: "user", content: "x" }]);
   expect(result).toEqual({ ok: true, value: "summary" });
 });
+
+test("a goal check that fails on the network is asked again instead of counting as met", async () => {
+  let calls = 0;
+  const client: Client = {
+    chat: async () => {
+      calls++;
+      return calls < 3
+        ? { ok: false, error: { kind: "network", cause: "socket closed" } }
+        : { ok: true, value: { content: '{"verdict":"no","detail":"next"}' } };
+    },
+  };
+  const verdict = await checkGoal(client, [], [], { text: "g", doneWhen: "d" });
+  expect(verdict).toEqual({ kind: "no", detail: "next" });
+  expect(calls).toBe(3);
+});

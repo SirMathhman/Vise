@@ -8,8 +8,10 @@ import type { CallPurpose, Message } from "./errors.ts";
  * conversation when the user speaks, and once the model stops, a throwaway
  * question asks whether the goal was actually met. Both calls are appended to
  * the conversation only for the one request (never stored), answer in
- * schema-constrained JSON, and fail open: anything unparseable counts as "met"
- * so a misbehaving check can never trap the user in a loop.
+ * schema-constrained JSON, and fail open: a call that fails or answers nothing
+ * usable is asked again (up to `ASK_ATTEMPTS` times), and if it still does,
+ * the result counts as "met" so a misbehaving check can never trap the user
+ * in a loop.
  *
  * Pure: depends only on `Client`.
  */
@@ -47,6 +49,9 @@ const VERDICT_SCHEMA = {
   additionalProperties: false,
 };
 
+/** How many times a check is asked before giving up (then it fails open, as below). */
+const ASK_ATTEMPTS = 3;
+
 /** Ask the model for JSON matching `schema`, as a one-off question at the end of the conversation. */
 async function ask(
   client: Client,
@@ -57,24 +62,30 @@ async function ask(
   purpose: CallPurpose,
   signal?: AbortSignal,
 ): Promise<Record<string, unknown> | undefined> {
-  const result = await (client.as?.(purpose) ?? client).chat(
-    [...messages, { role: "user", content: question }],
-    toolDefs,
-    undefined,
-    undefined,
-    undefined,
-    schema,
-    signal,
-  );
-  if (!result.ok) return undefined;
-  try {
-    const parsed: unknown = JSON.parse(result.value.content);
-    return typeof parsed === "object" && parsed !== null
-      ? (parsed as Record<string, unknown>)
-      : undefined;
-  } catch {
-    return undefined;
+  for (let attempt = 0; attempt < ASK_ATTEMPTS; attempt++) {
+    const result = await (client.as?.(purpose) ?? client).chat(
+      [...messages, { role: "user", content: question }],
+      toolDefs,
+      undefined,
+      undefined,
+      undefined,
+      schema,
+      signal,
+    );
+    if (!result.ok) {
+      // A dropped connection says nothing about the goal: ask again.
+      if (result.error.kind === "interrupted" || signal?.aborted) return undefined;
+      continue;
+    }
+    try {
+      const parsed: unknown = JSON.parse(result.value.content);
+      if (typeof parsed === "object" && parsed !== null)
+        return parsed as Record<string, unknown>;
+    } catch {
+      // unparseable: ask again
+    }
   }
+  return undefined;
 }
 
 const text = (value: unknown): string =>
