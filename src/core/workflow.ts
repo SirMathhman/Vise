@@ -17,6 +17,10 @@ export type WorkflowStep =
       exact?: boolean;
     };
 
+/** Put the workflow's input where a step's text says `{{input}}` (an empty string when it ran with none). */
+const withInput = (text: string, input: string): string =>
+  text.replaceAll("{{input}}", input);
+
 /** The model-provided argument marker: its value is a hint for the model. */
 const modelHint = (value: unknown): string | undefined => {
   if (typeof value !== "object" || value === null) return undefined;
@@ -53,7 +57,11 @@ export async function runWorkflow(
 
   for (const [index, step] of workflow.steps.entries()) {
     if (step.type === "instruction") {
-      const result = await runInstructionStep(options, index + 1, step.text);
+      const result = await runInstructionStep(
+        options,
+        index + 1,
+        withInput(step.text, request),
+      );
       if (!result.ok) return result;
       continue;
     }
@@ -114,7 +122,12 @@ async function toolArguments(
     );
   }
   const fixed = Object.fromEntries(
-    entries.filter(([, value]) => modelHint(value) === undefined),
+    entries
+      .filter(([, value]) => modelHint(value) === undefined)
+      .map(([key, value]) => [
+        key,
+        typeof value === "string" ? withInput(value, options.request) : value,
+      ]),
   );
   const hints = entries.filter(([, value]) => modelHint(value) !== undefined);
   if (hints.length === 0) return validated(fixed, step.name, toolSchema);

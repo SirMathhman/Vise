@@ -55,6 +55,7 @@ function stepRow(
   kind.value = step.type;
   const text = make("textarea", "note-text");
   text.rows = 3;
+  text.placeholder = "{{input}} is replaced by the workflow's input";
   const toolName = make("select", "save-input");
   toolName.setAttribute("aria-label", "tool");
   const argsBox = make("div", "wf-args");

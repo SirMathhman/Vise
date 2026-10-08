@@ -96,7 +96,9 @@ export function createArgRows(
     const refresh = (): void => {
       text.hidden = mode.value === "unset";
       text.placeholder =
-        mode.value === "model" ? "hint for the model (optional)" : "value";
+        mode.value === "model"
+          ? "hint for the model (optional)"
+          : "value ({{input}} = the workflow's input)";
     };
     mode.addEventListener("change", refresh);
     refresh();
