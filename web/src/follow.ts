@@ -25,6 +25,8 @@ export function createFollower(
 ): { follow(): void; jump(): void } {
   let pinned = true;
   let queued = false;
+  /** Where the log was last scrolled to (by us or the reader): a scroll event that moved it up is the reader's. */
+  let lastTop = Number.POSITIVE_INFINITY;
   const set = (next: boolean): void => {
     if (next === pinned) return;
     pinned = next;
@@ -35,11 +37,22 @@ export function createFollower(
     queued = true;
     schedule(() => {
       queued = false;
-      if (pinned) log.scrollTop = log.scrollHeight;
+      if (pinned) {
+        log.scrollTop = log.scrollHeight;
+        lastTop = log.scrollTop;
+      }
     });
   };
+  // Content that grows (a long subagent box filling up) can move the scroll
+  // position by itself, and leave the bottom further away than the slack before
+  // a frame can follow it. Only a move *up* away from the bottom is the reader
+  // leaving; growth alone never unpins.
   log.addEventListener?.("scroll", () => {
-    set(log.scrollHeight - log.scrollTop - log.clientHeight < FOLLOW_SLACK);
+    const top = log.scrollTop;
+    const atBottom = log.scrollHeight - top - log.clientHeight < FOLLOW_SLACK;
+    if (atBottom) set(true);
+    else if (top < lastTop) set(false);
+    lastTop = top;
   });
   // `load` does not bubble, so listen while it travels down to the picture.
   log.addEventListener?.("load", follow, true);
@@ -60,6 +73,7 @@ export function createFollower(
     jump(): void {
       set(true);
       log.scrollTop = log.scrollHeight;
+      lastTop = log.scrollTop;
     },
   };
 }

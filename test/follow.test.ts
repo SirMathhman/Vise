@@ -62,3 +62,22 @@ test("jumping resumes following, and a picture that loads follows too", () => {
   fire("load"); // a picture finished loading
   expect(frames).toHaveLength(1);
 });
+
+test("content growing under a pinned log does not unpin it; scrolling up does", () => {
+  const { log, raw, fire } = fakeLog();
+  const frames: (() => void)[] = [];
+  const changes: boolean[] = [];
+  const { follow } = createFollower(log, (p) => changes.push(p), (w) => frames.push(w));
+  follow();
+  frames.shift()?.(); // at the bottom: 1000
+  raw.scrollHeight = 1500; // a box filled up before the next frame; the browser nudged the position
+  raw.scrollTop = 1010;
+  fire("scroll");
+  expect(changes).toEqual([]);
+  follow();
+  frames.shift()?.();
+  expect(raw.scrollTop).toBe(1500);
+  raw.scrollTop = 900; // the reader scrolls up
+  fire("scroll");
+  expect(changes).toEqual([false]);
+});

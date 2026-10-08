@@ -1499,3 +1499,8 @@ body:has(#workspace:not(.hidden)) #files-btn {
   color: var(--dim);
   font-style: italic;
 }
+
+/* The page follows the newest line itself; the browser's own scroll anchoring would fight it as a box fills up. */
+#log {
+  overflow-anchor: none;
+}
