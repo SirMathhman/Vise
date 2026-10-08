@@ -27,6 +27,8 @@ export interface LineConnection {
   held: HeldLine[];
   /** A line's turn is running now (steering applies only then). */
   running: boolean;
+  /** The running line is a turn the user can steer (not a command). */
+  steerable?: boolean;
 }
 
 /** A line waiting its turn, shown in the page's queue. */
@@ -40,6 +42,18 @@ function publishQueue(conn: LineConnection): void {
   conn.send({
     type: "queue",
     items: conn.held.map(({ qid, text }) => ({ qid, text })),
+  });
+}
+
+/**
+ * Tell the page whether a line is running: its composer's busy state follows
+ * this alone. Background requests (a line with an id) never change it.
+ */
+function publishState(conn: LineConnection): void {
+  conn.send({
+    type: "state",
+    running: conn.running,
+    steerable: conn.running && conn.steerable === true,
   });
 }
 
@@ -74,13 +88,16 @@ export function queueLine(
   /** Set when the user chose to hold the line back; it then shows in the queue until it starts. */
   qid?: string,
 ): void {
-  const reply = (error: string): void =>
+  const reply = (error: string): void => {
     conn.send({
       type: "result",
       ok: false,
       error,
       ...(id === undefined ? {} : { id }),
     });
+    // A refused line ends what the page started waiting for.
+    if (id === undefined) publishState(conn);
+  };
   let pictures: Picture[];
   try {
     pictures = acceptPictures(images);
@@ -174,9 +191,11 @@ async function runLine(
   // answers by id and is neither a turn the page should show as busy nor something to steer.
   const background = id !== undefined;
   conn.running = !background;
+  conn.steerable = !background && !text.startsWith("/");
   try {
     if (!background) {
       send({ type: "line_started", text, ...(qid === undefined ? {} : { qid }) });
+      publishState(conn);
     }
     await handleLine(session, display, send, text, id, pictures);
     // Steering the model never read runs as turns of its own. The empty check
@@ -191,6 +210,7 @@ async function runLine(
     }
   } finally {
     conn.running = false;
+    if (!background) publishState(conn);
     // Whatever session the conversation now writes to is this connection's to keep.
     conn.lease.follow(session.getSessionId());
   }

@@ -29,8 +29,6 @@ export interface SteerUi {
  */
 export function createSteerUi(deps: {
   sendMessage: (msg: Record<string, unknown>) => void;
-  /** Called when a held line starts (the page is busy again). */
-  started: (text: string) => void;
   notice: (text: string) => void;
   list: HTMLElement;
   steerBtn: HTMLButtonElement;
@@ -97,7 +95,6 @@ export function createSteerUi(deps: {
         const entry = message.qid === undefined ? undefined : held.get(message.qid);
         if (message.qid !== undefined) held.delete(message.qid);
         entry?.show();
-        deps.started(message.text ?? "");
         return true;
       }
       if (message.type === "notice") {

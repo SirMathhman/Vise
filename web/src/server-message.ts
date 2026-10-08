@@ -41,4 +41,7 @@ export interface ServerMessage extends ResultMessage, HooksFields {
   time_ms?: number;
   /** `progress`: which model request this belongs to (a new number is a new request). */
   request?: number;
+  /** `state`: a line is running on the server, and whether it can be steered. */
+  running?: boolean;
+  steerable?: boolean;
 }

@@ -6,6 +6,7 @@ import { appendPicture } from "./lightbox.ts";
 import { createGoalUi } from "./goal-ui.ts";
 import { createAskUi } from "./ask-ui.ts";
 import { createPromptProgress } from "./prompt-progress.ts";
+import { createBusy } from "./busy.ts";
 import { createSteerUi } from "./steer-ui.ts";
 import { bindToolToggles } from "./tool-toggles.ts";
 import { createSettingsPanels } from "./settings-panels.ts";
@@ -78,10 +79,6 @@ const goalUi = createGoalUi(transcript.addLine, sendMessage);
 const promptProgress = createPromptProgress(transcript.addLine);
 const steerUi = createSteerUi({
   sendMessage,
-  started: (text) => {
-    steerUi.setRunning(!text.startsWith("/"));
-    setBusy(true);
-  },
   notice: (text) => transcript.addLine("system", text),
   list: requiredElement("queue"),
   steerBtn: requiredElement("steer-btn"),
@@ -132,20 +129,15 @@ function setStatus(text: string): void {
   status.textContent = text;
 }
 
-function setBusy(next: boolean): void {
-  if (next) hideSuggestions();
-  if (!next) steerUi.setRunning(false);
-  // While a turn runs the composer stays usable: steer it or queue behind it.
-  input.disabled = next && !steerUi.running;
-  send.disabled = next;
-  send.classList.toggle("hidden", steerUi.running);
-  stopBtn.disabled = !next;
-  modelSelect.disabled = next;
-  profileSelect.disabled = next;
-  reasoningSelect.disabled = next;
-  burstBtn.disabled = next;
-  newBtn.disabled = next;
-}
+const busyUi = createBusy({
+  input,
+  send,
+  stop: stopBtn,
+  locked: [modelSelect, profileSelect, reasoningSelect, burstBtn, newBtn],
+  setSteering: (on) => steerUi.setRunning(on),
+  hideSuggestions: () => hideSuggestions(),
+});
+const { state: busy, isBusy, render: renderBusy, endLoading, reset: resetBusy } = busyUi;
 
 /**
  * Send a line. While a turn runs, plain words steer it (reach the agent before
@@ -178,8 +170,8 @@ function sendLine(text: string, queue = false): void {
     steerUi.steer(body, images);
     return;
   }
-  steerUi.setRunning(!body.startsWith("/"));
-  setBusy(true);
+  busy.submitting = true;
+  renderBusy();
   show();
   socket.send(JSON.stringify({ type: "line", text: body, images }));
 }
@@ -275,17 +267,16 @@ function handleInitialResult(message: ResultMessage): boolean {
     // The session may already have burst on (e.g. after a page reload).
     pendingBurstSync = false;
     if (message.ok) setBurstPressed(message.value?.endsWith(" on") ?? false);
-    setBusy(false);
+    endLoading();
     return true;
   }
   if (pendingModelList) {
     pendingModelList = false;
     if (message.ok && message.value) {
       panels.populateModelSelect(message.value);
-      setBusy(true);
       requestLine("/profile");
     } else {
-      setBusy(false);
+      endLoading();
       profileSelect.disabled = true;
       transcript.addLine("error", message.error ?? "unknown error");
     }
@@ -295,11 +286,10 @@ function handleInitialResult(message: ResultMessage): boolean {
     pendingProfileList = false;
     if (message.ok && message.value) {
       panels.populateProfileSelect(message.value);
-      setBusy(true);
       requestLine("/tool");
     } else {
       pendingToolList = false;
-      setBusy(false);
+      endLoading();
       transcript.addLine("error", message.error ?? "unknown error");
     }
     return true;
@@ -308,10 +298,9 @@ function handleInitialResult(message: ResultMessage): boolean {
     pendingToolList = false;
     if (message.ok && message.value) {
       panels.populateToolsPanel(message.value);
-      setBusy(true);
       requestLine("/reasoning");
     } else {
-      setBusy(false);
+      endLoading();
     }
     return true;
   }
@@ -319,10 +308,9 @@ function handleInitialResult(message: ResultMessage): boolean {
     pendingReasoningList = false;
     if (message.ok && message.value) {
       panels.populateReasoningSelect(message.value);
-      setBusy(true);
       requestLine("/resume");
     } else {
-      setBusy(false);
+      endLoading();
       reasoningSelect.disabled = true;
       transcript.addLine("error", message.error ?? "unknown error");
     }
@@ -343,7 +331,7 @@ function handleToolToggleResult(message: ResultMessage): boolean {
   if (message.id === undefined || !toolToggles.delete(message.id)) return false;
   if (!message.ok)
     transcript.addLine("error", message.error ?? "unknown error");
-  else if (!input.disabled && !steerUi.running) transcript.addLine("system", message.value ?? "");
+  else if (!isBusy()) transcript.addLine("system", message.value ?? "");
   requestToolRefresh();
   return true;
 }
@@ -406,7 +394,6 @@ function handleResult(message: ResultMessage): void {
   askUi.hide();
   renderContext(message);
   if (handleInitialResult(message)) return;
-  setBusy(false);
   if (message.ok) handleCommandResult(message);
   else transcript.addLine("error", message.error ?? "unknown error");
 }
@@ -455,9 +442,10 @@ registerHeaderPanels({
   // Turns auto-save in the background, so refresh the list when it opens.
   // While a turn runs the list is left as it was (the refresh would queue behind the turn).
   sessions: () => {
-    if (input.disabled || steerUi.running) return;
+    if (isBusy()) return;
     pendingSessionList = true;
-    setBusy(true);
+    busy.loading = true;
+    renderBusy();
     requestLine("/resume");
   },
 });
@@ -481,13 +469,14 @@ socket.addEventListener("open", () => {
   pendingToolList = true;
   pendingSessionList = true;
   pendingReasoningList = true;
-  setBusy(true);
+  busy.loading = true;
+  renderBusy();
   requestLine("/model");
 });
 socket.addEventListener("close", () => {
   setStatus("disconnected");
   transcript.flushAssistant();
-  setBusy(false);
+  resetBusy();
 });
 socket.addEventListener("message", (event: MessageEvent<string>) => {
   let message: ServerMessage;
@@ -527,6 +516,14 @@ socket.addEventListener("message", (event: MessageEvent<string>) => {
       burstBtn.classList.toggle("bursting", !!message.active);
       transcript.setBurst(!!message.active);
       break;
+    case "state":
+      Object.assign(busy, {
+        server: message.running === true,
+        steerable: message.steerable === true,
+        submitting: false,
+      });
+      renderBusy();
+      break;
     case "progress":
       promptProgress.handle(message);
       break;
@@ -540,7 +537,7 @@ socket.addEventListener("message", (event: MessageEvent<string>) => {
     case "exit":
       transcript.finishThinking();
       transcript.addLine("system", "Session ended.");
-      setBusy(false);
+      resetBusy();
       break;
   }
 });

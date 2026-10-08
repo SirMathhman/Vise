@@ -59,6 +59,7 @@ import { listDir, readTextFile, watchRoot } from "./files.ts";
  *                     { type:"result", ok:false, error }
  *                     { type:"ask", question, options, multiSelect? }
  *                     { type:"line_started", text, qid? } a line's turn began (a held line leaves the queue)
+ *                     { type:"state", running, steerable } a line is running (the page's busy state follows this alone)
  *                     { type:"queue", items:[{qid,text}] } the lines being held
  *                     { type:"notice", text }       a short system note for the chat log
  *                     { type:"fs_changed" }          something under the project root changed
