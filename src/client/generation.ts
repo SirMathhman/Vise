@@ -29,6 +29,7 @@ export function generationReporter(
   let count = 0;
   let reportedTokens = 0;
   let reportedAt = 0;
+  let announced: string | undefined;
   const report = (done: boolean): void => {
     const tool = done ? undefined : toolBeingCalled(tail);
     sink({ request, purpose, tokens: count, done, ...(tool ? { tool } : {}) });
@@ -39,8 +40,11 @@ export function generationReporter(
     },
     tokens(n) {
       count = n;
-      if (n - reportedTokens < EVERY_TOKENS && now() - reportedAt < EVERY_MS)
-        return;
+      // A call to a tool is reported the moment its name is known, however short the call is.
+      const tool = toolBeingCalled(tail);
+      const named = tool !== undefined && tool !== announced;
+      announced = tool;
+      if (!named && n - reportedTokens < EVERY_TOKENS && now() - reportedAt < EVERY_MS) return;
       reportedTokens = n;
       reportedAt = now();
       report(false);

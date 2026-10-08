@@ -75,7 +75,8 @@ export function createGenerating(
       const quiet = now() - lastActivity;
       if (message.done === true) return clear();
       const text = describeWriting(message.tokens ?? 0, message.text);
-      if (shouldShowWriting(false, quiet)) return show(text);
+      // Writing a tool call shows at once: its text is never shown, so nothing else would say so.
+      if (message.text || shouldShowWriting(false, quiet)) return show(text);
       // Not quiet long enough yet: look again when it will have been.
       if (timer !== undefined) clearTimeout(timer);
       timer = setTimeout(() => {

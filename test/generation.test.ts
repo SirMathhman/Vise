@@ -134,3 +134,14 @@ describe("page pieces", () => {
     expect(t.active()).toBe(false);
   });
 });
+
+test("a tool call is reported as soon as its name is known, even when it is short", () => {
+  const got: GenerationProgress[] = [];
+  let time = 1000;
+  const g = generationReporter((p) => got.push(p), 1, "reply", () => time);
+  g.tokens(1); // first report, no tool yet
+  g.text('<tool_call>{"name":"read_file"');
+  g.tokens(2); // too few tokens and too soon, but the tool is now known
+  g.tokens(3); // same tool: nothing new
+  expect(got.map((p) => [p.tokens, p.tool])).toEqual([[1, undefined], [2, "read_file"]]);
+});
