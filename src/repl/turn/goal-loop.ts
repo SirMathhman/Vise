@@ -22,7 +22,7 @@ export type GoalEvent =
   | { kind: "goal"; goal: string; doneWhen: string }
   | {
       kind: "verdict";
-      verdict: "yes" | "no" | "blocked";
+      verdict: "yes" | "no" | "blocked" | "unknown";
       detail: string;
       /** A "no" that is sending the model back to work. */
       continuing: boolean;

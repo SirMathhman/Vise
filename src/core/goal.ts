@@ -1,5 +1,5 @@
 import type { Client, Tool } from "./engine.ts";
-import type { CallPurpose, Message } from "./errors.ts";
+import type { CallPurpose, Message, ViseError } from "./errors.ts";
 
 /**
  * Goal tracking. A model that has been working can stop on a sentence like
@@ -8,10 +8,12 @@ import type { CallPurpose, Message } from "./errors.ts";
  * conversation when the user speaks, and once the model stops, a throwaway
  * question asks whether the goal was actually met. Both calls are appended to
  * the conversation only for the one request (never stored), answer in
- * schema-constrained JSON, and fail open: a call that fails or does not answer in the
- * expected shape is asked again (up to `ASK_ATTEMPTS` times), and if it still does,
- * the result counts as "met" so a misbehaving check can never trap the user
- * in a loop.
+ * schema-constrained JSON, and never loop on a broken check: a call that fails
+ * or does not answer in the expected shape is asked again (up to `ASK_ATTEMPTS`
+ * times). The goal check then reports "unknown" with the exact reason (it never
+ * claims "met" for a check that did not run), and the turn ends with the goal
+ * kept. The goal and progress checks fall back to the user's words and to
+ * "progressing", so they never cut work short.
  *
  * Pure: depends only on `Client`.
  */
@@ -24,8 +26,8 @@ export interface Goal {
 
 /** The judgement after a turn: finished, more to do, or waiting on the user. */
 export interface Verdict {
-  kind: "yes" | "no" | "blocked";
-  /** The evidence (yes), the single next step (no) or what is needed from the user (blocked). */
+  kind: "yes" | "no" | "blocked" | "unknown";
+  /** The evidence (yes), the single next step (no), what is needed from the user (blocked) or why the check could not be made (unknown). */
   detail: string;
 }
 
@@ -49,10 +51,39 @@ const VERDICT_SCHEMA = {
   additionalProperties: false,
 };
 
-/** How many times a check is asked before giving up (then it fails open, as below). */
+/** How many times a check is asked before giving up. */
 const ASK_ATTEMPTS = 3;
 
-/** Ask the model for JSON matching `schema`, as a one-off question at the end of the conversation. */
+/** What a failed attempt was, in words that say what went wrong (not just "failed"). */
+function describeError(error: ViseError): string {
+  switch (error.kind) {
+    case "http":
+      return `the server answered HTTP ${error.status}: ${error.body.slice(0, 200)}`;
+    case "network":
+      return `the connection to the model failed: ${error.cause}`;
+    case "malformed":
+      return `the server's reply could not be read: ${error.body.slice(0, 200)}`;
+    case "storage":
+      return `storage failed: ${error.cause}`;
+    case "interrupted":
+      return "the call was interrupted";
+  }
+}
+
+const shown = (value: unknown): string =>
+  JSON.stringify(value)?.slice(0, 200) ?? String(value);
+
+/** The reply to a one-off question, or exactly why there is none. */
+type Asked =
+  { ok: true; reply: Record<string, unknown> } | { ok: false; why: string };
+
+/**
+ * Ask the model for JSON matching `schema`, as a one-off question at the end of
+ * the conversation. A call that fails, or whose reply is not JSON, not an
+ * object or rejected by `accept` (which says what is wrong with it, or
+ * undefined when fine), is asked again; after `ASK_ATTEMPTS` the answer is why
+ * the last attempt failed.
+ */
 async function ask(
   client: Client,
   messages: Message[],
@@ -60,9 +91,10 @@ async function ask(
   question: string,
   schema: Record<string, unknown>,
   purpose: CallPurpose,
-  accept: (reply: Record<string, unknown>) => boolean,
+  accept: (reply: Record<string, unknown>) => string | undefined,
   signal?: AbortSignal,
-): Promise<Record<string, unknown> | undefined> {
+): Promise<Asked> {
+  let why = "no attempt was made";
   for (let attempt = 0; attempt < ASK_ATTEMPTS; attempt++) {
     const result = await (client.as?.(purpose) ?? client).chat(
       [...messages, { role: "user", content: question }],
@@ -74,26 +106,31 @@ async function ask(
       signal,
     );
     if (!result.ok) {
-      // A dropped connection says nothing about the goal: ask again.
-      if (result.error.kind === "interrupted" || signal?.aborted)
-        return undefined;
+      why = describeError(result.error);
+      if (result.error.kind === "interrupted" || signal?.aborted) break;
       continue;
     }
+    let parsed: unknown;
     try {
-      const parsed: unknown = JSON.parse(result.value.content);
-      if (
-        typeof parsed === "object" &&
-        parsed !== null &&
-        !Array.isArray(parsed)
-      ) {
-        const reply = parsed as Record<string, unknown>;
-        if (accept(reply)) return reply;
-      }
+      parsed = JSON.parse(result.value.content);
     } catch {
-      // unparseable: ask again
+      why = `the model's reply was not valid JSON: ${shown(result.value.content)}`;
+      continue;
     }
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      Array.isArray(parsed)
+    ) {
+      why = `the model's reply was not a JSON object: ${shown(parsed)}`;
+      continue;
+    }
+    const reply = parsed as Record<string, unknown>;
+    const problem = accept(reply);
+    if (problem === undefined) return { ok: true, reply };
+    why = `the model's reply was unusable (${problem}): ${shown(reply)}`;
   }
-  return undefined;
+  return { ok: false, why };
 }
 
 const text = (value: unknown): string =>
@@ -136,11 +173,15 @@ export async function deriveGoal(
     `[goal tracking, not from the user] ${known}\nThe user's latest message is above. Reply with JSON. "goal": the objective the user wants accomplished, in one sentence. If the latest message continues, answers or refines the current goal (for example "?", "ok", "try again", or new details for the same task), keep the current goal and fold in anything new. If it asks for something unrelated, give a new goal. For a plain question or chat, the goal is to answer it. "done_when": what will observably be true once the goal is complete.`,
     GOAL_SCHEMA,
     "goal",
-    (r) => text(r["goal"]) !== "",
+    (r) => (text(r["goal"]) === "" ? "the goal is empty" : undefined),
     signal,
   );
-  const goal = text(reply?.["goal"]);
-  if (goal !== "") return { text: goal, doneWhen: text(reply?.["done_when"]) };
+  const goal = reply.ok ? text(reply.reply["goal"]) : "";
+  if (goal !== "")
+    return {
+      text: goal,
+      doneWhen: text(reply.ok ? reply.reply["done_when"] : ""),
+    };
   const said = lastUserText(messages, skip).slice(0, 400);
   return said === ""
     ? undefined
@@ -165,13 +206,15 @@ export async function checkGoal(
     (r) =>
       r["verdict"] === "yes" ||
       r["verdict"] === "no" ||
-      r["verdict"] === "blocked",
+      r["verdict"] === "blocked"
+        ? undefined
+        : `"verdict" is ${shown(r["verdict"])}, not yes, no or blocked`,
     signal,
   );
-  const kind = reply?.["verdict"];
-  const detail = text(reply?.["detail"]);
-  if (kind === "no" || kind === "blocked") return { kind, detail };
-  return { kind: "yes", detail };
+  if (!reply.ok) return { kind: "unknown", detail: reply.why };
+  const kind = reply.reply["verdict"];
+  const detail = text(reply.reply["detail"]);
+  return { kind: kind === "no" || kind === "blocked" ? kind : "yes", detail };
 }
 
 /** Whether a long-running turn is getting anywhere. */
@@ -211,11 +254,14 @@ Done when: ${goal.doneWhen}
 This turn has been running for a long time. Judging only from the recent tool calls and their results: is real headway being made toward the goal, or are the same steps being repeated, the same errors hit, or the work going in circles? Reply with JSON. "progress": "progressing" if each recent step moved the work forward, "stuck" if not. "detail": one sentence saying why.`,
     PROGRESS_SCHEMA,
     "progress-check",
-    (r) => r["progress"] === "progressing" || r["progress"] === "stuck",
+    (r) =>
+      r["progress"] === "progressing" || r["progress"] === "stuck"
+        ? undefined
+        : `"progress" is ${shown(r["progress"])}, not progressing or stuck`,
     signal,
   );
-  const detail = text(reply?.["detail"]);
-  return reply?.["progress"] === "stuck"
+  const detail = reply.ok ? text(reply.reply["detail"]) : "";
+  return reply.ok && reply.reply["progress"] === "stuck"
     ? { kind: "stuck", detail }
     : { kind: "progressing", detail };
 }

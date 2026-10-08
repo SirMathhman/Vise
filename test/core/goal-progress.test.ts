@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Client } from "../../src/core/engine.ts";
-import type { CallPurpose } from "../../src/core/errors.ts";
+import type { CallPurpose, ViseError } from "../../src/core/errors.ts";
 import { checkGoal, checkProgress, deriveGoal } from "../../src/core/goal.ts";
 import { summarize } from "../../src/core/engine.ts";
 
@@ -74,7 +74,7 @@ test("a goal check that fails on the network is asked again instead of counting 
   expect(calls).toBe(3);
 });
 
-test("a goal check that answers in the wrong shape is asked again", async () => {
+test("a goal check that never gets a usable answer says why, not that the goal is met", async () => {
   const replies = [
     "{}",
     '{"verdict":"maybe","detail":""}',
@@ -90,5 +90,36 @@ test("a goal check that answers in the wrong shape is asked again", async () => 
   };
   const verdict = await checkGoal(client, [], [], { text: "g", doneWhen: "d" });
   expect(calls).toBe(3);
-  expect(verdict.kind).toBe("yes"); // out of attempts: fails open
+  expect(verdict.kind).toBe("unknown");
+  expect(verdict.detail).toContain("not a JSON object: []");
+});
+
+test("the reason names the failure: a network error, an HTTP error, unparseable text", async () => {
+  const failing = (error: ViseError): Client => ({
+    chat: async () => ({ ok: false, error }),
+  });
+  const goal = { text: "g", doneWhen: "d" };
+  const net = await checkGoal(
+    failing({ kind: "network", cause: "socket closed" }),
+    [],
+    [],
+    goal,
+  );
+  expect(net).toEqual({
+    kind: "unknown",
+    detail: "the connection to the model failed: socket closed",
+  });
+  const http = await checkGoal(
+    failing({ kind: "http", status: 503, body: "loading model" }),
+    [],
+    [],
+    goal,
+  );
+  expect(http.detail).toBe("the server answered HTTP 503: loading model");
+  const text: Client = {
+    chat: async () => ({ ok: true, value: { content: "sure!" } }),
+  };
+  expect((await checkGoal(text, [], [], goal)).detail).toBe(
+    `the model's reply was not valid JSON: "sure!"`,
+  );
 });

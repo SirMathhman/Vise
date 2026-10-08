@@ -285,6 +285,12 @@ export function formatGoalEvent(event: GoalEvent): GoalLine | undefined {
   if (event.verdict === "yes") {
     return { text: `✓ goal met${detail}`, level: "ok" };
   }
+  if (event.verdict === "unknown") {
+    return {
+      text: `⚠ goal check unavailable${detail} (the goal is kept; the turn was not judged)`,
+      level: "warn",
+    };
+  }
   if (event.verdict === "blocked") {
     return { text: `✋ needs you${detail}`, level: "ask" };
   }
