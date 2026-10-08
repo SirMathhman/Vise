@@ -170,9 +170,14 @@ async function runLine(
   qid: string | undefined,
 ): Promise<void> {
   const { session, display, send } = conn;
-  conn.running = true;
+  // A line with an id is a background request of the page (a list refresh, a tool toggle): it
+  // answers by id and is neither a turn the page should show as busy nor something to steer.
+  const background = id !== undefined;
+  conn.running = !background;
   try {
-    send({ type: "line_started", text, ...(qid === undefined ? {} : { qid }) });
+    if (!background) {
+      send({ type: "line_started", text, ...(qid === undefined ? {} : { qid }) });
+    }
     await handleLine(session, display, send, text, id, pictures);
     // Steering the model never read runs as turns of its own. The empty check
     // and `running = false` happen with no await between them, so a steer
