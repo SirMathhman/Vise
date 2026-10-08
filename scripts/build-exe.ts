@@ -46,7 +46,7 @@ for (const [entry, outfile] of [
   const result = await Bun.build({
     entrypoints:
       entry === "src/web/main.ts"
-        ? [entry, "src/web/window-worker.ts"]
+        ? [entry, "src/web/desktop/window-worker.ts"]
         : [entry],
     compile: { outfile },
     define: { VISE_VERSION: JSON.stringify(version) },

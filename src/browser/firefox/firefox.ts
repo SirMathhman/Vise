@@ -1,8 +1,8 @@
-import { config } from "../config.ts";
+import { config } from "../../config.ts";
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { dataDir } from "../data-dir.ts";
+import { dataDir } from "../../data-dir.ts";
 import { BidiConnection } from "./bidi.ts";
 import * as actions from "./bidi-actions.ts";
 import { dispatchInput, startScreencast } from "./bidi-view.ts";
@@ -10,20 +10,20 @@ import {
   pageActionScript,
   probeScript,
   type PageAction,
-} from "./page-scripts.ts";
-import type { PageProbe } from "./probe.ts";
+} from "../page-scripts.ts";
+import type { PageProbe } from "../probe.ts";
 import {
   killBrowsersUsing,
   removeProfile,
   sweepStaleProfiles,
-} from "./processes.ts";
+} from "../processes.ts";
 import type {
   BrowserBackend,
   BrowserInput,
   DialogInfo,
   FrameListener,
   TabInfo,
-} from "./types.ts";
+} from "../types.ts";
 
 /** Firefox install locations (forward slashes work for Windows paths). */
 const CANDIDATES = [

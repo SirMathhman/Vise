@@ -1,6 +1,6 @@
 import type { PageAction } from "./page-scripts.ts";
-import { ChromiumBackend } from "./chromium.ts";
-import { findFirefox, FirefoxBackend } from "./firefox.ts";
+import { ChromiumBackend } from "./chromium/chromium.ts";
+import { findFirefox, FirefoxBackend } from "./firefox/firefox.ts";
 import { textProbe, type PageProbe } from "./probe.ts";
 import type { BrowserSettings, BrowserSettingsStore } from "./settings.ts";
 import type {

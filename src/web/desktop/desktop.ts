@@ -1,8 +1,8 @@
 import { dlopen, FFIType, ptr } from "bun:ffi";
 import { appendFileSync, fstatSync, openSync, writeSync } from "node:fs";
 import { join } from "node:path";
-import { globalDataDir } from "../data-dir.ts";
-import { VERSION } from "../version.ts";
+import { globalDataDir } from "../../data-dir.ts";
+import { VERSION } from "../../version.ts";
 
 /** Where the desktop build writes what it would print: its console is hidden. */
 export const logPath = join(globalDataDir, "vise.log");

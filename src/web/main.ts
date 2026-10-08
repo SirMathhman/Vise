@@ -9,7 +9,7 @@ import {
   openWindow,
   showError,
   windowMode,
-} from "./desktop.ts";
+} from "./desktop/desktop.ts";
 import { anyFreePort, busyPortNote, choosePort } from "./port.ts";
 
 /**

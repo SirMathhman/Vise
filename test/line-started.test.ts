@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { queueLine } from "../src/web/line.ts";
-import type { LineConnection } from "../src/web/line.ts";
+import { queueLine } from "../src/web/conn/line.ts";
+import type { LineConnection } from "../src/web/conn/line.ts";
 import { NoticeQueue } from "../src/repl/turn/round-hooks.ts";
 
 function fakeConnection(canSee = true): {

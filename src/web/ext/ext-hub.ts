@@ -1,5 +1,5 @@
-import { config } from "../config.ts";
-import type { ExtensionLink, ShareEvent } from "../browser/extension.ts";
+import { config } from "../../config.ts";
+import type { ExtensionLink, ShareEvent } from "../../browser/extension.ts";
 
 /**
  * The server's end of the Firefox extension's WebSocket (`/ext`). The

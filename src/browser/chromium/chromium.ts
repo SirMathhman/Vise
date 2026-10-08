@@ -1,8 +1,8 @@
-import { config } from "../config.ts";
+import { config } from "../../config.ts";
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
-import { dataDir } from "../data-dir.ts";
+import { dataDir } from "../../data-dir.ts";
 import { CdpConnection } from "./cdp.ts";
 import * as actions from "./cdp-actions.ts";
 import { dispatchInput, startScreencast } from "./cdp-view.ts";
@@ -10,22 +10,22 @@ import {
   pageActionScript,
   probeScript,
   type PageAction,
-} from "./page-scripts.ts";
+} from "../page-scripts.ts";
 import { PlaywrightSession } from "./playwright.ts";
-import type { PageProbe } from "./probe.ts";
+import type { PageProbe } from "../probe.ts";
 import {
   killBrowsersUsing,
   killTree,
   removeProfile,
   sweepStaleProfiles,
-} from "./processes.ts";
+} from "../processes.ts";
 import type {
   BrowserBackend,
   BrowserInput,
   DialogInfo,
   FrameListener,
   TabInfo,
-} from "./types.ts";
+} from "../types.ts";
 
 /** Chromium-family browsers, in preference order (Edge ships with Windows 11). */
 const CANDIDATES = [

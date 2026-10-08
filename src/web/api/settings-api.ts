@@ -1,4 +1,4 @@
-import { describeSettings, saveSettings } from "../settings/settings-file.ts";
+import { describeSettings, saveSettings } from "../../settings/settings-file.ts";
 
 /**
  * The settings page's messages (`env_get`, `env_set`), answered at once and

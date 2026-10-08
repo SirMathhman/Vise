@@ -1,7 +1,7 @@
-import { config } from "../config.ts";
+import { config } from "../../config.ts";
 import type { BidiConnection } from "./bidi.ts";
 import { WD_KEYS } from "./bidi-actions.ts";
-import type { BrowserInput, FrameListener } from "./types.ts";
+import type { BrowserInput, FrameListener } from "../types.ts";
 
 /** Live view and input forwarding for one Firefox tab (BiDi browsing context). */
 

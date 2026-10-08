@@ -1,6 +1,6 @@
-import { parseSettings } from "../browser/settings.ts";
-import type { SwitchableBrowser } from "../browser/switchable.ts";
-import type { BrowserBackend, BrowserInput } from "../browser/types.ts";
+import { parseSettings } from "../../browser/settings.ts";
+import type { SwitchableBrowser } from "../../browser/switchable.ts";
+import type { BrowserBackend, BrowserInput } from "../../browser/types.ts";
 
 /**
  * Per-connection bridge between one browser tab's WebSocket and the shared

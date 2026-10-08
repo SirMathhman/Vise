@@ -7,7 +7,7 @@ import {
   focusScript,
   REF_PATTERN,
   SNAPSHOT_SCRIPT,
-} from "./page-scripts.ts";
+} from "../page-scripts.ts";
 
 /** Page interaction primitives for one Firefox tab (BiDi browsing context), addressed by element ref. */
 

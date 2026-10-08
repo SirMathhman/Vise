@@ -1,8 +1,8 @@
 import { spawn } from "node:child_process";
 import { statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
-import { noFolderRoot } from "../data-dir.ts";
-import { HookStore } from "../edge-sources.ts";
+import { noFolderRoot } from "../../data-dir.ts";
+import { HookStore } from "../../edge-sources.ts";
 
 /**
  * The session roots the web server hosts. A connection picks its root when it

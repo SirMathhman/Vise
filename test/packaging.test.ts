@@ -2,13 +2,13 @@ import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runnerPath } from "../src/browser/playwright.ts";
+import { runnerPath } from "../src/browser/chromium/playwright.ts";
 import { runMaintenance } from "../src/build/maintenance.ts";
 
 test("the runner is used where it is when run from source", () => {
   expect(
-    runnerPath("C:/repo/src/browser/playwright-runner.mjs", "unused", false),
-  ).toBe("C:/repo/src/browser/playwright-runner.mjs");
+    runnerPath("C:/repo/src/browser/chromium/playwright-runner.mjs", "unused", false),
+  ).toBe("C:/repo/src/browser/chromium/playwright-runner.mjs");
 });
 
 test("an embedded runner is written out once, per version, for node to read", () => {

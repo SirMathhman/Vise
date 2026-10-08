@@ -1,4 +1,4 @@
-import { config } from "../config.ts";
+import { config } from "../../config.ts";
 import { type ChildProcess, spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import {
@@ -9,8 +9,8 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
-import { globalDataDir } from "../data-dir.ts";
-import { VERSION } from "../version.ts";
+import { globalDataDir } from "../../data-dir.ts";
+import { VERSION } from "../../version.ts";
 
 // @ts-expect-error TypeScript sees the .mjs as a module; with `type: "file"` it is a path.
 import runnerAsset from "./playwright-runner.mjs" with { type: "file" };

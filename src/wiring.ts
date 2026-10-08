@@ -4,7 +4,7 @@ import { pruneAuditLog } from "./db/audit/audit-prune.ts";
 import { SqliteAuditReader } from "./db/audit/audit-query.ts";
 import { SqliteAuditSink } from "./db/audit/audit-store.ts";
 import { mkdirSync } from "node:fs";
-import { ChromiumBackend } from "./browser/chromium.ts";
+import { ChromiumBackend } from "./browser/chromium/chromium.ts";
 import type { BrowserBackend } from "./browser/types.ts";
 import { BACKEND, LlmClient } from "./client/llm.ts";
 import { dataDirFor, globalDataDir, noFolderRoot } from "./data-dir.ts";

@@ -5,7 +5,7 @@ import { missingBuildOutput } from "./build-check.ts";
 import { exportAudit } from "../db/audit/audit-export.ts";
 import { globalDataDir } from "../data-dir.ts";
 import { formatError } from "../output/format.ts";
-import { useParentConsole } from "../web/desktop.ts";
+import { useParentConsole } from "../web/desktop/desktop.ts";
 import { VERSION } from "../version.ts";
 
 /** Where `--install-extension` writes the Firefox extension. */

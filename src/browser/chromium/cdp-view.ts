@@ -1,5 +1,5 @@
 import type { CdpConnection } from "./cdp.ts";
-import type { BrowserInput, FrameListener } from "./types.ts";
+import type { BrowserInput, FrameListener } from "../types.ts";
 
 /** Live view and input forwarding for one attached tab (CDP session). */
 

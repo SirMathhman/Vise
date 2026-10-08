@@ -1,7 +1,7 @@
-import { config } from "../config.ts";
-import type { Message } from "../core/errors.ts";
-import { formatToolCall } from "../output/tool-line.ts";
-import { displayOfTool } from "../tools/display.ts";
+import { config } from "../../config.ts";
+import type { Message } from "../../core/errors.ts";
+import { formatToolCall } from "../../output/tool-line.ts";
+import { displayOfTool } from "../../tools/display.ts";
 
 /**
  * A saved conversation as the lines the web page shows when it restores it:

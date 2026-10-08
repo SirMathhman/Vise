@@ -7,7 +7,7 @@ import {
   focusScript,
   REF_PATTERN,
   SNAPSHOT_SCRIPT,
-} from "./page-scripts.ts";
+} from "../page-scripts.ts";
 
 /** Page interaction primitives for one attached tab (CDP session), addressed by element ref. */
 
