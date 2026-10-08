@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { getArgumentSuggestions } from "../web/src/command-completions.ts";
+import { getArgumentSuggestions } from "../web/src/composer/command-completions.ts";
 
 const choices = {
   models: [

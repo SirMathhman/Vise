@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { createFollower } from "../web/src/follow.ts";
+import { createFollower } from "../web/src/transcript/follow.ts";
 
 function fakeLog() {
   const listeners = new Map<string, (event?: unknown) => void>();

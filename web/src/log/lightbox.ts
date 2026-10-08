@@ -1,4 +1,4 @@
-import type { TranscriptView } from "./transcript.ts";
+import type { TranscriptView } from "../transcript/transcript.ts";
 
 /** Show a picture full size over the page; a click, or Escape, closes it. */
 export function openLightbox(uri: string, label: string): void {

@@ -1,4 +1,4 @@
-import type { TranscriptView } from "./transcript.ts";
+import type { TranscriptView } from "../transcript/transcript.ts";
 
 /** Development measurement of a long chat (`?bench=<lines>`): what a line costs, what streaming a long reply costs, what scrolling costs. */
 interface Bench {

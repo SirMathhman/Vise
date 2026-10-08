@@ -1,6 +1,6 @@
-import { renderMarkdown } from "./markdown.ts";
-import { createTranscript } from "./transcript.ts";
-import type { TranscriptView } from "./transcript.ts";
+import { renderMarkdown } from "../markdown.ts";
+import { createTranscript } from "../transcript/transcript.ts";
+import type { TranscriptView } from "../transcript/transcript.ts";
 
 /**
  * The chat log and the small things around it: the "↓ latest" button that

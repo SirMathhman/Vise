@@ -1,5 +1,5 @@
 import { answerFrom, decideKey } from "./ask-choices.ts";
-import type { ServerMessage } from "./server-message.ts";
+import type { ServerMessage } from "../server-message.ts";
 
 /** A choice as a button with its number (keys 1-9 choose it); a toggle when several may be chosen. */
 function choiceButton(

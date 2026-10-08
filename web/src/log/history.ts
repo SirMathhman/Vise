@@ -1,5 +1,5 @@
 import { appendPicture } from "./lightbox.ts";
-import type { TranscriptView } from "./transcript.ts";
+import type { TranscriptView } from "../transcript/transcript.ts";
 
 /** One restored line of the conversation (the shape `src/web/history.ts` sends). */
 export type HistoryEntry = (

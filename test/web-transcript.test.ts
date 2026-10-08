@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createTranscript } from "../web/src/transcript.ts";
+import { createTranscript } from "../web/src/transcript/transcript.ts";
 
 function makeLog() {
   const children: { className: string; textContent: string | null }[] = [];

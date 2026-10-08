@@ -1,4 +1,4 @@
-import type { ServerMessage } from "./server-message.ts";
+import type { ServerMessage } from "../server-message.ts";
 
 /** A message sent while the agent works, in one of the two ways. */
 export type SendMode = "steer" | "queue";

@@ -1,6 +1,6 @@
 import type { CallPurpose } from "../../src/core/errors.ts";
-import type { HistoryEntry } from "./history.ts";
-import type { HooksFields } from "./hooks-panel.ts";
+import type { HistoryEntry } from "./log/history.ts";
+import type { HooksFields } from "./settings/hooks-panel.ts";
 
 /** The fields of a message from the server that the page reads (see the protocol in `src/web/server.ts`). */
 export interface ResultMessage {

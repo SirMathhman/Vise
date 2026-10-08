@@ -1,4 +1,4 @@
-import type { ServerMessage } from "./server-message.ts";
+import type { ServerMessage } from "../server-message.ts";
 
 /** How long nothing visible may happen during a model call before the page says it is still writing. */
 export const QUIET_MS = 1500;

@@ -9,9 +9,9 @@ import {
   describeWriting,
   QUIET_MS,
   shouldShowWriting,
-} from "../web/src/generating.ts";
-import { splitVerdict } from "../web/src/goal-ui.ts";
-import { createThinking, thinkingMeta } from "../web/src/thinking.ts";
+} from "../web/src/status/generating.ts";
+import { splitVerdict } from "../web/src/status/goal-ui.ts";
+import { createThinking, thinkingMeta } from "../web/src/transcript/thinking.ts";
 
 function sse(chunks: object[]): ReadableStream<Uint8Array> {
   const text =

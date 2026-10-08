@@ -1,4 +1,4 @@
-import type { ServerMessage } from "./server-message.ts";
+import type { ServerMessage } from "../server-message.ts";
 
 /** What the marker says while the summary is being written, and once it is. */
 export const COMPACTING = "🗜 Compacting the conversation…";
