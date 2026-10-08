@@ -1,5 +1,5 @@
 import type { Client, Tool } from "./engine.ts";
-import type { Message } from "./errors.ts";
+import type { Message, PromptProgress } from "./errors.ts";
 
 /**
  * Goal tracking. A model that has been working can stop on a sentence like
@@ -55,13 +55,14 @@ async function ask(
   question: string,
   schema: Record<string, unknown>,
   signal?: AbortSignal,
+  onPromptProgress?: (progress: PromptProgress) => void,
 ): Promise<Record<string, unknown> | undefined> {
   const result = await client.chat(
     [...messages, { role: "user", content: question }],
     toolDefs,
     undefined,
     undefined,
-    undefined,
+    onPromptProgress,
     schema,
     signal,
   );
@@ -105,6 +106,7 @@ export async function deriveGoal(
   current: Goal | undefined,
   signal?: AbortSignal,
   skip: (m: Message) => boolean = () => false,
+  onPromptProgress?: (progress: PromptProgress) => void,
 ): Promise<Goal | undefined> {
   const known = current
     ? `Current goal: ${current.text} (done when: ${current.doneWhen})`
@@ -116,6 +118,7 @@ export async function deriveGoal(
     `[goal tracking, not from the user] ${known}\nThe user's latest message is above. Reply with JSON. "goal": the objective the user wants accomplished, in one sentence. If the latest message continues, answers or refines the current goal (for example "?", "ok", "try again", or new details for the same task), keep the current goal and fold in anything new. If it asks for something unrelated, give a new goal. For a plain question or chat, the goal is to answer it. "done_when": what will observably be true once the goal is complete.`,
     GOAL_SCHEMA,
     signal,
+    onPromptProgress,
   );
   const goal = text(reply?.["goal"]);
   if (goal !== "") return { text: goal, doneWhen: text(reply?.["done_when"]) };
@@ -132,6 +135,7 @@ export async function checkGoal(
   toolDefs: Tool[],
   goal: Goal,
   signal?: AbortSignal,
+  onPromptProgress?: (progress: PromptProgress) => void,
 ): Promise<Verdict> {
   const reply = await ask(
     client,
@@ -140,6 +144,7 @@ export async function checkGoal(
     `[goal check, not from the user] Goal: ${goal.text}\nDone when: ${goal.doneWhen}\nJudge only from what has actually happened in this conversation, not from what you intended to do. Reply with JSON. "verdict": "yes" if the goal is fully accomplished (detail: the evidence, quoting the result that proves it); "no" if there is still more to do that you can do yourself right now (detail: the single next step); "blocked" if you cannot go on without the user, such as a decision, a confirmation before something irreversible, personal details or a login (detail: exactly what you need from them).`,
     VERDICT_SCHEMA,
     signal,
+    onPromptProgress,
   );
   const kind = reply?.["verdict"];
   const detail = text(reply?.["detail"]);
@@ -174,6 +179,7 @@ export async function checkProgress(
   toolDefs: Tool[],
   goal: Goal,
   signal?: AbortSignal,
+  onPromptProgress?: (progress: PromptProgress) => void,
 ): Promise<Progress> {
   const reply = await ask(
     client,
@@ -184,6 +190,7 @@ Done when: ${goal.doneWhen}
 This turn has been running for a long time. Judging only from the recent tool calls and their results: is real headway being made toward the goal, or are the same steps being repeated, the same errors hit, or the work going in circles? Reply with JSON. "progress": "progressing" if each recent step moved the work forward, "stuck" if not. "detail": one sentence saying why.`,
     PROGRESS_SCHEMA,
     signal,
+    onPromptProgress,
   );
   const detail = text(reply?.["detail"]);
   return reply?.["progress"] === "stuck"

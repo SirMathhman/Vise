@@ -1,6 +1,6 @@
 import { config } from "../config.ts";
 import type { Client, Tool } from "../core/engine.ts";
-import type { Message, Result } from "../core/errors.ts";
+import type { Message, PromptProgress, Result } from "../core/errors.ts";
 import {
   checkGoal,
   checkProgress,
@@ -55,6 +55,8 @@ export class GoalTracker {
   constructor(
     enabled: boolean,
     private readonly emit?: (event: GoalEvent) => void,
+    /** Shows the prompt processing of the goal's own model calls (the first call of a turn reads the whole new prompt). */
+    private readonly onPromptProgress?: (progress: PromptProgress) => void,
   ) {
     this.on = enabled;
   }
@@ -78,6 +80,7 @@ export class GoalTracker {
       toolDefs,
       this.goal,
       signal,
+      this.onPromptProgress,
     );
     if (progress.kind !== "stuck") return undefined;
     const why = progress.detail || "the same steps keep repeating";
@@ -149,6 +152,7 @@ export class GoalTracker {
       this.goal,
       signal,
       this.isNote,
+      this.onPromptProgress,
     );
     if (signal.aborted) return interrupted;
     if (this.goal) {
@@ -171,6 +175,7 @@ export class GoalTracker {
         toolDefs,
         this.goal,
         signal,
+        this.onPromptProgress,
       );
       if (signal.aborted) return interrupted;
       if (verdict.kind !== "no") {
