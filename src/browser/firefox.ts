@@ -31,9 +31,6 @@ const CANDIDATES = [
   "C:/Program Files (x86)/Mozilla Firefox/firefox.exe",
 ];
 
-const LOAD_TIMEOUT_MS = config.firefoxLoadTimeoutMs;
-const LAUNCH_TIMEOUT_MS = config.firefoxLaunchTimeoutMs;
-const TITLE_TIMEOUT_MS = config.firefoxTitleTimeoutMs;
 
 /** Where Firefox records the port of its BiDi server once it is listening. */
 const PORT_FILE = "WebDriverBiDiServer.json";
@@ -123,7 +120,7 @@ export class FirefoxBackend implements BrowserBackend {
     // A page that never finishes loading still returns after the timeout.
     let timer: ReturnType<typeof setTimeout> | undefined;
     const late = new Promise<undefined>((resolve) => {
-      timer = setTimeout(() => resolve(undefined), LOAD_TIMEOUT_MS);
+      timer = setTimeout(() => resolve(undefined), config.firefoxLoadTimeoutMs);
     });
     try {
       await Promise.race([loaded, late]);
@@ -318,7 +315,7 @@ export class FirefoxBackend implements BrowserBackend {
       .evalJson<string>(bidi, context, "document.title")
       .catch(() => "");
     const late = new Promise<string>((resolve) =>
-      setTimeout(() => resolve(""), TITLE_TIMEOUT_MS),
+      setTimeout(() => resolve(""), config.firefoxTitleTimeoutMs),
     );
     return (await Promise.race([read, late])) ?? "";
   }
@@ -460,7 +457,7 @@ export class FirefoxBackend implements BrowserBackend {
 
 /** Wait for Firefox to record its BiDi port in the profile. */
 async function readPort(file: string): Promise<number> {
-  const deadline = Date.now() + LAUNCH_TIMEOUT_MS;
+  const deadline = Date.now() + config.firefoxLaunchTimeoutMs;
   while (Date.now() < deadline) {
     if (existsSync(file)) {
       try {

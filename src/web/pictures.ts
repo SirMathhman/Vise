@@ -1,10 +1,9 @@
 import { config } from "../config.ts";
 import type { Picture } from "../core/errors.ts";
 import { imageStore, sniffImage } from "../image-store.ts";
-import { MAX_IMAGE_BYTES } from "../tools/images.ts";
+
 
 /** Most pictures that may come with one message. */
-export const MAX_PICTURES = config.maxPictures;
 
 const DATA_URI =
   /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/]+={0,2})$/;
@@ -20,8 +19,8 @@ export function acceptPictures(raw: unknown): Picture[] {
   if (raw === undefined || raw === null) return [];
   if (!Array.isArray(raw))
     throw new Error("the attached images must be a list");
-  if (raw.length > MAX_PICTURES) {
-    throw new Error(`at most ${MAX_PICTURES} images can come with one message`);
+  if (raw.length > config.maxPictures) {
+    throw new Error(`at most ${config.maxPictures} images can come with one message`);
   }
   return raw.map((item: unknown, index): Picture => {
     const fields =
@@ -33,9 +32,9 @@ export function acceptPictures(raw: unknown): Picture[] {
     const which = `attached image ${index + 1}`;
     if (!match) throw new Error(`${which} is not a png, jpeg, gif or webp`);
     const bytes = Buffer.from(match[2]!, "base64");
-    if (bytes.length > MAX_IMAGE_BYTES) {
+    if (bytes.length > config.maxImageBytes) {
       throw new Error(
-        `${which} is too large (the limit is ${MAX_IMAGE_BYTES / 1_000_000} MB)`,
+        `${which} is too large (the limit is ${config.maxImageBytes / 1_000_000} MB)`,
       );
     }
     if (sniffImage(bytes) !== match[1]) {

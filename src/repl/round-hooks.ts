@@ -11,10 +11,8 @@ import { formatError } from "../output/format.ts";
  */
 
 /** Save the session after this many rounds (counted across the continues of one user message). */
-const SAVE_EVERY = config.saveEvery;
 
 /** Ask whether the work is making progress after this many rounds. */
-const PROGRESS_EVERY = config.progressEvery;
 
 export interface RoundDeps {
   /** Compact `messages` (the turn's conversation) if the next prompt would not fit comfortably. */
@@ -90,8 +88,8 @@ function upkeep(
     if (!compacted.ok) {
       return `Stopped: the conversation is too big for the model and could not be compacted (${formatError(compacted.error)}).`;
     }
-    if (rounds % SAVE_EVERY === 0) await deps.save();
-    if (rounds % PROGRESS_EVERY === 0) return deps.progress();
+    if (rounds % config.saveEvery === 0) await deps.save();
+    if (rounds % config.progressEvery === 0) return deps.progress();
     return undefined;
   };
 }

@@ -3,7 +3,6 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
-const RUN_TIMEOUT_MS = config.playwrightTimeoutMs;
 const RUNNER = fileURLToPath(
   new URL("./playwright-runner.mjs", import.meta.url),
 );
@@ -39,9 +38,9 @@ export class PlaywrightSession {
     return new Promise<string>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(new Error(`snippet timed out after ${RUN_TIMEOUT_MS} ms`));
+        reject(new Error(`snippet timed out after ${config.playwrightTimeoutMs} ms`));
         this.stop();
-      }, RUN_TIMEOUT_MS);
+      }, config.playwrightTimeoutMs);
       this.pending.set(id, { resolve, reject, timer });
       child.stdin?.write(
         `${JSON.stringify({ id, wsUrl: this.wsUrl(), targetId, code })}\n`,

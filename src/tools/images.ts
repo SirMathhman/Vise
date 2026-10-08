@@ -18,7 +18,6 @@ import { errStr } from "./files.ts";
 const EXTENSIONS = [".png", ".jpg", ".jpeg", ".gif", ".webp"];
 
 /** The largest picture file handed to the model (the server downsizes, but the upload itself should stay sane). */
-export const MAX_IMAGE_BYTES = config.maxImageBytes;
 
 /** Pictures produced by the tool call in progress, until the runner collects them. */
 export class ImageOutbox {
@@ -52,9 +51,9 @@ export async function readImageFile(
   }
   const info = await stat(path).catch(() => null);
   if (!info?.isFile()) throw new Error(`${path} is not a file`);
-  if (info.size > MAX_IMAGE_BYTES) {
+  if (info.size > config.maxImageBytes) {
     throw new Error(
-      `${basename(path)} is too large (${Math.round(info.size / 1_000_000)} MB, the limit is ${MAX_IMAGE_BYTES / 1_000_000} MB)`,
+      `${basename(path)} is too large (${Math.round(info.size / 1_000_000)} MB, the limit is ${config.maxImageBytes / 1_000_000} MB)`,
     );
   }
   return { bytes: await readFile(path), label: basename(path) };

@@ -44,13 +44,12 @@ function tabId(args: Record<string, unknown>): number | null {
 }
 
 /** The element outline is always shown in full, so it is bounded here (its script already stops at 200 elements). */
-const MAX_OUTLINE_CHARS = config.maxOutlineChars;
 
 function clip(outline: string): string {
-  return outline.length <= MAX_OUTLINE_CHARS
+  return outline.length <= config.maxOutlineChars
     ? outline
-    : `${outline.slice(0, MAX_OUTLINE_CHARS)}
-[... outline cut at ${MAX_OUTLINE_CHARS} characters]`;
+    : `${outline.slice(0, config.maxOutlineChars)}
+[... outline cut at ${config.maxOutlineChars} characters]`;
 }
 
 /** Run a browser action, turning any failure into the tool's `error:` string. */

@@ -1,3 +1,4 @@
+import "../settings-init.ts";
 import { config } from "../config.ts";
 import { startWebServer } from "./server.ts";
 

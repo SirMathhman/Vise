@@ -1258,3 +1258,9 @@ body:has(#workspace:not(.hidden)) #files-btn {
   color: inherit;
   cursor: pointer;
 }
+
+.setting-group {
+  margin: 0.8rem 0 0.2rem;
+  opacity: 0.8;
+  font-size: 0.85rem;
+}

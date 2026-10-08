@@ -11,16 +11,10 @@ import type { BrowserBackend } from "../browser/types.ts";
  * backend and a large page costs a few bytes a poll, not its whole text.
  */
 
-const POLL_MS = config.waitPollMs;
 /** How long the page must stay unchanged to count as settled. */
-const QUIET_MS = config.waitQuietMs;
 /** A page that has not changed at all is only called settled after this long: an update may still be coming. */
-const MIN_IDLE_MS = config.waitMinIdleMs;
 /** One probe must not hang the wait (a blocking dialog can stall a page's script). */
-const PROBE_TIMEOUT_MS = config.waitProbeTimeoutMs;
 
-export const DEFAULT_TIMEOUT_SECONDS = config.waitDefaultSeconds;
-const MAX_TIMEOUT_SECONDS = config.waitMaxSeconds;
 
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
@@ -29,8 +23,8 @@ const sleep = (ms: number): Promise<void> =>
 export function timeoutMs(value: unknown): number {
   const seconds =
     typeof value === "number" && Number.isFinite(value) && value > 0
-      ? Math.min(value, MAX_TIMEOUT_SECONDS)
-      : DEFAULT_TIMEOUT_SECONDS;
+      ? Math.min(value, config.waitMaxSeconds)
+      : config.waitDefaultSeconds;
   return seconds * 1000;
 }
 
@@ -62,7 +56,7 @@ function look(
   const probe = browser.pageProbe
     ? browser.pageProbe(id, needle)
     : browser.readText(id).then((text) => textProbe(text, needle));
-  return within(probe, PROBE_TIMEOUT_MS);
+  return within(probe, config.waitProbeTimeoutMs);
 }
 
 type Outcome = { how: "done" | "timeout" | "stopped"; took: number };
@@ -85,7 +79,7 @@ async function poll(
     // A dialog that opened is something to answer, not something to wait out.
     if (browser.pendingDialog(id)) return { how: "stopped", took };
     if (took >= limitMs) return { how: "timeout", took };
-    await sleep(POLL_MS);
+    await sleep(config.waitPollMs);
   }
 }
 
@@ -182,7 +176,7 @@ export async function waitForIdle(
         changedAt = elapsed;
       }
       return (
-        elapsed - changedAt >= QUIET_MS && (changed || elapsed >= MIN_IDLE_MS)
+        elapsed - changedAt >= config.waitQuietMs && (changed || elapsed >= config.waitMinIdleMs)
       );
     },
   );

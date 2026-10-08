@@ -38,8 +38,6 @@ const CANDIDATES = [
 /** Browser-owned pages (welcome, sync prompts, devtools) are not the agent's tabs. */
 const BROWSER_INTERNAL = /^(edge|chrome|devtools|chrome-extension):\/\//;
 
-const LOAD_TIMEOUT_MS = config.chromiumLoadTimeoutMs;
-const LAUNCH_TIMEOUT_MS = config.chromiumLaunchTimeoutMs;
 
 interface TargetInfo {
   targetId: string;
@@ -367,7 +365,7 @@ export class ChromiumBackend implements BrowserBackend {
       const timer = setTimeout(() => {
         off();
         resolve();
-      }, LOAD_TIMEOUT_MS);
+      }, config.chromiumLoadTimeoutMs);
     });
   }
 
@@ -461,7 +459,7 @@ export class ChromiumBackend implements BrowserBackend {
 
 /** Wait for the browser to write DevToolsActivePort (line 1: port, line 2: browser WS path). */
 async function readPortFile(file: string): Promise<[string, string]> {
-  const deadline = Date.now() + LAUNCH_TIMEOUT_MS;
+  const deadline = Date.now() + config.chromiumLaunchTimeoutMs;
   while (Date.now() < deadline) {
     if (existsSync(file)) {
       const [port, path] = readFileSync(file, "utf8").split(/\r?\n/);

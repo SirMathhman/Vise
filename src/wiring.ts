@@ -1,3 +1,4 @@
+import { config } from "./config.ts";
 import { join } from "node:path";
 import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
@@ -27,7 +28,6 @@ import {
 import type { ModelController, ProfileSource } from "./repl/ports.ts";
 import {
   compactInPlace,
-  IN_TURN_COMPACTION_THRESHOLD,
 } from "./repl/compaction.ts";
 import { Session } from "./repl/session.ts";
 import { TempStore, tempHandlers } from "./tools/temp-store.ts";
@@ -220,7 +220,7 @@ function subagentCallbacks(
     onSubagentToken: options.onSubagentToken,
     isToolEnabled: (name) => toolController.isEnabled(name),
     onRound: (_round, messages) =>
-      compactInPlace(client, client, messages, IN_TURN_COMPACTION_THRESHOLD),
+      compactInPlace(client, client, messages, config.inTurnCompactionThreshold),
   };
 }
 

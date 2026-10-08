@@ -27,7 +27,6 @@ const CORE_TOOLS = new Set([
   "list_temp",
 ]);
 
-const MAX_RESULTS = config.toolSearchMaxResults;
 
 export const searchToolsDef: Tool = {
   type: "function",
@@ -75,7 +74,7 @@ function rank(defs: Tool[], query: string): Tool[] {
     })
     .filter((s) => s.score > 0)
     .sort((a, b) => b.score - a.score);
-  return scored.slice(0, MAX_RESULTS).map((s) => s.t);
+  return scored.slice(0, config.toolSearchMaxResults).map((s) => s.t);
 }
 
 /**

@@ -72,8 +72,6 @@ const SHOWN = [
   "key",
 ] as const;
 
-const PART_MAX = config.toolLinePartMax;
-const DETAIL_MAX = config.toolLineDetailMax;
 
 function clip(text: string, max: number): string {
   const flat = text.replace(/\s+/g, " ").trim();
@@ -86,10 +84,10 @@ const SENSITIVE: Record<string, string> = { browser_type: "text" };
 function partOf(key: string, value: unknown): string | undefined {
   if (Array.isArray(value)) {
     const items = value.filter((v): v is string => typeof v === "string");
-    return items.length > 0 ? clip(items.join(", "), PART_MAX) : undefined;
+    return items.length > 0 ? clip(items.join(", "), config.toolLinePartMax) : undefined;
   }
   if (typeof value !== "string" || value.trim() === "") return undefined;
-  const shown = clip(value, PART_MAX);
+  const shown = clip(value, config.toolLinePartMax);
   return key === "text" ? JSON.stringify(shown) : shown;
 }
 
@@ -108,7 +106,7 @@ export function toolDetail(
       : partOf(key, args[key]);
     if (part) parts.push(part);
   }
-  return clip(parts.join(" · "), DETAIL_MAX);
+  return clip(parts.join(" · "), config.toolLineDetailMax);
 }
 
 /** The one-line form: `<icon> <name> · <detail>`. */

@@ -6,7 +6,6 @@ import type { BrowserInput, FrameListener } from "./types.ts";
 /** Live view and input forwarding for one Firefox tab (BiDi browsing context). */
 
 /** Pause between screenshots; BiDi has no screencast, so the view polls. */
-const FRAME_INTERVAL_MS = config.liveViewFrameMs;
 
 const BUTTONS = { left: 0, middle: 1, right: 2, none: 0 } as const;
 
@@ -43,7 +42,7 @@ export async function startScreencast(
     } catch {
       // the tab is navigating or gone; try again on the next tick
     }
-    if (!stopped) timer = setTimeout(() => void capture(), FRAME_INTERVAL_MS);
+    if (!stopped) timer = setTimeout(() => void capture(), config.liveViewFrameMs);
   };
   void capture();
   return async () => {

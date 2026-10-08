@@ -9,7 +9,6 @@ import type { BrowserBackend, TabInfo } from "../browser/types.ts";
  */
 
 /** How long a page gets, after an action, to open its popup (it is usually immediate). */
-const SETTLE_MS = config.tabSettleMs;
 
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
@@ -32,7 +31,7 @@ export class TabWatcher {
     const before = this.seen;
     this.seen = null;
     if (!before) return "";
-    await sleep(SETTLE_MS);
+    await sleep(config.tabSettleMs);
     try {
       const fresh = (await this.browser.listTabs()).filter(
         (tab) => !before.has(tab.id),

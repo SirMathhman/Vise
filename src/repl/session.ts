@@ -31,7 +31,6 @@ import {
 import {
   addedSinceLastCall,
   autoCompact,
-  IN_TURN_COMPACTION_THRESHOLD,
   runCompaction,
 } from "./compaction.ts";
 import { makeRoundHook, NoticeQueue } from "./round-hooks.ts";
@@ -96,7 +95,6 @@ import type {
  * reaches this fraction of the model's context window. Chosen high enough that
  * a normal turn only compacts when overflow is genuinely imminent.
  */
-const COMPACTION_THRESHOLD = config.compactionThreshold;
 
 type OnRound = TurnCallbacks["onRound"];
 
@@ -332,7 +330,7 @@ export class Session {
         autoCompact(
           this.compactionSource,
           this.context,
-          IN_TURN_COMPACTION_THRESHOLD,
+          config.inTurnCompactionThreshold,
           true,
           addedSinceLastCall(messages),
         ),
@@ -570,7 +568,7 @@ export class Session {
     return autoCompact(
       this.compactionSource,
       this.context,
-      COMPACTION_THRESHOLD,
+      config.compactionThreshold,
     );
   }
 

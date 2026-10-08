@@ -23,19 +23,11 @@ import { join } from "node:path";
  */
 
 /** More lines than this, or more characters than `MAX_CHARS`, and a result is saved instead of shown. */
-export const MAX_LINES = config.resultMaxLines;
-export const MAX_CHARS = config.resultMaxChars;
 
 /** How much of a spilled result is still shown inline, so the model knows what it is. */
-const PREVIEW_LINES = config.previewLines;
-const PREVIEW_CHARS = config.previewChars;
 
-const MAX_MATCHES = config.searchMaxMatches;
-const MAX_MATCH_CHARS = config.searchMaxMatchChars;
-const STALE_MS = config.tempStaleMs;
 
 /** A live session marks its folder as in use this often, so another process starting up never sweeps it. */
-const HEARTBEAT_MS = config.tempHeartbeatMs;
 
 /** Temp file names are `<tool>-<n>`: one path-safe segment, never a path. */
 const VALID_NAME = /^[\w.-]+$/;
@@ -49,7 +41,7 @@ function sweepStale(base: string): void {
   try {
     for (const name of readdirSync(base)) {
       const dir = join(base, name);
-      if (Date.now() - statSync(dir).mtimeMs > STALE_MS) {
+      if (Date.now() - statSync(dir).mtimeMs > config.tempStaleMs) {
         rmSync(dir, { recursive: true, force: true });
       }
     }
@@ -63,21 +55,21 @@ const countLines = (text: string): number =>
 
 /** Whether a tool result is too big to show the model in full. */
 export function isTooLarge(text: string): boolean {
-  return text.length > MAX_CHARS || countLines(text) > MAX_LINES;
+  return text.length > config.resultMaxChars || countLines(text) > config.resultMaxLines;
 }
 
 /** `text` cut to what is allowed to be shown, for when it cannot be saved (or there is nowhere to save it). */
 export function truncateInline(text: string, why: string): string {
-  const head = text.split(/\r?\n/).slice(0, MAX_LINES).join("\n");
-  const shown = head.length > MAX_CHARS ? head.slice(0, MAX_CHARS) : head;
+  const head = text.split(/\r?\n/).slice(0, config.resultMaxLines).join("\n");
+  const shown = head.length > config.resultMaxChars ? head.slice(0, config.resultMaxChars) : head;
   return `${shown}\n[... output too large to show (${countLines(text)} lines, ${text.length} characters) and ${why}; only the start is shown.]`;
 }
 
 /** The start of `text`: a few lines, and never more than `PREVIEW_CHARS` characters. */
 function preview(text: string): string {
-  const head = text.split(/\r?\n/).slice(0, PREVIEW_LINES).join("\n");
-  return head.length > PREVIEW_CHARS
-    ? `${head.slice(0, PREVIEW_CHARS)}...`
+  const head = text.split(/\r?\n/).slice(0, config.previewLines).join("\n");
+  return head.length > config.previewChars
+    ? `${head.slice(0, config.previewChars)}...`
     : head;
 }
 
@@ -98,7 +90,7 @@ export class TempStore {
       mkdirSync(dir, { recursive: true, mode: 0o700 });
       this.dir = dir;
       // Never keeps the process alive; only keeps this session's folder from looking abandoned.
-      this.heartbeat = setInterval(() => this.touch(), HEARTBEAT_MS);
+      this.heartbeat = setInterval(() => this.touch(), config.tempHeartbeatMs);
       this.heartbeat.unref();
     }
     return this.dir;
@@ -159,16 +151,16 @@ export class TempStore {
     const all = this.lines(name);
     if (typeof all === "string") return all;
     const from = Math.max(1, Math.floor(offset));
-    const count = Math.min(MAX_LINES, Math.max(1, Math.floor(limit)));
+    const count = Math.min(config.resultMaxLines, Math.max(1, Math.floor(limit)));
     const slice = all.slice(from - 1, from - 1 + count);
     if (slice.length === 0) {
       return `error: '${name}' has ${all.length} lines; there is nothing at line ${from}`;
     }
     let shown = slice.join("\n");
     let last = from + slice.length - 1;
-    if (shown.length > MAX_CHARS) {
+    if (shown.length > config.resultMaxChars) {
       // Wide lines: the line limit alone could still be far more than a spilled result was allowed to be.
-      shown = shown.slice(0, MAX_CHARS);
+      shown = shown.slice(0, config.resultMaxChars);
       last = from + shown.split("\n").length - 1;
     }
     const more =
@@ -196,8 +188,8 @@ export class TempStore {
       all.forEach((line, i) => {
         if (!re.test(line)) return;
         total++;
-        if (out.length < MAX_MATCHES) {
-          out.push(`${n}:${i + 1}: ${line.slice(0, MAX_MATCH_CHARS)}`);
+        if (out.length < config.searchMaxMatches) {
+          out.push(`${n}:${i + 1}: ${line.slice(0, config.searchMaxMatchChars)}`);
         }
       });
     }
@@ -240,7 +232,7 @@ export function tempHandlers(
       store.read(
         String(args["name"] ?? ""),
         num(args["offset"], 1),
-        num(args["limit"], MAX_LINES),
+        num(args["limit"], config.resultMaxLines),
       ),
     search_temp: (args) =>
       store.search(

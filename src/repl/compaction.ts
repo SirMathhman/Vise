@@ -15,16 +15,12 @@ import type { CompactionSource } from "./session.ts";
  * compaction, in addition to the summary. Keeps enough recent context that the
  * conversation continues to feel continuous.
  */
-const RECENT_TURNS_TO_KEEP = config.recentTurnsToKeep;
 
 /** Compacting inside one long turn: how many of its latest rounds (an assistant message with its tool results) stay verbatim. */
-const ROUNDS_TO_KEEP = config.roundsToKeep;
 
 /** Compacting inside a turn: the verbatim tail may take at most this share of the context window. */
-const TAIL_SHARE = config.tailShare;
 
 /** Inside a long turn the context can grow by a whole page read per round, so compaction starts earlier than between turns. */
-export const IN_TURN_COMPACTION_THRESHOLD = config.inTurnCompactionThreshold;
 
 /**
  * A successful no-op compaction result: nothing needed to be compacted.
@@ -52,7 +48,7 @@ export async function autoCompact(
   if (!max.ok) return withinTurn ? okNoop() : max;
   if (lastUsed + pending < threshold * max.value) return okNoop();
   // The verbatim tail may take a quarter of the window, so what is summarized (and the request to do it) fits.
-  return runCompaction(source, withinTurn, TAIL_SHARE * max.value);
+  return runCompaction(source, withinTurn, config.tailShare * max.value);
 }
 
 /** Tokens added to the conversation since the last model call: its reply and the tool results that followed. */
@@ -108,9 +104,9 @@ export async function runCompaction(
   // Turns are the natural unit, but one turn can hold hundreds of tool calls:
   // then (or when asked to, mid-turn) the split goes inside the turn.
   const byTurns = (): ReturnType<typeof splitForCompaction> =>
-    splitForCompaction(conversation, RECENT_TURNS_TO_KEEP);
+    splitForCompaction(conversation, config.recentTurnsToKeep);
   const inTurn = (): ReturnType<typeof splitForCompaction> =>
-    splitWithinTurn(conversation, ROUNDS_TO_KEEP, tailBudget);
+    splitWithinTurn(conversation, config.roundsToKeep, tailBudget);
   let split = withinTurn ? inTurn() : byTurns();
   if (split.toSummarize.length === 0) split = withinTurn ? byTurns() : inTurn();
   if (split.toSummarize.length === 0) {

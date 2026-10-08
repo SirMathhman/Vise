@@ -1,4 +1,5 @@
-import { isTooLarge, MAX_CHARS, MAX_LINES } from "./temp-store.ts";
+import { config } from "../config.ts";
+import { isTooLarge } from "./temp-store.ts";
 import {
   existsSync,
   mkdirSync,
@@ -43,11 +44,11 @@ export function readFile(args: Record<string, unknown>): string {
     if (all.length < from) {
       return `error: the file has ${all.length} lines; there is nothing at line ${from}`;
     }
-    const count = Math.min(MAX_LINES, Math.max(1, num(args.limit, MAX_LINES)));
+    const count = Math.min(config.resultMaxLines, Math.max(1, num(args.limit, config.resultMaxLines)));
     let shown = all.slice(from - 1, from - 1 + count).join("\n");
     let last = Math.min(all.length, from - 1 + count);
-    if (shown.length > MAX_CHARS) {
-      shown = shown.slice(0, MAX_CHARS);
+    if (shown.length > config.resultMaxChars) {
+      shown = shown.slice(0, config.resultMaxChars);
       last = from - 1 + shown.split("\n").length;
     }
     const more =

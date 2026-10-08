@@ -37,7 +37,6 @@ import {
 import { initWorkflow, listWorkflows, loadWorkflow } from "./workflows.ts";
 
 /** Most notes the startup message lists (the rest are reached with `list_notes`). */
-const STARTUP_NOTE_LIMIT = config.startupNoteLimit;
 
 /**
  * Edge implementation of ProfileSource backed by a `profiles/` directory of
@@ -473,7 +472,7 @@ export function buildInitialMessage(
       ? `\n\nHere are the available profiles:\n${availableProfiles.join(", ")}`
       : "") +
     (availableNotes.length > 0
-      ? `\n\nHere are the available notes, by scope and category (global notes are shared by every project; list_notes with a scope and/or category lists just that group):\n${formatNotesWithin(availableNotes, STARTUP_NOTE_LIMIT)}`
+      ? `\n\nHere are the available notes, by scope and category (global notes are shared by every project; list_notes with a scope and/or category lists just that group):\n${formatNotesWithin(availableNotes, config.startupNoteLimit)}`
       : "")
   );
 }

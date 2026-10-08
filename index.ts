@@ -1,3 +1,4 @@
+import "./src/settings-init.ts";
 import { createInterface } from "node:readline";
 import { TerminalDriver } from "./src/driver/terminal.ts";
 import { StreamDisplay } from "./src/driver/stream.ts";

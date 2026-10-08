@@ -30,10 +30,8 @@ export type GoalEvent =
   | { kind: "setting"; enabled: boolean };
 
 /** The same unmet step this many times in a row ends the turn as blocked. */
-const MAX_SAME_STEP = config.maxSameStep;
 
 /** After this many automatic continues in one turn, the user is asked whether to go on. */
-const CONTINUES_BEFORE_ASKING = config.continuesBeforeAsking;
 
 /** What the tracker needs from its surroundings while it loops. */
 export interface GoalHooks {
@@ -189,13 +187,13 @@ export class GoalTracker {
       const sameStep = verdict.detail === step;
       repeats = sameStep ? repeats + 1 : 0;
       const idle = toolResults(messages) === results;
-      if (sameStep && (idle || repeats >= MAX_SAME_STEP)) {
+      if (sameStep && (idle || repeats >= config.maxSameStep)) {
         this.block(
           `${verdict.detail} (it is not getting anywhere with this step)`,
         );
         return turn;
       }
-      if (continues > 0 && continues % CONTINUES_BEFORE_ASKING === 0) {
+      if (continues > 0 && continues % config.continuesBeforeAsking === 0) {
         const more =
           (await hooks.confirmMore?.(
             `The goal still is not met after ${continues} automatic continues. Keep going?`,

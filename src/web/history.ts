@@ -17,7 +17,6 @@ export type HistoryEntry =
   | { kind: "note"; text: string };
 
 /** The most lines restored at once; older ones are summarised as a count. */
-const MAX_ENTRIES = config.historyMaxEntries;
 
 /** The burst-mode plan the engine puts in front of an assistant message is not something to show. */
 const PLAN = /^<plan>[\s\S]*?<\/plan>\n?/;
@@ -75,8 +74,8 @@ export function historyEntries(messages: Message[]): HistoryEntry[] {
       }
     }
   });
-  if (entries.length <= MAX_ENTRIES) return entries;
-  const cut = entries.length - MAX_ENTRIES;
+  if (entries.length <= config.historyMaxEntries) return entries;
+  const cut = entries.length - config.historyMaxEntries;
   return [
     { kind: "note", text: `(${cut} earlier lines are not shown)` },
     ...entries.slice(cut),

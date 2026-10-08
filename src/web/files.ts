@@ -14,7 +14,6 @@ import { relative, resolve, sep } from "node:path";
  */
 
 /** Largest file the viewer will return; bigger ones are reported as too large. */
-const MAX_FILE_BYTES = config.maxFileBytes;
 
 export interface DirEntry {
   name: string;
@@ -73,7 +72,7 @@ export function readTextFile(
   try {
     const stat = statSync(abs);
     if (!stat.isFile()) return { ok: false, error: "not a file", status: 400 };
-    if (stat.size > MAX_FILE_BYTES)
+    if (stat.size > config.maxFileBytes)
       return { ok: false, error: "file too large to view", status: 413 };
     const buf = readFileSync(abs);
     if (buf.includes(0))

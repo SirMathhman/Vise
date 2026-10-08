@@ -6,7 +6,6 @@ import { errStr } from "./files.ts";
  * Foreground commands that do not finish within this window are killed.
  * Background processes are not subject to this limit.
  */
-const FOREGROUND_TIMEOUT_MS = config.shellTimeoutMs;
 
 type ProcessStatus = "running" | "finished" | "killed";
 
@@ -142,7 +141,7 @@ export async function runPowershell(
     const timer = setTimeout(() => {
       timedOut = true;
       proc.kill("SIGTERM");
-    }, FOREGROUND_TIMEOUT_MS);
+    }, config.shellTimeoutMs);
     const result = await new Promise<{ status: number }>((resolve, reject) => {
       proc.on("close", (status) => {
         clearTimeout(timer);

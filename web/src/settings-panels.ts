@@ -2,10 +2,11 @@ import {
   type BrowserSettingsFields,
   createBrowserSettings,
 } from "./browser-settings.ts";
+import { createEnvPanel, type EnvMessage } from "./env-panel.ts";
 import { createNotesPanel, type NotesMessage } from "./notes-panel.ts";
 
 /** The slice of a server message the settings tabs react to. */
-type SettingsMessage = NotesMessage & BrowserSettingsFields;
+type SettingsMessage = NotesMessage & BrowserSettingsFields & EnvMessage;
 
 function el<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -22,6 +23,10 @@ export function createSettingsPanels(
   send: (msg: Record<string, unknown>) => void,
 ): { handle(message: SettingsMessage): boolean } {
   const browser = createBrowserSettings(el("browser-settings-body"), send);
+  const general = createEnvPanel(el("general-body"), send, [
+    el("settings-btn"),
+    el("general-tab"),
+  ]);
   const notes = createNotesPanel(el("notes-body"), send, [
     el("settings-btn"),
     el("notes-tab"),
@@ -32,7 +37,7 @@ export function createSettingsPanels(
         browser.handle(message);
         return true;
       }
-      return notes.handle(message);
+      return general.handle(message) || notes.handle(message);
     },
   };
 }

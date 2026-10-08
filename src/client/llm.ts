@@ -19,9 +19,6 @@ import type {
   Result,
 } from "../core/errors.ts";
 
-const URL = config.llmChatUrl;
-const API_KEY = config.llmApiKey;
-const MODEL = config.llmModel;
 /** The inference backend label reported by the `self` tool. */
 export const BACKEND = "llama.cpp";
 
@@ -63,7 +60,7 @@ export type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
 
 export class LlmClient implements Client {
   private lastPromptTokens: number | undefined;
-  private currentModel: string = MODEL;
+  private currentModel: string = config.llmModel;
   /** Turns the pictures in the conversation into what is sent to the model (set by the edge, which owns the image files). */
   imageResolver?: ImageResolver;
   /**
@@ -109,7 +106,7 @@ export class LlmClient implements Client {
     const response = await this.slotFetch(
       `${config.llmBaseUrl}/slots?model=${model}&include_slots=true`,
       {
-        headers: { authorization: `Bearer ${API_KEY}` },
+        headers: { authorization: `Bearer ${config.llmApiKey}` },
       },
       this.slotRequestTimeoutMs,
     );
@@ -160,7 +157,7 @@ export class LlmClient implements Client {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          authorization: `Bearer ${API_KEY}`,
+          authorization: `Bearer ${config.llmApiKey}`,
         },
         body: JSON.stringify({ filename, model: this.currentModel }),
       },
@@ -232,7 +229,7 @@ export class LlmClient implements Client {
    * `/props` report vision. False when that cannot be found out.
    */
   async supportsVision(model: string = this.currentModel): Promise<boolean> {
-    const headers = { authorization: `Bearer ${API_KEY}` };
+    const headers = { authorization: `Bearer ${config.llmApiKey}` };
     try {
       const listed = await fetch(`${config.llmBaseUrl}/v1/models`, {
         headers,
@@ -265,7 +262,7 @@ export class LlmClient implements Client {
     try {
       const res = await fetch(`${config.llmBaseUrl}/v1/models`, {
         method: "GET",
-        headers: { authorization: `Bearer ${API_KEY}` },
+        headers: { authorization: `Bearer ${config.llmApiKey}` },
       });
       if (!res.ok) {
         const text = await res.text();
@@ -306,7 +303,7 @@ export class LlmClient implements Client {
         `${config.llmBaseUrl}/slots?model=${encodeURIComponent(this.currentModel)}`,
         {
           method: "GET",
-          headers: { authorization: `Bearer ${API_KEY}` },
+          headers: { authorization: `Bearer ${config.llmApiKey}` },
         },
       );
       if (!res.ok) {
@@ -398,11 +395,11 @@ export class LlmClient implements Client {
     }
     this.applyReasoningEffort(body);
     try {
-      const res = await fetch(URL, {
+      const res = await fetch(config.llmChatUrl, {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          authorization: `Bearer ${API_KEY}`,
+          authorization: `Bearer ${config.llmApiKey}`,
         },
         body: JSON.stringify(body),
         signal,

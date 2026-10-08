@@ -68,7 +68,6 @@ export interface ExtensionLink {
 }
 
 /** Largest total upload sent through the extension (the data goes over a WebSocket as base64). */
-const MAX_UPLOAD_BYTES = config.maxUploadBytes;
 
 const NO_LIVE_VIEW =
   "the Firefox extension works in your real browser window, so there is no live view";
@@ -128,9 +127,9 @@ export class ExtensionBackend implements BrowserBackend {
     for (const path of paths) {
       const bytes = await readFile(path);
       total += bytes.length;
-      if (total > MAX_UPLOAD_BYTES) {
+      if (total > config.maxUploadBytes) {
         throw new Error(
-          `the files are too large to send to the Firefox extension (limit ${MAX_UPLOAD_BYTES / 1_000_000} MB in total)`,
+          `the files are too large to send to the Firefox extension (limit ${config.maxUploadBytes / 1_000_000} MB in total)`,
         );
       }
       files.push({

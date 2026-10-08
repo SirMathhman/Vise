@@ -14,6 +14,7 @@ import { loadExtensionToken, tokensMatch } from "./ext-token.ts";
 import { handleNoteMessage } from "./notes-api.ts";
 import { queueLine, steerLine, unqueue } from "./line.ts";
 import type { HeldLine } from "./line.ts";
+import { handleSettingsMessage } from "./settings-api.ts";
 import { handleQueueCommand } from "./queue-commands.ts";
 import { SessionLease } from "./leases.ts";
 import { queueAutoResume } from "./resume.ts";
@@ -489,6 +490,8 @@ interface WireMessage {
   images?: unknown;
   /** `line`: the page's id for a message held until the work in flight is done; `unqueue`: the one to remove. */
   qid?: string;
+  /** `env_set`: the settings page's values by variable name. */
+  values?: Record<string, string>;
 }
 
 /**
@@ -542,6 +545,11 @@ function handleMessage(
   if (msg.type.startsWith("browser_")) {
     // Browser view traffic never queues behind a model turn.
     void conn.bridge.handle(msg as unknown as Record<string, unknown>);
+    return;
+  }
+  if (msg.type === "env_get" || msg.type === "env_set") {
+    // Settings read and write the user-level settings file directly; never queued behind a turn.
+    for (const reply of handleSettingsMessage(msg as unknown as Record<string, unknown>) ?? []) send(reply);
     return;
   }
   if (msg.type.startsWith("note")) {

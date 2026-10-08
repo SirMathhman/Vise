@@ -2,8 +2,6 @@ import { config } from "./config.ts";
 import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-const MAX_DEPTH = config.treeMaxDepth;
-const MAX_ENTRIES = config.treeMaxEntries;
 
 /**
  * Build a capped initial directory structure as a multi-line string for
@@ -32,7 +30,7 @@ export function buildInitialTree(dir: string): string {
     // `depth` is the number of directory levels below root whose children
     // we are about to enumerate. When depth reaches MAX_DEPTH, the children
     // would be at MAX_DEPTH + 1 levels below root, which is beyond the cap.
-    if (truncated || depth >= MAX_DEPTH || entries >= MAX_ENTRIES) return;
+    if (truncated || depth >= config.treeMaxDepth || entries >= config.treeMaxEntries) return;
 
     let items: string[];
     try {
@@ -59,7 +57,7 @@ export function buildInitialTree(dir: string): string {
 
     const indent = "  ".repeat(depth);
     for (const name of dirs) {
-      if (entries >= MAX_ENTRIES) {
+      if (entries >= config.treeMaxEntries) {
         truncated = true;
         return;
       }
@@ -68,7 +66,7 @@ export function buildInitialTree(dir: string): string {
       walk(join(current, name), depth + 1);
     }
     for (const name of files) {
-      if (entries >= MAX_ENTRIES) {
+      if (entries >= config.treeMaxEntries) {
         truncated = true;
         return;
       }
