@@ -24,7 +24,7 @@ import { type HookStore } from "../edge-sources.ts";
 import { dataDirFor, globalDataDir, noFolderRoot } from "../data-dir.ts";
 import { pickFolder, RootRegistry } from "./roots.ts";
 import { createEdgeSession } from "../wiring.ts";
-import { formatToolCall } from "../output/tool-line.ts";
+import { formatToolCall, summarizeToolResult } from "../output/tool-line.ts";
 import { displayOfTool } from "../tools/display.ts";
 import { listDir, readTextFile, watchRoot } from "./files.ts";
 
@@ -54,6 +54,7 @@ import { listDir, readTextFile, watchRoot } from "./files.ts";
  *                     { type:"thinking", text }     a streamed thinking token
  *                     { type:"progress", total, cache, processed, time_ms }
  *                     { type:"tool", name, depth?, text } a tool call began (text: icon, name and a short detail)
+ *                     { type:"tool_result", name, depth, text? } a tool call finished (text: what it came to, e.g. "12 matches"); for run_subagent it closes the subagent's box
  *                     { type:"image", id, mime, label, bytes, width?, height? } a tool produced a picture (fetch it from /api/image/<id>)
  *                     { type:"history", name, entries } the folder's latest saved session was restored on connect (`src/web/history.ts`)
  *                     { type:"result", ok:true, value, streamed?, compactionWarning? }
@@ -429,7 +430,12 @@ function makeConnectionState(
       const line = formatGoalEvent(event);
       if (line) send({ type: "goal", ...line });
     },
-    onSubagentToken: (t) => send({ type: "subagent_token", text: t }),
+    onSubagentToken: (t, depth) => send({ type: "subagent_token", text: t, depth }),
+    onToolResult: (name, depth, result) => {
+      const text = summarizeToolResult(name, result);
+      // A finished subagent always reports (it closes its box); other tools only when there is something to say.
+      if (text !== undefined || name === "run_subagent") send({ type: "tool_result", name, depth, text });
+    },
     askUser: prompter,
     onMaxRounds: async (question) => {
       const answer = await prompter.ask({

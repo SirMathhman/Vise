@@ -379,6 +379,7 @@ function handleCommandResult(message: ResultMessage): void {
 }
 
 function handleResult(message: ResultMessage): void {
+  transcript.endBoxes(); // a turn that ended mid-subagent leaves no box open
   // Answers to side requests leave the turn in flight (its stream, prompt and busy state) alone.
   if (handleToolRefresh(message) || handleToolToggleResult(message)) return;
   transcript.flushAssistant();
@@ -502,11 +503,13 @@ socket.addEventListener("message", (event: MessageEvent<string>) => {
       showImage(transcript, message);
       break;
     case "tool":
-      transcript.appendToolCall(
-        message.name ?? "unknown",
-        message.depth,
-        message.text,
-      );
+      // A subagent's work goes in a box opened by its line (nested in the box of the subagent that started it).
+      if (message.name === "run_subagent") transcript.beginBox(message.text ?? "Run helper agent");
+      else transcript.appendToolCall(message.name ?? "unknown", undefined, message.text);
+      break;
+    case "tool_result":
+      if (message.name === "run_subagent") transcript.endBox();
+      else if (message.text) transcript.appendToolResult(message.text);
       break;
     case "burst":
       burstBtn.classList.toggle("bursting", !!message.active);

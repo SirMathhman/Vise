@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import type {
   Client,
   Tool,
@@ -8,6 +9,9 @@ import { runSubagent } from "../core/engine.ts";
 import { dim } from "../output/color.ts";
 import { formatError } from "../output/format.ts";
 import type { ProfileSource } from "../repl/session.ts";
+
+/** How many subagents deep the code running now is (0 in the main conversation); follows the work across awaits. */
+const subagentDepth = new AsyncLocalStorage<number>();
 
 /**
  * The built-in "default" profile. Every subagent that does not name a custom
@@ -60,6 +64,8 @@ export function makeSubagentHandler(
       profileText = loaded.value;
     }
 
+    // This subagent sits one level below whoever called it, however deep that is.
+    const depth = (subagentDepth.getStore() ?? 0) + 1;
     const systemMessage = {
       role: "system" as const,
       content:
@@ -80,7 +86,7 @@ export function makeSubagentHandler(
     let subAtLineStart = true;
     const indentedOnToken = (token: string) => {
       if (callbacks.onSubagentToken) {
-        callbacks.onSubagentToken(token);
+        callbacks.onSubagentToken(token, depth);
       } else if (callbacks.onToken) {
         const out = subAtLineStart ? "  " + token : token;
         callbacks.onToken(dim(out));
@@ -93,16 +99,19 @@ export function makeSubagentHandler(
         ...callbacks,
         onToken: indentedOnToken,
         onToolCall: (name, _depth, args) => {
-          callbacks.onToolCall?.(name, 1, args);
+          callbacks.onToolCall?.(name, depth, args);
+        },
+        onToolResult: (name, _depth, result) => {
+          callbacks.onToolResult?.(name, depth, result);
         },
         // Forward the parent turn's live abort signal so a subagent's
         // in-flight model call is interrupted together with the parent's
         // turn (the same Ctrl+C that aborts the parent aborts the subagent).
         abort: currentAbortSignal?.(),
       });
-    const result = withPreservedSlotCache
-      ? await withPreservedSlotCache(run)
-      : await run();
+    const result = await subagentDepth.run(depth, () =>
+      withPreservedSlotCache ? withPreservedSlotCache(run) : run(),
+    );
     if (!result.ok) return `error: ${formatError(result.error)}`;
     return result.value;
   };

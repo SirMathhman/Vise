@@ -1386,3 +1386,35 @@ body:has(#workspace:not(.hidden)) #files-btn {
   font-weight: 400;
   color: var(--dim);
 }
+
+/* A subagent's work: a box (nested boxes nest), collapsed when the subagent is done. */
+.box {
+  border-left: 2px solid var(--accent);
+  padding-left: 0.6rem;
+  margin: 0.2rem 0;
+}
+
+.box > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.box > summary::before {
+  content: "▾  ";
+  color: var(--dim);
+}
+
+.box:not([open]) > summary::before {
+  content: "▸  ";
+}
+
+.box.done > summary {
+  opacity: 0.8;
+}
+
+.box-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding-top: 0.3rem;
+}

@@ -4,6 +4,7 @@ import type {
   Client,
   Tool,
   ToolCallListener,
+  ToolResultListener,
   ToolController,
   ToolRunner,
   TurnCallbacks,
@@ -12,7 +13,6 @@ import { runTurn } from "../core/engine.ts";
 import { GoalTracker, handleGoalCommand } from "./goal-loop.ts";
 import type {
   Message,
-  PromptProgress,
   Result,
   ViseError,
 } from "../core/errors.ts";
@@ -157,8 +157,8 @@ export class Session {
   private readonly hooks: SessionHooks;
   private readonly onToken?: (token: string) => void;
   private readonly onThinking?: (token: string) => void;
-  private readonly onPromptProgress?: (progress: PromptProgress) => void;
   private readonly onToolCall?: ToolCallListener;
+  private readonly onToolResult?: ToolResultListener;
   private readonly onImage?: SessionOptions["onImage"];
   /** Images attached with `/image`, for the next message. */
   private readonly attachments: PendingImages;
@@ -201,8 +201,8 @@ export class Session {
     this.hooks = new SessionHooks(options, () => this.activeProfile);
     this.onToken = options.onToken;
     this.onThinking = options.onThinking;
-    this.onPromptProgress = options.onPromptProgress;
     this.onToolCall = options.onToolCall;
+    this.onToolResult = options.onToolResult;
     this.onImage = options.onImage;
     this.attachments = new PendingImages(options.imageSource);
     this.onBurst = options.onBurst;
@@ -262,8 +262,8 @@ export class Session {
       postTurnHooks: () => this.hooks.applicable("post"),
       onToken: () => this.onToken,
       onThinking: () => this.onThinking,
-      onPromptProgress: () => this.onPromptProgress,
       onToolCall: () => this.onToolCall,
+      onToolResult: () => this.onToolResult,
       onImage: () => this.onImage,
       onMaxRounds: () => this.onMaxRounds,
       roundHook: (signal) => this.roundHook(signal),
@@ -312,8 +312,8 @@ export class Session {
       onRound,
       onToken: this.onToken,
       onThinking: this.onThinking,
-      onPromptProgress: this.onPromptProgress,
       onToolCall: this.onToolCall,
+      onToolResult: this.onToolResult,
       onImage: this.onImage,
       onBurst: this.onBurst,
       onMaxRounds: this.onMaxRounds,

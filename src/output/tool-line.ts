@@ -71,7 +71,51 @@ export function toolDetail(
       : partOf(key, args[key]);
     if (part) parts.push(part);
   }
+  const range = readRange(name, args);
+  if (range) parts.push(range);
   return clip(parts.join(" · "), config.toolLineDetailMax);
+}
+
+/** Which lines a read asks for, when it asks for a range: `lines 40–159` (a read is capped at the longest a result may be). */
+function readRange(name: string, args: Record<string, unknown>): string | undefined {
+  if (name !== "read_file" && name !== "read_temp") return undefined;
+  const offset = args["offset"];
+  const limit = args["limit"];
+  if (typeof offset !== "number" && typeof limit !== "number") return undefined;
+  const from = typeof offset === "number" ? Math.max(1, Math.floor(offset)) : 1;
+  const cap = config.resultMaxLines;
+  const count = typeof limit === "number" ? Math.min(cap, Math.max(1, Math.floor(limit))) : cap;
+  return `lines ${from}–${from + count - 1}`;
+}
+
+const lineCount = (text: string): number => (text === "" ? 0 : text.split(/\r?\n/).length);
+
+/**
+ * What a finished call came to, in a few words, to show beside it: which lines
+ * a read returned, how many files or matches a search found. Undefined for a
+ * tool that has nothing worth saying (it is not shown). Read from the result
+ * the model got, so a result saved to a file because it was too long still
+ * reports its real size.
+ */
+export function summarizeToolResult(name: string, result: string): string | undefined {
+  const text = result.trim();
+  if (text.startsWith("error:")) return clip(text, 80);
+  if (name === "read_file" || name === "read_temp") {
+    const header = /^\[(?:[^\]]*: )?lines (\d+)-(\d+) of (\d+)\]/.exec(text);
+    if (header) return `lines ${header[1]}–${header[2]} of ${header[3]}`;
+    return name === "read_file" ? `${lineCount(text)} lines` : undefined;
+  }
+  if (name !== "find_files" && name !== "search_files" && name !== "search_temp") return undefined;
+  if (text === "no matches") return "no matches";
+  const saved = /output too large to show: (\d+) lines/.exec(text)?.[1];
+  const more = /\[(\d+) more matches/.exec(text)?.[1];
+  const found = saved
+    ? Number(saved)
+    : more
+      ? lineCount(text) - 1 + Number(more)
+      : lineCount(text);
+  if (name === "find_files") return `${found} file${found === 1 ? "" : "s"}`;
+  return `${found} match${found === 1 ? "" : "es"}`;
 }
 
 /** A readable name made from an identifier, for a tool that declares no display of its own: `read_file` is "Read file". */

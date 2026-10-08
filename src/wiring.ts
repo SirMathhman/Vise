@@ -12,6 +12,7 @@ import type {
   Client,
   Tool,
   ToolCallListener,
+  ToolResultListener,
   ToolRunner,
   ToolController,
   TurnCallbacks,
@@ -149,6 +150,7 @@ export interface EdgeSessionOptions {
   onPromptProgress?: (progress: PromptProgress) => void;
   /** Notified of each tool invocation before execution. */
   onToolCall?: ToolCallListener;
+  onToolResult?: ToolResultListener;
   /** A tool produced a picture (a screenshot, a viewed file) for the user to see. */
   onImage?: (image: Picture) => void;
   /** Notified when burst mode enters or leaves an act round. */
@@ -158,7 +160,7 @@ export interface EdgeSessionOptions {
   /** Whether each turn is checked against a goal (default on). */
   goalChecking?: boolean;
   /** Plain-text subagent output, for frontends that style it themselves. */
-  onSubagentToken?: (token: string) => void;
+  onSubagentToken?: (token: string, depth?: number) => void;
   /** Collects the user's answer to an `ask_user` tool call. */
   askUser: UserPrompter;
   /** Prompts the user to continue past the maximum tool rounds. */
@@ -215,6 +217,7 @@ function subagentCallbacks(
     onToken: options.onToken,
     onThinking: options.onThinking,
     onToolCall: options.onToolCall,
+    onToolResult: options.onToolResult,
     onImage: options.onImage,
     onSubagentToken: options.onSubagentToken,
     isToolEnabled: (name) => toolController.isEnabled(name),
@@ -231,6 +234,7 @@ function displayCallbacks(
   | "onToken"
   | "onThinking"
   | "onToolCall"
+  | "onToolResult"
   | "onImage"
   | "onBurst"
   | "onGoal"
@@ -239,6 +243,7 @@ function displayCallbacks(
     onToken: options.onToken,
     onThinking: options.onThinking,
     onToolCall: options.onToolCall,
+    onToolResult: options.onToolResult,
     onImage: options.onImage,
     onBurst: options.onBurst,
     onGoal: options.onGoal,

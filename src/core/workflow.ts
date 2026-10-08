@@ -154,13 +154,13 @@ async function runToolStep(
     content: generated.value.content,
   });
   options.callbacks.onToolCall?.(step.name, 0, args.value);
-  const run = options.tools.run.bind(options.tools);
   let output: string;
   try {
-    output = await run(step.name, args.value, options.callbacks.abort);
+    output = await options.tools.run(step.name, args.value, options.callbacks.abort);
   } catch (error) {
     output = `error: ${error instanceof Error ? error.message : String(error)}`;
   }
+  options.callbacks.onToolResult?.(step.name, 0, output);
   options.messages.push({
     role: "user",
     content: `Workflow tool step ${number} result from '${step.name}':\n${output}`,

@@ -1,5 +1,5 @@
-import type { ToolCallListener, ToolController } from "../core/engine.ts";
-import type { Picture, PromptProgress } from "../core/errors.ts";
+import type { ToolCallListener, ToolController, ToolResultListener } from "../core/engine.ts";
+import type { Picture } from "../core/errors.ts";
 import type { GoalEvent } from "./goal-loop.ts";
 import type {
   ContextSource,
@@ -67,9 +67,9 @@ export interface SessionOptions {
    * being computed during the silent prefill. Used for all model calls
    * including tool rounds.
    */
-  onPromptProgress?: (progress: PromptProgress) => void;
   /** Edge-provided notification for each tool invocation before execution. */
   onToolCall?: ToolCallListener;
+  onToolResult?: ToolResultListener;
   /** A tool produced a picture for the user to see (the model gets it with the result). */
   onImage?: (image: Picture) => void;
   /** Notified when burst mode enters or leaves an act round. */

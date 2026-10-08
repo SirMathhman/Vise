@@ -265,12 +265,10 @@ export interface GoalLine {
   level: "info" | "ok" | "warn" | "ask";
 }
 
-/** The line shown for a goal event (undefined for events that show nothing: the setting changing, or a plain continue). */
+/** The line shown for a goal event (undefined for events that show nothing: the goal itself, the setting changing, or a plain continue). */
 export function formatGoalEvent(event: GoalEvent): GoalLine | undefined {
-  if (event.kind === "goal") {
-    return { text: `goal: ${event.goal}`, level: "info" };
-  }
-  if (event.kind === "setting") return undefined;
+  // The goal the agent derived is its own working note: not shown. Only how it ended is.
+  if (event.kind === "goal" || event.kind === "setting") return undefined;
   const detail = event.detail === "" ? "" : ` — ${event.detail}`;
   if (event.verdict === "yes") {
     return { text: `✓ goal met${detail}`, level: "ok" };

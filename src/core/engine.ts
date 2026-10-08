@@ -82,11 +82,15 @@ export type ToolCallListener = (
   args?: Record<string, unknown>,
 ) => void;
 
+/** Told that a tool call finished: its name, how deep in subagents it is, and the result the model got (for display). */
+export type ToolResultListener = (name: string, depth: number, result: string) => void;
+
 export interface TurnCallbacks {
   onToken?: (token: string) => void;
   onThinking?: (token: string) => void;
   onPromptProgress?: (progress: PromptProgress) => void;
   onToolCall?: ToolCallListener;
+  onToolResult?: ToolResultListener;
   /** A tool produced a picture (for the user to see; the model already gets it with the result). */
   onImage?: (image: Picture) => void;
   /**
@@ -94,7 +98,7 @@ export interface TurnCallbacks {
    * itself (the web UI) supplies this; when absent the subagent handler
    * falls back to a dimmed, indented copy sent through `onToken`.
    */
-  onSubagentToken?: (token: string) => void;
+  onSubagentToken?: (token: string, depth?: number) => void;
   /** Asked when a turn has run `MAX_TOOL_ROUNDS` rounds (and by other long-running loops); `question` says what is being asked. */
   onMaxRounds?: (question: string) => Promise<boolean>;
   /**
@@ -318,11 +322,13 @@ export function splitWithinTurn(
  */
 /** The conversation message for a tool's result, carrying any pictures the tool produced. */
 function toolResult(
+  name: string,
   output: string,
   id: string,
   tools: ToolRunner,
   callbacks: TurnCallbacks,
 ): Message {
+  callbacks.onToolResult?.(name, 0, output);
   const images = tools.takeImages?.() ?? [];
   for (const image of images) callbacks.onImage?.(image);
   return {
@@ -442,7 +448,7 @@ ${reply.content}`
           output = `error: failed to execute ${tc.function.name}`;
         }
         failed ||= output.startsWith("error:");
-        messages.push(toolResult(output, tc.id, tools, callbacks));
+        messages.push(toolResult(tc.function.name, output, tc.id, tools, callbacks));
       }
       act = !!callbacks.burst && !failed;
       if (!act) setBurst(false);

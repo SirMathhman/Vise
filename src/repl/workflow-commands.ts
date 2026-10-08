@@ -3,6 +3,7 @@ import type {
   Client,
   Tool,
   ToolCallListener,
+  ToolResultListener,
   ToolRunner,
   TurnCallbacks,
 } from "../core/engine.ts";
@@ -10,7 +11,6 @@ import { runWorkflow } from "../core/workflow.ts";
 import type { WorkflowScope } from "../core/workflow.ts";
 import type {
   Message,
-  PromptProgress,
   Result,
   ViseError,
 } from "../core/errors.ts";
@@ -51,8 +51,8 @@ export interface WorkflowCommands {
   postTurnHooks(): PostTurnHook[];
   onToken(): ((token: string) => void) | undefined;
   onThinking(): ((token: string) => void) | undefined;
-  onPromptProgress(): ((progress: PromptProgress) => void) | undefined;
   onToolCall(): ToolCallListener | undefined;
+  onToolResult(): ToolResultListener | undefined;
   onImage(): ((image: Picture) => void) | undefined;
   onMaxRounds(): ((question: string) => Promise<boolean>) | undefined;
   /** The between-rounds upkeep (compaction, saving, progress) for a turn run under `signal`. */
@@ -172,8 +172,8 @@ export async function handleWorkflowCommand(
       callbacks: {
         onToken: session.onToken(),
         onThinking: session.onThinking(),
-        onPromptProgress: session.onPromptProgress(),
         onToolCall: session.onToolCall(),
+        onToolResult: session.onToolResult(),
         onImage: session.onImage(),
         onMaxRounds: session.onMaxRounds(),
         onRound: session.roundHook(abort.signal),

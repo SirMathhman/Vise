@@ -2,7 +2,7 @@ import type { PromptProgress } from "../core/errors.ts";
 import { describeCall } from "../core/progress.ts";
 import { dim } from "../output/color.ts";
 import { formatGoalEvent } from "../output/format.ts";
-import { formatPicture, formatToolCall } from "../output/tool-line.ts";
+import { formatPicture, formatToolCall, summarizeToolResult } from "../output/tool-line.ts";
 import { displayOfTool } from "../tools/display.ts";
 import type { Picture } from "../core/errors.ts";
 import type { GoalEvent } from "../repl/goal-loop.ts";
@@ -96,6 +96,14 @@ export class StreamDisplay {
       process.stdout.write(text);
     }
     this.lastText = shown;
+  };
+
+  /** Show what a finished tool call came to ("12 matches") under it, when there is something to say. */
+  onToolResult = (name: string, depth: number, result: string): void => {
+    const summary = summarizeToolResult(name, result);
+    if (summary === undefined) return;
+    if (this.contentWritten) this.flushMdLine();
+    process.stdout.write(dim(`${"  ".repeat(depth)}  → ${summary}`) + "\n");
   };
 
   /** Display a picture a tool produced as a caption (a terminal cannot show it). */
