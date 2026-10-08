@@ -29,10 +29,6 @@ export type GoalEvent =
     }
   | { kind: "setting"; enabled: boolean };
 
-/** The same unmet step this many times in a row ends the turn as blocked. */
-
-/** After this many automatic continues in one turn, the user is asked whether to go on. */
-
 /** What the tracker needs from its surroundings while it loops. */
 export interface GoalHooks {
   /** Ask the user whether to keep going after many continues; without it the turn stops there. */

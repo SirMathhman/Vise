@@ -73,3 +73,22 @@ test("a goal check that fails on the network is asked again instead of counting 
   expect(verdict).toEqual({ kind: "no", detail: "next" });
   expect(calls).toBe(3);
 });
+
+test("a goal check that answers in the wrong shape is asked again", async () => {
+  const replies = [
+    "{}",
+    '{"verdict":"maybe","detail":""}',
+    "[]",
+    '{"verdict":"blocked","detail":"need login"}',
+  ];
+  let calls = 0;
+  const client: Client = {
+    chat: async () => ({
+      ok: true,
+      value: { content: replies[calls++] ?? "" },
+    }),
+  };
+  const verdict = await checkGoal(client, [], [], { text: "g", doneWhen: "d" });
+  expect(calls).toBe(3);
+  expect(verdict.kind).toBe("yes"); // out of attempts: fails open
+});

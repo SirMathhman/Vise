@@ -8,8 +8,8 @@ import type { CallPurpose, Message } from "./errors.ts";
  * conversation when the user speaks, and once the model stops, a throwaway
  * question asks whether the goal was actually met. Both calls are appended to
  * the conversation only for the one request (never stored), answer in
- * schema-constrained JSON, and fail open: a call that fails or answers nothing
- * usable is asked again (up to `ASK_ATTEMPTS` times), and if it still does,
+ * schema-constrained JSON, and fail open: a call that fails or does not answer in the
+ * expected shape is asked again (up to `ASK_ATTEMPTS` times), and if it still does,
  * the result counts as "met" so a misbehaving check can never trap the user
  * in a loop.
  *
@@ -60,6 +60,7 @@ async function ask(
   question: string,
   schema: Record<string, unknown>,
   purpose: CallPurpose,
+  accept: (reply: Record<string, unknown>) => boolean,
   signal?: AbortSignal,
 ): Promise<Record<string, unknown> | undefined> {
   for (let attempt = 0; attempt < ASK_ATTEMPTS; attempt++) {
@@ -74,13 +75,20 @@ async function ask(
     );
     if (!result.ok) {
       // A dropped connection says nothing about the goal: ask again.
-      if (result.error.kind === "interrupted" || signal?.aborted) return undefined;
+      if (result.error.kind === "interrupted" || signal?.aborted)
+        return undefined;
       continue;
     }
     try {
       const parsed: unknown = JSON.parse(result.value.content);
-      if (typeof parsed === "object" && parsed !== null)
-        return parsed as Record<string, unknown>;
+      if (
+        typeof parsed === "object" &&
+        parsed !== null &&
+        !Array.isArray(parsed)
+      ) {
+        const reply = parsed as Record<string, unknown>;
+        if (accept(reply)) return reply;
+      }
     } catch {
       // unparseable: ask again
     }
@@ -128,6 +136,7 @@ export async function deriveGoal(
     `[goal tracking, not from the user] ${known}\nThe user's latest message is above. Reply with JSON. "goal": the objective the user wants accomplished, in one sentence. If the latest message continues, answers or refines the current goal (for example "?", "ok", "try again", or new details for the same task), keep the current goal and fold in anything new. If it asks for something unrelated, give a new goal. For a plain question or chat, the goal is to answer it. "done_when": what will observably be true once the goal is complete.`,
     GOAL_SCHEMA,
     "goal",
+    (r) => text(r["goal"]) !== "",
     signal,
   );
   const goal = text(reply?.["goal"]);
@@ -153,6 +162,10 @@ export async function checkGoal(
     `[goal check, not from the user] Goal: ${goal.text}\nDone when: ${goal.doneWhen}\nJudge only from what has actually happened in this conversation, not from what you intended to do. Reply with JSON. "verdict": "yes" if the goal is fully accomplished (detail: the evidence, quoting the result that proves it); "no" if there is still more to do that you can do yourself right now (detail: the single next step); "blocked" if you cannot go on without the user, such as a decision, a confirmation before something irreversible, personal details or a login (detail: exactly what you need from them).`,
     VERDICT_SCHEMA,
     "goal-check",
+    (r) =>
+      r["verdict"] === "yes" ||
+      r["verdict"] === "no" ||
+      r["verdict"] === "blocked",
     signal,
   );
   const kind = reply?.["verdict"];
@@ -198,6 +211,7 @@ Done when: ${goal.doneWhen}
 This turn has been running for a long time. Judging only from the recent tool calls and their results: is real headway being made toward the goal, or are the same steps being repeated, the same errors hit, or the work going in circles? Reply with JSON. "progress": "progressing" if each recent step moved the work forward, "stuck" if not. "detail": one sentence saying why.`,
     PROGRESS_SCHEMA,
     "progress-check",
+    (r) => r["progress"] === "progressing" || r["progress"] === "stuck",
     signal,
   );
   const detail = text(reply?.["detail"]);
