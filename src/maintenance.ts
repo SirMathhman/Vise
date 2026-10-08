@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { missingBuildOutput } from "./build-check.ts";
 import { globalDataDir } from "./data-dir.ts";
+import { useParentConsole } from "./web/desktop.ts";
 import { VERSION } from "./version.ts";
 
 /** Where `--install-extension` writes the Firefox extension. */
@@ -35,6 +36,8 @@ function setupPlaywright(): string {
   return `playwright-core installed in ${globalDataDir}; enable browser_run_code with /tool browser_run_code enable.`;
 }
 
+const MAINTENANCE_FLAGS = ["--version", "--install-extension", "--setup-playwright"];
+
 /**
  * The flags that do a job and end the program instead of starting Vise:
  * `--version`, `--install-extension`, `--setup-playwright`. Returns whether one
@@ -43,6 +46,7 @@ function setupPlaywright(): string {
 export async function runMaintenance(
   argv: string[] = process.argv,
 ): Promise<boolean> {
+  if (MAINTENANCE_FLAGS.some((flag) => argv.includes(flag))) useParentConsole();
   if (argv.includes("--version")) console.log(`vise ${VERSION}`);
   else if (argv.includes("--install-extension"))
     console.log(await installExtension());

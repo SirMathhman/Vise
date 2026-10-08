@@ -12,7 +12,7 @@ To run:
 bun run index.ts
 ```
 
-To build the executables (`out/vise.exe` serves the web UI, `out/vise-cli.exe` is the terminal REPL):
+To build the executables (`out/vise.exe` opens the Vise window (add `--no-window` to just serve a browser), `out/vise-cli.exe` is the terminal REPL):
 
 ```bash
 bun run build:exe

@@ -241,7 +241,7 @@ function queueNote(conn: ConnectionState, note?: string): void {
 }
 
 /** `note` is shown in each page that connects (e.g. that the wanted port was busy). */
-export function startWebServer(port = config.port, note?: string): void {
+export function startWebServer(port = config.port, note?: string): () => Promise<void> {
   // One browser shared by every connection; it launches on first tool use.
   // Its engine (Chromium or Firefox) is a global setting changed from the UI.
   const settingsStore = new BrowserSettingsStore();
@@ -340,15 +340,13 @@ export function startWebServer(port = config.port, note?: string): void {
     },
   });
   console.log(`vise web: http://localhost:${port}`);
-  // Ctrl+C / termination: close the browser before the loop drains, so it never outlives us.
+  // Closes the browser before the server stops, so it never outlives us.
+  const shutdown = (): Promise<void> =>
+    browser.close().finally(() => void server.stop(true));
   for (const signal of ["SIGINT", "SIGTERM", "SIGBREAK"] as const) {
-    process.once(signal, () => {
-      void browser.close().finally(() => {
-        server.stop(true);
-        process.exitCode = 130;
-      });
-    });
+    process.once(signal, () => void shutdown().finally(() => (process.exitCode = 130)));
   }
+  return shutdown;
 }
 
 /** What a WebSocket carries from the upgrade: the session root it was opened with. */

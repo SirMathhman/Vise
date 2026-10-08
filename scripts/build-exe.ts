@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { readFileSync, writeFileSync } from "node:fs";
 import pkg from "../package.json" with { type: "json" };
 
 /**
@@ -10,6 +11,16 @@ import pkg from "../package.json" with { type: "json" };
 function run(command: string, args: string[]): void {
   const result = spawnSync(command, args, { stdio: "inherit", shell: true });
   if (result.status !== 0) throw new Error(`${command} ${args.join(" ")} failed`);
+}
+
+/** Change a Windows exe from the console subsystem (3) to the GUI subsystem (2) in its PE header. */
+function setGuiSubsystem(file: string): void {
+  const bytes = readFileSync(file);
+  const header = bytes.readUInt32LE(0x3c);
+  const field = header + 0x5c;
+  if (bytes.readUInt16LE(field) !== 3) throw new Error(`${file}: unexpected subsystem`);
+  bytes.writeUInt16LE(2, field);
+  writeFileSync(file, bytes);
 }
 
 const git = spawnSync("git", ["rev-parse", "--short", "HEAD"], {
@@ -28,7 +39,7 @@ for (const [entry, outfile] of [
   ["index.ts", "out/vise-cli.exe"],
 ] as const) {
   const result = await Bun.build({
-    entrypoints: [entry],
+    entrypoints: entry === "src/web/main.ts" ? [entry, "src/web/window-worker.ts"] : [entry],
     compile: { outfile },
     define: { VISE_VERSION: JSON.stringify(version) },
   });
@@ -36,5 +47,8 @@ for (const [entry, outfile] of [
     for (const log of result.logs) console.error(log);
     throw new Error(`building ${outfile} failed`);
   }
+  // The web exe has a window of its own: mark it a GUI program so no console appears
+  // (its output goes to ~/.vise/vise.log; `--version` etc. attach to the launching terminal).
+  if (entry === "src/web/main.ts") setGuiSubsystem(outfile);
   console.log(`built ${outfile} (${version})`);
 }
