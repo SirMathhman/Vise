@@ -26,6 +26,7 @@ import {
   readNoteTool,
   saveNoteTool,
 } from "./tools/notes-tool.ts";
+import { currentToolScope } from "./tools/agent-scope.ts";
 import { deferTools, searchToolsDef } from "./tools/search-tools.ts";
 import { killProcess, runPowershell, waitForProcess } from "./tools/shell.ts";
 import {
@@ -169,6 +170,7 @@ const TEMP_TOOLS = new Set([
 export class ToolSet implements ToolController {
   private readonly defs: Tool[];
   private readonly disabled = new Set<string>();
+  private baseline: Map<string, boolean> | undefined;
 
   /** `initiallyDisabled` names tools that start off until the user enables them. */
   constructor(defs: Tool[], initiallyDisabled: string[] = []) {
@@ -190,6 +192,14 @@ export class ToolSet implements ToolController {
 
   isEnabled(name: string): boolean {
     return !this.disabled.has(name);
+  }
+
+  setBaseline(states: Map<string, boolean> | undefined): void {
+    this.baseline = states;
+  }
+
+  baselineEnabled(name: string): boolean {
+    return this.baseline?.get(name) ?? this.isEnabled(name);
   }
 
   set(name: string, enabled: boolean): void {
@@ -240,8 +250,10 @@ export function createToolRunner(
       if (handler === undefined) {
         return `error: unknown tool ${name}`;
       }
-      if (!toolController.isEnabled(name)) {
-        return `error: tool ${name} is disabled`;
+      // A subagent limited by its profile may use exactly its listed tools; anyone else, what the session has enabled.
+      const limited = currentToolScope();
+      if (limited ? !limited.has(name) : !toolController.isEnabled(name)) {
+        return `error: tool ${name} is ${limited ? "not available to this agent" : "disabled"}`;
       }
       const result = await handler(args, signal);
       // The temp tools bound their own output; everything else too big to show is saved instead.

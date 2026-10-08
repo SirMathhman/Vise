@@ -32,6 +32,7 @@ export class ProfileToolGate {
       for (const [name, enabled] of this.snapshot)
         controller.set(name, enabled);
       this.snapshot = undefined;
+      controller.setBaseline?.(undefined);
       this.push({
         role: "user",
         content: `The profile's tool restriction was lifted. Enabled tools: ${enabledNames(controller)}.`,
@@ -41,6 +42,7 @@ export class ProfileToolGate {
     this.snapshot ??= new Map(
       controller.list().map((t) => [t.name, t.enabled]),
     );
+    controller.setBaseline?.(this.snapshot);
     const allowed = new Set(tools);
     for (const t of controller.list())
       controller.set(t.name, allowed.has(t.name));

@@ -43,7 +43,14 @@ export function saveNoteTool(
 ): string {
   try {
     const id = idOf(args);
-    const result = store.save(id, String(args.body ?? ""), true);
+    // An empty note is never what was meant: a model that sent its text under another name must be told, not thanked.
+    if (typeof args.body !== "string" || args.body.trim() === "") {
+      const other = ["content", "text", "note"].find((key) => typeof args[key] === "string");
+      return other
+        ? `error: save_note takes the note's text as 'body', not '${other}'; nothing was saved`
+        : "error: save_note needs a non-empty 'body' (the note's text); nothing was saved";
+    }
+    const result = store.save(id, args.body, true);
     return result === "replaced"
       ? `saved ${id.scope} note '${id.name}' (replaced the previous content)`
       : `saved ${id.scope} note '${id.name}'`;

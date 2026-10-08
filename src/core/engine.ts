@@ -149,6 +149,14 @@ export interface ToolController {
   set(name: string, enabled: boolean): void;
   /** Whether a tool is currently enabled. */
   isEnabled(name: string): boolean;
+  /**
+   * The tools as the user set them, ignoring a profile's tool restriction (what
+   * a subagent starts from: it never inherits the main agent's restriction).
+   * Optional: a controller without restrictions has only `isEnabled`.
+   */
+  baselineEnabled?(name: string): boolean;
+  /** Remember the states from before a profile restricted the tools (`undefined`: no restriction now). */
+  setBaseline?(states: Map<string, boolean> | undefined): void;
 }
 
 /** A turn can legitimately make hundreds of tool calls; past this many rounds the user is asked whether to go on. */

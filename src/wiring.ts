@@ -307,14 +307,13 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
   const toolRunner = createToolRunner(
     {
       run_subagent: makeSubagentHandler(
-        client,
-        profileSource,
-        cwd,
+        client, profileSource, cwd,
         lazily(() => toolRunner),
         sessionTools,
         subagentCallbacks(options, toolController, client),
         (operation) => client.withPreservedSlotCache(operation),
         () => sessionRef.current.currentAbortSignal,
+        (name) => toolController.baselineEnabled(name),
       ),
       ask_user: makeAskUserHandler(options.askUser),
       search_tools: makeSearchToolsHandler(sessionTools, (name) =>

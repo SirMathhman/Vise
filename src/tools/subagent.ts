@@ -6,6 +6,7 @@ import type {
   TurnCallbacks,
 } from "../core/engine.ts";
 import { runSubagent } from "../core/engine.ts";
+import { withToolScope } from "./agent-scope.ts";
 import { dim } from "../output/color.ts";
 import { formatError } from "../output/format.ts";
 import type { ProfileSource } from "../repl/session.ts";
@@ -44,6 +45,8 @@ export function makeSubagentHandler(
   callbacks: TurnCallbacks = {},
   withPreservedSlotCache?: <T>(operation: () => Promise<T>) => Promise<T>,
   currentAbortSignal?: () => AbortSignal | undefined,
+  /** Whether a tool is on by the user's own settings, ignoring the main agent's profile restriction (what a subagent without its own tool list starts from). */
+  baselineEnabled?: (name: string) => boolean,
 ): (args: Record<string, unknown>) => Promise<string> {
   return async (args) => {
     const task = args["task"];
@@ -66,6 +69,15 @@ export function makeSubagentHandler(
 
     // This subagent sits one level below whoever called it, however deep that is.
     const depth = (subagentDepth.getStore() ?? 0) + 1;
+    // A subagent has permissions of its own, never the main agent's: the tools its profile lists, or else
+    // the ones the user has enabled (see `agent-scope.ts`).
+    const listed = profile === "default" ? undefined : await profileSource.profileTools?.(profile);
+    const allowed =
+      listed?.ok && listed.value
+        ? new Set(listed.value)
+        : baselineEnabled
+          ? new Set(toolDefs.map((t) => t.function.name).filter(baselineEnabled))
+          : undefined;
     const systemMessage = {
       role: "system" as const,
       content:
@@ -97,6 +109,7 @@ export function makeSubagentHandler(
     const run = () =>
       runSubagent(client, tools, toolDefs, systemMessage, profileText, task, {
         ...callbacks,
+        ...(allowed ? { isToolEnabled: (name: string) => allowed.has(name) } : {}),
         onToken: indentedOnToken,
         onToolCall: (name, _depth, args) => {
           callbacks.onToolCall?.(name, depth, args);
@@ -110,7 +123,7 @@ export function makeSubagentHandler(
         abort: currentAbortSignal?.(),
       });
     const result = await subagentDepth.run(depth, () =>
-      withPreservedSlotCache ? withPreservedSlotCache(run) : run(),
+      withToolScope(allowed, () => (withPreservedSlotCache ? withPreservedSlotCache(run) : run())),
     );
     if (!result.ok) return `error: ${formatError(result.error)}`;
     return result.value;
