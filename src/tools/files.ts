@@ -1,4 +1,5 @@
 import { config } from "../config.ts";
+import { badNumber, numberArg } from "./args.ts";
 import { isTooLarge } from "./temp-store.ts";
 import {
   existsSync,
@@ -34,12 +35,12 @@ export function listDirectory(args: Record<string, unknown>): string {
 export function readFile(args: Record<string, unknown>): string {
   try {
     const text = readFileSync(String(args.path ?? ""), "utf8");
-    const ranged =
-      typeof args.offset === "number" || typeof args.limit === "number";
+    const refused = badNumber("offset", args.offset) ?? badNumber("limit", args.limit);
+    if (refused) return refused;
+    const ranged = numberArg(args.offset) !== undefined || numberArg(args.limit) !== undefined;
     if (!ranged && !isTooLarge(text)) return text;
     const all = text.split(/\r?\n/);
-    const num = (v: unknown, fallback: number): number =>
-      typeof v === "number" && Number.isFinite(v) ? Math.floor(v) : fallback;
+    const num = (v: unknown, fallback: number): number => Math.floor(numberArg(v) ?? fallback);
     const from = Math.max(1, num(args.offset, 1));
     if (all.length < from) {
       return `error: the file has ${all.length} lines; there is nothing at line ${from}`;

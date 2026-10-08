@@ -46,6 +46,9 @@ export interface ServerMessage extends ResultMessage, HooksFields {
   request?: number;
   /** `progress`: what the model call is for. */
   purpose?: CallPurpose;
+  /** `generating`: tokens the call has written so far, and whether it has ended. */
+  tokens?: number;
+  done?: boolean;
   /** `state`: a line is running on the server, and whether it can be steered. */
   running?: boolean;
   steerable?: boolean;

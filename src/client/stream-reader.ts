@@ -34,6 +34,13 @@ interface StreamChunk {
   choices?: StreamChoice[];
   usage?: Usage;
   prompt_progress?: PromptProgress;
+  timings?: { predicted_n?: number };
+}
+
+/** Receives what a call generates: the raw text as it streams and the server's running token count. */
+export interface GenerationListener {
+  text(piece: string): void;
+  tokens(count: number): void;
 }
 
 /**
@@ -50,6 +57,7 @@ export async function streamChat(
   onThinking?: (token: string) => void,
   onPromptProgress?: (progress: PromptProgress) => void,
   signal?: AbortSignal,
+  generation?: GenerationListener,
 ): Promise<{
   message: AssistantMessage;
   usage?: number;
@@ -89,8 +97,11 @@ export async function streamChat(
     const piece = delta?.content;
     if (piece && piece !== "") {
       content += piece;
+      generation?.text(piece);
       onToken?.(piece);
     }
+    const generated = chunk.timings?.predicted_n;
+    if (generated !== undefined) generation?.tokens(generated);
     const deltas = delta?.tool_calls;
     if (deltas) {
       for (const tc of deltas) {

@@ -17,7 +17,7 @@ import type {
   ToolController,
   TurnCallbacks,
 } from "./core/engine.ts";
-import type { Picture, PromptProgress } from "./core/errors.ts";
+import type { GenerationProgress, Picture, PromptProgress } from "./core/errors.ts";
 import {
   buildInitialMessage,
   HookStore,
@@ -148,6 +148,8 @@ export interface EdgeSessionOptions {
   onThinking?: (token: string) => void;
   /** Surfaced with prompt-processing progress during the silent prefill. */
   onPromptProgress?: (progress: PromptProgress) => void;
+  /** How much each model call has generated so far (and a final `done`), for a "still writing" display. */
+  onGenerating?: (progress: GenerationProgress) => void;
   /** Notified of each tool invocation before execution. */
   onToolCall?: ToolCallListener;
   onToolResult?: ToolResultListener;
@@ -278,6 +280,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
   const client = new LlmClient();
   // Every model call of this session (reply, goal check, compaction...) reports here.
   client.setProgressSink(options.onPromptProgress);
+  client.setGenerationSink(options.onGenerating);
   const browser: BrowserBackend = options.browser ?? new ChromiumBackend();
 
   // Single directory that holds every runtime data store (profiles/, notes/,

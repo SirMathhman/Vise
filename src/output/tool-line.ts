@@ -1,4 +1,5 @@
 import { config } from "../config.ts";
+import { numberArg } from "../tools/args.ts";
 import type { Picture } from "../core/errors.ts";
 
 /**
@@ -79,12 +80,13 @@ export function toolDetail(
 /** Which lines a read asks for, when it asks for a range: `lines 40–159` (a read is capped at the longest a result may be). */
 function readRange(name: string, args: Record<string, unknown>): string | undefined {
   if (name !== "read_file" && name !== "read_temp") return undefined;
-  const offset = args["offset"];
-  const limit = args["limit"];
-  if (typeof offset !== "number" && typeof limit !== "number") return undefined;
-  const from = typeof offset === "number" ? Math.max(1, Math.floor(offset)) : 1;
+  const offset = numberArg(args["offset"]);
+  const limit = numberArg(args["limit"]);
+  if (offset === undefined && limit === undefined) return undefined;
+  if (Number.isNaN(offset) || Number.isNaN(limit)) return undefined;
+  const from = offset === undefined ? 1 : Math.max(1, Math.floor(offset));
   const cap = config.resultMaxLines;
-  const count = typeof limit === "number" ? Math.min(cap, Math.max(1, Math.floor(limit))) : cap;
+  const count = limit === undefined ? cap : Math.min(cap, Math.max(1, Math.floor(limit)));
   return `lines ${from}–${from + count - 1}`;
 }
 

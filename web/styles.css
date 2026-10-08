@@ -393,7 +393,7 @@ body {
 }
 
 .line.thinking::before {
-  content: "▸  Thinking";
+  content: "▸  Thinking" attr(data-meta);
   color: var(--dim);
   font-style: normal;
 }
@@ -406,7 +406,7 @@ body {
 }
 
 .line.thinking.open::before {
-  content: "▾  Thinking\A";
+  content: "▾  Thinking" attr(data-meta) "\A";
   white-space: pre;
 }
 
@@ -1417,4 +1417,60 @@ body:has(#workspace:not(.hidden)) #files-btn {
   flex-direction: column;
   gap: 0.4rem;
   padding-top: 0.3rem;
+}
+
+/* Markdown in a finished thinking block: normal flow instead of the verbatim line breaks. */
+.line.thinking.rendered.open {
+  white-space: normal;
+}
+
+.line.thinking.rendered.open > * {
+  margin: 0.4em 0;
+}
+
+/* A verdict with its evidence folded away until opened. */
+.line.collapsed > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.line.collapsed > summary::-webkit-details-marker {
+  display: none;
+}
+
+.line.collapsed > summary::before {
+  content: "▸ ";
+}
+
+.line.collapsed[open] > summary::before {
+  content: "▾ ";
+}
+
+.line.collapsed .collapsed-detail {
+  color: var(--dim);
+  margin: 0.2em 0 0 1.2em;
+  white-space: pre-wrap;
+}
+
+/* The model is still writing something long (a big tool call) that is not shown while it streams. */
+.line.generating {
+  color: var(--dim);
+  font-style: italic;
+  animation: generating-pulse 1.4s ease-in-out infinite;
+}
+
+.line.generating::before {
+  content: "● ";
+}
+
+@keyframes generating-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .line.generating {
+    animation: none;
+  }
 }

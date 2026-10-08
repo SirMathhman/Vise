@@ -9,6 +9,7 @@ import {
   toolRequestFields,
 } from "./tool-protocol.ts";
 import { collectThinking, readJsonReply, streamChat } from "./stream-reader.ts";
+import { generationReporter } from "./generation.ts";
 
 export { streamChat };
 import type { Client, Tool } from "../core/engine.ts";
@@ -16,6 +17,7 @@ import type {
   AssistantMessage,
   Message,
   CallPurpose,
+  GenerationProgress,
   PromptProgress,
   Result,
 } from "../core/errors.ts";
@@ -59,6 +61,26 @@ export const REASONING_EFFORTS = [
 
 export type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
 
+/** What a streamed request asks of the server: usage, prompt progress while it reads, and a running count of what it writes. */
+const STREAM_FIELDS = {
+  stream: true,
+  stream_options: { include_usage: true },
+  return_progress: true,
+  timings_per_token: true,
+};
+
+/** Read one model reply, and tell `generation` (if any) when the call has ended, however it ended. */
+async function readReply(
+  read: () => ReturnType<typeof streamChat>,
+  generation?: { done(): void },
+): ReturnType<typeof streamChat> {
+  try {
+    return await read();
+  } finally {
+    generation?.done();
+  }
+}
+
 export class LlmClient implements Client {
   private lastPromptTokens: number | undefined;
   private currentModel: string = config.llmModel;
@@ -78,13 +100,20 @@ export class LlmClient implements Client {
     };
   }
 
-  /** Progress reports of one request: numbered, labelled, and given to the sink and to the caller's own callback. */
+  /** Hears how much each model call has generated so far (set by the edge). */
+  private generationSink?: (progress: GenerationProgress) => void;
+
+  setGenerationSink(sink: ((progress: GenerationProgress) => void) | undefined): void {
+    this.generationSink = sink;
+  }
+
+  /** Progress reports of one request: labelled, and given to the sink and to the caller's own callback. */
   private reporter(
+    request: number,
     purpose: CallPurpose,
     callback?: (progress: PromptProgress) => void,
   ): ((progress: PromptProgress) => void) | undefined {
     if (!this.progressSink && !callback) return undefined;
-    const request = ++this.requestSeq;
     return (progress) => {
       const tagged = { ...progress, request, purpose };
       callback?.(tagged);
@@ -396,6 +425,7 @@ export class LlmClient implements Client {
     // tool-protocol.ts), never as the `tools` field: the grammar is not part
     // of the prompt, so toggling a tool leaves the KV cache intact.
     const useTools = !!tools && tools.length > 0 && !responseSchema;
+    const request = ++this.requestSeq;
     const body: Record<string, unknown> = {
       model: this.currentModel,
       // A schema-constrained request (a one-off question about the conversation)
@@ -405,13 +435,7 @@ export class LlmClient implements Client {
         tools && tools.length > 0
           ? encodeMessages(messages, tools, this.imageResolver)
           : plainMessages(messages, this.imageResolver),
-      ...(act
-        ? { stream: false }
-        : {
-            stream: true,
-            stream_options: { include_usage: true },
-            return_progress: true,
-          }),
+      ...(act ? { stream: false } : STREAM_FIELDS),
     };
     if (useTools) {
       Object.assign(body, toolRequestFields(tools, isToolEnabled, act));
@@ -419,10 +443,7 @@ export class LlmClient implements Client {
     // An act round shows the user nothing; its reasoning is only captured.
     const thought = collectThinking(act ? undefined : onThinking);
     if (responseSchema) {
-      body.response_format = {
-        type: "json_schema",
-        json_schema: { schema: responseSchema },
-      };
+      body.response_format = { type: "json_schema", json_schema: { schema: responseSchema } };
     }
     this.applyReasoningEffort(body);
     try {
@@ -450,15 +471,23 @@ export class LlmClient implements Client {
         };
       }
       const thinking = useTools ? thought.sink : onThinking;
-      const acc = act
-        ? await readJsonReply(res, thinking)
-        : await streamChat(
-            stream,
-            useTools ? hideCalls(onToken) : onToken,
-            thinking,
-            this.reporter(purpose, onPromptProgress),
-            signal,
-          );
+      const generation = this.generationSink && !act
+        ? generationReporter(this.generationSink, request, purpose)
+        : undefined;
+      const acc = await readReply(
+        act
+          ? () => readJsonReply(res, thinking)
+          : () =>
+              streamChat(
+                stream,
+                useTools ? hideCalls(onToken) : onToken,
+                thinking,
+                this.reporter(request, purpose, onPromptProgress),
+                signal,
+                generation,
+              ),
+        generation,
+      );
       if (!acc.sawData) {
         return {
           ok: false,

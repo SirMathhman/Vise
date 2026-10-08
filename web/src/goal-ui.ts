@@ -14,6 +14,13 @@ interface GoalMessage {
 /** Id the `/goal` toggle line carries, so its reply is told apart from the model's turns. */
 const TOGGLE_ID = "goal-toggle";
 
+/** A verdict's one-line title and the evidence behind it: "✓ goal met — detail" splits at the first dash. */
+export function splitVerdict(text: string): { title: string; detail: string } {
+  const at = text.indexOf(" — ");
+  if (at < 0) return { title: text, detail: "" };
+  return { title: text.slice(0, at), detail: text.slice(at + 3) };
+}
+
 /**
  * Goal checking in the page: a header toggle (`/goal on|off`), and the goal and
  * each verdict as lines in the chat (a met goal, a nudge back to work, or a
@@ -22,6 +29,7 @@ const TOGGLE_ID = "goal-toggle";
  */
 export function createGoalUi(
   addLine: (cls: string, text: string) => void,
+  addCollapsed: (cls: string, title: string, detail: string) => void,
   send: (msg: Record<string, unknown>) => void,
 ): { handle(message: GoalMessage): boolean } {
   const button = document.getElementById("goal-btn") as HTMLButtonElement;
@@ -36,7 +44,11 @@ export function createGoalUi(
         return true;
       }
       if (message.type === "goal") {
-        addLine(`system goal-${message.level ?? "info"}`, message.text ?? "");
+        const cls = `system goal-${message.level ?? "info"}`;
+        // A met goal is good news with its evidence folded away; anything else needs reading.
+        const { title, detail } = splitVerdict(message.text ?? "");
+        if (message.level === "ok" && detail) addCollapsed(cls, title, detail);
+        else addLine(cls, message.text ?? "");
         return true;
       }
       if (message.type === "result" && message.id === TOGGLE_ID) {

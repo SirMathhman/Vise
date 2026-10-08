@@ -1,4 +1,5 @@
 import { config } from "../config.ts";
+import { badNumber, numberArg } from "./args.ts";
 import { randomBytes } from "node:crypto";
 import {
   mkdirSync,
@@ -225,10 +226,11 @@ export class TempStore {
 export function tempHandlers(
   store: TempStore,
 ): Record<string, (args: Record<string, unknown>) => string> {
-  const num = (value: unknown, fallback: number): number =>
-    typeof value === "number" && Number.isFinite(value) ? value : fallback;
+  const num = (value: unknown, fallback: number): number => numberArg(value) ?? fallback;
   return {
     read_temp: (args) =>
+      badNumber("offset", args["offset"]) ??
+      badNumber("limit", args["limit"]) ??
       store.read(
         String(args["name"] ?? ""),
         num(args["offset"], 1),

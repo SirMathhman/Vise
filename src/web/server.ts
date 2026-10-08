@@ -53,6 +53,7 @@ import { listDir, readTextFile, watchRoot } from "./files.ts";
  *   server → browser: { type:"token", text }        a streamed reply token
  *                     { type:"thinking", text }     a streamed thinking token
  *                     { type:"progress", total, cache, processed, time_ms }
+ *                     { type:"generating", request, purpose, tokens, done, text? } how much a model call has written so far (tool call text is not streamed); text names the tool being called
  *                     { type:"tool", name, depth?, text } a tool call began (text: icon, name and a short detail)
  *                     { type:"tool_result", name, depth, text? } a tool call finished (text: what it came to, e.g. "12 matches"); for run_subagent it closes the subagent's box
  *                     { type:"image", id, mime, label, bytes, width?, height? } a tool produced a picture (fetch it from /api/image/<id>)
@@ -417,6 +418,15 @@ function makeConnectionState(
         time_ms: p.time_ms,
         request: p.request,
         purpose: p.purpose,
+      }),
+    onGenerating: (g) =>
+      send({
+        type: "generating",
+        request: g.request,
+        purpose: g.purpose,
+        tokens: g.tokens,
+        done: g.done,
+        text: g.tool ? formatToolCall(g.tool, {}, displayOfTool) : undefined,
       }),
     onImage: (picture) => send({ type: "image", ...picture }),
     onToolCall: (name, depth, args) =>

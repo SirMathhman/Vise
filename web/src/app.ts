@@ -5,6 +5,7 @@ import { replayHistory, showImage } from "./history.ts";
 import { appendPicture } from "./lightbox.ts";
 import { createGoalUi } from "./goal-ui.ts";
 import { createAskUi } from "./ask-ui.ts";
+import { createGenerating } from "./generating.ts";
 import { createPromptProgress } from "./prompt-progress.ts";
 import { createBusy } from "./busy.ts";
 import { createSteerUi } from "./steer-ui.ts";
@@ -74,8 +75,9 @@ const hooksPanel = createHooksPanel(
 const settingsPanels = createSettingsPanels(sendMessage);
 const workspace = createWorkspace(sendMessage, renderMarkdown, setStatus);
 /** The parts of the page that own some of the server messages. */
-const goalUi = createGoalUi(transcript.addLine, sendMessage);
+const goalUi = createGoalUi(transcript.addLine, transcript.addCollapsed, sendMessage);
 const promptProgress = createPromptProgress(transcript.addLine, transcript.removeLine);
+const generating = createGenerating(transcript.addLine, transcript.removeLine);
 const steerUi = createSteerUi({
   sendMessage,
   notice: (text) => transcript.addLine("system", text),
@@ -482,6 +484,7 @@ socket.addEventListener("message", (event: MessageEvent<string>) => {
   } catch {
     return;
   }
+  generating.observe(message);
   if (serverPanels.some((panel) => panel.handle(message))) return;
   switch (message.type) {
     case "profile_tools":
