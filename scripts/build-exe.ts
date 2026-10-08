@@ -16,7 +16,9 @@ const git = spawnSync("git", ["rev-parse", "--short", "HEAD"], {
   encoding: "utf8",
 });
 const commit = git.status === 0 ? git.stdout.trim() : "unknown";
-const version = `${pkg.version}+${commit}`;
+// A build from uncommitted changes must not share an identity with the commit.
+const dirty = spawnSync("git", ["status", "--porcelain"], { encoding: "utf8" }).stdout.trim() !== "";
+const version = `${pkg.version}+${commit}${dirty ? "-dirty" : ""}`;
 
 run("bun", ["run", "build:web"]);
 run("bun", ["run", "build:ext"]);

@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { missingBuildOutput } from "./build-check.ts";
 import { globalDataDir } from "./data-dir.ts";
 import { VERSION } from "./version.ts";
 
@@ -8,6 +9,11 @@ import { VERSION } from "./version.ts";
 export const extensionDir = join(globalDataDir, "extension");
 
 async function installExtension(): Promise<string> {
+  const missing = missingBuildOutput("extension/dist/background.js", "bun run build:ext");
+  if (missing) {
+    process.exitCode = 1;
+    return missing;
+  }
   const { EXTENSION_FILES } = await import("./extension-assets.ts");
   for (const [name, source] of Object.entries(EXTENSION_FILES)) {
     const target = join(extensionDir, name);

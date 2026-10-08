@@ -1,7 +1,7 @@
 import { config } from "../config.ts";
 import { type ChildProcess, spawn } from "node:child_process";
 import { createInterface } from "node:readline";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { globalDataDir } from "../data-dir.ts";
 import { VERSION } from "../version.ts";
@@ -19,10 +19,13 @@ import runnerAsset from "./playwright-runner.mjs" with { type: "file" };
 export function runnerPath(
   asset: string = runnerAsset as unknown as string,
   home: string = globalDataDir,
+  compiled: boolean = VERSION !== "dev",
 ): string {
-  if (!asset.includes("~BUN") && !asset.includes("$bunfs")) return asset;
+  if (!compiled) return asset;
   const target = join(home, "runtime", VERSION, "playwright-runner.mjs");
   if (!existsSync(target)) {
+    // Runners of other versions are no longer needed.
+    rmSync(join(home, "runtime"), { recursive: true, force: true });
     mkdirSync(dirname(target), { recursive: true });
     writeFileSync(target, readFileSync(asset));
   }

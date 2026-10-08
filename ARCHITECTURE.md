@@ -315,6 +315,10 @@ are all derived from it, never restated. Ideal shape:
   page is pushed the result (as for hooks), so a stale page cannot revert a
   newer change.
 
+## Packaging
+
+Vise ships as two compiled executables (`vise.exe` web, `vise-cli.exe` terminal) built by `scripts/build-exe.ts`. Everything a build embeds (page files, extension, Playwright runner) is a generated or fixed-map asset imported with `type: "file"`; the server serves only paths in a fixed map (`src/web/assets.ts`), never a filesystem path derived from the request. Build outputs (`web/dist`, `extension/dist`) are prerequisites that are verified up front: a missing one fails with the command that creates it, never an opaque module-resolution error. A build's identity is `package version + commit + dirty marker`; anything extracted to disk (`~/.vise/runtime/<id>`) is keyed by that identity, superseded folders are pruned, and compiled-versus-source mode is decided by one build-time flag, not by sniffing paths. Updating is replacing the executable; the Firefox extension and `playwright-core` are re-installed by the maintenance flags, and the extension reports a version mismatch with its server. Assets are served with a content-hash ETag so a replaced executable never shows a stale page.
+
 ## Potential Problems
 
 - **Forced process exit.** Any `process.exit()` anywhere will truncate
