@@ -13,10 +13,10 @@ import { createSettingsPanels } from "./settings-panels.ts";
 import { createWorkspace } from "./workspace.ts";
 import { setupComposer } from "./composer.ts";
 import { createPanels } from "./panels.ts";
-import { renderMarkdown } from "./markdown.ts";
 import { registerHeaderPanels } from "./panel-switch.ts";
 import { createProfileEditor } from "./profile-editor.ts";
-import { createTranscript } from "./transcript.ts";
+import { createLogView } from "./log-view.ts";
+import { renderMarkdown } from "./markdown.ts";
 
 function requiredElement<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -42,7 +42,11 @@ const saveBtn = requiredElement<HTMLButtonElement>("save-btn");
 const filesBtn = requiredElement<HTMLButtonElement>("files-btn");
 const contextEl = requiredElement<HTMLElement>("context");
 
-const transcript = createTranscript(log, renderMarkdown);
+const { transcript, announce } = createLogView(
+  log,
+  requiredElement("jump-latest"),
+  requiredElement("sr-status"),
+);
 const attachments = createAttachments({
   input: requiredElement("input"),
   dropZone: requiredElement("log").closest("main") ?? document.body,
@@ -176,15 +180,10 @@ function sendLine(text: string, queue = false): void {
   socket.send(JSON.stringify({ type: "line", text: body, images }));
 }
 
-function resumeSession(name: string): void {
-  sendLine(`/resume ${name}`);
-}
-
-function deleteSession(name: string): void {
-  sendLine(`/delete ${name}`);
-}
-
-const panels = createPanels({ resumeSession, deleteSession });
+const panels = createPanels({
+  resumeSession: (name) => sendLine(`/resume ${name}`),
+  deleteSession: (name) => sendLine(`/delete ${name}`),
+});
 const profileEditor = createProfileEditor({
   loadHooks: () => hooksPanel.refresh(),
   editHook: (line) => hooksPanel.edit(line),
@@ -238,9 +237,8 @@ function requestLine(text: string): void {
   socket.send(JSON.stringify({ type: "line", text }));
 }
 
-function setBurstPressed(on: boolean): void {
+const setBurstPressed = (on: boolean): void =>
   burstBtn.setAttribute("aria-pressed", String(on));
-}
 
 function handleToolRefresh(message: ResultMessage): boolean {
   if (message.id === undefined || !toolRefreshes.delete(message.id))
@@ -392,6 +390,8 @@ function handleResult(message: ResultMessage): void {
   burstBtn.classList.remove("bursting");
   transcript.setBurst(false);
   askUi.hide();
+  // The log itself is not a live region (every token would be announced); say only that the reply ended.
+  announce(message.ok ? "Reply finished" : "Reply failed");
   renderContext(message);
   if (handleInitialResult(message)) return;
   if (message.ok) handleCommandResult(message);

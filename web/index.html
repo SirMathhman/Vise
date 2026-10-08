@@ -230,9 +230,11 @@
             <ul id="tools-list" class="tools-list"></ul>
           </div>
         </header>
-        <section id="log" class="log" aria-live="polite"></section>
+        <section id="log" class="log" aria-label="Conversation"></section>
+        <div id="sr-status" class="sr-only" role="status"></div>
         <footer class="context-bar">
           <span id="context" class="context"></span>
+          <button id="jump-latest" class="jump-latest hidden" type="button" title="Scroll to the newest message">↓ latest</button>
         </footer>
         <section class="composer">
           <div id="ask" class="ask hidden">

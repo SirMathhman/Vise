@@ -31,6 +31,9 @@ export function appendPicture(
   transcript.flushAssistant();
   transcript.finishThinking();
   const image = document.createElement("img");
+  // Only pictures near the view are fetched and decoded, so a long chat does not load them all.
+  image.loading = "lazy";
+  image.decoding = "async";
   image.src = uri;
   image.alt = label;
   image.title = `${label} (click to enlarge)`;

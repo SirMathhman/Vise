@@ -1,3 +1,6 @@
+import { createFollower, nextFrame } from "./follow.ts";
+import { createStreamRenderer, showMarkdown } from "./stream-render.ts";
+
 export interface TranscriptView {
   addLine(cls: string, text: string): HTMLDivElement;
   appendAssistantToken(text: string): void;
@@ -11,16 +14,8 @@ export interface TranscriptView {
   finishThinking(): void;
   flushAssistant(): void;
   clear(): void;
-}
-
-/** Show `raw` as sanitized HTML when a renderer is given, else verbatim. */
-function showMarkdown(
-  element: HTMLElement,
-  raw: string,
-  renderHtml?: (markdown: string) => string,
-): void {
-  if (renderHtml) element.innerHTML = renderHtml(raw);
-  else element.textContent = raw;
+  /** Jump to the newest line and follow new ones again. */
+  scrollToBottom(): void;
 }
 
 /** Click a thinking line to open or close it. */
@@ -36,26 +31,45 @@ function enableThinkingToggle(log: HTMLElement): void {
   });
 }
 
+/** A reply still being written: its element and the text so far. */
+interface Block {
+  element: HTMLElement | null;
+  raw: string;
+}
+
+/** Add `text` to a block, starting its element at the end of the log when it has none. */
+function extend(log: HTMLElement, block: Block, className: string, text: string): void {
+  if (!block.element) {
+    block.element = document.createElement("div");
+    block.element.className = className;
+    log.appendChild(block.element);
+    block.raw = "";
+  }
+  block.raw += text;
+}
+
 /**
  * `renderHtml`, when given, turns assistant markdown into sanitized HTML; when
- * omitted, assistant text is shown verbatim.
+ * omitted, assistant text is shown verbatim. `onPinned` hears whether the log is
+ * following the newest line: new lines scroll into view only while it is, so
+ * reading older ones is never interrupted.
  */
 export function createTranscript(
   log: HTMLElement,
   renderHtml?: (markdown: string) => string,
+  onPinned?: (pinned: boolean) => void,
 ): TranscriptView {
   let burstActive = false;
-  let activeAssistant: HTMLElement | null = null;
-  let activeRaw = "";
+  const assistant: Block = { element: null, raw: "" };
+  const subagent: Block = { element: null, raw: "" };
   let activeThinking: HTMLElement | null = null;
-  let activeSubagent: HTMLElement | null = null;
-  let subagentRaw = "";
+  const stream = createStreamRenderer(renderHtml);
+  const { follow, jump } = createFollower(log, onPinned);
+  let renderQueued = false;
 
   // Thinking lines start collapsed and collapse again when the thinking ends.
   function endThinking(): void {
-    if (activeThinking) {
-      activeThinking.className = activeThinking.className.replace(/ open$/, "");
-    }
+    if (activeThinking) activeThinking.className = activeThinking.className.replace(/ open$/, "");
     activeThinking = null;
   }
 
@@ -66,47 +80,49 @@ export function createTranscript(
     div.className = `line ${cls}`;
     div.textContent = text;
     log.appendChild(div);
-    log.scrollTop = log.scrollHeight;
+    follow();
     return div;
   }
 
-  const showAssistant = (element: HTMLElement, raw: string): void =>
-    showMarkdown(element, raw, renderHtml);
+  /** Render what streamed in since the last frame (token rates are far above frame rates). */
+  function renderOpen(): void {
+    renderQueued = false;
+    if (subagent.element) showMarkdown(subagent.element, subagent.raw, renderHtml);
+    if (assistant.element) stream.render(assistant.element, assistant.raw);
+    follow();
+  }
+
+  function queueRender(): void {
+    if (renderQueued) return;
+    renderQueued = true;
+    nextFrame(renderOpen);
+  }
 
   function appendSubagentToken(text: string): void {
     flushAssistant(true);
     endThinking();
-    if (!activeSubagent) {
-      activeSubagent = document.createElement("div");
-      activeSubagent.className = "line assistant subagent";
-      log.appendChild(activeSubagent);
-      subagentRaw = "";
-    }
-    subagentRaw += text;
-    showAssistant(activeSubagent, subagentRaw);
-    log.scrollTop = log.scrollHeight;
+    extend(log, subagent, "line assistant subagent", text);
+    queueRender();
   }
 
   // `keepSubagent` lets a subagent block keep growing across its tokens.
   function flushAssistant(keepSubagent = false): void {
-    if (!keepSubagent) activeSubagent = null;
-    if (!activeAssistant) return;
-    showAssistant(activeAssistant, activeRaw);
-    activeAssistant = null;
-    activeRaw = "";
+    if (!keepSubagent && subagent.element) {
+      showMarkdown(subagent.element, subagent.raw, renderHtml);
+      subagent.element = null;
+    }
+    if (!assistant.element) return;
+    // The whole reply is rendered once more, so the parts rendered separately while it streamed join up.
+    showMarkdown(assistant.element, assistant.raw, renderHtml);
+    assistant.element = null;
+    stream.reset();
+    follow();
   }
 
   function appendAssistantToken(text: string): void {
     endThinking();
-    if (!activeAssistant) {
-      activeAssistant = document.createElement("div");
-      activeAssistant.className = "line assistant";
-      log.appendChild(activeAssistant);
-      activeRaw = "";
-    }
-    activeRaw += text;
-    showAssistant(activeAssistant, activeRaw);
-    log.scrollTop = log.scrollHeight;
+    extend(log, assistant, "line assistant", text);
+    queueRender();
   }
 
   function appendThinkingToken(text: string): void {
@@ -114,7 +130,7 @@ export function createTranscript(
     flushAssistant();
     if (!activeThinking) activeThinking = addLine("thinking", "");
     activeThinking.textContent += text;
-    log.scrollTop = log.scrollHeight;
+    follow();
   }
 
   return {
@@ -139,15 +155,16 @@ export function createTranscript(
       }
       burstActive = active;
     },
-    finishThinking(): void {
-      endThinking();
-    },
+    finishThinking: endThinking,
     flushAssistant,
     clear(): void {
       log.textContent = "";
-      activeAssistant = null;
-      activeRaw = "";
+      assistant.element = null;
+      subagent.element = null;
+      stream.reset();
       endThinking();
+      jump();
     },
+    scrollToBottom: jump,
   };
 }

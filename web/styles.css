@@ -444,6 +444,8 @@ body {
 }
 
 .context-bar {
+  display: flex;
+  align-items: center;
   border-top: 1px solid var(--border);
   background: var(--panel);
   padding: 0.25rem 1rem;
@@ -1305,4 +1307,28 @@ body:has(#workspace:not(.hidden)) #files-btn {
 
 .progress-label {
   font-variant-numeric: tabular-nums;
+}
+
+.jump-latest {
+  margin-left: auto;
+  background: var(--accent);
+  color: #0b0e14;
+  border: none;
+  border-radius: 999px;
+  padding: 0.15rem 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.jump-latest.hidden {
+  display: none;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
