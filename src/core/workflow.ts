@@ -132,7 +132,7 @@ async function runToolStep(
       JSON.stringify(schema),
     ].join("\n"),
   });
-  const generated = await options.client.chat(
+  const generated = await (options.client.as?.("workflow") ?? options.client).chat(
     options.messages,
     undefined,
     undefined,

@@ -1285,8 +1285,7 @@ body:has(#workspace:not(.hidden)) #files-btn {
   overflow: hidden;
 }
 
-.progress-fill,
-.progress-cached {
+.progress-fill {
   position: absolute;
   inset: 0 auto 0 0;
   border-radius: inherit;
@@ -1295,10 +1294,6 @@ body:has(#workspace:not(.hidden)) #files-btn {
 .progress-fill {
   background: var(--accent);
   transition: width 0.15s linear;
-}
-
-.progress-cached {
-  background: color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
 .line.progress.done {

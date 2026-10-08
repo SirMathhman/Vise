@@ -515,6 +515,18 @@ single-module target.
 
 ## Future Work
 
+- **One labelled model-call channel.** Every model call (reply, goal derivation,
+  goal check, progress check, compaction summary, workflow step, subagent round)
+  is a `ChatRequest` object `{ messages, tools?, schema?, act?, signal?,
+  purpose }` handed to `Client.chat`, replacing the nine positional parameters.
+  Prompt progress and streaming do not travel as per-call callbacks threaded
+  through core helpers: the client owns a per-session `CallObserver` sink, and
+  every call reports `{ call, purpose, tokens... }` to it, including
+  non-streaming `act` calls (which report start and end with the measured
+  prompt size). The observer allocates the call number, so numbering covers
+  every request, and displays render one labelled bar per purpose ("checking
+  the goal", "reading", "compacting"). Core helpers then need no progress
+  parameter at all, and a new call site cannot be silently invisible.
 - **One turn-admission state machine per conversation.** Which line runs, which
   are held, and which steers are pending is a single piece of state with
   explicit states (`idle`, `running`, `draining`) and transitions: submit,

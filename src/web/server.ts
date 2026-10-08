@@ -414,6 +414,7 @@ function makeConnectionState(
         processed: p.processed,
         time_ms: p.time_ms,
         request: p.request,
+        purpose: p.purpose,
       }),
     onImage: (picture) => send({ type: "image", ...picture }),
     onToolCall: (name, depth, args) =>

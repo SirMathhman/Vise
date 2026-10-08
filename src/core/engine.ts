@@ -2,6 +2,7 @@ import type {
   AssistantMessage,
   Picture,
   Message,
+  CallPurpose,
   PromptProgress,
   Result,
   ToolCall,
@@ -49,6 +50,11 @@ export interface Client {
     isToolEnabled?: (name: string) => boolean,
     act?: boolean,
   ): Promise<Result<AssistantMessage>>;
+  /**
+   * The same client, its calls labelled with what they are for. Optional: a
+   * client that does not label (a test stub) is used as it is.
+   */
+  as?(purpose: CallPurpose): Client;
 }
 
 /**
@@ -211,7 +217,7 @@ export async function summarize(
   client: Client,
   toSummarize: Message[],
 ): Promise<Result<string>> {
-  const result = await client.chat([
+  const result = await (client.as?.("compaction") ?? client).chat([
     ...toSummarize,
     { role: "user", content: SUMMARIZE_PROMPT },
   ]);
@@ -471,5 +477,5 @@ export async function runSubagent(
     messages.push({ role: "user", content: profileText });
   }
   messages.push({ role: "user", content: task });
-  return runTurn(client, tools, messages, toolDefs, callbacks);
+  return runTurn(client.as?.("subagent") ?? client, tools, messages, toolDefs, callbacks);
 }

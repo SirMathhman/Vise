@@ -15,6 +15,7 @@ import type { Client, Tool } from "../core/engine.ts";
 import type {
   AssistantMessage,
   Message,
+  CallPurpose,
   PromptProgress,
   Result,
 } from "../core/errors.ts";
@@ -62,14 +63,33 @@ export class LlmClient implements Client {
   private lastPromptTokens: number | undefined;
   private currentModel: string = config.llmModel;
   private requestSeq = 0;
+  /** Hears the prompt processing of every model call of this client (set by the edge): the one place progress is reported. */
+  private progressSink?: (progress: PromptProgress) => void;
 
-  /** Tag one request's progress reports with its number, so a display knows where a request ends. */
-  private numbered(
-    report?: (progress: PromptProgress) => void,
+  setProgressSink(sink: ((progress: PromptProgress) => void) | undefined): void {
+    this.progressSink = sink;
+  }
+
+  /** The same client with its calls labelled by what they are for (see `Client.as`). */
+  as(purpose: CallPurpose): Client {
+    return {
+      chat: (messages, tools, onToken, onThinking, onProgress, schema, signal, isToolEnabled, act) =>
+        this.chat(messages, tools, onToken, onThinking, onProgress, schema, signal, isToolEnabled, act, purpose),
+    };
+  }
+
+  /** Progress reports of one request: numbered, labelled, and given to the sink and to the caller's own callback. */
+  private reporter(
+    purpose: CallPurpose,
+    callback?: (progress: PromptProgress) => void,
   ): ((progress: PromptProgress) => void) | undefined {
-    if (!report) return undefined;
+    if (!this.progressSink && !callback) return undefined;
     const request = ++this.requestSeq;
-    return (progress) => report({ ...progress, request });
+    return (progress) => {
+      const tagged = { ...progress, request, purpose };
+      callback?.(tagged);
+      this.progressSink?.(tagged);
+    };
   }
   /** Turns the pictures in the conversation into what is sent to the model (set by the edge, which owns the image files). */
   imageResolver?: ImageResolver;
@@ -370,6 +390,7 @@ export class LlmClient implements Client {
     signal?: AbortSignal,
     isToolEnabled?: (name: string) => boolean,
     act = false,
+    purpose: CallPurpose = "reply",
   ): Promise<Result<AssistantMessage>> {
     // Tools travel as stable prompt text plus a per-request grammar (see
     // tool-protocol.ts), never as the `tools` field: the grammar is not part
@@ -435,7 +456,7 @@ export class LlmClient implements Client {
             stream,
             useTools ? hideCalls(onToken) : onToken,
             thinking,
-            this.numbered(onPromptProgress),
+            this.reporter(purpose, onPromptProgress),
             signal,
           );
       if (!acc.sawData) {

@@ -206,7 +206,7 @@ export class Session {
     this.onImage = options.onImage;
     this.attachments = new PendingImages(options.imageSource);
     this.onBurst = options.onBurst;
-    this.goals = new GoalTracker(options.goalChecking ?? false, options.onGoal, options.onPromptProgress);
+    this.goals = new GoalTracker(options.goalChecking ?? false, options.onGoal);
     this.initialMessage = options.initialMessage;
     this.sessionSource = options.sessionSource;
     this.onMaxRounds = options.onMaxRounds;

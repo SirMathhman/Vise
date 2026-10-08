@@ -214,7 +214,6 @@ function subagentCallbacks(
   return {
     onToken: options.onToken,
     onThinking: options.onThinking,
-    onPromptProgress: options.onPromptProgress,
     onToolCall: options.onToolCall,
     onImage: options.onImage,
     onSubagentToken: options.onSubagentToken,
@@ -231,7 +230,6 @@ function displayCallbacks(
   EdgeSessionOptions,
   | "onToken"
   | "onThinking"
-  | "onPromptProgress"
   | "onToolCall"
   | "onImage"
   | "onBurst"
@@ -240,7 +238,6 @@ function displayCallbacks(
   return {
     onToken: options.onToken,
     onThinking: options.onThinking,
-    onPromptProgress: options.onPromptProgress,
     onToolCall: options.onToolCall,
     onImage: options.onImage,
     onBurst: options.onBurst,
@@ -274,6 +271,8 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
   const postTurnHooks = hookStore.post;
 
   const client = new LlmClient();
+  // Every model call of this session (reply, goal check, compaction...) reports here.
+  client.setProgressSink(options.onPromptProgress);
   const browser: BrowserBackend = options.browser ?? new ChromiumBackend();
 
   // Single directory that holds every runtime data store (profiles/, notes/,

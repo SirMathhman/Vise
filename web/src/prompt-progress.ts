@@ -1,36 +1,37 @@
+import type { PromptProgress } from "../../src/core/errors.ts";
+import { describeCall, readCall } from "../../src/core/progress.ts";
 import type { ServerMessage } from "./server-message.ts";
 
 /** What one progress report looks like on the bar. */
 export interface ProgressView {
   done: boolean;
-  /** Percent of the prompt served from the cache. */
-  cachedPct: number;
-  /** Percent computed so far, after the cached part. */
-  computedPct: number;
-  /** Percent of the whole prompt read so far. */
-  valueNow: number;
+  /** Percent of the tokens this call has to read that it has read. */
+  pct: number;
   text: string;
 }
 
-/** Turn a report into what is drawn; undefined when it carries no prompt size. */
+/**
+ * Turn a report into what is drawn; undefined when it carries no prompt size.
+ * The bar counts only the tokens this call actually reads (the new part of the
+ * prompt), not the whole conversation the server already holds.
+ */
 export function describeProgress(
-  message: Pick<ServerMessage, "total" | "cache" | "processed" | "time_ms">,
+  message: Pick<ServerMessage, "total" | "cache" | "processed" | "time_ms" | "purpose">,
 ): ProgressView | undefined {
-  const total = message.total ?? 0;
-  if (total <= 0) return undefined;
-  const processed = Math.min(Math.max(message.processed ?? 0, 0), total);
-  const cache = Math.min(Math.max(message.cache ?? 0, 0), processed);
-  const pct = (n: number): number => (n / total) * 100;
-  const done = processed >= total;
-  const fromCache = cache > 0 ? ` · ${cache} cached` : "";
+  const report: PromptProgress = {
+    total: message.total ?? 0,
+    cache: message.cache ?? 0,
+    processed: message.processed ?? 0,
+    time_ms: message.time_ms ?? 0,
+    ...(message.purpose ? { purpose: message.purpose } : {}),
+  };
+  const reading = readCall(report);
+  const text = describeCall(report);
+  if (!reading || text === undefined) return undefined;
   return {
-    done,
-    cachedPct: pct(cache),
-    computedPct: pct(processed - cache),
-    valueNow: Math.round(pct(processed)),
-    text: done
-      ? `prompt ${total} tokens${fromCache} · ${((message.time_ms ?? 0) / 1000).toFixed(1)} s`
-      : `prompt ${processed}/${total}${fromCache}`,
+    done: reading.finished,
+    pct: reading.total > 0 ? (reading.done / reading.total) * 100 : 100,
+    text,
   };
 }
 
@@ -50,15 +51,14 @@ interface Bar {
   line: HTMLElement;
   bar: HTMLElement;
   fill: HTMLElement;
-  cached: HTMLElement;
   label: HTMLElement;
   request: number | undefined;
 }
 
 /**
  * Shows llama.cpp's prompt processing in the chat log, as the terminal does:
- * one line per request that fills a bar while the prompt is read, with the part
- * served from the cache in a muted shade, and ends as a summary once done.
+ * one line per model call that fills a bar while the call reads its new tokens
+ * (labelled by what the call is for), and ends as a summary once done.
  * The silent wait before the first token is otherwise a blank screen.
  */
 export function createPromptProgress(
@@ -74,15 +74,13 @@ export function createPromptProgress(
     bar.setAttribute("aria-label", "Prompt processing");
     bar.setAttribute("aria-valuemin", "0");
     bar.setAttribute("aria-valuemax", "100");
-    const cached = document.createElement("span");
-    cached.className = "progress-cached";
     const fill = document.createElement("span");
     fill.className = "progress-fill";
-    bar.append(cached, fill);
+    bar.append(fill);
     const label = document.createElement("span");
     label.className = "progress-label";
     line.append(bar, label);
-    return { line, bar, fill, cached, label, request };
+    return { line, bar, fill, label, request };
   }
 
   return {
@@ -91,11 +89,8 @@ export function createPromptProgress(
       if (!view) return;
       const shown = open && { request: open.request, attached: open.line.isConnected };
       if (!open || startsNewBar(shown, message.request)) open = start(message.request);
-      // Segments left to right: served from the cache, computed so far, still to do.
-      open.cached.style.width = `${view.cachedPct}%`;
-      open.fill.style.left = `${view.cachedPct}%`;
-      open.fill.style.width = `${view.computedPct}%`;
-      open.bar.setAttribute("aria-valuenow", String(view.valueNow));
+      open.fill.style.width = `${view.pct}%`;
+      open.bar.setAttribute("aria-valuenow", String(Math.round(view.pct)));
       open.label.textContent = view.text;
       if (view.done) {
         open.line.classList.add("done");

@@ -1,4 +1,5 @@
 import type { PromptProgress } from "../core/errors.ts";
+import { describeCall } from "../core/progress.ts";
 import { dim } from "../output/color.ts";
 import { formatGoalEvent } from "../output/format.ts";
 import { formatPicture, formatToolCall } from "../output/tool-line.ts";
@@ -16,7 +17,7 @@ import { renderLine } from "../output/markdown.ts";
  */
 export class StreamDisplay {
   private promptActive = false;
-  private lastProcessed = 0;
+  private lastText = "";
   private thinkingCount = 0;
   private thinkingActive = false;
   private contentWritten = false;
@@ -81,10 +82,11 @@ export class StreamDisplay {
       }
       return;
     }
-    const text = dim(`prompt: ${progress.processed}/${progress.total}`);
+    // Only the tokens this call reads (not the cached conversation), labelled by what the call is for.
+    const shown = describeCall(progress) ?? "";
+    const text = dim(shown);
     if (this.promptActive) {
-      const prev = `prompt: ${this.lastProcessed}/${progress.total}`;
-      process.stdout.write("\r" + " ".repeat(prev.length + 1) + "\r" + text);
+      process.stdout.write("\r" + " ".repeat(this.lastText.length + 1) + "\r" + text);
     } else {
       if (this.contentWritten) {
         this.flushMdLine();
@@ -92,7 +94,7 @@ export class StreamDisplay {
       this.promptActive = true;
       process.stdout.write(text);
     }
-    this.lastProcessed = progress.processed;
+    this.lastText = shown;
   };
 
   /** Display a picture a tool produced as a caption (a terminal cannot show it). */
@@ -137,7 +139,7 @@ export class StreamDisplay {
   /** Reset all state at the start of a new user turn. */
   beginTurn(): void {
     this.promptActive = false;
-    this.lastProcessed = 0;
+    this.lastText = "";
     this.thinkingCount = 0;
     this.thinkingActive = false;
     this.contentWritten = false;

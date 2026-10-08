@@ -1,3 +1,4 @@
+import type { CallPurpose } from "../../src/core/errors.ts";
 import type { HistoryEntry } from "./history.ts";
 import type { HooksFields } from "./hooks-panel.ts";
 
@@ -41,6 +42,8 @@ export interface ServerMessage extends ResultMessage, HooksFields {
   time_ms?: number;
   /** `progress`: which model request this belongs to (a new number is a new request). */
   request?: number;
+  /** `progress`: what the model call is for. */
+  purpose?: CallPurpose;
   /** `state`: a line is running on the server, and whether it can be steered. */
   running?: boolean;
   steerable?: boolean;

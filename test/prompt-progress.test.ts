@@ -1,24 +1,43 @@
 import { expect, test } from "bun:test";
+import { describeCall, readCall } from "../src/core/progress.ts";
 import { describeProgress, startsNewBar } from "../web/src/prompt-progress.ts";
 
-test("a running report shows how far the prompt is read, with the cached part first", () => {
-  const view = describeProgress({ total: 1000, cache: 400, processed: 700, time_ms: 900 });
-  expect(view).toMatchObject({ done: false, cachedPct: 40, computedPct: 30, valueNow: 70 });
-  expect(view?.text).toBe("prompt 700/1000 · 400 cached");
+test("a call reports only the tokens it has to read, not the cached conversation", () => {
+  const reading = readCall({ total: 1000, cache: 400, processed: 700, time_ms: 900 });
+  expect(reading).toEqual({ name: "prompt", total: 600, done: 300, reused: 400, finished: false });
+  expect(describeCall({ total: 1000, cache: 400, processed: 700, time_ms: 900 })).toBe(
+    "prompt: 300/600 tokens · 400 reused",
+  );
 });
 
-test("a finished report is a summary with the time", () => {
-  const view = describeProgress({ total: 1000, cache: 0, processed: 1000, time_ms: 2500 });
-  expect(view?.done).toBe(true);
-  expect(view?.text).toBe("prompt 1000 tokens · 2.5 s");
+test("a finished call is a summary of what it read, with the time", () => {
+  expect(describeCall({ total: 1000, cache: 0, processed: 1000, time_ms: 2500 })).toBe(
+    "prompt: 1000 tokens · 2.5 s",
+  );
+  // A prompt that was all but cached shows how little was new, not how long the conversation is.
+  expect(describeCall({ total: 57733, cache: 57728, processed: 57733, time_ms: 500 })).toBe(
+    "prompt: 5 tokens · 57728 reused · 0.5 s",
+  );
+});
+
+test("each call says what it is for", () => {
+  const base = { total: 100, cache: 0, processed: 10, time_ms: 0 };
+  expect(describeCall({ ...base, purpose: "goal" })).toBe("goal: 10/100 tokens");
+  expect(describeCall({ ...base, purpose: "goal-check" })).toBe("goal check: 10/100 tokens");
+  expect(describeCall({ ...base, purpose: "compaction" })).toBe("compaction: 10/100 tokens");
 });
 
 test("odd numbers are kept inside the bar, and no prompt size means nothing to draw", () => {
   const view = describeProgress({ total: 100, cache: 500, processed: 50 });
-  expect(view?.cachedPct).toBe(50);
-  expect(view?.computedPct).toBe(0);
+  expect(view?.pct).toBeGreaterThanOrEqual(0);
+  expect(view?.pct).toBeLessThanOrEqual(100);
   expect(describeProgress({ total: 0, processed: 0 })).toBeUndefined();
   expect(describeProgress({ processed: 10 })).toBeUndefined();
+});
+
+test("the bar fills over the new tokens only", () => {
+  const view = describeProgress({ total: 1000, cache: 400, processed: 700, time_ms: 0 });
+  expect(view).toMatchObject({ done: false, pct: 50 });
 });
 
 test("a new request, or a cleared log, starts a new bar; the same request keeps its bar", () => {

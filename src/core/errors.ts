@@ -46,6 +46,16 @@ export interface AssistantMessage {
   confidence?: number;
 }
 
+/** Why a model call was made, so a display can say what the tokens it reports are for. */
+export type CallPurpose =
+  | "reply"
+  | "goal"
+  | "goal-check"
+  | "progress-check"
+  | "compaction"
+  | "workflow"
+  | "subagent";
+
 /**
  * Prompt-processing progress, reported in every streaming chunk when the
  * request sets llama.cpp's `return_progress` flag. `processed` advances as
@@ -59,6 +69,8 @@ export interface PromptProgress {
   time_ms: number;
   /** Which request this belongs to (set by the client; a new number is a new request). */
   request?: number;
+  /** What the call was for (set by the client). */
+  purpose?: CallPurpose;
 }
 
 export type ViseError =
