@@ -9,7 +9,7 @@ import type { CallPurpose, Message, ViseError } from "./errors.ts";
  * question asks whether the goal was actually met. Both calls are appended to
  * the conversation only for the one request (never stored), answer in
  * schema-constrained JSON, and never loop on a broken check: a call that fails
- * or does not answer in the expected shape is asked again (up to `ASK_ATTEMPTS`
+ * is asked again (up to `ASK_ATTEMPTS`
  * times). The goal check then reports "unknown" with the exact reason (it never
  * claims "met" for a check that did not run), and the turn ends with the goal
  * kept. The goal and progress checks fall back to the user's words and to
@@ -70,19 +70,17 @@ function describeError(error: ViseError): string {
   }
 }
 
-const shown = (value: unknown): string =>
-  JSON.stringify(value)?.slice(0, 200) ?? String(value);
-
 /** The reply to a one-off question, or exactly why there is none. */
 type Asked =
   { ok: true; reply: Record<string, unknown> } | { ok: false; why: string };
 
 /**
  * Ask the model for JSON matching `schema`, as a one-off question at the end of
- * the conversation. A call that fails, or whose reply is not JSON, not an
- * object or rejected by `accept` (which says what is wrong with it, or
- * undefined when fine), is asked again; after `ASK_ATTEMPTS` the answer is why
- * the last attempt failed.
+ * the conversation. The request is constrained to the schema (the server
+ * decodes only tokens that keep the reply valid), so the reply is trusted to
+ * have its shape: a wrong shape is not something the model can produce. A call
+ * that fails is asked again; after `ASK_ATTEMPTS` the answer is why the last
+ * attempt failed.
  */
 async function ask(
   client: Client,
@@ -91,7 +89,6 @@ async function ask(
   question: string,
   schema: Record<string, unknown>,
   purpose: CallPurpose,
-  accept: (reply: Record<string, unknown>) => string | undefined,
   signal?: AbortSignal,
 ): Promise<Asked> {
   let why = "no attempt was made";
@@ -110,25 +107,15 @@ async function ask(
       if (result.error.kind === "interrupted" || signal?.aborted) break;
       continue;
     }
-    let parsed: unknown;
     try {
-      parsed = JSON.parse(result.value.content);
+      return { ok: true, reply: JSON.parse(result.value.content) };
     } catch {
-      why = `the model's reply was not valid JSON: ${shown(result.value.content)}`;
-      continue;
+      // Only a server that ignored the schema gets here; asking again would not change that.
+      return {
+        ok: false,
+        why: `the server did not apply the response schema (reply: ${result.value.content.slice(0, 200)})`,
+      };
     }
-    if (
-      typeof parsed !== "object" ||
-      parsed === null ||
-      Array.isArray(parsed)
-    ) {
-      why = `the model's reply was not a JSON object: ${shown(parsed)}`;
-      continue;
-    }
-    const reply = parsed as Record<string, unknown>;
-    const problem = accept(reply);
-    if (problem === undefined) return { ok: true, reply };
-    why = `the model's reply was unusable (${problem}): ${shown(reply)}`;
   }
   return { ok: false, why };
 }
@@ -173,7 +160,6 @@ export async function deriveGoal(
     `[goal tracking, not from the user] ${known}\nThe user's latest message is above. Reply with JSON. "goal": the objective the user wants accomplished, in one sentence. If the latest message continues, answers or refines the current goal (for example "?", "ok", "try again", or new details for the same task), keep the current goal and fold in anything new. If it asks for something unrelated, give a new goal. For a plain question or chat, the goal is to answer it. "done_when": what will observably be true once the goal is complete.`,
     GOAL_SCHEMA,
     "goal",
-    (r) => (text(r["goal"]) === "" ? "the goal is empty" : undefined),
     signal,
   );
   const goal = reply.ok ? text(reply.reply["goal"]) : "";
@@ -203,18 +189,12 @@ export async function checkGoal(
     `[goal check, not from the user] Goal: ${goal.text}\nDone when: ${goal.doneWhen}\nJudge only from what has actually happened in this conversation, not from what you intended to do. Reply with JSON. "verdict": "yes" if the goal is fully accomplished (detail: the evidence, quoting the result that proves it); "no" if there is still more to do that you can do yourself right now (detail: the single next step); "blocked" if you cannot go on without the user, such as a decision, a confirmation before something irreversible, personal details or a login (detail: exactly what you need from them).`,
     VERDICT_SCHEMA,
     "goal-check",
-    (r) =>
-      r["verdict"] === "yes" ||
-      r["verdict"] === "no" ||
-      r["verdict"] === "blocked"
-        ? undefined
-        : `"verdict" is ${shown(r["verdict"])}, not yes, no or blocked`,
     signal,
   );
   if (!reply.ok) return { kind: "unknown", detail: reply.why };
-  const kind = reply.reply["verdict"];
-  const detail = text(reply.reply["detail"]);
-  return { kind: kind === "no" || kind === "blocked" ? kind : "yes", detail };
+  // The schema allows only these three.
+  const kind = reply.reply["verdict"] as "yes" | "no" | "blocked";
+  return { kind, detail: text(reply.reply["detail"]) };
 }
 
 /** Whether a long-running turn is getting anywhere. */
@@ -254,10 +234,6 @@ Done when: ${goal.doneWhen}
 This turn has been running for a long time. Judging only from the recent tool calls and their results: is real headway being made toward the goal, or are the same steps being repeated, the same errors hit, or the work going in circles? Reply with JSON. "progress": "progressing" if each recent step moved the work forward, "stuck" if not. "detail": one sentence saying why.`,
     PROGRESS_SCHEMA,
     "progress-check",
-    (r) =>
-      r["progress"] === "progressing" || r["progress"] === "stuck"
-        ? undefined
-        : `"progress" is ${shown(r["progress"])}, not progressing or stuck`,
     signal,
   );
   const detail = reply.ok ? text(reply.reply["detail"]) : "";

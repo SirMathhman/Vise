@@ -74,27 +74,7 @@ test("a goal check that fails on the network is asked again instead of counting 
   expect(calls).toBe(3);
 });
 
-test("a goal check that never gets a usable answer says why, not that the goal is met", async () => {
-  const replies = [
-    "{}",
-    '{"verdict":"maybe","detail":""}',
-    "[]",
-    '{"verdict":"blocked","detail":"need login"}',
-  ];
-  let calls = 0;
-  const client: Client = {
-    chat: async () => ({
-      ok: true,
-      value: { content: replies[calls++] ?? "" },
-    }),
-  };
-  const verdict = await checkGoal(client, [], [], { text: "g", doneWhen: "d" });
-  expect(calls).toBe(3);
-  expect(verdict.kind).toBe("unknown");
-  expect(verdict.detail).toContain("not a JSON object: []");
-});
-
-test("the reason names the failure: a network error, an HTTP error, unparseable text", async () => {
+test("the reason names the failure: a network error, an HTTP error, a server that ignored the schema", async () => {
   const failing = (error: ViseError): Client => ({
     chat: async () => ({ ok: false, error }),
   });
@@ -120,6 +100,6 @@ test("the reason names the failure: a network error, an HTTP error, unparseable 
     chat: async () => ({ ok: true, value: { content: "sure!" } }),
   };
   expect((await checkGoal(text, [], [], goal)).detail).toBe(
-    `the model's reply was not valid JSON: "sure!"`,
+    `the server did not apply the response schema (reply: sure!)`,
   );
 });
