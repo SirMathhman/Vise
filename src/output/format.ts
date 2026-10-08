@@ -196,6 +196,7 @@ export function formatHelp(opts: {
   if (opts.hasWorkflows) {
     lines.push("/workflow                 list available workflows");
     lines.push("/workflow <name> [input]  run a workflow");
+    lines.push("/<name> [input]           run the workflow or send the note called <name>");
     lines.push("/workflow init <name>    create a project workflow");
     lines.push("/workflow init --global <name>  create a global workflow");
   }

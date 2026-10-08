@@ -34,6 +34,7 @@ import {
   handleSaveCommand,
 } from "./commands/session-commands.ts";
 import { handleSearchCommand } from "./commands/search-command.ts";
+import { resolveShortcut } from "./commands/shortcut-command.ts";
 import { handleWorkflowCommand } from "./commands/workflow-commands.ts";
 import type { WorkflowCommands } from "./commands/workflow-commands.ts";
 
@@ -90,6 +91,10 @@ import type {
  */
 
 type OnRound = TurnCallbacks["onRound"];
+
+/** Whether `line` is the slash command `name`, alone or followed by arguments. */
+const isCommand = (line: string, name: string): boolean =>
+  line === name || line.startsWith(`${name} `);
 
 export type { SessionOptions } from "./session-options.ts";
 import { PendingImages } from "./commands/image-command.ts";
@@ -341,6 +346,15 @@ export class Session {
     if (command !== undefined) {
       return this.audit.command(trimmed, command, () => this.messages);
     }
+    const shortcut = trimmed.startsWith("/")
+      ? await resolveShortcut(this.noteSource, this.workflowSource, trimmed)
+      : undefined;
+    if (shortcut?.kind === "error") return { ok: false, error: shortcut.error };
+    if (shortcut?.kind === "workflow") {
+      return this.audit.command(trimmed, this.workflowLine(shortcut.line), () => this.messages);
+    }
+    // A note's body is the message the agent receives.
+    if (shortcut?.kind === "note") line = shortcut.text;
     const abort = new AbortController();
     this.currentAbort = abort;
     this.audit.turnStart(line);
@@ -431,26 +445,14 @@ export class Session {
         }),
       };
     if (trimmed === "/context") return reportContext(this.context);
-    if (trimmed === "/hooks" || trimmed.startsWith("/hooks ")) {
-      return this.hooks.command(trimmed);
-    }
+    if (isCommand(trimmed, "/hooks")) return this.hooks.command(trimmed);
     if (trimmed === "/compact") return this.doCompact();
-    if (trimmed === "/image" || trimmed.startsWith("/image ")) {
-      return this.attachments.command(trimmed);
-    }
+    if (isCommand(trimmed, "/image")) return this.attachments.command(trimmed);
     if (trimmed === "/new") return this.newConversation();
-    if (trimmed === "/model" || trimmed.startsWith("/model ")) {
-      return handleModelCommand(this.modelController, trimmed);
-    }
-    if (trimmed === "/reasoning" || trimmed.startsWith("/reasoning ")) {
-      return handleReasoningCommand(this.reasoningController, trimmed);
-    }
-    if (trimmed === "/goal" || trimmed.startsWith("/goal ")) {
-      return handleGoalCommand(this.goals, trimmed);
-    }
-    if (trimmed === "/burst" || trimmed.startsWith("/burst ")) {
-      return this.burstCommand(trimmed);
-    }
+    if (isCommand(trimmed, "/model")) return handleModelCommand(this.modelController, trimmed);
+    if (isCommand(trimmed, "/reasoning")) return handleReasoningCommand(this.reasoningController, trimmed);
+    if (isCommand(trimmed, "/goal")) return handleGoalCommand(this.goals, trimmed);
+    if (isCommand(trimmed, "/burst")) return this.burstCommand(trimmed);
     if (trimmed === "/tool" || trimmed.startsWith("/tool ")) {
       return handleToolCommand(
         this.toolController,
@@ -464,27 +466,13 @@ export class Session {
         },
       );
     }
-    if (trimmed === "/profile" || trimmed.startsWith("/profile ")) {
-      return handleProfileCommand(this.profileCommands, trimmed);
-    }
-    if (trimmed === "/note" || trimmed.startsWith("/note ")) {
-      return handleNotesCommand(this.noteSource, trimmed);
-    }
-    if (trimmed === "/workflow" || trimmed.startsWith("/workflow ")) {
-      return this.workflowLine(trimmed);
-    }
-    if (trimmed === "/resume" || trimmed.startsWith("/resume ")) {
-      return handleResumeCommand(this.sessionCommands, trimmed);
-    }
-    if (trimmed === "/save" || trimmed.startsWith("/save ")) {
-      return handleSaveCommand(this.sessionCommands, trimmed);
-    }
-    if (trimmed === "/delete" || trimmed.startsWith("/delete ")) {
-      return handleDeleteCommand(this.sessionCommands, trimmed);
-    }
-    if (trimmed === "/search" || trimmed.startsWith("/search ")) {
-      return handleSearchCommand(this.sessionCommands, trimmed);
-    }
+    if (isCommand(trimmed, "/profile")) return handleProfileCommand(this.profileCommands, trimmed);
+    if (isCommand(trimmed, "/note")) return handleNotesCommand(this.noteSource, trimmed);
+    if (isCommand(trimmed, "/workflow")) return this.workflowLine(trimmed);
+    if (isCommand(trimmed, "/resume")) return handleResumeCommand(this.sessionCommands, trimmed);
+    if (isCommand(trimmed, "/save")) return handleSaveCommand(this.sessionCommands, trimmed);
+    if (isCommand(trimmed, "/delete")) return handleDeleteCommand(this.sessionCommands, trimmed);
+    if (isCommand(trimmed, "/search")) return handleSearchCommand(this.sessionCommands, trimmed);
     return this.audit.slash(trimmed);
   }
 

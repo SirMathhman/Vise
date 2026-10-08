@@ -211,6 +211,21 @@ export class FileNoteSource implements NoteSource {
     };
   }
 
+  async findNotes(
+    name: string,
+  ): Promise<Result<{ scope: string; category: string; body: string }[]>> {
+    const found = this.store
+      .list()
+      .filter((n) => n.name === name)
+      .map((n) => ({ ...n, body: this.store.read(n) }))
+      .flatMap((n) =>
+        n.body === undefined
+          ? []
+          : [{ scope: n.scope, category: n.category, body: n.body }],
+      );
+    return { ok: true, value: found };
+  }
+
   async initNote(
     name: string,
     category?: string,

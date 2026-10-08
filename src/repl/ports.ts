@@ -92,6 +92,10 @@ export interface NoteSource {
     category?: string,
     scope?: "project" | "global",
   ): Promise<Result<string>>;
+  /** Every note with exactly this name, in any scope and category, with its body. */
+  findNotes?(
+    name: string,
+  ): Promise<Result<{ scope: string; category: string; body: string }[]>>;
 }
 
 /** Edge-owned loading of an image file the user attaches with `/image <path>`. */
