@@ -2,7 +2,14 @@ import "../settings-init.ts";
 import { config } from "../config.ts";
 import { missingBuildOutput } from "../build-check.ts";
 import { runMaintenance } from "../maintenance.ts";
-import { hideOwnConsole, logToFile, openWindow, windowMode } from "./desktop.ts";
+import {
+  hideOwnConsole,
+  logPath,
+  logToFile,
+  openWindow,
+  showError,
+  windowMode,
+} from "./desktop.ts";
 import { anyFreePort, busyPortNote, choosePort } from "./port.ts";
 
 /**
@@ -37,9 +44,28 @@ if (!(await runMaintenance())) {
       stop = startWebServer(port, note);
     }
     if (windowed) {
-      const closeWindow = openWindow(`http://localhost:${port}`, () => {
-        // The window was closed: shut down so the event loop drains and the program ends.
-        void stop().finally(closeWindow);
+      let closeWindow = (): void => {};
+      // Stop the server (waiting at most 5 s), then end the window thread so the event loop drains.
+      const finish = (afterStop: () => void = () => {}): void => {
+        const patience = new Promise((resolve) => setTimeout(resolve, 5000).unref());
+        void Promise.race([stop(), patience]).finally(() => {
+          afterStop();
+          closeWindow();
+        });
+      };
+      closeWindow = openWindow(`http://localhost:${port}`, (event) => {
+        if (event.type === "closed") finish();
+        else if (event.type === "failed") {
+          // With no window and no console the program would run unseen: say why and end.
+          process.exitCode = 1;
+          console.error("window failed:", event.reason);
+          finish(() =>
+            showError(
+              "Vise could not open its window",
+              `${event.reason}\n\nVise needs the Microsoft WebView2 runtime (included in Windows 11; for Windows 10 see https://developer.microsoft.com/microsoft-edge/webview2/).\nDetails: ${logPath}`,
+            ),
+          );
+        }
       });
     }
   }

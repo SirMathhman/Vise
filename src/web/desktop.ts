@@ -58,16 +58,74 @@ export function logToFile(path: string = logPath): void {
   console.error = write("error");
 }
 
-/** Open the app window on `url`; `onClosed` runs when the user closes it. Returns a function that closes it. */
-export function openWindow(url: string, onClosed: () => void): () => void {
+/** What the window thread reports (see `window-worker.ts`). */
+export type WindowEvent =
+  | { type: "ready" }
+  | { type: "closed" }
+  | { type: "failed"; reason: string };
+
+/** The event a message from the window thread stands for; anything unexpected is a failure. */
+export function parseWindowEvent(data: unknown): WindowEvent {
+  const event = data as { type?: unknown; reason?: unknown } | null;
+  if (event?.type === "ready" || event?.type === "closed") {
+    return { type: event.type };
+  }
+  if (event?.type === "failed" && typeof event.reason === "string") {
+    return { type: "failed", reason: event.reason };
+  }
+  return { type: "failed", reason: "the window reported something unexpected" };
+}
+
+/** How long the window gets to appear before it counts as failed. */
+const START_TIMEOUT_MS = 10_000;
+
+/**
+ * Open the app window on `url` and report what happens to it: `ready` once it
+ * is up, `closed` when the user closes it, `failed` if it cannot start,
+ * crashes or does not appear in time. Returns a function that ends the window thread.
+ */
+export function openWindow(
+  url: string,
+  onEvent: (event: WindowEvent) => void,
+): () => void {
   // Bun embeds a worker only when the compiled build names it as a plain literal; from source the path is relative to this file.
   let worker: Worker;
   if (VERSION !== "dev") worker = new Worker("./window-worker.ts");
   else worker = new Worker(new URL("./window-worker.ts", import.meta.url));
-  worker.onmessage = () => onClosed();
-  worker.onerror = (event) => console.error("window failed:", event.message);
+  const watchdog = setTimeout(
+    () => onEvent({ type: "failed", reason: "the window did not appear within 10 seconds" }),
+    START_TIMEOUT_MS,
+  );
+  const report = (event: WindowEvent): void => {
+    clearTimeout(watchdog);
+    onEvent(event);
+  };
+  worker.onmessage = (message) => report(parseWindowEvent(message.data));
+  worker.onerror = (event) => report({ type: "failed", reason: event.message });
+  worker.onmessageerror = () =>
+    report({ type: "failed", reason: "the window thread sent an unreadable message" });
   worker.postMessage({ url });
-  return () => void worker.terminate();
+  return () => {
+    clearTimeout(watchdog);
+    void worker.terminate();
+  };
+}
+
+/** Tell the user something with a native message box (nobody sees a hidden console). */
+export function showError(title: string, text: string): void {
+  if (process.platform !== "win32") return;
+  try {
+    const { symbols } = dlopen("user32.dll", {
+      MessageBoxW: {
+        args: [FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.u32],
+        returns: FFIType.i32,
+      },
+    });
+    const wide = (s: string) => ptr(Buffer.from(`${s}\0`, "utf16le"));
+    symbols.MessageBoxW(null, wide(text), wide(title), 0x10);
+  } catch {
+    // The reason is in the log either way.
+  }
 }
 
 /**
@@ -91,8 +149,8 @@ export function useParentConsole(): void {
     if (!symbols.AttachConsole(0xffffffff)) return;
     const out = openSync("CONOUT$", "w");
     const print = (...parts: unknown[]): void => {
-      writeSync(out, `${parts.map((p) => (typeof p === "string" ? p : Bun.inspect(p))).join(" ")}
-`);
+      const text = parts.map((p) => (typeof p === "string" ? p : Bun.inspect(p)));
+      writeSync(out, `${text.join(" ")}\r\n`);
     };
     console.log = print;
     console.error = print;

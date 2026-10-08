@@ -2,7 +2,19 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { logToFile, windowMode } from "../src/web/desktop.ts";
+import { logToFile, parseWindowEvent, windowMode } from "../src/web/desktop.ts";
+
+test("what the window thread says is read strictly; anything odd is a failure", () => {
+  expect(parseWindowEvent({ type: "ready" })).toEqual({ type: "ready" });
+  expect(parseWindowEvent({ type: "closed" })).toEqual({ type: "closed" });
+  expect(parseWindowEvent({ type: "failed", reason: "no runtime" })).toEqual({
+    type: "failed",
+    reason: "no runtime",
+  });
+  expect(parseWindowEvent({ type: "failed" }).type).toBe("failed");
+  expect(parseWindowEvent("closed").type).toBe("failed");
+  expect(parseWindowEvent(null).type).toBe("failed");
+});
 
 test("from source the window opens only on request", () => {
   expect(windowMode(["bun", "main.ts"])).toBe(false);
