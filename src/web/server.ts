@@ -231,7 +231,13 @@ function rootMessage(data: WsData): Record<string, unknown> {
 }
 
 /** Start the web driver: serve the UI and accept WebSocket connections. */
-export function startWebServer(port = config.port): void {
+/** Show `note` in the page after the restored conversation, which replaces the chat log. */
+function queueNote(conn: ConnectionState, note?: string): void {
+  if (note) conn.chain = conn.chain.then(() => conn.send({ type: "notice", text: note }));
+}
+
+/** `note` is shown in each page that connects (e.g. that the wanted port was busy). */
+export function startWebServer(port = config.port, note?: string): void {
   // One browser shared by every connection; it launches on first tool use.
   // Its engine (Chromium or Firefox) is a global setting changed from the UI.
   const settingsStore = new BrowserSettingsStore();
@@ -300,6 +306,7 @@ export function startWebServer(port = config.port): void {
           roots.release(root);
         };
         queueAutoResume(conn);
+        queueNote(conn, note);
         state.set(ws, conn);
       },
       message(ws, message) {
