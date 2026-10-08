@@ -265,7 +265,7 @@ export interface GoalLine {
   level: "info" | "ok" | "warn" | "ask";
 }
 
-/** The line shown for a goal event (undefined for events that show nothing, like the setting changing). */
+/** The line shown for a goal event (undefined for events that show nothing: the setting changing, or a plain continue). */
 export function formatGoalEvent(event: GoalEvent): GoalLine | undefined {
   if (event.kind === "goal") {
     return { text: `goal: ${event.goal}`, level: "info" };
@@ -278,5 +278,7 @@ export function formatGoalEvent(event: GoalEvent): GoalLine | undefined {
   if (event.verdict === "blocked") {
     return { text: `✋ needs you${detail}`, level: "ask" };
   }
-  return { text: `↻ not done yet, continuing${detail}`, level: "warn" };
+  // Sending the model back to work is routine: not worth the user's attention.
+  if (event.continuing) return undefined;
+  return { text: `↻ not done yet${detail}`, level: "warn" };
 }
