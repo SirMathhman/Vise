@@ -1,4 +1,5 @@
 import type { BrowserView } from "./browser-view.ts";
+import { emojiFor } from "./file-icons.ts";
 import { type BrowserTab, OpenTabs, type OpenFile } from "./open-tabs.ts";
 import { showMenu } from "./tab-menu.ts";
 
@@ -295,7 +296,11 @@ function fileRow(
   item.className = "fs-row";
   item.dataset.path = path;
   item.classList.toggle("open", isOpen);
-  item.textContent = name;
+  const icon = document.createElement("span");
+  icon.className = "fs-icon";
+  icon.textContent = emojiFor(name);
+  const label = document.createTextNode(name);
+  item.append(icon, label);
   item.addEventListener("click", onOpen);
   return item;
 }
