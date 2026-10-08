@@ -557,6 +557,13 @@ whole conversations older than that, once per run.
 
 ## Future Work
 
+- **Slash-command registry, finished.** Built-in commands are a table in
+  `Session` (`src/repl/commands/registry.ts`) and `/<name> [input]` shortcuts
+  run only for names outside it. Still to do: give each entry a `summary` so
+  `/help` (`formatHelp`) and the web command hints are generated from the table,
+  and refuse to create a note or workflow whose name is reserved (a note or
+  workflow with a built-in's name is unreachable today and nothing says so).
+
 - **One labelled model-call channel.** Every model call (reply, goal derivation,
   goal check, progress check, compaction summary, workflow step, subagent round)
   is a `ChatRequest` object `{ messages, tools?, schema?, act?, signal?,

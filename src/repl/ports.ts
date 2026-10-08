@@ -93,7 +93,7 @@ export interface NoteSource {
     scope?: "project" | "global",
   ): Promise<Result<string>>;
   /** Every note with exactly this name, in any scope and category, with its body. */
-  findNotes?(
+  findNotes(
     name: string,
   ): Promise<Result<{ scope: string; category: string; body: string }[]>>;
 }

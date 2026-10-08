@@ -34,6 +34,7 @@ import {
   handleSaveCommand,
 } from "./commands/session-commands.ts";
 import { handleSearchCommand } from "./commands/search-command.ts";
+import { findBuiltin, type BuiltinCommand } from "./commands/registry.ts";
 import { resolveShortcut } from "./commands/shortcut-command.ts";
 import { handleWorkflowCommand } from "./commands/workflow-commands.ts";
 import type { WorkflowCommands } from "./commands/workflow-commands.ts";
@@ -92,9 +93,6 @@ import type {
 
 type OnRound = TurnCallbacks["onRound"];
 
-/** Whether `line` is the slash command `name`, alone or followed by arguments. */
-const isCommand = (line: string, name: string): boolean =>
-  line === name || line.startsWith(`${name} `);
 
 export type { SessionOptions } from "./session-options.ts";
 import { PendingImages } from "./commands/image-command.ts";
@@ -423,56 +421,60 @@ export class Session {
     return handleWorkflowCommand(this.workflowCommands, trimmed);
   }
 
+  /** Every built-in slash command (the names a note or workflow cannot be reached by). */
+  private readonly commands: BuiltinCommand[] = [
+    { name: "/exit", exact: true, run: () => "exit" },
+    { name: "/help", exact: true, run: () => this.help() },
+    { name: "/context", exact: true, run: () => reportContext(this.context) },
+    { name: "/hooks", run: (line) => this.hooks.command(line) },
+    { name: "/compact", exact: true, run: () => this.doCompact() },
+    { name: "/image", run: (line) => this.attachments.command(line) },
+    { name: "/new", exact: true, run: () => this.newConversation() },
+    { name: "/model", run: (line) => handleModelCommand(this.modelController, line) },
+    { name: "/reasoning", run: (line) => handleReasoningCommand(this.reasoningController, line) },
+    { name: "/goal", run: (line) => handleGoalCommand(this.goals, line) },
+    { name: "/burst", run: (line) => this.burstCommand(line) },
+    { name: "/tool", run: (line) => this.toolCommand(line) },
+    { name: "/profile", run: (line) => handleProfileCommand(this.profileCommands, line) },
+    { name: "/note", run: (line) => handleNotesCommand(this.noteSource, line) },
+    { name: "/workflow", run: (line) => this.workflowLine(line) },
+    { name: "/resume", run: (line) => handleResumeCommand(this.sessionCommands, line) },
+    { name: "/save", run: (line) => handleSaveCommand(this.sessionCommands, line) },
+    { name: "/delete", run: (line) => handleDeleteCommand(this.sessionCommands, line) },
+    { name: "/search", run: (line) => handleSearchCommand(this.sessionCommands, line) },
+  ];
+
+  private help(): LineResult {
+    return {
+      ok: true,
+      value: formatHelp({
+        hasModel: !!this.modelController,
+        hasReasoning: !!this.reasoningController,
+        hasTools: !!this.toolController,
+        hasProfile: !!this.profileSource,
+        hasNotes: !!this.noteSource,
+        hasWorkflows: !!this.workflowSource,
+        hasSessions: !!this.sessionSource,
+        hasAudit: this.audit.enabled,
+        preTurnHookCount: this.hooks.pre.length,
+        postTurnHookCount: this.hooks.post.length,
+      }),
+    };
+  }
+
+  private toolCommand(line: string): Result<string> {
+    // When tools' enabled state changes the model is told, so it stops calling disabled tools and knows about newly enabled ones. The full definition list is always sent, so this is a state note, not a change to the tools offered.
+    return handleToolCommand(this.toolController, line, (names, enabled) => {
+      this.notify(toggleNotice(names, enabled));
+    });
+  }
+
   /** Run a slash command; undefined when `trimmed` is not one (it is then a normal turn). */
   private slashCommand(
     trimmed: string,
   ): LineResult | Promise<LineResult> | undefined {
-    if (trimmed === "/exit") return "exit";
-    if (trimmed === "/help")
-      return {
-        ok: true,
-        value: formatHelp({
-          hasModel: !!this.modelController,
-          hasReasoning: !!this.reasoningController,
-          hasTools: !!this.toolController,
-          hasProfile: !!this.profileSource,
-          hasNotes: !!this.noteSource,
-          hasWorkflows: !!this.workflowSource,
-          hasSessions: !!this.sessionSource,
-          hasAudit: this.audit.enabled,
-          preTurnHookCount: this.hooks.pre.length,
-          postTurnHookCount: this.hooks.post.length,
-        }),
-      };
-    if (trimmed === "/context") return reportContext(this.context);
-    if (isCommand(trimmed, "/hooks")) return this.hooks.command(trimmed);
-    if (trimmed === "/compact") return this.doCompact();
-    if (isCommand(trimmed, "/image")) return this.attachments.command(trimmed);
-    if (trimmed === "/new") return this.newConversation();
-    if (isCommand(trimmed, "/model")) return handleModelCommand(this.modelController, trimmed);
-    if (isCommand(trimmed, "/reasoning")) return handleReasoningCommand(this.reasoningController, trimmed);
-    if (isCommand(trimmed, "/goal")) return handleGoalCommand(this.goals, trimmed);
-    if (isCommand(trimmed, "/burst")) return this.burstCommand(trimmed);
-    if (trimmed === "/tool" || trimmed.startsWith("/tool ")) {
-      return handleToolCommand(
-        this.toolController,
-        trimmed,
-        (names, enabled) => {
-          // Tools' enabled state changed; tell the model so it stops calling
-          // disabled tools and knows to invoke newly-enabled ones. The full
-          // definition list is always sent regardless, so this is a state
-          // note, not a change to the tools offered.
-          this.notify(toggleNotice(names, enabled));
-        },
-      );
-    }
-    if (isCommand(trimmed, "/profile")) return handleProfileCommand(this.profileCommands, trimmed);
-    if (isCommand(trimmed, "/note")) return handleNotesCommand(this.noteSource, trimmed);
-    if (isCommand(trimmed, "/workflow")) return this.workflowLine(trimmed);
-    if (isCommand(trimmed, "/resume")) return handleResumeCommand(this.sessionCommands, trimmed);
-    if (isCommand(trimmed, "/save")) return handleSaveCommand(this.sessionCommands, trimmed);
-    if (isCommand(trimmed, "/delete")) return handleDeleteCommand(this.sessionCommands, trimmed);
-    if (isCommand(trimmed, "/search")) return handleSearchCommand(this.sessionCommands, trimmed);
+    const builtin = findBuiltin(this.commands, trimmed);
+    if (builtin) return builtin.run(trimmed);
     return this.audit.slash(trimmed);
   }
 

@@ -36,7 +36,7 @@ export async function resolveShortcut(
   const input = (match[2] ?? "").trim();
   const listed = workflows ? await workflows.listWorkflows() : undefined;
   const isWorkflow = listed?.ok === true && listed.value.some((w) => w.name === name);
-  const found = await notes?.findNotes?.(name);
+  const found = await notes?.findNotes(name);
   if (found && !found.ok) return { kind: "error", error: found.error };
   const matching = found?.value ?? [];
   if (matching.length > 1) {
