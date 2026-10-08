@@ -6,6 +6,7 @@ import {
   realpathSync,
   statSync,
   existsSync,
+  rmSync,
 } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join, relative, resolve, sep } from "node:path";
@@ -83,6 +84,24 @@ export function readTextFile(
     return { ok: true, value: buf.toString("utf8") };
   } catch {
     return { ok: false, error: "cannot read file", status: 404 };
+  }
+}
+
+/** Delete a file or directory (recursive) under `root`. */
+export function deletePath(
+  root: string,
+  rel: string,
+): ExplorerResult<null> {
+  const abs = confine(root, rel);
+  if (abs === null)
+    return { ok: false, error: "path outside root or missing", status: 400 };
+  try {
+    const stat = statSync(abs);
+    if (stat.isDirectory()) rmSync(abs, { recursive: true });
+    else rmSync(abs);
+    return { ok: true, value: null };
+  } catch {
+    return { ok: false, error: "cannot delete", status: 404 };
   }
 }
 

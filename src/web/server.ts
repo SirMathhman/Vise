@@ -26,7 +26,7 @@ import { pickFolder, RootRegistry } from "./api/roots.ts";
 import { createEdgeSession } from "../wiring.ts";
 import { formatToolCall, summarizeToolResult } from "../output/tool-line.ts";
 import { displayOfTool } from "../tools/display.ts";
-import { listDir, readTextFile, watchRoot, annotateIgnored, type DirEntry } from "./api/files.ts";
+import { listDir, readTextFile, deletePath, watchRoot, annotateIgnored, type DirEntry } from "./api/files.ts";
 
 /**
  * Web frontend driver (the "frontend" seam, sibling to `TerminalDriver`).
@@ -184,6 +184,17 @@ function serveApi(
   if (url.pathname.startsWith("/api/image/")) return serveImage(url, port, req);
   if (url.pathname === "/api/fs" || url.pathname === "/api/file") {
     return serveExplorer(url, roots);
+  }
+  if (url.pathname === "/api/delete" && req.method === "POST") {
+    const root = roots.resolve(url.searchParams.get("root"));
+    if (!root || !roots.isActive(root)) {
+      return Response.json({ error: "unknown root" }, { status: 403 });
+    }
+    const rel = url.searchParams.get("path") ?? "";
+    const result = deletePath(root, rel);
+    if (!result.ok)
+      return Response.json({ error: result.error }, { status: result.status });
+    return Response.json({ ok: true });
   }
   if (url.pathname === "/api/pick-folder" && req.method === "POST") {
     // Opens the OS folder dialog; only the Vise page itself may ask.

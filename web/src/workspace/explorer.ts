@@ -1,4 +1,4 @@
-import type { BrowserView } from "./browser-view.ts";
+﻿﻿import type { BrowserView } from "./browser-view.ts";
 import { emojiFor } from "./file-icons.ts";
 import {
   type BrowserTab,
@@ -54,6 +54,20 @@ export function createExplorer(
   /** Directories the user has expanded; kept so a refresh restores them. */
   const expanded = new Set<string>();
 
+  /** Delete a file or directory through the API, then refresh the tree. */
+  function deleteEntry(path: string): void {
+    fetch(api("/api/delete", path), { method: "POST" }).then((res) => {
+      if (res.ok) void reload();
+    });
+  }
+
+  /** Show a context menu with a Delete option at the given coordinates. */
+  function entryContext(e: MouseEvent, path: string): void {
+    e.preventDefault();
+    showMenu(e.clientX, e.clientY, [
+      { label: "Delete", run: () => deleteEntry(path) },
+    ]);
+  }
   /** Fill `ul` with the entries of directory `path` (lazy; called on first expand). */
   async function open(
     path: string,
@@ -66,12 +80,13 @@ export function createExplorer(
       const child = path ? `${path}/${entry.name}` : entry.name;
       ul.appendChild(
         entry.dir
-          ? dirRow(entry.name, child, expanded, (c) => void open(child, c), entry.ignored)
+          ? dirRow(entry.name, child, expanded, (c) => void open(child, c), (e) => entryContext(e, child), entry.ignored)
           : fileRow(
               entry.name,
               child,
               set.has(child),
               () => void openFile(child),
+              (e) => entryContext(e, child),
               entry.ignored,
             ),
       );
@@ -314,6 +329,7 @@ function fileRow(
   path: string,
   isOpen: boolean,
   onOpen: () => void,
+  onContext: (e: MouseEvent) => void,
   ignored?: boolean,
 ): HTMLLIElement {
   const item = document.createElement("li");
@@ -327,6 +343,7 @@ function fileRow(
   const label = document.createTextNode(name);
   item.append(icon, label);
   item.addEventListener("click", onOpen);
+  item.addEventListener("contextmenu", onContext);
   return item;
 }
 
@@ -336,6 +353,7 @@ function dirRow(
   path: string,
   expanded: Set<string>,
   load: (children: HTMLUListElement) => void,
+  onContext: (e: MouseEvent) => void,
   ignored?: boolean,
 ): HTMLLIElement {
   const item = document.createElement("li");
@@ -362,6 +380,7 @@ function dirRow(
   head.addEventListener("click", () =>
     setOpen(children.classList.contains("hidden")),
   );
+  head.addEventListener("contextmenu", onContext);
   if (expanded.has(path)) setOpen(true);
   item.append(head, children);
   return item;
