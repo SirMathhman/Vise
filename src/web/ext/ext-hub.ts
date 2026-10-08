@@ -9,7 +9,7 @@ import type { ExtensionLink, ShareEvent } from "../../browser/extension.ts";
  *   extension → server: { id, ok:true, result } | { id, ok:false, error }
  *                       { event:"tabs" }     the tabs Vise may use changed
  * There is one extension at a time: a newer connection replaces the old one.
- * A connection must carry the pairing token (`src/web/ext-token.ts`) to be accepted at all.
+ * A connection must carry the pairing token (`src/web/ext/ext-token.ts`) to be accepted at all.
  */
 
 /** The slice of a WebSocket the hub uses. */

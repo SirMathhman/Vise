@@ -24,7 +24,7 @@ import { grant, ownedIds, release, requireOwned } from "./tabs.ts";
 
 void _unused;
 
-/** The operations the Vise server asks for (see `src/web/ext-hub.ts` and `src/browser/extension.ts`). */
+/** The operations the Vise server asks for (see `src/web/ext/ext-hub.ts` and `src/browser/extension.ts`). */
 
 interface TabInfo {
   id: number;

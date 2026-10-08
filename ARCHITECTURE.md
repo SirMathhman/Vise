@@ -52,94 +52,92 @@ Target module layout and dependency direction:
 
 ```
 index.ts            # terminal entry point: settings, maintenance flags, then terminal-main.ts
-src/
+src/                # at most 9 .ts files per directory (enforced by test/layout.test.ts)
   terminal-main.ts  # terminal wiring: readline, TerminalDriver over the shared edge session
   wiring.ts         # shared edge factory: constructs client, sources, tools, and Session
   edge-sources.ts   # edge implementations of the core-owned sources (profiles, notes,
                     # hooks and the live HookStore, the initial context message)
   config.ts         # live settings: the SPEC table and `config.x` reads
-  settings-file.ts  # user-level settings file (~/.vise/.env): load, validate, save
-  settings-init.ts  # imported first by each entry so settings apply before anything reads them
-  maintenance.ts    # --version, --install-extension, --setup-playwright
+  data-dir.ts       # per-root data directory helpers (<root>/.vise, ~/.vise)
   version.ts        # build-time VERSION ("dev" from source)
-  build-check.ts    # clear error when a build output is missing from source
-  extension-assets.ts # the Firefox extension's files, embedded for --install-extension
-  note-store.ts, notes.ts, image-store.ts  # edge stores: notes (by scope/category), pictures
-  browser/          # BrowserBackend implementations (CDP, WebDriver BiDi, extension link),
-                    # page scripts shared by all, the switchable shared browser
-  tools/            # tool handlers per domain (files, shell, notes, browser, subagent...) and defs/
-  cli.ts            # argument parsing, subcommands, flag definitions
+  tools.ts          # edge-provided tool definitions (`Tool[]`) and `ToolRunner`
+                    # implementation: all tool I/O (file ops, shell commands)
+  global-prompt.ts, fs-tree.ts  # the built-in system prompt; the startup directory tree
+  settings/         # settings-file.ts (user-level ~/.vise/.env: load, validate, save),
+                    # settings-init.ts (imported first by each entry so settings apply early)
+  build/            # build-check.ts (missing build output), extension-assets.ts (the Firefox
+                    # extension's files, embedded), maintenance.ts (--version, --install-extension,
+                    # --setup-playwright, --audit-export)
+  stores/           # edge stores: notes, notes-format, note-store (notes by scope/category),
+                    # profiles, workflows, sessions (saved conversations), image-store (pictures)
+  db/               # bun:sqlite plumbing: open.ts (one connection per file), migrate.ts
+    audit/          # the global audit.db: schema, sink (store), reader (query), prune, export
+    session/        # the per-project vise.db: schema, writes, one-time JSON import
+  browser/          # BrowserBackend interface and shared pieces (types, probe, page-scripts,
+                    # settings, processes, the switchable shared browser, the extension backend)
+    chromium/       # CDP backend, its actions and view, and the Playwright runner
+    firefox/        # WebDriver BiDi backend, its actions and view
+  tools/            # tool handlers: files, shell, images, notes, search-tools, temp-store, display
+    browser/        # browser tool handlers, waits and new-tab detection
+    agent/          # subagents and their permission scope, ask_user, self, audit wrapper
+    defs/           # model-facing tool definitions per domain
   driver/
     terminal.ts     # interactive TTY driver: prompt, echo, readline wiring
     stream.ts       # streaming display state machine: owns live prompt,
                     # thinking, visible tool-call events, and markdown
                     # buffering; exposes onToken/onThinking/onPromptProgress/
                     # onToolCall plus beginTurn/finish and callback ordering invariants
-    pipe.ts         # piped/script driver: read input to EOF, emit results
   client/
     llm.ts          # LLM transport: implements the core's `Client` type,
                     # `ContextSource`, and `ModelController`; wraps fetch,
                     # owns URL/key/model config; the sole module in the tree
                     # that performs network I/O
-  core/
-    engine.ts       # line -> parse -> dispatch to client -> Result pipeline
-    workflow.ts     # pure ordered workflow execution over Client and ToolRunner
-    errors.ts       # structured error types and constructors
+  core/             # pure: engine, workflow, errors, goal, audit types (no node: imports)
   output/
     format.ts       # Result -> text for terminal or plain output
     color.ts        # terminal styling: decides whether ANSI SGR codes are
                     # emitted; single source of truth for color availability
-    markdown.ts     # per-line markdown-aware terminal styling for streamed
-                    # output; pure state machine over one completed line plus
-                    # fence state; imports only from color.ts
-    tool-line.ts    # pure one-line display of a tool call (icon, name, detail
-                    # from arguments); shared by terminal and web
+    markdown.ts     # per-line markdown-aware terminal styling for streamed output
+    tool-line.ts    # pure one-line display of a tool call; shared by terminal and web
+    audit-format.ts # /audit and /search results as text
   repl/
-    session.ts        # orchestrates: lines in, results out; owns conversation
-                      # state (the growing messages array); defines the core-owned
-                      # interfaces (ProfileSource, SessionSource, ProfileCommands,
-                      # SessionCommands, CompactionSource, etc.)
-    commands.ts       # leaf handlers for commands that depend only on immutable
-                      # session fields: reportContext, handleModelCommand,
-                      # handleToolCommand, handleNotesCommand — plain module-level
-                      # functions taking narrow controller/source interfaces
-    session-commands.ts # leaf handlers for commands that need mutable conversation
-                      # state: handleProfileCommand, handleResumeCommand,
-                      # handleSaveCommand, handleDeleteCommand — take
-                      # ProfileCommands / SessionCommands facade interfaces
-                      # wired by Session via closures
-    compaction.ts       # leaf handler for compaction: runCompaction — takes a
-                      # CompactionSource interface with the Client and a reset
-                      # callback; no I/O, delegates to core's summarize/split
-  tools.ts          # edge-provided tool definitions (`Tool[]`) and `ToolRunner`
-                    # implementation: all tool I/O (file ops, shell commands)
-  sessions.ts       # edge-owned saved-conversation snapshot I/O and validation
-  workflows.ts      # edge-owned JSON workflow file I/O and validation
+    session.ts      # orchestrates: lines in, results out; owns conversation
+                    # state (the growing messages array); defines the core-owned
+                    # interfaces (ProfileSource, SessionSource, ProfileCommands,
+                    # SessionCommands, CompactionSource, etc.)
+    ports.ts, session-options.ts, session-name.ts, profile-tools.ts  # port types and session helpers
+    commands/       # slash-command handlers: commands (immutable state), session-commands
+                    # (mutable state), hooks, image, search and workflow commands — plain
+                    # module-level functions over narrow facade interfaces
+    turn/           # per-turn mechanics: compaction, goal-loop, round-hooks, session-hooks,
+                    # session-audit
   web/
     main.ts         # web entry point (`bun run web`, vise.exe): settings, maintenance flags,
                     # port choice, server, and in the compiled build the desktop window
     server.ts       # Bun HTTP/WebSocket driver; one Session per connection
     assets.ts       # the page's files (embedded when compiled); the only static paths served
-    files.ts        # workspace-confined read-only handlers for `/api/fs` and `/api/file`
-    line.ts         # a connection's lines: the turn chain, steering, the held queue
-    queue-commands.ts # /steer and /queue, handled at once
-    settings-api.ts, notes-api.ts, browser-bridge.ts  # panels' messages, never queued behind a turn
     port.ts         # busy-port fallback
-    desktop.ts, window-worker.ts  # the native window (see "Desktop window")
+    conn/           # a connection's lines: line (turn chain, steering, held queue),
+                    # queue-commands, resume, leases, history, pictures
+    api/            # panel messages never queued behind a turn: settings-api, notes-api,
+                    # files (workspace explorer), roots (folder chooser)
+    ext/            # Firefox extension link: ext-hub, ext-token, browser-bridge
+    desktop/        # the native window: desktop.ts and window-worker.ts (see "Desktop window")
 web/
   index.html        # web UI shell
-  src/
-    app.ts          # browser entry point; compose focused UI modules
-    command-completions.ts # pure finite-choice slash-command completion
-    socket.ts       # typed WebSocket protocol and connection lifecycle (target)
-    panels.ts       # model/profile/tool/session UI state and rendering (target)
-    explorer.ts     # read-only file tree and tabbed file viewer over the explorer API
-    composer.ts     # input, keyboard navigation, and suggestions (target)
-    transcript.ts   # streamed conversation rendering and log operations
-    steer-ui.ts, prompt-progress.ts, env-panel.ts, hooks-panel.ts, notes-panel.ts,
-    profile-editor.ts  # focused UI modules (steer/queue, llama.cpp prompt bar, settings tabs)
+  src/              # app.ts is the build entry; modules grouped by feature
+    app.ts, markdown.ts, server-message.ts  # entry, markdown rendering, message types
+    transcript/     # the conversation log: transcript, replies, boxes, follow, stream-render...
+    log/            # restored history, lightbox, log view
+    composer/       # input box, completions, attachments, steer/queue, ask_user prompts
+    status/         # generating indicator, prompt progress, compaction and goal markers
+    settings/       # settings tabs, profile editor, hooks, notes, tools panels
+    workspace/      # file explorer, tabs, integrated browser view, root restore
   dist/app.js       # generated browser bundle (not hand-edited)
   styles.css        # web UI styling
+test/               # tests sit in sub-directories beside the area they cover
+                    # (core, client, repl, tools, output, db, server, web); setup.ts is the
+                    # bunfig preload; layout.test.ts enforces the 9-files-per-directory rule
 ```
 
 Dependency direction (arrows point from dependent to dependency):
@@ -210,12 +208,12 @@ Rules:
   context; the model reads/writes notes through the `list_notes`/
   `read_note`/`save_note`/`delete_note` tools when it decides it needs them,
   and the user sees the same store via `/note` (list) and can create new
-  notes via `/note init [--global] <name> [category]`. A note has a scope: `project` (`.vise/notes/`) or `global` (`~/.vise/notes/`, shared by every project and by no-folder sessions); the tools that act on one note require it. Notes are the standard memory and skill systems consolidated into one store (suggested categories `user-info`, `memories`, `skills`). The shared file I/O lives in `src/notes.ts`
+  notes via `/note init [--global] <name> [category]`. A note has a scope: `project` (`.vise/notes/`) or `global` (`~/.vise/notes/`, shared by every project and by no-folder sessions); the tools that act on one note require it. Notes are the standard memory and skill systems consolidated into one store (suggested categories `user-info`, `memories`, `skills`). The shared file I/O lives in `src/stores/notes.ts`
   (edge); the `FileNoteSource` in `src/edge-sources.ts` implements `NoteSource`. Same
   edge-owns-I/O pattern as `ProfileSource`.
 - `SessionSource` is a core-owned type (`repl/ports.ts`) for saving,
   loading, listing, deleting and searching conversation snapshots. The edge
-  implementation (`src/sessions.ts`, over `src/db/`) stores them in the
+  implementation (`src/stores/sessions.ts`, over `src/db/`) stores them in the
   project's SQLite database `.vise/vise.db`: a `sessions` row (uuid id, display
   name, active profile, times) and its `messages` rows, rewritten in one
   transaction per save, with an FTS5 index for `/search`. Successful and failed
@@ -232,7 +230,7 @@ Rules:
   loading, and creating workflows. Workflow JSON lives under
   `.vise/workflows/` and `~/.vise/workflows/`; project workflows shadow
   same-named global workflows. The edge validates and persists definitions in
-  `src/workflows.ts`. Pure orchestration in `core/workflow.ts` executes
+  `src/stores/workflows.ts`. Pure orchestration in `core/workflow.ts` executes
   instruction steps through normal model/tool turns and explicit tool steps
   through schema-constrained argument generation followed by direct
   `ToolRunner` execution, in order, then requests a final model response.
@@ -263,16 +261,16 @@ Rules:
   `profile` argument is required, `"default"` resolves to a built-in
   constant, and any other name is loaded from `.vise/profiles/<name>.md` via
   `ProfileSource` — the same edge I/O as `/profile`. The edge handler
-  (`src/tools/subagent.ts` `makeSubagentHandler`) performs the `ProfileSource`
+  (`src/tools/agent/subagent.ts` `makeSubagentHandler`) performs the `ProfileSource`
   I/O and calls the core; it is registered in `src/wiring.ts` by passing it as the
   `run_subagent` `extra` handler to `createToolRunner` because its handler
   depends on the `Client` and `ProfileSource`.
   Same edge-owns-I/O pattern as `ProfileSource`.
 - `ask_user` is a model-facing tool that pauses the turn to ask the user a
   question (with optional predefined choices) and return the answer as the
-  tool result. The `UserPrompter` interface is edge-owned (`src/tools/ask-user.ts`)
+  tool result. The `UserPrompter` interface is edge-owned (`src/tools/agent/ask-user.ts`)
   — unlike `ProfileSource` or `ToolController`, nothing in the core references
-  this type. The edge handler (`makeAskUserHandler` in `src/tools/ask-user.ts`)
+  this type. The edge handler (`makeAskUserHandler` in `src/tools/agent/ask-user.ts`)
   is registered in `src/wiring.ts` as the `ask_user` `extra` handler to
   `createToolRunner`; its dependency is the `UserPrompter` the driver passes to
   `createEdgeSession` (`RlUserPrompter` over the terminal's readline in
@@ -287,8 +285,8 @@ and `Session` via `createEdgeSession`. `src/terminal-main.ts` (started by `index
 interactive `TerminalDriver`; `src/web/server.ts` is a second driver that
 serves `web/` and bridges browser turns and streaming events over WebSocket.
 Each web connection receives an independent edge session. The web driver also
-exposes a read-only workspace explorer: `src/web/files.ts` confines `/api/fs`
-and `/api/file` requests to the working directory, while `web/src/explorer.ts`
+exposes a read-only workspace explorer: `src/web/api/files.ts` confines `/api/fs`
+and `/api/file` requests to the working directory, while `web/src/workspace/explorer.ts`
 renders the directory tree and tabbed file viewer. The web UI is started with
 `bun run web` (default port 3000, a setting; a busy port falls back to a free one); `bun run dev:web`
 rebuilds the browser bundle and restarts the watched server on source changes.
@@ -314,13 +312,13 @@ The integrated browser sits behind the `BrowserBackend` interface (`src/browser/
 
 ## Firefox extension
 
-Besides the browsers Vise launches itself, the agent can work in the user's own Firefox through an extension (`extension/`). It is deliberately thin: the Bun server keeps the model loop, tools, notes and hooks, and the extension is only UI (the Vise web page in a sidebar) and hands (browser operations in real tabs). The two meet over one WebSocket (`/ext`, requests `{id, op, params}` answered by `{id, ok, result|error}`, plus `{event:"tabs"}`). The server side is `ExtensionBackend`, a third `BrowserBackend` built on the `ExtensionLink` interface that `src/web/ext-hub.ts` implements, so `src/browser/` does not depend on the web layer. A session opened by the sidebar page (`?ui=sidebar`) uses it; other sessions keep their own headless browser. Trust: the extension, not the server, limits the agent to tabs it opened or was handed, and `/ext` accepts only an extension Origin plus a pairing token (a random secret the server keeps and hands only to the Vise page, which passes it to the sidebar, so another extension or local process posing as the extension cannot become the hands) on top of the usual loopback/Host checks. Input is synthetic, so some sites will not respond.
+Besides the browsers Vise launches itself, the agent can work in the user's own Firefox through an extension (`extension/`). It is deliberately thin: the Bun server keeps the model loop, tools, notes and hooks, and the extension is only UI (the Vise web page in a sidebar) and hands (browser operations in real tabs). The two meet over one WebSocket (`/ext`, requests `{id, op, params}` answered by `{id, ok, result|error}`, plus `{event:"tabs"}`). The server side is `ExtensionBackend`, a third `BrowserBackend` built on the `ExtensionLink` interface that `src/web/ext/ext-hub.ts` implements, so `src/browser/` does not depend on the web layer. A session opened by the sidebar page (`?ui=sidebar`) uses it; other sessions keep their own headless browser. Trust: the extension, not the server, limits the agent to tabs it opened or was handed, and `/ext` accepts only an extension Origin plus a pairing token (a random secret the server keeps and hands only to the Vise page, which passes it to the sidebar, so another extension or local process posing as the extension cannot become the hands) on top of the usual loopback/Host checks. Input is synthetic, so some sites will not respond.
 
 ## Settings
 
 One declarative `SPEC` table (`src/config.ts`) describes every tunable:
 variable name, default, minimum, group, label, `secret`, `restart`. The live
-values, the file loader and validator (`src/settings-file.ts`), the settings
+values, the file loader and validator (`src/settings/settings-file.ts`), the settings
 page's "general" tab and `.env.example` all follow it.
 
 - **Live.** Code reads `config.x` at the point of use, never into a module
@@ -360,7 +358,7 @@ the Playwright runner script, the window library's DLL) is imported with
 (`src/web/assets.ts`), never a filesystem path derived from the request. Build
 outputs (`web/dist`, `extension/dist`) are prerequisites, and running from
 source without one fails with the command that creates it
-(`src/build-check.ts`). A build's identity is `package version + commit`
+(`src/build/build-check.ts`). A build's identity is `package version + commit`
 (plus `-dirty` for uncommitted changes), stamped as `VISE_VERSION`; compiled
 versus source is decided by that one flag, and anything extracted to disk
 (`~/.vise/runtime/<version>`) is keyed by it and superseded folders are pruned.
@@ -377,9 +375,9 @@ earlier signature).
 
 The compiled `vise.exe` shows Vise in its own native window instead of a
 browser tab. The server keeps the main thread; the window runs on a worker
-thread (`src/web/window-worker.ts`) because the webview library's `run` blocks
+thread (`src/web/desktop/window-worker.ts`) because the webview library's `run` blocks
 until the window closes. The worker binds the WebView2 DLL with `bun:ffi` and
-reports typed events (`ready`, `closed`, `failed`; `src/web/desktop.ts`).
+reports typed events (`ready`, `closed`, `failed`; `src/web/desktop/desktop.ts`).
 Closing the window shuts the server down and the program ends; a window that
 cannot start (WebView2 runtime missing, DLL not loading, no window within 10
 seconds) is fatal and visible (a message box, exit code 1), so Vise never runs
@@ -418,14 +416,14 @@ whole conversations older than that, once per run.
 - **Capture** is a write-only port: the core defines the typed `AuditEvent`
   union and `AuditSink` (`src/core/audit.ts`, pure; `record` never throws and
   never waits on I/O). Each fact has one emitter: model calls
-  `LlmClient.chat`, tool calls `createToolRunner` (`src/tools/audit-call.ts`,
+  `LlmClient.chat`, tool calls `createToolRunner` (`src/tools/agent/audit-call.ts`,
   with the whole result before any is saved aside as too large), hook runs
   `SessionHooks.run`, compactions `runCompaction`, goal events the
   `GoalTracker` emit, subagent conversations `TurnCallbacks.onSubagentDone`
   (also when the subagent fails), and the conversation's messages, turns,
-  commands and saved-id links `SessionAudit` (`src/repl/session-audit.ts`),
+  commands and saved-id links `SessionAudit` (`src/repl/turn/session-audit.ts`),
   which picks messages up by position because the engine appends in place.
-- **Storage:** `SqliteAuditSink` (`src/db/audit-store.ts`) stamps the time on
+- **Storage:** `SqliteAuditSink` (`src/db/audit/audit-store.ts`) stamps the time on
   `record`, queues, and writes in one transaction after 250 ms, at the end of a
   turn or conversation. Events arrive in order, so the sink itself follows
   which conversation and turn they belong to; each kind has its own writer.
@@ -435,12 +433,12 @@ whole conversations older than that, once per run.
   `audit_tool_calls`, the low-volume `audit_events` (commands, hooks,
   compactions, goals), and the `audit_fts` search index.
 - **Query** is a separate read port, `AuditReader` (`report`, `search`; core
-  types in `src/core/audit.ts`, `SqliteAuditReader` in `src/db/audit-query.ts`)
+  types in `src/core/audit.ts`, `SqliteAuditReader` in `src/db/audit/audit-query.ts`)
   returning data that `src/output/audit-format.ts` renders. `/audit`,
   `/audit tools|models|errors|hooks` and `/audit search <text>` use it, and
-  `--audit-export <id>` (`src/db/audit-export.ts`) prints a whole conversation
+  `--audit-export <id>` (`src/db/audit/audit-export.ts`) prints a whole conversation
   as JSON.
-- **Retention:** `pruneAuditLog` (`src/db/audit-prune.ts`) runs once per run,
+- **Retention:** `pruneAuditLog` (`src/db/audit/audit-prune.ts`) runs once per run,
   before a session starts recording (never from the write path), and removes
   each conversation whose last sign of life (its end, else its newest message)
   is older than the setting, from every table in one transaction; a conversation
@@ -548,7 +546,7 @@ whole conversations older than that, once per run.
   cross-callback ordering invariants (e.g. flush any partial content line
   before a counter or tool event starts a fresh line, so buffered content is
   never emitted after that event), not in module-level `let`s in an entry point.
-  The web transcript (`web/src/transcript.ts`) owns the equivalent browser
+  The web transcript (`web/src/transcript/transcript.ts`) owns the equivalent browser
   ordering: streamed assistant text is finalized before thinking or tool-call
   entries are appended, so the visible log follows server event order.
 - **Dynamic model switching and context awareness.** Model switching
@@ -671,11 +669,11 @@ purpose }` handed to `Client.chat`, replacing the nine positional parameters.
 
 - **The web chat log.** Appending a line, streaming a reply and scrolling must
   cost the same at 100 lines and at 10,000. Measure with `?bench=<lines>` on
-  the page (`web/src/bench.ts`, development only): per-line cost, frame time
+  the page (`web/src/log/bench.ts`, development only): per-line cost, frame time
   while a long reply streams, cost of 50 scroll jumps, DOM size, heap. Done:
   follow the bottom only while reading there, one render per frame with the
   finished part of a long reply rendered once, lazy pictures, no live region.
-  The conversation is also kept as data (`web/src/chat-lines.ts`), so the next
+  The conversation is also kept as data (`web/src/transcript/chat-lines.ts`), so the next
   steps need no rewrite: keep only the newest lines mounted (older ones rebuilt
   from the data, a spacer standing for them), then page older history from the
   server by `seq` instead of the 400-line cap. Do not rely on

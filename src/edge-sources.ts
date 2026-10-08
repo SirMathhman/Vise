@@ -43,7 +43,7 @@ import { initWorkflow, listWorkflows, loadWorkflow } from "./stores/workflows.ts
 /**
  * Edge implementation of ProfileSource backed by a `profiles/` directory of
  * `.md` files. Thin adapter over the shared profile-file I/O in
- * `src/profiles.ts` (invariant #2: edge owns I/O; the session only asks for
+ * `src/stores/profiles.ts` (invariant #2: edge owns I/O; the session only asks for
  * names and text).
  */
 export class FileProfileSource implements ProfileSource {
@@ -233,7 +233,7 @@ export class FileNoteSource implements NoteSource {
 /**
  * Edge implementation of SessionSource backed by a `sessions/` directory of
  * `.json` files. Thin adapter over the shared session I/O in
- * `src/sessions.ts` (invariant #2: edge owns I/O; the session only asks for
+ * `src/stores/sessions.ts` (invariant #2: edge owns I/O; the session only asks for
  * messages and profile names).
  */
 export class FileSessionSource implements SessionSource {

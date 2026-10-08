@@ -155,7 +155,7 @@ function buildUi() {
  * The "notes" settings tab: a list of the project's and the global notes grouped by scope and category
  * and an editor to create, edit, move/rename and delete them. It works on the
  * same notes store as the model's note tools and `/note`; the server reads and
- * writes it directly (`src/web/notes-api.ts`). Changing the name or category
+ * writes it directly (`src/web/api/notes-api.ts`). Changing the name or category
  * of an existing note and saving moves it.
  */
 export function createNotesPanel(

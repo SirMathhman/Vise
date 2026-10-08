@@ -15,7 +15,7 @@ import type {
  * The browser as seen through the Firefox extension: every call is relayed to
  * the extension, which runs it in the user's real browser and only on tabs it
  * has been given (it opened them, or the user handed them over). The transport
- * is an `ExtensionLink`, implemented by the web server (`src/web/ext-hub.ts`),
+ * is an `ExtensionLink`, implemented by the web server (`src/web/ext/ext-hub.ts`),
  * so this module has no network code and `src/browser/` never imports the web
  * layer.
  */

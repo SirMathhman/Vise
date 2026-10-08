@@ -78,7 +78,7 @@ function notePath(base: string, name: string, category: string): string {
 /**
  * Note, category and profile names must be a single path-safe segment (no
  * traversal). Profiles share the same naming rule, so this is exported for
- * reuse by `src/profiles.ts`.
+ * reuse by `src/stores/profiles.ts`.
  */
 export function validName(name: string): boolean {
   return (

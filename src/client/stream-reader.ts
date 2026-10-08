@@ -49,7 +49,7 @@ export interface GenerationListener {
  * the last seen `usage.prompt_tokens`, and whether any data payload arrived.
  *
  * Exported for testing: it is the edge's SSE parser and is exercised with a
- * synthetic stream in `test/llm.test.ts`.
+ * synthetic stream in `test/client/llm.test.ts`.
  */
 export async function streamChat(
   stream: ReadableStream<Uint8Array>,

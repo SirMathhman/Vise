@@ -1,4 +1,4 @@
-/** One setting as the server describes it (`env` message; see `src/settings-file.ts`). */
+/** One setting as the server describes it (`env` message; see `src/settings/settings-file.ts`). */
 interface EnvField {
   env: string;
   group: string;

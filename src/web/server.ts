@@ -57,7 +57,7 @@ import { listDir, readTextFile, watchRoot, annotateIgnored, type DirEntry } from
  *                     { type:"tool", name, depth?, text } a tool call began (text: icon, name and a short detail)
  *                     { type:"tool_result", name, depth, text? } a tool call finished (text: what it came to, e.g. "12 matches"); for run_subagent it closes the subagent's box
  *                     { type:"image", id, mime, label, bytes, width?, height? } a tool produced a picture (fetch it from /api/image/<id>)
- *                     { type:"history", name, entries } the folder's latest saved session was restored on connect (`src/web/history.ts`)
+ *                     { type:"history", name, entries } the folder's latest saved session was restored on connect (`src/web/conn/history.ts`)
  *                     { type:"result", ok:true, value, streamed?, compactionWarning? }
  *                     { type:"result", ok:false, error }
  *                     { type:"ask", question, options, multiSelect? }
