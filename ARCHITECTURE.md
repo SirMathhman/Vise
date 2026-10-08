@@ -237,6 +237,15 @@ Rules:
   llama.cpp's response format constraints are used only on argument-generation
   requests (without native tool definitions), since its automatic tool-call
   grammar cannot be combined with a user grammar in the same request.
+  A `profile` step switches profile mid-run through the `/profile` machinery
+  behind the core-owned `WorkflowProfiles` port (`core/workflow-profiles.ts`;
+  the edge adapter is `repl/commands/workflow-profiles.ts`). Ideal: a step
+  kind is one registered descriptor (validate, pre-run check, run, editor
+  form) rather than an `if` chain repeated in the store validator, runner,
+  availability check and web editor, so a new step type is added in one place;
+  the pre-run availability check is a pure fold over those descriptors, and the
+  restore of the previous profile is owned by the run scope (not a `finally`
+  that re-scans the steps).
 - `LlmClient` owns best-effort llama.cpp slot-cache preservation around
   subagent calls. It discovers populated, idle slots through `/slots`, saves
   snapshots by process/nesting depth/slot, and restores them in `finally`;
