@@ -315,13 +315,16 @@ function dirRow(
   const item = document.createElement("li");
   const head = document.createElement("div");
   head.className = "fs-row fs-dir";
-  head.textContent = `▸ ${name}`;
+  const icon = document.createElement("span");
+  icon.className = "fs-icon";
+  icon.textContent = "▸";
+  head.append(icon, document.createTextNode(name));
   const children = document.createElement("ul");
   children.className = "fs-children hidden";
   let loaded = false;
   const setOpen = (open: boolean): void => {
     children.classList.toggle("hidden", !open);
-    head.textContent = `${open ? "▾" : "▸"} ${name}`;
+    icon.textContent = open ? "▾" : "▸";
     if (open) expanded.add(path);
     else expanded.delete(path);
     if (open && !loaded) {
