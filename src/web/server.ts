@@ -1,8 +1,5 @@
 import { config } from "../config.ts";
 import type { ServerWebSocket } from "bun";
-import { readFileSync } from "node:fs";
-import { extname, join } from "node:path";
-import { resolve } from "node:path";
 import { formatError, formatGoalEvent } from "../output/format.ts";
 import type { AskRequest, UserPrompter } from "../tools/ask-user.ts";
 import { saveProfileWhitelist } from "../repl/profile-tools.ts";
@@ -12,6 +9,7 @@ import type { BrowserBackend } from "../browser/types.ts";
 import { ExtensionHub, isExtensionOrigin } from "./ext-hub.ts";
 import { loadExtensionToken, tokensMatch } from "./ext-token.ts";
 import { handleNoteMessage } from "./notes-api.ts";
+import { serveAsset } from "./assets.ts";
 import { queueLine, steerLine, unqueue } from "./line.ts";
 import type { HeldLine } from "./line.ts";
 import { handleSettingsMessage } from "./settings-api.ts";
@@ -66,37 +64,6 @@ import { listDir, readTextFile, watchRoot } from "./files.ts";
  *                     { type:"fs_changed" }          something under the project root changed
  *                     { type:"exit" }                the line was /exit
  */
-
-const WEB_DIR = resolve("web");
-const WEB_DIST_DIR = join(WEB_DIR, "dist");
-
-const MIME: Record<string, string> = {
-  ".html": "text/html; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".svg": "image/svg+xml",
-  ".ico": "image/x-icon",
-};
-
-/** Serve a static file from `web/`. The root path serves `index.html`. */
-function serveStatic(path: string): Response {
-  const rel =
-    path === "/" || path === "/index.html" ? "index.html" : path.slice(1);
-  const root = rel.startsWith("dist/") ? WEB_DIST_DIR : WEB_DIR;
-  const relativePath = rel.startsWith("dist/")
-    ? rel.slice("dist/".length)
-    : rel;
-  const file = join(root, relativePath);
-  if (!file.startsWith(WEB_DIR) || !readFileSync(file, "utf8")) {
-    return new Response("not found", { status: 404 });
-  }
-  return new Response(readFileSync(file, "utf8"), {
-    headers: {
-      "Content-Type": MIME[extname(file)] ?? "application/octet-stream",
-    },
-  });
-}
 
 /** Non-browser clients send no Origin; browsers must come from the Vise page itself. */
 function isLocalOrigin(origin: string | null, port: number): boolean {
@@ -299,7 +266,7 @@ export function startWebServer(port = config.port): void {
       }
       const api = serveApi(req, url, port, roots, extensionToken);
       if (api) return api;
-      return serveStatic(url.pathname);
+      return serveAsset(url.pathname);
     },
     websocket: {
       open(ws) {

@@ -1,5 +1,6 @@
 {
   "name": "vise",
+  "version": "0.1.0",
   "module": "index.ts",
   "type": "module",
   "private": true,
@@ -12,7 +13,8 @@
     "test": "bun test",
     "lint": "eslint src/ test/ index.ts web/ extension/",
     "build:ext": "bun scripts/build-ext.ts",
-    "typecheck:ext": "tsc --project extension/tsconfig.json"
+    "typecheck:ext": "tsc --project extension/tsconfig.json",
+    "build:exe": "bun scripts/build-exe.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

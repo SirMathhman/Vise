@@ -1,11 +1,33 @@
 import { config } from "../config.ts";
 import { type ChildProcess, spawn } from "node:child_process";
 import { createInterface } from "node:readline";
-import { fileURLToPath } from "node:url";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { globalDataDir } from "../data-dir.ts";
+import { VERSION } from "../version.ts";
 
-const RUNNER = fileURLToPath(
-  new URL("./playwright-runner.mjs", import.meta.url),
-);
+// @ts-expect-error TypeScript sees the .mjs as a module; with `type: "file"` it is a path.
+import runnerAsset from "./playwright-runner.mjs" with { type: "file" };
+
+/**
+ * The runner script node can run. From source that is the file beside this one.
+ * Inside a compiled build the script is embedded where node cannot read it, so
+ * it is written to `~/.vise/runtime/<version>/` (a folder per version, so an
+ * updated build never runs an old runner); `playwright-core` is then found
+ * in `~/.vise/node_modules` (`vise --setup-playwright`).
+ */
+export function runnerPath(
+  asset: string = runnerAsset as unknown as string,
+  home: string = globalDataDir,
+): string {
+  if (!asset.includes("~BUN") && !asset.includes("$bunfs")) return asset;
+  const target = join(home, "runtime", VERSION, "playwright-runner.mjs");
+  if (!existsSync(target)) {
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, readFileSync(asset));
+  }
+  return target;
+}
 
 interface Pending {
   resolve: (result: string) => void;
@@ -55,7 +77,7 @@ export class PlaywrightSession {
 
   private runner(): ChildProcess {
     if (this.child) return this.child;
-    const child = spawn("node", [RUNNER], {
+    const child = spawn("node", [runnerPath()], {
       stdio: ["pipe", "pipe", "ignore"],
       windowsHide: true,
     });
@@ -64,7 +86,9 @@ export class PlaywrightSession {
     );
     child.on("exit", () => {
       if (this.child === child) this.child = null;
-      this.failAll("the Playwright runner exited");
+      this.failAll(
+        "the Playwright runner exited (it needs node and playwright-core; a packaged Vise installs it with `--setup-playwright`)",
+      );
     });
     createInterface({ input: child.stdout! }).on("line", (line) =>
       this.onLine(line),
