@@ -11,6 +11,8 @@ export interface Boxes {
   begin(title: string): void;
   /** The innermost open box is done: collapse it. */
   end(): void;
+  /** Label the innermost open box (or the last one that closed) with `text`, e.g. its context fill. */
+  meta(text: string): void;
   /** Collapse every open box (the turn ended without closing them). */
   endAll(): void;
   /** Forget the boxes (the log was cleared). */
@@ -18,7 +20,8 @@ export interface Boxes {
 }
 
 export function createBoxes(log: HTMLElement): Boxes {
-  const open: { details: HTMLDetailsElement; body: HTMLElement }[] = [];
+  const open: { details: HTMLDetailsElement; body: HTMLElement; head: HTMLElement }[] = [];
+  let lastHead: HTMLElement | undefined;
   const boxes: Boxes = {
     container: () => open[open.length - 1]?.body ?? log,
     begin(title) {
@@ -32,13 +35,17 @@ export function createBoxes(log: HTMLElement): Boxes {
       body.className = "box-body";
       details.append(head, body);
       boxes.container().appendChild(details);
-      open.push({ details, body });
+      open.push({ details, body, head });
+      lastHead = head;
     },
     end() {
       const box = open.pop();
       if (!box) return;
       box.details.open = false;
       box.details.classList.add("done");
+    },
+    meta(text) {
+      (open[open.length - 1]?.head ?? lastHead)?.setAttribute("data-meta", text);
     },
     endAll() {
       while (open.length > 0) boxes.end();

@@ -20,6 +20,8 @@ export interface TranscriptView {
   beginBox(title: string): void;
   /** The innermost subagent finished: its box collapses. */
   endBox(): void;
+  /** Label the innermost subagent box (its context fill). */
+  setBoxMeta(text: string): void;
   /** Collapse every open box (the turn ended). */
   endBoxes(): void;
   /** A line whose `detail` stays folded away until opened, under the visible `title`. */
@@ -130,6 +132,7 @@ export function createTranscript(
       settle();
       boxes.end();
     },
+    setBoxMeta: boxes.meta,
     endBoxes(): void {
       settle();
       boxes.endAll();

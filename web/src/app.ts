@@ -5,6 +5,7 @@ import { replayHistory, showImage } from "./history.ts";
 import { appendPicture } from "./lightbox.ts";
 import { createGoalUi } from "./goal-ui.ts";
 import { createAskUi } from "./ask-ui.ts";
+import { createCompactionMarker } from "./compaction-ui.ts";
 import { createGenerating } from "./generating.ts";
 import { createPromptProgress } from "./prompt-progress.ts";
 import { createBusy } from "./busy.ts";
@@ -92,6 +93,7 @@ const promptProgress = createPromptProgress(
   transcript.removeLine,
 );
 const generating = createGenerating(transcript.addLine, transcript.removeLine);
+const compactionMarker = createCompactionMarker(transcript.addLine);
 const steerUi = createSteerUi({
   sendMessage,
   notice: (text) => transcript.addLine("system", text),
@@ -245,9 +247,14 @@ function saveSession(): void {
 }
 
 function renderContext(message: ResultMessage): void {
-  if (!message.context) return;
-  contextEl.textContent = message.context;
-  const match = message.context.match(/\(([\d.]+)%\)$/);
+  if (message.context) showContext("reply", message.context);
+}
+
+/** A model call's context fill: the header's for the main conversation, the open box's for a subagent. */
+function showContext(purpose: string | undefined, text: string): void {
+  if (purpose === "subagent") return transcript.setBoxMeta(` · ${text.replace(/^context: /, "")}`);
+  contextEl.textContent = text;
+  const match = text.match(/\(([\d.]+)%\)$/);
   if (match) contextEl.classList.toggle("warning", Number(match[1]) >= 90);
 }
 
@@ -506,6 +513,7 @@ socket.addEventListener("message", (event: MessageEvent<string>) => {
     return;
   }
   generating.observe(message);
+  compactionMarker.observe(message);
   if (serverPanels.some((panel) => panel.handle(message))) return;
   switch (message.type) {
     case "profile_tools":
@@ -552,6 +560,9 @@ socket.addEventListener("message", (event: MessageEvent<string>) => {
         submitting: false,
       });
       renderBusy();
+      break;
+    case "context":
+      showContext(message.purpose, message.text ?? "");
       break;
     case "progress":
       promptProgress.handle(message);

@@ -1,6 +1,6 @@
 import { config } from "../config.ts";
 import type { ServerWebSocket } from "bun";
-import { formatError, formatGoalEvent } from "../output/format.ts";
+import { formatContext, formatError, formatGoalEvent } from "../output/format.ts";
 import type { AskRequest, UserPrompter } from "../tools/ask-user.ts";
 import { saveProfileWhitelist } from "../repl/profile-tools.ts";
 import { BrowserSettingsStore } from "../browser/settings.ts";
@@ -429,7 +429,9 @@ function makeConnectionState(
         purpose: p.purpose,
       }),
     onGenerating: (g) =>
-      send({
+      g.used !== undefined && g.max !== undefined
+        ? send({ type: "context", purpose: g.purpose, text: formatContext(g.used, g.max) })
+        : send({
         type: "generating",
         request: g.request,
         purpose: g.purpose,

@@ -48,6 +48,8 @@ export interface ServerMessage extends ResultMessage, HooksFields {
   purpose?: CallPurpose;
   /** `generating`: tokens the call has written so far, and whether it has ended. */
   tokens?: number;
+  /** `generating`: set on the report that follows a call's end (the context fill, not a generation). */
+  used?: number;
   done?: boolean;
   /** `state`: a line is running on the server, and whether it can be steered. */
   running?: boolean;

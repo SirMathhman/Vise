@@ -86,6 +86,9 @@ export interface GenerationProgress {
   done: boolean;
   /** The tool whose call is being written, once its name has streamed. */
   tool?: string;
+  /** Set on the report that follows the end of a call: how full that call's prompt made the context window. */
+  used?: number;
+  max?: number;
 }
 
 export type ViseError =

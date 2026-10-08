@@ -381,6 +381,12 @@ export class LlmClient implements Client {
    * The model's maximum context window in tokens, as reported live by the
    * server via `GET /slots?model=<id>` (`n_ctx` on each slot).
    */
+  /** After a call: tell the generation sink how full its prompt made the context window (not waited for). */
+  private async reportUsage(request: number, purpose: CallPurpose, used: number): Promise<void> {
+    const max = await this.contextMax().catch(() => undefined);
+    if (max?.ok) this.generationSink?.({ request, purpose, tokens: 0, done: true, used, max: max.value });
+  }
+
   async contextMax(): Promise<Result<number>> {
     try {
       const res = await fetch(
@@ -517,6 +523,7 @@ export class LlmClient implements Client {
               ),
         generation,
       );
+      if (generation && acc.usage !== undefined) void this.reportUsage(request, purpose, acc.usage);
       if (!acc.sawData) {
         return {
           ok: false,

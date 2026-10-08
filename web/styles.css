@@ -1477,3 +1477,16 @@ body:has(#workspace:not(.hidden)) #files-btn {
     animation: none;
   }
 }
+
+/* A subagent box's header carries its context fill. */
+.box-title::after {
+  content: attr(data-meta);
+  color: var(--dim);
+  font-style: normal;
+}
+
+/* Where the conversation was folded into a summary. */
+.line.compaction {
+  color: var(--dim);
+  font-style: italic;
+}
