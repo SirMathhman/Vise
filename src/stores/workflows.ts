@@ -120,8 +120,7 @@ export function saveWorkflowAt(
   return tryIo("save", name, () => {
     mkdirSync(join(base, "workflows"), { recursive: true });
     const temp = `${path}.tmp`;
-    writeFileSync(temp, `${JSON.stringify(workflow.value, null, 2)}
-`, "utf8");
+    writeFileSync(temp, `${JSON.stringify(workflow.value, null, 2)}\n`, "utf8");
     renameSync(temp, path); // never leaves a half-written workflow
     return name;
   });
@@ -196,6 +195,7 @@ function validateStep(value: unknown): WorkflowStep | undefined {
       type: "tool",
       name: step.name,
       args: step.args as Record<string, unknown>,
+      ...(step.exact === true ? { exact: true } : {}),
     };
   }
   return undefined;

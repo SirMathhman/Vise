@@ -1,6 +1,11 @@
 type Step =
   | { type: "instruction"; text: string }
-  | { type: "tool"; name: string; args: Record<string, unknown> };
+  | {
+      type: "tool";
+      name: string;
+      args: Record<string, unknown>;
+      exact?: boolean;
+    };
 
 interface WorkflowEntry {
   name: string;
@@ -19,6 +24,8 @@ export interface WorkflowsMessage {
   deleted?: boolean;
   error?: string;
 }
+
+import { createArgRows } from "./arg-rows.ts";
 
 type Ref = { name: string; scope: string };
 
@@ -44,19 +51,21 @@ function stepRow(step: Step, move: (by: number) => void, drop: () => void) {
   text.rows = 3;
   const toolName = make("input", "save-input");
   toolName.placeholder = "tool name";
-  const args = make("textarea", "note-text");
-  args.rows = 3;
-  args.placeholder = "arguments as a JSON object";
+  const argsBox = make("div", "wf-args");
+  const addArg = make("button", "tools-btn", "+ add argument");
+  addArg.type = "button";
+  const argRows =
+    step.type === "tool"
+      ? createArgRows(argsBox, step.args, step.exact === true)
+      : createArgRows(argsBox, {}, true);
+  addArg.addEventListener("click", argRows.add);
   if (step.type === "instruction") text.value = step.text;
-  else {
-    toolName.value = step.name;
-    args.value = JSON.stringify(step.args, null, 2);
-  }
+  else toolName.value = step.name;
   const show = (): void => {
     const isTool = kind.value === "tool";
     text.hidden = isTool;
     toolName.hidden = !isTool;
-    args.hidden = !isTool;
+    argsBox.hidden = addArg.hidden = !isTool;
   };
   kind.addEventListener("change", show);
   show();
@@ -71,21 +80,16 @@ function stepRow(step: Step, move: (by: number) => void, drop: () => void) {
     button.addEventListener("click", action);
     bar.append(button);
   }
-  row.append(kind, text, toolName, args, bar);
+  row.append(kind, text, toolName, argsBox, addArg, bar);
   const read = (): Step => {
     if (kind.value === "instruction") {
       return { type: "instruction", text: text.value };
     }
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(args.value.trim() || "{}");
-    } catch {
-      throw new Error(`arguments of '${toolName.value}' are not valid JSON`);
-    }
     return {
       type: "tool",
       name: toolName.value,
-      args: parsed as Record<string, unknown>,
+      args: argRows.read(),
+      exact: true,
     };
   };
   return { row, read };
