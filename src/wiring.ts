@@ -1,5 +1,6 @@
 import { config } from "./config.ts";
 import { noAudit, type AuditReader, type AuditSink } from "./core/audit.ts";
+import { pruneAuditLog } from "./db/audit-prune.ts";
 import { SqliteAuditReader } from "./db/audit-query.ts";
 import { SqliteAuditSink } from "./db/audit-store.ts";
 import { mkdirSync } from "node:fs";
@@ -274,6 +275,7 @@ function auditFor(root: string): {
   auditReader?: AuditReader;
 } {
   if (!config.auditEnabled) return { auditSink: noAudit };
+  pruneAuditLog(); // old conversations go before this one starts recording
   const sink = new SqliteAuditSink(root);
   return {
     auditSink: sink,

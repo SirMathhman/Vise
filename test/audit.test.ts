@@ -16,7 +16,7 @@ import { createToolRunner, ToolSet } from "../src/tools.ts";
 import { SqliteAuditSink } from "../src/db/audit-store.ts";
 import { SqliteAuditReader } from "../src/db/audit-query.ts";
 import { exportAudit } from "../src/db/audit-export.ts";
-import { pruneAudit } from "../src/db/audit-prune.ts";
+import { BY_SESSION, pruneAudit } from "../src/db/audit-prune.ts";
 import { AUDIT_MIGRATIONS } from "../src/db/audit-schema.ts";
 import { closeAllDbs, openDb } from "../src/db/open.ts";
 import { Session, type LineResult } from "../src/repl/session.ts";
@@ -350,6 +350,42 @@ describe("reading the audit log", () => {
     ).toEqual({ n: 0 });
   });
 
+  test("pruning keeps a conversation that is still in use, even one that began long ago", () => {
+    const { path, sink } = logged("prune-live");
+    sink.record({ kind: "session_start", session: "live" });
+    sink.record({ kind: "message", message: { role: "user", content: "now" } });
+    sink.record({ kind: "session_start", session: "dead" });
+    sink.record({ kind: "message", message: { role: "user", content: "x" } });
+    sink.close();
+    const db = openDb(path, AUDIT_MIGRATIONS);
+    if (!db.ok) throw new Error("open failed");
+    db.value.query("UPDATE audit_sessions SET started_at = '2000-01-01'").run();
+    db.value
+      .query(
+        "UPDATE audit_messages SET ts = '2000-01-02' WHERE session_id = 'dead'",
+      )
+      .run();
+    expect(pruneAudit(db.value, "2020-01-01")).toBe(1);
+    expect(db.value.query("SELECT id FROM audit_sessions").all()).toEqual([
+      { id: "live" },
+    ]);
+  });
+
+  test("every audit table keyed by session_id is pruned", () => {
+    const { path, sink } = logged("prune-tables");
+    sink.close();
+    sink.record({ kind: "session_start", session: "s" });
+    sink.close();
+    const db = openDb(path, AUDIT_MIGRATIONS);
+    if (!db.ok) throw new Error("open failed");
+    const keyed = db.value
+      .query(
+        "SELECT DISTINCT m.name name FROM sqlite_master m, pragma_table_info(m.name) p WHERE m.type = 'table' AND p.name = 'session_id'",
+      )
+      .all() as { name: string }[];
+    expect(keyed.map((r) => r.name).sort()).toEqual([...BY_SESSION].sort());
+  });
+
   test("an export holds everything recorded for a conversation", () => {
     const { path, sink } = logged("export");
     sink.record({ kind: "session_start", session: "abc123" });
@@ -362,6 +398,7 @@ describe("reading the audit log", () => {
       turns: [{ user_text: "hi", outcome: "ok" }],
       messages: [{ content: "hi" }],
     });
-    expect(exportAudit("zzz", path).ok).toBe(false);
+    const missing = exportAudit("zzz", path);
+    expect(!missing.ok && missing.error.kind).toBe("malformed");
   });
 });

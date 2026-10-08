@@ -1,9 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { join } from "node:path";
 import type { AuditEvent, AuditSink } from "../core/audit.ts";
-import { config } from "../config.ts";
 import { globalDataDir } from "../data-dir.ts";
-import { pruneAudit } from "./audit-prune.ts";
 import { AUDIT_MIGRATIONS } from "./audit-schema.ts";
 import { openDb, tryDb } from "./open.ts";
 
@@ -72,7 +70,6 @@ export class SqliteAuditSink implements AuditSink {
     this.queue = [];
     if (batch.length === 0) return;
     const opened = openDb(this.path, AUDIT_MIGRATIONS);
-    if (opened.ok) pruneOnce(opened.value, this.path);
     const written = opened.ok
       ? tryDb("write the audit log", this.path, () =>
           opened.value.transaction(() => {
@@ -101,18 +98,6 @@ export class SqliteAuditSink implements AuditSink {
     (WRITERS[e.kind] as Writer<typeof e.kind>)(db, e as never, at, this.root);
     if (e.kind === "turn_end") this.turn = null;
   }
-}
-
-/** Old conversations go once per run, the first time the log is opened. */
-const pruned = new Set<string>();
-
-function pruneOnce(db: Database, path: string): void {
-  if (pruned.has(path) || config.auditRetentionDays <= 0) return;
-  pruned.add(path);
-  const cutoff = new Date(Date.now() - config.auditRetentionDays * 86_400_000);
-  tryDb("prune the audit log", path, () =>
-    pruneAudit(db, cutoff.toISOString()),
-  );
 }
 
 type Writer<K extends AuditEvent["kind"]> = (

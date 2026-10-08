@@ -440,8 +440,12 @@ whole conversations older than that, once per run.
   `/audit tools|models|errors|hooks` and `/audit search <text>` use it, and
   `--audit-export <id>` (`src/db/audit-export.ts`) prints a whole conversation
   as JSON.
-- **Retention:** `pruneAudit` (`src/db/audit-prune.ts`) removes a conversation
-  from every table in one transaction and vacuums.
+- **Retention:** `pruneAuditLog` (`src/db/audit-prune.ts`) runs once per run,
+  before a session starts recording (never from the write path), and removes
+  each conversation whose last sign of life (its end, else its newest message)
+  is older than the setting, from every table in one transaction; a conversation
+  still in use is never taken. The file is not vacuumed (that would stall every
+  connection); freed pages are reused.
 - Arguments and results are stored verbatim, so a tool result that held a
   secret is in the log in plaintext; there is no redaction yet.
 

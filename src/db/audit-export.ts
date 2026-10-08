@@ -24,24 +24,29 @@ export function exportAudit(
   const opened = openDb(path, AUDIT_MIGRATIONS);
   if (!opened.ok) return opened;
   const db = opened.value;
+  const found = tryDb(
+    "read the audit log",
+    path,
+    () =>
+      db
+        .query("SELECT * FROM audit_sessions WHERE substr(id, 1, ?) = ?")
+        .all(ref.length, ref) as { id: string }[],
+  );
+  if (!found.ok) return found;
+  const [session, extra] = found.value;
+  if (session === undefined || extra !== undefined) {
+    const body =
+      session === undefined
+        ? `no recorded conversation starts with '${ref}'`
+        : `'${ref}' matches more than one conversation; use more characters`;
+    return { ok: false, error: { kind: "malformed", body } };
+  }
   return tryDb("read the audit log", path, () => {
-    const found = db
-      .query("SELECT * FROM audit_sessions WHERE substr(id, 1, ?) = ?")
-      .all(ref.length, ref) as { id: string }[];
-    if (found.length !== 1 || found[0] === undefined) {
-      throw new Error(
-        found.length === 0
-          ? `no recorded conversation starts with '${ref}'`
-          : `'${ref}' matches ${found.length} conversations; use more characters`,
-      );
-    }
-    const session = found[0];
     const out: Record<string, unknown> = { session };
     for (const table of TABLES) {
+      const order = table === "audit_turns" ? "started_at" : "id";
       out[table.slice("audit_".length)] = db
-        .query(
-          `SELECT * FROM ${table} WHERE session_id = ? ORDER BY ${table === "audit_turns" ? "started_at" : "id"}`,
-        )
+        .query(`SELECT * FROM ${table} WHERE session_id = ? ORDER BY ${order}`)
         .all(session.id);
     }
     return out;
