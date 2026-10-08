@@ -149,7 +149,7 @@ export class ShellHook implements PreTurnHook, PostTurnHook {
         const proc = spawn(
           "powershell.exe",
           ["-NoProfile", "-NonInteractive", "-Command", this.command],
-          { cwd: this.cwd },
+          { cwd: this.cwd, windowsHide: true },
         );
         let stdout = "";
         let stderr = "";

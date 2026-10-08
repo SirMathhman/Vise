@@ -106,21 +106,18 @@ export function annotateIgnored(
   const stdin = paths.join("\n") + "\n";
   let stdout: string;
   try {
-    const result = spawnSync(
-      "git",
-      ["check-ignore", "--stdin"],
-      { input: stdin, cwd: root, encoding: "utf8" },
-    );
+    const result = spawnSync("git", ["check-ignore", "--stdin"], {
+      input: stdin,
+      cwd: root,
+      encoding: "utf8",
+      windowsHide: true,
+    });
     if (result.status !== 0) return entries;
     stdout = result.stdout;
   } catch {
     return entries;
   }
-  const ignoredSet = new Set(
-    stdout
-      .split("\n")
-      .filter((l) => l.length > 0),
-  );
+  const ignoredSet = new Set(stdout.split("\n").filter((l) => l.length > 0));
   return entries.map((e, i) =>
     ignoredSet.has(paths[i]!)
       ? { name: e.name, dir: e.dir, ignored: true }
