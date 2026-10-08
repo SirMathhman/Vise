@@ -1,3 +1,4 @@
+import { config } from "../config.ts";
 import type { Picture } from "../core/errors.ts";
 import type {
   Client,
@@ -95,7 +96,7 @@ import type {
  * reaches this fraction of the model's context window. Chosen high enough that
  * a normal turn only compacts when overflow is genuinely imminent.
  */
-const COMPACTION_THRESHOLD = 0.9;
+const COMPACTION_THRESHOLD = config.compactionThreshold;
 
 type OnRound = TurnCallbacks["onRound"];
 

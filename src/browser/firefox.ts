@@ -1,3 +1,4 @@
+import { config } from "../config.ts";
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
@@ -30,9 +31,9 @@ const CANDIDATES = [
   "C:/Program Files (x86)/Mozilla Firefox/firefox.exe",
 ];
 
-const LOAD_TIMEOUT_MS = 15_000;
-const LAUNCH_TIMEOUT_MS = 20_000;
-const TITLE_TIMEOUT_MS = 1_500;
+const LOAD_TIMEOUT_MS = config.firefoxLoadTimeoutMs;
+const LAUNCH_TIMEOUT_MS = config.firefoxLaunchTimeoutMs;
+const TITLE_TIMEOUT_MS = config.firefoxTitleTimeoutMs;
 
 /** Where Firefox records the port of its BiDi server once it is listening. */
 const PORT_FILE = "WebDriverBiDiServer.json";

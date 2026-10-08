@@ -1,3 +1,4 @@
+import { config } from "../config.ts";
 import {
   readdirSync,
   watch,
@@ -13,7 +14,7 @@ import { relative, resolve, sep } from "node:path";
  */
 
 /** Largest file the viewer will return; bigger ones are reported as too large. */
-const MAX_FILE_BYTES = 256 * 1024;
+const MAX_FILE_BYTES = config.maxFileBytes;
 
 export interface DirEntry {
   name: string;

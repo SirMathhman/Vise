@@ -1,3 +1,4 @@
+import { config } from "../config.ts";
 /**
  * Scripts evaluated inside a page. They tag interactive elements with a
  * `data-vise-ref` attribute (e1, e2, ...) so the model can name an element
@@ -9,10 +10,10 @@
 export const REF_PATTERN = /^e\d+$/;
 
 /** How many elements the outline lists. */
-const MAX_ELEMENTS = 200;
+const MAX_ELEMENTS = config.snapshotMaxElements;
 
 /** How many in-view elements the scan looks at before it stops (it still says that more exist). */
-const MAX_SCANNED = 1000;
+const MAX_SCANNED = config.snapshotMaxScanned;
 
 /** Returns one line per visible interactive element: `<ref> <role> "<name>" ...`. */
 export const SNAPSHOT_SCRIPT = `(() => {

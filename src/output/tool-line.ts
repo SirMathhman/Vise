@@ -1,3 +1,4 @@
+import { config } from "../config.ts";
 import type { Picture } from "../core/errors.ts";
 
 /**
@@ -71,8 +72,8 @@ const SHOWN = [
   "key",
 ] as const;
 
-const PART_MAX = 60;
-const DETAIL_MAX = 140;
+const PART_MAX = config.toolLinePartMax;
+const DETAIL_MAX = config.toolLineDetailMax;
 
 function clip(text: string, max: number): string {
   const flat = text.replace(/\s+/g, " ").trim();

@@ -1,9 +1,10 @@
+import { config } from "../config.ts";
 import type { Picture } from "../core/errors.ts";
 import { imageStore, sniffImage } from "../image-store.ts";
 import { MAX_IMAGE_BYTES } from "../tools/images.ts";
 
 /** Most pictures that may come with one message. */
-export const MAX_PICTURES = 6;
+export const MAX_PICTURES = config.maxPictures;
 
 const DATA_URI =
   /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/]+={0,2})$/;

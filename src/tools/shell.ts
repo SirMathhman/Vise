@@ -1,3 +1,4 @@
+import { config } from "../config.ts";
 import { type ChildProcess, spawn } from "node:child_process";
 import { errStr } from "./files.ts";
 
@@ -5,7 +6,7 @@ import { errStr } from "./files.ts";
  * Foreground commands that do not finish within this window are killed.
  * Background processes are not subject to this limit.
  */
-const FOREGROUND_TIMEOUT_MS = 60_000;
+const FOREGROUND_TIMEOUT_MS = config.shellTimeoutMs;
 
 type ProcessStatus = "running" | "finished" | "killed";
 

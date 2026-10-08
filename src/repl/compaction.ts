@@ -1,3 +1,4 @@
+import { config } from "../config.ts";
 import {
   approxTokens,
   splitForCompaction,
@@ -14,16 +15,16 @@ import type { CompactionSource } from "./session.ts";
  * compaction, in addition to the summary. Keeps enough recent context that the
  * conversation continues to feel continuous.
  */
-const RECENT_TURNS_TO_KEEP = 2;
+const RECENT_TURNS_TO_KEEP = config.recentTurnsToKeep;
 
 /** Compacting inside one long turn: how many of its latest rounds (an assistant message with its tool results) stay verbatim. */
-const ROUNDS_TO_KEEP = 10;
+const ROUNDS_TO_KEEP = config.roundsToKeep;
 
 /** Compacting inside a turn: the verbatim tail may take at most this share of the context window. */
-const TAIL_SHARE = 0.25;
+const TAIL_SHARE = config.tailShare;
 
 /** Inside a long turn the context can grow by a whole page read per round, so compaction starts earlier than between turns. */
-export const IN_TURN_COMPACTION_THRESHOLD = 0.75;
+export const IN_TURN_COMPACTION_THRESHOLD = config.inTurnCompactionThreshold;
 
 /**
  * A successful no-op compaction result: nothing needed to be compacted.

@@ -1,3 +1,4 @@
+import { config } from "../config.ts";
 import type { Client, Tool } from "../core/engine.ts";
 import type { Message, Result } from "../core/errors.ts";
 import {
@@ -29,10 +30,10 @@ export type GoalEvent =
   | { kind: "setting"; enabled: boolean };
 
 /** The same unmet step this many times in a row ends the turn as blocked. */
-const MAX_SAME_STEP = 4;
+const MAX_SAME_STEP = config.maxSameStep;
 
 /** After this many automatic continues in one turn, the user is asked whether to go on. */
-const CONTINUES_BEFORE_ASKING = 8;
+const CONTINUES_BEFORE_ASKING = config.continuesBeforeAsking;
 
 /** What the tracker needs from its surroundings while it loops. */
 export interface GoalHooks {

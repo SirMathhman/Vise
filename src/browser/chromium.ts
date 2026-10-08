@@ -1,3 +1,4 @@
+import { config } from "../config.ts";
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
@@ -37,8 +38,8 @@ const CANDIDATES = [
 /** Browser-owned pages (welcome, sync prompts, devtools) are not the agent's tabs. */
 const BROWSER_INTERNAL = /^(edge|chrome|devtools|chrome-extension):\/\//;
 
-const LOAD_TIMEOUT_MS = 15_000;
-const LAUNCH_TIMEOUT_MS = 15_000;
+const LOAD_TIMEOUT_MS = config.chromiumLoadTimeoutMs;
+const LAUNCH_TIMEOUT_MS = config.chromiumLaunchTimeoutMs;
 
 interface TargetInfo {
   targetId: string;

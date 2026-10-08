@@ -1,3 +1,4 @@
+import { config } from "../config.ts";
 import { randomBytes } from "node:crypto";
 import {
   mkdirSync,
@@ -22,19 +23,19 @@ import { join } from "node:path";
  */
 
 /** More lines than this, or more characters than `MAX_CHARS`, and a result is saved instead of shown. */
-export const MAX_LINES = 250;
-export const MAX_CHARS = 20_000;
+export const MAX_LINES = config.resultMaxLines;
+export const MAX_CHARS = config.resultMaxChars;
 
 /** How much of a spilled result is still shown inline, so the model knows what it is. */
-const PREVIEW_LINES = 40;
-const PREVIEW_CHARS = 2_000;
+const PREVIEW_LINES = config.previewLines;
+const PREVIEW_CHARS = config.previewChars;
 
-const MAX_MATCHES = 100;
-const MAX_MATCH_CHARS = 300;
-const STALE_MS = 24 * 60 * 60 * 1000;
+const MAX_MATCHES = config.searchMaxMatches;
+const MAX_MATCH_CHARS = config.searchMaxMatchChars;
+const STALE_MS = config.tempStaleMs;
 
 /** A live session marks its folder as in use this often, so another process starting up never sweeps it. */
-const HEARTBEAT_MS = 60 * 60 * 1000;
+const HEARTBEAT_MS = config.tempHeartbeatMs;
 
 /** Temp file names are `<tool>-<n>`: one path-safe segment, never a path. */
 const VALID_NAME = /^[\w.-]+$/;

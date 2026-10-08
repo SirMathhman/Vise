@@ -1,3 +1,4 @@
+import { config } from "../config.ts";
 import type { Tool } from "../core/engine.ts";
 
 /**
@@ -26,7 +27,7 @@ const CORE_TOOLS = new Set([
   "list_temp",
 ]);
 
-const MAX_RESULTS = 5;
+const MAX_RESULTS = config.toolSearchMaxResults;
 
 export const searchToolsDef: Tool = {
   type: "function",

@@ -1,3 +1,4 @@
+import { config } from "../config.ts";
 import { readFile, stat } from "node:fs/promises";
 import { basename, extname, isAbsolute, resolve } from "node:path";
 import type { Picture, Result } from "../core/errors.ts";
@@ -17,7 +18,7 @@ import { errStr } from "./files.ts";
 const EXTENSIONS = [".png", ".jpg", ".jpeg", ".gif", ".webp"];
 
 /** The largest picture file handed to the model (the server downsizes, but the upload itself should stay sane). */
-export const MAX_IMAGE_BYTES = 10_000_000;
+export const MAX_IMAGE_BYTES = config.maxImageBytes;
 
 /** Pictures produced by the tool call in progress, until the runner collects them. */
 export class ImageOutbox {

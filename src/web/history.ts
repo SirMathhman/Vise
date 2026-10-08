@@ -1,3 +1,4 @@
+import { config } from "../config.ts";
 import type { Message } from "../core/errors.ts";
 import { formatToolCall } from "../output/tool-line.ts";
 
@@ -16,7 +17,7 @@ export type HistoryEntry =
   | { kind: "note"; text: string };
 
 /** The most lines restored at once; older ones are summarised as a count. */
-const MAX_ENTRIES = 400;
+const MAX_ENTRIES = config.historyMaxEntries;
 
 /** The burst-mode plan the engine puts in front of an assistant message is not something to show. */
 const PLAN = /^<plan>[\s\S]*?<\/plan>\n?/;

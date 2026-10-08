@@ -1,3 +1,4 @@
+import { config } from "./config.ts";
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -36,7 +37,7 @@ import {
 import { initWorkflow, listWorkflows, loadWorkflow } from "./workflows.ts";
 
 /** Most notes the startup message lists (the rest are reached with `list_notes`). */
-const STARTUP_NOTE_LIMIT = 30;
+const STARTUP_NOTE_LIMIT = config.startupNoteLimit;
 
 /**
  * Edge implementation of ProfileSource backed by a `profiles/` directory of

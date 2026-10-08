@@ -1,3 +1,4 @@
+import { config } from "../config.ts";
 import type { BrowserBackend, TabInfo } from "../browser/types.ts";
 
 /**
@@ -8,7 +9,7 @@ import type { BrowserBackend, TabInfo } from "../browser/types.ts";
  */
 
 /** How long a page gets, after an action, to open its popup (it is usually immediate). */
-const SETTLE_MS = 300;
+const SETTLE_MS = config.tabSettleMs;
 
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));

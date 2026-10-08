@@ -1,3 +1,4 @@
+import { config } from "../config.ts";
 import {
   encodeMessages,
   type ImageResolver,
@@ -18,10 +19,9 @@ import type {
   Result,
 } from "../core/errors.ts";
 
-const URL = "http://localhost:8080/v1/chat/completions";
-const API_KEY = "S6677k5w355Nw9ErxCZWYCMiW4ItldmzXBLUElpnLsdE8gBj5A";
-const MODEL =
-  "RentedNoodle/Qwen3.8-27B-OrcaRouter-GSQ-RCO-IQ3_XXS-Uncensored:QATFA";
+const URL = config.llmChatUrl;
+const API_KEY = config.llmApiKey;
+const MODEL = config.llmModel;
 /** The inference backend label reported by the `self` tool. */
 export const BACKEND = "llama.cpp";
 
@@ -75,7 +75,7 @@ export class LlmClient implements Client {
   private slotCacheDepth = 0;
   private readonly slotRequestTimeoutMs: number;
 
-  constructor(slotRequestTimeoutMs = 5_000) {
+  constructor(slotRequestTimeoutMs = config.slotRequestTimeoutMs) {
     this.slotRequestTimeoutMs = slotRequestTimeoutMs;
   }
 
@@ -107,7 +107,7 @@ export class LlmClient implements Client {
   ): Promise<{ id: number; filename: string }[]> {
     const model = encodeURIComponent(this.currentModel);
     const response = await this.slotFetch(
-      `http://localhost:8080/slots?model=${model}&include_slots=true`,
+      `${config.llmBaseUrl}/slots?model=${model}&include_slots=true`,
       {
         headers: { authorization: `Bearer ${API_KEY}` },
       },
@@ -155,7 +155,7 @@ export class LlmClient implements Client {
   ): Promise<SlotStateResult> {
     const model = encodeURIComponent(this.currentModel);
     const response = await this.slotFetch(
-      `http://localhost:8080/slots/${id}?action=${action}&model=${model}`,
+      `${config.llmBaseUrl}/slots/${id}?action=${action}&model=${model}`,
       {
         method: "POST",
         headers: {
@@ -234,7 +234,7 @@ export class LlmClient implements Client {
   async supportsVision(model: string = this.currentModel): Promise<boolean> {
     const headers = { authorization: `Bearer ${API_KEY}` };
     try {
-      const listed = await fetch("http://localhost:8080/v1/models", {
+      const listed = await fetch(`${config.llmBaseUrl}/v1/models`, {
         headers,
       });
       if (listed.ok) {
@@ -245,7 +245,7 @@ export class LlmClient implements Client {
         if (args) return args.some((a) => a === "--mmproj" || a === "-mm");
       }
       const props = await fetch(
-        `http://localhost:8080/props?model=${encodeURIComponent(model)}`,
+        `${config.llmBaseUrl}/props?model=${encodeURIComponent(model)}`,
         { headers },
       );
       if (!props.ok) return false;
@@ -263,7 +263,7 @@ export class LlmClient implements Client {
    */
   async listModels(): Promise<Result<string[]>> {
     try {
-      const res = await fetch("http://localhost:8080/v1/models", {
+      const res = await fetch(`${config.llmBaseUrl}/v1/models`, {
         method: "GET",
         headers: { authorization: `Bearer ${API_KEY}` },
       });
@@ -303,7 +303,7 @@ export class LlmClient implements Client {
   async contextMax(): Promise<Result<number>> {
     try {
       const res = await fetch(
-        `http://localhost:8080/slots?model=${encodeURIComponent(this.currentModel)}`,
+        `${config.llmBaseUrl}/slots?model=${encodeURIComponent(this.currentModel)}`,
         {
           method: "GET",
           headers: { authorization: `Bearer ${API_KEY}` },

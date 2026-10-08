@@ -1,3 +1,4 @@
+import { config } from "../config.ts";
 import { stat } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import type { BrowserBackend, TabInfo } from "../browser/types.ts";
@@ -43,7 +44,7 @@ function tabId(args: Record<string, unknown>): number | null {
 }
 
 /** The element outline is always shown in full, so it is bounded here (its script already stops at 200 elements). */
-const MAX_OUTLINE_CHARS = 30_000;
+const MAX_OUTLINE_CHARS = config.maxOutlineChars;
 
 function clip(outline: string): string {
   return outline.length <= MAX_OUTLINE_CHARS

@@ -1,3 +1,4 @@
+import { config } from "../config.ts";
 import { textProbe, type PageProbe } from "../browser/probe.ts";
 import type { BrowserBackend } from "../browser/types.ts";
 
@@ -10,16 +11,16 @@ import type { BrowserBackend } from "../browser/types.ts";
  * backend and a large page costs a few bytes a poll, not its whole text.
  */
 
-const POLL_MS = 250;
+const POLL_MS = config.waitPollMs;
 /** How long the page must stay unchanged to count as settled. */
-const QUIET_MS = 600;
+const QUIET_MS = config.waitQuietMs;
 /** A page that has not changed at all is only called settled after this long: an update may still be coming. */
-const MIN_IDLE_MS = 1_500;
+const MIN_IDLE_MS = config.waitMinIdleMs;
 /** One probe must not hang the wait (a blocking dialog can stall a page's script). */
-const PROBE_TIMEOUT_MS = 2_000;
+const PROBE_TIMEOUT_MS = config.waitProbeTimeoutMs;
 
-export const DEFAULT_TIMEOUT_SECONDS = 10;
-const MAX_TIMEOUT_SECONDS = 60;
+export const DEFAULT_TIMEOUT_SECONDS = config.waitDefaultSeconds;
+const MAX_TIMEOUT_SECONDS = config.waitMaxSeconds;
 
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));

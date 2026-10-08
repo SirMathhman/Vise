@@ -1,3 +1,4 @@
+import { config } from "../config.ts";
 import type { BidiConnection } from "./bidi.ts";
 import { WD_KEYS } from "./bidi-actions.ts";
 import type { BrowserInput, FrameListener } from "./types.ts";
@@ -5,7 +6,7 @@ import type { BrowserInput, FrameListener } from "./types.ts";
 /** Live view and input forwarding for one Firefox tab (BiDi browsing context). */
 
 /** Pause between screenshots; BiDi has no screencast, so the view polls. */
-const FRAME_INTERVAL_MS = 200;
+const FRAME_INTERVAL_MS = config.liveViewFrameMs;
 
 const BUTTONS = { left: 0, middle: 1, right: 2, none: 0 } as const;
 

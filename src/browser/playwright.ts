@@ -1,8 +1,9 @@
+import { config } from "../config.ts";
 import { type ChildProcess, spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
-const RUN_TIMEOUT_MS = 30_000;
+const RUN_TIMEOUT_MS = config.playwrightTimeoutMs;
 const RUNNER = fileURLToPath(
   new URL("./playwright-runner.mjs", import.meta.url),
 );

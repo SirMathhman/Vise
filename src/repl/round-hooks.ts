@@ -1,3 +1,4 @@
+import { config } from "../config.ts";
 import type { Message, Result } from "../core/errors.ts";
 import { formatError } from "../output/format.ts";
 
@@ -10,10 +11,10 @@ import { formatError } from "../output/format.ts";
  */
 
 /** Save the session after this many rounds (counted across the continues of one user message). */
-const SAVE_EVERY = 25;
+const SAVE_EVERY = config.saveEvery;
 
 /** Ask whether the work is making progress after this many rounds. */
-const PROGRESS_EVERY = 50;
+const PROGRESS_EVERY = config.progressEvery;
 
 export interface RoundDeps {
   /** Compact `messages` (the turn's conversation) if the next prompt would not fit comfortably. */

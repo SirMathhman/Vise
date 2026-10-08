@@ -1,8 +1,9 @@
+import { config } from "./config.ts";
 import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-const MAX_DEPTH = 5;
-const MAX_ENTRIES = 25;
+const MAX_DEPTH = config.treeMaxDepth;
+const MAX_ENTRIES = config.treeMaxEntries;
 
 /**
  * Build a capped initial directory structure as a multi-line string for

@@ -1,3 +1,4 @@
+import { config } from "../config.ts";
 import type { PageAction } from "./page-scripts.ts";
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
@@ -67,7 +68,7 @@ export interface ExtensionLink {
 }
 
 /** Largest total upload sent through the extension (the data goes over a WebSocket as base64). */
-const MAX_UPLOAD_BYTES = 10_000_000;
+const MAX_UPLOAD_BYTES = config.maxUploadBytes;
 
 const NO_LIVE_VIEW =
   "the Firefox extension works in your real browser window, so there is no live view";

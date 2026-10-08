@@ -1,3 +1,4 @@
+import { config } from "../config.ts";
 import type { ServerWebSocket } from "bun";
 import { readFileSync } from "node:fs";
 import { extname, join } from "node:path";
@@ -262,7 +263,7 @@ function rootMessage(data: WsData): Record<string, unknown> {
 }
 
 /** Start the web driver: serve the UI and accept WebSocket connections. */
-export function startWebServer(port = 3000): void {
+export function startWebServer(port = config.port): void {
   // One browser shared by every connection; it launches on first tool use.
   // Its engine (Chromium or Firefox) is a global setting changed from the UI.
   const settingsStore = new BrowserSettingsStore();
