@@ -1,4 +1,4 @@
-import { BUILD, getPort, getToken } from "./config.ts";
+import { BUILD, findServerPort, getToken } from "./config.ts";
 import { ops } from "./ops.ts";
 import { grant, isOwned, onOwnedChanged, ownedIds, release } from "./tabs.ts";
 
@@ -59,7 +59,7 @@ async function connect(): Promise<void> {
     return;
   }
   setLink("connecting");
-  const port = await getPort();
+  const port = await findServerPort();
   const ws = new WebSocket(
     `ws://127.0.0.1:${port}/ext?token=${encodeURIComponent(token)}`,
   );
@@ -78,7 +78,7 @@ async function connect(): Promise<void> {
       "closed",
       opened
         ? "The Vise server closed the connection."
-        : `Could not connect to the Vise server on port ${port}: it is not running, or it rejected the pairing token.`,
+        : `Could not connect to the Vise server (found none from port ${port} up): it is not running, or it rejected the pairing token.`,
     );
     // Keep trying: the server may simply not be running yet.
     setTimeout(() => void connect(), Math.min(30_000, 1000 * 2 ** retry++));

@@ -1,4 +1,4 @@
-import { BUILD, getPort } from "./config.ts";
+import { BUILD, findServerPort } from "./config.ts";
 
 const PAIR_RETRY_MS = 1500;
 
@@ -25,7 +25,7 @@ let windowId: number | undefined;
 
 /** Show the UI when the server answers, otherwise the "not running" notice. */
 async function load(): Promise<void> {
-  serverOrigin = `http://127.0.0.1:${await getPort()}`;
+  serverOrigin = `http://127.0.0.1:${await findServerPort()}`;
   try {
     await fetch(serverOrigin, { mode: "no-cors" });
     serverUp = true;

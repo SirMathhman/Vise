@@ -34,7 +34,7 @@ export async function suggestPort(
 
 /** Tell the user, in the page, that their port was busy and how to choose another. */
 export function busyPortNote(wanted: number, using: number): string {
-  return `Port ${wanted} was already in use, so Vise is running on port ${using}. To pick a port yourself, set it under settings → general → port and restart (the Firefox extension's options page needs the same port).`;
+  return `Port ${wanted} was already in use, so Vise is running on port ${using}. To pick a port yourself, set it under settings → general → port and restart.`;
 }
 
 /**

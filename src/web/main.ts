@@ -16,7 +16,9 @@ if (!(await runMaintenance())) {
     const chosen = await choosePort(config.port);
     try {
       startWebServer(chosen.port, chosen.note);
-    } catch {
+    } catch (error) {
+      // Only a taken port is recovered from; anything else is a real error to see.
+      if ((error as { code?: string }).code !== "EADDRINUSE") throw error;
       // The port was taken between the check and the start: take any free one.
       const port = await anyFreePort();
       startWebServer(port, busyPortNote(config.port, port));

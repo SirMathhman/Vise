@@ -168,6 +168,10 @@ function serveApi(
     }
     return Response.json({ token: extensionToken });
   }
+  if (url.pathname === "/api/vise-hello") {
+    // Lets the Firefox extension find the server when it had to move to another port.
+    return Response.json({ vise: true });
+  }
   if (url.pathname.startsWith("/api/image/")) return serveImage(url, port, req);
   if (url.pathname === "/api/fs" || url.pathname === "/api/file") {
     return serveExplorer(url, roots);
