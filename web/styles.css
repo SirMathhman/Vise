@@ -7,10 +7,45 @@
   --user: #5fd0a0;
   --error: #ff7d7d;
   --border: #2a2c33;
+  --scroll-track: var(--bg);
+  --scroll-thumb: color-mix(in srgb, var(--border) 80%, var(--text));
+  --scroll-thumb-hover: color-mix(in srgb, var(--accent) 50%, transparent);
 }
 
 * {
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) var(--scroll-track);
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border-radius: 4px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scroll-thumb-hover);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.xterm-viewport::-webkit-scrollbar {
+  display: none;
+}
+
+.xterm-viewport {
+  scrollbar-width: none;
 }
 
 html,
