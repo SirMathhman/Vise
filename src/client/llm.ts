@@ -30,13 +30,8 @@ export const BACKEND = "llama.cpp";
 interface Slot {
   id: number;
   n_ctx: number;
-  n_prompt_tokens?: number;
-  is_processing?: boolean;
-}
-
-interface SlotStateResult {
-  n_saved?: number;
-  n_restored?: number;
+  /** The most recent task the slot ran (grows with time; the highest is the slot used last). */
+  id_task?: number;
 }
 
 interface ModelsResponse {
@@ -162,102 +157,54 @@ export class LlmClient implements Client {
    * built-in default; any other value is forwarded as `reasoning_effort`.
    */
   private reasoningEffort: ReasoningEffort | undefined;
-  private slotCacheDepth = 0;
+  /** The slot side work is pinned to while `withSideSlot` runs; undefined when it runs unpinned. */
+  private sideSlot: number | undefined;
+  private sideDepth = 0;
   private readonly slotRequestTimeoutMs: number;
 
   constructor(slotRequestTimeoutMs = config.slotRequestTimeoutMs) {
     this.slotRequestTimeoutMs = slotRequestTimeoutMs;
   }
 
-  /** Run an operation while best-effort preserving populated llama.cpp slots. */
-  async withPreservedSlotCache<T>(operation: () => Promise<T>): Promise<T> {
-    const depth = this.slotCacheDepth++;
-    let saved: { id: number; filename: string }[] = [];
-    try {
-      saved = await this.savePopulatedSlots(depth);
-    } catch {
-      // Slot endpoints and slot saving may be disabled; run without snapshots.
+  /**
+   * Run side work (a subagent) on a llama.cpp slot of its own, so the main
+   * conversation's slot, and the context checkpoints the server needs to reuse
+   * its prefix, are never touched. Slots are for concurrent activity: saving a
+   * slot to a file and restoring it afterwards does not bring the checkpoints
+   * back, so the next main request re-processed the whole prompt. With a single
+   * slot (or when the slots cannot be read) the work runs unpinned and the
+   * server's own prompt cache keeps the evicted context. Nested side work uses
+   * the same slot.
+   */
+  async withSideSlot<T>(operation: () => Promise<T>): Promise<T> {
+    if (this.sideDepth++ === 0) {
+      this.sideSlot = await this.chooseSideSlot().catch(() => undefined);
     }
     try {
       return await operation();
     } finally {
-      for (const slot of saved) {
-        try {
-          await this.restoreSlot(slot.id, slot.filename);
-        } catch {
-          // Cache preservation is best-effort and must not mask the operation.
-        }
-      }
-      this.slotCacheDepth -= 1;
+      if (--this.sideDepth === 0) this.sideSlot = undefined;
     }
   }
 
-  private async savePopulatedSlots(
-    depth: number,
-  ): Promise<{ id: number; filename: string }[]> {
+  /** The least recently used slot other than the one used last (the main conversation's); undefined when there is none to choose. */
+  private async chooseSideSlot(): Promise<number | undefined> {
     const model = encodeURIComponent(this.currentModel);
     const response = await this.slotFetch(
-      `${config.llmBaseUrl}/slots?model=${model}&include_slots=true`,
-      {
-        headers: { authorization: `Bearer ${config.llmApiKey}` },
-      },
+      `${config.llmBaseUrl}/slots?model=${model}`,
+      { headers: { authorization: `Bearer ${config.llmApiKey}` } },
       this.slotRequestTimeoutMs,
     );
-    if (!response.ok) return [];
+    if (!response.ok) return undefined;
     const body: unknown = await response.json();
-    const slots = Array.isArray(body)
-      ? (body as Slot[])
-      : typeof body === "object" &&
-          body !== null &&
-          Array.isArray((body as { slots?: unknown }).slots)
-        ? (body as { slots: Slot[] }).slots
-        : [];
-    if (!Array.isArray(slots)) return [];
-
-    const saved: { id: number; filename: string }[] = [];
-    for (const slot of slots) {
-      if (
-        !Number.isInteger(slot.id) ||
-        (slot.n_prompt_tokens ?? 0) <= 0 ||
-        slot.is_processing === true
-      ) {
-        continue;
-      }
-      const filename = `vise-${process.pid}-subagent-${depth}-slot-${slot.id}.bin`;
-      try {
-        const result = await this.slotAction(slot.id, "save", filename);
-        if ((result.n_saved ?? 0) > 0) saved.push({ id: slot.id, filename });
-      } catch {
-        // Continue saving other slots when one slot cannot be preserved.
-      }
+    if (!Array.isArray(body) || body.length < 2) return undefined;
+    const slots = body as Slot[];
+    // Without the task numbers the main slot cannot be told from the rest.
+    if (!slots.every((s) => Number.isInteger(s.id) && typeof s.id_task === "number")) {
+      return undefined;
     }
-    return saved;
-  }
-
-  private async restoreSlot(id: number, filename: string): Promise<void> {
-    await this.slotAction(id, "restore", filename);
-  }
-
-  private async slotAction(
-    id: number,
-    action: "save" | "restore",
-    filename: string,
-  ): Promise<SlotStateResult> {
-    const model = encodeURIComponent(this.currentModel);
-    const response = await this.slotFetch(
-      `${config.llmBaseUrl}/slots/${id}?action=${action}&model=${model}`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${config.llmApiKey}`,
-        },
-        body: JSON.stringify({ filename, model: this.currentModel }),
-      },
-      this.slotRequestTimeoutMs,
-    );
-    if (!response.ok) return {};
-    return (await response.json()) as SlotStateResult;
+    const byRecency = [...slots].sort((a, b) => (b.id_task ?? 0) - (a.id_task ?? 0));
+    return byRecency[byRecency.length - 1]?.id;
   }
 
   private async slotFetch(
@@ -471,6 +418,40 @@ export class LlmClient implements Client {
     return result;
   }
 
+  /** The JSON body of a chat request: the conversation, the tool grammar, the reply format, and the slot side work is pinned to. */
+  private requestBody(
+    messages: Message[],
+    tools: Tool[] | undefined,
+    responseSchema: Record<string, unknown> | undefined,
+    isToolEnabled: ((name: string) => boolean) | undefined,
+    act: boolean,
+  ): Record<string, unknown> {
+    const useTools = !!tools && tools.length > 0 && !responseSchema;
+    const body: Record<string, unknown> = {
+      model: this.currentModel,
+      // A schema-constrained request (a one-off question about the conversation)
+      // still encodes the conversation as the tool protocol does, so it shares
+      // the prompt prefix, and llama.cpp's cache, with the normal turns.
+      messages:
+        tools && tools.length > 0
+          ? encodeMessages(messages, tools, this.imageResolver)
+          : plainMessages(messages, this.imageResolver),
+      ...(act ? { stream: false } : STREAM_FIELDS),
+    };
+    if (useTools) {
+      Object.assign(body, toolRequestFields(tools, isToolEnabled, act));
+    }
+    if (responseSchema) {
+      body.response_format = {
+        type: "json_schema",
+        json_schema: { schema: responseSchema },
+      };
+    }
+    this.applyReasoningEffort(body);
+    if (this.sideSlot !== undefined) body.id_slot = this.sideSlot;
+    return body;
+  }
+
   private async send(
     messages: Message[],
     tools?: Tool[],
@@ -488,29 +469,15 @@ export class LlmClient implements Client {
     // of the prompt, so toggling a tool leaves the KV cache intact.
     const useTools = !!tools && tools.length > 0 && !responseSchema;
     const request = ++this.requestSeq;
-    const body: Record<string, unknown> = {
-      model: this.currentModel,
-      // A schema-constrained request (a one-off question about the conversation)
-      // still encodes the conversation as the tool protocol does, so it shares
-      // the prompt prefix, and llama.cpp's cache, with the normal turns.
-      messages:
-        tools && tools.length > 0
-          ? encodeMessages(messages, tools, this.imageResolver)
-          : plainMessages(messages, this.imageResolver),
-      ...(act ? { stream: false } : STREAM_FIELDS),
-    };
-    if (useTools) {
-      Object.assign(body, toolRequestFields(tools, isToolEnabled, act));
-    }
+    const body = this.requestBody(
+      messages,
+      tools,
+      responseSchema,
+      isToolEnabled,
+      act,
+    );
     // An act round shows the user nothing; its reasoning is only captured.
     const thought = collectThinking(act ? undefined : onThinking);
-    if (responseSchema) {
-      body.response_format = {
-        type: "json_schema",
-        json_schema: { schema: responseSchema },
-      };
-    }
-    this.applyReasoningEffort(body);
     try {
       const res = await fetch(config.llmChatUrl, {
         method: "POST",

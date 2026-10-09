@@ -385,7 +385,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
         lazily(() => toolRunner),
         sessionTools,
         subagentCallbacks(options, toolController, client, audit.auditSink),
-        (operation) => client.withPreservedSlotCache(operation),
+        (operation) => client.withSideSlot(operation),
         () => sessionRef.current.currentAbortSignal,
         (name) => toolController.baselineEnabled(name),
       ),

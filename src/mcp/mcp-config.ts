@@ -2,12 +2,22 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { globalDataDir } from "../data-dir.ts";
 
-/** How to start one MCP server over stdio. */
-export interface McpServerSpec {
+/** A server started as a local process and spoken to over stdio. */
+export interface StdioSpec {
   command: string;
   args: string[];
   env: Record<string, string>;
+  url?: undefined;
 }
+
+/** A server reached at an http(s) URL (Streamable HTTP, or the older SSE transport); `headers` carry any credentials. */
+export interface UrlSpec {
+  url: string;
+  headers: Record<string, string>;
+  command?: undefined;
+}
+
+export type McpServerSpec = StdioSpec | UrlSpec;
 
 export interface McpConfig {
   servers: Record<string, McpServerSpec>;
@@ -18,29 +28,41 @@ export interface McpConfig {
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
+const isStringMap = (v: unknown): v is Record<string, string> =>
+  isRecord(v) && Object.values(v).every((x) => typeof x === "string");
+
 /** Validate one server entry; returns the spec, or the reason it was refused. */
 export function parseServer(value: unknown): McpServerSpec | string {
   if (!isRecord(value)) return "must be an object";
-  const command = value["command"];
+  const { command, url } = value;
+  if (url !== undefined) return parseUrlServer(value);
   if (typeof command !== "string" || command === "") {
-    return "needs a non-empty 'command' (only stdio servers are supported)";
+    return "needs a non-empty 'command' (a local server) or a 'url' (a remote one)";
   }
   const args = value["args"] ?? [];
   if (!Array.isArray(args) || !args.every((a) => typeof a === "string")) {
     return "'args' must be a list of strings";
   }
   const env = value["env"] ?? {};
-  if (
-    !isRecord(env) ||
-    !Object.values(env).every((v) => typeof v === "string")
-  ) {
-    return "'env' must map names to strings";
+  if (!isStringMap(env)) return "'env' must map names to strings";
+  return { command, args: args as string[], env };
+}
+
+function parseUrlServer(value: Record<string, unknown>): UrlSpec | string {
+  if (value["command"] !== undefined) return "use either 'command' or 'url', not both";
+  const url = value["url"];
+  let parsed: URL | undefined;
+  try {
+    parsed = typeof url === "string" ? new URL(url) : undefined;
+  } catch {
+    parsed = undefined;
   }
-  return {
-    command,
-    args: args as string[],
-    env: env as Record<string, string>,
-  };
+  if (!parsed || (parsed.protocol !== "http:" && parsed.protocol !== "https:")) {
+    return "'url' must be an http or https address";
+  }
+  const headers = value["headers"] ?? {};
+  if (!isStringMap(headers)) return "'headers' must map names to strings";
+  return { url: parsed.href, headers };
 }
 
 /** The `mcpServers` object of a JSON file, or why it could not be read (a missing file is just empty). */

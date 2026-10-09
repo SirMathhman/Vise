@@ -46,7 +46,7 @@ export function makeSubagentHandler(
   tools: ToolRunner,
   toolDefs: Tool[],
   callbacks: TurnCallbacks = {},
-  withPreservedSlotCache?: <T>(operation: () => Promise<T>) => Promise<T>,
+  withSideSlot?: <T>(operation: () => Promise<T>) => Promise<T>,
   currentAbortSignal?: () => AbortSignal | undefined,
   /** Whether a tool is on by the user's own settings, ignoring the main agent's profile restriction (what a subagent without its own tool list starts from). */
   baselineEnabled?: (name: string) => boolean,
@@ -134,7 +134,7 @@ export function makeSubagentHandler(
       });
     const result = await subagentDepth.run(depth, () =>
       withToolScope(allowed, () =>
-        withPreservedSlotCache ? withPreservedSlotCache(run) : run(),
+        withSideSlot ? withSideSlot(run) : run(),
       ),
     );
     if (!result.ok) return `error: ${formatError(result.error)}`;

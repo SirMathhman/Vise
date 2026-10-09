@@ -2,15 +2,22 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Result } from "../core/errors.ts";
 import { globalDataDir } from "../data-dir.ts";
-import { parseServer, type McpServerSpec } from "./mcp-config.ts";
+import { parseServer } from "./mcp-config.ts";
 
 export type McpScope = "project" | "global";
 
 /** One configured server as the settings page edits it. */
-export interface McpEntry extends McpServerSpec {
+export interface McpEntry {
   name: string;
   scope: McpScope;
   disabled: boolean;
+  /** A local server (stdio)... */
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  /** ...or a remote one. */
+  url?: string;
+  headers?: Record<string, string>;
 }
 
 const fail = (body: string): Result<void> => ({

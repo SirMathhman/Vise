@@ -1,37 +1,6 @@
-import { config } from "../config.ts";
-import type { ServerWebSocket } from "bun";
-import { formatContext, formatError, formatGoalEvent } from "../output/format.ts";
-import { saveProfileWhitelist } from "../repl/profile-tools.ts";
-import { BrowserSettingsStore } from "../browser/settings.ts";
-import { ExtensionBackend } from "../browser/extension.ts";
-import type { BrowserBackend } from "../browser/types.ts";
-import { ExtensionHub, isExtensionOrigin } from "./ext/ext-hub.ts";
-import { loadExtensionToken, tokensMatch } from "./ext/ext-token.ts";
-import { handleEditorMessage } from "./api/editors.ts";
-import { serveAsset } from "./assets.ts";
-import { queueLine, steerLine, unqueue } from "./conn/line.ts";
-import type { HeldLine } from "./conn/line.ts";
-import { createGate } from "./conn/gate.ts";
-import { finishOpening } from "./conn/open.ts";
-import { handleMcpMessage } from "./api/mcp-api.ts";
-import { handleSettingsMessage } from "./api/settings-api.ts";
-import { handleQueueCommand } from "./conn/queue-commands.ts";
-import { SessionLease } from "./conn/leases.ts";
 import { imageStore } from "../stores/image-store.ts";
-import { SwitchableBrowser } from "../browser/switchable.ts";
-import { BrowserBridge } from "./ext/browser-bridge.ts";
-import { type HookStore } from "../edge-sources.ts";
-import { dataDirFor, noFolderRoot } from "../data-dir.ts";
-import type { McpHub } from "../mcp/mcp-hub.ts";
 import { pickFolder, RootRegistry } from "./api/roots.ts";
-import { createEdgeSession } from "../wiring.ts";
-import { formatToolCall, summarizeToolResult } from "../output/tool-line.ts";
-import { displayOfTool } from "../tools/display.ts";
 import { listDir, readTextFile, deletePath, annotateIgnored, type DirEntry } from "./api/files.ts";
-import { WebUserPrompter } from "./conn/prompter.ts";
-import { TerminalRegistry, type TerminalAttachment } from "./terminal/terminal-registry.ts";
-import { spawnConPty } from "./terminal/pty.ts";
-import { handleTerminalMessage } from "./terminal/terminal-api.ts";
 
 /** Non-browser clients send no Origin; browsers must come from the Vise page itself. */
 export function isLocalOrigin(origin: string | null, port: number): boolean {

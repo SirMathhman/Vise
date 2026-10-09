@@ -141,7 +141,7 @@ export function appendToolCategory(
 }
 
 /** Tick each category checkbox when all its tools are on; leave it mixed when only some are. */
-function syncCategoryToggles(list: HTMLUListElement): void {
+export function syncCategoryToggles(list: HTMLUListElement): void {
   for (const head of list.querySelectorAll<HTMLElement>("li.tool-category")) {
     const toggle = head.querySelector<HTMLInputElement>("input");
     if (!toggle) continue;

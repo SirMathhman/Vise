@@ -1,5 +1,9 @@
 import type { HooksFields } from "./hooks-panel.ts";
-import { appendToolCategory, appendToolItem } from "./panels.ts";
+import {
+  appendToolCategory,
+  appendToolItem,
+  syncCategoryToggles,
+} from "./panels.ts";
 import { renderHookLists } from "./hook-lists.ts";
 
 export interface ProfileEditorActions {
@@ -70,7 +74,10 @@ export function createProfileEditor(
 
   const checked = (): string[] =>
     Array.from(
-      list.querySelectorAll<HTMLInputElement>("input:checked"),
+      // The category checkboxes only switch groups; they are not tools.
+      list.querySelectorAll<HTMLInputElement>(
+        "li:not(.tool-category) input:checked",
+      ),
       (el) => el.value,
     );
 
@@ -108,15 +115,13 @@ export function createProfileEditor(
       box.checked = on;
       box.closest("li")?.classList.toggle("disabled", !on);
     }
+    syncCategoryToggles(list);
     refresh();
   };
   checkAll.addEventListener("click", () => setAll(true));
   uncheckAll.addEventListener("click", () => setAll(false));
   list.addEventListener("change", (event) => {
-    const box = event.target;
-    if (box instanceof HTMLInputElement) {
-      box.closest("li")?.classList.toggle("disabled", !box.checked);
-    }
+    applyToggle(list, event.target);
     refresh();
   });
   save.addEventListener("click", () => {
@@ -149,6 +154,26 @@ export function createProfileEditor(
   };
 }
 
+/** Tick or untick every tool under a category heading row. */
+function setGroup(head: Element, on: boolean): void {
+  for (let row = head.nextElementSibling; row; row = row.nextElementSibling) {
+    if (row.classList.contains("tool-category")) break;
+    const box = row.querySelector<HTMLInputElement>("input");
+    if (box) box.checked = on;
+    row.classList.toggle("disabled", !on);
+  }
+}
+
+/** A checkbox in the list changed: a tool dims its row, a category switches its whole group; then the category boxes are re-synced. */
+function applyToggle(list: HTMLUListElement, target: EventTarget | null): void {
+  if (target instanceof HTMLInputElement) {
+    const row = target.closest("li");
+    if (row?.classList.contains("tool-category")) setGroup(row, target.checked);
+    else row?.classList.toggle("disabled", !target.checked);
+  }
+  syncCategoryToggles(list);
+}
+
 /** Fill `list` with the tool checkboxes, grouped by category, ticking those in `allowed` (all when undefined). */
 function renderWhitelist(
   list: HTMLUListElement,
@@ -161,10 +186,11 @@ function renderWhitelist(
     const next = actions.toolCategory(tool);
     if (next !== undefined && next !== category) {
       category = next;
-      appendToolCategory(list, next);
+      appendToolCategory(list, next, true);
     }
     appendToolItem(list, tool, allowed?.includes(tool) ?? true);
   }
+  syncCategoryToggles(list);
 }
 
 /** The selected profile's own hooks: they run only while it is active, in addition to the global ones. */

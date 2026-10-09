@@ -3,8 +3,11 @@ import {
   getDefaultEnvironment,
   StdioClientTransport,
 } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { config } from "../config.ts";
-import type { McpServerSpec } from "./mcp-config.ts";
+import type { McpServerSpec, UrlSpec } from "./mcp-config.ts";
 
 /** One tool as an MCP server describes it. */
 export interface McpToolInfo {
@@ -28,6 +31,7 @@ export type McpStatus =
   | { state: "exited"; reason: string };
 
 const STDERR_LINES = 8;
+const NEWLINE = new RegExp(String.fromCharCode(92) + "r?" + String.fromCharCode(92) + "n");
 
 const reasonOf = (err: unknown): string =>
   err instanceof Error ? err.message : String(err);
@@ -59,23 +63,63 @@ export class McpConnection {
     this.closed = false;
     this.status = { state: "connecting" };
     this.stderr = [];
+    const spec = this.spec;
+    const failure =
+      spec.url !== undefined
+        ? await this.connectUrl(spec)
+        : await this.attempt(() => this.stdioTransport(spec));
+    if (failure !== undefined) this.status = { state: "failed", reason: failure };
+  }
+
+  private stdioTransport(spec: McpServerSpec): StdioClientTransport {
     const transport = new StdioClientTransport({
-      command: this.spec.command,
-      args: this.spec.args,
-      env: { ...getDefaultEnvironment(), ...this.spec.env },
+      command: spec.command ?? "",
+      args: spec.command === undefined ? [] : spec.args,
+      env: { ...getDefaultEnvironment(), ...(spec.command === undefined ? {} : spec.env) },
       cwd: this.cwd,
       stderr: "pipe",
     });
-    const client = new Client({ name: "vise", version: "0.1.0" });
     transport.stderr?.on("data", (chunk: Buffer) => {
       this.stderr.push(
-        ...chunk.toString("utf8").split(/\r?\n/).filter(Boolean),
+        ...chunk.toString("utf8").split(NEWLINE).filter(Boolean),
       );
       this.stderr = this.stderr.slice(-STDERR_LINES);
     });
+    return transport;
+  }
+
+  /** A remote server: Streamable HTTP first, then the older SSE transport if that fails. */
+  private async connectUrl(spec: UrlSpec): Promise<string | undefined> {
+    const url = new URL(spec.url);
+    const requestInit = { headers: spec.headers };
+    const streamable = await this.attempt(
+      () => new StreamableHTTPClientTransport(url, { requestInit }),
+    );
+    if (streamable === undefined || this.closed) return undefined;
+    const sse = await this.attempt(
+      () =>
+        new SSEClientTransport(url, {
+          requestInit,
+          // The event stream is a GET the SDK builds itself, so it needs the headers too.
+          eventSourceInit: {
+            fetch: (input, init) => {
+              const headers = new Headers(init?.headers);
+              for (const [k, v] of Object.entries(spec.headers)) headers.set(k, v);
+              return fetch(input, { ...init, headers });
+            },
+          },
+        }),
+    );
+    return sse === undefined ? undefined : `${streamable} (SSE fallback: ${sse})`;
+  }
+
+  /** Connect over one transport; resolves to the failure reason, or undefined when connected. */
+  private async attempt(make: () => Transport): Promise<string | undefined> {
+    const transport = make();
+    const client = new Client({ name: "vise", version: "0.1.0" });
     transport.onclose = () => {
-      if (this.status.state === "ready") {
-        this.status = { state: "exited", reason: "the server process ended" };
+      if (this.status.state === "ready" && this.client === client) {
+        this.status = { state: "exited", reason: "the connection ended" };
       }
     };
     try {
@@ -83,13 +127,14 @@ export class McpConnection {
       if (this.closed) {
         // Closed while connecting: the process must not outlive its owner.
         await client.close().catch(() => undefined);
-        return;
+        return undefined;
       }
       this.client = client;
       this.status = { state: "ready" };
+      return undefined;
     } catch (err) {
-      this.status = { state: "failed", reason: reasonOf(err) };
       await client.close().catch(() => undefined);
+      return reasonOf(err);
     }
   }
 

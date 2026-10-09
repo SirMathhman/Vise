@@ -17,7 +17,7 @@ describe("mcp config", () => {
       args: ["-y", "x"],
       env: {},
     });
-    expect(typeof parseServer({ url: "http://x" })).toBe("string");
+    expect(typeof parseServer({ url: "ftp://x" })).toBe("string");
     expect(typeof parseServer({ command: "a", args: [1] })).toBe("string");
   });
 

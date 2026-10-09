@@ -82,7 +82,7 @@ const hooksPanel = createHooksPanel(
   sendMessage,
   (hooks) => profileEditor.showHooks(hooks),
 );
-const settingsPanels = createSettingsPanels(sendMessage);
+const settingsPanels = createSettingsPanels(sendMessage, () => isBusy());
 const workspace = createWorkspace(sendMessage, renderMarkdown, setStatus);
 const terminalPanel = createTerminalPanel(sendMessage, setStatus);
 /** The parts of the page that own some of the server messages. */

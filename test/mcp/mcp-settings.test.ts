@@ -42,22 +42,24 @@ test("saving keeps the file's other keys; rename and removal edit the right scop
 
 test("the settings api saves, reconnects the hub, restarts and deletes", async () => {
   const root = mkdtempSync(join(tmpdir(), "mcp-api-"));
-  const hub = new McpHub(root, { servers: {}, problems: [] });
+  // A temp global folder, so the user's real ~/.vise/mcp.json never takes part.
+  const global = mkdtempSync(join(tmpdir(), "mcp-api-g-"));
+  const hub = new McpHub(root, { servers: {}, problems: [] }, global);
   await hub.start();
   try {
-    const saved = await handleMcpMessage(hub, root, { type: "mcp_save", entry: entry() });
+    const saved = await handleMcpMessage(hub, root, { type: "mcp_save", entry: entry() }, global);
     expect(saved["saved"]).toBe(true);
     const servers = saved["servers"] as { name: string; state: string; tools: number }[];
     expect(servers[0]).toMatchObject({ name: "fx", state: "ready", tools: 3 });
     expect(hub.tools()).toHaveLength(3);
 
-    const restarted = await handleMcpMessage(hub, root, { type: "mcp_restart", name: "fx" });
+    const restarted = await handleMcpMessage(hub, root, { type: "mcp_restart", name: "fx" }, global);
     expect(restarted["error"]).toBeUndefined();
 
-    const bad = await handleMcpMessage(hub, root, { type: "mcp_save", entry: entry({ name: "" }) });
+    const bad = await handleMcpMessage(hub, root, { type: "mcp_save", entry: entry({ name: "" }) }, global);
     expect(bad["error"]).toContain("needs a name");
 
-    const gone = await handleMcpMessage(hub, root, { type: "mcp_delete", name: "fx", scope: "project" });
+    const gone = await handleMcpMessage(hub, root, { type: "mcp_delete", name: "fx", scope: "project" }, global);
     expect(gone["servers"]).toEqual([]);
     expect(hub.tools()).toHaveLength(0);
   } finally {

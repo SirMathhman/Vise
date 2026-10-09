@@ -1,6 +1,7 @@
 import type { Tool } from "../core/engine.ts";
 import type { ToolHandler } from "../tools.ts";
 import type { ImageOutbox } from "../tools/images.ts";
+import { globalDataDir } from "../data-dir.ts";
 import { loadMcpServers, type McpConfig, type McpServerSpec } from "./mcp-config.ts";
 import {
   McpConnection,
@@ -16,14 +17,23 @@ export interface McpServerReport {
   stderr: string;
 }
 
-/** Whether two specs start the same server (key order does not matter). */
+const sorted = (m: Record<string, string>): string =>
+  JSON.stringify(Object.entries(m).sort(([x], [y]) => x.localeCompare(y)));
+
+/** Whether two specs reach the same server the same way (key order does not matter). */
 function sameSpec(a: McpServerSpec, b: McpServerSpec): boolean {
-  const env = (e: Record<string, string>): string =>
-    JSON.stringify(Object.entries(e).sort(([x], [y]) => x.localeCompare(y)));
+  if (a.url !== undefined || b.url !== undefined) {
+    return (
+      a.url !== undefined &&
+      b.url !== undefined &&
+      a.url === b.url &&
+      sorted(a.headers) === sorted(b.headers)
+    );
+  }
   return (
     a.command === b.command &&
     JSON.stringify(a.args) === JSON.stringify(b.args) &&
-    env(a.env) === env(b.env)
+    sorted(a.env) === sorted(b.env)
   );
 }
 
@@ -39,6 +49,8 @@ export class McpHub {
   constructor(
     private readonly root: string,
     private readonly cfg: McpConfig = loadMcpServers(root),
+    /** Where the global `mcp.json` is (a test points it elsewhere). */
+    private readonly globalDir: string = globalDataDir,
   ) {
     this.problems = [...cfg.problems];
   }
@@ -75,7 +87,7 @@ export class McpHub {
 
   /** Re-read the configuration files and apply them (see `apply`); calls queue, never overlap. */
   reload(): Promise<void> {
-    return this.exclusive(() => this.apply(loadMcpServers(this.root)));
+    return this.exclusive(() => this.apply(loadMcpServers(this.root, this.globalDir)));
   }
 
   /** Run a hub-changing operation after the ones before it. */

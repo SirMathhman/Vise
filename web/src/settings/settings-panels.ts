@@ -30,6 +30,8 @@ function el<T extends HTMLElement>(id: string): T {
  */
 export function createSettingsPanels(
   send: (msg: Record<string, unknown>) => void,
+  /** Whether a turn is running (the MCP tab reloads the page only between turns). */
+  isBusy: () => boolean,
 ): { handle(message: SettingsMessage): boolean } {
   const browser = createBrowserSettings(el("browser-settings-body"), send);
   const general = createEnvPanel(el("general-body"), send, [
@@ -39,7 +41,7 @@ export function createSettingsPanels(
   const mcp = createMcpPanel(el("mcp-body"), send, [
     el("settings-btn"),
     el("mcp-tab"),
-  ]);
+  ], isBusy);
   const notes = createNotesPanel(el("notes-body"), send, [
     el("settings-btn"),
     el("notes-tab"),

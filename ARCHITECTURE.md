@@ -65,6 +65,9 @@ src/                # at most 9 .ts files per directory (enforced by test/layout
   global-prompt.ts, fs-tree.ts  # the built-in system prompt; the startup directory tree
   settings/         # settings-file.ts (user-level ~/.vise/.env: load, validate, save),
                     # settings-init.ts (imported first by each entry so settings apply early)
+  mcp/              # MCP client: mcp-config (read/validate servers), mcp-connection (one server),
+                    # mcp-tools (MCP tool -> Vise tool), mcp-hub (a root's servers), mcp-store
+                    # (edit the config files), mcp-command (/mcp); see "MCP servers"
   build/            # build-check.ts (missing build output), extension-assets.ts (the Firefox
                     # extension's files, embedded), maintenance.ts (--version, --install-extension,
                     # --setup-playwright, --audit-export)
@@ -115,12 +118,15 @@ src/                # at most 9 .ts files per directory (enforced by test/layout
     main.ts         # web entry point (`bun run web`, vise.exe): settings, maintenance flags,
                     # port choice, server, and in the compiled build the desktop window
     server.ts       # Bun HTTP/WebSocket driver; one Session per connection
+    http.ts         # the HTTP side: Host/Origin checks, explorer, image and pairing APIs
     assets.ts       # the page's files (embedded when compiled); the only static paths served
     port.ts         # busy-port fallback
     conn/           # a connection's lines: line (turn chain, steering, held queue),
-                    # queue-commands, resume, leases, history, pictures, prompter (ask_user over the socket)
+                    # queue-commands, resume, leases, history, pictures, prompter (ask_user over the socket),
+                    # gate (holds a socket's messages until its connection is built), open
     api/            # panel messages never queued behind a turn: settings-api, notes-api,
-                    # files (workspace explorer), roots (folder chooser)
+                    # mcp-api, files (workspace explorer), roots (folder chooser, per-root
+                    # hooks and MCP hub)
     ext/            # Firefox extension link: ext-hub, ext-token, browser-bridge
     desktop/        # the native window: desktop.ts and window-worker.ts (see "Desktop window")
     terminal/       # the integrated terminal: conpty (FFI), pty + pty-reader-worker,
@@ -133,7 +139,8 @@ web/
     log/            # restored history, lightbox, log view
     composer/       # input box, completions, attachments, steer/queue, ask_user prompts
     status/         # generating indicator, prompt progress, compaction and goal markers
-    settings/       # settings tabs, profile editor, hooks, notes, tools panels
+    settings/       # settings tabs, profile editor, hooks, notes, tools panels;
+                    # mcp/ holds the MCP servers tab
     workspace/      # file explorer, tabs, integrated browser view, root restore
   dist/app.js       # generated browser bundle (not hand-edited)
   styles.css        # web UI styling
@@ -248,11 +255,17 @@ Rules:
   the pre-run availability check is a pure fold over those descriptors, and the
   restore of the previous profile is owned by the run scope (not a `finally`
   that re-scans the steps).
-- `LlmClient` owns best-effort llama.cpp slot-cache preservation around
-  subagent calls. It discovers populated, idle slots through `/slots`, saves
-  snapshots by process/nesting depth/slot, and restores them in `finally`;
-  this requires the server's `--slot-save-path` option and does not add a
-  separate filesystem dependency to Vise.
+- `LlmClient.withSideSlot` keeps a subagent's work from disturbing the main
+  conversation's llama.cpp cache. Slots are for concurrent activity, so with two
+  or more slots the side work's requests carry `id_slot` of the least recently
+  used slot other than the one used last (read from `/slots`, `id_task`); the
+  main slot and its context checkpoints are never touched. With one slot, or
+  when `/slots` cannot be read, the work runs unpinned and the server's own
+  prompt cache (`--cache-ram`) keeps the evicted context. Saving a slot to a
+  file and restoring it was removed: a restore brings back the tokens but not
+  the context checkpoints this kind of model needs to reuse a prefix, so the
+  next request re-processed the whole prompt (measured: `cache_n` 0 after a
+  restore, about 2k tokens processed without one).
 - `ToolController` is a core-owned type (`core/engine.ts`) for the `/tool`
   command. It lets the user inspect and toggle the model-facing tools. The
   full set of tool definitions is always sent to the model regardless of
@@ -444,7 +457,14 @@ single-module target.
 
 ## MCP servers
 
-`src/mcp/` is an edge-only MCP client (stdio, official SDK). `mcp-config.ts` reads `mcpServers` from `~/.vise/mcp.json` and the project's `.viserc.json`; `McpConnection` wraps one server process (status `connecting|ready|failed|exited`, stderr tail kept for messages); `mcp-tools.ts` maps MCP tools to deferred Vise `Tool`s and results to text; `McpHub` owns the connections of one root and routes calls. The hub is started before `createEdgeSession` because the session's tool list (and so the system prompt and its KV cache) must not change mid-conversation. Calls never throw: a lost server returns an `error:` string, like every other tool. Lifecycle rules: a web connection is built only after its folder's hub is ready (`createGate`, `src/web/conn/gate.ts`, holds the page's messages meanwhile and gives the folder back exactly once if the page leaves or the start fails; `finishOpening` in `conn/open.ts` does the first messages and watchers); closing a hub or a connection is safe at any point, including while a server is still connecting (the process is stopped as soon as the handshake ends); hub operations (`reload`, `restart`, `close`) run one at a time. Future work: refreshing the tool list of a conversation that is already open (it keeps the list it started with) and transports other than stdio. Trust: configuring a server runs a program from the project's files; its output is untrusted data.
+`src/mcp/` is an edge-only MCP client built on the official SDK. A server is either a local program spoken to over stdio (`command`, `args`, `env`) or a remote one reached at an http(s) `url` with static `headers` (Streamable HTTP first, the older SSE transport if that fails; no OAuth). Its tools become ordinary deferred Vise tools named `mcp__<server>__<tool>` in the category `mcp_<server>`, so tool search, `/tool`, profile whitelists, subagents and the audit log need no special case.
+
+- **Modules.** `mcp-config.ts` reads and validates `mcpServers` from `~/.vise/mcp.json` and the project's `.viserc.json` (a project entry replaces a global one of the same name; bad entries are skipped and reported). `McpConnection` wraps one server (status `connecting|ready|failed|exited`, stderr tail kept for messages). `mcp-tools.ts` maps tools and results (text, pictures to the image outbox, `isError` to an `error:` prefix). `McpHub` owns the connections of one root, routes calls, and can `reload()` (re-read the files; only servers whose entry changed are reconnected), `restart(name)` and `close()`. `mcp-store.ts` edits the two config files for the settings page (atomic writes that keep the file's other keys).
+- **A fixed tool list.** The hub is started before `createEdgeSession`, and a session keeps the tool list it was built with, because the tool list is part of the system prompt and so of the KV cache. Changed servers reach a conversation only when it is built again: the settings tab reloads the page after a save or delete (never mid-turn), and the terminal needs a restart. Calls never throw: a lost server returns an `error:` string, like every other tool.
+- **Lifecycle.** The web server keeps one hub per root in `RootRegistry`, shared by every page on the folder and closed when the last page leaves. A page's connection is built only after its hub is ready: `createGate` (`src/web/conn/gate.ts`) holds the socket's messages meanwhile and gives the folder back exactly once if the page leaves or the start fails; `finishOpening` (`conn/open.ts`) sends the first messages and starts the watchers. Closing a hub or a connection is safe at any point, including while a server is still connecting (the process is stopped as soon as the handshake ends), and hub operations run one at a time.
+- **Settings page.** The "mcp" tab (`web/src/settings/mcp/`) lists the servers of both scopes with their live state and edits them (type, scope, command or URL, arguments, environment, headers, disabled) through `mcp_get`, `mcp_save`, `mcp_delete` and `mcp_restart`, handled by `src/web/api/mcp-api.ts`. The profile editor lists tools by category with a checkbox per category, so a server with many tools can be allowed or denied as a group.
+- **Trust.** Configuring a server runs a program from the project's files (or sends requests to a remote address); tool descriptions and results are untrusted data. Environment values and headers are stored in plain text, so credentials are better kept in the global file than in a project's `.viserc.json`.
+- **Future work.** Refreshing the tool list of a conversation that is already open, and OAuth for remote servers.
 
 ## Audit log
 
