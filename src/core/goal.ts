@@ -1,5 +1,6 @@
 import type { Client, Tool } from "./engine.ts";
 import type { CallPurpose, Message, ViseError } from "./errors.ts";
+import { capTrace, type TraceSink } from "./goal-trace.ts";
 
 /**
  * Goal tracking. A model that has been working can stop on a sentence like
@@ -90,9 +91,11 @@ async function ask(
   schema: Record<string, unknown>,
   purpose: CallPurpose,
   signal?: AbortSignal,
+  trace?: TraceSink,
 ): Promise<Asked> {
   let why = "no attempt was made";
   for (let attempt = 0; attempt < ASK_ATTEMPTS; attempt++) {
+    const asked = { kind: "ask" as const, purpose, attempt: attempt + 1, question: capTrace(question) };
     const result = await (client.as?.(purpose) ?? client).chat(
       [...messages, { role: "user", content: question }],
       toolDefs,
@@ -104,17 +107,19 @@ async function ask(
     );
     if (!result.ok) {
       why = describeError(result.error);
+      trace?.({ ...asked, failure: why });
       if (result.error.kind === "interrupted" || signal?.aborted) break;
       continue;
     }
     try {
-      return { ok: true, reply: JSON.parse(result.value.content) };
+      const reply = JSON.parse(result.value.content);
+      trace?.({ ...asked, reply: capTrace(result.value.content) });
+      return { ok: true, reply };
     } catch {
       // Only a server that ignored the schema gets here; asking again would not change that.
-      return {
-        ok: false,
-        why: `the server did not apply the response schema (reply: ${result.value.content.slice(0, 200)})`,
-      };
+      const bad = `the server did not apply the response schema (reply: ${result.value.content.slice(0, 200)})`;
+      trace?.({ ...asked, reply: capTrace(result.value.content), failure: bad });
+      return { ok: false, why: bad };
     }
   }
   return { ok: false, why };
@@ -149,6 +154,7 @@ export async function deriveGoal(
   current: Goal | undefined,
   signal?: AbortSignal,
   skip: (m: Message) => boolean = () => false,
+  trace?: TraceSink,
 ): Promise<Goal | undefined> {
   const known = current
     ? `Current goal: ${current.text} (done when: ${current.doneWhen})`
@@ -161,17 +167,19 @@ export async function deriveGoal(
     GOAL_SCHEMA,
     "goal",
     signal,
+    trace,
   );
   const goal = reply.ok ? text(reply.reply["goal"]) : "";
-  if (goal !== "")
-    return {
-      text: goal,
-      doneWhen: text(reply.ok ? reply.reply["done_when"] : ""),
-    };
+  if (goal !== "") {
+    const doneWhen = text(reply.ok ? reply.reply["done_when"] : "");
+    trace?.({ kind: "goal", goal, doneWhen, previous: current?.text, fallback: false });
+    return { text: goal, doneWhen };
+  }
   const said = lastUserText(messages, skip).slice(0, 400);
-  return said === ""
-    ? undefined
-    : { text: said, doneWhen: "the request has been fully handled" };
+  if (said === "") return undefined;
+  const doneWhen = "the request has been fully handled";
+  trace?.({ kind: "goal", goal: said, doneWhen, previous: current?.text, fallback: true });
+  return { text: said, doneWhen };
 }
 
 /** Whether the goal has been accomplished, judged from what actually happened in the conversation. */
@@ -181,6 +189,7 @@ export async function checkGoal(
   toolDefs: Tool[],
   goal: Goal,
   signal?: AbortSignal,
+  trace?: TraceSink,
 ): Promise<Verdict> {
   const reply = await ask(
     client,
@@ -190,6 +199,7 @@ export async function checkGoal(
     VERDICT_SCHEMA,
     "goal-check",
     signal,
+    trace,
   );
   if (!reply.ok) return { kind: "unknown", detail: reply.why };
   // The schema allows only these three.
@@ -224,6 +234,7 @@ export async function checkProgress(
   toolDefs: Tool[],
   goal: Goal,
   signal?: AbortSignal,
+  trace?: TraceSink,
 ): Promise<Progress> {
   const reply = await ask(
     client,
@@ -235,6 +246,7 @@ This turn has been running for a long time. Judging only from the recent tool ca
     PROGRESS_SCHEMA,
     "progress-check",
     signal,
+    trace,
   );
   const detail = reply.ok ? text(reply.reply["detail"]) : "";
   return reply.ok && reply.reply["progress"] === "stuck"

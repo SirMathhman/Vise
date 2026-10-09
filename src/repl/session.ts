@@ -10,6 +10,7 @@ import type {
 import { runTurn } from "../core/engine.ts";
 import { SessionAudit } from "./turn/session-audit.ts";
 import { deriveSessionName } from "./session-name.ts";
+import { GoalLog } from "../core/goal-trace.ts";
 import { GoalTracker, handleGoalCommand } from "./turn/goal-loop.ts";
 import type { Message, Result, ViseError } from "../core/errors.ts";
 import { formatHelp } from "../output/format.ts";
@@ -118,6 +119,8 @@ export class Session {
   private readonly toolController?: ToolController;
   private burst = false;
   private readonly goals: GoalTracker;
+  /** Every goal decision of this conversation; saved with it (never part of the conversation). */
+  private readonly goalLog = new GoalLog(() => this.messages.length);
   private pendingProfile: Message[] = [];
   /** What reaches the model between rounds: notices and the user's steering words. */
   readonly notices = new NoticeQueue();
@@ -172,7 +175,7 @@ export class Session {
     this.goals = new GoalTracker(options.goalChecking ?? false, (event) => {
       this.audit.goal(event);
       options.onGoal?.(event);
-    });
+    }, this.goalLog.add);
     this.initialMessage = options.initialMessage;
     this.sessionSource = options.sessionSource;
     this.systemMessage = systemMessageFor(options);
@@ -207,6 +210,7 @@ export class Session {
       },
       currentSession: () => ({ id: this.sessionId, name: this.sessionName }),
       todos: this.opts.todos,
+      goalLog: this.goalLog,
       setSession: (id, name) => {
         this.sessionId = id;
         this.sessionName = name;
@@ -387,7 +391,8 @@ export class Session {
         abort.signal,
         {
           confirmMore: this.opts.onMaxRounds,
-          beforeContinue: () => this.maybeAutoCompact(),
+          // Save first: a session that dies between continues keeps its goal trace.
+          beforeContinue: () => this.saveSession().then(() => this.maybeAutoCompact()),
         },
       );
       this.audit.turnResult(turn);
@@ -413,6 +418,7 @@ export class Session {
       };
     } catch (e) {
       this.audit.turnThrew(e);
+      await this.saveSession(); // the goal trace of the turn that threw is kept
       throw e;
     } finally {
       this.currentAbort = null;
@@ -438,7 +444,7 @@ export class Session {
     { name: "/new", exact: true, run: () => this.newConversation() },
     { name: "/model", run: (line) => handleModelCommand(this.modelController, line) },
     { name: "/reasoning", run: (line) => handleReasoningCommand(this.reasoningController, line) },
-    { name: "/goal", run: (line) => handleGoalCommand(this.goals, line) },
+    { name: "/goal", run: (line) => handleGoalCommand(this.goals, line, this.goalLog) },
     { name: "/burst", run: (line) => this.burstCommand(line) },
     { name: "/mcp", run: (line) => handleMcpCommand(this.opts.mcp, line) },
     { name: "/tool", run: (line) => this.toolCommand(line) },
@@ -589,6 +595,7 @@ export class Session {
   private async newConversation(): Promise<Result<string>> {
     this.pendingProfile = [];
     this.goals.goal = undefined;
+    this.goalLog.clear();
     this.opts.todos?.set([]);
     const oldMessages = [...this.messages];
     this.messages.length = 0;
@@ -634,6 +641,7 @@ export class Session {
         this.messages.filter((m) => !this.goals.isNote(m)),
         this.activeProfile,
         this.opts.todos?.get(),
+        this.goalLog.entries(),
       );
       if (saved.ok) this.sessionId = saved.value;
     } catch {

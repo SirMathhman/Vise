@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { globalDataDir } from "./data-dir.ts";
 import type { SearchHit } from "./repl/ports.ts";
 import type { Message, Result } from "./core/errors.ts";
+import type { GoalTraceEntry } from "./core/goal-trace.ts";
 import type { TodoItem } from "./core/todos.ts";
 import { buildInitialTree } from "./fs-tree.ts";
 import { formatNotes, formatNotesWithin } from "./stores/notes-format.ts";
@@ -261,8 +262,17 @@ export class FileSessionSource implements SessionSource {
     messages: Message[],
     activeProfile: string | undefined,
     todos?: TodoItem[],
+    goalTrace?: GoalTraceEntry[],
   ): Promise<Result<string>> {
-    return saveSession(this.base, id, name, messages, activeProfile, todos);
+    return saveSession(
+      this.base,
+      id,
+      name,
+      messages,
+      activeProfile,
+      todos,
+      goalTrace,
+    );
   }
 
   async load(ref: string): Promise<Result<SavedSession>> {

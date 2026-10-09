@@ -95,7 +95,7 @@ src/                # at most 9 .ts files per directory (enforced by test/layout
                     # `ContextSource`, and `ModelController`; wraps fetch,
                     # owns URL/key/model config; the sole module in the tree
                     # that performs network I/O
-  core/             # pure: engine, workflow, errors, goal, audit types (no node: imports)
+  core/             # pure: engine, workflow, errors, goal, goal-trace, audit types (no node: imports)
   output/
     format.ts       # Result -> text for terminal or plain output
     color.ts        # terminal styling: decides whether ANSI SGR codes are
@@ -465,6 +465,25 @@ single-module target.
 - **Settings page.** The "mcp" tab (`web/src/settings/mcp/`) lists the servers of both scopes with their live state and edits them (type, scope, command or URL, arguments, environment, headers, disabled) through `mcp_get`, `mcp_save`, `mcp_delete` and `mcp_restart`, handled by `src/web/api/mcp-api.ts`. The profile editor lists tools by category with a checkbox per category, so a server with many tools can be allowed or denied as a group.
 - **Trust.** Configuring a server runs a program from the project's files (or sends requests to a remote address); tool descriptions and results are untrusted data. Environment values and headers are stored in plain text, so credentials are better kept in the global file than in a project's `.viserc.json`.
 - **Future work.** Refreshing the tool list of a conversation that is already open, and OAuth for remote servers.
+
+## Goal trace
+
+Why a session stopped although a goal was set must be answerable afterwards, so
+the goal machinery writes every decision to a trace that is saved with the
+conversation (`docs/goal-trace.md`). The core stays pure: `goal.ts` functions
+take an optional `TraceSink` and report each hidden model call (the exact
+question, the raw reply or failure, each retry) and the derived goal;
+`GoalTracker` adds the turn start, verdicts, progress checks, continue notes
+(the notes themselves are still kept out of the saved conversation) and exactly
+one `exit` entry per turn naming why the loop ended, including the quiet exits
+(goal checking off, no goal, a failed turn, an interrupt, an exception).
+`Session` owns the `GoalLog` and saves it with the conversation through
+`SessionSource.save` (the same path as the todo list), after every turn, before
+each automatic continue and when a turn throws. Storage is the `goal_trace`
+table of the session database, separate from `messages`: loading returns the
+conversation untouched (nothing to strip), full-text search and history paging
+never see it, and deleting the session removes it. Resume puts the trace back
+only so later saves keep it.
 
 ## Audit log
 

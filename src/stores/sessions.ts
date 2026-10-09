@@ -6,7 +6,12 @@ import type { SavedSession, SearchHit, SessionEntry } from "../repl/ports.ts";
 import { importLegacySessions } from "../db/session/import-json.ts";
 import { openDb, tryDb } from "../db/open.ts";
 import { SESSION_MIGRATIONS } from "../db/session/session-schema.ts";
-import { readMessages, writeSession } from "../db/session/session-write.ts";
+import {
+  readMessages,
+  readTrace,
+  writeSession,
+} from "../db/session/session-write.ts";
+import type { GoalTraceEntry } from "../core/goal-trace.ts";
 
 /**
  * Shared session I/O for the edge. A session is a saved snapshot of the
@@ -96,6 +101,7 @@ export function saveSession(
   messages: Message[],
   activeProfile: string | undefined,
   todos: TodoItem[] = [],
+  trace: GoalTraceEntry[] = [],
 ): Result<string> {
   const trimmed = name.trim();
   if (trimmed === "") return failure("a session name cannot be blank");
@@ -112,6 +118,7 @@ export function saveSession(
       activeProfile,
       undefined,
       todos,
+      trace,
     );
     return { ok: true, value: finalId };
   });
@@ -158,6 +165,7 @@ export function loadSession(base: string, ref: string): Result<SavedSession> {
         messages: readMessages(db, row.id),
         activeProfile: row.active_profile ?? undefined,
         todos: storedTodos(row.todos),
+        goalTrace: readTrace(db, row.id),
         savedAt: row.updated_at,
       },
     };

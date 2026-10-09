@@ -214,6 +214,7 @@ export async function handleResumeCommand(
   session.resetMessages(savedBody);
   session.setActiveProfile(saved.activeProfile);
   session.todos?.set(saved.todos ?? []);
+  session.goalLog?.set(saved.goalTrace ?? []);
   // A resumed conversation keeps writing to its own session.
   session.setSession(saved.id, saved.name);
   return {
@@ -257,6 +258,7 @@ export async function handleSaveCommand(
     session.messages(),
     session.activeProfile(),
     session.todos?.get(),
+    session.goalLog?.entries(),
   );
   if (!saved.ok) return saved;
   session.setSession(saved.value, arg);

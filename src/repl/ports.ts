@@ -1,6 +1,7 @@
 import type { AuditSink } from "../core/audit.ts";
 import type { Picture } from "../core/errors.ts";
 import type { Client } from "../core/engine.ts";
+import type { GoalLog, GoalTraceEntry } from "../core/goal-trace.ts";
 import type { TodoItem, TodoStore } from "../core/todos.ts";
 import type { Workflow, WorkflowScope } from "../core/workflow.ts";
 import type { Message, Result } from "../core/errors.ts";
@@ -163,6 +164,8 @@ export interface SavedSession {
   activeProfile: string | undefined;
   /** The agent's todo list at save time. */
   todos?: TodoItem[];
+  /** The goal trace saved with the conversation (for debugging; never part of the conversation itself). */
+  goalTrace?: GoalTraceEntry[];
   savedAt: string;
 }
 
@@ -198,6 +201,7 @@ export interface SessionSource {
     messages: Message[],
     activeProfile: string | undefined,
     todos?: TodoItem[],
+    goalTrace?: GoalTraceEntry[],
   ): Promise<Result<string>>;
   /** Load a saved session by id or unique id prefix. */
   load(ref: string): Promise<Result<SavedSession>>;
@@ -256,6 +260,8 @@ export interface SessionCommands {
   setSession(id: string | undefined, name: string | undefined): void;
   /** The agent's todo list (saved with the session). */
   todos: TodoStore | undefined;
+  /** The goal trace (saved with the session, restored on resume so it keeps growing). */
+  goalLog: GoalLog | undefined;
 }
 
 /**

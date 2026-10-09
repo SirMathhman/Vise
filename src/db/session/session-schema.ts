@@ -26,4 +26,15 @@ export const SESSION_MIGRATIONS: Migration[] = [
   `,
   // The agent's todo list, as JSON.
   `ALTER TABLE sessions ADD COLUMN todos TEXT`,
+  // The goal trace (see src/core/goal-trace.ts): every goal decision, in order, with its
+  // evidence. data is the entry as JSON; after is the message count when it happened.
+  `CREATE TABLE goal_trace (
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    seq        INTEGER NOT NULL,
+    at         TEXT NOT NULL,
+    after      INTEGER NOT NULL,
+    kind       TEXT NOT NULL,
+    data       TEXT NOT NULL,
+    PRIMARY KEY (session_id, seq)
+  )`,
 ];

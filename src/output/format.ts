@@ -170,7 +170,7 @@ export function formatHelp(opts: {
     "/burst [on|off]  think once to plan, then run tool calls without thinking",
   );
   lines.push(
-    "/goal [on|off|clear]  check each turn against a goal and keep going until it is met",
+    "/goal [on|off|clear|log [turns]]  check each turn against a goal and keep going until it is met (log: why each turn ended)",
     "/image <path>   attach an image file to your next message (clear: /image clear)",
   );
   if (opts.hasTools) {

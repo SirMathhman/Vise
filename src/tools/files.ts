@@ -114,6 +114,20 @@ export function createFile(args: Record<string, unknown>): string {
   }
 }
 
+const CRLF = new RegExp(String.fromCharCode(13, 10), "g");
+const LONE_LF = new RegExp("(?<!" + String.fromCharCode(13) + ")" + String.fromCharCode(10), "g");
+
+/** Whether most of a text's line breaks are CRLF (a Windows file) rather than LF. */
+function usesCrlf(text: string): boolean {
+  const crlf = text.match(CRLF)?.length ?? 0;
+  return crlf > 0 && crlf >= (text.match(LONE_LF)?.length ?? 0);
+}
+
+/** `text` with every line break CRLF. */
+function withCrlf(text: string): string {
+  return text.replace(CRLF, "\n").replaceAll("\n", "\r\n");
+}
+
 export function editFile(args: Record<string, unknown>): string {
   const path = String(args.path ?? "");
   const old = String(args.old_string ?? "");
@@ -123,14 +137,19 @@ export function editFile(args: Record<string, unknown>): string {
       return `error: old_string must not be empty in ${path}`;
     }
     const current = readFileSync(path, "utf8");
-    const count = current.split(old).length - 1;
+    // The model writes `\n`; a file with CRLF line endings keeps them.
+    const crlf = usesCrlf(current);
+    const wanted = crlf && !current.includes(old) ? withCrlf(old) : old;
+    const replacement = crlf ? withCrlf(next) : next;
+    const count = current.split(wanted).length - 1;
     if (count === 0) {
       return `error: old_string not found in ${path}`;
     }
     if (count > 1) {
       return `error: old_string appears ${count} times in ${path}; it must be unique`;
     }
-    writeFileSync(path, current.replace(old, next), "utf8");
+    // A function, so `$&`, `$'` and the like in the new text are written as they are.
+    writeFileSync(path, current.replace(wanted, () => replacement), "utf8");
     return `edited ${path}`;
   } catch (err) {
     return errStr(err);

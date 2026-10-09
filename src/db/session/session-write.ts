@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import type { Message } from "../../core/errors.ts";
+import type { GoalTraceEntry } from "../../core/goal-trace.ts";
 import type { TodoItem } from "../../core/todos.ts";
 
 /**
@@ -15,6 +16,7 @@ export function writeSession(
   activeProfile: string | undefined,
   savedAt: string = new Date().toISOString(),
   todos: TodoItem[] = [],
+  trace: GoalTraceEntry[] = [],
 ): void {
   db.transaction(() => {
     db.query(
@@ -33,6 +35,21 @@ export function writeSession(
     const index = db.query(
       "INSERT INTO message_fts (content, session_id) VALUES (?, ?)",
     );
+    db.query("DELETE FROM goal_trace WHERE session_id = ?").run(id);
+    const insertTrace = db.query(
+      `INSERT INTO goal_trace (session_id, seq, at, after, kind, data)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    );
+    trace.forEach((entry, seq) => {
+      insertTrace.run(
+        id,
+        seq,
+        entry.at,
+        entry.after,
+        entry.kind,
+        JSON.stringify(entry),
+      );
+    });
     messages.forEach((m, seq) => {
       insert.run(
         id,
@@ -74,4 +91,20 @@ export function readMessages(db: Database, id: string): Message[] {
     if (r.images !== null) m.images = JSON.parse(r.images);
     return m;
   });
+}
+
+/** The goal trace of a session, in order. Entries that cannot be read are skipped. */
+export function readTrace(db: Database, id: string): GoalTraceEntry[] {
+  const rows = db
+    .query("SELECT data FROM goal_trace WHERE session_id = ? ORDER BY seq")
+    .all(id) as { data: string }[];
+  const entries: GoalTraceEntry[] = [];
+  for (const row of rows) {
+    try {
+      entries.push(JSON.parse(row.data) as GoalTraceEntry);
+    } catch {
+      // A damaged entry must not stop the rest of the trace from being read.
+    }
+  }
+  return entries;
 }
