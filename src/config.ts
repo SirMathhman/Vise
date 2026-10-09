@@ -38,6 +38,7 @@ const GOAL = "Goal checking";
 const TOOLS = "Tool output & files";
 const BROWSER = "Browser tools";
 const TERMINAL = "Integrated terminal";
+const MCP = "MCP servers";
 
 export const SPEC = {
   llmBaseUrl: {
@@ -215,6 +216,18 @@ export const SPEC = {
     5,
     TOOLS,
     "tool search results",
+  ),
+  mcpConnectTimeoutMs: n(
+    "VISE_MCP_CONNECT_TIMEOUT_MS",
+    15_000,
+    MCP,
+    "server connect timeout (ms)",
+  ),
+  mcpToolTimeoutMs: n(
+    "VISE_MCP_TOOL_TIMEOUT_MS",
+    120_000,
+    MCP,
+    "tool call timeout (ms)",
   ),
   maxImageBytes: n(
     "VISE_MAX_IMAGE_BYTES",

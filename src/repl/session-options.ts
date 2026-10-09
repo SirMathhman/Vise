@@ -19,6 +19,7 @@ import type {
   ReasoningController,
   SessionSource,
   WorkflowSource,
+  McpStatusSource,
 } from "./ports.ts";
 
 /**
@@ -41,6 +42,8 @@ export interface SessionOptions {
   toolController?: ToolController;
   profileSource?: ProfileSource;
   noteSource?: NoteSource;
+  /** The MCP servers `/mcp` reports on and restarts. */
+  mcp?: McpStatusSource;
   /** Loads the image files `/image <path>` attaches; without it that command is unavailable. */
   imageSource?: ImageSource;
   workflowSource?: WorkflowSource;

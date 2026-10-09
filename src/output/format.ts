@@ -139,6 +139,7 @@ export function formatHelp(opts: {
   hasWorkflows: boolean;
   hasSessions: boolean;
   hasAudit?: boolean;
+  hasMcp?: boolean;
   preTurnHookCount: number;
   postTurnHookCount: number;
 }): string {
@@ -176,6 +177,12 @@ export function formatHelp(opts: {
     lines.push("/tool            list available tools");
     lines.push(
       "/tool <name|category> enable|disable  enable or disable a tool or a whole category",
+    );
+  }
+  if (opts.hasMcp) {
+    lines.push(
+      "/mcp            list MCP servers and their state",
+      "/mcp restart <name>  reconnect a server (new tools appear after a page reload or restart)",
     );
   }
   if (opts.hasProfile) {

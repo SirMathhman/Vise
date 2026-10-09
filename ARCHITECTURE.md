@@ -442,6 +442,10 @@ turn. The turn-admission state is spread over `web/line.ts`,
 `web/queue-commands.ts` and `web/server.ts`; see Future Work for the
 single-module target.
 
+## MCP servers
+
+`src/mcp/` is an edge-only MCP client (stdio, official SDK). `mcp-config.ts` reads `mcpServers` from `~/.vise/mcp.json` and the project's `.viserc.json`; `McpConnection` wraps one server process (status `connecting|ready|failed|exited`, stderr tail kept for messages); `mcp-tools.ts` maps MCP tools to deferred Vise `Tool`s and results to text; `McpHub` owns the connections of one root and routes calls. The hub is started before `createEdgeSession` because the session's tool list (and so the system prompt and its KV cache) must not change mid-conversation. Calls never throw: a lost server returns an `error:` string, like every other tool. Lifecycle rules: a web connection is built only after its folder's hub is ready (`createGate`, `src/web/conn/gate.ts`, holds the page's messages meanwhile and gives the folder back exactly once if the page leaves or the start fails; `finishOpening` in `conn/open.ts` does the first messages and watchers); closing a hub or a connection is safe at any point, including while a server is still connecting (the process is stopped as soon as the handshake ends); hub operations (`reload`, `restart`, `close`) run one at a time. Future work: refreshing the tool list of a conversation that is already open (it keeps the list it started with) and transports other than stdio. Trust: configuring a server runs a program from the project's files; its output is untrusted data.
+
 ## Audit log
 
 An append-only record of everything the agent did, in the global

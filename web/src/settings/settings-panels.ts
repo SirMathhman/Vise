@@ -3,6 +3,7 @@ import {
   createBrowserSettings,
 } from "./browser-settings.ts";
 import { createEnvPanel, type EnvMessage } from "./env-panel.ts";
+import { createMcpPanel, type McpMessage } from "./mcp/mcp-panel.ts";
 import { createNotesPanel, type NotesMessage } from "./notes-panel.ts";
 import {
   createWorkflowsPanel,
@@ -13,6 +14,7 @@ import {
 type SettingsMessage = NotesMessage &
   WorkflowsMessage &
   BrowserSettingsFields &
+  McpMessage &
   EnvMessage;
 
 function el<T extends HTMLElement>(id: string): T {
@@ -34,6 +36,10 @@ export function createSettingsPanels(
     el("settings-btn"),
     el("general-tab"),
   ]);
+  const mcp = createMcpPanel(el("mcp-body"), send, [
+    el("settings-btn"),
+    el("mcp-tab"),
+  ]);
   const notes = createNotesPanel(el("notes-body"), send, [
     el("settings-btn"),
     el("notes-tab"),
@@ -50,6 +56,7 @@ export function createSettingsPanels(
       }
       return (
         general.handle(message) ||
+        mcp.handle(message) ||
         notes.handle(message) ||
         workflows.handle(message)
       );

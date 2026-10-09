@@ -37,6 +37,7 @@ import { compactInPlace } from "./repl/turn/compaction.ts";
 import { Session } from "./repl/session.ts";
 import { TempStore, tempHandlers } from "./tools/temp-store.ts";
 import type { GoalEvent } from "./repl/turn/goal-loop.ts";
+import type { McpHub } from "./mcp/mcp-hub.ts";
 import { makeBrowserHandlers } from "./tools/browser/browser.ts";
 import {
   FileImageSource,
@@ -193,6 +194,12 @@ export interface EdgeSessionOptions {
    * for it. Its stores and hooks live in a generated directory (`noFolderRoot`).
    */
   noFolder?: boolean;
+  /**
+   * The MCP servers of this root, already started (`await hub.start()`): their
+   * tools join the session's tool list, which then stays fixed for the
+   * conversation. Owned by the caller, who closes it.
+   */
+  mcp?: McpHub;
 }
 
 /** The edge services a frontend needs after construction. */
@@ -333,9 +340,10 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
   if (options.noFolder) mkdirSync(root, { recursive: true });
   // The working directory the model sees; none for a session without one.
   const cwd = options.noFolder ? undefined : root;
-  const sessionTools = options.noFolder
+  const builtinTools = options.noFolder
     ? tools.filter((t) => !isFileSystemTool(t))
     : tools;
+  const sessionTools = [...builtinTools, ...(options.mcp?.tools() ?? [])];
   const dataDir = dataDirFor(root);
   // Sessions that share a store share the same live hook arrays.
   const hookStore = options.hookStore ?? new HookStore(root);
@@ -389,6 +397,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
       ...makeBrowserHandlers(browser, temp, cwd, images),
       ...makeImageHandlers(images, cwd),
       ...tempHandlers(temp),
+      ...options.mcp?.handlers(images),
       self: makeSelfHandler(
         selfInfo(client, cwd, () => sessionRef.current, hookStore),
       ),
@@ -411,6 +420,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     profileSource,
     noteSource: new FileNoteSource({ project: dataDir, global: globalDataDir }),
     imageSource,
+    mcp: options.mcp,
     workflowSource,
     sessionSource,
     todos,

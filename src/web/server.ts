@@ -11,20 +11,24 @@ import { handleEditorMessage } from "./api/editors.ts";
 import { serveAsset } from "./assets.ts";
 import { queueLine, steerLine, unqueue } from "./conn/line.ts";
 import type { HeldLine } from "./conn/line.ts";
+import { isLocalHost, isLocalOrigin, serveApi } from "./http.ts";
+import { createGate } from "./conn/gate.ts";
+import { finishOpening } from "./conn/open.ts";
+import { handleMcpMessage } from "./api/mcp-api.ts";
 import { handleSettingsMessage } from "./api/settings-api.ts";
 import { handleQueueCommand } from "./conn/queue-commands.ts";
 import { SessionLease } from "./conn/leases.ts";
-import { queueAutoResume } from "./conn/resume.ts";
 import { imageStore } from "../stores/image-store.ts";
 import { SwitchableBrowser } from "../browser/switchable.ts";
 import { BrowserBridge } from "./ext/browser-bridge.ts";
 import { type HookStore } from "../edge-sources.ts";
 import { dataDirFor, noFolderRoot } from "../data-dir.ts";
+import type { McpHub } from "../mcp/mcp-hub.ts";
 import { pickFolder, RootRegistry } from "./api/roots.ts";
 import { createEdgeSession } from "../wiring.ts";
 import { formatToolCall, summarizeToolResult } from "../output/tool-line.ts";
 import { displayOfTool } from "../tools/display.ts";
-import { listDir, readTextFile, deletePath, watchRoot, annotateIgnored, type DirEntry } from "./api/files.ts";
+import { listDir, readTextFile, deletePath, annotateIgnored, type DirEntry } from "./api/files.ts";
 import { WebUserPrompter } from "./conn/prompter.ts";
 import { TerminalRegistry, type TerminalAttachment } from "./terminal/terminal-registry.ts";
 import { spawnConPty } from "./terminal/pty.ts";
@@ -77,39 +81,6 @@ import { handleTerminalMessage } from "./terminal/terminal-api.ts";
  *                     { type:"exit" }                the line was /exit
  */
 
-/** Non-browser clients send no Origin; browsers must come from the Vise page itself. */
-function isLocalOrigin(origin: string | null, port: number): boolean {
-  return (
-    origin === null ||
-    origin === `http://localhost:${port}` ||
-    origin === `http://127.0.0.1:${port}`
-  );
-}
-
-function isLocalHost(host: string | null, port: number): boolean {
-  return host === `localhost:${port}` || host === `127.0.0.1:${port}`;
-}
-
-/** Read-only explorer API: `/api/fs?path=` lists a directory, `/api/file?path=` reads a file (both take the session `root`). */
-function serveExplorer(url: URL, roots: RootRegistry): Response {
-  // The session root the page was opened with; only roots in use are served.
-  const root = roots.resolve(url.searchParams.get("root"));
-  if (!root || !roots.isActive(root)) {
-    return Response.json({ error: "unknown root" }, { status: 403 });
-  }
-  const rel = url.searchParams.get("path") ?? "";
-  const result =
-    url.pathname === "/api/fs" ? listDir(root, rel) : readTextFile(root, rel);
-  if (!result.ok)
-    return Response.json({ error: result.error }, { status: result.status });
-  if (url.pathname === "/api/fs") {
-    const value = result.value as { root: string; entries: DirEntry[] };
-    value.entries = annotateIgnored(root, rel, value.entries);
-    return Response.json(value);
-  }
-  return Response.json(result.value);
-}
-
 /** Track whether any reply tokens were streamed during a turn (the `streamed` flag). */
 class WebDisplay {
   private streamed = false;
@@ -122,71 +93,6 @@ class WebDisplay {
   get wasStreamed(): boolean {
     return this.streamed;
   }
-}
-
-/** The JSON APIs the page uses (explorer, folder chooser, extension pairing); null when `url` is not one. */
-/** A stored picture by id (`/api/image/<sha256>`), for the page's thumbnails. Only the Vise page may load it. */
-function serveImage(url: URL, port: number, req: Request): Response {
-  const site = req.headers.get("sec-fetch-site");
-  if (site !== null && site !== "same-origin") {
-    return new Response("forbidden", { status: 403 });
-  }
-  const found = imageStore.find(url.pathname.slice("/api/image/".length));
-  if (!found) return new Response("not found", { status: 404 });
-  return new Response(new Uint8Array(found.bytes), {
-    headers: {
-      "content-type": found.mime,
-      "cache-control": "private, max-age=31536000, immutable",
-      "x-content-type-options": "nosniff",
-    },
-  });
-}
-
-function serveApi(
-  req: Request,
-  url: URL,
-  port: number,
-  roots: RootRegistry,
-  extensionToken: string,
-): Response | Promise<Response> | null {
-  if (url.pathname === "/api/ext-token" && req.method === "POST") {
-    // Only the Vise page itself may read the pairing token. It must be a POST: browsers send no
-    // Origin on a same-origin GET, but always send one on a POST.
-    const origin = req.headers.get("origin");
-    if (origin === null || !isLocalOrigin(origin, port)) {
-      return new Response("forbidden", { status: 403 });
-    }
-    return Response.json({ token: extensionToken });
-  }
-  if (url.pathname === "/api/vise-hello") {
-    // Lets the Firefox extension find the server when it had to move to another port.
-    return Response.json({ vise: true });
-  }
-  if (url.pathname.startsWith("/api/image/")) return serveImage(url, port, req);
-  if (url.pathname === "/api/fs" || url.pathname === "/api/file") {
-    return serveExplorer(url, roots);
-  }
-  if (url.pathname === "/api/delete" && req.method === "POST") {
-    const root = roots.resolve(url.searchParams.get("root"));
-    if (!root || !roots.isActive(root)) {
-      return Response.json({ error: "unknown root" }, { status: 403 });
-    }
-    const rel = url.searchParams.get("path") ?? "";
-    const result = deletePath(root, rel);
-    if (!result.ok)
-      return Response.json({ error: result.error }, { status: result.status });
-    return Response.json({ ok: true });
-  }
-  if (url.pathname === "/api/pick-folder" && req.method === "POST") {
-    // Opens the OS folder dialog; only the Vise page itself may ask.
-    if (!isLocalOrigin(req.headers.get("origin"), port)) {
-      return new Response("forbidden", { status: 403 });
-    }
-    return pickFolder(roots.defaultRoot).then((path) =>
-      Response.json({ path }),
-    );
-  }
-  return null;
 }
 
 /**
@@ -237,11 +143,72 @@ function rootMessage(data: WsData): Record<string, unknown> {
 
 /** Start the web driver: serve the UI and accept WebSocket connections. */
 /** Show `note` in the page after the restored conversation, which replaces the chat log. */
-function queueNote(conn: ConnectionState, note?: string): void {
-  if (note)
-    conn.chain = conn.chain.then(() =>
-      conn.send({ type: "notice", text: note }),
-    );
+/** What a page's connection is built from. */
+interface GateEnvironment {
+  roots: RootRegistry;
+  browser: SwitchableBrowser;
+  extensionBrowser: BrowserBackend;
+  terminals: TerminalRegistry;
+  note?: string;
+}
+
+/** The gate that opens each page's connection once its folder's MCP servers are ready. */
+function createConnectionGate(env: GateEnvironment) {
+  const { roots, browser, extensionBrowser, terminals, note } = env;
+  const acquired = new Map<
+    ServerWebSocket<WsData>,
+    { store: HookStore; hub: McpHub }
+  >();
+  const gate = createGate<
+    ServerWebSocket<WsData>,
+    ConnectionState,
+    string | Buffer<ArrayBuffer>
+  >({
+    // The folder's MCP servers must be up before the session exists (its tool
+    // list is fixed for the conversation); the gate holds messages meanwhile.
+    start: (ws) => {
+      const entry = roots.acquire(ws.data.root);
+      acquired.set(ws, entry);
+      return entry.hub.start();
+    },
+    open: (ws) => {
+      const { store, hub } = acquired.get(ws)!;
+      acquired.delete(ws);
+      const { root, noFolder, sidebar } = ws.data;
+      const conn = makeConnectionState(
+        ws,
+        sidebar ? extensionBrowser : browser,
+        store,
+        root,
+        noFolder,
+        sidebar ? undefined : browser,
+        hub,
+      );
+      finishOpening(conn, {
+        root,
+        noFolder,
+        sidebar,
+        rootMessage: rootMessage(ws.data),
+        hookStore: store,
+        hub,
+        terminals,
+        releaseRoot: () => roots.release(root),
+        pushHooks: () => void pushHooks(conn),
+        note,
+      });
+      return conn;
+    },
+    handle: handleMessage,
+    teardown: closeConnection,
+    abandon: (ws) => {
+      if (acquired.delete(ws)) roots.release(ws.data.root);
+    },
+    fail: (ws, error) => {
+      console.error("vise web: could not open a connection:", error);
+      ws.close(1011, "could not start the session");
+    },
+  });
+  return gate;
 }
 
 /** `note` is shown in each page that connects (e.g. that the wanted port was busy). */
@@ -260,7 +227,13 @@ export function startWebServer(
   const extensionBrowser = new ExtensionBackend(extensionHub);
   const terminals = new TerminalRegistry(spawnConPty);
   const extensionToken = loadExtensionToken();
-  const state = new Map<ServerWebSocket<WsData>, ConnectionState>();
+  const gate = createConnectionGate({
+    roots,
+    browser,
+    extensionBrowser,
+    terminals,
+    note,
+  });
   const server = Bun.serve<WsData>({
     port,
     hostname: "127.0.0.1",
@@ -288,56 +261,16 @@ export function startWebServer(
     },
     websocket: {
       open(ws) {
-        if (ws.data.ext) {
-          extensionHub.attach(ws);
-          return;
-        }
-        const { root, noFolder, sidebar } = ws.data;
-        const hookStore = roots.acquire(root);
-        const conn = makeConnectionState(
-          ws,
-          sidebar ? extensionBrowser : browser,
-          hookStore,
-          root,
-          noFolder,
-          sidebar ? undefined : browser,
-        );
-        conn.send(rootMessage(ws.data));
-        conn.send({ type: "goal_state", enabled: conn.session.goalChecking() });
-        // The shared browser's engine setting, for the settings panel.
-        void conn.bridge.handle({ type: "browser_settings_get" });
-        // Tell the browser's file explorer whenever the project tree changes.
-        // Any connection's hook edit refreshes every open hooks panel.
-        const offHooks = hookStore.onChange(() => void pushHooks(conn));
-        const stopWatching = noFolder
-          ? () => {}
-          : watchRoot(root, () => conn.send({ type: "fs_changed" }));
-        conn.unwatch = () => {
-          stopWatching();
-          offHooks();
-          roots.release(root);
-        };
-        // One shell per folder, shared by its pages and kept across reloads.
-        if (!noFolder && !sidebar) conn.terminal = terminals.attach(root, conn.send);
-        queueAutoResume(conn);
-        queueNote(conn, note);
-        state.set(ws, conn);
+        if (ws.data.ext) extensionHub.attach(ws);
+        else gate.open(ws);
       },
       message(ws, message) {
-        if (ws.data.ext) {
-          extensionHub.handleMessage(String(message));
-          return;
-        }
-        const conn = state.get(ws);
-        if (conn) handleMessage(conn, message);
+        if (ws.data.ext) extensionHub.handleMessage(String(message));
+        else gate.message(ws, message);
       },
       close(ws) {
-        if (ws.data.ext) {
-          extensionHub.detach(ws);
-          return;
-        }
-        closeConnection(state.get(ws));
-        state.delete(ws);
+        if (ws.data.ext) extensionHub.detach(ws);
+        else gate.close(ws);
       },
     },
   });
@@ -345,7 +278,9 @@ export function startWebServer(
   // Closes the browser before the server stops, so it never outlives us.
   const shutdown = (): Promise<void> => {
     terminals.closeAll();
-    return browser.close().finally(() => void server.stop(true));
+    return Promise.all([browser.close(), roots.closeAll()])
+      .then(() => undefined)
+      .finally(() => void server.stop(true));
   };
   for (const signal of ["SIGINT", "SIGTERM", "SIGBREAK"] as const) {
     process.once(
@@ -380,6 +315,8 @@ interface ConnectionState {
   held: HeldLine[];
   running: boolean;
   bridge: BrowserBridge;
+  /** The folder's MCP servers (shared by its pages). */
+  mcp?: McpHub;
   /** Stops the project-tree watcher; set once the connection opens. */
   unwatch: () => void;
   /** The session's data directory (its notes live there). */
@@ -398,6 +335,7 @@ function makeConnectionState(
   noFolder: boolean,
   /** The shared headless browser, when this session uses it (enables the engine settings). */
   shared?: SwitchableBrowser,
+  mcp?: McpHub,
 ): ConnectionState {
   const send = (msg: Record<string, unknown>): void => {
     if (ws.readyState === 1) ws.send(JSON.stringify(msg)); // readyState 1 = OPEN
@@ -409,6 +347,7 @@ function makeConnectionState(
     hookStore,
     root,
     noFolder,
+    mcp,
     onToken: (t) => {
       display.onToken(t);
       send({ type: "token", text: t });
@@ -482,6 +421,7 @@ function makeConnectionState(
     held: [],
     running: false,
     bridge: new BrowserBridge(browser, send, shared),
+    mcp,
     unwatch: () => {},
     dataDir: dataDirFor(root),
     lease: new SessionLease(root),
@@ -574,6 +514,12 @@ function handleMessage(
   if (msg.type.startsWith("term_")) {
     // The integrated terminal never queues behind a model turn.
     handleTerminalMessage(conn.terminal, msg, send);
+    return;
+  }
+  if (msg.type.startsWith("mcp_")) {
+    // MCP server settings are read and written directly; never queued behind a turn.
+    const wire = msg as unknown as Record<string, unknown>;
+    void handleMcpMessage(conn.mcp, conn.ws.data.root, wire).then(send);
     return;
   }
   if (msg.type === "env_get" || msg.type === "env_set") {

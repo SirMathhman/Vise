@@ -1,19 +1,21 @@
 import { spawn } from "node:child_process";
-import { statSync } from "node:fs";
+import { mkdirSync, statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import { noFolderRoot } from "../../data-dir.ts";
 import { HookStore } from "../../edge-sources.ts";
+import { McpHub } from "../../mcp/mcp-hub.ts";
 
 /**
  * The session roots the web server hosts. A connection picks its root when it
  * opens (a `root` query parameter) and keeps it for life; the server never
  * moves a session to another root. Hooks live in the root's `.viserc.json`, so
- * connections on the same root share one `HookStore`.
+ * connections on the same root share one `HookStore` and one `McpHub` (the
+ * MCP server processes), which is closed when the last connection leaves.
  */
 export class RootRegistry {
   private readonly stores = new Map<
     string,
-    { store: HookStore; refs: number }
+    { store: HookStore; hub: McpHub; refs: number }
   >();
 
   /** `defaultRoot` is where a connection with no `root` parameter lands. */
@@ -41,15 +43,20 @@ export class RootRegistry {
     return (this.stores.get(root)?.refs ?? 0) > 0;
   }
 
-  /** Register a connection on `root`; returns that root's shared hook store. */
-  acquire(root: string): HookStore {
-    const entry = this.stores.get(root) ?? {
-      store: new HookStore(root),
-      refs: 0,
-    };
+  /** Register a connection on `root`; returns that root's shared hook store and its MCP hub (started, not necessarily ready). */
+  acquire(root: string): { store: HookStore; hub: McpHub } {
+    let entry = this.stores.get(root);
+    if (!entry) {
+      // A no-folder root is generated, so it may not exist yet; servers start inside it.
+      if (root.toLowerCase() === noFolderRoot.toLowerCase()) {
+        mkdirSync(root, { recursive: true });
+      }
+      entry = { store: new HookStore(root), hub: new McpHub(root), refs: 0 };
+      void entry.hub.start();
+    }
     entry.refs++;
     this.stores.set(root, entry);
-    return entry.store;
+    return entry;
   }
 
   /** The connection on `root` closed. */
@@ -57,7 +64,15 @@ export class RootRegistry {
     const entry = this.stores.get(root);
     if (!entry) return;
     entry.refs--;
-    if (entry.refs <= 0) this.stores.delete(root);
+    if (entry.refs <= 0) {
+      this.stores.delete(root);
+      void entry.hub.close();
+    }
+  }
+
+  /** Stop every MCP server (the server is shutting down). */
+  async closeAll(): Promise<void> {
+    await Promise.all([...this.stores.values()].map((e) => e.hub.close()));
   }
 }
 

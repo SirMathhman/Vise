@@ -1,7 +1,11 @@
+import { mkdirSync } from "node:fs";
 import { createInterface } from "node:readline";
+import { noFolderRoot } from "./data-dir.ts";
 import { TerminalDriver } from "./driver/terminal.ts";
 import { StreamDisplay } from "./driver/stream.ts";
 import { RlUserPrompter } from "./tools/agent/ask-user.ts";
+import { McpHub } from "./mcp/mcp-hub.ts";
+import { mcpNote } from "./output/mcp-format.ts";
 import { createEdgeSession } from "./wiring.ts";
 
 // Shared prompter for mid-turn user questions: used by the ask_user tool and
@@ -23,9 +27,18 @@ const display = new StreamDisplay();
 // can reuse the exact same services. The terminal driver supplies the
 // terminal-specific display callbacks and prompter; the web driver supplies
 // WebSocket-based ones.
+// The MCP servers must be up first: their tools are part of the session's fixed tool list.
+const noFolder = process.argv.includes("--no-folder");
+const mcp = new McpHub(noFolder ? noFolderRoot : process.cwd());
+mkdirSync(noFolderRoot, { recursive: true });
+await mcp.start();
+const mcpProblems = mcpNote(mcp);
+if (mcpProblems) console.error(mcpProblems);
+
 const edge = createEdgeSession({
   // `--no-folder`: a session without a working directory (no file or shell tools).
-  noFolder: process.argv.includes("--no-folder"),
+  noFolder,
+  mcp,
   onToken: display.onToken,
   onThinking: display.onThinking,
   onPromptProgress: display.onPromptProgress,
@@ -52,7 +65,8 @@ const edge = createEdgeSession({
 // handler and the onMaxRounds callback share one prompter instance.
 process.once("exit", edge.cleanup);
 // A launched browser holds the event loop open, so close it when input ends.
-rl.once("close", () => void edge.browser.close());
+rl.once("close", () => void Promise.all([edge.browser.close(), mcp.close()]));
+process.once("SIGINT", () => void mcp.close());
 
 const driver = new TerminalDriver(edge.session, display, rl);
 driver.run();

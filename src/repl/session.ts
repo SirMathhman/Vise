@@ -33,6 +33,7 @@ import {
   handleResumeCommand,
   handleSaveCommand,
 } from "./commands/session-commands.ts";
+import { handleMcpCommand } from "../mcp/mcp-command.ts";
 import { handleSearchCommand } from "./commands/search-command.ts";
 import { workflowProfileScope } from "./commands/workflow-profiles.ts";
 import { findBuiltin, type BuiltinCommand } from "./commands/registry.ts";
@@ -439,6 +440,7 @@ export class Session {
     { name: "/reasoning", run: (line) => handleReasoningCommand(this.reasoningController, line) },
     { name: "/goal", run: (line) => handleGoalCommand(this.goals, line) },
     { name: "/burst", run: (line) => this.burstCommand(line) },
+    { name: "/mcp", run: (line) => handleMcpCommand(this.opts.mcp, line) },
     { name: "/tool", run: (line) => this.toolCommand(line) },
     { name: "/profile", run: (line) => handleProfileCommand(this.profileCommands, line) },
     { name: "/note", run: (line) => handleNotesCommand(this.noteSource, line) },
@@ -461,6 +463,7 @@ export class Session {
         hasWorkflows: !!this.workflowSource,
         hasSessions: !!this.sessionSource,
         hasAudit: this.audit.enabled,
+        hasMcp: !!this.opts.mcp,
         preTurnHookCount: this.hooks.pre.length,
         postTurnHookCount: this.hooks.post.length,
       }),

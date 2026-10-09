@@ -277,3 +277,17 @@ export interface CompactionSource {
   /** Told what each compaction did (the audit log). */
   audit?: AuditSink;
 }
+
+/** The MCP servers behind `/mcp` (provided by the edge). */
+export interface McpStatusSource {
+  status(): {
+    name: string;
+    status: { state: string; reason?: string };
+    tools: number;
+    stderr: string;
+  }[];
+  /** Config entries that were skipped, each with the reason. */
+  problems: string[];
+  /** Reconnect one server; the result text says how it went (`error:` when it failed). */
+  restart(name: string): Promise<string>;
+}
