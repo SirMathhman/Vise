@@ -14,6 +14,7 @@ import { createSteerUi } from "./composer/steer-ui.ts";
 import { bindToolToggles } from "./settings/tool-toggles.ts";
 import { createSettingsPanels } from "./settings/settings-panels.ts";
 import { createWorkspace } from "./workspace/workspace.ts";
+import { createTerminalPanel } from "./terminal/terminal-panel.ts";
 import { setupComposer } from "./composer/composer.ts";
 import { createPanels } from "./settings/panels.ts";
 import { registerHeaderPanels } from "./status/panel-switch.ts";
@@ -83,6 +84,7 @@ const hooksPanel = createHooksPanel(
 );
 const settingsPanels = createSettingsPanels(sendMessage);
 const workspace = createWorkspace(sendMessage, renderMarkdown, setStatus);
+const terminalPanel = createTerminalPanel(sendMessage, setStatus);
 /** The parts of the page that own some of the server messages. */
 const goalUi = createGoalUi(
   transcript.addLine,
@@ -106,6 +108,7 @@ const todoUi = createTodoUi(requiredElement("todos"));
 const serverPanels = [
   hooksPanel,
   settingsPanels,
+  terminalPanel, // before the workspace: both read the `root` message
   workspace,
   goalUi,
   steerUi,

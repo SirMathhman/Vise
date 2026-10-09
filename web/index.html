@@ -6,6 +6,7 @@
     <title>vise</title>
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="dist/app.css" />
   </head>
   <body>
     <nav id="topbar" class="topbar">
@@ -19,6 +20,15 @@
       </button>
       <button id="files-btn" class="topbar-item" title="Toggle file explorer">
         files
+      </button>
+      <button
+        id="terminal-btn"
+        class="topbar-item"
+        aria-pressed="false"
+        aria-controls="terminal"
+        title="Toggle the terminal (Ctrl+`)"
+      >
+        terminal
       </button>
       <button
         id="settings-btn"
@@ -345,6 +355,28 @@
         </section>
       </main>
     </div>
+    <section id="terminal" class="terminal-panel hidden" aria-label="Terminal">
+      <div
+        id="terminal-grip"
+        class="terminal-grip"
+        role="separator"
+        aria-orientation="horizontal"
+        title="Drag to resize"
+      ></div>
+      <div class="terminal-head">
+        <span class="terminal-title">terminal</span>
+        <button id="terminal-restart" class="tools-btn" title="Start a new shell">
+          restart
+        </button>
+        <button id="terminal-kill" class="tools-btn" title="Stop the shell">
+          kill
+        </button>
+        <button id="terminal-hide" class="tools-btn" title="Hide the terminal (Ctrl+`); the shell keeps running">
+          hide
+        </button>
+      </div>
+      <div id="terminal-view" class="terminal-view"></div>
+    </section>
     <script type="module" src="dist/app.js"></script>
   </body>
 </html>

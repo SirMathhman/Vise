@@ -1,12 +1,14 @@
 // The page's files. `type: "file"` resolves to the file on disk when run from
 // source and to the copy inside the executable when compiled. `web/dist/app.js`
-// is built by `bun run build:web`, which must run before either.
+// and `app.css` are built by `bun run build:web`, which must run before either.
 import indexHtml from "../../web/index.html" with { type: "file" };
 // @ts-expect-error TypeScript has no type for a CSS import; with `type: "file"` it is a path.
 import stylesCss from "../../web/styles.css" with { type: "file" };
 // @ts-expect-error TypeScript has no type for an SVG import; with `type: "file"` it is a path.
 import iconSvg from "../../assets/icon.svg" with { type: "file" };
 import appJs from "../../web/dist/app.js" with { type: "file" };
+// @ts-expect-error TypeScript has no type for a CSS import; with `type: "file"` it is a path.
+import appCss from "../../web/dist/app.css" with { type: "file" }; // the CSS the bundle imports (xterm.js)
 
 // Bun types HTML and JS imports as bundles; with `type: "file"` they are paths.
 const path = (imported: unknown): string => imported as string;
@@ -20,6 +22,7 @@ export const WEB_ASSETS: Readonly<
   "/styles.css": { file: path(stylesCss), type: "text/css; charset=utf-8" },
   "/icon.svg": { file: path(iconSvg), type: "image/svg+xml" },
   "/dist/app.js": { file: path(appJs), type: "text/javascript; charset=utf-8" },
+  "/dist/app.css": { file: path(appCss), type: "text/css; charset=utf-8" },
 };
 
 /** Serve one of the page's files, or a 404 for any other path. */

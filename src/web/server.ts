@@ -1,7 +1,6 @@
 import { config } from "../config.ts";
 import type { ServerWebSocket } from "bun";
 import { formatContext, formatError, formatGoalEvent } from "../output/format.ts";
-import type { AskRequest, UserPrompter } from "../tools/agent/ask-user.ts";
 import { saveProfileWhitelist } from "../repl/profile-tools.ts";
 import { BrowserSettingsStore } from "../browser/settings.ts";
 import { ExtensionBackend } from "../browser/extension.ts";
@@ -26,6 +25,10 @@ import { createEdgeSession } from "../wiring.ts";
 import { formatToolCall, summarizeToolResult } from "../output/tool-line.ts";
 import { displayOfTool } from "../tools/display.ts";
 import { listDir, readTextFile, deletePath, watchRoot, annotateIgnored, type DirEntry } from "./api/files.ts";
+import { WebUserPrompter } from "./conn/prompter.ts";
+import { TerminalRegistry, type TerminalAttachment } from "./terminal/terminal-registry.ts";
+import { spawnConPty } from "./terminal/pty.ts";
+import { handleTerminalMessage } from "./terminal/terminal-api.ts";
 
 /**
  * Web frontend driver (the "frontend" seam, sibling to `TerminalDriver`).
@@ -49,6 +52,9 @@ import { listDir, readTextFile, deletePath, watchRoot, annotateIgnored, type Dir
  *                     { type:"steer", text, images? } reach the agent before its next step
  *                     { type:"line", text, qid }    qid: hold until the work in flight is done (shown in the queue)
  *                     { type:"unqueue", qid }       remove a held line
+ *                     { type:"term_open", cols, rows } show the folder's shell (started if none; else its output is replayed)
+ *                     { type:"term_input", data }   keystrokes for the shell
+ *                     { type:"term_resize", cols, rows } / { type:"term_restart" } / { type:"term_close" }
  *   server → browser: { type:"token", text }        a streamed reply token
  *                     { type:"thinking", text }     a streamed thinking token
  *                     { type:"progress", total, cache, processed, time_ms }
@@ -65,6 +71,9 @@ import { listDir, readTextFile, deletePath, watchRoot, annotateIgnored, type Dir
  *                     { type:"queue", items:[{qid,text}] } the lines being held
  *                     { type:"notice", text }       a short system note for the chat log
  *                     { type:"fs_changed" }          something under the project root changed
+ *                     { type:"term_data", data, replay? } shell output (replay: the screen so far; reset first)
+ *                     { type:"term_exit", code }     the shell ended
+ *                     { type:"term_error", message } the shell could not start
  *                     { type:"exit" }                the line was /exit
  */
 
@@ -99,33 +108,6 @@ function serveExplorer(url: URL, roots: RootRegistry): Response {
     return Response.json(value);
   }
   return Response.json(result.value);
-}
-
-/**
- * Edge implementation of UserPrompter over a WebSocket. When the model calls
- * `ask_user` (or the max-tool-rounds callback fires), it sends an `ask`
- * message to the browser and awaits the `ask_answer` reply. `ask_user` and
- * max-rounds never overlap within a turn, so a single pending slot is safe.
- */
-class WebUserPrompter implements UserPrompter {
-  private pending: ((answer: string) => void) | null = null;
-  constructor(private readonly send: (msg: Record<string, unknown>) => void) {}
-
-  ask({ question, options, multiSelect = false }: AskRequest): Promise<string> {
-    this.send({ type: "ask", question, options, multiSelect });
-    return new Promise((resolve) => {
-      this.pending = resolve;
-    });
-  }
-
-  /** Resolve the pending ask with the user's reply; no-op when none is open. */
-  settle(answer: string): void {
-    if (this.pending) {
-      const resolve = this.pending;
-      this.pending = null;
-      resolve(answer);
-    }
-  }
 }
 
 /** Track whether any reply tokens were streamed during a turn (the `streamed` flag). */
@@ -276,6 +258,7 @@ export function startWebServer(
   // The Firefox extension's connection, and the browser sessions in its sidebar use.
   const extensionHub = new ExtensionHub();
   const extensionBrowser = new ExtensionBackend(extensionHub);
+  const terminals = new TerminalRegistry(spawnConPty);
   const extensionToken = loadExtensionToken();
   const state = new Map<ServerWebSocket<WsData>, ConnectionState>();
   const server = Bun.serve<WsData>({
@@ -334,6 +317,8 @@ export function startWebServer(
           offHooks();
           roots.release(root);
         };
+        // One shell per folder, shared by its pages and kept across reloads.
+        if (!noFolder && !sidebar) conn.terminal = terminals.attach(root, conn.send);
         queueAutoResume(conn);
         queueNote(conn, note);
         state.set(ws, conn);
@@ -344,30 +329,24 @@ export function startWebServer(
           return;
         }
         const conn = state.get(ws);
-        if (!conn) return;
-        handleMessage(conn, message);
+        if (conn) handleMessage(conn, message);
       },
       close(ws) {
         if (ws.data.ext) {
           extensionHub.detach(ws);
           return;
         }
-        const conn = state.get(ws);
-        if (!conn) return;
-        conn.unwatch();
-        conn.lease.release();
-        conn.edge.cleanup();
-        void conn.bridge.dispose();
-        conn.session.interrupt();
-        conn.prompter.settle("");
+        closeConnection(state.get(ws));
         state.delete(ws);
       },
     },
   });
   console.log(`vise web: http://localhost:${port}`);
   // Closes the browser before the server stops, so it never outlives us.
-  const shutdown = (): Promise<void> =>
-    browser.close().finally(() => void server.stop(true));
+  const shutdown = (): Promise<void> => {
+    terminals.closeAll();
+    return browser.close().finally(() => void server.stop(true));
+  };
   for (const signal of ["SIGINT", "SIGTERM", "SIGBREAK"] as const) {
     process.once(
       signal,
@@ -407,6 +386,8 @@ interface ConnectionState {
   dataDir: string;
   /** The saved sessions this connection works in (one connection at a time per session). */
   lease: SessionLease;
+  /** This page's handle on its folder's shell; null with no folder or in the extension's sidebar. */
+  terminal: TerminalAttachment | null;
 }
 
 function makeConnectionState(
@@ -504,7 +485,20 @@ function makeConnectionState(
     unwatch: () => {},
     dataDir: dataDirFor(root),
     lease: new SessionLease(root),
+    terminal: null,
   };
+}
+
+/** Release everything a page's connection holds once its socket closes. */
+function closeConnection(conn: ConnectionState | undefined): void {
+  if (!conn) return;
+  conn.unwatch();
+  conn.terminal?.detach();
+  conn.lease.release();
+  conn.edge.cleanup();
+  void conn.bridge.dispose();
+  conn.session.interrupt();
+  conn.prompter.settle("");
 }
 
 interface WireMessage {
@@ -575,6 +569,11 @@ function handleMessage(
   if (msg.type.startsWith("browser_")) {
     // Browser view traffic never queues behind a model turn.
     void conn.bridge.handle(msg as unknown as Record<string, unknown>);
+    return;
+  }
+  if (msg.type.startsWith("term_")) {
+    // The integrated terminal never queues behind a model turn.
+    handleTerminalMessage(conn.terminal, msg, send);
     return;
   }
   if (msg.type === "env_get" || msg.type === "env_set") {

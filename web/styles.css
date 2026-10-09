@@ -1625,3 +1625,60 @@ body.page-open .shell {
   padding: 0.2rem 0;
   border-bottom: 2px solid var(--accent);
 }
+
+/* The integrated terminal: a resizable panel along the bottom of the page. */
+.terminal-panel {
+  flex: 0 0 auto;
+  height: 16rem;
+  min-height: 80px;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.terminal-grip {
+  flex: 0 0 5px;
+  margin-top: -3px;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.terminal-grip:hover {
+  background: var(--accent);
+}
+
+.terminal-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.15rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.terminal-title {
+  flex: 1;
+  color: var(--dim);
+}
+
+.terminal-view {
+  flex: 1;
+  min-height: 0;
+  padding: 0.25rem 0 0 0.5rem;
+  overflow: hidden;
+}
+
+body:has(#terminal:not(.hidden)) #terminal-btn {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+/* No folder, no shell; the extension's sidebar has no terminal either. */
+.no-folder #terminal-btn,
+.no-folder #terminal,
+.sidebar #terminal-btn,
+.sidebar #terminal,
+body.page-open #terminal {
+  display: none;
+}

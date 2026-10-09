@@ -37,6 +37,7 @@ const COMPACT = "Context & long turns";
 const GOAL = "Goal checking";
 const TOOLS = "Tool output & files";
 const BROWSER = "Browser tools";
+const TERMINAL = "Integrated terminal";
 
 export const SPEC = {
   llmBaseUrl: {
@@ -350,6 +351,24 @@ export const SPEC = {
     30_000,
     BROWSER,
     "Firefox extension call timeout (ms)",
+  ),
+  terminalShell: {
+    env: "VISE_TERMINAL_SHELL",
+    def: "powershell.exe -NoLogo",
+    group: TERMINAL,
+    label: "shell command",
+  },
+  terminalScrollbackKb: n(
+    "VISE_TERMINAL_SCROLLBACK_KB",
+    256,
+    TERMINAL,
+    "output kept for a reloaded page (KB)",
+  ),
+  terminalIdleMinutes: n(
+    "VISE_TERMINAL_IDLE_MINUTES",
+    10,
+    TERMINAL,
+    "minutes a shell lives on with no page open",
   ),
 } as const satisfies Record<string, Spec>;
 

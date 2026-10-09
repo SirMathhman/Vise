@@ -118,11 +118,13 @@ src/                # at most 9 .ts files per directory (enforced by test/layout
     assets.ts       # the page's files (embedded when compiled); the only static paths served
     port.ts         # busy-port fallback
     conn/           # a connection's lines: line (turn chain, steering, held queue),
-                    # queue-commands, resume, leases, history, pictures
+                    # queue-commands, resume, leases, history, pictures, prompter (ask_user over the socket)
     api/            # panel messages never queued behind a turn: settings-api, notes-api,
                     # files (workspace explorer), roots (folder chooser)
     ext/            # Firefox extension link: ext-hub, ext-token, browser-bridge
     desktop/        # the native window: desktop.ts and window-worker.ts (see "Desktop window")
+    terminal/       # the integrated terminal: conpty (FFI), pty + pty-reader-worker,
+                    # scrollback, terminal-registry, terminal-api (see "Integrated terminal")
 web/
   index.html        # web UI shell
   src/              # app.ts is the build entry; modules grouped by feature
@@ -400,6 +402,31 @@ startup: the server takes the next free port (any free one if none is near),
 shows a note in the page, and the Firefox extension finds it again by probing
 `/api/vise-hello` on its configured port and the 100 above. The port is chosen
 in settings (restart-only).
+
+## Integrated terminal
+
+The web page has a terminal panel along its bottom (top-bar `terminal`,
+Ctrl+\`), rendered with xterm.js. It is for the user only; the agent keeps
+`run_powershell`. **The shell belongs to the folder, not the page:**
+`TerminalRegistry` (`src/web/terminal/terminal-registry.ts`) keeps one shell per
+session root, shared by every page open on that folder; a page that opens the
+panel gets the recent output replayed (`Scrollback`, capped by
+`VISE_TERMINAL_SCROLLBACK_KB`), so a reload shows the same shell. With no page
+showing it, a shell is stopped after `VISE_TERMINAL_IDLE_MINUTES`; the server's
+shutdown stops all of them. No-folder sessions and the extension's sidebar have
+no terminal. Messages are `term_*` (see the protocol in `src/web/server.ts`) and
+are never queued behind a turn.
+
+The shell runs under a Windows pseudo console (ConPTY) through `bun:ffi`
+(`conpty.ts`; Windows-only, the command is `VISE_TERMINAL_SHELL`). Reading its
+output blocks, so it runs on a reader thread (`pty-reader-worker.ts`) that does
+nothing else; spawning, writing, resizing and closing do not block and run on
+the main thread (`pty.ts`, which also polls for the shell's exit, since the
+output pipe stays open until the console is closed). Every shell is put in one
+job object that kills its members when Vise exits, so a crash leaves no shells
+behind. The child gets `STARTF_USESTDHANDLES` with invalid handles; without it a
+Vise whose own output is redirected (the GUI exe logs to a file) would hand that
+to the shell instead of the console.
 
 ## Steering and queueing
 

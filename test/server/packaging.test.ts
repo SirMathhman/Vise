@@ -35,15 +35,18 @@ test("only the maintenance flags stop Vise from starting", async () => {
   expect(await runMaintenance(["bun", "index.ts", "--version"])).toBe(true);
 });
 
-describe("window worker entry", () => {
-  test("the compiled build's Worker literal is relative to the entry points' shared folder", () => {
-    // In the compiled exe a worker is found relative to the folder the entry points share,
-    // not to the file that spawns it; a mismatch only shows when the window opens.
-    const desktop = readFileSync("src/web/desktop/desktop.ts", "utf8");
-    const build = readFileSync("scripts/build-exe.ts", "utf8");
-    const literal = /new Worker\("([^"]+)"\)/.exec(desktop)?.[1];
-    const entry = /entry, "([^"]+window-worker\.ts)"/.exec(build)?.[1];
-    expect(entry).toBeDefined();
-    expect(literal).toBe(`./${posix.relative("src/web", entry ?? "")}`);
-  });
+describe("worker entries", () => {
+  // In the compiled exe a worker is found relative to the folder the entry points share,
+  // not to the file that spawns it; a mismatch only shows when the worker starts.
+  const build = readFileSync("scripts/build-exe.ts", "utf8");
+  for (const [spawner, worker] of [
+    ["src/web/desktop/desktop.ts", "src/web/desktop/window-worker.ts"],
+    ["src/web/terminal/pty.ts", "src/web/terminal/pty-reader-worker.ts"],
+  ] as const) {
+    test(`${worker} is an entry point named by its compiled Worker literal`, () => {
+      const literal = /new Worker\("([^"]+)"\)/.exec(readFileSync(spawner, "utf8"))?.[1];
+      expect(build).toContain(`"${worker}"`);
+      expect(literal).toBe(`./${posix.relative("src/web", worker)}`);
+    });
+  }
 });
