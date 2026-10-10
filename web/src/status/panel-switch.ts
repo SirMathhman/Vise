@@ -47,10 +47,11 @@ export function createPanelGroup(): PanelGroup {
   };
 }
 
-/** What to refresh when the sessions and settings page opens from each of its buttons. */
+/** What to refresh when the sessions, settings, and git page opens from each of its buttons. */
 interface HeaderPanelHooks {
   settings: () => void;
   sessions: () => void;
+  git: () => void;
 }
 
 const el = <T extends HTMLElement>(id: string): T => {
@@ -71,6 +72,11 @@ export function registerHeaderPanels(onOpen: HeaderPanelHooks): void {
   group.register({
     button: el<HTMLButtonElement>("tools-btn"),
     panel: el("tools-panel"),
+  });
+  group.register({
+    button: el<HTMLButtonElement>("git-btn"),
+    panel: el("git-panel"),
+    onOpen: onOpen.git,
   });
   setupTabs(el("settings-page"));
   const pages = [
@@ -104,12 +110,41 @@ export function registerHeaderPanels(onOpen: HeaderPanelHooks): void {
   });
 }
 
-/** Page tabs: a tab button (`data-tab` = a page id) shows its page and hides the others. */
+import { getSessionRoot } from "../workspace/restore-root.ts";
+
+/** Which tabs are visible when no folder is connected. */
+type TabScope = "global" | "project" | "dual";
+
+/** The scope of each settings tab, keyed by its `data-tab` value. */
+const TAB_SCOPE: Record<string, TabScope> = {
+  "settings-profiles": "project",
+  "settings-general": "global",
+  "settings-hooks": "project",
+  "settings-browser": "global",
+  "settings-mcp": "dual",
+  "settings-notes": "dual",
+  "settings-workflows": "dual",
+};
+
+/**
+ * Page tabs: a tab button (`data-tab` = a page id) shows its page and hides the
+ * others. When no folder is connected, project-only tabs are hidden (their
+ * settings have nowhere to live) and dual-scope tabs get a `no-folder` flag so
+ * they can show only global content.
+ */
 function setupTabs(page: HTMLElement): void {
   const tabs = page.querySelectorAll<HTMLButtonElement>(".tab");
+  const root = getSessionRoot();
+  const noFolder = root === null;
   for (const tab of tabs) {
+    const scope = TAB_SCOPE[tab.dataset["tab"] ?? ""] ?? "global";
+    if (noFolder && scope === "project") {
+      tab.classList.add("hidden");
+      tab.tabIndex = -1;
+    }
     tab.addEventListener("click", () => {
       for (const other of tabs) {
+        if (other.classList.contains("hidden")) continue;
         const on = other === tab;
         other.classList.toggle("active", on);
         other.setAttribute("aria-selected", String(on));
@@ -119,4 +154,9 @@ function setupTabs(page: HTMLElement): void {
       }
     });
   }
+}
+
+/** Whether no folder is connected (for the settings panels that need to adjust). */
+export function isNoFolder(): boolean {
+  return getSessionRoot() === null;
 }

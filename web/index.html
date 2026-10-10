@@ -87,6 +87,7 @@
     </section>
     <section id="settings-page" class="page hidden" aria-label="Settings">
       <div class="page-head">
+        <div id="scope-context" class="scope-context"></div>
         <div class="tabs" role="tablist">
           <button class="tab active" role="tab" data-tab="settings-profiles">
             profiles
@@ -275,6 +276,9 @@
           >
             burst
           </button>
+          <button id="git-btn" class="tools-btn" title="Toggle git panel">
+            git
+          </button>
           <span id="status" class="status"></span>
           <button id="stop" class="stop" title="Interrupt the current turn">
             stop
@@ -289,6 +293,7 @@
           <div id="tools-panel" class="tools-panel hidden">
             <ul id="tools-list" class="tools-list"></ul>
           </div>
+          <div id="git-panel" class="tools-panel hidden"></div>
         </header>
         <section id="log" class="log" aria-label="Conversation"></section>
         <div id="sr-status" class="sr-only" role="status"></div>
@@ -331,6 +336,7 @@
               role="listbox"
               aria-label="Slash command suggestions"
             ></ul>
+            <div id="workflow-run" class="wfrun hidden" aria-live="polite"></div>
             <div id="todos" class="todos hidden" aria-live="polite"></div>
             <div id="queue" class="queue hidden" aria-live="polite"></div>
             <div id="attachments" class="attachments hidden"></div>
