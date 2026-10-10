@@ -47,28 +47,11 @@ export function createExplorer(
 ): {
   open(path: string): Promise<void>;
   reload(): Promise<void>;
-  /** Mirror the integrated browser's tabs; true when a new one appeared. */
   syncBrowserTabs(tabs: BrowserTab[]): boolean;
 } {
   const set = new OpenTabs();
-  /** Directories the user has expanded; kept so a refresh restores them. */
   const expanded = new Set<string>();
-
-  /** Delete a file or directory through the API, then refresh the tree. */
-  function deleteEntry(path: string): void {
-    fetch(api("/api/delete", path), { method: "POST" }).then((res) => {
-      if (res.ok) void reload();
-    });
-  }
-
-  /** Show a context menu with a Delete option at the given coordinates. */
-  function entryContext(e: MouseEvent, path: string): void {
-    e.preventDefault();
-    showMenu(e.clientX, e.clientY, [
-      { label: "Delete", run: () => deleteEntry(path) },
-    ]);
-  }
-  /** Fill `ul` with the entries of directory `path` (lazy; called on first expand). */
+  const entryContext = makeEntryOps(() => void reload());
   async function open(
     path: string,
     ul: HTMLUListElement = list,
@@ -81,58 +64,41 @@ export function createExplorer(
       ul.appendChild(
         entry.dir
           ? dirRow(entry.name, child, expanded, (c) => void open(child, c), (e) => entryContext(e, child), entry.ignored)
-          : fileRow(
-              entry.name,
-              child,
-              set.has(child),
-              () => void openFile(child),
-              (e) => entryContext(e, child),
-              entry.ignored,
-            ),
+          : fileRow(entry.name, child, set.has(child), () => void openFile(child), (e) => entryContext(e, child), entry.ignored),
       );
     }
   }
-
-  /** Open a URL as a tab that renders the page in an iframe. */
   function openUrl(raw: string): void {
     const url = normalizeUrl(raw);
     if (url) activate(set.urlIndex(url));
   }
-
   bindUrlForm(md.urlForm, openUrl, true);
   bindUrlForm(
     md.addrForm,
     (raw) => navigateTab(set.current, raw, md) && redraw(),
     false,
   );
-
   async function openFile(path: string): Promise<void> {
     await openFileTab(set, path, activate);
   }
-
   function activate(index: number): void {
     set.active = index;
     redraw();
   }
-
   function redraw(): void {
     renderViewer(set.current, viewer, md);
     drawTabs(tabs, set.files, set.active, activate, close, tabMenu);
     markOpen();
   }
-
-  /** Keep only tabs where `keep(i)` holds; closing a browser tab also closes it for real. */
   function retain(keep: (i: number) => boolean): void {
     for (const gone of set.retain(keep)) {
       if (gone.mode === "browser") md.browser.close(browserId(gone));
     }
     redraw();
   }
-
   function close(index: number): void {
     retain((i) => i !== index);
   }
-
   function tabMenu(index: number, x: number, y: number): void {
     showMenu(x, y, [
       { label: "Close all", run: () => retain(() => false) },
@@ -143,31 +109,24 @@ export function createExplorer(
       },
     ]);
   }
-
   md.modeBtn.addEventListener("click", () => {
     if (toggleMode(set.current)) renderViewer(set.current, viewer, md);
   });
-
-  /** Re-highlight tree rows after the open set changes. */
   function markOpen(): void {
     for (const row of list.querySelectorAll<HTMLElement>("[data-path]")) {
       row.classList.toggle("open", set.has(row.dataset.path ?? ""));
     }
   }
-
   function syncBrowserTabs(browserTabs: BrowserTab[]): boolean {
     const added = set.sync(browserTabs);
     redraw();
     return added;
   }
-
-  /** Re-list the tree (keeping expanded folders) and re-read every open file. */
   async function reload(): Promise<void> {
     void open("");
     await rereadFiles(set.files);
     renderViewer(set.current, viewer, md);
   }
-
   return { open, reload, syncBrowserTabs };
 }
 
@@ -478,6 +437,30 @@ function tabLabel(file: OpenFile): string {
   if (file.mode === "url") return new URL(file.path).host;
   if (file.mode === "browser") return file.title || file.text || "browser";
   return file.path.slice(file.path.lastIndexOf("/") + 1);
+}
+
+/** Entry context-menu handler shared by `createExplorer`. */
+function makeEntryOps(reload: () => void): (e: MouseEvent, path: string) => void {
+  const deleteEntry = (path: string): void => {
+    fetch(api("/api/delete", path), { method: "POST" }).then((res) => {
+      if (res.ok) reload();
+    });
+  };
+  const copy = (text: string): void => {
+    void navigator.clipboard.writeText(text);
+  };
+  const absolute = (path: string): string => {
+    const root = new URLSearchParams(location.search).get("root");
+    return root && root !== "none" ? `${root}/${path}` : path;
+  };
+  return (e: MouseEvent, path: string): void => {
+    e.preventDefault();
+    showMenu(e.clientX, e.clientY, [
+      { label: "Copy Relative Path", run: () => copy(path) },
+      { label: "Copy Absolute Path", run: () => copy(absolute(path)) },
+      { label: "Delete", run: () => deleteEntry(path) },
+    ]);
+  };
 }
 
 /** An explorer API URL for `path`, scoped to this page's session root (the `root` query parameter, when given). */
