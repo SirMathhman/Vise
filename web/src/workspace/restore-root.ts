@@ -15,6 +15,16 @@
 const KEY = "vise-root";
 export const NO_FOLDER = "none";
 
+/**
+ * The root folder this page is on, read from the address's `root` parameter;
+ * null when there is no folder (`?root=none` or no parameter). The canonical
+ * read of the session root for the page's lifetime.
+ */
+export function getSessionRoot(): string | null {
+  const root = new URLSearchParams(location.search).get("root");
+  return root && root !== NO_FOLDER ? root : null;
+}
+
 /** What was last chosen: a folder's path, "none", or nothing yet. */
 function remembered(): string | null {
   try {

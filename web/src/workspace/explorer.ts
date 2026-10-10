@@ -8,6 +8,7 @@ import {
   viewerMode,
 } from "./open-tabs.ts";
 import { showMenu } from "./tab-menu.ts";
+import { getSessionRoot } from "./restore-root.ts";
 
 interface DirEntry {
   name: string;
@@ -447,11 +448,11 @@ function makeEntryOps(reload: () => void): (e: MouseEvent, path: string) => void
     });
   };
   const copy = (text: string): void => {
-    void navigator.clipboard.writeText(text);
+    void navigator.clipboard.writeText(text).catch(() => {});
   };
   const absolute = (path: string): string => {
-    const root = new URLSearchParams(location.search).get("root");
-    return root && root !== "none" ? `${root}/${path}` : path;
+    const root = getSessionRoot();
+    return root ? root.replace(/\/+$/, "") + "/" + path : path;
   };
   return (e: MouseEvent, path: string): void => {
     e.preventDefault();
@@ -466,7 +467,7 @@ function makeEntryOps(reload: () => void): (e: MouseEvent, path: string) => void
 /** An explorer API URL for `path`, scoped to this page's session root (the `root` query parameter, when given). */
 function api(endpoint: string, path: string): string {
   const params = new URLSearchParams({ path });
-  const root = new URLSearchParams(location.search).get("root");
+  const root = getSessionRoot();
   if (root) params.set("root", root);
   return `${endpoint}?${params}`;
 }
