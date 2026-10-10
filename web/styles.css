@@ -1683,6 +1683,26 @@ body.page-open .shell {
   background: var(--accent);
 }
 
+.divider {
+  flex: 0 0 5px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.divider:hover {
+  background: var(--accent);
+}
+
+.workspace.hidden + .divider {
+  display: none !important;
+}
+
+@media (max-width: 800px) {
+  .divider {
+    display: none;
+  }
+}
+
 .terminal-head {
   display: flex;
   align-items: center;

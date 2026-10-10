@@ -42,3 +42,31 @@ export function bindResizeGrip(panel: HTMLElement, grip: HTMLElement, key: strin
     );
   });
 }
+
+const MIN_WIDTH = 80;
+
+/** Let the user drag `grip` (the panel's right edge) to resize `panel` horizontally; the width is remembered under `key`. */
+export function bindHResizeGrip(panel: HTMLElement, grip: HTMLElement, key: string, minWidth = MIN_WIDTH): void {
+  const width = Number(load(key));
+  if (width >= minWidth) panel.style.flex = `0 0 ${width}px`;
+  grip.addEventListener("pointerdown", (down) => {
+    down.preventDefault();
+    grip.setPointerCapture(down.pointerId);
+    const startX = down.clientX;
+    const startWidth = panel.getBoundingClientRect().width;
+    const move = (event: PointerEvent): void => {
+      const max = (panel.parentElement?.getBoundingClientRect().width ?? window.innerWidth) * 0.8;
+      const next = Math.min(max, Math.max(minWidth, startWidth + event.clientX - startX));
+      panel.style.flex = `0 0 ${next}px`;
+    };
+    grip.addEventListener("pointermove", move);
+    grip.addEventListener(
+      "pointerup",
+      () => {
+        grip.removeEventListener("pointermove", move);
+        save(key, String(Math.round(panel.getBoundingClientRect().width)));
+      },
+      { once: true },
+    );
+  });
+}

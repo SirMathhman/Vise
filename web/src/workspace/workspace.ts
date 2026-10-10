@@ -1,5 +1,6 @@
 import { createBrowserView } from "./browser-view.ts";
 import { createExplorer } from "./explorer.ts";
+import { bindHResizeGrip } from "../terminal/grip.ts";
 import { pairWithExtension } from "./pairing.ts";
 import { rememberRoot } from "./restore-root.ts";
 import { setupSessionRoot } from "./session-root.ts";
@@ -80,6 +81,9 @@ export function createWorkspace(
       renderMarkdown,
     },
   );
+
+  bindHResizeGrip(root, el<HTMLElement>("workspace-divider"), "vise-workspace-width");
+  bindHResizeGrip(el<HTMLElement>("files-list").closest(".fs-tree")!, el<HTMLElement>("tree-divider"), "vise-tree-width", 100);
 
   return {
     toggle() {

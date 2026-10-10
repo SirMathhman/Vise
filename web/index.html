@@ -136,11 +136,26 @@
       </div>
       <div class="page-body">
         <div id="settings-profiles" class="tab-page">
+          <div class="save-row">
+            <button id="pe-new" class="tools-btn">+ new profile</button>
+          </div>
+          <input
+            id="pe-name"
+            class="save-input"
+            placeholder="profile name"
+            title="Name for the new profile (only enabled when creating)"
+          />
           <select
             id="pe-profile"
             class="model"
             title="Profile to edit"
           ></select>
+          <textarea
+            id="pe-body"
+            class="note-text"
+            rows="12"
+            placeholder="Describe the persona or instructions for this profile…"
+          ></textarea>
           <div class="pe-bulk">
             <button id="pe-check-all" class="tools-btn">check all</button>
             <button id="pe-uncheck-all" class="tools-btn">uncheck all</button>
@@ -149,6 +164,7 @@
           <div id="pe-hooks"></div>
           <div class="save-row">
             <button id="pe-save" class="save-btn">save</button>
+            <button id="pe-delete" class="tools-btn" disabled>delete</button>
             <span id="pe-status" class="pe-status" role="status"></span>
           </div>
         </div>
@@ -178,6 +194,7 @@
           <div id="files-path" class="files-path"></div>
           <ul id="files-list" class="tools-list"></ul>
         </nav>
+        <div id="tree-divider" class="divider" role="separator" aria-orientation="vertical"></div>
         <section class="fs-viewer">
           <form id="files-url-form" class="fs-url">
             <input
@@ -226,6 +243,7 @@
           <div id="files-md" class="files-viewer md-view hidden"></div>
         </section>
       </aside>
+      <div id="workspace-divider" class="divider" role="separator" aria-orientation="vertical"></div>
       <main id="app">
         <header class="bar">
           <span class="brand">vise</span>
