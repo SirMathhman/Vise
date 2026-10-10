@@ -3,13 +3,44 @@
   --panel: #17181c;
   --text: #e6e6e6;
   --dim: #8b8f98;
+  --muted: var(--dim);
   --accent: #7aa2ff;
   --user: #5fd0a0;
   --error: #ff7d7d;
   --border: #2a2c33;
+  --goal-ok: #8fe3a4;
+  --goal-warn: #f0d77a;
+  --goal-ask: #ffb3ad;
+  --highlight: #252832;
+  --on-accent: #0b0e14;
+  --shadow: 0 8px 24px rgb(0 0 0 / 30%);
+  --shadow-soft: 0 4px 16px rgb(0 0 0 / 50%);
   --scroll-track: var(--bg);
   --scroll-thumb: color-mix(in srgb, var(--border) 80%, var(--text));
   --scroll-thumb-hover: color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+:root[data-theme="light"] {
+  --bg: #f4f4f6;
+  --panel: #ffffff;
+  --text: #1a1c20;
+  --dim: #6a6f78;
+  --muted: var(--dim);
+  --accent: #3b6fd6;
+  --user: #1f9d63;
+  --error: #c0392b;
+  --border: #d4d6dc;
+  --goal-ok: #1f9d63;
+  --goal-warn: #a07a00;
+  --goal-ask: #c05a4a;
+  --highlight: #e0e3ea;
+  --on-accent: #ffffff;
+  --shadow: 0 4px 16px rgb(0 0 0 / 12%);
+  --shadow-soft: 0 2px 10px rgb(0 0 0 / 8%);
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
 * {
@@ -296,15 +327,15 @@ body {
 }
 
 .line.system.goal-ok {
-  color: #8fe3a4;
+  color: var(--goal-ok);
 }
 
 .line.system.goal-warn {
-  color: #f0d77a;
+  color: var(--goal-warn);
 }
 
 .line.system.goal-ask {
-  color: #ffb3ad;
+  color: var(--goal-ask);
   font-weight: 600;
 }
 
@@ -646,7 +677,7 @@ body {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 6px;
-  box-shadow: 0 8px 24px rgb(0 0 0 / 30%);
+  box-shadow: var(--shadow);
 }
 
 .command-suggestion {
@@ -666,7 +697,7 @@ body {
 
 .command-suggestion.active,
 .command-suggestion:hover {
-  background: #252832;
+  background: var(--highlight);
 }
 
 .command-suggestion-name {
@@ -694,7 +725,7 @@ body {
 
 .send {
   background: var(--accent);
-  color: #0b0e14;
+  color: var(--on-accent);
   border: none;
   border-radius: 6px;
   padding: 0.4rem 0.9rem;
@@ -802,7 +833,7 @@ body {
 }
 
 .session-delete:hover {
-  color: #e06050;
+  color: var(--error);
 }
 
 .save-row {
@@ -1082,7 +1113,7 @@ body {
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 0.25rem;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-soft);
 }
 
 .ctx-item {
@@ -1431,7 +1462,7 @@ body:has(#workspace:not(.hidden)) #files-btn {
 .jump-latest {
   margin-left: auto;
   background: var(--accent);
-  color: #0b0e14;
+  color: var(--on-accent);
   border: none;
   border-radius: 999px;
   padding: 0.15rem 0.7rem;
@@ -1747,4 +1778,62 @@ body:has(#terminal:not(.hidden)) #terminal-btn {
 .sidebar #terminal,
 body.page-open #terminal {
   display: none;
+}
+
+/* No folder, no git. */
+.no-folder #git-btn {
+  display: none;
+}
+
+.wfrun {
+  border: 1px solid var(--border, currentColor);
+  border-radius: 6px;
+  padding: 0.3rem 0.5rem;
+  margin-bottom: 0.4rem;
+  font-size: 0.85rem;
+}
+
+.wfrun.hidden {
+  display: none;
+}
+
+.wfrun-ended {
+  opacity: 0.75;
+}
+
+.wfrun-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  opacity: 0.7;
+  margin-bottom: 0.2rem;
+}
+
+.wfrun-close {
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  padding: 0 0.25rem;
+}
+
+.wfrun-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.wfrun-pending {
+  opacity: 0.55;
+}
+
+.wfrun-running {
+  font-weight: 600;
+}
+
+.wfrun-done {
+  opacity: 0.7;
+}
+
+.wfrun-failed {
+  color: var(--error, #e5534b);
 }
