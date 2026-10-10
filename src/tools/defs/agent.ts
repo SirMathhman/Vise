@@ -1,5 +1,20 @@
 import type { Tool } from "../../core/engine.ts";
 
+/** One choice of `ask_user`: a short label, or a label with what it means. */
+const choiceSchema = {
+  anyOf: [
+    { type: "string" },
+    {
+      type: "object",
+      properties: {
+        label: { type: "string", description: "The short choice." },
+        description: { type: "string", description: "What choosing it means." },
+      },
+      required: ["label"],
+    },
+  ],
+};
+
 /** Tools about the agent itself: asking the user, self-report, subagents (handlers: `ask-user.ts`, `self.ts`, `subagent.ts`). */
 export const agentTools: Tool[] = [
   {
@@ -8,7 +23,7 @@ export const agentTools: Tool[] = [
     function: {
       name: "ask_user",
       description:
-        "Ask the user a question and wait for their answer. Use this when you need clarification or a decision from the user before continuing. You may provide predefined choices the user can pick from, or leave options empty for a free-form question. To ask several things at once, pass `questions`: a list of {question, options, multi_select}, asked one after another, with every answer returned together. The user's reply is returned as the tool result.",
+        "Ask the user a question and wait for their answer. Use this when you need clarification or a decision from the user before continuing. You may provide predefined choices the user can pick from, or leave options empty for a free-form question. To ask several things at once, pass `questions`: a list of {question, options, multi_select}, asked one after another, with every answer returned together. The user's reply is returned as the tool result. Example: {\"question\": \"Which scope?\", \"options\": [{\"label\": \"Minimal\", \"description\": \"Only the list of commits\"}, {\"label\": \"Full\", \"description\": \"List, diff and branch switching\"}], \"multi_select\": false}. Every list element is ONE choice (never several joined with newlines), and multi_select is its own argument, never an option.",
       parameters: {
         type: "object",
         properties: {
@@ -18,9 +33,9 @@ export const agentTools: Tool[] = [
           },
           options: {
             type: "array",
-            items: { type: "string" },
+            items: choiceSchema,
             description:
-              "Optional predefined choices to present alongside the question. The user may also type a free-form answer. Empty array means free-form only.",
+              "Optional predefined choices to present alongside the question. Each is a short label string, or {label, description} to explain it; one choice per element. The user may also type a free-form answer. Empty array means free-form only.",
           },
           questions: {
             type: "array",
@@ -28,7 +43,7 @@ export const agentTools: Tool[] = [
               type: "object",
               properties: {
                 question: { type: "string" },
-                options: { type: "array", items: { type: "string" } },
+                options: { type: "array", items: choiceSchema },
                 multi_select: { type: "boolean" },
               },
               required: ["question"],

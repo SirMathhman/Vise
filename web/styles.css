@@ -581,6 +581,17 @@ body {
   color: var(--accent);
 }
 
+.ask-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ask-desc {
+  font-size: 0.85em;
+  opacity: 0.7;
+}
+
 .ask-key {
   flex: none;
   min-width: 1.4em;

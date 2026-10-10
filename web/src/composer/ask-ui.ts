@@ -4,6 +4,7 @@ import type { ServerMessage } from "../server-message.ts";
 /** A choice as a button with its number (keys 1-9 choose it); a toggle when several may be chosen. */
 function choiceButton(
   choice: string,
+  description: string,
   index: number,
   multi: boolean,
 ): HTMLButtonElement {
@@ -16,7 +17,16 @@ function choiceButton(
   key.className = "ask-key";
   key.setAttribute("aria-hidden", "true");
   key.textContent = index < 9 ? String(index + 1) : "·";
-  button.append(key, document.createTextNode(choice));
+  const text = document.createElement("span");
+  text.className = "ask-text";
+  text.append(document.createTextNode(choice));
+  if (description !== "") {
+    const note = document.createElement("span");
+    note.className = "ask-desc";
+    note.textContent = description;
+    text.append(note);
+  }
+  button.append(key, text);
   return button;
 }
 
@@ -24,11 +34,12 @@ function choiceButton(
 function renderChoices(
   list: HTMLUListElement,
   choices: string[],
+  descriptions: string[],
   multi: boolean,
   onPick: (index: number) => void,
 ): HTMLButtonElement[] {
   return choices.map((choice, index) => {
-    const button = choiceButton(choice, index, multi);
+    const button = choiceButton(choice, descriptions[index] ?? "", index, multi);
     button.addEventListener("click", () => onPick(index));
     const item = document.createElement("li");
     item.append(button);
@@ -73,13 +84,10 @@ export function createAskUi(
   announce: (text: string) => void = () => {},
 ): { show(message: ServerMessage): void; hide(): void } {
   const { box, question, options, answer, composer } = elements;
-  let choices: string[] = [];
-  let multi = false;
-  let active = 0;
+  let choices: string[] = [], multi = false, active = 0;
   let before: Element | null = null;
   const selected = new Set<number>();
   const buttons: HTMLButtonElement[] = [];
-
   function hide(): void {
     const wasOpen = !box.classList.contains("hidden");
     box.classList.add("hidden");
@@ -93,16 +101,11 @@ export function createAskUi(
     if (wasOpen) restoreFocus(before, box);
     before = null;
   }
-
-  function reply(text: string): void {
+  const reply = (text: string): void => {
     hide();
     sendMessage({ type: "ask_answer", text });
-  }
-
-  /** Send what the user has chosen or typed. */
-  const submit = (): void =>
-    reply(answerFrom(choices, selected, answer.value, multi));
-
+  };
+  const submit = (): void => reply(answerFrom(choices, selected, answer.value, multi));
   function highlight(index: number, focus = true): void {
     if (buttons.length === 0) return;
     active = (index + buttons.length) % buttons.length;
@@ -111,8 +114,6 @@ export function createAskUi(
     );
     if (focus) buttons[active]?.focus();
   }
-
-  /** Choose a choice: it is the answer, or (several allowed) it toggles. */
   function pick(index: number): void {
     const choice = choices[index];
     if (choice === undefined) return;
@@ -122,15 +123,11 @@ export function createAskUi(
     buttons[index]?.classList.toggle("selected", selected.has(index));
     highlight(index);
   }
-
-  /** Enter: send typed text if there is any; otherwise confirm the highlighted choice. */
   function confirm(): void {
     if (answer.value.trim() !== "" || (multi && selected.size > 0)) submit();
     else if (!multi && choices.length > 0) pick(active);
   }
-
   elements.send.addEventListener("click", submit);
-  // Any way into the question (a click, Tab) ends its waiting.
   box.addEventListener("focusin", () => box.removeAttribute("data-waiting"));
   box.addEventListener("keydown", (event: KeyboardEvent) => {
     const effect = decideKey({
@@ -150,31 +147,28 @@ export function createAskUi(
     else if (effect.type === "confirm") confirm();
     else answer.focus();
   });
-  // The browser also activates a focused button on Space's key-up: cancel it, Space was handled on key-down.
   box.addEventListener("keyup", (event: KeyboardEvent) => {
     if (event.key === " " && event.target !== answer) event.preventDefault();
   });
+  function show(message: ServerMessage): void {
+    hide();
+    choices = message.options ?? [];
+    multi = message.multiSelect === true;
+    active = 0;
+    question.textContent = message.question ?? "";
+    const notes = message.descriptions ?? [];
+    buttons.push(...renderChoices(options, choices, notes, multi, pick));
+    box.classList.remove("hidden");
+    announce(`Question: ${message.question ?? ""}`);
+    const writing =
+      document.activeElement === composer && composer.value.trim() !== "";
+    before = document.activeElement;
+    if (writing) {
+      box.setAttribute("data-waiting", "true");
+      highlight(0, false);
+    } else if (buttons.length > 0) highlight(0);
+    else answer.focus();
+  }
 
-  return {
-    hide,
-    show(message) {
-      hide();
-      choices = message.options ?? [];
-      multi = message.multiSelect === true;
-      active = 0;
-      question.textContent = message.question ?? "";
-      buttons.push(...renderChoices(options, choices, multi, pick));
-      box.classList.remove("hidden");
-      announce(`Question: ${message.question ?? ""}`);
-      const writing =
-        document.activeElement === composer && composer.value.trim() !== "";
-      before = document.activeElement;
-      if (writing) {
-        // Someone is typing: leave the keyboard alone and say a question is waiting.
-        box.setAttribute("data-waiting", "true");
-        highlight(0, false);
-      } else if (buttons.length > 0) highlight(0);
-      else answer.focus();
-    },
-  };
+  return { hide, show };
 }

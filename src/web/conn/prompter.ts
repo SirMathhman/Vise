@@ -10,8 +10,8 @@ export class WebUserPrompter implements UserPrompter {
   private pending: ((answer: string) => void) | null = null;
   constructor(private readonly send: (msg: Record<string, unknown>) => void) {}
 
-  ask({ question, options, multiSelect = false }: AskRequest): Promise<string> {
-    this.send({ type: "ask", question, options, multiSelect });
+  ask({ question, options, descriptions, multiSelect = false }: AskRequest): Promise<string> {
+    this.send({ type: "ask", question, options, descriptions, multiSelect });
     return new Promise((resolve) => {
       this.pending = resolve;
     });

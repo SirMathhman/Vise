@@ -23,6 +23,11 @@ export interface AskRequest {
    */
   options: string[];
   /**
+   * What each choice means, parallel to `options` ("" for none); absent when
+   * no choice has one. Shown under the choice, never part of the answer.
+   */
+  descriptions?: string[];
+  /**
    * When true, the user may select more than one choice (separating
    * numbers with commas in their reply). Defaults to false.
    */
@@ -44,7 +49,7 @@ export interface UserPrompter {
 export class RlUserPrompter implements UserPrompter {
   constructor(private readonly mainRl: Interface) {}
 
-  ask({ question, options, multiSelect = false }: AskRequest): Promise<string> {
+  ask({ question, options, descriptions, multiSelect = false }: AskRequest): Promise<string> {
     return new Promise((resolve) => {
       this.mainRl.pause();
 
@@ -60,6 +65,8 @@ export class RlUserPrompter implements UserPrompter {
         lines.push("");
         options.forEach((opt, i) => {
           lines.push(`  ${i + 1}. ${opt}`);
+          const note = descriptions?.[i];
+          if (note) lines.push(`     ${note}`);
         });
         lines.push("");
       }
@@ -132,9 +139,46 @@ function readRequest(args: Record<string, unknown>): AskRequest | string {
   if (typeof question !== "string" || question.trim() === "") {
     return "error: ask_user requires a non-empty 'question' argument";
   }
-  const raw = args["options"];
-  const options = Array.isArray(raw) ? raw.filter((o): o is string => typeof o === "string") : [];
-  return { question, options, multiSelect: args["multi_select"] === true };
+  const choices = readChoices(args["options"]);
+  if (typeof choices === "string") return choices;
+  return {
+    question,
+    options: choices.labels,
+    ...(choices.descriptions ? { descriptions: choices.descriptions } : {}),
+    multiSelect: args["multi_select"] === true,
+  };
+}
+
+/** Argument names that a model sometimes leaks into `options` as if they were choices. */
+const PARAMETER_NAMES = new Set(["question", "questions", "options", "multi_select"]);
+
+/**
+ * The choices of one question: each is a string or `{label, description?}`.
+ * A malformed list is an error message (the model then asks again) rather
+ * than a quietly wrong choice on the user's screen.
+ */
+function readChoices(raw: unknown): { labels: string[]; descriptions?: string[] } | string {
+  if (raw === undefined) return { labels: [] };
+  if (!Array.isArray(raw)) return "error: ask_user 'options' must be a list of choices";
+  const labels: string[] = [];
+  const descriptions: string[] = [];
+  for (const item of raw) {
+    const entry = typeof item === "string" ? { label: item } : (item as { label?: unknown; description?: unknown } | null);
+    const label = typeof entry?.label === "string" ? entry.label.trim() : "";
+    if (label === "") {
+      return 'error: each ask_user option must be a non-empty string or {"label": "...", "description": "..."}';
+    }
+    if (label.includes("\n")) {
+      return "error: each ask_user option must be one short choice; put one choice per list element, never several separated by newlines";
+    }
+    if (PARAMETER_NAMES.has(label.toLowerCase())) {
+      return `error: '${label}' is a parameter name, not a choice; options must hold only the choices to offer (set multi_select as its own argument)`;
+    }
+    labels.push(label);
+    const description = (entry as { description?: unknown }).description;
+    descriptions.push(typeof description === "string" ? description.trim() : "");
+  }
+  return descriptions.some((d) => d !== "") ? { labels, descriptions } : { labels };
 }
 
 /**

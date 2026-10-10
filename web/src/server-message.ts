@@ -28,6 +28,8 @@ export interface ServerMessage extends ResultMessage, HooksFields {
   tools?: string[] | null;
   question?: string;
   options?: string[];
+  /** `ask`: what each choice means, parallel to `options` ("" for none). */
+  descriptions?: string[];
   /** `ask`: several choices may be picked. */
   multiSelect?: boolean;
   tab?: number;

@@ -80,6 +80,41 @@ describe("makeAskUserHandler (edge)", () => {
     ]);
   });
 
+  test("accepts {label, description} options and passes descriptions separately", async () => {
+    const { prompter, calls } = stubPrompter("A");
+    const handler = makeAskUserHandler(prompter);
+    await handler({
+      question: "Pick",
+      options: [{ label: "A", description: "first" }, "B"],
+    });
+    expect(calls).toEqual([
+      { question: "Pick", options: ["A", "B"], descriptions: ["first", ""], multiSelect: false },
+    ]);
+  });
+
+  test("refuses newline-joined choices so the model asks again", async () => {
+    const { prompter, calls } = stubPrompter("x");
+    const handler = makeAskUserHandler(prompter);
+    const result = await handler({ question: "Pick", options: ["one\ntwo\nthree"] });
+    expect(result).toContain("one choice per list element");
+    expect(calls).toEqual([]);
+  });
+
+  test("refuses a parameter name used as a choice", async () => {
+    const { prompter, calls } = stubPrompter("x");
+    const handler = makeAskUserHandler(prompter);
+    const result = await handler({ question: "Pick", options: ["Just the list", "multi_select"] });
+    expect(result).toContain("parameter name");
+    expect(calls).toEqual([]);
+  });
+
+  test("refuses an empty or non-string option", async () => {
+    const { prompter } = stubPrompter("x");
+    const handler = makeAskUserHandler(prompter);
+    expect(await handler({ question: "Pick", options: ["a", ""] })).toContain("non-empty");
+    expect(await handler({ question: "Pick", options: [3] })).toContain("non-empty");
+  });
+
   test("defaults multi_select to false when not provided", async () => {
     const { prompter, calls } = stubPrompter("x");
     const handler = makeAskUserHandler(prompter);
