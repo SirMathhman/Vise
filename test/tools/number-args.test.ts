@@ -48,7 +48,7 @@ test("the call line shows the range for a range given as text too", () => {
 
 test("a missing path is refused, not read as an empty string", () => {
   expect(readFile({})).toBe("error: path is required");
-  expect(createFile({})).toBe("error: path must not be empty");
+  expect(createFile({})).toBe("error: path is required");
 });
 
 test("a garbled limit is refused, not silently truncated", () => {

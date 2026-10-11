@@ -90,7 +90,7 @@ export function readFile(args: Record<string, unknown>): string {
 
 export function createFile(args: Record<string, unknown>): string {
   const path = String(args.path ?? "");
-  if (path === "") return `error: path must not be empty`;
+  if (path === "") return `error: path is required`;
   try {
     if (existsSync(path)) {
       return `error: ${path} already exists; use edit_file to modify it`;
@@ -161,7 +161,7 @@ export function editFile(args: Record<string, unknown>): string {
 
 export function deleteFile(args: Record<string, unknown>): string {
   const path = String(args.path ?? "");
-  if (path === "") return `error: path must not be empty`;
+  if (path === "") return `error: path is required`;
   try {
     unlinkSync(path);
     return `deleted ${path}`;
@@ -172,7 +172,7 @@ export function deleteFile(args: Record<string, unknown>): string {
 
 export function deleteDirectory(args: Record<string, unknown>): string {
   const path = String(args.path ?? "");
-  if (path === "") return `error: path must not be empty`;
+  if (path === "") return `error: path is required`;
   try {
     rmSync(path, { recursive: true });
     return `deleted ${path}`;
