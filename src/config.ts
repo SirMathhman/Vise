@@ -60,6 +60,12 @@ export const SPEC = {
     group: LLM,
     label: "default model",
   },
+  embeddingModel: {
+    env: "VISE_EMBEDDING_MODEL",
+    def: "",
+    group: LLM,
+    label: "embedding model (empty = same as chat model)",
+  },
   llmProvider: {
     env: "VISE_LLM_PROVIDER",
     def: "local",
@@ -144,6 +150,13 @@ export const SPEC = {
     1,
     "Audit log",
     "stop a model call that repeats itself (1 = on, 0 = off)",
+    { min: 0 },
+  ),
+  loopRetries: n(
+    "VISE_LOOP_RETRIES",
+    1,
+    "Audit log",
+    "ask again (with a repeat penalty) when the guard stopped a call for repeating itself (0 = fail the turn)",
     { min: 0 },
   ),
   auditRetentionDays: n(

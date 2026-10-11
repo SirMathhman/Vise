@@ -37,4 +37,16 @@ export const SESSION_MIGRATIONS: Migration[] = [
     data       TEXT NOT NULL,
     PRIMARY KEY (session_id, seq)
   )`,
+  // Semantic search: file content chunks with their embeddings.
+  `CREATE TABLE file_embeddings (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_path   TEXT NOT NULL,
+    chunk_index INTEGER NOT NULL,
+    content     TEXT NOT NULL,
+    embedding   BLOB NOT NULL,
+    dims        INTEGER NOT NULL,
+    indexed_at  TEXT NOT NULL,
+    UNIQUE(file_path, chunk_index)
+  );
+  CREATE INDEX file_embeddings_path ON file_embeddings(file_path)`,
 ];

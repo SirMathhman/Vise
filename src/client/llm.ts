@@ -3,6 +3,7 @@ import { noAudit, type AuditSink } from "../core/audit.ts";
 import { encodeMessages, type ImageResolver, plainMessages, hideCalls, nameConfidence, parseReply, toolRequestFields } from "./tool-protocol.ts";
 import { collectThinking, readJsonReply, streamChat } from "./stream-reader.ts";
 import { generationReporter } from "./generation.ts";
+import { ANTI_REPEAT_FIELDS, LLAMA_STREAM_FIELDS, STREAM_FIELDS, readReply } from "./request-fields.ts";
 import { modelInfo, providerFor, reasoningFields, responseFormat, type ModelInfo, type Provider } from "./provider.ts";
 import { chooseSideSlot as chooseSlot, slotJustUsed } from "./slots.ts";
 import { CallLog, CallTrace, recordCallEnd, recordCallStart, noteServerCut, runawayError, traceListener, traceThinking } from "./call-trace.ts";
@@ -51,26 +52,6 @@ export const REASONING_EFFORTS = ["default", "none", "minimal", "low", "medium",
 
 export type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
 
-/** What a streamed request asks of the server: usage, prompt progress while it reads, and a running count of what it writes. */
-const STREAM_FIELDS = {
-  stream: true,
-  stream_options: { include_usage: true },
-};
-
-/** The llama.cpp-only extras of a streamed request. */
-const LLAMA_STREAM_FIELDS = { return_progress: true, timings_per_token: true };
-
-/** Read one model reply, and tell `generation` (if any) when the call has ended, however it ended. */
-async function readReply(
-  read: () => ReturnType<typeof streamChat>,
-  generation?: { done(): void },
-): ReturnType<typeof streamChat> {
-  try {
-    return await read();
-  } finally {
-    generation?.done();
-  }
-}
 
 export class LlmClient implements Client {
   private lastPromptTokens: number | undefined;
@@ -345,6 +326,52 @@ export class LlmClient implements Client {
   }
 
   /**
+   * Get an embedding for `text` from the server via `POST /v1/embeddings`.
+   * The model defaults to the chat model (or the `VISE_EMBEDDING_MODEL` setting
+   * when set). Returns the embedding vector, or a structured error.
+   */
+  async embed(text: string): Promise<Result<number[]>> {
+    try {
+      const provider = activeProvider();
+      const model = config.embeddingModel || provider.defaultModel;
+      const url = provider.llamaCpp
+        ? `${provider.rootUrl}/v1/embeddings`
+        : `${provider.chatUrl.replace("/chat/completions", "/embeddings")}`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...provider.headers },
+        body: JSON.stringify({ model, input: [text] }),
+      });
+      if (!res.ok) {
+        const body = await res.text();
+        return {
+          ok: false,
+          error: { kind: "http", status: res.status, body },
+        };
+      }
+      const data = (await res.json()) as {
+        data?: { embedding: number[] }[];
+      };
+      const embedding = data.data?.[0]?.embedding;
+      if (!Array.isArray(embedding) || embedding.length === 0) {
+        return {
+          ok: false,
+          error: { kind: "malformed", body: "no embedding in response" },
+        };
+      }
+      return { ok: true, value: embedding };
+    } catch (err) {
+      return {
+        ok: false,
+        error: {
+          kind: "network",
+          cause: err instanceof Error ? err.message : String(err),
+        },
+      };
+    }
+  }
+
+  /**
    * The server's token count of the most recent prompt sent via `chat`.
    * `undefined` until the first successful `chat` returns a `usage` block.
    */
@@ -446,24 +473,29 @@ export class LlmClient implements Client {
     );
   }
 
-  /** One model call, recorded in the audit log whatever its outcome. */
+  /**
+   * One model call, recorded in the audit log whatever its outcome. A call the
+   * guard stopped for repeating itself is asked again (`VISE_LOOP_RETRIES`
+   * times) with a repeat penalty, as a call of its own on the record.
+   */
   async chat(
     ...args: Parameters<LlmClient["send"]>
   ): Promise<Result<AssistantMessage>> {
     const purpose = args[9] ?? "reply";
-    const trace = this.calls.start(
-      new CallTrace(++this.requestSeq, purpose, this.currentModel),
-    );
-    const stopRecording = recordCallStart(this.auditSink, trace);
-    const [m, t, onToken, onThinking, onProgress, schema, signal, enabled, act] = args;
-    let result: Result<AssistantMessage>;
-    try {
-      result = await this.send(m, t, onToken, onThinking, onProgress, schema, signal, enabled, act, purpose, trace);
-    } finally {
-      stopRecording();
+    let result = await this.attempt(args, false);
+    for (let retry = 0; retry < config.loopRetries; retry++) {
+      if (
+        result.ok ||
+        result.error.kind !== "runaway" ||
+        result.error.reason !== "loop" ||
+        args[6]?.aborted
+      ) {
+        break;
+      }
+      // The repeated text is already on the screen; say why more follows.
+      args[2]?.("\n\n⚠ the model repeated itself; asking again\n\n");
+      result = await this.attempt(args, true);
     }
-    recordCallEnd(this.auditSink, trace, result, this.lastPromptTokens);
-    this.calls.finish(trace);
     // A reply that calls tools may start side work next: the slot it ran on is the main one.
     if (
       this.sideDepth === 0 &&
@@ -477,6 +509,28 @@ export class LlmClient implements Client {
     return result;
   }
 
+  /** One request, with its record in the audit log and the call log. */
+  private async attempt(
+    args: Parameters<LlmClient["send"]>,
+    antiRepeat: boolean,
+  ): Promise<Result<AssistantMessage>> {
+    const purpose = args[9] ?? "reply";
+    const trace = this.calls.start(
+      new CallTrace(++this.requestSeq, purpose, this.currentModel),
+    );
+    const stopRecording = recordCallStart(this.auditSink, trace);
+    const [m, t, onToken, onThinking, onProgress, schema, signal, enabled, act] = args;
+    let result: Result<AssistantMessage>;
+    try {
+      result = await this.send(m, t, onToken, onThinking, onProgress, schema, signal, enabled, act, purpose, trace, antiRepeat);
+    } finally {
+      stopRecording();
+    }
+    recordCallEnd(this.auditSink, trace, result, this.lastPromptTokens);
+    this.calls.finish(trace);
+    return result;
+  }
+
   /** The JSON body of a chat request: the conversation, the tool grammar, the reply format, and the slot side work is pinned to. */
   private requestBody(
     messages: Message[],
@@ -484,6 +538,7 @@ export class LlmClient implements Client {
     responseSchema: Record<string, unknown> | undefined,
     isToolEnabled: ((name: string) => boolean) | undefined,
     act: boolean,
+    antiRepeat = false,
   ): Record<string, unknown> {
     const useTools = !!tools && tools.length > 0 && !responseSchema;
     const provider = activeProvider();
@@ -509,6 +564,8 @@ export class LlmClient implements Client {
     this.applyReasoningEffort(body);
     // The server's own limit on one call (the guard stops a loop sooner).
     if (config.maxCallTokens > 0) body.max_tokens = config.maxCallTokens;
+    // A retry after a loop: discourage repeating, on that request only.
+    if (antiRepeat && provider.llamaCpp) Object.assign(body, ANTI_REPEAT_FIELDS);
     if (this.sideSlot !== undefined && provider.llamaCpp) body.id_slot = this.sideSlot;
     return body;
   }
@@ -525,6 +582,7 @@ export class LlmClient implements Client {
     act = false,
     purpose: CallPurpose = "reply",
     trace?: CallTrace,
+    antiRepeat = false,
   ): Promise<Result<AssistantMessage>> {
     // Tools travel as stable prompt text plus a per-request grammar (see
     // tool-protocol.ts), never as the `tools` field: the grammar is not part
@@ -537,6 +595,7 @@ export class LlmClient implements Client {
       responseSchema,
       isToolEnabled,
       act,
+      antiRepeat,
     );
     // An act round shows the user nothing; its reasoning is only captured.
     const thought = collectThinking(act ? undefined : onThinking);
