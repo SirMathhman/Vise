@@ -70,3 +70,5 @@ export function promptAction(request: PromptRequest): Promise<string | null> {
     input.focus();
     input.select();
   });
+}
+

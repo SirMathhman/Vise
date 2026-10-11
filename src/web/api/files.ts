@@ -113,37 +113,36 @@ export function isGitRoot(root: string): boolean {
 }
 
 /**
- * Create an empty file or an empty directory under `root`. `rel` is the path
- * relative to `root`; only the leaf name is validated (no `/`, no `..`, no
- * whitespace-only). The parent must already exist (no recursive mkdir).
+ * Create an empty file or an empty directory under `root`. `rel` is the `/`-
+ * delimited path relative to `root`; the parent must already exist (no
+ * recursive mkdir). Only the leaf name is validated.
  */
 export function createPath(
   root: string,
   rel: string,
   isDir: boolean,
 ): ExplorerResult<null> {
-  const abs = confine(root, rel);
-  if (abs === null)
-    return { ok: false, error: "path outside root or missing", status: 400 };
-  const name = rel.slice(rel.lastIndexOf("/") + 1);
-  if (!name || name.trim() === "" || name.includes("..") || name.includes("/"))
+  const slash = rel.lastIndexOf("/");
+  const name = slash === -1 ? rel : rel.slice(slash + 1);
+  const parent = slash === -1 ? "" : rel.slice(0, slash);
+  if (!name || name.trim() === "" || name === "." || name === "..")
     return { ok: false, error: "invalid name", status: 400 };
+  const confinedParent = confine(root, parent);
+  if (confinedParent === null)
+    return { ok: false, error: "path outside root or missing", status: 400 };
+  const abs = join(confinedParent, name);
   try {
     if (isDir) {
       mkdirSync(abs);
     } else {
-      const parent = dirname(abs);
-      if (!existsSync(parent))
-        return {
-          ok: false,
-          error: "parent directory does not exist",
-          status: 400,
-        };
       writeFileSync(abs, "");
     }
     return { ok: true, value: null };
   } catch (err) {
-    if (err instanceof Error && err.code === "EEXIST")
+    if (
+      err instanceof Error &&
+      (err as NodeJS.ErrnoException).code === "EEXIST"
+    )
       return { ok: false, error: "already exists", status: 409 };
     return { ok: false, error: "cannot create", status: 404 };
   }
