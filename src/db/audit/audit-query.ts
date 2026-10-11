@@ -1,6 +1,11 @@
 import type { Database } from "bun:sqlite";
 import { join } from "node:path";
-import type { AuditReader, AuditReport, AuditTopic } from "../../core/audit.ts";
+import type {
+  AuditCall,
+  AuditReader,
+  AuditReport,
+  AuditTopic,
+} from "../../core/audit.ts";
 import { globalDataDir } from "../../data-dir.ts";
 import { AUDIT_MIGRATIONS } from "./audit-schema.ts";
 import { openDb } from "../open.ts";
@@ -140,12 +145,71 @@ const REPORTS: Record<AuditTopic, (db: Database, s: string) => AuditReport> = {
   hooks: hookRows,
 };
 
+const STATES = ["running", "done", "stopped", "error", "abandoned"] as const;
+
+/** A recorded model call as the report shows it. */
+function callOf(r: Row, full: boolean): AuditCall {
+  const state = STATES.find((s) => s === r.state) ?? "done";
+  const raw = r.raw === null || r.raw === undefined ? undefined : str(r.raw);
+  const reasoning = r.raw_reasoning === null || r.raw_reasoning === undefined ? undefined : str(r.raw_reasoning);
+  return {
+    request: num(r.request),
+    purpose: str(r.purpose),
+    model: str(r.model),
+    state,
+    stopReason: r.stop_reason === null || r.stop_reason === undefined ? undefined : str(r.stop_reason),
+    ms: num(r.ms),
+    promptTokens: r.prompt_tokens === null ? undefined : num(r.prompt_tokens),
+    completionTokens: r.completion_tokens === null ? undefined : num(r.completion_tokens),
+    finishReason: r.finish_reason === null || r.finish_reason === undefined ? undefined : str(r.finish_reason),
+    toolCalls: r.tool_calls === null ? undefined : num(r.tool_calls),
+    error: r.error === null || r.error === undefined ? undefined : str(r.error),
+    rawChars: raw?.length,
+    raw: full ? raw : undefined,
+    reasoning: full ? reasoning : undefined,
+    reasoningChars: reasoning?.length,
+    loop: r.loop_period === null || r.loop_period === undefined ? undefined : { period: num(r.loop_period), repeats: num(r.loop_repeats) },
+    startedAt: r.started_at === null || r.started_at === undefined ? undefined : str(r.started_at),
+  };
+}
+
+const CALL_COLUMNS = `request, purpose, model, state, stop_reason, ms, prompt_tokens, completion_tokens,
+  finish_reason, tool_calls, error, raw, raw_reasoning, loop_period, loop_repeats, started_at`;
+
 /** Reads `~/.vise/audit.db`; `flush` first makes what is still queued visible. */
 export class SqliteAuditReader implements AuditReader {
   constructor(
     private readonly flush: () => void,
     private readonly path: string = join(globalDataDir, "audit.db"),
+    /** The calls this process still has in memory (running ones with their live text); they win over the stored rows. */
+    private readonly live: () => AuditCall[] = () => [],
   ) {}
+
+  calls(session: string, limit: number): AuditReport {
+    const stored = all(
+      this.db(),
+      `SELECT ${CALL_COLUMNS} FROM audit_model_calls
+        WHERE session_id = ? AND request IS NOT NULL ORDER BY id DESC LIMIT ${Math.max(1, Math.floor(limit))}`,
+      session,
+    ).map((r) => callOf(r, false));
+    const live = new Map(this.live().map((c) => [c.request, c]));
+    const rows = stored.map((c) => {
+      const fresh = live.get(c.request);
+      return fresh ? { ...fresh, raw: undefined, reasoning: undefined } : c;
+    });
+    return { topic: "calls", rows };
+  }
+
+  call(session: string, request: number): AuditReport {
+    const fresh = this.live().find((c) => c.request === request);
+    const row = one(
+      this.db(),
+      `SELECT ${CALL_COLUMNS} FROM audit_model_calls WHERE session_id = ? AND request = ${Math.floor(request)} ORDER BY id DESC LIMIT 1`,
+      session,
+    );
+    const stored = row.request === undefined ? undefined : callOf(row, true);
+    return { topic: "call", request, call: fresh ?? stored };
+  }
 
   private db(): Database {
     this.flush();

@@ -19,8 +19,8 @@ interface HooksMessage extends HooksFields {
 }
 
 const LABELS = {
-  pre: "pre-turn hooks (output injected before every turn, with any profile)",
-  post: "post-turn hooks (output injected after every turn, with any profile)",
+  pre: "Pre-turn hooks · output added before every turn, with any profile",
+  post: "Post-turn hooks · output added after every turn, with any profile",
 };
 
 /**
@@ -41,7 +41,7 @@ export function createHooksPanel(
   edit(line: string): void;
 } {
   const status = document.createElement("div");
-  status.className = "pe-status";
+  status.className = "status-line";
   status.setAttribute("role", "status");
 
   const edit = (line: string): void => {

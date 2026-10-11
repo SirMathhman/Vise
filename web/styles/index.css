@@ -1,0 +1,12 @@
+/* The page's styles, in cascade order: tokens first, then shared controls, then each part of the page. */
+@import "./tokens.css";
+@import "./base.css";
+@import "./controls.css";
+@import "./layout.css";
+@import "./topbar.css";
+@import "./transcript.css";
+@import "./composer.css";
+@import "./workspace.css";
+@import "./settings.css";
+@import "./terminal.css";
+@import "./feedback.css";

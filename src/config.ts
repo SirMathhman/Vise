@@ -64,7 +64,7 @@ export const SPEC = {
     "VISE_SLOT_REQUEST_TIMEOUT_MS",
     5_000,
     LLM,
-    "slot save/restore timeout (ms)",
+    "slot lookup timeout for helper agents (ms)",
   ),
   port: n("PORT", 3000, "Web server", "port", { restart: true }),
   recentTurnsToKeep: n(
@@ -105,6 +105,20 @@ export const SPEC = {
     1,
     "Audit log",
     "record an audit log in ~/.vise/audit.db (1 = on, 0 = off)",
+    { min: 0 },
+  ),
+  maxCallTokens: n(
+    "VISE_MAX_CALL_TOKENS",
+    32_768,
+    "Audit log",
+    "stop a model call after this many tokens (0 = no limit)",
+    { min: 0 },
+  ),
+  loopGuard: n(
+    "VISE_LOOP_GUARD",
+    1,
+    "Audit log",
+    "stop a model call that repeats itself (1 = on, 0 = off)",
     { min: 0 },
   ),
   auditRetentionDays: n(

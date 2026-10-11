@@ -21,6 +21,11 @@ export function save(key: string, value: string): void {
 export function bindResizeGrip(panel: HTMLElement, grip: HTMLElement, key: string): void {
   const height = Number(load(key));
   if (height >= MIN_HEIGHT) panel.style.height = `${height}px`;
+  bindGripKeys(grip, { grow: "ArrowUp", shrink: "ArrowDown" }, () => panel.getBoundingClientRect().height, (next) => {
+    const clamped = Math.min(window.innerHeight * 0.85, Math.max(MIN_HEIGHT, next));
+    panel.style.height = `${clamped}px`;
+    save(key, String(Math.round(clamped)));
+  });
   grip.addEventListener("pointerdown", (down) => {
     down.preventDefault();
     grip.setPointerCapture(down.pointerId);
@@ -49,6 +54,12 @@ const MIN_WIDTH = 80;
 export function bindHResizeGrip(panel: HTMLElement, grip: HTMLElement, key: string, minWidth = MIN_WIDTH): void {
   const width = Number(load(key));
   if (width >= minWidth) panel.style.flex = `0 0 ${width}px`;
+  bindGripKeys(grip, { grow: "ArrowRight", shrink: "ArrowLeft" }, () => panel.getBoundingClientRect().width, (next) => {
+    const max = (panel.parentElement?.getBoundingClientRect().width ?? window.innerWidth) * 0.8;
+    const clamped = Math.min(max, Math.max(minWidth, next));
+    panel.style.flex = `0 0 ${clamped}px`;
+    save(key, String(Math.round(clamped)));
+  });
   grip.addEventListener("pointerdown", (down) => {
     down.preventDefault();
     grip.setPointerCapture(down.pointerId);
@@ -68,5 +79,27 @@ export function bindHResizeGrip(panel: HTMLElement, grip: HTMLElement, key: stri
       },
       { once: true },
     );
+  });
+}
+
+/** How far one arrow press moves a divider (pixels); Shift moves it further. */
+const KEY_STEP = 16;
+
+/**
+ * Arrow keys on a focused divider resize its panel by a step (Shift: four):
+ * `grow` is the key that makes the panel bigger, `shrink` the one that makes
+ * it smaller. `apply` sets and remembers the new size.
+ */
+export function bindGripKeys(
+  grip: HTMLElement,
+  keys: { grow: string; shrink: string },
+  size: () => number,
+  apply: (next: number) => void,
+): void {
+  grip.addEventListener("keydown", (event) => {
+    const sign = event.key === keys.grow ? 1 : event.key === keys.shrink ? -1 : 0;
+    if (sign === 0) return;
+    event.preventDefault();
+    apply(size() + sign * KEY_STEP * (event.shiftKey ? 4 : 1));
   });
 }

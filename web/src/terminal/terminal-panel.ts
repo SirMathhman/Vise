@@ -2,6 +2,7 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { bindResizeGrip, load, save } from "./grip.ts";
+import { theme } from "../status/theme.ts";
 
 /** The slice of a server message the terminal reacts to. */
 interface TerminalMessage {
@@ -40,7 +41,7 @@ function createXterm(
 ): { term: Terminal; fit: FitAddon } {
   const term = new Terminal({
     cursorBlink: true,
-    fontFamily: getComputedStyle(document.body).fontFamily,
+    fontFamily: getComputedStyle(document.documentElement).getPropertyValue("--font-mono").trim() || "monospace",
     fontSize: 13,
     scrollback: 5000,
     theme: themeFromPage(),
@@ -67,18 +68,18 @@ function createXterm(
  * The integrated terminal: the folder's shell, shown with xterm.js in a
  * resizable panel along the bottom of the page. The shell lives on the server
  * (one per folder, kept across reloads), so a page that opens the panel gets
- * the screen so far replayed. Toggled with its top-bar button or Ctrl+`.
+ * the screen so far replayed. Toggled from View → Terminal or with Ctrl+`.
  */
 export function createTerminalPanel(
   send: (msg: Record<string, unknown>) => void,
   onError: (text: string) => void,
 ): {
   toggle(): void;
+  isOpen(): boolean;
   handle(message: TerminalMessage): boolean;
 } {
   const panel = el<HTMLElement>("terminal");
   const view = el<HTMLElement>("terminal-view");
-  const button = el<HTMLButtonElement>("terminal-btn");
   let term: Terminal | null = null;
   let fit: FitAddon | null = null;
   let exited = false;
@@ -106,6 +107,10 @@ export function createTerminalPanel(
     );
     fit = made.fit;
     term = made.term;
+    // The page's colours were copied when the terminal was made; follow a theme change.
+    theme.onChange(() => {
+      if (term) term.options.theme = themeFromPage();
+    });
     return term;
   };
 
@@ -118,13 +123,11 @@ export function createTerminalPanel(
 
   const show = (on: boolean): void => {
     panel.classList.toggle("hidden", !on);
-    button.setAttribute("aria-pressed", String(on));
     save(OPEN_KEY, on ? "1" : "0");
     if (on) open();
   };
 
   bindResizeGrip(panel, el("terminal-grip"), "vise-terminal-height");
-  button.addEventListener("click", () => show(!visible()));
   el("terminal-hide").addEventListener("click", () => show(false));
   el("terminal-restart").addEventListener("click", () => {
     exited = false;
@@ -141,6 +144,7 @@ export function createTerminalPanel(
 
   return {
     toggle: () => show(!visible()),
+    isOpen: visible,
     handle(message) {
       switch (message.type) {
         case "term_data": {

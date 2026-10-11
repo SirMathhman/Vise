@@ -26,6 +26,7 @@ interface StreamDelta {
 /** One choice in a streaming chunk. */
 interface StreamChoice {
   delta: StreamDelta;
+  finish_reason?: string | null;
   logprobs?: { content?: TokenLogprob[] };
 }
 
@@ -41,6 +42,8 @@ interface StreamChunk {
 export interface GenerationListener {
   text(piece: string): void;
   tokens(count: number): void;
+  /** The server's reason the call ended (`stop`, `length`, `tool_calls`...), when it says. */
+  finish?(reason: string): void;
 }
 
 /**
@@ -100,6 +103,7 @@ export async function streamChat(
       generation?.text(piece);
       onToken?.(piece);
     }
+    if (choice?.finish_reason) generation?.finish?.(choice.finish_reason);
     const generated = chunk.timings?.predicted_n;
     if (generated !== undefined && generated > 0) generation?.tokens(generated);
     const deltas = delta?.tool_calls;

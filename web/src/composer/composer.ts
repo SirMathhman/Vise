@@ -33,10 +33,11 @@ const slashCommands: [string, string, boolean][] = [
   ["/save", "list or save sessions", true],
   ["/resume", "list or resume sessions", true],
   ["/delete", "delete a saved session", true],
+  ["/audit", "what the agent did: tools, models, errors, calls, call <n>", true],
 ];
 
 export function setupComposer(
-  input: HTMLInputElement,
+  input: HTMLTextAreaElement,
   suggestions: HTMLUListElement,
   choices: () => ComposerChoices,
   sendLine: (text: string, queue?: boolean) => void,
@@ -113,13 +114,21 @@ export function setupComposer(
     moveActiveSuggestion(state, input, suggestions, direction);
   }
 
-  input.addEventListener("input", renderSuggestions);
+  const recall = createRecall();
+  input.addEventListener("input", () => {
+    fitHeight(input);
+    renderSuggestions();
+  });
   input.addEventListener("keydown", (event: KeyboardEvent) => {
+    if (state.visible.length === 0 && recallKey(event, input, recall)) return;
     handleComposerKey(
       event,
       state,
       input,
-      sendLine,
+      (text, queue) => {
+        recall.push(text);
+        sendLine(text, queue);
+      },
       acceptSuggestion,
       moveSuggestion,
       hideSuggestions,
@@ -132,7 +141,7 @@ export function setupComposer(
 function handleComposerKey(
   event: KeyboardEvent,
   state: ComposerState,
-  input: HTMLInputElement,
+  input: HTMLTextAreaElement,
   sendLine: (text: string, queue?: boolean) => void,
   acceptSuggestion: () => void,
   moveSuggestion: (direction: number) => void,
@@ -160,17 +169,96 @@ function handleComposerKey(
       return;
     }
   }
-  if (event.key === "Enter" && !event.shiftKey) {
+  if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
     event.preventDefault();
     // Ctrl/Cmd+Enter holds the message back while the agent works (it steers otherwise).
     sendLine(input.value, event.ctrlKey || event.metaKey);
-    input.value = "";
+    clearComposer(input);
   }
+}
+
+/** The tallest the message box grows before it scrolls, as a share of the window. */
+const MAX_HEIGHT_SHARE = 0.4;
+
+/** Grow (or shrink) the message box to its text, up to a share of the window. */
+function fitHeight(input: HTMLTextAreaElement): void {
+  input.style.height = "auto";
+  const max = Math.round(window.innerHeight * MAX_HEIGHT_SHARE);
+  input.style.height = `${Math.min(input.scrollHeight + 2, max)}px`;
+  input.style.overflowY = input.scrollHeight + 2 > max ? "auto" : "hidden";
+}
+
+/** Empty the message box (after a send) and shrink it back to one line. */
+export function clearComposer(input: HTMLTextAreaElement): void {
+  input.value = "";
+  fitHeight(input);
+}
+
+/** The messages sent from this page, newest last, and where ↑/↓ have walked to. */
+interface Recall {
+  push(text: string): void;
+  older(): string | undefined;
+  newer(): string | undefined;
+  walking(): boolean;
+}
+
+/** Most messages ↑ can bring back. */
+const RECALL_SIZE = 50;
+
+function createRecall(): Recall {
+  const sent: string[] = [];
+  let at = -1;
+  return {
+    push(text) {
+      at = -1;
+      const body = text.trim();
+      if (!body || sent.at(-1) === body) return;
+      sent.push(body);
+      if (sent.length > RECALL_SIZE) sent.shift();
+    },
+    older() {
+      if (sent.length === 0) return undefined;
+      at = at < 0 ? sent.length - 1 : Math.max(0, at - 1);
+      return sent[at];
+    },
+    newer() {
+      if (at < 0) return undefined;
+      at += 1;
+      if (at >= sent.length) {
+        at = -1;
+        return "";
+      }
+      return sent[at];
+    },
+    walking: () => at >= 0,
+  };
+}
+
+/**
+ * ↑ in an empty box (or on a recalled message) brings back the previous
+ * message sent from this page, ↓ the next; true when the key was used.
+ */
+function recallKey(
+  event: KeyboardEvent,
+  input: HTMLTextAreaElement,
+  recall: Recall,
+): boolean {
+  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return false;
+  const usable = input.value === "" || recall.walking();
+  if (!usable) return false;
+  const text =
+    event.key === "ArrowUp" ? recall.older() : event.key === "ArrowDown" ? recall.newer() : undefined;
+  if (text === undefined) return false;
+  event.preventDefault();
+  input.value = text;
+  fitHeight(input);
+  input.setSelectionRange(text.length, text.length);
+  return true;
 }
 
 function hideComposerSuggestions(
   state: ComposerState,
-  input: HTMLInputElement,
+  input: HTMLTextAreaElement,
   suggestions: HTMLUListElement,
 ): void {
   state.visible = [];
@@ -183,7 +271,7 @@ function hideComposerSuggestions(
 
 function moveActiveSuggestion(
   state: ComposerState,
-  input: HTMLInputElement,
+  input: HTMLTextAreaElement,
   suggestions: HTMLUListElement,
   direction: number,
 ): void {

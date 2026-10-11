@@ -7,6 +7,7 @@ import { mkdirSync } from "node:fs";
 import { ChromiumBackend } from "./browser/chromium/chromium.ts";
 import type { BrowserBackend } from "./browser/types.ts";
 import { BACKEND, LlmClient } from "./client/llm.ts";
+import type { CallLog } from "./client/call-trace.ts";
 import { dataDirFor, globalDataDir, noFolderRoot } from "./data-dir.ts";
 import { GLOBAL_PROMPT } from "./global-prompt.ts";
 import { imageStore } from "./stores/image-store.ts";
@@ -208,6 +209,8 @@ export interface EdgeSession {
   session: Session;
   /** The LLM transport (the sole network-I/O module). */
   client: Client;
+  /** What every model call of the session has written (running and recent): the page's inspector reads it. */
+  calls: CallLog;
   /** Whether the active model can see images (asked live; the model can change). */
   canSeeImages: () => Promise<boolean>;
   /** The integrated browser; the frontend closes it on shutdown. */
@@ -281,7 +284,10 @@ function displayCallbacks(
 }
 
 /** The audit log of a session rooted at `root`: where events go and how `/audit` reads them (nothing when the log is off). */
-function auditFor(root: string): {
+function auditFor(
+  root: string,
+  client: LlmClient,
+): {
   auditSink: AuditSink;
   auditReader?: AuditReader;
 } {
@@ -290,7 +296,11 @@ function auditFor(root: string): {
   const sink = new SqliteAuditSink(root);
   return {
     auditSink: sink,
-    auditReader: new SqliteAuditReader(() => sink.flush()),
+    auditReader: new SqliteAuditReader(
+      () => sink.flush(),
+      undefined,
+      () => client.calls.traces().map((t) => t.snapshot(true)),
+    ),
   };
 }
 
@@ -349,7 +359,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
   const hookStore = options.hookStore ?? new HookStore(root);
 
   const client = new LlmClient();
-  const audit = auditFor(root);
+  const audit = auditFor(root, client);
   // Every model call of this session (reply, goal check, compaction...) reports here.
   wireClientSinks(client, options, audit.auditSink);
   const browser: BrowserBackend = options.browser ?? new ChromiumBackend();
@@ -442,6 +452,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
   return {
     session,
     client,
+    calls: client.calls,
     canSeeImages: () => client.supportsVision(),
     browser,
     toolController,

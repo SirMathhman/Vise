@@ -1,3 +1,5 @@
+import { confirmAction } from "../../feedback/confirm.ts";
+
 type Phase = "pre" | "post";
 
 /** Hook commands by phase. */
@@ -25,26 +27,35 @@ export function renderHookLists(
 ): void {
   for (const phase of ["pre", "post"] as const) {
     const heading = document.createElement("div");
-    heading.className = "files-path";
+    heading.className = "list-group-title";
     heading.textContent = labels[phase];
     container.appendChild(heading);
     const list = document.createElement("ul");
-    list.className = "tools-list";
+    list.className = "list";
     if (hooks[phase].length === 0) {
-      list.appendChild(document.createElement("li")).textContent = "none";
+      const empty = list.appendChild(document.createElement("li"));
+      empty.className = "list-empty";
+      empty.textContent = "None";
     }
     hooks[phase].forEach((command, i) => {
       const item = document.createElement("li");
-      item.className = "session-row"; // reveals the × on hover
+      item.className = "list-row";
       const text = document.createElement("code");
-      text.textContent = `${i + 1}. ${command}`;
+      text.textContent = command;
       const remove = document.createElement("button");
-      remove.className = "session-delete";
+      remove.type = "button";
+      remove.className = "btn btn--remove";
       remove.textContent = "×";
-      remove.title = `remove hook ${i + 1}`;
-      remove.addEventListener("click", () =>
-        edit(`${prefix} remove ${phase} ${i + 1}`),
-      );
+      remove.setAttribute("aria-label", `Remove hook ${command}`);
+      remove.addEventListener("click", () => {
+        void confirmAction({
+          title: "Remove this hook?",
+          message: command,
+          confirmLabel: "Remove",
+        }).then((yes) => {
+          if (yes) edit(`${prefix} remove ${phase} ${i + 1}`);
+        });
+      });
       item.append(text, remove);
       list.appendChild(item);
     });
@@ -54,15 +65,17 @@ export function renderHookLists(
 
 function addRow(phase: Phase, prefix: string, edit: Edit): HTMLElement {
   const row = document.createElement("div");
-  row.className = "save-row";
+  row.className = "actions";
   const input = document.createElement("input");
-  input.className = "save-input";
+  input.className = "field field--mono";
   input.type = "text";
-  input.placeholder = `add a ${phase}-turn hook command…`;
+  input.placeholder = `Add a ${phase}-turn hook command…`;
+  input.setAttribute("aria-label", `New ${phase}-turn hook command`);
   input.autocomplete = "off";
   const add = document.createElement("button");
-  add.className = "save-btn";
-  add.textContent = "add";
+  add.type = "button";
+  add.className = "btn";
+  add.textContent = "Add";
   const submit = (): void => {
     const command = input.value.trim();
     if (!command) return;

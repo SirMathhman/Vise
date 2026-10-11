@@ -92,4 +92,20 @@ export const AUDIT_MIGRATIONS: Migration[] = [
   CREATE INDEX audit_events_ts ON audit_events(ts);
   CREATE VIRTUAL TABLE audit_fts USING fts5(text, kind UNINDEXED, session_id UNINDEXED);
   `,
+  // A model call is recorded when it starts and updated as it runs, with the raw stream and why it ended.
+  `
+  ALTER TABLE audit_model_calls ADD COLUMN request INTEGER;
+  ALTER TABLE audit_model_calls ADD COLUMN state TEXT NOT NULL DEFAULT 'done';
+  ALTER TABLE audit_model_calls ADD COLUMN started_at TEXT;
+  ALTER TABLE audit_model_calls ADD COLUMN updated_at TEXT;
+  ALTER TABLE audit_model_calls ADD COLUMN raw TEXT;
+  ALTER TABLE audit_model_calls ADD COLUMN raw_reasoning TEXT;
+  ALTER TABLE audit_model_calls ADD COLUMN completion_tokens INTEGER;
+  ALTER TABLE audit_model_calls ADD COLUMN finish_reason TEXT;
+  ALTER TABLE audit_model_calls ADD COLUMN stop_reason TEXT;
+  ALTER TABLE audit_model_calls ADD COLUMN loop_period INTEGER;
+  ALTER TABLE audit_model_calls ADD COLUMN loop_repeats INTEGER;
+  CREATE INDEX audit_model_calls_request ON audit_model_calls(session_id, request);
+  CREATE INDEX audit_model_calls_state ON audit_model_calls(state);
+  `,
 ];

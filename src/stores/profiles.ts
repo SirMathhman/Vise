@@ -3,6 +3,8 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  renameSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -205,4 +207,42 @@ export function saveProfile(base: string, name: string, body: string): void {
  */
 export function initProfile(base: string, name: string): void {
   saveProfile(base, name, PROFILE_TEMPLATE);
+}
+
+/**
+ * Replace a profile's body, keeping its frontmatter (tool whitelist, hooks and
+ * any other lines). Throws an `Error` when the profile is missing.
+ */
+export function writeProfileBody(
+  base: string,
+  name: string,
+  body: string,
+): void {
+  const p = profilePath(base, name);
+  if (!existsSync(p)) throw new Error(`profile '${name}' not found`);
+  const parsed = parseProfile(readFileSync(p, "utf8"));
+  const text = body.replace(/\s+$/, "") + "\n";
+  writeFileSync(p, renderProfile({ ...parsed, body: text }), "utf8");
+}
+
+/**
+ * Rename a profile file. Throws an `Error` when the new name is invalid or
+ * taken, or the profile is missing.
+ */
+export function renameProfile(base: string, from: string, to: string): void {
+  if (!validName(to)) throw new Error(`invalid profile name '${to}'`);
+  if (!existsSync(profilePath(base, from))) {
+    throw new Error(`profile '${from}' not found`);
+  }
+  if (existsSync(profilePath(base, to))) {
+    throw new Error(`profile '${to}' already exists`);
+  }
+  renameSync(profilePath(base, from), profilePath(base, to));
+}
+
+/** Delete a profile file. Throws an `Error` when it is missing. */
+export function deleteProfile(base: string, name: string): void {
+  const p = profilePath(base, name);
+  if (!existsSync(p)) throw new Error(`profile '${name}' not found`);
+  unlinkSync(p);
 }

@@ -35,6 +35,9 @@ export function createWorkspace(
   onError: (text: string) => void,
 ): {
   toggle(): void;
+  isOpen(): boolean;
+  /** Show the workspace with a file (relative to the root) open in it. */
+  openFile(path: string): void;
   /** Ask the server for the browser's current tabs. */
   sync(): void;
   /** Handle a server message; false when it is not the workspace's. */
@@ -48,16 +51,14 @@ export function createWorkspace(
     pairWithExtension();
     root.classList.add("hidden");
   }
+  // On a phone the files would take half the chat's height: they open from View → Files.
+  if (window.matchMedia("(max-width: 640px)").matches) root.classList.add("hidden");
   // A session with no working directory has no project tree to list.
   let noFolder = false;
   const listProject = (): void => {
     if (!noFolder) void explorer.open("");
   };
-  const showRoot = setupSessionRoot(
-    el<HTMLButtonElement>("open-folder-btn"),
-    el<HTMLButtonElement>("no-folder-btn"),
-    el<HTMLElement>("root-label"),
-  );
+  const showRoot = setupSessionRoot(el<HTMLElement>("root-label"));
   const browser = createBrowserView(
     el<HTMLElement>("files-browser"),
     el<HTMLImageElement>("files-browser-img"),
@@ -89,6 +90,15 @@ export function createWorkspace(
     toggle() {
       root.classList.toggle("hidden");
       if (!root.classList.contains("hidden")) listProject();
+    },
+    isOpen: () => !root.classList.contains("hidden"),
+    openFile(path) {
+      if (noFolder || sidebar) return;
+      if (root.classList.contains("hidden")) {
+        root.classList.remove("hidden");
+        listProject();
+      }
+      void explorer.openFile(path);
     },
     sync: () => send({ type: "browser_tabs" }),
     handle(message) {

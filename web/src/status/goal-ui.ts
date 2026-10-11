@@ -22,25 +22,25 @@ export function splitVerdict(text: string): { title: string; detail: string } {
 }
 
 /**
- * Goal checking in the page: a header toggle (`/goal on|off`), and the goal and
- * each verdict as lines in the chat (a met goal, a nudge back to work, or a
- * request for the user). The server owns the setting and tells the page its
- * state, so the button always shows what is in effect.
+ * Goal checking in the page: the Agent menu's toggle (`/goal on|off`), and the
+ * goal and each verdict as lines in the chat (a met goal, a nudge back to work,
+ * or a request for the user). The server owns the setting and tells the page
+ * its state, so the menu always shows what is in effect.
  */
 export function createGoalUi(
   addLine: (cls: string, text: string) => void,
   addCollapsed: (cls: string, title: string, detail: string) => void,
   send: (msg: Record<string, unknown>) => void,
-): { handle(message: GoalMessage): boolean } {
-  const button = document.getElementById("goal-btn") as HTMLButtonElement;
-  button.addEventListener("click", () => {
-    const on = button.getAttribute("aria-pressed") !== "true";
-    send({ type: "line", text: `/goal ${on ? "on" : "off"}`, id: TOGGLE_ID });
-  });
+): { handle(message: GoalMessage): boolean; isOn(): boolean; toggle(): void } {
+  let enabled = false;
   return {
+    isOn: () => enabled,
+    toggle() {
+      send({ type: "line", text: `/goal ${enabled ? "off" : "on"}`, id: TOGGLE_ID });
+    },
     handle(message) {
       if (message.type === "goal_state") {
-        button.setAttribute("aria-pressed", String(message.enabled === true));
+        enabled = message.enabled === true;
         return true;
       }
       if (message.type === "goal") {

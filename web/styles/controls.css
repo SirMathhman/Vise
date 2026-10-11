@@ -1,0 +1,374 @@
+/* The one control system: buttons, fields, lists and the two-pane editor layout. */
+
+/* ---- Buttons ---- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-1);
+  min-height: var(--control-h-sm);
+  padding: 0 var(--sp-3);
+  font: inherit;
+  font-size: var(--fs-sm);
+  line-height: 1.2;
+  white-space: nowrap;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition:
+    background-color 0.12s,
+    border-color 0.12s,
+    color 0.12s;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--highlight);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.btn[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+
+.btn--lg {
+  min-height: var(--control-h);
+  padding: 0 var(--sp-4);
+  font-size: var(--fs-md);
+}
+
+/* The main action of a group: filled. */
+.btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 85%, var(--text));
+}
+
+/* A secondary action that still belongs to the accent: outlined. */
+.btn--accent {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.btn--danger {
+  border-color: color-mix(in srgb, var(--danger) 60%, transparent);
+  color: var(--danger);
+}
+
+.btn--danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+}
+
+.btn--ghost {
+  border-color: transparent;
+}
+
+/* A square button holding one glyph (×, 📎). */
+.btn--icon {
+  min-width: var(--control-h-sm);
+  padding: 0;
+}
+
+/* The × that removes a row, a tab or a picture. */
+.btn--remove {
+  min-width: 1.375rem;
+  min-height: 1.375rem;
+  padding: 0;
+  border-color: transparent;
+  color: var(--dim);
+  font-size: var(--fs-lg);
+  line-height: 1;
+}
+
+.btn--remove:hover:not(:disabled) {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+
+/* ---- Fields: inputs, selects and textareas ---- */
+.field {
+  min-height: var(--control-h-sm);
+  min-width: 0;
+  padding: var(--sp-1) var(--sp-2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.field:focus-visible,
+.field:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+.field:disabled {
+  opacity: 0.5;
+}
+
+.field::placeholder {
+  color: var(--dim);
+}
+
+textarea.field {
+  width: 100%;
+  resize: vertical;
+  padding: var(--sp-2) var(--sp-3);
+  line-height: 1.5;
+}
+
+/* What the user types for the agent or the shell: code-like, so monospace. */
+.field--mono {
+  font-family: var(--font-mono);
+}
+
+/* ---- A row of actions under a form ---- */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+}
+
+.actions > .field {
+  flex: 1 1 12rem;
+}
+
+.status-line {
+  color: var(--user);
+  font-size: var(--fs-sm);
+}
+
+.status-line.error {
+  color: var(--error);
+}
+
+.hint {
+  color: var(--dim);
+  font-size: var(--fs-sm);
+  margin: 0 0 var(--sp-2);
+}
+
+pre.hint {
+  white-space: pre-wrap;
+}
+
+/* ---- Lists ---- */
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.list > li {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.list > li.disabled {
+  color: var(--dim);
+}
+
+.list > li > label,
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  cursor: pointer;
+}
+
+.list-group-title {
+  color: var(--dim);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: var(--sp-3) 0 var(--sp-1);
+}
+
+.list > .list-group-title:first-child,
+.list-group-title:first-child {
+  margin-top: 0;
+}
+
+/* A selectable entry in a side list (notes, servers, workflows, profiles). */
+.list-item {
+  display: block;
+  width: 100%;
+  padding: var(--sp-1) var(--sp-2);
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.list-item:hover {
+  background: var(--highlight);
+}
+
+.list-item[aria-current="true"] {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* A row with an action at its end (sessions, hooks): the action stays visible. */
+.list-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 2px var(--sp-2);
+  border-radius: var(--radius-sm);
+}
+
+.list-row:hover {
+  background: var(--highlight);
+}
+
+.list-row > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.list-empty {
+  color: var(--dim);
+  font-style: italic;
+  padding: var(--sp-2) 0;
+}
+
+/* ---- Editors: a side list and a form ---- */
+.two-pane {
+  display: flex;
+  gap: var(--sp-5);
+  align-items: flex-start;
+}
+
+.two-pane__side {
+  flex: 0 0 15rem;
+  max-height: 70vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding-right: var(--sp-3);
+  border-right: 1px solid var(--border);
+}
+
+.two-pane__main {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+@media (max-width: 800px) {
+  .two-pane {
+    flex-direction: column;
+  }
+
+  .two-pane__side {
+    flex-basis: auto;
+    width: 100%;
+    max-height: 14rem;
+    padding-right: 0;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: var(--sp-3);
+  }
+}
+
+/* A labelled field on a form. */
+.form-row {
+  display: grid;
+  grid-template-columns: minmax(8rem, 14rem) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--sp-1) var(--sp-4);
+  margin-bottom: var(--sp-2);
+}
+
+.form-row > .form-label {
+  color: var(--dim);
+  font-size: var(--fs-sm);
+}
+
+.form-row > .form-control {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: center;
+  min-width: 0;
+}
+
+.form-row > .form-control > .field {
+  flex: 1 1 auto;
+  max-width: 28rem;
+}
+
+@media (max-width: 640px) {
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.form-section {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  margin: var(--sp-5) 0 var(--sp-2);
+  padding-bottom: var(--sp-1);
+  border-bottom: 1px solid var(--border);
+}
+
+.form-section:first-child {
+  margin-top: 0;
+}
+
+/* A small rounded label (restart required, scope). */
+.badge {
+  display: inline-block;
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  color: var(--dim);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+
+/* A message that stays until acted on (e.g. "reload to apply"). */
+.notice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-sm);
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: var(--radius-md);
+}

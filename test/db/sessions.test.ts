@@ -81,7 +81,9 @@ describe("saveSession (edge)", () => {
     const id = idOf(saveSession(base, undefined, "first", messages, undefined));
     const again = idOf(saveSession(base, id, "renamed", messages, undefined));
     expect(again).toBe(id);
-    expect(listSessions(base)).toEqual(ok([{ id, name: "renamed" }]));
+    expect(listSessions(base)).toEqual(
+      ok([{ id, name: "renamed", updated: expect.any(String) }]),
+    );
   });
 
   test("two sessions may share a display name", () => {
@@ -170,8 +172,8 @@ describe("listSessions (edge)", () => {
     const a = idOf(saveSession(base, undefined, "alpha", messages, undefined));
     expect(listSessions(base)).toEqual(
       ok([
-        { id: a, name: "alpha" },
-        { id: b, name: "beta" },
+        { id: a, name: "alpha", updated: expect.any(String) },
+        { id: b, name: "beta", updated: expect.any(String) },
       ]),
     );
   });

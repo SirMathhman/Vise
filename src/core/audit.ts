@@ -19,6 +19,16 @@ export type AuditEvent =
       error?: string;
     }
   | { kind: "message"; message: Message; depth?: number }
+  /** A call to the model began (so one that never ends is still on record). */
+  | { kind: "model_call_start"; request: number; purpose: string; model: string }
+  /** A running call, as far as it has got (written now and then, so a hung call leaves its raw text). */
+  | {
+      kind: "model_call_progress";
+      request: number;
+      completionTokens: number;
+      raw: string;
+      rawReasoning: string;
+    }
   /** One call to the model: what it was for, how long it took and what came back. */
   | {
       kind: "model_call";
@@ -30,6 +40,16 @@ export type AuditEvent =
       reasoning?: string;
       toolCalls?: number;
       error?: string;
+      /** The client's number for the call (matches `model_call_start`). */
+      request?: number;
+      /** What the call wrote, raw: tool calls included, before any was parsed or hidden. */
+      raw?: string;
+      rawReasoning?: string;
+      completionTokens?: number;
+      finishReason?: string;
+      /** Why it was cut short: `loop`, `token_cap`, `interrupted`, `error`. */
+      stopReason?: string;
+      loop?: { period: number; repeats: number };
     }
   /** One tool call, with the whole result (before any is saved aside for being large). */
   | {
@@ -62,6 +82,30 @@ export interface AuditSink {
 /** The sink used when nothing is recording. */
 export const noAudit: AuditSink = { record: () => undefined };
 
+/** One model call as `/audit calls` and the page's inspector show it. */
+export interface AuditCall {
+  request: number;
+  purpose: string;
+  model: string;
+  state: "running" | "done" | "stopped" | "error" | "abandoned";
+  /** Why it was cut short, when it was. */
+  stopReason?: string;
+  ms: number;
+  promptTokens?: number;
+  completionTokens?: number;
+  finishReason?: string;
+  toolCalls?: number;
+  error?: string;
+  /** Characters written in all (`raw` may be shortened). */
+  rawChars?: number;
+  raw?: string;
+  reasoning?: string;
+  reasoningChars?: number;
+  /** What repeats at the end of the call, if anything. */
+  loop?: { period: number; repeats: number; sample?: string };
+  startedAt?: string;
+}
+
 /** What `/audit` can show. */
 export type AuditTopic = "summary" | "tools" | "models" | "errors" | "hooks";
 
@@ -87,6 +131,8 @@ export type AuditReport =
       topic: "hooks";
       rows: { phase: string; command: string; ms: number; output: string }[];
     }
+  | { topic: "calls"; rows: AuditCall[] }
+  | { topic: "call"; call?: AuditCall; request: number }
   | {
       topic: "search";
       rows: { kind: string; session: string; snippet: string }[];
@@ -95,5 +141,9 @@ export type AuditReport =
 /** Read side of the audit log: questions about one conversation, and a search over all of them. */
 export interface AuditReader {
   report(session: string, topic: AuditTopic): AuditReport;
+  /** The latest `limit` model calls of the conversation, running ones included. */
+  calls(session: string, limit: number): AuditReport;
+  /** One model call of the conversation, in full. */
+  call(session: string, request: number): AuditReport;
   search(text: string): AuditReport;
 }

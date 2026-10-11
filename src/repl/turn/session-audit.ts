@@ -149,9 +149,19 @@ export class SessionAudit {
         if (text === "") return fail("usage: /audit search <text>");
         return { ok: true, value: formatAuditReport(this.reader.search(text)) };
       }
+      if (arg === "calls" || arg.startsWith("calls ")) {
+        const limit = Number(arg.slice("calls".length).trim() || 20);
+        if (!Number.isInteger(limit) || limit < 1) return fail("usage: /audit calls [n]");
+        return { ok: true, value: formatAuditReport(this.reader.calls(this.session, limit)) };
+      }
+      if (arg === "call" || arg.startsWith("call ")) {
+        const request = Number(arg.slice("call".length).trim());
+        if (!Number.isInteger(request) || request < 1) return fail("usage: /audit call <n>  (n is the # of /audit calls)");
+        return { ok: true, value: formatAuditReport(this.reader.call(this.session, request)) };
+      }
       if (!TOPICS.includes(topic as AuditTopic)) {
         return fail(
-          `usage: /audit [${TOPICS.join("|")}] or /audit search <text>`,
+          `usage: /audit [${TOPICS.join("|")}|calls [n]|call <n>] or /audit search <text>`,
         );
       }
       const report = this.reader.report(this.session, topic as AuditTopic);

@@ -53,3 +53,42 @@ FROM audit_events WHERE name = 'compaction';
 SELECT kind, session_id, snippet(audit_fts, 0, '[', ']', '...', 12)
 FROM audit_fts WHERE audit_fts MATCH '"connection refused"';
 ```
+
+## Model calls: the raw stream, and runaway calls
+
+A model call is on record from the moment it starts (`state = 'running'`) and
+the row is updated when it ends. While it runs, its raw text so far is written
+every 30 seconds, so a call that hangs, or a program that dies, still leaves
+what the model had written. `raw` is everything the call wrote **before** it
+was parsed (tool calls included, which the chat never shows); `raw_reasoning`
+is the end of its reasoning.
+
+| Column (`audit_model_calls`)       | Meaning                                                              |
+| ---------------------------------- | -------------------------------------------------------------------- |
+| `request`                          | the client's number for the call (`/audit call <n>`)                 |
+| `state`                            | `running`, `done`, `stopped`, `error`, `abandoned` (the program died) |
+| `stop_reason`                      | `loop`, `token_cap`, `interrupted`, `error` when it was cut short    |
+| `completion_tokens`, `finish_reason` | what the server counted and why it ended the call                  |
+| `loop_period`, `loop_repeats`      | what repeated at the end of the call, if anything                    |
+
+Vise stops a call itself when it repeats the same text (`VISE_LOOP_GUARD`) or
+writes more than `VISE_MAX_CALL_TOKENS` tokens (0 = no limit). The turn then
+ends with "stopped a runaway model call" and the goal is kept.
+
+In Vise: `/audit calls [n]` lists the latest calls (running ones first) and
+`/audit call <n>` prints one with its raw text. In the web page, click the
+"Writing…" line or choose Agent → Inspect model output… for a live view.
+
+```sql
+-- Calls Vise had to stop
+SELECT ts, purpose, stop_reason, completion_tokens, loop_period, loop_repeats
+FROM audit_model_calls WHERE state = 'stopped' AND stop_reason IN ('loop', 'token_cap');
+
+-- The longest completions, with the end of what they wrote
+SELECT request, purpose, completion_tokens, substr(raw, -300) AS tail
+FROM audit_model_calls ORDER BY completion_tokens DESC LIMIT 10;
+
+-- Calls that never finished
+SELECT session_id, request, purpose, started_at, updated_at
+FROM audit_model_calls WHERE state IN ('running', 'abandoned');
+```

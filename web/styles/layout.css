@@ -1,0 +1,114 @@
+/* The page's frame: chat column, workspace beside it, dividers, full pages. */
+.shell {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  flex: 1 1 0;
+}
+
+/* The chat alone reads best at a measure, centred; beside the workspace it fills its share. */
+.workspace.hidden ~ #app {
+  max-width: 56rem;
+  margin: 0 auto;
+}
+
+.sidebar .workspace.hidden ~ #app {
+  max-width: none;
+  margin: 0;
+}
+
+.divider {
+  flex: 0 0 5px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.divider:hover,
+.divider:focus-visible,
+.terminal-grip:hover,
+.terminal-grip:focus-visible {
+  background: var(--accent);
+  box-shadow: none;
+}
+
+.workspace.hidden + .divider {
+  display: none !important;
+}
+
+/* The sessions and settings pages: replace the chat (and file explorer) while open. */
+.page {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+body.page-open .shell,
+body.page-open #terminal {
+  display: none;
+}
+
+.page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding: var(--sp-3) var(--sp-5);
+  border-bottom: 1px solid var(--border);
+}
+
+.page-title {
+  margin: 0;
+  font-size: var(--fs-xl);
+  font-weight: 600;
+}
+
+.page-body {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--sp-5);
+  width: 100%;
+  max-width: 72rem;
+  margin: 0 auto;
+}
+
+@media (max-width: 800px) {
+  .shell {
+    flex-direction: column;
+  }
+
+  /* A width dragged on a wide screen means nothing here: the panes share the height. */
+  .shell > .workspace {
+    flex: 0 1 50% !important;
+    min-height: 0;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .shell > .workspace .fs-tree {
+    flex: 0 0 min(14rem, 42vw) !important;
+  }
+
+  .shell > #app {
+    flex: 1 1 50%;
+    min-height: 0;
+  }
+
+  .divider {
+    display: none;
+  }
+
+  .page-head,
+  .page-body {
+    padding-inline: var(--sp-4);
+  }
+}

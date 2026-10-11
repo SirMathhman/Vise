@@ -1,6 +1,5 @@
 import { config } from "../config.ts";
 import { noAudit, type AuditSink } from "../core/audit.ts";
-import { formatError } from "../output/format.ts";
 import {
   encodeMessages,
   type ImageResolver,
@@ -12,6 +11,16 @@ import {
 } from "./tool-protocol.ts";
 import { collectThinking, readJsonReply, streamChat } from "./stream-reader.ts";
 import { generationReporter } from "./generation.ts";
+import {
+  CallLog,
+  CallTrace,
+  recordCallEnd,
+  recordCallStart,
+  noteServerCut,
+  runawayError,
+  traceListener,
+  traceThinking,
+} from "./call-trace.ts";
 
 export { streamChat };
 import type { Client, Tool } from "../core/engine.ts";
@@ -23,6 +32,7 @@ import type {
   PromptProgress,
   Result,
 } from "../core/errors.ts";
+
 
 /** The inference backend label reported by the `self` tool. */
 export const BACKEND = "llama.cpp";
@@ -82,6 +92,8 @@ export class LlmClient implements Client {
   private lastPromptTokens: number | undefined;
   private currentModel: string = config.llmModel;
   private requestSeq = 0;
+  /** What every model call of this client has written, running or recent (the inspector and `/audit calls` read it). */
+  readonly calls = new CallLog();
   /** Hears the prompt processing of every model call of this client (set by the edge): the one place progress is reported. */
   private progressSink?: (progress: PromptProgress) => void;
 
@@ -400,21 +412,20 @@ export class LlmClient implements Client {
   async chat(
     ...args: Parameters<LlmClient["send"]>
   ): Promise<Result<AssistantMessage>> {
-    const started = performance.now();
-    const model = this.currentModel;
-    const result = await this.send(...args);
-    const reply = result.ok ? result.value : undefined;
-    this.auditSink.record({
-      kind: "model_call",
-      purpose: args[9] ?? "reply",
-      model,
-      ms: performance.now() - started,
-      promptTokens: result.ok ? this.lastPromptTokens : undefined,
-      content: reply?.content,
-      reasoning: reply?.reasoning,
-      toolCalls: reply?.tool_calls?.length,
-      error: result.ok ? undefined : formatError(result.error),
-    });
+    const purpose = args[9] ?? "reply";
+    const trace = this.calls.start(
+      new CallTrace(++this.requestSeq, purpose, this.currentModel),
+    );
+    const stopRecording = recordCallStart(this.auditSink, trace);
+    const [m, t, onToken, onThinking, onProgress, schema, signal, enabled, act] = args;
+    let result: Result<AssistantMessage>;
+    try {
+      result = await this.send(m, t, onToken, onThinking, onProgress, schema, signal, enabled, act, purpose, trace);
+    } finally {
+      stopRecording();
+    }
+    recordCallEnd(this.auditSink, trace, result, this.lastPromptTokens);
+    this.calls.finish(trace);
     return result;
   }
 
@@ -448,6 +459,8 @@ export class LlmClient implements Client {
       };
     }
     this.applyReasoningEffort(body);
+    // The server's own limit on one call (the guard stops a loop sooner).
+    if (config.maxCallTokens > 0) body.max_tokens = config.maxCallTokens;
     if (this.sideSlot !== undefined) body.id_slot = this.sideSlot;
     return body;
   }
@@ -463,12 +476,13 @@ export class LlmClient implements Client {
     isToolEnabled?: (name: string) => boolean,
     act = false,
     purpose: CallPurpose = "reply",
+    trace?: CallTrace,
   ): Promise<Result<AssistantMessage>> {
     // Tools travel as stable prompt text plus a per-request grammar (see
     // tool-protocol.ts), never as the `tools` field: the grammar is not part
     // of the prompt, so toggling a tool leaves the KV cache intact.
     const useTools = !!tools && tools.length > 0 && !responseSchema;
-    const request = ++this.requestSeq;
+    const request = trace?.request ?? ++this.requestSeq;
     const body = this.requestBody(
       messages,
       tools,
@@ -478,6 +492,9 @@ export class LlmClient implements Client {
     );
     // An act round shows the user nothing; its reasoning is only captured.
     const thought = collectThinking(act ? undefined : onThinking);
+    // The runaway guard aborts the call through its own controller, chained to the turn's signal.
+    const guard = new AbortController();
+    const callSignal = signal ? AbortSignal.any([signal, guard.signal]) : guard.signal;
     try {
       const res = await fetch(config.llmChatUrl, {
         method: "POST",
@@ -486,27 +503,23 @@ export class LlmClient implements Client {
           authorization: `Bearer ${config.llmApiKey}`,
         },
         body: JSON.stringify(body),
-        signal,
+        signal: callSignal,
       });
       if (!res.ok) {
         const text = await res.text();
-        return {
-          ok: false,
-          error: { kind: "http", status: res.status, body: text },
-        };
+        return { ok: false, error: { kind: "http", status: res.status, body: text } };
       }
       const stream = res.body;
       if (!stream) {
-        return {
-          ok: false,
-          error: { kind: "malformed", body: "empty response body" },
-        };
+        return { ok: false, error: { kind: "malformed", body: "empty response body" } };
       }
-      const thinking = useTools ? thought.sink : onThinking;
+      const baseThinking = useTools ? thought.sink : onThinking;
+      const thinking = trace ? traceThinking(trace, baseThinking) : baseThinking;
       const generation =
         this.generationSink && !act
           ? generationReporter(this.generationSink, request, purpose)
           : undefined;
+      const listener = trace && !act ? traceListener(trace, generation, guard) : generation;
       const acc = await readReply(
         act
           ? () => readJsonReply(res, thinking)
@@ -516,12 +529,14 @@ export class LlmClient implements Client {
                 useTools ? hideCalls(onToken) : onToken,
                 thinking,
                 this.reporter(request, purpose, onPromptProgress),
-                signal,
-                generation,
+                callSignal,
+                listener,
               ),
         generation,
       );
       if (generation && acc.usage !== undefined) void this.reportUsage(request, purpose, acc.usage);
+      const cut = runawayError(noteServerCut(trace));
+      if (cut) return { ok: false, error: cut };
       if (!acc.sawData) {
         return {
           ok: false,
@@ -540,6 +555,9 @@ export class LlmClient implements Client {
       }
       return { ok: true, value: acc.message };
     } catch (err) {
+      // An abort by the guard surfaces as a failed read: say what it really was.
+      const cut = runawayError(trace);
+      if (cut) return { ok: false, error: cut };
       return {
         ok: false,
         error: {

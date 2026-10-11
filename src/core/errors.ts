@@ -97,6 +97,14 @@ export type ViseError =
   | { kind: "malformed"; body: string }
   /** A local store (the SQLite databases) failed: what was being done, to which file, why, and what may help. */
   | { kind: "storage"; op: string; path: string; cause: string; hint?: string }
+  /** A model call was stopped because it ran away: it repeated itself, or wrote more than the cap. */
+  | {
+      kind: "runaway";
+      reason: "loop" | "token_cap";
+      detail: string;
+      tokens: number;
+      purpose: string;
+    }
   | { kind: "interrupted" };
 
 export type Result<T> =

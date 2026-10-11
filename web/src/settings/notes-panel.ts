@@ -1,3 +1,5 @@
+import { ifConfirmed } from "../feedback/confirm.ts";
+
 /** One entry of the server's `notes` listing. */
 interface NoteEntry {
   name: string;
@@ -51,13 +53,13 @@ function renderNotes(
     const group = `${note.scope} · ${note.category}`;
     if (group !== last) {
       last = group;
-      list.append(make("li", "note-group", group));
+      list.append(make("li", "list-group-title", group));
       if (note.category !== DEFAULT_CATEGORY) {
         categories.append(new Option(note.category));
       }
     }
     const item = make("li");
-    const button = make("button", "note-item", note.name);
+    const button = make("button", "list-item", note.name);
     button.title = note.summary;
     const selected =
       current?.name === note.name &&
@@ -70,7 +72,7 @@ function renderNotes(
     item.append(button);
     list.append(item);
   }
-  if (notes.length === 0) list.append(make("li", "note-group", "no notes yet"));
+  if (notes.length === 0) list.append(make("li", "list-empty", "No notes yet."));
 }
 
 /** Whether a server message is about the note `ref`. */
@@ -104,37 +106,37 @@ function savePayload(
 
 /** The panel's elements: the note list on the left, the editor on the right. */
 function buildUi() {
-  const list = make("ul", "tools-list");
-  const name = make("input", "save-input");
-  name.placeholder = "name";
+  const list = make("ul", "list");
+  const name = make("input", "field");
+  name.placeholder = "Name";
   name.autocomplete = "off";
-  const scope = make("select", "save-input");
-  scope.append(new Option("project (this project only)", "project"));
-  scope.append(new Option("global (every project)", "global"));
+  const scope = make("select", "field");
+  scope.append(new Option("Project (this folder only)", "project"));
+  scope.append(new Option("Global (every folder)", "global"));
   scope.setAttribute("aria-label", "scope");
-  const category = make("input", "save-input");
+  const category = make("input", "field");
   category.placeholder = `category (empty: ${DEFAULT_CATEGORY})`;
   category.setAttribute("list", "note-categories");
   category.autocomplete = "off";
   const categories = make("datalist");
   categories.id = "note-categories";
-  const text = make("textarea", "note-text");
+  const text = make("textarea", "field");
   text.placeholder =
     "The first non-empty line is the note's summary; the rest is its body.";
   text.rows = 12;
-  const status = make("span", "pe-status");
+  const status = make("span", "status-line");
   status.setAttribute("role", "status");
-  const saveBtn = make("button", "save-btn", "save");
-  const deleteBtn = make("button", "tools-btn", "delete");
-  const newBtn = make("button", "tools-btn", "+ new note");
+  const saveBtn = make("button", "btn btn--primary", "Save");
+  const deleteBtn = make("button", "btn btn--danger", "Delete");
+  const newBtn = make("button", "btn", "+ New note");
 
-  const left = make("div", "notes-side");
+  const left = make("div", "two-pane__side");
   left.append(newBtn, list);
-  const right = make("div", "notes-edit");
-  const buttons = make("div", "save-row");
+  const right = make("div", "two-pane__main");
+  const buttons = make("div", "actions");
   buttons.append(saveBtn, deleteBtn, status);
   right.append(name, scope, category, categories, text, buttons);
-  const layout = make("div", "notes-layout");
+  const layout = make("div", "two-pane");
   layout.append(left, right);
   return {
     layout,
@@ -212,7 +214,7 @@ export function createNotesPanel(
 
   newBtn.addEventListener("click", () => edit(null));
   saveBtn.addEventListener("click", () => {
-    say("saving…");
+    say("Saving…");
     const fields = [
       name.value,
       category.value,
@@ -222,8 +224,8 @@ export function createNotesPanel(
     send(savePayload(...fields, current, version));
   });
   deleteBtn.addEventListener("click", () => {
-    if (!current || !confirm(`Delete note '${current.name}'?`)) return;
-    send({ type: "note_delete", ...current });
+    const target = current;
+    if (target) ifConfirmed({ title: `Delete the note “${target.name}”?` }, () => send({ type: "note_delete", ...target }));
   });
   for (const trigger of refreshOn) {
     trigger.addEventListener("click", () => send({ type: "notes_list" }));
@@ -252,7 +254,7 @@ export function createNotesPanel(
             say(message.error ?? "failed", true);
           } else if (message.deleted) {
             edit(null);
-            say("deleted");
+            say("Deleted.");
           } else {
             // After a save the note is the one being edited (a rename moved it).
             current = {
@@ -262,7 +264,7 @@ export function createNotesPanel(
             };
             version = message.version;
             deleteBtn.disabled = false;
-            say("saved");
+            say("Saved.");
           }
           return true;
         default:

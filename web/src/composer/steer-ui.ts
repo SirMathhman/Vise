@@ -54,7 +54,7 @@ export function createSteerUi(deps: {
       label.textContent = text;
       const remove = document.createElement("button");
       remove.type = "button";
-      remove.className = "queue-remove";
+      remove.className = "btn btn--remove";
       remove.title = "Remove from the queue";
       remove.setAttribute("aria-label", `Remove queued message: ${text}`);
       remove.textContent = "✕";

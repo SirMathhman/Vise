@@ -1,0 +1,81 @@
+/* Design tokens: colours per theme, then the scales every component uses. */
+:root {
+  color-scheme: dark;
+  --bg: #101114;
+  --panel: #17181c;
+  --raised: #1d1f24;
+  --text: #e6e6e6;
+  --dim: #8b8f98;
+  --muted: var(--dim);
+  --accent: #7aa2ff;
+  --user: #5fd0a0;
+  --error: #ff7d7d;
+  --danger: #f2706a;
+  --border: #2a2c33;
+  --goal-ok: #8fe3a4;
+  --goal-warn: #f0d77a;
+  --goal-ask: #ffb3ad;
+  --highlight: #252832;
+  --on-accent: #0b0e14;
+  --backdrop: rgb(0 0 0 / 80%);
+  --shadow: 0 8px 24px rgb(0 0 0 / 30%);
+  --shadow-soft: 0 4px 16px rgb(0 0 0 / 50%);
+  --scroll-track: var(--bg);
+  --scroll-thumb: color-mix(in srgb, var(--border) 80%, var(--text));
+  --scroll-thumb-hover: color-mix(in srgb, var(--accent) 50%, transparent);
+
+  --font-ui:
+    system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+
+  --fs-xs: 0.75rem;
+  --fs-sm: 0.8125rem;
+  --fs-md: 0.875rem;
+  --fs-lg: 1rem;
+  --fs-xl: 1.25rem;
+
+  --sp-1: 0.25rem;
+  --sp-2: 0.5rem;
+  --sp-3: 0.75rem;
+  --sp-4: 1rem;
+  --sp-5: 1.5rem;
+  --sp-6: 2rem;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-pill: 999px;
+
+  --z-dropdown: 10;
+  --z-overlay: 50;
+  --z-modal: 100;
+  --z-toast: 200;
+
+  --focus-ring: 0 0 0 2px color-mix(in srgb, var(--accent) 60%, transparent);
+  --control-h: 2rem;
+  --control-h-sm: 1.625rem;
+}
+
+/* Light colours: chosen in View → Theme, or by the system when no choice is saved (theme.ts sets data-theme). */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f4f4f6;
+  --panel: #ffffff;
+  --raised: #ffffff;
+  --text: #1a1c20;
+  --dim: #6a6f78;
+  --muted: var(--dim);
+  --accent: #3b6fd6;
+  --user: #1f7d50;
+  --error: #c0392b;
+  --danger: #c0392b;
+  --border: #d4d6dc;
+  --goal-ok: #1f9d63;
+  --goal-warn: #a07a00;
+  --goal-ask: #c05a4a;
+  --highlight: #e0e3ea;
+  --on-accent: #ffffff;
+  --backdrop: rgb(20 22 26 / 70%);
+  --shadow: 0 4px 16px rgb(0 0 0 / 12%);
+  --shadow-soft: 0 2px 10px rgb(0 0 0 / 8%);
+}

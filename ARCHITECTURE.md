@@ -138,12 +138,16 @@ web/
     transcript/     # the conversation log: transcript, replies, boxes, follow, stream-render...
     log/            # restored history, lightbox, log view
     composer/       # input box, completions, attachments, steer/queue, ask_user prompts
-    status/         # generating indicator, prompt progress, compaction and goal markers
-    settings/       # settings tabs, profile editor, hooks, notes, tools panels;
-                    # mcp/ holds the MCP servers tab
+    status/         # generating indicator, prompt progress, compaction and goal markers,
+                    # context meter, theme, the panel group and pages (panel-switch.ts)
+    menubar/        # the top bar's menus, their keyboard rules, shortcuts, workflow picker
+    feedback/       # confirmation dialog and toasts
+    git/            # the git panel
+    settings/       # settings tabs, sessions list, tools panel; profiles/, hooks/,
+                    # mcp/ and workflows/ hold those tabs
     workspace/      # file explorer, tabs, integrated browser view, root restore
-  dist/app.js       # generated browser bundle (not hand-edited)
-  styles.css        # web UI styling
+  dist/app.js       # generated browser bundle (not hand-edited); dist/app.css its styles
+  styles/           # web UI styling: tokens, shared controls, one file per part of the page
 test/               # tests sit in sub-directories beside the area they cover
                     # (core, client, repl, tools, output, db, server, web); setup.ts is the
                     # bunfig preload; layout.test.ts enforces the 9-files-per-directory rule

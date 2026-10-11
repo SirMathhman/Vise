@@ -1,17 +1,17 @@
 High value, low cost
 
-1. Context-fill indicator — the progress event already flows through server.ts ({ total, cache, processed, time_ms }) but is dropped in the case "progress" handler. A small footer/meter showing prompt: N / M tokens (and cache hits) would make the auto-compact behavior (COMPACTION_THRESHOLD = 0.9) and when compaction is about to fire visible. The data is already on the wire — this is mostly rendering.
+1. Context-fill indicator — DONE. The bar under the chat shows a meter and "12.3k / 141.6k tokens · 9%" (`web/src/status/context-meter.ts`), red from 90%; per-call prompt progress bars show in the log.
 
-2. Save / Resume sessions — DONE. Toggleable sessions panel in the web UI: lists saved sessions (populated from `/resume` on load), resume by clicking a row (clears the chat log), save the current conversation via a freeform name input. Follows the same toggle-panel pattern as the tools panel. No server changes needed.
+2. Save / Resume sessions — DONE. Session menu (eight newest, with when each was saved) and Session → All sessions… (filter, resume, delete after asking, save under a name).
 
-3. /context button — reportContext is a pure read (no model call). A one-click "context" button that pops the current fill as a system line, or anchors the indicator above, is trivial and pairs with #1.
+3. /context button — DONE. Clicking the context meter sends `/context`; also Agent → Show context usage.
 
-High value, moderate cost 4. Compaction control — /compact is a manual command; exposing a button (and possibly the RECENT_TURNS_TO_KEEP state) makes the compaction mechanic user-driven rather than model-driven.
+High value, moderate cost 4. Compaction control — DONE. A "Compact" button appears in the context bar from 75% full; also Agent → Compact conversation.
 
-5. Workflow runner — /workflow <name> [input] is a full surface with WorkflowSource and project/global scoping. A dropdown (like profile/tools) + a small input field would let web users run instruction and tool workflows without typing the command.
+5. Workflow runner — DONE. Agent → Run workflow… picks a workflow and an input and sends `/workflow <name> [input]`; a strip above the composer names it with Stop while it runs. (No per-step progress yet: the server does not report steps.)
 
-6. Notes browser — /note, /note init <name> mirror the tools panel pattern exactly. A read/list UI for the .vise/notes/ store (names + summaries) would round out the header.
+6. Notes browser — DONE as the settings "Notes" tab, with editing.
 
-Lower priority 7. Tool-call detail — case "tool" currently renders a flat tool: <name> line. Expanding each into a collapsible block showing arguments + result (the result messages already carry tool results) would make the agent's work inspectable, but it's a larger UI change (per-message structure, not a dropdown).
+Lower priority 7. Tool-call detail — DONE. A tool line opens (click, Enter or Space) to show its arguments and full result (clipped to 4000 characters each; `web/src/log/tool-details.ts`). Lines replayed from a saved session carry no details.
 
-8. self info card — the self tool reports backend, model, cwd, context fill, active profile, and hook commands. A static "about" popover from the header would expose all of that without a model call, but it overlaps with what #1/#2 already surface.
+8. self info card — not done. The status pill shows the connection; model and profile are in the top bar.

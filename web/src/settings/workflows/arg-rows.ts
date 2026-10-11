@@ -82,16 +82,16 @@ export function createArgRows(
     }));
   const rows = [...params, ...extras].map((param) => {
     const start = initial(param, args, exact);
-    const row = make("div", "save-row");
+    const row = make("div", "actions");
     const label = make("span");
     label.textContent = param.required ? `${param.name} *` : param.name;
     label.title = param.description;
-    const mode = make("select", "save-input");
-    if (!param.required) mode.append(new Option("not set", "unset"));
-    mode.append(new Option("fixed value", "fixed"));
-    mode.append(new Option("model provides", "model"));
+    const mode = make("select", "field");
+    if (!param.required) mode.append(new Option("Not set", "unset"));
+    mode.append(new Option("Fixed value", "fixed"));
+    mode.append(new Option("Model provides", "model"));
     mode.value = start.mode;
-    const text = make("input", "save-input");
+    const text = make("input", "field");
     text.value = start.text;
     const refresh = (): void => {
       text.hidden = mode.value === "unset";

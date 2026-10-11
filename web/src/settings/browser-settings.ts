@@ -26,31 +26,31 @@ export function createBrowserSettings(
   send: (msg: Record<string, unknown>) => void,
 ): { handle(message: BrowserSettingsFields): void } {
   const engine = document.createElement("select");
-  engine.className = "model";
+  engine.className = "field";
   engine.append(new Option("Chromium (Edge or Chrome)", "chromium"));
   engine.append(new Option("Firefox", "firefox"));
 
   const port = document.createElement("input");
-  port.className = "save-input";
+  port.className = "field";
   port.type = "number";
   port.min = "1";
   port.max = "65535";
-  port.placeholder = "launch Vise's own Firefox";
+  port.placeholder = "Launch Vise's own Firefox";
 
   const hint = document.createElement("div");
-  hint.className = "setting-hint";
+  hint.className = "hint";
   hint.textContent =
     "Firefox: leave the port empty to launch a private headless Firefox. To use a Firefox you already run, start it with --remote-debugging-port=9222 and enter that port; Firefox allows one attached client at a time. browser_run_code is not available with Firefox.";
 
   const status = document.createElement("div");
-  status.className = "pe-status";
+  status.className = "status-line";
   status.setAttribute("role", "status");
 
   const save = document.createElement("button");
-  save.className = "save-btn";
-  save.textContent = "save";
+  save.className = "btn btn--primary";
+  save.textContent = "Save";
   save.addEventListener("click", () => {
-    status.textContent = "switching… open browser tabs will close";
+    status.textContent = "Switching… open browser tabs will close";
     send({
       type: "browser_settings_set",
       engine: engine.value,
@@ -67,7 +67,7 @@ export function createBrowserSettings(
   engine.addEventListener("change", sync);
   body.append(field("engine", engine), field("attach to port", port), hint);
   const row = document.createElement("div");
-  row.className = "save-row";
+  row.className = "actions";
   row.append(save, status);
   body.append(row);
   sync();

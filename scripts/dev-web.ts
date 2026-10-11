@@ -17,6 +17,10 @@ let debounce: ReturnType<typeof setTimeout> | undefined;
 const watcher = watch("web/src", { recursive: true }, (_event, filename) => {
   if (filename?.toString().endsWith(".ts")) scheduleRebuild();
 });
+// The page's styles are bundled too (`web/src/app.ts` imports `web/styles/index.css`).
+const styleWatcher = watch("web/styles", { recursive: true }, (_event, filename) => {
+  if (filename?.toString().endsWith(".css")) scheduleRebuild();
+});
 
 function scheduleRebuild(): void {
   if (debounce) clearTimeout(debounce);
@@ -44,5 +48,6 @@ try {
   await server.exited;
 } finally {
   watcher.close();
+  styleWatcher.close();
   if (debounce) clearTimeout(debounce);
 }

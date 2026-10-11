@@ -8,6 +8,8 @@ import {
   viewerMode,
 } from "./open-tabs.ts";
 import { showMenu } from "./tab-menu.ts";
+import { confirmAction } from "../feedback/confirm.ts";
+import { toast } from "../feedback/toast.ts";
 import { getSessionRoot } from "./restore-root.ts";
 
 interface DirEntry {
@@ -47,6 +49,8 @@ export function createExplorer(
   md: MarkdownView,
 ): {
   open(path: string): Promise<void>;
+  /** Open a file (relative to the root) in a viewer tab. */
+  openFile(path: string): Promise<void>;
   reload(): Promise<void>;
   syncBrowserTabs(tabs: BrowserTab[]): boolean;
 } {
@@ -128,7 +132,7 @@ export function createExplorer(
     await rereadFiles(set.files);
     renderViewer(set.current, viewer, md);
   }
-  return { open, reload, syncBrowserTabs };
+  return { open, openFile, reload, syncBrowserTabs };
 }
 
 /** Fetch a directory's entries, showing loading/error/empty messages in `ul`; null when there is nothing to list. */
@@ -442,10 +446,15 @@ function tabLabel(file: OpenFile): string {
 
 /** Entry context-menu handler shared by `createExplorer`. */
 function makeEntryOps(reload: () => void): (e: MouseEvent, path: string) => void {
-  const deleteEntry = (path: string): void => {
-    fetch(api("/api/delete", path), { method: "POST" }).then((res) => {
-      if (res.ok) reload();
+  const deleteEntry = async (path: string): Promise<void> => {
+    const yes = await confirmAction({
+      title: `Delete ${path}?`,
+      message: "The file or folder is removed from disk, not moved to the recycle bin. This cannot be undone.",
     });
+    if (!yes) return;
+    const res = await fetch(api("/api/delete", path), { method: "POST" });
+    if (res.ok) reload();
+    else toast(`Could not delete ${path}`, "error");
   };
   const copy = (text: string): void => {
     void navigator.clipboard.writeText(text).catch(() => {});
@@ -457,9 +466,9 @@ function makeEntryOps(reload: () => void): (e: MouseEvent, path: string) => void
   return (e: MouseEvent, path: string): void => {
     e.preventDefault();
     showMenu(e.clientX, e.clientY, [
-      { label: "Copy Relative Path", run: () => copy(path) },
-      { label: "Copy Absolute Path", run: () => copy(absolute(path)) },
-      { label: "Delete", run: () => deleteEntry(path) },
+      { label: "Copy relative path", run: () => copy(path) },
+      { label: "Copy absolute path", run: () => copy(absolute(path)) },
+      { label: "Delete…", danger: true, run: () => void deleteEntry(path) },
     ]);
   };
 }

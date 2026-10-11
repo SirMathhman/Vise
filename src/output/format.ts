@@ -10,6 +10,8 @@ export function formatError(err: ViseError): string {
     return `vise: ${err.cause}`;
   } else if (err.kind === "interrupted") {
     return "vise: interrupted";
+  } else if (err.kind === "runaway") {
+    return `vise: stopped a runaway model call (${err.purpose}, ${err.tokens} tokens): ${err.detail}. See /audit calls.`;
   } else if (err.kind === "storage") {
     const hint = err.hint ? ` (${err.hint})` : "";
     return `vise: could not ${err.op} ${err.path}: ${err.cause}${hint}`;
@@ -41,6 +43,8 @@ export function formatCompactionFailure(err: ViseError): string {
     return `vise: auto-compact skipped (network): ${err.cause}`;
   } else if (err.kind === "interrupted") {
     return "vise: auto-compact skipped: interrupted";
+  } else if (err.kind === "runaway") {
+    return `vise: auto-compact skipped: model call stopped (${err.detail})`;
   } else if (err.kind === "storage") {
     return `vise: auto-compact skipped: could not ${err.op} ${err.path}: ${err.cause}`;
   } else {
@@ -213,6 +217,8 @@ export function formatHelp(opts: {
   if (opts.hasAudit) {
     lines.push("/audit           what the agent did in this conversation");
     lines.push("/audit tools|models|errors|hooks   details");
+    lines.push("/audit calls [n]       the latest model calls, running ones first");
+    lines.push("/audit call <n>        one model call: what it wrote, raw, and what repeats");
     lines.push("/audit search <text>   search every recorded conversation");
   }
   if (opts.preTurnHookCount > 0) {
@@ -257,15 +263,25 @@ export function formatProfileList(
     .join("\n");
 }
 
+/** `  saved 2026-10-10 14:03 UTC` for an ISO time; nothing when there is none or it is not one. */
+function savedAt(iso: string | undefined): string {
+  const match = iso ? /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/.exec(iso) : null;
+  return match ? `  saved ${match[1]} ${match[2]} UTC` : "";
+}
+
 /**
  * Render the list of saved sessions as a multi-line string. Each line is
- * `  <name>  (<id>)`: the display name and the uuid that /resume and /delete
- * take. Auto-saved sessions (named from the conversation's first message) and
- * renamed ones are listed together, sorted by name.
+ * `  <name>  (<id>)`, then `  saved <yyyy-mm-dd hh:mm> UTC` when the time is
+ * known: the display name, the uuid that /resume and /delete take, and when it
+ * was last saved (the web page parses these lines). Auto-saved sessions (named
+ * from the conversation's first message) and renamed ones are listed together,
+ * sorted by name.
  */
 export function formatSessionList(entries: SessionEntry[]): string {
   if (entries.length === 0) return "no saved sessions";
-  const lines = entries.map((e) => `  ${e.name}  (${e.id})`).join("\n");
+  const lines = entries
+    .map((e) => `  ${e.name}  (${e.id})${savedAt(e.updated)}`)
+    .join("\n");
   return `saved sessions:
 ${lines}
 

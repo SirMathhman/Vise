@@ -11,7 +11,7 @@ export interface TranscriptView {
   appendAssistantToken(text: string): void;
   appendThinkingToken(text: string): void;
   /** `text` is the finished line (icon, name, detail); without it the line is just `tool: <name>`. */
-  appendToolCall(name: string, depth?: number, text?: string): void;
+  appendToolCall(name: string, depth?: number, text?: string): HTMLElement;
   /** What the last tool call came to ("12 matches"), shown at the end of its line. */
   appendToolResult(text: string): void;
   /** Append a subagent's streamed reply (a dimmed, indented block). */
@@ -111,12 +111,13 @@ export function createTranscript(
       replies.flush();
       thinking.append(text);
     },
-    appendToolCall(name: string, depth?: number, text?: string): void {
+    appendToolCall(name: string, depth?: number, text?: string): HTMLElement {
       settle();
       lastTool = addLine(
         burstActive ? "tool burst" : "tool",
         `${text ?? `tool: ${name}`}${depth ? " (subagent)" : ""}`,
       );
+      return lastTool;
     },
     appendToolResult(text: string): void {
       if (!lastTool) return;

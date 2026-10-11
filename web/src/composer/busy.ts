@@ -31,13 +31,15 @@ export function busyView(state: BusyState): BusyView {
  * one `render`, so no caller has to pair an "on" with a later "off".
  */
 export function createBusy(controls: {
-  input: HTMLInputElement;
+  input: HTMLTextAreaElement;
   send: HTMLButtonElement;
   stop: HTMLButtonElement;
   /** Controls that are locked whenever anything is running (selects, new, burst). */
   locked: (HTMLButtonElement | HTMLSelectElement)[];
   setSteering: (on: boolean) => void;
   hideSuggestions: () => void;
+  /** Told after every change whether a line is running (the status pill follows). */
+  onRunning?: (running: boolean) => void;
 }): {
   state: BusyState;
   isBusy(): boolean;
@@ -58,8 +60,10 @@ export function createBusy(controls: {
     controls.input.disabled = view.busy && !view.steering;
     controls.send.disabled = view.busy;
     controls.send.classList.toggle("hidden", view.steering);
-    controls.stop.disabled = !view.busy;
+    // Stop is for work the user started, not for the page loading its lists.
+    controls.stop.classList.toggle("hidden", !(state.server || state.submitting));
     for (const control of controls.locked) control.disabled = view.busy;
+    controls.onRunning?.(state.server || state.submitting);
   }
   return {
     state,

@@ -1,0 +1,275 @@
+/* The settings and sessions pages. */
+.page-heading {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.page-title:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+/* Which folder the settings below belong to. */
+.scope-context {
+  color: var(--dim);
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-layout {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+}
+
+.settings-nav {
+  flex: 0 0 12rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-4) var(--sp-2);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+
+.tab {
+  padding: var(--sp-1) var(--sp-3);
+  font: inherit;
+  text-align: left;
+  color: var(--dim);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: var(--text);
+  background: var(--highlight);
+}
+
+.tab.active {
+  color: var(--text);
+  font-weight: 600;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.settings-body {
+  max-width: 64rem;
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .settings-layout {
+    flex-direction: column;
+  }
+
+  .settings-nav {
+    flex: 0 0 auto;
+    flex-direction: row;
+    overflow-x: auto;
+    padding: var(--sp-2) var(--sp-3);
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .tab {
+    white-space: nowrap;
+  }
+}
+
+/* An editor's form: labels above fields. */
+.editor-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.editor-form > .form-label,
+.two-pane__main > .form-label {
+  color: var(--dim);
+  font-size: var(--fs-sm);
+  margin-top: var(--sp-1);
+}
+
+.editor-form .form-section {
+  margin-top: var(--sp-4);
+}
+
+.actions--tight {
+  margin-top: 0;
+}
+
+/* The general tab shows its save bar only once something changed. */
+.editor-actions.is-clean {
+  display: none;
+}
+
+/* Save stays in reach while a long form scrolls. */
+.editor-actions {
+  position: sticky;
+  bottom: calc(-1 * var(--sp-5));
+  padding: var(--sp-3) 0;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+}
+
+/* A tool list: checkbox rows grouped by category. */
+.tool-list > li.tool-category {
+  margin-top: var(--sp-2);
+  color: var(--dim);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.tool-list > li.tool-category:first-child {
+  margin-top: 0;
+}
+
+.tool-list > li:not(.tool-category) {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+}
+
+.tool-list--columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  column-gap: var(--sp-4);
+}
+
+.tool-list--columns > li.tool-category {
+  grid-column: 1 / -1;
+}
+
+/* The general settings: grouped rows of label and field. */
+.setting-group {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  margin: var(--sp-5) 0 var(--sp-2);
+  padding-bottom: var(--sp-1);
+  border-bottom: 1px solid var(--border);
+}
+
+.setting-row {
+  display: grid;
+  grid-template-columns: minmax(10rem, 16rem) minmax(0, 28rem) auto;
+  justify-content: start;
+  justify-items: start;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-3);
+  margin-bottom: var(--sp-2);
+}
+
+.setting-row > span:first-child {
+  color: var(--text);
+  font-size: var(--fs-sm);
+}
+
+/* The labels come from the server in lower case. */
+.setting-row > span:first-child::first-letter {
+  text-transform: uppercase;
+}
+
+.setting-row .field {
+  width: 100%;
+}
+
+@media (max-width: 640px) {
+  .setting-row {
+    grid-template-columns: 1fr auto;
+  }
+
+  .setting-row > span:first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Workflow steps. */
+.wf-steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.wf-step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.wf-step .actions {
+  margin-top: 0;
+}
+
+.wf-args {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.wf-args > * {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: center;
+}
+
+/* ---- Sessions page ---- */
+.sessions-page {
+  max-width: 44rem;
+}
+
+.sessions-tools {
+  margin: 0 0 var(--sp-3);
+}
+
+.sessions-list {
+  gap: 2px;
+}
+
+.session-row {
+  padding: 0 var(--sp-1) 0 0;
+}
+
+.session-open {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  min-width: 0;
+  padding: var(--sp-2);
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.session-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-open:hover .session-name {
+  color: var(--accent);
+}
+
+.session-when {
+  flex: none;
+  color: var(--dim);
+  font-size: var(--fs-sm);
+}

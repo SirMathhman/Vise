@@ -1,3 +1,5 @@
+import { ifConfirmed } from "../../feedback/confirm.ts";
+
 /** One configured MCP server as the server describes it (`mcp` message). A local one has a `command`, a remote one a `url`. */
 interface McpServer {
   name: string;
@@ -90,47 +92,47 @@ function renderServers(
   for (const server of servers) {
     if (server.scope !== last) {
       last = server.scope;
-      list.append(make("li", "note-group", server.scope));
+      list.append(make("li", "list-group-title", server.scope));
     }
     const item = make("li");
-    const button = make("button", "note-item", describe(server));
+    const button = make("button", "list-item", describe(server));
     const selected = current?.name === server.name && current.scope === server.scope;
     button.setAttribute("aria-current", String(selected));
     button.addEventListener("click", () => open(server));
     item.append(button);
     list.append(item);
   }
-  if (servers.length === 0) list.append(make("li", "note-group", "no servers yet"));
+  if (servers.length === 0) list.append(make("li", "list-empty", "No servers yet."));
 }
 
 /** The panel's elements: the server list on the left, the form on the right (already added to `body`). */
 function buildUi(body: HTMLElement) {
-  const list = make("ul", "tools-list");
-  const newBtn = make("button", "tools-btn", "+ new server");
-  const name = make("input", "save-input");
-  name.placeholder = "name";
+  const list = make("ul", "list");
+  const newBtn = make("button", "btn", "+ New server");
+  const name = make("input", "field");
+  name.placeholder = "Name";
   name.autocomplete = "off";
-  const scope = make("select", "save-input");
-  scope.append(new Option("project (this folder only)", "project"));
-  scope.append(new Option("global (every project)", "global"));
+  const scope = make("select", "field");
+  scope.append(new Option("Project (this folder only)", "project"));
+  scope.append(new Option("Global (every folder)", "global"));
   scope.setAttribute("aria-label", "scope");
-  const kind = make("select", "save-input");
-  kind.append(new Option("local program (stdio)", "stdio"));
-  kind.append(new Option("remote server (URL)", "url"));
+  const kind = make("select", "field");
+  kind.append(new Option("Local program (stdio)", "stdio"));
+  kind.append(new Option("Remote server (URL)", "url"));
   kind.setAttribute("aria-label", "type");
-  const command = make("input", "save-input");
-  command.placeholder = "command, e.g. npx";
+  const command = make("input", "field");
+  command.placeholder = "Command, e.g. npx";
   command.autocomplete = "off";
-  const args = make("textarea", "note-text");
+  const args = make("textarea", "field");
   args.rows = 4;
-  args.placeholder = "arguments, one per line";
-  const env = make("textarea", "note-text");
+  args.placeholder = "Arguments, one per line";
+  const env = make("textarea", "field");
   env.rows = 3;
-  env.placeholder = "environment, one NAME=value per line (stored as plain text)";
-  const url = make("input", "save-input");
+  env.placeholder = "Environment, one NAME=value per line (stored as plain text)";
+  const url = make("input", "field");
   url.placeholder = "https://example.com/mcp";
   url.autocomplete = "off";
-  const headers = make("textarea", "note-text");
+  const headers = make("textarea", "field");
   headers.rows = 3;
   headers.placeholder =
     "headers, one Name: value per line, e.g. Authorization: Bearer … (stored as plain text)";
@@ -145,23 +147,23 @@ function buildUi(body: HTMLElement) {
   disabledBox.type = "checkbox";
   const disabledLabel = make("label", "", " disabled");
   disabledLabel.prepend(disabledBox);
-  const details = make("pre", "setting-hint");
-  const hint = make("div", "setting-hint");
+  const details = make("pre", "hint");
+  const hint = make("div", "hint");
   hint.textContent =
     "Saving reconnects the server now and reloads the page, so the conversation gets the changed tools (your chat comes back).";
-  const status = make("span", "pe-status");
+  const status = make("span", "status-line");
   status.setAttribute("role", "status");
-  const saveBtn = make("button", "save-btn", "save");
-  const restartBtn = make("button", "tools-btn", "restart");
-  const deleteBtn = make("button", "tools-btn", "delete");
-  const buttons = make("div", "save-row");
+  const saveBtn = make("button", "btn btn--primary", "Save");
+  const restartBtn = make("button", "btn", "Restart");
+  const deleteBtn = make("button", "btn btn--danger", "Delete");
+  const buttons = make("div", "actions");
   buttons.append(saveBtn, restartBtn, deleteBtn, status);
 
-  const left = make("div", "notes-side");
+  const left = make("div", "two-pane__side");
   left.append(newBtn, list);
-  const right = make("div", "notes-edit");
+  const right = make("div", "two-pane__main");
   right.append(name, scope, kind, ...local, ...remote, disabledLabel, buttons, details, hint);
-  const layout = make("div", "notes-layout");
+  const layout = make("div", "two-pane");
   layout.append(left, right);
   body.append(layout);
   showKind();
@@ -225,18 +227,28 @@ function readEntry(ui: Ui): Record<string, unknown> {
 }
 
 /**
- * Reload the page so its conversation is built with the changed tools (a
- * conversation keeps the tool list it started with; the saved chat comes back
- * on reload). A turn in progress is never interrupted: wait until it ends.
+ * Offer to reload the page so its conversation is built with the changed tools
+ * (a conversation keeps the tool list it started with; the saved chat comes
+ * back on reload). Nothing reloads by itself: the user may be in the middle of
+ * something, and a turn in progress must finish first.
  */
-function reloadWhenIdle(isBusy: () => boolean, say: (text: string) => void): void {
-  if (isBusy()) {
-    say("saved. The page reloads when the current turn ends, to load the changed tools.");
-    setTimeout(() => reloadWhenIdle(isBusy, say), 500);
-    return;
-  }
-  say("saved. Reloading to load the changed tools…");
-  window.location.reload();
+function offerReload(isBusy: () => boolean, box: HTMLElement): void {
+  box.textContent = "";
+  box.classList.remove("hidden");
+  const text = document.createElement("span");
+  text.textContent = "Saved. Reload the page to give this conversation the changed tools.";
+  const reload = document.createElement("button");
+  reload.type = "button";
+  reload.className = "btn btn--primary btn--sm";
+  reload.textContent = "Reload now";
+  reload.addEventListener("click", () => {
+    if (isBusy()) {
+      text.textContent = "A turn is running: reload when it ends.";
+      return;
+    }
+    window.location.reload();
+  });
+  box.append(text, reload);
 }
 
 /**
@@ -245,21 +257,26 @@ function reloadWhenIdle(isBusy: () => boolean, say: (text: string) => void): voi
  * and remote URLs alike, with their live state, and a form to add, change,
  * disable, restart and delete them. The server reads and writes the files and
  * reconnects the changed servers (`src/web/api/mcp-api.ts`). A conversation
- * keeps the tools it started with, so the page reloads itself after a save or
- * a delete.
+ * keeps the tools it started with, so after a save or a delete the page offers
+ * to reload.
  */
 export function createMcpPanel(
   body: HTMLElement,
   send: (msg: Record<string, unknown>) => void,
   /** Elements whose click means the tab may now be visible: refresh the list. */
   refreshOn: HTMLElement[],
-  /** Whether a turn is running (the reload waits for it to end). */
+  /** Whether a turn is running (a reload must wait for it to end). */
   isBusy: () => boolean,
 ): { handle(message: McpMessage): boolean } {
   let servers: McpServer[] = [];
   /** The server being edited, or null for a new one. */
   let current: Ref | null = null;
   const ui = buildUi(body);
+  /** The offer to reload after a change (shown above the form). */
+  const notice = document.createElement("div");
+  notice.className = "notice hidden";
+  notice.setAttribute("role", "status");
+  body.prepend(notice);
 
   const say = (message: string, error = false): void => {
     ui.status.textContent = message;
@@ -291,7 +308,7 @@ export function createMcpPanel(
   ui.saveBtn.addEventListener("click", () => {
     try {
       const entry = readEntry(ui);
-      say("saving… (connecting to the server)");
+      say("Saving… (connecting to the server)");
       send({ type: "mcp_save", entry, ...(current ? { from: current } : {}) });
     } catch (err) {
       say(err instanceof Error ? err.message : String(err), true);
@@ -299,13 +316,18 @@ export function createMcpPanel(
   });
   ui.restartBtn.addEventListener("click", () => {
     if (!current) return;
-    say("restarting…");
+    say("Restarting…");
     send({ type: "mcp_restart", name: current.name });
   });
   ui.deleteBtn.addEventListener("click", () => {
-    if (!current || !confirm(`Delete MCP server '${current.name}'?`)) return;
-    say("deleting…");
-    send({ type: "mcp_delete", ...current });
+    const target = current;
+    if (!target) return;
+    const title = `Delete the MCP server “${target.name}”?`;
+    const message = "Its entry is removed from the settings file and the server is stopped.";
+    ifConfirmed({ title, message }, () => {
+      say("Deleting…");
+      send({ type: "mcp_delete", ...target });
+    });
   });
   for (const trigger of refreshOn) {
     trigger.addEventListener("click", () => send({ type: "mcp_get" }));
@@ -326,7 +348,7 @@ export function createMcpPanel(
       showDetails();
       const problems = message.problems ?? [];
       if (message.error) say(message.error, true);
-      else if (message.saved || message.deleted) reloadWhenIdle(isBusy, say);
+      else if (message.saved || message.deleted) offerReload(isBusy, notice);
       else if (problems.length > 0) say(problems.join("; "), true);
       else say("");
       return true;

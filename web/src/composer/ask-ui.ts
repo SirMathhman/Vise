@@ -78,7 +78,7 @@ export function createAskUi(
     answer: HTMLInputElement;
     send: HTMLButtonElement;
     /** The message box the user types steering and new messages in. */
-    composer: HTMLInputElement;
+    composer: HTMLTextAreaElement;
   },
   sendMessage: (msg: Record<string, unknown>) => void,
   announce: (text: string) => void = () => {},

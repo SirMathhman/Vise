@@ -1,3 +1,5 @@
+import { theme, type ThemeChoice } from "../status/theme.ts";
+
 /** One setting as the server describes it (`env` message; see `src/settings/settings-file.ts`). */
 interface EnvField {
   env: string;
@@ -20,12 +22,97 @@ export interface EnvMessage {
   error?: string;
 }
 
+/** The fields by group, groups in the order they first appear (a group split in the list is shown once). */
+export function groupFields<T extends { group: string }>(fields: T[]): [string, T[]][] {
+  const groups = new Map<string, T[]>();
+  for (const field of fields) {
+    const list = groups.get(field.group) ?? [];
+    list.push(field);
+    groups.set(field.group, list);
+  }
+  return [...groups];
+}
+
+function make<K extends keyof HTMLElementTagNameMap>(tag: K, className = "", text = ""): HTMLElementTagNameMap[K] {
+  const element = document.createElement(tag);
+  if (className) element.className = className;
+  if (text) element.textContent = text;
+  return element;
+}
+
+/** The page's own settings (kept in this browser): only the theme for now. */
+function appearance(): HTMLElement {
+  const box = make("div");
+  box.append(make("h2", "setting-group", "Appearance"));
+  const row = make("label", "setting-row");
+  const select = make("select", "field");
+  const choices: [ThemeChoice, string][] = [
+    ["system", "Match system"],
+    ["light", "Light"],
+    ["dark", "Dark"],
+  ];
+  for (const [value, label] of choices) select.append(new Option(label, value));
+  select.value = theme.choice();
+  select.addEventListener("change", () => theme.set(select.value as ThemeChoice));
+  theme.onChange(() => (select.value = theme.choice()));
+  row.append(make("span", "", "Theme"), select, make("span", "badge", "this browser"));
+  box.append(row);
+  return box;
+}
+
+/** The boxes the general tab draws and what they held, shared by its rows. */
+interface RowState {
+  inputs: Map<string, HTMLInputElement>;
+  shown: Map<string, string>;
+  clearing: Set<string>;
+  /** A box changed (the save bar follows). */
+  changed(): void;
+}
+
+/** One setting: its label, a box with the default as the placeholder, and Clear (a saved secret) or a restart badge. */
+function settingRow(field: EnvField, state: RowState): HTMLElement {
+  const line = make("label", "setting-row");
+  const input = make("input", "field");
+  input.autocomplete = "off";
+  if (field.secret) {
+    input.type = "password";
+    input.placeholder = field.set ? "Saved (type to replace)" : "Not set";
+  } else {
+    input.type = field.kind === "number" ? "number" : "text";
+    if (field.kind === "number") {
+      input.step = "any";
+      if (field.min !== undefined) input.min = String(field.min);
+    }
+    input.placeholder = `Default: ${field.def}`;
+    input.value = field.value;
+  }
+  input.title = field.env;
+  input.addEventListener("input", state.changed);
+  state.inputs.set(field.env, input);
+  state.shown.set(field.env, input.value);
+  line.append(make("span", "", field.label), input);
+  if (field.secret && field.set) {
+    const clear = make("button", "btn btn--sm", "Clear");
+    clear.type = "button";
+    clear.addEventListener("click", () => {
+      state.clearing.add(field.env);
+      input.placeholder = "Will be cleared on save";
+      state.changed();
+    });
+    line.append(clear);
+  } else if (field.restart) {
+    line.append(make("span", "badge", "after restart"));
+  }
+  return line;
+}
+
 /**
- * The "general" settings tab: every setting from the user-level settings file
- * (`~/.vise/.env`) in groups, with its default as the placeholder. An empty
- * box means the default. Saving applies the values at once; the few that are
- * read only at start-up are marked. A secret is never sent back to the page:
- * leaving its box empty keeps the saved one.
+ * The "general" settings tab: the theme, then every setting from the
+ * user-level settings file (`~/.vise/.env`) in groups, with its default as the
+ * placeholder. An empty box means the default. The save bar appears once
+ * something changed; saving applies the values at once, and the few read only
+ * at start-up say so. A secret is never sent back to the page: leaving its box
+ * empty keeps the saved one.
  */
 export function createEnvPanel(
   body: HTMLElement,
@@ -37,85 +124,58 @@ export function createEnvPanel(
   const shown = new Map<string, string>();
   /** Secrets the user asked to clear. */
   const clearing = new Set<string>();
-  const status = document.createElement("div");
-  status.className = "pe-status";
+  const status = make("span", "status-line");
   status.setAttribute("role", "status");
-  const where = document.createElement("div");
-  where.className = "setting-hint";
+  const where = make("p", "hint");
+  const theming = appearance();
+  const save = make("button", "btn btn--primary", "Save changes");
+  save.type = "button";
+  const discard = make("button", "btn", "Discard");
+  discard.type = "button";
+  const bar = make("div", "actions editor-actions");
+  bar.append(save, discard, status);
+  let fields: EnvField[] = [];
 
-  function render(fields: EnvField[]): void {
+  const changed = (): Record<string, string> => {
+    const values: Record<string, string> = {};
+    // Only what changed, so a stale page cannot revert other settings.
+    for (const [env, input] of inputs) {
+      if (input.value !== (shown.get(env) ?? "")) values[env] = input.value;
+    }
+    return values;
+  };
+  const syncBar = (): void => {
+    const dirty = Object.keys(changed()).length > 0 || clearing.size > 0;
+    save.disabled = !dirty;
+    discard.disabled = !dirty;
+    bar.classList.toggle("is-clean", !dirty && status.textContent === "");
+  };
+
+  const row = (field: EnvField): HTMLElement => settingRow(field, { inputs, shown, clearing, changed: syncBar });
+
+  function render(): void {
     inputs.clear();
     shown.clear();
     clearing.clear();
     body.textContent = "";
-    body.append(where);
-    let group = "";
-    let box: HTMLElement = body;
-    for (const field of fields) {
-      if (field.group !== group) {
-        group = field.group;
-        const heading = document.createElement("h4");
-        heading.className = "setting-group";
-        heading.textContent = group;
-        box = document.createElement("div");
-        body.append(heading, box);
-      }
-      const row = document.createElement("label");
-      row.className = "setting-row";
-      const name = document.createElement("span");
-      name.textContent = field.restart
-        ? `${field.label} (after restart)`
-        : field.label;
-      const input = document.createElement("input");
-      input.className = "save-input";
-      input.autocomplete = "off";
-      if (field.secret) {
-        input.type = "password";
-        input.placeholder = field.set ? "saved (type to replace)" : "not set";
-      } else {
-        input.type = field.kind === "number" ? "number" : "text";
-        if (field.kind === "number") {
-          input.step = "any";
-          if (field.min !== undefined) input.min = String(field.min);
-        }
-        input.placeholder = `default: ${field.def}`;
-        input.value = field.value;
-      }
-      input.title = field.env;
-      inputs.set(field.env, input);
-      shown.set(field.env, input.value);
-      row.append(name, input);
-      if (field.secret && field.set) {
-        const clear = document.createElement("button");
-        clear.type = "button";
-        clear.className = "tools-btn";
-        clear.textContent = "clear";
-        clear.addEventListener("click", () => {
-          clearing.add(field.env);
-          input.placeholder = "will be cleared on save";
-        });
-        row.append(clear);
-      }
-      box.append(row);
+    body.append(theming, where);
+    for (const [group, members] of groupFields(fields)) {
+      body.append(make("h2", "setting-group", group));
+      for (const field of members) body.append(row(field));
     }
-    const save = document.createElement("button");
-    save.className = "save-btn";
-    save.textContent = "save";
-    save.addEventListener("click", () => {
-      const values: Record<string, string> = {};
-      // Only what changed, so a stale page cannot revert other settings.
-      for (const [env, input] of inputs) {
-        if (input.value !== (shown.get(env) ?? "")) values[env] = input.value;
-      }
-      status.textContent = "saving…";
-      send({ type: "env_set", values, clear: [...clearing] });
-    });
-    const row = document.createElement("div");
-    row.className = "save-row";
-    row.append(save, status);
-    body.append(row);
+    body.append(bar);
+    syncBar();
   }
 
+  save.addEventListener("click", () => {
+    status.textContent = "Saving…";
+    status.classList.remove("error");
+    send({ type: "env_set", values: changed(), clear: [...clearing] });
+  });
+  discard.addEventListener("click", () => {
+    status.textContent = "";
+    render();
+  });
   for (const opener of openers) {
     opener.addEventListener("click", () => send({ type: "env_get" }));
   }
@@ -126,12 +186,14 @@ export function createEnvPanel(
       if (message.type !== "env") return false;
       // A refused save keeps what was typed, so it can be corrected.
       if (message.error) {
-        status.textContent = `not saved: ${message.error}`;
+        status.textContent = `Not saved: ${message.error}`;
+        status.classList.add("error");
         return true;
       }
-      where.textContent = `Saved to ${message.path ?? ""}. Changes apply at once. Empty means the default.`;
-      render(message.fields ?? []);
-      status.textContent = message.saved ? "saved ✓" : "";
+      where.textContent = `Saved to ${message.path ?? ""}. Changes apply at once; an empty box means the default.`;
+      fields = message.fields ?? [];
+      status.textContent = message.saved ? "Saved." : "";
+      render();
       return true;
     },
   };

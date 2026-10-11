@@ -1,6 +1,6 @@
 import type { CallPurpose } from "../../src/core/errors.ts";
 import type { HistoryEntry } from "./log/history.ts";
-import type { HooksFields } from "./settings/hooks-panel.ts";
+import type { HooksFields } from "./settings/hooks/hooks-panel.ts";
 
 /** The fields of a message from the server that the page reads (see the protocol in `src/web/server.ts`). */
 export interface ResultMessage {
@@ -55,6 +55,8 @@ export interface ServerMessage extends ResultMessage, HooksFields {
   done?: boolean;
   /** `todos`: the agent's todo list. */
   todos?: { content: string; status: string }[];
+  /** `tool`: the call's arguments; `tool_result`: its whole result (both clipped), for the line's details. */
+  detail?: string;
   /** `state`: a line is running on the server, and whether it can be steered. */
   running?: boolean;
   steerable?: boolean;

@@ -161,3 +161,13 @@ export function formatPicture(picture: Picture): string {
   const kb = Math.max(1, Math.round(picture.bytes / 1000));
   return `📷 ${picture.label}${size} · ${kb} KB`;
 }
+
+/** Most characters of a tool call's arguments or result the web page is sent for its details. */
+const DETAIL_CHARS = 4000;
+
+/** A tool call's arguments or result for the page's expandable details: clipped, with how much was left out. */
+export function clipDetail(text: string | undefined): string | undefined {
+  if (text === undefined || text === "") return undefined;
+  if (text.length <= DETAIL_CHARS) return text;
+  return `${text.slice(0, DETAIL_CHARS)}\n… (${text.length - DETAIL_CHARS} more characters)`;
+}

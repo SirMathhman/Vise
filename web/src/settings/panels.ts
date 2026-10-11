@@ -1,3 +1,5 @@
+import { parseSessionList, renderSessionList, type SavedSession } from "./sessions-list.ts";
+
 export interface PanelActions {
   resumeSession(name: string): void;
   deleteSession(name: string): void;
@@ -11,7 +13,10 @@ export interface Panels {
   populateSessionsPanel(text: string): void;
   populateToolsPanel(text: string): void;
   removeProfilePlaceholder(): void;
-  sessions(): { id: string; name: string }[];
+  /** The profile files changed: the header choices become `default` and these, keeping the active one. */
+  syncProfileOptions(names: string[]): void;
+  /** The saved sessions, newest first. */
+  sessions(): SavedSession[];
   toolNames(): string[];
   /** The category a tool was listed under (set by the last tools listing). */
   toolCategory(name: string): string | undefined;
@@ -27,6 +32,16 @@ export function createPanels(actions: PanelActions): Panels {
   const sessionsList = document.getElementById(
     "sessions-list",
   ) as HTMLUListElement;
+  const sessionsFilter = document.getElementById(
+    "sessions-filter",
+  ) as HTMLInputElement;
+  let saved: SavedSession[] = [];
+  const drawSessions = (): void =>
+    renderSessionList(sessionsList, saved, sessionsFilter.value, {
+      resume: actions.resumeSession,
+      remove: actions.deleteSession,
+    });
+  sessionsFilter.addEventListener("input", drawSessions);
 
   const categories = new Map<string, string>();
   /** The tools of the last listing, in order: the data source for `toolNames()` (never the DOM). */
@@ -39,16 +54,15 @@ export function createPanels(actions: PanelActions): Panels {
     populateProfileSelect: (text) => populateProfileSelect(profileSelect, text),
     populateReasoningSelect: (text) =>
       populateReasoningSelect(reasoningSelect, text),
-    populateSessionsPanel: (text) =>
-      populateSessionsPanel(sessionsList, text, actions),
+    populateSessionsPanel(text) {
+      saved = parseSessionList(text);
+      drawSessions();
+    },
     populateToolsPanel: (text) =>
       populateToolsPanel(toolsList, text, categories, names),
     removeProfilePlaceholder: () => removeProfilePlaceholder(profileSelect),
-    sessions: () =>
-      Array.from(
-        sessionsList.querySelectorAll<HTMLElement>(".session-name"),
-        (el) => ({ id: el.dataset.id ?? "", name: el.textContent ?? "" }),
-      ),
+    syncProfileOptions: (names) => syncProfileOptions(profileSelect, names),
+    sessions: () => [...saved],
     toolNames: () => [...names],
   };
 }
@@ -207,9 +221,11 @@ function populateToolsPanel(
     if (category !== undefined) categories.set(name, category);
     appendToolItem(list, name, enabled);
   }
-  if (count === 0)
-    list.appendChild(document.createElement("li")).textContent =
-      "no tools available";
+  if (count === 0) {
+    const empty = list.appendChild(document.createElement("li"));
+    empty.className = "list-empty";
+    empty.textContent = "No tools available.";
+  }
   syncCategoryToggles(list);
 }
 
@@ -247,40 +263,20 @@ function populateProfileSelect(
   else if (!activeFound && count > 0) addProfilePlaceholder(select);
 }
 
-function populateSessionsPanel(
-  list: HTMLUListElement,
-  listText: string,
-  actions: PanelActions,
-): void {
-  list.textContent = "";
-  let count = 0;
-  for (const line of listText.split("\n")) {
-    // Rows look like `  <name>  (<uuid>)`; the id is what /resume and /delete take.
-    const row = /^ {2}(.+?) {2}\(([0-9a-f-]+)\)$/.exec(line);
-    if (!row) continue;
-    const name = row[1] ?? "";
-    const id = row[2] ?? "";
-    count++;
-    const item = document.createElement("li");
-    item.className = "session-row";
-    const label = document.createElement("span");
-    label.className = "session-name";
-    label.textContent = name;
-    label.dataset.id = id;
-    label.title = id;
-    label.addEventListener("click", () => actions.resumeSession(id));
-    item.appendChild(label);
-    const del = document.createElement("button");
-    del.className = "session-delete";
-    del.textContent = "×";
-    del.title = `delete ${name} (${id})`;
-    del.addEventListener("click", () => actions.deleteSession(id));
-    item.appendChild(del);
-    list.appendChild(item);
+/** Rebuild the profile choices from the files (plus the built-in "default"), keeping the selection. */
+function syncProfileOptions(select: HTMLSelectElement, names: string[]): void {
+  const current = select.value;
+  const placeholder = select.querySelector('option[value=""]');
+  select.textContent = "";
+  if (placeholder) select.appendChild(placeholder);
+  for (const name of ["default", ...names.filter((n) => n !== "default")]) {
+    select.appendChild(new Option(name, name));
   }
-  if (count === 0)
-    list.appendChild(document.createElement("li")).textContent =
-      "no saved sessions";
+  if ([...select.options].some((o) => o.value === current)) select.value = current;
+  else {
+    addProfilePlaceholder(select);
+    select.value = "";
+  }
 }
 
 function appendPlaceholder(

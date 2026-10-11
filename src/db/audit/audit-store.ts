@@ -7,6 +7,8 @@ import { openDb, tryDb } from "../open.ts";
 
 /** Longest wait before queued events are written. */
 const FLUSH_MS = 250;
+/** A call marked running and not updated for this long was left by a process that is gone. */
+const STALE_RUNNING_MS = 10 * 60_000;
 /** Longest text kept in one field; the rest is cut and the cut is noted. */
 const MAX_TEXT = 200_000;
 
@@ -73,6 +75,7 @@ export class SqliteAuditSink implements AuditSink {
     const written = opened.ok
       ? tryDb("write the audit log", this.path, () =>
           opened.value.transaction(() => {
+            this.sweepAbandoned(opened.value);
             for (const q of batch) this.write(opened.value, q.event, q.ts);
           })(),
         )
@@ -84,6 +87,18 @@ export class SqliteAuditSink implements AuditSink {
         `vise: audit log not written (${JSON.stringify(written.error)})`,
       );
     }
+  }
+
+  private swept = false;
+
+  /** Once per process: calls still marked running that nothing has touched for a while belong to a process that died. */
+  private sweepAbandoned(db: Database): void {
+    if (this.swept) return;
+    this.swept = true;
+    const cutoff = new Date(Date.now() - STALE_RUNNING_MS).toISOString();
+    db.query(
+      "UPDATE audit_model_calls SET state = 'abandoned' WHERE state = 'running' AND updated_at < ?",
+    ).run(cutoff);
   }
 
   /** Flush and stop (the session is closing). */
@@ -155,24 +170,59 @@ const WRITERS: { [K in AuditEvent["kind"]]: Writer<K> } = {
       e.depth ?? 0,
     );
   },
-  model_call: (db, e, at) => {
+  model_call_start: (db, e, at) => {
     db.query(
       `INSERT INTO audit_model_calls
-         (session_id, turn_id, ts, purpose, model, ms, prompt_tokens, content, reasoning, tool_calls, error)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(
-      at.session,
-      at.turn,
-      at.ts,
-      e.purpose,
-      e.model,
+         (session_id, turn_id, ts, purpose, model, ms, request, state, started_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 0, ?, 'running', ?, ?)`,
+    ).run(at.session, at.turn, at.ts, e.purpose, e.model, e.request, at.ts, at.ts);
+  },
+  model_call_progress: (db, e, at) => {
+    db.query(
+      `UPDATE audit_model_calls
+          SET raw = ?, raw_reasoning = ?, completion_tokens = ?, updated_at = ?
+        WHERE session_id = ? AND request = ? AND state = 'running'`,
+    ).run(clip(e.raw), clip(e.rawReasoning), e.completionTokens, at.ts, at.session, e.request);
+  },
+  model_call: (db, e, at) => {
+    const state = e.error === undefined ? "done" : e.stopReason === "loop" || e.stopReason === "token_cap" || e.stopReason === "interrupted" ? "stopped" : "error";
+    const values = [
       Math.round(e.ms),
       e.promptTokens ?? null,
       clipped(e.content),
       clipped(e.reasoning),
       e.toolCalls ?? null,
       clipped(e.error),
-    );
+      state,
+      at.ts,
+      clipped(e.raw),
+      clipped(e.rawReasoning),
+      e.completionTokens ?? null,
+      e.finishReason ?? null,
+      e.stopReason ?? null,
+      e.loop?.period ?? null,
+      e.loop?.repeats ?? null,
+    ];
+    const updated =
+      e.request === undefined
+        ? 0
+        : db
+            .query(
+              `UPDATE audit_model_calls
+                  SET ms = ?, prompt_tokens = ?, content = ?, reasoning = ?, tool_calls = ?, error = ?,
+                      state = ?, updated_at = ?, raw = ?, raw_reasoning = ?, completion_tokens = ?,
+                      finish_reason = ?, stop_reason = ?, loop_period = ?, loop_repeats = ?
+                WHERE session_id = ? AND request = ? AND state = 'running'`,
+            )
+            .run(...values, at.session, e.request).changes;
+    if (updated > 0) return;
+    db.query(
+      `INSERT INTO audit_model_calls
+         (session_id, turn_id, ts, purpose, model, request, ms, prompt_tokens, content, reasoning,
+          tool_calls, error, state, updated_at, raw, raw_reasoning, completion_tokens,
+          finish_reason, stop_reason, loop_period, loop_repeats)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(at.session, at.turn, at.ts, e.purpose, e.model, e.request ?? null, ...values);
   },
   tool_call: (db, e, at) => {
     index(db, at, "tool", e.result);

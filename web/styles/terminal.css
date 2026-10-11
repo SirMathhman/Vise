@@ -1,0 +1,54 @@
+/* The integrated terminal: a resizable panel along the bottom of the page. */
+.terminal-panel {
+  flex: 0 0 auto;
+  height: 16rem;
+  min-height: 80px;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.terminal-grip {
+  flex: 0 0 5px;
+  margin-top: -3px;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.terminal-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 2px var(--sp-3);
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.terminal-title {
+  flex: 1;
+  color: var(--dim);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.terminal-view {
+  flex: 1;
+  min-height: 0;
+  padding: var(--sp-1) 0 0 var(--sp-2);
+  overflow: hidden;
+}
+
+.xterm-viewport {
+  scrollbar-width: none;
+}
+
+.xterm-viewport::-webkit-scrollbar {
+  display: none;
+}
+
+/* No folder, no shell; the extension's sidebar has no terminal either. */
+.no-folder #terminal,
+.sidebar #terminal {
+  display: none;
+}

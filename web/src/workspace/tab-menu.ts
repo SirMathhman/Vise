@@ -1,6 +1,8 @@
 export interface MenuItem {
   label: string;
   disabled?: boolean;
+  /** Destroys something (shown in red). */
+  danger?: boolean;
   run(): void;
 }
 
@@ -20,7 +22,8 @@ export function showMenu(x: number, y: number, items: MenuItem[]): void {
   menu.setAttribute("role", "menu");
   for (const item of items) {
     const row = document.createElement("button");
-    row.className = "ctx-item";
+    row.className = item.danger ? "ctx-item danger" : "ctx-item";
+    row.type = "button";
     row.setAttribute("role", "menuitem");
     row.textContent = item.label;
     row.disabled = item.disabled === true;

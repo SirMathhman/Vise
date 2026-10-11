@@ -179,7 +179,15 @@ describe("what the capture points record", () => {
       globalThis.fetch = real;
     }
     expect(sink.events).toMatchObject([
-      { kind: "model_call", purpose: "goal", content: "hi", promptTokens: 7 },
+      { kind: "model_call_start", purpose: "goal", request: 1 },
+      {
+        kind: "model_call",
+        purpose: "goal",
+        content: "hi",
+        promptTokens: 7,
+        request: 1,
+        raw: "hi",
+      },
     ]);
   });
 

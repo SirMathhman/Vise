@@ -66,6 +66,8 @@ function describeError(error: ViseError): string {
       return `the server's reply could not be read: ${error.body.slice(0, 200)}`;
     case "storage":
       return `storage failed: ${error.cause}`;
+    case "runaway":
+      return `the call was stopped as a runaway: ${error.detail}`;
     case "interrupted":
       return "the call was interrupted";
   }

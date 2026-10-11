@@ -1,0 +1,501 @@
+/* The conversation: lines, markdown, tool calls, thinking, subagent boxes, progress. */
+.log {
+  flex: 1;
+  overflow-y: auto;
+  overflow-anchor: none; /* the page follows the newest line itself; the browser's own anchoring would fight it */
+  padding: var(--sp-4) var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.line {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.line.user {
+  align-self: flex-end;
+  max-width: min(85%, 46rem);
+  padding: var(--sp-2) var(--sp-3);
+  background: color-mix(in srgb, var(--user) 12%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--user) 30%, transparent);
+  border-radius: var(--radius-md) var(--radius-md) var(--radius-sm) var(--radius-md);
+  color: var(--text);
+}
+
+.line.steer::before {
+  content: "↪ Steering · ";
+  color: var(--dim);
+  font-size: var(--fs-sm);
+}
+
+.line.assistant {
+  color: var(--text);
+  white-space: normal;
+  line-height: 1.6;
+}
+
+.line.assistant.subagent {
+  color: var(--dim);
+  margin-left: var(--sp-5);
+  padding-left: var(--sp-2);
+  border-left: 2px solid var(--border);
+}
+
+.line.assistant > :first-child {
+  margin-top: 0;
+}
+
+.line.assistant > :last-child {
+  margin-bottom: 0;
+}
+
+.line.assistant p,
+.line.assistant ul,
+.line.assistant ol,
+.line.assistant blockquote,
+.line.assistant pre,
+.line.assistant table {
+  margin: 0.5em 0;
+}
+
+.line.assistant ul,
+.line.assistant ol {
+  padding-left: var(--sp-5);
+}
+
+.line.assistant h1,
+.line.assistant h2,
+.line.assistant h3,
+.line.assistant h4 {
+  margin: 0.9em 0 0.3em;
+  line-height: 1.25;
+}
+
+.line.assistant h1 {
+  font-size: 1.3em;
+}
+
+.line.assistant h2 {
+  font-size: 1.15em;
+}
+
+.line.assistant h3,
+.line.assistant h4 {
+  font-size: 1em;
+}
+
+.line.assistant a,
+.md-view a {
+  color: var(--accent);
+}
+
+.line.assistant code {
+  font-size: 0.92em;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.05em 0.3em;
+}
+
+.line.assistant pre {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--sp-2) var(--sp-3);
+  overflow-x: auto;
+}
+
+.line.assistant pre code {
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.line.assistant blockquote {
+  border-left: 3px solid var(--border);
+  padding-left: var(--sp-3);
+  color: var(--dim);
+}
+
+.line.assistant table {
+  border-collapse: collapse;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.line.assistant th,
+.line.assistant td {
+  border: 1px solid var(--border);
+  padding: var(--sp-1) var(--sp-2);
+}
+
+.line.assistant th {
+  background: var(--panel);
+}
+
+/* Status lines: small and quiet. */
+.line.system {
+  color: var(--dim);
+  font-size: var(--fs-sm);
+}
+
+.line.error {
+  color: var(--error);
+}
+
+.line.system.goal-info {
+  color: var(--dim);
+}
+
+.line.system.goal-ok {
+  color: var(--goal-ok);
+}
+
+.line.system.goal-warn {
+  color: var(--goal-warn);
+}
+
+.line.system.goal-ask {
+  color: var(--goal-ask);
+  font-weight: 600;
+}
+
+/* A tool call: what the agent did, in code type. */
+.line.tool {
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+}
+
+.line.burst {
+  color: var(--user);
+  font-weight: 600;
+}
+
+.line.tool.burst {
+  margin-left: var(--sp-5);
+  border-left: 2px solid var(--user);
+  padding-left: var(--sp-2);
+}
+
+/* Thinking: collapsed (the default), only the header shows; the text appears when opened. */
+.line.thinking {
+  color: transparent;
+  user-select: none;
+  font-style: italic;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: clip;
+}
+
+.line.thinking::before {
+  content: "▸  Thinking" attr(data-meta);
+  color: var(--dim);
+  font-style: normal;
+}
+
+/* Rendered markdown is made of blocks, which would keep their height while transparent. */
+.line.thinking.rendered:not(.open) > * {
+  display: none;
+}
+
+.line.thinking.open {
+  color: var(--dim);
+  user-select: text;
+  white-space: pre-wrap;
+  overflow: visible;
+  padding-left: var(--sp-3);
+  border-left: 2px solid var(--border);
+}
+
+.line.thinking.open::before {
+  content: "▾  Thinking" attr(data-meta) "\A";
+  white-space: pre;
+}
+
+/* Markdown in a finished thinking block: normal flow instead of the verbatim line breaks. */
+.line.thinking.rendered.open {
+  white-space: normal;
+}
+
+.line.thinking.rendered.open > * {
+  margin: 0.4em 0;
+}
+
+/* A verdict with its evidence folded away until opened. */
+.line.collapsed > summary,
+.box > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.line.collapsed > summary::-webkit-details-marker,
+.box > summary::-webkit-details-marker {
+  display: none;
+}
+
+.line.collapsed > summary::before {
+  content: "▸ ";
+}
+
+.line.collapsed[open] > summary::before {
+  content: "▾ ";
+}
+
+.line.collapsed .collapsed-detail {
+  color: var(--dim);
+  margin: 0.2em 0 0 1.2em;
+  white-space: pre-wrap;
+}
+
+/* A subagent's work: a box (nested boxes nest), collapsed when the subagent is done. */
+.box {
+  border-left: 2px solid var(--accent);
+  padding-left: var(--sp-3);
+  margin: var(--sp-1) 0;
+}
+
+.box > summary::before {
+  content: "▾  ";
+  color: var(--dim);
+}
+
+.box:not([open]) > summary::before {
+  content: "▸  ";
+}
+
+.box.done > summary {
+  opacity: 0.8;
+}
+
+/* A collapsed box has no footer to show, so its header carries the context fill instead. */
+.box:not([open]) > .box-title::after {
+  content: attr(data-meta);
+  color: var(--dim);
+  font-style: normal;
+}
+
+.box-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding-top: var(--sp-1);
+}
+
+.box-context {
+  color: var(--dim);
+  font-size: var(--fs-sm);
+  padding-top: var(--sp-1);
+}
+
+.box-context:empty {
+  display: none;
+}
+
+/* The model is still writing something long (a big tool call) that is not shown while it streams. */
+.line.generating {
+  color: var(--dim);
+  font-style: italic;
+  font-size: var(--fs-sm);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.line.generating::before {
+  content: "● ";
+}
+
+/* Where the conversation was folded into a summary. */
+.line.compaction {
+  color: var(--dim);
+  font-style: italic;
+  font-size: var(--fs-sm);
+}
+
+/* llama.cpp prompt processing: a bar that fills while the prompt is read. */
+.line.progress {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--dim);
+  font-size: var(--fs-sm);
+}
+
+.progress-bar {
+  position: relative;
+  flex: 0 0 12rem;
+  height: 0.375rem;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, currentColor 18%, transparent);
+  overflow: hidden;
+}
+
+.progress-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 0.15s linear;
+}
+
+.progress-label {
+  font-variant-numeric: tabular-nums;
+}
+
+.line.image img {
+  display: block;
+  max-width: 100%;
+  max-height: 180px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: zoom-in;
+}
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--backdrop);
+  cursor: zoom-out;
+}
+
+.lightbox img {
+  max-width: 96vw;
+  max-height: 96vh;
+  object-fit: contain;
+}
+
+/* ---- The bar under the chat: context fill and "↓ latest" ---- */
+.context-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-5);
+  background: var(--bg);
+}
+
+.context {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 2px var(--sp-1);
+  font: inherit;
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--dim);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.context:hover {
+  color: var(--text);
+}
+
+.context-meter {
+  position: relative;
+  width: 4rem;
+  height: 0.3rem;
+  border-radius: var(--radius-pill);
+  background: var(--border);
+  overflow: hidden;
+}
+
+.context-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  background: var(--accent);
+  border-radius: inherit;
+}
+
+.context.warning {
+  color: var(--error);
+}
+
+.context.warning .context-fill {
+  background: var(--error);
+}
+
+.context-text:empty {
+  display: none;
+}
+
+.jump-latest {
+  margin-left: auto;
+  padding: 2px var(--sp-3);
+  font: inherit;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--on-accent);
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  .log {
+    padding-inline: var(--sp-3);
+  }
+
+  .context-bar {
+    padding-inline: var(--sp-3);
+  }
+}
+
+/* A tool line that opens to show its arguments and result. */
+.line.tool.expandable {
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.line.tool.expandable::before {
+  content: "▸ ";
+  color: var(--dim);
+}
+
+.line.tool.expandable[aria-expanded="true"]::before {
+  content: "▾ ";
+}
+
+.line.tool.expandable:hover {
+  background: var(--highlight);
+}
+
+.tool-detail {
+  margin: 0 0 var(--sp-1) var(--sp-4);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: var(--fs-sm);
+}
+
+.tool-detail-label {
+  color: var(--dim);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.tool-detail-label + pre {
+  margin: var(--sp-1) 0 var(--sp-2);
+  max-height: 20rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.tool-detail pre:last-child {
+  margin-bottom: 0;
+}

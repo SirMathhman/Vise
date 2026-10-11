@@ -180,6 +180,8 @@ export interface SearchHit {
 export interface SessionEntry {
   id: string;
   name: string;
+  /** When it was last saved (ISO 8601), when the store knows. */
+  updated?: string;
 }
 
 /**

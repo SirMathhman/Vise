@@ -1,5 +1,6 @@
+import "../styles/index.css";
 import { createAttachments } from "./composer/attachments.ts";
-import { createHooksPanel } from "./settings/hooks-panel.ts";
+import { createHooksPanel } from "./settings/hooks/hooks-panel.ts";
 import type { ResultMessage, ServerMessage } from "./server-message.ts";
 import { replayHistory, showImage } from "./log/history.ts";
 import { appendPicture } from "./log/lightbox.ts";
@@ -11,16 +12,28 @@ import { createGenerating } from "./status/generating.ts";
 import { createPromptProgress } from "./status/prompt-progress.ts";
 import { createBusy } from "./composer/busy.ts";
 import { createSteerUi } from "./composer/steer-ui.ts";
-import { bindToolToggles } from "./settings/tool-toggles.ts";
+import { bindToolToggles, filterToolList } from "./settings/tool-toggles.ts";
 import { createSettingsPanels } from "./settings/settings-panels.ts";
 import { createWorkspace } from "./workspace/workspace.ts";
 import { createTerminalPanel } from "./terminal/terminal-panel.ts";
-import { setupComposer } from "./composer/composer.ts";
+import { clearComposer, setupComposer } from "./composer/composer.ts";
 import { createPanels } from "./settings/panels.ts";
-import { registerHeaderPanels } from "./status/panel-switch.ts";
-import { createProfileEditor } from "./settings/profile-editor.ts";
+import { createPanelGroup, isNoFolder, registerPages } from "./status/panel-switch.ts";
+import { createProfileEditor } from "./settings/profiles/profile-editor.ts";
 import { createLogView } from "./log/log-view.ts";
 import { renderMarkdown } from "./markdown.ts";
+import { createConnection } from "./connection.ts";
+import { toast } from "./feedback/toast.ts";
+import { createGitPanel } from "./git/git-panel.ts";
+import { createMenubar } from "./menubar/menubar.ts";
+import { appMenus } from "./menubar/app-menus.ts";
+import { createWorkflowPicker } from "./menubar/workflow-picker.ts";
+import { bindShortcuts, showShortcuts } from "./menubar/shortcuts.ts";
+import { openNoFolder, pickFolder } from "./workspace/session-root.ts";
+import { createInitialLoad } from "./initial-load.ts";
+import { showContextFill } from "./status/context-meter.ts";
+import { createToolDetails } from "./log/tool-details.ts";
+import { createCallInspector } from "./log/call-inspector.ts";
 
 function requiredElement<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -28,43 +41,36 @@ function requiredElement<T extends HTMLElement>(id: string): T {
   return element as T;
 }
 
-const log = requiredElement<HTMLElement>("log");
-const input = requiredElement<HTMLInputElement>("input");
-const commandSuggestions = requiredElement<HTMLUListElement>(
-  "command-suggestions",
-);
+const input = requiredElement<HTMLTextAreaElement>("input");
 const send = requiredElement<HTMLButtonElement>("send");
 const stopBtn = requiredElement<HTMLButtonElement>("stop");
 const status = requiredElement<HTMLElement>("status");
 const modelSelect = requiredElement<HTMLSelectElement>("model");
 const profileSelect = requiredElement<HTMLSelectElement>("profile");
 const reasoningSelect = requiredElement<HTMLSelectElement>("reasoning");
-const newBtn = requiredElement<HTMLButtonElement>("new-btn");
-const burstBtn = requiredElement<HTMLButtonElement>("burst-btn");
+const burstBadge = requiredElement<HTMLElement>("burst-badge");
 const saveName = requiredElement<HTMLInputElement>("save-name");
-const saveBtn = requiredElement<HTMLButtonElement>("save-btn");
-const filesBtn = requiredElement<HTMLButtonElement>("files-btn");
-const contextEl = requiredElement<HTMLElement>("context");
+const sidebar = new URLSearchParams(location.search).get("ui") === "sidebar";
 
 const { transcript, announce } = createLogView(
-  log,
+  requiredElement("log"),
   requiredElement("jump-latest"),
   requiredElement("sr-status"),
 );
 const attachments = createAttachments({
-  input: requiredElement("input"),
+  input,
   dropZone: requiredElement("log").closest("main") ?? document.body,
   list: requiredElement("attachments"),
   button: requiredElement("attach"),
   picker: requiredElement("attach-picker"),
-  say: (message) => transcript.addLine("error", message),
+  say: (message) => toast(message, "error"),
 });
-const socket = new WebSocket(
-  `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws${location.search}`,
-);
-const sendMessage = (msg: Record<string, unknown>): void => {
-  if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(msg));
-};
+const connection = createConnection({
+  onOpen,
+  onClose,
+  onMessage,
+});
+const sendMessage = connection.send;
 const askUi = createAskUi(
   {
     box: requiredElement("ask"),
@@ -83,20 +89,14 @@ const hooksPanel = createHooksPanel(
   (hooks) => profileEditor.showHooks(hooks),
 );
 const settingsPanels = createSettingsPanels(sendMessage, () => isBusy());
-const workspace = createWorkspace(sendMessage, renderMarkdown, setStatus);
-const terminalPanel = createTerminalPanel(sendMessage, setStatus);
-/** The parts of the page that own some of the server messages. */
-const goalUi = createGoalUi(
-  transcript.addLine,
-  transcript.addCollapsed,
-  sendMessage,
-);
-const promptProgress = createPromptProgress(
-  transcript.addLine,
-  transcript.removeLine,
-);
+const showError = (text: string): void => toast(text, "error");
+const workspace = createWorkspace(sendMessage, renderMarkdown, showError);
+const terminalPanel = createTerminalPanel(sendMessage, showError);
+const goalUi = createGoalUi(transcript.addLine, transcript.addCollapsed, sendMessage);
+const promptProgress = createPromptProgress(transcript.addLine, transcript.removeLine);
 const generating = createGenerating(transcript.addLine, transcript.removeLine);
 const compactionMarker = createCompactionMarker(transcript.addLine);
+const composerHint = requiredElement("composer-hint");
 const steerUi = createSteerUi({
   sendMessage,
   notice: (text) => transcript.addLine("system", text),
@@ -105,74 +105,55 @@ const steerUi = createSteerUi({
   queueBtn: requiredElement("queue-btn"),
 });
 const todoUi = createTodoUi(requiredElement("todos"));
-const serverPanels = [
-  hooksPanel,
-  settingsPanels,
-  terminalPanel, // before the workspace: both read the `root` message
-  workspace,
-  goalUi,
-  steerUi,
-  todoUi,
-];
+const gitPanel = createGitPanel(requiredElement("git-panel"), sendMessage, (path) =>
+  workspace.openFile(path),
+);
+const interrupt = (): void => sendMessage({ type: "interrupt" });
+const toolDetails = createToolDetails();
+const inspector = createCallInspector(sendMessage, interrupt);
+// The pulsing "Writing…" line is the way in to what the model is writing.
+requiredElement("log").addEventListener("click", (event) => {
+  if ((event.target as Element).closest(".line.generating")) inspector.open();
+});
+const workflowPicker = createWorkflowPicker(
+  sendMessage,
+  (line) => sendLine(line),
+  requiredElement("workflow-run"),
+  interrupt,
+);
 
-let pendingModelList = false;
-let pendingProfileList = false;
-let pendingReasoningList = false;
-let pendingToolList = false;
-let pendingSessionList = false;
-let pendingBurstSync = false;
-// The tools panel refresh is a queued line; its reply is matched by id because
-// the connection also carries the model's turns.
-const toolRefreshes = new Set<string>();
-// Tool toggles are lines too, matched by id: one made while a turn runs answers after the turn,
-// and must be neither taken for the turn's result nor change the busy state.
-const toolToggles = new Set<string>();
-// Whitelist reads/writes bypass the turn queue (`profile_tools` messages).
-const whitelistRequests = new Map<string, { name: string; save: boolean }>();
-let nextRequestId = 0;
-
-/** Send a line whose reply is matched by id (it may arrive after a running turn's). */
-function requestTracked(text: string, ids: Set<string>): void {
-  const id = `ed${nextRequestId++}`;
-  ids.add(id);
-  socket.send(JSON.stringify({ type: "line", text, id }));
-}
-
-const requestToolRefresh = (): void => requestTracked("/tool", toolRefreshes);
-
-function requestWhitelist(name: string, save: boolean, tools?: string[]): void {
-  const id = `ed${nextRequestId++}`;
-  whitelistRequests.set(id, { name, save });
-  socket.send(
-    JSON.stringify({
-      type: "profile_tools",
-      id,
-      name,
-      read: !save,
-      tools: tools ?? null,
-    }),
-  );
-}
-
-function setStatus(text: string): void {
+/** Connection and work state, in the top bar's pill. */
+function setStatus(state: "connecting" | "connected" | "working" | "disconnected", text: string): void {
+  status.dataset["state"] = state;
   status.textContent = text;
 }
+
+let burstOn = false;
+const setBurstPressed = (on: boolean): void => {
+  burstOn = on;
+  burstBadge.classList.toggle("hidden", !on);
+};
 
 const busyUi = createBusy({
   input,
   send,
   stop: stopBtn,
-  locked: [modelSelect, profileSelect, reasoningSelect, burstBtn, newBtn],
-  setSteering: (on) => steerUi.setRunning(on),
+  locked: [modelSelect, profileSelect, reasoningSelect],
+  setSteering: (on) => {
+    steerUi.setRunning(on);
+    composerHint.classList.toggle("hidden", !on);
+  },
   hideSuggestions: () => hideSuggestions(),
+  onRunning: (running) => {
+    if (!connection.isOpen()) return;
+    setStatus(running ? "working" : "connected", running ? "Working…" : "Ready");
+    if (!running) {
+      workflowPicker.running(null);
+      if (git.isOpen()) gitPanel.refresh(); // the agent may have changed files
+    }
+  },
 });
-const {
-  state: busy,
-  isBusy,
-  render: renderBusy,
-  endLoading,
-  reset: resetBusy,
-} = busyUi;
+const { state: busy, isBusy, render: renderBusy, reset: resetBusy } = busyUi;
 
 /**
  * Send a line. While a turn runs, plain words steer it (reach the agent before
@@ -183,18 +164,16 @@ function sendLine(text: string, queue = false): void {
   const running = steerUi.running;
   const images = attachments.take();
   // A picture alone is a message too.
-  const body =
-    text.trim() || (images.length > 0 ? "(see the attached image)" : "");
+  const body = text.trim() || (images.length > 0 ? "(see the attached image)" : "");
   if (!body) return;
   hideSuggestions();
   const show = (cls = "user"): void => {
     transcript.addLine(cls, body);
-    for (const image of images)
-      appendPicture(transcript, image.uri, image.label);
+    for (const image of images) appendPicture(transcript, image.uri, image.label);
   };
   // Commands about the queue itself act at once, whatever is running.
   if (/^\/(steer|queue)(\s|$)/.test(body)) {
-    socket.send(JSON.stringify({ type: "line", text: body }));
+    sendMessage({ type: "line", text: body });
     return;
   }
   if (running && (queue || body.startsWith("/"))) {
@@ -209,47 +188,64 @@ function sendLine(text: string, queue = false): void {
   busy.submitting = true;
   renderBusy();
   show();
-  socket.send(JSON.stringify({ type: "line", text: body, images }));
+  workflowPicker.running(body);
+  sendMessage({ type: "line", text: body, images });
 }
 
 const panels = createPanels({
-  resumeSession: (name) => sendLine(`/resume ${name}`),
-  deleteSession: (name) => sendLine(`/delete ${name}`),
+  resumeSession: (id) => {
+    pages.close();
+    sendLine(`/resume ${id}`);
+  },
+  deleteSession: (id) => sendLine(`/delete ${id}`),
+});
+const load = createInitialLoad({
+  send: sendMessage,
+  panels,
+  transcript,
+  busy: busyUi,
+  setBurstPressed,
+  profileSelect,
+  reasoningSelect,
+  onSessions: () => menubar.refresh(),
 });
 const profileEditor = createProfileEditor({
+  send: sendMessage,
   loadHooks: () => hooksPanel.refresh(),
   editHook: (line) => hooksPanel.edit(line),
-  loadWhitelist(name) {
-    requestWhitelist(name, false);
-  },
-  saveWhitelist(name, tools) {
-    requestWhitelist(name, true, tools);
-  },
+  loadWhitelist: (name) => load.requestWhitelist(name, false),
+  saveWhitelist: (name, tools) => load.requestWhitelist(name, true, tools),
   toolNames: () => panels.toolNames(),
   toolCategory: (name) => panels.toolCategory(name),
-  profileNames: () =>
-    Array.from(profileSelect.options, (o) => o.value).filter(
-      (v) => v !== "" && v !== "default",
-    ),
   activeProfile: () => profileSelect.value,
+  profilesChanged: (names) => panels.syncProfileOptions(names),
 });
-function selectValues(select: HTMLSelectElement): string[] {
-  return Array.from(select.options)
-    .filter((option) => option.value && !option.disabled)
-    .map((option) => option.value);
-}
+load.setProfileEditor(profileEditor);
 
 const hideSuggestions = setupComposer(
   input,
-  commandSuggestions,
+  requiredElement<HTMLUListElement>("command-suggestions"),
   () => ({
-    models: selectValues(modelSelect),
-    profiles: selectValues(profileSelect),
+    models: load.selectValues(modelSelect),
+    profiles: load.selectValues(profileSelect),
     sessions: panels.sessions(),
     tools: panels.toolNames(),
   }),
   sendLine,
 );
+
+/** The parts of the page that own some of the server messages. */
+const serverPanels = [
+  hooksPanel,
+  profileEditor,
+  gitPanel,
+  settingsPanels,
+  terminalPanel, // before the workspace: both read the `root` message
+  workspace,
+  goalUi,
+  steerUi,
+  todoUi,
+];
 
 function saveSession(): void {
   const name = saveName.value.trim();
@@ -258,278 +254,163 @@ function saveSession(): void {
   sendLine(`/save ${name}`);
 }
 
-function renderContext(message: ResultMessage): void {
-  if (message.context) showContext("reply", message.context);
+function sendFromComposer(queue = false): void {
+  sendLine(input.value, queue);
+  clearComposer(input);
 }
-
-/** A model call's context fill: the header's for the main conversation, the open box's for a subagent. */
-function showContext(purpose: string | undefined, text: string): void {
-  if (purpose === "subagent") return transcript.setBoxMeta(text);
-  contextEl.textContent = text;
-  const match = text.match(/\(([\d.]+)%\)$/);
-  if (match) contextEl.classList.toggle("warning", Number(match[1]) >= 90);
-}
-
-function requestLine(text: string): void {
-  socket.send(JSON.stringify({ type: "line", text }));
-}
-
-const setBurstPressed = (on: boolean): void =>
-  burstBtn.setAttribute("aria-pressed", String(on));
-
-function handleToolRefresh(message: ResultMessage): boolean {
-  if (message.id === undefined || !toolRefreshes.delete(message.id))
-    return false;
-  if (message.ok && message.value) panels.populateToolsPanel(message.value);
-  return true;
-}
-
-function handleWhitelistReply(message: ServerMessage): void {
-  const request = message.id ? whitelistRequests.get(message.id) : undefined;
-  if (!request || !message.id) return;
-  whitelistRequests.delete(message.id);
-  if (message.ok) {
-    profileEditor.showWhitelist(request.name, message.tools ?? undefined);
-    if (request.save) profileEditor.showStatus("saved ✓");
-  } else {
-    const reason = message.error ?? "unknown error";
-    profileEditor.showStatus(`failed: ${reason}`, true);
-  }
-}
-
-function handleInitialResult(message: ResultMessage): boolean {
-  if (pendingBurstSync) {
-    // The session may already have burst on (e.g. after a page reload).
-    pendingBurstSync = false;
-    if (message.ok) setBurstPressed(message.value?.endsWith(" on") ?? false);
-    endLoading();
-    return true;
-  }
-  if (pendingModelList) {
-    pendingModelList = false;
-    if (message.ok && message.value) {
-      panels.populateModelSelect(message.value);
-      requestLine("/profile");
-    } else {
-      endLoading();
-      profileSelect.disabled = true;
-      transcript.addLine("error", message.error ?? "unknown error");
-    }
-    return true;
-  }
-  if (pendingProfileList) {
-    pendingProfileList = false;
-    if (message.ok && message.value) {
-      panels.populateProfileSelect(message.value);
-      requestLine("/tool");
-    } else {
-      pendingToolList = false;
-      endLoading();
-      transcript.addLine("error", message.error ?? "unknown error");
-    }
-    return true;
-  }
-  if (pendingToolList) {
-    pendingToolList = false;
-    if (message.ok && message.value) {
-      panels.populateToolsPanel(message.value);
-      requestLine("/reasoning");
-    } else {
-      endLoading();
-    }
-    return true;
-  }
-  if (pendingReasoningList) {
-    pendingReasoningList = false;
-    if (message.ok && message.value) {
-      panels.populateReasoningSelect(message.value);
-      requestLine("/resume");
-    } else {
-      endLoading();
-      reasoningSelect.disabled = true;
-      transcript.addLine("error", message.error ?? "unknown error");
-    }
-    return true;
-  }
-  if (pendingSessionList) {
-    pendingSessionList = false;
-    if (message.ok && message.value)
-      panels.populateSessionsPanel(message.value);
-    pendingBurstSync = true;
-    requestLine("/burst");
-    return true;
-  }
-  return false;
-}
-
-function handleToolToggleResult(message: ResultMessage): boolean {
-  if (message.id === undefined || !toolToggles.delete(message.id)) return false;
-  if (!message.ok)
-    transcript.addLine("error", message.error ?? "unknown error");
-  else if (!isBusy()) transcript.addLine("system", message.value ?? "");
-  requestToolRefresh();
-  return true;
-}
-
-function handleCommandResult(message: ResultMessage): void {
-  if (message.value === "started a new conversation") {
-    transcript.clear();
-    transcript.addLine("system", message.value);
-  } else if (message.value?.startsWith("resumed session ")) {
-    transcript.clear();
-    transcript.addLine("system", message.value);
-  } else if (message.value?.startsWith("saved session ")) {
-    transcript.addLine("system", message.value);
-    pendingSessionList = true;
-    workspace.sync();
-    requestLine("/resume");
-  } else if (message.value?.startsWith("deleted session ")) {
-    transcript.addLine("system", message.value);
-    pendingSessionList = true;
-    requestLine("/resume");
-  } else if (message.value?.startsWith("burst mode ")) {
-    const on = message.value.endsWith(" on");
-    setBurstPressed(on);
-    transcript.addLine("system", `burst: ${on ? "on" : "off"}`);
-  } else if (message.value?.startsWith("switched to model ")) {
-    modelSelect.value = message.value.slice("switched to model ".length);
-    transcript.addLine("system", `model: ${modelSelect.value}`);
-  } else if (message.value?.startsWith("profile set to ")) {
-    const name = message.value.slice("profile set to ".length);
-    panels.removeProfilePlaceholder();
-    profileSelect.value = name;
-    transcript.addLine("system", `profile: ${name}`);
-    requestToolRefresh();
-  } else if (message.value?.startsWith("reasoning effort set to ")) {
-    const name = message.value.slice("reasoning effort set to ".length);
-    const level = name.replace(" (template default)", "");
-    if (reasoningSelect.querySelector(`option[value="${level}"]`)) {
-      reasoningSelect.value = level;
-    }
-    transcript.addLine("system", `reasoning: ${level}`);
-  } else if (message.value === "profile cleared") {
-    panels.addProfilePlaceholder();
-    profileSelect.value = "";
-    transcript.addLine("system", "profile cleared");
-    requestToolRefresh();
-  } else if (!message.streamed && message.value) {
-    transcript.addLine("assistant", message.value);
-  }
-  if (message.compactionWarning) {
-    transcript.addLine("system", message.compactionWarning);
-  }
-}
-
-function handleResult(message: ResultMessage): void {
-  transcript.endBoxes(); // a turn that ended mid-subagent leaves no box open
-  // Answers to side requests leave the turn in flight (its stream, prompt and busy state) alone.
-  if (handleToolRefresh(message) || handleToolToggleResult(message)) return;
-  transcript.flushAssistant();
-  burstBtn.classList.remove("bursting");
-  transcript.setBurst(false);
-  askUi.hide();
-  // The log itself is not a live region (every token would be announced); say only that the reply ended.
-  announce(message.ok ? "Reply finished" : "Reply failed");
-  renderContext(message);
-  if (handleInitialResult(message)) return;
-  if (message.ok) handleCommandResult(message);
-  else transcript.addLine("error", message.error ?? "unknown error");
-}
-
-send.addEventListener("click", () => {
-  sendLine(input.value);
-  input.value = "";
-});
-requiredElement("steer-btn").addEventListener("click", () => {
-  sendLine(input.value);
-  input.value = "";
-});
-requiredElement("queue-btn").addEventListener("click", () => {
-  sendLine(input.value, true);
-  input.value = "";
-});
-stopBtn.addEventListener("click", () =>
-  socket.send(JSON.stringify({ type: "interrupt" })),
-);
+send.addEventListener("click", () => sendFromComposer());
+requiredElement("steer-btn").addEventListener("click", () => sendFromComposer());
+requiredElement("queue-btn").addEventListener("click", () => sendFromComposer(true));
+stopBtn.addEventListener("click", interrupt);
 modelSelect.addEventListener("change", () => {
-  if (!modelSelect.value) return;
-  pendingModelList = false;
-  sendLine(`/model ${modelSelect.value}`);
+  if (modelSelect.value) sendLine(`/model ${modelSelect.value}`);
 });
 profileSelect.addEventListener("change", () => {
-  if (!profileSelect.value) return;
-  pendingProfileList = false;
-  sendLine(`/profile ${profileSelect.value}`);
+  if (profileSelect.value) sendLine(`/profile ${profileSelect.value}`);
 });
 reasoningSelect.addEventListener("change", () => {
-  if (!reasoningSelect.value) return;
-  pendingReasoningList = false;
-  sendLine(`/reasoning ${reasoningSelect.value}`);
+  if (reasoningSelect.value) sendLine(`/reasoning ${reasoningSelect.value}`);
 });
-newBtn.addEventListener("click", () => sendLine("/new"));
-burstBtn.addEventListener("click", () => {
-  const on = burstBtn.getAttribute("aria-pressed") !== "true";
-  sendLine(`/burst ${on ? "on" : "off"}`);
-});
-// Header dropdown panels: at most one open; each says what to refresh on open.
-registerHeaderPanels({
-  settings: () => {
-    profileEditor.refresh();
-    hooksPanel.refresh();
-  },
-  // Turns auto-save in the background, so refresh the list when it opens.
-  // While a turn runs the list is left as it was (the refresh would queue behind the turn).
-  sessions: () => {
-    if (isBusy()) return;
-    pendingSessionList = true;
-    busy.loading = true;
-    renderBusy();
-    requestLine("/resume");
+requiredElement("compact-btn").addEventListener("click", () => sendLine("/compact"));
+requiredElement("context").addEventListener("click", () => sendLine("/context"));
+
+// The top bar: menus and dropdowns share one group (at most one open), pages replace the chat.
+const group = createPanelGroup();
+const toolsFilter = requiredElement<HTMLInputElement>("tools-filter");
+const toolsList = requiredElement<HTMLUListElement>("tools-list");
+const tools = group.register({
+  panel: requiredElement("tools-panel"),
+  onOpen: () => {
+    toolsFilter.value = "";
+    filterToolList(toolsList, "");
+    toolsFilter.focus();
   },
 });
-filesBtn.addEventListener("click", () => workspace.toggle());
-saveBtn.addEventListener("click", saveSession);
+toolsFilter.addEventListener("input", () => filterToolList(toolsList, toolsFilter.value));
+const git = group.register({ panel: requiredElement("git-panel"), onOpen: gitPanel.refresh });
+const pages = registerPages(
+  {
+    settings: () => {
+      profileEditor.refresh();
+      hooksPanel.refresh();
+    },
+    // Turns auto-save in the background, so refresh the list when it opens.
+    // While a turn runs the list is left as it was (the refresh would queue behind the turn).
+    sessions: () => {
+      if (!isBusy()) load.refreshSessions();
+    },
+  },
+  group,
+);
+const sessionTrigger = requiredElement<HTMLButtonElement>("menu-session");
+const menubar = createMenubar(
+  appMenus(
+    {
+      isBusy,
+      noFolder: isNoFolder,
+      sidebar,
+      sendLine,
+      sessions: () => panels.sessions(),
+      pages,
+      pickFolder: () => void pickFolder(),
+      openNoFolder,
+      saveAs: () => {
+        pages.open("sessions");
+        saveName.focus();
+      },
+      files: { isOn: workspace.isOpen, toggle: workspace.toggle },
+      terminal: { isOn: terminalPanel.isOpen, toggle: terminalPanel.toggle },
+      goal: goalUi,
+      burst: { isOn: () => burstOn, toggle: () => sendLine(`/burst ${burstOn ? "off" : "on"}`) },
+      reasoning: reasoningSelect,
+      tools,
+      git,
+      runWorkflow: workflowPicker.open,
+      inspect: () => inspector.open(),
+      showShortcuts,
+    },
+    {
+      session: sessionTrigger,
+      view: requiredElement("menu-view"),
+      agent: requiredElement("menu-agent"),
+    },
+  ),
+  group,
+);
+requiredElement("root-label").addEventListener("click", () => sessionTrigger.click());
+burstBadge.addEventListener("click", () => requiredElement<HTMLButtonElement>("menu-agent").click());
+bindShortcuts({
+  toggleFiles: () => {
+    if (!isNoFolder() && !sidebar) workspace.toggle();
+  },
+  openSettings: () => pages.toggle("settings"),
+  stop: () => {
+    if (!busy.server) return false;
+    interrupt();
+    return true;
+  },
+  focusComposer: () => input.focus(),
+  overlayOpen: () => group.anyOpen() || pages.isOpen() || !!document.querySelector("dialog[open]"),
+});
+requiredElement("save-btn").addEventListener("click", saveSession);
 saveName.addEventListener("keydown", (event: KeyboardEvent) => {
   if (event.key === "Enter") {
     event.preventDefault();
     saveSession();
   }
 });
-bindToolToggles(requiredElement("tools-list"), (line) =>
-  requestTracked(line, toolToggles),
-);
+bindToolToggles(toolsList, (line) => load.toggleTool(line));
 
-socket.addEventListener("open", () => {
-  setStatus("connected");
+function handleResult(message: ResultMessage): void {
+  transcript.endBoxes(); // a turn that ended mid-subagent leaves no box open
+  // Answers to side requests leave the turn in flight (its stream, prompt and busy state) alone.
+  if (load.handleSideResult(message)) return;
+  transcript.flushAssistant();
+  burstBadge.classList.remove("bursting");
+  transcript.setBurst(false);
+  askUi.hide();
+  // The log itself is not a live region (every token would be announced); say only that the reply ended.
+  announce(message.ok ? "Reply finished" : "Reply failed");
+  if (message.context) showContext("reply", message.context);
+  if (load.handleInitialResult(message)) return;
+  if (message.ok) load.handleCommandResult(message, workspace.sync);
+  else transcript.addLine("error", message.error ?? "unknown error");
+}
+
+/** A model call's context fill: the bar's for the main conversation, the open box's for a subagent. */
+function showContext(purpose: string | undefined, text: string): void {
+  if (purpose === "subagent") return transcript.setBoxMeta(text);
+  showContextFill(text);
+}
+
+function onOpen(): void {
+  setStatus("connected", "Ready");
   transcript.addLine("system", "Connected. Type a message to begin.");
-  pendingModelList = true;
-  pendingProfileList = true;
-  pendingToolList = true;
-  pendingSessionList = true;
-  pendingReasoningList = true;
-  busy.loading = true;
-  renderBusy();
-  requestLine("/model");
-});
-socket.addEventListener("close", () => {
-  setStatus("disconnected");
+  load.start();
+}
+
+function onClose(retryInMs: number): void {
+  setStatus("disconnected", `Disconnected — retrying in ${Math.round(retryInMs / 1000)} s`);
   askUi.hide(); // an answer would go nowhere
   transcript.flushAssistant();
   resetBusy();
-});
-socket.addEventListener("message", (event: MessageEvent<string>) => {
+}
+
+function onMessage(data: string): void {
   let message: ServerMessage;
   try {
-    message = JSON.parse(event.data) as ServerMessage;
+    message = JSON.parse(data) as ServerMessage;
   } catch {
     return;
   }
   generating.observe(message);
   compactionMarker.observe(message);
+  workflowPicker.observe(message);
+  if (inspector.handle(message)) return;
   if (serverPanels.some((panel) => panel.handle(message))) return;
   switch (message.type) {
     case "profile_tools":
-      handleWhitelistReply(message);
+      load.handleWhitelistReply(message);
       break;
     case "subagent_token":
       transcript.appendSubagentToken(message.text ?? "");
@@ -548,21 +429,21 @@ socket.addEventListener("message", (event: MessageEvent<string>) => {
       break;
     case "tool":
       // A subagent's work goes in a box opened by its line (nested in the box of the subagent that started it).
-      if (message.name === "run_subagent")
-        transcript.beginBox(message.text ?? "Run helper agent");
-      else
-        transcript.appendToolCall(
-          message.name ?? "unknown",
-          undefined,
-          message.text,
-        );
+      if (message.name === "run_subagent") transcript.beginBox(message.text ?? "Run helper agent");
+      else {
+        const line = transcript.appendToolCall(message.name ?? "unknown", undefined, message.text);
+        toolDetails.attach(line, message.detail);
+      }
       break;
     case "tool_result":
       if (message.name === "run_subagent") transcript.endBox();
-      else if (message.text) transcript.appendToolResult(message.text);
+      else {
+        if (message.text) transcript.appendToolResult(message.text);
+        toolDetails.result(message.detail);
+      }
       break;
     case "burst":
-      burstBtn.classList.toggle("bursting", !!message.active);
+      burstBadge.classList.toggle("bursting", !!message.active);
       transcript.setBurst(!!message.active);
       break;
     case "state":
@@ -592,4 +473,4 @@ socket.addEventListener("message", (event: MessageEvent<string>) => {
       resetBusy();
       break;
   }
-});
+}

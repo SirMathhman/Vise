@@ -8,6 +8,8 @@ import type { BrowserBackend } from "../browser/types.ts";
 import { ExtensionHub, isExtensionOrigin } from "./ext/ext-hub.ts";
 import { loadExtensionToken, tokensMatch } from "./ext/ext-token.ts";
 import { handleEditorMessage } from "./api/editors.ts";
+import { handleGitMessage } from "./api/git-api.ts";
+import { createInspector } from "./inspect/inspect.ts";
 import { serveAsset } from "./assets.ts";
 import { queueLine, steerLine, unqueue } from "./conn/line.ts";
 import type { HeldLine } from "./conn/line.ts";
@@ -25,7 +27,7 @@ import { dataDirFor, noFolderRoot } from "../data-dir.ts";
 import type { McpHub } from "../mcp/mcp-hub.ts";
 import { RootRegistry } from "./api/roots.ts";
 import { createEdgeSession } from "../wiring.ts";
-import { formatToolCall, summarizeToolResult } from "../output/tool-line.ts";
+import { clipDetail, formatToolCall, summarizeToolResult } from "../output/tool-line.ts";
 import { displayOfTool } from "../tools/display.ts";
 import { WebUserPrompter } from "./conn/prompter.ts";
 import { TerminalRegistry, type TerminalAttachment } from "./terminal/terminal-registry.ts";
@@ -323,6 +325,8 @@ interface ConnectionState {
   lease: SessionLease;
   /** This page's handle on its folder's shell; null with no folder or in the extension's sidebar. */
   terminal: TerminalAttachment | null;
+  /** The page's live look at model calls (made when it first asks). */
+  inspector?: ReturnType<typeof createInspector>;
 }
 
 function makeConnectionState(
@@ -379,6 +383,8 @@ function makeConnectionState(
         name,
         depth,
         text: formatToolCall(name, args, displayOfTool),
+        // The arguments as sent, for the line's details (clipped: a written file can be long).
+        detail: clipDetail(JSON.stringify(args, null, 2)),
       }),
     onBurst: (active) => send({ type: "burst", active }),
     onTodos: (items) => send({ type: "todos", todos: items }),
@@ -394,9 +400,9 @@ function makeConnectionState(
       send({ type: "subagent_token", text: t, depth }),
     onToolResult: (name, depth, result) => {
       const text = summarizeToolResult(name, result);
-      // A finished subagent always reports (it closes its box); other tools only when there is something to say.
-      if (text !== undefined || name === "run_subagent")
-        send({ type: "tool_result", name, depth, text });
+      // A finished subagent always reports (it closes its box); other tools when there is a summary or a result to show.
+      if (text !== undefined || result !== "" || name === "run_subagent")
+        send({ type: "tool_result", name, depth, text, detail: clipDetail(result) });
     },
     askUser: prompter,
     onMaxRounds: async (question) => {
@@ -431,6 +437,7 @@ function makeConnectionState(
 function closeConnection(conn: ConnectionState | undefined): void {
   if (!conn) return;
   conn.unwatch();
+  conn.inspector?.dispose();
   conn.terminal?.detach();
   conn.lease.release();
   conn.edge.cleanup();
@@ -441,6 +448,8 @@ function closeConnection(conn: ConnectionState | undefined): void {
 
 interface WireMessage {
   type: string;
+  /** `inspect_start`: the model call to watch (the running one when absent). */
+  request?: number;
   text?: string;
   id?: string;
   name?: string;
@@ -520,6 +529,19 @@ function handleMessage(
     void handleMcpMessage(conn.mcp, conn.ws.data.root, wire).then(send);
     return;
   }
+  if (msg.type.startsWith("inspect_")) {
+    // The live look at model calls never queues behind a turn (the turn is what it watches).
+    conn.inspector ??= createInspector(conn.edge.calls, send);
+    conn.inspector.handle(msg);
+    return;
+  }
+  if (msg.type.startsWith("git_")) {
+    // The git panel runs git in the session's folder directly; never queued behind a turn.
+    const { root, noFolder } = conn.ws.data;
+    const wire = msg as unknown as Record<string, unknown>;
+    for (const reply of handleGitMessage(root, noFolder, wire) ?? []) send(reply);
+    return;
+  }
   if (msg.type === "env_get" || msg.type === "env_set") {
     // Settings read and write the user-level settings file directly; never queued behind a turn.
     for (const reply of handleSettingsMessage(
@@ -528,8 +550,13 @@ function handleMessage(
       send(reply);
     return;
   }
-  if (msg.type.startsWith("note") || msg.type.startsWith("workflow")) {
-    // The notes and workflow editors read and write their stores directly; never queued behind a turn.
+  if (
+    msg.type.startsWith("note") ||
+    msg.type.startsWith("workflow") ||
+    msg.type.startsWith("profile")
+  ) {
+    // The notes, workflow and profile editors read and write their stores directly; never queued behind a turn.
+    // (`profile_tools` is not theirs: it falls through to its own handler below.)
     const replies = handleEditorMessage(conn.dataDir, msg as never);
     for (const reply of replies ?? []) send(reply);
     if (replies) return;

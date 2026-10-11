@@ -29,6 +29,7 @@ export interface WorkflowsMessage {
 }
 
 import { createArgRows, type ToolInfo } from "./arg-rows.ts";
+import { ifConfirmed } from "../../feedback/confirm.ts";
 
 type Ref = { name: string; scope: string };
 
@@ -52,17 +53,17 @@ function stepRow(
   drop: () => void,
 ) {
   const row = make("div", "wf-step");
-  const kind = make("select", "save-input");
-  kind.append(new Option("instruction", "instruction"));
-  kind.append(new Option("tool call", "tool"));
-  kind.append(new Option("switch profile", "profile"));
+  const kind = make("select", "field");
+  kind.append(new Option("Instruction", "instruction"));
+  kind.append(new Option("Tool call", "tool"));
+  kind.append(new Option("Switch profile", "profile"));
   kind.value = step.type;
-  const text = make("textarea", "note-text");
+  const text = make("textarea", "field");
   text.rows = 3;
   text.placeholder = "{{input}} is replaced by the workflow's input";
-  const toolName = make("select", "save-input");
+  const toolName = make("select", "field");
   toolName.setAttribute("aria-label", "tool");
-  const profileName = make("select", "save-input");
+  const profileName = make("select", "field");
   profileName.setAttribute("aria-label", "profile");
   const savedProfile = step.type === "profile" ? step.name : "";
   // A profile the list does not know (the list may not have arrived) stays selectable.
@@ -110,13 +111,13 @@ function stepRow(
   };
   kind.addEventListener("change", show);
   show();
-  const bar = make("div", "save-row");
+  const bar = make("div", "actions");
   for (const [label, action] of [
     ["↑", () => move(-1)],
     ["↓", () => move(1)],
     ["✕", drop],
   ] as const) {
-    const button = make("button", "tools-btn", label);
+    const button = make("button", "btn", label);
     button.type = "button";
     button.addEventListener("click", action);
     bar.append(button);
@@ -161,14 +162,14 @@ function renderList(
   for (const entry of entries) {
     const item = make("li");
     const label = entry.active ? entry.name : `${entry.name} (shadowed)`;
-    const button = make("button", "note-item", `${entry.scope} · ${label}`);
+    const button = make("button", "list-item", `${entry.scope} · ${label}`);
     button.setAttribute("aria-current", String(isRef(current, entry)));
     button.addEventListener("click", () => open(entry));
     item.append(button);
     list.append(item);
   }
   if (entries.length === 0) {
-    list.append(make("li", "note-group", "no workflows yet"));
+    list.append(make("li", "list-empty", "No workflows yet."));
   }
 }
 
@@ -215,28 +216,28 @@ function createStepList(
 
 /** The panel's elements: the workflow list on the left, the editor on the right. */
 function buildUi() {
-  const list = make("ul", "tools-list");
-  const name = make("input", "save-input");
-  name.placeholder = "name";
+  const list = make("ul", "list");
+  const name = make("input", "field");
+  name.placeholder = "Name";
   name.autocomplete = "off";
-  const scope = make("select", "save-input");
-  scope.append(new Option("project (this project only)", "project"));
-  scope.append(new Option("global (every project)", "global"));
+  const scope = make("select", "field");
+  scope.append(new Option("Project (this folder only)", "project"));
+  scope.append(new Option("Global (every folder)", "global"));
   scope.setAttribute("aria-label", "scope");
   const stepsBox = make("div", "wf-steps");
-  const addBtn = make("button", "tools-btn", "+ add step");
-  const saveBtn = make("button", "save-btn", "save");
-  const deleteBtn = make("button", "tools-btn", "delete");
-  const newBtn = make("button", "tools-btn", "+ new workflow");
-  const status = make("span", "pe-status");
+  const addBtn = make("button", "btn", "+ Add step");
+  const saveBtn = make("button", "btn btn--primary", "Save");
+  const deleteBtn = make("button", "btn btn--danger", "Delete");
+  const newBtn = make("button", "btn", "+ New workflow");
+  const status = make("span", "status-line");
   status.setAttribute("role", "status");
-  const buttons = make("div", "save-row");
+  const buttons = make("div", "actions");
   buttons.append(saveBtn, deleteBtn, status);
-  const left = make("div", "notes-side");
+  const left = make("div", "two-pane__side");
   left.append(newBtn, list);
-  const right = make("div", "notes-edit");
+  const right = make("div", "two-pane__main");
   right.append(name, scope, stepsBox, addBtn, buttons);
-  const layout = make("div", "notes-layout");
+  const layout = make("div", "two-pane");
   layout.append(left, right);
   return {
     layout,
@@ -299,7 +300,7 @@ export function createWorkflowsPanel(
   saveBtn.addEventListener("click", () => {
     try {
       const read = steps.read();
-      say("saving…");
+      say("Saving…");
       send({
         type: "workflow_save",
         name: name.value,
@@ -313,8 +314,8 @@ export function createWorkflowsPanel(
   });
   deleteBtn.addEventListener("click", () => {
     const target = current;
-    if (!target || !confirm(`Delete workflow '${target.name}'?`)) return;
-    send({ type: "workflow_delete", ...target });
+    if (!target) return;
+    ifConfirmed({ title: `Delete the workflow “${target.name}”?` }, () => send({ type: "workflow_delete", ...target }));
   });
   for (const trigger of refreshOn) {
     trigger.addEventListener("click", () => {
@@ -349,7 +350,7 @@ export function createWorkflowsPanel(
           if (!message.ok) say(message.error ?? "failed", true);
           else if (message.deleted) {
             edit(null);
-            say("deleted");
+            say("Deleted.");
           } else {
             current = {
               name: message.name ?? "",
@@ -357,7 +358,7 @@ export function createWorkflowsPanel(
             };
             name.disabled = scope.disabled = true;
             deleteBtn.disabled = false;
-            say("saved");
+            say("Saved.");
           }
           return true;
         default:

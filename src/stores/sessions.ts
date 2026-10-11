@@ -182,11 +182,11 @@ export function latestSessionId(base: string): Result<string | undefined> {
   });
 }
 
-/** List every saved session (id and display name), sorted by name then id. */
+/** List every saved session (id, display name and when it was last saved), sorted by name then id. */
 export function listSessions(base: string): Result<SessionEntry[]> {
   return withDb(base, "list sessions in", (db) => {
     const rows = db
-      .query("SELECT id, name FROM sessions")
+      .query("SELECT id, name, updated_at AS updated FROM sessions")
       .all() as SessionEntry[];
     rows.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
     return { ok: true, value: rows };
