@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { toolDetail } from "../../src/output/tool-line.ts";
 import { numberArg } from "../../src/tools/args.ts";
-import { readFile } from "../../src/tools/files.ts";
+import { createFile, readFile } from "../../src/tools/files.ts";
 
 const bigFile = (): string => {
   const path = join(mkdtempSync(join(tmpdir(), "vise-read-")), "big.txt");
@@ -44,4 +44,16 @@ test("the call line shows the range for a range given as text too", () => {
   expect(
     toolDetail({ path: "a.ts", offset: "300", limit: "5" }, "read_file"),
   ).toBe("a.ts · lines 300–304");
+});
+
+test("a missing path is refused, not read as an empty string", () => {
+  expect(readFile({})).toBe("error: path is required");
+  expect(createFile({})).toBe("error: path must not be empty");
+});
+
+test("a garbled limit is refused, not silently truncated", () => {
+  const path = bigFile();
+  expect(readFile({ path, limit: "30," })).toBe(
+    'error: limit must be a number (got "30,")',
+  );
 });
