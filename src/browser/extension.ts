@@ -171,10 +171,16 @@ export class ExtensionBackend implements BrowserBackend {
     );
   }
 
-  runCode(): Promise<string> {
-    return Promise.reject(
-      new Error("browser_run_code is not supported in the Firefox extension"),
-    );
+  /**
+   * Run code in the tab's page context. The extension runs it via
+   * `browser.tabs.executeScript` (synchronous, no Playwright `page`).
+   */
+  async runCode(id: number, code: string): Promise<string> {
+    const result = await this.tab("runCode", { tab: id, code });
+    const text = result === null ? "done" : JSON.stringify(result);
+    return text.length > 10_000
+      ? `${text.slice(0, 10_000)}\n[truncated: ${text.length} characters total]`
+      : text;
   }
 
   async closeTab(id: number): Promise<void> {

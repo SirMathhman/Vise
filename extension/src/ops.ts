@@ -238,4 +238,8 @@ export const ops: Record<string, (params: Params) => Promise<unknown>> = {
     release(id);
     await browser.tabs.remove(id);
   },
+
+  async runCode({ tab, code }) {
+    return run(requireOwned(tab), code as string);
+  },
 };

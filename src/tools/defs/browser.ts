@@ -325,7 +325,7 @@ export const browserTools: Tool[] = [
     function: {
       name: "browser_run_code",
       description:
-        "Run a Playwright snippet against a browser tab. The snippet is the body of an async function with `page` (a Playwright Page) in scope; `return` a value to get it back as JSON. Example: return await page.title(). Times out after 30 seconds. WARNING: the snippet runs in a Node process with the full privileges of the user (file system, network, child processes), not just in the page. Disabled by default; the user enables it with /tool browser_run_code enable. Prefer the other browser tools for simple actions.",
+        "Run JavaScript code against a browser tab. The code runs in the tab's context; `return` a value to get it back as JSON (truncated at 10,000 characters). Times out after 30 seconds. Disabled by default; the user enables it with /tool browser_run_code enable. Prefer the other browser tools for simple actions.",
       parameters: {
         type: "object",
         properties: {
@@ -336,7 +336,7 @@ export const browserTools: Tool[] = [
           code: {
             type: "string",
             description:
-              "JavaScript body using `page`, e.g. \"await page.getByRole('button', {name: 'Save'}).click()\"",
+              "JavaScript to run in the tab. Synchronous (no await). For Chromium, `page` (a Playwright Page) is in scope. For the Firefox extension, the page's JS context (DOM, window, fetch) is available. Return a value to get it back.",
           },
         },
         required: ["tab", "code"],
