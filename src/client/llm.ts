@@ -38,7 +38,15 @@ interface Slot {
 }
 
 interface ModelsResponse {
-  data?: { id: string }[];
+  data?: { id: string; name?: string; context_length?: number; architecture?: { input_modalities?: string[] } }[];
+}
+
+/** One entry in the model list, with the metadata the picker shows. */
+export interface ModelDetail {
+  id: string;
+  name?: string;
+  contextLength?: number;
+  vision: boolean;
 }
 
 /**
@@ -313,6 +321,47 @@ export class LlmClient implements Client {
       }
       const data = (await res.json()) as ModelsResponse;
       const models = data.data?.map((m) => m.id).filter(Boolean) ?? [];
+      return { ok: true, value: models };
+    } catch (err) {
+      return {
+        ok: false,
+        error: {
+          kind: "network",
+          cause: err instanceof Error ? err.message : String(err),
+        },
+      };
+    }
+  }
+
+  /**
+   * Fetch the model list with metadata (name, context length, vision) for the
+   * web model picker. Unlike `listModels()` (which returns bare ids for the
+   * terminal `/model` command and the composer autocomplete), this keeps the
+   * full objects from the provider's `/models` endpoint.
+   */
+  async listModelDetails(): Promise<Result<ModelDetail[]>> {
+    try {
+      const provider = activeProvider();
+      const res = await fetch(provider.modelsUrl, {
+        method: "GET",
+        headers: provider.headers,
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        return {
+          ok: false,
+          error: { kind: "http", status: res.status, body: text },
+        };
+      }
+      const data = (await res.json()) as ModelsResponse;
+      const models = (data.data ?? []).map((m) => ({
+        id: m.id,
+        name: m.name,
+        contextLength:
+          typeof m.context_length === "number" ? m.context_length : undefined,
+        vision:
+          m.architecture?.input_modalities?.includes("image") === true,
+      }));
       return { ok: true, value: models };
     } catch (err) {
       return {
