@@ -53,6 +53,7 @@ export class ExtensionHub implements ExtensionLink {
       );
       old.close();
     }
+    socket.send(JSON.stringify({ config: { tabLimit: config.tabLimit } }));
     this.notify();
   }
 

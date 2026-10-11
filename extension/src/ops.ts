@@ -20,7 +20,7 @@ import {
   type UploadFile,
   uploadScript,
 } from "./page-actions.ts";
-import { grant, ownedIds, release, requireOwned } from "./tabs.ts";
+import { grant, ownedIds, release, requireOwned, tryGrant } from "./tabs.ts";
 
 void _unused;
 
@@ -119,7 +119,11 @@ export const ops: Record<string, (params: Params) => Promise<unknown>> = {
   async openTab({ url }) {
     const tab = await browser.tabs.create({ url: checkUrl(url), active: true });
     if (tab.id === undefined) throw new Error("the browser did not open a tab");
-    grant(tab.id);
+    const result = tryGrant(tab.id);
+    if (!result.ok) {
+      await browser.tabs.remove(tab.id);
+      throw new Error("tab limit reached, release a tab first");
+    }
     await waitForLoad(tab.id, LOAD_TIMEOUT_MS);
     return info(tab.id);
   },

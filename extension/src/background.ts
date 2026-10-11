@@ -1,6 +1,17 @@
 import { BUILD, findServerPort, getToken } from "./config.ts";
 import { ops } from "./ops.ts";
-import { grant, isOwned, onOwnedChanged, ownedIds, release } from "./tabs.ts";
+import {
+  grant,
+  getTabLimit,
+  isOwned,
+  onOwnedChanged,
+  onPromoted,
+  ownedIds,
+  release,
+  setTabLimit,
+  tryGrant,
+  pendingCount,
+} from "./tabs.ts";
 
 /**
  * The extension's background page: holds the WebSocket to the Vise server
@@ -24,12 +35,23 @@ function send(message: Record<string, unknown>): void {
 }
 
 async function handle(raw: string): Promise<void> {
-  let request: { id: number; op: string; params?: Record<string, unknown> };
+  let msg: Record<string, unknown>;
   try {
-    request = JSON.parse(raw);
+    msg = JSON.parse(raw);
   } catch {
     return;
   }
+  // The server pushes config on connect; store it and do not respond.
+  if (typeof msg["config"] === "object" && msg["config"] !== null) {
+    const config = msg["config"] as Record<string, unknown>;
+    const limit = config["tabLimit"];
+    if (typeof limit === "number" && Number.isInteger(limit) && limit >= 1) {
+      setTabLimit(limit);
+      void browser.storage.local.set({ tabLimit: limit });
+    }
+    return;
+  }
+  const request = msg as { id: number; op: string; params?: Record<string, unknown> };
   const op = ops[request.op];
   try {
     if (!op) throw new Error(`unknown operation ${request.op}`);
@@ -97,6 +119,14 @@ function announce(): void {
 }
 
 onOwnedChanged(announce);
+// When a queued tab is promoted to owned, tell the server (same as a user-shared tab).
+onPromoted((tab) => {
+  send({
+    event: "shared",
+    tab: { id: tab.id, title: tab.title, url: tab.url },
+  });
+  notifySidebar();
+});
 // The sidebar shows the tab being looked at, so follow tab switches and loads.
 browser.tabs.onActivated.addListener(notifySidebar);
 browser.tabs.onUpdated.addListener((_id, _change, tab) => {
@@ -133,6 +163,8 @@ async function status(windowId?: number): Promise<unknown> {
     link,
     linkNote,
     tabs,
+    tabLimit: getTabLimit(),
+    pending: pendingCount(),
     current:
       current?.id === undefined
         ? null
@@ -169,9 +201,15 @@ async function give(windowId?: number): Promise<GiveResult> {
     };
   }
   const already = isOwned(tab.id);
-  grant(tab.id);
-  // The agent is told, so it need not discover the tab by listing tabs.
   if (!already) {
+    const result = tryGrant(tab.id);
+    if (!result.ok) {
+      return {
+        ok: false,
+        error: `Tab limit reached. Release a tab first.`,
+      };
+    }
+    // The agent is told, so it need not discover the tab by listing tabs.
     send({
       event: "shared",
       tab: { id: tab.id, title: tab.title ?? "", url: tab.url ?? "" },

@@ -67,6 +67,8 @@ interface Status {
   link?: "no-token" | "connecting" | "connected" | "closed";
   linkNote?: string;
   tabs: { id: number; title: string; url: string }[];
+  tabLimit?: number;
+  pending?: number;
   current?: {
     title: string;
     url: string;
@@ -142,13 +144,19 @@ function verdict(status: Status): {
 function checks(status: Status): string {
   const mark = (ok: boolean): string => (ok ? "✓" : "✕");
   const current = status.build === BUILD;
-  return [
+  const limit = status.tabLimit ?? 5;
+  const tabs = status.tabs.length;
+  const parts = [
     `Server ${mark(serverUp)}`,
     `Extension ${mark(current)}${current ? "" : " (old build)"}`,
     `Pairing ${current ? mark(status.link !== "no-token") : "?"}`,
     `Link ${current ? mark(status.link === "connected") : "?"}`,
-    `Shared tabs ${status.tabs.length}`,
-  ].join(" · ");
+    `Shared tabs ${tabs}/${limit}${tabs >= limit ? " (max)" : ""}`,
+  ];
+  if ((status.pending ?? 0) > 0) {
+    parts.push(`${status.pending} waiting`);
+  }
+  return parts.join(" · ");
 }
 
 function render(status: Status): void {
@@ -163,6 +171,14 @@ function render(status: Status): void {
     : "";
   // Re-pairing only helps while the link is down.
   el("repair").hidden = status.link === "connected";
+  // Disable "Give Vise this tab" when the limit is reached.
+  const give = el<HTMLButtonElement>("give");
+  const limit = status.tabLimit ?? 5;
+  give.disabled = status.tabs.length >= limit;
+  give.title =
+    status.tabs.length >= limit
+      ? "Tab limit reached. Release a tab first."
+      : "Let Vise use the tab you are looking at";
   const list = el("owned");
   list.textContent = "";
   for (const tab of status.tabs) {

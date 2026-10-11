@@ -404,6 +404,7 @@ export const SPEC = {
     BROWSER,
     "Firefox extension call timeout (ms)",
   ),
+  tabLimit: n("VISE_TAB_LIMIT", 5, BROWSER, "tabs the extension can control"),
   terminalShell: {
     env: "VISE_TERMINAL_SHELL",
     def: "powershell.exe -NoLogo",

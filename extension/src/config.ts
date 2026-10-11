@@ -29,6 +29,13 @@ export async function getPort(): Promise<number> {
   return Number.isInteger(n) && n >= 1 && n <= 65535 ? n : DEFAULT_PORT;
 }
 
+/** The maximum number of tabs the extension can control at once (set by the server, default 5). */
+export async function getTabLimit(): Promise<number> {
+  const { tabLimit } = await browser.storage.local.get("tabLimit");
+  const n = Number(tabLimit);
+  return Number.isInteger(n) && n >= 1 ? n : 5;
+}
+
 /** How many ports above the default the extension looks through for a Vise server that had to move. */
 const SCAN_RANGE = 100;
 

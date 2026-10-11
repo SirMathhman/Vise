@@ -433,4 +433,23 @@ export const browserTools: Tool[] = [
       },
     },
   },
+  {
+    type: "function",
+    display: { label: "Close tab", icon: "✕" },
+    function: {
+      name: "browser_close_tab",
+      description:
+        "Close a tab the agent is controlling. The tab is closed in the browser and freed from the tab limit, so a new tab can be opened or a queued tab is promoted. Use it when you are done with a page.",
+      parameters: {
+        type: "object",
+        properties: {
+          tab: {
+            type: "integer",
+            description: "Tab number from browser_open or browser_tabs",
+          },
+        },
+        required: ["tab"],
+      },
+    },
+  },
 ];
