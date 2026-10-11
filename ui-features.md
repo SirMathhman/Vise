@@ -8,7 +8,7 @@ High value, low cost
 
 High value, moderate cost 4. Compaction control — DONE. A "Compact" button appears in the context bar from 75% full; also Agent → Compact conversation.
 
-5. Workflow runner — DONE. Agent → Run workflow… picks a workflow and an input and sends `/workflow <name> [input]`; a strip above the composer names it with Stop while it runs. (No per-step progress yet: the server does not report steps.)
+5. Workflow runner — DONE. Agent → Run workflow… picks a workflow and an input and sends `/workflow <name> [input]`; a strip above the composer names it with Stop while it runs. Per-step progress: the server sends `workflow` messages (start, each step, end; `WorkflowEvent` in `src/core/workflow.ts`), so the strip shows "step 3/6 · label" and the chat log gets a line per step, also for the `/<name>` shortcut. A run that stops early stays in the profile it was working in (a `profile` event tells the page, whose select follows) instead of putting back the one you had; a finished run restores it.
 
 6. Notes browser — DONE as the settings "Notes" tab, with editing.
 

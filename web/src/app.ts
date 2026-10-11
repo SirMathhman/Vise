@@ -120,6 +120,10 @@ const workflowPicker = createWorkflowPicker(
   (line) => sendLine(line),
   requiredElement("workflow-run"),
   interrupt,
+  transcript.addLine,
+  (name) => {
+    if ([...profileSelect.options].some((option) => option.value === name)) profileSelect.value = name;
+  },
 );
 
 /** Connection and work state, in the top bar's pill. */

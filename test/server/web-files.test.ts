@@ -1,4 +1,5 @@
 ﻿import { describe, expect, test } from "bun:test";
+import { writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { annotateIgnored, deletePath, isGitRoot, listDir, readTextFile, type DirEntry } from "../../src/web/api/files.ts";
 
 const root = process.cwd();
@@ -45,7 +46,6 @@ describe("web explorer files", () => {
   });
 
   test("deletePath removes a file", () => {
-    const { writeFileSync, existsSync } = require("node:fs");
     const rel = ".vise/test-delete-tmp.txt";
     writeFileSync(`${root}/${rel}`, "x");
     expect(deletePath(root, rel).ok).toBe(true);
@@ -53,7 +53,6 @@ describe("web explorer files", () => {
   });
 
   test("deletePath removes a directory", () => {
-    const { existsSync, mkdirSync } = require("node:fs");
     const rel = ".vise/test-delete-tmp-dir";
     mkdirSync(`${root}/${rel}`, { recursive: true });
     expect(deletePath(root, rel).ok).toBe(true);

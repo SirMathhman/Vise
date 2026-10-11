@@ -1,26 +1,10 @@
 import { config } from "../config.ts";
 import { noAudit, type AuditSink } from "../core/audit.ts";
-import {
-  encodeMessages,
-  type ImageResolver,
-  plainMessages,
-  hideCalls,
-  nameConfidence,
-  parseReply,
-  toolRequestFields,
-} from "./tool-protocol.ts";
+import { encodeMessages, type ImageResolver, plainMessages, hideCalls, nameConfidence, parseReply, toolRequestFields } from "./tool-protocol.ts";
 import { collectThinking, readJsonReply, streamChat } from "./stream-reader.ts";
 import { generationReporter } from "./generation.ts";
-import {
-  CallLog,
-  CallTrace,
-  recordCallEnd,
-  recordCallStart,
-  noteServerCut,
-  runawayError,
-  traceListener,
-  traceThinking,
-} from "./call-trace.ts";
+import { modelInfo, providerFor, reasoningFields, responseFormat, type ModelInfo, type Provider } from "./provider.ts";
+import { CallLog, CallTrace, recordCallEnd, recordCallStart, noteServerCut, runawayError, traceListener, traceThinking } from "./call-trace.ts";
 
 export { streamChat };
 import type { Client, Tool } from "../core/engine.ts";
@@ -34,8 +18,15 @@ import type {
 } from "../core/errors.ts";
 
 
+/** The active provider, read live from the settings (they can change while running). */
+export function activeProvider(): Provider {
+  return providerFor(config);
+}
+
 /** The inference backend label reported by the `self` tool. */
-export const BACKEND = "llama.cpp";
+export function backendName(): string {
+  return activeProvider().backend;
+}
 
 interface Slot {
   id: number;
@@ -55,16 +46,7 @@ interface ModelsResponse {
  * Jinja chat template as-is. Exported so the terminal, web, and tests all
  * share one source of truth for the set of accepted values.
  */
-export const REASONING_EFFORTS = [
-  "default",
-  "none",
-  "minimal",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "max",
-] as const;
+export const REASONING_EFFORTS = ["default", "none", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 
 export type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
 
@@ -72,9 +54,10 @@ export type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
 const STREAM_FIELDS = {
   stream: true,
   stream_options: { include_usage: true },
-  return_progress: true,
-  timings_per_token: true,
 };
+
+/** The llama.cpp-only extras of a streamed request. */
+const LLAMA_STREAM_FIELDS = { return_progress: true, timings_per_token: true };
 
 /** Read one model reply, and tell `generation` (if any) when the call has ended, however it ended. */
 async function readReply(
@@ -90,7 +73,9 @@ async function readReply(
 
 export class LlmClient implements Client {
   private lastPromptTokens: number | undefined;
-  private currentModel: string = config.llmModel;
+  private currentModel: string = activeProvider().defaultModel;
+  /** OpenRouter `/models` facts per model id (window, vision), fetched once. */
+  private readonly infoCache = new Map<string, ModelInfo>();
   private requestSeq = 0;
   /** What every model call of this client has written, running or recent (the inspector and `/audit calls` read it). */
   readonly calls = new CallLog();
@@ -190,7 +175,9 @@ export class LlmClient implements Client {
    */
   async withSideSlot<T>(operation: () => Promise<T>): Promise<T> {
     if (this.sideDepth++ === 0) {
-      this.sideSlot = await this.chooseSideSlot().catch(() => undefined);
+      this.sideSlot = activeProvider().llamaCpp
+        ? await this.chooseSideSlot().catch(() => undefined)
+        : undefined;
     }
     try {
       return await operation();
@@ -201,10 +188,11 @@ export class LlmClient implements Client {
 
   /** The least recently used slot other than the one used last (the main conversation's); undefined when there is none to choose. */
   private async chooseSideSlot(): Promise<number | undefined> {
+    const provider = activeProvider();
     const model = encodeURIComponent(this.currentModel);
     const response = await this.slotFetch(
-      `${config.llmBaseUrl}/slots?model=${model}`,
-      { headers: { authorization: `Bearer ${config.llmApiKey}` } },
+      `${provider.rootUrl}/slots?model=${model}`,
+      { headers: provider.headers },
       this.slotRequestTimeoutMs,
     );
     if (!response.ok) return undefined;
@@ -281,11 +269,13 @@ export class LlmClient implements Client {
    * `/props` report vision. False when that cannot be found out.
    */
   async supportsVision(model: string = this.currentModel): Promise<boolean> {
-    const headers = { authorization: `Bearer ${config.llmApiKey}` };
+    const provider = activeProvider();
+    const headers = provider.headers;
     try {
-      const listed = await fetch(`${config.llmBaseUrl}/v1/models`, {
-        headers,
-      });
+      if (!provider.llamaCpp) {
+        return (await this.hostedInfo(model))?.vision === true;
+      }
+      const listed = await fetch(provider.modelsUrl, { headers });
       if (listed.ok) {
         const body = (await listed.json()) as {
           data?: { id: string; status?: { args?: string[] } }[];
@@ -294,7 +284,7 @@ export class LlmClient implements Client {
         if (args) return args.some((a) => a === "--mmproj" || a === "-mm");
       }
       const props = await fetch(
-        `${config.llmBaseUrl}/props?model=${encodeURIComponent(model)}`,
+        `${provider.rootUrl}/props?model=${encodeURIComponent(model)}`,
         { headers },
       );
       if (!props.ok) return false;
@@ -312,9 +302,10 @@ export class LlmClient implements Client {
    */
   async listModels(): Promise<Result<string[]>> {
     try {
-      const res = await fetch(`${config.llmBaseUrl}/v1/models`, {
+      const provider = activeProvider();
+      const res = await fetch(provider.modelsUrl, {
         method: "GET",
-        headers: { authorization: `Bearer ${config.llmApiKey}` },
+        headers: provider.headers,
       });
       if (!res.ok) {
         const text = await res.text();
@@ -355,13 +346,46 @@ export class LlmClient implements Client {
     if (max?.ok) this.generationSink?.({ request, purpose, tokens: 0, done: true, used, max: max.value });
   }
 
+  /** What a hosted provider's `/models` says about one model (window, vision); cached, undefined when unknown. */
+  private async hostedInfo(model: string): Promise<ModelInfo | undefined> {
+    const cached = this.infoCache.get(model);
+    if (cached) return cached;
+    const provider = activeProvider();
+    const res = await fetch(provider.modelsUrl, { headers: provider.headers });
+    if (!res.ok) return undefined;
+    const info = modelInfo(await res.json(), model);
+    if (info) this.infoCache.set(model, info);
+    return info;
+  }
+
   async contextMax(): Promise<Result<number>> {
+    const provider = activeProvider();
+    if (!provider.llamaCpp) {
+      try {
+        const info = await this.hostedInfo(this.currentModel);
+        if (info?.contextLength !== undefined) {
+          return { ok: true, value: info.contextLength };
+        }
+        return {
+          ok: false,
+          error: { kind: "malformed", body: "model list had no context_length" },
+        };
+      } catch (err) {
+        return {
+          ok: false,
+          error: {
+            kind: "network",
+            cause: err instanceof Error ? err.message : String(err),
+          },
+        };
+      }
+    }
     try {
       const res = await fetch(
-        `${config.llmBaseUrl}/slots?model=${encodeURIComponent(this.currentModel)}`,
+        `${provider.rootUrl}/slots?model=${encodeURIComponent(this.currentModel)}`,
         {
           method: "GET",
-          headers: { authorization: `Bearer ${config.llmApiKey}` },
+          headers: provider.headers,
         },
       );
       if (!res.ok) {
@@ -400,12 +424,10 @@ export class LlmClient implements Client {
     // (and the unset case) omit the field so the template uses its built-in
     // default; every other level — including `none`, which disables
     // reasoning — is sent through.
-    if (
-      this.reasoningEffort !== undefined &&
-      this.reasoningEffort !== "default"
-    ) {
-      body.reasoning_effort = this.reasoningEffort;
-    }
+    Object.assign(
+      body,
+      reasoningFields(activeProvider(), this.reasoningEffort),
+    );
   }
 
   /** One model call, recorded in the audit log whatever its outcome. */
@@ -438,6 +460,7 @@ export class LlmClient implements Client {
     act: boolean,
   ): Record<string, unknown> {
     const useTools = !!tools && tools.length > 0 && !responseSchema;
+    const provider = activeProvider();
     const body: Record<string, unknown> = {
       model: this.currentModel,
       // A schema-constrained request (a one-off question about the conversation)
@@ -448,20 +471,19 @@ export class LlmClient implements Client {
           ? encodeMessages(messages, tools, this.imageResolver)
           : plainMessages(messages, this.imageResolver),
       ...(act ? { stream: false } : STREAM_FIELDS),
+      ...(!act && provider.llamaCpp ? LLAMA_STREAM_FIELDS : {}),
     };
-    if (useTools) {
+    // Only llama.cpp understands the grammar that constrains tool calls.
+    if (useTools && provider.llamaCpp) {
       Object.assign(body, toolRequestFields(tools, isToolEnabled, act));
     }
     if (responseSchema) {
-      body.response_format = {
-        type: "json_schema",
-        json_schema: { schema: responseSchema },
-      };
+      body.response_format = responseFormat(provider, responseSchema);
     }
     this.applyReasoningEffort(body);
     // The server's own limit on one call (the guard stops a loop sooner).
     if (config.maxCallTokens > 0) body.max_tokens = config.maxCallTokens;
-    if (this.sideSlot !== undefined) body.id_slot = this.sideSlot;
+    if (this.sideSlot !== undefined && provider.llamaCpp) body.id_slot = this.sideSlot;
     return body;
   }
 
@@ -496,11 +518,11 @@ export class LlmClient implements Client {
     const guard = new AbortController();
     const callSignal = signal ? AbortSignal.any([signal, guard.signal]) : guard.signal;
     try {
-      const res = await fetch(config.llmChatUrl, {
+      const res = await fetch(activeProvider().chatUrl, {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          authorization: `Bearer ${config.llmApiKey}`,
+          ...activeProvider().headers,
         },
         body: JSON.stringify(body),
         signal: callSignal,

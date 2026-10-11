@@ -20,6 +20,8 @@ interface StreamToolCallDelta {
 interface StreamDelta {
   content?: string;
   reasoning_content?: string;
+  /** OpenRouter's name for the same thing. */
+  reasoning?: string;
   tool_calls?: StreamToolCallDelta[];
 }
 
@@ -93,7 +95,7 @@ export async function streamChat(
     const choice = chunk.choices?.[0];
     const delta = choice?.delta;
     for (const lp of choice?.logprobs?.content ?? []) logprobs.push(lp);
-    const reasoning = delta?.reasoning_content;
+    const reasoning = delta?.reasoning_content ?? delta?.reasoning;
     if (reasoning && reasoning !== "") {
       onThinking?.(reasoning);
     }
@@ -181,13 +183,14 @@ export async function readJsonReply(
 ): Promise<Awaited<ReturnType<typeof streamChat>>> {
   const json = (await res.json()) as {
     choices?: {
-      message?: { content?: string; reasoning_content?: string };
+      message?: { content?: string; reasoning_content?: string; reasoning?: string };
       logprobs?: { content?: TokenLogprob[] };
     }[];
     usage?: Usage;
   };
   const choice = json.choices?.[0];
-  const reasoning = choice?.message?.reasoning_content;
+  const reasoning =
+    choice?.message?.reasoning_content ?? choice?.message?.reasoning;
   if (reasoning) onThinking?.(reasoning);
   return {
     message: { content: choice?.message?.content ?? "" },

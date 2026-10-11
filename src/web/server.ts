@@ -1,6 +1,8 @@
 import { config } from "../config.ts";
 import type { ServerWebSocket } from "bun";
 import { formatContext, formatError, formatGoalEvent } from "../output/format.ts";
+import { formatWorkflowEvent } from "../output/workflow-format.ts";
+import type { WorkflowEvent } from "../core/workflow.ts";
 import { saveProfileWhitelist } from "../repl/profile-tools.ts";
 import { BrowserSettingsStore } from "../browser/settings.ts";
 import { ExtensionBackend } from "../browser/extension.ts";
@@ -389,13 +391,11 @@ function makeConnectionState(
     onBurst: (active) => send({ type: "burst", active }),
     onTodos: (items) => send({ type: "todos", todos: items }),
     onGoal: (event) => {
-      if (event.kind === "setting") {
-        send({ type: "goal_state", enabled: event.enabled });
-        return;
-      }
+      if (event.kind === "setting") return send({ type: "goal_state", enabled: event.enabled });
       const line = formatGoalEvent(event);
       if (line) send({ type: "goal", ...line });
     },
+    onWorkflow: (event) => send(workflowMessage(event)),
     onSubagentToken: (t, depth) =>
       send({ type: "subagent_token", text: t, depth }),
     onToolResult: (name, depth, result) => {
@@ -431,6 +431,17 @@ function makeConnectionState(
     lease: new SessionLease(root),
     terminal: null,
   };
+}
+
+/** The `workflow` message for a run's progress: the step or end, the line to show, and (for a stopped run) the profile the session was left in. */
+function workflowMessage(event: WorkflowEvent): Record<string, unknown> {
+  const line = formatWorkflowEvent(event);
+  const shown = line ? { text: line.text, level: line.level } : {};
+  if (event.kind === "profile") return { type: "workflow", kind: "profile", profile: event.name ?? "", ...shown };
+  const base = { type: "workflow", kind: event.kind, name: event.name, ...shown };
+  if (event.kind === "start") return { ...base, total: event.total };
+  if (event.kind === "step") return { ...base, step: event.index, total: event.total, label: event.label };
+  return { ...base, step: event.step, total: event.total, ok: !event.error };
 }
 
 /** Release everything a page's connection holds once its socket closes. */

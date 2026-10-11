@@ -7,6 +7,7 @@ import type { AuditReader, AuditSink } from "../core/audit.ts";
 import type { Picture } from "../core/errors.ts";
 import type { TodoStore } from "../core/todos.ts";
 import type { GoalEvent } from "./turn/goal-loop.ts";
+import type { WorkflowEvent } from "../core/workflow.ts";
 import type {
   ContextSource,
   HookSource,
@@ -85,6 +86,8 @@ export interface SessionOptions {
   onBurst?: (active: boolean) => void;
   /** Told the goal, each verdict on it, and when goal checking is switched. */
   onGoal?: (event: GoalEvent) => void;
+  /** Told a running workflow's progress: each step as it starts and how the run ended. */
+  onWorkflow?: (event: WorkflowEvent) => void;
   /** Whether each turn is checked against a goal (default off here; the edge wiring turns it on). */
   goalChecking?: boolean;
   /**

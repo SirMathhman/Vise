@@ -395,10 +395,7 @@ export async function runTurn(
           continue;
         }
       }
-      return {
-        ok: false,
-        error: { kind: "malformed", body: "exceeded maximum tool rounds" },
-      };
+      return { ok: false, error: { kind: "malformed", body: "exceeded maximum tool rounds" } };
     }
     if (callbacks.abort?.aborted) {
       return { ok: false, error: { kind: "interrupted" } };

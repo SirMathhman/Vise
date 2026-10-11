@@ -30,6 +30,9 @@ export function reportContext(context: ContextSource): Promise<Result<string>> {
   });
 }
 
+/** How many models a hosted provider's list shows (it has hundreds). */
+const HOSTED_LIST_LIMIT = 40;
+
 /**
  * Handle `/model` and `/model <name>`.
  * When name is omitted: lists available models from the server.
@@ -54,15 +57,24 @@ export async function handleModelCommand(
     const models = await modelController.listModels();
     if (!models.ok) return models;
     const current = modelController.getModel();
+    const hosted = modelController.hostedModels?.() === true;
+    const shown = hosted ? models.value.slice(0, HOSTED_LIST_LIMIT) : models.value;
+    const more = models.value.length - shown.length;
     return {
       ok: true,
-      value: formatModelList(models.value, current),
+      value:
+        formatModelList(shown, current) +
+        (more > 0
+          ? `
+  ... and ${more} more; '/model <id>' switches to any provider model id`
+          : ""),
     };
   }
 
   const models = await modelController.listModels();
   if (!models.ok) return models;
-  if (!models.value.includes(arg)) {
+  const anyId = modelController.hostedModels?.() === true;
+  if (!anyId && !models.value.includes(arg)) {
     return {
       ok: false,
       error: {
@@ -149,8 +161,18 @@ export function handleBurstCommand(
   isOn: () => boolean,
   onChange: (on: boolean) => void,
   line: string,
+  available = true,
 ): Result<string> {
   const arg = line.slice("/burst".length).trim().toLowerCase();
+  if (arg === "on" && !available) {
+    return {
+      ok: false,
+      error: {
+        kind: "malformed",
+        body: "burst mode needs a grammar-constrained server (llama.cpp); the current provider does not support it",
+      },
+    };
+  }
   if (arg === "")
     return { ok: true, value: `burst mode is ${isOn() ? "on" : "off"}` };
   if (arg !== "on" && arg !== "off") {

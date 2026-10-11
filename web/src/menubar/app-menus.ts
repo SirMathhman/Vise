@@ -83,6 +83,9 @@ function viewMenu(ctx: AppMenuContext): MenuEntry[] {
     ["system", "Match system"],
     ["light", "Light"],
     ["dark", "Dark"],
+    ["forest", "Forest"],
+    ["volcano", "Volcano"],
+    ["underwater", "Underwater"],
   ];
   for (const [value, label] of choices) {
     entries.push(item(label, () => theme.set(value), { checked: theme.choice() === value, radio: true }));

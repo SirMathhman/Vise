@@ -22,6 +22,36 @@ describe("tool protocol (edge)", () => {
     expect(buildGrammar([])).toBeUndefined();
   });
 
+  test("grammar enforces each tool's argument schema", () => {
+    const read: Tool = {
+      type: "function",
+      function: {
+        name: "read_file",
+        description: "",
+        parameters: {
+          type: "object",
+          properties: {
+            path: { type: "string" },
+            offset: { type: "integer" },
+            limit: { type: "integer" },
+          },
+          required: ["path"],
+        },
+      },
+    };
+    const g = buildGrammar([read]) ?? "";
+    // The required key comes first and is not optional; the others are optional.
+    expect(g).toContain('args0 ::= "{" ws "\\"path\\"" ws ":" ws string ( ws "," ws opt0_0 )? ws "}"');
+    expect(g).toContain('opt0_0 ::= "\\"offset\\"" ws ":" ws numlike ( ws "," ws opt0_1 )? | opt0_1');
+    expect(g).toContain('opt0_1 ::= "\\"limit\\"" ws ":" ws numlike');
+  });
+
+  test("a tool without declared properties accepts any object", () => {
+    const g = buildGrammar([def("mcp__srv__tool")]) ?? "";
+    expect(g).toContain("args0 ::= object");
+    expect(g).toContain('"\\"mcp__srv__tool\\""');
+  });
+
   test("grammar allows free text before calls", () => {
     const g = buildGrammar(["a"]) ?? "";
     expect(g).toContain("root ::= t0 call*");

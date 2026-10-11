@@ -1,6 +1,6 @@
 import type { Client, Tool, ToolRunner, TurnCallbacks } from "./engine.ts";
 import { runTurn } from "./engine.ts";
-import type { Message, Result } from "./errors.ts";
+import type { Message, Result, ViseError } from "./errors.ts";
 import {
   checkToolAvailability,
   runProfileStep,
@@ -41,6 +41,28 @@ export interface Workflow {
 
 export type WorkflowScope = "project" | "global";
 
+/**
+ * What a frontend is told while a workflow runs. `step` is 1-based and `total`
+ * counts the closing "final response" as a step, so the last `step` is
+ * `index === total`. `end` always follows `start` (also on failure or stop):
+ * `step` is the one that was running, `error` is why it stopped (absent on success).
+ */
+export type WorkflowEvent =
+  | { kind: "start"; name: string; total: number }
+  | { kind: "step"; name: string; index: number; total: number; label: string }
+  | { kind: "end"; name: string; step: number; total: number; error?: ViseError }
+  /** A workflow that stopped early left the session in `name` (the profile it switched to) instead of `was`, the one you had. */
+  | { kind: "profile"; name: string | undefined; was: string | undefined };
+
+/** A short name for a step, for the progress display. */
+export function stepLabel(step: WorkflowStep): string {
+  if (step.type === "profile") return `profile ${step.name}`;
+  if (step.type === "tool") return `tool ${step.name}`;
+  const first = step.text.split("\n").find((line) => line.trim() !== "") ?? "";
+  const text = first.replace(/^#+\s*/, "").trim();
+  return text.length > 60 ? `${text.slice(0, 59)}…` : text;
+}
+
 interface WorkflowRunOptions {
   client: Client;
   tools: ToolRunner;
@@ -52,13 +74,34 @@ interface WorkflowRunOptions {
   callbacks: TurnCallbacks;
   /** Switching profiles; when given, the tool steps are checked against the profiles before anything runs. */
   profiles?: WorkflowProfiles;
+  /** Told when the run starts, before each step, and how it ended. */
+  onWorkflow?: (event: WorkflowEvent) => void;
 }
 
 /** Execute workflow steps in order, then ask the model for a final response. */
 export async function runWorkflow(
   options: WorkflowRunOptions,
 ): Promise<Result<string>> {
-  const { messages, name, workflow, request } = options;
+  const { name, workflow, onWorkflow } = options;
+  const total = workflow.steps.length + 1;
+  const progress = { step: 0 };
+  const result = await runSteps(options, total, progress);
+  onWorkflow?.({
+    kind: "end",
+    name,
+    step: progress.step,
+    total,
+    ...(result.ok ? {} : { error: result.error }),
+  });
+  return result;
+}
+
+async function runSteps(
+  options: WorkflowRunOptions,
+  total: number,
+  progress: { step: number },
+): Promise<Result<string>> {
+  const { messages, name, workflow, request, onWorkflow } = options;
   if (options.profiles) {
     const checked = await checkToolAvailability(workflow, options.profiles);
     if (!checked.ok) return checked;
@@ -67,8 +110,17 @@ export async function runWorkflow(
     role: "user",
     content: `Run workflow '${name}'. User request: ${request || "(none)"}`,
   });
+  onWorkflow?.({ kind: "start", name, total });
 
   for (const [index, step] of workflow.steps.entries()) {
+    progress.step = index + 1;
+    onWorkflow?.({
+      kind: "step",
+      name,
+      index: index + 1,
+      total,
+      label: stepLabel(step),
+    });
     if (step.type === "instruction") {
       const result = await runInstructionStep(
         options,
@@ -86,6 +138,8 @@ export async function runWorkflow(
     if (!result.ok) return result;
   }
 
+  progress.step = total;
+  onWorkflow?.({ kind: "step", name, index: total, total, label: "final response" });
   messages.push({
     role: "user",
     content: `All steps in workflow '${name}' are complete. Respond to the user's request: ${request || "(none)"}`,

@@ -50,6 +50,9 @@ function appearance(): HTMLElement {
     ["system", "Match system"],
     ["light", "Light"],
     ["dark", "Dark"],
+    ["forest", "Forest"],
+    ["volcano", "Volcano"],
+    ["underwater", "Underwater"],
   ];
   for (const [value, label] of choices) select.append(new Option(label, value));
   select.value = theme.choice();

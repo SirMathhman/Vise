@@ -45,11 +45,13 @@ export function numberLines(lines: string[], from: number): string {
  * read can never flood the context.
  */
 export function readFile(args: Record<string, unknown>): string {
+  const path = String(args.path ?? "");
+  if (path === "") return `error: path is required`;
+  const refused =
+    badNumber("offset", args.offset) ?? badNumber("limit", args.limit);
+  if (refused) return refused;
   try {
-    const text = readFileSync(String(args.path ?? ""), "utf8");
-    const refused =
-      badNumber("offset", args.offset) ?? badNumber("limit", args.limit);
-    if (refused) return refused;
+    const text = readFileSync(path, "utf8");
     const ranged =
       numberArg(args.offset) !== undefined ||
       numberArg(args.limit) !== undefined;
@@ -132,6 +134,7 @@ export function editFile(args: Record<string, unknown>): string {
   const path = String(args.path ?? "");
   const old = String(args.old_string ?? "");
   const next = String(args.new_string ?? "");
+  if (path === "") return `error: path is required`;
   try {
     if (old === "") {
       return `error: old_string must not be empty in ${path}`;

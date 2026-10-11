@@ -102,29 +102,100 @@ function textRules(): string[] {
   return rules;
 }
 
+/** A GBNF string literal for `s`. */
+function lit(s: string): string {
+  return `"${s.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+}
+
+/** The grammar rule for one argument's value, from its JSON-schema fragment. */
+function valueRule(schema: unknown): string {
+  const type = (schema as { type?: unknown } | null)?.type;
+  if (type === "string") return "string";
+  if (type === "integer" || type === "number") return "numlike";
+  if (type === "boolean") return "bool";
+  return "value";
+}
+
+/**
+ * Rules for one tool's `arguments` object, named `args<i>`: the required keys
+ * first (schema order), then any subset of the optional ones (schema order), and
+ * no other key. A tool that declares no properties keeps the generic `object`
+ * (its schema may be loose, as an MCP tool's can be). Without this the grammar
+ * only said "some JSON object", so a call with no `path` was grammatical.
+ */
+function argsRules(tool: Tool, i: number): string[] {
+  const params = tool.function.parameters as {
+    properties?: Record<string, unknown>;
+    required?: unknown;
+  };
+  const props = params.properties ?? {};
+  const keys = Object.keys(props);
+  if (keys.length === 0) return [`args${i} ::= object`];
+  const need = new Set(
+    Array.isArray(params.required)
+      ? params.required.filter((k): k is string => typeof k === "string")
+      : [],
+  );
+  const kv = (k: string): string =>
+    `${lit(`"${k}"`)} ws ":" ws ${valueRule(props[k])}`;
+  const required = keys.filter((k) => need.has(k)).map(kv);
+  const optional = keys.filter((k) => !need.has(k));
+  const rules: string[] = [];
+  // opt<i>_<n>: optional key n, then any later ones; or skip it.
+  optional.forEach((k, n) => {
+    const next = n + 1 < optional.length ? `opt${i}_${n + 1}` : undefined;
+    const take = next ? `${kv(k)} ( ws "," ws ${next} )?` : kv(k);
+    rules.push(`opt${i}_${n} ::= ${next ? `${take} | ${next}` : take}`);
+  });
+  const head = required.join(' ws "," ws ');
+  const body =
+    required.length === 0
+      ? optional.length === 0
+        ? ""
+        : `( opt${i}_0 )?`
+      : optional.length === 0
+        ? head
+        : `${head} ( ws "," ws opt${i}_0 )?`;
+  return [`args${i} ::= "{" ws ${body} ws "}"`, ...rules];
+}
+
 /**
  * GBNF grammar: `text` (which cannot contain `CALL_OPEN`) followed by any
- * number of calls whose `name` is restricted to `enabled`. The model can
- * therefore think, answer in plain text, or call an enabled tool — and never
- * call a disabled one. llama.cpp ignores lazy-grammar triggers on this
- * endpoint, so the grammar itself carries the optionality. Returns undefined
- * when no tool is enabled; the runner then rejects any call text that slips
- * through.
+ * number of calls to an enabled tool, each with arguments that fit that tool's
+ * parameter schema (see `argsRules`). The model can therefore think, answer in
+ * plain text, or call an enabled tool \u2014 and never call a disabled one or leave
+ * out a required argument. A bare name (no definition) gets any JSON object.
+ * llama.cpp ignores lazy-grammar triggers on this endpoint, so the grammar
+ * itself carries the optionality. Returns undefined when no tool is enabled;
+ * the runner then rejects any call text that slips through.
  */
 export function buildGrammar(
-  enabled: string[],
+  enabled: (string | Tool)[],
   act = false,
 ): string | undefined {
   if (act && enabled.length === 0) return `root ::= "${DONE}"`;
   if (enabled.length === 0) return undefined;
-  const lit = (s: string): string =>
-    `"${s.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
-  const nameRule = enabled.map((n) => lit(`"${n}"`));
+  const calls: string[] = [];
+  const rules: string[] = [];
+  enabled.forEach((tool, i) => {
+    const name = typeof tool === "string" ? tool : tool.function.name;
+    rules.push(
+      typeof tool === "string"
+        ? `args${i} ::= object`
+        : argsRules(tool, i).join("\n"),
+    );
+    calls.push(
+      `c${i} ::= "${CALL_OPEN}" ws "{" ws "\\"name\\"" ws ":" ws ${lit(`"${name}"`)} ws "," ws "\\"arguments\\"" ws ":" ws args${i} ws "}" ws "${CALL_CLOSE}" ws`,
+    );
+  });
   return [
     act ? `root ::= call+ | "${DONE}"` : "root ::= t0 call*",
     ...(act ? [] : textRules()),
-    `call ::= "${CALL_OPEN}" ws "{" ws "\\"name\\"" ws ":" ws name ws "," ws "\\"arguments\\"" ws ":" ws object ws "}" ws "${CALL_CLOSE}" ws`,
-    `name ::= ${nameRule.join(" | ")}`,
+    `call ::= ${enabled.map((_, i) => `c${i}`).join(" | ")}`,
+    ...calls,
+    ...rules,
+    `numlike ::= number | "\\"" "-"? [0-9]+ ( "." [0-9]+ )? "\\""`,
+    `bool ::= "true" | "false"`,
     JSON_VALUE_RULES,
   ].join("\n");
 }
@@ -140,9 +211,9 @@ export function toolRequestFields(
   isToolEnabled?: (name: string) => boolean,
   act = false,
 ): Record<string, unknown> {
-  const enabled = tools
-    .map((t) => t.function.name)
-    .filter((n) => isToolEnabled?.(n) ?? true);
+  const enabled = tools.filter(
+    (t) => isToolEnabled?.(t.function.name) ?? true,
+  );
   const grammar = buildGrammar(enabled, act);
   if (grammar === undefined) return {};
   return act ? { grammar, logprobs: true, top_logprobs: 1 } : { grammar };

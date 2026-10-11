@@ -6,7 +6,7 @@ import { SqliteAuditSink } from "./db/audit/audit-store.ts";
 import { mkdirSync } from "node:fs";
 import { ChromiumBackend } from "./browser/chromium/chromium.ts";
 import type { BrowserBackend } from "./browser/types.ts";
-import { BACKEND, LlmClient } from "./client/llm.ts";
+import { activeProvider, backendName, LlmClient } from "./client/llm.ts";
 import type { CallLog } from "./client/call-trace.ts";
 import { dataDirFor, globalDataDir, noFolderRoot } from "./data-dir.ts";
 import { GLOBAL_PROMPT } from "./global-prompt.ts";
@@ -38,6 +38,7 @@ import { compactInPlace } from "./repl/turn/compaction.ts";
 import { Session } from "./repl/session.ts";
 import { TempStore, tempHandlers } from "./tools/temp-store.ts";
 import type { GoalEvent } from "./repl/turn/goal-loop.ts";
+import type { WorkflowEvent } from "./core/workflow.ts";
 import type { McpHub } from "./mcp/mcp-hub.ts";
 import { makeBrowserHandlers } from "./tools/browser/browser.ts";
 import {
@@ -137,6 +138,8 @@ function controls(
       void syncVision();
     },
     listModels: () => client.listModels(),
+    hostedModels: () => !activeProvider().llamaCpp,
+    supportsBurst: () => activeProvider().llamaCpp,
   };
   return { toolController, modelController };
 }
@@ -169,6 +172,8 @@ export interface EdgeSessionOptions {
   onTodos?: (items: TodoItem[]) => void;
   /** Told the goal, each verdict on it, and when goal checking is switched. */
   onGoal?: (event: GoalEvent) => void;
+  /** Told a running workflow's progress (each step as it starts, and how the run ended). */
+  onWorkflow?: (event: WorkflowEvent) => void;
   /** Whether each turn is checked against a goal (default on). */
   goalChecking?: boolean;
   /** Plain-text subagent output, for frontends that style it themselves. */
@@ -271,6 +276,7 @@ function displayCallbacks(
   | "onImage"
   | "onBurst"
   | "onGoal"
+  | "onWorkflow"
 > {
   return {
     onToken: options.onToken,
@@ -280,6 +286,7 @@ function displayCallbacks(
     onImage: options.onImage,
     onBurst: options.onBurst,
     onGoal: options.onGoal,
+    onWorkflow: options.onWorkflow,
   };
 }
 
@@ -323,7 +330,9 @@ function selfInfo(
   hookStore: HookStore,
 ): SelfInfo {
   return {
-    backend: BACKEND,
+    get backend() {
+      return backendName();
+    },
     model: () => client.getModel(),
     cwd,
     contextMax: () => client.contextMax(),

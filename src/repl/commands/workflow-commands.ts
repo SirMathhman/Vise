@@ -8,7 +8,7 @@ import type {
   TurnCallbacks,
 } from "../../core/engine.ts";
 import { runWorkflow } from "../../core/workflow.ts";
-import type { WorkflowScope } from "../../core/workflow.ts";
+import type { WorkflowEvent, WorkflowScope } from "../../core/workflow.ts";
 import type { Message, Result, ViseError } from "../../core/errors.ts";
 import { formatWorkflowList } from "../../output/format.ts";
 import type { WorkflowProfileScope } from "./workflow-profiles.ts";
@@ -52,6 +52,8 @@ export interface WorkflowCommands {
   onToolResult(): ToolResultListener | undefined;
   onImage(): ((image: Picture) => void) | undefined;
   onMaxRounds(): ((question: string) => Promise<boolean>) | undefined;
+  /** Told the workflow's progress: each step as it starts and how the run ended. */
+  onWorkflow(): ((event: WorkflowEvent) => void) | undefined;
   /** The between-rounds upkeep (compaction, saving, progress) for a turn run under `signal`. */
   roundHook(signal: AbortSignal): TurnCallbacks["onRound"];
   isToolEnabled(): (name: string) => boolean;
@@ -86,6 +88,25 @@ async function runHooks(
   }
 }
 
+/** `/workflow init [--global] <name>`: create a starter workflow definition. */
+async function initWorkflow(source: WorkflowSource, rest: string): Promise<LineResult> {
+  const initArgs = rest.trim().split(/\s+/).filter(Boolean);
+  let scope: WorkflowScope = "project";
+  if (initArgs[0] === "--global") {
+    scope = "global";
+    initArgs.shift();
+  }
+  if (initArgs.length !== 1 || !initArgs[0]) {
+    return {
+      ok: false,
+      error: { kind: "malformed", body: "usage: /workflow init [--global] <name>" },
+    };
+  }
+  const created = await source.initWorkflow(initArgs[0], scope);
+  if (!created.ok) return created;
+  return { ok: true, value: `initialized ${scope} workflow '${created.value}'` };
+}
+
 /**
  * Handle `/workflow` and `/workflow <name> [input]`.
  * When name is omitted: lists available workflows from both scopes.
@@ -116,31 +137,7 @@ export async function handleWorkflowCommand(
     return { ok: true, value: formatWorkflowList(listed.value) };
   }
   if (arg === "init" || arg.startsWith("init ")) {
-    const initArgs = arg
-      .slice("init".length)
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean);
-    let scope: WorkflowScope = "project";
-    if (initArgs[0] === "--global") {
-      scope = "global";
-      initArgs.shift();
-    }
-    if (initArgs.length !== 1 || !initArgs[0]) {
-      return {
-        ok: false,
-        error: {
-          kind: "malformed",
-          body: "usage: /workflow init [--global] <name>",
-        },
-      };
-    }
-    const created = await source.initWorkflow(initArgs[0], scope);
-    if (!created.ok) return created;
-    return {
-      ok: true,
-      value: `initialized ${scope} workflow '${created.value}'`,
-    };
+    return initWorkflow(source, arg.slice("init".length));
   }
 
   const separator = arg.search(/\s/);
@@ -155,6 +152,10 @@ export async function handleWorkflowCommand(
   const abort = new AbortController();
   session.setCurrentAbort(abort);
   const scope = session.profileScope();
+  // A run that stops early stays in the profile it was working in: putting
+  // back the one you had (often a restricted planning profile) would take the
+  // tools away from the "continue" you type next.
+  let succeeded = false;
   try {
     const messages = session.messages();
     await runHooks(session.preTurnHooks(), messages);
@@ -170,6 +171,7 @@ export async function handleWorkflowCommand(
       workflow: loaded.value,
       request,
       profiles: scope.profiles,
+      onWorkflow: session.onWorkflow(),
       callbacks: {
         onToken: session.onToken(),
         onThinking: session.onThinking(),
@@ -183,6 +185,7 @@ export async function handleWorkflowCommand(
       },
     });
     if (!result.ok) return result;
+    succeeded = true;
     await runHooks(session.postTurnHooks(), messages);
     await session.save();
     if (auto.ok) {
@@ -195,8 +198,12 @@ export async function handleWorkflowCommand(
       compactionWarning: auto.error,
     };
   } finally {
-    // A workflow that switched profile gives you back the one you had.
-    if (loaded.value.steps.some((s) => s.type === "profile")) await scope.restore(scope.active);
+    if (loaded.value.steps.some((s) => s.type === "profile")) {
+      // A workflow that ran to the end gives you back the profile you had.
+      if (succeeded) await scope.restore(scope.active);
+      else if (scope.current() !== scope.active)
+        session.onWorkflow()?.({ kind: "profile", name: scope.current(), was: scope.active });
+    }
     session.setCurrentAbort(null);
   }
 }

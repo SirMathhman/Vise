@@ -1,4 +1,4 @@
-﻿﻿import type { BrowserView } from "./browser-view.ts";
+import type { BrowserView } from "./browser-view.ts";
 import { emojiFor } from "./file-icons.ts";
 import {
   type BrowserTab,
@@ -9,6 +9,7 @@ import {
 } from "./open-tabs.ts";
 import { showMenu } from "./tab-menu.ts";
 import { confirmAction } from "../feedback/confirm.ts";
+import { promptAction } from "../feedback/prompt.ts";
 import { toast } from "../feedback/toast.ts";
 import { getSessionRoot } from "./restore-root.ts";
 
@@ -56,33 +57,37 @@ export function createExplorer(
 } {
   const set = new OpenTabs();
   const expanded = new Set<string>();
-  const entryContext = makeEntryOps(() => void reload());
-  async function open(
-    path: string,
-    ul: HTMLUListElement = list,
-  ): Promise<void> {
+  async function newEntry(parentPath: string, isDir: boolean): Promise<void> {
+    const name = await promptAction({ title: isDir ? "New Directory" : "New File" });
+    if (!name) return;
+    const rel = parentPath === "" ? name : parentPath + "/" + name;
+    const res = await fetch(api("/api/create", rel) + "&dir=" + (isDir ? "1" : "0"), { method: "POST" });
+    if (res.ok) void reload();
+    else { const body = (await res.json().catch(() => ({}))) as { error?: string }; toast(`Could not create ${name} (${body.error ?? "error"})`, "error"); }
+  }
+  const entryContext = makeEntryOps(() => void reload(), newEntry);
+  async function open(path: string, ul: HTMLUListElement = list): Promise<void> {
     const entries = await fetchEntries(path, ul);
     if (!entries) return;
     pathEl.textContent = "/";
     for (const entry of entries) {
       const child = path ? `${path}/${entry.name}` : entry.name;
-      ul.appendChild(
-        entry.dir
-          ? dirRow(entry.name, child, expanded, (c) => void open(child, c), (e) => entryContext(e, child), entry.ignored)
-          : fileRow(entry.name, child, set.has(child), () => void openFile(child), (e) => entryContext(e, child), entry.ignored),
-      );
+      ul.appendChild(entry.dir ? dirRow(entry.name, child, expanded, (c) => void open(child, c), (e) => entryContext(e, child, true), entry.ignored) : fileRow(entry.name, child, set.has(child), () => void openFile(child), (e) => entryContext(e, child), entry.ignored));
     }
   }
   function openUrl(raw: string): void {
     const url = normalizeUrl(raw);
     if (url) activate(set.urlIndex(url));
   }
+  list.addEventListener("contextmenu", (e: MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest(".fs-row")) return;
+    e.preventDefault();
+    const parent = target.closest<HTMLElement>("li[data-dir]")?.dataset.dir ?? "";
+    showMenu(e.clientX, e.clientY, [{ label: "New File", run: () => void newEntry(parent, false) }, { label: "New Directory", run: () => void newEntry(parent, true) }]);
+  });
   bindUrlForm(md.urlForm, openUrl, true);
-  bindUrlForm(
-    md.addrForm,
-    (raw) => navigateTab(set.current, raw, md) && redraw(),
-    false,
-  );
+  bindUrlForm(md.addrForm, (raw) => navigateTab(set.current, raw, md) && redraw(), false);
   async function openFile(path: string): Promise<void> {
     await openFileTab(set, path, activate);
   }
@@ -105,14 +110,7 @@ export function createExplorer(
     retain((i) => i !== index);
   }
   function tabMenu(index: number, x: number, y: number): void {
-    showMenu(x, y, [
-      { label: "Close all", run: () => retain(() => false) },
-      {
-        label: "Close all to right",
-        disabled: index === set.files.length - 1,
-        run: () => retain((i) => i <= index),
-      },
-    ]);
+    showMenu(x, y, [{ label: "Close all", run: () => retain(() => false) }, { label: "Close all to right", disabled: index === set.files.length - 1, run: () => retain((i) => i <= index) }]);
   }
   md.modeBtn.addEventListener("click", () => {
     if (toggleMode(set.current)) renderViewer(set.current, viewer, md);
@@ -321,6 +319,7 @@ function dirRow(
   ignored?: boolean,
 ): HTMLLIElement {
   const item = document.createElement("li");
+  item.dataset.dir = path;
   const head = document.createElement("div");
   head.className = "fs-row fs-dir";
   if (ignored) head.classList.add("fs-ignored");
@@ -445,7 +444,10 @@ function tabLabel(file: OpenFile): string {
 }
 
 /** Entry context-menu handler shared by `createExplorer`. */
-function makeEntryOps(reload: () => void): (e: MouseEvent, path: string) => void {
+function makeEntryOps(
+  reload: () => void,
+  newEntry?: (parentPath: string, isDir: boolean) => Promise<void>,
+): (e: MouseEvent, path: string, isDir?: boolean) => void {
   const deleteEntry = async (path: string): Promise<void> => {
     const yes = await confirmAction({
       title: `Delete ${path}?`,
@@ -463,13 +465,21 @@ function makeEntryOps(reload: () => void): (e: MouseEvent, path: string) => void
     const root = getSessionRoot();
     return root ? root.replace(/\/+$/, "") + "/" + path : path;
   };
-  return (e: MouseEvent, path: string): void => {
+  return (e: MouseEvent, path: string, isDir?: boolean): void => {
     e.preventDefault();
-    showMenu(e.clientX, e.clientY, [
+    const items: { label: string; danger?: boolean; run: () => void }[] = [];
+    if (newEntry && isDir) {
+      items.push(
+        { label: "New File", run: () => void newEntry(path, false) },
+        { label: "New Directory", run: () => void newEntry(path, true) },
+      );
+    }
+    items.push(
       { label: "Copy relative path", run: () => copy(path) },
       { label: "Copy absolute path", run: () => copy(absolute(path)) },
       { label: "Delete…", danger: true, run: () => void deleteEntry(path) },
-    ]);
+    );
+    showMenu(e.clientX, e.clientY, items);
   };
 }
 

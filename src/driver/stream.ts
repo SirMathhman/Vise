@@ -2,6 +2,8 @@ import type { PromptProgress } from "../core/errors.ts";
 import { describeCall } from "../core/progress.ts";
 import { dim } from "../output/color.ts";
 import { formatGoalEvent } from "../output/format.ts";
+import { formatWorkflowEvent } from "../output/workflow-format.ts";
+import type { WorkflowEvent } from "../core/workflow.ts";
 import {
   formatPicture,
   formatToolCall,
@@ -142,6 +144,19 @@ export class StreamDisplay {
   /** Display the goal and each verdict on it as a visible event between model rounds. */
   onGoal = (event: GoalEvent): void => {
     const line = formatGoalEvent(event);
+    if (!line) return;
+    if (this.promptActive || this.thinkingActive) {
+      this.promptActive = false;
+      this.thinkingActive = false;
+      process.stdout.write("\n");
+    }
+    if (this.contentWritten) this.flushMdLine();
+    process.stdout.write(dim(line.text) + "\n");
+  };
+
+  /** Show each workflow step as it starts (and how the run ended) as a visible event between model rounds. */
+  onWorkflow = (event: WorkflowEvent): void => {
+    const line = formatWorkflowEvent(event);
     if (!line) return;
     if (this.promptActive || this.thinkingActive) {
       this.promptActive = false;

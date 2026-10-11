@@ -11,7 +11,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { join, relative, resolve, sep, dirname } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 
 /**
  * Read-only file explorer backend for the web UI. Paths are relative to the

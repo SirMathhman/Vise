@@ -239,6 +239,7 @@ export class Session {
       onToolResult: () => this.opts.onToolResult,
       onImage: () => this.opts.onImage,
       onMaxRounds: () => this.opts.onMaxRounds,
+      onWorkflow: () => this.opts.onWorkflow,
       roundHook: (signal) => this.roundHook(signal),
       isToolEnabled: () => this.isToolEnabled,
       maybeAutoCompact: () => this.maybeAutoCompact(),
@@ -331,11 +332,9 @@ export class Session {
   private burstCommand(line: string): Result<string> {
     return handleBurstCommand(
       () => this.burst,
-      (on) => {
-        this.burst = on;
-        this.notify(burstNotice(on));
-      },
+      (on) => ((this.burst = on), this.notify(burstNotice(on))),
       line,
+      this.modelController?.supportsBurst?.() !== false,
     );
   }
 

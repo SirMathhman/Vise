@@ -30,6 +30,14 @@
   margin-top: var(--sp-5);
 }
 
+.confirm-dialog .field {
+  margin-top: var(--sp-2);
+}
+
+.confirm-dialog .field {
+  margin-top: var(--sp-2);
+}
+
 .picker-form {
   display: flex;
   flex-direction: column;

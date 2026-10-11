@@ -46,6 +46,7 @@ const edge = createEdgeSession({
   onToolResult: display.onToolResult,
   onImage: display.onImage,
   onGoal: display.onGoal,
+  onWorkflow: display.onWorkflow,
   askUser: rlPrompter,
   onMaxRounds: async (question) => {
     const answer = await rlPrompter.ask({

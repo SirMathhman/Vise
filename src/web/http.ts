@@ -1,6 +1,6 @@
 import { imageStore } from "../stores/image-store.ts";
 import { pickFolder, RootRegistry } from "./api/roots.ts";
-import { listDir, readTextFile, deletePath, annotateIgnored, type DirEntry } from "./api/files.ts";
+import { listDir, readTextFile, deletePath, createPath, annotateIgnored, type DirEntry } from "./api/files.ts";
 
 /** Non-browser clients send no Origin; browsers must come from the Vise page itself. */
 export function isLocalOrigin(origin: string | null, port: number): boolean {
@@ -84,6 +84,18 @@ export function serveApi(
     }
     const rel = url.searchParams.get("path") ?? "";
     const result = deletePath(root, rel);
+    if (!result.ok)
+      return Response.json({ error: result.error }, { status: result.status });
+    return Response.json({ ok: true });
+  }
+  if (url.pathname === "/api/create" && req.method === "POST") {
+    const root = roots.resolve(url.searchParams.get("root"));
+    if (!root || !roots.isActive(root)) {
+      return Response.json({ error: "unknown root" }, { status: 403 });
+    }
+    const rel = url.searchParams.get("path") ?? "";
+    const isDir = url.searchParams.get("dir") === "1";
+    const result = createPath(root, rel, isDir);
     if (!result.ok)
       return Response.json({ error: result.error }, { status: result.status });
     return Response.json({ ok: true });

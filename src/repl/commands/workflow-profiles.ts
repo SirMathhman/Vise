@@ -9,6 +9,8 @@ export interface WorkflowProfileScope {
   profiles: WorkflowProfiles | undefined;
   /** The profile active now (to restore after the run). */
   active: string | undefined;
+  /** The profile active at this moment (it differs from `active` once a profile step ran). */
+  current(): string | undefined;
   /** Put `before` back: it becomes the active profile and its tool list applies again. */
   restore(before: string | undefined): Promise<void>;
 }
@@ -30,6 +32,7 @@ export function workflowProfileScope(
       : ({ ok: true, value: undefined } as const);
   return {
     active: commands.activeProfile(),
+    current: () => commands.activeProfile(),
     profiles: source && {
       async apply(name) {
         const result = await handleProfileCommand(commands, `/profile ${name}`);

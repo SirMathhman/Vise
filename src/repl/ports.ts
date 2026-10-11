@@ -63,6 +63,10 @@ export interface ModelController {
   setModel(name: string): void;
   /** Retrieve available model names from the server. */
   listModels(): Promise<Result<string[]>>;
+  /** True for a hosted provider (OpenRouter): its model list is huge and incomplete, so any id is accepted and the list is capped. */
+  hostedModels?(): boolean;
+  /** False when the provider cannot constrain calls with a grammar, so burst mode (which needs one) is refused. */
+  supportsBurst?(): boolean;
 }
 
 /**

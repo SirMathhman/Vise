@@ -55,21 +55,10 @@ export function createTranscript(
   const model = createLineModel();
   const boxes = createBoxes(log);
   const { follow, jump } = createFollower(log, onPinned);
-  const replies = createReplies({
-    container: boxes.container,
-    model,
-    renderHtml,
-    follow,
-    endThinking: () => endThinking(),
-  });
+  const replies = createReplies({ container: boxes.container, model, renderHtml, follow, endThinking: () => endThinking() });
 
   // Thinking lines start collapsed, and collapse again when the thinking ends.
-  const thinking = createThinking({
-    addLine: (cls, text) => addLine(cls, text),
-    settle: (line, text) => model.settle(line, text),
-    follow,
-    renderHtml,
-  });
+  const thinking = createThinking({ addLine: (cls, text) => addLine(cls, text), settle: (line, text) => model.settle(line, text), follow, renderHtml });
   const endThinking = thinking.end;
 
   enableThinkingToggle(log);
@@ -89,11 +78,7 @@ export function createTranscript(
     endThinking();
   }
 
-  function addCollapsed(
-    cls: string,
-    title: string,
-    detail: string,
-  ): HTMLElement {
+  function addCollapsed(cls: string, title: string, detail: string): HTMLElement {
     const box = buildCollapsed(cls, title, detail);
     boxes.container().appendChild(box);
     model.add(cls, detail ? `${title} — ${detail}` : title, box);
@@ -113,10 +98,7 @@ export function createTranscript(
     },
     appendToolCall(name: string, depth?: number, text?: string): HTMLElement {
       settle();
-      lastTool = addLine(
-        burstActive ? "tool burst" : "tool",
-        `${text ?? `tool: ${name}`}${depth ? " (subagent)" : ""}`,
-      );
+      lastTool = addLine(burstActive ? "tool burst" : "tool", `${text ?? `tool: ${name}`}${depth ? " (subagent)" : ""}`);
       return lastTool;
     },
     appendToolResult(text: string): void {
