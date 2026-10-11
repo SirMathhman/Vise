@@ -7,9 +7,11 @@ import {
   statSync,
   existsSync,
   rmSync,
+  mkdirSync,
+  writeFileSync,
 } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { join, relative, resolve, sep } from "node:path";
+import { join, relative, resolve, sep, dirname } from "node:path";
 
 /**
  * Read-only file explorer backend for the web UI. Paths are relative to the
@@ -108,6 +110,43 @@ export function deletePath(
 /** True when `root` contains a `.git` entry (directory or file). */
 export function isGitRoot(root: string): boolean {
   return existsSync(join(root, ".git"));
+}
+
+/**
+ * Create an empty file or an empty directory under `root`. `rel` is the path
+ * relative to `root`; only the leaf name is validated (no `/`, no `..`, no
+ * whitespace-only). The parent must already exist (no recursive mkdir).
+ */
+export function createPath(
+  root: string,
+  rel: string,
+  isDir: boolean,
+): ExplorerResult<null> {
+  const abs = confine(root, rel);
+  if (abs === null)
+    return { ok: false, error: "path outside root or missing", status: 400 };
+  const name = rel.slice(rel.lastIndexOf("/") + 1);
+  if (!name || name.trim() === "" || name.includes("..") || name.includes("/"))
+    return { ok: false, error: "invalid name", status: 400 };
+  try {
+    if (isDir) {
+      mkdirSync(abs);
+    } else {
+      const parent = dirname(abs);
+      if (!existsSync(parent))
+        return {
+          ok: false,
+          error: "parent directory does not exist",
+          status: 400,
+        };
+      writeFileSync(abs, "");
+    }
+    return { ok: true, value: null };
+  } catch (err) {
+    if (err instanceof Error && err.code === "EEXIST")
+      return { ok: false, error: "already exists", status: 409 };
+    return { ok: false, error: "cannot create", status: 404 };
+  }
 }
 
 /**
