@@ -80,7 +80,8 @@ describe("runWorkflow (core)", () => {
       async chat(messages, tools, _onToken, _onThinking, _progress, schema) {
         if (schema) {
           events.push("generate-args");
-          expect(tools).toBeUndefined();
+          // The tool list keeps the request encoded like the conversation's turns (prompt-cache prefix).
+          expect(tools).toEqual(toolDefs);
           expect(schema).toEqual({
             type: "object",
             properties: {

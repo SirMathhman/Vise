@@ -19,6 +19,10 @@ You have three search tools:
 - Pay attention to provided agent instructions/rules as they apply to areas of the codebase to better understand architecture and best practices.
 - To search references in external dependencies, run `search_files` / `find_files` under `node_modules/`.
 
+## Obvious Domain Knowledge
+
+If the ask involves obscure or specialised domain knowledge that is not in the codebase, do not guess: search online with the Tavily tools (`tavily_search`, `tavily_extract`) to find authoritative sources and ground your answer in them.
+
 ## Speed Principles
 
 Adapt search strategy based on the requested thoroughness level.

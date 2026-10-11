@@ -1,6 +1,6 @@
 import type { AuditSink } from "../core/audit.ts";
 import type { Picture } from "../core/errors.ts";
-import type { Client } from "../core/engine.ts";
+import type { Client, SummaryPrefix } from "../core/engine.ts";
 import type { GoalLog, GoalTraceEntry } from "../core/goal-trace.ts";
 import type { TodoItem, TodoStore } from "../core/todos.ts";
 import type { Workflow, WorkflowScope } from "../core/workflow.ts";
@@ -288,6 +288,11 @@ export interface CompactionSource {
   resetMessages(messages: Message[]): void;
   /** Told what each compaction did (the audit log). */
   audit?: AuditSink;
+  /**
+   * The conversation's system message and tool list: the summarizing call is
+   * encoded with them so it shares the conversation's cached prompt prefix.
+   */
+  prefix?(): SummaryPrefix | undefined;
 }
 
 /** The MCP servers behind `/mcp` (provided by the edge). */

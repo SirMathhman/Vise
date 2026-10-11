@@ -17,6 +17,7 @@ interface DirEntry {
   name: string;
   dir: boolean;
   ignored?: boolean;
+  status?: string;
 }
 
 /** Extra viewer pieces: rendered markdown, its toggle, the URL iframe and its form. */
@@ -72,7 +73,7 @@ export function createExplorer(
     pathEl.textContent = "/";
     for (const entry of entries) {
       const child = path ? `${path}/${entry.name}` : entry.name;
-      ul.appendChild(entry.dir ? dirRow(entry.name, child, expanded, (c) => void open(child, c), (e) => entryContext(e, child, true), entry.ignored) : fileRow(entry.name, child, set.has(child), () => void openFile(child), (e) => entryContext(e, child), entry.ignored));
+      ul.appendChild(entry.dir ? dirRow(entry.name, child, expanded, (c) => void open(child, c), (e) => entryContext(e, child, true), entry.ignored) : fileRow(entry.name, child, set.has(child), () => void openFile(child), (e) => entryContext(e, child), entry.ignored, entry.status));
     }
   }
   function openUrl(raw: string): void {
@@ -293,12 +294,15 @@ function fileRow(
   onOpen: () => void,
   onContext: (e: MouseEvent) => void,
   ignored?: boolean,
+  status?: string,
 ): HTMLLIElement {
   const item = document.createElement("li");
   item.className = "fs-row";
   item.dataset.path = path;
   item.classList.toggle("open", isOpen);
   if (ignored) item.classList.add("fs-ignored");
+  if (status === "?") item.classList.add("fs-new");
+  else if (status) item.classList.add("fs-modified");
   const icon = document.createElement("span");
   icon.className = "fs-icon";
   icon.textContent = emojiFor(name);

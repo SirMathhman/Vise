@@ -24,6 +24,7 @@ export interface DirEntry {
   name: string;
   dir: boolean;
   ignored?: boolean;
+  status?: string;
 }
 
 export type ExplorerResult<T> =
@@ -180,6 +181,59 @@ export function annotateIgnored(
       ? { name: e.name, dir: e.dir, ignored: true }
       : { name: e.name, dir: e.dir },
   );
+}
+
+/**
+ * Annotate entries with a git status code (`status` field) for files that
+ * differ from HEAD. Returns the same array unchanged when the root is not
+ * a git repo or git is unavailable.
+ */
+export function annotateGitStatus(
+  root: string,
+  rel: string,
+  entries: DirEntry[],
+): DirEntry[] {
+  if (!isGitRoot(root) || entries.length === 0) return entries;
+  // Scope git to this directory's subtree so the scan is O(dir) not O(repo).
+  const args = rel
+    ? ["status", "--porcelain=v1", "-z", "-uall", "--", rel + "/"]
+    : ["status", "--porcelain=v1", "-z", "-uall"];
+  let output: string;
+  try {
+    const result = spawnSync("git", args, {
+      cwd: root,
+      encoding: "utf8",
+      windowsHide: true,
+    });
+    if (result.status !== 0) return entries;
+    output = result.stdout;
+  } catch {
+    return entries;
+  }
+  // Build a path → status map from NUL-separated porcelain entries.
+  // Rename entries (R) emit two NUL-delimited chunks: "R <new>\0<old>\0".
+  // The "old" chunk has no XY prefix and produces an inert map entry whose
+  // key (oldPath.slice(3)) never matches a listing, since the file no longer
+  // exists at that path.
+  const map = new Map<string, string>();
+  for (const entry of output.split("\0")) {
+    if (entry.length < 4) continue;
+    const x = entry[0]!;
+    const y = entry[1]!;
+    const path = entry.slice(3);
+    if (x === "?" && y === "?") map.set(path, "?");
+    else {
+      // Prefer the worktree letter if set; otherwise the index letter.
+      map.set(path, y !== " " ? y : x);
+    }
+  }
+  return entries.map((e) => {
+    const relPath = rel ? rel + "/" + e.name : e.name;
+    const status = map.get(relPath);
+    return status
+      ? { name: e.name, dir: e.dir, status, ...(e.ignored ? { ignored: true } : {}) }
+      : { name: e.name, dir: e.dir, ...(e.ignored ? { ignored: true } : {}) };
+  });
 }
 
 /** Path segments whose changes are noise for the explorer. */

@@ -261,7 +261,9 @@ async function generateArguments(
     options.client.as?.("workflow") ?? options.client
   ).chat(
     options.messages,
-    undefined,
+    // The tool list keeps the request encoded as the conversation's own turns are,
+    // so it shares their prompt prefix (and the server's cache) instead of re-reading it.
+    options.toolDefs,
     undefined,
     options.callbacks.onThinking,
     options.callbacks.onPromptProgress,

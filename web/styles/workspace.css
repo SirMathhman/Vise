@@ -63,12 +63,20 @@
   background: var(--highlight);
 }
 
-.fs-row.open {
-  color: var(--accent);
-}
-
 .fs-row.fs-ignored {
   opacity: 0.45;
+}
+
+.fs-row.fs-modified {
+  color: var(--goal-warn);
+}
+
+.fs-row.fs-new {
+  color: var(--user);
+}
+
+.fs-row.open {
+  color: var(--accent);
 }
 
 .fs-dir {

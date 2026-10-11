@@ -41,9 +41,13 @@ describe("tool protocol (edge)", () => {
     };
     const g = buildGrammar([read]) ?? "";
     // The required key comes first and is not optional; the others are optional.
-    expect(g).toContain('args0 ::= "{" ws "\\"path\\"" ws ":" ws string ( ws "," ws opt0_0 )? ws "}"');
-    expect(g).toContain('opt0_0 ::= "\\"offset\\"" ws ":" ws numlike ( ws "," ws opt0_1 )? | opt0_1');
-    expect(g).toContain('opt0_1 ::= "\\"limit\\"" ws ":" ws numlike');
+    expect(g).toContain('args0 ::= "{" ws "\\"path\\"" ws ":" ws string ( ws "," ws opt0-0 )? ws "}"');
+    expect(g).toContain('opt0-0 ::= "\\"offset\\"" ws ":" ws numlike ( ws "," ws opt0-1 )? | opt0-1');
+    expect(g).toContain('opt0-1 ::= "\\"limit\\"" ws ":" ws numlike');
+    // GBNF rule names allow only letters, digits and "-" (llama.cpp rejects "_").
+    for (const m of g.matchAll(/^([^\s:]+) ::=/gm)) {
+      expect(m[1]).toMatch(/^[a-zA-Z0-9-]+$/);
+    }
   });
 
   test("a tool without declared properties accepts any object", () => {

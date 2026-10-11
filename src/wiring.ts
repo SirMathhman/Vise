@@ -254,12 +254,13 @@ function subagentCallbacks(
     onImage: options.onImage,
     onSubagentToken: options.onSubagentToken,
     isToolEnabled: (name) => toolController.isEnabled(name),
-    onRound: (_round, messages) =>
+    onRound: (_round, messages, toolDefs) =>
       compactInPlace(
         client,
         client,
         messages,
         config.inTurnCompactionThreshold,
+        toolDefs,
       ),
   };
 }

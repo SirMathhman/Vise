@@ -143,19 +143,19 @@ function argsRules(tool: Tool, i: number): string[] {
   const rules: string[] = [];
   // opt<i>_<n>: optional key n, then any later ones; or skip it.
   optional.forEach((k, n) => {
-    const next = n + 1 < optional.length ? `opt${i}_${n + 1}` : undefined;
+    const next = n + 1 < optional.length ? `opt${i}-${n + 1}` : undefined;
     const take = next ? `${kv(k)} ( ws "," ws ${next} )?` : kv(k);
-    rules.push(`opt${i}_${n} ::= ${next ? `${take} | ${next}` : take}`);
+    rules.push(`opt${i}-${n} ::= ${next ? `${take} | ${next}` : take}`);
   });
   const head = required.join(' ws "," ws ');
   const body =
     required.length === 0
       ? optional.length === 0
         ? ""
-        : `( opt${i}_0 )?`
+        : `( opt${i}-0 )?`
       : optional.length === 0
         ? head
-        : `${head} ( ws "," ws opt${i}_0 )?`;
+        : `${head} ( ws "," ws opt${i}-0 )?`;
   return [`args${i} ::= "{" ws ${body} ws "}"`, ...rules];
 }
 

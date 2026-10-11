@@ -117,7 +117,10 @@ export function createFile(args: Record<string, unknown>): string {
 }
 
 const CRLF = new RegExp(String.fromCharCode(13, 10), "g");
-const LONE_LF = new RegExp("(?<!" + String.fromCharCode(13) + ")" + String.fromCharCode(10), "g");
+const LONE_LF = new RegExp(
+  "(?<!" + String.fromCharCode(13) + ")" + String.fromCharCode(10),
+  "g",
+);
 
 /** Whether most of a text's line breaks are CRLF (a Windows file) rather than LF. */
 function usesCrlf(text: string): boolean {
@@ -152,7 +155,11 @@ export function editFile(args: Record<string, unknown>): string {
       return `error: old_string appears ${count} times in ${path}; it must be unique`;
     }
     // A function, so `$&`, `$'` and the like in the new text are written as they are.
-    writeFileSync(path, current.replace(wanted, () => replacement), "utf8");
+    writeFileSync(
+      path,
+      current.replace(wanted, () => replacement),
+      "utf8",
+    );
     return `edited ${path}`;
   } catch (err) {
     return errStr(err);

@@ -110,7 +110,11 @@ export function requireOwned(tabId: unknown): number {
   return tabId;
 }
 
-browser.tabs.onRemoved.addListener((tabId) => release(tabId));
+browser.tabs.onRemoved.addListener((tabId) => {
+  const idx = pending.findIndex((t) => t.id === tabId);
+  if (idx !== -1) pending.splice(idx, 1);
+  release(tabId);
+});
 // A tab Vise uses navigating or finishing a load is worth telling the server about.
 browser.tabs.onUpdated.addListener(
   (tabId) => {

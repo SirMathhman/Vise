@@ -222,6 +222,7 @@ export class Session {
       audit: this.audit.sink,
       messages: () => this.messages.filter((m) => !this.goals.isNote(m)),
       resetMessages: (body) => this.replaceConversation(body),
+      prefix: () => ({ system: this.systemMessage, tools: this.toolDefs }),
     };
     this.workflowCommands = {
       workflowSource: () => this.workflowSource,

@@ -326,9 +326,13 @@ export function makeBrowserHandlers(
     browser_run_code: (args) =>
       onTab(args, (id) => browser.runCode(id, ref(args, "code")), "done"),
     browser_close_tab: (args) =>
-      onTab(args, async (id) => {
-        await browser.closeTab(id);
-        return `tab ${id} closed`;
-      }),
+      onTab(
+        args,
+        async (id) => {
+          await browser.closeTab(id);
+          return `tab ${id} closed`;
+        },
+        "",
+      ),
   };
 }

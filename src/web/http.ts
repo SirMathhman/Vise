@@ -1,6 +1,6 @@
 import { imageStore } from "../stores/image-store.ts";
 import { pickFolder, RootRegistry } from "./api/roots.ts";
-import { listDir, readTextFile, deletePath, createPath, annotateIgnored, type DirEntry } from "./api/files.ts";
+import { listDir, readTextFile, deletePath, createPath, annotateIgnored, annotateGitStatus, type DirEntry } from "./api/files.ts";
 
 /** Non-browser clients send no Origin; browsers must come from the Vise page itself. */
 export function isLocalOrigin(origin: string | null, port: number): boolean {
@@ -30,6 +30,7 @@ function serveExplorer(url: URL, roots: RootRegistry): Response {
   if (url.pathname === "/api/fs") {
     const value = result.value as { root: string; entries: DirEntry[] };
     value.entries = annotateIgnored(root, rel, value.entries);
+    value.entries = annotateGitStatus(root, rel, value.entries);
     return Response.json(value);
   }
   return Response.json(result.value);

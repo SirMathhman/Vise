@@ -116,6 +116,45 @@ describe("llama.cpp side slot (edge)", () => {
     }
   });
 
+  test("side work avoids the slot a tool-calling reply ran on, even when another call ran after it", async () => {
+    // Slot 0 ran the reply (task 7); a later call went to slot 1 (task 9), the slot used last.
+    const call = `<tool_call>{"name":"run_subagent","arguments":{}}</tool_call>`;
+    const mock = mockFetch((url) =>
+      isSlotList(url)
+        ? jsonResponse([
+            { id: 0, n_ctx: 100, id_task: 9 },
+            { id: 1, n_ctx: 100, id_task: 5 },
+          ])
+        : jsonResponse({ choices: [{ message: { content: call } }] }),
+    );
+    try {
+      const client = new LlmClient();
+      const tools = [{ type: "function" as const, function: { name: "run_subagent", description: "d", parameters: { type: "object", properties: {} } } }];
+      const reply = await client.chat(
+        [{ role: "user", content: "hi" }], tools, undefined, undefined, undefined, undefined, undefined, undefined, true,
+      );
+      expect(reply.ok).toBeTrue();
+      // The reply's slot (0, the highest task then) is remembered; now slot 1 looks used last.
+      mock.restore();
+      const after = mockFetch((url) =>
+        isSlotList(url)
+          ? jsonResponse([
+              { id: 0, n_ctx: 100, id_task: 7 },
+              { id: 1, n_ctx: 100, id_task: 12 },
+            ])
+          : chatReply(),
+      );
+      try {
+        await client.withSideSlot(() => ask(client));
+        expect(pinned(after.calls)).toEqual([1]);
+      } finally {
+        after.restore();
+      }
+    } finally {
+      mock.restore();
+    }
+  });
+
   test("with a single slot the work runs unpinned, leaving the server's prompt cache to keep the main context", async () => {
     const mock = mockFetch((url) =>
       isSlotList(url) ? jsonResponse([{ id: 0, n_ctx: 100, id_task: 3 }]) : chatReply(),

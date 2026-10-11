@@ -6,7 +6,7 @@ import {
   summarize,
 } from "../../core/engine.ts";
 import type { Message, Result } from "../../core/errors.ts";
-import type { Client } from "../../core/engine.ts";
+import type { Client, Tool } from "../../core/engine.ts";
 import type { ContextSource } from "../ports.ts";
 import type { CompactionSource } from "../session.ts";
 
@@ -68,10 +68,15 @@ export async function compactInPlace(
   context: ContextSource,
   messages: Message[],
   threshold: number,
+  toolDefs: Tool[],
 ): Promise<string | undefined> {
   const source: CompactionSource = {
     client,
     messages: () => [...messages],
+    prefix: () => {
+      const system = messages[0];
+      return system?.role === "system" ? { system, tools: toolDefs } : undefined;
+    },
     resetMessages: (body) => {
       messages.splice(1, messages.length, ...body); // the first message is the system message
     },
@@ -112,7 +117,11 @@ export async function runCompaction(
   if (split.toSummarize.length === 0) {
     return okNoop();
   }
-  const summary = await summarize(source.client, split.toSummarize);
+  const summary = await summarize(
+    source.client,
+    split.toSummarize,
+    source.prefix?.(),
+  );
   if (!summary.ok) {
     // Leave the conversation untouched; report the error.
     return { ok: false, error: summary.error };

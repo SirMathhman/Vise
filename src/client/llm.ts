@@ -4,6 +4,7 @@ import { encodeMessages, type ImageResolver, plainMessages, hideCalls, nameConfi
 import { collectThinking, readJsonReply, streamChat } from "./stream-reader.ts";
 import { generationReporter } from "./generation.ts";
 import { modelInfo, providerFor, reasoningFields, responseFormat, type ModelInfo, type Provider } from "./provider.ts";
+import { chooseSideSlot as chooseSlot, slotJustUsed } from "./slots.ts";
 import { CallLog, CallTrace, recordCallEnd, recordCallStart, noteServerCut, runawayError, traceListener, traceThinking } from "./call-trace.ts";
 
 export { streamChat };
@@ -157,6 +158,9 @@ export class LlmClient implements Client {
   /** The slot side work is pinned to while `withSideSlot` runs; undefined when it runs unpinned. */
   private sideSlot: number | undefined;
   private sideDepth = 0;
+  /** The slot the main conversation was last seen on (see `noteMainSlot`). */
+  private mainSlot: number | undefined;
+  private mainSlotProbe: Promise<void> | undefined;
   private readonly slotRequestTimeoutMs: number;
 
   constructor(slotRequestTimeoutMs = config.slotRequestTimeoutMs) {
@@ -189,6 +193,7 @@ export class LlmClient implements Client {
   /** The least recently used slot other than the one used last (the main conversation's); undefined when there is none to choose. */
   private async chooseSideSlot(): Promise<number | undefined> {
     const provider = activeProvider();
+    await this.mainSlotProbe;
     const model = encodeURIComponent(this.currentModel);
     const response = await this.slotFetch(
       `${provider.rootUrl}/slots?model=${model}`,
@@ -197,14 +202,25 @@ export class LlmClient implements Client {
     );
     if (!response.ok) return undefined;
     const body: unknown = await response.json();
-    if (!Array.isArray(body) || body.length < 2) return undefined;
-    const slots = body as Slot[];
-    // Without the task numbers the main slot cannot be told from the rest.
-    if (!slots.every((s) => Number.isInteger(s.id) && typeof s.id_task === "number")) {
-      return undefined;
+    if (!Array.isArray(body)) return undefined;
+    return chooseSlot(body as Slot[], this.mainSlot);
+  }
+
+  /** Note which slot the main conversation runs on (the one a call outside side work just used), so side work never takes it over. */
+  private async noteMainSlot(): Promise<void> {
+    try {
+      const provider = activeProvider();
+      const response = await this.slotFetch(
+        `${provider.rootUrl}/slots?model=${encodeURIComponent(this.currentModel)}`,
+        { headers: provider.headers },
+        this.slotRequestTimeoutMs,
+      );
+      if (!response.ok) return;
+      const body: unknown = await response.json();
+      if (Array.isArray(body)) this.mainSlot = slotJustUsed(body as Slot[]) ?? this.mainSlot;
+    } catch {
+      // The heuristic (the slot used last) still applies.
     }
-    const byRecency = [...slots].sort((a, b) => (b.id_task ?? 0) - (a.id_task ?? 0));
-    return byRecency[byRecency.length - 1]?.id;
   }
 
   private async slotFetch(
@@ -448,6 +464,16 @@ export class LlmClient implements Client {
     }
     recordCallEnd(this.auditSink, trace, result, this.lastPromptTokens);
     this.calls.finish(trace);
+    // A reply that calls tools may start side work next: the slot it ran on is the main one.
+    if (
+      this.sideDepth === 0 &&
+      purpose === "reply" &&
+      result.ok &&
+      (result.value.tool_calls?.length ?? 0) > 0 &&
+      activeProvider().llamaCpp
+    ) {
+      this.mainSlotProbe = this.noteMainSlot();
+    }
     return result;
   }
 

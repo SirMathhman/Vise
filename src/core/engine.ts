@@ -113,7 +113,12 @@ export interface TurnCallbacks {
    * filling conversation, saving, checking that the work is going somewhere).
    * Returning a reason ends the turn there; undefined carries on.
    */
-  onRound?: (round: number, messages: Message[]) => Promise<string | undefined>;
+  onRound?: (
+    round: number,
+    messages: Message[],
+    /** The tool definitions of the turn, so upkeep calls can be encoded like its own rounds. */
+    toolDefs: Tool[],
+  ) => Promise<string | undefined>;
   /**
    * Whether a tool is currently enabled. The client restricts generation so
    * disabled tools cannot be called, without altering the tool definitions
@@ -228,6 +233,12 @@ export function splitForCompaction(
   };
 }
 
+/** What a summarizing call shares with the conversation it summarizes: its system message and tool list. */
+export interface SummaryPrefix {
+  system: Message;
+  tools: Tool[];
+}
+
 /**
  * Produce a summary of the conversation's older portion. Sends the older
  * messages plus the `SUMMARIZE_PROMPT` to the model and returns the model's
@@ -236,11 +247,29 @@ export function splitForCompaction(
 export async function summarize(
   client: Client,
   toSummarize: Message[],
+  prefix?: SummaryPrefix,
 ): Promise<Result<string>> {
-  const result = await (client.as?.("compaction") ?? client).chat([
+  const messages: Message[] = [
+    ...(prefix ? [prefix.system] : []),
     ...toSummarize,
     { role: "user", content: SUMMARIZE_PROMPT },
-  ]);
+  ];
+  const labelled = client.as?.("compaction") ?? client;
+  // With the conversation's own system message and tool list the request is
+  // encoded as its turns are, so the server reuses their cached prefix instead
+  // of re-reading it; no tool may be called, the answer is the summary.
+  const result = prefix
+    ? await labelled.chat(
+        messages,
+        prefix.tools,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        () => false,
+      )
+    : await labelled.chat(messages);
   if (!result.ok) return result;
   return { ok: true, value: result.value.content };
 }
@@ -254,9 +283,10 @@ async function betweenRounds(
   callbacks: TurnCallbacks,
   messages: Message[],
   rounds: number,
+  toolDefs: Tool[],
 ): Promise<Result<string> | undefined> {
   if (rounds === 0 || !callbacks.onRound) return undefined;
-  const stop = await callbacks.onRound(rounds, messages);
+  const stop = await callbacks.onRound(rounds, messages, toolDefs);
   if (callbacks.abort?.aborted) {
     return { ok: false, error: { kind: "interrupted" } };
   }
@@ -400,7 +430,7 @@ export async function runTurn(
     if (callbacks.abort?.aborted) {
       return { ok: false, error: { kind: "interrupted" } };
     }
-    const between = await betweenRounds(callbacks, messages, rounds);
+    const between = await betweenRounds(callbacks, messages, rounds, toolDefs);
     if (between) return between;
     rounds += 1;
     const result = await client.chat(
