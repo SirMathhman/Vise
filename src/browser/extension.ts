@@ -174,12 +174,16 @@ export class ExtensionBackend implements BrowserBackend {
   /**
    * Run code in the tab's page context. The extension runs it via
    * `browser.tabs.executeScript` (synchronous, no Playwright `page`).
+   * The background serialises both `undefined` and `null` to `null` over the
+   * wire, so the extension returns `"done"` for both (Chromium distinguishes
+   * `undefined` → `"done"` and `null` → `"null"`).
    */
   async runCode(id: number, code: string): Promise<string> {
     const result = await this.tab("runCode", { tab: id, code });
     const text = result === null ? "done" : JSON.stringify(result);
-    return text.length > 10_000
-      ? `${text.slice(0, 10_000)}\n[truncated: ${text.length} characters total]`
+    const MAX = 10_000;
+    return text.length > MAX
+      ? `${text.slice(0, MAX)}\n[truncated: ${text.length} characters total]`
       : text;
   }
 

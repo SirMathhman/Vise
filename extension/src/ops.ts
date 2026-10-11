@@ -240,6 +240,18 @@ export const ops: Record<string, (params: Params) => Promise<unknown>> = {
   },
 
   async runCode({ tab, code }) {
-    return run(requireOwned(tab), code as string);
+    if (typeof code !== "string") throw new Error("'code' must be a string");
+    try {
+      return await run(requireOwned(tab), code);
+    } catch (error) {
+      // run<T> wraps all executeScript errors in "cannot script this page (...)",
+      // including the model's own thrown errors. Re-label so the model sees its
+      // own bug, not a page problem.
+      const reason =
+        error instanceof Error
+          ? error.message.replace(/^cannot script this page \((.*)\)$/, "$1")
+          : String(error);
+      throw new Error(`code failed: ${reason}`);
+    }
   },
 };
