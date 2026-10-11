@@ -174,6 +174,8 @@ export function createInitialLoad(deps: LoadDeps) {
       busy.state.loading = true;
       busy.render();
       requestLine("/model");
+      // Populate the workflow picker's cache so shortcut invocations show the strip immediately.
+      send({ type: "workflows_list" });
     },
     refreshSessions,
     handleInitialResult,
