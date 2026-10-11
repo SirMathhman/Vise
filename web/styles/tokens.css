@@ -22,6 +22,18 @@
   --shadow-soft: 0 4px 16px rgb(0 0 0 / 50%);
   --scroll-track: var(--bg);
   --scroll-thumb: color-mix(in srgb, var(--border) 80%, var(--text));
+  --code-keyword: #c792ea;
+  --code-string: #a5e889;
+  --code-number: #f0c67a;
+  --code-comment: #6a6e78;
+  --code-function: #82aaff;
+  --code-literal: #f0c67a;
+  --code-type: #7fd4c4;
+  --code-meta: #c792ea;
+  --code-attribute: #80cbc4;
+  --code-operator: var(--dim);
+  --code-punct: var(--dim);
+
   --scroll-thumb-hover: color-mix(in srgb, var(--accent) 50%, transparent);
 
   --font-ui:
@@ -78,6 +90,17 @@
   --backdrop: rgb(20 22 26 / 70%);
   --shadow: 0 4px 16px rgb(0 0 0 / 12%);
   --shadow-soft: 0 2px 10px rgb(0 0 0 / 8%);
+  --code-keyword: #7c4dff;
+  --code-string: #2e7d32;
+  --code-number: #b5651d;
+  --code-comment: #8a8e96;
+  --code-function: #1565c0;
+  --code-literal: #b5651d;
+  --code-type: #00796b;
+  --code-meta: #7c4dff;
+  --code-attribute: #00796b;
+  --code-operator: var(--dim);
+  --code-punct: var(--dim);
 }
 
 /* Forest: deep-green dark palette. */
