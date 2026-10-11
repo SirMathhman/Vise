@@ -155,8 +155,14 @@ export function createWorkflowPicker(
     },
     running(line) {
       const match = line ? /^\/workflow\s+(\S+)/.exec(line) : null;
-      const name = match?.[1];
-      showStrip(!name || name === "init" ? null : `Running workflow ${name}…`);
+      if (match) {
+        const name = match[1];
+        showStrip(name === "init" ? null : `Running workflow ${name}…`);
+        return;
+      }
+      if (!line) return showStrip(null);
+      const bare = line.startsWith("/") ? line.slice(1).split(/\s/)[0] : null;
+      showStrip(bare && workflows.some((w) => w.name === bare) ? `Running workflow ${bare}…` : null);
     },
     observe(message) {
       if (message.type === "workflow") {
