@@ -73,7 +73,10 @@ is the end of its reasoning.
 
 Vise stops a call itself when it repeats the same text (`VISE_LOOP_GUARD`) or
 writes more than `VISE_MAX_CALL_TOKENS` tokens (0 = no limit). The turn then
-ends with "stopped a runaway model call" and the goal is kept.
+ends with "stopped a runaway model call" and the goal is kept, except that
+a call stopped for repeating itself is asked again up to `VISE_LOOP_RETRIES`
+times (default 1) with a repeat penalty (llama.cpp's DRY sampler); both
+attempts are recorded, the first with `stop_reason = loop`.
 
 In Vise: `/audit calls [n]` lists the latest calls (running ones first) and
 `/audit call <n>` prints one with its raw text. In the web page, click the

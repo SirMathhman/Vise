@@ -125,6 +125,17 @@
   --backdrop: rgb(0 0 0 / 80%);
   --shadow: 0 8px 24px rgb(0 0 0 / 30%);
   --shadow-soft: 0 4px 16px rgb(0 0 0 / 50%);
+  --code-keyword: #b388ff;
+  --code-string: #a5d6a7;
+  --code-number: #ffcc80;
+  --code-comment: #6a7b70;
+  --code-function: #82b1ff;
+  --code-literal: #ffab91;
+  --code-type: #80cbc4;
+  --code-meta: #b388ff;
+  --code-attribute: #80deea;
+  --code-operator: var(--dim);
+  --code-punct: var(--dim);
 }
 
 /* Volcano: warm dark palette (red/amber/orange). */
@@ -149,6 +160,17 @@
   --backdrop: rgb(0 0 0 / 80%);
   --shadow: 0 8px 24px rgb(0 0 0 / 30%);
   --shadow-soft: 0 4px 16px rgb(0 0 0 / 50%);
+  --code-keyword: #ff8a80;
+  --code-string: #ffd54f;
+  --code-number: #ffab91;
+  --code-comment: #8a7e72;
+  --code-function: #ffab91;
+  --code-literal: #ff8a65;
+  --code-type: #a5d6a7;
+  --code-meta: #ff8a80;
+  --code-attribute: #80deea;
+  --code-operator: var(--dim);
+  --code-punct: var(--dim);
 }
 
 /* Underwater: deep blue/teal dark palette. */
@@ -173,4 +195,15 @@
   --backdrop: rgb(0 0 0 / 80%);
   --shadow: 0 8px 24px rgb(0 0 0 / 30%);
   --shadow-soft: 0 4px 16px rgb(0 0 0 / 50%);
+  --code-keyword: #82aaff;
+  --code-string: #8fd4b8;
+  --code-number: #f0c67a;
+  --code-comment: #5a7080;
+  --code-function: #82c4ff;
+  --code-literal: #f0a060;
+  --code-type: #6ad4b8;
+  --code-meta: #82aaff;
+  --code-attribute: #80deea;
+  --code-operator: var(--dim);
+  --code-punct: var(--dim);
 }

@@ -56,10 +56,26 @@ function typedByUser(
   return index > 0 && !message.content.startsWith("[");
 }
 
+/**
+ * The request a workflow tool step sends to have the model fill in a tool's
+ * arguments (`generateArguments` in `src/core/workflow.ts`). The assistant
+ * message that answers it is the raw JSON arguments, never shown live, so it
+ * is not replayed either.
+ */
+const WORKFLOW_ARGS_REQUEST = /^Workflow tool step \d+: generate arguments for '/;
+
 export function historyEntries(messages: Message[]): HistoryEntry[] {
   const marked = messages.some((m) => m.typed === true);
   const bodies: EntryBody[] = [];
   messages.forEach((m, index) => {
+    const before = messages[index - 1];
+    if (
+      m.role === "assistant" &&
+      before?.role === "user" &&
+      WORKFLOW_ARGS_REQUEST.test(before.content)
+    ) {
+      return;
+    }
     if (m.role === "user" && typedByUser(m, index, marked)) {
       bodies.push({
         kind: "user",

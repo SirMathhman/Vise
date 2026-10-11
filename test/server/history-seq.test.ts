@@ -25,3 +25,22 @@ test("when earlier lines are left out the rest keep their positions and the note
   expect(entries[0]).toMatchObject({ kind: "note", seq: -1 });
   expect(entries.slice(1).map((e) => e.seq)).toEqual([6, 7, 8, 9]);
 });
+
+test("the raw JSON a workflow generates for a tool step is not replayed as a reply", () => {
+  const entries = historyEntries([
+    { role: "system", content: "system" },
+    { role: "user", content: "context" },
+    { role: "user", content: "do it", typed: true },
+    {
+      role: "user",
+      content:
+        "Workflow tool step 4: generate arguments for 'run_subagent'.\nUser request: do it",
+    },
+    { role: "assistant", content: '{"task":"Review the `thing`"}' },
+    { role: "assistant", content: "done" },
+  ]);
+  expect(entries.map((e) => e.kind === "assistant" && e.text)).toEqual([
+    false,
+    "done",
+  ]);
+});

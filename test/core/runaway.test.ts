@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { repetition, runawayVerdict } from "../../src/core/call/runaway.ts";
+import { repeatedSentence, repetition, runawayVerdict } from "../../src/core/call/runaway.ts";
 
 const loopText = "I will now ask the user which option they prefer. ".repeat(60);
 const prose = Array.from(
@@ -50,5 +50,31 @@ describe("runawayVerdict", () => {
     const loop = runawayVerdict({ ...base, tail: loopText });
     expect(loop).toMatchObject({ stop: true, reason: "loop" });
     expect(runawayVerdict({ ...base, tail: loopText, loopGuard: false })).toEqual({ stop: false });
+  });
+});
+
+describe("repeatedSentence", () => {
+  const sentence = "I have a good picture now. Let me clarify a few remaining design details before writing the plan.";
+  const last = "Let me clarify a few remaining design details before writing the plan.";
+
+  test("the same sentence four times in a row is a loop", () => {
+    const text = `${sentence}\n${last}\n\n${last}\n\n${last}\n`;
+    expect(repeatedSentence(text)).toMatchObject({ period: last.length, repeats: 4 });
+    expect(runawayVerdict({ tokens: 0, cap: 0, tail: text, loopGuard: true, sentences: true }).stop).toBe(true);
+    // Not judged unless asked (reasoning repeats legitimately).
+    expect(runawayVerdict({ tokens: 0, cap: 0, tail: text, loopGuard: true }).stop).toBe(false);
+  });
+
+  test("three times, short lines, lists and tool calls are not", () => {
+    expect(repeatedSentence(`${last}\n${last}\n${last}`)).toBeUndefined();
+    expect(repeatedSentence("  },\n".repeat(10))).toBeUndefined();
+    expect(repeatedSentence(Array.from({ length: 6 }, (_, i) => `${i}. ${last}`).join("\n"))).toBeUndefined();
+    const call = `<tool_call>\n${(last + "\n").repeat(6)}`;
+    expect(repeatedSentence(call)).toBeUndefined();
+  });
+
+  test("text before a finished tool call does not count", () => {
+    const text = `${(last + "\n").repeat(5)}<tool_call>{"name":"x"}</tool_call>\nDone.`;
+    expect(repeatedSentence(text)).toBeUndefined();
   });
 });

@@ -1,7 +1,7 @@
 import { config } from "../config.ts";
 import type { AuditCall, AuditSink } from "../core/audit.ts";
 import type { AssistantMessage, Result, ViseError } from "../core/errors.ts";
-import { WINDOW_CHARS, repetition, runawayVerdict } from "../core/call/runaway.ts";
+import { WINDOW_CHARS, findLoop, repetition, runawayVerdict } from "../core/call/runaway.ts";
 import { formatError } from "../output/format.ts";
 import type { GenerationListener } from "./stream-reader.ts";
 
@@ -98,7 +98,7 @@ export class CallTrace {
 
   /** What repeats at the end of the call's text (or reasoning), if anything. */
   loop(): AuditCall["loop"] {
-    const found = repetition(this.rawTail()) ?? repetition(this.reasoningTail());
+    const found = findLoop(this.rawTail()) ?? repetition(this.reasoningTail());
     return found
       ? { period: found.period, repeats: found.repeats, sample: found.sample }
       : undefined;
@@ -192,6 +192,7 @@ export function traceListener(
       cap,
       tail: trace.rawTail(),
       loopGuard,
+      sentences: true,
     });
     if (!verdict.stop) {
       verdict = runawayVerdict({

@@ -115,3 +115,79 @@ describe("the runaway guard", () => {
     });
   });
 });
+
+describe("a looping call is asked again", () => {
+  const stream = (texts: string[]): string =>
+    texts
+      .map((text, i) =>
+        `data: ${JSON.stringify({
+          choices: [{ delta: { content: text } }],
+          timings: { predicted_n: (i + 1) * 60 },
+        })}\n\n`,
+      )
+      .join("") + "data: [DONE]\n\n";
+  const looping = stream(Array.from({ length: 60 }, () => "The same sentence over and over again, ok? "));
+  const fine = stream(["All ", "good."]);
+
+  async function run(responses: string[], events: AuditEvent[] = []) {
+    const client = new LlmClient();
+    client.setAuditSink({ record: (e) => void events.push(e) });
+    const bodies: Record<string, unknown>[] = [];
+    const real = globalThis.fetch;
+    globalThis.fetch = (async (_url: unknown, init?: { body?: string }) => {
+      bodies.push(JSON.parse(init?.body ?? "{}"));
+      return new Response(responses[bodies.length - 1] ?? responses[responses.length - 1], { status: 200 });
+    }) as unknown as typeof fetch;
+    const tokens: string[] = [];
+    try {
+      const result = await client.chat([{ role: "user", content: "x" }], undefined, (t) => tokens.push(t));
+      return { client, result, bodies, tokens };
+    } finally {
+      globalThis.fetch = real;
+    }
+  }
+
+  test("one retry with a repeat penalty, and both calls on the record", async () => {
+    const events: AuditEvent[] = [];
+    const { client, result, bodies, tokens } = await run([looping, fine], events);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.content).toBe("All good.");
+    expect(bodies).toHaveLength(2);
+    expect(bodies[0]).not.toHaveProperty("dry_multiplier");
+    expect(bodies[1]).toMatchObject({ dry_multiplier: 0.8, repeat_penalty: 1.1 });
+    expect(client.calls.get(1)?.stopReason).toBe("loop");
+    expect(client.calls.get(2)?.state).toBe("done");
+    expect(tokens.join("")).toContain("asking again");
+    expect(events.filter((e) => e.kind === "model_call")).toHaveLength(2);
+  });
+
+  test("a second loop fails the turn: only one retry", async () => {
+    const { result, bodies } = await run([looping, looping, fine]);
+    expect(bodies).toHaveLength(2);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatchObject({ kind: "runaway", reason: "loop" });
+  });
+
+  test("VISE_LOOP_RETRIES=0 turns it off", async () => {
+    applySettings({ VISE_LOOP_RETRIES: "0" });
+    try {
+      const { result, bodies } = await run([looping, fine]);
+      expect(bodies).toHaveLength(1);
+      expect(result.ok).toBe(false);
+    } finally {
+      applySettings({});
+    }
+  });
+
+  test("a token cap is not retried", async () => {
+    applySettings({ VISE_MAX_CALL_TOKENS: "100" });
+    try {
+      const long = stream(Array.from({ length: 20 }, (_, i) => `different text number ${i} with its own words. `));
+      const { result, bodies } = await run([long, fine]);
+      expect(bodies).toHaveLength(1);
+      expect(result.ok).toBe(false);
+    } finally {
+      applySettings({});
+    }
+  });
+});
