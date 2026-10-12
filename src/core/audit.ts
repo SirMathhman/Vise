@@ -63,10 +63,13 @@ export type AuditEvent =
     }
   | {
       kind: "hook_run";
-      phase: "pre" | "post";
+      phase: "pre" | "post" | "pre_tool" | "post_tool";
       command: string;
       ms: number;
       output: string;
+      /** Tool hooks only: the tool the hook ran around, and the hook's exit status (-1: timeout or spawn failure). */
+      tool?: string;
+      status?: number;
     }
   /** The conversation was cut down: `summarized` messages became `summary` (they are on record as messages). */
   | { kind: "compaction"; summarized: number; kept: number; summary: string }
@@ -129,7 +132,15 @@ export type AuditReport =
   | { topic: "errors"; rows: { what: string; detail: string }[] }
   | {
       topic: "hooks";
-      rows: { phase: string; command: string; ms: number; output: string }[];
+      rows: {
+        phase: string;
+        command: string;
+        ms: number;
+        output: string;
+        /** Tool hooks only. */
+        tool?: string;
+        status?: number;
+      }[];
     }
   | { topic: "calls"; rows: AuditCall[] }
   | { topic: "call"; call?: AuditCall; request: number }

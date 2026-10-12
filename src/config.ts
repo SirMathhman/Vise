@@ -271,6 +271,13 @@ export const SPEC = {
     TOOLS,
     "tool search results",
   ),
+  toolHookTimeoutMs: n(
+    "VISE_TOOL_HOOK_TIMEOUT_MS",
+    30_000,
+    TOOLS,
+    "pre/post tool hook timeout (ms)",
+    { min: 1000 },
+  ),
   mcpConnectTimeoutMs: n(
     "VISE_MCP_CONNECT_TIMEOUT_MS",
     15_000,

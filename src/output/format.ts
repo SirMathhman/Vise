@@ -1,6 +1,10 @@
 import { type CommandNeed, helpLines } from "../repl/command-catalog.ts";
 import type { GoalEvent } from "../repl/turn/goal-loop.ts";
 import type { ViseError } from "../core/errors.ts";
+import {
+  describeToolHook,
+  type ToolHookEntry,
+} from "../core/hooks/tool-hook-match.ts";
 import type { SessionEntry } from "../repl/ports.ts";
 
 /**
@@ -143,14 +147,19 @@ export function formatToolList(
  * profile's own hooks.
  */
 export function formatHooks(
-  hooks: { pre: string[]; post: string[] },
+  hooks: {
+    pre: string[];
+    post: string[];
+    preTool?: ToolHookEntry[];
+    postTool?: ToolHookEntry[];
+  },
   scope?: string,
 ): string {
   const section = (label: string, commands: string[]): string =>
     commands.length === 0
       ? `${label}: none`
       : `${label}:\n${commands.map((c, i) => `  ${i + 1}. ${c}`).join("\n")}`;
-  return [
+  const sections = [
     section(
       `pre-turn hooks (${scope ?? "output injected before every turn"})`,
       hooks.pre,
@@ -159,7 +168,25 @@ export function formatHooks(
       `post-turn hooks (${scope ?? "output injected after every turn"})`,
       hooks.post,
     ),
-  ].join("\n");
+  ];
+  // Tool hooks are global only; a profile's listing has none.
+  if (hooks.preTool !== undefined) {
+    sections.push(
+      section(
+        "pre-tool hooks (run before a tool call; exit code 2 blocks it)",
+        hooks.preTool.map(describeToolHook),
+      ),
+    );
+  }
+  if (hooks.postTool !== undefined) {
+    sections.push(
+      section(
+        "post-tool hooks (run after a tool call; output joins its result)",
+        hooks.postTool.map(describeToolHook),
+      ),
+    );
+  }
+  return sections.join("\n");
 }
 
 /** Render the available slash commands as a multi-line help text (the lines come from the command catalog). */

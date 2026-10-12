@@ -6,6 +6,7 @@ import type {
 import type { AuditReader, AuditSink } from "../core/audit.ts";
 import type { Picture } from "../core/errors.ts";
 import type { TodoStore } from "../core/todos.ts";
+import type { ToolHookEntry } from "../core/hooks/tool-hook-match.ts";
 import type { GoalEvent } from "./turn/goal-loop.ts";
 import type { WorkflowEvent } from "../core/workflow.ts";
 import type {
@@ -55,6 +56,9 @@ export interface SessionOptions {
   workflowSource?: WorkflowSource;
   preTurnHooks: PreTurnHook[];
   postTurnHooks: PostTurnHook[];
+  /** The live tool hook lists (run by the tool runner, edited by `/hooks add|remove pretool|posttool`). */
+  preToolHooks?: ToolHookEntry[];
+  postToolHooks?: ToolHookEntry[];
   /** Persists hook edits (`/hooks add|remove`); without it hooks are read-only. */
   hookSource?: HookSource;
   /**

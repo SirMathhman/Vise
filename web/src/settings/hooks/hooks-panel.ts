@@ -1,4 +1,6 @@
+import type { ToolHookEntry } from "../../../../src/core/hooks/tool-hook-match.ts";
 import { type HookCommands, renderHookLists } from "./hook-lists.ts";
+import { renderToolHookLists } from "./tool-hook-lists.ts";
 
 /** Id the `/hooks` edit lines carry, so their results are told apart from the model's turns. */
 const EDIT_ID = "hooks-edit";
@@ -7,6 +9,8 @@ const EDIT_ID = "hooks-edit";
 export interface HooksFields {
   pre?: string[];
   post?: string[];
+  preTool?: ToolHookEntry[];
+  postTool?: ToolHookEntry[];
   profiles?: string[];
   profileHooks?: Record<string, HookCommands>;
 }
@@ -58,6 +62,11 @@ export function createHooksPanel(
         body.textContent = "";
         const global = { pre: message.pre ?? [], post: message.post ?? [] };
         renderHookLists(body, global, "/hooks", LABELS, edit);
+        renderToolHookLists(
+          body,
+          { preTool: message.preTool ?? [], postTool: message.postTool ?? [] },
+          edit,
+        );
         body.appendChild(status);
         onUpdate(message);
         return true;

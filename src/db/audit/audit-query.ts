@@ -122,7 +122,8 @@ function hookRows(db: Database, s: string): AuditReport {
   const rows = all(
     db,
     `SELECT json_extract(payload, '$.phase') phase, json_extract(payload, '$.command') command,
-            json_extract(payload, '$.ms') ms, json_extract(payload, '$.output') output
+            json_extract(payload, '$.ms') ms, json_extract(payload, '$.output') output,
+            json_extract(payload, '$.tool') tool, json_extract(payload, '$.status') status
      FROM audit_events WHERE session_id = ? AND name = 'hook_run' ORDER BY id`,
     s,
   );
@@ -133,6 +134,7 @@ function hookRows(db: Database, s: string): AuditReport {
       command: str(r.command),
       ms: Math.round(num(r.ms)),
       output: str(r.output),
+      ...(r.tool == null ? {} : { tool: str(r.tool), status: num(r.status) }),
     })),
   };
 }

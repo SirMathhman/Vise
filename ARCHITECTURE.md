@@ -226,6 +226,18 @@ Rules:
   each hook's output is injected as its own user message, in config order —
   pre-turn before the user's input, post-turn after the assistant's reply.
   Same edge-owns-I/O pattern as `ProfileSource`.
+  **Tool hooks** run around one tool call instead of a turn
+  (`preToolCommand` / `postToolCommand` in `.viserc.json`: a string or
+  `{command, tools?}`, `tools` naming tools and/or categories; matching is the
+  pure `src/core/hooks/tool-hook-match.ts`). `ShellToolHooks`
+  (`src/tools/hooks/tool-hooks.ts`) implements the core `ToolHooks` port and
+  `createToolRunner` calls it: a pre hook that exits 2 vetoes the call (the
+  model gets `error: blocked by pre-tool hook: <output>`; any other failure
+  fails open), a post hook's output is appended to the result after the
+  too-large spill step. Hooks see the call in `VISE_TOOL_*` environment
+  variables and as JSON on stdin, run only for calls that would actually run
+  (not refused ones), apply to subagents' calls too, and never go through the
+  runner themselves, so they cannot trigger hooks.
 - `NoteSource` is a core-owned type (`repl/session.ts`) for the `/note`
   command. A note is the project's store of short facts and how-to
   procedures: one `.md` file per note under `.vise/notes/` (a subdirectory per category; notes directly in it are `default`), the

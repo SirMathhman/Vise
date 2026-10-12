@@ -1,5 +1,6 @@
 import { noAudit, type AuditSink } from "../../core/audit.ts";
 import type { Result } from "../../core/errors.ts";
+import type { ToolHookEntry } from "../../core/hooks/tool-hook-match.ts";
 import {
   type HookCommands,
   type HookPhase,
@@ -29,6 +30,8 @@ export class SessionHooks {
 
   readonly pre: PreTurnHook[];
   readonly post: PostTurnHook[];
+  private readonly preTool: ToolHookEntry[] | undefined;
+  private readonly postTool: ToolHookEntry[] | undefined;
   private readonly source: HookSource | undefined;
   private readonly profiles: ProfileSource | undefined;
   private readonly audit: AuditSink;
@@ -37,6 +40,8 @@ export class SessionHooks {
     options: {
       preTurnHooks: PreTurnHook[];
       postTurnHooks: PostTurnHook[];
+      preToolHooks?: ToolHookEntry[];
+      postToolHooks?: ToolHookEntry[];
       hookSource?: HookSource;
       profileSource?: ProfileSource;
       auditSink?: AuditSink;
@@ -45,6 +50,8 @@ export class SessionHooks {
   ) {
     this.pre = options.preTurnHooks;
     this.post = options.postTurnHooks;
+    this.preTool = options.preToolHooks;
+    this.postTool = options.postToolHooks;
     this.source = options.hookSource;
     this.profiles = options.profileSource;
     this.audit = options.auditSink ?? noAudit;
@@ -101,6 +108,8 @@ export class SessionHooks {
     return {
       pre: this.pre,
       post: this.post,
+      preTool: this.preTool,
+      postTool: this.postTool,
       source: this.source,
       profiles: this.profiles,
     };

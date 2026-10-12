@@ -48,7 +48,8 @@ export function formatAuditReport(report: AuditReport): string {
       return table(
         "hook runs",
         report.rows,
-        (r) => `${r.phase} ${r.command} (${r.ms} ms): ${clip(r.output, 60)}`,
+        (r) =>
+          `${r.phase}${r.tool ? ` [${r.tool}${r.status === 2 && r.phase === "pre_tool" ? ", blocked" : ""}]` : ""} ${r.command} (${r.ms} ms): ${clip(r.output, 60)}`,
       );
     case "search":
       return table(

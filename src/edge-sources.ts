@@ -8,6 +8,11 @@ import type { SearchHit } from "./repl/ports.ts";
 import type { Message, Result } from "./core/errors.ts";
 import type { GoalTraceEntry } from "./core/goal-trace.ts";
 import type { TodoItem } from "./core/todos.ts";
+import {
+  parseToolHookEntries,
+  toolHookConfig,
+  type ToolHookEntry,
+} from "./core/hooks/tool-hook-match.ts";
 import { buildInitialTree } from "./fs-tree.ts";
 import { formatNotes, formatNotesWithin } from "./stores/notes-format.ts";
 import { NoteStore } from "./stores/note-store.ts";
@@ -334,23 +339,34 @@ export class FileWorkflowSource implements WorkflowSource {
   }
 }
 
+/** The hooks of a project's `.viserc.json`; a key with no entries is absent. */
+export interface HookConfig {
+  pre?: string[];
+  post?: string[];
+  preTool?: ToolHookEntry[];
+  postTool?: ToolHookEntry[];
+}
+
 /**
  * Read hook commands from `.viserc.json` if present.
  *
- * Each hook key (`preTurnCommand`, `postTurnCommand`) accepts either a
+ * Each turn hook key (`preTurnCommand`, `postTurnCommand`) accepts either a
  * single command string or an array of command strings. An array produces
- * one hook per entry; all hooks of a kind run in parallel each turn.
+ * one hook per entry; all hooks of a kind run in parallel each turn. The tool
+ * hook keys (`preToolCommand`, `postToolCommand`) take strings and/or
+ * `{command, tools?}` objects (`parseToolHookEntries`).
  */
-export function loadHookCommands(root: string = process.cwd()): {
-  pre?: string[];
-  post?: string[];
-} {
+export function loadHookCommands(root: string = process.cwd()): HookConfig {
   const configPath = join(root, ".viserc.json");
   if (!existsSync(configPath)) return {};
   try {
     const raw = readFileSync(configPath, "utf8");
     const config = JSON.parse(raw);
-    const result: { pre?: string[]; post?: string[] } = {};
+    const result: HookConfig = {};
+    const preTool = parseToolHookEntries(config.preToolCommand);
+    const postTool = parseToolHookEntries(config.postToolCommand);
+    if (preTool.length > 0) result.preTool = preTool;
+    if (postTool.length > 0) result.postTool = postTool;
     const pre = config.preTurnCommand;
     const post = config.postTurnCommand;
     if (typeof pre === "string") {
@@ -385,6 +401,9 @@ export function loadHookCommands(root: string = process.cwd()): {
 export class HookStore implements HookSource {
   readonly pre: ShellHook[];
   readonly post: ShellHook[];
+  /** Tool hooks, live like the turn hooks: edited in place, read at every tool call. */
+  readonly preTool: ToolHookEntry[];
+  readonly postTool: ToolHookEntry[];
   private readonly listeners = new Set<() => void>();
 
   /** The hooks of the project at `root` (its `.viserc.json`); defaults to the working directory. */
@@ -392,6 +411,8 @@ export class HookStore implements HookSource {
     const commands = loadHookCommands(root);
     this.pre = (commands.pre ?? []).map((c) => new ShellHook(c, root));
     this.post = (commands.post ?? []).map((c) => new ShellHook(c, root));
+    this.preTool = commands.preTool ?? [];
+    this.postTool = commands.postTool ?? [];
   }
 
   /** Be told after every successful save (frontends refresh their hook views). */
@@ -409,16 +430,29 @@ export class HookStore implements HookSource {
     return new ShellHook(command, this.root);
   }
 
-  save(hooks: { pre: string[]; post: string[] }): Result<void> {
+  save(hooks: {
+    pre: string[];
+    post: string[];
+    preTool?: ToolHookEntry[];
+    postTool?: ToolHookEntry[];
+  }): Result<void> {
     const configPath = join(this.root, ".viserc.json");
     try {
       const config: Record<string, unknown> = existsSync(configPath)
         ? JSON.parse(readFileSync(configPath, "utf8"))
         : {};
-      for (const [key, list] of [
+      // A list the caller does not mention keeps what the file has.
+      const lists: [string, (string | ToolHookEntry)[]][] = [
         ["preTurnCommand", hooks.pre],
         ["postTurnCommand", hooks.post],
-      ] as const) {
+        ...(hooks.preTool
+          ? [["preToolCommand", hooks.preTool.map(toolHookConfig)] as [string, (string | ToolHookEntry)[]]]
+          : []),
+        ...(hooks.postTool
+          ? [["postToolCommand", hooks.postTool.map(toolHookConfig)] as [string, (string | ToolHookEntry)[]]]
+          : []),
+      ];
+      for (const [key, list] of lists) {
         if (list.length === 0) delete config[key];
         else config[key] = list;
       }

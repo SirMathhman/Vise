@@ -55,6 +55,8 @@ import { makeSelfHandler, type SelfInfo } from "./tools/agent/self.ts";
 import { makeTodoHandler, TodoBoard } from "./tools/agent/todo.ts";
 import type { TodoItem } from "./core/todos.ts";
 import { currentSubagentDepth, makeSubagentHandler } from "./tools/agent/subagent.ts";
+import { describeToolHook } from "./core/hooks/tool-hook-match.ts";
+import { ShellToolHooks } from "./tools/hooks/tool-hooks.ts";
 import { createToolRunner, ToolSet, tools, type ToolHandler } from "./tools.ts";
 
 /**
@@ -376,6 +378,23 @@ function wireClientSinks(
   client.setAuditSink(audit);
 }
 
+/** The tool hooks of a session: the project's live lists, run in its root. */
+function toolHooksOf(
+  store: HookStore,
+  root: string,
+  audit: AuditSink,
+): ShellToolHooks {
+  return new ShellToolHooks(store.preTool, store.postTool, root, audit);
+}
+
+/** The tools a session offers: the built-ins (without the file-system ones when it has no folder) and its MCP servers'. */
+function toolsFor(options: EdgeSessionOptions): Tool[] {
+  const builtin = options.noFolder
+    ? tools.filter((t) => !t.requiresFileSystem)
+    : tools;
+  return [...builtin, ...(options.mcp?.tools() ?? [])];
+}
+
 /** The live facts the `self` tool reports. */
 function selfInfo(
   client: LlmClient,
@@ -394,6 +413,8 @@ function selfInfo(
     activeProfile: () => session().getActiveProfile(),
     preTurnHooks: () => hookStore.pre.map((h) => h.command),
     postTurnHooks: () => hookStore.post.map((h) => h.command),
+    preToolHooks: () => hookStore.preTool.map(describeToolHook),
+    postToolHooks: () => hookStore.postTool.map(describeToolHook),
   };
 }
 
@@ -413,10 +434,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
   if (options.noFolder) mkdirSync(root, { recursive: true });
   // The working directory the model sees; none for a session without one.
   const cwd = options.noFolder ? undefined : root;
-  const builtinTools = options.noFolder
-    ? tools.filter((t) => !t.requiresFileSystem)
-    : tools;
-  const sessionTools = [...builtinTools, ...(options.mcp?.tools() ?? [])];
+  const sessionTools = toolsFor(options);
   const dataDir = dataDirFor(root);
   // Sessions that share a store share the same live hook arrays.
   const hookStore = options.hookStore ?? new HookStore(root);
@@ -479,6 +497,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     temp,
     images,
     audit.auditSink,
+    toolHooksOf(hookStore, root, audit.auditSink),
   );
 
   const initialMessage = buildInitialMessage(cwd, dataDir);
@@ -500,6 +519,8 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     ...audit,
     preTurnHooks: hookStore.pre,
     postTurnHooks: hookStore.post,
+    preToolHooks: hookStore.preTool,
+    postToolHooks: hookStore.postTool,
     hookSource: hookStore,
     ...displayCallbacks(options),
     // Every turn is checked against a goal unless the frontend opts out.

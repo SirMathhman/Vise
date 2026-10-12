@@ -49,6 +49,8 @@ let nextProcessId = 1;
 export function spawnPowerShell(
   command: string,
   cwd?: string,
+  /** Extra environment variables, and text written to the command's standard input (which is then closed). */
+  extra?: { env?: Record<string, string>; stdin?: string },
 ): {
   proc: ChildProcess;
   record: ProcessRecord;
@@ -59,8 +61,14 @@ export function spawnPowerShell(
     {
       windowsHide: true,
       cwd,
+      env: extra?.env ? { ...process.env, ...extra.env } : undefined,
     },
   );
+  if (extra?.stdin !== undefined) {
+    // The command may exit without reading it; that is not an error.
+    proc.stdin.on("error", () => undefined);
+    proc.stdin.end(extra.stdin);
+  }
   const record: ProcessRecord = {
     proc,
     stdout: "",

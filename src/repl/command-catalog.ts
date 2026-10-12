@@ -46,12 +46,14 @@ export const COMMANDS: readonly CommandInfo[] = [
   },
   {
     name: "/hooks",
-    summary: "list or edit pre/post-turn hooks",
+    summary: "list or edit pre/post-turn and pre/post-tool hooks",
     takesArgs: true,
     usage: [
-      "/hooks         show the configured pre/post-turn hook commands",
+      "/hooks         show the configured pre/post-turn and pre/post-tool hook commands",
       '/hooks add pre|post "<command>"  add a hook (saved to .viserc.json)',
       "/hooks remove pre|post <number>  remove a hook",
+      '/hooks add pretool|posttool "<command>" [--tools a,b]  run around tool calls (tool names or categories; exit code 2 in a pre hook blocks the call)',
+      "/hooks remove pretool|posttool <number>  remove a tool hook",
       "/hooks profile <name> [add|remove pre|post ...]  hooks that run only with a profile",
     ],
   },

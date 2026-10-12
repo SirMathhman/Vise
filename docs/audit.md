@@ -9,6 +9,8 @@ Settings: `VISE_AUDIT` (1 = on, 0 = off) and `VISE_AUDIT_RETENTION_DAYS`
 file can contain anything a tool saw, including secrets; keep it private.
 
 In Vise: `/audit`, `/audit tools|models|errors|hooks`, `/audit search <text>`.
+
+Hook runs have `phase` `pre`/`post` (turn hooks) or `pre_tool`/`post_tool` (tool hooks, which also carry `tool` and the hook's exit `status`; a `pre_tool` run with status 2 blocked the call).
 From a shell: `vise-cli --audit-export <conversation id> > run.json` (an id
 prefix is enough; ids are in `audit_sessions`).
 

@@ -1,7 +1,9 @@
 import { resolve } from "node:path";
 import { noAudit, type AuditSink } from "./core/audit.ts";
 import type { Tool, ToolController, ToolRunner } from "./core/engine.ts";
+import type { ToolHooks } from "./core/hooks/tool-hook-match.ts";
 import { auditCall, auditRefused } from "./tools/agent/audit-call.ts";
+import { currentSubagentDepth } from "./tools/agent/subagent.ts";
 import { dataDirFor, globalDataDir } from "./data-dir.ts";
 import { NoteStore } from "./stores/note-store.ts";
 import { agentTools } from "./tools/defs/agent.ts";
@@ -197,11 +199,19 @@ export function createToolRunner(
   images?: ImageOutbox,
   /** Hears every tool call with its whole result and how long it took. */
   audit: AuditSink = noAudit,
+  /** Shell commands run before a call (which may veto it) and after it (their output joins the result). */
+  hooks?: ToolHooks,
 ): ToolRunner {
   const handlers: Record<string, ToolHandler> = {
     ...baseHandlers(root),
     ...extra,
   };
+  // What a hook's tool filter can name besides the tool itself.
+  const categories = new Map(
+    toolDefs.flatMap((t) =>
+      t.category === undefined ? [] : [[t.function.name, t.category] as const],
+    ),
+  );
   // A tool that is not offered to the session has no handler either.
   const offered = new Set(toolDefs.map((t) => t.function.name));
   // Tools that bound their own output (the temp tools; browser_read saves a long page itself).
@@ -224,15 +234,34 @@ export function createToolRunner(
         const why = limited ? "not available to this agent" : "disabled";
         return auditRefused(audit, name, args, `error: tool ${name} is ${why}`);
       }
+      const category = categories.get(name);
+      const depth = currentSubagentDepth();
+      if (hooks) {
+        const verdict = await hooks.pre(name, category, args, depth);
+        if (verdict.blocked !== undefined) {
+          return auditRefused(
+            audit,
+            name,
+            args,
+            `error: blocked by pre-tool hook: ${verdict.blocked}`,
+          );
+        }
+      }
       const result = await auditCall(audit, name, args, () =>
         handler(args, signal),
       );
       // The temp tools bound their own output; everything else too big to show is saved instead.
-      if (bounded.has(name) || !isTooLarge(result)) return result;
-      // With nowhere to save it, a big result is cut rather than let through whole.
-      return spill
-        ? spill.spill(name, result)
-        : truncateInline(result, "there is nowhere to save it");
+      let shown = result;
+      if (!bounded.has(name) && isTooLarge(result)) {
+        // With nowhere to save it, a big result is cut rather than let through whole.
+        shown = spill
+          ? spill.spill(name, result)
+          : truncateInline(result, "there is nowhere to save it");
+      }
+      if (!hooks) return shown;
+      // The hook sees the whole result; what it says is added after the (possibly saved) result.
+      const note = await hooks.post(name, category, args, result, depth);
+      return note === "" ? shown : `${shown}\n${note}`;
     },
   };
 }

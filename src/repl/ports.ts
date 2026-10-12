@@ -2,6 +2,7 @@ import type { AuditSink } from "../core/audit.ts";
 import type { Picture } from "../core/errors.ts";
 import type { Client, SummaryPrefix } from "../core/engine.ts";
 import type { GoalLog, GoalTraceEntry } from "../core/goal-trace.ts";
+import type { ToolHookEntry } from "../core/hooks/tool-hook-match.ts";
 import type { TodoItem, TodoStore } from "../core/todos.ts";
 import type { Workflow, WorkflowScope } from "../core/workflow.ts";
 import type { Message, Result, ViseError } from "../core/errors.ts";
@@ -155,8 +156,13 @@ export type PostTurnHook = TurnHook;
 export interface HookSource {
   /** Build a runnable hook for a command line. */
   create(command: string): TurnHook;
-  /** Persist the full pre/post command lists. */
-  save(hooks: { pre: string[]; post: string[] }): Result<void>;
+  /** Persist the full pre/post command lists (and the tool hook lists, when given). */
+  save(hooks: {
+    pre: string[];
+    post: string[];
+    preTool?: ToolHookEntry[];
+    postTool?: ToolHookEntry[];
+  }): Result<void>;
   /** Tell views of the hooks that something about them changed (e.g. a profile's own hooks). */
   notify?(): void;
 }

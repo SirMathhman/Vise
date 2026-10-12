@@ -1,4 +1,8 @@
 import type { Result } from "../../core/errors.ts";
+import {
+  describeToolHook,
+  type ToolHookEntry,
+} from "../../core/hooks/tool-hook-match.ts";
 import { formatHooks } from "../../output/format.ts";
 import type {
   HookSource,
@@ -11,6 +15,9 @@ import type {
 export interface HooksState {
   pre: PreTurnHook[];
   post: PostTurnHook[];
+  /** The live tool hook lists (global only); absent for a client without them. */
+  preTool?: ToolHookEntry[];
+  postTool?: ToolHookEntry[];
   source?: HookSource;
   profiles?: ProfileSource;
 }
@@ -25,12 +32,15 @@ export interface HookCommands {
 
 /** The global hooks, plus the hooks each profile owns and the profile names. */
 export interface HooksView extends HookCommands {
+  /** The global tool hooks (they run around tool calls, with every profile). */
+  preTool: ToolHookEntry[];
+  postTool: ToolHookEntry[];
   profiles: string[];
   profileHooks: Record<string, HookCommands>;
 }
 
 const USAGE =
-  'usage: /hooks | /hooks add|remove pre|post "<command>"|<number> | /hooks profile <name> [add|remove pre|post "<command>"|<number>]';
+  'usage: /hooks | /hooks add|remove pre|post "<command>"|<number> | /hooks add|remove pretool|posttool "<command>" [--tools a,b]|<number> | /hooks profile <name> [add|remove pre|post "<command>"|<number>]';
 
 function fail(body: string): Result<string> {
   return { ok: false, error: { kind: "malformed", body } };
@@ -85,6 +95,8 @@ export async function hooksView(state: HooksState): Promise<HooksView> {
   return {
     pre: state.pre.map((h) => h.command),
     post: state.post.map((h) => h.command),
+    preTool: [...(state.preTool ?? [])],
+    postTool: [...(state.postTool ?? [])],
     profiles: names?.ok ? names.value : [],
     profileHooks: await readProfileHooks(state.profiles),
   };
@@ -104,7 +116,23 @@ export async function handleHooksCommand(
 ): Promise<Result<string>> {
   const args = line.slice("/hooks".length).trim();
   if (args === "") {
-    return { ok: true, value: formatHooks(await hooksView(state)) };
+    const view = await hooksView(state);
+    // A client with no tool hook lists shows none.
+    return {
+      ok: true,
+      value: formatHooks(
+        state.preTool ? view : { pre: view.pre, post: view.post },
+      ),
+    };
+  }
+  const tool = /^(add|remove)\s+(pretool|posttool)\s*([\s\S]*)$/.exec(args);
+  if (tool) {
+    return toolEdit(
+      state,
+      tool[1] === "add",
+      tool[2] === "pretool" ? "pretool" : "posttool",
+      tool[3] ?? "",
+    );
   }
   const profile = /^profile\s+(\S+)\s*([\s\S]*)$/.exec(args);
   if (profile) {
@@ -165,6 +193,67 @@ async function globalEdit(
   const saved = persist();
   if (!saved.ok) {
     hooks.splice(index, 0, hook);
+    return saved;
+  }
+  return {
+    ok: true,
+    value: `removed ${label} hook ${index + 1}: ${hook.command}`,
+  };
+}
+
+/** `"cmd" --tools a,b` -> the command and the tool filter (no filter: every tool). */
+function splitToolFilter(rest: string): ToolHookEntry {
+  const m = /^([\s\S]*?)\s+--tools\s+(\S+)\s*$/.exec(rest.trim());
+  const command = unquote(m ? (m[1] ?? "") : rest);
+  const tools = (m?.[2] ?? "").split(",").map((t) => t.trim()).filter((t) => t !== "");
+  return tools.length > 0 ? { command, tools } : { command };
+}
+
+/** `/hooks add|remove pretool|posttool ...`: the global hooks around tool calls. */
+function toolEdit(
+  state: HooksState,
+  add: boolean,
+  phase: "pretool" | "posttool",
+  rest: string,
+): Result<string> {
+  const source = state.source;
+  const list = phase === "pretool" ? state.preTool : state.postTool;
+  if (!source || !list) {
+    return fail("tool hooks cannot be edited by the current client");
+  }
+  const label = phase === "pretool" ? "pre-tool" : "post-tool";
+  const persist = (): Result<void> =>
+    source.save({
+      pre: state.pre.map((h) => h.command),
+      post: state.post.map((h) => h.command),
+      preTool: state.preTool,
+      postTool: state.postTool,
+    });
+  if (add) {
+    const entry = splitToolFilter(rest);
+    if (entry.command === "") return fail(USAGE);
+    if (list.some((h) => h.command === entry.command)) {
+      return fail(`a ${label} hook with that command already exists`);
+    }
+    list.push(entry);
+    const saved = persist();
+    if (!saved.ok) {
+      list.pop();
+      return saved;
+    }
+    return { ok: true, value: `added ${label} hook: ${describeToolHook(entry)}` };
+  }
+  const index = Number(rest.trim()) - 1;
+  const hook = Number.isInteger(index) ? list[index] : undefined;
+  if (!hook) {
+    return fail(
+      `no ${label} hook numbered '${rest.trim()}'. Run '/hooks' to see them.`,
+    );
+  }
+  list.splice(index, 1);
+  const saved = persist();
+  if (!saved.ok) {
+    list.splice(index, 0, hook);
     return saved;
   }
   return {

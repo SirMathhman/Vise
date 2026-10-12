@@ -31,6 +31,9 @@ export interface SelfInfo {
   preTurnHooks: string[] | (() => string[]);
   /** The post-turn hook commands from `.viserc.json` (output runs after each turn). */
   postTurnHooks: string[] | (() => string[]);
+  /** The pre-/post-tool hook commands (they run around every matching tool call). */
+  preToolHooks?: string[] | (() => string[]);
+  postToolHooks?: string[] | (() => string[]);
 }
 
 /** A hook list given directly, or as a getter so edits show up live. */
@@ -75,6 +78,16 @@ export function makeSelfHandler(
     lines.push(
       `  ${formatHooks("post-turn hooks", listOf(info.postTurnHooks))}`,
     );
+    if (info.preToolHooks) {
+      lines.push(
+        `  ${formatHooks("pre-tool hooks (exit code 2 blocks the call)", listOf(info.preToolHooks))}`,
+      );
+    }
+    if (info.postToolHooks) {
+      lines.push(
+        `  ${formatHooks("post-tool hooks", listOf(info.postToolHooks))}`,
+      );
+    }
 
     return lines.join("\n");
   };
