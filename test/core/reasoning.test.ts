@@ -1,43 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { mockFetch } from "../helpers/fetch-mock.ts";
 import { LlmClient, REASONING_EFFORTS } from "../../src/client/llm.ts";
 import { handleReasoningCommand } from "../../src/repl/commands/commands.ts";
 import type { ReasoningController } from "../../src/repl/session.ts";
-
-type FetchCall = { url: string; method: string; body?: string };
-
-function mockFetch(
-  respond: (url: string, init?: RequestInit) => Response | Promise<Response>,
-): { calls: FetchCall[]; restore: () => void } {
-  const original = globalThis.fetch;
-  const calls: FetchCall[] = [];
-  const replacement = async (
-    input: string | URL | Request,
-    init?: RequestInit,
-  ) => {
-    const url =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-          ? input.toString()
-          : input.url;
-    calls.push({
-      url,
-      method: init?.method ?? "GET",
-      body: typeof init?.body === "string" ? init.body : undefined,
-    });
-    return respond(url, init);
-  };
-  Object.assign(replacement, {
-    preconnect: original.preconnect.bind(original),
-  });
-  globalThis.fetch = replacement as typeof fetch;
-  return {
-    calls,
-    restore: () => {
-      globalThis.fetch = original;
-    },
-  };
-}
 
 /** Build a minimal SSE stream response that `LlmClient.chat` will parse. */
 function sseResponse(): Response {

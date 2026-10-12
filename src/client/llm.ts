@@ -4,8 +4,10 @@ import { encodeMessages, type ImageResolver, plainMessages, hideCalls, nameConfi
 import { collectThinking, readJsonReply, streamChat } from "./stream-reader.ts";
 import { generationReporter } from "./generation.ts";
 import { ANTI_REPEAT_FIELDS, LLAMA_STREAM_FIELDS, STREAM_FIELDS, readReply } from "./request-fields.ts";
-import { modelInfo, modelRef, parseModelRef, providerFor, providerOf, reasoningFields, responseFormat, type ModelInfo, type Provider, type ProviderId } from "./provider.ts";
+import { modelRef, parseModelRef, providerFor, providerOf, reasoningFields, responseFormat, type ModelInfo, type Provider } from "./provider.ts";
 import { chooseSideSlot as chooseSlot, slotJustUsed } from "./slots.ts";
+import { REASONING_EFFORTS, type ReasoningEffort } from "../core/call/reasoning.ts";
+import { fetchEmbedding, fetchHostedInfo, fetchModelDetails, fetchSlotContext, localSupportsVision, type ModelDetail } from "./model-queries.ts";
 import { CallLog, CallTrace, recordCallEnd, recordCallStart, noteServerCut, runawayError, traceListener, traceThinking } from "./call-trace.ts";
 
 export { streamChat };
@@ -30,27 +32,6 @@ export function hostedAvailable(): boolean {
   return config.openrouterApiKey !== "";
 }
 
-/** One provider's model list, each model under its reference. */
-async function fetchModelDetails(provider: Provider): Promise<Result<ModelDetail[]>> {
-  try {
-    const res = await fetch(provider.modelsUrl, { method: "GET", headers: provider.headers });
-    if (!res.ok) {
-      return { ok: false, error: { kind: "http", status: res.status, body: await res.text() } };
-    }
-    const data = (await res.json()) as ModelsResponse;
-    const models = (data.data ?? []).map((m) => ({
-      id: modelRef(provider.id, m.id),
-      name: m.name,
-      contextLength: typeof m.context_length === "number" ? m.context_length : undefined,
-      vision: m.architecture?.input_modalities?.includes("image") === true,
-      provider: provider.id,
-    }));
-    return { ok: true, value: models };
-  } catch (err) {
-    return { ok: false, error: { kind: "network", cause: err instanceof Error ? err.message : String(err) } };
-  }
-}
-
 /** The inference backend label reported by the `self` tool. */
 export function backendName(): string {
   return activeProvider().backend;
@@ -63,23 +44,8 @@ interface Slot {
   id_task?: number;
 }
 
-interface ModelsResponse {
-  data?: { id: string; name?: string; context_length?: number; architecture?: { input_modalities?: string[] } }[];
-}
-
-/** One entry in the model list, with the metadata the picker shows. */
-export interface ModelDetail {
-  /** The model reference (see `modelRef`): the bare id for local, `openrouter:<id>` for OpenRouter. */
-  id: string;
-  name?: string;
-  contextLength?: number;
-  vision: boolean;
-  provider: ProviderId;
-}
-
-import { REASONING_EFFORTS, type ReasoningEffort } from "../core/call/reasoning.ts";
-
 export { REASONING_EFFORTS, type ReasoningEffort };
+export type { ModelDetail };
 
 
 export class LlmClient implements Client {
@@ -312,32 +278,14 @@ export class LlmClient implements Client {
    */
   async supportsVision(model: string = this.currentModel): Promise<boolean> {
     const provider = this.provider(model);
-    const id = this.modelId(model);
-    const headers = provider.headers;
     try {
       if (!provider.capabilities.serverState) {
         return (await this.hostedInfo(model))?.vision === true;
       }
-      const listed = await fetch(provider.modelsUrl, { headers });
-      if (listed.ok) {
-        const body = (await listed.json()) as {
-          data?: { id: string; status?: { args?: string[] } }[];
-        };
-        const args = body.data?.find((m) => m.id === id)?.status?.args;
-        if (args) return args.some((a) => a === "--mmproj" || a === "-mm");
-      }
-      const props = await fetch(
-        `${provider.rootUrl}/props?model=${encodeURIComponent(id)}`,
-        { headers },
-      );
-      if (!props.ok) return false;
-      const info = (await props.json()) as {
-        modalities?: { vision?: boolean };
-      };
-      return info.modalities?.vision === true;
     } catch {
       return false;
     }
+    return localSupportsVision(provider, this.modelId(model));
   }
 
   /**
@@ -366,45 +314,9 @@ export class LlmClient implements Client {
    * The model defaults to the chat model (or the `VISE_EMBEDDING_MODEL` setting
    * when set). Returns the embedding vector, or a structured error.
    */
-  async embed(text: string): Promise<Result<number[]>> {
-    try {
-      const provider = this.provider();
-      const model = config.embeddingModel || provider.defaultModel;
-      const url = provider.rootUrl !== undefined
-        ? `${provider.rootUrl}/v1/embeddings`
-        : `${provider.chatUrl.replace("/chat/completions", "/embeddings")}`;
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "content-type": "application/json", ...provider.headers },
-        body: JSON.stringify({ model, input: [text] }),
-      });
-      if (!res.ok) {
-        const body = await res.text();
-        return {
-          ok: false,
-          error: { kind: "http", status: res.status, body },
-        };
-      }
-      const data = (await res.json()) as {
-        data?: { embedding: number[] }[];
-      };
-      const embedding = data.data?.[0]?.embedding;
-      if (!Array.isArray(embedding) || embedding.length === 0) {
-        return {
-          ok: false,
-          error: { kind: "malformed", body: "no embedding in response" },
-        };
-      }
-      return { ok: true, value: embedding };
-    } catch (err) {
-      return {
-        ok: false,
-        error: {
-          kind: "network",
-          cause: err instanceof Error ? err.message : String(err),
-        },
-      };
-    }
+  embed(text: string): Promise<Result<number[]>> {
+    const provider = this.provider();
+    return fetchEmbedding(provider, config.embeddingModel || provider.defaultModel, text);
   }
 
   /**
@@ -425,10 +337,7 @@ export class LlmClient implements Client {
   private async hostedInfo(model: string): Promise<ModelInfo | undefined> {
     const cached = this.infoCache.get(model);
     if (cached) return cached;
-    const provider = this.provider(model);
-    const res = await fetch(provider.modelsUrl, { headers: provider.headers });
-    if (!res.ok) return undefined;
-    const info = modelInfo(await res.json(), this.modelId(model));
+    const info = await fetchHostedInfo(this.provider(model), this.modelId(model));
     if (info) this.infoCache.set(model, info);
     return info;
   }
@@ -439,65 +348,16 @@ export class LlmClient implements Client {
    */
   async contextMax(): Promise<Result<number>> {
     const provider = this.provider();
-    if (!provider.capabilities.serverState) {
-      try {
-        const info = await this.hostedInfo(this.currentModel);
-        if (info?.contextLength !== undefined) {
-          return { ok: true, value: info.contextLength };
-        }
-        return {
-          ok: false,
-          error: { kind: "malformed", body: "model list had no context_length" },
-        };
-      } catch (err) {
-        return {
-          ok: false,
-          error: {
-            kind: "network",
-            cause: err instanceof Error ? err.message : String(err),
-          },
-        };
-      }
-    }
+    if (provider.capabilities.serverState) return fetchSlotContext(provider, this.modelId());
     try {
-      const res = await fetch(
-        `${provider.rootUrl}/slots?model=${encodeURIComponent(this.modelId())}`,
-        {
-          method: "GET",
-          headers: provider.headers,
-        },
-      );
-      if (!res.ok) {
-        const text = await res.text();
-        return {
-          ok: false,
-          error: { kind: "http", status: res.status, body: text },
-        };
-      }
-      const slots = (await res.json()) as Slot[];
-      const first =
-        Array.isArray(slots) && slots.length > 0 ? slots[0] : undefined;
-      const nCtx = first?.n_ctx;
-      if (nCtx === undefined) {
-        return {
-          ok: false,
-          error: {
-            kind: "malformed",
-            body: "slots response had no n_ctx",
-          },
-        };
-      }
-      return { ok: true, value: nCtx };
+      const info = await this.hostedInfo(this.currentModel);
+      if (info?.contextLength !== undefined) return { ok: true, value: info.contextLength };
+      return { ok: false, error: { kind: "malformed", body: "model list had no context_length" } };
     } catch (err) {
-      return {
-        ok: false,
-        error: {
-          kind: "network",
-          cause: err instanceof Error ? err.message : String(err),
-        },
-      };
+      return { ok: false, error: { kind: "network", cause: err instanceof Error ? err.message : String(err) } };
     }
   }
+
   private applyReasoningEffort(body: Record<string, unknown>): void {
     // `reasoning_effort` is forwarded to the Jinja chat template. `default`
     // (and the unset case) omit the field so the template uses its built-in

@@ -7,6 +7,9 @@ const LIMIT = 10;
 
 const SKIPPED = new Set(["node_modules", "dist", "out", ".git", ".vise"]);
 
+/** The repository, wherever the tests are started from. (File sizes are enforced by `bun run lint`.) */
+const ROOT = join(import.meta.dir, "..");
+
 /** Every directory under `dir` with how many `.ts` files sit directly in it. */
 function counts(dir: string, found: Map<string, number> = new Map()) {
   const entries = readdirSync(dir, { withFileTypes: true });
@@ -22,7 +25,7 @@ function counts(dir: string, found: Map<string, number> = new Map()) {
 }
 
 test(`no directory has ${LIMIT} or more .ts files`, () => {
-  const crowded = [...counts(process.cwd())]
+  const crowded = [...counts(ROOT)]
     .filter(([, n]) => n >= LIMIT)
     .map(([dir, n]) => `${dir}: ${n}`);
   expect(crowded).toEqual([]);

@@ -1,43 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { mockFetch, type FetchCall } from "../helpers/fetch-mock.ts";
 import { LlmClient } from "../../src/client/llm.ts";
 import type { Message, PromptProgress } from "../../src/core/errors.ts";
 import { loadSettingsFile } from "../../src/settings/settings-file.ts";
-
-type FetchCall = { url: string; method: string; body?: string };
-
-function mockFetch(
-  respond: (url: string, init?: RequestInit) => Response | Promise<Response>,
-): { calls: FetchCall[]; restore: () => void } {
-  const original = globalThis.fetch;
-  const calls: FetchCall[] = [];
-  const replacement = async (
-    input: string | URL | Request,
-    init?: RequestInit,
-  ) => {
-    const url =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-          ? input.toString()
-          : input.url;
-    calls.push({
-      url,
-      method: init?.method ?? "GET",
-      body: typeof init?.body === "string" ? init.body : undefined,
-    });
-    return respond(url, init);
-  };
-  Object.assign(replacement, {
-    preconnect: original.preconnect.bind(original),
-  });
-  globalThis.fetch = replacement as typeof fetch;
-  return {
-    calls,
-    restore: () => {
-      globalThis.fetch = original;
-    },
-  };
-}
 
 function jsonResponse(value: unknown, status = 200): Response {
   return new Response(JSON.stringify(value), {

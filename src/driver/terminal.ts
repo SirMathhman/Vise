@@ -14,7 +14,7 @@ import type { StreamDisplay } from "./stream.ts";
  * never touches stdin/stdout itself).
  *
  * This is the seam a different frontend plugs into: swap this class for a
- * pipe/script driver (see `pipe.ts` in ARCHITECTURE.md) without touching the
+ * pipe/script driver (a sibling of this one, see ARCHITECTURE.md) without touching the
  * core or the session.
  */
 export class TerminalDriver {

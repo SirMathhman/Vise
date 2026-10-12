@@ -1,22 +1,8 @@
 import { afterEach, expect, test } from "bun:test";
+import { mockFetch } from "../helpers/fetch-mock.ts";
 import { LlmClient } from "../../src/client/llm.ts";
 import { applySettings } from "../../src/config.ts";
 import { modelRef, parseModelRef } from "../../src/client/provider.ts";
-
-type Call = { url: string; body?: string };
-
-function mockFetch(respond: (url: string) => Response): { calls: Call[]; restore: () => void } {
-  const original = globalThis.fetch;
-  const calls: Call[] = [];
-  const replacement = async (input: string | URL | Request, init?: RequestInit) => {
-    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-    calls.push({ url, body: typeof init?.body === "string" ? init.body : undefined });
-    return respond(url);
-  };
-  Object.assign(replacement, { preconnect: original.preconnect.bind(original) });
-  globalThis.fetch = replacement as typeof fetch;
-  return { calls, restore: () => void (globalThis.fetch = original) };
-}
 
 const json = (v: unknown): Response => new Response(JSON.stringify(v), { headers: { "content-type": "application/json" } });
 

@@ -93,8 +93,10 @@ src/                # at most 9 .ts files per directory (enforced by test/layout
   client/
     llm.ts          # LLM transport: implements the core's `Client` type,
                     # `ContextSource`, and `ModelController`; wraps fetch,
-                    # owns URL/key/model config; the sole module in the tree
-                    # that performs network I/O
+                    # owns URL/key/model config
+    model-queries.ts # what a provider says about its models: list, window,
+                    # vision, embeddings (with llm.ts, the only network I/O)
+    provider.ts     # pure: which provider, its URLs and `capabilities`
   core/             # pure: engine, workflow, errors, goal, goal-trace, audit types (no node: imports)
   output/
     format.ts       # Result -> text for terminal or plain output
@@ -109,6 +111,8 @@ src/                # at most 9 .ts files per directory (enforced by test/layout
                     # interfaces (ProfileSource, SessionSource, ProfileCommands,
                     # SessionCommands, CompactionSource, etc.)
     ports.ts, session-options.ts, session-name.ts, profile-tools.ts  # port types and session helpers
+    command-catalog.ts # every built-in slash command once: help, the page's suggestions, reserved names
+    lists.ts        # the controls' data (profiles, tools, reasoning, sessions, burst) for a frontend
     commands/       # slash-command handlers: commands (immutable state), session-commands
                     # (mutable state), hooks, image, search and workflow commands — plain
                     # module-level functions over narrow facade interfaces
@@ -121,12 +125,15 @@ src/                # at most 9 .ts files per directory (enforced by test/layout
     http.ts         # the HTTP side: Host/Origin checks, explorer, image and pairing APIs
     assets.ts       # the page's files (embedded when compiled); the only static paths served
     port.ts         # busy-port fallback
+    router/         # the one table that routes each message type from the page (router.ts)
+                    # and the connection types (connection.ts)
     conn/           # a connection's lines: line (turn chain, steering, held queue),
                     # queue-commands, resume, leases, history, pictures, prompter (ask_user over the socket),
                     # gate (holds a socket's messages until its connection is built), open
     api/            # panel messages never queued behind a turn: settings-api, notes-api,
-                    # mcp-api, files (workspace explorer), roots (folder chooser, per-root
-                    # hooks and MCP hub)
+                    # profiles-api, workflows-api, git-api, mcp-api, models/ (the picker),
+                    # wire/ (reply helpers, the `lists` push), files (workspace explorer),
+                    # roots (folder chooser, per-root hooks and MCP hub)
     ext/            # Firefox extension link: ext-hub, ext-token, browser-bridge
     desktop/        # the native window: desktop.ts and window-worker.ts (see "Desktop window")
     terminal/       # the integrated terminal: conpty (FFI), pty + pty-reader-worker,
@@ -189,10 +196,13 @@ Rules:
 - `index.ts` stays a thin entry point: wire argv to a driver and run. It
   should remain under 50 lines and never contain a `for` loop over lines.
 - `core/` has zero `node:` imports and is unit-testable with plain assertions.
-- `driver/terminal.ts` and `driver/pipe.ts` are siblings sharing the same
-  session API; choosing between them is driven by
-  `process.stdin.isTTY` / argv, not by special-casing inside the loop.
-- `client/llm.ts` is the sole module that performs network I/O. It receives a
+- `driver/terminal.ts` and the web server (`web/server.ts`) are siblings
+  sharing the same session API through `createEdgeSession`; the entry point
+  picks one, nothing special-cases a surface inside the loop. (A pipe/script
+  driver would be a third sibling; there is none yet.)
+- `src/client/` is the sole layer that performs model network I/O (`llm.ts`
+  for chat and slots, `model-queries.ts` for model lists, windows, vision and
+  embeddings). `llm.ts` receives a
   messages array and returns a `Result<AssistantMessage>`, swallowing all HTTP
   and network errors into structured variants. The `Client` and `Tool` types
   are owned by the core (`core/engine.ts`); the edge _implements_ `Client`
