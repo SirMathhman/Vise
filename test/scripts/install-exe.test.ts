@@ -3,7 +3,7 @@ import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { installExe } from "../../scripts/install-exe.ts";
-import { selfKillRefusal } from "../../src/tools/self-kill-guard.ts";
+import { selfKillRefusal } from "../../packages/backend/src/tools/self-kill-guard.ts";
 
 test("installExe swaps the new exe in and keeps the old one aside", () => {
   const dir = mkdtempSync(join(tmpdir(), "vise-install-"));

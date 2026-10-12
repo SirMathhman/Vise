@@ -2,7 +2,7 @@
 // The ConPTY calls that do not block run here on the main thread; the blocking
 // read of its output runs on a reader thread (pty-reader-worker.ts).
 
-import { VERSION } from "../../version.ts";
+import { VERSION } from "@vise/backend";
 import {
   closeOutput,
   closePty,

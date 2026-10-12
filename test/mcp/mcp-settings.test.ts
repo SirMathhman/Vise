@@ -2,14 +2,14 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { McpHub } from "../../src/mcp/mcp-hub.ts";
+import { McpHub } from "../../packages/backend/src/mcp/mcp-hub.ts";
 import {
   readEntries,
   removeEntry,
   saveEntry,
   type McpEntry,
-} from "../../src/mcp/mcp-store.ts";
-import { handleMcpMessage } from "../../src/web/api/mcp-api.ts";
+} from "../../packages/backend/src/mcp/mcp-store.ts";
+import { handleMcpMessage } from "../../apps/web/src/api/mcp-api.ts";
 
 const fixture = join(import.meta.dir, "fixture-server.ts");
 const entry = (over: Partial<McpEntry> = {}): McpEntry => ({

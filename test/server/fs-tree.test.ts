@@ -3,9 +3,9 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Client, Message, Tool } from "@vise/core";
-import { buildInitialTree } from "../../src/fs-tree.ts";
-import type { ContextSource } from "../../src/repl/session.ts";
-import { Session } from "../../src/repl/session.ts";
+import { buildInitialTree } from "../../packages/backend/src/fs-tree.ts";
+import type { ContextSource } from "../../packages/backend/src/repl/session.ts";
+import { Session } from "../../packages/backend/src/repl/session.ts";
 
 const noopTools = {
   run: async (_n: string, _a: Record<string, unknown>) => "",

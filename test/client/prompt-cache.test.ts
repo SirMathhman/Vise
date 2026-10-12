@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { summarize, type Client, type Tool } from "@vise/core";
 import type { Message } from "@vise/core";
 import { runWorkflow } from "@vise/core";
-import { encodeMessages } from "../../src/client/tool-protocol.ts";
-import { chooseSideSlot, slotJustUsed } from "../../src/client/slots.ts";
+import { encodeMessages } from "../../packages/backend/src/client/tool-protocol.ts";
+import { chooseSideSlot, slotJustUsed } from "../../packages/backend/src/client/slots.ts";
 
 const readFile: Tool = {
   type: "function",

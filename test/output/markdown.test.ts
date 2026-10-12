@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { renderLine } from "../../src/output/markdown.ts";
+import { renderLine } from "../../packages/backend/src/output/markdown.ts";
 
 describe("renderLine (markdown)", () => {
   test("returns plain text unchanged", () => {

@@ -4,23 +4,23 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AuditEvent, AuditSink } from "@vise/core";
-import { LlmClient } from "../../src/client/llm.ts";
+import { LlmClient } from "../../packages/backend/src/client/llm.ts";
 import {
   runSubagent,
   type Client,
   type ToolRunner,
 } from "@vise/core";
 import type { Message } from "@vise/core";
-import { runCompaction } from "../../src/repl/turn/compaction.ts";
-import { createToolRunner, ToolSet } from "../../src/tools.ts";
-import { SqliteAuditSink } from "../../src/db/audit/audit-store.ts";
-import { SqliteAuditReader } from "../../src/db/audit/audit-query.ts";
-import { exportAudit } from "../../src/db/audit/audit-export.ts";
-import { BY_SESSION, pruneAudit } from "../../src/db/audit/audit-prune.ts";
-import { AUDIT_MIGRATIONS } from "../../src/db/audit/audit-schema.ts";
-import { closeAllDbs, openDb } from "../../src/db/open.ts";
-import { Session, type LineResult } from "../../src/repl/session.ts";
-import type { ContextSource } from "../../src/repl/session.ts";
+import { runCompaction } from "../../packages/backend/src/repl/turn/compaction.ts";
+import { createToolRunner, ToolSet } from "../../packages/backend/src/tools.ts";
+import { SqliteAuditSink } from "../../packages/backend/src/db/audit/audit-store.ts";
+import { SqliteAuditReader } from "../../packages/backend/src/db/audit/audit-query.ts";
+import { exportAudit } from "../../packages/backend/src/db/audit/audit-export.ts";
+import { BY_SESSION, pruneAudit } from "../../packages/backend/src/db/audit/audit-prune.ts";
+import { AUDIT_MIGRATIONS } from "../../packages/backend/src/db/audit/audit-schema.ts";
+import { closeAllDbs, openDb } from "../../packages/backend/src/db/open.ts";
+import { Session, type LineResult } from "../../packages/backend/src/repl/session.ts";
+import type { ContextSource } from "../../packages/backend/src/repl/session.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "vise-audit-"));
 afterAll(() => {

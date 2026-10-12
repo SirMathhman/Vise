@@ -1,5 +1,5 @@
-import { loadSession, latestSessionId } from "../../stores/sessions.ts";
-import type { Session } from "../../repl/session.ts";
+import { loadSession, latestSessionId } from "@vise/backend";
+import type { Session } from "@vise/backend";
 import { historyEntries } from "./history.ts";
 import type { SessionLease } from "./leases.ts";
 

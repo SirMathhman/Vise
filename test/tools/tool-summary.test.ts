@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { summarizeToolResult, toolDetail } from "../../src/output/tool-line.ts";
+import { summarizeToolResult, toolDetail } from "../../packages/backend/src/output/tool-line.ts";
 
 test("a read says which lines it returned", () => {
   expect(summarizeToolResult("read_file", "[lines 40-159 of 900]\nabc")).toBe(

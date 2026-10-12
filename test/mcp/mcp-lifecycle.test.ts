@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { McpConnection } from "../../src/mcp/mcp-connection.ts";
+import { McpConnection } from "../../packages/backend/src/mcp/mcp-connection.ts";
 
 const fixture = join(import.meta.dir, "fixture-server.ts");
 

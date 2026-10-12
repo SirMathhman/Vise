@@ -1,4 +1,4 @@
-import type { AskRequest, UserPrompter } from "../../tools/agent/ask-user.ts";
+import type { AskRequest, UserPrompter } from "@vise/backend";
 
 /**
  * Edge implementation of UserPrompter over a WebSocket. When the model calls

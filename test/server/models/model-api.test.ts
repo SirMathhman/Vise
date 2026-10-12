@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { handleModelMessage } from "../../../src/web/api/models/model-api.ts";
+import { handleModelMessage } from "../../../apps/web/src/api/models/model-api.ts";
 
 
 function ports(

@@ -5,7 +5,7 @@ import { join } from "node:path";
 /** No directory holds this many `.ts` files directly; group them into sub-directories. */
 const LIMIT = 10;
 
-const SKIPPED = new Set(["node_modules", "dist", "out", ".git", ".vise"]);
+const SKIPPED = new Set(["node_modules", "dist", "out", ".git", ".vise", "packages"]);
 
 /** The repository, wherever the tests are started from. (File sizes are enforced by `bun run lint`.) */
 const ROOT = join(import.meta.dir, "..");

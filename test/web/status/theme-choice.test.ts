@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseChoice, resolveTheme } from "../../../web/src/status/theme-choice.ts";
+import { parseChoice, resolveTheme } from "../../../packages/frontend/src/status/theme-choice.ts";
 
 describe("theme", () => {
   test("system follows the operating system; a choice overrides it", () => {

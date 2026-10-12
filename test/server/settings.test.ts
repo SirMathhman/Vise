@@ -2,8 +2,8 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { applySettings, config } from "../../src/config.ts";
-import { loadSettingsFile, saveSettings } from "../../src/settings/settings-file.ts";
+import { applySettings, config } from "../../packages/backend/src/config.ts";
+import { loadSettingsFile, saveSettings } from "../../packages/backend/src/settings/settings-file.ts";
 
 const file = (): string =>
   join(mkdtempSync(join(tmpdir(), "vise-env-")), ".env");

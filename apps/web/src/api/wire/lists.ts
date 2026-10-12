@@ -1,5 +1,5 @@
-import { collectLists } from "../../../repl/lists.ts";
-import type { EdgeSession } from "../../../wiring.ts";
+import { collectLists } from "@vise/backend";
+import type { EdgeSession } from "@vise/backend";
 
 /**
  * Push the page's lists (profiles, tools, reasoning levels, saved sessions,

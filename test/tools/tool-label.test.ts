@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import { formatToolCall, toolLabel } from "../../src/output/tool-line.ts";
-import { tools } from "../../src/tools.ts";
-import { displayOfTool } from "../../src/tools/display.ts";
+import { formatToolCall, toolLabel } from "../../packages/backend/src/output/tool-line.ts";
+import { tools } from "../../packages/backend/src/tools.ts";
+import { displayOfTool } from "../../packages/backend/src/tools/display.ts";
 
 test("every tool declares how a call of it is shown, so a new tool cannot be forgotten", () => {
   const missing = tools.filter((t) => !t.display).map((t) => t.function.name);

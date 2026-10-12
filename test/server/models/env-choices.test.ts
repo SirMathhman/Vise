@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
-import { applySettings } from "../../../src/config.ts";
-import { describeSettings } from "../../../src/settings/settings-file.ts";
-import { handleEnvChoices } from "../../../src/web/api/settings-api.ts";
+import { applySettings } from "../../../packages/backend/src/config.ts";
+import { describeSettings } from "../../../packages/backend/src/settings/settings-file.ts";
+import { handleEnvChoices } from "../../../apps/web/src/api/settings-api.ts";
 import { jsonResponse, mockFetch } from "../../helpers/fetch-mock.ts";
 
 afterEach(() => applySettings({}));

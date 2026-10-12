@@ -1,6 +1,6 @@
-import { config } from "../../config.ts";
+import { config } from "@vise/backend";
 import type { Picture } from "@vise/core";
-import { imageStore, sniffImage } from "../../stores/image-store.ts";
+import { imageStore, sniffImage } from "@vise/backend";
 
 /** Most pictures that may come with one message. */
 

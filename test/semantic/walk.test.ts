@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { isSecretName, listIndexable, readText } from "../../src/stores/semantic/walk.ts";
+import { isSecretName, listIndexable, readText } from "../../packages/backend/src/stores/semantic/walk.ts";
 
 function project(): string {
   const root = mkdtempSync(join(tmpdir(), "vise-walk-"));

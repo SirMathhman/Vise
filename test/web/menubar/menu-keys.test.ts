@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { menuKey, neighbourMenu } from "../../../web/src/menubar/menu-keys.ts";
+import { menuKey, neighbourMenu } from "../../../packages/frontend/src/menubar/menu-keys.ts";
 
 const items = [
   { label: "New conversation", enabled: true },

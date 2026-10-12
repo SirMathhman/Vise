@@ -1,8 +1,8 @@
-import type { HookStore } from "../../edge-sources.ts";
-import type { McpHub } from "../../mcp/mcp-hub.ts";
-import { mcpNote } from "../../output/mcp-format.ts";
-import { config } from "../../config.ts";
-import type { SemanticIndexPort } from "../../repl/ports.ts";
+import type { HookStore } from "@vise/backend";
+import type { McpHub } from "@vise/backend";
+import { mcpNote } from "@vise/backend";
+import { config } from "@vise/backend";
+import type { SemanticIndexPort } from "@vise/backend";
 import { watchRoot } from "../api/files.ts";
 import type { TerminalAttachment, TerminalRegistry } from "../terminal/terminal-registry.ts";
 import { queueAutoResume, type ResumeConnection } from "./resume.ts";

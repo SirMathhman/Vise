@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { answerFrom, decideKey } from "../../web/src/composer/ask-choices.ts";
+import { answerFrom, decideKey } from "../../packages/frontend/src/composer/ask-choices.ts";
 
 const choices = ["Red", "Green", "Blue"];
 

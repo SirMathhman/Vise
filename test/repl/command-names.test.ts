@@ -1,11 +1,11 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { COMMANDS, helpLines } from "../../src/repl/command-catalog.ts";
-import { newNameProblem, RESERVED_COMMAND_NAMES } from "../../src/repl/commands/registry.ts";
+import { COMMANDS, helpLines } from "../../packages/backend/src/repl/command-catalog.ts";
+import { newNameProblem, RESERVED_COMMAND_NAMES } from "../../packages/backend/src/repl/commands/registry.ts";
 
 /** The slash names of the session's dispatch table (`Session.commands`). */
 function dispatched(): string[] {
-  const source = readFileSync("src/repl/session.ts", "utf8");
+  const source = readFileSync("packages/backend/src/repl/session.ts", "utf8");
   return [...source.matchAll(/name: "\/([a-z]+)"/g)].map((m) => m[1] as string);
 }
 

@@ -6,7 +6,7 @@ import {
   nameConfidence,
   parseReply,
   parseToolCalls,
-} from "../../src/client/tool-protocol.ts";
+} from "../../packages/backend/src/client/tool-protocol.ts";
 import type { Tool } from "@vise/core";
 
 const def = (name: string): Tool => ({

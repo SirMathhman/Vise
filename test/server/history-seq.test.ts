@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
-import { applySettings } from "../../src/config.ts";
-import { historyEntries } from "../../src/web/conn/history.ts";
+import { applySettings } from "../../packages/backend/src/config.ts";
+import { historyEntries } from "../../apps/web/src/conn/history.ts";
 import type { Message } from "@vise/core";
 
 afterEach(() => applySettings({}));

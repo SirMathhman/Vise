@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
 import type { Client, Tool, ToolRunner } from "@vise/core";
-import { Session } from "../../src/repl/session.ts";
-import { createToolRunner, ToolSet } from "../../src/tools.ts";
-import { withToolScope } from "../../src/tools/agent/agent-scope.ts";
-import { makeSubagentHandler } from "../../src/tools/agent/subagent.ts";
+import { Session } from "../../packages/backend/src/repl/session.ts";
+import { createToolRunner, ToolSet } from "../../packages/backend/src/tools.ts";
+import { withToolScope } from "../../packages/backend/src/tools/agent/agent-scope.ts";
+import { makeSubagentHandler } from "../../packages/backend/src/tools/agent/subagent.ts";
 
 const def = (name: string): Tool => ({
   type: "function",

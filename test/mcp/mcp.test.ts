@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadMcpServers, parseServer } from "../../src/mcp/mcp-config.ts";
-import { McpHub } from "../../src/mcp/mcp-hub.ts";
-import { formatResult, toolName } from "../../src/mcp/mcp-tools.ts";
-import { formatMcpStatus, mcpNote } from "../../src/output/mcp-format.ts";
+import { loadMcpServers, parseServer } from "../../packages/backend/src/mcp/mcp-config.ts";
+import { McpHub } from "../../packages/backend/src/mcp/mcp-hub.ts";
+import { formatResult, toolName } from "../../packages/backend/src/mcp/mcp-tools.ts";
+import { formatMcpStatus, mcpNote } from "../../packages/backend/src/output/mcp-format.ts";
 
 const fixture = join(import.meta.dir, "fixture-server.ts");
 const spec = { command: process.execPath, args: [fixture], env: {} };

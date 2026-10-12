@@ -4,7 +4,7 @@ export * from "./audit.ts";
 export * from "./goal.ts";
 export * from "./goal-trace.ts";
 export * from "./progress.ts";
-export * from "./todos.ts";
+export * from "./meta/todos.ts";
 export * from "./workflow.ts";
 export * from "./workflow-profiles.ts";
 export * from "./call/reasoning.ts";

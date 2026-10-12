@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { mockFetch, type FetchCall } from "../helpers/fetch-mock.ts";
-import { LlmClient } from "../../src/client/llm.ts";
+import { LlmClient } from "../../packages/backend/src/client/llm.ts";
 import type { Message, PromptProgress } from "@vise/core";
-import { loadSettingsFile } from "../../src/settings/settings-file.ts";
+import { loadSettingsFile } from "../../packages/backend/src/settings/settings-file.ts";
 
 function jsonResponse(value: unknown, status = 200): Response {
   return new Response(JSON.stringify(value), {

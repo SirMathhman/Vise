@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { editFile } from "../../src/tools/files.ts";
+import { editFile } from "../../packages/backend/src/tools/files.ts";
 
 function fileWith(content: string): string {
   const path = join(mkdtempSync(join(tmpdir(), "edit-eol-")), "styles.css");

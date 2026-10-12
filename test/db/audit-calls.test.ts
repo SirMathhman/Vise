@@ -2,11 +2,11 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SqliteAuditSink } from "../../src/db/audit/audit-store.ts";
-import { SqliteAuditReader } from "../../src/db/audit/audit-query.ts";
-import { AUDIT_MIGRATIONS } from "../../src/db/audit/audit-schema.ts";
-import { closeAllDbs, openDb } from "../../src/db/open.ts";
-import { formatAuditReport } from "../../src/output/audit-format.ts";
+import { SqliteAuditSink } from "../../packages/backend/src/db/audit/audit-store.ts";
+import { SqliteAuditReader } from "../../packages/backend/src/db/audit/audit-query.ts";
+import { AUDIT_MIGRATIONS } from "../../packages/backend/src/db/audit/audit-schema.ts";
+import { closeAllDbs, openDb } from "../../packages/backend/src/db/open.ts";
+import { formatAuditReport } from "../../packages/backend/src/output/audit-format.ts";
 import type { AuditCall } from "@vise/core";
 
 const dir = mkdtempSync(join(tmpdir(), "vise-audit-calls-"));

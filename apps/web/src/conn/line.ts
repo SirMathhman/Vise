@@ -1,7 +1,7 @@
 import type { Picture } from "@vise/core";
-import { formatCompactionFailure, formatError } from "../../output/format.ts";
-import type { LineResult, Session } from "../../repl/session.ts";
-import { loadSession } from "../../stores/sessions.ts";
+import { formatCompactionFailure, formatError } from "@vise/backend";
+import type { LineResult, Session } from "@vise/backend";
+import { loadSession } from "@vise/backend";
 import type { SessionLease } from "./leases.ts";
 import { acceptPictures } from "./pictures.ts";
 

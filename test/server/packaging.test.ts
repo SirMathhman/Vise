@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, posix } from "node:path";
-import { runnerPath } from "../../src/browser/chromium/playwright.ts";
-import { runMaintenance } from "../../src/build/maintenance.ts";
+import { runnerPath } from "../../packages/backend/src/browser/chromium/playwright.ts";
+import { runMaintenance } from "../../packages/backend/src/build/maintenance.ts";
 
 test("the runner is used where it is when run from source", () => {
   expect(
@@ -40,13 +40,13 @@ describe("worker entries", () => {
   // not to the file that spawns it; a mismatch only shows when the worker starts.
   const build = readFileSync("scripts/build-exe.ts", "utf8");
   for (const [spawner, worker] of [
-    ["src/web/desktop/desktop.ts", "src/web/desktop/window-worker.ts"],
-    ["src/web/terminal/pty.ts", "src/web/terminal/pty-reader-worker.ts"],
+    ["apps/web/src/desktop/desktop.ts", "apps/web/src/desktop/window-worker.ts"],
+    ["apps/web/src/terminal/pty.ts", "apps/web/src/terminal/pty-reader-worker.ts"],
   ] as const) {
     test(`${worker} is an entry point named by its compiled Worker literal`, () => {
       const literal = /new Worker\("([^"]+)"\)/.exec(readFileSync(spawner, "utf8"))?.[1];
       expect(build).toContain(`"${worker}"`);
-      expect(literal).toBe(`./${posix.relative("src/web", worker)}`);
+      expect(literal).toBe(`./${posix.relative("apps/web/src", worker)}`);
     });
   }
 });

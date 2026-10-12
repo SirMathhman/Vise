@@ -1,9 +1,9 @@
 import { spawn } from "node:child_process";
 import { mkdirSync, statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
-import { noFolderRoot } from "../../data-dir.ts";
-import { HookStore } from "../../edge-sources.ts";
-import { McpHub } from "../../mcp/mcp-hub.ts";
+import { noFolderRoot } from "@vise/backend";
+import { HookStore } from "@vise/backend";
+import { McpHub } from "@vise/backend";
 
 /**
  * The session roots the web server hosts. A connection picks its root when it

@@ -1,8 +1,8 @@
 import { afterEach, expect, test } from "bun:test";
 import { mockFetch } from "../helpers/fetch-mock.ts";
-import { LlmClient } from "../../src/client/llm.ts";
-import { applySettings } from "../../src/config.ts";
-import { modelRef, parseModelRef } from "../../src/client/provider.ts";
+import { LlmClient } from "../../packages/backend/src/client/llm.ts";
+import { applySettings } from "../../packages/backend/src/config.ts";
+import { modelRef, parseModelRef } from "../../packages/backend/src/client/provider.ts";
 
 const json = (v: unknown): Response => new Response(JSON.stringify(v), { headers: { "content-type": "application/json" } });
 

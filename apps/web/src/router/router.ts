@@ -1,5 +1,5 @@
-import { formatError } from "../../output/format.ts";
-import { saveProfileWhitelist } from "../../repl/profile-tools.ts";
+import { formatError } from "@vise/backend";
+import { saveProfileWhitelist } from "@vise/backend";
 import { handleEditorMessage } from "../api/editors.ts";
 import { handleGitMessage } from "../api/git-api.ts";
 import { handleMcpMessage } from "../api/mcp-api.ts";

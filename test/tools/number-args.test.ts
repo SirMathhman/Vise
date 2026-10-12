@@ -2,9 +2,9 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { toolDetail } from "../../src/output/tool-line.ts";
-import { numberArg } from "../../src/tools/args.ts";
-import { createFile, readFile } from "../../src/tools/files.ts";
+import { toolDetail } from "../../packages/backend/src/output/tool-line.ts";
+import { numberArg } from "../../packages/backend/src/tools/args.ts";
+import { createFile, readFile } from "../../packages/backend/src/tools/files.ts";
 
 const bigFile = (): string => {
   const path = join(mkdtempSync(join(tmpdir(), "vise-read-")), "big.txt");

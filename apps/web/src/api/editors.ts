@@ -1,5 +1,5 @@
-import { globalDataDir } from "../../data-dir.ts";
-import { NoteStore } from "../../stores/note-store.ts";
+import { globalDataDir } from "@vise/backend";
+import { NoteStore } from "@vise/backend";
 import { handleNoteMessage } from "./notes-api.ts";
 import { handleProfileMessage } from "./profiles-api.ts";
 import { handleWorkflowMessage } from "./workflows-api.ts";

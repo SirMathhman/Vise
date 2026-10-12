@@ -2,8 +2,8 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { NoteStore } from "../../src/stores/note-store.ts";
-import { saveNoteTool } from "../../src/tools/notes-tool.ts";
+import { NoteStore } from "../../packages/backend/src/stores/note-store.ts";
+import { saveNoteTool } from "../../packages/backend/src/tools/notes-tool.ts";
 
 const store = (): { store: NoteStore; project: string } => {
   const base = mkdtempSync(join(tmpdir(), "vise-notes-"));

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { parseServer } from "../../src/mcp/mcp-config.ts";
-import { McpHub } from "../../src/mcp/mcp-hub.ts";
+import { parseServer } from "../../packages/backend/src/mcp/mcp-config.ts";
+import { McpHub } from "../../packages/backend/src/mcp/mcp-hub.ts";
 import { startHttpFixture } from "./http-fixture.ts";
 
 describe("url servers: configuration", () => {

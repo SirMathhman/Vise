@@ -1,7 +1,5 @@
-import "../settings/settings-init.ts";
-import { config } from "../config.ts";
-import { missingBuildOutput } from "../build/build-check.ts";
-import { runMaintenance } from "../build/maintenance.ts";
+import "@vise/backend/src/settings/settings-init.ts";
+import { config, missingBuildOutput, runMaintenance } from "@vise/backend";
 import {
   hideOwnConsole,
   logPath,

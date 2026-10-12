@@ -1,11 +1,26 @@
-import { config } from "../config.ts";
 import type { ServerWebSocket } from "bun";
-import { formatContext, formatGoalEvent } from "../output/format.ts";
-import { formatWorkflowEvent } from "../output/workflow-format.ts";
 import type { WorkflowEvent } from "@vise/core";
-import { BrowserSettingsStore } from "../browser/settings.ts";
-import { ExtensionBackend } from "../browser/extension.ts";
-import type { BrowserBackend } from "../browser/types.ts";
+import {
+  config,
+  formatContext,
+  formatGoalEvent,
+  formatWorkflowEvent,
+  BrowserSettingsStore,
+  ExtensionBackend,
+  SwitchableBrowser,
+  HookStore,
+  dataDirFor,
+  noFolderRoot,
+  createEdgeSession,
+  clipDetail,
+  formatToolCall,
+  summarizeToolResult,
+  displayOfTool,
+  askToContinue,
+  McpHub,
+  type BrowserBackend,
+  type McpHub as McpHubType,
+} from "@vise/backend";
 import { ExtensionHub, isExtensionOrigin } from "./ext/ext-hub.ts";
 import { loadExtensionToken, tokensMatch } from "./ext/ext-token.ts";
 import { serveAsset } from "./assets.ts";
@@ -13,17 +28,9 @@ import { isLocalHost, isLocalOrigin, serveApi } from "./http.ts";
 import { createGate } from "./conn/gate.ts";
 import { finishOpening } from "./conn/open.ts";
 import { SessionLease } from "./conn/leases.ts";
-import { SwitchableBrowser } from "../browser/switchable.ts";
 import { BrowserBridge } from "./ext/browser-bridge.ts";
-import { type HookStore } from "../edge-sources.ts";
-import { dataDirFor, noFolderRoot } from "../data-dir.ts";
-import type { McpHub } from "../mcp/mcp-hub.ts";
 import { RootRegistry } from "./api/roots.ts";
-import { createEdgeSession } from "../wiring.ts";
-import { clipDetail, formatToolCall, summarizeToolResult } from "../output/tool-line.ts";
-import { displayOfTool } from "../tools/display.ts";
 import { WebUserPrompter } from "./conn/prompter.ts";
-import { askToContinue } from "../tools/agent/ask-user.ts";
 import { TerminalRegistry } from "./terminal/terminal-registry.ts";
 import { spawnConPty } from "./terminal/pty.ts";
 import { sendLists } from "./api/wire/lists.ts";

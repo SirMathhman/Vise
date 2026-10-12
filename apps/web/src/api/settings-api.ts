@@ -1,8 +1,8 @@
-import { fetchModelDetails } from "../../client/model-queries.ts";
-import { providerOf } from "../../client/provider.ts";
-import { config } from "../../config.ts";
-import { formatError } from "../../output/format.ts";
-import { describeSettings, saveSettings } from "../../settings/settings-file.ts";
+import { fetchModelDetails } from "@vise/backend";
+import { providerOf } from "@vise/backend";
+import { config } from "@vise/backend";
+import { formatError } from "@vise/backend";
+import { describeSettings, saveSettings } from "@vise/backend";
 
 /**
  * The settings page's messages (`env_get`, `env_set`), answered at once and

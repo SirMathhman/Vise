@@ -4,9 +4,9 @@ import { join } from "node:path";
 import { runWorkflow } from "@vise/core";
 import type { Client, Tool, ToolRunner } from "@vise/core";
 import type { Message } from "@vise/core";
-import type { ContextSource, WorkflowSource } from "../../src/repl/session.ts";
-import { Session } from "../../src/repl/session.ts";
-import { initWorkflow, listWorkflows, loadWorkflow } from "../../src/stores/workflows.ts";
+import type { ContextSource, WorkflowSource } from "../../packages/backend/src/repl/session.ts";
+import { Session } from "../../packages/backend/src/repl/session.ts";
+import { initWorkflow, listWorkflows, loadWorkflow } from "../../packages/backend/src/stores/workflows.ts";
 
 let root: string;
 

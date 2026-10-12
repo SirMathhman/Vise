@@ -1,13 +1,13 @@
-import { formatError } from "../../output/format.ts";
-import { globalDataDir } from "../../data-dir.ts";
-import type { McpHub } from "../../mcp/mcp-hub.ts";
+import { formatError } from "@vise/backend";
+import { globalDataDir } from "@vise/backend";
+import type { McpHub } from "@vise/backend";
 import {
   readEntries,
   removeEntry,
   saveEntry,
   type McpEntry,
   type McpScope,
-} from "../../mcp/mcp-store.ts";
+} from "@vise/backend";
 import { strings } from "./wire/reply.ts";
 
 /**

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { cyan, dim, red } from "../../src/output/color.ts";
+import { cyan, dim, red } from "../../packages/backend/src/output/color.ts";
 
 /**
  * Run `fn` with the given env vars set, restoring the original values

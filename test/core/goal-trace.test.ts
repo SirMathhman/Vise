@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { config } from "../../src/config.ts";
+import { config } from "../../packages/backend/src/config.ts";
 import type { Client } from "@vise/core";
 import type { Message, Result } from "@vise/core";
 import {
@@ -7,7 +7,7 @@ import {
   type GoalTraceFact,
   TRACE_TEXT_MAX,
 } from "@vise/core";
-import { GoalTracker } from "../../src/repl/turn/goal-loop.ts";
+import { GoalTracker } from "../../packages/backend/src/repl/turn/goal-loop.ts";
 
 type Reply = Record<string, string> | undefined;
 

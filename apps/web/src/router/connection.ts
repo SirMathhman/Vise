@@ -1,6 +1,6 @@
 import type { ServerWebSocket } from "bun";
-import type { createEdgeSession } from "../../wiring.ts";
-import type { McpHub } from "../../mcp/mcp-hub.ts";
+import type { createEdgeSession } from "@vise/backend";
+import type { McpHub } from "@vise/backend";
 import type { BrowserBridge } from "../ext/browser-bridge.ts";
 import type { createInspector } from "../inspect/inspect.ts";
 import type { HeldLine } from "../conn/line.ts";

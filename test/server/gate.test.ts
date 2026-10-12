@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { createGate } from "../../src/web/conn/gate.ts";
+import { createGate } from "../../apps/web/src/conn/gate.ts";
 
 type Socket = { id: number };
 

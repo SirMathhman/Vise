@@ -5,8 +5,8 @@ import {
   reasoningFields,
   responseFormat,
   type ProviderSettings,
-} from "../../src/client/provider.ts";
-import { streamChat } from "../../src/client/llm.ts";
+} from "../../packages/backend/src/client/provider.ts";
+import { streamChat } from "../../packages/backend/src/client/llm.ts";
 
 const base: ProviderSettings = {
   llmProvider: "local",

@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test";
 import type { Client } from "@vise/core";
 import { runWorkflow, stepLabel } from "@vise/core";
 import type { Workflow, WorkflowEvent } from "@vise/core";
-import type { WorkflowCommands } from "../../src/repl/commands/workflow-commands.ts";
-import { handleWorkflowCommand } from "../../src/repl/commands/workflow-commands.ts";
-import type { WorkflowProfileScope } from "../../src/repl/commands/workflow-profiles.ts";
-import { formatWorkflowEvent } from "../../src/output/workflow-format.ts";
+import type { WorkflowCommands } from "../../packages/backend/src/repl/commands/workflow-commands.ts";
+import { handleWorkflowCommand } from "../../packages/backend/src/repl/commands/workflow-commands.ts";
+import type { WorkflowProfileScope } from "../../packages/backend/src/repl/commands/workflow-profiles.ts";
+import { formatWorkflowEvent } from "../../packages/backend/src/output/workflow-format.ts";
 
 const okClient: Client = {
   async chat() {

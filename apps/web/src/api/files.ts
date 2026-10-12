@@ -1,4 +1,4 @@
-import { config } from "../../config.ts";
+import { config } from "@vise/backend";
 import {
   readdirSync,
   watch,

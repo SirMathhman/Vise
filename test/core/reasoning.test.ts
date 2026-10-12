@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { mockFetch } from "../helpers/fetch-mock.ts";
-import { LlmClient, REASONING_EFFORTS } from "../../src/client/llm.ts";
-import { handleReasoningCommand } from "../../src/repl/commands/commands.ts";
-import type { ReasoningController } from "../../src/repl/session.ts";
+import { LlmClient, REASONING_EFFORTS } from "../../packages/backend/src/client/llm.ts";
+import { handleReasoningCommand } from "../../packages/backend/src/repl/commands/commands.ts";
+import type { ReasoningController } from "../../packages/backend/src/repl/session.ts";
 
 /** Build a minimal SSE stream response that `LlmClient.chat` will parse. */
 function sseResponse(): Response {

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import type { ConnectionState } from "../../../src/web/router/connection.ts";
-import { handleMessage } from "../../../src/web/router/router.ts";
+import type { ConnectionState } from "../../../apps/web/src/router/connection.ts";
+import { handleMessage } from "../../../apps/web/src/router/router.ts";
 
 /** A connection whose pieces record what the router asked of them. */
 function fake() {

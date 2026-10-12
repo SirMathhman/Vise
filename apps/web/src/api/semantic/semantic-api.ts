@@ -1,5 +1,5 @@
-import type { SemanticIndexPort } from "../../../repl/ports.ts";
-import { formatError } from "../../../output/format.ts";
+import type { SemanticIndexPort } from "@vise/backend";
+import { formatError } from "@vise/backend";
 import { str, type Reply } from "../wire/reply.ts";
 
 /**

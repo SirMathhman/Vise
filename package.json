@@ -4,6 +4,10 @@
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "scripts": {
     "start": "bun index.ts",
     "build:web": "bun build ./web/src/app.ts --outdir ./web/dist --target browser --minify",
@@ -30,6 +34,10 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",
+    "@vise/backend": "*",
+    "@vise/common": "*",
+    "@vise/core": "*",
+    "@vise/frontend": "*",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
     "dompurify": "^3.4.16",

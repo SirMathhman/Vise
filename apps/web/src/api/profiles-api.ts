@@ -5,7 +5,7 @@ import {
   renameProfile,
   saveProfile,
   writeProfileBody,
-} from "../../stores/profiles.ts";
+} from "@vise/backend";
 import { failedResult, str, type Reply } from "./wire/reply.ts";
 
 /**

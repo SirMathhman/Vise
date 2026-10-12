@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
-import type { SemanticHit, SemanticIndexPort, SemanticStatus } from "../../src/repl/ports.ts";
-import type { ConnectionState } from "../../src/web/router/connection.ts";
-import { handleMessage } from "../../src/web/router/router.ts";
-import { hitLocation, statusText } from "../../web/src/workspace/search/semantic-search.ts";
+import type { SemanticHit, SemanticIndexPort, SemanticStatus } from "../../packages/backend/src/repl/ports.ts";
+import type { ConnectionState } from "../../apps/web/src/router/connection.ts";
+import { handleMessage } from "../../apps/web/src/router/router.ts";
+import { hitLocation, statusText } from "../../packages/frontend/src/workspace/search/semantic-search.ts";
 
 const hit: SemanticHit = { path: "src/auth.ts", startLine: 3, endLine: 20, score: 0.77, snippet: "login()" };
 

@@ -8,10 +8,10 @@ import {
   readProfile,
   readProfileTools,
   setProfileTools,
-} from "../../src/stores/profiles.ts";
-import { ToolSet } from "../../src/tools.ts";
-import type { ContextSource } from "../../src/repl/session.ts";
-import { Session } from "../../src/repl/session.ts";
+} from "../../packages/backend/src/stores/profiles.ts";
+import { ToolSet } from "../../packages/backend/src/tools.ts";
+import type { ContextSource } from "../../packages/backend/src/repl/session.ts";
+import { Session } from "../../packages/backend/src/repl/session.ts";
 
 describe("profile frontmatter (edge)", () => {
   test("parses the tools whitelist and strips it from the body", () => {
@@ -133,7 +133,7 @@ describe("Session profile tool whitelist (core)", () => {
 
 describe("tool enablement is per session (edge)", () => {
   test("one session's tool state does not leak into another", async () => {
-    const { createEdgeSession } = await import("../../src/wiring.ts");
+    const { createEdgeSession } = await import("../../packages/backend/src/wiring.ts");
     const options = {
       askUser: { ask: async () => "" },
       onMaxRounds: async () => false,

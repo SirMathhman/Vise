@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Client } from "@vise/core";
-import { type GoalEvent, GoalTracker } from "../../src/repl/turn/goal-loop.ts";
+import { type GoalEvent, GoalTracker } from "../../packages/backend/src/repl/turn/goal-loop.ts";
 
 test("when the goal check cannot be made the turn ends, the reason is shown and the goal is kept", async () => {
   let calls = 0;

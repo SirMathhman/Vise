@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { MIN_FROZEN, stableCut } from "../../web/src/transcript/stream-split.ts";
+import { MIN_FROZEN, stableCut } from "../../packages/frontend/src/transcript/stream-split.ts";
 
 const para = (n: number): string => `paragraph ${n} ${"word ".repeat(40)}\n\n`;
 const long = (count: number): string =>
@@ -34,7 +34,7 @@ test("the cut never moves back as the reply grows", () => {
   }
 });
 
-import { createCutScanner } from "../../web/src/transcript/stream-split.ts";
+import { createCutScanner } from "../../packages/frontend/src/transcript/stream-split.ts";
 
 test("a fence is closed only by the same character at least as long", () => {
   const before = long(8);

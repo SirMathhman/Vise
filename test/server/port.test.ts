@@ -5,7 +5,7 @@ import {
   choosePort,
   isPortFree,
   suggestPort,
-} from "../../src/web/port.ts";
+} from "../../apps/web/src/port.ts";
 
 const taken =
   (...ports: number[]) =>

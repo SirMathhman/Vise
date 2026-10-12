@@ -6,7 +6,7 @@ import {
   HIGHLIGHT_MAX_CHARS,
   languageFor,
   languageOfPath,
-} from "../../../web/src/highlight.ts";
+} from "../../../packages/frontend/src/highlight.ts";
 
 const render = (source: string): string =>
   new Marked({ renderer: { code: codeRenderer } }).parse(source, { async: false }) as string;

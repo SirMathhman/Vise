@@ -2,9 +2,9 @@ import { expect, test } from "bun:test";
 import type { AuditEvent } from "@vise/core";
 import { noAudit } from "@vise/core";
 import type { ToolHookEntry } from "@vise/core";
-import { createToolRunner, ToolSet, tools } from "../../../src/tools.ts";
-import { ShellToolHooks } from "../../../src/tools/hooks/tool-hooks.ts";
-import { TempStore } from "../../../src/tools/temp-store.ts";
+import { createToolRunner, ToolSet, tools } from "../../../packages/backend/src/tools.ts";
+import { ShellToolHooks } from "../../../packages/backend/src/tools/hooks/tool-hooks.ts";
+import { TempStore } from "../../../packages/backend/src/tools/temp-store.ts";
 
 /** A runner whose `list_directory` (category files) is a stub that records its calls. */
 function setup(

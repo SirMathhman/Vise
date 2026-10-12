@@ -2,8 +2,8 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { closeAllDbs } from "../../src/db/open.ts";
-import { IndexStore } from "../../src/stores/semantic/index-store.ts";
+import { closeAllDbs } from "../../packages/backend/src/db/open.ts";
+import { IndexStore } from "../../packages/backend/src/stores/semantic/index-store.ts";
 
 afterAll(() => closeAllDbs());
 

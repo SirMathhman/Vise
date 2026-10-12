@@ -1,4 +1,4 @@
-import { imageStore } from "../stores/image-store.ts";
+import { imageStore } from "@vise/backend";
 import { pickFolder, RootRegistry } from "./api/roots.ts";
 import { listDir, readTextFile, deletePath, createPath, annotateIgnored, annotateGitStatus, type DirEntry } from "./api/files.ts";
 

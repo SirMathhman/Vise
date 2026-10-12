@@ -1,5 +1,4 @@
-import { formatSemanticStatus } from "../../../../src/output/semantic-format.ts";
-import type { SemanticHit, SemanticStatus } from "../../../../src/repl/ports.ts";
+import { formatSemanticStatus, type SemanticHit, type SemanticStatus } from "@vise/common";
 import { make, requiredElement as el } from "../../dom.ts";
 
 /** The fields of a `sem_*` message the search box reads (see `src/web/api/semantic/semantic-api.ts`). */

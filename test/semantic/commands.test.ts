@@ -1,13 +1,13 @@
 import { expect, test } from "bun:test";
-import { formatSemanticHits, formatSemanticStatus } from "../../src/output/semantic-format.ts";
-import { handleEmbed, handleSearch } from "../../src/repl/commands/search-command.ts";
+import { formatSemanticHits, formatSemanticStatus } from "../../packages/backend/src/output/semantic-format.ts";
+import { handleEmbed, handleSearch } from "../../packages/backend/src/repl/commands/search-command.ts";
 import type {
   SemanticHit,
   SemanticIndexPort,
   SemanticStatus,
   SemanticUpdateStats,
   SessionCommands,
-} from "../../src/repl/ports.ts";
+} from "../../packages/backend/src/repl/ports.ts";
 
 const hit: SemanticHit = {
   path: "src/auth.ts",

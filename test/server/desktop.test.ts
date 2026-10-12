@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { logToFile, parseWindowEvent, windowMode } from "../../src/web/desktop/desktop.ts";
+import { logToFile, parseWindowEvent, windowMode } from "../../apps/web/src/desktop/desktop.ts";
 
 test("what the window thread says is read strictly; anything odd is a failure", () => {
   expect(parseWindowEvent({ type: "ready" })).toEqual({ type: "ready" });

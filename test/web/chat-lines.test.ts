@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { createLineModel } from "../../web/src/transcript/chat-lines.ts";
+import { createLineModel } from "../../packages/frontend/src/transcript/chat-lines.ts";
 
 const element = (): HTMLElement => ({}) as HTMLElement;
 

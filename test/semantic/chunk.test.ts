@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { CHUNK_CHARS, CHUNK_LINES, CHUNK_OVERLAP, chunkFile } from "../../src/stores/semantic/chunk.ts";
+import { CHUNK_CHARS, CHUNK_LINES, CHUNK_OVERLAP, chunkFile } from "../../packages/backend/src/stores/semantic/chunk.ts";
 
 const lines = (n: number, text = (i: number) => `line ${i}`): string =>
   Array.from({ length: n }, (_, i) => text(i)).join("\n");

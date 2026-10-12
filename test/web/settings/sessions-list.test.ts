@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { newestFirst, relativeTime } from "../../../web/src/settings/sessions-list.ts";
+import { newestFirst, relativeTime } from "../../../packages/frontend/src/settings/sessions-list.ts";
 
 describe("saved sessions", () => {
   const entries = [

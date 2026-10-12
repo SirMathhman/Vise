@@ -1,7 +1,7 @@
-import { config } from "../../config.ts";
+import { config } from "@vise/backend";
 import type { Message } from "@vise/core";
-import { formatToolCall } from "../../output/tool-line.ts";
-import { displayOfTool } from "../../tools/display.ts";
+import { formatToolCall } from "@vise/backend";
+import { displayOfTool } from "@vise/backend";
 
 /**
  * A saved conversation as the lines the web page shows when it restores it:

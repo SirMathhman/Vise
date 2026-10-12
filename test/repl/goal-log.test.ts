@@ -6,8 +6,8 @@ import type {
   ContextSource,
   SavedSession,
   SessionSource,
-} from "../../src/repl/session.ts";
-import { Session } from "../../src/repl/session.ts";
+} from "../../packages/backend/src/repl/session.ts";
+import { Session } from "../../packages/backend/src/repl/session.ts";
 
 const tools: ToolRunner = { run: async () => "tool output" };
 const context: ContextSource = {

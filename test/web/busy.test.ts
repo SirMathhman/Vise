@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { busyView } from "../../web/src/composer/busy.ts";
+import { busyView } from "../../packages/frontend/src/composer/busy.ts";
 
 const base = {
   server: false,

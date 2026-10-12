@@ -1,5 +1,5 @@
-import { NoteStore, requireScope, type NoteId } from "../../stores/note-store.ts";
-import { categoryOf } from "../../stores/notes.ts";
+import { NoteStore, requireScope, type NoteId } from "@vise/backend";
+import { categoryOf } from "@vise/backend";
 import { failedResult, str, type Reply } from "./wire/reply.ts";
 
 /**

@@ -35,3 +35,18 @@ export interface SemanticUpdateStats {
   removed: number;
   failed: number;
 }
+
+/** One line saying what the index holds and what it is doing. */
+export function formatSemanticStatus(status: SemanticStatus): string {
+  const files = `${status.files} file${status.files === 1 ? "" : "s"}, ${status.chunks} passages`;
+  switch (status.state) {
+    case "indexing":
+      return `indexing: ${status.done ?? 0}/${status.total ?? 0} files (${files} so far, model ${status.model})`;
+    case "ready":
+      return `index ready: ${files} (model ${status.model})`;
+    case "unavailable":
+      return `semantic search is unavailable: ${status.reason ?? "the embedding model cannot be used"}`;
+    default:
+      return status.reason ? `nothing indexed yet: ${status.reason}` : "nothing indexed yet (run /embed)";
+  }
+}

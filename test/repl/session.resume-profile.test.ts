@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import type { Client, Tool, ToolRunner } from "@vise/core";
-import type { ContextSource, SessionSource } from "../../src/repl/session.ts";
-import { Session } from "../../src/repl/session.ts";
-import { ToolSet } from "../../src/tools.ts";
+import type { ContextSource, SessionSource } from "../../packages/backend/src/repl/session.ts";
+import { Session } from "../../packages/backend/src/repl/session.ts";
+import { ToolSet } from "../../packages/backend/src/tools.ts";
 
 const def = (name: string): Tool => ({
   type: "function",

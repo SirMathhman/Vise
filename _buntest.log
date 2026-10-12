@@ -1,0 +1,806 @@
+﻿bun test v1.3.14 (0d9b296a)
+bun : 
+At line:1 char:1
++ bun test 2>&1 | Out-File -FilePath C:\Users\mathm\Documents\Projects\ ...
++ ~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+test\layout.test.ts:
+26 | 
+27 | test(`no directory has ${LIMIT} or more .ts files`, () => {
+28 |   const crowded = [...counts(ROOT)]
+29 |     .filter(([, n]) => n >= LIMIT)
+30 |     .map(([dir, n]) => `${dir}: ${n}`);
+31 |   expect(crowded).toEqual([]);
+                       ^
+error: expect(received).toEqual(expected)
+
+- []
++ [
++   "C:\Users\mathm\Documents\Projects\Vise\packages\backend\src: 10",
++   "C:\Users\mathm\Documents\Projects\Vise\packages\core\src: 10",
++ ]
+
+- Expected  - 1
++ Received  + 4
+
+      at <anonymous> (C:\Users\mathm\Documents\Projects\Vise\test\layout.test.ts:31:19)
+(fail) no directory has 10 or more .ts files [4.90ms]
+
+test\client\call-guard.test.ts:
+(pass) CallTrace > keeps the start and a rolling end of a very long text [0.97ms]
+(pass) CallTrace > ends once, with the first reason [0.03ms]
+(pass) CallTrace > the log lists running calls before finished ones, newest first [0.15ms]
+(pass) streamChat reports why the server ended the call > finish_reason reaches the listener [1.60ms]
+(pass) the runaway guard > a call that repeats itself is stopped and reported as a runaway [19.18ms]
+(pass) the runaway guard > a provider that sends no token count still gets its looping call stopped [1.84ms]
+(pass) the runaway guard > a call over the token cap is stopped [0.49ms]
+(pass) the runaway guard > a normal call is not touched, and is recorded raw [0.25ms]
+(pass) a looping call is asked again > one retry with a repeat penalty, and both calls on the record [5.14ms]
+(pass) a looping call is asked again > a second loop fails the turn: only one retry [10.95ms]
+(pass) a looping call is asked again > VISE_LOOP_RETRIES=0 turns it off [4.80ms]
+(pass) a looping call is asked again > a token cap is not retried [0.42ms]
+
+test\client\generation.test.ts:
+(pass) generation progress > streamChat hands the server's token count and the raw text to the listener [0.23ms]
+(pass) generation progress > the tool being called is named once its call has started [0.17ms]
+(pass) generation progress > reports every 20 tokens or 250 ms, and a final done [0.20ms]
+(pass) page pieces > the writing line shows only for a quiet, unfinished call [1.42ms]
+(pass) page pieces > a verdict splits into title and evidence [0.06ms]
+(pass) page pieces > thinking counts tokens in its header and renders markdown when it ends [0.28ms]
+(pass) a tool call is reported as soon as its name is known, even when it is short [0.07ms]
+(pass) a subagent call names its profile first [0.93ms]
+(pass) read_file numbers its lines [3.60ms]
+(pass) each call in one reply counts its own tokens, not the ones before it [0.10ms]
+(pass) nothing is reported while the prompt is still being read (no tokens written yet) [0.15ms]
+(pass) a profile switch tells the model what it gained and lost [0.70ms]
+
+test\client\llm.test.ts:
+(pass) streamChat (edge) > accumulates tool_calls by index across chunks [0.91ms]
+(pass) streamChat (edge) > captures usage.prompt_tokens from the final chunk [0.12ms]
+(pass) streamChat (edge) > invokes onPromptProgress per prompt_progress payload [0.12ms]
+(pass) streamChat (edge) > returns sawData=false for a stream with no data lines [0.09ms]
+(pass) streamChat (edge) > invokes onToken per content delta and accumulates content [0.12ms]
+(pass) streamChat (edge) > invokes onThinking per reasoning_content delta and onToken for content [0.18ms]
+
+test\client\model-refs.test.ts:
+(pass) a model reference round-trips, and a stale prefixed one never selects a remote provider [0.09ms]
+(pass) models are listed from the local server only, and every call goes there [0.68ms]
+
+test\client\prompt-cache.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+error: Cannot find module '@vise/core' from 'C:\Users\mathm\Documents\Projects\Vise\test\client\prompt-cache.test.ts'
+-------------------------------
+
+
+test\client\provider.test.ts:
+(pass) providerFor > local adds /v1 and keeps llama.cpp features [0.03ms]
+(pass) providerFor > an unknown provider falls back to local [0.01ms]
+(pass) request shaping > reasoning effort field [0.02ms]
+(pass) request shaping > response_format needs a name when the provider asks for one [0.03ms]
+(pass) modelInfo > reads window and vision [0.05ms]
+(pass) stream reader > shows `reasoning` deltas as thinking [0.15ms]
+
+test\client\slot-cache.test.ts:
+(pass) llama.cpp side slot (edge) > side work is pinned to the least recently used slot other than the main one 
+[0.87ms]
+(pass) llama.cpp side slot (edge) > nested side work shares the slot, reads the slots once, and the pin ends even when 
+the work throws [0.39ms]
+(pass) llama.cpp side slot (edge) > side work avoids the slot a tool-calling reply ran on, even when another call ran 
+after it [0.87ms]
+(pass) llama.cpp side slot (edge) > with a single slot the work runs unpinned, leaving the server's prompt cache to 
+keep the main context [0.20ms]
+(pass) llama.cpp side slot (edge) > runs unpinned when the slots are unavailable, unreadable or do not say which was 
+used last [0.36ms]
+(pass) llama.cpp side slot (edge) > does not block the work when the slot endpoint hangs [5.56ms]
+(skip) live KV cache across side work > a long context asked again after unrelated side work is mostly read from the 
+cache
+
+test\client\tool-protocol.test.ts:
+(pass) tool protocol (edge) > grammar permits only enabled tool names [0.08ms]
+(pass) tool protocol (edge) > grammar enforces each tool's argument schema [0.20ms]
+(pass) tool protocol (edge) > a tool without declared properties accepts any object [0.05ms]
+(pass) tool protocol (edge) > grammar allows free text before calls [0.03ms]
+(pass) tool protocol (edge) > prompt prefix is independent of which tools are enabled [0.05ms]
+(pass) tool protocol (edge) > parses calls out of content [0.03ms]
+(pass) tool protocol (edge) > hideCalls stops streaming at the delimiter [0.10ms]
+(pass) burst helpers (edge) > nameConfidence uses only tokens inside the tool name [0.09ms]
+(pass) burst helpers (edge) > done marker is detected and stripped [0.02ms]
+(pass) burst helpers (edge) > act grammar allows only calls or done [0.02ms]
+(pass) hideCalls done marker (edge) > drops <done/> even when split across tokens [0.04ms]
+
+test\core\engine.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+error: Cannot find module '@vise/core' from 'C:\Users\mathm\Documents\Projects\Vise\test\core\engine.test.ts'
+-------------------------------
+
+
+test\core\goal-progress.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+error: Cannot find module '@vise/core' from 'C:\Users\mathm\Documents\Projects\Vise\test\core\goal-progress.test.ts'
+-------------------------------
+
+
+test\core\goal-trace.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+error: Cannot find module '@vise/core' from 'C:\Users\mathm\Documents\Projects\Vise\test\core\goal-trace.test.ts'
+-------------------------------
+
+
+test\core\reasoning.test.ts:
+(pass) LlmClient reasoning_effort body emission > omits reasoning_effort when unset [0.30ms]
+(pass) LlmClient reasoning_effort body emission > omits reasoning_effort when set to 'default' [0.17ms]
+(pass) LlmClient reasoning_effort body emission > emits reasoning_effort for a non-default level [0.17ms]
+(pass) LlmClient reasoning_effort body emission > emits reasoning_effort for 'none' (disables reasoning) [0.16ms]
+(pass) LlmClient reasoning_effort body emission > clears the field after setReasoningEffort(undefined) [0.24ms]
+(pass) REASONING_EFFORTS constant > contains exactly the 8 known levels [0.02ms]
+(pass) handleReasoningCommand > lists available levels with active marker [0.12ms]
+(pass) handleReasoningCommand > lists with 'default' active when nothing is set [0.02ms]
+(pass) handleReasoningCommand > sets a valid level [0.03ms]
+(pass) handleReasoningCommand > sets 'default' which clears the field [0.02ms]
+(pass) handleReasoningCommand > rejects an unknown level with a helpful error [0.02ms]
+(pass) handleReasoningCommand > is case-insensitive [0.01ms]
+(pass) handleReasoningCommand > errors when no controller is provided [0.03ms]
+
+test\core\runaway.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+error: Cannot find module '@vise/core' from 'C:\Users\mathm\Documents\Projects\Vise\test\core\runaway.test.ts'
+-------------------------------
+
+
+test\core\subagent-depth.test.ts:
+(pass) a subagent started by a subagent reports one level deeper [0.97ms]
+
+test\core\subagent-permissions.test.ts:
+(pass) a subagent limited by its profile may use exactly its tools, whatever the session has enabled [0.70ms]
+(pass) a subagent with a tool list of its own gets that list (not the main agent's) [0.14ms]
+(pass) a subagent without a tool list gets the user's own settings, not the main agent's restriction [0.07ms]
+(pass) a profile's tool restriction leaves the user's own settings readable, and lifting it forgets them [1.10ms]
+
+test\core\subagent.test.ts:
+(pass) makeSubagentHandler (edge) > marks tool notifications from a subagent as nested [0.18ms]
+(pass) makeSubagentHandler (edge) > preserves and restores slot cache around the subagent operation [0.16ms]
+(pass) makeSubagentHandler (edge) > restores the slot cache when the subagent operation rejects [0.16ms]
+(pass) makeSubagentHandler (edge) > returns the subagent's result and passes a fresh conversation to the client 
+[0.11ms]
+(pass) makeSubagentHandler (edge) > loads a named profile via ProfileSource and injects it as a user message [0.11ms]
+(pass) makeSubagentHandler (edge) > returns an error string when the task is missing or empty [0.07ms]
+(pass) makeSubagentHandler (edge) > returns an error string when the profile is missing [0.05ms]
+(pass) makeSubagentHandler (edge) > propagates a ProfileSource load error as an error string [0.06ms]
+(pass) makeSubagentHandler (edge) > propagates a client error as an error string [0.09ms]
+(pass) makeSubagentHandler (edge) > indents the subagent's streamed tokens at the start of each line [0.30ms]
+(pass) makeSubagentHandler (edge) > dims the subagent's streamed tokens when color is enabled [0.18ms]
+(pass) makeSubagentHandler (edge) > forwards the parent turn's abort signal into the subagent's turn [0.11ms]
+
+test\core\workflow-events.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+error: Cannot find module '@vise/core' from 'C:\Users\mathm\Documents\Projects\Vise\test\core\workflow-events.test.ts'
+-------------------------------
+
+
+test\db\audit-calls.test.ts:
+(pass) model calls in the audit log > a call is on record from its start, and updated when it ends [10.59ms]
+(pass) model calls in the audit log > progress keeps the raw text of a call that never ends [7.93ms]
+(pass) model calls in the audit log > a call the guard stopped says why, and what repeated [8.25ms]
+(pass) model calls in the audit log > a call with no record says so [7.41ms]
+(pass) model calls in the audit log > a call left running by a program that died is marked abandoned [7.61ms]
+
+test\db\audit.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+error: Cannot find module '@vise/core' from 'C:\Users\mathm\Documents\Projects\Vise\test\db\audit.test.ts'
+-------------------------------
+
+
+test\db\session-trace.test.ts:
+(pass) the goal trace in a saved session > is saved and loaded with the session, apart from the conversation [8.32ms]
+(pass) the goal trace in a saved session > a later save replaces the trace instead of adding to it [19.31ms]
+(pass) the goal trace in a saved session > deleting the session deletes its trace [13.98ms]
+(pass) the goal trace in a saved session > is not found by searching sessions [6.41ms]
+(pass) the goal trace in a saved session > a database from before the trace existed is upgraded and keeps its sessions 
+[20.27ms]
+
+test\db\sessions.test.ts:
+(pass) saveSession (edge) > creates the database and keys the session by a generated uuid [6.72ms]
+(pass) saveSession (edge) > keeps the display name out of the file name, whatever it contains [6.00ms]
+(pass) saveSession (edge) > an id overwrites that session and can rename it [7.87ms]
+(pass) saveSession (edge) > two sessions may share a display name [7.16ms]
+(pass) saveSession (edge) > rejects a blank name [0.17ms]
+(pass) saveSession (edge) > rejects an id that is not path-safe [0.16ms]
+(pass) saveSession (edge) > saves the active profile when present [6.69ms]
+(pass) loadSession (edge) > loads by full id and by unique prefix [6.91ms]
+(pass) loadSession (edge) > returns an error when the session is not found [6.30ms]
+(pass) loadSession (edge) > returns an error for a reference that is not an id [6.59ms]
+(pass) loadSession (edge) > returns an error when a prefix matches several sessions [7.87ms]
+(pass) listSessions (edge) > returns an empty array when the directory does not exist [5.47ms]
+(pass) listSessions (edge) > lists id and name, sorted by name [7.16ms]
+(pass) listSessions (edge) > latestSessionId is the most recently saved [22.55ms]
+(pass) round trip > keeps tool calls, tool ids, images and typed marks [8.10ms]
+(pass) legacy JSON import > imports a valid file once and deletes it [7.54ms]
+vise: kept old session file bad0.json: SyntaxError: JSON Parse error: Expected '}'
+vise: kept old session file bad1.json: Error: no messages array
+(pass) legacy JSON import > keeps a file that is not valid [7.01ms]
+(pass) storage failures > a corrupt column is returned as a storage error, not thrown [39.75ms]
+(pass) storage failures > an unopenable database is returned as a storage error [0.47ms]
+(pass) searchSessions (edge) > finds the sessions whose messages mention a phrase [8.11ms]
+(pass) searchSessions (edge) > a deleted session no longer matches [7.39ms]
+(pass) deleteSession (edge) > removes a session by id or prefix and returns the full id [6.80ms]
+(pass) deleteSession (edge) > returns an error when the session is not found [6.08ms]
+
+test\mcp\mcp-lifecycle.test.ts:
+(pass) closing a connection while it connects leaves no process behind [169.54ms]
+
+test\mcp\mcp-settings.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+error: Cannot find module '../../output/format.ts' from 
+'C:\Users\mathm\Documents\Projects\Vise\apps\web\src\api\mcp-api.ts'
+-------------------------------
+
+
+test\mcp\mcp-url.test.ts:
+(pass) url servers: configuration > a url entry needs an http(s) address and string headers [0.17ms]
+(pass) url servers: connecting > streamable: connects with the headers and calls a tool [28.84ms]
+(pass) url servers: connecting > streamable: without the credentials the server is reported as failed [8.74ms]
+(pass) url servers: connecting > sse: connects with the headers and calls a tool [8.65ms]
+(pass) url servers: connecting > sse: without the credentials the server is reported as failed [4.86ms]
+
+test\mcp\mcp.test.ts:
+(pass) mcp config > parseServer accepts stdio entries and refuses the rest [0.08ms]
+(pass) mcp config > project entries override global ones; bad and disabled entries are dropped [2.67ms]
+(pass) mcp tools > names are cleaned, capped and unique [0.05ms]
+(pass) mcp tools > results become text, errors are prefixed [0.04ms]
+(pass) mcp hub > connects, lists, calls, reports errors and a crash [159.32ms]
+
+test\output\color.test.ts:
+(pass) color > emits ANSI codes when FORCE_COLOR is set [0.14ms]
+(pass) color > returns plain text when NO_COLOR is set and FORCE_COLOR is not [0.05ms]
+
+test\output\goal-format.test.ts:
+(pass) a plain continue is not shown [0.78ms]
+(pass) success and being blocked are shown [0.04ms]
+(pass) an unavailable check is a warning that says why and is not shown as met [0.03ms]
+
+test\output\markdown.test.ts:
+(pass) renderLine (markdown) > returns plain text unchanged [0.14ms]
+(pass) renderLine (markdown) > bolds a heading [0.07ms]
+(pass) renderLine (markdown) > dims a blockquote [0.04ms]
+(pass) renderLine (markdown) > indents a list item [0.02ms]
+(pass) renderLine (markdown) > indents a numbered list item [0.02ms]
+(pass) renderLine (markdown) > dims code fence markers and toggles state [0.07ms]
+(pass) renderLine (markdown) > dims content inside a code fence [0.04ms]
+(pass) renderLine (markdown) > styles inline code spans (no ANSI when NO_COLOR) [0.05ms]
+(pass) renderLine (markdown) > styles bold inline spans (no ANSI when NO_COLOR) [0.04ms]
+(pass) renderLine (markdown) > styles links (no ANSI when NO_COLOR) [0.04ms]
+(pass) renderLine (markdown) > emits ANSI codes for headings when color is enabled [0.04ms]
+(pass) renderLine (markdown) > emits dim codes for blockquotes when color is enabled [0.03ms]
+(pass) renderLine (markdown) > emits cyan codes for inline code when color is enabled [0.03ms]
+(pass) renderLine (markdown) > emits bold codes for inline bold when color is enabled [0.03ms]
+(pass) renderLine (markdown) > emits cyan label + dim url for links when color is enabled [0.03ms]
+(pass) renderLine (markdown) > preserves fence state across content lines [0.05ms]
+(pass) renderLine (markdown) > handles tilde fences [0.03ms]
+
+test\repl\command-names.test.ts:
+(pass) the catalog and the session's dispatch table list the same commands [0.89ms]
+(pass) web-only commands are reserved and shown in the page's help only [0.09ms]
+(pass) help hides a command whose need is not met [0.05ms]
+(pass) a new item cannot take a built-in's name or contain whitespace [0.04ms]
+
+test\repl\goal-log.test.ts:
+(pass) the goal trace of a conversation > /goal log shows the hidden questions and why the turn ended [1.95ms]
+(pass) the goal trace of a conversation > the trace is saved with the session [0.19ms]
+(pass) the goal trace of a conversation > a resumed conversation gets its trace back and keeps adding to it [0.41ms]
+(pass) the goal trace of a conversation > /new starts an empty trace [0.24ms]
+(pass) the goal trace of a conversation > a turn that throws still leaves an exception exit in the saved session 
+[0.28ms]
+
+test\repl\goal-unknown.test.ts:
+(pass) when the goal check cannot be made the turn ends, the reason is shown and the goal is kept [1.33ms]
+
+test\repl\line-started.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+error: Cannot find module '../../output/format.ts' from 
+'C:\Users\mathm\Documents\Projects\Vise\apps\web\src\conn\line.ts'
+-------------------------------
+
+
+test\repl\session.command.test.ts:
+(pass) Session streaming flag (core) > sets streamed=true on a successful turn when onToken is provided [0.19ms]
+(pass) Session streaming flag (core) > does not set streamed when onToken is absent [0.17ms]
+(pass) Session.interrupt (core) > returns interrupted when interrupt() is called during an in-flight turn [0.16ms]
+(pass) Session.interrupt (core) > is a no-op when no turn is in flight [0.05ms]
+(pass) Session /tool command (core) > /tool with no args lists tools with their enabled state [0.28ms]
+(pass) Session /tool command (core) > /tool <name> enable sets the tool enabled [0.16ms]
+(pass) Session /tool command (core) > /tool <name> disable sets the tool disabled [0.09ms]
+(pass) Session /tool command (core) > /tool with unknown name returns an error [0.08ms]
+(pass) Session /tool command (core) > /tool with invalid verb returns an error [0.06ms]
+(pass) Session /tool command (core) > /tool when toolController is absent returns an error [0.07ms]
+(pass) Session /tool command (core) > disabling a tool does not change the definitions passed to the model [0.22ms]
+(pass) Session /tool command (core) > disabling a tool informs the model by injecting a message [0.18ms]
+(pass) Session /tool command (core) > enabling a tool informs the model by injecting a message [0.19ms]
+
+test\repl\session.profile.test.ts:
+(pass) Session /profile init command (core) > /profile init <name> calls initProfile and reports success [0.17ms]
+(pass) Session /profile init command (core) > /profile init without a name returns a usage error [0.10ms]
+(pass) Session /profile init command (core) > /profile init surfaces a failure when the profile already exists [0.09ms]
+(pass) Session /profile init command (core) > /profile when profileSource is absent returns an error [0.08ms]
+(pass) Session /profile default (core) > /profile default sets the built-in default without loading a file [0.26ms]
+(pass) Session /profile default (core) > /profile default is listed first even when no profile files exist [0.13ms]
+(pass) Session /profile default (core) > /profile <name> still routes a real profile through the source [0.11ms]
+
+test\repl\session.resume-profile.test.ts:
+(pass) /resume re-applies the restored profile's tool whitelist, as /new does [0.39ms]
+
+test\repl\session.resume.test.ts:
+(pass) Session /save and /resume (core) > /save <name> names the conversation's session and reports its id [0.46ms]
+(pass) Session /save and /resume (core) > /save <name> before any turn creates a new session [0.08ms]
+(pass) Session /save and /resume (core) > /save with no args lists sessions with names and ids [0.17ms]
+(pass) Session /save and /resume (core) > /resume <id> restores the saved conversation and active profile [0.15ms]
+(pass) Session /save and /resume (core) > /resume accepts a unique id prefix [0.07ms]
+(pass) Session /save and /resume (core) > /resume keeps the live system message at index 0 (invariant #6) [0.19ms]
+(pass) Session /save and /resume (core) > auto-save after resume overwrites the resumed session [0.19ms]
+(pass) Session /save and /resume (core) > /resume with no args lists saved sessions [0.15ms]
+(pass) Session /save and /resume (core) > /resume <id> returns an error when the session is not found [0.18ms]
+(pass) Session /save and /resume (core) > /save and /resume return an error when sessionSource is absent [0.20ms]
+(pass) Session /save and /resume (core) > auto-save runs after a successful turn and saves a copy of messages [0.12ms]
+(pass) Session /save and /resume (core) > auto-save reuses the id it was given on the first save [0.19ms]
+(pass) Session /save and /resume (core) > auto-save failure does not interrupt the turn [0.14ms]
+(pass) Session /save and /resume (core) > /delete <id> removes the session and reports success [0.14ms]
+(pass) Session /save and /resume (core) > deleting the current session detaches it so auto-save starts a new one 
+[0.18ms]
+(pass) Session /save and /resume (core) > /delete with no args returns a usage error [0.07ms]
+(pass) Session /save and /resume (core) > /delete <id> returns an error when the session is not found [0.07ms]
+
+test\repl\steer.test.ts:
+(pass) steering words join the conversation at the next round, after earlier notices [0.89ms]
+(pass) steering the turn ended without reading is handed back, notices stay queued [0.05ms]
+
+test\scripts\install-exe.test.ts:
+(pass) installExe swaps the new exe in and keeps the old one aside [2.18ms]
+(pass) installExe works when there is no previous exe [0.63ms]
+(pass) self-kill guard refuses killing vise, bun or own pid only [0.15ms]
+(pass) the logo ico has six well-formed PNG frames [0.19ms]
+
+test\semantic\chunk.test.ts:
+(pass) a short file is one chunk covering all its lines [0.16ms]
+(pass) an empty or blank file has no chunks [0.04ms]
+(pass) a long file is cut into overlapping windows that cover every line [0.18ms]
+(pass) a window cut short by the character limit still moves forward and leaves no line out [0.24ms]
+(pass) one enormous line is a chunk of its own, cut to a bounded size [0.09ms]
+
+test\semantic\commands.test.ts:
+(pass) /search semantic <text> asks the index and shows path, lines, score and the passage [0.31ms]
+(pass) /search <text> stays the saved-sessions search [0.14ms]
+(pass) a semantic search with no text, or without a folder, says so [0.06ms]
+(pass) empty results explain themselves by the index's state [0.06ms]
+(pass) /embed updates, /embed rebuild rebuilds, /embed status only reports, anything else is a usage error [0.19ms]
+(pass) /embed while it is already indexing reports instead of queueing another run [0.06ms]
+
+test\semantic\embeddings.test.ts:
+(pass) a batch comes back in input order whatever order the server answers in [0.38ms]
+(pass) a server that answers the wrong number of vectors, or an error, is a failure [0.17ms]
+(pass) embeddings go to the local server whatever the chat provider setting is [0.22ms]
+
+test\semantic\index-store.test.ts:
+(pass) a file's chunks are replaced as a whole and read back with their line ranges [8.60ms]
+(pass) chunks of another model are counted apart and never returned for a search [8.71ms]
+(pass) removed files and a clear take their chunks with them, and a cached read is not stale [8.04ms]
+
+test\semantic\semantic-index.test.ts:
+(pass) indexing makes files findable by meaning, with 1-based line ranges, and never indexes secrets [12.06ms]
+(pass) a second update does nothing; a changed file is re-embedded; a deleted file is forgotten [11.11ms]
+(pass) concurrent updates are one run [8.84ms]
+(pass) a changed embedding model leaves the old vectors unsearched until a rebuild [12.08ms]
+(pass) an embedder that refuses is a status with what to do, not a throw [8.48ms]
+(pass) listeners hear progress and the end of a run [9.04ms]
+
+test\semantic\tool.test.ts:
+(pass) the tool is a deferred, file-system, files-category tool the model can look up [0.06ms]
+(pass) hits come back as path:lines (score) with the start of the passage [0.31ms]
+(pass) limit is a number the model may send as text and is kept between 1 and 10 [0.12ms]
+(pass) a missing query is an error [0.06ms]
+(pass) every way it cannot answer says so and names the fallback [0.11ms]
+
+test\semantic\vectors.test.ts:
+(pass) a vector survives the database's bytes, even from an unaligned view [0.08ms]
+(pass) cosine is 1 for the same direction, 0 for orthogonal, -1 for opposite, 0 for a zero vector [0.03ms]
+(pass) the best items come first and no more than the limit [0.05ms]
+
+test\semantic\walk.test.ts:
+(pass) only ordinary, non-empty, small files are listed, with relative slash paths [4.87ms]
+(pass) secrets are never listed [0.06ms]
+(pass) a binary file is turned away when read, text comes back whole [4.21ms]
+
+test\semantic\web.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+error: Cannot find module '../../../../src/output/semantic-format.ts' from 
+'C:\Users\mathm\Documents\Projects\Vise\packages\frontend\src\workspace\search\semantic-search.ts'
+-------------------------------
+
+
+test\server\desktop.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+error: Cannot find module '../../data-dir.ts' from 
+'C:\Users\mathm\Documents\Projects\Vise\apps\web\src\desktop\desktop.ts'
+-------------------------------
+
+
+test\server\fs-tree.test.ts:
+(pass) buildInitialTree > lists files and directories at the root [0.83ms]
+(pass) buildInitialTree > caps at 25 entries with a truncation marker [4.58ms]
+(pass) buildInitialTree > caps at depth 5 below root [1.38ms]
+(pass) buildInitialTree > returns empty string for an empty directory [0.20ms]
+(pass) buildInitialTree > handles unreadable directories gracefully [0.36ms]
+(pass) Session initialMessage > injects the initial message as the first user message [0.29ms]
+(pass) Session initialMessage > omits the initial message when not provided [0.16ms]
+
+test\server\gate.test.ts:
+(pass) messages sent before the connection is ready are handled in order, after it opens [0.23ms]
+(pass) a page that closes while starting is abandoned once and never opened [0.10ms]
+(pass) a start that fails is abandoned and reported [0.08ms]
+
+test\server\history-seq.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+error: Cannot find module '../../config.ts' from 'C:\Users\mathm\Documents\Projects\Vise\apps\web\src\conn\history.ts'
+-------------------------------
+
+
+test\server\packaging.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+error: Cannot find module '../web/desktop/desktop.ts' from 
+'C:\Users\mathm\Documents\Projects\Vise\packages\backend\src\build\maintenance.ts'
+-------------------------------
+
+
+test\server\port.test.ts:
+(pass) a free port is used as it is, with no note [0.12ms]
+(pass) a busy port moves to the next free one and the note says how to choose another [0.11ms]
+(pass) when nothing near is free the system picks one, so starting never fails [2.81ms]
+(pass) a port in use is detected for real, and a free one can be found [10.08ms]
+
+test\server\settings.test.ts:
+(pass) a saved setting is live at once and kept in the file [1.41ms]
+(pass) an empty value goes back to the default [2.76ms]
+(pass) a bad number or unknown name is refused and nothing changes [0.45ms]
+(pass) a blank secret keeps the saved one; a bad file value falls back to the default [2.87ms]
+(pass) a secret can be cleared explicitly, and quotes in a hand-written file are dropped [1.53ms]
+
+test\server\web-files.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+error: Cannot find module '../../config.ts' from 'C:\Users\mathm\Documents\Projects\Vise\apps\web\src\api\files.ts'
+-------------------------------
+
+
+test\server\workflows.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+error: Cannot find module '@vise/core' from 'C:\Users\mathm\Documents\Projects\Vise\test\server\workflows.test.ts'
+-------------------------------
+
+
+test\tools\ask-questions.test.ts:
+(pass) several questions are asked in turn and answered together [0.30ms]
+(pass) a single question and a bad list still behave [0.08ms]
+
+test\tools\ask-user.test.ts:
+(pass) makeAskUserHandler (edge) > returns the user's answer as the tool result [0.09ms]
+(pass) makeAskUserHandler (edge) > passes options through to the prompter [0.06ms]
+(pass) makeAskUserHandler (edge) > returns an error string when the question is missing [0.04ms]
+(pass) makeAskUserHandler (edge) > returns an error string when the question is empty [0.03ms]
+(pass) makeAskUserHandler (edge) > returns an error string when the prompter receives no input [0.04ms]
+(pass) makeAskUserHandler (edge) > passes multi_select true through to the prompter [0.06ms]
+(pass) makeAskUserHandler (edge) > accepts {label, description} options and passes descriptions separately [0.06ms]
+(pass) makeAskUserHandler (edge) > refuses newline-joined choices so the model asks again [0.05ms]
+(pass) makeAskUserHandler (edge) > refuses a parameter name used as a choice [0.06ms]
+(pass) makeAskUserHandler (edge) > refuses an empty or non-string option [0.06ms]
+(pass) makeAskUserHandler (edge) > defaults multi_select to false when not provided [0.05ms]
+
+test\tools\edit-file-eol.test.ts:
+(pass) edit_file line endings > a multi-line old_string written with newlines matches a CRLF file, which stays CRLF 
+[2.37ms]
+(pass) edit_file line endings > lines added by a single-line match get CRLF too, so the file never ends up mixed 
+[1.44ms]
+(pass) edit_file line endings > an old_string that already has CRLF still matches [1.35ms]
+(pass) edit_file line endings > a file with LF line endings is edited exactly as before [1.52ms]
+(pass) edit_file line endings > replacement text is written as given, without `$` patterns being expanded [3.00ms]
+(pass) edit_file line endings > text that is not in the file is still reported [0.79ms]
+
+test\tools\number-args.test.ts:
+(pass) a number sent as text counts as that number [0.03ms]
+(pass) a range given as text reads that range, not the start of the file [1.20ms]
+(pass) an argument that is not a number is refused, not ignored [0.52ms]
+(pass) the call line shows the range for a range given as text too [0.06ms]
+(pass) a missing path is refused, not read as an empty string [0.05ms]
+(pass) a garbled limit is refused, not silently truncated [0.41ms]
+
+test\tools\profile-tools.test.ts:
+(pass) profile frontmatter (edge) > parses the tools whitelist and strips it from the body [0.12ms]
+(pass) profile frontmatter (edge) > setProfileTools writes and clears the whitelist, keeping the body [2.61ms]
+(pass) Session profile tool whitelist (core) > entering a whitelisted profile enables only its tools, leaving restores 
+[0.26ms]
+(pass) Session profile tool whitelist (core) > /profile <name> tools shows, sets (validating names) and clears [0.40ms]
+(pass) Session profile tool whitelist (core) > editing the active profile's whitelist leaves live tool state alone 
+[0.11ms]
+(pass) tool enablement is per session (edge) > one session's tool state does not leak into another [10.00ms]
+(pass) lazy /profile (core) > only the last /profile before a turn reaches the conversation [0.35ms]
+(pass) /new (core) > starts a fresh conversation but re-applies the active profile [0.32ms]
+
+test\tools\save-note.test.ts:
+(pass) a note is saved with its text [2.94ms]
+(pass) text sent under another name is refused with the right name, never saved as an empty note [0.36ms]
+
+test\tools\self.test.ts:
+(pass) makeSelfHandler (edge) > reports backend, model, cwd, context fill, profile, and hooks [0.23ms]
+(pass) makeSelfHandler (edge) > renders 'none' for the active profile when unset [0.06ms]
+(pass) makeSelfHandler (edge) > renders one line per hook command [0.06ms]
+(pass) makeSelfHandler (edge) > surfaces a contextMax failure as 'context: unknown' [0.07ms]
+(pass) makeSelfHandler (edge) > ignores arguments (self takes none) [0.05ms]
+
+test\tools\tool-label.test.ts:
+(pass) every tool declares how a call of it is shown, so a new tool cannot be forgotten [0.04ms]
+(pass) a tool call line uses the tool's own label and icon [0.08ms]
+(pass) a tool with no display of its own gets a name made from its identifier [0.06ms]
+
+test\tools\tool-summary.test.ts:
+(pass) a read says which lines it returned [0.11ms]
+(pass) a read that asks for a range shows it when it starts [0.08ms]
+(pass) a search says how many it found, even when the result was too long to show [0.07ms]
+(pass) a failure is shown short, and a tool with nothing to say shows nothing [0.02ms]
+
+test\web\ask-choices.test.ts:
+(pass) a single answer is what was typed [0.05ms]
+(pass) several allowed: the ticked choices in the order offered, then anything typed [0.05ms]
+(pass) number keys choose a numbered choice, only when not typing and only while there is one [0.08ms]
+(pass) Space chooses the highlighted choice, but is a space in the reply box [0.02ms]
+(pass) arrows move the highlight while there are choices [0.02ms]
+(pass) Enter confirms in the reply box or on the question, and sends what is ticked when several are allowed [0.02ms]
+(pass) a letter moves into the reply box, a shortcut does not [0.02ms]
+
+test\web\busy.test.ts:
+(pass) idle when nothing is happening [0.03ms]
+(pass) a line just sent, or the lists loading, locks the page until the server or the load says otherwise [0.02ms]
+(pass) a running turn keeps the composer for steering; a running command does not [0.01ms]
+
+test\web\chat-lines.test.ts:
+(pass) lines are recorded in order with ids that count up and are never reused [0.09ms]
+(pass) a streamed line records what it finally says [0.03ms]
+(pass) a transient line (a progress bar) can be taken out of the record [0.04ms]
+
+test\web\command-completions.test.ts:
+(pass) web command argument completion > suggests known model and reasoning choices [0.24ms]
+(pass) web command argument completion > suggests reserved subcommands and matching profile choices [0.06ms]
+(pass) web command argument completion > completes tool names and finite verbs but not freeform arguments [0.13ms]
+(pass) web command argument completion > completes workflow scope flag, sessions, and fixed subcommands [0.04ms]
+
+test\web\file-icons.test.ts:
+(pass) file icon derivation > maps extensions to their category emoji [0.05ms]
+(pass) file icon derivation > folds the extension to lowercase [0.01ms]
+(pass) file icon derivation > takes the last extension for multi-dot names
+(pass) file icon derivation > treats a leading dot as no extension (hidden file)
+(pass) file icon derivation > falls back to the generic file emoji [0.01ms]
+
+test\web\follow.test.ts:
+(pass) follows the bottom, one scroll per frame [0.15ms]
+(pass) a scroll up between a new line and the frame wins: the reader is not yanked down [0.07ms]
+(pass) jumping resumes following, and a picture that loads follows too [0.05ms]
+(pass) content growing under a pinned log does not unpin it; scrolling up does [0.05ms]
+
+test\web\prompt-progress.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+error: Cannot find module '@vise/core' from 'C:\Users\mathm\Documents\Projects\Vise\test\web\prompt-progress.test.ts'
+-------------------------------
+
+
+test\web\stream-split.test.ts:
+(pass) a short reply is never split [0.10ms]
+(pass) a long reply is cut after its last blank line, and the open last line stays in the tail [0.18ms]
+(pass) blank lines inside a code fence are not cut points [0.06ms]
+(pass) the cut never moves back as the reply grows [0.24ms]
+(pass) a fence is closed only by the same character at least as long [0.06ms]
+(pass) a blank line inside a list is not a cut point; the next plain paragraph is [0.05ms]
+(pass) a reply with reference links or raw HTML is left to the final render [0.04ms]
+(pass) scanning as the text grows gives the same cut as scanning it whole [0.06ms]
+
+test\web\web-transcript.test.ts:
+(pass) web transcript ordering > flushes streamed assistant text before tool calls [0.45ms]
+(pass) web transcript ordering > flushes assistant text before thinking and preserves alternating events [0.10ms]
+(pass) web transcript burst marking > announces a burst once and marks its tool calls [0.06ms]
+(pass) web transcript thinking > collapses an opened thinking line when the thinking ends [0.04ms]
+(pass) web transcript subagent output > streams a subagent reply into one block, split by other events [0.06ms]
+
+test\client\provider-errors\failures.test.ts:
+(pass) an error sent mid-stream fails the call instead of passing for an empty reply [0.37ms]
+(pass) what the call wrote is taken from usage when the provider sends no running count [0.21ms]
+(pass) a busy provider is asked again, a bad request is not [0.06ms]
+(pass) a 503 then a good reply is one successful chat; a 400 is reported at once [1003.46ms]
+(pass) an error body is shown as its message, with what to do for the common statuses [0.09ms]
+
+test\core\hooks\tool-hook-match.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+error: Cannot find module '@vise/core' from 
+'C:\Users\mathm\Documents\Projects\Vise\test\core\hooks\tool-hook-match.test.ts'
+-------------------------------
+
+
+test\repl\hooks\tool-hook-commands.test.ts:
+(pass) tool hooks load from strings and {command, tools} objects [1.36ms]
+(pass) /hooks add pretool saves the hook, with its tool filter, to .viserc.json [2.28ms]
+(pass) a tool hook without a filter is saved as a plain string and removed by number [1.83ms]
+(pass) turn hook edits leave the tool hooks in the file alone [1.81ms]
+(pass) /hooks lists the tool hooks [1.02ms]
+
+test\repl\lists\lists.test.ts:
+(pass) every list comes from its own source, default profile first [0.26ms]
+(pass) a list that cannot be read is left out and named, the others stay [0.08ms]
+
+test\server\editors\git-status.test.ts:
+(pass) parseStatus (git status --porcelain=v1 --branch -z) > branch, upstream counts, and files by state [0.18ms]
+(pass) parseStatus (git status --porcelain=v1 --branch -z) > a rename's old path is not taken for a file of its own 
+[0.03ms]
+(pass) parseStatus (git status --porcelain=v1 --branch -z) > conflicts are listed once, as U [0.02ms]
+(pass) parseStatus (git status --porcelain=v1 --branch -z) > a repository with no commits, and one without an upstream 
+[0.02ms]
+
+test\server\editors\profiles-api.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+error: Cannot find module '../../stores/profiles.ts' from 
+'C:\Users\mathm\Documents\Projects\Vise\apps\web\src\api\profiles-api.ts'
+-------------------------------
+
+
+test\server\models\env-choices.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+error: Cannot find module '../../client/model-queries.ts' from 
+'C:\Users\mathm\Documents\Projects\Vise\apps\web\src\api\settings-api.ts'
+-------------------------------
+
+
+test\server\models\model-api.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+error: Cannot find module '../../../output/format.ts' from 
+'C:\Users\mathm\Documents\Projects\Vise\apps\web\src\api\models\model-api.ts'
+-------------------------------
+
+
+test\server\router\router.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+error: Cannot find module '../../output/format.ts' from 
+'C:\Users\mathm\Documents\Projects\Vise\apps\web\src\router\router.ts'
+-------------------------------
+
+
+test\server\terminal\conpty.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+error: Cannot find module '../../version.ts' from 'C:\Users\mathm\Documents\Projects\Vise\apps\web\src\terminal\pty.ts'
+-------------------------------
+
+
+test\server\terminal\terminal-registry.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+error: Cannot find module '../../config.ts' from 
+'C:\Users\mathm\Documents\Projects\Vise\apps\web\src\terminal\terminal-registry.ts'
+-------------------------------
+
+
+test\tools\hooks\tool-hooks.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+error: Cannot find module '@vise/core' from 
+'C:\Users\mathm\Documents\Projects\Vise\test\tools\hooks\tool-hooks.test.ts'
+-------------------------------
+
+
+test\tools\results\error-convention.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+error: Cannot find module '@vise/core' from 
+'C:\Users\mathm\Documents\Projects\Vise\test\tools\results\error-convention.test.ts'
+-------------------------------
+
+
+test\web\markdown\highlight.test.ts:
+(pass) a fenced block in a known language comes out as coloured token spans [5.85ms]
+(pass) aliases and an info string with extra words still pick the language [2.37ms]
+(pass) an unknown language or none at all is left as plain escaped text [0.16ms]
+(pass) code is escaped, never interpreted as markup [4.75ms]
+(pass) a very large file is not highlighted [0.07ms]
+(pass) a file's language comes from its extension, and plain files have none [0.08ms]
+
+test\web\menubar\menu-keys.test.ts:
+(pass) menuKey > arrows move through the enabled items and wrap [0.09ms]
+(pass) menuKey > Home and End jump to the first and last enabled item [0.03ms]
+(pass) menuKey > a letter jumps to the next enabled item starting with it, cycling [0.09ms]
+(pass) menuKey > Enter and Space choose only an enabled item [0.04ms]
+(pass) menuKey > Escape and Tab close; Left and Right switch menus [0.05ms]
+(pass) menuKey > an empty menu only closes [0.03ms]
+(pass) neighbourMenu wraps around the bar [0.04ms]
+
+test\web\menubar\workflow-picker.test.ts:
+(pass) workflow picker running() > null line hides the strip [0.25ms]
+(pass) workflow picker running() > explicit /workflow <name> shows the strip [0.05ms]
+(pass) workflow picker running() > /workflow init hides the strip [0.02ms]
+(pass) workflow picker running() > shortcut with populated cache shows the strip [0.08ms]
+(pass) workflow picker running() > shortcut with empty cache hides the strip [0.02ms]
+(pass) workflow picker running() > non-workflow command hides the strip [0.02ms]
+
+test\web\models\model-picker.test.ts:
+(pass) a context window is shown rounded, in K or M tokens [0.04ms]
+
+test\web\settings\sessions-list.test.ts:
+(pass) saved sessions > lists newest first, sessions without a time last [0.11ms]
+(pass) saved sessions > relative times [0.07ms]
+
+test\web\status\context-meter.test.ts:
+(pass) context meter > reads the server's context report [0.08ms]
+(pass) context meter > counts are shortened [0.05ms]
+
+test\web\status\theme-choice.test.ts:
+(pass) theme > system follows the operating system; a choice overrides it [0.03ms]
+(pass) theme > anything stored that is not a known theme means system [0.03ms]
+
+test\web\workspace\viewer-mode.test.ts:
+(pass) viewer mode from file name > svg files render as an image [0.05ms]
+(pass) viewer mode from file name > markdown files render as markdown [0.01ms]
+(pass) viewer mode from file name > everything else is plain text [0.01ms]
+(pass) viewer mode from file name > the svg check requires the exact extension
+
+1 tests skipped:
+(skip) live KV cache across side work > a long context asked again after unrelated side work is mostly read from the 
+cache
+
+
+26 tests failed:
+(fail) no directory has 10 or more .ts files [4.90ms]
+
+ 390 pass
+ 1 skip
+ 26 fail
+ 25 errors
+ 1191 expect() calls
+Ran 417 tests across 96 files. [2.32s]

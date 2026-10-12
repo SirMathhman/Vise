@@ -1,4 +1,4 @@
-import type { CallLog } from "../../client/stream/call-trace.ts";
+import type { CallLog } from "@vise/backend";
 
 /** How often a subscribed page is sent the call it is watching (ms). */
 const PUSH_MS = 250;

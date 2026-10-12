@@ -3,8 +3,8 @@ import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Result } from "@vise/core";
-import { closeAllDbs } from "../../src/db/open.ts";
-import { SemanticIndex } from "../../src/stores/semantic/semantic-index.ts";
+import { closeAllDbs } from "../../packages/backend/src/db/open.ts";
+import { SemanticIndex } from "../../packages/backend/src/stores/semantic/semantic-index.ts";
 
 afterAll(() => closeAllDbs());
 

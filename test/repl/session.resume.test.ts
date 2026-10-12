@@ -6,8 +6,8 @@ import type {
   SavedSession,
   SessionEntry,
   SessionSource,
-} from "../../src/repl/session.ts";
-import { Session } from "../../src/repl/session.ts";
+} from "../../packages/backend/src/repl/session.ts";
+import { Session } from "../../packages/backend/src/repl/session.ts";
 
 const noopTools: ToolRunner = {
   async run(_name, _args) {

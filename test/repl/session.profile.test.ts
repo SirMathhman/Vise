@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { Client, Tool, ToolRunner } from "@vise/core";
 import type { Message } from "@vise/core";
-import type { ContextSource } from "../../src/repl/session.ts";
-import { Session } from "../../src/repl/session.ts";
+import type { ContextSource } from "../../packages/backend/src/repl/session.ts";
+import { Session } from "../../packages/backend/src/repl/session.ts";
 
 const noopTools: ToolRunner = {
   async run(_name, _args) {

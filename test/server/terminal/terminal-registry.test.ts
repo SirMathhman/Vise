@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import type { PtyProcess } from "../../../src/web/terminal/pty.ts";
-import { Scrollback } from "../../../src/web/terminal/scrollback.ts";
-import { handleTerminalMessage, terminalSize } from "../../../src/web/terminal/terminal-api.ts";
-import { TerminalRegistry, type Timers } from "../../../src/web/terminal/terminal-registry.ts";
+import type { PtyProcess } from "../../../apps/web/src/terminal/pty.ts";
+import { Scrollback } from "../../../apps/web/src/terminal/scrollback.ts";
+import { handleTerminalMessage, terminalSize } from "../../../apps/web/src/terminal/terminal-api.ts";
+import { TerminalRegistry, type Timers } from "../../../apps/web/src/terminal/terminal-registry.ts";
 
 class FakePty implements PtyProcess {
   readonly pid = 42;

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseStatus } from "../../../src/web/api/git-api.ts";
+import { parseStatus } from "../../../apps/web/src/api/git-api.ts";
 
 const z = (...entries: string[]): string => entries.join("\0") + "\0";
 

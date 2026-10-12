@@ -2,16 +2,16 @@ import { describe, expect, test } from "bun:test";
 import {
   generationReporter,
   toolBeingCalled,
-} from "../../src/client/stream/generation.ts";
-import { streamChat } from "../../src/client/stream/stream-reader.ts";
+} from "../../packages/backend/src/client/stream/generation.ts";
+import { streamChat } from "../../packages/backend/src/client/stream/stream-reader.ts";
 import type { GenerationProgress } from "@vise/core";
 import {
   describeWriting,
   QUIET_MS,
   shouldShowWriting,
-} from "../../web/src/status/generating.ts";
-import { splitVerdict } from "../../web/src/status/goal-ui.ts";
-import { createThinking, thinkingMeta } from "../../web/src/transcript/thinking.ts";
+} from "../../packages/frontend/src/status/generating.ts";
+import { splitVerdict } from "../../packages/frontend/src/status/goal-ui.ts";
+import { createThinking, thinkingMeta } from "../../packages/frontend/src/transcript/thinking.ts";
 
 function sse(chunks: object[]): ReadableStream<Uint8Array> {
   const text =
@@ -147,14 +147,14 @@ test("a tool call is reported as soon as its name is known, even when it is shor
 });
 
 test("a subagent call names its profile first", async () => {
-  const { formatToolCall } = await import("../../src/output/tool-line.ts");
+  const { formatToolCall } = await import("../../packages/backend/src/output/tool-line.ts");
   expect(formatToolCall("run_subagent", { profile: "explore", task: "find the follow code" })).toContain(
     "· explore · find the follow code",
   );
 });
 
 test("read_file numbers its lines", async () => {
-  const { readFile } = await import("../../src/tools/files.ts");
+  const { readFile } = await import("../../packages/backend/src/tools/files.ts");
   const { mkdtempSync, writeFileSync } = await import("node:fs");
   const { join } = await import("node:path");
   const { tmpdir } = await import("node:os");
@@ -197,7 +197,7 @@ test("nothing is reported while the prompt is still being read (no tokens writte
 });
 
 test("a profile switch tells the model what it gained and lost", async () => {
-  const { ProfileToolGate } = await import("../../src/repl/profile-tools.ts");
+  const { ProfileToolGate } = await import("../../packages/backend/src/repl/profile-tools.ts");
   const states = new Map([["read_file", true], ["browser_open", false], ["create_file", true]]);
   const controller = {
     list: () => [...states].map(([name, enabled]) => ({ name, enabled })),

@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { Client, Tool, ToolRunner } from "@vise/core";
 import type { Message, Result } from "@vise/core";
-import type { ProfileSource } from "../../src/repl/session.ts";
-import { makeSubagentHandler } from "../../src/tools/agent/subagent.ts";
+import type { ProfileSource } from "../../packages/backend/src/repl/session.ts";
+import { makeSubagentHandler } from "../../packages/backend/src/tools/agent/subagent.ts";
 
 const noopTools: ToolRunner = {
   async run(_name, _args) {

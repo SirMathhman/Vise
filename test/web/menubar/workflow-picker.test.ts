@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { createWorkflowPicker } from "../../../web/src/menubar/workflow-picker.ts";
+import { createWorkflowPicker } from "../../../packages/frontend/src/menubar/workflow-picker.ts";
 
 function makeStrip() {
   const state = { hidden: true, text: "", children: [] as { tag: string; text: string }[] };

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { formatGoalEvent } from "../../src/output/format.ts";
+import { formatGoalEvent } from "../../packages/backend/src/output/format.ts";
 
 const verdict = (
   v: "yes" | "no" | "blocked" | "unknown",

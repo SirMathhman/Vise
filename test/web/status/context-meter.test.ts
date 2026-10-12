@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { compactCount, parseContextFill } from "../../../web/src/status/context-meter.ts";
+import { compactCount, parseContextFill } from "../../../packages/frontend/src/status/context-meter.ts";
 
 describe("context meter", () => {
   test("reads the server's context report", () => {

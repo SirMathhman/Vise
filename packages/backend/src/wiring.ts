@@ -9,7 +9,7 @@ import type { BrowserBackend } from "./browser/types.ts";
 import { backendName, embeddingModel, LlmClient, type ModelDetail } from "./client/llm.ts";
 import type { CallLog } from "./client/stream/call-trace.ts";
 import { dataDirFor, globalDataDir, noFolderRoot } from "./data-dir.ts";
-import { GLOBAL_PROMPT } from "./global-prompt.ts";
+import { GLOBAL_PROMPT } from "./prompt/global-prompt.ts";
 import { imageStore } from "./stores/image-store.ts";
 import type {
   Client,

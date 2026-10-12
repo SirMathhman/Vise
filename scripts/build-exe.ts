@@ -53,8 +53,8 @@ for (const [entry, outfile] of [
       entry === "src/web/main.ts"
         ? [
             entry,
-            "src/web/desktop/window-worker.ts",
-            "src/web/terminal/pty-reader-worker.ts",
+            "apps/web/src/desktop/window-worker.ts",
+            "apps/web/src/terminal/pty-reader-worker.ts",
           ]
         : [entry],
     compile: { outfile: staged },

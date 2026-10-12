@@ -1,9 +1,9 @@
 import { afterEach, expect, test } from "bun:test";
-import { LlmClient } from "../../../src/client/llm.ts";
-import { streamChat } from "../../../src/client/stream/stream-reader.ts";
-import { applySettings } from "../../../src/config.ts";
-import { httpReason } from "../../../src/output/format.ts";
-import { isTransient, retryDelayMs } from "../../../src/client/retry.ts";
+import { LlmClient } from "../../../packages/backend/src/client/llm.ts";
+import { streamChat } from "../../../packages/backend/src/client/stream/stream-reader.ts";
+import { applySettings } from "../../../packages/backend/src/config.ts";
+import { httpReason } from "../../../packages/backend/src/output/format.ts";
+import { isTransient, retryDelayMs } from "../../../packages/backend/src/client/retry.ts";
 import { mockFetch, jsonResponse } from "../../helpers/fetch-mock.ts";
 
 /** An SSE stream from `data:` payloads (objects are JSON-encoded). */

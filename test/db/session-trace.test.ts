@@ -5,14 +5,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Message } from "@vise/core";
 import type { GoalTraceEntry } from "@vise/core";
-import { closeAllDbs, openDb } from "../../src/db/open.ts";
-import { SESSION_MIGRATIONS } from "../../src/db/session/session-schema.ts";
+import { closeAllDbs, openDb } from "../../packages/backend/src/db/open.ts";
+import { SESSION_MIGRATIONS } from "../../packages/backend/src/db/session/session-schema.ts";
 import {
   deleteSession,
   loadSession,
   saveSession,
   searchSessions,
-} from "../../src/stores/sessions.ts";
+} from "../../packages/backend/src/stores/sessions.ts";
 
 const base = (): string => mkdtempSync(join(tmpdir(), "goal-trace-"));
 

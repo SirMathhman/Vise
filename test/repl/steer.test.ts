@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Message } from "@vise/core";
-import { NoticeQueue } from "../../src/repl/turn/round-hooks.ts";
+import { NoticeQueue } from "../../packages/backend/src/repl/turn/round-hooks.ts";
 
 const steer = (content: string): Message => ({
   role: "user",

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { cosine, decodeVector, encodeVector, topScored } from "../../src/stores/semantic/vectors.ts";
+import { cosine, decodeVector, encodeVector, topScored } from "../../packages/backend/src/stores/semantic/vectors.ts";
 
 test("a vector survives the database's bytes, even from an unaligned view", () => {
   const original = [0.25, -1.5, 3, 0];

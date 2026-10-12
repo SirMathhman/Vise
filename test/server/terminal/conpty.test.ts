@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { spawnConPty, type PtyProcess } from "../../../src/web/terminal/pty.ts";
+import { spawnConPty, type PtyProcess } from "../../../apps/web/src/terminal/pty.ts";
 
 const exited = (pty: PtyProcess, output: string[]): Promise<number> =>
   new Promise((resolve) => {

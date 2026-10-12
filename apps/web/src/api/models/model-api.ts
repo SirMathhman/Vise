@@ -1,6 +1,6 @@
-import type { ModelPickerPorts } from "../../../wiring.ts";
-import { formatError } from "../../../output/format.ts";
-import { switchModel } from "../../../repl/commands/commands.ts";
+import type { ModelPickerPorts } from "@vise/backend";
+import { formatError } from "@vise/backend";
+import { switchModel } from "@vise/backend";
 
 /**
  * The model picker's messages, answered at once and never queued behind a turn:

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import type { SemanticHit, SemanticIndexPort, SemanticStatus } from "../../src/repl/ports.ts";
-import { tools } from "../../src/tools.ts";
-import { makeSemanticSearchHandler } from "../../src/tools/semantic/semantic-search.ts";
+import type { SemanticHit, SemanticIndexPort, SemanticStatus } from "../../packages/backend/src/repl/ports.ts";
+import { tools } from "../../packages/backend/src/tools.ts";
+import { makeSemanticSearchHandler } from "../../packages/backend/src/tools/semantic/semantic-search.ts";
 
 const hit = (path: string, score: number): SemanticHit => ({
   path,

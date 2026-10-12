@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { emojiFor } from "../../web/src/workspace/file-icons.ts";
+import { emojiFor } from "../../packages/frontend/src/workspace/file-icons.ts";
 
 describe("file icon derivation", () => {
   test("maps extensions to their category emoji", () => {

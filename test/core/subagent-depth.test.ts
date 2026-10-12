@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Client, Tool, ToolRunner } from "@vise/core";
-import { makeSubagentHandler } from "../../src/tools/agent/subagent.ts";
+import { makeSubagentHandler } from "../../packages/backend/src/tools/agent/subagent.ts";
 
 const call = (id: string, name: string, args: object) => ({
   id,

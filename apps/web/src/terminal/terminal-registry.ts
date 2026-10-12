@@ -3,7 +3,7 @@
 // viewer when it opens the terminal, and gets the recent output replayed. With
 // no viewer left the shell is stopped after an idle time.
 
-import { config } from "../../config.ts";
+import { config } from "@vise/backend";
 import type { PtyProcess, SpawnPty } from "./pty.ts";
 import { Scrollback } from "./scrollback.ts";
 

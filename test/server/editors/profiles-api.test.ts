@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { handleProfileMessage } from "../../../src/web/api/profiles-api.ts";
-import { setProfileTools } from "../../../src/stores/profiles.ts";
+import { handleProfileMessage } from "../../../apps/web/src/api/profiles-api.ts";
+import { setProfileTools } from "../../../packages/backend/src/stores/profiles.ts";
 
 const fresh = (): string => mkdtempSync(join(tmpdir(), "vise-profiles-api-"));
 const send = (base: string, msg: Record<string, unknown>) => handleProfileMessage(base, msg) ?? [];

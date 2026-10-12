@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { isSvg, viewerMode } from "../../../web/src/workspace/open-tabs.ts";
+import { isSvg, viewerMode } from "../../../packages/frontend/src/workspace/open-tabs.ts";
 
 describe("viewer mode from file name", () => {
   test("svg files render as an image", () => {

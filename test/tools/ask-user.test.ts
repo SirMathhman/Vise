@@ -3,7 +3,7 @@ import {
   type AskRequest,
   makeAskUserHandler,
   type UserPrompter,
-} from "../../src/tools/agent/ask-user.ts";
+} from "../../packages/backend/src/tools/agent/ask-user.ts";
 
 /** A UserPrompter that records each call and returns a fixed answer. */
 function stubPrompter(answer: string): {

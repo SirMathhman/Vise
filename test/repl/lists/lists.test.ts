@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { collectLists } from "../../../src/repl/lists.ts";
+import { collectLists } from "../../../packages/backend/src/repl/lists.ts";
 
 test("every list comes from its own source, default profile first", async () => {
   const lists = await collectLists({

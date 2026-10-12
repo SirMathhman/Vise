@@ -10,7 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Message } from "@vise/core";
-import { closeAllDbs } from "../../src/db/open.ts";
+import { closeAllDbs } from "../../packages/backend/src/db/open.ts";
 import {
   deleteSession,
   latestSessionId,
@@ -18,7 +18,7 @@ import {
   loadSession,
   saveSession,
   searchSessions,
-} from "../../src/stores/sessions.ts";
+} from "../../packages/backend/src/stores/sessions.ts";
 
 let tmpDir: string;
 
