@@ -7,7 +7,7 @@ import {
   pageActionScript,
   type PageAction,
   SNAPSHOT_SCRIPT,
-} from "../../src/browser/page-scripts.ts";
+} from "@vise/backend";
 import {
   clickScript,
   dragScript,
@@ -20,7 +20,7 @@ import {
   uploadScript,
 } from "./page-actions.ts";
 import { ownedIds, release, requireOwned, tryGrant } from "./tabs.ts";
-import type { TabInfo } from "../../src/browser/types.ts";
+import type { TabInfo } from "@vise/backend";
 
 /** The operations the Vise server asks for (see `src/web/ext/ext-hub.ts` and `src/browser/extension.ts`). */
 
