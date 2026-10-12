@@ -6,6 +6,7 @@ import { handleMcpMessage } from "../api/mcp-api.ts";
 import { handleModelMessage } from "../api/models/model-api.ts";
 import { handleSettingsMessage } from "../api/settings-api.ts";
 import { queueLine, steerLine, unqueue } from "../conn/line.ts";
+import { handleSemanticMessage } from "../api/semantic/semantic-api.ts";
 import { sendLists } from "../api/wire/lists.ts";
 import { handleQueueCommand } from "../conn/queue-commands.ts";
 import { createInspector } from "../inspect/inspect.ts";
@@ -119,6 +120,11 @@ const ROUTES: Route[] = [
   {
     owns: (type) => type.startsWith("note") || type.startsWith("workflow") || type.startsWith("profile"),
     run: (conn, msg) => sendAll(conn, handleEditorMessage(conn.dataDir, msg as never)),
+  },
+  // The file explorer's semantic search.
+  {
+    owns: prefix("sem_"),
+    run: async (conn, msg) => sendAll(conn, await handleSemanticMessage(conn.edge.semantic, record(msg))),
   },
   { owns: exact("hooks_get"), run: (conn) => pushHooks(conn) },
   { owns: exact("lists_get"), run: (conn) => sendLists(conn.edge, conn.send) },

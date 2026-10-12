@@ -1,5 +1,6 @@
 import { createBrowserView } from "./browser-view.ts";
 import { createExplorer } from "./explorer.ts";
+import { mountSemanticSearch, type SemanticSearchMessage } from "./search/semantic-search.ts";
 import { bindHResizeGrip } from "../terminal/grip.ts";
 import { pairWithExtension } from "./pairing.ts";
 import { rememberRoot } from "./restore-root.ts";
@@ -8,7 +9,7 @@ import type { BrowserTab } from "./open-tabs.ts";
 import { isSidebar, requiredElement as el } from "../dom.ts";
 
 /** The slice of a server message the workspace reacts to. */
-interface WorkspaceMessage {
+interface WorkspaceMessage extends SemanticSearchMessage {
   type: string;
   path?: string;
   tab?: number;
@@ -78,6 +79,8 @@ export function createWorkspace(
     },
   );
 
+  const semantic = mountSemanticSearch(send, (path) => explorer.openFile(path));
+
   bindHResizeGrip(root, el<HTMLElement>("workspace-divider"), "vise-workspace-width");
   bindHResizeGrip(el<HTMLElement>("files-list").closest(".fs-tree")!, el<HTMLElement>("tree-divider"), "vise-tree-width", 100);
 
@@ -97,14 +100,13 @@ export function createWorkspace(
     },
     sync: () => send({ type: "browser_tabs" }),
     handle(message) {
+      if (message.type.startsWith("sem_")) return semantic.handle(message);
       if (sidebar && message.type.startsWith("browser_")) return true;
       switch (message.type) {
         case "root":
           showRoot(message.path ?? "");
           rememberRoot(message.path ?? "");
-          if (message.badRoot) {
-            onError(`folder not available, so no folder: ${message.badRoot}`);
-          }
+          if (message.badRoot) onError(`folder not available, so no folder: ${message.badRoot}`);
           noFolder = message.noFolder === true;
           document.body.classList.toggle("no-folder", noFolder);
           // The server serves a root only once a session is open on it, so list the project now.

@@ -192,6 +192,7 @@ function createConnectionGate(env: GateEnvironment) {
         terminals,
         releaseRoot: () => roots.release(root),
         pushHooks: () => void pushHooks(conn),
+        semantic: conn.edge.semantic,
         note,
       });
       return conn;

@@ -199,6 +199,18 @@
     <div id="shell" class="shell">
       <aside id="workspace" class="workspace" aria-label="Files">
         <nav class="fs-tree" aria-label="Project files">
+          <form id="sem-form" class="sem-search hidden" role="search">
+            <input
+              id="sem-input"
+              class="field"
+              type="search"
+              placeholder="Search by meaning…"
+              aria-label="Search the project's files by meaning"
+              autocomplete="off"
+            />
+          </form>
+          <div id="sem-status" class="sem-status hidden" aria-live="polite"></div>
+          <ul id="sem-results" class="fs-list sem-results hidden" aria-label="Search results"></ul>
           <div id="files-path" class="files-path"></div>
           <ul id="files-list" class="fs-list"></ul>
         </nav>

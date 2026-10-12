@@ -409,3 +409,54 @@
 .git-code--conflict {
   color: var(--danger);
 }
+
+/* ---- Search by meaning (the explorer's box over the tree) ---- */
+.sem-search {
+  padding: var(--sp-2);
+}
+.sem-search .field {
+  width: 100%;
+}
+.sem-status {
+  padding: 0 var(--sp-2) var(--sp-2);
+  color: var(--dim);
+  font-size: var(--fs-xs);
+}
+.sem-status-bad {
+  color: var(--danger);
+}
+.sem-hit {
+  border-bottom: 1px solid var(--border);
+}
+.sem-hit-open {
+  display: block;
+  width: 100%;
+  padding: var(--sp-2);
+  text-align: left;
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+}
+.sem-hit-open:hover,
+.sem-hit-open:focus-visible {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.sem-hit-head {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--fs-sm);
+}
+.sem-hit-path {
+  overflow-wrap: anywhere;
+}
+.sem-hit-snippet {
+  margin: var(--sp-1) 0 0;
+  max-height: 5.5em;
+  overflow: hidden;
+  color: var(--dim);
+  font-size: var(--fs-xs);
+  white-space: pre-wrap;
+}

@@ -1,6 +1,8 @@
 import type { HookStore } from "../../edge-sources.ts";
 import type { McpHub } from "../../mcp/mcp-hub.ts";
 import { mcpNote } from "../../output/mcp-format.ts";
+import { config } from "../../config.ts";
+import type { SemanticIndexPort } from "../../repl/ports.ts";
 import { watchRoot } from "../api/files.ts";
 import type { TerminalAttachment, TerminalRegistry } from "../terminal/terminal-registry.ts";
 import { queueAutoResume, type ResumeConnection } from "./resume.ts";
@@ -26,6 +28,8 @@ export interface OpeningContext {
   releaseRoot: () => void;
   /** Refresh the page's hooks panel. */
   pushHooks: () => void;
+  /** The folder's semantic index: its status is pushed to the page, and it follows the files. */
+  semantic?: SemanticIndexPort;
   /** Shown in the page after the restored conversation (e.g. that the wanted port was busy). */
   note?: string;
 }
@@ -48,11 +52,22 @@ export function finishOpening(
   // Tell the browser's file explorer whenever the project tree changes.
   // Any connection's hook edit refreshes every open hooks panel.
   const offHooks = c.hookStore.onChange(c.pushHooks);
-  const stopWatching = c.noFolder
-    ? () => {}
-    : watchRoot(c.root, () => conn.send({ type: "fs_changed" }));
+  // Files that changed are re-embedded a moment after the last change.
+  let reindex: ReturnType<typeof setTimeout> | undefined;
+  const filesChanged = (): void => {
+    conn.send({ type: "fs_changed" });
+    if (!c.semantic || config.semanticAutoIndex === 0) return;
+    clearTimeout(reindex);
+    reindex = setTimeout(() => void c.semantic?.update(), 3000);
+  };
+  const stopWatching = c.noFolder ? () => {} : watchRoot(c.root, filesChanged);
+  const pushSemantic = (): void => conn.send({ type: "sem_status", status: c.semantic?.status() ?? null });
+  const offSemantic = c.semantic?.onChange(pushSemantic);
+  pushSemantic();
   conn.unwatch = () => {
     stopWatching();
+    clearTimeout(reindex);
+    offSemantic?.();
     offHooks();
     c.releaseRoot();
   };
