@@ -23,6 +23,8 @@ const MAX_CHUNK_CHARS = 4000;
  */
 export function chunkFile(content: string): Chunk[] {
   const lines = content.split(/\r?\n/);
+  // The newline that ends a file does not start another line.
+  if (lines.at(-1) === "") lines.pop();
   const chunks: Chunk[] = [];
   let first = 0;
   while (first < lines.length) {

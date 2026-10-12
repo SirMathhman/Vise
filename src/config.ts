@@ -64,8 +64,15 @@ export const SPEC = {
     env: "VISE_EMBEDDING_MODEL",
     def: "",
     group: LLM,
-    label: "embedding model (empty = same as chat model)",
+    label: "embedding model for semantic search (a model on the local server that can embed; empty = the default local model)",
   },
+  semanticAutoIndex: n(
+    "VISE_SEMANTIC_AUTOINDEX",
+    1,
+    LLM,
+    "index a folder's files for semantic search in the background when it opens (1 = on, 0 = only on /embed)",
+    { min: 0 },
+  ),
   llmRetries: n(
     "VISE_LLM_RETRIES",
     2,

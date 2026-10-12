@@ -6,7 +6,7 @@ import { SqliteAuditSink } from "./db/audit/audit-store.ts";
 import { mkdirSync } from "node:fs";
 import { ChromiumBackend } from "./browser/chromium/chromium.ts";
 import type { BrowserBackend } from "./browser/types.ts";
-import { backendName, hostedAvailable, LlmClient, type ModelDetail } from "./client/llm.ts";
+import { backendName, embeddingModel, hostedAvailable, LlmClient, type ModelDetail } from "./client/llm.ts";
 import type { CallLog } from "./client/stream/call-trace.ts";
 import { dataDirFor, globalDataDir, noFolderRoot } from "./data-dir.ts";
 import { GLOBAL_PROMPT } from "./global-prompt.ts";
@@ -34,7 +34,8 @@ import {
   FileSessionSource,
   FileWorkflowSource,
 } from "./edge-sources.ts";
-import type { ModelController, ProfileSource, ReasoningController, SessionSource } from "./repl/ports.ts";
+import type { ModelController, ProfileSource, ReasoningController, SemanticIndexPort, SessionSource } from "./repl/ports.ts";
+import { semanticIndexFor } from "./stores/semantic/semantic-index.ts";
 import { compactInPlace } from "./repl/turn/compaction.ts";
 import { Session } from "./repl/session.ts";
 import { TempStore, tempHandlers } from "./tools/temp-store.ts";
@@ -53,7 +54,7 @@ import { makeSelfHandler, type SelfInfo } from "./tools/agent/self.ts";
 import { makeTodoHandler, TodoBoard } from "./tools/agent/todo.ts";
 import type { TodoItem } from "./core/todos.ts";
 import { currentSubagentDepth, makeSubagentHandler } from "./tools/agent/subagent.ts";
-import { createToolRunner, ToolSet, tools } from "./tools.ts";
+import { createToolRunner, ToolSet, tools, type ToolHandler } from "./tools.ts";
 
 /**
  * Shared edge wiring for the Vise frontends (the interactive terminal driver
@@ -82,6 +83,34 @@ import { createToolRunner, ToolSet, tools } from "./tools.ts";
  * `buildInitialMessage` / `loadAgentsMd` / `loadHookCommands` helpers live in
  * `src/edge-sources.ts` — this file only wires them together.
  */
+
+/** The folder's files searchable by meaning, embedded locally (none for a session without a folder). */
+function semanticFor(
+  options: EdgeSessionOptions,
+  root: string,
+  dataDir: string,
+  client: LlmClient,
+  audit: AuditSink,
+): SemanticIndexPort | undefined {
+  if (options.noFolder) return undefined;
+  const index = semanticIndexFor({ root, dataDir, embed: (t) => client.embedMany(t), model: embeddingModel, audit });
+  // Brought up to date in the background; an embedder that does not work shows in the index's status.
+  if (config.semanticAutoIndex !== 0) void index.update();
+  return index;
+}
+
+/** The tool handlers that reach outside the process: the browser, pictures, saved results and MCP servers. */
+function ioHandlers(
+  options: EdgeSessionOptions,
+  io: { browser: BrowserBackend; temp: TempStore; cwd: string | undefined; images: ImageOutbox },
+): Record<string, ToolHandler> {
+  return {
+    ...makeBrowserHandlers(io.browser, io.temp, io.cwd, io.images),
+    ...makeImageHandlers(io.images, io.cwd),
+    ...tempHandlers(io.temp),
+    ...options.mcp?.handlers(io.images),
+  };
+}
 
 /** The session's picture plumbing: where tools queue the pictures they produce, and the loader for `/image`. */
 function imagePlumbing(
@@ -235,6 +264,8 @@ export interface EdgeSession {
   toolController: ToolController;
   /** The saved sessions (listed for the page's session menu). */
   sessionSource: SessionSource;
+  /** The folder's semantic index; none without a folder. */
+  semantic: SemanticIndexPort | undefined;
   /** The active reasoning level (the client). */
   reasoning: ReasoningController;
   /** The profile store (also used for unqueued whitelist edits). */
@@ -411,6 +442,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
   // Tool results too big to show go here instead; the temp tools read them back.
   const temp = new TempStore();
   const todos = new TodoBoard(options.onTodos);
+  const semantic = semanticFor(options, root, dataDir, client, audit.auditSink);
   const toolRunner = createToolRunner(
     {
       run_subagent: makeSubagentHandler(
@@ -429,10 +461,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
       search_tools: makeSearchToolsHandler(sessionTools, (name) =>
         toolController.isEnabled(name),
       ),
-      ...makeBrowserHandlers(browser, temp, cwd, images),
-      ...makeImageHandlers(images, cwd),
-      ...tempHandlers(temp),
-      ...options.mcp?.handlers(images),
+      ...ioHandlers(options, { browser, temp, cwd, images }),
       self: makeSelfHandler(
         selfInfo(client, cwd, () => sessionRef.current, hookStore),
       ),
@@ -456,6 +485,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     noteSource: new FileNoteSource({ project: dataDir, global: globalDataDir }),
     imageSource,
     mcp: options.mcp,
+    semantic,
     surface: options.surface,
     workflowSource,
     sessionSource,
@@ -484,6 +514,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     browser,
     toolController,
     sessionSource,
+    semantic,
     reasoning: client,
     profileSource,
     cleanup: () => { offShare?.(); session.endAudit(); temp.dispose(); },

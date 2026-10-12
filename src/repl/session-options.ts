@@ -21,6 +21,7 @@ import type {
   SessionSource,
   WorkflowSource,
   McpStatusSource,
+  SemanticIndexPort,
 } from "./ports.ts";
 
 /**
@@ -45,6 +46,8 @@ export interface SessionOptions {
   noteSource?: NoteSource;
   /** The MCP servers `/mcp` reports on and restarts. */
   mcp?: McpStatusSource;
+  /** The folder's semantic index (`/search semantic`, `/embed`); without one those commands are unavailable. */
+  semantic?: SemanticIndexPort;
   /** Which frontend drives the session: the web page also answers `/steer` and `/queue` (shown in `/help`). Default: terminal. */
   surface?: "terminal" | "web";
   /** Loads the image files `/image <path>` attaches; without it that command is unavailable. */
