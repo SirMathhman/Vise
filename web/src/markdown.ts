@@ -1,5 +1,9 @@
 import DOMPurify from "dompurify";
 import { marked } from "marked";
+import { codeRenderer } from "./highlight.ts";
+
+// Fenced blocks in a language we know are highlighted (see `codeRenderer`); the rest render as marked does.
+marked.use({ renderer: { code: codeRenderer } });
 
 // Open links in a new tab without handing the page to the target.
 DOMPurify.addHook("afterSanitizeAttributes", (node) => {

@@ -12,6 +12,7 @@ import { confirmAction } from "../feedback/confirm.ts";
 import { promptAction } from "../feedback/prompt.ts";
 import { toast } from "../feedback/toast.ts";
 import { getSessionRoot } from "./restore-root.ts";
+import { highlightCode, languageOfPath } from "../highlight.ts";
 
 interface DirEntry {
   name: string;
@@ -221,7 +222,11 @@ function renderViewer(
   const url = file?.mode === "url";
   const live = file?.mode === "browser";
   const svg = file?.mode === "svg";
-  viewer.textContent = url || live || svg ? "" : (file?.text ?? "");
+  const plain = url || live || svg;
+  // A source file is shown highlighted when its extension names a language we know (the text is escaped).
+  const highlighted = !plain && file ? highlightCode(file.text, languageOfPath(file.path)) : undefined;
+  if (highlighted !== undefined) viewer.innerHTML = highlighted;
+  else viewer.textContent = plain ? "" : (file?.text ?? "");
   viewer.classList.toggle("hidden", rendered || url || live || svg);
   md.mdView.classList.toggle("hidden", !rendered);
   md.frame.classList.toggle("hidden", !url);

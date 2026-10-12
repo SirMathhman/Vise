@@ -1,3 +1,7 @@
+> **Status:** implemented (the dependency and the `--code-*` tokens had been added earlier, but the renderer, the 
+> `.hljs-*` rules and the viewer wiring were missing, so nothing showed). Languages are registered from `highlight.js/lib/core`
+> (see `web/src/highlight.ts`), plus bash, powershell, python, yaml and diff.
+
 ## Plan: Syntax Highlighting for Web UI
 
 Add highlight.js-based syntax highlighting to fenced code blocks in the chat transcript and the file viewer's text mode. No terminal REPL changes. Focused on TypeScript/JavaScript, JSON, SQL, and CSS/HTML.
