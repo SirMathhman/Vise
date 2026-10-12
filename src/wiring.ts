@@ -154,6 +154,8 @@ function controls(
  * which frontend calls in.
  */
 export interface EdgeSessionOptions {
+  /** Which frontend this is; the web page also answers `/steer` and `/queue` (listed by `/help`). */
+  surface?: "terminal" | "web";
   /** Surfaced with each token of the user turn's reply as it streams in. */
   onToken?: (token: string) => void;
   /** Surfaced with each token of the model's thinking as it streams in. */
@@ -450,6 +452,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     noteSource: new FileNoteSource({ project: dataDir, global: globalDataDir }),
     imageSource,
     mcp: options.mcp,
+    surface: options.surface,
     workflowSource,
     sessionSource,
     todos,

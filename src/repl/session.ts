@@ -14,6 +14,7 @@ import { GoalLog } from "../core/goal-trace.ts";
 import { GoalTracker, handleGoalCommand } from "./turn/goal-loop.ts";
 import type { Message, Result } from "../core/errors.ts";
 import { formatHelp } from "../output/format.ts";
+import type { CommandNeed } from "./command-catalog.ts";
 import { SessionHooks } from "./turn/session-hooks.ts";
 import {
   handleModelCommand,
@@ -38,7 +39,7 @@ import {
 import { handleMcpCommand } from "../mcp/mcp-command.ts";
 import { handleSearchCommand } from "./commands/search-command.ts";
 import { workflowProfileScope } from "./commands/workflow-profiles.ts";
-import { findBuiltin, type BuiltinCommand } from "./commands/registry.ts";
+import { findBuiltin, unsupported, type BuiltinCommand } from "./commands/registry.ts";
 import { resolveShortcut } from "./commands/shortcut-command.ts";
 import { handleWorkflowCommand } from "./commands/workflow-commands.ts";
 import type { WorkflowCommands } from "./commands/workflow-commands.ts";
@@ -442,21 +443,26 @@ export class Session {
     { name: "/save", run: (line) => handleSaveCommand(this.sessionCommands, line) },
     { name: "/delete", run: (line) => handleDeleteCommand(this.sessionCommands, line) },
     { name: "/search", run: (line) => handleSearchCommand(this.sessionCommands, line) },
+    { name: "/audit", run: (line) => this.audit.slash(line) ?? unsupported("audit log") },
   ];
 
   private help(): LineResult {
+    const has: [CommandNeed, boolean][] = [
+      ["model", !!this.modelController],
+      ["reasoning", !!this.reasoningController],
+      ["tools", !!this.toolController],
+      ["profile", !!this.profileSource],
+      ["notes", !!this.noteSource],
+      ["workflows", !!this.workflowSource],
+      ["sessions", !!this.sessionSource],
+      ["audit", this.audit.enabled],
+      ["mcp", !!this.opts.mcp],
+    ];
     return {
       ok: true,
       value: formatHelp({
-        hasModel: !!this.modelController,
-        hasReasoning: !!this.reasoningController,
-        hasTools: !!this.toolController,
-        hasProfile: !!this.profileSource,
-        hasNotes: !!this.noteSource,
-        hasWorkflows: !!this.workflowSource,
-        hasSessions: !!this.sessionSource,
-        hasAudit: this.audit.enabled,
-        hasMcp: !!this.opts.mcp,
+        available: new Set(has.filter(([, on]) => on).map(([need]) => need)),
+        web: this.opts.surface === "web",
         preTurnHookCount: this.hooks.pre.length,
         postTurnHookCount: this.hooks.post.length,
       }),
@@ -474,9 +480,7 @@ export class Session {
   private slashCommand(
     trimmed: string,
   ): LineResult | Promise<LineResult> | undefined {
-    const builtin = findBuiltin(this.commands, trimmed);
-    if (builtin) return builtin.run(trimmed);
-    return this.audit.slash(trimmed);
+    return findBuiltin(this.commands, trimmed)?.run(trimmed);
   }
 
   /**

@@ -77,16 +77,9 @@ export interface ModelDetail {
   provider: ProviderId;
 }
 
-/**
- * The valid llama.cpp `reasoning_effort` levels, in the order they are
- * presented to the user. `default` keeps the chat template's built-in default;
- * `none` disables reasoning/thinking; the remaining levels are forwarded to the
- * Jinja chat template as-is. Exported so the terminal, web, and tests all
- * share one source of truth for the set of accepted values.
- */
-export const REASONING_EFFORTS = ["default", "none", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+import { REASONING_EFFORTS, type ReasoningEffort } from "../core/call/reasoning.ts";
 
-export type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
+export { REASONING_EFFORTS, type ReasoningEffort };
 
 
 export class LlmClient implements Client {

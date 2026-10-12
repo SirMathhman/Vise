@@ -148,6 +148,10 @@ export class StreamDisplay {
   onWorkflow = (event: WorkflowEvent): void =>
     this.printEvent(formatWorkflowEvent(event));
 
+  /** Burst mode switched on or off (the engine turns it off after a failed call). */
+  onBurst = (active: boolean): void =>
+    this.printEvent({ text: active ? "burst mode: on" : "burst mode: off" });
+
   /** Show an event line (a goal or workflow event; nothing for an event that has no line) between model rounds. */
   private printEvent(line: { text: string } | undefined): void {
     if (!line) return;

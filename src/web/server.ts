@@ -349,6 +349,7 @@ function makeConnectionState(
   const prompter = new WebUserPrompter(send);
   const display = new WebDisplay();
   const edge = createEdgeSession({
+    surface: "web",
     browser,
     hookStore,
     root,

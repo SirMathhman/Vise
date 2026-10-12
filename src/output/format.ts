@@ -1,3 +1,4 @@
+import { type CommandNeed, helpLines } from "../repl/command-catalog.ts";
 import type { GoalEvent } from "../repl/turn/goal-loop.ts";
 import type { ViseError } from "../core/errors.ts";
 import type { SessionEntry } from "../repl/ports.ts";
@@ -133,94 +134,15 @@ export function formatHooks(
   ].join("\n");
 }
 
-/** Render the available slash commands as a multi-line help text. */
+/** Render the available slash commands as a multi-line help text (the lines come from the command catalog). */
 export function formatHelp(opts: {
-  hasModel: boolean;
-  hasReasoning: boolean;
-  hasTools: boolean;
-  hasProfile: boolean;
-  hasNotes: boolean;
-  hasWorkflows: boolean;
-  hasSessions: boolean;
-  hasAudit?: boolean;
-  hasMcp?: boolean;
+  available: ReadonlySet<CommandNeed>;
+  /** The web page also answers `/steer` and `/queue`. */
+  web?: boolean;
   preTurnHookCount: number;
   postTurnHookCount: number;
 }): string {
-  const lines = [
-    "/exit          exit the REPL",
-    "/help          show this help",
-    "/context       show context window usage",
-    "/compact       compact the conversation now",
-    "/new           start a new conversation (the old one stays saved)",
-    "/hooks         show the configured pre/post-turn hook commands",
-    '/hooks add pre|post "<command>"  add a hook (saved to .viserc.json)',
-    "/hooks remove pre|post <number>  remove a hook",
-    "/hooks profile <name> [add|remove pre|post ...]  hooks that run only with a profile",
-  ];
-  if (opts.hasModel) {
-    lines.push(
-      "/model          list available models",
-      "/model <name>   switch to the named model",
-    );
-  }
-  if (opts.hasReasoning) {
-    lines.push(
-      "/reasoning         list available reasoning efforts",
-      "/reasoning <level> set the active reasoning effort",
-    );
-  }
-  lines.push(
-    "/burst [on|off]  think once to plan, then run tool calls without thinking",
-  );
-  lines.push(
-    "/goal [on|off|clear|log [turns]]  check each turn against a goal and keep going until it is met (log: why each turn ended)",
-    "/image <path>   attach an image file to your next message (clear: /image clear)",
-  );
-  if (opts.hasTools) {
-    lines.push("/tool            list available tools");
-    lines.push(
-      "/tool <name|category> enable|disable  enable or disable a tool or a whole category",
-    );
-  }
-  if (opts.hasMcp) lines.push("/mcp            list MCP servers and their state", "/mcp restart <name>  reconnect a server (new tools appear after a page reload or restart)");
-  if (opts.hasProfile) {
-    lines.push(
-      "/profile        list available profiles",
-      "/profile <name>  set the active profile",
-      "/profile default  activate the built-in default profile",
-      "/profile init <name>  create a new profile with a placeholder body",
-      "/profile <name> tools [a,b|all]  show or set a profile's tool whitelist",
-    );
-  }
-  if (opts.hasNotes) {
-    lines.push("/note            list all notes by scope and category");
-    lines.push(
-      "/note init [--global] <name> [category]  create a new note (project unless --global) with a placeholder body",
-    );
-  }
-  if (opts.hasWorkflows) {
-    lines.push("/workflow                 list available workflows");
-    lines.push("/workflow <name> [input]  run a workflow");
-    lines.push("/<name> [input]           run the workflow or send the note called <name>");
-    lines.push("/workflow init <name>    create a project workflow");
-    lines.push("/workflow init --global <name>  create a global workflow");
-  }
-  if (opts.hasSessions) {
-    lines.push("/save            list saved sessions");
-    lines.push("/save <name>     save the current conversation under a name");
-    lines.push("/resume          list saved sessions");
-    lines.push("/resume <name>   resume a previously saved session");
-    lines.push("/delete <name>   delete a saved session");
-    lines.push("/search <text>   find saved sessions that mention the text");
-  }
-  if (opts.hasAudit) {
-    lines.push("/audit           what the agent did in this conversation");
-    lines.push("/audit tools|models|errors|hooks   details");
-    lines.push("/audit calls [n]       the latest model calls, running ones first");
-    lines.push("/audit call <n>        one model call: what it wrote, raw, and what repeats");
-    lines.push("/audit search <text>   search every recorded conversation");
-  }
+  const lines = helpLines(opts.available, opts.web === true);
   if (opts.preTurnHookCount > 0) {
     lines.push("");
     lines.push(

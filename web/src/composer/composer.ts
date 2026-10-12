@@ -1,3 +1,4 @@
+import { COMMANDS } from "../../../src/repl/command-catalog.ts";
 import { getArgumentSuggestions } from "./command-completions.ts";
 import type { CommandSuggestion } from "./command-completions.ts";
 
@@ -13,28 +14,7 @@ interface ComposerState {
   active: number;
 }
 
-const slashCommands: [string, string, boolean][] = [
-  ["/exit", "exit the REPL", false],
-  ["/help", "show available commands", false],
-  ["/context", "show context window usage", false],
-  ["/compact", "compact the conversation", false],
-  ["/model", "list or switch models", true],
-  ["/reasoning", "list or set reasoning effort", true],
-  ["/steer", "tell the agent now, before its next step", true],
-  ["/queue", "list held messages, or: clear, remove <number>", true],
-  ["/new", "start a new conversation", false],
-  ["/burst", "toggle plan-then-act burst mode", true],
-  ["/goal", "show or toggle goal checking (on, off, clear)", true],
-  ["/tool", "list or toggle tools", true],
-  ["/hooks", "list or edit pre/post-turn hooks", true],
-  ["/profile", "list, switch, or create profiles", true],
-  ["/note", "list notes, or create one: init <name> [category]", true],
-  ["/workflow", "list, run, or create workflows", true],
-  ["/save", "list or save sessions", true],
-  ["/resume", "list or resume sessions", true],
-  ["/delete", "delete a saved session", true],
-  ["/audit", "what the agent did: tools, models, errors, calls, call <n>", true],
-];
+const slashCommands: [string, string, boolean][] = COMMANDS.map((c) => [c.name, c.summary, c.takesArgs]);
 
 export function setupComposer(
   input: HTMLTextAreaElement,

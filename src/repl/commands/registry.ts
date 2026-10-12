@@ -1,4 +1,5 @@
 import type { ViseError } from "../../core/errors.ts";
+import { COMMAND_NAMES } from "../command-catalog.ts";
 import type { LineResult } from "../ports.ts";
 
 /** One built-in slash command: its name, and what it does with the whole line. */
@@ -12,13 +13,9 @@ export interface BuiltinCommand {
 /**
  * Names a note, profile or workflow must not take: a `/name` shortcut would
  * never reach it (a built-in answers first), or the web page handles it itself.
- * `test/repl/command-names.test.ts` fails when a built-in is missing here.
+ * They are the catalog's commands (`command-catalog.ts`).
  */
-export const RESERVED_COMMAND_NAMES: readonly string[] = [
-  "exit", "help", "context", "hooks", "compact", "image", "new", "model", "reasoning",
-  "goal", "burst", "mcp", "tool", "profile", "note", "workflow", "resume", "save",
-  "delete", "search", "audit", "steer", "queue",
-];
+export const RESERVED_COMMAND_NAMES: readonly string[] = COMMAND_NAMES;
 
 /** Why `name` cannot be given to a new note, profile or workflow (it would be unreachable or shadowed), or undefined when it can. */
 export function newNameProblem(name: string): string | undefined {

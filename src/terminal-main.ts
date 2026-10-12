@@ -47,6 +47,10 @@ const edge = createEdgeSession({
   onImage: display.onImage,
   onGoal: display.onGoal,
   onWorkflow: display.onWorkflow,
+  // Burst mode switching itself off is shown. Left to the web page on purpose: `onTodos` (the
+  // todo tool already prints its list), `onGenerating` (a "still writing" indicator) and
+  // `onSubagentToken` (a subagent's text streams through `onToken` here).
+  onBurst: display.onBurst,
   askUser: rlPrompter,
   onMaxRounds: (question) => askToContinue(rlPrompter, question),
 });

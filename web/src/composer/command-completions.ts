@@ -1,3 +1,4 @@
+import { REASONING_EFFORTS } from "../../../src/core/call/reasoning.ts";
 interface CompletionChoice {
   label: string;
   value: string;
@@ -18,16 +19,7 @@ export interface CommandSuggestion {
   appendSpace: boolean;
 }
 
-const reasoningLevels = [
-  "default",
-  "none",
-  "minimal",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "max",
-];
+const reasoningLevels: readonly string[] = REASONING_EFFORTS;
 
 function matches(
   values: CompletionChoice[],
