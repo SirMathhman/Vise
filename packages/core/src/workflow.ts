@@ -51,7 +51,7 @@ export type WorkflowEvent =
   | { kind: "start"; name: string; total: number }
   | { kind: "step"; name: string; index: number; total: number; label: string }
   | { kind: "end"; name: string; step: number; total: number; error?: ViseError }
-  /** A workflow that stopped early left the session in `name` (the profile it switched to) instead of `was`, the one you had. */
+  /** The session switched to profile `name`. When a workflow stops early, `was` is the profile you were in (the user needs to know how to get back); when a profile step ran mid-run, `was` is undefined (the step label already says "profile <name>"). */
   | { kind: "profile"; name: string | undefined; was: string | undefined };
 
 /** A short name for a step, for the progress display. */
@@ -136,8 +136,10 @@ async function runSteps(
         ? await runProfileStep(options.profiles, step.name)
         : await runToolStep(options, index + 1, step);
     if (!result.ok) return result;
-    if (step.type === "profile")
+    if (step.type === "profile") {
+      // Mid-run: no `was` → formatWorkflowEvent produces no line (the step label already says "profile <name>").
       onWorkflow?.({ kind: "profile", name: step.name, was: undefined });
+    }
   }
 
   progress.step = total;

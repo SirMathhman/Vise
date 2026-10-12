@@ -87,3 +87,22 @@ describe("workflow picker running()", () => {
     expect(state.hidden).toBe(true);
   });
 });
+
+describe("workflow picker profile events", () => {
+  const restoreDocument = installDocumentStub();
+  afterAll(restoreDocument);
+
+  test("a kind:profile message calls showProfile with the event name", () => {
+    let profile: string | undefined;
+    const p = createWorkflowPicker(
+      () => {},
+      () => {},
+      ({} as unknown as HTMLElement),
+      () => {},
+      () => {},
+      (name) => { profile = name; },
+    );
+    p.observe({ type: "workflow", kind: "profile", profile: "default" });
+    expect(profile).toBe("default");
+  });
+});

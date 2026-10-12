@@ -408,7 +408,7 @@ function makeConnectionState(
 }
 
 /** The `workflow` message for a run's progress: the step or end, the line to show, and (for a stopped run) the profile the session was left in. */
-function workflowMessage(event: WorkflowEvent): Record<string, unknown> {
+export function workflowMessage(event: WorkflowEvent): Record<string, unknown> {
   const line = formatWorkflowEvent(event);
   const shown = line ? { text: line.text, level: line.level } : {};
   if (event.kind === "profile") return { type: "workflow", kind: "profile", profile: event.name ?? "", ...shown };

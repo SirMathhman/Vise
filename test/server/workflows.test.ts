@@ -2,11 +2,12 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runWorkflow } from "@vise/core";
-import type { Client, Tool, ToolRunner } from "@vise/core";
+import type { Client, Tool, ToolRunner, WorkflowEvent } from "@vise/core";
 import type { Message } from "@vise/core";
 import type { ContextSource, WorkflowSource } from "../../packages/backend/src/repl/session.ts";
 import { Session } from "../../packages/backend/src/repl/session.ts";
 import { initWorkflow, listWorkflows, loadWorkflow } from "../../packages/backend/src/stores/workflows.ts";
+import { workflowMessage } from "../../apps/web/src/server.ts";
 
 let root: string;
 
@@ -395,5 +396,13 @@ describe("Session /workflow command (core)", () => {
     expect(result.value).toBe("review complete");
     expect(autoSavedNames).toEqual(["Check the auth changes"]);
     expect(requestSeen).toContain("Check the auth changes");
+  });
+});
+
+describe("workflowMessage serialization", () => {
+  test("mid-run profile event serializes with no text or level", () => {
+    const event: WorkflowEvent = { kind: "profile", name: "default", was: undefined };
+    const msg = workflowMessage(event);
+    expect(msg).toEqual({ type: "workflow", kind: "profile", profile: "default" });
   });
 });
