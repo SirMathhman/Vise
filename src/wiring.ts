@@ -36,6 +36,7 @@ import {
 } from "./edge-sources.ts";
 import type { ModelController, ProfileSource, ReasoningController, SemanticIndexPort, SessionSource } from "./repl/ports.ts";
 import { semanticIndexFor } from "./stores/semantic/semantic-index.ts";
+import { makeSemanticSearchHandler } from "./tools/semantic/semantic-search.ts";
 import { compactInPlace } from "./repl/turn/compaction.ts";
 import { Session } from "./repl/session.ts";
 import { TempStore, tempHandlers } from "./tools/temp-store.ts";
@@ -99,12 +100,19 @@ function semanticFor(
   return index;
 }
 
-/** The tool handlers that reach outside the process: the browser, pictures, saved results and MCP servers. */
+/** The tool handlers that reach outside the process: the browser, pictures, saved results, the semantic index and MCP servers. */
 function ioHandlers(
   options: EdgeSessionOptions,
-  io: { browser: BrowserBackend; temp: TempStore; cwd: string | undefined; images: ImageOutbox },
+  io: {
+    browser: BrowserBackend;
+    temp: TempStore;
+    cwd: string | undefined;
+    images: ImageOutbox;
+    semantic: SemanticIndexPort | undefined;
+  },
 ): Record<string, ToolHandler> {
   return {
+    ...(io.semantic ? { semantic_search: makeSemanticSearchHandler(io.semantic) } : {}),
     ...makeBrowserHandlers(io.browser, io.temp, io.cwd, io.images),
     ...makeImageHandlers(io.images, io.cwd),
     ...tempHandlers(io.temp),
@@ -461,7 +469,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
       search_tools: makeSearchToolsHandler(sessionTools, (name) =>
         toolController.isEnabled(name),
       ),
-      ...ioHandlers(options, { browser, temp, cwd, images }),
+      ...ioHandlers(options, { browser, temp, cwd, images, semantic }),
       self: makeSelfHandler(
         selfInfo(client, cwd, () => sessionRef.current, hookStore),
       ),

@@ -174,7 +174,7 @@ export const fileTools: Tool[] = [
     function: {
       name: "search_files",
       description:
-        "Search file contents for a regular expression. The path may be a file (searched alone) or a directory (searched recursively). Returns one line per match, in the form '<path>:<line number>: <matching line>'. Returns 'no matches' when nothing matches.",
+        "Search file contents for a regular expression. The path may be a file (searched alone) or a directory (searched recursively). Returns one line per match, in the form '<path>:<line number>: <matching line>'. Returns 'no matches' when nothing matches. To find code by what it does rather than by its words, use semantic_search (look it up with search_tools).",
       parameters: {
         type: "object",
         properties: {
@@ -190,6 +190,29 @@ export const fileTools: Tool[] = [
           },
         },
         required: ["pattern"],
+      },
+    },
+  },
+  {
+    type: "function",
+    display: { label: "Search by meaning", icon: "🧭" },
+    function: {
+      name: "semantic_search",
+      description:
+        "Find passages of the project's files by meaning, not by their exact words: 'where are sessions saved', 'how is a retry handled'. Returns up to `limit` passages, best first, each as '<path>:<first line>-<last line> (score)' with its first lines; read the file for more. Works from an index built in the background; when it says nothing is indexed or unavailable, use search_files instead. Prefer search_files for an exact name or text.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "What you are looking for, in plain words (a question or a description of the code).",
+          },
+          limit: {
+            type: "integer",
+            description: "How many passages to return, at most 10. Default 5.",
+          },
+        },
+        required: ["query"],
       },
     },
   },
