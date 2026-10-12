@@ -54,6 +54,7 @@ describe("workflow progress events", () => {
     expect(events).toEqual([
       { kind: "start", name: "wf", total: 3 },
       { kind: "step", name: "wf", index: 1, total: 3, label: "profile default" },
+      { kind: "profile", name: "default", was: undefined },
       { kind: "step", name: "wf", index: 2, total: 3, label: "Implement" },
       { kind: "step", name: "wf", index: 3, total: 3, label: "final response" },
       { kind: "end", name: "wf", step: 3, total: 3 },

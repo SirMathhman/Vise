@@ -11,6 +11,9 @@ export interface WorkflowLine {
 export function formatWorkflowEvent(event: WorkflowEvent): WorkflowLine | undefined {
   if (event.kind === "start") return undefined;
   if (event.kind === "profile") {
+    // A mid-run profile step (`was` undefined): the step line already says
+    // "profile <name>", so no separate text is needed.
+    if (event.was === undefined) return undefined;
     const now = event.name ?? "no profile";
     const back = event.was === undefined ? "/profile with no name lists them" : `/profile ${event.was} goes back`;
     return {

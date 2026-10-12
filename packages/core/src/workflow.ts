@@ -136,6 +136,8 @@ async function runSteps(
         ? await runProfileStep(options.profiles, step.name)
         : await runToolStep(options, index + 1, step);
     if (!result.ok) return result;
+    if (step.type === "profile")
+      onWorkflow?.({ kind: "profile", name: step.name, was: undefined });
   }
 
   progress.step = total;
