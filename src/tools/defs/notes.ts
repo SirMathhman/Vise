@@ -1,4 +1,4 @@
-import type { Tool } from "../../core/engine.ts";
+import type { Tool } from "@vise/core";
 
 /** The required `scope` argument of the note tools that act on one note. */
 const scopeProperty = {

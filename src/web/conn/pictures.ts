@@ -1,5 +1,5 @@
 import { config } from "../../config.ts";
-import type { Picture } from "../../core/errors.ts";
+import type { Picture } from "@vise/core";
 import { imageStore, sniffImage } from "../../stores/image-store.ts";
 
 /** Most pictures that may come with one message. */

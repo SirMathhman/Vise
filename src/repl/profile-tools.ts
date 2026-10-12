@@ -1,5 +1,5 @@
-import type { ToolController } from "../core/engine.ts";
-import type { Message, Result } from "../core/errors.ts";
+import type { ToolController } from "@vise/core";
+import type { Message, Result } from "@vise/core";
 import type { ProfileSource } from "./ports.ts";
 
 /**

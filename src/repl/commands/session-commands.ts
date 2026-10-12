@@ -1,4 +1,4 @@
-import type { Result } from "../../core/errors.ts";
+import type { Result } from "@vise/core";
 import { newNameProblem, unsupported } from "./registry.ts";
 import { formatProfileList, formatSessionList } from "../../output/format.ts";
 import { saveProfileWhitelist } from "../profile-tools.ts";

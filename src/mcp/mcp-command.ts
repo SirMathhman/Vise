@@ -1,4 +1,4 @@
-import type { Result } from "../core/errors.ts";
+import type { Result } from "@vise/core";
 import { formatMcpStatus } from "../output/mcp-format.ts";
 import type { McpStatusSource } from "../repl/ports.ts";
 

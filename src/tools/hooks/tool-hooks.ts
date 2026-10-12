@@ -1,11 +1,11 @@
 import { config } from "../../config.ts";
-import { noAudit, type AuditSink } from "../../core/audit.ts";
+import { noAudit, type AuditSink } from "@vise/core";
 import {
   matchesTool,
   type PreToolVerdict,
   type ToolHookEntry,
   type ToolHooks,
-} from "../../core/hooks/tool-hook-match.ts";
+} from "@vise/core";
 import { spawnPowerShell } from "../shell.ts";
 
 /** Exit code a pre-tool hook uses to veto the call. */

@@ -2,13 +2,13 @@ import type {
   ToolCallListener,
   ToolController,
   ToolResultListener,
-} from "../core/engine.ts";
-import type { AuditReader, AuditSink } from "../core/audit.ts";
-import type { Picture } from "../core/errors.ts";
-import type { TodoStore } from "../core/todos.ts";
-import type { ToolHookEntry } from "../core/hooks/tool-hook-match.ts";
+} from "@vise/core";
+import type { AuditReader, AuditSink } from "@vise/core";
+import type { Picture } from "@vise/core";
+import type { TodoStore } from "@vise/core";
+import type { ToolHookEntry } from "@vise/core";
 import type { GoalEvent } from "./turn/goal-loop.ts";
-import type { WorkflowEvent } from "../core/workflow.ts";
+import type { WorkflowEvent } from "@vise/core";
 import type {
   ContextSource,
   HookSource,

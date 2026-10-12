@@ -4,9 +4,9 @@ import {
   splitForCompaction,
   splitWithinTurn,
   summarize,
-} from "../../core/engine.ts";
-import type { Message, Result } from "../../core/errors.ts";
-import type { Client, Tool } from "../../core/engine.ts";
+} from "@vise/core";
+import type { Message, Result } from "@vise/core";
+import type { Client, Tool } from "@vise/core";
 import type { ContextSource } from "../ports.ts";
 import type { CompactionSource } from "../session.ts";
 

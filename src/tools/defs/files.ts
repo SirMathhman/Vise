@@ -1,4 +1,4 @@
-import type { Tool } from "../../core/engine.ts";
+import type { Tool } from "@vise/core";
 
 /** File-system tools (handlers: `files.ts`). */
 export const fileTools: Tool[] = [

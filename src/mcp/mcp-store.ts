@@ -1,7 +1,7 @@
 import { writeFileAtomic } from "../stores/atomic-write.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Result } from "../core/errors.ts";
+import type { Result } from "@vise/core";
 import { globalDataDir } from "../data-dir.ts";
 import { parseServer } from "./mcp-config.ts";
 

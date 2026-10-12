@@ -1,5 +1,5 @@
 import { modelInfo, modelRef, type ModelInfo, type Provider, type ProviderId } from "./provider.ts";
-import type { Result } from "../core/errors.ts";
+import type { Result } from "@vise/core";
 
 /**
  * Lookups that ask a provider about its models: the list, a model's window and

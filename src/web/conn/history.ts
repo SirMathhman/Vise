@@ -1,5 +1,5 @@
 import { config } from "../../config.ts";
-import type { Message } from "../../core/errors.ts";
+import type { Message } from "@vise/core";
 import { formatToolCall } from "../../output/tool-line.ts";
 import { displayOfTool } from "../../tools/display.ts";
 

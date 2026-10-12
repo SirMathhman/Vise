@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import type { Client, Tool, ToolRunner } from "../../src/core/engine.ts";
-import { runSubagent, runTurn, summarize } from "../../src/core/engine.ts";
-import type { Message } from "../../src/core/errors.ts";
+import type { Client, Tool, ToolRunner } from "@vise/core";
+import { runSubagent, runTurn, summarize } from "@vise/core";
+import type { Message } from "@vise/core";
 
 const noopTools: ToolRunner = {
   async run(_name, _args) {

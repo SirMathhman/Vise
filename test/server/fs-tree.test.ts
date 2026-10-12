@@ -2,8 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Client } from "../../src/core/engine.ts";
-import type { Message } from "../../src/core/errors.ts";
+import type { Client, Message, Tool } from "@vise/core";
 import { buildInitialTree } from "../../src/fs-tree.ts";
 import type { ContextSource } from "../../src/repl/session.ts";
 import { Session } from "../../src/repl/session.ts";
@@ -11,7 +10,7 @@ import { Session } from "../../src/repl/session.ts";
 const noopTools = {
   run: async (_n: string, _a: Record<string, unknown>) => "",
 };
-const noToolDefs: import("../../src/core/engine.ts").Tool[] = [];
+const noToolDefs: Tool[] = [];
 const noopContext: ContextSource = {
   lastPromptTokensUsed: () => undefined,
   async contextMax() {

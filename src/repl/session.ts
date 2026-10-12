@@ -1,18 +1,18 @@
 import { config } from "../config.ts";
-import type { Picture } from "../core/errors.ts";
+import type { Picture } from "@vise/core";
 import type {
   Client,
   Tool,
   ToolController,
   ToolRunner,
   TurnCallbacks,
-} from "../core/engine.ts";
-import { runTurn } from "../core/engine.ts";
+} from "@vise/core";
+import { runTurn } from "@vise/core";
 import { SessionAudit } from "./turn/session-audit.ts";
 import { deriveSessionName } from "./session-name.ts";
-import { GoalLog } from "../core/goal-trace.ts";
+import { GoalLog } from "@vise/core";
 import { GoalTracker, handleGoalCommand } from "./turn/goal-loop.ts";
-import type { Message, Result } from "../core/errors.ts";
+import type { Message, Result } from "@vise/core";
 import { formatHelp } from "../output/format.ts";
 import type { CommandNeed } from "./command-catalog.ts";
 import { SessionHooks } from "./turn/session-hooks.ts";

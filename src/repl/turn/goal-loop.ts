@@ -1,19 +1,19 @@
 import { config } from "../../config.ts";
-import type { Client, Tool } from "../../core/engine.ts";
-import type { Message, Result } from "../../core/errors.ts";
+import type { Client, Tool } from "@vise/core";
+import type { Message, Result } from "@vise/core";
 import {
   checkGoal,
   checkProgress,
   continueNote,
   deriveGoal,
   type Goal,
-} from "../../core/goal.ts";
+} from "@vise/core";
 import {
   capTrace,
   type ExitReason,
   type GoalLog,
   type TraceSink,
-} from "../../core/goal-trace.ts";
+} from "@vise/core";
 import { formatError } from "../../output/format.ts";
 import { formatGoalTrace } from "../../output/goal-trace-format.ts";
 

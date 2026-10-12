@@ -1,5 +1,5 @@
 import { config } from "../../config.ts";
-import type { Message, Result } from "../../core/errors.ts";
+import type { Message, Result } from "@vise/core";
 import { formatError } from "../../output/format.ts";
 
 /**

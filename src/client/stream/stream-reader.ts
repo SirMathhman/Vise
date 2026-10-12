@@ -2,7 +2,7 @@ import type {
   AssistantMessage,
   PromptProgress,
   ToolCall,
-} from "../../core/errors.ts";
+} from "@vise/core";
 import { hideCalls, type TokenLogprob } from "../tool-protocol.ts";
 
 interface Usage {

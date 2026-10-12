@@ -1,4 +1,4 @@
-import { REASONING_EFFORTS } from "../../../src/core/call/reasoning.ts";
+import { REASONING_EFFORTS } from "@vise/core";
 interface CompletionChoice {
   label: string;
   value: string;

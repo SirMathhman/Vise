@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { runWorkflow } from "../../src/core/workflow.ts";
-import type { Client, Tool, ToolRunner } from "../../src/core/engine.ts";
-import type { Message } from "../../src/core/errors.ts";
+import { runWorkflow } from "@vise/core";
+import type { Client, Tool, ToolRunner } from "@vise/core";
+import type { Message } from "@vise/core";
 import type { ContextSource, WorkflowSource } from "../../src/repl/session.ts";
 import { Session } from "../../src/repl/session.ts";
 import { initWorkflow, listWorkflows, loadWorkflow } from "../../src/stores/workflows.ts";

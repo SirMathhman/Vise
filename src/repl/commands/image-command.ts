@@ -1,4 +1,4 @@
-import type { Message, Picture, Result } from "../../core/errors.ts";
+import type { Message, Picture, Result } from "@vise/core";
 import type { ImageSource } from "../ports.ts";
 
 /**

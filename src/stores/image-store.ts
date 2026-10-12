@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Picture } from "../core/errors.ts";
+import type { Picture } from "@vise/core";
 import { globalDataDir } from "../data-dir.ts";
 
 /**

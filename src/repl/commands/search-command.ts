@@ -1,4 +1,4 @@
-import type { Result } from "../../core/errors.ts";
+import type { Result } from "@vise/core";
 import { formatSearchHits } from "../../output/audit-format.ts";
 import { formatSemanticHits, formatSemanticStatus, formatUpdateStats } from "../../output/semantic-format.ts";
 import type { SemanticIndexPort, SessionCommands } from "../ports.ts";

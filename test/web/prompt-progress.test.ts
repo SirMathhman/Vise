@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { describeCall, readCall } from "../../src/core/progress.ts";
+import { describeCall, readCall } from "@vise/core";
 import { describeProgress, startsNewBar } from "../../web/src/status/prompt-progress.ts";
 
 test("a call reports only the tokens it has to read, not the cached conversation", () => {

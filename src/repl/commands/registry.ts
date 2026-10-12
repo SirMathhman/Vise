@@ -1,4 +1,4 @@
-import type { ViseError } from "../../core/errors.ts";
+import type { ViseError } from "@vise/core";
 import { COMMAND_NAMES } from "../command-catalog.ts";
 import type { LineResult } from "../ports.ts";
 

@@ -5,14 +5,14 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { globalDataDir } from "./data-dir.ts";
 import type { SearchHit } from "./repl/ports.ts";
-import type { Message, Result } from "./core/errors.ts";
-import type { GoalTraceEntry } from "./core/goal-trace.ts";
-import type { TodoItem } from "./core/todos.ts";
+import type { Message, Result } from "@vise/core";
+import type { GoalTraceEntry } from "@vise/core";
+import type { TodoItem } from "@vise/core";
 import {
   parseToolHookEntries,
   toolHookConfig,
   type ToolHookEntry,
-} from "./core/hooks/tool-hook-match.ts";
+} from "@vise/core";
 import { buildInitialTree } from "./fs-tree.ts";
 import { formatNotes, formatNotesWithin } from "./stores/notes-format.ts";
 import { NoteStore } from "./stores/note-store.ts";

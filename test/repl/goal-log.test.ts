@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import type { Client, ToolRunner } from "../../src/core/engine.ts";
-import type { Message, Result } from "../../src/core/errors.ts";
-import type { GoalTraceEntry } from "../../src/core/goal-trace.ts";
+import type { Client, ToolRunner } from "@vise/core";
+import type { Message, Result } from "@vise/core";
+import type { GoalTraceEntry } from "@vise/core";
 import type {
   ContextSource,
   SavedSession,

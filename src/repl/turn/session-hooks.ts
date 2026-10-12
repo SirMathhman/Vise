@@ -1,6 +1,6 @@
-import { noAudit, type AuditSink } from "../../core/audit.ts";
-import type { Result } from "../../core/errors.ts";
-import type { ToolHookEntry } from "../../core/hooks/tool-hook-match.ts";
+import { noAudit, type AuditSink } from "@vise/core";
+import type { Result } from "@vise/core";
+import type { ToolHookEntry } from "@vise/core";
 import {
   type HookCommands,
   type HookPhase,

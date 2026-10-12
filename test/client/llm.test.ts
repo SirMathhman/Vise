@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { streamChat } from "../../src/client/llm.ts";
-import type { AssistantMessage } from "../../src/core/errors.ts";
+import type { AssistantMessage } from "@vise/core";
 
 /** Build a ReadableStream from an array of SSE line chunks (each a Uint8Array). */
 function sseStream(chunks: string[]): ReadableStream<Uint8Array> {

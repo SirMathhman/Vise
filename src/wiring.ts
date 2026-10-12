@@ -1,5 +1,5 @@
 import { config } from "./config.ts";
-import { noAudit, type AuditReader, type AuditSink } from "./core/audit.ts";
+import { noAudit, type AuditReader, type AuditSink } from "@vise/core";
 import { pruneAuditLog } from "./db/audit/audit-prune.ts";
 import { SqliteAuditReader } from "./db/audit/audit-query.ts";
 import { SqliteAuditSink } from "./db/audit/audit-store.ts";
@@ -19,13 +19,13 @@ import type {
   ToolRunner,
   ToolController,
   TurnCallbacks,
-} from "./core/engine.ts";
+} from "@vise/core";
 import type {
   GenerationProgress,
   Picture,
   PromptProgress,
   Result,
-} from "./core/errors.ts";
+} from "@vise/core";
 import {
   buildInitialMessage,
   HookStore,
@@ -41,7 +41,7 @@ import { compactInPlace } from "./repl/turn/compaction.ts";
 import { Session } from "./repl/session.ts";
 import { TempStore, tempHandlers } from "./tools/temp-store.ts";
 import type { GoalEvent } from "./repl/turn/goal-loop.ts";
-import type { WorkflowEvent } from "./core/workflow.ts";
+import type { WorkflowEvent } from "@vise/core";
 import type { McpHub } from "./mcp/mcp-hub.ts";
 import { makeBrowserHandlers } from "./tools/browser/browser.ts";
 import {
@@ -53,9 +53,9 @@ import { makeAskUserHandler, type UserPrompter } from "./tools/agent/ask-user.ts
 import { makeSearchToolsHandler } from "./tools/search-tools.ts";
 import { makeSelfHandler, type SelfInfo } from "./tools/agent/self.ts";
 import { makeTodoHandler, TodoBoard } from "./tools/agent/todo.ts";
-import type { TodoItem } from "./core/todos.ts";
+import type { TodoItem } from "@vise/core";
 import { currentSubagentDepth, makeSubagentHandler } from "./tools/agent/subagent.ts";
-import { describeToolHook } from "./core/hooks/tool-hook-match.ts";
+import { describeToolHook } from "@vise/core";
 import { ShellToolHooks } from "./tools/hooks/tool-hooks.ts";
 import { createToolRunner, ToolSet, tools, type ToolHandler } from "./tools.ts";
 

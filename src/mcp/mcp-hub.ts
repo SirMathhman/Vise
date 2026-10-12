@@ -1,4 +1,4 @@
-import type { Tool } from "../core/engine.ts";
+import type { Tool } from "@vise/core";
 import type { ToolHandler } from "../tools.ts";
 import type { ImageOutbox } from "../tools/images.ts";
 import { globalDataDir } from "../data-dir.ts";

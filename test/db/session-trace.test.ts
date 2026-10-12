@@ -3,8 +3,8 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Message } from "../../src/core/errors.ts";
-import type { GoalTraceEntry } from "../../src/core/goal-trace.ts";
+import type { Message } from "@vise/core";
+import type { GoalTraceEntry } from "@vise/core";
 import { closeAllDbs, openDb } from "../../src/db/open.ts";
 import { SESSION_MIGRATIONS } from "../../src/db/session/session-schema.ts";
 import {

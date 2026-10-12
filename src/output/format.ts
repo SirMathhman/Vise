@@ -1,10 +1,10 @@
 import { type CommandNeed, helpLines } from "../repl/command-catalog.ts";
 import type { GoalEvent } from "../repl/turn/goal-loop.ts";
-import type { ViseError } from "../core/errors.ts";
+import type { ViseError } from "@vise/core";
 import {
   describeToolHook,
   type ToolHookEntry,
-} from "../core/hooks/tool-hook-match.ts";
+} from "@vise/core";
 import type { SessionEntry } from "../repl/ports.ts";
 
 /**

@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
-import type { Message } from "../../core/errors.ts";
-import type { GoalTraceEntry } from "../../core/goal-trace.ts";
-import type { TodoItem } from "../../core/todos.ts";
+import type { Message } from "@vise/core";
+import type { GoalTraceEntry } from "@vise/core";
+import type { TodoItem } from "@vise/core";
 
 /**
  * Write (or overwrite) one session and all its messages in a single

@@ -1,7 +1,7 @@
-import type { ToolController } from "../../core/engine.ts";
+import type { ToolController } from "@vise/core";
 import { newNameProblem, unsupported } from "./registry.ts";
 import { REASONING_EFFORTS } from "../../client/llm.ts";
-import type { Result } from "../../core/errors.ts";
+import type { Result } from "@vise/core";
 import {
   formatContext,
   formatModelList,

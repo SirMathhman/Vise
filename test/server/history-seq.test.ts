@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { applySettings } from "../../src/config.ts";
 import { historyEntries } from "../../src/web/conn/history.ts";
-import type { Message } from "../../src/core/errors.ts";
+import type { Message } from "@vise/core";
 
 afterEach(() => applySettings({}));
 

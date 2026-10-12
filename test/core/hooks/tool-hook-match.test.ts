@@ -4,7 +4,7 @@ import {
   matchesTool,
   parseToolHookEntries,
   toolHookConfig,
-} from "../../../src/core/hooks/tool-hook-match.ts";
+} from "@vise/core";
 
 test("an entry with no tool list applies to every tool", () => {
   expect(matchesTool({ command: "x" }, "read_file", "files")).toBe(true);

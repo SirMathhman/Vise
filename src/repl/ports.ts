@@ -1,11 +1,11 @@
-import type { AuditSink } from "../core/audit.ts";
-import type { Picture } from "../core/errors.ts";
-import type { Client, SummaryPrefix } from "../core/engine.ts";
-import type { GoalLog, GoalTraceEntry } from "../core/goal-trace.ts";
-import type { ToolHookEntry } from "../core/hooks/tool-hook-match.ts";
-import type { TodoItem, TodoStore } from "../core/todos.ts";
-import type { Workflow, WorkflowScope } from "../core/workflow.ts";
-import type { Message, Result, ViseError } from "../core/errors.ts";
+import type { AuditSink } from "@vise/core";
+import type { Picture } from "@vise/core";
+import type { Client, SummaryPrefix } from "@vise/core";
+import type { GoalLog, GoalTraceEntry } from "@vise/core";
+import type { ToolHookEntry } from "@vise/core";
+import type { TodoItem, TodoStore } from "@vise/core";
+import type { Workflow, WorkflowScope } from "@vise/core";
+import type { Message, Result, ViseError } from "@vise/core";
 
 /**
  * Source of context-window data. Provided by the edge: the used count comes
@@ -322,43 +322,7 @@ export interface McpStatusSource {
   restart(name: string): Promise<string>;
 }
 
-/** One place in a file that is close in meaning to a query. */
-export interface SemanticHit {
-  /** Relative to the folder, with `/` separators. */
-  path: string;
-  /** 1-based, inclusive. */
-  startLine: number;
-  endLine: number;
-  /** Cosine similarity with the query (higher is closer). */
-  score: number;
-  /** The start of the passage, for display. */
-  snippet: string;
-}
-
-/** What a semantic index is doing, for the user and for the model's tool. */
-export interface SemanticStatus {
-  /** `unavailable`: the embedding model cannot be used (see `reason`); `empty`: nothing indexed yet. */
-  state: "unavailable" | "empty" | "indexing" | "ready";
-  files: number;
-  chunks: number;
-  /** The embedding model the index is built with. */
-  model: string;
-  /** While `indexing`: files done of files to do. */
-  done?: number;
-  total?: number;
-  /** Why it is unavailable, or what to do about an index built with another model. */
-  reason?: string;
-}
-
-/** What a run of `update` did. */
-export interface SemanticUpdateStats {
-  indexed: number;
-  /** Up to date, or unreadable/binary. */
-  skipped: number;
-  /** In the index but gone (or no longer indexable) and so forgotten. */
-  removed: number;
-  failed: number;
-}
+export type { SemanticHit, SemanticStatus, SemanticUpdateStats } from "@vise/common";
 
 /**
  * A folder's files searchable by meaning. One per project, shared by every

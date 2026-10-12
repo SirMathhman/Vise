@@ -2,7 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Result } from "../../src/core/errors.ts";
+import type { Result } from "@vise/core";
 import { closeAllDbs } from "../../src/db/open.ts";
 import { SemanticIndex } from "../../src/stores/semantic/semantic-index.ts";
 

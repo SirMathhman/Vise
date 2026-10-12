@@ -1,4 +1,4 @@
-import type { Tool } from "../../core/engine.ts";
+import type { Tool } from "@vise/core";
 
 /** Shell and background-process tools (handlers: `shell.ts`). */
 export const shellTools: Tool[] = [

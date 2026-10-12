@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import type { Client } from "../../src/core/engine.ts";
-import { runWorkflow, stepLabel } from "../../src/core/workflow.ts";
-import type { Workflow, WorkflowEvent } from "../../src/core/workflow.ts";
+import type { Client } from "@vise/core";
+import { runWorkflow, stepLabel } from "@vise/core";
+import type { Workflow, WorkflowEvent } from "@vise/core";
 import type { WorkflowCommands } from "../../src/repl/commands/workflow-commands.ts";
 import { handleWorkflowCommand } from "../../src/repl/commands/workflow-commands.ts";
 import type { WorkflowProfileScope } from "../../src/repl/commands/workflow-profiles.ts";

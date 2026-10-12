@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { join } from "node:path";
-import type { Result } from "../../core/errors.ts";
+import type { Result } from "@vise/core";
 import { openDb, tryDb } from "../../db/open.ts";
 import { SESSION_MIGRATIONS } from "../../db/session/session-schema.ts";
 import type { Chunk } from "./chunk.ts";

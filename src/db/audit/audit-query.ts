@@ -5,7 +5,7 @@ import type {
   AuditReader,
   AuditReport,
   AuditTopic,
-} from "../../core/audit.ts";
+} from "@vise/core";
 import { globalDataDir } from "../../data-dir.ts";
 import { AUDIT_MIGRATIONS } from "./audit-schema.ts";
 import { openDb } from "../open.ts";

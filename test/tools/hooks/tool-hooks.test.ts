@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import type { AuditEvent } from "../../../src/core/audit.ts";
-import { noAudit } from "../../../src/core/audit.ts";
-import type { ToolHookEntry } from "../../../src/core/hooks/tool-hook-match.ts";
+import type { AuditEvent } from "@vise/core";
+import { noAudit } from "@vise/core";
+import type { ToolHookEntry } from "@vise/core";
 import { createToolRunner, ToolSet, tools } from "../../../src/tools.ts";
 import { ShellToolHooks } from "../../../src/tools/hooks/tool-hooks.ts";
 import { TempStore } from "../../../src/tools/temp-store.ts";

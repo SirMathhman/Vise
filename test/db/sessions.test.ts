@@ -9,7 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Message } from "../../src/core/errors.ts";
+import type { Message } from "@vise/core";
 import { closeAllDbs } from "../../src/db/open.ts";
 import {
   deleteSession,

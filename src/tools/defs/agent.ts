@@ -1,4 +1,4 @@
-import type { Tool } from "../../core/engine.ts";
+import type { Tool } from "@vise/core";
 
 /** One choice of `ask_user`: a short label, or a label with what it means. */
 const choiceSchema = {

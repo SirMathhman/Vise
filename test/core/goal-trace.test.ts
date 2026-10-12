@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { config } from "../../src/config.ts";
-import type { Client } from "../../src/core/engine.ts";
-import type { Message, Result } from "../../src/core/errors.ts";
+import type { Client } from "@vise/core";
+import type { Message, Result } from "@vise/core";
 import {
   capTrace,
   type GoalTraceFact,
   TRACE_TEXT_MAX,
-} from "../../src/core/goal-trace.ts";
+} from "@vise/core";
 import { GoalTracker } from "../../src/repl/turn/goal-loop.ts";
 
 type Reply = Record<string, string> | undefined;

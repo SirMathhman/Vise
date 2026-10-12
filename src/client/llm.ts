@@ -1,5 +1,5 @@
 import { config } from "../config.ts";
-import { noAudit, type AuditSink } from "../core/audit.ts";
+import { noAudit, type AuditSink } from "@vise/core";
 import { encodeMessages, type ImageResolver, plainMessages, hideCalls, nameConfidence, parseReply, toolRequestFields } from "./tool-protocol.ts";
 import { collectThinking, readJsonReply, streamChat } from "./stream/stream-reader.ts";
 import { generationReporter } from "./stream/generation.ts";
@@ -7,12 +7,12 @@ import { ANTI_REPEAT_FIELDS, LLAMA_STREAM_FIELDS, STREAM_FIELDS, readReply } fro
 import { modelRef, parseModelRef, providerFor, providerOf, reasoningFields, responseFormat, type ModelInfo, type Provider } from "./provider.ts";
 import { chooseSideSlot as chooseSlot, slotJustUsed } from "./slots.ts";
 import { isTransient, pause, retryDelayMs, streamFailureError } from "./retry.ts";
-import { REASONING_EFFORTS, type ReasoningEffort } from "../core/call/reasoning.ts";
+import { REASONING_EFFORTS, type ReasoningEffort } from "@vise/core";
 import { fetchEmbeddings, fetchHostedInfo, fetchModelDetails, fetchSlotContext, localSupportsVision, type ModelDetail } from "./model-queries.ts";
 import { CallLog, CallTrace, recordCallEnd, recordCallStart, noteServerCut, runawayError, traceListener, traceThinking } from "./stream/call-trace.ts";
 
 export { streamChat };
-import type { Client, Tool } from "../core/engine.ts";
+import type { Client, Tool } from "@vise/core";
 import type {
   AssistantMessage,
   Message,
@@ -20,7 +20,7 @@ import type {
   GenerationProgress,
   PromptProgress,
   Result,
-} from "../core/errors.ts";
+} from "@vise/core";
 
 
 /** The active provider, read live from the settings (they can change while running). */

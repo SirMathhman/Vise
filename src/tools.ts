@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
-import { noAudit, type AuditSink } from "./core/audit.ts";
-import type { Tool, ToolController, ToolRunner } from "./core/engine.ts";
-import type { ToolHooks } from "./core/hooks/tool-hook-match.ts";
+import { noAudit, type AuditSink } from "@vise/core";
+import type { Tool, ToolController, ToolRunner } from "@vise/core";
+import type { ToolHooks } from "@vise/core";
 import { auditCall, auditRefused } from "./tools/agent/audit-call.ts";
 import { currentSubagentDepth } from "./tools/agent/subagent.ts";
 import { dataDirFor, globalDataDir } from "./data-dir.ts";

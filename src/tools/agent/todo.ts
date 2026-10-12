@@ -3,7 +3,7 @@ import {
   parseTodos,
   type TodoItem,
   type TodoStore,
-} from "../../core/todos.ts";
+} from "@vise/core";
 import { formatError } from "../../output/format.ts";
 
 /** The agent's todo list for one session; listeners hear every change (the web panel). */

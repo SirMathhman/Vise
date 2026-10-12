@@ -7,7 +7,7 @@ import { SqliteAuditReader } from "../../src/db/audit/audit-query.ts";
 import { AUDIT_MIGRATIONS } from "../../src/db/audit/audit-schema.ts";
 import { closeAllDbs, openDb } from "../../src/db/open.ts";
 import { formatAuditReport } from "../../src/output/audit-format.ts";
-import type { AuditCall } from "../../src/core/audit.ts";
+import type { AuditCall } from "@vise/core";
 
 const dir = mkdtempSync(join(tmpdir(), "vise-audit-calls-"));
 afterAll(() => {

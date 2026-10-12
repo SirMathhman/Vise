@@ -1,5 +1,5 @@
-import type { ToolController } from "../../core/engine.ts";
-import type { WorkflowProfiles } from "../../core/workflow-profiles.ts";
+import type { ToolController } from "@vise/core";
+import type { WorkflowProfiles } from "@vise/core";
 import type { ProfileCommands } from "../ports.ts";
 import { handleProfileCommand } from "./session-commands.ts";
 

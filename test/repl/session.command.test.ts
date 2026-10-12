@@ -4,8 +4,8 @@ import type {
   Tool,
   ToolController,
   ToolRunner,
-} from "../../src/core/engine.ts";
-import type { Message } from "../../src/core/errors.ts";
+} from "@vise/core";
+import type { Message } from "@vise/core";
 import type { ContextSource } from "../../src/repl/session.ts";
 import { Session } from "../../src/repl/session.ts";
 

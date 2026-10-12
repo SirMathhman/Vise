@@ -1,4 +1,4 @@
-import type { GoalTraceEntry } from "../core/goal-trace.ts";
+import type { GoalTraceEntry } from "@vise/core";
 
 /** How much of a question, reply or note `/goal log` shows (the whole text is in the saved session). */
 const SHOWN = 300;

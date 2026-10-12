@@ -1,4 +1,4 @@
-import type { ViseError } from "../../core/errors.ts";
+import type { ViseError } from "@vise/core";
 import type { NoteSource, WorkflowSource } from "../ports.ts";
 
 /** What `/<name> [input]` means: a workflow to run, a note to send as the message, or a refusal. */

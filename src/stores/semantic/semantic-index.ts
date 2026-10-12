@@ -1,5 +1,5 @@
-import type { AuditSink } from "../../core/audit.ts";
-import type { Result, ViseError } from "../../core/errors.ts";
+import type { AuditSink } from "@vise/core";
+import type { Result, ViseError } from "@vise/core";
 import { formatError } from "../../output/format.ts";
 import type {
   SemanticHit,

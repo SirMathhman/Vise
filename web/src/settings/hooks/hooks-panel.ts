@@ -1,4 +1,4 @@
-import type { ToolHookEntry } from "../../../../src/core/hooks/tool-hook-match.ts";
+import type { ToolHookEntry } from "@vise/core";
 import { type HookCommands, renderHookLists } from "./hook-lists.ts";
 import { renderToolHookLists } from "./tool-hook-lists.ts";
 

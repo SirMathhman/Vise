@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { summarize, type Client, type Tool } from "../../src/core/engine.ts";
-import type { Message } from "../../src/core/errors.ts";
-import { runWorkflow } from "../../src/core/workflow.ts";
+import { summarize, type Client, type Tool } from "@vise/core";
+import type { Message } from "@vise/core";
+import { runWorkflow } from "@vise/core";
 import { encodeMessages } from "../../src/client/tool-protocol.ts";
 import { chooseSideSlot, slotJustUsed } from "../../src/client/slots.ts";
 

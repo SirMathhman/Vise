@@ -4,7 +4,7 @@ import {
   toolBeingCalled,
 } from "../../src/client/stream/generation.ts";
 import { streamChat } from "../../src/client/stream/stream-reader.ts";
-import type { GenerationProgress } from "../../src/core/errors.ts";
+import type { GenerationProgress } from "@vise/core";
 import {
   describeWriting,
   QUIET_MS,

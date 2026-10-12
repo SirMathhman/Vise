@@ -1,7 +1,7 @@
 import { config } from "../../config.ts";
-import type { AuditCall, AuditSink } from "../../core/audit.ts";
-import type { AssistantMessage, Result, ViseError } from "../../core/errors.ts";
-import { WINDOW_CHARS, findLoop, repetition, runawayVerdict } from "../../core/call/runaway.ts";
+import type { AuditCall, AuditSink } from "@vise/core";
+import type { AssistantMessage, Result, ViseError } from "@vise/core";
+import { WINDOW_CHARS, findLoop, repetition, runawayVerdict } from "@vise/core";
 import { formatError } from "../../output/format.ts";
 import type { GenerationListener } from "./stream-reader.ts";
 

@@ -1,6 +1,6 @@
 import { config } from "../config.ts";
 import { numberArg } from "../tools/args.ts";
-import type { Picture } from "../core/errors.ts";
+import type { Picture } from "@vise/core";
 
 /**
  * How a tool call is shown to the user: an icon, the tool's name and a short

@@ -1,4 +1,4 @@
-import type { Picture } from "../../core/errors.ts";
+import type { Picture } from "@vise/core";
 import { formatCompactionFailure, formatError } from "../../output/format.ts";
 import type { LineResult, Session } from "../../repl/session.ts";
 import { loadSession } from "../../stores/sessions.ts";

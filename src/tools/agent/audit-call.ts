@@ -1,4 +1,4 @@
-import type { AuditSink } from "../../core/audit.ts";
+import type { AuditSink } from "@vise/core";
 import { errStr } from "../files.ts";
 import { currentSubagentDepth } from "./subagent.ts";
 

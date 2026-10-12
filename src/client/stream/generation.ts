@@ -1,4 +1,4 @@
-import type { CallPurpose, GenerationProgress } from "../../core/errors.ts";
+import type { CallPurpose, GenerationProgress } from "@vise/core";
 import { CALL_CLOSE, CALL_OPEN } from "../tool-protocol.ts";
 
 /** How often a long generation is reported: every this many tokens, or this many milliseconds. */

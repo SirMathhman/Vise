@@ -1,4 +1,4 @@
-import type { WorkflowEvent } from "../core/workflow.ts";
+import type { WorkflowEvent } from "@vise/core";
 import { formatError } from "./format.ts";
 
 /** How a workflow event is shown: one line, and whether it is progress, good news or a problem. */

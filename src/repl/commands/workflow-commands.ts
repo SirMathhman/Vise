@@ -1,4 +1,4 @@
-import type { Picture } from "../../core/errors.ts";
+import type { Picture } from "@vise/core";
 import { newNameProblem, unsupported } from "./registry.ts";
 import type {
   Client,
@@ -7,10 +7,10 @@ import type {
   ToolResultListener,
   ToolRunner,
   TurnCallbacks,
-} from "../../core/engine.ts";
-import { runWorkflow } from "../../core/workflow.ts";
-import type { WorkflowEvent, WorkflowScope } from "../../core/workflow.ts";
-import type { Message, Result } from "../../core/errors.ts";
+} from "@vise/core";
+import { runWorkflow } from "@vise/core";
+import type { WorkflowEvent, WorkflowScope } from "@vise/core";
+import type { Message, Result } from "@vise/core";
 import type { LineResult } from "../ports.ts";
 import { formatWorkflowList } from "../../output/format.ts";
 import type { WorkflowProfileScope } from "./workflow-profiles.ts";

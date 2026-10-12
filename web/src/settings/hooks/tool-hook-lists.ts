@@ -1,4 +1,4 @@
-import { describeToolHook, type ToolHookEntry } from "../../../../src/core/hooks/tool-hook-match.ts";
+import { describeToolHook, type ToolHookEntry } from "@vise/core";
 import { confirmAction } from "../../feedback/confirm.ts";
 import type { Edit } from "./hook-lists.ts";
 

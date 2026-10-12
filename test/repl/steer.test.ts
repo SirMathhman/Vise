@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { Message } from "../../src/core/errors.ts";
+import type { Message } from "@vise/core";
 import { NoticeQueue } from "../../src/repl/turn/round-hooks.ts";
 
 const steer = (content: string): Message => ({

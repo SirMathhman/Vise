@@ -4,8 +4,8 @@ import type {
   Tool,
   ToolRunner,
   TurnCallbacks,
-} from "../../core/engine.ts";
-import { runSubagent } from "../../core/engine.ts";
+} from "@vise/core";
+import { runSubagent } from "@vise/core";
 import { withToolScope } from "./agent-scope.ts";
 import { dim } from "../../output/color.ts";
 import { formatError } from "../../output/format.ts";

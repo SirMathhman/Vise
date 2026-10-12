@@ -2,7 +2,7 @@ import { config } from "../config.ts";
 import type { ServerWebSocket } from "bun";
 import { formatContext, formatGoalEvent } from "../output/format.ts";
 import { formatWorkflowEvent } from "../output/workflow-format.ts";
-import type { WorkflowEvent } from "../core/workflow.ts";
+import type { WorkflowEvent } from "@vise/core";
 import { BrowserSettingsStore } from "../browser/settings.ts";
 import { ExtensionBackend } from "../browser/extension.ts";
 import type { BrowserBackend } from "../browser/types.ts";

@@ -1,5 +1,5 @@
 import { config } from "../config.ts";
-import type { Tool } from "../core/engine.ts";
+import type { Tool } from "@vise/core";
 
 /**
  * Tool search. Most tools are "deferred": the system prompt lists only their

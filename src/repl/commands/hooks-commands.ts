@@ -1,8 +1,8 @@
-import type { Result } from "../../core/errors.ts";
+import type { Result } from "@vise/core";
 import {
   describeToolHook,
   type ToolHookEntry,
-} from "../../core/hooks/tool-hook-match.ts";
+} from "@vise/core";
 import { formatHooks } from "../../output/format.ts";
 import type {
   HookSource,

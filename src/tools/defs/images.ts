@@ -1,4 +1,4 @@
-import type { Tool } from "../../core/engine.ts";
+import type { Tool } from "@vise/core";
 
 /** Picture tools (handlers: `images.ts`). */
 export const imageTools: Tool[] = [

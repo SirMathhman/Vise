@@ -7,7 +7,7 @@ import {
   unlinkSync,
 } from "node:fs";
 import { join } from "node:path";
-import type { Message } from "../../core/errors.ts";
+import type { Message } from "@vise/core";
 import { writeSession } from "./session-write.ts";
 
 /**

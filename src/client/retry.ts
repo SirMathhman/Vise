@@ -1,4 +1,4 @@
-import type { ViseError } from "../core/errors.ts";
+import type { ViseError } from "@vise/core";
 
 /**
  * HTTP statuses that mean "try again in a moment": the request was fine, the

@@ -1,4 +1,4 @@
-import type { Result } from "../../core/errors.ts";
+import type { Result } from "@vise/core";
 import { formatContext, formatError } from "../../output/format.ts";
 
 /**

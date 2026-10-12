@@ -3,9 +3,9 @@ import {
   type AuditReader,
   type AuditSink,
   type AuditTopic,
-} from "../../core/audit.ts";
+} from "@vise/core";
 import type { GoalEvent } from "./goal-loop.ts";
-import type { Message, Result, ViseError } from "../../core/errors.ts";
+import type { Message, Result, ViseError } from "@vise/core";
 import { formatAuditReport } from "../../output/audit-format.ts";
 import { formatError } from "../../output/format.ts";
 

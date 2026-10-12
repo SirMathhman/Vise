@@ -1,4 +1,4 @@
-import type { AuditCall, AuditReport } from "../core/audit.ts";
+import type { AuditCall, AuditReport } from "@vise/core";
 
 const clip = (text: string, max = 80): string => {
   const flat = text.replace(/\s+/g, " ").trim();

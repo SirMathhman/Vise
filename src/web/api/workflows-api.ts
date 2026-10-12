@@ -4,7 +4,7 @@ import {
   readWorkflowAt,
   saveWorkflowAt,
 } from "../../stores/workflows.ts";
-import type { ViseError } from "../../core/errors.ts";
+import type { ViseError } from "@vise/core";
 import { listProfiles } from "../../stores/profiles.ts";
 import { tools } from "../../tools.ts";
 import { formatError } from "../../output/format.ts";

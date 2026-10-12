@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { Client, Tool, ToolRunner } from "../../src/core/engine.ts";
-import type { Message } from "../../src/core/errors.ts";
+import type { Client, Tool, ToolRunner } from "@vise/core";
+import type { Message } from "@vise/core";
 import type { ContextSource } from "../../src/repl/session.ts";
 import { Session } from "../../src/repl/session.ts";
 

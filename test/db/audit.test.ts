@@ -3,14 +3,14 @@ import { Database } from "bun:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AuditEvent, AuditSink } from "../../src/core/audit.ts";
+import type { AuditEvent, AuditSink } from "@vise/core";
 import { LlmClient } from "../../src/client/llm.ts";
 import {
   runSubagent,
   type Client,
   type ToolRunner,
-} from "../../src/core/engine.ts";
-import type { Message } from "../../src/core/errors.ts";
+} from "@vise/core";
+import type { Message } from "@vise/core";
 import { runCompaction } from "../../src/repl/turn/compaction.ts";
 import { createToolRunner, ToolSet } from "../../src/tools.ts";
 import { SqliteAuditSink } from "../../src/db/audit/audit-store.ts";

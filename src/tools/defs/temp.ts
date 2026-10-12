@@ -1,4 +1,4 @@
-import type { Tool } from "../../core/engine.ts";
+import type { Tool } from "@vise/core";
 
 /**
  * Temp-file tools (handlers: `temp-store.ts`). A tool result that is too large

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { repeatedSentence, repetition, runawayVerdict } from "../../src/core/call/runaway.ts";
+import { repeatedSentence, repetition, runawayVerdict } from "@vise/core";
 
 const loopText = "I will now ask the user which option they prefer. ".repeat(60);
 const prose = Array.from(

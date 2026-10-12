@@ -1,10 +1,10 @@
-import type { Tool } from "../core/engine.ts";
+import type { Tool } from "@vise/core";
 import type {
   AssistantMessage,
   Message,
   Picture,
   ToolCall,
-} from "../core/errors.ts";
+} from "@vise/core";
 
 /**
  * Prompt-text tool-call protocol. Tool definitions are rendered into the

@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { join } from "node:path";
-import type { AuditEvent, AuditSink } from "../../core/audit.ts";
+import type { AuditEvent, AuditSink } from "@vise/core";
 import { globalDataDir } from "../../data-dir.ts";
 import { AUDIT_MIGRATIONS } from "./audit-schema.ts";
 import { openDb, tryDb } from "../open.ts";

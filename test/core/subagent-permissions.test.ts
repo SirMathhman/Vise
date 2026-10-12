@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { Client, Tool, ToolRunner } from "../../src/core/engine.ts";
+import type { Client, Tool, ToolRunner } from "@vise/core";
 import { Session } from "../../src/repl/session.ts";
 import { createToolRunner, ToolSet } from "../../src/tools.ts";
 import { withToolScope } from "../../src/tools/agent/agent-scope.ts";

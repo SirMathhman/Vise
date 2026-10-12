@@ -7,7 +7,7 @@ import {
   parseReply,
   parseToolCalls,
 } from "../../src/client/tool-protocol.ts";
-import type { Tool } from "../../src/core/engine.ts";
+import type { Tool } from "@vise/core";
 
 const def = (name: string): Tool => ({
   type: "function",

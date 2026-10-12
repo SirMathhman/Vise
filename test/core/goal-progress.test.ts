@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
-import type { Client } from "../../src/core/engine.ts";
-import type { CallPurpose, ViseError } from "../../src/core/errors.ts";
-import { checkGoal, checkProgress, deriveGoal } from "../../src/core/goal.ts";
-import { summarize } from "../../src/core/engine.ts";
+import type { Client } from "@vise/core";
+import type { CallPurpose, ViseError } from "@vise/core";
+import { checkGoal, checkProgress, deriveGoal } from "@vise/core";
+import { summarize } from "@vise/core";
 
 /** A client that records what each labelled call was for. */
 function labelling(reply: string, purposes: CallPurpose[]): Client {

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Client, Tool, ToolRunner } from "../../src/core/engine.ts";
+import type { Client, Tool, ToolRunner } from "@vise/core";
 import {
   parseProfile,
   readProfile,

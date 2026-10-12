@@ -1,5 +1,5 @@
-import type { PromptProgress } from "../../../src/core/errors.ts";
-import { describeCall, readCall } from "../../../src/core/progress.ts";
+import type { PromptProgress } from "@vise/core";
+import { describeCall, readCall } from "@vise/core";
 import type { ServerMessage } from "../server-message.ts";
 
 /** What one progress report looks like on the bar. */

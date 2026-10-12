@@ -1,16 +1,16 @@
-import type { PromptProgress } from "../core/errors.ts";
-import { describeCall } from "../core/progress.ts";
+import type { PromptProgress } from "@vise/core";
+import { describeCall } from "@vise/core";
 import { dim } from "../output/color.ts";
 import { formatGoalEvent } from "../output/format.ts";
 import { formatWorkflowEvent } from "../output/workflow-format.ts";
-import type { WorkflowEvent } from "../core/workflow.ts";
+import type { WorkflowEvent } from "@vise/core";
 import {
   formatPicture,
   formatToolCall,
   summarizeToolResult,
 } from "../output/tool-line.ts";
 import { displayOfTool } from "../tools/display.ts";
-import type { Picture } from "../core/errors.ts";
+import type { Picture } from "@vise/core";
 import type { GoalEvent } from "../repl/turn/goal-loop.ts";
 import { renderLine } from "../output/markdown.ts";
 

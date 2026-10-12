@@ -8,12 +8,12 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import type { Result } from "../core/errors.ts";
+import type { Result } from "@vise/core";
 import { formatError } from "../output/format.ts";
 import { validName } from "./notes.ts";
-import type { Workflow, WorkflowScope, WorkflowStep } from "../core/workflow.ts";
+import type { Workflow, WorkflowScope, WorkflowStep } from "@vise/core";
 
-export type { WorkflowScope } from "../core/workflow.ts";
+export type { WorkflowScope } from "@vise/core";
 
 export interface WorkflowEntry {
   name: string;

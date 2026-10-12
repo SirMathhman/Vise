@@ -1,5 +1,5 @@
-import type { ToolController } from "../core/engine.ts";
-import { REASONING_EFFORTS } from "../core/call/reasoning.ts";
+import type { ToolController } from "@vise/core";
+import { REASONING_EFFORTS } from "@vise/core";
 import type {
   ProfileSource,
   ReasoningController,
