@@ -22,7 +22,7 @@ if (!(await runMaintenance())) {
     hideOwnConsole();
     logToFile();
   }
-  const missing = missingBuildOutput("web/dist/app.js", "bun run build:web");
+  const missing = missingBuildOutput("packages/frontend/dist/app.js", "bun run build:web");
   if (missing) {
     console.error(missing);
     process.exitCode = 1;

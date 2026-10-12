@@ -2,7 +2,7 @@ import { dlopen, FFIType, ptr } from "bun:ffi";
 // The webview library's DLL (from the `webview-bun` package, which is used only for this file).
 // Embedded in the compiled build; TypeScript has no type for a DLL import.
 // @ts-expect-error a `type: "file"` import is a path.
-import dllPath from "../../../node_modules/webview-bun/build/libwebview.dll" with { type: "file" };
+import dllPath from "../../../../node_modules/webview-bun/build/libwebview.dll" with { type: "file" };
 
 /**
  * The app window, run on its own thread because `webview_run` blocks until the

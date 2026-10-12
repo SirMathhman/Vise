@@ -1,4 +1,4 @@
-import { COMMANDS } from "../../../src/repl/command-catalog.ts";
+import { COMMANDS } from "../../../backend/src/repl/command-catalog.ts";
 import { getArgumentSuggestions } from "./command-completions.ts";
 import type { CommandSuggestion } from "./command-completions.ts";
 

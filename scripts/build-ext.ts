@@ -1,9 +1,9 @@
-/** Bundle the Firefox extension's scripts into `extension/dist/` (load `extension/manifest.json` in Firefox). */
+/** Bundle the Firefox extension's scripts into `apps/extension/dist/` (load `apps/extension/manifest.json` in Firefox). */
 const result = await Bun.build({
   entrypoints: ["background", "dialogs", "sidebar", "options"].map(
-    (name) => `./extension/src/${name}.ts`,
+    (name) => `./apps/extension/src/${name}.ts`,
   ),
-  outdir: "./extension/dist",
+  outdir: "./apps/extension/dist",
   target: "browser",
   minify: false,
   // The same stamp goes into every script, so the sidebar can tell when the background page is an older build.

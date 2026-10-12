@@ -7,7 +7,7 @@ import {
   pageActionScript,
   type PageAction,
   SNAPSHOT_SCRIPT,
-} from "@vise/backend";
+} from "../../../packages/backend/src/browser/page-scripts.ts";
 import {
   clickScript,
   dragScript,

@@ -13,7 +13,7 @@ export const extensionDir = join(globalDataDir, "extension");
 
 async function installExtension(): Promise<string> {
   const missing = missingBuildOutput(
-    "extension/dist/background.js",
+    "apps/extension/dist/background.js",
     "bun run build:ext",
   );
   if (missing) {

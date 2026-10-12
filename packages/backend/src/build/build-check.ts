@@ -12,7 +12,7 @@ export function missingBuildOutput(
   command: string,
 ): string | undefined {
   if (VERSION !== "dev") return undefined;
-  return existsSync(join(import.meta.dir, "..", "..", file))
+  return existsSync(join(import.meta.dir, "..", "..", "..", "..", file))
     ? undefined
     : `${file} is missing: run \`${command}\` first.`;
 }

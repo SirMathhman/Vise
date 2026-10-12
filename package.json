@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "start": "bun index.ts",
-    "build:web": "bun build ./web/src/app.ts --outdir ./web/dist --target browser --minify",
+    "build:web": "bun build ./packages/frontend/src/app.ts --outdir ./packages/frontend/dist --target browser --minify",
     "web": "bun run build:web && bun src/web/main.ts",
     "dev:web": "bun run scripts/dev-web.ts",
     "typecheck:web": "tsc --project web/tsconfig.json",

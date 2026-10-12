@@ -42,7 +42,7 @@ run("bun", ["run", "build:web"]);
 run("bun", ["run", "build:ext"]);
 
 for (const [entry, outfile] of [
-  ["src/web/main.ts", "out/vise.exe"],
+  ["apps/web/src/main.ts", "out/vise.exe"],
   ["index.ts", "out/vise-cli.exe"],
 ] as const) {
   // Build beside the real name and swap afterwards: the real file may be the
@@ -50,7 +50,7 @@ for (const [entry, outfile] of [
   const staged = outfile.replace(/\.exe$/, ".next.exe");
   const result = await Bun.build({
     entrypoints:
-      entry === "src/web/main.ts"
+      entry === "apps/web/src/main.ts"
         ? [
             entry,
             "apps/web/src/desktop/window-worker.ts",
@@ -72,7 +72,7 @@ for (const [entry, outfile] of [
   });
   // The web exe has a window of its own: mark it a GUI program so no console appears
   // (its output goes to ~/.vise/vise.log; `--version` etc. attach to the launching terminal).
-  if (entry === "src/web/main.ts") setGuiSubsystem(staged);
+  if (entry === "apps/web/src/main.ts") setGuiSubsystem(staged);
   const keptOld = installExe(staged, outfile);
   console.log(`built ${outfile} (${version})`);
   if (keptOld)

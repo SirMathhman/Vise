@@ -2,12 +2,12 @@
 // source and to the copy inside the executable when compiled. `web/dist/app.js`
 // and `app.css` (the page's styles from `web/styles/`, plus xterm.js's) are built by
 // `bun run build:web`, which must run before either.
-import indexHtml from "../../web/index.html" with { type: "file" };
+import indexHtml from "../../../packages/frontend/index.html" with { type: "file" };
 // @ts-expect-error TypeScript has no type for an SVG import; with `type: "file"` it is a path.
-import iconSvg from "../../assets/icon.svg" with { type: "file" };
-import appJs from "../../web/dist/app.js" with { type: "file" };
+import iconSvg from "../../../assets/icon.svg" with { type: "file" };
+import appJs from "../../../packages/frontend/dist/app.js" with { type: "file" };
 // @ts-expect-error TypeScript has no type for a CSS import; with `type: "file"` it is a path.
-import appCss from "../../web/dist/app.css" with { type: "file" }; // the CSS the bundle imports (web/styles, xterm.js)
+import appCss from "../../../packages/frontend/dist/app.css" with { type: "file" }; // the CSS the bundle imports (frontend/styles, xterm.js)
 
 // Bun types HTML and JS imports as bundles; with `type: "file"` they are paths.
 const path = (imported: unknown): string => imported as string;
