@@ -16,7 +16,8 @@ export type CommandNeed =
   | "workflows"
   | "sessions"
   | "audit"
-  | "mcp";
+  | "mcp"
+  | "semantic";
 
 export interface CommandInfo {
   /** With its slash: `/model`. */
@@ -180,6 +181,18 @@ export const COMMANDS: readonly CommandInfo[] = [
     takesArgs: true,
     needs: "sessions",
     usage: ["/search <text>   find saved sessions that mention the text"],
+  },
+  {
+    name: "/embed",
+    summary: "index files for semantic search: status, rebuild",
+    takesArgs: true,
+    needs: "semantic",
+    usage: [
+      "/embed           bring the semantic index up to date (what changed since it was built)",
+      "/embed status    what the index holds and whether it is being built",
+      "/embed rebuild   embed every file again (after changing VISE_EMBEDDING_MODEL)",
+      "/search semantic <text>  find the passages of your files closest in meaning to the text",
+    ],
   },
   {
     name: "/audit",

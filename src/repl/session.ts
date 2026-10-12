@@ -37,7 +37,7 @@ import {
   handleSaveCommand,
 } from "./commands/session-commands.ts";
 import { handleMcpCommand } from "../mcp/mcp-command.ts";
-import { handleSearchCommand } from "./commands/search-command.ts";
+import { handleEmbed, handleSearch } from "./commands/search-command.ts";
 import { workflowProfileScope } from "./commands/workflow-profiles.ts";
 import { findBuiltin, unsupported, type BuiltinCommand } from "./commands/registry.ts";
 import { resolveShortcut } from "./commands/shortcut-command.ts";
@@ -442,7 +442,8 @@ export class Session {
     { name: "/resume", run: (line) => handleResumeCommand(this.sessionCommands, line) },
     { name: "/save", run: (line) => handleSaveCommand(this.sessionCommands, line) },
     { name: "/delete", run: (line) => handleDeleteCommand(this.sessionCommands, line) },
-    { name: "/search", run: (line) => handleSearchCommand(this.sessionCommands, line) },
+    { name: "/search", run: (line) => handleSearch(this.sessionCommands, this.opts.semantic, line) },
+    { name: "/embed", run: (line) => handleEmbed(this.opts.semantic, line) },
     { name: "/audit", run: (line) => this.audit.slash(line) ?? unsupported("audit log") },
   ];
 
@@ -457,6 +458,7 @@ export class Session {
       ["sessions", !!this.sessionSource],
       ["audit", this.audit.enabled],
       ["mcp", !!this.opts.mcp],
+      ["semantic", !!this.opts.semantic],
     ];
     return {
       ok: true,
