@@ -8,7 +8,7 @@ import { modelRef, parseModelRef, providerFor, providerOf, reasoningFields, resp
 import { chooseSideSlot as chooseSlot, slotJustUsed } from "./slots.ts";
 import { isTransient, pause, retryDelayMs, streamFailureError } from "./retry.ts";
 import { REASONING_EFFORTS, type ReasoningEffort } from "../core/call/reasoning.ts";
-import { fetchEmbedding, fetchHostedInfo, fetchModelDetails, fetchSlotContext, localSupportsVision, type ModelDetail } from "./model-queries.ts";
+import { fetchEmbeddings, fetchHostedInfo, fetchModelDetails, fetchSlotContext, localSupportsVision, type ModelDetail } from "./model-queries.ts";
 import { CallLog, CallTrace, recordCallEnd, recordCallStart, noteServerCut, runawayError, traceListener, traceThinking } from "./stream/call-trace.ts";
 
 export { streamChat };
@@ -31,6 +31,11 @@ export function activeProvider(): Provider {
 /** Whether OpenRouter models can be used: they are listed (and chatted with) only when a key is set. */
 export function hostedAvailable(): boolean {
   return config.openrouterApiKey !== "";
+}
+
+/** The model embeddings come from: `VISE_EMBEDDING_MODEL`, or else the local server's default model. */
+export function embeddingModel(): string {
+  return config.embeddingModel || providerOf(config, "local").defaultModel;
 }
 
 /** The inference backend label reported by the `self` tool. */
@@ -311,13 +316,12 @@ export class LlmClient implements Client {
   }
 
   /**
-   * Get an embedding for `text` from the server via `POST /v1/embeddings`.
-   * The model defaults to the chat model (or the `VISE_EMBEDDING_MODEL` setting
-   * when set). Returns the embedding vector, or a structured error.
+   * Embeddings of `texts` (one vector each, in order) from the local server's
+   * `POST /v1/embeddings`. Always the local provider with `embeddingModel()`,
+   * whatever the chat is on: file contents are never sent to a hosted provider.
    */
-  embed(text: string): Promise<Result<number[]>> {
-    const provider = this.provider();
-    return fetchEmbedding(provider, config.embeddingModel || provider.defaultModel, text);
+  embedMany(texts: string[]): Promise<Result<number[][]>> {
+    return fetchEmbeddings(providerOf(config, "local"), embeddingModel(), texts);
   }
 
   /**

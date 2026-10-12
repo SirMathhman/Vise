@@ -103,8 +103,16 @@ export async function fetchSlotContext(provider: Provider, id: string): Promise<
   }
 }
 
-/** An embedding of `text` from the provider's embeddings endpoint. */
-export async function fetchEmbedding(provider: Provider, model: string, text: string): Promise<Result<number[]>> {
+/**
+ * Embeddings of `texts` (one vector each, in the order given) from the
+ * provider's embeddings endpoint, one request for the whole batch.
+ */
+export async function fetchEmbeddings(
+  provider: Provider,
+  model: string,
+  texts: string[],
+): Promise<Result<number[][]>> {
+  if (texts.length === 0) return { ok: true, value: [] };
   try {
     const url =
       provider.rootUrl !== undefined
@@ -113,17 +121,22 @@ export async function fetchEmbedding(provider: Provider, model: string, text: st
     const res = await fetch(url, {
       method: "POST",
       headers: { "content-type": "application/json", ...provider.headers },
-      body: JSON.stringify({ model, input: [text] }),
+      body: JSON.stringify({ model, input: texts }),
     });
     if (!res.ok) {
       return { ok: false, error: { kind: "http", status: res.status, body: await res.text() } };
     }
-    const data = (await res.json()) as { data?: { embedding: number[] }[] };
-    const embedding = data.data?.[0]?.embedding;
-    if (!Array.isArray(embedding) || embedding.length === 0) {
-      return { ok: false, error: { kind: "malformed", body: "no embedding in response" } };
+    const data = (await res.json()) as { data?: { index?: number; embedding?: number[] }[] };
+    // The answer may come in any order: `index` says which input a vector is for.
+    const ordered = [...(data.data ?? [])].sort((x, y) => (x.index ?? 0) - (y.index ?? 0));
+    const vectors = ordered.map((d) => d.embedding);
+    if (vectors.length !== texts.length || vectors.some((v) => !Array.isArray(v) || v.length === 0)) {
+      return {
+        ok: false,
+        error: { kind: "malformed", body: `expected ${texts.length} embeddings, the server sent ${vectors.length}` },
+      };
     }
-    return { ok: true, value: embedding };
+    return { ok: true, value: vectors as number[][] };
   } catch (err) {
     return networkError(err);
   }

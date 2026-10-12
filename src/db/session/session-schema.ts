@@ -49,4 +49,25 @@ export const SESSION_MIGRATIONS: Migration[] = [
     UNIQUE(file_path, chunk_index)
   );
   CREATE INDEX file_embeddings_path ON file_embeddings(file_path)`,
+  // The embeddings table, reshaped: a chunk keeps its line range (a hit can say where it is),
+  // the model that embedded it (vectors of two models are never compared) and the file's
+  // modification time (what makes re-indexing incremental). Derived data, so it is rebuilt.
+  `DROP INDEX file_embeddings_path;
+  DROP TABLE file_embeddings;
+  CREATE TABLE file_embeddings (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_path   TEXT NOT NULL,
+    chunk_index INTEGER NOT NULL,
+    start_line  INTEGER NOT NULL,
+    end_line    INTEGER NOT NULL,
+    content     TEXT NOT NULL,
+    embedding   BLOB NOT NULL,
+    dims        INTEGER NOT NULL,
+    model       TEXT NOT NULL,
+    mtime_ms    REAL NOT NULL,
+    indexed_at  TEXT NOT NULL,
+    UNIQUE(file_path, chunk_index)
+  );
+  CREATE INDEX file_embeddings_path ON file_embeddings(file_path);
+  CREATE INDEX file_embeddings_model ON file_embeddings(model)`,
 ];
