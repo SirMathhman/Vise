@@ -57,6 +57,23 @@ export interface GenerationListener {
   finish?(reason: string): void;
 }
 
+/** Fold one chunk's tool-call deltas into the calls being assembled (a call arrives in pieces, by index). */
+function addToolCallDeltas(parts: Map<number, ToolCall>, deltas: StreamToolCallDelta[] | undefined): void {
+  for (const tc of deltas ?? []) {
+    const existing = parts.get(tc.index);
+    if (existing) {
+      existing.function.arguments += tc.function?.arguments ?? "";
+      if (tc.function?.name) existing.function.name += tc.function.name;
+    } else {
+      parts.set(tc.index, {
+        type: "function",
+        id: tc.id ?? "",
+        function: { name: tc.function?.name ?? "", arguments: tc.function?.arguments ?? "" },
+      });
+    }
+  }
+}
+
 /**
  * Parse the SSE chat-completions stream, accumulating the assistant message
  * and invoking `onToken` for each content delta. Returns the final message,
@@ -132,27 +149,7 @@ export async function streamChat(
       reportedTimings = true;
       generation?.tokens(generated);
     }
-    const deltas = delta?.tool_calls;
-    if (deltas) {
-      for (const tc of deltas) {
-        const existing = toolCallParts.get(tc.index);
-        if (existing) {
-          existing.function.arguments += tc.function?.arguments ?? "";
-          if (tc.function?.name) {
-            existing.function.name += tc.function.name;
-          }
-        } else {
-          toolCallParts.set(tc.index, {
-            type: "function",
-            id: tc.id ?? "",
-            function: {
-              name: tc.function?.name ?? "",
-              arguments: tc.function?.arguments ?? "",
-            },
-          });
-        }
-      }
-    }
+    addToolCallDeltas(toolCallParts, delta?.tool_calls);
     const promptTokens = chunk.usage?.prompt_tokens;
     if (promptTokens !== undefined) usage = promptTokens;
     const written = chunk.usage?.completion_tokens;

@@ -6,7 +6,7 @@ import { generationReporter } from "./stream/generation.ts";
 import { ANTI_REPEAT_FIELDS, LLAMA_STREAM_FIELDS, STREAM_FIELDS, readReply } from "./stream/request-fields.ts";
 import { modelRef, parseModelRef, providerFor, providerOf, reasoningFields, responseFormat, type ModelInfo, type Provider } from "./provider.ts";
 import { chooseSideSlot as chooseSlot, slotJustUsed } from "./slots.ts";
-import { isTransient, pause, retryDelayMs } from "./retry.ts";
+import { isTransient, pause, retryDelayMs, streamFailureError } from "./retry.ts";
 import { REASONING_EFFORTS, type ReasoningEffort } from "../core/call/reasoning.ts";
 import { fetchEmbedding, fetchHostedInfo, fetchModelDetails, fetchSlotContext, localSupportsVision, type ModelDetail } from "./model-queries.ts";
 import { CallLog, CallTrace, recordCallEnd, recordCallStart, noteServerCut, runawayError, traceListener, traceThinking } from "./stream/call-trace.ts";
@@ -548,10 +548,7 @@ export class LlmClient implements Client {
       );
       if (generation && acc.usage !== undefined) void this.reportUsage(request, purpose, acc.usage);
       // The provider failed the call after the stream began (an upstream dropped, a filter tripped...).
-      if (acc.failure) {
-        const body = JSON.stringify({ error: { message: acc.failure.message } });
-        return { ok: false, error: { kind: "http", status: acc.failure.status, body } };
-      }
+      if (acc.failure) return { ok: false, error: streamFailureError(acc.failure) };
       const cut = runawayError(noteServerCut(trace));
       if (cut) return { ok: false, error: cut };
       if (!acc.sawData) {

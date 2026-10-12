@@ -12,6 +12,12 @@ export function isTransient(error: ViseError): boolean {
   return error.kind === "http" && TRANSIENT_STATUSES.has(error.status);
 }
 
+/** A failure the provider reported after the stream began, as the HTTP error it would have been had it come first. */
+export function streamFailureError(failure: { status: number; message: string }): ViseError {
+  const body = JSON.stringify({ error: { message: failure.message } });
+  return { kind: "http", status: failure.status, body };
+}
+
 /** How long to wait before retry number `attempt` (0 for the first): 1 s, 3 s, 9 s, capped at 10 s. */
 export function retryDelayMs(attempt: number): number {
   return Math.min(1000 * 3 ** attempt, 10_000);
