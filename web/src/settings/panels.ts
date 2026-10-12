@@ -7,7 +7,6 @@ export interface PanelActions {
 
 export interface Panels {
   addProfilePlaceholder(): void;
-  populateModelSelect(text: string): void;
   populateProfileSelect(text: string): void;
   populateReasoningSelect(text: string): void;
   populateSessionsPanel(text: string): void;
@@ -23,7 +22,6 @@ export interface Panels {
 }
 
 export function createPanels(actions: PanelActions): Panels {
-  const modelSelect = document.getElementById("model") as HTMLSelectElement;
   const profileSelect = document.getElementById("profile") as HTMLSelectElement;
   const reasoningSelect = document.getElementById(
     "reasoning",
@@ -50,7 +48,6 @@ export function createPanels(actions: PanelActions): Panels {
   return {
     toolCategory: (name) => categories.get(name),
     addProfilePlaceholder: () => addProfilePlaceholder(profileSelect),
-    populateModelSelect: (text) => populateModelSelect(modelSelect, text),
     populateProfileSelect: (text) => populateProfileSelect(profileSelect, text),
     populateReasoningSelect: (text) =>
       populateReasoningSelect(reasoningSelect, text),
@@ -65,42 +62,6 @@ export function createPanels(actions: PanelActions): Panels {
     sessions: () => [...saved],
     toolNames: () => [...names],
   };
-}
-
-function populateModelSelect(
-  select: HTMLSelectElement,
-  listText: string,
-): void {
-  select.textContent = "";
-  let activeFound = false;
-  let count = 0;
-  for (const line of listText.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    if (trimmed === "no models available") {
-      count = -1;
-      break;
-    }
-    count++;
-    const option = document.createElement("option");
-    if (line[0] === "*") {
-      option.value = line
-        .slice(1)
-        .trim()
-        .replace(/ \(active\)$/, "");
-      option.textContent = option.value;
-      select.appendChild(option);
-      select.value = option.value;
-      activeFound = true;
-    } else {
-      option.value = trimmed;
-      option.textContent = trimmed;
-      select.appendChild(option);
-    }
-  }
-  if (count === 0) appendPlaceholder(select, "no models available");
-  else if (!activeFound && count > 0)
-    appendPlaceholder(select, "no active model", true);
 }
 
 function populateReasoningSelect(

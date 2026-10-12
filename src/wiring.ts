@@ -6,7 +6,7 @@ import { SqliteAuditSink } from "./db/audit/audit-store.ts";
 import { mkdirSync } from "node:fs";
 import { ChromiumBackend } from "./browser/chromium/chromium.ts";
 import type { BrowserBackend } from "./browser/types.ts";
-import { activeProvider, backendName, LlmClient } from "./client/llm.ts";
+import { backendName, hostedAvailable, LlmClient, type ModelDetail } from "./client/llm.ts";
 import type { CallLog } from "./client/call-trace.ts";
 import { dataDirFor, globalDataDir, noFolderRoot } from "./data-dir.ts";
 import { GLOBAL_PROMPT } from "./global-prompt.ts";
@@ -24,6 +24,7 @@ import type {
   GenerationProgress,
   Picture,
   PromptProgress,
+  Result,
 } from "./core/errors.ts";
 import {
   buildInitialMessage,
@@ -109,6 +110,11 @@ function lazily(get: () => ToolRunner): ToolRunner {
   };
 }
 
+/** The web model picker's ports: the provider's list, and the `/model` controller so a switch re-checks the vision tools. */
+function pickerPorts(client: LlmClient, controller: ModelController): ModelPickerPorts {
+  return { details: () => client.listModelDetails(), controller };
+}
+
 /**
  * The session's tool switches and model controller. Tool enablement is per
  * session (each connection gets its own `ToolSet`). Tools that need a model
@@ -138,8 +144,8 @@ function controls(
       void syncVision();
     },
     listModels: () => client.listModels(),
-    hostedModels: () => !activeProvider().llamaCpp,
-    supportsBurst: () => activeProvider().llamaCpp,
+    hostedModels: () => hostedAvailable(),
+    supportsBurst: () => client.isLlamaCpp(),
   };
   return { toolController, modelController };
 }
@@ -209,6 +215,12 @@ export interface EdgeSessionOptions {
 }
 
 /** The edge services a frontend needs after construction. */
+/** What the web model picker reads and writes: the provider's model list and the controller `/model` uses. */
+export interface ModelPickerPorts {
+  details(): Promise<Result<ModelDetail[]>>;
+  controller: Pick<ModelController, "getModel" | "setModel">;
+}
+
 export interface EdgeSession {
   /** The conversation orchestrator both frontends drive. */
   session: Session;
@@ -218,6 +230,8 @@ export interface EdgeSession {
   calls: CallLog;
   /** Whether the active model can see images (asked live; the model can change). */
   canSeeImages: () => Promise<boolean>;
+  /** The web model picker: the provider's models with their details, and the controller `/model` uses to switch. */
+  modelPicker: ModelPickerPorts;
   /** The integrated browser; the frontend closes it on shutdown. */
   browser: BrowserBackend;
   /** The model-facing tool enable/disable controller. */
@@ -464,14 +478,11 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     client,
     calls: client.calls,
     canSeeImages: () => client.supportsVision(),
+    modelPicker: pickerPorts(client, modelController),
     browser,
     toolController,
     profileSource,
-    cleanup: () => {
-      offShare?.();
-      session.endAudit();
-      temp.dispose();
-    },
+    cleanup: () => { offShare?.(); session.endAudit(); temp.dispose(); },
     preTurnHooks: hookStore.pre.map((h) => h.command),
     postTurnHooks: hookStore.post.map((h) => h.command),
   };

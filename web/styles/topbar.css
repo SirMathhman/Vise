@@ -272,6 +272,77 @@
   border-top: 1px solid var(--border);
 }
 
+/* ---- Model picker (the model button's dropdown) ---- */
+.appbar-btn {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: left;
+  cursor: pointer;
+}
+
+.model-panel {
+  width: min(36rem, calc(100vw - 2 * var(--sp-3)));
+}
+
+.model-panel .dropdown-head .field {
+  flex: 1 1 auto;
+}
+
+.model-body {
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--sp-2) var(--sp-3);
+}
+
+.model-section {
+  margin-bottom: var(--sp-2);
+}
+
+.model-section .list-group-title {
+  margin: 0 0 var(--sp-1);
+}
+
+.model-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.model-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.model-name,
+.model-id {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-id {
+  color: var(--dim);
+  font-size: var(--fs-xs);
+}
+
+.model-meta {
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--sp-1);
+}
+
+.model-badge {
+  color: var(--dim);
+  font-size: var(--fs-xs);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--sp-1);
+  white-space: nowrap;
+}
+
 /* ---- Narrow screens and the extension's sidebar: the bar wraps to two rows ---- */
 @media (max-width: 720px) {
   .appbar {

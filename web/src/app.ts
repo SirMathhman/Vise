@@ -19,6 +19,7 @@ import { createTerminalPanel } from "./terminal/terminal-panel.ts";
 import { clearComposer, setupComposer } from "./composer/composer.ts";
 import { createPanels } from "./settings/panels.ts";
 import { createPanelGroup, isNoFolder, registerPages } from "./status/panel-switch.ts";
+import { createModelPicker } from "./models/model-picker.ts";
 import { createProfileEditor } from "./settings/profiles/profile-editor.ts";
 import { createLogView } from "./log/log-view.ts";
 import { renderMarkdown } from "./markdown.ts";
@@ -45,7 +46,7 @@ const input = requiredElement<HTMLTextAreaElement>("input");
 const send = requiredElement<HTMLButtonElement>("send");
 const stopBtn = requiredElement<HTMLButtonElement>("stop");
 const status = requiredElement<HTMLElement>("status");
-const modelSelect = requiredElement<HTMLSelectElement>("model");
+const modelBtn = requiredElement<HTMLButtonElement>("model-btn");
 const profileSelect = requiredElement<HTMLSelectElement>("profile");
 const reasoningSelect = requiredElement<HTMLSelectElement>("reasoning");
 const burstBadge = requiredElement<HTMLElement>("burst-badge");
@@ -142,7 +143,7 @@ const busyUi = createBusy({
   input,
   send,
   stop: stopBtn,
-  locked: [modelSelect, profileSelect, reasoningSelect],
+  locked: [profileSelect, reasoningSelect],
   setSteering: (on) => {
     steerUi.setRunning(on);
     composerHint.classList.toggle("hidden", !on);
@@ -212,6 +213,7 @@ const load = createInitialLoad({
   profileSelect,
   reasoningSelect,
   onSessions: () => menubar.refresh(),
+  setActiveModel: (id) => modelPicker.setActive(id),
 });
 const profileEditor = createProfileEditor({
   send: sendMessage,
@@ -230,7 +232,7 @@ const hideSuggestions = setupComposer(
   input,
   requiredElement<HTMLUListElement>("command-suggestions"),
   () => ({
-    models: load.selectValues(modelSelect),
+    models: modelPicker.modelIds(),
     profiles: load.selectValues(profileSelect),
     sessions: panels.sessions(),
     tools: panels.toolNames(),
@@ -266,9 +268,6 @@ send.addEventListener("click", () => sendFromComposer());
 requiredElement("steer-btn").addEventListener("click", () => sendFromComposer());
 requiredElement("queue-btn").addEventListener("click", () => sendFromComposer(true));
 stopBtn.addEventListener("click", interrupt);
-modelSelect.addEventListener("change", () => {
-  if (modelSelect.value) sendLine(`/model ${modelSelect.value}`);
-});
 profileSelect.addEventListener("change", () => {
   if (profileSelect.value) sendLine(`/profile ${profileSelect.value}`);
 });
@@ -292,6 +291,18 @@ const tools = group.register({
 });
 toolsFilter.addEventListener("input", () => filterToolList(toolsList, toolsFilter.value));
 const git = group.register({ panel: requiredElement("git-panel"), onOpen: gitPanel.refresh });
+const modelPanel = group.register({ button: modelBtn, panel: requiredElement("model-panel"), onOpen: () => modelPicker.refresh() });
+const modelPicker = createModelPicker({
+  button: modelBtn,
+  panel: requiredElement("model-panel"),
+  search: requiredElement<HTMLInputElement>("model-search"),
+  recent: requiredElement("model-recent"),
+  recentList: requiredElement<HTMLUListElement>("model-recent-list"),
+  list: requiredElement<HTMLUListElement>("model-list"),
+  send: sendMessage,
+  close: modelPanel.close,
+  onChoose: (id) => transcript.addLine("system", `Model: ${id}`),
+});
 const pages = registerPages(
   {
     settings: () => {
@@ -411,6 +422,7 @@ function onMessage(data: string): void {
   compactionMarker.observe(message);
   workflowPicker.observe(message);
   if (inspector.handle(message)) return;
+  if (modelPicker.handle(message)) return;
   if (serverPanels.some((panel) => panel.handle(message))) return;
   switch (message.type) {
     case "profile_tools":

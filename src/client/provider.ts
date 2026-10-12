@@ -33,8 +33,33 @@ export interface Provider {
 
 const trim = (url: string): string => url.replace(/\/+$/, "");
 
+/** The provider the settings name as the default (the one a session starts on). */
+export function defaultProviderId(s: ProviderSettings): ProviderId {
+  return s.llmProvider === "openrouter" ? "openrouter" : "local";
+}
+
+/** A model reference names its provider: hosted models carry this prefix, local ones are bare ids. */
+const HOSTED_PREFIX = "openrouter:";
+
+/** The reference a model is kept under: the bare id for local, `openrouter:<id>` for OpenRouter. */
+export function modelRef(provider: ProviderId, model: string): string {
+  return provider === "openrouter" ? HOSTED_PREFIX + model : model;
+}
+
+/** Which provider a model reference belongs to, and the id the provider calls it by. */
+export function parseModelRef(ref: string): { provider: ProviderId; model: string } {
+  return ref.startsWith(HOSTED_PREFIX)
+    ? { provider: "openrouter", model: ref.slice(HOSTED_PREFIX.length) }
+    : { provider: "local", model: ref };
+}
+
 export function providerFor(s: ProviderSettings): Provider {
-  if (s.llmProvider === "openrouter") {
+  return providerOf(s, defaultProviderId(s));
+}
+
+/** The provider with the given id, built from the settings (both can be in use at once). */
+export function providerOf(s: ProviderSettings, id: ProviderId): Provider {
+  if (id === "openrouter") {
     const base = trim(s.openrouterUrl);
     return {
       id: "openrouter",

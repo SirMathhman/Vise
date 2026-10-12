@@ -4,7 +4,7 @@ import { encodeMessages, type ImageResolver, plainMessages, hideCalls, nameConfi
 import { collectThinking, readJsonReply, streamChat } from "./stream-reader.ts";
 import { generationReporter } from "./generation.ts";
 import { ANTI_REPEAT_FIELDS, LLAMA_STREAM_FIELDS, STREAM_FIELDS, readReply } from "./request-fields.ts";
-import { modelInfo, providerFor, reasoningFields, responseFormat, type ModelInfo, type Provider } from "./provider.ts";
+import { modelInfo, modelRef, parseModelRef, providerFor, providerOf, reasoningFields, responseFormat, type ModelInfo, type Provider, type ProviderId } from "./provider.ts";
 import { chooseSideSlot as chooseSlot, slotJustUsed } from "./slots.ts";
 import { CallLog, CallTrace, recordCallEnd, recordCallStart, noteServerCut, runawayError, traceListener, traceThinking } from "./call-trace.ts";
 
@@ -25,6 +25,32 @@ export function activeProvider(): Provider {
   return providerFor(config);
 }
 
+/** Whether OpenRouter models can be used: they are listed (and chatted with) only when a key is set. */
+export function hostedAvailable(): boolean {
+  return config.openrouterApiKey !== "";
+}
+
+/** One provider's model list, each model under its reference. */
+async function fetchModelDetails(provider: Provider): Promise<Result<ModelDetail[]>> {
+  try {
+    const res = await fetch(provider.modelsUrl, { method: "GET", headers: provider.headers });
+    if (!res.ok) {
+      return { ok: false, error: { kind: "http", status: res.status, body: await res.text() } };
+    }
+    const data = (await res.json()) as ModelsResponse;
+    const models = (data.data ?? []).map((m) => ({
+      id: modelRef(provider.id, m.id),
+      name: m.name,
+      contextLength: typeof m.context_length === "number" ? m.context_length : undefined,
+      vision: m.architecture?.input_modalities?.includes("image") === true,
+      provider: provider.id,
+    }));
+    return { ok: true, value: models };
+  } catch (err) {
+    return { ok: false, error: { kind: "network", cause: err instanceof Error ? err.message : String(err) } };
+  }
+}
+
 /** The inference backend label reported by the `self` tool. */
 export function backendName(): string {
   return activeProvider().backend;
@@ -43,10 +69,12 @@ interface ModelsResponse {
 
 /** One entry in the model list, with the metadata the picker shows. */
 export interface ModelDetail {
+  /** The model reference (see `modelRef`): the bare id for local, `openrouter:<id>` for OpenRouter. */
   id: string;
   name?: string;
   contextLength?: number;
   vision: boolean;
+  provider: ProviderId;
 }
 
 /**
@@ -63,7 +91,8 @@ export type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
 
 export class LlmClient implements Client {
   private lastPromptTokens: number | undefined;
-  private currentModel: string = activeProvider().defaultModel;
+  /** The active model's reference (see `modelRef`). */
+  private currentModel: string = modelRef(providerFor(config).id, providerFor(config).defaultModel);
   /** OpenRouter `/models` facts per model id (window, vision), fetched once. */
   private readonly infoCache = new Map<string, ModelInfo>();
   private requestSeq = 0;
@@ -168,7 +197,7 @@ export class LlmClient implements Client {
    */
   async withSideSlot<T>(operation: () => Promise<T>): Promise<T> {
     if (this.sideDepth++ === 0) {
-      this.sideSlot = activeProvider().llamaCpp
+      this.sideSlot = this.provider().llamaCpp
         ? await this.chooseSideSlot().catch(() => undefined)
         : undefined;
     }
@@ -181,9 +210,9 @@ export class LlmClient implements Client {
 
   /** The least recently used slot other than the one used last (the main conversation's); undefined when there is none to choose. */
   private async chooseSideSlot(): Promise<number | undefined> {
-    const provider = activeProvider();
+    const provider = this.provider();
     await this.mainSlotProbe;
-    const model = encodeURIComponent(this.currentModel);
+    const model = encodeURIComponent(this.modelId());
     const response = await this.slotFetch(
       `${provider.rootUrl}/slots?model=${model}`,
       { headers: provider.headers },
@@ -198,9 +227,9 @@ export class LlmClient implements Client {
   /** Note which slot the main conversation runs on (the one a call outside side work just used), so side work never takes it over. */
   private async noteMainSlot(): Promise<void> {
     try {
-      const provider = activeProvider();
+      const provider = this.provider();
       const response = await this.slotFetch(
-        `${provider.rootUrl}/slots?model=${encodeURIComponent(this.currentModel)}`,
+        `${provider.rootUrl}/slots?model=${encodeURIComponent(this.modelId())}`,
         { headers: provider.headers },
         this.slotRequestTimeoutMs,
       );
@@ -238,8 +267,23 @@ export class LlmClient implements Client {
     }
   }
 
+  /** The provider a model reference belongs to (the active model's unless another is given). */
+  private provider(ref: string = this.currentModel): Provider {
+    return providerOf(config, parseModelRef(ref).provider);
+  }
+
+  /** The id the provider calls a model reference by. */
+  private modelId(ref: string = this.currentModel): string {
+    return parseModelRef(ref).model;
+  }
+
+  /** Whether the active model is served by llama.cpp (the features that need it: grammars, slots, burst mode). */
+  isLlamaCpp(): boolean {
+    return this.provider().llamaCpp;
+  }
+
   /**
-   * The current active model id.
+   * The current active model reference.
    */
   getModel(): string {
     return this.currentModel;
@@ -274,7 +318,8 @@ export class LlmClient implements Client {
    * `/props` report vision. False when that cannot be found out.
    */
   async supportsVision(model: string = this.currentModel): Promise<boolean> {
-    const provider = activeProvider();
+    const provider = this.provider(model);
+    const id = this.modelId(model);
     const headers = provider.headers;
     try {
       if (!provider.llamaCpp) {
@@ -285,11 +330,11 @@ export class LlmClient implements Client {
         const body = (await listed.json()) as {
           data?: { id: string; status?: { args?: string[] } }[];
         };
-        const args = body.data?.find((m) => m.id === model)?.status?.args;
+        const args = body.data?.find((m) => m.id === id)?.status?.args;
         if (args) return args.some((a) => a === "--mmproj" || a === "-mm");
       }
       const props = await fetch(
-        `${provider.rootUrl}/props?model=${encodeURIComponent(model)}`,
+        `${provider.rootUrl}/props?model=${encodeURIComponent(id)}`,
         { headers },
       );
       if (!props.ok) return false;
@@ -303,75 +348,24 @@ export class LlmClient implements Client {
   }
 
   /**
-   * Fetch the list of available model ids from the server via `GET /v1/models`.
-   */
-  async listModels(): Promise<Result<string[]>> {
-    try {
-      const provider = activeProvider();
-      const res = await fetch(provider.modelsUrl, {
-        method: "GET",
-        headers: provider.headers,
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        return {
-          ok: false,
-          error: { kind: "http", status: res.status, body: text },
-        };
-      }
-      const data = (await res.json()) as ModelsResponse;
-      const models = data.data?.map((m) => m.id).filter(Boolean) ?? [];
-      return { ok: true, value: models };
-    } catch (err) {
-      return {
-        ok: false,
-        error: {
-          kind: "network",
-          cause: err instanceof Error ? err.message : String(err),
-        },
-      };
-    }
-  }
-
-  /**
-   * Fetch the model list with metadata (name, context length, vision) for the
-   * web model picker. Unlike `listModels()` (which returns bare ids for the
-   * terminal `/model` command and the composer autocomplete), this keeps the
-   * full objects from the provider's `/models` endpoint.
+   * Every model the user can pick, under its reference: the local server's and,
+   * when an OpenRouter key is set, OpenRouter's. One of them failing does not
+   * hide the other; both failing reports the local error.
    */
   async listModelDetails(): Promise<Result<ModelDetail[]>> {
-    try {
-      const provider = activeProvider();
-      const res = await fetch(provider.modelsUrl, {
-        method: "GET",
-        headers: provider.headers,
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        return {
-          ok: false,
-          error: { kind: "http", status: res.status, body: text },
-        };
-      }
-      const data = (await res.json()) as ModelsResponse;
-      const models = (data.data ?? []).map((m) => ({
-        id: m.id,
-        name: m.name,
-        contextLength:
-          typeof m.context_length === "number" ? m.context_length : undefined,
-        vision:
-          m.architecture?.input_modalities?.includes("image") === true,
-      }));
-      return { ok: true, value: models };
-    } catch (err) {
-      return {
-        ok: false,
-        error: {
-          kind: "network",
-          cause: err instanceof Error ? err.message : String(err),
-        },
-      };
-    }
+    const local = await fetchModelDetails(providerOf(config, "local"));
+    const hosted = hostedAvailable() ? await fetchModelDetails(providerOf(config, "openrouter")) : undefined;
+    if (!local.ok && !(hosted?.ok)) return local;
+    return {
+      ok: true,
+      value: [...(local.ok ? local.value : []), ...(hosted?.ok ? hosted.value : [])],
+    };
+  }
+
+  /** The model references the server lists (for `/model` and the composer's suggestions). */
+  async listModels(): Promise<Result<string[]>> {
+    const details = await this.listModelDetails();
+    return details.ok ? { ok: true, value: details.value.map((m) => m.id) } : details;
   }
 
   /**
@@ -381,7 +375,7 @@ export class LlmClient implements Client {
    */
   async embed(text: string): Promise<Result<number[]>> {
     try {
-      const provider = activeProvider();
+      const provider = this.provider();
       const model = config.embeddingModel || provider.defaultModel;
       const url = provider.llamaCpp
         ? `${provider.rootUrl}/v1/embeddings`
@@ -442,16 +436,16 @@ export class LlmClient implements Client {
   private async hostedInfo(model: string): Promise<ModelInfo | undefined> {
     const cached = this.infoCache.get(model);
     if (cached) return cached;
-    const provider = activeProvider();
+    const provider = this.provider(model);
     const res = await fetch(provider.modelsUrl, { headers: provider.headers });
     if (!res.ok) return undefined;
-    const info = modelInfo(await res.json(), model);
+    const info = modelInfo(await res.json(), this.modelId(model));
     if (info) this.infoCache.set(model, info);
     return info;
   }
 
   async contextMax(): Promise<Result<number>> {
-    const provider = activeProvider();
+    const provider = this.provider();
     if (!provider.llamaCpp) {
       try {
         const info = await this.hostedInfo(this.currentModel);
@@ -474,7 +468,7 @@ export class LlmClient implements Client {
     }
     try {
       const res = await fetch(
-        `${provider.rootUrl}/slots?model=${encodeURIComponent(this.currentModel)}`,
+        `${provider.rootUrl}/slots?model=${encodeURIComponent(this.modelId())}`,
         {
           method: "GET",
           headers: provider.headers,
@@ -518,7 +512,7 @@ export class LlmClient implements Client {
     // reasoning — is sent through.
     Object.assign(
       body,
-      reasoningFields(activeProvider(), this.reasoningEffort),
+      reasoningFields(this.provider(), this.reasoningEffort),
     );
   }
 
@@ -551,7 +545,7 @@ export class LlmClient implements Client {
       purpose === "reply" &&
       result.ok &&
       (result.value.tool_calls?.length ?? 0) > 0 &&
-      activeProvider().llamaCpp
+      this.provider().llamaCpp
     ) {
       this.mainSlotProbe = this.noteMainSlot();
     }
@@ -590,9 +584,9 @@ export class LlmClient implements Client {
     antiRepeat = false,
   ): Record<string, unknown> {
     const useTools = !!tools && tools.length > 0 && !responseSchema;
-    const provider = activeProvider();
+    const provider = this.provider();
     const body: Record<string, unknown> = {
-      model: this.currentModel,
+      model: this.modelId(),
       // A schema-constrained request (a one-off question about the conversation)
       // still encodes the conversation as the tool protocol does, so it shares
       // the prompt prefix, and llama.cpp's cache, with the normal turns.
@@ -652,11 +646,11 @@ export class LlmClient implements Client {
     const guard = new AbortController();
     const callSignal = signal ? AbortSignal.any([signal, guard.signal]) : guard.signal;
     try {
-      const res = await fetch(activeProvider().chatUrl, {
+      const res = await fetch(this.provider().chatUrl, {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          ...activeProvider().headers,
+          ...this.provider().headers,
         },
         body: JSON.stringify(body),
         signal: callSignal,

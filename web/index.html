@@ -50,9 +50,7 @@
           title="Burst mode is on: the agent plans once, then runs tools without thinking (Agent menu)"
           >Burst</span
         >
-        <select id="model" class="field appbar-select" aria-label="Model" title="Model">
-          <option value="">Loading…</option>
-        </select>
+        <button id="model-btn" class="field appbar-select appbar-btn" type="button" aria-haspopup="dialog" aria-expanded="false" title="Model">Loading…</button>
         <select id="profile" class="field appbar-select" aria-label="Profile" title="Profile">
           <option value="">Loading…</option>
         </select>
@@ -83,6 +81,19 @@
         <p class="hint dropdown-foot">
           Changes apply at once. A profile can limit its tools too: Settings → Profiles.
         </p>
+      </div>
+      <div id="model-panel" class="dropdown model-panel hidden" role="dialog" aria-label="Models">
+        <div class="dropdown-head">
+          <input id="model-search" class="field" type="search" placeholder="Search models…" aria-label="Search models" autocomplete="off" />
+        </div>
+        <div class="model-body">
+          <div id="model-recent" class="model-section hidden">
+            <p class="list-group-title">Recently used</p>
+            <ul id="model-recent-list" class="list"></ul>
+          </div>
+          <ul id="model-list" class="list"></ul>
+        </div>
+        <p class="hint dropdown-foot">Enter picks the first match · ↑ ↓ move · Esc closes</p>
       </div>
       <div id="git-panel" class="dropdown git-panel hidden" role="dialog" aria-label="Git"></div>
     </header>

@@ -19,6 +19,7 @@ import { isLocalHost, isLocalOrigin, serveApi } from "./http.ts";
 import { createGate } from "./conn/gate.ts";
 import { finishOpening } from "./conn/open.ts";
 import { handleMcpMessage } from "./api/mcp-api.ts";
+import { handleModelMessage } from "./api/models/model-api.ts";
 import { handleSettingsMessage } from "./api/settings-api.ts";
 import { handleQueueCommand } from "./conn/queue-commands.ts";
 import { SessionLease } from "./conn/leases.ts";
@@ -538,6 +539,11 @@ function handleMessage(
     // MCP server settings are read and written directly; never queued behind a turn.
     const wire = msg as unknown as Record<string, unknown>;
     void handleMcpMessage(conn.mcp, conn.ws.data.root, wire).then(send);
+    return;
+  }
+  if (msg.type.startsWith("model_")) {
+    // The model picker reads and writes the model list directly; never queued behind a turn.
+    void handleModelMessage(conn.edge.modelPicker, msg as unknown as Record<string, unknown>).then(send);
     return;
   }
   if (msg.type.startsWith("inspect_")) {

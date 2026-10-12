@@ -50,7 +50,7 @@ test("openrouter requests carry no llama.cpp fields and use its url, key and hea
   );
   try {
     const client = new LlmClient();
-    expect(client.getModel()).toBe("vendor/m");
+    expect(client.getModel()).toBe("openrouter:vendor/m");
     client.setReasoningEffort("high");
     const messages: Message[] = [{ role: "user", content: "hi" }];
     const r = await client.chat(messages, [tool], undefined, undefined, undefined, undefined, undefined, undefined, true);

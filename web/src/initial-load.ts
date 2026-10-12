@@ -20,10 +20,12 @@ interface LoadDeps {
   reasoningSelect: HTMLSelectElement;
   /** The saved-session list changed (the Session menu lists them). */
   onSessions(): void;
+  /** A `/model` command switched the model: the picker shows it. */
+  setActiveModel(id: string): void;
 }
 
 /** The startup lists, asked for one after another: each reply asks for the next. */
-type Step = "model" | "profile" | "tool" | "reasoning" | "sessions" | "burst";
+type Step = "profile" | "tool" | "reasoning" | "sessions" | "burst";
 
 /** One step of the startup chain: true when the reply was its. */
 function step(pending: Set<Step>, name: Step, message: ResultMessage, next: () => void, onFail: () => void): boolean {
@@ -58,19 +60,12 @@ function startupReply(
       deps.setBurstPressed(value.endsWith(" on"));
       busy.endLoading();
     }, () => busy.endLoading()) ||
-    at("model", () => {
-      panels.populateModelSelect(value);
-      requestLine("/profile");
-    }, () => {
-      stop();
-      profileSelect.disabled = true;
-      fail();
-    }) ||
     at("profile", () => {
       panels.populateProfileSelect(value);
       requestLine("/tool");
     }, () => {
       stop();
+      profileSelect.disabled = true;
       fail();
     }) ||
     at("tool", () => {
@@ -170,10 +165,12 @@ export function createInitialLoad(deps: LoadDeps) {
     },
     /** Ask for every list, in order (the connection just opened). */
     start(): void {
-      for (const name of ["model", "profile", "tool", "reasoning", "sessions"] as const) pending.add(name);
+      for (const name of ["profile", "tool", "reasoning", "sessions"] as const) pending.add(name);
       busy.state.loading = true;
       busy.render();
-      requestLine("/model");
+      // The model picker has its own list (answered at once); the lists below follow in order.
+      send({ type: "model_list" });
+      requestLine("/profile");
       // Populate the workflow picker's cache so shortcut invocations show the strip immediately.
       send({ type: "workflows_list" });
     },

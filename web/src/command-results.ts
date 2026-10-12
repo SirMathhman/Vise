@@ -8,6 +8,7 @@ interface ResultDeps {
   profileSelect: HTMLSelectElement;
   reasoningSelect: HTMLSelectElement;
   setBurstPressed(on: boolean): void;
+  setActiveModel(id: string): void;
   /** Ask the browser view for its tabs again (a saved session may have changed them). */
   syncBrowser(): void;
   requestToolRefresh(): void;
@@ -32,9 +33,9 @@ export function applyCommandResult(message: ResultMessage, deps: ResultDeps): vo
     deps.setBurstPressed(on);
     transcript.addLine("system", `Burst mode ${on ? "on" : "off"}`);
   } else if (prefixed("switched to model ") !== undefined) {
-    const model = document.getElementById("model") as HTMLSelectElement;
-    model.value = prefixed("switched to model ") ?? "";
-    transcript.addLine("system", `Model: ${model.value}`);
+    const model = prefixed("switched to model ") ?? "";
+    deps.setActiveModel(model);
+    transcript.addLine("system", `Model: ${model}`);
   } else if (prefixed("profile set to ") !== undefined) {
     const name = prefixed("profile set to ") ?? "";
     panels.removeProfilePlaceholder();

@@ -184,11 +184,16 @@ export function traceListener(
   guard: AbortController,
 ): GenerationListener {
   let checkedAt = 0;
-  const judge = (): void => {
+  // Whether the server reports its own running token count (llama.cpp's
+  // `timings`). Other providers (OpenRouter) send none, so each streamed piece
+  // is counted as one token and the guard still runs.
+  let reported = false;
+  let pieces = 0;
+  const judge = (tokens: number): void => {
     const loopGuard = config.loopGuard !== 0;
     const cap = config.maxCallTokens;
     let verdict = runawayVerdict({
-      tokens: trace.completionTokens,
+      tokens,
       cap,
       tail: trace.rawTail(),
       loopGuard,
@@ -211,13 +216,20 @@ export function traceListener(
     text(piece) {
       trace.text(piece);
       inner?.text(piece);
+      if (reported) return;
+      pieces += 1;
+      if (pieces - checkedAt < CHECK_EVERY) return;
+      checkedAt = pieces;
+      trace.tokens(pieces);
+      judge(pieces);
     },
     tokens(count) {
+      reported = true;
       trace.tokens(count);
       inner?.tokens(count);
       if (count - checkedAt < CHECK_EVERY) return;
       checkedAt = count;
-      judge();
+      judge(count);
     },
     finish(reason) {
       trace.finishReason = reason;

@@ -93,6 +93,24 @@ describe("the runaway guard", () => {
     expect(trace?.loop()?.period).toBe(piece.length);
   });
 
+  test("a provider that sends no token count still gets its looping call stopped", async () => {
+    // OpenRouter streams content deltas with no `timings`; the guard must still judge them.
+    const piece = "<invoke_tool>\n</invoke_tool>\n\n";
+    const body =
+      Array.from({ length: 200 }, () => `data: ${JSON.stringify({ choices: [{ delta: { content: piece } }] })}\n\n`).join("") +
+      "data: [DONE]\n\n";
+    const client = new LlmClient();
+    const real = globalThis.fetch;
+    globalThis.fetch = (async () => new Response(body, { status: 200 })) as unknown as typeof fetch;
+    try {
+      const result = await client.chat([{ role: "user", content: "x" }]);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error).toMatchObject({ kind: "runaway", reason: "loop" });
+    } finally {
+      globalThis.fetch = real;
+    }
+  });
+
   test("a call over the token cap is stopped", async () => {
     applySettings({ VISE_MAX_CALL_TOKENS: "100" });
     try {
