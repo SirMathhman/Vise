@@ -70,7 +70,7 @@ export function chunkFile(content: string): Chunk[] {
     let chars = 0;
     let charEnd = end;
     for (let j = i; j < end; j++) {
-      chars += lines[j].length + 1;
+      chars += (lines[j] ?? "").length + 1;
       if (chars > CHUNK_CHARS) {
         charEnd = j;
         break;
@@ -150,14 +150,19 @@ export function* walkAndChunk(
 /**
  * Cosine similarity between two vectors.
  */
-export function cosineSimilarity(a: number[], b: number[]): number {
+export function cosineSimilarity(
+  a: ArrayLike<number>,
+  b: ArrayLike<number>,
+): number {
   let dot = 0;
   let normA = 0;
   let normB = 0;
   for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
+    const x = a[i] ?? 0;
+    const y = b[i] ?? 0;
+    dot += x * y;
+    normA += x * x;
+    normB += y * y;
   }
   const denom = Math.sqrt(normA) * Math.sqrt(normB);
   if (denom === 0) return 0;
@@ -181,8 +186,8 @@ export function indexFile(
     );
     const now = new Date().toISOString();
     for (let i = 0; i < chunks.length; i++) {
-      const f32 = new Float32Array(embeddings[i]);
-      insert.run(filePath, i, chunks[i].content, f32.buffer, f32.length, now);
+      const f32 = new Float32Array(embeddings[i] ?? []);
+      insert.run(filePath, i, chunks[i]?.content ?? "", new Uint8Array(f32.buffer), f32.length, now);
     }
   })();
 }
@@ -255,7 +260,7 @@ export class SemanticIndex {
     embed: (text: string) => Promise<Result<number[]>>,
   ) {
     const result = openDb(join(dataDir, "vise.db"), SESSION_MIGRATIONS);
-    if (!result.ok) throw new Error(result.error.cause);
+    if (!result.ok) throw new Error(JSON.stringify(result.error));
     this.db = result.value;
     this.root = root;
     this.embed = embed;
@@ -298,7 +303,7 @@ export async function indexRoot(
   signal?: AbortSignal,
 ): Promise<{ indexed: number; skipped: number; failed: number }> {
   const result = openDb(join(dataDir, "vise.db"), SESSION_MIGRATIONS);
-  if (!result.ok) throw new Error(result.error.cause);
+  if (!result.ok) throw new Error(JSON.stringify(result.error));
   const db = result.value;
 
   let indexed = 0;

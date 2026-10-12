@@ -214,9 +214,8 @@ export function findFiles(args: Record<string, unknown>): string {
         }
       }
     }
-    const matches = out;
-    if (matches.length === 0) return "no matches";
-    return matches.join("\n");
+    if (out.length === 0) return "no matches";
+    return out.join("\n");
   } catch (err) {
     return errStr(err);
   }

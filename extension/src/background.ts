@@ -1,7 +1,6 @@
 import { BUILD, findServerPort, getToken } from "./config.ts";
 import { ops } from "./ops.ts";
 import {
-  grant,
   getTabLimit,
   isOwned,
   onOwnedChanged,

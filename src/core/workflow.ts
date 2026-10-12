@@ -266,7 +266,7 @@ async function generateArguments(
     options.toolDefs,
     undefined,
     options.callbacks.onThinking,
-    options.callbacks.onPromptProgress,
+    undefined,
     { type: "object", ...schema },
     options.callbacks.abort,
   );

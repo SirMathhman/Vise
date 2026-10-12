@@ -1,4 +1,3 @@
-import { centerScript as _unused } from "../../src/browser/page-scripts.ts";
 import {
   probeScript,
   REF_PATTERN,
@@ -20,17 +19,10 @@ import {
   type UploadFile,
   uploadScript,
 } from "./page-actions.ts";
-import { grant, ownedIds, release, requireOwned, tryGrant } from "./tabs.ts";
-
-void _unused;
+import { ownedIds, release, requireOwned, tryGrant } from "./tabs.ts";
+import type { TabInfo } from "../../src/browser/types.ts";
 
 /** The operations the Vise server asks for (see `src/web/ext/ext-hub.ts` and `src/browser/extension.ts`). */
-
-interface TabInfo {
-  id: number;
-  url: string;
-  title: string;
-}
 
 const LOAD_TIMEOUT_MS = 15_000;
 const SETTLE_TIMEOUT_MS = 5_000;
@@ -255,7 +247,7 @@ export const ops: Record<string, (params: Params) => Promise<unknown>> = {
         error instanceof Error
           ? error.message.replace(/^cannot script this page \((.*)\)$/, "$1")
           : String(error);
-      throw new Error(`code failed: ${reason}`);
+      throw new Error(`code failed: ${reason}`, { cause: error });
     }
   },
 };

@@ -214,13 +214,13 @@ export interface EdgeSessionOptions {
   mcp?: McpHub;
 }
 
-/** The edge services a frontend needs after construction. */
 /** What the web model picker reads and writes: the provider's model list and the controller `/model` uses. */
 export interface ModelPickerPorts {
   details(): Promise<Result<ModelDetail[]>>;
   controller: Pick<ModelController, "getModel" | "setModel">;
 }
 
+/** The edge services a frontend needs after construction. */
 export interface EdgeSession {
   /** The conversation orchestrator both frontends drive. */
   session: Session;

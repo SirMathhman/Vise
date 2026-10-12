@@ -92,7 +92,6 @@ export type ToolResultListener = (
 export interface TurnCallbacks {
   onToken?: (token: string) => void;
   onThinking?: (token: string) => void;
-  onPromptProgress?: (progress: PromptProgress) => void;
   onToolCall?: ToolCallListener;
   onToolResult?: ToolResultListener;
   /** A tool produced a picture (for the user to see; the model already gets it with the result). */
@@ -438,7 +437,7 @@ export async function runTurn(
       toolDefs,
       callbacks.onToken,
       callbacks.onThinking,
-      callbacks.onPromptProgress,
+      undefined,
       undefined,
       callbacks.abort,
       callbacks.isToolEnabled,

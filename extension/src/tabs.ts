@@ -21,11 +21,7 @@ export interface PromotedTab {
 }
 
 /** A tab waiting for a slot to free up. */
-interface PendingTab {
-  id: number;
-  title: string;
-  url: string;
-}
+type PendingTab = PromotedTab;
 
 const pending: PendingTab[] = [];
 const MAX_PENDING = 3;
@@ -77,10 +73,6 @@ export function enqueue(tabId: number, title: string, url: string): void {
 /** The number of tabs waiting in the queue. */
 export function pendingCount(): number {
   return pending.length;
-}
-
-export function grant(tabId: number): void {
-  tryGrant(tabId);
 }
 
 export function isOwned(tabId: number): boolean {
