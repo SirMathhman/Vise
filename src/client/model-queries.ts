@@ -14,11 +14,20 @@ export interface ModelDetail {
   name?: string;
   contextLength?: number;
   vision: boolean;
+  /** Looks like an embedding model: it has a pooling type set, or its name says so (see `looksLikeEmbedder`). */
+  embedding: boolean;
   provider: ProviderId;
 }
 
 interface ModelsResponse {
-  data?: { id: string; name?: string; context_length?: number; architecture?: { input_modalities?: string[] } }[];
+  data?: {
+    id: string;
+    name?: string;
+    context_length?: number;
+    architecture?: { input_modalities?: string[] };
+    /** llama.cpp's router lists each model's server arguments here. */
+    status?: { args?: string[] };
+  }[];
 }
 
 /** A `/slots` entry: the context window of a slot. */
@@ -30,6 +39,18 @@ const networkError = (err: unknown): Result<never> => ({
   ok: false,
   error: { kind: "network", cause: err instanceof Error ? err.message : String(err) },
 });
+
+/**
+ * Whether a model listed by llama.cpp is meant for embeddings. The router puts
+ * `--embeddings` on every model, so that says nothing; what does is a pooling
+ * type (`--pooling mean`, which only an embedder is started with) or a name
+ * such as `nomic-embed-text` or `bge-m3`. A hint for the settings page, not a rule.
+ */
+export function looksLikeEmbedder(id: string, args: string[]): boolean {
+  const at = args.indexOf("--pooling");
+  const pooled = at >= 0 && args[at + 1] !== undefined && args[at + 1] !== "none";
+  return pooled || /embed|(^|[/_-])(bge|e5|gte|minilm|mxbai|snowflake-arctic)([/_.-]|$)/i.test(id);
+}
 
 /** One provider's model list, each model under its reference. */
 export async function fetchModelDetails(provider: Provider): Promise<Result<ModelDetail[]>> {
@@ -44,6 +65,7 @@ export async function fetchModelDetails(provider: Provider): Promise<Result<Mode
       name: m.name,
       contextLength: typeof m.context_length === "number" ? m.context_length : undefined,
       vision: m.architecture?.input_modalities?.includes("image") === true,
+      embedding: looksLikeEmbedder(m.id, m.status?.args ?? []),
       provider: provider.id,
     }));
     return { ok: true, value: models };

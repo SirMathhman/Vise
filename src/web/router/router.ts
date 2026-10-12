@@ -4,7 +4,7 @@ import { handleEditorMessage } from "../api/editors.ts";
 import { handleGitMessage } from "../api/git-api.ts";
 import { handleMcpMessage } from "../api/mcp-api.ts";
 import { handleModelMessage } from "../api/models/model-api.ts";
-import { handleSettingsMessage } from "../api/settings-api.ts";
+import { handleEnvChoices, handleSettingsMessage } from "../api/settings-api.ts";
 import { queueLine, steerLine, unqueue } from "../conn/line.ts";
 import { handleSemanticMessage } from "../api/semantic/semantic-api.ts";
 import { sendLists } from "../api/wire/lists.ts";
@@ -115,6 +115,7 @@ const ROUTES: Route[] = [
     },
   },
   // The settings file.
+  { owns: exact("env_choices"), run: async (conn, msg) => sendAll(conn, await handleEnvChoices(record(msg))) },
   { owns: exact("env_get", "env_set"), run: (conn, msg) => sendAll(conn, handleSettingsMessage(record(msg))) },
   // The notes, workflow and profile editors read and write their stores directly.
   {

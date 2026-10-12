@@ -22,6 +22,12 @@ export interface Spec {
   secret?: boolean;
   /** Used once at start-up: a change applies after a restart. */
   restart?: boolean;
+  /**
+   * The settings page offers suggestions for this value from a live source
+   * (a combobox: any text is still accepted). `local-models`: the models the
+   * local llama.cpp server reports.
+   */
+  choices?: "local-models";
 }
 
 const n = (
@@ -65,6 +71,7 @@ export const SPEC = {
     def: "",
     group: LLM,
     label: "embedding model for semantic search (a model on the local server that can embed; empty = the default local model)",
+    choices: "local-models",
   },
   semanticAutoIndex: n(
     "VISE_SEMANTIC_AUTOINDEX",

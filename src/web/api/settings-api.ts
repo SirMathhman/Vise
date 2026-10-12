@@ -1,3 +1,7 @@
+import { fetchModelDetails } from "../../client/model-queries.ts";
+import { providerOf } from "../../client/provider.ts";
+import { config } from "../../config.ts";
+import { formatError } from "../../output/format.ts";
 import { describeSettings, saveSettings } from "../../settings/settings-file.ts";
 
 /**
@@ -30,4 +34,24 @@ export function handleSettingsMessage(
       ...(error ? { error } : { saved: true }),
     },
   ];
+}
+
+/**
+ * `env_choices { source }`: suggestions for a setting that is a combobox.
+ *   server → browser: { type:"env_choices", source, offers:[{ value, label }] }
+ *                     { type:"env_choices", source, offers:[], error }
+ * `local-models`: what the local llama.cpp server lists, embedding models first
+ * (the router marks them with `--embedding`); any other text is still accepted.
+ */
+export async function handleEnvChoices(msg: Record<string, unknown>): Promise<Record<string, unknown>[]> {
+  const source = typeof msg.source === "string" ? msg.source : "";
+  if (source !== "local-models") return [{ type: "env_choices", source, offers: [], error: "unknown source" }];
+  const listed = await fetchModelDetails(providerOf(config, "local"));
+  if (!listed.ok) {
+    return [{ type: "env_choices", source, offers: [], error: formatError(listed.error).replace(/^vise: /, "") }];
+  }
+  const offers = [...listed.value]
+    .sort((a, b) => Number(b.embedding) - Number(a.embedding) || a.id.localeCompare(b.id))
+    .map((m) => ({ value: m.id, label: m.embedding ? `${m.id} (embedding model)` : m.id }));
+  return [{ type: "env_choices", source, offers }];
 }

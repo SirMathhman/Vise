@@ -14,6 +14,14 @@ interface EnvField {
   secret: boolean;
   set: boolean;
   restart: boolean;
+  /** Where suggestions for the value come from (a combobox); `local-models`: the local server's models. */
+  choices?: string;
+}
+
+/** One suggestion for a combobox. */
+export interface EnvOption {
+  value: string;
+  label: string;
 }
 
 export interface EnvMessage {
@@ -22,6 +30,9 @@ export interface EnvMessage {
   fields?: EnvField[];
   saved?: boolean;
   error?: string;
+  /** `env_choices`: which source this answers, and what it offers. */
+  source?: string;
+  offers?: EnvOption[];
 }
 
 /** The fields by group, groups in the order they first appear (a group split in the list is shown once). */
@@ -50,11 +61,24 @@ function appearance(): HTMLElement {
   return box;
 }
 
+/** Replace the entries of a combobox's suggestion list. */
+function fillList(list: HTMLDataListElement | undefined, options: EnvOption[]): void {
+  if (!list) return;
+  list.textContent = "";
+  for (const option of options) {
+    const entry = new Option(option.label, option.value);
+    entry.label = option.label;
+    list.append(entry);
+  }
+}
+
 /** The boxes the general tab draws and what they held, shared by its rows. */
 interface RowState {
   inputs: Map<string, HTMLInputElement>;
   shown: Map<string, string>;
   clearing: Set<string>;
+  /** The suggestion lists of the comboboxes, by source. */
+  lists: Map<string, HTMLDataListElement>;
   /** A box changed (the save bar follows). */
   changed(): void;
 }
@@ -77,6 +101,18 @@ function settingRow(field: EnvField, state: RowState): HTMLElement {
     input.value = field.value;
   }
   input.title = field.env;
+  if (field.choices && !field.secret) {
+    // A combobox: type anything, or pick what the source offers (filled when its answer arrives).
+    let list = state.lists.get(field.choices);
+    if (!list) {
+      list = make("datalist");
+      list.id = `env-choices-${field.choices}`;
+      state.lists.set(field.choices, list);
+    }
+    input.setAttribute("list", list.id);
+    input.placeholder = `Default: ${field.def || "the default local model"} (type, or pick one)`;
+    line.append(list);
+  }
   input.addEventListener("input", state.changed);
   state.inputs.set(field.env, input);
   state.shown.set(field.env, input.value);
@@ -114,6 +150,9 @@ export function createEnvPanel(
   const shown = new Map<string, string>();
   /** Secrets the user asked to clear. */
   const clearing = new Set<string>();
+  const lists = new Map<string, HTMLDataListElement>();
+  /** What each source last answered, kept so a re-drawn page shows it at once. */
+  const offered = new Map<string, EnvOption[]>();
   const status = make("span", "status-line");
   status.setAttribute("role", "status");
   const where = make("p", "hint");
@@ -141,12 +180,15 @@ export function createEnvPanel(
     bar.classList.toggle("is-clean", !dirty && status.textContent === "");
   };
 
-  const row = (field: EnvField): HTMLElement => settingRow(field, { inputs, shown, clearing, changed: syncBar });
+  const row = (field: EnvField): HTMLElement => settingRow(field, { inputs, shown, clearing, lists, changed: syncBar });
+
+  const fill = (source: string): void => fillList(lists.get(source), offered.get(source) ?? []);
 
   function render(): void {
     inputs.clear();
     shown.clear();
     clearing.clear();
+    lists.clear();
     body.textContent = "";
     body.append(theming, where);
     for (const [group, members] of groupFields(fields)) {
@@ -155,6 +197,11 @@ export function createEnvPanel(
     }
     body.append(bar);
     syncBar();
+    // Comboboxes show what they last heard at once, and ask again (the server's models can change).
+    for (const source of lists.keys()) {
+      fill(source);
+      send({ type: "env_choices", source });
+    }
   }
 
   save.addEventListener("click", () => {
@@ -173,6 +220,18 @@ export function createEnvPanel(
 
   return {
     handle(message) {
+      if (message.type === "env_choices") {
+        const source = message.source ?? "";
+        offered.set(source, message.offers ?? []);
+        fill(source);
+        for (const [env, input] of inputs) {
+          const field = fields.find((f) => f.env === env);
+          if (field?.choices === source) {
+            input.title = message.error ? `${env}: could not list the models (${message.error})` : env;
+          }
+        }
+        return true;
+      }
       if (message.type !== "env") return false;
       // A refused save keeps what was typed, so it can be corrected.
       if (message.error) {

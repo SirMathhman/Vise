@@ -115,6 +115,8 @@ export function describeSettings(): {
     secret: boolean;
     set: boolean;
     restart: boolean;
+    /** Where the page gets suggestions for the value (a combobox), when it has them. */
+    choices?: string;
   }[];
 } {
   return {
@@ -130,6 +132,7 @@ export function describeSettings(): {
       secret: spec.secret === true,
       set: fileValue(spec) !== "",
       restart: spec.restart === true,
+      ...(spec.choices === undefined ? {} : { choices: spec.choices }),
     })),
   };
 }
