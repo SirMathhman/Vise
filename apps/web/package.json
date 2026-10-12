@@ -1,0 +1,11 @@
+{
+  "name": "@vise/web",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@vise/backend": "*",
+    "@vise/core": "*",
+    "@vise/common": "*"
+  }
+}
