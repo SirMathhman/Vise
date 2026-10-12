@@ -1,3 +1,7 @@
+> **Status:** implemented (see AGENTS.md, "Semantic search"). Differences from this plan: embeddings are always local
+> (`LlmClient.embedMany`, never the chat provider); the table also keeps line ranges, the model and mtime; the
+> explorer search goes over the WebSocket (`sem_*`), not HTTP; the tool is registered in `ioHandlers` in wiring.
+
 ## Plan: Semantic Search for File Content
 
 Add semantic (embedding-based) search across file content in the working directory. Indexed in the background when a folder opens; queried via a `/search semantic <text>` command, a `semantic_search` model-facing tool, and a search box in the web file explorer. Results show file path + snippet + relevance score.

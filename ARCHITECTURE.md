@@ -96,7 +96,7 @@ src/                # at most 9 .ts files per directory (enforced by test/layout
                     # owns URL/key/model config
     stream/         # call-trace, generation, request-fields, stream-reader: one call's stream and its record
     retry.ts        # which failures are asked again, and how long to wait
-    model-queries.ts # what a provider says about its models: list, window,
+    model-queries.ts # what a provider says about its models and its embeddings: list, window,
                     # vision, embeddings (with llm.ts, the only network I/O)
     provider.ts     # pure: which provider, its URLs and `capabilities`
   core/             # pure: engine, workflow, errors, goal, goal-trace, audit types (no node: imports)
@@ -114,6 +114,8 @@ src/                # at most 9 .ts files per directory (enforced by test/layout
                     # SessionCommands, CompactionSource, etc.)
     ports.ts, session-options.ts, session-name.ts, profile-tools.ts  # port types and session helpers
     command-catalog.ts # every built-in slash command once: help, the page's suggestions, reserved names
+    # (semantic search: stores/semantic/ the index, tools/semantic/ the tool, web/api/semantic/ the page's
+    #  messages, web/src/workspace/search/ the explorer's box; all through SemanticIndexPort in ports.ts)
     lists.ts        # the controls' data (profiles, tools, reasoning, sessions, burst) for a frontend
     commands/       # slash-command handlers: commands (immutable state), session-commands
                     # (mutable state), hooks, image, search and workflow commands — plain
@@ -784,9 +786,14 @@ purpose }` handed to `Client.chat`, replacing the nine positional parameters.
   key tables, the `inTab` race) that want a shared base; the page's settings
   tabs refresh two different ways and the tools/git/model dropdowns are built
   three different ways (a `createXPanel(group, send)` factory each); the
-  terminal's Ctrl+C path is unconfirmed (see AGENTS.md "Known gaps");
-  semantic search (`src/stores/file-embeddings.ts`) is built but not wired to
-  a command, tool or panel.
+  terminal's Ctrl+C path is unconfirmed (see AGENTS.md "Known gaps").
+- **Semantic search follow-ups.** The index holds every chunk's vector in
+  memory for a search (fine for thousands of chunks; a vector index would be
+  needed beyond tens of thousands); the explorer shows hits but not a
+  per-file "similar passages" view; hybrid ranking with the saved-sessions
+  full-text search is not attempted; an index built while the chat model is
+  also generating competes with it for the local server (batches are small and
+  sequential, no throttle yet).
 
 ## Performance
 
