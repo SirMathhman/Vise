@@ -30,6 +30,8 @@ export interface ModelPickerParts {
   close(): void;
   /** A model was chosen in the picker (the chat log echoes it, as `/model` does). */
   onChoose(id: string): void;
+  /** The server refused a switch (the picker shows the model that is still active). */
+  onError(text: string): void;
 }
 
 export interface ModelPicker {
@@ -114,7 +116,7 @@ function moveFocus(panel: HTMLElement, event: KeyboardEvent): void {
 
 /** The model button and its panel: a search box, the recently used models, and the full list. */
 export function createModelPicker(parts: ModelPickerParts): ModelPicker {
-  const { button, panel, search, recent, recentList, list, send, close, onChoose } = parts;
+  const { button, panel, search, recent, recentList, list, send, close, onChoose, onError } = parts;
   let models: ModelEntry[] = [];
   let active = "";
   let loaded = false;
@@ -127,7 +129,10 @@ export function createModelPicker(parts: ModelPickerParts): ModelPicker {
       const found = models.find((model) => model.id === active);
       button.textContent = found?.name || active;
       button.title = active;
-    } else if (loaded && failure === undefined) {
+    } else if (failure !== undefined) {
+      button.textContent = "Models unavailable";
+      button.title = failure;
+    } else if (loaded) {
       button.textContent = "No model";
       button.title = "No model is active";
     }
@@ -198,6 +203,11 @@ export function createModelPicker(parts: ModelPickerParts): ModelPicker {
       }
       if (reply.type === "model_set") {
         if (reply.ok && reply.active) setActive(reply.active);
+        else if (!reply.ok) {
+          // Refused: show what is still active, not the model that was clicked.
+          if (reply.active) setActive(reply.active);
+          onError(reply.error ?? "could not switch model");
+        }
         return true;
       }
       return false;

@@ -399,6 +399,25 @@ function parseArgs(raw: string): Record<string, unknown> | undefined {
   }
 }
 
+/** One tool call of a reply: its output, or an `error:` result saying why it did not run (bad arguments, a handler that threw). */
+async function runToolCall(
+  tools: ToolRunner,
+  tc: ToolCall,
+  callbacks: TurnCallbacks,
+): Promise<string> {
+  const name = tc.function.name;
+  const args = parseArgs(tc.function.arguments);
+  if (args === undefined) {
+    return `error: the arguments of ${name} were not a valid JSON object`;
+  }
+  try {
+    return await tools.run(name, args, callbacks.abort);
+  } catch (error) {
+    const why = error instanceof Error ? error.message : String(error);
+    return `error: failed to execute ${name}: ${why}`;
+  }
+}
+
 export async function runTurn(
   client: Client,
   tools: ToolRunner,
@@ -477,16 +496,7 @@ ${reply.content}`
       let failed = false;
       for (const tc of reply.tool_calls) {
         announceTool(callbacks, tc);
-        let output: string;
-        try {
-          const args = JSON.parse(tc.function.arguments) as Record<
-            string,
-            unknown
-          >;
-          output = await tools.run(tc.function.name, args, callbacks.abort);
-        } catch {
-          output = `error: failed to execute ${tc.function.name}`;
-        }
+        const output = await runToolCall(tools, tc, callbacks);
         failed ||= output.startsWith("error:");
         messages.push(
           toolResult(tc.function.name, output, tc.id, tools, callbacks),

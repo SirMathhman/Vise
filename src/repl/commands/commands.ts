@@ -1,4 +1,5 @@
 import type { ToolController } from "../../core/engine.ts";
+import { newNameProblem } from "./registry.ts";
 import { REASONING_EFFORTS } from "../../client/llm.ts";
 import type { Result } from "../../core/errors.ts";
 import {
@@ -71,21 +72,35 @@ export async function handleModelCommand(
     };
   }
 
+  return switchModel(modelController, arg);
+}
+
+/**
+ * Switch to `id` the way `/model <id>` does, so the picker and the command
+ * agree: a local model must be one the server lists, a hosted provider takes
+ * any id (its list is incomplete).
+ */
+export async function switchModel(
+  modelController: ModelController,
+  id: string,
+): Promise<Result<string>> {
+  if (id.trim() === "") {
+    return { ok: false, error: { kind: "malformed", body: "no model given" } };
+  }
   const models = await modelController.listModels();
   if (!models.ok) return models;
   const anyId = modelController.hostedModels?.() === true;
-  if (!anyId && !models.value.includes(arg)) {
+  if (!anyId && !models.value.includes(id)) {
     return {
       ok: false,
       error: {
         kind: "malformed",
-        body: `unknown model '${arg}'. Run '/model' to see available models.`,
+        body: `unknown model '${id}'. Run '/model' to see available models.`,
       },
     };
   }
-
-  modelController.setModel(arg);
-  return { ok: true, value: `switched to model ${arg}` };
+  modelController.setModel(id);
+  return { ok: true, value: `switched to model ${id}` };
 }
 
 /**
@@ -310,6 +325,8 @@ export async function handleNotesCommand(
         },
       };
     }
+    const problem = newNameProblem(name);
+    if (problem) return { ok: false, error: { kind: "malformed", body: problem } };
     const scope = global ? "global" : "project";
     const result = await noteSource.initNote(name, category, scope);
     if (!result.ok) return result;

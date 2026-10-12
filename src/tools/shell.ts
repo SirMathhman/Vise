@@ -157,6 +157,10 @@ export async function runPowershell(
     });
     const exitCode = timedOut ? -1 : result.status;
     const body = formatBody(record);
+    if (timedOut) {
+      const seconds = Math.round(config.shellTimeoutMs / 1000);
+      return `error: timed out after ${seconds} s (use background: true for long commands)\n${body}`.trim();
+    }
     if (exitCode !== 0) {
       return `exit code ${exitCode}\n${body}`.trim();
     }
@@ -186,8 +190,13 @@ export function waitForProcess(args: Record<string, unknown>): Promise<string> {
     return Promise.resolve(`error: no process ${id}`);
   }
   const rawTimeout = args.timeout;
+  // The timeout is optional: omitted means "do not wait" (0).
   const timeout =
-    typeof rawTimeout === "number" ? rawTimeout : Number(rawTimeout);
+    rawTimeout === undefined || rawTimeout === null
+      ? 0
+      : typeof rawTimeout === "number"
+        ? rawTimeout
+        : Number(rawTimeout);
   if (
     !Number.isFinite(timeout) ||
     timeout < 0 ||

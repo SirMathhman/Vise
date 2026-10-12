@@ -11,6 +11,7 @@ function fakeConnection(canSee = true): {
   const conn = {
     session: {
       handleLine: async () => ({ ok: true, value: "" }),
+      contextReport: async () => ({ ok: true, value: "" }),
       notices: new NoticeQueue(),
       getSessionId: () => undefined,
     },

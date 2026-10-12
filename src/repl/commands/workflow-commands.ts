@@ -1,4 +1,5 @@
 import type { Picture } from "../../core/errors.ts";
+import { newNameProblem } from "./registry.ts";
 import type {
   Client,
   Tool,
@@ -102,6 +103,8 @@ async function initWorkflow(source: WorkflowSource, rest: string): Promise<LineR
       error: { kind: "malformed", body: "usage: /workflow init [--global] <name>" },
     };
   }
+  const problem = newNameProblem(initArgs[0]);
+  if (problem) return { ok: false, error: { kind: "malformed", body: problem } };
   const created = await source.initWorkflow(initArgs[0], scope);
   if (!created.ok) return created;
   return { ok: true, value: `initialized ${scope} workflow '${created.value}'` };

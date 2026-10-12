@@ -264,6 +264,8 @@ export interface SessionCommands {
   currentSession(): { id: string | undefined; name: string | undefined };
   /** Point the conversation at a session (undefined: it has none yet). */
   setSession(id: string | undefined, name: string | undefined): void;
+  /** Apply a profile's tool whitelist (undefined: lift it); `/resume` re-applies the restored profile's. */
+  applyProfileTools?(name: string | undefined): Promise<void>;
   /** The agent's todo list (saved with the session). */
   todos: TodoStore | undefined;
   /** The goal trace (saved with the session, restored on resume so it keeps growing). */

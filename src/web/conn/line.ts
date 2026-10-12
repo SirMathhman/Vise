@@ -242,13 +242,9 @@ async function handleLine(
   }
   if (result.ok) {
     // Read the live context fill after a successful turn so the client can
-    // display it. "/context" is a pure read (no model call, no conversation
-    // change), so this is safe to call inline.
-    let context: string | undefined;
-    const ctxResult = await session.handleLine("/context");
-    if (ctxResult !== "exit" && ctxResult.ok) {
-      context = ctxResult.value;
-    }
+    // display it (a read, not a `/context` command: it must not be audited).
+    const ctxResult = await session.contextReport();
+    const context = ctxResult.ok ? ctxResult.value : undefined;
     send({
       type: "result",
       ok: true,

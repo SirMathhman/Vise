@@ -1,4 +1,5 @@
 import type { Result } from "../../core/errors.ts";
+import { newNameProblem } from "./registry.ts";
 import { formatProfileList, formatSessionList } from "../../output/format.ts";
 import { saveProfileWhitelist } from "../profile-tools.ts";
 import type {
@@ -81,6 +82,8 @@ export async function handleProfileCommand(
         error: { kind: "malformed", body: "usage: /profile init <name>" },
       };
     }
+    const problem = newNameProblem(name);
+    if (problem) return { ok: false, error: { kind: "malformed", body: problem } };
     const result = await profileSource.initProfile(name);
     if (!result.ok) return result;
     return { ok: true, value: `initialized profile '${name}'` };
@@ -117,13 +120,13 @@ export async function handleProfileCommand(
 }
 
 /** Apply the named profile's tool whitelist (undefined name: lift it). */
-async function applyWhitelist(
-  session: ProfileCommands,
-  source: ProfileSource,
+export async function applyWhitelist(
+  session: Pick<ProfileCommands, "applyProfileTools">,
+  source: ProfileSource | undefined,
   name: string | undefined,
 ): Promise<void> {
   const tools =
-    name !== undefined && source.profileTools
+    name !== undefined && name !== DEFAULT_PROFILE_NAME && source?.profileTools
       ? await source.profileTools(name)
       : undefined;
   session.applyProfileTools(tools?.ok ? tools.value : undefined);
@@ -213,6 +216,8 @@ export async function handleResumeCommand(
   const savedBody = saved.messages.slice(1);
   session.resetMessages(savedBody);
   session.setActiveProfile(saved.activeProfile);
+  // The profile's tool whitelist is part of being in it, as after `/new`.
+  await session.applyProfileTools?.(saved.activeProfile);
   session.todos?.set(saved.todos ?? []);
   session.goalLog?.set(saved.goalTrace ?? []);
   // A resumed conversation keeps writing to its own session.

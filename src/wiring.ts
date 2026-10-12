@@ -217,7 +217,7 @@ export interface EdgeSessionOptions {
 /** What the web model picker reads and writes: the provider's model list and the controller `/model` uses. */
 export interface ModelPickerPorts {
   details(): Promise<Result<ModelDetail[]>>;
-  controller: Pick<ModelController, "getModel" | "setModel">;
+  controller: ModelController;
 }
 
 /** The edge services a frontend needs after construction. */

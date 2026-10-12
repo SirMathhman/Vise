@@ -57,7 +57,7 @@ async function guarded(action: () => Promise<string>): Promise<string> {
   try {
     return await action();
   } catch (err) {
-    return `error: ${errStr(err)}`;
+    return errStr(err);
   }
 }
 

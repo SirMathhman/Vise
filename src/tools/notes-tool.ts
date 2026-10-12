@@ -31,7 +31,7 @@ export function readNoteTool(
   store: NoteStore,
 ): string {
   try {
-    return store.read(idOf(args)) ?? "";
+    return store.read(idOf(args)) ?? "error: no such note";
   } catch (err) {
     return errStr(err);
   }

@@ -143,7 +143,7 @@ const busyUi = createBusy({
   input,
   send,
   stop: stopBtn,
-  locked: [profileSelect, reasoningSelect],
+  locked: [profileSelect, reasoningSelect, modelBtn],
   setSteering: (on) => {
     steerUi.setRunning(on);
     composerHint.classList.toggle("hidden", !on);
@@ -302,6 +302,7 @@ const modelPicker = createModelPicker({
   send: sendMessage,
   close: modelPanel.close,
   onChoose: (id) => transcript.addLine("system", `Model: ${id}`),
+  onError: (text) => toast(text, "error"),
 });
 const pages = registerPages(
   {

@@ -245,27 +245,32 @@ export class ChromiumBackend implements BrowserBackend {
     this.tabs.delete(id);
   }
 
+  /** Both reads go through `inTab`: a blocking dialog would otherwise leave the evaluate waiting forever. */
   async readText(id: number): Promise<string> {
-    const cdp = await this.connection();
-    const { result } = await cdp.send<{ result: { value?: string } }>(
-      "Runtime.evaluate",
-      {
-        expression: "document.body ? document.body.innerText : ''",
-        returnByValue: true,
-      },
-      this.tab(id).sessionId,
-    );
-    return result.value ?? "";
+    const text = await this.inTab(id, async (cdp, session) => {
+      const { result } = await cdp.send<{ result: { value?: string } }>(
+        "Runtime.evaluate",
+        {
+          expression: "document.body ? document.body.innerText : ''",
+          returnByValue: true,
+        },
+        session,
+      );
+      return result.value ?? "";
+    });
+    return text ?? "(a dialog opened while reading the page)";
   }
 
   async pageProbe(id: number, needle?: string): Promise<PageProbe> {
-    const cdp = await this.connection();
-    const { result } = await cdp.send<{ result: { value?: PageProbe } }>(
-      "Runtime.evaluate",
-      { expression: probeScript(needle), returnByValue: true },
-      this.tab(id).sessionId,
-    );
-    return result.value ?? { contains: false, fingerprint: "" };
+    const probe = await this.inTab(id, async (cdp, session) => {
+      const { result } = await cdp.send<{ result: { value?: PageProbe } }>(
+        "Runtime.evaluate",
+        { expression: probeScript(needle), returnByValue: true },
+        session,
+      );
+      return result.value ?? { contains: false, fingerprint: "" };
+    });
+    return probe ?? { contains: false, fingerprint: "dialog" };
   }
 
   async startScreencast(

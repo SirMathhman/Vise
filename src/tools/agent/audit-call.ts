@@ -1,4 +1,5 @@
 import type { AuditSink } from "../../core/audit.ts";
+import { errStr } from "../files.ts";
 import { currentSubagentDepth } from "./subagent.ts";
 
 /** Run a tool handler and record the call: its whole result (or the exception) and how long it took. */
@@ -13,8 +14,8 @@ export async function auditCall(
   try {
     result = await run();
   } catch (e) {
-    record(audit, name, args, `error: ${String(e)}`, started);
-    throw e;
+    // A handler that throws still gives the model its message (and is audited as failed).
+    result = errStr(e);
   }
   record(audit, name, args, result, started);
   return result;

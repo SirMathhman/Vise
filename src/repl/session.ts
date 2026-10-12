@@ -29,6 +29,7 @@ import { addedSinceLastCall, autoCompact, runCompaction } from "./turn/compactio
 import { makeRoundHook, NoticeQueue } from "./turn/round-hooks.ts";
 import { ProfileToolGate } from "./profile-tools.ts";
 import {
+  applyWhitelist,
   handleDeleteCommand,
   handleProfileCommand,
   handleResumeCommand,
@@ -192,16 +193,13 @@ export class Session {
     this.sessionCommands = {
       sessionSource: () => this.sessionSource,
       activeProfile: () => this.activeProfile,
-      setActiveProfile: (name) => {
-        this.activeProfile = name;
-      },
-      pushMessage: (message) => {
-        this.messages.push(message);
-      },
+      setActiveProfile: (name) => void (this.activeProfile = name),
+      pushMessage: (message) => void this.messages.push(message),
       messages: () => {
         this.flushPendingProfile();
-        return [...this.messages];
+        return this.persistableMessages();
       },
+      applyProfileTools: (name) => applyWhitelist(this.profileCommands, this.profileSource, name),
       resetMessages: (body) => {
         this.pendingProfile = [];
         this.goals.goal = undefined;
@@ -220,7 +218,7 @@ export class Session {
     this.compactionSource = {
       client: this.client,
       audit: this.audit.sink,
-      messages: () => this.messages.filter((m) => !this.goals.isNote(m)),
+      messages: () => this.persistableMessages(),
       resetMessages: (body) => this.replaceConversation(body),
       prefix: () => ({ system: this.systemMessage, tools: this.toolDefs }),
     };
@@ -299,7 +297,8 @@ export class Session {
       onBurst: this.opts.onBurst,
       onMaxRounds: this.opts.onMaxRounds,
       isToolEnabled: this.isToolEnabled,
-      burst: this.burst,
+      // A model switched to one without grammar support (hosted) cannot run burst.
+      burst: this.burst && this.modelController?.supportsBurst?.() !== false,
       abort,
     };
   }
@@ -437,7 +436,7 @@ export class Session {
   private readonly commands: BuiltinCommand[] = [
     { name: "/exit", exact: true, run: () => "exit" },
     { name: "/help", exact: true, run: () => this.help() },
-    { name: "/context", exact: true, run: () => reportContext(this.context) },
+    { name: "/context", exact: true, run: () => this.contextReport() },
     { name: "/hooks", run: (line) => this.hooks.command(line) },
     { name: "/compact", exact: true, run: () => this.doCompact() },
     { name: "/image", run: (line) => this.attachments.command(line) },
@@ -560,30 +559,13 @@ export class Session {
     );
   }
 
-  /**
-   * Shared compaction body: delegates to `compaction.ts` to split the
-   * conversation, summarize the older portion, and replace the conversation
-   * with the summary plus the recent turns. On any error the conversation is
-   * left untouched and the error is returned.
-   */
-  private async doCompact(): Promise<Result<string>> {
-    return runCompaction(this.compactionSource);
-  }
+  /** `/compact`: summarize the older conversation (`compaction.ts`); on any error it is left untouched. */
+  private doCompact = (): Promise<Result<string>> => runCompaction(this.compactionSource);
 
-  /**
-   * Auto-save the current conversation after a successful normal turn.
-   * Silently ignores I/O errors — a save failure must not interrupt the
-   * turn. The snapshot is written under a stable name derived from the first
-   * user message, with collisions resolved on the initial save.
-   */
-  /**
-   * The currently active profile name, or undefined when none is set.
-   * Exposed for the edge's `self` tool, which reports the agent's identity
-   * (the session's active-profile state is otherwise private).
-   */
   /** The id of the saved session this conversation writes to, once it has one. */
   getSessionId = (): string | undefined => this.sessionId;
 
+  /** The active profile name, or undefined when none is set (for the `self` tool). */
   getActiveProfile = (): string | undefined => this.activeProfile;
 
   /**
@@ -617,6 +599,9 @@ export class Session {
     return { ok: true, value: "started a new conversation" };
   }
 
+  /** The context-fill line `/context` prints. A pure read, so a frontend can ask for it without it being a command (and an audit event). */
+  contextReport = (): Promise<Result<string>> => reportContext(this.context);
+
   /** Tell the model something the user did (a shared tab); it is added before the next model call, never between a tool call and its result. */
   notify = (text: string): void => this.notices.add(text);
 
@@ -632,13 +617,16 @@ export class Session {
     this.pendingProfile = [];
   }
 
+  /** The conversation as it is saved and summarised: the goal loop's continue notes are not the user's words, so they are left out. */
+  private persistableMessages = (): Message[] => this.messages.filter((m) => !this.goals.isNote(m));
+
   private async saveSession(): Promise<void> {
     if (!this.sessionSource || this.sessionName === undefined) return;
     try {
       const saved = await this.sessionSource.save(
         this.sessionId,
         this.sessionName,
-        this.messages.filter((m) => !this.goals.isNote(m)),
+        this.persistableMessages(),
         this.activeProfile,
         this.opts.todos?.get(),
         this.goalLog.entries(),

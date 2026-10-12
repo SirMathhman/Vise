@@ -13,8 +13,14 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 
+/**
+ * A failure as the tool result the model and the runner both recognise: the
+ * `error:` prefix is what marks a result as failed (audit, goal loop, display),
+ * so every failing tool returns this and never a bare message.
+ */
 export function errStr(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
+  const message = err instanceof Error ? err.message : String(err);
+  return message.startsWith("error:") ? message : `error: ${message}`;
 }
 
 export function listDirectory(args: Record<string, unknown>): string {

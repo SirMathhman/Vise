@@ -217,24 +217,19 @@ export class FirefoxBackend implements BrowserBackend {
     this.tabs.delete(id);
   }
 
+  /** Both reads go through `inTab`: a blocking dialog would otherwise leave the evaluate waiting forever. */
   async readText(id: number): Promise<string> {
-    const bidi = await this.connection();
-    const text = await actions.evalJson<string>(
-      bidi,
-      this.context(id),
-      "document.body ? document.body.innerText : ''",
+    const text = await this.inTab(id, (bidi, context) =>
+      actions.evalJson<string>(bidi, context, "document.body ? document.body.innerText : ''"),
     );
-    return text ?? "";
+    return text ?? "(a dialog opened while reading the page)";
   }
 
   async pageProbe(id: number, needle?: string): Promise<PageProbe> {
-    const bidi = await this.connection();
-    const probe = await actions.evalJson<PageProbe>(
-      bidi,
-      this.context(id),
-      probeScript(needle),
+    const probe = await this.inTab(id, (bidi, context) =>
+      actions.evalJson<PageProbe>(bidi, context, probeScript(needle)),
     );
-    return probe ?? { contains: false, fingerprint: "" };
+    return probe ?? { contains: false, fingerprint: "dialog" };
   }
 
   async startScreencast(

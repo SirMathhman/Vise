@@ -340,9 +340,13 @@ async function runToolStep(
     output = `error: ${error instanceof Error ? error.message : String(error)}`;
   }
   options.callbacks.onToolResult?.(step.name, 0, output);
+  // A picture the step produced is shown, and travels with its result (never left for the next tool).
+  const images = options.tools.takeImages?.() ?? [];
+  for (const image of images) options.callbacks.onImage?.(image);
   options.messages.push({
     role: "user",
     content: `Workflow tool step ${number} result from '${step.name}':\n${output}`,
+    ...(images.length > 0 ? { images } : {}),
   });
   if (output.trimStart().startsWith("error:")) {
     return {
