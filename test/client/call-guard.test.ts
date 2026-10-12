@@ -94,7 +94,7 @@ describe("the runaway guard", () => {
   });
 
   test("a provider that sends no token count still gets its looping call stopped", async () => {
-    // OpenRouter streams content deltas with no `timings`; the guard must still judge them.
+    // Some providers stream content deltas with no `timings`; the guard must still judge them.
     const piece = "<invoke_tool>\n</invoke_tool>\n\n";
     const body =
       Array.from({ length: 200 }, () => `data: ${JSON.stringify({ choices: [{ delta: { content: piece } }] })}\n\n`).join("") +

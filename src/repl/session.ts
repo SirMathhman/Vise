@@ -286,7 +286,7 @@ export class Session {
       onBurst: this.opts.onBurst,
       onMaxRounds: this.opts.onMaxRounds,
       isToolEnabled: this.isToolEnabled,
-      // A model switched to one without grammar support (hosted) cannot run burst.
+      // A model switched to one without grammar support cannot run burst.
       burst: this.burst && this.modelController?.supportsBurst?.() !== false,
       abort,
     };

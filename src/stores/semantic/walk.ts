@@ -9,7 +9,7 @@ const SKIP_DIRS = new Set(["node_modules", ".git", ".vise", "dist", "out", "buil
 
 /**
  * Files that hold secrets: a key or an environment file must not be turned into
- * vectors (and, with a hosted embedder, sent anywhere). Matched on the name.
+ * vectors (and, with a remote embedder, sent anywhere). Matched on the name.
  */
 export function isSecretName(name: string): boolean {
   const lower = name.toLowerCase();

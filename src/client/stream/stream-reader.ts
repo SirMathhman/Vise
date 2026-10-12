@@ -7,11 +7,11 @@ import { hideCalls, type TokenLogprob } from "../tool-protocol.ts";
 
 interface Usage {
   prompt_tokens?: number;
-  /** What the call wrote: how a provider without llama.cpp's `timings` reports it (OpenRouter). */
+  /** What the call wrote: how a provider without llama.cpp's `timings` reports it. */
   completion_tokens?: number;
 }
 
-/** What a provider sends in a chunk when the call failed after the stream began (OpenRouter: `{ error: { code, message } }`). */
+/** What a provider sends in a chunk when the call failed after the stream began (`{ error: { code, message } }`). */
 interface StreamError {
   code?: number | string;
   message?: string;
@@ -28,7 +28,7 @@ interface StreamToolCallDelta {
 interface StreamDelta {
   content?: string;
   reasoning_content?: string;
-  /** OpenRouter's name for the same thing. */
+  /** Another name some providers use for the same thing. */
   reasoning?: string;
   tool_calls?: StreamToolCallDelta[];
 }

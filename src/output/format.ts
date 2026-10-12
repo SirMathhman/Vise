@@ -5,7 +5,7 @@ import type { SessionEntry } from "../repl/ports.ts";
 
 /**
  * What an HTTP error body says, as one short sentence: the `error.message` of
- * the JSON an OpenAI-style API (llama.cpp, OpenRouter) answers with, else the
+ * the JSON an OpenAI-style API (llama.cpp, vLLM) answers with, else the
  * body as it came. A few statuses get what to do about them.
  */
 export function httpReason(status: number, body: string): string {

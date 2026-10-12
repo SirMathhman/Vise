@@ -25,7 +25,7 @@ Add semantic (embedding-based) search across file content in the working directo
 1. **Add `embed` method to `LlmClient`** — `src/client/llm.ts`
    - New async method: `async embed(text: string, model?: string): Promise<number[]>`
    - For llama.cpp: `POST ${provider.rootUrl}/v1/embeddings` with `{ model, input: [text] }` → response `{ data: [{ embedding: number[] }] }` → return `data[0].embedding`
-   - For OpenRouter: `POST ${provider.chatUrl.replace('/chat/completions', '/embeddings')}` with `{ model, input: [text] }` (OpenRouter has a standard OpenAI embeddings endpoint)
+   - Embeddings always use the local server's `/v1/embeddings`; no hosted embedder is supported.
    - Error handling: return a `ViseError`-like structured error (network, 404, etc.) — follow the pattern of `listModels()` (line 319) and `supportsVision()` (line 287)
    - The model name defaults to `config.llmModel` but is overridable by a new config key
    - **Parallel with step 2**

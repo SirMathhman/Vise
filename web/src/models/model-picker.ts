@@ -8,7 +8,7 @@ export interface ModelEntry {
   name?: string;
   contextLength?: number;
   vision: boolean;
-  /** Where the model runs: "local" (llama.cpp) or "openrouter". */
+  /** Where the model runs: "local" (llama.cpp); a badge is shown for any other provider. */
   provider?: string;
 }
 
@@ -85,7 +85,7 @@ function modelRow(model: ModelEntry, active: string, choose: (id: string) => voi
   if (model.name) text.append(make("span", "model-id", model.id));
   const meta = make("span", "model-meta");
   if (model.contextLength) meta.append(make("span", "badge badge--sm", contextLabel(model.contextLength)));
-  if (model.provider === "openrouter") meta.append(make("span", "badge badge--sm", "OpenRouter"));
+  if (model.provider && model.provider !== "local") meta.append(make("span", "badge badge--sm", model.provider));
   if (model.vision) meta.append(make("span", "badge badge--sm", "vision"));
   choice.append(text, meta);
   choice.addEventListener("click", () => choose(model.id));

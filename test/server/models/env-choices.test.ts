@@ -56,12 +56,11 @@ test("a server that cannot be listed gives no suggestions and says why", async (
 });
 
 test("the list is always the local server's, whatever the chat provider is", async () => {
-  applySettings({ VISE_LLM_PROVIDER: "openrouter", VISE_OPENROUTER_API_KEY: "k" });
+  applySettings({ VISE_LLM_PROVIDER: "local" });
   const mock = mockFetch(() => jsonResponse({ data: [{ id: "local/model" }] }));
   try {
     await handleEnvChoices({ type: "env_choices", source: "local-models" });
     expect(mock.calls[0]?.url).toContain("localhost:8080");
-    expect(mock.calls[0]?.url).not.toContain("openrouter");
   } finally {
     mock.restore();
   }

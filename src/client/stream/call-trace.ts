@@ -185,7 +185,7 @@ export function traceListener(
 ): GenerationListener {
   let checkedAt = 0;
   // Whether the server reports its own running token count (llama.cpp's
-  // `timings`). Other providers (OpenRouter) send none, so each streamed piece
+  // `timings`). Other providers may send none, so each streamed piece
   // is counted as one token and the guard still runs.
   let reported = false;
   let pieces = 0;

@@ -91,26 +91,7 @@ export const SPEC = {
     env: "VISE_LLM_PROVIDER",
     def: "local",
     group: LLM,
-    label: "provider (local or openrouter)",
-  },
-  openrouterUrl: {
-    env: "VISE_OPENROUTER_URL",
-    def: "https://openrouter.ai/api/v1",
-    group: LLM,
-    label: "OpenRouter address",
-  },
-  openrouterApiKey: {
-    env: "VISE_OPENROUTER_API_KEY",
-    def: "",
-    group: LLM,
-    label: "OpenRouter API key",
-    secret: true,
-  },
-  openrouterModel: {
-    env: "VISE_OPENROUTER_MODEL",
-    def: "anthropic/claude-sonnet-4.5",
-    group: LLM,
-    label: "OpenRouter default model",
+    label: "provider (local)",
   },
   slotRequestTimeoutMs: n(
     "VISE_SLOT_REQUEST_TIMEOUT_MS",

@@ -1,8 +1,8 @@
-## Plan: OpenRouter Model Picker
+## Plan: Model Picker
 
-Replace the plain `<select id="model">` in the app bar with a searchable combobox panel that shows human-readable names, context-length and vision badges, and a "recently used" section. Works for both OpenRouter (hundreds of models) and local llama.cpp (few models, same UI, just less data).
+Replace the plain `<select id="model">` in the app bar with a searchable combobox panel that shows human-readable names, context-length and vision badges, and a "recently used" section. Works for any number of models, from a local llama.cpp server (few) to a large list.
 
-**Why:** OpenRouter has 200+ models but the current `<select>` caps at 40 raw IDs with no search. Users need to find a model by name, see its capabilities at a glance, and jump back to a recent model quickly.
+**Why:** A provider may list 200+ models but the old `<select>` caps at 40 raw IDs with no search. Users need to find a model by name, see its capabilities at a glance, and jump back to a recent model quickly.
 
 **Steps**
 
@@ -82,8 +82,8 @@ Replace the plain `<select id="model">` in the app bar with a searchable combobo
    - If `model_list` fails (network error, server unreachable), the panel shows "Could not load models" in the list area. The button keeps its previous text.
    - If `model_set` fails, show a brief inline error in the panel (or a toast) and don't close.
 
-9. **OpenRouter model `name` field**
-   - OpenRouter's `/models` returns a `name` field for most models (e.g., "Anthropic Claude Sonnet 4"). Use it when present. Fall back to the `id` when absent.
+9. **Model `name` field**
+   - A provider's `/models` may return a `name` field for most models (e.g., "Anthropic Claude Sonnet 4"). Use it when present. Fall back to the `id` when absent.
    - Some models may have verbose names — truncate in CSS (max-width + ellipsis on the name span, full text in `title` attribute).
 
 **Relevant files**
@@ -104,7 +104,7 @@ Replace the plain `<select id="model">` in the app bar with a searchable combobo
 **Verification**
 
 1. **Type check**: `bunx tsc --noEmit` (server/core) and `bun run typecheck:web` (browser) both pass.
-2. **Manual — OpenRouter**: Set provider to OpenRouter in settings. Open the model dropdown. Verify: hundreds of models listed with names, context badges, vision icons. Type "sonnet" in search — list filters. Click a model — button text changes, panel closes. Open again — "Recently used" section shows that model at top. Switch to a local model → recents updates.
+2. **Manual — large list**: With a server listing many models, open the model dropdown. Verify: hundreds of models listed with names, context badges, vision icons. Type "sonnet" in search — list filters. Click a model — button text changes, panel closes. Open again — "Recently used" section shows that model at top. Switch to a local model → recents updates.
 3. **Manual — Local llama.cpp**: With local provider, open the dropdown. Verify: only the 1-3 loaded models show (IDs, no names, no badges). Search works. Switching works.
 4. **Manual — Busy state**: Start a long turn. Open the model dropdown while the turn is running. Verify: the dropdown opens instantly (not queued behind the turn), and switching models takes effect immediately.
 5. **Manual — Composer autocomplete**: Type `/model` in the composer during a turn. Verify: the autocomplete still works (uses the old `listModels()` path or the new one — either is fine).
@@ -117,11 +117,11 @@ Replace the plain `<select id="model">` in the app bar with a searchable combobo
 - **Keep `listModels()` unchanged** on `LlmClient`. Add a new `listModelDetails()` alongside. The old path serves `ModelController` (terminal `/model`, composer autocomplete) and stays working.
 - **Recents in localStorage, not on the server.** 5 most-recently-used model IDs, per browser. Simple, no server state, survives reloads. Lost in private windows (acceptable).
 - **No provider grouping.** Flat list with search. Provider prefixes are visible in the ID subtitle (e.g., "anthropic/claude-sonnet-4") and searchable, but no collapsible sections. Keeps the UI simple; search is the primary navigation.
-- **No price display.** Context + vision are the useful at-a-glance facts. Price varies by provider and changes; it's better on the OpenRouter website.
+- **No price display.** Context + vision are the useful at-a-glance facts. Price varies by provider and changes; it varies by provider.
 - **Profile `<select>` stays as-is.** Only the model picker is upgraded in this plan.
 
 **Further Considerations**
 
-1. **Virtualization**: OpenRouter has 200+ models. A plain `<ul>` with 200 `<li>` items is fine (no virtualization needed at that scale). If the list grows to 1000+, we'd add a simple scroll-window. Not needed now.
+1. **Virtualization**: A provider may list 200+ models. A plain `<ul>` with 200 `<li>` items is fine (no virtualization needed at that scale). If the list grows to 1000+, we'd add a simple scroll-window. Not needed now.
 2. **Keyboard navigation**: Arrow up/down to move highlight, Enter to select, type-to-jump (filter by typed characters). The search input already handles typing; arrow keys are a nice-to-have. Recommendation: implement arrow keys in the same pass (it's ~20 lines of code for `keydown` on the panel). If scope-creeping, defer.
 3. **`/model` terminal command output**: The terminal still uses `formatModelList` which caps at 40. That's fine — the terminal is for power users who type IDs. No change needed.

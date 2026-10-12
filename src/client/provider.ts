@@ -1,10 +1,11 @@
 /**
- * The model provider the client talks to: the local llama.cpp server or
- * OpenRouter. Pure: built from setting values, it says where requests go, what
- * headers they carry and which llama.cpp-only features the server understands,
- * so `LlmClient` never branches on a URL.
+ * The model provider the client talks to: today the local llama.cpp server.
+ * Pure: built from setting values, it says where requests go, what headers they
+ * carry and which llama.cpp-only features the server understands, so
+ * `LlmClient` never branches on a URL. Another OpenAI-compatible engine (vLLM)
+ * is added by extending `ProviderId`, `providerOf` and a capabilities profile.
  */
-export type ProviderId = "local" | "openrouter";
+export type ProviderId = "local";
 
 /** The settings a provider is built from (a subset of `config`). */
 export interface ProviderSettings {
@@ -12,9 +13,6 @@ export interface ProviderSettings {
   llmBaseUrl: string;
   llmApiKey: string;
   llmModel: string;
-  openrouterUrl: string;
-  openrouterApiKey: string;
-  openrouterModel: string;
 }
 
 export interface Provider {
@@ -45,7 +43,7 @@ export interface ProviderCapabilities {
   serverState: boolean;
   /** `reasoning_effort` is a top-level field (else `reasoning: { effort }`). */
   flatReasoning: boolean;
-  /** The `json_schema` response format needs a name and `strict` (OpenRouter). */
+  /** The `json_schema` response format needs a name and `strict`. */
   namedSchema: boolean;
 }
 
@@ -59,61 +57,34 @@ const LLAMA_CPP: ProviderCapabilities = {
   namedSchema: false,
 };
 
-const HOSTED: ProviderCapabilities = {
-  grammar: false,
-  slots: false,
-  progress: false,
-  antiRepeat: false,
-  serverState: false,
-  flatReasoning: false,
-  namedSchema: true,
-};
-
 const trim = (url: string): string => url.replace(/\/+$/, "");
 
 /** The provider the settings name as the default (the one a session starts on). */
-export function defaultProviderId(s: ProviderSettings): ProviderId {
-  return s.llmProvider === "openrouter" ? "openrouter" : "local";
+export function defaultProviderId(_s: ProviderSettings): ProviderId {
+  return "local";
 }
 
-/** A model reference names its provider: hosted models carry this prefix, local ones are bare ids. */
-const HOSTED_PREFIX = "openrouter:";
-
-/** The reference a model is kept under: the bare id for local, `openrouter:<id>` for OpenRouter. */
-export function modelRef(provider: ProviderId, model: string): string {
-  return provider === "openrouter" ? HOSTED_PREFIX + model : model;
+/**
+ * A model reference names its provider: `<provider>:<id>` for a non-local
+ * provider, a bare id for local. No other provider exists yet, so every
+ * reference is local; a stale prefixed reference is kept as an (unknown) id.
+ */
+export function modelRef(_provider: ProviderId, model: string): string {
+  return model;
 }
 
 /** Which provider a model reference belongs to, and the id the provider calls it by. */
 export function parseModelRef(ref: string): { provider: ProviderId; model: string } {
-  return ref.startsWith(HOSTED_PREFIX)
-    ? { provider: "openrouter", model: ref.slice(HOSTED_PREFIX.length) }
-    : { provider: "local", model: ref };
+  return { provider: "local", model: ref };
 }
 
 export function providerFor(s: ProviderSettings): Provider {
   return providerOf(s, defaultProviderId(s));
 }
 
-/** The provider with the given id, built from the settings (both can be in use at once). */
+/** The provider with the given id, built from the settings. */
 export function providerOf(s: ProviderSettings, id: ProviderId): Provider {
-  if (id === "openrouter") {
-    const base = trim(s.openrouterUrl);
-    return {
-      id: "openrouter",
-      backend: "OpenRouter",
-      defaultModel: s.openrouterModel,
-      chatUrl: `${base}/chat/completions`,
-      modelsUrl: `${base}/models`,
-      rootUrl: undefined,
-      headers: {
-        authorization: `Bearer ${s.openrouterApiKey}`,
-        "http-referer": "https://github.com/SirMathhman/Vise",
-        "x-title": "Vise",
-      },
-      capabilities: HOSTED,
-    };
-  }
+  void id;
   const base = trim(s.llmBaseUrl);
   return {
     id: "local",
@@ -150,7 +121,7 @@ export function responseFormat(
     : { type: "json_schema", json_schema: { schema } };
 }
 
-/** What `GET /models` says about one OpenRouter model. */
+/** What `GET /models` says about one model. */
 export interface ModelInfo {
   contextLength?: number;
   vision: boolean;
@@ -162,7 +133,7 @@ interface RawModel {
   architecture?: { input_modalities?: string[] };
 }
 
-/** Read one model's window and image support out of an OpenRouter `/models` body. */
+/** Read one model's window and image support out of a provider's `/models` body. */
 export function modelInfo(body: unknown, id: string): ModelInfo | undefined {
   const data = (body as { data?: RawModel[] } | null)?.data;
   const m = Array.isArray(data) ? data.find((x) => x.id === id) : undefined;

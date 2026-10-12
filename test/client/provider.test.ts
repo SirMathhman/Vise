@@ -13,9 +13,6 @@ const base: ProviderSettings = {
   llmBaseUrl: "http://localhost:8080/",
   llmApiKey: "k1",
   llmModel: "m1",
-  openrouterUrl: "https://openrouter.ai/api/v1/",
-  openrouterApiKey: "k2",
-  openrouterModel: "vendor/m2",
 };
 
 describe("providerFor", () => {
@@ -30,18 +27,6 @@ describe("providerFor", () => {
     expect(p.defaultModel).toBe("m1");
   });
 
-  test("openrouter uses its own url, key and model, no slots", () => {
-    const p = providerFor({ ...base, llmProvider: "openrouter" });
-    expect(p.chatUrl).toBe("https://openrouter.ai/api/v1/chat/completions");
-    expect(p.modelsUrl).toBe("https://openrouter.ai/api/v1/models");
-    expect(p.rootUrl).toBeUndefined();
-    expect(p.headers.authorization).toBe("Bearer k2");
-    expect(p.headers["x-title"]).toBe("Vise");
-    expect(p.capabilities.grammar).toBe(false);
-    expect(p.capabilities.namedSchema).toBe(true);
-    expect(p.defaultModel).toBe("vendor/m2");
-  });
-
   test("an unknown provider falls back to local", () => {
     expect(providerFor({ ...base, llmProvider: "x" }).id).toBe("local");
   });
@@ -49,7 +34,11 @@ describe("providerFor", () => {
 
 describe("request shaping", () => {
   const local = providerFor(base);
-  const hosted = providerFor({ ...base, llmProvider: "openrouter" });
+  // A provider with none of the llama.cpp extras (what an OpenAI-compatible engine may look like).
+  const hosted = {
+    ...local,
+    capabilities: { ...local.capabilities, flatReasoning: false, namedSchema: true },
+  };
 
   test("reasoning effort field", () => {
     expect(reasoningFields(local, "high")).toEqual({ reasoning_effort: "high" });
@@ -60,7 +49,7 @@ describe("request shaping", () => {
     expect(reasoningFields(hosted, undefined)).toEqual({});
   });
 
-  test("response_format needs a name on openrouter", () => {
+  test("response_format needs a name when the provider asks for one", () => {
     const schema = { type: "object" };
     expect(responseFormat(local, schema)).toEqual({
       type: "json_schema",
@@ -99,9 +88,9 @@ describe("modelInfo", () => {
 });
 
 describe("stream reader", () => {
-  test("shows OpenRouter's `reasoning` deltas as thinking", async () => {
+  test("shows `reasoning` deltas as thinking", async () => {
     const sse = [
-      ': OPENROUTER PROCESSING',
+      ': PROCESSING',
       'data: {"choices":[{"delta":{"reasoning":"hmm"}}]}',
       'data: {"choices":[{"delta":{"content":"hi"}}]}',
       "data: [DONE]",

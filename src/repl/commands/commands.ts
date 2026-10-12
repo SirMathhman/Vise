@@ -31,9 +31,6 @@ export function reportContext(context: ContextSource): Promise<Result<string>> {
   });
 }
 
-/** How many models a hosted provider's list shows (it has hundreds). */
-const HOSTED_LIST_LIMIT = 40;
-
 /**
  * Handle `/model` and `/model <name>`.
  * When name is omitted: lists available models from the server.
@@ -52,18 +49,7 @@ export async function handleModelCommand(
     const models = await modelController.listModels();
     if (!models.ok) return models;
     const current = modelController.getModel();
-    const hosted = modelController.hostedModels?.() === true;
-    const shown = hosted ? models.value.slice(0, HOSTED_LIST_LIMIT) : models.value;
-    const more = models.value.length - shown.length;
-    return {
-      ok: true,
-      value:
-        formatModelList(shown, current) +
-        (more > 0
-          ? `
-  ... and ${more} more; '/model <id>' switches to any provider model id`
-          : ""),
-    };
+    return { ok: true, value: formatModelList(models.value, current) };
   }
 
   return switchModel(modelController, arg);
@@ -71,8 +57,7 @@ export async function handleModelCommand(
 
 /**
  * Switch to `id` the way `/model <id>` does, so the picker and the command
- * agree: a local model must be one the server lists, a hosted provider takes
- * any id (its list is incomplete).
+ * agree: a model must be one the server lists.
  */
 export async function switchModel(
   modelController: ModelController,
@@ -83,8 +68,7 @@ export async function switchModel(
   }
   const models = await modelController.listModels();
   if (!models.ok) return models;
-  const anyId = modelController.hostedModels?.() === true;
-  if (!anyId && !models.value.includes(id)) {
+  if (!models.value.includes(id)) {
     return {
       ok: false,
       error: {

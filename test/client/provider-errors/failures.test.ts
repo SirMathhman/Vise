@@ -58,7 +58,7 @@ test("a busy provider is asked again, a bad request is not", () => {
 });
 
 test("a 503 then a good reply is one successful chat; a 400 is reported at once", async () => {
-  applySettings({ VISE_LLM_PROVIDER: "openrouter", VISE_OPENROUTER_API_KEY: "k", VISE_LLM_RETRIES: "1" });
+  applySettings({ VISE_LLM_RETRIES: "1" });
   let calls = 0;
   const mock = mockFetch(() => {
     calls += 1;

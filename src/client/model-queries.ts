@@ -9,7 +9,7 @@ import type { Result } from "../core/errors.ts";
 
 /** One entry in the model list, with the metadata the picker shows. */
 export interface ModelDetail {
-  /** The model reference (see `modelRef`): the bare id for local, `openrouter:<id>` for OpenRouter. */
+  /** The model reference (see `modelRef`): the bare id for local, `<provider>:<id>` otherwise. */
   id: string;
   name?: string;
   contextLength?: number;
@@ -74,7 +74,7 @@ export async function fetchModelDetails(provider: Provider): Promise<Result<Mode
   }
 }
 
-/** What a hosted provider's `/models` says about one model (window, vision); undefined when unknown. */
+/** What a provider's `/models` says about one model (window, vision); undefined when unknown. */
 export async function fetchHostedInfo(provider: Provider, id: string): Promise<ModelInfo | undefined> {
   const res = await fetch(provider.modelsUrl, { headers: provider.headers });
   if (!res.ok) return undefined;

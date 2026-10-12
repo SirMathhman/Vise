@@ -37,14 +37,13 @@ test("a server that answers the wrong number of vectors, or an error, is a failu
   }
 });
 
-test("embeddings go to the local server even when the chat is on OpenRouter", async () => {
-  applySettings({ VISE_LLM_PROVIDER: "openrouter", VISE_OPENROUTER_API_KEY: "k", VISE_EMBEDDING_MODEL: "embedder" });
+test("embeddings go to the local server whatever the chat provider setting is", async () => {
+  applySettings({ VISE_LLM_PROVIDER: "local", VISE_EMBEDDING_MODEL: "embedder" });
   const mock = mockFetch(() => jsonResponse({ data: [{ index: 0, embedding: [1, 2, 3] }] }));
   try {
     const result = await new LlmClient().embedMany(["hello"]);
     expect(result.ok).toBe(true);
     expect(mock.calls[0]?.url).toContain("localhost:8080");
-    expect(mock.calls[0]?.url).not.toContain("openrouter");
     expect(JSON.parse(mock.calls[0]?.body ?? "{}").model).toBe("embedder");
   } finally {
     mock.restore();

@@ -28,11 +28,6 @@ export function activeProvider(): Provider {
   return providerFor(config);
 }
 
-/** Whether OpenRouter models can be used: they are listed (and chatted with) only when a key is set. */
-export function hostedAvailable(): boolean {
-  return config.openrouterApiKey !== "";
-}
-
 /** The model embeddings come from: `VISE_EMBEDDING_MODEL`, or else the local server's default model. */
 export function embeddingModel(): string {
   return config.embeddingModel || providerOf(config, "local").defaultModel;
@@ -58,7 +53,7 @@ export class LlmClient implements Client {
   private lastPromptTokens: number | undefined;
   /** The active model's reference (see `modelRef`). */
   private currentModel: string = modelRef(providerFor(config).id, providerFor(config).defaultModel);
-  /** OpenRouter `/models` facts per model id (window, vision), fetched once. */
+  /** `/models` facts per model id (window, vision) for providers without server state, fetched once. */
   private readonly infoCache = new Map<string, ModelInfo>();
   private requestSeq = 0;
   /** What every model call of this client has written, running or recent (the inspector and `/audit calls` read it). */
@@ -294,19 +289,9 @@ export class LlmClient implements Client {
     return localSupportsVision(provider, this.modelId(model));
   }
 
-  /**
-   * Every model the user can pick, under its reference: the local server's and,
-   * when an OpenRouter key is set, OpenRouter's. One of them failing does not
-   * hide the other; both failing reports the local error.
-   */
-  async listModelDetails(): Promise<Result<ModelDetail[]>> {
-    const local = await fetchModelDetails(providerOf(config, "local"));
-    const hosted = hostedAvailable() ? await fetchModelDetails(providerOf(config, "openrouter")) : undefined;
-    if (!local.ok && !(hosted?.ok)) return local;
-    return {
-      ok: true,
-      value: [...(local.ok ? local.value : []), ...(hosted?.ok ? hosted.value : [])],
-    };
+  /** Every model the user can pick, under its reference, as the local server lists them. */
+  listModelDetails(): Promise<Result<ModelDetail[]>> {
+    return fetchModelDetails(providerOf(config, "local"));
   }
 
   /** The model references the server lists (for `/model` and the composer's suggestions). */
@@ -318,7 +303,7 @@ export class LlmClient implements Client {
   /**
    * Embeddings of `texts` (one vector each, in order) from the local server's
    * `POST /v1/embeddings`. Always the local provider with `embeddingModel()`,
-   * whatever the chat is on: file contents are never sent to a hosted provider.
+   * whatever the chat is on: file contents are never sent to another provider.
    */
   embedMany(texts: string[]): Promise<Result<number[][]>> {
     return fetchEmbeddings(providerOf(config, "local"), embeddingModel(), texts);
@@ -338,7 +323,7 @@ export class LlmClient implements Client {
     if (max?.ok) this.generationSink?.({ request, purpose, tokens: 0, done: true, used, max: max.value });
   }
 
-  /** What a hosted provider's `/models` says about one model (window, vision); cached, undefined when unknown. */
+  /** What a provider's `/models` says about one model (window, vision); cached, undefined when unknown. */
   private async hostedInfo(model: string): Promise<ModelInfo | undefined> {
     const cached = this.infoCache.get(model);
     if (cached) return cached;
@@ -349,7 +334,7 @@ export class LlmClient implements Client {
 
   /**
    * The model's maximum context window in tokens: live from the provider (`GET /slots` `n_ctx` locally,
-   * `/models` `context_length` hosted); never cached across models.
+   * `/models` `context_length` otherwise); never cached across models.
    */
   async contextMax(): Promise<Result<number>> {
     const provider = this.provider();
@@ -397,7 +382,7 @@ export class LlmClient implements Client {
       args[2]?.("\n\n⚠ the model repeated itself; asking again\n\n");
       result = await this.attempt(args, true);
     }
-    // A busy or rate-limited provider (OpenRouter's upstreams often are) is asked again after a pause.
+    // A busy or rate-limited provider is asked again after a pause.
     const signal = args[6];
     for (let again = 0; again < config.llmRetries; again++) {
       if (result.ok || !isTransient(result.error) || signal?.aborted) break;

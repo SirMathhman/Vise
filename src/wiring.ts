@@ -6,7 +6,7 @@ import { SqliteAuditSink } from "./db/audit/audit-store.ts";
 import { mkdirSync } from "node:fs";
 import { ChromiumBackend } from "./browser/chromium/chromium.ts";
 import type { BrowserBackend } from "./browser/types.ts";
-import { backendName, embeddingModel, hostedAvailable, LlmClient, type ModelDetail } from "./client/llm.ts";
+import { backendName, embeddingModel, LlmClient, type ModelDetail } from "./client/llm.ts";
 import type { CallLog } from "./client/stream/call-trace.ts";
 import { dataDirFor, globalDataDir, noFolderRoot } from "./data-dir.ts";
 import { GLOBAL_PROMPT } from "./global-prompt.ts";
@@ -176,7 +176,6 @@ function controls(
       void syncVision();
     },
     listModels: () => client.listModels(),
-    hostedModels: () => hostedAvailable(),
     supportsBurst: () => client.supportsGrammar(),
   };
   return { toolController, modelController };

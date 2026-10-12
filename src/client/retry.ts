@@ -2,7 +2,7 @@ import type { ViseError } from "../core/errors.ts";
 
 /**
  * HTTP statuses that mean "try again in a moment": the request was fine, the
- * server (or the hosted provider's upstream) was busy, rate limiting, or just
+ * server was busy, rate limiting, or just
  * failed over. A 4xx that says the request itself is wrong is never retried.
  */
 const TRANSIENT_STATUSES = new Set([408, 429, 502, 503, 504]);
