@@ -1,27 +1,17 @@
 import { config } from "../config.ts";
 import type { ServerWebSocket } from "bun";
-import { formatContext, formatError, formatGoalEvent } from "../output/format.ts";
+import { formatContext, formatGoalEvent } from "../output/format.ts";
 import { formatWorkflowEvent } from "../output/workflow-format.ts";
 import type { WorkflowEvent } from "../core/workflow.ts";
-import { saveProfileWhitelist } from "../repl/profile-tools.ts";
 import { BrowserSettingsStore } from "../browser/settings.ts";
 import { ExtensionBackend } from "../browser/extension.ts";
 import type { BrowserBackend } from "../browser/types.ts";
 import { ExtensionHub, isExtensionOrigin } from "./ext/ext-hub.ts";
 import { loadExtensionToken, tokensMatch } from "./ext/ext-token.ts";
-import { handleEditorMessage } from "./api/editors.ts";
-import { handleGitMessage } from "./api/git-api.ts";
-import { createInspector } from "./inspect/inspect.ts";
 import { serveAsset } from "./assets.ts";
-import { queueLine, steerLine, unqueue } from "./conn/line.ts";
-import type { HeldLine } from "./conn/line.ts";
 import { isLocalHost, isLocalOrigin, serveApi } from "./http.ts";
 import { createGate } from "./conn/gate.ts";
 import { finishOpening } from "./conn/open.ts";
-import { handleMcpMessage } from "./api/mcp-api.ts";
-import { handleModelMessage } from "./api/models/model-api.ts";
-import { handleSettingsMessage } from "./api/settings-api.ts";
-import { handleQueueCommand } from "./conn/queue-commands.ts";
 import { SessionLease } from "./conn/leases.ts";
 import { SwitchableBrowser } from "../browser/switchable.ts";
 import { BrowserBridge } from "./ext/browser-bridge.ts";
@@ -34,9 +24,11 @@ import { clipDetail, formatToolCall, summarizeToolResult } from "../output/tool-
 import { displayOfTool } from "../tools/display.ts";
 import { WebUserPrompter } from "./conn/prompter.ts";
 import { askToContinue } from "../tools/agent/ask-user.ts";
-import { TerminalRegistry, type TerminalAttachment } from "./terminal/terminal-registry.ts";
+import { TerminalRegistry } from "./terminal/terminal-registry.ts";
 import { spawnConPty } from "./terminal/pty.ts";
-import { handleTerminalMessage } from "./terminal/terminal-api.ts";
+import { sendLists } from "./api/wire/lists.ts";
+import { handleMessage, pushHooks } from "./router/router.ts";
+import type { ConnectionState } from "./router/connection.ts";
 
 /**
  * Web frontend driver (the "frontend" seam, sibling to `TerminalDriver`).
@@ -53,7 +45,9 @@ import { handleTerminalMessage } from "./terminal/terminal-api.ts";
  * are captured in closure over that connection's socket, so no module-level
  * mutable "current socket" is needed and two tabs never interleave output.
  *
- * Wire protocol (JSON messages):
+ * Wire protocol (JSON messages). Where each type from the page goes is the table in
+ * `router/router.ts`; the API modules under `api/` document their own messages (notes,
+ * profiles, workflows, mcp, models, git, settings, lists). The core of it:
  *   browser → server: { type:"line", text }        a user line
  *                     { type:"ask_answer", text }   answer to an ask/max-rounds
  *                     { type:"interrupt" }          abort the in-flight turn
@@ -86,7 +80,7 @@ import { handleTerminalMessage } from "./terminal/terminal-api.ts";
  */
 
 /** Track whether any reply tokens were streamed during a turn (the `streamed` flag). */
-class WebDisplay {
+export class WebDisplay {
   private streamed = false;
   reset(): void {
     this.streamed = false;
@@ -296,7 +290,7 @@ export function startWebServer(
 }
 
 /** What a WebSocket carries from the upgrade: the session root it was opened with. */
-interface WsData {
+export interface WsData {
   /** A folder the page asked for that is not available (it fell back to no folder). */
   badRoot?: string;
   /** The Firefox extension's own connection (`/ext`), not a chat session. */
@@ -306,31 +300,6 @@ interface WsData {
   root: string;
   /** No working directory: `root` is then only the generated store directory. */
   noFolder: boolean;
-}
-
-interface ConnectionState {
-  ws: ServerWebSocket<WsData>;
-  send: (msg: Record<string, unknown>) => void;
-  prompter: WebUserPrompter;
-  display: WebDisplay;
-  session: ReturnType<typeof createEdgeSession>["session"];
-  edge: ReturnType<typeof createEdgeSession>;
-  chain: Promise<void>;
-  held: HeldLine[];
-  running: boolean;
-  bridge: BrowserBridge;
-  /** The folder's MCP servers (shared by its pages). */
-  mcp?: McpHub;
-  /** Stops the project-tree watcher; set once the connection opens. */
-  unwatch: () => void;
-  /** The session's data directory (its notes live there). */
-  dataDir: string;
-  /** The saved sessions this connection works in (one connection at a time per session). */
-  lease: SessionLease;
-  /** This page's handle on its folder's shell; null with no folder or in the extension's sidebar. */
-  terminal: TerminalAttachment | null;
-  /** The page's live look at model calls (made when it first asks). */
-  inspector?: ReturnType<typeof createInspector>;
 }
 
 function makeConnectionState(
@@ -426,6 +395,7 @@ function makeConnectionState(
     dataDir: dataDirFor(root),
     lease: new SessionLease(root),
     terminal: null,
+    lists: () => sendLists(edge, send),
   };
 }
 
@@ -451,159 +421,6 @@ function closeConnection(conn: ConnectionState | undefined): void {
   void conn.bridge.dispose();
   conn.session.interrupt();
   conn.prompter.settle("");
-}
-
-interface WireMessage {
-  type: string;
-  /** `inspect_start`: the model call to watch (the running one when absent). */
-  request?: number;
-  text?: string;
-  id?: string;
-  name?: string;
-  /** `profile_tools` write: the whitelist, or null for all tools. */
-  tools?: string[] | null;
-  /** `profile_tools`: read the current whitelist instead of writing one. */
-  read?: boolean;
-  /** `line`: pictures attached to the message (data URIs; checked by `acceptPictures`). */
-  images?: unknown;
-  /** `line`: the page's id for a message held until the work in flight is done; `unqueue`: the one to remove. */
-  qid?: string;
-  /** `env_set`: the settings page's values by variable name. */
-  values?: Record<string, string>;
-}
-
-/**
- * Read or write a profile's tool whitelist. It writes only the profile file,
- * so it is instant, works while a turn is running, and never touches the
- * conversation history.
- */
-async function handleProfileTools(
-  conn: ConnectionState,
-  msg: WireMessage,
-): Promise<void> {
-  const { edge, send } = conn;
-  const name = msg.name ?? "";
-  const reply = (fields: Record<string, unknown>): void =>
-    send({ type: "profile_tools", id: msg.id, name, ...fields });
-  const fail = (error: string): void => reply({ ok: false, error });
-  const source = edge.profileSource;
-  if (!source.profileTools) return fail("tool whitelists not supported");
-  if (msg.read) {
-    const current = await source.profileTools(name);
-    if (!current.ok) return fail(formatError(current.error));
-    return reply({ ok: true, tools: current.value ?? null });
-  }
-  const names = edge.toolController.list().map((t) => t.name);
-  const saved = await saveProfileWhitelist(
-    source,
-    names,
-    name,
-    msg.tools ?? undefined,
-  );
-  if (!saved.ok) return fail(formatError(saved.error));
-  reply({ ok: true, tools: saved.value ?? null });
-}
-
-/** Send the connection the global hooks and each profile's own hooks (a pure read; never queued behind a turn). */
-async function pushHooks(conn: ConnectionState): Promise<void> {
-  conn.send({ type: "hooks", ...(await conn.session.hooksView()) });
-}
-
-function handleMessage(
-  conn: ConnectionState,
-  message: string | Buffer<ArrayBuffer> | null,
-): void {
-  const { send, prompter, session } = conn;
-  let msg: WireMessage;
-  try {
-    msg = JSON.parse(String(message));
-  } catch {
-    return;
-  }
-  if (msg.type.startsWith("browser_")) {
-    // Browser view traffic never queues behind a model turn.
-    void conn.bridge.handle(msg as unknown as Record<string, unknown>);
-    return;
-  }
-  if (msg.type.startsWith("term_")) {
-    // The integrated terminal never queues behind a model turn.
-    handleTerminalMessage(conn.terminal, msg, send);
-    return;
-  }
-  if (msg.type.startsWith("mcp_")) {
-    // MCP server settings are read and written directly; never queued behind a turn.
-    const wire = msg as unknown as Record<string, unknown>;
-    void handleMcpMessage(conn.mcp, conn.ws.data.root, wire).then(send);
-    return;
-  }
-  if (msg.type.startsWith("model_")) {
-    // The model picker reads and writes the model list directly; never queued behind a turn.
-    void handleModelMessage(conn.edge.modelPicker, msg as unknown as Record<string, unknown>).then(send);
-    return;
-  }
-  if (msg.type.startsWith("inspect_")) {
-    // The live look at model calls never queues behind a turn (the turn is what it watches).
-    conn.inspector ??= createInspector(conn.edge.calls, send);
-    conn.inspector.handle(msg);
-    return;
-  }
-  if (msg.type.startsWith("git_")) {
-    // The git panel runs git in the session's folder directly; never queued behind a turn.
-    const { root, noFolder } = conn.ws.data;
-    const wire = msg as unknown as Record<string, unknown>;
-    for (const reply of handleGitMessage(root, noFolder, wire) ?? []) send(reply);
-    return;
-  }
-  if (msg.type === "env_get" || msg.type === "env_set") {
-    // Settings read and write the user-level settings file directly; never queued behind a turn.
-    for (const reply of handleSettingsMessage(
-      msg as unknown as Record<string, unknown>,
-    ) ?? [])
-      send(reply);
-    return;
-  }
-  if (
-    msg.type.startsWith("note") ||
-    msg.type.startsWith("workflow") ||
-    msg.type.startsWith("profile")
-  ) {
-    // The notes, workflow and profile editors read and write their stores directly; never queued behind a turn.
-    // (`profile_tools` is not theirs: it falls through to its own handler below.)
-    const replies = handleEditorMessage(conn.dataDir, msg as never);
-    for (const reply of replies ?? []) send(reply);
-    if (replies) return;
-  }
-  if (msg.type === "hooks_get") {
-    // A pure read of the live hook lists; never queued behind a model turn.
-    void pushHooks(conn);
-    return;
-  }
-  if (msg.type === "interrupt") {
-    session.interrupt();
-    return;
-  }
-  if (msg.type === "ask_answer") {
-    prompter.settle(msg.text ?? "");
-    return;
-  }
-  if (msg.type === "profile_tools") {
-    // Straight to the profile file, never queued behind a model turn.
-    void handleProfileTools(conn, msg);
-    return;
-  }
-  if (typeof msg.text !== "string") {
-    if (msg.type === "unqueue" && typeof msg.qid === "string") {
-      unqueue(conn, msg.qid);
-    }
-    return;
-  }
-  if (msg.type === "steer") {
-    steerLine(conn, msg.text, msg.images);
-    return;
-  }
-  if (msg.type !== "line") return;
-  if (handleQueueCommand(conn, msg.text)) return;
-  queueLine(conn, msg.text, msg.id, msg.images, msg.qid);
 }
 
 export { startWebServer as default };

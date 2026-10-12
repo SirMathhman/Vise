@@ -14,8 +14,8 @@ import { spawnSync } from "node:child_process";
 import { join, relative, resolve, sep } from "node:path";
 
 /**
- * Read-only file explorer backend for the web UI. Paths are relative to the
- * explorer root (the process working directory) and can never escape it.
+ * File explorer backend for the web UI: list, read, create and delete. Paths are
+ * relative to the session root and can never escape it.
  */
 
 /** Largest file the viewer will return; bigger ones are reported as too large. */

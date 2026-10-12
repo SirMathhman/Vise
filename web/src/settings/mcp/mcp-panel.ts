@@ -1,4 +1,5 @@
 import { ifConfirmed } from "../../feedback/confirm.ts";
+import { make } from "../../dom.ts";
 
 /** One configured MCP server as the server describes it (`mcp` message). A local one has a `command`, a remote one a `url`. */
 interface McpServer {
@@ -29,17 +30,6 @@ export interface McpMessage {
 }
 
 type Ref = { name: string; scope: string };
-
-function make<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  className = "",
-  text = "",
-): HTMLElementTagNameMap[K] {
-  const element = document.createElement(tag);
-  if (className) element.className = className;
-  if (text) element.textContent = text;
-  return element;
-}
 
 /** Lines of `name<separator>value` to an object; throws a message for the user on a line without the separator. */
 function parsePairs(

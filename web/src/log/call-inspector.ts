@@ -1,3 +1,4 @@
+import { make } from "../dom.ts";
 /** What a `call_raw` message carries (see `src/web/inspect/inspect.ts`). */
 export interface CallRawMessage {
   type: string;
@@ -32,17 +33,6 @@ export function describeEnd(
   if (stopReason === "interrupted") return "Interrupted";
   if (state === "error") return "Failed";
   return finishReason ? `Finished (${finishReason})` : "Finished";
-}
-
-function make<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  className = "",
-  text = "",
-): HTMLElementTagNameMap[K] {
-  const element = document.createElement(tag);
-  if (className) element.className = className;
-  if (text) element.textContent = text;
-  return element;
 }
 
 /** The panel's parts. */

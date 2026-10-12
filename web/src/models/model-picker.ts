@@ -1,4 +1,6 @@
 import type { ServerMessage } from "../server-message.ts";
+import { make } from "../dom.ts";
+import { storage } from "../storage.ts";
 
 /** One model as the server lists it (`ModelDetail` in src/client/llm.ts). */
 export interface ModelEntry {
@@ -51,34 +53,23 @@ const RECENT_MAX = 5;
 /** The recently picked model ids, newest first. Storage may be blocked (a private window): then none. */
 function readRecent(): string[] {
   try {
-    const value: unknown = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]");
+    const value: unknown = JSON.parse(storage.get(RECENT_KEY) ?? "[]");
     if (!Array.isArray(value)) return [];
     return value.filter((id): id is string => typeof id === "string").slice(0, RECENT_MAX);
   } catch {
-    return [];
+    return []; // not JSON: start over
   }
 }
 
 function rememberRecent(id: string): void {
   const next = [id, ...readRecent().filter((other) => other !== id)].slice(0, RECENT_MAX);
-  try {
-    localStorage.setItem(RECENT_KEY, JSON.stringify(next));
-  } catch {
-    // Not kept: the picker works without it.
-  }
+  storage.set(RECENT_KEY, JSON.stringify(next));
 }
 
 /** "200K ctx", "1M ctx": a context window in tokens, rounded. */
 export function contextLabel(tokens: number): string {
   if (tokens >= 1_000_000) return `${Math.round(tokens / 100_000) / 10}M ctx`;
   return `${Math.round(tokens / 1000)}K ctx`;
-}
-
-function make<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
-  const element = document.createElement(tag);
-  if (className) element.className = className;
-  if (text !== undefined) element.textContent = text;
-  return element;
 }
 
 /** One model as a row: its name (the id under it when a name is shown), then its context and vision badges. */
@@ -93,9 +84,9 @@ function modelRow(model: ModelEntry, active: string, choose: (id: string) => voi
   // A bare id is already the name, so the id is the subtitle only when a name is shown above it.
   if (model.name) text.append(make("span", "model-id", model.id));
   const meta = make("span", "model-meta");
-  if (model.contextLength) meta.append(make("span", "model-badge", contextLabel(model.contextLength)));
-  if (model.provider === "openrouter") meta.append(make("span", "model-badge", "OpenRouter"));
-  if (model.vision) meta.append(make("span", "model-badge", "vision"));
+  if (model.contextLength) meta.append(make("span", "badge badge--sm", contextLabel(model.contextLength)));
+  if (model.provider === "openrouter") meta.append(make("span", "badge badge--sm", "OpenRouter"));
+  if (model.vision) meta.append(make("span", "badge badge--sm", "vision"));
   choice.append(text, meta);
   choice.addEventListener("click", () => choose(model.id));
   item.append(choice);

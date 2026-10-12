@@ -9,6 +9,7 @@ import {
   createWorkflowsPanel,
   type WorkflowsMessage,
 } from "./workflows/workflows-panel.ts";
+import { requiredElement as el } from "../dom.ts";
 
 /** The slice of a server message the settings tabs react to. */
 type SettingsMessage = NotesMessage &
@@ -16,12 +17,6 @@ type SettingsMessage = NotesMessage &
   BrowserSettingsFields &
   McpMessage &
   EnvMessage;
-
-function el<T extends HTMLElement>(id: string): T {
-  const element = document.getElementById(id);
-  if (!element) throw new Error(`Missing required element #${id}`);
-  return element as T;
-}
 
 /**
  * The settings tabs that talk to the server directly (browser engine, notes).

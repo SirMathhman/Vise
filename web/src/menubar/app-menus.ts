@@ -1,6 +1,7 @@
 import type { PanelHandle } from "../status/panel-switch.ts";
 import type { PageName } from "../status/panel-switch.ts";
-import { theme, type ThemeChoice } from "../status/theme.ts";
+import { theme } from "../status/theme.ts";
+import { THEME_CHOICES } from "../status/theme-choice.ts";
 import type { MenuEntry, MenuSpec } from "./menubar.ts";
 import { relativeTime, type SavedSession } from "../settings/sessions-list.ts";
 
@@ -79,15 +80,7 @@ function viewMenu(ctx: AppMenuContext): MenuEntry[] {
     );
   }
   entries.push({ kind: "heading", label: "Theme" });
-  const choices: [ThemeChoice, string][] = [
-    ["system", "Match system"],
-    ["light", "Light"],
-    ["dark", "Dark"],
-    ["forest", "Forest"],
-    ["volcano", "Volcano"],
-    ["underwater", "Underwater"],
-  ];
-  for (const [value, label] of choices) {
+  for (const [value, label] of THEME_CHOICES) {
     entries.push(item(label, () => theme.set(value), { checked: theme.choice() === value, radio: true }));
   }
   entries.push(

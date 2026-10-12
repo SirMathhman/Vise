@@ -8,6 +8,7 @@ import {
   type McpEntry,
   type McpScope,
 } from "../../mcp/mcp-store.ts";
+import { strings } from "./wire/reply.ts";
 
 /**
  * The MCP settings tab's messages, answered at once and never queued behind a turn:
@@ -59,8 +60,6 @@ const toRef = (v: unknown): { name: string; scope: McpScope } | undefined => {
     : undefined;
 };
 
-const strings = (v: unknown): string[] =>
-  Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
 
 function toEntry(v: unknown): McpEntry {
   const e = (typeof v === "object" && v !== null ? v : {}) as Record<

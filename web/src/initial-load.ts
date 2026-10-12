@@ -1,3 +1,4 @@
+import type { ListsSnapshot } from "../../src/repl/lists.ts";
 import type { ResultMessage, ServerMessage } from "./server-message.ts";
 import type { Panels } from "./settings/panels.ts";
 import type { ProfileEditor } from "./settings/profiles/profile-editor.ts";
@@ -17,134 +18,59 @@ interface LoadDeps {
   busy: { state: BusyState; render(): void; endLoading(): void };
   setBurstPressed(on: boolean): void;
   profileSelect: HTMLSelectElement;
-  reasoningSelect: HTMLSelectElement;
   /** The saved-session list changed (the Session menu lists them). */
   onSessions(): void;
   /** A `/model` command switched the model: the picker shows it. */
   setActiveModel(id: string): void;
 }
 
-/** The startup lists, asked for one after another: each reply asks for the next. */
-type Step = "profile" | "tool" | "reasoning" | "sessions" | "burst";
-
-/** One step of the startup chain: true when the reply was its. */
-function step(pending: Set<Step>, name: Step, message: ResultMessage, next: () => void, onFail: () => void): boolean {
-  if (!pending.has(name)) return false;
-  pending.delete(name);
-  if (message.ok && message.value !== undefined) next();
-  else onFail();
-  return true;
-}
-
-/** A reply to one of the startup lists: fill its control and ask for the next list; false when it was not one. */
-function startupReply(
-  message: ResultMessage,
-  pending: Set<Step>,
-  deps: LoadDeps & { requestLine(text: string): void; fail(): void },
-): boolean {
-  const { panels, busy, profileSelect, reasoningSelect, requestLine, fail } = deps;
-  const value = message.value ?? "";
-  const stop = (): void => {
-    pending.clear();
-    busy.endLoading();
-  };
-  const afterSessions = (): void => {
-    pending.add("burst");
-    requestLine("/burst");
-  };
-  const at = (name: Step, next: () => void, onFail: () => void): boolean =>
-    step(pending, name, message, next, onFail);
-  return (
-    // The session may already have burst on (e.g. after a page reload).
-    at("burst", () => {
-      deps.setBurstPressed(value.endsWith(" on"));
-      busy.endLoading();
-    }, () => busy.endLoading()) ||
-    at("profile", () => {
-      panels.populateProfileSelect(value);
-      requestLine("/tool");
-    }, () => {
-      stop();
-      profileSelect.disabled = true;
-      fail();
-    }) ||
-    at("tool", () => {
-      panels.populateToolsPanel(value);
-      requestLine("/reasoning");
-    }, stop) ||
-    at("reasoning", () => {
-      panels.populateReasoningSelect(value);
-      requestLine("/resume");
-    }, () => {
-      stop();
-      reasoningSelect.disabled = true;
-      fail();
-    }) ||
-    at("sessions", () => {
-      panels.populateSessionsPanel(value);
-      deps.onSessions();
-      afterSessions();
-    }, afterSessions)
-  );
-}
-
 /**
  * What the page asks the server for besides the user's lines, and the replies
- * to it: the lists it loads at start (models, profiles, tools, reasoning
- * levels, sessions, burst state, each a line whose reply asks for the next),
- * refreshes and tool toggles matched by id (they may answer after a running
- * turn's), whitelist reads and writes, and the results of the commands the
- * page itself sends (which update the header and menus).
+ * to it: the `lists` the controls show (profiles, tools, reasoning levels,
+ * sessions, burst state; the server sends them when asked and again after every
+ * line), tool toggles matched by id (they may answer after a running turn's),
+ * whitelist reads and writes, and the results of the commands the page itself
+ * sends (which update the header and menus).
  */
 export function createInitialLoad(deps: LoadDeps) {
   const { send, panels, transcript, busy } = deps;
-  const pending = new Set<Step>();
-  // The tools refresh is a queued line; its reply is matched by id because the connection also carries the model's turns.
-  const toolRefreshes = new Set<string>();
-  // Tool toggles are lines too, matched by id: one made while a turn runs answers after the turn,
+  // Tool toggles are lines, matched by id: one made while a turn runs answers after the turn,
   // and must be neither taken for the turn's result nor change the busy state.
   const toolToggles = new Set<string>();
   // Whitelist reads/writes bypass the turn queue (`profile_tools` messages).
   const whitelistRequests = new Map<string, { name: string; save: boolean }>();
   let profileEditor: ProfileEditor | null = null;
   let nextRequestId = 0;
-  const requestLine = (text: string): void => send({ type: "line", text });
 
-  /** Send a line whose reply is matched by id (it may arrive after a running turn's). */
-  function requestTracked(text: string, ids: Set<string>): void {
-    const id = `ed${nextRequestId++}`;
-    ids.add(id);
-    send({ type: "line", text, id });
-  }
-  const requestToolRefresh = (): void => requestTracked("/tool", toolRefreshes);
+  const requestLists = (): void => send({ type: "lists_get" });
 
   const fail = (message: ResultMessage): void =>
     transcript.addLine("error", message.error ?? "unknown error");
 
-  const handleInitialResult = (message: ResultMessage): boolean =>
-    startupReply(message, pending, { ...deps, requestLine, fail: () => fail(message) });
-
-  /** Replies to requests made beside the turn (refreshes, toggles): true when the message was one. */
-  function handleSideResult(message: ResultMessage): boolean {
-    if (message.id !== undefined && toolRefreshes.delete(message.id)) {
-      if (message.ok && message.value) panels.populateToolsPanel(message.value);
-      return true;
+  /** Fill every control from the server's lists; a list the server could not read keeps what it showed. */
+  function applyLists(lists: ListsSnapshot): void {
+    if (lists.profiles) panels.populateProfileSelect(lists.profiles);
+    else if (lists.errors.length > 0) deps.profileSelect.disabled = true;
+    if (lists.tools) panels.populateToolsPanel(lists.tools);
+    if (lists.reasoning) panels.populateReasoningSelect(lists.reasoning);
+    if (lists.sessions) {
+      panels.populateSessionsPanel(lists.sessions);
+      deps.onSessions();
     }
+    deps.setBurstPressed(lists.burst);
+    for (const problem of lists.errors) transcript.addLine("error", problem);
+    busy.endLoading();
+  }
+
+  /** Replies to requests made beside the turn (tool toggles): true when the message was one. */
+  function handleSideResult(message: ResultMessage): boolean {
     if (message.id !== undefined && toolToggles.delete(message.id)) {
       if (!message.ok) fail(message);
       else if (!busy.state.server) transcript.addLine("system", message.value ?? "");
-      requestToolRefresh();
+      // The server pushes the new tool states with its `lists` after the line.
       return true;
     }
     return false;
-  }
-
-  /** The list of sessions changed on the server: ask for it again (it answers through the startup chain's last steps). */
-  function refreshSessions(): void {
-    pending.add("sessions");
-    busy.state.loading = true;
-    busy.render();
-    requestLine("/resume");
   }
 
   function handleWhitelistReply(message: ServerMessage): void {
@@ -163,24 +89,33 @@ export function createInitialLoad(deps: LoadDeps) {
     setProfileEditor(editor: ProfileEditor): void {
       profileEditor = editor;
     },
-    /** Ask for every list, in order (the connection just opened). */
+    /** Ask for every list (the connection just opened). */
     start(): void {
-      for (const name of ["profile", "tool", "reasoning", "sessions"] as const) pending.add(name);
       busy.state.loading = true;
       busy.render();
-      // The model picker has its own list (answered at once); the lists below follow in order.
+      // The model picker has its own list (answered at once), and so do the controls.
       send({ type: "model_list" });
-      requestLine("/profile");
+      requestLists();
       // Populate the workflow picker's cache so shortcut invocations show the strip immediately.
       send({ type: "workflows_list" });
     },
-    refreshSessions,
-    handleInitialResult,
+    /** The lists changed on the server (a session was saved or deleted): ask again. */
+    refreshSessions: requestLists,
+    /** A `lists` message: true when it was one. */
+    handleLists(message: ServerMessage): boolean {
+      if (message.type !== "lists" || !message.lists) return false;
+      applyLists(message.lists);
+      return true;
+    },
     handleSideResult,
     handleCommandResult: (message: ResultMessage, syncBrowser: () => void): void =>
-      applyCommandResult(message, { ...deps, syncBrowser, requestToolRefresh, refreshSessions }),
+      applyCommandResult(message, { ...deps, syncBrowser }),
     handleWhitelistReply,
-    toggleTool: (line: string): void => requestTracked(line, toolToggles),
+    toggleTool(line: string): void {
+      const id = `ed${nextRequestId++}`;
+      toolToggles.add(id);
+      send({ type: "line", text: line, id });
+    },
     requestWhitelist(name: string, save: boolean, tools?: string[]): void {
       const id = `ed${nextRequestId++}`;
       whitelistRequests.set(id, { name, save });

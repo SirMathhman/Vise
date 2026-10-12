@@ -6,6 +6,7 @@ import {
   saveProfile,
   writeProfileBody,
 } from "../../stores/profiles.ts";
+import { failedResult, str, type Reply } from "./wire/reply.ts";
 
 /**
  * The web UI's profile editor: create, rename, edit the text of and delete the
@@ -23,20 +24,13 @@ import {
  *                     { type:"profile_result", ok, deleted?, error?, name?, from? }   after a save or delete
  */
 
-type Reply = Record<string, unknown>;
-
-const str = (value: unknown): string =>
-  typeof value === "string" ? value : "";
 
 const list = (base: string): Reply => ({
   type: "profiles",
   profiles: listProfiles(base),
 });
 
-function failure(error: unknown): Reply[] {
-  const message = error instanceof Error ? error.message : String(error);
-  return [{ type: "profile_result", ok: false, error: message }];
-}
+const failure = (error: unknown): Reply[] => failedResult("profile_result", error);
 
 function save(base: string, msg: Record<string, unknown>): Reply[] {
   const name = str(msg["name"]).trim();

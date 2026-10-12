@@ -1,3 +1,4 @@
+import { storage } from "../storage.ts";
 /**
  * Which project folder a page is on. A web page starts with no folder unless its
  * address names one (`?root=`), so a reload keeps it, because the address does.
@@ -25,22 +26,12 @@ export function getSessionRoot(): string | null {
   return root && root !== NO_FOLDER ? root : null;
 }
 
-/** What was last chosen: a folder's path, "none", or nothing yet. */
-function remembered(): string | null {
-  try {
-    return localStorage.getItem(KEY);
-  } catch {
-    return null; // storage can be blocked; then nothing is remembered
-  }
-}
+/** What was last chosen: a folder's path, "none", or nothing yet (null too when storage is blocked). */
+const remembered = (): string | null => storage.get(KEY);
 
 /** Remember the folder the server confirmed (`""` for none). */
 export function rememberRoot(path: string): void {
-  try {
-    localStorage.setItem(KEY, path === "" ? NO_FOLDER : path);
-  } catch {
-    // not remembering is fine
-  }
+  storage.set(KEY, path === "" ? NO_FOLDER : path);
 }
 
 const params = new URLSearchParams(location.search);

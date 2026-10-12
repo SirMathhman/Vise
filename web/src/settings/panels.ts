@@ -1,16 +1,18 @@
-import { parseSessionList, renderSessionList, type SavedSession } from "./sessions-list.ts";
+import { newestFirst, renderSessionList, type SavedSession } from "./sessions-list.ts";
+import type { ListsSnapshot } from "../../../src/repl/lists.ts";
 
 export interface PanelActions {
   resumeSession(name: string): void;
   deleteSession(name: string): void;
 }
 
+/** The server's lists (`lists` message): each control is filled from its own part. */
 export interface Panels {
   addProfilePlaceholder(): void;
-  populateProfileSelect(text: string): void;
-  populateReasoningSelect(text: string): void;
-  populateSessionsPanel(text: string): void;
-  populateToolsPanel(text: string): void;
+  populateProfileSelect(profiles: NonNullable<ListsSnapshot["profiles"]>): void;
+  populateReasoningSelect(reasoning: NonNullable<ListsSnapshot["reasoning"]>): void;
+  populateSessionsPanel(sessions: NonNullable<ListsSnapshot["sessions"]>): void;
+  populateToolsPanel(tools: NonNullable<ListsSnapshot["tools"]>): void;
   removeProfilePlaceholder(): void;
   /** The profile files changed: the header choices become `default` and these, keeping the active one. */
   syncProfileOptions(names: string[]): void;
@@ -23,16 +25,10 @@ export interface Panels {
 
 export function createPanels(actions: PanelActions): Panels {
   const profileSelect = document.getElementById("profile") as HTMLSelectElement;
-  const reasoningSelect = document.getElementById(
-    "reasoning",
-  ) as HTMLSelectElement;
+  const reasoningSelect = document.getElementById("reasoning") as HTMLSelectElement;
   const toolsList = document.getElementById("tools-list") as HTMLUListElement;
-  const sessionsList = document.getElementById(
-    "sessions-list",
-  ) as HTMLUListElement;
-  const sessionsFilter = document.getElementById(
-    "sessions-filter",
-  ) as HTMLInputElement;
+  const sessionsList = document.getElementById("sessions-list") as HTMLUListElement;
+  const sessionsFilter = document.getElementById("sessions-filter") as HTMLInputElement;
   let saved: SavedSession[] = [];
   const drawSessions = (): void =>
     renderSessionList(sessionsList, saved, sessionsFilter.value, {
@@ -48,15 +44,13 @@ export function createPanels(actions: PanelActions): Panels {
   return {
     toolCategory: (name) => categories.get(name),
     addProfilePlaceholder: () => addProfilePlaceholder(profileSelect),
-    populateProfileSelect: (text) => populateProfileSelect(profileSelect, text),
-    populateReasoningSelect: (text) =>
-      populateReasoningSelect(reasoningSelect, text),
-    populateSessionsPanel(text) {
-      saved = parseSessionList(text);
+    populateProfileSelect: (profiles) => populateProfileSelect(profileSelect, profiles),
+    populateReasoningSelect: (reasoning) => populateReasoningSelect(reasoningSelect, reasoning),
+    populateSessionsPanel(sessions) {
+      saved = newestFirst(sessions);
       drawSessions();
     },
-    populateToolsPanel: (text) =>
-      populateToolsPanel(toolsList, text, categories, names),
+    populateToolsPanel: (tools) => populateToolsPanel(toolsList, tools, categories, names),
     removeProfilePlaceholder: () => removeProfilePlaceholder(profileSelect),
     syncProfileOptions: (names) => syncProfileOptions(profileSelect, names),
     sessions: () => [...saved],
@@ -66,28 +60,11 @@ export function createPanels(actions: PanelActions): Panels {
 
 function populateReasoningSelect(
   select: HTMLSelectElement,
-  listText: string,
+  reasoning: { levels: readonly string[]; active: string },
 ): void {
   select.textContent = "";
-  for (const line of listText.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    if (trimmed === "no reasoning efforts available") {
-      select.value = "";
-      break;
-    }
-    const option = document.createElement("option");
-    option.value =
-      line[0] === "*"
-        ? line
-            .slice(1)
-            .trim()
-            .replace(/ \(active\)$/, "")
-        : trimmed;
-    option.textContent = option.value;
-    select.appendChild(option);
-    if (line[0] === "*") select.value = option.value;
-  }
+  for (const level of reasoning.levels) select.appendChild(new Option(level, level));
+  select.value = reasoning.active;
 }
 
 /**
@@ -151,38 +128,26 @@ export function appendToolItem(
 
 function populateToolsPanel(
   list: HTMLUListElement,
-  listText: string,
+  tools: { name: string; enabled: boolean; category?: string }[],
   categories: Map<string, string>,
   names: string[],
 ): void {
   list.textContent = "";
   categories.clear();
   names.length = 0;
-  let category: string | undefined;
-  let count = 0;
-  for (const line of listText.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    if (trimmed === "no tools available") {
-      count = -1;
-      break;
+  // A category's tools are shown together under its heading (in order of first appearance),
+  // even when the definitions list them apart.
+  const groups = new Map<string | undefined, typeof tools>();
+  for (const tool of tools) groups.set(tool.category, [...(groups.get(tool.category) ?? []), tool]);
+  for (const [category, group] of groups) {
+    if (category !== undefined) appendToolCategory(list, category, true);
+    for (const tool of group) {
+      names.push(tool.name);
+      if (category !== undefined) categories.set(tool.name, category);
+      appendToolItem(list, tool.name, tool.enabled);
     }
-    // `[category]` lines head the group of tools that follows.
-    const heading = /^\[(.+)\]$/.exec(trimmed);
-    if (heading) {
-      category = heading[1];
-      appendToolCategory(list, category ?? "", true);
-      continue;
-    }
-    count++;
-    const enabled = line[0] === "*";
-    const raw = enabled ? line.slice(1).trim() : line.trimStart();
-    const name = raw.replace(/ \(enabled\)$/, "").replace(/ \(disabled\)$/, "");
-    names.push(name);
-    if (category !== undefined) categories.set(name, category);
-    appendToolItem(list, name, enabled);
   }
-  if (count === 0) {
+  if (tools.length === 0) {
     const empty = list.appendChild(document.createElement("li"));
     empty.className = "list-empty";
     empty.textContent = "No tools available.";
@@ -192,36 +157,16 @@ function populateToolsPanel(
 
 function populateProfileSelect(
   select: HTMLSelectElement,
-  listText: string,
+  profiles: { names: string[]; active: string | null },
 ): void {
   select.textContent = "";
-  let activeFound = false;
-  let count = 0;
-  for (const line of listText.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    if (trimmed === "no profiles found") {
-      count = -1;
-      break;
-    }
-    count++;
-    const option = document.createElement("option");
-    option.value =
-      line[0] === "*"
-        ? line
-            .slice(1)
-            .trim()
-            .replace(/ \(active\)$/, "")
-        : trimmed;
-    option.textContent = option.value;
-    select.appendChild(option);
-    if (line[0] === "*") {
-      select.value = option.value;
-      activeFound = true;
-    }
+  if (profiles.names.length === 0) {
+    appendPlaceholder(select, "no profiles");
+    return;
   }
-  if (count === 0) appendPlaceholder(select, "no profiles");
-  else if (!activeFound && count > 0) addProfilePlaceholder(select);
+  for (const name of profiles.names) select.appendChild(new Option(name, name));
+  if (profiles.active !== null) select.value = profiles.active;
+  else addProfilePlaceholder(select);
 }
 
 /** Rebuild the profile choices from the files (plus the built-in "default"), keeping the selection. */

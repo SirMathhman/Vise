@@ -1,3 +1,4 @@
+import type { ListsSnapshot } from "../../src/repl/lists.ts";
 import type { CallPurpose } from "../../src/core/errors.ts";
 import type { HistoryEntry } from "./log/history.ts";
 import type { HooksFields } from "./settings/hooks/hooks-panel.ts";
@@ -60,4 +61,6 @@ export interface ServerMessage extends ResultMessage, HooksFields {
   /** `state`: a line is running on the server, and whether it can be steered. */
   running?: boolean;
   steerable?: boolean;
+  /** `lists`: what the header, tools panel and session menu show (`ListsSnapshot`, src/repl/lists.ts). */
+  lists?: ListsSnapshot;
 }

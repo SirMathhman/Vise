@@ -1,3 +1,4 @@
+import { make } from "../dom.ts";
 /** A file in the git status (its path is the repository's). */
 interface GitFile {
   path: string;
@@ -31,17 +32,6 @@ const CODE_NAMES: Record<string, string> = {
   T: "type changed",
   "?": "untracked",
 };
-
-function make<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  className = "",
-  text = "",
-): HTMLElementTagNameMap[K] {
-  const element = document.createElement(tag);
-  if (className) element.className = className;
-  if (text) element.textContent = text;
-  return element;
-}
 
 /** What a file row can do. */
 interface RowActions {

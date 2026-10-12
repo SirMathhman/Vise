@@ -231,7 +231,7 @@
   background: var(--border);
 }
 
-/* ---- Dropdown panels (tools, git) ---- */
+/* ---- Dropdown panels (tools, git, model) ---- */
 .dropdown {
   position: absolute;
   top: 100%;
@@ -334,13 +334,10 @@
   gap: var(--sp-1);
 }
 
-.model-badge {
-  color: var(--dim);
-  font-size: var(--fs-xs);
-  border: 1px solid var(--border);
+/* The shared .badge, squarer and tighter, for a model row's context and vision tags. */
+.badge--sm {
   border-radius: var(--radius-sm);
   padding: 0 var(--sp-1);
-  white-space: nowrap;
 }
 
 /* ---- Narrow screens and the extension's sidebar: the bar wraps to two rows ---- */

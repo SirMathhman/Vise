@@ -1,3 +1,4 @@
+import { storage } from "../storage.ts";
 import { parseChoice, resolveTheme, type ThemeChoice } from "./theme-choice.ts";
 
 export type { ThemeChoice };
@@ -8,15 +9,7 @@ const KEY = "vise-theme";
 const listeners = new Set<() => void>();
 const media = window.matchMedia("(prefers-color-scheme: dark)");
 
-function stored(): ThemeChoice {
-  try {
-    return parseChoice(localStorage.getItem(KEY));
-  } catch {
-    return "system";
-  }
-}
-
-let choice: ThemeChoice = stored();
+let choice: ThemeChoice = parseChoice(storage.get(KEY));
 
 function apply(): void {
   document.documentElement.dataset["theme"] = resolveTheme(choice, media.matches);
@@ -36,12 +29,9 @@ export const theme = {
   choice: (): ThemeChoice => choice,
   set(next: ThemeChoice): void {
     choice = next;
-    try {
-      if (next === "system") localStorage.removeItem(KEY);
-      else localStorage.setItem(KEY, next);
-    } catch {
-      // Storage may be unavailable (private window): the choice lasts for this page.
-    }
+    // Storage may be unavailable (private window): the choice then lasts for this page.
+    if (next === "system") storage.remove(KEY);
+    else storage.set(KEY, next);
     apply();
   },
   onChange(listener: () => void): void {

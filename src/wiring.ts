@@ -34,7 +34,7 @@ import {
   FileSessionSource,
   FileWorkflowSource,
 } from "./edge-sources.ts";
-import type { ModelController, ProfileSource } from "./repl/ports.ts";
+import type { ModelController, ProfileSource, ReasoningController, SessionSource } from "./repl/ports.ts";
 import { compactInPlace } from "./repl/turn/compaction.ts";
 import { Session } from "./repl/session.ts";
 import { TempStore, tempHandlers } from "./tools/temp-store.ts";
@@ -233,6 +233,10 @@ export interface EdgeSession {
   browser: BrowserBackend;
   /** The model-facing tool enable/disable controller. */
   toolController: ToolController;
+  /** The saved sessions (listed for the page's session menu). */
+  sessionSource: SessionSource;
+  /** The active reasoning level (the client). */
+  reasoning: ReasoningController;
   /** The profile store (also used for unqueued whitelist edits). */
   profileSource: ProfileSource;
   /** Delete the session's temp directory (big tool results saved for the model). */
@@ -479,6 +483,8 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     modelPicker: pickerPorts(client, modelController),
     browser,
     toolController,
+    sessionSource,
+    reasoning: client,
     profileSource,
     cleanup: () => { offShare?.(); session.endAudit(); temp.dispose(); },
     preTurnHooks: hookStore.pre.map((h) => h.command),

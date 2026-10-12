@@ -1,3 +1,4 @@
+import { make } from "../../dom.ts";
 /** One argument a tool takes. */
 export interface ToolParam {
   name: string;
@@ -9,15 +10,6 @@ export interface ToolParam {
 export interface ToolInfo {
   name: string;
   params: ToolParam[];
-}
-
-function make<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  className = "",
-): HTMLElementTagNameMap[K] {
-  const element = document.createElement(tag);
-  if (className) element.className = className;
-  return element;
 }
 
 /** The text a fixed value is shown as: strings as they are, anything else as JSON. */

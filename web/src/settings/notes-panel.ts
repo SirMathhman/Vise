@@ -1,4 +1,5 @@
 import { ifConfirmed } from "../feedback/confirm.ts";
+import { make } from "../dom.ts";
 
 /** One entry of the server's `notes` listing. */
 interface NoteEntry {
@@ -24,17 +25,6 @@ export interface NotesMessage {
 
 const DEFAULT_CATEGORY = "default";
 const DEFAULT_SCOPE = "project";
-
-function make<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  className = "",
-  text = "",
-): HTMLElementTagNameMap[K] {
-  const element = document.createElement(tag);
-  if (className) element.className = className;
-  if (text) element.textContent = text;
-  return element;
-}
 
 type NoteRef = { name: string; category: string; scope: string };
 

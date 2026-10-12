@@ -1,21 +1,9 @@
+import { storage } from "../storage.ts";
 const MIN_HEIGHT = 80;
 
-// Per-browser conveniences only: storage can be missing or throw.
-export function load(key: string): string | null {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-export function save(key: string, value: string): void {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    // not remembered; nothing else depends on it
-  }
-}
+// Per-browser conveniences only (`storage` never throws).
+export const load = storage.get;
+export const save = storage.set;
 
 /** Let the user drag `grip` (the panel's top edge) to resize `panel`; the height is remembered under `key`. */
 export function bindResizeGrip(panel: HTMLElement, grip: HTMLElement, key: string): void {

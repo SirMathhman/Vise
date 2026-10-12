@@ -1,3 +1,4 @@
+import { isSidebar } from "../dom.ts";
 /**
  * The session's root folder: shown in the top bar, and fixed for the life of
  * the page (the server binds a connection to the root it was opened with).
@@ -9,8 +10,7 @@
 /** The page address for a session rooted at `root` (or "none"); the sidebar mode carries over. */
 function sessionUrl(root: string): string {
   const query = new URLSearchParams({ root });
-  const ui = new URLSearchParams(window.location.search).get("ui");
-  if (ui) query.set("ui", ui);
+  if (isSidebar()) query.set("ui", "sidebar");
   return `/?${query.toString()}`;
 }
 

@@ -5,6 +5,7 @@ import { pairWithExtension } from "./pairing.ts";
 import { rememberRoot } from "./restore-root.ts";
 import { setupSessionRoot } from "./session-root.ts";
 import type { BrowserTab } from "./open-tabs.ts";
+import { isSidebar, requiredElement as el } from "../dom.ts";
 
 /** The slice of a server message the workspace reacts to. */
 interface WorkspaceMessage {
@@ -16,12 +17,6 @@ interface WorkspaceMessage {
   message?: string;
   noFolder?: boolean;
   badRoot?: string;
-}
-
-function el<T extends HTMLElement>(id: string): T {
-  const element = document.getElementById(id);
-  if (!element) throw new Error(`Missing required element #${id}`);
-  return element as T;
 }
 
 /**
@@ -45,7 +40,7 @@ export function createWorkspace(
 } {
   const root = el<HTMLElement>("workspace");
   // In the Firefox extension's sidebar the browser is the user's own window: no file tree or live view.
-  const sidebar = new URLSearchParams(location.search).get("ui") === "sidebar";
+  const sidebar = isSidebar();
   if (sidebar) {
     document.body.classList.add("sidebar");
     pairWithExtension();

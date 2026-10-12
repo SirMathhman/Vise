@@ -8,6 +8,7 @@ import type { ViseError } from "../../core/errors.ts";
 import { listProfiles } from "../../stores/profiles.ts";
 import { tools } from "../../tools.ts";
 import { formatError } from "../../output/format.ts";
+import { str, type Reply } from "./wire/reply.ts";
 
 /**
  * The web UI's workflow editor. It reads and writes the same JSON files as
@@ -25,7 +26,6 @@ import { formatError } from "../../output/format.ts";
  *                     { type:"workflow_result", ok, deleted?, error?, name?, scope? }   after a save or delete
  */
 
-type Reply = Record<string, unknown>;
 
 /** The two data directories a workflow can live in. */
 export interface WorkflowBases {
@@ -33,8 +33,6 @@ export interface WorkflowBases {
   global: string;
 }
 
-const str = (value: unknown): string =>
-  typeof value === "string" ? value : "";
 
 const list = (bases: WorkflowBases): Reply => ({
   type: "workflows",

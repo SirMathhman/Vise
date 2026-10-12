@@ -591,6 +591,9 @@ export class Session {
     return { ok: true, value: "started a new conversation" };
   }
 
+  /** Whether burst mode is on (the page's header shows it). */
+  isBurst = (): boolean => this.burst;
+
   /** The context-fill line `/context` prints. A pure read, so a frontend can ask for it without it being a command (and an audit event). */
   contextReport = (): Promise<Result<string>> => reportContext(this.context);
 

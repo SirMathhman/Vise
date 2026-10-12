@@ -1,6 +1,6 @@
 import { confirmAction } from "../feedback/confirm.ts";
 
-/** A saved session as the `/resume` listing gives it. */
+/** A saved session as the server lists it. */
 export interface SavedSession {
   id: string;
   name: string;
@@ -9,23 +9,19 @@ export interface SavedSession {
 }
 
 /**
- * Parse the `/resume` listing: rows `  <name>  (<uuid>)`, optionally followed
- * by `  saved <yyyy-mm-dd> <hh:mm> UTC`. Newest first (those without a time
- * last, in listed order). Pure.
+ * The server's saved sessions as the page keeps them: newest first (those
+ * without a time last, in listed order). Pure.
  */
-export function parseSessionList(text: string): SavedSession[] {
-  const sessions: SavedSession[] = [];
-  for (const line of text.split("\n")) {
-    const row = /^ {2}(.+?) {2}\(([0-9a-f-]+)\)(?: {2}saved (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}) UTC)?\s*$/.exec(line);
-    if (!row) continue;
-    const session: SavedSession = { id: row[2] ?? "", name: row[1] ?? "" };
-    if (row[3] && row[4]) session.updated = new Date(`${row[3]}T${row[4]}:00Z`);
-    sessions.push(session);
-  }
+export function newestFirst(entries: { id: string; name: string; updated?: string }[]): SavedSession[] {
+  const sessions: SavedSession[] = entries.map((e) => ({
+    id: e.id,
+    name: e.name,
+    ...(e.updated === undefined ? {} : { updated: new Date(e.updated) }),
+  }));
   const time = (s: SavedSession): number => s.updated?.getTime() ?? -Infinity;
   return sessions
     .map((session, index) => ({ session, index }))
-    .sort((a, b) => time(b.session) - time(a.session) || a.index - b.index)
+    .sort((x, y) => time(y.session) - time(x.session) || x.index - y.index)
     .map(({ session }) => session);
 }
 

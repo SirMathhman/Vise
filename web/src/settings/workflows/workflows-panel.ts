@@ -30,19 +30,9 @@ export interface WorkflowsMessage {
 
 import { createArgRows, type ToolInfo } from "./arg-rows.ts";
 import { ifConfirmed } from "../../feedback/confirm.ts";
+import { make } from "../../dom.ts";
 
 type Ref = { name: string; scope: string };
-
-function make<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  className = "",
-  text = "",
-): HTMLElementTagNameMap[K] {
-  const element = document.createElement(tag);
-  if (className) element.className = className;
-  if (text) element.textContent = text;
-  return element;
-}
 
 /** One editable step row; `read()` returns the step or throws a message for the user. */
 function stepRow(

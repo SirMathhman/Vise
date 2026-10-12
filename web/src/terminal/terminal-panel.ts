@@ -3,6 +3,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { bindResizeGrip, load, save } from "./grip.ts";
 import { theme } from "../status/theme.ts";
+import { requiredElement as el } from "../dom.ts";
 
 /** The slice of a server message the terminal reacts to. */
 interface TerminalMessage {
@@ -15,12 +16,6 @@ interface TerminalMessage {
 }
 
 const OPEN_KEY = "vise-terminal-open";
-
-function el<T extends HTMLElement>(id: string): T {
-  const element = document.getElementById(id);
-  if (!element) throw new Error(`Missing required element #${id}`);
-  return element as T;
-}
 
 function themeFromPage(): Record<string, string> {
   const css = getComputedStyle(document.documentElement);

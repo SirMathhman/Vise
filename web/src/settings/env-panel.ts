@@ -1,4 +1,6 @@
 import { theme, type ThemeChoice } from "../status/theme.ts";
+import { THEME_CHOICES } from "../status/theme-choice.ts";
+import { make } from "../dom.ts";
 
 /** One setting as the server describes it (`env` message; see `src/settings/settings-file.ts`). */
 interface EnvField {
@@ -33,28 +35,13 @@ export function groupFields<T extends { group: string }>(fields: T[]): [string, 
   return [...groups];
 }
 
-function make<K extends keyof HTMLElementTagNameMap>(tag: K, className = "", text = ""): HTMLElementTagNameMap[K] {
-  const element = document.createElement(tag);
-  if (className) element.className = className;
-  if (text) element.textContent = text;
-  return element;
-}
-
 /** The page's own settings (kept in this browser): only the theme for now. */
 function appearance(): HTMLElement {
   const box = make("div");
   box.append(make("h2", "setting-group", "Appearance"));
   const row = make("label", "setting-row");
   const select = make("select", "field");
-  const choices: [ThemeChoice, string][] = [
-    ["system", "Match system"],
-    ["light", "Light"],
-    ["dark", "Dark"],
-    ["forest", "Forest"],
-    ["volcano", "Volcano"],
-    ["underwater", "Underwater"],
-  ];
-  for (const [value, label] of choices) select.append(new Option(label, value));
+  for (const [value, label] of THEME_CHOICES) select.append(new Option(label, value));
   select.value = theme.choice();
   select.addEventListener("change", () => theme.set(select.value as ThemeChoice));
   theme.onChange(() => (select.value = theme.choice()));

@@ -7,6 +7,7 @@ import {
   renderWhitelist,
   setAllTools,
 } from "./whitelist.ts";
+import { requiredElement as el } from "../../dom.ts";
 
 export interface ProfileEditorActions {
   send(msg: Record<string, unknown>): void;
@@ -50,9 +51,6 @@ export interface ProfileEditor {
   showWhitelist(name: string, tools: string[] | undefined): void;
   handle(message: ProfileMessage): boolean;
 }
-
-const el = <T extends HTMLElement>(id: string): T =>
-  document.getElementById(id) as T;
 
 /** The tab's elements (static in index.html). */
 function elements() {

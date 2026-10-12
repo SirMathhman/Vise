@@ -1,5 +1,6 @@
 import { getSessionRoot } from "../workspace/restore-root.ts";
 import { renderScopeContext } from "../settings/scope-context.ts";
+import { requiredElement as el } from "../dom.ts";
 
 /** A dropdown: the panel it shows, and the button that toggles it when it has one. */
 interface PanelSpec {
@@ -97,12 +98,6 @@ export interface Pages {
   close(): void;
   isOpen(name?: PageName): boolean;
 }
-
-const el = <T extends HTMLElement>(id: string): T => {
-  const found = document.getElementById(id);
-  if (!found) throw new Error(`Missing required element #${id}`);
-  return found as T;
-};
 
 /**
  * The two full-width pages, sessions and settings, each of which replaces the

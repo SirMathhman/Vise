@@ -35,12 +35,7 @@ import { createInitialLoad } from "./initial-load.ts";
 import { showContextFill } from "./status/context-meter.ts";
 import { createToolDetails } from "./log/tool-details.ts";
 import { createCallInspector } from "./log/call-inspector.ts";
-
-function requiredElement<T extends HTMLElement>(id: string): T {
-  const element = document.getElementById(id);
-  if (!element) throw new Error(`Missing required element #${id}`);
-  return element as T;
-}
+import { isSidebar, requiredElement } from "./dom.ts";
 
 const input = requiredElement<HTMLTextAreaElement>("input");
 const send = requiredElement<HTMLButtonElement>("send");
@@ -51,7 +46,7 @@ const profileSelect = requiredElement<HTMLSelectElement>("profile");
 const reasoningSelect = requiredElement<HTMLSelectElement>("reasoning");
 const burstBadge = requiredElement<HTMLElement>("burst-badge");
 const saveName = requiredElement<HTMLInputElement>("save-name");
-const sidebar = new URLSearchParams(location.search).get("ui") === "sidebar";
+const sidebar = isSidebar();
 
 const { transcript, announce } = createLogView(
   requiredElement("log"),
@@ -211,7 +206,6 @@ const load = createInitialLoad({
   busy: busyUi,
   setBurstPressed,
   profileSelect,
-  reasoningSelect,
   onSessions: () => menubar.refresh(),
   setActiveModel: (id) => modelPicker.setActive(id),
 });
@@ -240,8 +234,18 @@ const hideSuggestions = setupComposer(
   sendLine,
 );
 
-/** The parts of the page that own some of the server messages. */
-const serverPanels = [
+/** Parts that watch every server message without taking it. */
+const observers = [() => generating, () => compactionMarker, () => workflowPicker];
+
+/**
+ * The parts of the page that own some of the server messages: the first whose
+ * `handle` returns true takes it. (Parts defined further down are reached
+ * through a function, so the list can sit here.)
+ */
+const serverPanels: { handle(message: ServerMessage): boolean }[] = [
+  { handle: (message) => inspector.handle(message) },
+  { handle: (message) => modelPicker.handle(message) },
+  { handle: (message) => load.handleLists(message) },
   hooksPanel,
   profileEditor,
   gitPanel,
@@ -388,7 +392,6 @@ function handleResult(message: ResultMessage): void {
   // The log itself is not a live region (every token would be announced); say only that the reply ended.
   announce(message.ok ? "Reply finished" : "Reply failed");
   if (message.context) showContext("reply", message.context);
-  if (load.handleInitialResult(message)) return;
   if (message.ok) load.handleCommandResult(message, workspace.sync);
   else transcript.addLine("error", message.error ?? "unknown error");
 }
@@ -419,11 +422,7 @@ function onMessage(data: string): void {
   } catch {
     return;
   }
-  generating.observe(message);
-  compactionMarker.observe(message);
-  workflowPicker.observe(message);
-  if (inspector.handle(message)) return;
-  if (modelPicker.handle(message)) return;
+  for (const observer of observers) observer().observe(message);
   if (serverPanels.some((panel) => panel.handle(message))) return;
   switch (message.type) {
     case "profile_tools":

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { parseChoice, resolveTheme } from "../../../web/src/status/theme-choice.ts";
 import { compactCount, parseContextFill } from "../../../web/src/status/context-meter.ts";
-import { parseSessionList, relativeTime } from "../../../web/src/settings/sessions-list.ts";
+import { newestFirst, relativeTime } from "../../../web/src/settings/sessions-list.ts";
 
 describe("theme", () => {
   test("system follows the operating system; a choice overrides it", () => {
@@ -46,17 +46,14 @@ describe("context meter", () => {
 });
 
 describe("saved sessions", () => {
-  const listing = [
-    "saved sessions:",
-    "  alpha  (aaaaaaaa-0000-4000-8000-000000000001)  saved 2026-10-01 09:30 UTC",
-    "  beta  (bbbbbbbb-0000-4000-8000-000000000002)  saved 2026-10-09 18:05 UTC",
-    "  old one  (cccccccc-0000-4000-8000-000000000003)",
-    "",
-    "/resume <id>  resume a session (an id prefix is enough)",
-  ].join("\n");
+  const entries = [
+    { id: "aaaaaaaa-0000-4000-8000-000000000001", name: "alpha", updated: "2026-10-01T09:30:00.000Z" },
+    { id: "bbbbbbbb-0000-4000-8000-000000000002", name: "beta", updated: "2026-10-09T18:05:00.000Z" },
+    { id: "cccccccc-0000-4000-8000-000000000003", name: "old one" },
+  ];
 
-  test("parses the /resume listing, newest first, sessions without a time last", () => {
-    const sessions = parseSessionList(listing);
+  test("lists newest first, sessions without a time last", () => {
+    const sessions = newestFirst(entries);
     expect(sessions.map((s) => s.name)).toEqual(["beta", "alpha", "old one"]);
     expect(sessions[0]?.id).toBe("bbbbbbbb-0000-4000-8000-000000000002");
     expect(sessions[0]?.updated?.toISOString()).toBe("2026-10-09T18:05:00.000Z");

@@ -15,29 +15,39 @@ export function isLocalHost(host: string | null, port: number): boolean {
   return host === `localhost:${port}` || host === `127.0.0.1:${port}`;
 }
 
-/** Read-only explorer API: `/api/fs?path=` lists a directory, `/api/file?path=` reads a file (both take the session `root`). */
-function serveExplorer(url: URL, roots: RootRegistry): Response {
-  // The session root the page was opened with; only roots in use are served.
+/**
+ * Run `act` for the session root the page named, relative path and all: only a
+ * root with an open session is served, and a failed result is its status code.
+ */
+function withRoot(
+  url: URL,
+  roots: RootRegistry,
+  act: (root: string, rel: string) => { ok: true; value: unknown } | { ok: false; error: string; status: number },
+): Response {
   const root = roots.resolve(url.searchParams.get("root"));
   if (!root || !roots.isActive(root)) {
     return Response.json({ error: "unknown root" }, { status: 403 });
   }
-  const rel = url.searchParams.get("path") ?? "";
-  const result =
-    url.pathname === "/api/fs" ? listDir(root, rel) : readTextFile(root, rel);
-  if (!result.ok)
-    return Response.json({ error: result.error }, { status: result.status });
-  if (url.pathname === "/api/fs") {
-    const value = result.value as { root: string; entries: DirEntry[] };
-    value.entries = annotateIgnored(root, rel, value.entries);
-    value.entries = annotateGitStatus(root, rel, value.entries);
-    return Response.json(value);
-  }
+  const result = act(root, url.searchParams.get("path") ?? "");
+  if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
   return Response.json(result.value);
 }
 
+/** The explorer API: `/api/fs?path=` lists a directory, `/api/file?path=` reads a file (both take the session `root`). */
+function serveExplorer(url: URL, roots: RootRegistry): Response {
+  const listing = url.pathname === "/api/fs";
+  return withRoot(url, roots, (root, rel) => {
+    if (!listing) return readTextFile(root, rel);
+    const result = listDir(root, rel);
+    if (!result.ok) return result;
+    const value = result.value as { root: string; entries: DirEntry[] };
+    value.entries = annotateGitStatus(root, rel, annotateIgnored(root, rel, value.entries));
+    return { ok: true, value };
+  });
+}
+
 /** A stored picture by id (`/api/image/<sha256>`), for the page's thumbnails. Only the Vise page may load it. */
-function serveImage(url: URL, port: number, req: Request): Response {
+function serveImage(url: URL, req: Request): Response {
   const site = req.headers.get("sec-fetch-site");
   if (site !== null && site !== "same-origin") {
     return new Response("forbidden", { status: 403 });
@@ -74,32 +84,22 @@ export function serveApi(
     // Lets the Firefox extension find the server when it had to move to another port.
     return Response.json({ vise: true });
   }
-  if (url.pathname.startsWith("/api/image/")) return serveImage(url, port, req);
+  if (url.pathname.startsWith("/api/image/")) return serveImage(url, req);
   if (url.pathname === "/api/fs" || url.pathname === "/api/file") {
     return serveExplorer(url, roots);
   }
   if (url.pathname === "/api/delete" && req.method === "POST") {
-    const root = roots.resolve(url.searchParams.get("root"));
-    if (!root || !roots.isActive(root)) {
-      return Response.json({ error: "unknown root" }, { status: 403 });
-    }
-    const rel = url.searchParams.get("path") ?? "";
-    const result = deletePath(root, rel);
-    if (!result.ok)
-      return Response.json({ error: result.error }, { status: result.status });
-    return Response.json({ ok: true });
+    return withRoot(url, roots, (root, rel) => {
+      const result = deletePath(root, rel);
+      return result.ok ? { ok: true, value: { ok: true } } : result;
+    });
   }
   if (url.pathname === "/api/create" && req.method === "POST") {
-    const root = roots.resolve(url.searchParams.get("root"));
-    if (!root || !roots.isActive(root)) {
-      return Response.json({ error: "unknown root" }, { status: 403 });
-    }
-    const rel = url.searchParams.get("path") ?? "";
     const isDir = url.searchParams.get("dir") === "1";
-    const result = createPath(root, rel, isDir);
-    if (!result.ok)
-      return Response.json({ error: result.error }, { status: result.status });
-    return Response.json({ ok: true });
+    return withRoot(url, roots, (root, rel) => {
+      const result = createPath(root, rel, isDir);
+      return result.ok ? { ok: true, value: { ok: true } } : result;
+    });
   }
   if (url.pathname === "/api/pick-folder" && req.method === "POST") {
     // Opens the OS folder dialog; only the Vise page itself may ask.

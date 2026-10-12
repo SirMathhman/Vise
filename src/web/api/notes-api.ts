@@ -1,5 +1,6 @@
 import { NoteStore, requireScope, type NoteId } from "../../stores/note-store.ts";
 import { categoryOf } from "../../stores/notes.ts";
+import { failedResult, str, type Reply } from "./wire/reply.ts";
 
 /**
  * The web UI's notes editor. It talks to the same stores as the model's note
@@ -19,10 +20,6 @@ import { categoryOf } from "../../stores/notes.ts";
  *                     { type:"note_result", ok, deleted?, error?, name?, category?, scope?, version? }   after a save or delete
  */
 
-type Reply = Record<string, unknown>;
-
-const str = (value: unknown): string =>
-  typeof value === "string" ? value : "";
 
 function refOf(value: unknown): NoteId | undefined {
   if (typeof value !== "object" || value === null) return undefined;
@@ -38,15 +35,7 @@ function list(store: NoteStore): Reply {
   return { type: "notes", notes: store.list() };
 }
 
-function failure(error: unknown): Reply[] {
-  return [
-    {
-      type: "note_result",
-      ok: false,
-      error: error instanceof Error ? error.message : String(error),
-    },
-  ];
-}
+const failure = (error: unknown): Reply[] => failedResult("note_result", error);
 
 /** Save under `name`/`category`/`scope`, moving the note first when `from` names a different place. */
 function save(store: NoteStore, msg: Record<string, unknown>): Reply[] {

@@ -1,3 +1,4 @@
+import { make } from "../dom.ts";
 interface WorkflowEntry {
   name: string;
   scope: string;
@@ -24,17 +25,6 @@ export interface WorkflowListMessage {
 function dismiss(dialog: HTMLDialogElement): void {
   if (dialog.open) dialog.close();
   dialog.remove();
-}
-
-function make<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  className = "",
-  text = "",
-): HTMLElementTagNameMap[K] {
-  const element = document.createElement(tag);
-  if (className) element.className = className;
-  if (text) element.textContent = text;
-  return element;
 }
 
 /** What a `workflow` message changes: the strip, the chat log, and the profile select. */

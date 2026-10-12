@@ -25,6 +25,8 @@ export interface LineConnection {
   chain: Promise<void>;
   /** Lines the user chose to hold back until the work in flight is done; they can still be removed. */
   held: HeldLine[];
+  /** Tell the page its lists changed (profiles, tools, sessions, ...): called after every line. */
+  lists?: () => Promise<void>;
   /** A line's turn is running now (steering applies only then). */
   running: boolean;
   /** The running line is a turn the user can steer (not a command). */
@@ -223,6 +225,8 @@ async function runLine(
     if (!background) publishState(conn);
     // Whatever session the conversation now writes to is this connection's to keep.
     conn.lease.follow(session.getSessionId());
+    // A command may have changed what the header and menus list (profile, tools, sessions, burst).
+    await conn.lists?.().catch(() => undefined);
   }
 }
 
