@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { CallLog, CallTrace } from "../../src/client/call-trace.ts";
+import { CallLog, CallTrace } from "../../src/client/stream/call-trace.ts";
 import { LlmClient, streamChat } from "../../src/client/llm.ts";
 import { applySettings } from "../../src/config.ts";
 import type { AuditEvent, AuditSink } from "../../src/core/audit.ts";

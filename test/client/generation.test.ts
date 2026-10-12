@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import {
   generationReporter,
   toolBeingCalled,
-} from "../../src/client/generation.ts";
-import { streamChat } from "../../src/client/stream-reader.ts";
+} from "../../src/client/stream/generation.ts";
+import { streamChat } from "../../src/client/stream/stream-reader.ts";
 import type { GenerationProgress } from "../../src/core/errors.ts";
 import {
   describeWriting,

@@ -94,6 +94,8 @@ src/                # at most 9 .ts files per directory (enforced by test/layout
     llm.ts          # LLM transport: implements the core's `Client` type,
                     # `ContextSource`, and `ModelController`; wraps fetch,
                     # owns URL/key/model config
+    stream/         # call-trace, generation, request-fields, stream-reader: one call's stream and its record
+    retry.ts        # which failures are asked again, and how long to wait
     model-queries.ts # what a provider says about its models: list, window,
                     # vision, embeddings (with llm.ts, the only network I/O)
     provider.ts     # pure: which provider, its URLs and `capabilities`
@@ -571,14 +573,13 @@ whole conversations older than that, once per run.
   token count nears the window. The core's `splitForCompaction` is pure; the
   summarize round-trip goes through the `Client`, so no I/O is added to the
   core.
-- **Unbounded tool output.** A tool result like `read_file` returning full
-  file contents of arbitrary length can grow the `messages` array without
-  bound, not just from conversation length. On a local llama.cpp server with
-  a finite context window, a single large `read_file` can exceed the model's
-  context and produce a truncated or garbled response. The core's
-  `messages` array has no size cap; bounding tool output (truncation,
-  pagination, or a max-byte limit) is a future concern that belongs in the
-  session or engine layer, not in the tool implementation itself.
+- **Tool output size.** A tool result like `read_file` can be arbitrarily
+  long. Bounded: a result of more than 250 lines or about 20,000 characters is
+  saved to the session's temp directory by the tool runner and replaced by its
+  start plus how to read the rest (`TempStore`, `read_temp`/`search_temp`), and
+  `read_file` pages by `offset`/`limit`. Tools that bound their own output set
+  `boundsOwnOutput` on their definition. The `messages` array itself has no
+  size cap: compaction (above) is what keeps it inside the window.
 - **Unbounded subagent recursion.** `run_subagent` receives the same
   `ToolRunner` and `Tool[]` as its parent, so a subagent can spawn its own
   subagents with no depth limit. Each level runs a full tool loop, so
@@ -650,14 +651,20 @@ whole conversations older than that, once per run.
 
 ## Future Work
 
-- **Slash-command registry, finished.** Built-in commands are a table in
-  `Session` (`src/repl/commands/registry.ts`) and `/<name> [input]` shortcuts
-  run only for names outside it. Still to do: give each entry a `summary` so
-  `/help` (`formatHelp`) and the web command hints are generated from the table,
-  and refuse to create a note or workflow whose name is reserved (a note or
-  workflow with a built-in's name is unreachable today and nothing says so).
+- **Slash-command registry (done).** Built-in commands are a table in
+  `Session` and `/<name> [input]` shortcuts run only for names outside it.
+  `src/repl/command-catalog.ts` lists every command once (summary, help lines,
+  what it needs, web-only or not); `/help`, the web composer's suggestions and
+  the reserved names a new note, profile or workflow may not take all derive
+  from it, and a test fails when the catalog and the table disagree. Still to
+  do: the web-only `/steer` and `/queue` are answered before the session, so
+  the terminal has neither (see the turn-admission item below).
 
-- **One labelled model-call channel.** Every model call (reply, goal derivation,
+- **One labelled model-call channel (partly done).** Done: the client owns one
+  progress sink, every call is labelled through `Client.as(purpose)`, and no
+  core helper takes a progress callback. Still to do: the nine positional
+  parameters of `Client.chat` (one of them, the per-call progress callback, is
+  passed by nobody). The target: every model call (reply, goal derivation,
   goal check, progress check, compaction summary, workflow step, subagent round)
   is a `ChatRequest` object `{ messages, tools?, schema?, act?, signal?,
 purpose }` handed to `Client.chat`, replacing the nine positional parameters.
@@ -697,15 +704,15 @@ purpose }` handed to `Client.chat`, replacing the nine positional parameters.
   model rebuilds that section once, at a point where the cache is invalid anyway.
 
 - **Tool display metadata lives on the tool.** Done for the label and the icon: a `Tool` carries `display: { label, icon }`, tests require every tool to have one, and the display code takes a lookup built from the definitions (`src/tools/display.ts`). Still to do: the arguments worth showing and the sensitive ones (`SHOWN` and `SENSITIVE` in `output/tool-line.ts` are still name-keyed), and the same readable names in error messages that name a tool.
-- **Structured list payloads for UI panels.** Tool categories (and every other
-  list the web UI renders) should reach the browser as typed data, e.g. a
-  `{type:"tools", items:[{name,enabled,category}]}` WebSocket message built
-  from `ToolController.list()`, not by re-parsing `formatToolList` text.
-  `formatToolList` stays terminal-only; the web client stops regexing `[x]`
-  headings and `(enabled)` suffixes. Until then the text format is a wire
-  protocol and must be pinned by a golden test shared by server and web
-  parser. Category names are a closed vocabulary (lowercase, no brackets,
-  `other` reserved for uncategorised) validated at registration.
+- **Structured list payloads for UI panels (done for the header and menus).**
+  The profile choices, tools with their category and state, reasoning levels,
+  saved sessions and burst state reach the browser as one typed `lists`
+  message (`src/repl/lists.ts`, sent by `src/web/api/wire/lists.ts` on
+  `lists_get` and after every line); `formatToolList` and the other text
+  formats are terminal-only. Still to do: the same for the hooks, workflow and
+  note lists that other panels still read through their own messages, and a
+  closed vocabulary for category names (lowercase, no brackets, `other`
+  reserved for uncategorised) validated at registration.
 - **Engine (done).** `core/engine.ts` already contains `runTurn`,
   `splitForCompaction`, and `summarize`; it is pure and unit-testable with a
   stub `Client`.
@@ -717,12 +724,16 @@ purpose }` handed to `Client.chat`, replacing the nine positional parameters.
   scriptable and CI-able.
 - **CLI surface.** `cli.ts` with subcommands and flags; `index.ts` shrinks to
   pure wiring.
-- **Tool system.** Tool definitions (`Tool[]`) and the `ToolRunner`
-  interface (edge provides implementations in `src/tools.ts`, engine
-  dispatches by name) are implemented. What remains: structured
-  tool-execution errors as a `ViseError` variant (e.g. `kind: "tool"`), not
-  string-swallowed into the message; and output bounding (truncation/pagination)
-  to prevent single tool calls from exhausting context windows.
+- **Tool system.** Tool definitions (`Tool[]`, carrying their own flags:
+  `core`, `defaultDisabled`, `boundsOwnOutput`, `requiresFileSystem`,
+  `requiresVision`) and the `ToolRunner` interface (edge provides
+  implementations in `src/tools.ts`, engine dispatches by name) are
+  implemented, and output is bounded. A failing tool returns an `error:`
+  string and a throwing handler is turned into one by the runner. What
+  remains: structured tool-execution errors as a `ViseError` variant (e.g.
+  `kind: "tool"`) so failure is not recognised by a string prefix, in
+  `engine.ts`, `workflow.ts`, `audit-call.ts`, `tool-line.ts` and the MCP
+  commands.
 - **Model management & configuration.** Model selection via `/model` and
   model enumeration via `GET /v1/models` are now supported at runtime. Future
   work includes model parameter configuration (temperature, top_p), model
@@ -752,9 +763,9 @@ purpose }` handed to `Client.chat`, replacing the nine positional parameters.
   header can still cover a click target after the scroll into view; and the
   scrollable-panel scan runs `getComputedStyle` over many elements per snapshot.
 
-- **Page actions are data, not backend methods.** Done for `select`: a
-  `PageAction` in `page-scripts.ts` runs through one optional backend
-  capability, `runPageAction`, implemented once per protocol and forwarded once
+- **Page actions are data, not backend methods.** Done for `select` and
+  `scroll`: a `PageAction` in `page-scripts.ts` runs through one backend
+  method, `runPageAction` (required of every backend), implemented once per protocol and forwarded once
   by `SwitchableBrowser`; the extension builds the script from the named action
   and never runs script text from the server. Still to do: move the other
   widgets (combobox, checkbox/radio, date and contenteditable setters, the
@@ -764,6 +775,18 @@ purpose }` handed to `Client.chat`, replacing the nine positional parameters.
   should be paged or filtered (by region or field) rather than capped
   silently, and tool results should report repeated identical failures so the
   loop can stop and ask the user.
+
+- **Simplification follow-ups.** What the last pass left, in rough order of
+  value: the stores (`profiles`, `notes`, `workflows`) throw in some paths and
+  return `Result` in others (`tryIo` in `workflows.ts` is the shape to adopt);
+  `readFile`'s paging reimplements `TempStore.read`; `ChromiumBackend` and
+  `FirefoxBackend` are copy-paste siblings (dialog tracking, tab registry,
+  key tables, the `inTab` race) that want a shared base; the page's settings
+  tabs refresh two different ways and the tools/git/model dropdowns are built
+  three different ways (a `createXPanel(group, send)` factory each); the
+  terminal's Ctrl+C path is unconfirmed (see AGENTS.md "Known gaps");
+  semantic search (`src/stores/file-embeddings.ts`) is built but not wired to
+  a command, tool or panel.
 
 ## Performance
 

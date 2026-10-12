@@ -2,11 +2,19 @@ import type {
   AssistantMessage,
   PromptProgress,
   ToolCall,
-} from "../core/errors.ts";
-import { hideCalls, type TokenLogprob } from "./tool-protocol.ts";
+} from "../../core/errors.ts";
+import { hideCalls, type TokenLogprob } from "../tool-protocol.ts";
 
 interface Usage {
   prompt_tokens?: number;
+  /** What the call wrote: how a provider without llama.cpp's `timings` reports it (OpenRouter). */
+  completion_tokens?: number;
+}
+
+/** What a provider sends in a chunk when the call failed after the stream began (OpenRouter: `{ error: { code, message } }`). */
+interface StreamError {
+  code?: number | string;
+  message?: string;
 }
 
 /** A single streamed tool-call delta, accumulated by index across chunks. */
@@ -36,6 +44,7 @@ interface StreamChoice {
 interface StreamChunk {
   choices?: StreamChoice[];
   usage?: Usage;
+  error?: StreamError;
   prompt_progress?: PromptProgress;
   timings?: { predicted_n?: number };
 }
@@ -68,12 +77,17 @@ export async function streamChat(
   usage?: number;
   sawData: boolean;
   logprobs: TokenLogprob[];
+  /** The provider failed the call after the stream began (it ended with `finish_reason: "error"` or an error object). */
+  failure?: { status: number; message: string };
 }> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   let content = "";
   let usage: number | undefined;
+  let completionTokens: number | undefined;
+  let reportedTimings = false;
+  let failure: { status: number; message: string } | undefined;
   let sawData = false;
   const toolCallParts = new Map<number, ToolCall>();
   const logprobs: TokenLogprob[] = [];
@@ -106,8 +120,18 @@ export async function streamChat(
       onToken?.(piece);
     }
     if (choice?.finish_reason) generation?.finish?.(choice.finish_reason);
+    if (chunk.error || choice?.finish_reason === "error") {
+      const code = Number(chunk.error?.code);
+      failure = {
+        status: Number.isInteger(code) && code >= 400 ? code : 502,
+        message: chunk.error?.message ?? "the provider reported an error",
+      };
+    }
     const generated = chunk.timings?.predicted_n;
-    if (generated !== undefined && generated > 0) generation?.tokens(generated);
+    if (generated !== undefined && generated > 0) {
+      reportedTimings = true;
+      generation?.tokens(generated);
+    }
     const deltas = delta?.tool_calls;
     if (deltas) {
       for (const tc of deltas) {
@@ -131,6 +155,8 @@ export async function streamChat(
     }
     const promptTokens = chunk.usage?.prompt_tokens;
     if (promptTokens !== undefined) usage = promptTokens;
+    const written = chunk.usage?.completion_tokens;
+    if (written !== undefined) completionTokens = written;
   };
 
   for (;;) {
@@ -148,12 +174,16 @@ export async function streamChat(
     }
   }
 
+  // A provider that sends no running count still reports what the call wrote, at the end.
+  if (!reportedTimings && completionTokens !== undefined && completionTokens > 0) {
+    generation?.tokens(completionTokens);
+  }
   const toolCalls = [...toolCallParts.values()];
   const message: AssistantMessage = {
     content,
     ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
   };
-  return { message, usage, sawData, logprobs };
+  return { message, usage, sawData, logprobs, ...(failure ? { failure } : {}) };
 }
 
 /**

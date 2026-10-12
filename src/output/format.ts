@@ -3,10 +3,38 @@ import type { GoalEvent } from "../repl/turn/goal-loop.ts";
 import type { ViseError } from "../core/errors.ts";
 import type { SessionEntry } from "../repl/ports.ts";
 
+/**
+ * What an HTTP error body says, as one short sentence: the `error.message` of
+ * the JSON an OpenAI-style API (llama.cpp, OpenRouter) answers with, else the
+ * body as it came. A few statuses get what to do about them.
+ */
+export function httpReason(status: number, body: string): string {
+  let message = body.trim();
+  try {
+    const parsed: unknown = JSON.parse(body);
+    const error = (parsed as { error?: unknown } | null)?.error;
+    const text =
+      typeof error === "string"
+        ? error
+        : (error as { message?: unknown } | null | undefined)?.message;
+    if (typeof text === "string" && text.trim() !== "") message = text.trim();
+  } catch {
+    // Not JSON: the body is the message.
+  }
+  const hints: Record<number, string> = {
+    401: "check the API key in settings",
+    402: "the account is out of credits",
+    404: "no such model or endpoint; run /model to see the choices",
+    429: "rate limited; try again in a moment",
+  };
+  const hint = hints[status];
+  return hint ? `${message} (${hint})` : message;
+}
+
 /** Render a structured error as a single line for the terminal. */
 export function formatError(err: ViseError): string {
   if (err.kind === "http") {
-    return `vise: HTTP ${err.status} from server: ${err.body}`;
+    return `vise: HTTP ${err.status} from server: ${httpReason(err.status, err.body)}`;
   } else if (err.kind === "network") {
     return `vise: ${err.cause}`;
   } else if (err.kind === "interrupted") {
@@ -39,7 +67,7 @@ export function formatContext(usedTokens: number, maxTokens: number): string {
  */
 export function formatCompactionFailure(err: ViseError): string {
   if (err.kind === "http") {
-    return `vise: auto-compact skipped (HTTP ${err.status}): ${err.body}`;
+    return `vise: auto-compact skipped (HTTP ${err.status}): ${httpReason(err.status, err.body)}`;
   } else if (err.kind === "network") {
     return `vise: auto-compact skipped (network): ${err.cause}`;
   } else if (err.kind === "interrupted") {

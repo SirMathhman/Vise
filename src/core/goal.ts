@@ -161,11 +161,14 @@ export async function deriveGoal(
   const known = current
     ? `Current goal: ${current.text} (done when: ${current.doneWhen})`
     : "There is no current goal.";
+  // Quoted, because "the latest message above" is ambiguous in a conversation that opens with the
+  // project map and notes: a weaker model answered with a goal about those instead of the request.
+  const latest = JSON.stringify(lastUserText(messages, skip).slice(0, 400));
   const reply = await ask(
     client,
     messages,
     toolDefs,
-    `[goal tracking, not from the user] ${known}\nThe user's latest message is above. Reply with JSON. "goal": the objective the user wants accomplished, in one sentence. If the latest message continues, answers or refines the current goal (for example "?", "ok", "try again", or new details for the same task), keep the current goal and fold in anything new. If it asks for something unrelated, give a new goal. For a plain question or chat, the goal is to answer it. "done_when": what will observably be true once the goal is complete.`,
+    `[goal tracking, not from the user] ${known}\nThe user's latest message is above; it reads: ${latest}. Reply with JSON. "goal": the objective the user wants accomplished, in one sentence. If the latest message continues, answers or refines the current goal (for example "?", "ok", "try again", or new details for the same task), keep the current goal and fold in anything new. If it asks for something unrelated, give a new goal. For a plain question or chat, the goal is to answer it. "done_when": what will observably be true once the goal is complete.`,
     GOAL_SCHEMA,
     "goal",
     signal,

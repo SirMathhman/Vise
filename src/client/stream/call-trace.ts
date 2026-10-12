@@ -1,8 +1,8 @@
-import { config } from "../config.ts";
-import type { AuditCall, AuditSink } from "../core/audit.ts";
-import type { AssistantMessage, Result, ViseError } from "../core/errors.ts";
-import { WINDOW_CHARS, findLoop, repetition, runawayVerdict } from "../core/call/runaway.ts";
-import { formatError } from "../output/format.ts";
+import { config } from "../../config.ts";
+import type { AuditCall, AuditSink } from "../../core/audit.ts";
+import type { AssistantMessage, Result, ViseError } from "../../core/errors.ts";
+import { WINDOW_CHARS, findLoop, repetition, runawayVerdict } from "../../core/call/runaway.ts";
+import { formatError } from "../../output/format.ts";
 import type { GenerationListener } from "./stream-reader.ts";
 
 /** Raw text kept for one call: its start, then a rolling tail (a 100k-token runaway stays bounded). */

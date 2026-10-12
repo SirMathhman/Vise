@@ -66,6 +66,13 @@ export const SPEC = {
     group: LLM,
     label: "embedding model (empty = same as chat model)",
   },
+  llmRetries: n(
+    "VISE_LLM_RETRIES",
+    2,
+    LLM,
+    "ask again after a busy or rate-limited reply (HTTP 408, 429, 502, 503, 504; 0 = never)",
+    { min: 0 },
+  ),
   llmProvider: {
     env: "VISE_LLM_PROVIDER",
     def: "local",

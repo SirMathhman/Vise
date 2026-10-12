@@ -1,14 +1,15 @@
 import { config } from "../config.ts";
 import { noAudit, type AuditSink } from "../core/audit.ts";
 import { encodeMessages, type ImageResolver, plainMessages, hideCalls, nameConfidence, parseReply, toolRequestFields } from "./tool-protocol.ts";
-import { collectThinking, readJsonReply, streamChat } from "./stream-reader.ts";
-import { generationReporter } from "./generation.ts";
-import { ANTI_REPEAT_FIELDS, LLAMA_STREAM_FIELDS, STREAM_FIELDS, readReply } from "./request-fields.ts";
+import { collectThinking, readJsonReply, streamChat } from "./stream/stream-reader.ts";
+import { generationReporter } from "./stream/generation.ts";
+import { ANTI_REPEAT_FIELDS, LLAMA_STREAM_FIELDS, STREAM_FIELDS, readReply } from "./stream/request-fields.ts";
 import { modelRef, parseModelRef, providerFor, providerOf, reasoningFields, responseFormat, type ModelInfo, type Provider } from "./provider.ts";
 import { chooseSideSlot as chooseSlot, slotJustUsed } from "./slots.ts";
+import { isTransient, pause, retryDelayMs } from "./retry.ts";
 import { REASONING_EFFORTS, type ReasoningEffort } from "../core/call/reasoning.ts";
 import { fetchEmbedding, fetchHostedInfo, fetchModelDetails, fetchSlotContext, localSupportsVision, type ModelDetail } from "./model-queries.ts";
-import { CallLog, CallTrace, recordCallEnd, recordCallStart, noteServerCut, runawayError, traceListener, traceThinking } from "./call-trace.ts";
+import { CallLog, CallTrace, recordCallEnd, recordCallStart, noteServerCut, runawayError, traceListener, traceThinking } from "./stream/call-trace.ts";
 
 export { streamChat };
 import type { Client, Tool } from "../core/engine.ts";
@@ -392,6 +393,14 @@ export class LlmClient implements Client {
       args[2]?.("\n\n⚠ the model repeated itself; asking again\n\n");
       result = await this.attempt(args, true);
     }
+    // A busy or rate-limited provider (OpenRouter's upstreams often are) is asked again after a pause.
+    const signal = args[6];
+    for (let again = 0; again < config.llmRetries; again++) {
+      if (result.ok || !isTransient(result.error) || signal?.aborted) break;
+      await pause(retryDelayMs(again), signal);
+      if (signal?.aborted) break;
+      result = await this.attempt(args, false);
+    }
     // A reply that calls tools may start side work next: the slot it ran on is the main one.
     if (
       this.sideDepth === 0 &&
@@ -538,6 +547,11 @@ export class LlmClient implements Client {
         generation,
       );
       if (generation && acc.usage !== undefined) void this.reportUsage(request, purpose, acc.usage);
+      // The provider failed the call after the stream began (an upstream dropped, a filter tripped...).
+      if (acc.failure) {
+        const body = JSON.stringify({ error: { message: acc.failure.message } });
+        return { ok: false, error: { kind: "http", status: acc.failure.status, body } };
+      }
       const cut = runawayError(noteServerCut(trace));
       if (cut) return { ok: false, error: cut };
       if (!acc.sawData) {

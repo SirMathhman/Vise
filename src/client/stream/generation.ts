@@ -1,5 +1,5 @@
-import type { CallPurpose, GenerationProgress } from "../core/errors.ts";
-import { CALL_CLOSE, CALL_OPEN } from "./tool-protocol.ts";
+import type { CallPurpose, GenerationProgress } from "../../core/errors.ts";
+import { CALL_CLOSE, CALL_OPEN } from "../tool-protocol.ts";
 
 /** How often a long generation is reported: every this many tokens, or this many milliseconds. */
 const EVERY_TOKENS = 20;
