@@ -1,5 +1,6 @@
 import { config } from "../../config.ts";
-import { textProbe, type PageProbe } from "../../browser/probe.ts";
+import { numberArg } from "../args.ts";
+import type { PageProbe } from "../../browser/probe.ts";
 import type { BrowserBackend } from "../../browser/types.ts";
 
 /**
@@ -20,9 +21,10 @@ const sleep = (ms: number): Promise<void> =>
 
 /** The wait limit in milliseconds from a `timeout_seconds` argument. */
 export function timeoutMs(value: unknown): number {
+  const given = numberArg(value);
   const seconds =
-    typeof value === "number" && Number.isFinite(value) && value > 0
-      ? Math.min(value, config.waitMaxSeconds)
+    given !== undefined && Number.isFinite(given) && given > 0
+      ? Math.min(given, config.waitMaxSeconds)
       : config.waitDefaultSeconds;
   return seconds * 1000;
 }
@@ -52,10 +54,7 @@ function look(
   id: number,
   needle?: string,
 ): Promise<PageProbe | undefined> {
-  const probe = browser.pageProbe
-    ? browser.pageProbe(id, needle)
-    : browser.readText(id).then((text) => textProbe(text, needle));
-  return within(probe, config.waitProbeTimeoutMs);
+  return within(browser.pageProbe(id, needle), config.waitProbeTimeoutMs);
 }
 
 type Outcome = { how: "done" | "timeout" | "stopped"; took: number };

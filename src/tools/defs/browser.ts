@@ -59,6 +59,7 @@ export const browserTools: Tool[] = [
   },
   {
     type: "function",
+    boundsOwnOutput: true,
     display: { label: "Read page", icon: "👁" },
     function: {
       name: "browser_read",
@@ -321,6 +322,8 @@ export const browserTools: Tool[] = [
   },
   {
     type: "function",
+    requiresFileSystem: true,
+    defaultDisabled: true,
     display: { label: "Run browser code", icon: "🧪" },
     function: {
       name: "browser_run_code",
@@ -345,6 +348,7 @@ export const browserTools: Tool[] = [
   },
   {
     type: "function",
+    requiresVision: true,
     display: { label: "Take screenshot", icon: "📷" },
     function: {
       name: "browser_screenshot",

@@ -33,6 +33,7 @@ import { createEdgeSession } from "../wiring.ts";
 import { clipDetail, formatToolCall, summarizeToolResult } from "../output/tool-line.ts";
 import { displayOfTool } from "../tools/display.ts";
 import { WebUserPrompter } from "./conn/prompter.ts";
+import { askToContinue } from "../tools/agent/ask-user.ts";
 import { TerminalRegistry, type TerminalAttachment } from "./terminal/terminal-registry.ts";
 import { spawnConPty } from "./terminal/pty.ts";
 import { handleTerminalMessage } from "./terminal/terminal-api.ts";
@@ -406,14 +407,7 @@ function makeConnectionState(
         send({ type: "tool_result", name, depth, text, detail: clipDetail(result) });
     },
     askUser: prompter,
-    onMaxRounds: async (question) => {
-      const answer = await prompter.ask({
-        question,
-        options: ["Continue", "Stop"],
-      });
-      const a = answer.trim().toLowerCase();
-      return a === "1" || a === "continue" || a === "yes" || a === "y";
-    },
+    onMaxRounds: (question) => askToContinue(prompter, question),
   });
   return {
     ws,

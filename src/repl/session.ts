@@ -12,7 +12,7 @@ import { SessionAudit } from "./turn/session-audit.ts";
 import { deriveSessionName } from "./session-name.ts";
 import { GoalLog } from "../core/goal-trace.ts";
 import { GoalTracker, handleGoalCommand } from "./turn/goal-loop.ts";
-import type { Message, Result, ViseError } from "../core/errors.ts";
+import type { Message, Result } from "../core/errors.ts";
 import { formatHelp } from "../output/format.ts";
 import { SessionHooks } from "./turn/session-hooks.ts";
 import {
@@ -43,21 +43,9 @@ import { resolveShortcut } from "./commands/shortcut-command.ts";
 import { handleWorkflowCommand } from "./commands/workflow-commands.ts";
 import type { WorkflowCommands } from "./commands/workflow-commands.ts";
 
-/**
- * The outcome of a handled line. A successful turn carries the model's reply
- * and, when auto-compaction failed before the turn, an optional
- * `compactionWarning` the edge surfaces on stderr. This keeps all I/O at the
- * edge (invariant #2): the session never writes to stdout or stderr itself.
- */
-export type LineResult =
-  | "exit"
-  | {
-      ok: true;
-      value: string;
-      streamed?: boolean;
-      compactionWarning?: ViseError;
-    }
-  | { ok: false; error: ViseError };
+import type { LineResult } from "./ports.ts";
+
+export type { LineResult };
 
 export type {
   ContextSource,

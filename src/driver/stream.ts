@@ -142,21 +142,14 @@ export class StreamDisplay {
   };
 
   /** Display the goal and each verdict on it as a visible event between model rounds. */
-  onGoal = (event: GoalEvent): void => {
-    const line = formatGoalEvent(event);
-    if (!line) return;
-    if (this.promptActive || this.thinkingActive) {
-      this.promptActive = false;
-      this.thinkingActive = false;
-      process.stdout.write("\n");
-    }
-    if (this.contentWritten) this.flushMdLine();
-    process.stdout.write(dim(line.text) + "\n");
-  };
+  onGoal = (event: GoalEvent): void => this.printEvent(formatGoalEvent(event));
 
   /** Show each workflow step as it starts (and how the run ended) as a visible event between model rounds. */
-  onWorkflow = (event: WorkflowEvent): void => {
-    const line = formatWorkflowEvent(event);
+  onWorkflow = (event: WorkflowEvent): void =>
+    this.printEvent(formatWorkflowEvent(event));
+
+  /** Show an event line (a goal or workflow event; nothing for an event that has no line) between model rounds. */
+  private printEvent(line: { text: string } | undefined): void {
     if (!line) return;
     if (this.promptActive || this.thinkingActive) {
       this.promptActive = false;
@@ -165,7 +158,7 @@ export class StreamDisplay {
     }
     if (this.contentWritten) this.flushMdLine();
     process.stdout.write(dim(line.text) + "\n");
-  };
+  }
 
   /** Reset all state at the start of a new user turn. */
   beginTurn(): void {

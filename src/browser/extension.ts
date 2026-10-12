@@ -80,6 +80,9 @@ export class ExtensionBackend implements BrowserBackend {
   readonly noTabsHint =
     "Vise can only see tabs the user shares with it, and none are shared yet. Ask the user to open the Vise sidebar in Firefox, switch to the page in question and press 'Give Vise this tab' (the sidebar's banner must say 'Connected to this tab'). Or open a new tab yourself with browser_open.";
 
+  /** Synthetic page events, auto-answered dialogs, one tab frame at a time: no live view, no full-page shots. */
+  readonly capabilities = { dialogs: false, runCode: true, fullPage: false, liveView: false };
+
   get running(): boolean {
     return this.link.connected;
   }

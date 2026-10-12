@@ -46,6 +46,19 @@ export interface UserPrompter {
  * resolves with the user's line. On a readline error (e.g. EOF) it resolves
  * with an empty string so the turn can continue.
  */
+/**
+ * Ask whether a long turn should go on past its round limit (or a stuck
+ * progress check). Both frontends share the words that count as yes.
+ */
+export async function askToContinue(
+  prompter: UserPrompter,
+  question: string,
+): Promise<boolean> {
+  const answer = await prompter.ask({ question, options: ["Continue", "Stop"] });
+  const a = answer.trim().toLowerCase();
+  return a === "1" || a === "continue" || a === "yes" || a === "y";
+}
+
 export class RlUserPrompter implements UserPrompter {
   constructor(private readonly mainRl: Interface) {}
 

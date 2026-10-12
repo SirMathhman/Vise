@@ -19,6 +19,7 @@ const choiceSchema = {
 export const agentTools: Tool[] = [
   {
     type: "function",
+    core: true,
     display: { label: "Ask you", icon: "❓" },
     function: {
       name: "ask_user",

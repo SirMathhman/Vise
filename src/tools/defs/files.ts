@@ -4,6 +4,7 @@ import type { Tool } from "../../core/engine.ts";
 export const fileTools: Tool[] = [
   {
     type: "function",
+    core: true,
     display: { label: "List folder", icon: "📂" },
     function: {
       name: "list_directory",
@@ -22,6 +23,7 @@ export const fileTools: Tool[] = [
   },
   {
     type: "function",
+    core: true,
     display: { label: "Read file", icon: "📄" },
     function: {
       name: "read_file",
@@ -49,6 +51,7 @@ export const fileTools: Tool[] = [
   },
   {
     type: "function",
+    core: true,
     display: { label: "Create file", icon: "🆕" },
     function: {
       name: "create_file",
@@ -72,6 +75,7 @@ export const fileTools: Tool[] = [
   },
   {
     type: "function",
+    core: true,
     display: { label: "Edit file", icon: "📝" },
     function: {
       name: "edit_file",
@@ -101,6 +105,7 @@ export const fileTools: Tool[] = [
   },
   {
     type: "function",
+    core: true,
     display: { label: "Delete file", icon: "🗑" },
     function: {
       name: "delete_file",
@@ -138,6 +143,7 @@ export const fileTools: Tool[] = [
   },
   {
     type: "function",
+    core: true,
     display: { label: "Find files", icon: "🔎" },
     function: {
       name: "find_files",
@@ -163,6 +169,7 @@ export const fileTools: Tool[] = [
   },
   {
     type: "function",
+    core: true,
     display: { label: "Search in files", icon: "🔎" },
     function: {
       name: "search_files",

@@ -194,6 +194,32 @@ export function deleteDirectory(args: Record<string, unknown>): string {
   }
 }
 
+/** Folders a recursive search does not descend into (generated or repository internals); a search that starts inside one still walks it. */
+const SKIPPED_DIRECTORIES = new Set([".git", "node_modules"]);
+
+/** Call `onFile(path, name)` for every file under `root`, skipping symlinks and `SKIPPED_DIRECTORIES`. */
+function walkFiles(root: string, onFile: (path: string, name: string) => void): void {
+  const stack: string[] = [root];
+  while (stack.length > 0) {
+    const dir = stack.pop()!;
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (entry.isSymbolicLink()) continue;
+      const fullPath = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (!SKIPPED_DIRECTORIES.has(entry.name)) stack.push(fullPath);
+      } else {
+        onFile(fullPath, entry.name);
+      }
+    }
+  }
+}
+
 export function findFiles(args: Record<string, unknown>): string {
   try {
     const pattern = String(args.pattern ?? "");
@@ -201,27 +227,10 @@ export function findFiles(args: Record<string, unknown>): string {
     const root = String(args.root ?? ".");
     const re = new RegExp(pattern);
     const out: string[] = [];
-    const stack: string[] = [root];
-    while (stack.length > 0) {
-      const dir = stack.pop()!;
-      let entries;
-      try {
-        entries = readdirSync(dir, { withFileTypes: true });
-      } catch {
-        continue;
-      }
-      for (const entry of entries) {
-        if (entry.isSymbolicLink()) continue;
-        const fullPath = join(dir, entry.name);
-        if (entry.isDirectory()) {
-          stack.push(fullPath);
-        } else if (re.test(entry.name)) {
-          out.push(fullPath);
-        }
-      }
-    }
-    if (out.length === 0) return "no matches";
-    return out.join("\n");
+    walkFiles(root, (path, name) => {
+      if (re.test(name)) out.push(path);
+    });
+    return out.length === 0 ? "no matches" : out.join("\n");
   } catch (err) {
     return errStr(err);
   }
@@ -234,7 +243,6 @@ export function searchFiles(args: Record<string, unknown>): string {
     const target = String(args.path ?? ".");
     const re = new RegExp(pattern);
     const out: string[] = [];
-
     const searchFile = (filePath: string): void => {
       let content: string;
       try {
@@ -242,38 +250,13 @@ export function searchFiles(args: Record<string, unknown>): string {
       } catch {
         return; // skip unreadable files (binary, permission, etc.)
       }
-      const lines = content.split(/\r?\n/);
-      lines.forEach((line, i) => {
+      content.split(/\r?\n/).forEach((line, i) => {
         if (re.test(line)) out.push(`${filePath}:${i + 1}: ${line}`);
       });
     };
-
-    if (statSync(target).isFile()) {
-      searchFile(target);
-    } else {
-      const stack: string[] = [target];
-      while (stack.length > 0) {
-        const dir = stack.pop()!;
-        let entries;
-        try {
-          entries = readdirSync(dir, { withFileTypes: true });
-        } catch {
-          continue;
-        }
-        for (const entry of entries) {
-          if (entry.isSymbolicLink()) continue;
-          const fullPath = join(dir, entry.name);
-          if (entry.isDirectory()) {
-            stack.push(fullPath);
-          } else {
-            searchFile(fullPath);
-          }
-        }
-      }
-    }
-
-    if (out.length === 0) return "no matches";
-    return out.join("\n");
+    if (statSync(target).isFile()) searchFile(target);
+    else walkFiles(target, searchFile);
+    return out.length === 0 ? "no matches" : out.join("\n");
   } catch (err) {
     return errStr(err);
   }

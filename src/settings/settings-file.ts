@@ -1,11 +1,6 @@
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  writeFileSync,
-} from "node:fs";
-import { dirname, join } from "node:path";
+import { writeFileAtomic } from "../stores/atomic-write.ts";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { applySettings, fileValue, SPEC } from "../config.ts";
 import type { Spec } from "../config.ts";
 import { globalDataDir } from "../data-dir.ts";
@@ -96,12 +91,9 @@ export function saveSettings(
     .filter(([name]) => specs.has(name))
     .map(([name, value]) => `${name}=${value}`);
   try {
-    mkdirSync(dirname(path), { recursive: true });
-    const temp = `${path}.tmp`;
     const body = [...lines, ...others].join("\n");
     // The file can hold the API key: owner-only where the system supports it.
-    writeFileSync(temp, `${HEADER}${body}\n`, { mode: 0o600 });
-    renameSync(temp, path);
+    writeFileAtomic(path, `${HEADER}${body}\n`, 0o600);
   } catch (error) {
     return `could not write ${path}: ${error instanceof Error ? error.message : String(error)}`;
   }

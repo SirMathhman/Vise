@@ -1,5 +1,6 @@
 import { config } from "../config.ts";
 import { type ChildProcess, spawn } from "node:child_process";
+import { numberArg } from "./args.ts";
 import { errStr } from "./files.ts";
 import { selfKillRefusal } from "./self-kill-guard.ts";
 
@@ -45,7 +46,7 @@ let nextProcessId = 1;
  * handlers. Returns the spawn handle; the caller decides whether to wait on
  * it (foreground) or register it (background).
  */
-function spawnPowerShell(
+export function spawnPowerShell(
   command: string,
   cwd?: string,
 ): {
@@ -180,23 +181,16 @@ export async function runPowershell(
  * keeps running afterwards (a wait does not kill it).
  */
 export function waitForProcess(args: Record<string, unknown>): Promise<string> {
-  const rawId = args.process_id;
-  const id = typeof rawId === "number" ? rawId : Number(rawId);
-  if (!Number.isInteger(id) || id < 1) {
+  const id = numberArg(args.process_id);
+  if (id === undefined || !Number.isInteger(id) || id < 1) {
     return Promise.resolve("error: process_id must be a positive integer");
   }
   const record = processes.get(id);
   if (record === undefined) {
     return Promise.resolve(`error: no process ${id}`);
   }
-  const rawTimeout = args.timeout;
   // The timeout is optional: omitted means "do not wait" (0).
-  const timeout =
-    rawTimeout === undefined || rawTimeout === null
-      ? 0
-      : typeof rawTimeout === "number"
-        ? rawTimeout
-        : Number(rawTimeout);
+  const timeout = numberArg(args.timeout) ?? 0;
   if (
     !Number.isFinite(timeout) ||
     timeout < 0 ||
@@ -255,9 +249,8 @@ export function waitForProcess(args: Record<string, unknown>): Promise<string> {
  * short "no longer running" message.
  */
 export function killProcess(args: Record<string, unknown>): string {
-  const rawId = args.process_id;
-  const id = typeof rawId === "number" ? rawId : Number(rawId);
-  if (!Number.isInteger(id) || id < 1) {
+  const id = numberArg(args.process_id);
+  if (id === undefined || !Number.isInteger(id) || id < 1) {
     return "error: process_id must be a positive integer";
   }
   const record = processes.get(id);

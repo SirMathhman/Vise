@@ -4,7 +4,7 @@ import type { Client, SummaryPrefix } from "../core/engine.ts";
 import type { GoalLog, GoalTraceEntry } from "../core/goal-trace.ts";
 import type { TodoItem, TodoStore } from "../core/todos.ts";
 import type { Workflow, WorkflowScope } from "../core/workflow.ts";
-import type { Message, Result } from "../core/errors.ts";
+import type { Message, Result, ViseError } from "../core/errors.ts";
 
 /**
  * Source of context-window data. Provided by the edge: the used count comes
@@ -118,30 +118,37 @@ export interface WorkflowSource {
 }
 
 /**
- * Pre-turn hook: runs a configured shell command before every turn and returns
- * its combined output (stdout/stderr or error text). The output is injected
- * as context into the user's message so the model sees it each turn. Provided
- * by the edge (the session performs no I/O).
+ * The outcome of a handled line. A successful turn carries the model's reply
+ * and, when auto-compaction failed before the turn, an optional
+ * `compactionWarning` the edge surfaces on stderr. This keeps all I/O at the
+ * edge (invariant #2): the session never writes to stdout or stderr itself.
  */
-export interface PreTurnHook {
+export type LineResult =
+  | "exit"
+  | {
+      ok: true;
+      value: string;
+      streamed?: boolean;
+      compactionWarning?: ViseError;
+    }
+  | { ok: false; error: ViseError };
+
+/**
+ * A configured shell command run around a turn, returning its combined output
+ * (stdout/stderr or error text). Provided by the edge (the session performs no
+ * I/O). Which side it is on decides what happens to the output: a pre-turn
+ * hook's is injected as context into the user's message; a post-turn hook's is
+ * a user message after the reply, which the model sees in the next turn.
+ */
+export interface TurnHook {
   /** The command line the hook runs, shown by `/hooks` and `self`. */
   readonly command: string;
-  /** Run the pre-turn hook command and return its combined output. */
+  /** Run the command and return its combined output. */
   run(): Promise<string>;
 }
 
-/**
- * Post-turn hook: runs a configured shell command after every successful turn
- * and returns its combined output (stdout/stderr or error text). The output
- * is injected as a user message after the assistant's reply, so the model
- * sees it in the next turn. Provided by the edge (the session performs no I/O).
- */
-export interface PostTurnHook {
-  /** The command line the hook runs, shown by `/hooks` and `self`. */
-  readonly command: string;
-  /** Run the post-turn hook command and return its combined output. */
-  run(): Promise<string>;
-}
+export type PreTurnHook = TurnHook;
+export type PostTurnHook = TurnHook;
 
 /**
  * Store for the hook command lists (`.viserc.json`). Provided by the edge: it
@@ -149,7 +156,7 @@ export interface PostTurnHook {
  */
 export interface HookSource {
   /** Build a runnable hook for a command line. */
-  create(command: string): PreTurnHook & PostTurnHook;
+  create(command: string): TurnHook;
   /** Persist the full pre/post command lists. */
   save(hooks: { pre: string[]; post: string[] }): Result<void>;
   /** Tell views of the hooks that something about them changed (e.g. a profile's own hooks). */

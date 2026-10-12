@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { writeFileAtomic } from "../stores/atomic-write.ts";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Result } from "../core/errors.ts";
 import { globalDataDir } from "../data-dir.ts";
@@ -80,9 +81,7 @@ function edit(
     change(servers);
     if (Object.keys(servers).length === 0) delete file["mcpServers"];
     else file["mcpServers"] = servers;
-    const temp = `${path}.tmp`;
-    writeFileSync(temp, `${JSON.stringify(file, null, 2)}\n`);
-    renameSync(temp, path);
+    writeFileAtomic(path, `${JSON.stringify(file, null, 2)}\n`);
     return { ok: true, value: undefined };
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);

@@ -11,6 +11,7 @@ import {
 import { waitHandlers } from "./browser-wait.ts";
 import { TabWatcher } from "./tab-watch.ts";
 import { describeImage, type ImageOutbox } from "../images.ts";
+import { numberArg } from "../args.ts";
 import { errStr } from "../files.ts";
 import { isTooLarge, truncateInline, type TempStore } from "../temp-store.ts";
 
@@ -39,8 +40,8 @@ function checkUrl(value: unknown): string | null {
 }
 
 function tabId(args: Record<string, unknown>): number | null {
-  const id = args["tab"];
-  return typeof id === "number" && Number.isInteger(id) ? id : null;
+  const id = numberArg(args["tab"]);
+  return id !== undefined && Number.isInteger(id) ? id : null;
 }
 
 /** The element outline is always shown in full, so it is bounded here (its script already stops at 200 elements). */
@@ -99,7 +100,6 @@ async function upload(
   paths: unknown,
   cwd?: string,
 ): Promise<string> {
-  if (!browser.uploadFiles) throw new Error("this browser cannot upload files");
   const files = await uploadPaths(paths, cwd);
   await browser.uploadFiles(id, ref, files);
   return `uploaded ${files.length} file${files.length === 1 ? "" : "s"}`;
@@ -125,7 +125,6 @@ async function scroll(
   id: number,
   args: Record<string, unknown>,
 ): Promise<string> {
-  if (!browser.runPageAction) throw new Error("this browser cannot scroll");
   const direction = String(args["direction"] ?? "") as ScrollDirection;
   if (!SCROLL_DIRECTIONS.includes(direction)) {
     throw new Error(
@@ -133,8 +132,8 @@ async function scroll(
     );
   }
   const ref = str(args, "ref");
-  const amount =
-    typeof args["amount"] === "number" ? args["amount"] : undefined;
+  const parsed = numberArg(args["amount"]);
+  const amount = parsed !== undefined && Number.isFinite(parsed) ? parsed : undefined;
   const result = await browser.runPageAction(id, {
     name: "scroll",
     ref,
@@ -155,9 +154,6 @@ async function select(
   ref: string,
   args: Record<string, unknown>,
 ): Promise<string> {
-  if (!browser.runPageAction) {
-    throw new Error("this browser cannot choose drop-down options");
-  }
   const wanted = Array.isArray(args["options"])
     ? args["options"].map(String)
     : args["option"] !== undefined
@@ -184,11 +180,47 @@ async function screenshot(
   args: Record<string, unknown>,
 ): Promise<string> {
   const fullPage = args["full_page"] === true;
-  if (!browser.screenshot || !images) {
-    throw new Error("this browser cannot take screenshots");
-  }
+  if (!images) throw new Error("this session cannot show pictures");
   const png = Buffer.from(await browser.screenshot(id, fullPage), "base64");
   return `screenshot of ${describeImage(images.add(png, `tab ${id}`))}`;
+}
+
+/**
+ * The page's text and its interactive elements. The two parts are bounded
+ * separately: a long page's text is saved to a temp file (its start stays
+ * here), while the elements the model must act on are always shown.
+ */
+async function readPage(browser: BrowserBackend, temp: TempStore | undefined, id: number): Promise<string> {
+  const text = (await browser.readText(id)).trim() || "(page has no text)";
+  const shown = !isTooLarge(text)
+    ? text
+    : temp
+      ? temp.spill("browser_read", text)
+      : truncateInline(text, "there is nowhere to save it");
+  const elements = clip(await browser.snapshot(id));
+  return `${shown}
+
+Interactive elements (use the ref with browser_click, browser_type, ...):
+${elements || "(none)"}`;
+}
+
+/** Accept or dismiss the dialog blocking a tab. */
+function answerDialog(browser: BrowserBackend, id: number, args: Record<string, unknown>): Promise<void> {
+  return unless(browser.capabilities.dialogs, "browser_handle_dialog", () =>
+    browser.handleDialog(id, args["accept"] !== false, str(args, "prompt_text")),
+  );
+}
+
+/** Run a Playwright snippet in a tab (where the engine can). */
+function runCode(browser: BrowserBackend, id: number, code: string): Promise<string> {
+  return unless(browser.capabilities.runCode, "browser_run_code", () => browser.runCode(id, code));
+}
+
+/** Run `action` only when the browser engine supports it; otherwise refuse with the same words for every engine. */
+function unless<T>(supported: boolean, tool: string, action: () => Promise<T>): Promise<T> {
+  return supported
+    ? action()
+    : Promise.reject(new Error(`${tool} is not supported by the active browser engine`));
 }
 
 /** Appended to an action's result when it left a JavaScript dialog open. */
@@ -259,24 +291,7 @@ export function makeBrowserHandlers(
         }
         return formatTab(await browser.navigate(id, url));
       }),
-    browser_read: (args) =>
-      onTab(
-        args,
-        async (id) => {
-          const text =
-            (await browser.readText(id)).trim() || "(page has no text)";
-          // The two parts are bounded separately: a long page's text is saved to a temp file
-          // (its start stays here), while the elements the model must act on are always shown.
-          const shown = !isTooLarge(text)
-            ? text
-            : temp
-              ? temp.spill("browser_read", text)
-              : truncateInline(text, "there is nowhere to save it");
-          const elements = clip(await browser.snapshot(id));
-          return `${shown}\n\nInteractive elements (use the ref with browser_click, browser_type, ...):\n${elements || "(none)"}`;
-        },
-        "",
-      ),
+    browser_read: (args) => onTab(args, (id) => readPage(browser, temp, id), ""),
     ...waitHandlers(browser, onTab, text),
     browser_click: (args) =>
       onTab(args, (id) => browser.click(id, ref(args)), "clicked", true),
@@ -313,18 +328,9 @@ export function makeBrowserHandlers(
     browser_screenshot: (args) =>
       onTab(args, (id) => screenshot(browser, images, id, args), ""),
     browser_handle_dialog: (args) =>
-      onTab(
-        args,
-        (id) =>
-          browser.handleDialog(
-            id,
-            args["accept"] !== false,
-            str(args, "prompt_text"),
-          ),
-        "dialog handled",
-      ),
+      onTab(args, (id) => answerDialog(browser, id, args), "dialog handled"),
     browser_run_code: (args) =>
-      onTab(args, (id) => browser.runCode(id, ref(args, "code")), "done"),
+      onTab(args, (id) => runCode(browser, id, ref(args, "code")), "done"),
     browser_close_tab: (args) =>
       onTab(
         args,

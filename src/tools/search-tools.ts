@@ -10,25 +10,9 @@ import type { Tool } from "../core/engine.ts";
  * as a tool result, so the (cached) system prompt never changes.
  */
 
-/** Always-visible tools; everything else is deferred. */
-const CORE_TOOLS = new Set([
-  "list_directory",
-  "read_file",
-  "create_file",
-  "edit_file",
-  "delete_file",
-  "find_files",
-  "search_files",
-  "run_powershell",
-  "ask_user",
-  "search_tools",
-  "read_temp",
-  "search_temp",
-  "list_temp",
-]);
-
 export const searchToolsDef: Tool = {
   type: "function",
+  core: true,
   display: { label: "Look up tools", icon: "🧰" },
   function: {
     name: "search_tools",
@@ -48,11 +32,9 @@ export const searchToolsDef: Tool = {
   },
 };
 
-/** Flag every tool outside the core set as deferred (it keeps all its other fields). */
+/** Flag every tool that is not `core` as deferred (it keeps all its other fields). */
 export function deferTools(defs: Tool[]): Tool[] {
-  return defs.map((t) =>
-    CORE_TOOLS.has(t.function.name) ? t : { ...t, deferred: true },
-  );
+  return defs.map((t) => (t.core ? t : { ...t, deferred: true }));
 }
 
 /** Rank tools by keyword hits: a name hit counts three times a description hit. */

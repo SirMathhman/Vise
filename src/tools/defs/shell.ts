@@ -4,6 +4,7 @@ import type { Tool } from "../../core/engine.ts";
 export const shellTools: Tool[] = [
   {
     type: "function",
+    core: true,
     display: { label: "Run PowerShell", icon: "💻" },
     function: {
       name: "run_powershell",

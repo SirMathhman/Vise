@@ -1,5 +1,5 @@
 import type { Picture } from "../../core/errors.ts";
-import { newNameProblem } from "./registry.ts";
+import { newNameProblem, unsupported } from "./registry.ts";
 import type {
   Client,
   Tool,
@@ -10,26 +10,11 @@ import type {
 } from "../../core/engine.ts";
 import { runWorkflow } from "../../core/workflow.ts";
 import type { WorkflowEvent, WorkflowScope } from "../../core/workflow.ts";
-import type { Message, Result, ViseError } from "../../core/errors.ts";
+import type { Message, Result } from "../../core/errors.ts";
+import type { LineResult } from "../ports.ts";
 import { formatWorkflowList } from "../../output/format.ts";
 import type { WorkflowProfileScope } from "./workflow-profiles.ts";
 import type { PreTurnHook, PostTurnHook, WorkflowSource } from "../session.ts";
-
-/**
- * The outcome of a handled line. A successful turn carries the model's reply
- * and, when auto-compaction failed before the turn, an optional
- * `compactionWarning` the edge surfaces on stderr. This keeps all I/O at the
- * edge (invariant #2): the session never writes to stdout or stderr itself.
- */
-export type LineResult =
-  | "exit"
-  | {
-      ok: true;
-      value: string;
-      streamed?: boolean;
-      compactionWarning?: ViseError;
-    }
-  | { ok: false; error: ViseError };
 
 /**
  * The subset of Session state the `/workflow` command needs, exposed to this
@@ -125,13 +110,7 @@ export async function handleWorkflowCommand(
 ): Promise<LineResult> {
   const source = session.workflowSource();
   if (!source) {
-    return {
-      ok: false,
-      error: {
-        kind: "malformed",
-        body: "workflows not supported by the current client",
-      },
-    };
+    return unsupported("workflows");
   }
   const arg = line.slice("/workflow".length).trim();
   if (arg === "") {

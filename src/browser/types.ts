@@ -1,8 +1,9 @@
 /**
  * Backend-neutral browser surface. The agent tools and the web UI depend only
- * on this interface, so a Firefox backend (WebDriver BiDi, which has no CDP)
- * can be added later without touching them. The only implementation today is
- * `ChromiumBackend` (Chrome DevTools Protocol).
+ * on this interface. Implementations: `ChromiumBackend` (CDP), `FirefoxBackend`
+ * (WebDriver BiDi), `ExtensionBackend` (the user's own Firefox) and
+ * `SwitchableBrowser` (whichever the setting names). What an engine cannot do
+ * is stated in `capabilities`, never found out by a failing call.
  */
 
 import type { PageAction } from "./page-scripts.ts";
@@ -47,7 +48,21 @@ export interface DialogInfo {
   message: string;
 }
 
+/** What an engine can do beyond the operations every backend implements. */
+export interface BackendCapabilities {
+  /** JavaScript dialogs can be answered by the agent (`handleDialog`); otherwise the engine answers them itself. */
+  dialogs: boolean;
+  /** `runCode` runs a snippet. */
+  runCode: boolean;
+  /** `screenshot` can capture beyond the viewport. */
+  fullPage: boolean;
+  /** `startScreencast` and `sendInput` drive the page's live view. */
+  liveView: boolean;
+}
+
 export interface BrowserBackend {
+  /** What the engine can do; the tools that depend on it refuse up front when it cannot. */
+  readonly capabilities: BackendCapabilities;
   /** What to tell the model when it lists no tabs, if that needs explaining (e.g. nothing has been shared with it). */
   readonly noTabsHint?: string;
   /** True once the browser has been launched (listing tabs never launches it by itself). */
@@ -71,21 +86,12 @@ export interface BrowserBackend {
     text: string,
     options: { replace: boolean; key?: string },
   ): Promise<void>;
-  /**
-   * Put local files (absolute paths) into the file input that element `ref`
-   * stands for. Optional: a backend that cannot do it leaves it out.
-   */
-  uploadFiles?(id: number, ref: string, paths: string[]): Promise<void>;
-  /**
-   * A PNG screenshot of the tab as base64 (the whole scrollable page when
-   * `fullPage`, where the engine can). Optional: a backend that cannot leaves it out.
-   */
-  screenshot?(id: number, fullPage: boolean): Promise<string>;
-  /**
-   * Run a page action (see `PageAction` in `page-scripts.ts`) in a tab and
-   * return what its script answered. Optional: a backend that cannot leaves it out.
-   */
-  runPageAction?(id: number, action: PageAction): Promise<unknown>;
+  /** Put local files (absolute paths) into the file input that element `ref` stands for. */
+  uploadFiles(id: number, ref: string, paths: string[]): Promise<void>;
+  /** A PNG screenshot of the tab as base64 (the whole scrollable page when `fullPage`, where the engine can). */
+  screenshot(id: number, fullPage: boolean): Promise<string>;
+  /** Run a page action (see `PageAction` in `page-scripts.ts`) in a tab and return what its script answered. */
+  runPageAction(id: number, action: PageAction): Promise<unknown>;
   /** The dialog currently blocking a tab, if any. */
   pendingDialog(id: number): DialogInfo | null;
   /** Accept or dismiss the blocking dialog (`promptText` answers a prompt). */
@@ -99,9 +105,9 @@ export interface BrowserBackend {
   /**
    * A cheap look at a tab's page for the wait tools: whether `needle` is on it,
    * and a fingerprint that changes when the page does, computed in the page so
-   * each look is a few bytes. Optional: without it the tools read the whole text.
+   * each look is a few bytes.
    */
-  pageProbe?(id: number, needle?: string): Promise<PageProbe>;
+  pageProbe(id: number, needle?: string): Promise<PageProbe>;
   /**
    * Resize the tab's viewport to `width` x `height` CSS pixels and stream its
    * frames to `onFrame` until the returned function is called.

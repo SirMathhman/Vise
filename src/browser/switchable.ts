@@ -1,9 +1,10 @@
 import type { PageAction } from "./page-scripts.ts";
 import { ChromiumBackend } from "./chromium/chromium.ts";
 import { findFirefox, FirefoxBackend } from "./firefox/firefox.ts";
-import { textProbe, type PageProbe } from "./probe.ts";
+import type { PageProbe } from "./probe.ts";
 import type { BrowserSettings, BrowserSettingsStore } from "./settings.ts";
 import type {
+  BackendCapabilities,
   BrowserBackend,
   BrowserInput,
   DialogInfo,
@@ -103,6 +104,10 @@ export class SwitchableBrowser implements BrowserBackend {
     for (const listener of this.tabListeners) listener();
   }
 
+  get capabilities(): BackendCapabilities {
+    return this.inner.capabilities;
+  }
+
   get running(): boolean {
     return this.inner.running;
   }
@@ -122,26 +127,13 @@ export class SwitchableBrowser implements BrowserBackend {
     return this.inner.click(id, ref);
   }
   uploadFiles(id: number, ref: string, paths: string[]): Promise<void> {
-    const inner = this.inner;
-    return inner.uploadFiles
-      ? inner.uploadFiles(id, ref, paths)
-      : Promise.reject(new Error("this browser engine cannot upload files"));
+    return this.inner.uploadFiles(id, ref, paths);
   }
   runPageAction(id: number, action: PageAction): Promise<unknown> {
-    const inner = this.inner;
-    return inner.runPageAction
-      ? inner.runPageAction(id, action)
-      : Promise.reject(
-          new Error("this browser engine cannot run page actions"),
-        );
+    return this.inner.runPageAction(id, action);
   }
   screenshot(id: number, fullPage: boolean): Promise<string> {
-    const inner = this.inner;
-    return inner.screenshot
-      ? inner.screenshot(id, fullPage)
-      : Promise.reject(
-          new Error("this browser engine cannot take screenshots"),
-        );
+    return this.inner.screenshot(id, fullPage);
   }
   hover(id: number, ref: string): Promise<void> {
     return this.inner.hover(id, ref);
@@ -176,11 +168,8 @@ export class SwitchableBrowser implements BrowserBackend {
   readText(id: number): Promise<string> {
     return this.inner.readText(id);
   }
-  async pageProbe(id: number, needle?: string): Promise<PageProbe> {
-    const inner = this.inner;
-    return inner.pageProbe
-      ? inner.pageProbe(id, needle)
-      : textProbe(await inner.readText(id), needle);
+  pageProbe(id: number, needle?: string): Promise<PageProbe> {
+    return this.inner.pageProbe(id, needle);
   }
   startScreencast(
     id: number,

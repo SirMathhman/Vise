@@ -1,6 +1,7 @@
+import { spawnPowerShell } from "./tools/shell.ts";
+import { writeFileAtomic } from "./stores/atomic-write.ts";
 import { config } from "./config.ts";
-import { spawn } from "node:child_process";
-import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { globalDataDir } from "./data-dir.ts";
 import type { SearchHit } from "./repl/ports.ts";
@@ -143,42 +144,23 @@ export class ShellHook implements PreTurnHook, PostTurnHook {
 
   async run(): Promise<string> {
     try {
-      const res = await new Promise<{
-        status: number;
-        stdout: string;
-        stderr: string;
-      }>((resolve, reject) => {
-        const proc = spawn(
-          "powershell.exe",
-          ["-NoProfile", "-NonInteractive", "-Command", this.command],
-          { cwd: this.cwd, windowsHide: true },
-        );
-        let stdout = "";
-        let stderr = "";
-        let timedOut = false;
-        const timer = setTimeout(() => {
-          timedOut = true;
-          proc.kill("SIGTERM");
-        }, 30_000);
-        proc.stdout.on("data", (d: Buffer) => {
-          stdout += d.toString("utf8");
-        });
-        proc.stderr.on("data", (d: Buffer) => {
-          stderr += d.toString("utf8");
-        });
-        proc.on("close", (status) => {
+      const { proc, record } = spawnPowerShell(this.command, this.cwd);
+      let timedOut = false;
+      const timer = setTimeout(() => {
+        timedOut = true;
+        proc.kill("SIGTERM");
+      }, 30_000);
+      const status = await new Promise<number>((resolve, reject) => {
+        proc.on("close", (code) => {
           clearTimeout(timer);
-          if (timedOut) {
-            resolve({ status: -1, stdout, stderr });
-          } else {
-            resolve({ status: status ?? -1, stdout, stderr });
-          }
+          resolve(timedOut ? -1 : (code ?? -1));
         });
         proc.on("error", (err) => {
           clearTimeout(timer);
           reject(err);
         });
       });
+      const res = { status, stdout: record.stdout, stderr: record.stderr };
       const body = [res.stdout.trim(), res.stderr.trim()]
         .filter((s) => s !== "")
         .join("\n");
@@ -440,9 +422,7 @@ export class HookStore implements HookSource {
         if (list.length === 0) delete config[key];
         else config[key] = list;
       }
-      const temp = `${configPath}.tmp`;
-      writeFileSync(temp, `${JSON.stringify(config, null, 2)}\n`);
-      renameSync(temp, configPath);
+      writeFileAtomic(configPath, `${JSON.stringify(config, null, 2)}\n`);
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       return {

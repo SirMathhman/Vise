@@ -1,5 +1,5 @@
 import type { Result } from "../../core/errors.ts";
-import { newNameProblem } from "./registry.ts";
+import { newNameProblem, unsupported } from "./registry.ts";
 import { formatProfileList, formatSessionList } from "../../output/format.ts";
 import { saveProfileWhitelist } from "../profile-tools.ts";
 import type {
@@ -40,13 +40,7 @@ export async function handleProfileCommand(
 ): Promise<Result<string>> {
   const profileSource = session.profileSource();
   if (!profileSource) {
-    return {
-      ok: false,
-      error: {
-        kind: "malformed",
-        body: "profiles not supported by the current client",
-      },
-    };
+    return unsupported("profiles");
   }
 
   const arg = line.slice("/profile".length).trim();
@@ -188,13 +182,7 @@ export async function handleResumeCommand(
 ): Promise<Result<string>> {
   const sessionSource = session.sessionSource();
   if (!sessionSource) {
-    return {
-      ok: false,
-      error: {
-        kind: "malformed",
-        body: "session persistence not supported by the current client",
-      },
-    };
+    return unsupported("session persistence");
   }
 
   const arg = line.slice("/resume".length).trim();
@@ -241,13 +229,7 @@ export async function handleSaveCommand(
 ): Promise<Result<string>> {
   const sessionSource = session.sessionSource();
   if (!sessionSource) {
-    return {
-      ok: false,
-      error: {
-        kind: "malformed",
-        body: "session persistence not supported by the current client",
-      },
-    };
+    return unsupported("session persistence");
   }
 
   const arg = line.slice("/save".length).trim();
@@ -282,13 +264,7 @@ export async function handleDeleteCommand(
 ): Promise<Result<string>> {
   const sessionSource = session.sessionSource();
   if (!sessionSource) {
-    return {
-      ok: false,
-      error: {
-        kind: "malformed",
-        body: "session persistence not supported by the current client",
-      },
-    };
+    return unsupported("session persistence");
   }
 
   const arg = line.slice("/delete".length).trim();

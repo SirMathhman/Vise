@@ -1,9 +1,9 @@
+import { writeFileAtomic } from "./atomic-write.ts";
 import {
   existsSync,
   mkdirSync,
   readdirSync,
   readFileSync,
-  renameSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -118,10 +118,7 @@ export function saveWorkflowAt(
   const workflow = validateWorkflow({ steps });
   if (!workflow.ok) return workflow;
   return tryIo("save", name, () => {
-    mkdirSync(join(base, "workflows"), { recursive: true });
-    const temp = `${path}.tmp`;
-    writeFileSync(temp, `${JSON.stringify(workflow.value, null, 2)}\n`, "utf8");
-    renameSync(temp, path); // never leaves a half-written workflow
+    writeFileAtomic(path, `${JSON.stringify(workflow.value, null, 2)}\n`);
     return name;
   });
 }

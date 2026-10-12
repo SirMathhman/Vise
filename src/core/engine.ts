@@ -33,6 +33,12 @@ export interface Tool {
   requiresFileSystem?: boolean;
   /** Produces or needs pictures: usable only while the active model can see images. */
   requiresVision?: boolean;
+  /** Always listed in full in the prompt; every other tool is deferred to `search_tools`. */
+  core?: boolean;
+  /** Starts disabled (it runs unsandboxed code); the user opts in with `/tool <name> enable`. */
+  defaultDisabled?: boolean;
+  /** Bounds its own output, so the runner does not spill a long result to a temp file. */
+  boundsOwnOutput?: boolean;
 }
 
 /**

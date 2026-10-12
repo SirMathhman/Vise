@@ -74,6 +74,8 @@ export class FirefoxBackend implements BrowserBackend {
 
   constructor(private readonly options: FirefoxOptions = {}) {}
 
+  readonly capabilities = { dialogs: true, runCode: false, fullPage: true, liveView: true };
+
   get running(): boolean {
     return this.launching !== null;
   }

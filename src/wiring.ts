@@ -53,7 +53,7 @@ import { makeSelfHandler, type SelfInfo } from "./tools/agent/self.ts";
 import { makeTodoHandler, TodoBoard } from "./tools/agent/todo.ts";
 import type { TodoItem } from "./core/todos.ts";
 import { currentSubagentDepth, makeSubagentHandler } from "./tools/agent/subagent.ts";
-import { createToolRunner, isFileSystemTool, ToolSet, tools } from "./tools.ts";
+import { createToolRunner, ToolSet, tools } from "./tools.ts";
 
 /**
  * Shared edge wiring for the Vise frontends (the interactive terminal driver
@@ -82,9 +82,6 @@ import { createToolRunner, isFileSystemTool, ToolSet, tools } from "./tools.ts";
  * `buildInitialMessage` / `loadAgentsMd` / `loadHookCommands` helpers live in
  * `src/edge-sources.ts` — this file only wires them together.
  */
-
-/** Tools that run unsandboxed code and so start disabled; the user opts in with `/tool <name> enable`. */
-const RISKY_TOOLS = ["browser_run_code"];
 
 /** The session's picture plumbing: where tools queue the pictures they produce, and the loader for `/image`. */
 function imagePlumbing(
@@ -128,10 +125,8 @@ function controls(
   const visionTools = sessionTools
     .filter((t) => t.requiresVision)
     .map((t) => t.function.name);
-  const toolController = new ToolSet(sessionTools, [
-    ...RISKY_TOOLS,
-    ...visionTools,
-  ]);
+  const risky = sessionTools.filter((t) => t.defaultDisabled).map((t) => t.function.name);
+  const toolController = new ToolSet(sessionTools, [...risky, ...visionTools]);
   const syncVision = async (): Promise<void> => {
     const sees = await client.supportsVision();
     for (const name of visionTools) toolController.set(name, sees);
@@ -145,7 +140,7 @@ function controls(
     },
     listModels: () => client.listModels(),
     hostedModels: () => hostedAvailable(),
-    supportsBurst: () => client.isLlamaCpp(),
+    supportsBurst: () => client.supportsGrammar(),
   };
   return { toolController, modelController };
 }
@@ -375,7 +370,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
   // The working directory the model sees; none for a session without one.
   const cwd = options.noFolder ? undefined : root;
   const builtinTools = options.noFolder
-    ? tools.filter((t) => !isFileSystemTool(t))
+    ? tools.filter((t) => !t.requiresFileSystem)
     : tools;
   const sessionTools = [...builtinTools, ...(options.mcp?.tools() ?? [])];
   const dataDir = dataDirFor(root);

@@ -1,6 +1,7 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { writeFileAtomic } from "../stores/atomic-write.ts";
+import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 
 /** Which browser engine the integrated browser uses (server-wide, chosen in the web UI). */
 export type BrowserEngine = "chromium" | "firefox";
@@ -57,10 +58,7 @@ export class BrowserSettingsStore {
   /** Write atomically (temp file + rename) so a crash cannot leave half a file. */
   save(settings: BrowserSettings): string | null {
     try {
-      mkdirSync(dirname(this.file), { recursive: true });
-      const temp = `${this.file}.${process.pid}.tmp`;
-      writeFileSync(temp, JSON.stringify(settings, null, 2));
-      renameSync(temp, this.file);
+      writeFileAtomic(this.file, JSON.stringify(settings, null, 2));
       return null;
     } catch (error) {
       return error instanceof Error ? error.message : String(error);

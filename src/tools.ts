@@ -37,48 +37,20 @@ import {
   type TempStore,
 } from "./tools/temp-store.ts";
 
-/** Tag every tool in a definition group with its category. */
-const inCategory = (category: string, defs: Tool[]): Tool[] =>
-  defs.map((t) => ({ ...t, category }));
+/** Tag every tool of a definition group with its category and the flags the whole group shares; a tool's own flags (in `defs/`) are kept. */
+const group = (category: string, defs: Tool[], flags: Partial<Tool> = {}): Tool[] =>
+  defs.map((t) => ({ ...t, category, ...flags }));
 
-/** Flag tools (all of `defs`, or just the `only` names) as needing a file system. */
-const needsFileSystem = (defs: Tool[], only?: string[]): Tool[] =>
-  defs.map((t) =>
-    only === undefined || only.includes(t.function.name)
-      ? { ...t, requiresFileSystem: true }
-      : t,
-  );
-
-/** Flag tools (all of `defs`, or just the `only` names) as needing a model that can see images. */
-const needsVision = (defs: Tool[], only?: string[]): Tool[] =>
-  defs.map((t) =>
-    only === undefined || only.includes(t.function.name)
-      ? { ...t, requiresVision: true }
-      : t,
-  );
-
-/** Tool definitions exposed to the model, in prompt order. */
+/** Tool definitions exposed to the model, in prompt order (`run_subagent` last). */
 const allTools: Tool[] = [
-  ...inCategory("files", needsFileSystem(fileTools)),
-  ...inCategory("files", needsVision(needsFileSystem(imageTools))),
-  ...inCategory("shell", needsFileSystem(shellTools)),
-  ...inCategory("notes", noteTools),
-  ...inCategory("temp", tempTools),
-  ...inCategory(
-    "agent",
-    agentTools.filter((t) => t.function.name !== "run_subagent"),
-  ),
-  ...inCategory(
-    "browser",
-    // Its Playwright snippet runs with the user's full privileges, files included.
-    needsVision(needsFileSystem(browserTools, ["browser_run_code"]), [
-      "browser_screenshot",
-    ]),
-  ),
-  ...inCategory(
-    "agent",
-    agentTools.filter((t) => t.function.name === "run_subagent"),
-  ),
+  ...group("files", fileTools, { requiresFileSystem: true }),
+  ...group("files", imageTools, { requiresFileSystem: true, requiresVision: true }),
+  ...group("shell", shellTools, { requiresFileSystem: true }),
+  ...group("notes", noteTools),
+  ...group("temp", tempTools),
+  ...group("agent", agentTools.filter((t) => t.function.name !== "run_subagent")),
+  ...group("browser", browserTools),
+  ...group("agent", agentTools.filter((t) => t.function.name === "run_subagent")),
 ];
 
 /** The tool list the app uses: `search_tools` added and the non-core tools deferred. */
@@ -124,10 +96,6 @@ function resolveAgainstRoot(
   };
 }
 
-/** Whether a tool is absent from a session with no working directory. */
-export const isFileSystemTool = (tool: Tool): boolean =>
-  tool.requiresFileSystem === true;
-
 /** The built-in handlers for a session whose root directory is `root`. */
 function baseHandlers(root: string): Record<string, ToolHandler> {
   const notes = new NoteStore({
@@ -152,14 +120,6 @@ function baseHandlers(root: string): Record<string, ToolHandler> {
     delete_note: (args) => deleteNoteTool(args, notes),
   };
 }
-
-/** Tools that bound their own output: the temp tools, and browser_read (which saves a long page's text itself and always shows its element outline). */
-const TEMP_TOOLS = new Set([
-  "read_temp",
-  "search_temp",
-  "list_temp",
-  "browser_read",
-]);
 
 /**
  * Edge implementation of the core `ToolController`. Tracks which tools are
@@ -244,6 +204,10 @@ export function createToolRunner(
   };
   // A tool that is not offered to the session has no handler either.
   const offered = new Set(toolDefs.map((t) => t.function.name));
+  // Tools that bound their own output (the temp tools; browser_read saves a long page itself).
+  const bounded = new Set(
+    toolDefs.filter((t) => t.boundsOwnOutput).map((t) => t.function.name),
+  );
   for (const name of Object.keys(handlers)) {
     if (!offered.has(name)) delete handlers[name];
   }
@@ -264,7 +228,7 @@ export function createToolRunner(
         handler(args, signal),
       );
       // The temp tools bound their own output; everything else too big to show is saved instead.
-      if (TEMP_TOOLS.has(name) || !isTooLarge(result)) return result;
+      if (bounded.has(name) || !isTooLarge(result)) return result;
       // With nowhere to save it, a big result is cut rather than let through whole.
       return spill
         ? spill.spill(name, result)

@@ -27,9 +27,47 @@ export interface Provider {
   /** `GET` of the server's own state (`/slots`, `/props`); undefined when it has none. */
   rootUrl: string | undefined;
   headers: Record<string, string>;
-  /** GBNF grammar, logprobs, slots, prompt progress: llama.cpp only. */
-  llamaCpp: boolean;
+  /** What the server understands beyond the plain chat API (the llama.cpp extras). */
+  capabilities: ProviderCapabilities;
 }
+
+/** Features a request or a lookup may use, each asked by its own name so a new provider sets what it has. */
+export interface ProviderCapabilities {
+  /** A GBNF `grammar` constrains tool calls (also what burst mode needs). */
+  grammar: boolean;
+  /** `/slots` and `id_slot`: requests can be pinned to a cache slot. */
+  slots: boolean;
+  /** Streamed prompt progress and per-token timings. */
+  progress: boolean;
+  /** `dry_*` / `repeat_penalty` sampling fields. */
+  antiRepeat: boolean;
+  /** The server reports its own state (`/slots`, `/props`): context window and vision are read there, not from `/models`. */
+  serverState: boolean;
+  /** `reasoning_effort` is a top-level field (else `reasoning: { effort }`). */
+  flatReasoning: boolean;
+  /** The `json_schema` response format needs a name and `strict` (OpenRouter). */
+  namedSchema: boolean;
+}
+
+const LLAMA_CPP: ProviderCapabilities = {
+  grammar: true,
+  slots: true,
+  progress: true,
+  antiRepeat: true,
+  serverState: true,
+  flatReasoning: true,
+  namedSchema: false,
+};
+
+const HOSTED: ProviderCapabilities = {
+  grammar: false,
+  slots: false,
+  progress: false,
+  antiRepeat: false,
+  serverState: false,
+  flatReasoning: false,
+  namedSchema: true,
+};
 
 const trim = (url: string): string => url.replace(/\/+$/, "");
 
@@ -73,7 +111,7 @@ export function providerOf(s: ProviderSettings, id: ProviderId): Provider {
         "http-referer": "https://github.com/SirMathhman/Vise",
         "x-title": "Vise",
       },
-      llamaCpp: false,
+      capabilities: HOSTED,
     };
   }
   const base = trim(s.llmBaseUrl);
@@ -85,7 +123,7 @@ export function providerOf(s: ProviderSettings, id: ProviderId): Provider {
     modelsUrl: `${base}/v1/models`,
     rootUrl: base,
     headers: { authorization: `Bearer ${s.llmApiKey}` },
-    llamaCpp: true,
+    capabilities: LLAMA_CPP,
   };
 }
 
@@ -95,7 +133,7 @@ export function reasoningFields(
   effort: string | undefined,
 ): Record<string, unknown> {
   if (effort === undefined || effort === "default") return {};
-  return provider.llamaCpp
+  return provider.capabilities.flatReasoning
     ? { reasoning_effort: effort }
     : { reasoning: { effort } };
 }
@@ -104,12 +142,12 @@ export function responseFormat(
   provider: Provider,
   schema: Record<string, unknown>,
 ): Record<string, unknown> {
-  return provider.llamaCpp
-    ? { type: "json_schema", json_schema: { schema } }
-    : {
+  return provider.capabilities.namedSchema
+    ? {
         type: "json_schema",
         json_schema: { name: "vise", strict: true, schema },
-      };
+      }
+    : { type: "json_schema", json_schema: { schema } };
 }
 
 /** What `GET /models` says about one OpenRouter model. */

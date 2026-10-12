@@ -72,6 +72,8 @@ export class ChromiumBackend implements BrowserBackend {
   private wsUrl = "";
   private readonly playwright = new PlaywrightSession(() => this.wsUrl);
 
+  readonly capabilities = { dialogs: true, runCode: true, fullPage: true, liveView: true };
+
   get running(): boolean {
     return this.launching !== null;
   }

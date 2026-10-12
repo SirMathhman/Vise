@@ -8,6 +8,8 @@ import type { Tool } from "../../core/engine.ts";
 export const tempTools: Tool[] = [
   {
     type: "function",
+    core: true,
+    boundsOwnOutput: true,
     display: { label: "Read saved output", icon: "🗃" },
     function: {
       name: "read_temp",
@@ -35,6 +37,8 @@ export const tempTools: Tool[] = [
   },
   {
     type: "function",
+    core: true,
+    boundsOwnOutput: true,
     display: { label: "Search saved output", icon: "🗃" },
     function: {
       name: "search_temp",
@@ -62,6 +66,8 @@ export const tempTools: Tool[] = [
   },
   {
     type: "function",
+    core: true,
+    boundsOwnOutput: true,
     display: { label: "List saved output", icon: "🗃" },
     function: {
       name: "list_temp",

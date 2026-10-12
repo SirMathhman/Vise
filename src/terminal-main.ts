@@ -3,7 +3,7 @@ import { createInterface } from "node:readline";
 import { noFolderRoot } from "./data-dir.ts";
 import { TerminalDriver } from "./driver/terminal.ts";
 import { StreamDisplay } from "./driver/stream.ts";
-import { RlUserPrompter } from "./tools/agent/ask-user.ts";
+import { askToContinue, RlUserPrompter } from "./tools/agent/ask-user.ts";
 import { McpHub } from "./mcp/mcp-hub.ts";
 import { mcpNote } from "./output/mcp-format.ts";
 import { createEdgeSession } from "./wiring.ts";
@@ -48,14 +48,7 @@ const edge = createEdgeSession({
   onGoal: display.onGoal,
   onWorkflow: display.onWorkflow,
   askUser: rlPrompter,
-  onMaxRounds: async (question) => {
-    const answer = await rlPrompter.ask({
-      question,
-      options: ["Continue", "Stop"],
-    });
-    const a = answer.trim().toLowerCase();
-    return a === "1" || a === "continue" || a === "yes" || a === "y";
-  },
+  onMaxRounds: (question) => askToContinue(rlPrompter, question),
 });
 
 // The interactive frontend: the terminal driver owns the readline line loop,

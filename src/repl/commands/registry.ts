@@ -1,4 +1,5 @@
-import type { LineResult } from "./workflow-commands.ts";
+import type { ViseError } from "../../core/errors.ts";
+import type { LineResult } from "../ports.ts";
 
 /** One built-in slash command: its name, and what it does with the whole line. */
 export interface BuiltinCommand {
@@ -36,4 +37,12 @@ export function findBuiltin(
   return table.find(({ name, exact }) =>
     exact ? line === name : line === name || line.startsWith(`${name} `),
   );
+}
+
+/** The error a command gives when the frontend wired no support for its feature. */
+export function unsupported(feature: string): { ok: false; error: ViseError } {
+  return {
+    ok: false,
+    error: { kind: "malformed", body: `${feature} not supported by the current client` },
+  };
 }

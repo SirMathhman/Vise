@@ -197,7 +197,7 @@ export class LlmClient implements Client {
    */
   async withSideSlot<T>(operation: () => Promise<T>): Promise<T> {
     if (this.sideDepth++ === 0) {
-      this.sideSlot = this.provider().llamaCpp
+      this.sideSlot = this.provider().capabilities.slots
         ? await this.chooseSideSlot().catch(() => undefined)
         : undefined;
     }
@@ -277,9 +277,9 @@ export class LlmClient implements Client {
     return parseModelRef(ref).model;
   }
 
-  /** Whether the active model is served by llama.cpp (the features that need it: grammars, slots, burst mode). */
-  isLlamaCpp(): boolean {
-    return this.provider().llamaCpp;
+  /** Whether the active model's provider constrains calls with a grammar (burst mode needs it). */
+  supportsGrammar(): boolean {
+    return this.provider().capabilities.grammar;
   }
 
   /**
@@ -322,7 +322,7 @@ export class LlmClient implements Client {
     const id = this.modelId(model);
     const headers = provider.headers;
     try {
-      if (!provider.llamaCpp) {
+      if (!provider.capabilities.serverState) {
         return (await this.hostedInfo(model))?.vision === true;
       }
       const listed = await fetch(provider.modelsUrl, { headers });
@@ -377,7 +377,7 @@ export class LlmClient implements Client {
     try {
       const provider = this.provider();
       const model = config.embeddingModel || provider.defaultModel;
-      const url = provider.llamaCpp
+      const url = provider.rootUrl !== undefined
         ? `${provider.rootUrl}/v1/embeddings`
         : `${provider.chatUrl.replace("/chat/completions", "/embeddings")}`;
       const res = await fetch(url, {
@@ -446,7 +446,7 @@ export class LlmClient implements Client {
    */
   async contextMax(): Promise<Result<number>> {
     const provider = this.provider();
-    if (!provider.llamaCpp) {
+    if (!provider.capabilities.serverState) {
       try {
         const info = await this.hostedInfo(this.currentModel);
         if (info?.contextLength !== undefined) {
@@ -545,7 +545,7 @@ export class LlmClient implements Client {
       purpose === "reply" &&
       result.ok &&
       (result.value.tool_calls?.length ?? 0) > 0 &&
-      this.provider().llamaCpp
+      this.provider().capabilities.slots
     ) {
       this.mainSlotProbe = this.noteMainSlot();
     }
@@ -595,10 +595,10 @@ export class LlmClient implements Client {
           ? encodeMessages(messages, tools, this.imageResolver)
           : plainMessages(messages, this.imageResolver),
       ...(act ? { stream: false } : STREAM_FIELDS),
-      ...(!act && provider.llamaCpp ? LLAMA_STREAM_FIELDS : {}),
+      ...(!act && provider.capabilities.progress ? LLAMA_STREAM_FIELDS : {}),
     };
-    // Only llama.cpp understands the grammar that constrains tool calls.
-    if (useTools && provider.llamaCpp) {
+    // Only a provider with grammar support can constrain tool calls.
+    if (useTools && provider.capabilities.grammar) {
       Object.assign(body, toolRequestFields(tools, isToolEnabled, act));
     }
     if (responseSchema) {
@@ -608,8 +608,8 @@ export class LlmClient implements Client {
     // The server's own limit on one call (the guard stops a loop sooner).
     if (config.maxCallTokens > 0) body.max_tokens = config.maxCallTokens;
     // A retry after a loop: discourage repeating, on that request only.
-    if (antiRepeat && provider.llamaCpp) Object.assign(body, ANTI_REPEAT_FIELDS);
-    if (this.sideSlot !== undefined && provider.llamaCpp) body.id_slot = this.sideSlot;
+    if (antiRepeat && provider.capabilities.antiRepeat) Object.assign(body, ANTI_REPEAT_FIELDS);
+    if (this.sideSlot !== undefined && provider.capabilities.slots) body.id_slot = this.sideSlot;
     return body;
   }
 

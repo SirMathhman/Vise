@@ -49,10 +49,10 @@ test("both providers' models are listed together, and a switch routes each call 
         ["openrouter:vendor/m", "openrouter"],
       ]);
     }
-    expect(client.isLlamaCpp()).toBe(true);
+    expect(client.supportsGrammar()).toBe(true);
 
     client.setModel("openrouter:vendor/m");
-    expect(client.isLlamaCpp()).toBe(false);
+    expect(client.supportsGrammar()).toBe(false);
     await client.chat([{ role: "user", content: "hi" }]);
     const chat = mock.calls.find((c) => c.url.endsWith("/chat/completions"));
     expect(chat?.url).toBe("https://openrouter.ai/api/v1/chat/completions");

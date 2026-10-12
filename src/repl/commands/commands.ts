@@ -1,5 +1,5 @@
 import type { ToolController } from "../../core/engine.ts";
-import { newNameProblem } from "./registry.ts";
+import { newNameProblem, unsupported } from "./registry.ts";
 import { REASONING_EFFORTS } from "../../client/llm.ts";
 import type { Result } from "../../core/errors.ts";
 import {
@@ -44,13 +44,7 @@ export async function handleModelCommand(
   line: string,
 ): Promise<Result<string>> {
   if (!modelController) {
-    return {
-      ok: false,
-      error: {
-        kind: "malformed",
-        body: "model switching not supported by the current client",
-      },
-    };
+    return unsupported("model switching");
   }
 
   const arg = line.slice("/model".length).trim();
@@ -115,13 +109,7 @@ export function handleReasoningCommand(
   line: string,
 ): Result<string> {
   if (!reasoningController) {
-    return {
-      ok: false,
-      error: {
-        kind: "malformed",
-        body: "reasoning effort not supported by the current client",
-      },
-    };
+    return unsupported("reasoning effort");
   }
 
   const arg = line.slice("/reasoning".length).trim();
@@ -217,13 +205,7 @@ export function handleToolCommand(
   onToggle?: (names: string[], enabled: boolean) => void,
 ): Result<string> {
   if (!toolController) {
-    return {
-      ok: false,
-      error: {
-        kind: "malformed",
-        body: "tools not supported by the current client",
-      },
-    };
+    return unsupported("tools");
   }
 
   const args = line
@@ -297,13 +279,7 @@ export async function handleNotesCommand(
   line: string,
 ): Promise<Result<string>> {
   if (!noteSource) {
-    return {
-      ok: false,
-      error: {
-        kind: "malformed",
-        body: "notes not supported by the current client",
-      },
-    };
+    return unsupported("notes");
   }
   const arg = line.slice("/note".length).trim();
   if (arg === "") {

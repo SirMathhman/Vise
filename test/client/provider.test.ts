@@ -25,7 +25,8 @@ describe("providerFor", () => {
     expect(p.modelsUrl).toBe("http://localhost:8080/v1/models");
     expect(p.rootUrl).toBe("http://localhost:8080");
     expect(p.headers.authorization).toBe("Bearer k1");
-    expect(p.llamaCpp).toBe(true);
+    expect(p.capabilities.grammar).toBe(true);
+    expect(p.capabilities.slots).toBe(true);
     expect(p.defaultModel).toBe("m1");
   });
 
@@ -36,7 +37,8 @@ describe("providerFor", () => {
     expect(p.rootUrl).toBeUndefined();
     expect(p.headers.authorization).toBe("Bearer k2");
     expect(p.headers["x-title"]).toBe("Vise");
-    expect(p.llamaCpp).toBe(false);
+    expect(p.capabilities.grammar).toBe(false);
+    expect(p.capabilities.namedSchema).toBe(true);
     expect(p.defaultModel).toBe("vendor/m2");
   });
 
