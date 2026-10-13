@@ -191,7 +191,12 @@ export const BURST_MIN_CONFIDENCE = 0.5;
  * The text appended to the conversation to request a summary of it. Kept
  * as a constant so the compaction prompt is stable and greppable.
  */
-export const SUMMARIZE_PROMPT = "Summarize this conversation";
+export const SUMMARIZE_PROMPT =
+  "Summarize this conversation so that work can continue from the summary alone. Cover: " +
+  "the task and its current state; what has been done and what is still pending; " +
+  "any standing instructions, restrictions or preferences the user gave, quoted in their words; " +
+  "decisions made and questions still open; and the identifiers needed to continue " +
+  "(tab numbers, file paths, ids, URLs, names).";
 
 /**
  * A partition of the conversation for compaction. `toSummarize` is the older

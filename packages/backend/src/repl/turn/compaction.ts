@@ -1,6 +1,9 @@
 import { config } from "../../config.ts";
 import {
   approxTokens,
+  pinUserWords,
+  renderPins,
+  SUMMARY_FRAME_PREFIX,
   splitForCompaction,
   splitWithinTurn,
   summarize,
@@ -126,9 +129,14 @@ export async function runCompaction(
     // Leave the conversation untouched; report the error.
     return { ok: false, error: summary.error };
   }
+  // The user's own words are copied, not paraphrased, so a standing instruction cannot be lost in the summary.
+  const pins = pinUserWords(split.toSummarize);
+  const block = renderPins(pins);
   const framed: Message = {
     role: "user",
-    content: `Here is a summary of our conversation so far: ${summary.value}`,
+    content: `${SUMMARY_FRAME_PREFIX} ${summary.value}${block ? `
+
+${block}` : ""}`,
   };
   const recent = split.recent;
   source.audit?.record({
