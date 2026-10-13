@@ -28,6 +28,7 @@ function lines(e: GoalTraceEntry): string[] {
       return [
         `goal${e.fallback ? " (the user's own words: the derivation gave nothing usable)" : ""}: ${clip(e.goal)}`,
         `  done when: ${clip(e.doneWhen)}${e.previous ? `; previous goal: ${clip(e.previous)}` : ""}`,
+        ...(e.hold ? [`  hold: ${clip(e.hold)}`] : []),
       ];
     case "verdict":
       return [`verdict ${e.verdict}: ${clip(e.detail)}`];

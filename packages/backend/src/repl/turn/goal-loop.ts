@@ -27,7 +27,7 @@ import { formatGoalTrace } from "../../output/goal-trace-format.ts";
 
 /** What the edge is told so it can show the goal and each verdict. */
 export type GoalEvent =
-  | { kind: "goal"; goal: string; doneWhen: string }
+  | { kind: "goal"; goal: string; doneWhen: string; hold?: string }
   | {
       kind: "verdict";
       verdict: "yes" | "no" | "blocked" | "unknown";
@@ -229,8 +229,8 @@ export class GoalTracker {
       this.trace,
     );
     if (this.goal && !signal.aborted) {
-      const { text, doneWhen } = this.goal;
-      this.emit?.({ kind: "goal", goal: text, doneWhen });
+      const { text, doneWhen, hold } = this.goal;
+      this.emit?.({ kind: "goal", goal: text, doneWhen, ...(hold ? { hold } : {}) });
     }
   }
 
@@ -382,7 +382,7 @@ export function handleGoalCommand(
     return {
       ok: true,
       value: goal
-        ? `${state}\ncurrent goal: ${goal.text}\ndone when: ${goal.doneWhen}`
+        ? `${state}\ncurrent goal: ${goal.text}\ndone when: ${goal.doneWhen}${goal.hold ? `\nhold: ${goal.hold}` : ""}`
         : `${state}\nno current goal`,
     };
   }

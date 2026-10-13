@@ -28,7 +28,7 @@ transcript), `kind`, and `data` (the whole entry as JSON).
 | `setting`    | goal checking was switched on or off                                                           |
 | `turn_start` | a turn began: the user's line, whether goal checking was on, the goal carried in               |
 | `ask`        | one hidden model call (each retry too): `purpose`, the exact `question`, the raw `reply` or the `failure` |
-| `goal`       | the goal derived for the turn and when it is done; `fallback` = it is just the user's words    |
+| `goal`       | the goal derived for the turn and when it is done; `fallback` = it is just the user's words; `hold` = the user's standing restriction ("don't submit yet"), carried until lifted |
 | `verdict`    | the goal check's answer: `yes`, `no`, `blocked` or `unknown`, with its detail                  |
 | `progress`   | a mid-turn progress check; for `stuck`, whether the user chose to keep going                   |
 | `continue`   | the note sent to push the model back to work, and the counters behind the decision             |

@@ -40,6 +40,8 @@ export type GoalTraceFact =
       kind: "goal";
       goal: string;
       doneWhen: string;
+      /** The user's standing restriction in force after this derivation; empty when none. */
+      hold?: string;
       previous?: string;
       /** The goal is the user's own words because the derivation failed or said nothing. */
       fallback: boolean;

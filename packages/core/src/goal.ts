@@ -23,6 +23,8 @@ import { capTrace, type TraceSink } from "./goal-trace.ts";
 export interface Goal {
   text: string;
   doneWhen: string;
+  /** A restriction the user put on how to proceed that is still in force ("don't submit yet", "wait"); absent when none. */
+  hold?: string;
 }
 
 /** The judgement after a turn: finished, more to do, or waiting on the user. */
@@ -37,8 +39,9 @@ const GOAL_SCHEMA = {
   properties: {
     goal: { type: "string" },
     done_when: { type: "string" },
+    hold: { type: "string" },
   },
-  required: ["goal", "done_when"],
+  required: ["goal", "done_when", "hold"],
   additionalProperties: false,
 };
 
@@ -159,7 +162,7 @@ export async function deriveGoal(
   trace?: TraceSink,
 ): Promise<Goal | undefined> {
   const known = current
-    ? `Current goal: ${current.text} (done when: ${current.doneWhen})`
+    ? `Current goal: ${current.text} (done when: ${current.doneWhen})${current.hold ? ` Current hold: ${current.hold}` : ""}`
     : "There is no current goal.";
   // Quoted, because "the latest message above" is ambiguous in a conversation that opens with the
   // project map and notes: a weaker model answered with a goal about those instead of the request.
@@ -168,7 +171,7 @@ export async function deriveGoal(
     client,
     messages,
     toolDefs,
-    `[goal tracking, not from the user] ${known}\nThe user's latest message is above; it reads: ${latest}. Reply with JSON. "goal": the objective the user wants accomplished, in one sentence. If the latest message continues, answers or refines the current goal (for example "?", "ok", "try again", or new details for the same task), keep the current goal and fold in anything new. If it asks for something unrelated, give a new goal. For a plain question or chat, the goal is to answer it. "done_when": what will observably be true once the goal is complete.`,
+    `[goal tracking, not from the user] ${known}\nThe user's latest message is above; it reads: ${latest}. Reply with JSON. "goal": the objective the user wants accomplished, in one sentence. If the latest message continues, answers or refines the current goal (for example "?", "ok", "try again", or new details for the same task), keep the current goal and fold in anything new. If it asks for something unrelated, give a new goal. For a plain question or chat, the goal is to answer it. "done_when": what will observably be true once the goal is complete. "hold": a restriction the user has put on how to proceed that is still in force (for example: not to submit or send something yet, to wait, to ask first), in their words, or an empty string. Keep the current hold unless the user's latest message lifts or replaces it.`,
     GOAL_SCHEMA,
     "goal",
     signal,
@@ -177,14 +180,22 @@ export async function deriveGoal(
   const goal = reply.ok ? text(reply.reply["goal"]) : "";
   if (goal !== "") {
     const doneWhen = text(reply.ok ? reply.reply["done_when"] : "");
-    trace?.({ kind: "goal", goal, doneWhen, previous: current?.text, fallback: false });
-    return { text: goal, doneWhen };
+    const hold = text(reply.ok ? reply.reply["hold"] : "");
+    trace?.({ kind: "goal", goal, doneWhen, hold, previous: current?.text, fallback: false });
+    return hold ? { text: goal, doneWhen, hold } : { text: goal, doneWhen };
   }
   const said = lastUserText(messages, skip).slice(0, 400);
   if (said === "") return undefined;
   const doneWhen = "the request has been fully handled";
-  trace?.({ kind: "goal", goal: said, doneWhen, previous: current?.text, fallback: true });
-  return { text: said, doneWhen };
+  // A failed derivation must not drop a restriction the user set.
+  const hold = current?.hold ?? "";
+  trace?.({ kind: "goal", goal: said, doneWhen, hold, previous: current?.text, fallback: true });
+  return hold ? { text: said, doneWhen, hold } : { text: said, doneWhen };
+}
+
+/** The goal's hold as a line of a question (with its leading newline), or nothing. */
+function holdLine(goal: Goal): string {
+  return goal.hold ? `\nUser's hold, still in force: ${goal.hold}` : "";
 }
 
 /** Whether the goal has been accomplished, judged from what actually happened in the conversation. */
@@ -200,7 +211,7 @@ export async function checkGoal(
     client,
     messages,
     toolDefs,
-    `[goal check, not from the user] Goal: ${goal.text}\nDone when: ${goal.doneWhen}\nJudge only from what has actually happened in this conversation, not from what you intended to do. Reply with JSON. "verdict": "yes" if the goal is fully accomplished (detail: the evidence, quoting the result that proves it); "no" if there is still more to do that you can do yourself right now (detail: the single next step); "blocked" if you cannot go on without the user, such as a decision, a confirmation before something irreversible, personal details or a login (detail: exactly what you need from them).`,
+    `[goal check, not from the user] Goal: ${goal.text}\nDone when: ${goal.doneWhen}${holdLine(goal)}\nJudge only from what has actually happened in this conversation, not from what you intended to do. Reply with JSON. "verdict": "yes" if the goal is fully accomplished (detail: the evidence, quoting the result that proves it); "no" if there is still more to do that you can do yourself right now, within any hold (detail: the single next step); "blocked" if you cannot go on without the user, such as a decision, a confirmation before something irreversible, personal details or a login (detail: exactly what you need from them). If the next step would break the user's hold, the verdict is "blocked" and the detail names the hold and what you need from them.`,
     VERDICT_SCHEMA,
     "goal-check",
     signal,
@@ -261,5 +272,6 @@ This turn has been running for a long time. Judging only from the recent tool ca
 
 /** The message that sends the model back to work after a "no" verdict. */
 export function continueNote(goal: Goal, verdict: Verdict): string {
-  return `Your goal is not met yet: ${goal.text}\nNext step: ${verdict.detail}\nDo it now by calling the tool, without describing it first.`;
+  const hold = goal.hold ? `\nThe user's standing restriction, which still applies: ${goal.hold}` : "";
+  return `Your goal is not met yet: ${goal.text}\nNext step: ${verdict.detail}${hold}\nDo it now by calling the tool, without describing it first.`;
 }

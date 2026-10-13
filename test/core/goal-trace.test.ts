@@ -82,6 +82,45 @@ describe("goal trace", () => {
     expect(facts.find((f) => f.kind === "goal")).toMatchObject({ goal: "g", fallback: false });
   });
 
+  test("a hold from the user is traced, shown to the check, and a blocked verdict ends the turn without a continue", async () => {
+    const { facts, tracker, messages } = setup();
+    const client = scripted({
+      goal: { goal: "apply", done_when: "submitted", hold: "do not submit yet" },
+      verdict: () => verdict("blocked", "submitting would break the hold"),
+    });
+    await tracker.run(client, messages, [], working(messages), new AbortController().signal);
+    expect(facts.find((f) => f.kind === "goal")).toMatchObject({ hold: "do not submit yet" });
+    const check = facts.find((f) => f.kind === "ask" && f.purpose === "goal-check");
+    expect(check?.kind === "ask" && check.question).toContain("User's hold, still in force: do not submit yet");
+    expect(facts.some((f) => f.kind === "continue")).toBe(false);
+    expect(exits(facts)[0]).toMatchObject({ reason: "blocked" });
+  });
+
+  test("a failed derivation keeps the hold, and a later derivation can lift it", async () => {
+    const { tracker, messages } = setup();
+    const signal = new AbortController().signal;
+    const hold = { goal: "apply", done_when: "submitted", hold: "wait" };
+    await tracker.run(scripted({ goal: hold, verdict: () => verdict("blocked") }), messages, [], working(messages), signal);
+    expect(tracker.goal?.hold).toBe("wait");
+    messages.push({ role: "user", content: "hmm" });
+    const nothing = { goal: "", done_when: "", hold: "" };
+    await tracker.run(scripted({ goal: nothing, verdict: () => verdict("blocked") }), messages, [], working(messages), signal);
+    expect(tracker.goal?.hold).toBe("wait");
+    messages.push({ role: "user", content: "go ahead" });
+    const lifted = { goal: "apply", done_when: "submitted", hold: "" };
+    await tracker.run(scripted({ goal: lifted, verdict: () => verdict("yes") }), messages, [], working(messages), signal);
+    expect(tracker.goal).toBeUndefined();
+  });
+
+  test("a continue note repeats the user's hold", async () => {
+    const { facts, tracker, messages } = setup();
+    const answers = [verdict("no", "fill the form"), verdict("yes")];
+    const goal = { goal: "apply", done_when: "filled", hold: "do not submit" };
+    await tracker.run(scripted({ goal, verdict: (n) => answers[n] }), messages, [], working(messages), new AbortController().signal);
+    const cont = facts.find((f) => f.kind === "continue");
+    expect(cont?.kind === "continue" && cont.note).toContain("standing restriction, which still applies: do not submit");
+  });
+
   test("a check that cannot be made is traced as unknown with the failure", async () => {
     const { facts, tracker, messages } = setup();
     await tracker.run(scripted({ verdict: () => undefined }), messages, [], working(messages), new AbortController().signal);

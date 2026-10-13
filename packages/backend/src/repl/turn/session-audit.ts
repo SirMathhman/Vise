@@ -78,7 +78,7 @@ export class SessionAudit {
   goal(event: GoalEvent): void {
     const text =
       event.kind === "goal"
-        ? `${event.goal} (done when: ${event.doneWhen})`
+        ? `${event.goal} (done when: ${event.doneWhen})${event.hold ? ` (hold: ${event.hold})` : ""}`
         : event.kind === "verdict"
           ? `${event.verdict}: ${event.detail}`
           : event.enabled
