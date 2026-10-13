@@ -8,6 +8,7 @@ import {
   selectedOrThrow,
   type ScrollDirection,
 } from "../../browser/page-scripts.ts";
+import { chooseInCombobox } from "./combobox.ts";
 import { waitHandlers } from "./browser-wait.ts";
 import { TabWatcher } from "./tab-watch.ts";
 import { describeImage, type ImageOutbox } from "../images.ts";
@@ -165,10 +166,14 @@ async function select(
     ref,
     wanted,
   });
-  const chosen = selectedOrThrow(
-    ref,
-    result as Parameters<typeof selectedOrThrow>[1],
-  );
+  const answer = result as Parameters<typeof selectedOrThrow>[1];
+  if (answer.error === "notselect") {
+    // Not a native <select>: a custom drop-down (ARIA combobox) is driven like a person would.
+    const done: string[] = [];
+    for (const w of wanted) done.push(await chooseInCombobox(browser, id, ref, w));
+    return `selected ${done.map((d) => JSON.stringify(d)).join(", ")}`;
+  }
+  const chosen = selectedOrThrow(ref, answer);
   return `selected ${chosen.map((c) => JSON.stringify(c)).join(", ")}`;
 }
 

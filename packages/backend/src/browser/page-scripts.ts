@@ -1,4 +1,5 @@
 import { config } from "../config.ts";
+import { COMBO_HELPERS, comboboxScript } from "./combobox.ts";
 /**
  * Scripts evaluated inside a page. They tag interactive elements with a
  * `data-vise-ref` attribute (e1, e2, ...) so the model can name an element
@@ -17,7 +18,8 @@ const MAX_SCANNED = config.snapshotMaxScanned;
 
 /** Returns one line per visible interactive element: `<ref> <role> "<name>" ...`. */
 export const SNAPSHOT_SCRIPT = `(() => {
-  const SEL = 'a[href],button,input:not([type=hidden]),select,textarea,summary,[role=button],[role=link],[role=checkbox],[role=radio],[role=tab],[role=menuitem],[onclick],[onmouseover],[onmouseenter],[ondrop],[ondragover],[draggable=true],[contenteditable=""],[contenteditable=true],[tabindex]:not([tabindex="-1"])';
+  ${COMBO_HELPERS}
+  const SEL = 'a[href],button,input:not([type=hidden]),select,textarea,summary,[role=button],[role=link],[role=checkbox],[role=radio],[role=combobox],[role=tab],[role=menuitem],[onclick],[onmouseover],[onmouseenter],[ondrop],[ondragover],[draggable=true],[contenteditable=""],[contenteditable=true],[tabindex]:not([tabindex="-1"])';
   window.__viseNext = window.__viseNext || 1;
   const lines = [];
   const cands = [];
@@ -70,6 +72,11 @@ export const SNAPSHOT_SCRIPT = `(() => {
       extra += (chosen ? ' value="' + chosen + '"' : '') + ' options: ' + opts.slice(0, 25).join(' | ') + (opts.length > 25 ? ' | ... ' + (opts.length - 25) + ' more' : '');
     }
     if (tag === 'a' && el.href) extra += ' -> ' + el.href.slice(0, 100);
+    if (role === 'combobox' || el.matches('[aria-haspopup=listbox]')) {
+      // A custom drop-down shows its choice in the field around it, not in an input value; say what it shows and whether its list is open.
+      const shows = viseCombo.shows(el);
+      extra += (shows ? ' shows="' + shows.slice(0, 60) + '"' : '') + (el.getAttribute('aria-expanded') === 'true' ? ' (open)' : '');
+    }
     if ((tag === 'input' || tag === 'textarea') && el.value && el.type !== 'password') extra += ' value="' + el.value.slice(0, 40) + '"';
     if (el.disabled) extra += ' (disabled)';
     if (el.checked) extra += ' (checked)';
@@ -268,6 +275,7 @@ export function selectedOrThrow(
  */
 export type PageAction =
   | { name: "select"; ref: string; wanted: string[] }
+  | { name: "combobox"; ref: string }
   | {
       name: "scroll";
       /** An element inside the area to scroll; without one, the page (or its largest scrollable area). */
@@ -300,6 +308,9 @@ export function pageActionScript(action: PageAction): string {
       if (action.ref === undefined)
         throw new Error("a drop-down ref is required");
       return selectScript(action.ref, [...action.wanted].map(String));
+    case "combobox":
+      if (action.ref === undefined) throw new Error("a combobox ref is required");
+      return comboboxScript(action.ref);
     case "scroll":
       if (!SCROLL_DIRECTIONS.includes(action.direction)) {
         throw new Error(
