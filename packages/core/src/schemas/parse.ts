@@ -24,8 +24,15 @@ function formatIssues(
     const path = issue.path.length > 0 ? issue.path.join(".") : "(root)";
     return `${path}: ${issue.message}`;
   });
-  const raw = typeof data === "string" ? data : JSON.stringify(data);
-  const truncated =
-    raw.length > 500 ? raw.slice(0, 500) + "…" : raw;
+  let raw: string;
+  if (typeof data === "string") raw = data;
+  else {
+    try {
+      raw = JSON.stringify(data) ?? "undefined";
+    } catch {
+      raw = String(data);
+    }
+  }
+  const truncated = raw.length > 500 ? raw.slice(0, 500) + "…" : raw;
   return `${lines.join("\n")}\n---\n${truncated}`;
 }
