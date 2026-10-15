@@ -6,6 +6,7 @@ import type {
   AuditReport,
   AuditTopic,
 } from "@vise/core";
+import { parse, auditCallSchema } from "@vise/core";
 import { globalDataDir } from "../../data-dir.ts";
 import { AUDIT_MIGRATIONS } from "./audit-schema.ts";
 import { openDb } from "../open.ts";
@@ -154,7 +155,7 @@ function callOf(r: Row, full: boolean): AuditCall {
   const state = STATES.find((s) => s === r.state) ?? "done";
   const raw = r.raw === null || r.raw === undefined ? undefined : str(r.raw);
   const reasoning = r.raw_reasoning === null || r.raw_reasoning === undefined ? undefined : str(r.raw_reasoning);
-  return {
+  const call: AuditCall = {
     request: num(r.request),
     purpose: str(r.purpose),
     model: str(r.model),
@@ -173,6 +174,11 @@ function callOf(r: Row, full: boolean): AuditCall {
     loop: r.loop_period === null || r.loop_period === undefined ? undefined : { period: num(r.loop_period), repeats: num(r.loop_repeats) },
     startedAt: r.started_at === null || r.started_at === undefined ? undefined : str(r.started_at),
   };
+  const checked = parse(auditCallSchema, call);
+  if (!checked.ok) {
+    throw new Error(`invalid audit call: ${(checked.error as { body: string }).body}`);
+  }
+  return checked.value;
 }
 
 const CALL_COLUMNS = `request, purpose, model, state, stop_reason, ms, prompt_tokens, completion_tokens,

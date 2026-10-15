@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { globalDataDir } from "../data-dir.ts";
+import { parse, mcpServerSpecSchema } from "@vise/core";
 
 /** A server started as a local process and spoken to over stdio. */
 export interface StdioSpec {
@@ -28,41 +29,19 @@ export interface McpConfig {
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
-const isStringMap = (v: unknown): v is Record<string, string> =>
-  isRecord(v) && Object.values(v).every((x) => typeof x === "string");
-
 /** Validate one server entry; returns the spec, or the reason it was refused. */
 export function parseServer(value: unknown): McpServerSpec | string {
   if (!isRecord(value)) return "must be an object";
-  const { command, url } = value;
-  if (url !== undefined) return parseUrlServer(value);
-  if (typeof command !== "string" || command === "") {
-    return "needs a non-empty 'command' (a local server) or a 'url' (a remote one)";
+  if (value["command"] !== undefined && value["url"] !== undefined) {
+    return "use either 'command' or 'url', not both";
   }
-  const args = value["args"] ?? [];
-  if (!Array.isArray(args) || !args.every((a) => typeof a === "string")) {
-    return "'args' must be a list of strings";
+  const result = parse(mcpServerSpecSchema, value);
+  if (!result.ok) {
+    // Extract the first issue line for a concise message
+    const firstLine = (result.error as { body: string }).body.split("\n")[0] ?? "invalid";
+    return firstLine.replace(/^[\w.]+: /, "");
   }
-  const env = value["env"] ?? {};
-  if (!isStringMap(env)) return "'env' must map names to strings";
-  return { command, args: args as string[], env };
-}
-
-function parseUrlServer(value: Record<string, unknown>): UrlSpec | string {
-  if (value["command"] !== undefined) return "use either 'command' or 'url', not both";
-  const url = value["url"];
-  let parsed: URL | undefined;
-  try {
-    parsed = typeof url === "string" ? new URL(url) : undefined;
-  } catch {
-    parsed = undefined;
-  }
-  if (!parsed || (parsed.protocol !== "http:" && parsed.protocol !== "https:")) {
-    return "'url' must be an http or https address";
-  }
-  const headers = value["headers"] ?? {};
-  if (!isStringMap(headers)) return "'headers' must map names to strings";
-  return { url: parsed.href, headers };
+  return result.value as McpServerSpec;
 }
 
 /** The `mcpServers` object of a JSON file, or why it could not be read (a missing file is just empty). */

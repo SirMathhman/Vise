@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { join, resolve } from "node:path";
 import type { Message, Result, ViseError } from "@vise/core";
-import { parseTodos, type TodoItem } from "@vise/core";
+import { parse, todosSchema, type TodoItem } from "@vise/core";
 import type { SavedSession, SearchHit, SessionEntry } from "../repl/ports.ts";
 import { importLegacySessions } from "../db/session/import-json.ts";
 import { openDb, tryDb } from "../db/open.ts";
@@ -136,7 +136,7 @@ interface SessionRow {
 function storedTodos(json: string | null): TodoItem[] {
   if (json === null) return [];
   try {
-    const parsed = parseTodos(JSON.parse(json));
+    const parsed = parse(todosSchema, JSON.parse(json));
     return parsed.ok ? parsed.value : [];
   } catch {
     return [];

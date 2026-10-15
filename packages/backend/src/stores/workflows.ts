@@ -9,6 +9,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import type { Result } from "@vise/core";
+import { parse, workflowSchema } from "@vise/core";
 import { formatError } from "../output/format.ts";
 import { validName } from "./notes.ts";
 import type { Workflow, WorkflowScope, WorkflowStep } from "@vise/core";
@@ -97,7 +98,7 @@ export function readWorkflowAt(base: string, name: string): Result<Workflow> {
   const text = tryIo("read", name, () => readFileSync(path, "utf8"));
   if (!text.ok) return text;
   try {
-    return validateWorkflow(JSON.parse(text.value));
+    return parseWorkflowJson(JSON.parse(text.value));
   } catch (e) {
     return fail(`workflow '${name}' is not valid JSON: ${String(e)}`);
   }
@@ -115,7 +116,7 @@ export function saveWorkflowAt(
   if (!replace && existsSync(path)) {
     return fail(`workflow '${name}' already exists`);
   }
-  const workflow = validateWorkflow({ steps });
+  const workflow = parseWorkflowJson({ steps });
   if (!workflow.ok) return workflow;
   return tryIo("save", name, () => {
     writeFileAtomic(path, `${JSON.stringify(workflow.value, null, 2)}\n`);
@@ -144,63 +145,17 @@ function namesAt(base: string): string[] {
 }
 
 function parseWorkflow(text: string): Workflow {
-  const result = validateWorkflow(JSON.parse(text));
+  const result = parseWorkflowJson(JSON.parse(text));
   if (!result.ok) throw new Error(formatError(result.error));
   return result.value;
 }
 
-function validateWorkflow(value: unknown): Result<Workflow> {
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    !Array.isArray((value as { steps?: unknown }).steps)
-  ) {
-    return fail("workflow must be a JSON object with a steps array");
+function parseWorkflowJson(value: unknown): Result<Workflow> {
+  const result = parse(workflowSchema, value);
+  if (!result.ok) {
+    return fail(
+      `workflow: ${(result.error as { body: string }).body.split("\n")[0]}`,
+    );
   }
-  const steps: WorkflowStep[] = [];
-  for (const raw of (value as { steps: unknown[] }).steps) {
-    const step = validateStep(raw);
-    if (!step) {
-      return fail(
-        "workflow step must be an instruction with non-empty text, a profile with a name, or a tool with a name and args object",
-      );
-    }
-    steps.push(step);
-  }
-  return { ok: true, value: { steps } };
-}
-
-function validateStep(value: unknown): WorkflowStep | undefined {
-  if (typeof value !== "object" || value === null) return undefined;
-  const step = value as Record<string, unknown>;
-  if (
-    step.type === "instruction" &&
-    typeof step.text === "string" &&
-    step.text.trim() !== ""
-  ) {
-    return { type: "instruction", text: step.text };
-  }
-  if (
-    step.type === "profile" &&
-    typeof step.name === "string" &&
-    step.name.trim() !== ""
-  ) {
-    return { type: "profile", name: step.name };
-  }
-  if (
-    step.type === "tool" &&
-    typeof step.name === "string" &&
-    step.name.trim() !== "" &&
-    typeof step.args === "object" &&
-    step.args !== null &&
-    !Array.isArray(step.args)
-  ) {
-    return {
-      type: "tool",
-      name: step.name,
-      args: step.args as Record<string, unknown>,
-      ...(step.exact === true ? { exact: true } : {}),
-    };
-  }
-  return undefined;
+  return result;
 }

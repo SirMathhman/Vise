@@ -1,5 +1,6 @@
 import { formatError } from "@vise/backend";
 import { saveProfileWhitelist } from "@vise/backend";
+import { parse } from "@vise/core";
 import { handleEditorMessage } from "../api/editors.ts";
 import { handleGitMessage } from "../api/git-api.ts";
 import { handleMcpMessage } from "../api/mcp-api.ts";
@@ -12,6 +13,15 @@ import { handleQueueCommand } from "../conn/queue-commands.ts";
 import { createInspector } from "../inspect/inspect.ts";
 import { handleTerminalMessage } from "../terminal/terminal-api.ts";
 import type { ConnectionState, WireMessage } from "./connection.ts";
+import {
+  wireBaseSchema,
+  lineSchema,
+  steerSchema,
+  unqueueSchema,
+  askAnswerSchema,
+  profileToolsSchema,
+  envSetSchema,
+} from "./wire-schemas.ts";
 
 /**
  * Where each message type from the page goes. One table, one shape: a route
@@ -136,13 +146,15 @@ const ROUTES: Route[] = [
 
 /** Route one raw WebSocket message from the page. */
 export function handleMessage(conn: ConnectionState, message: string | Buffer<ArrayBuffer> | null): void {
-  let msg: WireMessage;
+  let raw: unknown;
   try {
-    msg = JSON.parse(String(message));
+    raw = JSON.parse(String(message));
   } catch {
     return;
   }
-  if (typeof msg?.type !== "string") return;
+  const checked = parse(wireBaseSchema, raw);
+  if (!checked.ok) return;
+  const msg = raw as WireMessage;
   const route = ROUTES.find((r) => r.owns(msg.type));
   if (!route) return;
   void Promise.resolve(route.run(conn, msg)).catch((error: unknown) => {

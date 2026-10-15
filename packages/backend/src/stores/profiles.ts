@@ -9,6 +9,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { validName } from "./notes.ts";
+import { parseProfileText, type ParsedProfile } from "@vise/core";
 
 /**
  * Shared profile-file I/O for the edge. Profiles are the project's store of
@@ -51,61 +52,6 @@ export function listProfiles(base: string): string[] {
     .sort();
 }
 
-/**
- * A profile file split into its optional frontmatter and its body. The
- * frontmatter is a `---` block at the top of the file; its `tools:` line is a
- * comma-separated whitelist of the tools the profile may use, its `hooks:` line
- * is a JSON array of the hooks the profile owns (`pre:<command>` / `post:<command>`, run only while it is active), and any other
- * frontmatter lines are kept verbatim in `meta` so rewriting never drops them.
- */
-export interface ParsedProfile {
-  tools?: string[];
-  hooks?: string[];
-  meta: string[];
-  body: string;
-}
-
-const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
-
-/** Split profile file text into frontmatter fields and body. */
-export function parseProfile(text: string): ParsedProfile {
-  const match = FRONTMATTER.exec(text);
-  if (!match) return { meta: [], body: text };
-  const meta: string[] = [];
-  let tools: string[] | undefined;
-  let hooks: string[] | undefined;
-  for (const line of (match[1] ?? "").split(/\r?\n/)) {
-    const h = /^hooks:\s*(\[.*\])\s*$/.exec(line);
-    const parsedHooks = h ? parseHookList(h[1] ?? "") : undefined;
-    if (parsedHooks) {
-      hooks = parsedHooks;
-      continue;
-    }
-    const m = /^tools:\s*(.*)$/.exec(line);
-    if (m) {
-      tools = (m[1] ?? "")
-        .split(",")
-        .map((t) => t.trim())
-        .filter((t) => t !== "");
-    } else {
-      meta.push(line);
-    }
-  }
-  return { tools, hooks, meta, body: text.slice(match[0].length) };
-}
-
-/** A `hooks:` value: a JSON array of command strings, or undefined when it is anything else. */
-function parseHookList(json: string): string[] | undefined {
-  try {
-    const value: unknown = JSON.parse(json);
-    return Array.isArray(value) && value.every((c) => typeof c === "string")
-      ? value
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 /** Rebuild profile file text from its parts (no frontmatter when empty). */
 function renderProfile(parsed: ParsedProfile): string {
   const lines = [...parsed.meta];
@@ -126,7 +72,7 @@ function renderProfile(parsed: ParsedProfile): string {
 export function readProfile(base: string, name: string): string | undefined {
   const p = profilePath(base, name);
   if (!existsSync(p)) return undefined;
-  return parseProfile(readFileSync(p, "utf8")).body;
+  return parseProfileText(readFileSync(p, "utf8")).body;
 }
 
 /** A profile's tool whitelist, or undefined when it has none (or no file). */
@@ -136,7 +82,7 @@ export function readProfileTools(
 ): string[] | undefined {
   const p = profilePath(base, name);
   if (!existsSync(p)) return undefined;
-  return parseProfile(readFileSync(p, "utf8")).tools;
+  return parseProfileText(readFileSync(p, "utf8")).tools;
 }
 
 /**
@@ -150,7 +96,7 @@ export function setProfileTools(
 ): void {
   const p = profilePath(base, name);
   if (!existsSync(p)) throw new Error(`profile '${name}' not found`);
-  const parsed = parseProfile(readFileSync(p, "utf8"));
+  const parsed = parseProfileText(readFileSync(p, "utf8"));
   writeFileSync(p, renderProfile({ ...parsed, tools }), "utf8");
 }
 
@@ -159,7 +105,7 @@ export function readAllProfileHooks(base: string): Record<string, string[]> {
   const out: Record<string, string[]> = {};
   for (const name of listProfiles(base)) {
     const text = readFileSync(profilePath(base, name), "utf8");
-    const hooks = parseProfile(text).hooks;
+    const hooks = parseProfileText(text).hooks;
     if (hooks && hooks.length > 0) out[name] = hooks;
   }
   return out;
@@ -177,7 +123,7 @@ export function setProfileHooks(
 ): void {
   const p = profilePath(base, name);
   if (!existsSync(p)) throw new Error(`profile '${name}' not found`);
-  const parsed = parseProfile(readFileSync(p, "utf8"));
+  const parsed = parseProfileText(readFileSync(p, "utf8"));
   const owned = hooks && hooks.length > 0 ? hooks : undefined;
   writeFileSync(p, renderProfile({ ...parsed, hooks: owned }), "utf8");
 }
@@ -220,7 +166,7 @@ export function writeProfileBody(
 ): void {
   const p = profilePath(base, name);
   if (!existsSync(p)) throw new Error(`profile '${name}' not found`);
-  const parsed = parseProfile(readFileSync(p, "utf8"));
+  const parsed = parseProfileText(readFileSync(p, "utf8"));
   const text = body.replace(/\s+$/, "") + "\n";
   writeFileSync(p, renderProfile({ ...parsed, body: text }), "utf8");
 }

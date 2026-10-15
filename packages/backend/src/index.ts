@@ -111,8 +111,7 @@ export {
   setProfileTools,
   readAllProfileHooks,
   setProfileHooks,
-  parseProfile,
 } from "./stores/profiles.ts";
-export type { ParsedProfile } from "./stores/profiles.ts";
+export type { ParsedProfile } from "@vise/core";
 export { missingBuildOutput } from "./build/build-check.ts";
 export { runMaintenance, extensionDir } from "./build/maintenance.ts";

@@ -3,8 +3,8 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Client, Tool, ToolRunner } from "@vise/core";
+import { parseProfileText } from "@vise/core";
 import {
-  parseProfile,
   readProfile,
   readProfileTools,
   setProfileTools,
@@ -15,10 +15,10 @@ import { Session } from "../../packages/backend/src/repl/session.ts";
 
 describe("profile frontmatter (edge)", () => {
   test("parses the tools whitelist and strips it from the body", () => {
-    const p = parseProfile("---\ntools: a, b\n---\nBody text\n");
+    const p = parseProfileText("---\ntools: a, b\n---\nBody text\n");
     expect(p.tools).toEqual(["a", "b"]);
     expect(p.body).toBe("Body text\n");
-    expect(parseProfile("No frontmatter").tools).toBeUndefined();
+    expect(parseProfileText("No frontmatter").tools).toBeUndefined();
   });
 
   test("setProfileTools writes and clears the whitelist, keeping the body", () => {

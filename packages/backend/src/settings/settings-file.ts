@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { applySettings, fileValue, SPEC } from "../config.ts";
 import type { Spec } from "../config.ts";
 import { globalDataDir } from "../data-dir.ts";
+import { validateSettingValue } from "@vise/core";
 
 /** The user's settings file: shared by every project, outside any dev directory. */
 export const settingsPath = join(globalDataDir, ".env");
@@ -37,16 +38,7 @@ export function loadSettingsFile(path = settingsPath): void {
   applySettings(readValues(path));
 }
 
-/** An error for a value that setting would not accept, else undefined. */
-function problem(spec: Spec, value: string): string | undefined {
-  if (/[\r\n]/.test(value)) return `${spec.label}: must be one line`;
-  if (typeof spec.def === "string") return undefined;
-  const number = Number(value);
-  if (!Number.isFinite(number) || number < (spec.min ?? 0)) {
-    return `${spec.label}: needs a number of at least ${spec.min ?? 0}`;
-  }
-  return undefined;
-}
+
 
 /**
  * Save the values the page sent (variable name to text; "" means the default)
@@ -78,7 +70,7 @@ export function saveSettings(
     if (!spec) return `unknown setting ${name}`;
     const value = raw.trim();
     if (spec.secret && value === "") continue;
-    const bad = value === "" ? undefined : problem(spec, value);
+    const bad = value === "" ? undefined : validateSettingValue(value, spec.label, spec.def, spec.min);
     if (bad) return bad;
     if (value === "") delete next[name];
     else next[name] = value;

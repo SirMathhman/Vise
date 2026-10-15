@@ -7,6 +7,8 @@ import type {
   Result,
   ToolCall,
 } from "./errors.ts";
+import { parse } from "./schemas/parse.ts";
+import { toolCallArgsSchema } from "./schemas/tool-args.ts";
 
 /**
  * Definition of a single tool function, as presented to the model. The core
@@ -384,7 +386,7 @@ function toolResult(
 ): Message {
   callbacks.onToolResult?.(name, 0, output);
   const images = tools.takeImages?.() ?? [];
-  for (const image of images) callbacks.onImage?.(image);
+  for (const image of images) if (!image.quiet) callbacks.onImage?.(image);
   return {
     role: "tool",
     content: output,
@@ -419,6 +421,10 @@ async function runToolCall(
   const name = tc.function.name;
   const args = parseArgs(tc.function.arguments);
   if (args === undefined) {
+    return `error: the arguments of ${name} were not a valid JSON object`;
+  }
+  const validated = parse(toolCallArgsSchema, { name, arguments: args });
+  if (!validated.ok) {
     return `error: the arguments of ${name} were not a valid JSON object`;
   }
   try {
