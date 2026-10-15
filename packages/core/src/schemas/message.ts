@@ -11,9 +11,9 @@ export const pictureSchema: z.ZodType<Picture> = z.object({
   quiet: z.boolean().optional(),
 }) as z.ZodType<Picture>;
 
-export const picturesArraySchema: z.ZodType<Picture[]> = z.array(
-  pictureSchema,
-) as z.ZodType<Picture[]>;
+export const picturesArraySchema: z.ZodType<Picture[]> = z.array(pictureSchema) as z.ZodType<
+  Picture[]
+>;
 
 export const toolCallSchema: z.ZodType<ToolCall> = z.object({
   type: z.literal("function"),
@@ -24,9 +24,9 @@ export const toolCallSchema: z.ZodType<ToolCall> = z.object({
   }),
 }) as z.ZodType<ToolCall>;
 
-export const toolCallsArraySchema: z.ZodType<ToolCall[]> = z.array(
-  toolCallSchema,
-) as z.ZodType<ToolCall[]>;
+export const toolCallsArraySchema: z.ZodType<ToolCall[]> = z.array(toolCallSchema) as z.ZodType<
+  ToolCall[]
+>;
 
 export const messageSchema: z.ZodType<Message> = z.object({
   role: z.enum(["system", "user", "assistant", "tool"]),

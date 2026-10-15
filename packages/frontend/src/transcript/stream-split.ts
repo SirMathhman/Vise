@@ -35,9 +35,7 @@ export function createCutScanner(): (raw: string) => number {
       const line = raw.slice(scanned, end);
       scanned = end + 1;
       if (fence) {
-        const closer = new RegExp(
-          `^ {0,3}\\${fence.char}{${fence.length},}\\s*$`,
-        );
+        const closer = new RegExp(`^ {0,3}\\${fence.char}{${fence.length},}\\s*$`);
         if (closer.test(line)) fence = null;
         continue;
       }

@@ -1,6 +1,12 @@
 import { expect, test } from "bun:test";
-import { formatSemanticHits, formatSemanticStatus } from "../../packages/backend/src/output/semantic-format.ts";
-import { handleEmbed, handleSearch } from "../../packages/backend/src/repl/commands/search-command.ts";
+import {
+  formatSemanticHits,
+  formatSemanticStatus,
+} from "../../packages/backend/src/output/semantic-format.ts";
+import {
+  handleEmbed,
+  handleSearch,
+} from "../../packages/backend/src/repl/commands/search-command.ts";
 import type {
   SemanticHit,
   SemanticIndexPort,
@@ -19,7 +25,13 @@ const hit: SemanticHit = {
 
 function fake(status: Partial<SemanticStatus> = {}, hits: SemanticHit[] = [hit]) {
   const calls: string[] = [];
-  const full: SemanticStatus = { state: "ready", files: 3, chunks: 9, model: "embedder", ...status };
+  const full: SemanticStatus = {
+    state: "ready",
+    files: 3,
+    chunks: 9,
+    model: "embedder",
+    ...status,
+  };
   const port: SemanticIndexPort = {
     search: async (query, limit) => {
       calls.push(`search:${query}:${limit}`);
@@ -69,12 +81,27 @@ test("empty results explain themselves by the index's state", () => {
   expect(formatSemanticHits("x", [], { state: "ready", files: 1, chunks: 1, model: "m" })).toBe(
     "no semantic matches for 'x'",
   );
-  expect(formatSemanticHits("x", [], { state: "indexing", files: 1, chunks: 4, model: "m", done: 2, total: 9 })).toContain(
-    "2/9",
-  );
-  expect(formatSemanticHits("x", [], { state: "empty", files: 0, chunks: 0, model: "m" })).toContain("/embed");
   expect(
-    formatSemanticStatus({ state: "unavailable", files: 0, chunks: 0, model: "m", reason: "set VISE_EMBEDDING_MODEL" }),
+    formatSemanticHits("x", [], {
+      state: "indexing",
+      files: 1,
+      chunks: 4,
+      model: "m",
+      done: 2,
+      total: 9,
+    }),
+  ).toContain("2/9");
+  expect(
+    formatSemanticHits("x", [], { state: "empty", files: 0, chunks: 0, model: "m" }),
+  ).toContain("/embed");
+  expect(
+    formatSemanticStatus({
+      state: "unavailable",
+      files: 0,
+      chunks: 0,
+      model: "m",
+      reason: "set VISE_EMBEDDING_MODEL",
+    }),
   ).toContain("VISE_EMBEDDING_MODEL");
 });
 

@@ -1,7 +1,7 @@
 import { config } from "../../config.ts";
 import type { AuditCall, AuditSink } from "@vise/core";
 import type { AssistantMessage, Result, ViseError } from "@vise/core";
-import { WINDOW_CHARS, findLoop, repetition, runawayVerdict } from "@vise/core";
+import { WINDOW_CHARS, findLoop, runawayVerdict } from "@vise/core";
 import { formatError } from "../../output/format.ts";
 import type { GenerationListener } from "./stream-reader.ts";
 
@@ -12,6 +12,9 @@ const TAIL_CHARS = 192_000;
 const REASONING_CHARS = 64_000;
 /** Finished calls remembered for the inspector and `/audit`. */
 const FINISHED_KEPT = 50;
+const CALL_OPEN = "<tool_call>";
+const CALL_CLOSE = "</tool_call>";
+const CALL_DELIMITERS = /<tool_call>|<\/tool_call>/g;
 
 export type CallState = "running" | "done" | "stopped" | "error";
 
@@ -27,6 +30,9 @@ export class CallTrace {
   private total = 0;
   private thought = "";
   private thoughtTotal = 0;
+  private carry = "";
+  private openChars = 0;
+  private callOpen = false;
   state: CallState = "running";
   stopReason?: string;
   finishReason?: string;
@@ -46,6 +52,7 @@ export class CallTrace {
 
   text(piece: string): void {
     this.total += piece.length;
+    this.countOpenCall(piece);
     let rest = piece;
     if (this.head.length < HEAD_CHARS) {
       const room = HEAD_CHARS - this.head.length;
@@ -54,6 +61,27 @@ export class CallTrace {
     }
     if (rest === "") return;
     this.tail = (this.tail + rest).slice(-TAIL_CHARS);
+  }
+
+  /** Characters of the tool call being written right now (0 when none is open). */
+  get openCallChars(): number {
+    return this.openChars;
+  }
+
+  /** Track how long the open `<tool_call>` is; delimiters split across pieces are caught through `carry`. */
+  private countOpenCall(piece: string): void {
+    const s = this.carry + piece;
+    this.carry = s.slice(-(CALL_CLOSE.length - 1));
+    let open = this.callOpen;
+    let seen = false;
+    let last = 0;
+    for (const m of s.matchAll(CALL_DELIMITERS)) {
+      seen = true;
+      open = m[0] === CALL_OPEN;
+      last = (m.index ?? 0) + m[0].length;
+    }
+    this.callOpen = open;
+    this.openChars = !open ? 0 : seen ? s.length - last : this.openChars + piece.length;
   }
 
   reasoning(piece: string): void {
@@ -98,7 +126,7 @@ export class CallTrace {
 
   /** What repeats at the end of the call's text (or reasoning), if anything. */
   loop(): AuditCall["loop"] {
-    const found = findLoop(this.rawTail()) ?? repetition(this.reasoningTail());
+    const found = findLoop(this.rawTail()) ?? findLoop(this.reasoningTail(), "reasoning");
     return found
       ? { period: found.period, repeats: found.repeats, sample: found.sample }
       : undefined;
@@ -154,10 +182,7 @@ export class CallLog {
   }
 
   get(request: number): CallTrace | undefined {
-    return (
-      this.running.get(request) ??
-      this.finished.find((t) => t.request === request)
-    );
+    return this.running.get(request) ?? this.finished.find((t) => t.request === request);
   }
 
   /** The newest running call, if any. */
@@ -197,7 +222,8 @@ export function traceListener(
       cap,
       tail: trace.rawTail(),
       loopGuard,
-      sentences: true,
+      openCallChars: trace.openCallChars,
+      maxCallChars: config.maxCallBlockChars,
     });
     if (!verdict.stop) {
       verdict = runawayVerdict({
@@ -205,6 +231,7 @@ export function traceListener(
         cap: 0,
         tail: trace.reasoningTail(),
         loopGuard,
+        scope: "reasoning",
       });
     }
     if (!verdict.stop || trace.state !== "running") return;

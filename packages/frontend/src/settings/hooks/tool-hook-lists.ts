@@ -91,9 +91,7 @@ function addRow(phase: ToolPhase, edit: Edit): HTMLElement {
       .map((t) => t.trim())
       .filter((t) => t !== "");
     const quoted = `"${command.replaceAll('"', '\\"')}"`;
-    edit(
-      `/hooks add ${phase} ${quoted}${filter.length > 0 ? ` --tools ${filter.join(",")}` : ""}`,
-    );
+    edit(`/hooks add ${phase} ${quoted}${filter.length > 0 ? ` --tools ${filter.join(",")}` : ""}`);
     input.value = "";
     tools.value = "";
   };

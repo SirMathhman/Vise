@@ -5,7 +5,17 @@ import { join, relative, sep } from "node:path";
 export const EMBED_MAX_BYTES = 1_000_000;
 
 /** Folders never indexed: dependencies, build output, repository and Vise's own data. */
-const SKIP_DIRS = new Set(["node_modules", ".git", ".vise", "dist", "out", "build", "coverage", "target", "vendor"]);
+const SKIP_DIRS = new Set([
+  "node_modules",
+  ".git",
+  ".vise",
+  "dist",
+  "out",
+  "build",
+  "coverage",
+  "target",
+  "vendor",
+]);
 
 /**
  * Files that hold secrets: a key or an environment file must not be turned into
@@ -56,7 +66,11 @@ export function listIndexable(root: string, maxBytes: number = EMBED_MAX_BYTES):
         try {
           const stat = statSync(full);
           if (stat.size > 0 && stat.size <= maxBytes) {
-            found.push({ path: relative(root, full).split(sep).join("/"), mtimeMs: stat.mtimeMs, size: stat.size });
+            found.push({
+              path: relative(root, full).split(sep).join("/"),
+              mtimeMs: stat.mtimeMs,
+              size: stat.size,
+            });
           }
         } catch {
           // Vanished while walking: not indexed.

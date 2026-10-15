@@ -25,7 +25,11 @@ describe("pinUserWords", () => {
           { type: "function", id: "b", function: { name: "read_file", arguments: "{}" } },
         ],
       },
-      { role: "tool", tool_call_id: "a", content: "user replied: Type a simple answer, but don't submit, so I can look it over." },
+      {
+        role: "tool",
+        tool_call_id: "a",
+        content: "user replied: Type a simple answer, but don't submit, so I can look it over.",
+      },
       { role: "tool", tool_call_id: "b", content: "file text" },
     ];
     expect(pinUserWords(messages)).toEqual([

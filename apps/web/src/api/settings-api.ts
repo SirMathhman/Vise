@@ -43,12 +43,22 @@ export function handleSettingsMessage(
  * `local-models`: what the local llama.cpp server lists, embedding models first
  * (the router marks them with `--embedding`); any other text is still accepted.
  */
-export async function handleEnvChoices(msg: Record<string, unknown>): Promise<Record<string, unknown>[]> {
+export async function handleEnvChoices(
+  msg: Record<string, unknown>,
+): Promise<Record<string, unknown>[]> {
   const source = typeof msg.source === "string" ? msg.source : "";
-  if (source !== "local-models") return [{ type: "env_choices", source, offers: [], error: "unknown source" }];
+  if (source !== "local-models")
+    return [{ type: "env_choices", source, offers: [], error: "unknown source" }];
   const listed = await fetchModelDetails(providerOf(config, "local"));
   if (!listed.ok) {
-    return [{ type: "env_choices", source, offers: [], error: formatError(listed.error).replace(/^vise: /, "") }];
+    return [
+      {
+        type: "env_choices",
+        source,
+        offers: [],
+        error: formatError(listed.error).replace(/^vise: /, ""),
+      },
+    ];
   }
   const offers = [...listed.value]
     .sort((a, b) => Number(b.embedding) - Number(a.embedding) || a.id.localeCompare(b.id))

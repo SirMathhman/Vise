@@ -7,10 +7,7 @@ export interface McpServerLine {
 }
 
 /** The `/mcp` listing: each server with its state, tool count and, when it is not working, why. */
-export function formatMcpStatus(
-  servers: McpServerLine[],
-  problems: string[],
-): string {
+export function formatMcpStatus(servers: McpServerLine[], problems: string[]): string {
   if (servers.length === 0 && problems.length === 0) {
     return 'no MCP servers configured (add "mcpServers" to .viserc.json or ~/.vise/mcp.json)';
   }
@@ -32,9 +29,7 @@ export function mcpNote(hub: {
   const failed = hub
     .status()
     .filter((s) => s.status.state !== "ready")
-    .map(
-      (s) => `MCP server ${s.name} is unavailable (${s.status.reason ?? s.status.state})`,
-    );
+    .map((s) => `MCP server ${s.name} is unavailable (${s.status.reason ?? s.status.state})`);
   const notes = [...failed, ...hub.problems.map((p) => `MCP: ${p}`)];
   return notes.length === 0 ? undefined : notes.join("\n");
 }

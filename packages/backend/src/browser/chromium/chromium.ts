@@ -6,26 +6,11 @@ import { dataDir } from "../../data-dir.ts";
 import { CdpConnection } from "./cdp.ts";
 import * as actions from "./cdp-actions.ts";
 import { dispatchInput, startScreencast } from "./cdp-view.ts";
-import {
-  pageActionScript,
-  probeScript,
-  type PageAction,
-} from "../page-scripts.ts";
+import { pageActionScript, probeScript, type PageAction } from "../page-scripts.ts";
 import { PlaywrightSession } from "./playwright.ts";
 import type { PageProbe } from "../probe.ts";
-import {
-  killBrowsersUsing,
-  killTree,
-  removeProfile,
-  sweepStaleProfiles,
-} from "../processes.ts";
-import type {
-  BrowserBackend,
-  BrowserInput,
-  DialogInfo,
-  FrameListener,
-  TabInfo,
-} from "../types.ts";
+import { killBrowsersUsing, killTree, removeProfile, sweepStaleProfiles } from "../processes.ts";
+import type { BrowserBackend, BrowserInput, DialogInfo, FrameListener, TabInfo } from "../types.ts";
 
 /** Chromium-family browsers, in preference order (Edge ships with Windows 11). */
 const CANDIDATES = [
@@ -80,24 +65,19 @@ export class ChromiumBackend implements BrowserBackend {
 
   async openTab(url: string): Promise<TabInfo> {
     const cdp = await this.connection();
-    const { targetId } = await cdp.send<{ targetId: string }>(
-      "Target.createTarget",
-      { url: "about:blank" },
-    );
+    const { targetId } = await cdp.send<{ targetId: string }>("Target.createTarget", {
+      url: "about:blank",
+    });
     const id = await this.attach(cdp, targetId);
     return this.navigate(id, url);
   }
 
   async listTabs(): Promise<TabInfo[]> {
     const cdp = await this.connection();
-    const { targetInfos } = await cdp.send<{ targetInfos: TargetInfo[] }>(
-      "Target.getTargets",
-    );
+    const { targetInfos } = await cdp.send<{ targetInfos: TargetInfo[] }>("Target.getTargets");
     const pages = targetInfos.filter(
       (t) =>
-        t.type === "page" &&
-        !this.startupTargets.has(t.targetId) &&
-        !BROWSER_INTERNAL.test(t.url),
+        t.type === "page" && !this.startupTargets.has(t.targetId) && !BROWSER_INTERNAL.test(t.url),
     );
     const live = new Set(pages.map((t) => t.targetId));
     for (const [id, tab] of this.tabs) {
@@ -105,8 +85,7 @@ export class ChromiumBackend implements BrowserBackend {
     }
     const out: TabInfo[] = [];
     for (const page of pages) {
-      const id =
-        this.idFor(page.targetId) ?? (await this.attach(cdp, page.targetId));
+      const id = this.idFor(page.targetId) ?? (await this.attach(cdp, page.targetId));
       out.push({ id, url: page.url, title: page.title });
     }
     return out;
@@ -116,20 +95,14 @@ export class ChromiumBackend implements BrowserBackend {
     const cdp = await this.connection();
     const tab = this.tab(id);
     const loaded = this.waitForLoad(cdp, tab.sessionId);
-    const result = await cdp.send<{ errorText?: string }>(
-      "Page.navigate",
-      { url },
-      tab.sessionId,
-    );
+    const result = await cdp.send<{ errorText?: string }>("Page.navigate", { url }, tab.sessionId);
     if (result.errorText) throw new Error(result.errorText);
     await loaded;
     return this.info(cdp, id);
   }
 
   async snapshot(id: number): Promise<string> {
-    const outline = await this.inTab(id, (cdp, session) =>
-      actions.snapshot(cdp, session),
-    );
+    const outline = await this.inTab(id, (cdp, session) => actions.snapshot(cdp, session));
     return outline ?? "(a dialog opened while reading the page)";
   }
 
@@ -138,9 +111,7 @@ export class ChromiumBackend implements BrowserBackend {
   }
 
   async uploadFiles(id: number, ref: string, paths: string[]): Promise<void> {
-    await this.inTab(id, (cdp, session) =>
-      actions.uploadFiles(cdp, session, ref, paths),
-    );
+    await this.inTab(id, (cdp, session) => actions.uploadFiles(cdp, session, ref, paths));
   }
 
   runPageAction(id: number, action: PageAction): Promise<unknown> {
@@ -167,9 +138,7 @@ export class ChromiumBackend implements BrowserBackend {
   }
 
   async drag(id: number, fromRef: string, toRef: string): Promise<void> {
-    await this.inTab(id, (cdp, session) =>
-      actions.drag(cdp, session, fromRef, toRef),
-    );
+    await this.inTab(id, (cdp, session) => actions.drag(cdp, session, fromRef, toRef));
   }
 
   async typeText(
@@ -178,28 +147,18 @@ export class ChromiumBackend implements BrowserBackend {
     text: string,
     options: { replace: boolean; key?: string },
   ): Promise<void> {
-    await this.inTab(id, (cdp, session) =>
-      actions.typeText(cdp, session, ref, text, options),
-    );
+    await this.inTab(id, (cdp, session) => actions.typeText(cdp, session, ref, text, options));
   }
 
   pendingDialog(id: number): DialogInfo | null {
     return this.dialogs.get(this.tab(id).sessionId) ?? null;
   }
 
-  async handleDialog(
-    id: number,
-    accept: boolean,
-    promptText?: string,
-  ): Promise<void> {
+  async handleDialog(id: number, accept: boolean, promptText?: string): Promise<void> {
     const cdp = await this.connection();
     const { sessionId } = this.tab(id);
     if (!this.dialogs.has(sessionId)) throw new Error("no dialog is open");
-    await cdp.send(
-      "Page.handleJavaScriptDialog",
-      { accept, promptText },
-      sessionId,
-    );
+    await cdp.send("Page.handleJavaScriptDialog", { accept, promptText }, sessionId);
   }
 
   async runCode(id: number, code: string): Promise<string> {
@@ -341,10 +300,10 @@ export class ChromiumBackend implements BrowserBackend {
   }
 
   private async attach(cdp: CdpConnection, targetId: string): Promise<number> {
-    const { sessionId } = await cdp.send<{ sessionId: string }>(
-      "Target.attachToTarget",
-      { targetId, flatten: true },
-    );
+    const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", {
+      targetId,
+      flatten: true,
+    });
     await cdp.send("Page.enable", {}, sessionId);
     const id = this.nextTabId++;
     this.tabs.set(id, { targetId, sessionId });
@@ -352,10 +311,9 @@ export class ChromiumBackend implements BrowserBackend {
   }
 
   private async info(cdp: CdpConnection, id: number): Promise<TabInfo> {
-    const { targetInfo } = await cdp.send<{ targetInfo: TargetInfo }>(
-      "Target.getTargetInfo",
-      { targetId: this.tab(id).targetId },
-    );
+    const { targetInfo } = await cdp.send<{ targetInfo: TargetInfo }>("Target.getTargetInfo", {
+      targetId: this.tab(id).targetId,
+    });
     return { id, url: targetInfo.url, title: targetInfo.title };
   }
 
@@ -391,9 +349,7 @@ export class ChromiumBackend implements BrowserBackend {
 
   /** Remember the startup tab, then turn target events into tab-change notifications. */
   private async watchTargets(cdp: CdpConnection): Promise<void> {
-    const { targetInfos } = await cdp.send<{ targetInfos: TargetInfo[] }>(
-      "Target.getTargets",
-    );
+    const { targetInfos } = await cdp.send<{ targetInfos: TargetInfo[] }>("Target.getTargets");
     this.startupTargets = new Set(
       targetInfos.filter((t) => t.type === "page").map((t) => t.targetId),
     );

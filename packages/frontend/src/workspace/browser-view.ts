@@ -27,12 +27,7 @@ const ENTER = String.fromCharCode(13);
 const BUTTONS = ["left", "middle", "right"] as const;
 
 function modifiers(e: MouseEvent | KeyboardEvent): number {
-  return (
-    (e.altKey ? 1 : 0) |
-    (e.ctrlKey ? 2 : 0) |
-    (e.metaKey ? 4 : 0) |
-    (e.shiftKey ? 8 : 0)
-  );
+  return (e.altKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.metaKey ? 4 : 0) | (e.shiftKey ? 8 : 0);
 }
 
 /** What the input binders need from the view: the watched tab, the viewport size, the socket. */
@@ -42,11 +37,7 @@ interface InputContext {
   send: Send;
 }
 
-function bindMouse(
-  pane: HTMLElement,
-  img: HTMLImageElement,
-  ctx: InputContext,
-): void {
+function bindMouse(pane: HTMLElement, img: HTMLImageElement, ctx: InputContext): void {
   /** Page-pixel position of a pointer event over the frame. */
   const point = (e: MouseEvent): { x: number; y: number } => {
     const box = img.getBoundingClientRect();

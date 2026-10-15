@@ -57,11 +57,12 @@ describe("streamChat reports why the server ended the call", () => {
 describe("the runaway guard", () => {
   const sse = (chunks: string[]): string =>
     chunks
-      .map((text, i) =>
-        `data: ${JSON.stringify({
-          choices: [{ delta: { content: text } }],
-          timings: { predicted_n: (i + 1) * 60 },
-        })}\n\n`,
+      .map(
+        (text, i) =>
+          `data: ${JSON.stringify({
+            choices: [{ delta: { content: text } }],
+            timings: { predicted_n: (i + 1) * 60 },
+          })}\n\n`,
       )
       .join("");
 
@@ -82,7 +83,10 @@ describe("the runaway guard", () => {
   test("a call that repeats itself is stopped and reported as a runaway", async () => {
     const piece = "The same sentence over and over again, ok? ";
     const events: AuditEvent[] = [];
-    const { client, result } = await run(Array.from({ length: 80 }, () => piece), events);
+    const { client, result } = await run(
+      Array.from({ length: 80 }, () => piece),
+      events,
+    );
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error).toMatchObject({ kind: "runaway", reason: "loop", purpose: "reply" });
@@ -97,8 +101,10 @@ describe("the runaway guard", () => {
     // Some providers stream content deltas with no `timings`; the guard must still judge them.
     const piece = "<invoke_tool>\n</invoke_tool>\n\n";
     const body =
-      Array.from({ length: 200 }, () => `data: ${JSON.stringify({ choices: [{ delta: { content: piece } }] })}\n\n`).join("") +
-      "data: [DONE]\n\n";
+      Array.from(
+        { length: 200 },
+        () => `data: ${JSON.stringify({ choices: [{ delta: { content: piece } }] })}\n\n`,
+      ).join("") + "data: [DONE]\n\n";
     const client = new LlmClient();
     const real = globalThis.fetch;
     globalThis.fetch = (async () => new Response(body, { status: 200 })) as unknown as typeof fetch;
@@ -114,7 +120,10 @@ describe("the runaway guard", () => {
   test("a call over the token cap is stopped", async () => {
     applySettings({ VISE_MAX_CALL_TOKENS: "100" });
     try {
-      const chunks = Array.from({ length: 20 }, (_, i) => `different text number ${i} with its own words. `);
+      const chunks = Array.from(
+        { length: 20 },
+        (_, i) => `different text number ${i} with its own words. `,
+      );
       const { result } = await run(chunks);
       expect(result.ok).toBe(false);
       if (!result.ok) expect(result.error).toMatchObject({ kind: "runaway", reason: "token_cap" });
@@ -137,14 +146,17 @@ describe("the runaway guard", () => {
 describe("a looping call is asked again", () => {
   const stream = (texts: string[]): string =>
     texts
-      .map((text, i) =>
-        `data: ${JSON.stringify({
-          choices: [{ delta: { content: text } }],
-          timings: { predicted_n: (i + 1) * 60 },
-        })}\n\n`,
+      .map(
+        (text, i) =>
+          `data: ${JSON.stringify({
+            choices: [{ delta: { content: text } }],
+            timings: { predicted_n: (i + 1) * 60 },
+          })}\n\n`,
       )
       .join("") + "data: [DONE]\n\n";
-  const looping = stream(Array.from({ length: 60 }, () => "The same sentence over and over again, ok? "));
+  const looping = stream(
+    Array.from({ length: 60 }, () => "The same sentence over and over again, ok? "),
+  );
   const fine = stream(["All ", "good."]);
 
   async function run(responses: string[], events: AuditEvent[] = []) {
@@ -154,11 +166,15 @@ describe("a looping call is asked again", () => {
     const real = globalThis.fetch;
     globalThis.fetch = (async (_url: unknown, init?: { body?: string }) => {
       bodies.push(JSON.parse(init?.body ?? "{}"));
-      return new Response(responses[bodies.length - 1] ?? responses[responses.length - 1], { status: 200 });
+      return new Response(responses[bodies.length - 1] ?? responses[responses.length - 1], {
+        status: 200,
+      });
     }) as unknown as typeof fetch;
     const tokens: string[] = [];
     try {
-      const result = await client.chat([{ role: "user", content: "x" }], undefined, (t) => tokens.push(t));
+      const result = await client.chat([{ role: "user", content: "x" }], undefined, (t) =>
+        tokens.push(t),
+      );
       return { client, result, bodies, tokens };
     } finally {
       globalThis.fetch = real;
@@ -200,7 +216,9 @@ describe("a looping call is asked again", () => {
   test("a token cap is not retried", async () => {
     applySettings({ VISE_MAX_CALL_TOKENS: "100" });
     try {
-      const long = stream(Array.from({ length: 20 }, (_, i) => `different text number ${i} with its own words. `));
+      const long = stream(
+        Array.from({ length: 20 }, (_, i) => `different text number ${i} with its own words. `),
+      );
       const { result, bodies } = await run([long, fine]);
       expect(bodies).toHaveLength(1);
       expect(result.ok).toBe(false);

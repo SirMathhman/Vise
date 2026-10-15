@@ -27,9 +27,8 @@ export function chooseSideSlot(
   mainSlot: number | undefined,
 ): number | undefined {
   if (slots.length < 2 || !hasTaskNumbers(slots)) return undefined;
-  const main = mainSlot !== undefined && slots.some((s) => s.id === mainSlot)
-    ? mainSlot
-    : slotJustUsed(slots);
+  const main =
+    mainSlot !== undefined && slots.some((s) => s.id === mainSlot) ? mainSlot : slotJustUsed(slots);
   const others = slots.filter((s) => s.id !== main);
   return others.sort((a, b) => (a.id_task ?? 0) - (b.id_task ?? 0))[0]?.id;
 }

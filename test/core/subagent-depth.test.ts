@@ -12,9 +12,7 @@ test("a subagent started by a subagent reports one level deeper", async () => {
   const replies = [
     {
       content: "",
-      tool_calls: [
-        call("1", "run_subagent", { task: "inner", profile: "default" }),
-      ],
+      tool_calls: [call("1", "run_subagent", { task: "inner", profile: "default" })],
     },
     { content: "", tool_calls: [call("2", "echo", {})] },
     { content: "inner done" },
@@ -25,22 +23,13 @@ test("a subagent started by a subagent reports one level deeper", async () => {
   };
   const events: string[] = [];
   const runner: ToolRunner = {
-    run: async (name, args) =>
-      name === "run_subagent" ? handler(args) : "echoed",
+    run: async (name, args) => (name === "run_subagent" ? handler(args) : "echoed"),
   };
   const defs: Tool[] = [];
-  const handler = makeSubagentHandler(
-    client,
-    {} as never,
-    "/work",
-    runner,
-    defs,
-    {
-      onToolCall: (name, depth) => void events.push(`call ${name}@${depth}`),
-      onToolResult: (name, depth) =>
-        void events.push(`result ${name}@${depth}`),
-    },
-  );
+  const handler = makeSubagentHandler(client, {} as never, "/work", runner, defs, {
+    onToolCall: (name, depth) => void events.push(`call ${name}@${depth}`),
+    onToolResult: (name, depth) => void events.push(`result ${name}@${depth}`),
+  });
   const result = await handler({ task: "outer", profile: "default" });
   expect(result).toBe("outer done");
   expect(events).toEqual([

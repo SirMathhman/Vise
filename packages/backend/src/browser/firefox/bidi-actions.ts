@@ -78,16 +78,8 @@ function checkRef(ref: string): string {
 }
 
 /** Scroll an element into view and return its centre; refs vanish on navigation. */
-async function locate(
-  bidi: BidiConnection,
-  context: string,
-  ref: string,
-): Promise<Point> {
-  const point = await evalJson<Point | null>(
-    bidi,
-    context,
-    centerScript(checkRef(ref)),
-  );
+async function locate(bidi: BidiConnection, context: string, ref: string): Promise<Point> {
+  const point = await evalJson<Point | null>(bidi, context, centerScript(checkRef(ref)));
   if (!point) {
     throw new Error(`unknown element ${ref}: call browser_read for fresh refs`);
   }
@@ -126,11 +118,7 @@ export function pointer(
 }
 
 /** Press and release each of `values` (WebDriver key values) in order. */
-export function keys(
-  bidi: BidiConnection,
-  context: string,
-  values: string[],
-): Promise<unknown> {
+export function keys(bidi: BidiConnection, context: string, values: string[]): Promise<unknown> {
   return bidi.send("input.performActions", {
     context,
     actions: [
@@ -147,26 +135,15 @@ export function keys(
 }
 
 /** Outline of the visible interactive elements, each tagged with a ref. */
-export function snapshot(
-  bidi: BidiConnection,
-  context: string,
-): Promise<string> {
+export function snapshot(bidi: BidiConnection, context: string): Promise<string> {
   return evalJson<string>(bidi, context, SNAPSHOT_SCRIPT);
 }
 
-export async function hover(
-  bidi: BidiConnection,
-  context: string,
-  ref: string,
-): Promise<void> {
+export async function hover(bidi: BidiConnection, context: string, ref: string): Promise<void> {
   await pointer(bidi, context, [move(await locate(bidi, context, ref))]);
 }
 
-export async function click(
-  bidi: BidiConnection,
-  context: string,
-  ref: string,
-): Promise<void> {
+export async function click(bidi: BidiConnection, context: string, ref: string): Promise<void> {
   const point = await locate(bidi, context, ref);
   await pointer(bidi, context, [
     move(point),
@@ -184,10 +161,7 @@ export async function drag(
   const from = await locate(bidi, context, fromRef);
   const to = await locate(bidi, context, toRef);
   const steps = 8;
-  const path: PointerAction[] = [
-    move(from),
-    { type: "pointerDown", button: 0 },
-  ];
+  const path: PointerAction[] = [move(from), { type: "pointerDown", button: 0 }];
   for (let i = 1; i <= steps; i++) {
     path.push(
       move({
@@ -207,11 +181,7 @@ export async function uploadFiles(
   ref: string,
   paths: string[],
 ): Promise<void> {
-  const status = await evalJson<string>(
-    bidi,
-    context,
-    fileInputScript(checkRef(ref)),
-  );
+  const status = await evalJson<string>(bidi, context, fileInputScript(checkRef(ref)));
   const problem = fileInputProblem(status, ref, paths.length);
   if (problem) throw new Error(problem);
   const found = await bidi.send<{
@@ -248,20 +218,12 @@ export async function typeText(
 ): Promise<void> {
   const pressed = options.key ? WD_KEYS[options.key] : undefined;
   if (options.key && (!pressed || !PRESSABLE.includes(options.key))) {
-    throw new Error(
-      `unsupported key ${options.key}; use one of ${PRESSABLE.join(", ")}`,
-    );
+    throw new Error(`unsupported key ${options.key}; use one of ${PRESSABLE.join(", ")}`);
   }
   if (ref !== undefined) {
-    const ok = await evalJson<boolean>(
-      bidi,
-      context,
-      focusScript(checkRef(ref), options.replace),
-    );
+    const ok = await evalJson<boolean>(bidi, context, focusScript(checkRef(ref), options.replace));
     if (!ok) {
-      throw new Error(
-        `unknown element ${ref}: call browser_read for fresh refs`,
-      );
+      throw new Error(`unknown element ${ref}: call browser_read for fresh refs`);
     }
   }
   // A newline in the text is the Enter key; every other character types itself.

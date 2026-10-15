@@ -10,9 +10,14 @@ function makeStrip() {
         state.text = v ?? "";
         state.children = [];
       },
-      classList: { toggle(_cls: string, hidden: boolean) { state.hidden = hidden; } },
+      classList: {
+        toggle(_cls: string, hidden: boolean) {
+          state.hidden = hidden;
+        },
+      },
       append(...nodes: { tagName: string; textContent?: string }[]) {
-        for (const n of nodes) state.children.push({ tag: n.tagName.toLowerCase(), text: n.textContent ?? "" });
+        for (const n of nodes)
+          state.children.push({ tag: n.tagName.toLowerCase(), text: n.textContent ?? "" });
       },
     } as unknown as HTMLElement,
   };
@@ -21,7 +26,12 @@ function makeStrip() {
 function installDocumentStub() {
   const original = globalThis.document;
   globalThis.document = {
-    createElement: (tag: string) => ({ tagName: tag.toUpperCase(), className: "", textContent: "", addEventListener: () => {} }),
+    createElement: (tag: string) => ({
+      tagName: tag.toUpperCase(),
+      className: "",
+      textContent: "",
+      addEventListener: () => {},
+    }),
   } as unknown as Document;
   return () => {
     globalThis.document = original;
@@ -97,10 +107,12 @@ describe("workflow picker profile events", () => {
     const p = createWorkflowPicker(
       () => {},
       () => {},
-      ({} as unknown as HTMLElement),
+      {} as unknown as HTMLElement,
       () => {},
       () => {},
-      (name) => { profile = name; },
+      (name) => {
+        profile = name;
+      },
     );
     p.observe({ type: "workflow", kind: "profile", profile: "default" });
     expect(profile).toBe("default");

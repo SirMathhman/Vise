@@ -1,8 +1,4 @@
-import type {
-  AssistantMessage,
-  PromptProgress,
-  ToolCall,
-} from "@vise/core";
+import type { AssistantMessage, PromptProgress, ToolCall } from "@vise/core";
 import { hideCalls, type TokenLogprob } from "../tool-protocol.ts";
 
 interface Usage {
@@ -58,7 +54,10 @@ export interface GenerationListener {
 }
 
 /** Fold one chunk's tool-call deltas into the calls being assembled (a call arrives in pieces, by index). */
-function addToolCallDeltas(parts: Map<number, ToolCall>, deltas: StreamToolCallDelta[] | undefined): void {
+function addToolCallDeltas(
+  parts: Map<number, ToolCall>,
+  deltas: StreamToolCallDelta[] | undefined,
+): void {
   for (const tc of deltas ?? []) {
     const existing = parts.get(tc.index);
     if (existing) {
@@ -216,8 +215,7 @@ export async function readJsonReply(
     usage?: Usage;
   };
   const choice = json.choices?.[0];
-  const reasoning =
-    choice?.message?.reasoning_content ?? choice?.message?.reasoning;
+  const reasoning = choice?.message?.reasoning_content ?? choice?.message?.reasoning;
   if (reasoning) onThinking?.(reasoning);
   return {
     message: { content: choice?.message?.content ?? "" },

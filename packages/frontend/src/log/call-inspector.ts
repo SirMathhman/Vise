@@ -18,7 +18,14 @@ export interface CallRawMessage {
   reasoning?: string;
   loop?: { period: number; repeats: number; sample?: string };
   finishReason?: string;
-  recent?: { request: number; purpose: string; state: string; stopReason?: string; tokens: number; ms: number }[];
+  recent?: {
+    request: number;
+    purpose: string;
+    state: string;
+    stopReason?: string;
+    tokens: number;
+    ms: number;
+  }[];
 }
 
 /** How a call ended, in words (running, or why it was cut short). Pure. */
@@ -64,7 +71,20 @@ function buildPanel() {
   actions.append(stopBtn, copyBtn, make("span", "hint", "More: /audit calls"));
   panel.append(head, picker, stats, loop, tabs, raw, actions);
   document.body.appendChild(panel);
-  return { panel, title, status, close, stats, loop, picker, outputTab, reasoningTab, raw, stopBtn, copyBtn };
+  return {
+    panel,
+    title,
+    status,
+    close,
+    stats,
+    loop,
+    picker,
+    outputTab,
+    reasoningTab,
+    raw,
+    stopBtn,
+    copyBtn,
+  };
 }
 type Ui = ReturnType<typeof buildPanel>;
 
@@ -80,7 +100,8 @@ function drawCall(ui: Ui, m: CallRawMessage | undefined, text: string, follow: b
     return;
   }
   ui.status.textContent = describeEnd(m.state, m.stopReason, m.finishReason);
-  ui.status.dataset["state"] = m.state === "running" ? "running" : m.stopReason ? "stopped" : (m.state ?? "");
+  ui.status.dataset["state"] =
+    m.state === "running" ? "running" : m.stopReason ? "stopped" : (m.state ?? "");
   ui.title.textContent = `#${m.request} · ${m.purpose}`;
   ui.stats.textContent = [
     `${count(m.tokens)} tokens`,
@@ -88,10 +109,14 @@ function drawCall(ui: Ui, m: CallRawMessage | undefined, text: string, follow: b
     `${((m.ms ?? 0) / 1000).toFixed(1)} s`,
     m.promptTokens !== undefined ? `prompt ${count(m.promptTokens)}` : "",
     `${count(m.chars)} characters`,
-  ].filter(Boolean).join(" · ");
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const note = m.loop
     ? `The end of this call is a ${m.loop.period}-character chunk repeated about ${m.loop.repeats} times: ${JSON.stringify(m.loop.sample ?? "")}`
-    : m.state !== "running" ? m.detail : undefined;
+    : m.state !== "running"
+      ? m.detail
+      : undefined;
   ui.loop.textContent = note ?? "";
   ui.loop.classList.toggle("hidden", !note);
   ui.stopBtn.disabled = m.state !== "running";
@@ -101,12 +126,21 @@ function drawCall(ui: Ui, m: CallRawMessage | undefined, text: string, follow: b
 }
 
 /** The list of recent calls the viewer can pick from (the first choice follows the newest). */
-function drawPicker(picker: HTMLSelectElement, recent: CallRawMessage["recent"], watching: number | undefined): void {
+function drawPicker(
+  picker: HTMLSelectElement,
+  recent: CallRawMessage["recent"],
+  watching: number | undefined,
+): void {
   picker.textContent = "";
   picker.append(new Option("Follow the newest call", ""));
   for (const call of recent ?? []) {
     const end = describeEnd(call.state as CallRawMessage["state"], call.stopReason);
-    picker.append(new Option(`#${call.request} ${call.purpose} · ${end} · ${call.tokens} tokens`, String(call.request)));
+    picker.append(
+      new Option(
+        `#${call.request} ${call.purpose} · ${end} · ${call.tokens} tokens`,
+        String(call.request),
+      ),
+    );
   }
   picker.value = String(watching ?? "");
 }
@@ -122,7 +156,12 @@ function drawPicker(picker: HTMLSelectElement, recent: CallRawMessage["recent"],
 export function createCallInspector(
   send: (msg: Record<string, unknown>) => void,
   stop: () => void,
-): { open(request?: number): void; close(): void; isOpen(): boolean; handle(message: CallRawMessage): boolean } {
+): {
+  open(request?: number): void;
+  close(): void;
+  isOpen(): boolean;
+  handle(message: CallRawMessage): boolean;
+} {
   const ui = buildPanel();
   let watching: number | undefined;
   let showReasoning = false;

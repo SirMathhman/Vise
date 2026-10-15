@@ -70,9 +70,7 @@ export function killBrowsersUsing(profileName: string): void {
     "Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'msedge.exe' -or $_.Name -eq 'chrome.exe' -or $_.Name -eq 'firefox.exe') -and $_.CommandLine -like '*" +
     profileName +
     "*' -and $_.CommandLine -notlike '*--type=*' -and $_.CommandLine -notlike '*-contentproc*' } | ForEach-Object { taskkill /PID $_.ProcessId /T /F | Out-Null }";
-  spawnSync(
-    "powershell.exe",
-    ["-NoProfile", "-NonInteractive", "-Command", script],
-    { windowsHide: true },
-  );
+  spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
+    windowsHide: true,
+  });
 }

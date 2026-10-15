@@ -41,7 +41,10 @@ export function workflowProfileScope(
       },
       tools,
       enabled: () =>
-        controller?.list().filter((t) => t.enabled).map((t) => t.name) ?? [],
+        controller
+          ?.list()
+          .filter((t) => t.enabled)
+          .map((t) => t.name) ?? [],
       baseline: () =>
         controller
           ?.list()

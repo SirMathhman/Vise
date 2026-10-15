@@ -20,12 +20,7 @@ import type {
   ToolController,
   TurnCallbacks,
 } from "@vise/core";
-import type {
-  GenerationProgress,
-  Picture,
-  PromptProgress,
-  Result,
-} from "@vise/core";
+import type { GenerationProgress, Picture, PromptProgress, Result } from "@vise/core";
 import {
   buildInitialMessage,
   HookStore,
@@ -34,7 +29,13 @@ import {
   FileSessionSource,
   FileWorkflowSource,
 } from "./edge-sources.ts";
-import type { ModelController, ProfileSource, ReasoningController, SemanticIndexPort, SessionSource } from "./repl/ports.ts";
+import type {
+  ModelController,
+  ProfileSource,
+  ReasoningController,
+  SemanticIndexPort,
+  SessionSource,
+} from "./repl/ports.ts";
 import { semanticIndexFor } from "./stores/semantic/semantic-index.ts";
 import { makeSemanticSearchHandler } from "./tools/semantic/semantic-search.ts";
 import { compactInPlace } from "./repl/turn/compaction.ts";
@@ -44,11 +45,7 @@ import type { GoalEvent } from "./repl/turn/goal-loop.ts";
 import type { WorkflowEvent } from "@vise/core";
 import type { McpHub } from "./mcp/mcp-hub.ts";
 import { makeBrowserHandlers } from "./tools/browser/browser.ts";
-import {
-  FileImageSource,
-  ImageOutbox,
-  makeImageHandlers,
-} from "./tools/images.ts";
+import { FileImageSource, ImageOutbox, makeImageHandlers } from "./tools/images.ts";
 import { makeAskUserHandler, type UserPrompter } from "./tools/agent/ask-user.ts";
 import { makeSearchToolsHandler } from "./tools/search-tools.ts";
 import { makeSelfHandler, type SelfInfo } from "./tools/agent/self.ts";
@@ -96,7 +93,13 @@ function semanticFor(
   audit: AuditSink,
 ): SemanticIndexPort | undefined {
   if (options.noFolder) return undefined;
-  const index = semanticIndexFor({ root, dataDir, embed: (t) => client.embedMany(t), model: embeddingModel, audit });
+  const index = semanticIndexFor({
+    root,
+    dataDir,
+    embed: (t) => client.embedMany(t),
+    model: embeddingModel,
+    audit,
+  });
   // Brought up to date in the background; an embedder that does not work shows in the index's status.
   if (config.semanticAutoIndex !== 0) void index.update();
   return index;
@@ -111,11 +114,13 @@ function ioHandlers(
     cwd: string | undefined;
     images: ImageOutbox;
     semantic: SemanticIndexPort | undefined;
+    /** Whether the model can see images right now (browser actions then carry a screenshot). */
+    canSee: () => boolean;
   },
 ): Record<string, ToolHandler> {
   return {
     ...(io.semantic ? { semantic_search: makeSemanticSearchHandler(io.semantic) } : {}),
-    ...makeBrowserHandlers(io.browser, io.temp, io.cwd, io.images),
+    ...makeBrowserHandlers(io.browser, io.temp, io.cwd, io.images, io.canSee),
     ...makeImageHandlers(io.images, io.cwd),
     ...tempHandlers(io.temp),
     ...options.mcp?.handlers(io.images),
@@ -130,11 +135,7 @@ function imagePlumbing(
   client.imageResolver = (picture) => imageStore.dataUri(picture);
   return {
     images: new ImageOutbox(imageStore),
-    imageSource: new FileImageSource(
-      cwd,
-      () => client.supportsVision(),
-      imageStore,
-    ),
+    imageSource: new FileImageSource(cwd, () => client.supportsVision(), imageStore),
   };
 }
 
@@ -161,9 +162,7 @@ function controls(
   client: LlmClient,
   sessionTools: Tool[],
 ): { toolController: ToolSet; modelController: ModelController } {
-  const visionTools = sessionTools
-    .filter((t) => t.requiresVision)
-    .map((t) => t.function.name);
+  const visionTools = sessionTools.filter((t) => t.requiresVision).map((t) => t.function.name);
   const risky = sessionTools.filter((t) => t.defaultDisabled).map((t) => t.function.name);
   const toolController = new ToolSet(sessionTools, [...risky, ...visionTools]);
   const syncVision = async (): Promise<void> => {
@@ -310,13 +309,7 @@ function subagentCallbacks(
     onSubagentToken: options.onSubagentToken,
     isToolEnabled: (name) => toolController.isEnabled(name),
     onRound: (_round, messages, toolDefs) =>
-      compactInPlace(
-        client,
-        client,
-        messages,
-        config.inTurnCompactionThreshold,
-        toolDefs,
-      ),
+      compactInPlace(client, client, messages, config.inTurnCompactionThreshold, toolDefs),
   };
 }
 
@@ -368,30 +361,20 @@ function auditFor(
 }
 
 /** Where the client reports each model call: prompt progress, generation, the audit log. */
-function wireClientSinks(
-  client: LlmClient,
-  options: EdgeSessionOptions,
-  audit: AuditSink,
-): void {
+function wireClientSinks(client: LlmClient, options: EdgeSessionOptions, audit: AuditSink): void {
   client.setProgressSink(options.onPromptProgress);
   client.setGenerationSink(options.onGenerating);
   client.setAuditSink(audit);
 }
 
 /** The tool hooks of a session: the project's live lists, run in its root. */
-function toolHooksOf(
-  store: HookStore,
-  root: string,
-  audit: AuditSink,
-): ShellToolHooks {
+function toolHooksOf(store: HookStore, root: string, audit: AuditSink): ShellToolHooks {
   return new ShellToolHooks(store.preTool, store.postTool, root, audit);
 }
 
 /** The tools a session offers: the built-ins (without the file-system ones when it has no folder) and its MCP servers'. */
 function toolsFor(options: EdgeSessionOptions): Tool[] {
-  const builtin = options.noFolder
-    ? tools.filter((t) => !t.requiresFileSystem)
-    : tools;
+  const builtin = options.noFolder ? tools.filter((t) => !t.requiresFileSystem) : tools;
   return [...builtin, ...(options.mcp?.tools() ?? [])];
 }
 
@@ -428,9 +411,7 @@ function selfInfo(
 export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
   // The session root: fixed for the life of the session (the web server hosts
   // sessions with different roots in one process).
-  const root = options.noFolder
-    ? noFolderRoot
-    : (options.root ?? process.cwd());
+  const root = options.noFolder ? noFolderRoot : (options.root ?? process.cwd());
   if (options.noFolder) mkdirSync(root, { recursive: true });
   // The working directory the model sees; none for a session without one.
   const cwd = options.noFolder ? undefined : root;
@@ -483,13 +464,17 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
       ),
       ask_user: makeAskUserHandler(options.askUser),
       todo_write: makeTodoHandler(todos),
-      search_tools: makeSearchToolsHandler(sessionTools, (name) =>
-        toolController.isEnabled(name),
-      ),
-      ...ioHandlers(options, { browser, temp, cwd, images, semantic }),
-      self: makeSelfHandler(
-        selfInfo(client, cwd, () => sessionRef.current, hookStore),
-      ),
+      search_tools: makeSearchToolsHandler(sessionTools, (name) => toolController.isEnabled(name)),
+      ...ioHandlers(options, {
+        browser,
+        temp,
+        cwd,
+        images,
+        semantic,
+        // The screenshot tool is on exactly while the model can see (and the user has not switched it off).
+        canSee: () => toolController.isEnabled("browser_screenshot"),
+      }),
+      self: makeSelfHandler(selfInfo(client, cwd, () => sessionRef.current, hookStore)),
     },
     toolController,
     root,
@@ -545,7 +530,11 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     semantic,
     reasoning: client,
     profileSource,
-    cleanup: () => { offShare?.(); session.endAudit(); temp.dispose(); },
+    cleanup: () => {
+      offShare?.();
+      session.endAudit();
+      temp.dispose();
+    },
     preTurnHooks: hookStore.pre.map((h) => h.command),
     postTurnHooks: hookStore.post.map((h) => h.command),
   };

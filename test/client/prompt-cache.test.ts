@@ -53,7 +53,10 @@ describe("prompt-cache sharing", () => {
     // The encoded request opens with the same system message a normal reply does.
     const history: Message[] = [{ role: "system", content: "s" }];
     const normal = encodeMessages(history, [readFile])[0];
-    const asked = encodeMessages([...history, { role: "user", content: "q" }], generation?.[1] ?? [])[0];
+    const asked = encodeMessages(
+      [...history, { role: "user", content: "q" }],
+      generation?.[1] ?? [],
+    )[0];
     expect(asked).toEqual(normal);
   });
 
@@ -93,7 +96,15 @@ describe("side slot choice", () => {
   test("a known main slot is never chosen, even when another slot ran the latest task", () => {
     // The main conversation is on slot 0; something else ran last on slot 1.
     expect(chooseSideSlot(slots, 0)).toBe(2);
-    expect(chooseSideSlot([{ id: 0, id_task: 5 }, { id: 1, id_task: 9 }], 0)).toBe(1);
+    expect(
+      chooseSideSlot(
+        [
+          { id: 0, id_task: 5 },
+          { id: 1, id_task: 9 },
+        ],
+        0,
+      ),
+    ).toBe(1);
   });
 
   test("a single slot or missing task numbers leave the work unpinned", () => {

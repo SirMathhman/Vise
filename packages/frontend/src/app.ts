@@ -118,12 +118,16 @@ const workflowPicker = createWorkflowPicker(
   interrupt,
   transcript.addLine,
   (name) => {
-    if ([...profileSelect.options].some((option) => option.value === name)) profileSelect.value = name;
+    if ([...profileSelect.options].some((option) => option.value === name))
+      profileSelect.value = name;
   },
 );
 
 /** Connection and work state, in the top bar's pill. */
-function setStatus(state: "connecting" | "connected" | "working" | "disconnected", text: string): void {
+function setStatus(
+  state: "connecting" | "connected" | "working" | "disconnected",
+  text: string,
+): void {
   status.dataset["state"] = state;
   status.textContent = text;
 }
@@ -295,7 +299,11 @@ const tools = group.register({
 });
 toolsFilter.addEventListener("input", () => filterToolList(toolsList, toolsFilter.value));
 const git = group.register({ panel: requiredElement("git-panel"), onOpen: gitPanel.refresh });
-const modelPanel = group.register({ button: modelBtn, panel: requiredElement("model-panel"), onOpen: () => modelPicker.refresh() });
+const modelPanel = group.register({
+  button: modelBtn,
+  panel: requiredElement("model-panel"),
+  onOpen: () => modelPicker.refresh(),
+});
 const modelPicker = createModelPicker({
   button: modelBtn,
   panel: requiredElement("model-panel"),
@@ -358,7 +366,9 @@ const menubar = createMenubar(
   group,
 );
 requiredElement("root-label").addEventListener("click", () => sessionTrigger.click());
-burstBadge.addEventListener("click", () => requiredElement<HTMLButtonElement>("menu-agent").click());
+burstBadge.addEventListener("click", () =>
+  requiredElement<HTMLButtonElement>("menu-agent").click(),
+);
 bindShortcuts({
   toggleFiles: () => {
     if (!isNoFolder() && !sidebar) workspace.toggle();

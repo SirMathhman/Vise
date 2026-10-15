@@ -30,41 +30,34 @@ describe("web command argument completion", () => {
   });
 
   test("suggests reserved subcommands and matching profile choices", () => {
-    expect(
-      getArgumentSuggestions("/profile", "i", choices).map(
-        ({ value }) => value,
-      ),
-    ).toEqual(["/profile init", "/profile implement"]);
-    expect(
-      getArgumentSuggestions("/note", "i", choices).map(({ value }) => value),
-    ).toEqual(["/note init"]);
+    expect(getArgumentSuggestions("/profile", "i", choices).map(({ value }) => value)).toEqual([
+      "/profile init",
+      "/profile implement",
+    ]);
+    expect(getArgumentSuggestions("/note", "i", choices).map(({ value }) => value)).toEqual([
+      "/note init",
+    ]);
     expect(getArgumentSuggestions("/profile", "init", choices)).toEqual([]);
   });
 
   test("completes tool names and finite verbs but not freeform arguments", () => {
-    expect(getArgumentSuggestions("/tool", "read_f", choices)[0]?.value).toBe(
-      "/tool read_file",
+    expect(getArgumentSuggestions("/tool", "read_f", choices)[0]?.value).toBe("/tool read_file");
+    expect(getArgumentSuggestions("/tool", "read_file e", choices)[0]?.value).toBe(
+      "/tool read_file enable",
     );
-    expect(
-      getArgumentSuggestions("/tool", "read_file e", choices)[0]?.value,
-    ).toBe("/tool read_file enable");
-    expect(getArgumentSuggestions("/save", "arbitrary name", choices)).toEqual(
-      [],
-    );
-    expect(
-      getArgumentSuggestions("/workflow", "build something", choices),
-    ).toEqual([]);
+    expect(getArgumentSuggestions("/save", "arbitrary name", choices)).toEqual([]);
+    expect(getArgumentSuggestions("/workflow", "build something", choices)).toEqual([]);
   });
 
   test("completes workflow scope flag, sessions, and fixed subcommands", () => {
-    expect(
-      getArgumentSuggestions("/workflow", "init --g", choices)[0]?.value,
-    ).toBe("/workflow init --global");
-    expect(
-      getArgumentSuggestions("/resume", "session-", choices)[0]?.value,
-    ).toBe("/resume session-one");
-    expect(
-      getArgumentSuggestions("/delete", "session-", choices)[0]?.value,
-    ).toBe("/delete session-one");
+    expect(getArgumentSuggestions("/workflow", "init --g", choices)[0]?.value).toBe(
+      "/workflow init --global",
+    );
+    expect(getArgumentSuggestions("/resume", "session-", choices)[0]?.value).toBe(
+      "/resume session-one",
+    );
+    expect(getArgumentSuggestions("/delete", "session-", choices)[0]?.value).toBe(
+      "/delete session-one",
+    );
   });
 });

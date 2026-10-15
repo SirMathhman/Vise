@@ -6,6 +6,4 @@ export const todoItemSchema: z.ZodType<TodoItem> = z.object({
   status: z.enum(["pending", "in_progress", "completed"]),
 }) as z.ZodType<TodoItem>;
 
-export const todosSchema: z.ZodType<TodoItem[]> = z.array(
-  todoItemSchema,
-) as z.ZodType<TodoItem[]>;
+export const todosSchema: z.ZodType<TodoItem[]> = z.array(todoItemSchema) as z.ZodType<TodoItem[]>;

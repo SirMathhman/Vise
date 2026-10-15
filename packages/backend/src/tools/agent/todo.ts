@@ -1,9 +1,4 @@
-import {
-  formatTodos,
-  parseTodos,
-  type TodoItem,
-  type TodoStore,
-} from "@vise/core";
+import { formatTodos, parseTodos, type TodoItem, type TodoStore } from "@vise/core";
 import { formatError } from "../../output/format.ts";
 
 /** The agent's todo list for one session; listeners hear every change (the web panel). */
@@ -33,9 +28,7 @@ function listArg(value: unknown): unknown {
 }
 
 /** Edge handler for `todo_write`: replace the whole list and echo it back. */
-export function makeTodoHandler(
-  board: TodoStore,
-): (args: Record<string, unknown>) => string {
+export function makeTodoHandler(board: TodoStore): (args: Record<string, unknown>) => string {
   return (args) => {
     const parsed = parseTodos(listArg(args.todos));
     if (!parsed.ok) return `error: ${formatError(parsed.error)}`;

@@ -14,9 +14,7 @@ import { splitVerdict } from "../../packages/frontend/src/status/goal-ui.ts";
 import { createThinking, thinkingMeta } from "../../packages/frontend/src/transcript/thinking.ts";
 
 function sse(chunks: object[]): ReadableStream<Uint8Array> {
-  const text =
-    chunks.map((c) => `data: ${JSON.stringify(c)}\n`).join("") +
-    "data: [DONE]\n";
+  const text = chunks.map((c) => `data: ${JSON.stringify(c)}\n`).join("") + "data: [DONE]\n";
   return new ReadableStream({
     start(controller) {
       controller.enqueue(new TextEncoder().encode(text));
@@ -49,12 +47,8 @@ describe("generation progress", () => {
   });
 
   test("the tool being called is named once its call has started", () => {
-    expect(
-      toolBeingCalled('hello <tool_call>{"name":"create_file","argu'),
-    ).toBe("create_file");
-    expect(
-      toolBeingCalled('<tool_call>{"name":"a"}</tool_call> text'),
-    ).toBeUndefined();
+    expect(toolBeingCalled('hello <tool_call>{"name":"create_file","argu')).toBe("create_file");
+    expect(toolBeingCalled('<tool_call>{"name":"a"}</tool_call> text')).toBeUndefined();
     expect(toolBeingCalled("plain reply")).toBeUndefined();
   });
 
@@ -87,9 +81,7 @@ describe("page pieces", () => {
     expect(shouldShowWriting(false, QUIET_MS)).toBe(true);
     expect(shouldShowWriting(false, QUIET_MS - 1)).toBe(false);
     expect(shouldShowWriting(true, QUIET_MS * 10)).toBe(false);
-    expect(describeWriting(1240, "Create file")).toBe(
-      "Writing Create file · 1,240 tokens",
-    );
+    expect(describeWriting(1240, "Create file")).toBe("Writing Create file · 1,240 tokens");
     expect(describeWriting(3, undefined)).toBe("Writing · 3 tokens");
   });
 
@@ -138,19 +130,27 @@ describe("page pieces", () => {
 test("a tool call is reported as soon as its name is known, even when it is short", () => {
   const got: GenerationProgress[] = [];
   const time = 1000;
-  const g = generationReporter((p) => got.push(p), 1, "reply", () => time);
+  const g = generationReporter(
+    (p) => got.push(p),
+    1,
+    "reply",
+    () => time,
+  );
   g.tokens(1); // first report, no tool yet
   g.text('<tool_call>{"name":"read_file"');
   g.tokens(2); // too few tokens and too soon, but the tool is now known
   g.tokens(3); // same tool: nothing new
-  expect(got.map((p) => [p.tokens, p.tool])).toEqual([[1, undefined], [0, "read_file"]]);
+  expect(got.map((p) => [p.tokens, p.tool])).toEqual([
+    [1, undefined],
+    [0, "read_file"],
+  ]);
 });
 
 test("a subagent call names its profile first", async () => {
   const { formatToolCall } = await import("../../packages/backend/src/output/tool-line.ts");
-  expect(formatToolCall("run_subagent", { profile: "explore", task: "find the follow code" })).toContain(
-    "· explore · find the follow code",
-  );
+  expect(
+    formatToolCall("run_subagent", { profile: "explore", task: "find the follow code" }),
+  ).toContain("· explore · find the follow code");
 });
 
 test("read_file numbers its lines", async () => {
@@ -166,7 +166,12 @@ test("read_file numbers its lines", async () => {
 
 test("each call in one reply counts its own tokens, not the ones before it", () => {
   const got: GenerationProgress[] = [];
-  const g = generationReporter((p) => got.push(p), 1, "reply", () => 0);
+  const g = generationReporter(
+    (p) => got.push(p),
+    1,
+    "reply",
+    () => 0,
+  );
   g.tokens(30); // thinking and text before any call
   g.text('<tool_call>{"name":"read_file"');
   g.tokens(40);
@@ -184,7 +189,11 @@ test("nothing is reported while the prompt is still being read (no tokens writte
   const seen: number[] = [];
   await streamChat(
     sse([
-      { choices: [{ delta: {} }], prompt_progress: { total: 10, cache: 0, processed: 5, time_ms: 1 }, timings: { predicted_n: 0 } },
+      {
+        choices: [{ delta: {} }],
+        prompt_progress: { total: 10, cache: 0, processed: 5, time_ms: 1 },
+        timings: { predicted_n: 0 },
+      },
       { choices: [{ delta: { content: "a" } }], timings: { predicted_n: 1 } },
     ]),
     undefined,
@@ -198,7 +207,11 @@ test("nothing is reported while the prompt is still being read (no tokens writte
 
 test("a profile switch tells the model what it gained and lost", async () => {
   const { ProfileToolGate } = await import("../../packages/backend/src/repl/profile-tools.ts");
-  const states = new Map([["read_file", true], ["browser_open", false], ["create_file", true]]);
+  const states = new Map([
+    ["read_file", true],
+    ["browser_open", false],
+    ["create_file", true],
+  ]);
   const controller = {
     list: () => [...states].map(([name, enabled]) => ({ name, enabled })),
     set: (n: string, e: boolean) => void states.set(n, e),

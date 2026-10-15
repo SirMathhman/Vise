@@ -26,8 +26,7 @@ import { parseProfileText, type ParsedProfile } from "@vise/core";
  */
 
 /** The placeholder body for a newly initialized profile. */
-const PROFILE_TEMPLATE =
-  "TODO: describe the persona or instructions for this profile";
+const PROFILE_TEMPLATE = "TODO: describe the persona or instructions for this profile";
 
 /** Path of the profiles directory under the base directory. */
 function profileDir(base: string): string {
@@ -76,10 +75,7 @@ export function readProfile(base: string, name: string): string | undefined {
 }
 
 /** A profile's tool whitelist, or undefined when it has none (or no file). */
-export function readProfileTools(
-  base: string,
-  name: string,
-): string[] | undefined {
+export function readProfileTools(base: string, name: string): string[] | undefined {
   const p = profilePath(base, name);
   if (!existsSync(p)) return undefined;
   return parseProfileText(readFileSync(p, "utf8")).tools;
@@ -89,11 +85,7 @@ export function readProfileTools(
  * Set (or, with undefined, clear) a profile's tool whitelist, preserving its
  * body and other frontmatter. Throws an `Error` when the profile is missing.
  */
-export function setProfileTools(
-  base: string,
-  name: string,
-  tools: string[] | undefined,
-): void {
+export function setProfileTools(base: string, name: string, tools: string[] | undefined): void {
   const p = profilePath(base, name);
   if (!existsSync(p)) throw new Error(`profile '${name}' not found`);
   const parsed = parseProfileText(readFileSync(p, "utf8"));
@@ -116,11 +108,7 @@ export function readAllProfileHooks(base: string): Record<string, string[]> {
  * a profile, preserving its body and other frontmatter. Throws an `Error` when
  * the profile is missing.
  */
-export function setProfileHooks(
-  base: string,
-  name: string,
-  hooks: string[] | undefined,
-): void {
+export function setProfileHooks(base: string, name: string, hooks: string[] | undefined): void {
   const p = profilePath(base, name);
   if (!existsSync(p)) throw new Error(`profile '${name}' not found`);
   const parsed = parseProfileText(readFileSync(p, "utf8"));
@@ -140,11 +128,7 @@ export function saveProfile(base: string, name: string, body: string): void {
     throw new Error(`profile '${name}' already exists`);
   }
   mkdirSync(profileDir(base), { recursive: true });
-  writeFileSync(
-    profilePath(base, name),
-    body.replace(/\s+$/, "") + "\n",
-    "utf8",
-  );
+  writeFileSync(profilePath(base, name), body.replace(/\s+$/, "") + "\n", "utf8");
 }
 
 /**
@@ -159,11 +143,7 @@ export function initProfile(base: string, name: string): void {
  * Replace a profile's body, keeping its frontmatter (tool whitelist, hooks and
  * any other lines). Throws an `Error` when the profile is missing.
  */
-export function writeProfileBody(
-  base: string,
-  name: string,
-  body: string,
-): void {
+export function writeProfileBody(base: string, name: string, body: string): void {
   const p = profilePath(base, name);
   if (!existsSync(p)) throw new Error(`profile '${name}' not found`);
   const parsed = parseProfileText(readFileSync(p, "utf8"));

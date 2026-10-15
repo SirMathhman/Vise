@@ -24,10 +24,7 @@ export function formatNotes(entries: NoteEntry[]): string {
  * summarised as a pointer to `list_notes`. Bounds the startup message however
  * many notes there are.
  */
-export function formatNotesWithin(
-  entries: NoteEntry[],
-  maxNotes: number,
-): string {
+export function formatNotesWithin(entries: NoteEntry[], maxNotes: number): string {
   const groups = new Map<string, NoteEntry[]>();
   for (const e of entries) {
     const key = `${e.scope}/${e.category}`;
@@ -44,9 +41,7 @@ export function formatNotesWithin(
     left = Math.max(0, left - notes.length);
     if (hidden > 0) {
       const { scope, category } = notes[0]!;
-      out.push(
-        `  ... ${hidden} more: list_notes with scope '${scope}' and category '${category}'`,
-      );
+      out.push(`  ... ${hidden} more: list_notes with scope '${scope}' and category '${category}'`);
     }
   }
   return out.join("\n");

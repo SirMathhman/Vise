@@ -35,9 +35,7 @@ describe("makeSelfHandler (edge)", () => {
   });
 
   test("renders 'none' for the active profile when unset", async () => {
-    const handler = makeSelfHandler(
-      makeInfo({ activeProfile: () => undefined }),
-    );
+    const handler = makeSelfHandler(makeInfo({ activeProfile: () => undefined }));
     const result = await handler({});
     expect(result).toContain("active profile: none");
   });

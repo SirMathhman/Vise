@@ -160,15 +160,8 @@ interface GateEnvironment {
 /** The gate that opens each page's connection once its folder's MCP servers are ready. */
 function createConnectionGate(env: GateEnvironment) {
   const { roots, browser, extensionBrowser, terminals, note } = env;
-  const acquired = new Map<
-    ServerWebSocket<WsData>,
-    { store: HookStore; hub: McpHub }
-  >();
-  const gate = createGate<
-    ServerWebSocket<WsData>,
-    ConnectionState,
-    string | Buffer<ArrayBuffer>
-  >({
+  const acquired = new Map<ServerWebSocket<WsData>, { store: HookStore; hub: McpHub }>();
+  const gate = createGate<ServerWebSocket<WsData>, ConnectionState, string | Buffer<ArrayBuffer>>({
     // The folder's MCP servers must be up before the session exists (its tool
     // list is fixed for the conversation); the gate holds messages meanwhile.
     start: (ws) => {
@@ -218,10 +211,7 @@ function createConnectionGate(env: GateEnvironment) {
 }
 
 /** `note` is shown in each page that connects (e.g. that the wanted port was busy). */
-export function startWebServer(
-  port = config.port,
-  note?: string,
-): () => Promise<void> {
+export function startWebServer(port = config.port, note?: string): () => Promise<void> {
   // One browser shared by every connection; it launches on first tool use.
   // Its engine (Chromium or Firefox) is a global setting changed from the UI.
   const settingsStore = new BrowserSettingsStore();
@@ -250,13 +240,7 @@ export function startWebServer(
         return new Response("forbidden", { status: 403 });
       }
       if (url.pathname === "/ext" || url.pathname === "/ws") {
-        const data = socketData(
-          url,
-          req.headers.get("origin"),
-          port,
-          roots,
-          extensionToken,
-        );
+        const data = socketData(url, req.headers.get("origin"), port, roots, extensionToken);
         if (data instanceof Response) return data;
         server.upgrade(req, { data });
         return;
@@ -289,10 +273,7 @@ export function startWebServer(
       .finally(() => void server.stop(true));
   };
   for (const signal of ["SIGINT", "SIGTERM", "SIGBREAK"] as const) {
-    process.once(
-      signal,
-      () => void shutdown().finally(() => (process.exitCode = 130)),
-    );
+    process.once(signal, () => void shutdown().finally(() => (process.exitCode = 130)));
   }
   return shutdown;
 }
@@ -351,13 +332,13 @@ function makeConnectionState(
       g.used !== undefined && g.max !== undefined
         ? send({ type: "context", purpose: g.purpose, text: formatContext(g.used, g.max) })
         : send({
-        type: "generating",
-        request: g.request,
-        purpose: g.purpose,
-        tokens: g.tokens,
-        done: g.done,
-        text: g.tool ? formatToolCall(g.tool, {}, displayOfTool) : undefined,
-      }),
+            type: "generating",
+            request: g.request,
+            purpose: g.purpose,
+            tokens: g.tokens,
+            done: g.done,
+            text: g.tool ? formatToolCall(g.tool, {}, displayOfTool) : undefined,
+          }),
     onImage: (picture) => send({ type: "image", ...picture }),
     onToolCall: (name, depth, args) =>
       send({
@@ -376,8 +357,7 @@ function makeConnectionState(
       if (line) send({ type: "goal", ...line });
     },
     onWorkflow: (event) => send(workflowMessage(event)),
-    onSubagentToken: (t, depth) =>
-      send({ type: "subagent_token", text: t, depth }),
+    onSubagentToken: (t, depth) => send({ type: "subagent_token", text: t, depth }),
     onToolResult: (name, depth, result) => {
       const text = summarizeToolResult(name, result);
       // A finished subagent always reports (it closes its box); other tools when there is a summary or a result to show.
@@ -411,10 +391,12 @@ function makeConnectionState(
 export function workflowMessage(event: WorkflowEvent): Record<string, unknown> {
   const line = formatWorkflowEvent(event);
   const shown = line ? { text: line.text, level: line.level } : {};
-  if (event.kind === "profile") return { type: "workflow", kind: "profile", profile: event.name ?? "", ...shown };
+  if (event.kind === "profile")
+    return { type: "workflow", kind: "profile", profile: event.name ?? "", ...shown };
   const base = { type: "workflow", kind: event.kind, name: event.name, ...shown };
   if (event.kind === "start") return { ...base, total: event.total };
-  if (event.kind === "step") return { ...base, step: event.index, total: event.total, label: event.label };
+  if (event.kind === "step")
+    return { ...base, step: event.index, total: event.total, label: event.label };
   return { ...base, step: event.step, total: event.total, ok: !event.error };
 }
 

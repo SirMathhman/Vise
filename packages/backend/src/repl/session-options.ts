@@ -1,8 +1,4 @@
-import type {
-  ToolCallListener,
-  ToolController,
-  ToolResultListener,
-} from "@vise/core";
+import type { ToolCallListener, ToolController, ToolResultListener } from "@vise/core";
 import type { AuditReader, AuditSink } from "@vise/core";
 import type { Picture } from "@vise/core";
 import type { TodoStore } from "@vise/core";
@@ -123,9 +119,10 @@ export interface SessionOptions {
 }
 
 /** The system message: the edge's instructions (if any), then where the session works. */
-export function systemMessageFor(
-  options: Pick<SessionOptions, "cwd" | "systemPrompt">,
-): { role: "system"; content: string } {
+export function systemMessageFor(options: Pick<SessionOptions, "cwd" | "systemPrompt">): {
+  role: "system";
+  content: string;
+} {
   const where =
     options.cwd === undefined
       ? "This session has no working directory and no file system access."

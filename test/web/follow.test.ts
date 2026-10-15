@@ -19,9 +19,7 @@ function fakeLog() {
 test("follows the bottom, one scroll per frame", () => {
   const { log, raw } = fakeLog();
   const frames: (() => void)[] = [];
-  const { follow } = createFollower(log, undefined, (work) =>
-    frames.push(work),
-  );
+  const { follow } = createFollower(log, undefined, (work) => frames.push(work));
   follow();
   follow();
   follow();
@@ -50,9 +48,7 @@ test("a scroll up between a new line and the frame wins: the reader is not yanke
 test("jumping resumes following, and a picture that loads follows too", () => {
   const { log, raw, fire } = fakeLog();
   const frames: (() => void)[] = [];
-  const { follow, jump } = createFollower(log, undefined, (work) =>
-    frames.push(work),
-  );
+  const { follow, jump } = createFollower(log, undefined, (work) => frames.push(work));
   raw.scrollTop = 0;
   fire("scroll");
   follow();
@@ -67,7 +63,11 @@ test("content growing under a pinned log does not unpin it; scrolling up does", 
   const { log, raw, fire } = fakeLog();
   const frames: (() => void)[] = [];
   const changes: boolean[] = [];
-  const { follow } = createFollower(log, (p) => changes.push(p), (w) => frames.push(w));
+  const { follow } = createFollower(
+    log,
+    (p) => changes.push(p),
+    (w) => frames.push(w),
+  );
   follow();
   frames.shift()?.(); // at the bottom: 1000
   raw.scrollHeight = 1500; // a box filled up before the next frame; the browser nudged the position

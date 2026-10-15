@@ -111,8 +111,7 @@ function buildUi() {
   const categories = make("datalist");
   categories.id = "note-categories";
   const text = make("textarea", "field");
-  text.placeholder =
-    "The first non-empty line is the note's summary; the rest is its body.";
+  text.placeholder = "The first non-empty line is the note's summary; the rest is its body.";
   text.rows = 12;
   const status = make("span", "status-line");
   status.setAttribute("role", "status");
@@ -185,8 +184,7 @@ export function createNotesPanel(
     current = target;
     name.value = target?.name ?? "";
     scope.value = target?.scope ?? DEFAULT_SCOPE;
-    category.value =
-      target && target.category !== DEFAULT_CATEGORY ? target.category : "";
+    category.value = target && target.category !== DEFAULT_CATEGORY ? target.category : "";
     text.value = "";
     version = undefined;
     // An existing note cannot be saved until its text has arrived (it would save a blank body).
@@ -205,17 +203,15 @@ export function createNotesPanel(
   newBtn.addEventListener("click", () => edit(null));
   saveBtn.addEventListener("click", () => {
     say("Saving…");
-    const fields = [
-      name.value,
-      category.value,
-      scope.value,
-      text.value,
-    ] as const;
+    const fields = [name.value, category.value, scope.value, text.value] as const;
     send(savePayload(...fields, current, version));
   });
   deleteBtn.addEventListener("click", () => {
     const target = current;
-    if (target) ifConfirmed({ title: `Delete the note “${target.name}”?` }, () => send({ type: "note_delete", ...target }));
+    if (target)
+      ifConfirmed({ title: `Delete the note “${target.name}”?` }, () =>
+        send({ type: "note_delete", ...target }),
+      );
   });
   for (const trigger of refreshOn) {
     trigger.addEventListener("click", () => send({ type: "notes_list" }));

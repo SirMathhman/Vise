@@ -80,7 +80,8 @@ export class SemanticIndex implements SemanticIndexPort {
     if (this.running && this.progress) {
       return { ...base, ...this.totalsOf(model), state: "indexing", ...this.progress };
     }
-    if (this.failure !== undefined) return { ...base, ...this.totalsOf(model), state: "unavailable", reason: this.failure };
+    if (this.failure !== undefined)
+      return { ...base, ...this.totalsOf(model), state: "unavailable", reason: this.failure };
     const totals = this.totalsOf(model);
     if (totals.chunks > 0) return { ...base, ...totals, state: "ready" };
     return {
@@ -97,7 +98,11 @@ export class SemanticIndex implements SemanticIndexPort {
     if (!opened.ok) return { files: 0, chunks: 0, stale: 0 };
     const totals = opened.value.totals(model);
     return totals.ok
-      ? { files: totals.value.files, chunks: totals.value.chunks, stale: totals.value.otherModelChunks }
+      ? {
+          files: totals.value.files,
+          chunks: totals.value.chunks,
+          stale: totals.value.otherModelChunks,
+        }
       : { files: 0, chunks: 0, stale: 0 };
   }
 
@@ -122,13 +127,18 @@ export class SemanticIndex implements SemanticIndexPort {
       const start = chunk.startLine + 1;
       const end = chunk.endLine + 1;
       // Windows overlap: of two overlapping hits in a file the better one is enough.
-      if (hits.some((h) => h.path === chunk.path && start <= h.endLine && end >= h.startLine)) continue;
+      if (hits.some((h) => h.path === chunk.path && start <= h.endLine && end >= h.startLine))
+        continue;
       hits.push({
         path: chunk.path,
         startLine: start,
         endLine: end,
         score,
-        snippet: chunk.content.split("\n").slice(0, SNIPPET_LINES).join("\n").slice(0, SNIPPET_CHARS),
+        snippet: chunk.content
+          .split("\n")
+          .slice(0, SNIPPET_LINES)
+          .join("\n")
+          .slice(0, SNIPPET_CHARS),
       });
     }
     this.options.audit?.record({
@@ -180,7 +190,12 @@ export class SemanticIndex implements SemanticIndexPort {
       const was = known.get(f.path);
       return !was || was.mtimeMs !== f.mtimeMs || was.model !== model;
     });
-    const stats: SemanticUpdateStats = { indexed: 0, skipped: present.length - todo.length, removed: gone.length, failed: 0 };
+    const stats: SemanticUpdateStats = {
+      indexed: 0,
+      skipped: present.length - todo.length,
+      removed: gone.length,
+      failed: 0,
+    };
     this.progress = { done: 0, total: todo.length };
     this.notify();
     for (const file of todo) {

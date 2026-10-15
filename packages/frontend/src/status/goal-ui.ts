@@ -52,8 +52,7 @@ export function createGoalUi(
         return true;
       }
       if (message.type === "result" && message.id === TOGGLE_ID) {
-        if (!message.ok)
-          addLine("system goal-warn", message.error ?? "goal toggle failed");
+        if (!message.ok) addLine("system goal-warn", message.error ?? "goal toggle failed");
         return true;
       }
       return false;

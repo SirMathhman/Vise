@@ -23,7 +23,12 @@ export {
   pageActionScript,
 } from "./browser/page-scripts.ts";
 export type { PageAction } from "./browser/page-scripts.ts";
-export type { TabInfo, BrowserInput, BrowserBackend, BackendCapabilities } from "./browser/types.ts";
+export type {
+  TabInfo,
+  BrowserInput,
+  BrowserBackend,
+  BackendCapabilities,
+} from "./browser/types.ts";
 export { BrowserSettingsStore } from "./browser/settings.ts";
 export type { BrowserEngine, BrowserSettings } from "./browser/settings.ts";
 export { ExtensionBackend, describeShare } from "./browser/extension.ts";
@@ -62,7 +67,13 @@ export { McpHub } from "./mcp/mcp-hub.ts";
 export type { McpServerReport } from "./mcp/mcp-hub.ts";
 export { handleMcpCommand } from "./mcp/mcp-command.ts";
 export { mcpNote } from "./output/mcp-format.ts";
-export { httpReason, formatError, formatContext, formatGoalEvent, formatCompactionFailure } from "./output/format.ts";
+export {
+  httpReason,
+  formatError,
+  formatContext,
+  formatGoalEvent,
+  formatCompactionFailure,
+} from "./output/format.ts";
 export { formatWorkflowEvent } from "./output/workflow-format.ts";
 export { saveProfileWhitelist } from "./repl/profile-tools.ts";
 export { switchModel } from "./repl/commands/commands.ts";
@@ -70,7 +81,12 @@ export { loadSession, latestSessionId } from "./stores/sessions.ts";
 export { imageStore, sniffImage } from "./stores/image-store.ts";
 export { readEntries, removeEntry, saveEntry } from "./mcp/mcp-store.ts";
 export type { McpEntry, McpScope } from "./mcp/mcp-store.ts";
-export { deleteWorkflowAt, listWorkflows, readWorkflowAt, saveWorkflowAt } from "./stores/workflows.ts";
+export {
+  deleteWorkflowAt,
+  listWorkflows,
+  readWorkflowAt,
+  saveWorkflowAt,
+} from "./stores/workflows.ts";
 export type { CallLog } from "./client/stream/call-trace.ts";
 export { parseSettings } from "./browser/settings.ts";
 export {

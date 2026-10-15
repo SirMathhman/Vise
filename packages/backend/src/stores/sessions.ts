@@ -6,11 +6,7 @@ import type { SavedSession, SearchHit, SessionEntry } from "../repl/ports.ts";
 import { importLegacySessions } from "../db/session/import-json.ts";
 import { openDb, tryDb } from "../db/open.ts";
 import { SESSION_MIGRATIONS } from "../db/session/session-schema.ts";
-import {
-  readMessages,
-  readTrace,
-  writeSession,
-} from "../db/session/session-write.ts";
+import { readMessages, readTrace, writeSession } from "../db/session/session-write.ts";
 import type { GoalTraceEntry } from "@vise/core";
 
 /**
@@ -45,11 +41,7 @@ function sessionDb(base: string): Result<Database> {
 }
 
 /** Run `fn` against the session database, with any thrown storage error returned. */
-function withDb<T>(
-  base: string,
-  op: string,
-  fn: (db: Database) => Result<T>,
-): Result<T> {
+function withDb<T>(base: string, op: string, fn: (db: Database) => Result<T>): Result<T> {
   const db = sessionDb(base);
   if (!db.ok) return db;
   const ran = tryDb(op, join(base, "vise.db"), () => fn(db.value));
@@ -68,9 +60,7 @@ function failure(body: string): { ok: false; error: ViseError } {
 function resolveId(db: Database, ref: string): Result<string> {
   const wanted = ref.trim().toLowerCase();
   if (!ID_PATTERN.test(wanted)) {
-    return failure(
-      `'${ref}' is not a session id. Run '/resume' to see available sessions.`,
-    );
+    return failure(`'${ref}' is not a session id. Run '/resume' to see available sessions.`);
   }
   const exact = db.query("SELECT id FROM sessions WHERE id = ?").get(wanted);
   if (exact) return { ok: true, value: wanted };
@@ -83,9 +73,7 @@ function resolveId(db: Database, ref: string): Result<string> {
   if (matches.length > 1) {
     return failure(`session id '${ref}' is ambiguous; use more characters.`);
   }
-  return failure(
-    `session '${ref}' not found. Run '/resume' to see available sessions.`,
-  );
+  return failure(`session '${ref}' not found. Run '/resume' to see available sessions.`);
 }
 
 /**
@@ -110,16 +98,7 @@ export function saveSession(
   }
   const finalId = id ?? crypto.randomUUID();
   return withDb(base, "save a session in", (db) => {
-    writeSession(
-      db,
-      finalId,
-      trimmed,
-      messages,
-      activeProfile,
-      undefined,
-      todos,
-      trace,
-    );
+    writeSession(db, finalId, trimmed, messages, activeProfile, undefined, todos, trace);
     return { ok: true, value: finalId };
   });
 }
@@ -152,9 +131,7 @@ export function loadSession(base: string, ref: string): Result<SavedSession> {
     const resolved = resolveId(db, ref);
     if (!resolved.ok) return resolved;
     const row = db
-      .query(
-        "SELECT id, name, active_profile, updated_at, todos FROM sessions WHERE id = ?",
-      )
+      .query("SELECT id, name, active_profile, updated_at, todos FROM sessions WHERE id = ?")
       .get(resolved.value) as SessionRow | null;
     if (!row) return failure(`session '${ref}' not found.`);
     return {
@@ -175,9 +152,9 @@ export function loadSession(base: string, ref: string): Result<SavedSession> {
 /** The id of the session saved most recently, if there is one. */
 export function latestSessionId(base: string): Result<string | undefined> {
   return withDb(base, "list sessions in", (db) => {
-    const row = db
-      .query("SELECT id FROM sessions ORDER BY updated_at DESC, id LIMIT 1")
-      .get() as { id: string } | null;
+    const row = db.query("SELECT id FROM sessions ORDER BY updated_at DESC, id LIMIT 1").get() as {
+      id: string;
+    } | null;
     return { ok: true, value: row?.id };
   });
 }
@@ -219,9 +196,7 @@ export function deleteSession(base: string, ref: string): Result<string> {
     const resolved = resolveId(db, ref);
     if (!resolved.ok) return resolved;
     db.transaction(() => {
-      db.query("DELETE FROM message_fts WHERE session_id = ?").run(
-        resolved.value,
-      );
+      db.query("DELETE FROM message_fts WHERE session_id = ?").run(resolved.value);
       db.query("DELETE FROM sessions WHERE id = ?").run(resolved.value);
     })();
     return resolved;

@@ -1,5 +1,8 @@
 import { expect, test } from "bun:test";
-import { makeAskUserHandler, type AskRequest } from "../../packages/backend/src/tools/agent/ask-user.ts";
+import {
+  makeAskUserHandler,
+  type AskRequest,
+} from "../../packages/backend/src/tools/agent/ask-user.ts";
 
 test("several questions are asked in turn and answered together", async () => {
   const asked: string[] = [];
@@ -9,7 +12,9 @@ test("several questions are asked in turn and answered together", async () => {
       return `a${asked.length}`;
     },
   });
-  const out = await run({ questions: [{ question: "One?" }, { question: "Two?", options: ["x"] }] });
+  const out = await run({
+    questions: [{ question: "One?" }, { question: "Two?", options: ["x"] }],
+  });
   expect(asked).toEqual(["One?", "Two?"]);
   expect(out).toBe("1. One? → a1\n2. Two? → a2");
 });

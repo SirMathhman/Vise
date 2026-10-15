@@ -20,7 +20,12 @@ export interface Boxes {
 }
 
 export function createBoxes(log: HTMLElement): Boxes {
-  const open: { details: HTMLDetailsElement; body: HTMLElement; head: HTMLElement; foot: HTMLElement }[] = [];
+  const open: {
+    details: HTMLDetailsElement;
+    body: HTMLElement;
+    head: HTMLElement;
+    foot: HTMLElement;
+  }[] = [];
   let lastBox: { head: HTMLElement; foot: HTMLElement } | undefined;
   const boxes: Boxes = {
     container: () => open[open.length - 1]?.body ?? log,

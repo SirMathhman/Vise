@@ -55,7 +55,11 @@ describe("profile editor messages", () => {
   });
 
   test("a profile needs a valid name", () => {
-    expect(send(fresh(), { type: "profile_save", name: " ", body: "x" })[0]).toMatchObject({ ok: false });
-    expect(send(fresh(), { type: "profile_save", name: "../escape", body: "x" })[0]).toMatchObject({ ok: false });
+    expect(send(fresh(), { type: "profile_save", name: " ", body: "x" })[0]).toMatchObject({
+      ok: false,
+    });
+    expect(send(fresh(), { type: "profile_save", name: "../escape", body: "x" })[0]).toMatchObject({
+      ok: false,
+    });
   });
 });

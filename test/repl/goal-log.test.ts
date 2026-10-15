@@ -37,10 +37,7 @@ interface Saves {
 }
 
 /** An in-memory SessionSource that keeps the last save's trace and can hand out a saved session. */
-function source(
-  saves: Saves[],
-  existing?: SavedSession,
-): SessionSource {
+function source(saves: Saves[], existing?: SavedSession): SessionSource {
   return {
     async save(id, _name, _messages, _profile, _todos, goalTrace) {
       saves.push({ trace: goalTrace });
@@ -102,7 +99,15 @@ describe("the goal trace of a conversation", () => {
 
   test("a resumed conversation gets its trace back and keeps adding to it", async () => {
     const earlier: GoalTraceEntry[] = [
-      { kind: "exit", reason: "blocked", detail: "needs a login", lastReply: "", toolResults: 0, at: "2026-10-09T01:00:00.000Z", after: 3 },
+      {
+        kind: "exit",
+        reason: "blocked",
+        detail: "needs a login",
+        lastReply: "",
+        toolResults: 0,
+        at: "2026-10-09T01:00:00.000Z",
+        after: 3,
+      },
     ];
     const saved: SavedSession = {
       id: "aaaaaaaa-0000-4000-8000-000000000001",

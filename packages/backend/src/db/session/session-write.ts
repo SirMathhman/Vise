@@ -4,12 +4,7 @@ import type { GoalTraceEntry } from "@vise/core";
 import type { TodoItem } from "@vise/core";
 import type { ToolCall } from "@vise/core";
 import type { Picture } from "@vise/core";
-import {
-  parse,
-  goalTraceFactSchema,
-  toolCallsArraySchema,
-  picturesArraySchema,
-} from "@vise/core";
+import { parse, goalTraceFactSchema, toolCallsArraySchema, picturesArraySchema } from "@vise/core";
 
 /**
  * Write (or overwrite) one session and all its messages in a single
@@ -40,23 +35,14 @@ export function writeSession(
          (session_id, seq, role, content, typed, tool_calls, tool_call_id, images)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     );
-    const index = db.query(
-      "INSERT INTO message_fts (content, session_id) VALUES (?, ?)",
-    );
+    const index = db.query("INSERT INTO message_fts (content, session_id) VALUES (?, ?)");
     db.query("DELETE FROM goal_trace WHERE session_id = ?").run(id);
     const insertTrace = db.query(
       `INSERT INTO goal_trace (session_id, seq, at, after, kind, data)
        VALUES (?, ?, ?, ?, ?, ?)`,
     );
     trace.forEach((entry, seq) => {
-      insertTrace.run(
-        id,
-        seq,
-        entry.at,
-        entry.after,
-        entry.kind,
-        JSON.stringify(entry),
-      );
+      insertTrace.run(id, seq, entry.at, entry.after, entry.kind, JSON.stringify(entry));
     });
     messages.forEach((m, seq) => {
       insert.run(

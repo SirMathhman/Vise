@@ -52,13 +52,9 @@ export class NoteStore {
   /** The notes of both scopes (project first), or of just `scope`; a merged directory lists once, as global. */
   list(category?: string, scope?: NoteScope): NoteEntry[] {
     const project =
-      scope === "global" || this.merged
-        ? []
-        : listNotes(this.stores.project, category, "project");
+      scope === "global" || this.merged ? [] : listNotes(this.stores.project, category, "project");
     const global =
-      scope === "project" && !this.merged
-        ? []
-        : listNotes(this.stores.global, category, "global");
+      scope === "project" && !this.merged ? [] : listNotes(this.stores.global, category, "global");
     return [...project, ...global];
   }
 

@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { PtyProcess } from "../../../apps/web/src/terminal/pty.ts";
 import { Scrollback } from "../../../apps/web/src/terminal/scrollback.ts";
-import { handleTerminalMessage, terminalSize } from "../../../apps/web/src/terminal/terminal-api.ts";
+import {
+  handleTerminalMessage,
+  terminalSize,
+} from "../../../apps/web/src/terminal/terminal-api.ts";
 import { TerminalRegistry, type Timers } from "../../../apps/web/src/terminal/terminal-registry.ts";
 
 class FakePty implements PtyProcess {
@@ -206,7 +209,9 @@ describe("terminal messages", () => {
     expect(spawned[0]!.options.rows).toBe(24);
     expect(spawned[0]!.written).toEqual(["ls"]);
     handleTerminalMessage(null, { type: "term_open" }, send);
-    expect(replies).toEqual([{ type: "term_error", message: "no terminal: this session has no folder" }]);
+    expect(replies).toEqual([
+      { type: "term_error", message: "no terminal: this session has no folder" },
+    ]);
   });
 });
 

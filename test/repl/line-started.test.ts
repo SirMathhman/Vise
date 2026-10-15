@@ -59,9 +59,7 @@ test("a command is not steerable, a plain line is", async () => {
 
 test("a refused line still ends in an idle state, so the page can never stay locked", async () => {
   const { conn, sent } = fakeConnection(false);
-  queueLine(conn, "look", undefined, [
-    { uri: "data:image/png;base64,AAAA", label: "x" },
-  ]);
+  queueLine(conn, "look", undefined, [{ uri: "data:image/png;base64,AAAA", label: "x" }]);
   await conn.chain;
   expect(summary(sent).at(-1)).toBe("state:idle");
   expect(sent.some((m) => m.type === "result" && m.ok === false)).toBe(true);

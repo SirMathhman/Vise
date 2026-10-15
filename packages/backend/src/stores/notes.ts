@@ -65,9 +65,7 @@ function noteDir(base: string): string {
 
 /** Directory holding a category's notes (`default` is the notes directory itself). */
 function categoryDir(base: string, category: string): string {
-  return category === DEFAULT_CATEGORY
-    ? noteDir(base)
-    : join(noteDir(base), category);
+  return category === DEFAULT_CATEGORY ? noteDir(base) : join(noteDir(base), category);
 }
 
 /** Path of a single note file. */
@@ -81,12 +79,7 @@ function notePath(base: string, name: string, category: string): string {
  * reuse by `src/stores/profiles.ts`.
  */
 export function validName(name: string): boolean {
-  return (
-    name.length > 0 &&
-    !name.includes("/") &&
-    !name.includes("\\") &&
-    !name.includes("..")
-  );
+  return name.length > 0 && !name.includes("/") && !name.includes("\\") && !name.includes("..");
 }
 
 /** The category a possibly-absent argument names: trimmed, `default` when empty. */
@@ -102,11 +95,7 @@ function summaryOf(body: string): string {
 }
 
 /** The notes of one category, sorted by name. */
-function listCategory(
-  base: string,
-  category: string,
-  scope: NoteScope,
-): NoteEntry[] {
+function listCategory(base: string, category: string, scope: NoteScope): NoteEntry[] {
   const dir = categoryDir(base, category);
   if (!existsSync(dir)) return [];
   const out: NoteEntry[] = [];
@@ -159,21 +148,13 @@ export function listNotes(
  * otherwise the note must exist in exactly one category. Returns undefined
  * when there is no such note; throws when the name is ambiguous.
  */
-function findNote(
-  base: string,
-  name: string,
-  category?: string,
-): string | undefined {
+function findNote(base: string, name: string, category?: string): string | undefined {
   if (!validName(name)) return undefined;
   if (category !== undefined && category.trim() !== "") {
     const wanted = categoryOf(category);
-    return validName(wanted) && existsSync(notePath(base, name, wanted))
-      ? wanted
-      : undefined;
+    return validName(wanted) && existsSync(notePath(base, name, wanted)) ? wanted : undefined;
   }
-  const found = categoriesOf(base).filter((c) =>
-    existsSync(notePath(base, name, c)),
-  );
+  const found = categoriesOf(base).filter((c) => existsSync(notePath(base, name, c)));
   if (found.includes(DEFAULT_CATEGORY)) return DEFAULT_CATEGORY;
   if (found.length > 1) {
     throw new Error(
@@ -187,11 +168,7 @@ function findNote(
  * Read a note's full body. Returns the text, or undefined when no note of
  * that name exists.
  */
-export function readNote(
-  base: string,
-  name: string,
-  category?: string,
-): string | undefined {
+export function readNote(base: string, name: string, category?: string): string | undefined {
   const found = findNote(base, name, category);
   if (found === undefined) return undefined;
   return readFileSync(notePath(base, name, found), "utf8");
@@ -222,11 +199,7 @@ export function saveNote(
     throw new Error(`note '${name}' already exists in category '${where}'`);
   }
   mkdirSync(categoryDir(base, where), { recursive: true });
-  writeFileSync(
-    notePath(base, name, where),
-    body.replace(/\s+$/, "") + "\n",
-    "utf8",
-  );
+  writeFileSync(notePath(base, name, where), body.replace(/\s+$/, "") + "\n", "utf8");
   return existed ? "replaced" : "created";
 }
 
@@ -268,11 +241,7 @@ function pruneCategory(base: string, category: string): void {
  * Delete a note by name (resolved like `readNote`). Throws an `Error` when no
  * note of that name exists or the name is ambiguous.
  */
-export function deleteNote(
-  base: string,
-  name: string,
-  category?: string,
-): void {
+export function deleteNote(base: string, name: string, category?: string): void {
   const found = findNote(base, name, category);
   if (found === undefined) {
     throw new Error(`note '${name}' not found`);
@@ -306,9 +275,6 @@ export function moveNote(base: string, from: NoteRef, to: NoteRef): void {
     throw new Error(`note '${to.name}' already exists in category '${target}'`);
   }
   mkdirSync(categoryDir(base, target), { recursive: true });
-  renameSync(
-    notePath(base, from.name, source),
-    notePath(base, to.name, target),
-  );
+  renameSync(notePath(base, from.name, source), notePath(base, to.name, target));
   pruneCategory(base, source);
 }

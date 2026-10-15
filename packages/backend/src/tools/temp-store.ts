@@ -50,33 +50,24 @@ function sweepStale(base: string): void {
   }
 }
 
-const countLines = (text: string): number =>
-  text === "" ? 0 : text.split(/\r?\n/).length;
+const countLines = (text: string): number => (text === "" ? 0 : text.split(/\r?\n/).length);
 
 /** Whether a tool result is too big to show the model in full. */
 export function isTooLarge(text: string): boolean {
-  return (
-    text.length > config.resultMaxChars ||
-    countLines(text) > config.resultMaxLines
-  );
+  return text.length > config.resultMaxChars || countLines(text) > config.resultMaxLines;
 }
 
 /** `text` cut to what is allowed to be shown, for when it cannot be saved (or there is nowhere to save it). */
 export function truncateInline(text: string, why: string): string {
   const head = text.split(/\r?\n/).slice(0, config.resultMaxLines).join("\n");
-  const shown =
-    head.length > config.resultMaxChars
-      ? head.slice(0, config.resultMaxChars)
-      : head;
+  const shown = head.length > config.resultMaxChars ? head.slice(0, config.resultMaxChars) : head;
   return `${shown}\n[... output too large to show (${countLines(text)} lines, ${text.length} characters) and ${why}; only the start is shown.]`;
 }
 
 /** The start of `text`: a few lines, and never more than `PREVIEW_CHARS` characters. */
 function preview(text: string): string {
   const head = text.split(/\r?\n/).slice(0, config.previewLines).join("\n");
-  return head.length > config.previewChars
-    ? `${head.slice(0, config.previewChars)}...`
-    : head;
+  return head.length > config.previewChars ? `${head.slice(0, config.previewChars)}...` : head;
 }
 
 export class TempStore {
@@ -157,10 +148,7 @@ export class TempStore {
     const all = this.lines(name);
     if (typeof all === "string") return all;
     const from = Math.max(1, Math.floor(offset));
-    const count = Math.min(
-      config.resultMaxLines,
-      Math.max(1, Math.floor(limit)),
-    );
+    const count = Math.min(config.resultMaxLines, Math.max(1, Math.floor(limit)));
     const slice = all.slice(from - 1, from - 1 + count);
     if (slice.length === 0) {
       return `error: '${name}' has ${all.length} lines; there is nothing at line ${from}`;
@@ -198,9 +186,7 @@ export class TempStore {
         if (!re.test(line)) return;
         total++;
         if (out.length < config.searchMaxMatches) {
-          out.push(
-            `${n}:${i + 1}: ${line.slice(0, config.searchMaxMatchChars)}`,
-          );
+          out.push(`${n}:${i + 1}: ${line.slice(0, config.searchMaxMatchChars)}`);
         }
       });
     }
@@ -236,8 +222,7 @@ export class TempStore {
 export function tempHandlers(
   store: TempStore,
 ): Record<string, (args: Record<string, unknown>) => string> {
-  const num = (value: unknown, fallback: number): number =>
-    numberArg(value) ?? fallback;
+  const num = (value: unknown, fallback: number): number => numberArg(value) ?? fallback;
   return {
     read_temp: (args) =>
       badNumber("offset", args["offset"]) ??

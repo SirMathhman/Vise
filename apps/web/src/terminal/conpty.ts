@@ -60,8 +60,7 @@ const SYMBOLS = {
   GetLastError: { args: [], returns: FFIType.u32 },
 } as const;
 
-let kernel32: ReturnType<typeof dlopen<typeof SYMBOLS>>["symbols"] | null =
-  null;
+let kernel32: ReturnType<typeof dlopen<typeof SYMBOLS>>["symbols"] | null = null;
 
 function k32(): NonNullable<typeof kernel32> {
   kernel32 ??= dlopen("kernel32.dll", SYMBOLS).symbols;
@@ -75,8 +74,7 @@ const h = (value: number): Pointer => value as Pointer;
 const out = (cell: BigUint64Array): number => Number(cell[0] ?? 0n);
 
 /** COORD passed by value: X (columns) in the low word, Y (rows) in the high word. */
-const coord = (cols: number, rows: number): number =>
-  ((rows & 0xffff) << 16) | (cols & 0xffff);
+const coord = (cols: number, rows: number): number => ((rows & 0xffff) << 16) | (cols & 0xffff);
 
 function fail(what: string): never {
   throw new Error(`${what} failed (Windows error ${k32().GetLastError()})`);
@@ -209,9 +207,7 @@ export function spawnPty(options: SpawnOptions): PtyHandle {
     k.ClosePseudoConsole(h(console));
     k.CloseHandle(h(input.write));
     k.CloseHandle(h(output.read));
-    throw new Error(
-      `could not start "${options.command}" (Windows error ${error})`,
-    );
+    throw new Error(`could not start "${options.command}" (Windows error ${error})`);
   }
   const handles = new BigUint64Array(info, 0, 2);
   const processHandle = Number(handles[0] ?? 0n);

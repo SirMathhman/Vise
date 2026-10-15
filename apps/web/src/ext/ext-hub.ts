@@ -48,9 +48,7 @@ export class ExtensionHub implements ExtensionLink {
     const old = this.socket;
     this.socket = socket;
     if (old && old !== socket) {
-      this.failAll(
-        "the extension reconnected (the last action may or may not have run)",
-      );
+      this.failAll("the extension reconnected (the last action may or may not have run)");
       old.close();
     }
     socket.send(JSON.stringify({ config: { tabLimit: config.tabLimit } }));
@@ -61,9 +59,7 @@ export class ExtensionHub implements ExtensionLink {
   detach(socket: ExtensionSocket): void {
     if (this.socket !== socket) return;
     this.socket = null;
-    this.failAll(
-      "the extension disconnected (the last action may or may not have run)",
-    );
+    this.failAll("the extension disconnected (the last action may or may not have run)");
     this.notify();
   }
 
@@ -117,14 +113,12 @@ export class ExtensionHub implements ExtensionLink {
       this.notify();
       return;
     }
-    const pending =
-      typeof msg.id === "number" ? this.pending.get(msg.id) : undefined;
+    const pending = typeof msg.id === "number" ? this.pending.get(msg.id) : undefined;
     if (!pending || msg.id === undefined) return;
     this.pending.delete(msg.id);
     clearTimeout(pending.timer);
     if (msg.ok) pending.resolve(msg.result);
-    else
-      pending.reject(new Error(msg.error ?? "the extension reported an error"));
+    else pending.reject(new Error(msg.error ?? "the extension reported an error"));
   }
 
   private notify(): void {

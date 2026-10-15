@@ -5,10 +5,7 @@ import { z } from "zod";
  * Parse `data` against `schema` and return the result as `Result<T>`.
  * On failure the error is `{ kind: "malformed", body: <readable issues> }`.
  */
-export function parse<T>(
-  schema: z.ZodType<T>,
-  data: unknown,
-): Result<T> {
+export function parse<T>(schema: z.ZodType<T>, data: unknown): Result<T> {
   const result = schema.safeParse(data);
   if (result.success) return { ok: true, value: result.data };
   const body = formatIssues(result.error.issues, data);
@@ -16,10 +13,7 @@ export function parse<T>(
 }
 
 /** Format zod issues into a human-readable string with the raw input. */
-function formatIssues(
-  issues: z.core.$ZodIssue[],
-  data: unknown,
-): string {
+function formatIssues(issues: z.core.$ZodIssue[], data: unknown): string {
   const lines = issues.map((issue) => {
     const path = issue.path.length > 0 ? issue.path.join(".") : "(root)";
     return `${path}: ${issue.message}`;

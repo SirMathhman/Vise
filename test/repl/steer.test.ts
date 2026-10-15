@@ -14,10 +14,7 @@ test("steering words join the conversation at the next round, after earlier noti
   queue.steer(steer("use the other file"));
   const messages: Message[] = [];
   queue.drainInto(messages);
-  expect(messages.map((m) => m.content)).toEqual([
-    "[a tab was shared]",
-    "use the other file",
-  ]);
+  expect(messages.map((m) => m.content)).toEqual(["[a tab was shared]", "use the other file"]);
   expect(queue.takeSteers()).toEqual([]);
 });
 

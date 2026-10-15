@@ -12,12 +12,12 @@ test("a tool call line uses the tool's own label and icon", () => {
   expect(formatToolCall("read_file", { path: "src/a.ts" }, displayOfTool)).toBe(
     "📄 Read file · src/a.ts",
   );
-  expect(
-    formatToolCall("run_powershell", { command: "ls" }, displayOfTool),
-  ).toBe("💻 Run PowerShell · ls");
-  expect(
-    formatToolCall("browser_wait_for_idle", undefined, displayOfTool),
-  ).toBe("⏳ Wait for page to settle");
+  expect(formatToolCall("run_powershell", { command: "ls" }, displayOfTool)).toBe(
+    "💻 Run PowerShell · ls",
+  );
+  expect(formatToolCall("browser_wait_for_idle", undefined, displayOfTool)).toBe(
+    "⏳ Wait for page to settle",
+  );
 });
 
 test("a tool with no display of its own gets a name made from its identifier", () => {

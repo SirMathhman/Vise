@@ -102,8 +102,7 @@ describe("runTurn streaming (core)", () => {
     const twoRoundClient: Client = {
       async chat(messages, defs, token, thinking, progress) {
         rounds++;
-        if (rounds === 1)
-          return client.chat(messages, defs, token, thinking, progress);
+        if (rounds === 1) return client.chat(messages, defs, token, thinking, progress);
         return { ok: true, value: { content: "done" } };
       },
     };
@@ -137,13 +136,9 @@ describe("runTurn interruption (core)", () => {
     };
     const controller = new AbortController();
     controller.abort();
-    const result = await runTurn(
-      client,
-      noopTools,
-      [{ role: "user", content: "go" }],
-      noToolDefs,
-      { abort: controller.signal },
-    );
+    const result = await runTurn(client, noopTools, [{ role: "user", content: "go" }], noToolDefs, {
+      abort: controller.signal,
+    });
     expect(result.ok).toBeFalse();
     if (!result.ok) expect(result.error).toEqual({ kind: "interrupted" });
     expect(calls).toBe(0);
@@ -161,13 +156,9 @@ describe("runTurn interruption (core)", () => {
         return { ok: false, error: { kind: "network", cause: "aborted" } };
       },
     };
-    const result = await runTurn(
-      client,
-      noopTools,
-      [{ role: "user", content: "go" }],
-      noToolDefs,
-      { abort: controller.signal },
-    );
+    const result = await runTurn(client, noopTools, [{ role: "user", content: "go" }], noToolDefs, {
+      abort: controller.signal,
+    });
     expect(result.ok).toBeFalse();
     if (!result.ok) expect(result.error).toEqual({ kind: "interrupted" });
   });
@@ -252,10 +243,7 @@ describe("runSubagent (core)", () => {
     );
     expect(result.ok).toBeTrue();
     expect(seen).toHaveLength(1);
-    expect(seen[0]).toEqual([
-      systemMessage,
-      { role: "user", content: "do the thing" },
-    ]);
+    expect(seen[0]).toEqual([systemMessage, { role: "user", content: "do the thing" }]);
   });
 
   test("propagates a client error as a failure result", async () => {
@@ -289,10 +277,7 @@ describe("runTurn burst mode (core)", () => {
     id: "c",
     function: { name, arguments: "{}" },
   });
-  const run = async (
-    replies: Record<string, unknown>[],
-    output: string,
-  ): Promise<boolean[]> => {
+  const run = async (replies: Record<string, unknown>[], output: string): Promise<boolean[]> => {
     const acts: boolean[] = [];
     let i = 0;
     const client: Client = {
@@ -317,10 +302,7 @@ describe("runTurn burst mode (core)", () => {
   });
 
   test("returns to thinking after a tool error", async () => {
-    const acts = await run(
-      [{ tool_calls: [call("a")] }, { content: "ok" }],
-      "error: boom",
-    );
+    const acts = await run([{ tool_calls: [call("a")] }, { content: "ok" }], "error: boom");
     expect(acts).toEqual([false, false]);
   });
 
@@ -349,13 +331,10 @@ describe("runTurn burst mode (core)", () => {
         return { ok: true, value: { content: "", ...replies[i++] } };
       },
     };
-    await runTurn(
-      client,
-      { run: async () => "fine" },
-      [{ role: "user", content: "x" }],
-      [],
-      { burst: true, onBurst: (a) => events.push(a) },
-    );
+    await runTurn(client, { run: async () => "fine" }, [{ role: "user", content: "x" }], [], {
+      burst: true,
+      onBurst: (a) => events.push(a),
+    });
     expect(events).toEqual([true, false]);
   });
   test("keeps the plan round's reasoning in history", async () => {

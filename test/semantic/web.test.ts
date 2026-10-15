@@ -1,10 +1,23 @@
 import { expect, test } from "bun:test";
-import type { SemanticHit, SemanticIndexPort, SemanticStatus } from "../../packages/backend/src/repl/ports.ts";
+import type {
+  SemanticHit,
+  SemanticIndexPort,
+  SemanticStatus,
+} from "../../packages/backend/src/repl/ports.ts";
 import type { ConnectionState } from "../../apps/web/src/router/connection.ts";
 import { handleMessage } from "../../apps/web/src/router/router.ts";
-import { hitLocation, statusText } from "../../packages/frontend/src/workspace/search/semantic-search.ts";
+import {
+  hitLocation,
+  statusText,
+} from "../../packages/frontend/src/workspace/search/semantic-search.ts";
 
-const hit: SemanticHit = { path: "src/auth.ts", startLine: 3, endLine: 20, score: 0.77, snippet: "login()" };
+const hit: SemanticHit = {
+  path: "src/auth.ts",
+  startLine: 3,
+  endLine: 20,
+  score: 0.77,
+  snippet: "login()",
+};
 
 function index(status: Partial<SemanticStatus> = {}) {
   const calls: string[] = [];
@@ -37,10 +50,17 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 5));
 test("sem_search is answered with the hits and the index's status, limit clamped", async () => {
   const { port, calls } = index();
   const { conn, sent } = connection(port);
-  handleMessage(conn, JSON.stringify({ type: "sem_search", query: " how are sessions saved ", limit: 500 }));
+  handleMessage(
+    conn,
+    JSON.stringify({ type: "sem_search", query: " how are sessions saved ", limit: 500 }),
+  );
   await settle();
   expect(calls).toEqual(["search:how are sessions saved:25"]);
-  expect(sent[0]).toMatchObject({ type: "sem_results", query: "how are sessions saved", hits: [hit] });
+  expect(sent[0]).toMatchObject({
+    type: "sem_results",
+    query: "how are sessions saved",
+    hits: [hit],
+  });
   expect((sent[0] as { status: SemanticStatus }).status.state).toBe("ready");
 });
 

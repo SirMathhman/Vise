@@ -20,7 +20,8 @@ export function createInspector(calls: CallLog, send: Send) {
   let lastSent = "";
 
   const push = (): void => {
-    const trace = watching !== undefined ? calls.get(watching) : (calls.current() ?? calls.traces()[0]);
+    const trace =
+      watching !== undefined ? calls.get(watching) : (calls.current() ?? calls.traces()[0]);
     if (!trace) {
       const empty = JSON.stringify({ none: true });
       if (empty !== lastSent) send({ type: "call_raw", none: true });
@@ -40,23 +41,34 @@ export function createInspector(calls: CallLog, send: Send) {
       ms: snapshot.ms,
       promptTokens: snapshot.promptTokens,
       tokens: snapshot.completionTokens,
-      tokensPerSec: snapshot.completionTokens ? Math.round((snapshot.completionTokens / seconds) * 10) / 10 : 0,
+      tokensPerSec: snapshot.completionTokens
+        ? Math.round((snapshot.completionTokens / seconds) * 10) / 10
+        : 0,
       chars: snapshot.rawChars,
       tail: trace.rawTail(TAIL_CHARS),
       reasoning: trace.reasoningTail(TAIL_CHARS),
       loop: snapshot.loop,
       finishReason: snapshot.finishReason,
-      recent: calls.traces().slice(0, 12).map((t) => ({
-        request: t.request,
-        purpose: t.purpose,
-        state: t.state,
-        stopReason: t.stopReason,
-        tokens: t.completionTokens,
-        ms: Math.round(t.ms),
-      })),
+      recent: calls
+        .traces()
+        .slice(0, 12)
+        .map((t) => ({
+          request: t.request,
+          purpose: t.purpose,
+          state: t.state,
+          stopReason: t.stopReason,
+          tokens: t.completionTokens,
+          ms: Math.round(t.ms),
+        })),
     };
     // A finished call that has already been sent in its final form is not sent again.
-    const key = JSON.stringify([message.request, message.state, message.tokens, message.chars, message.stopReason]);
+    const key = JSON.stringify([
+      message.request,
+      message.state,
+      message.tokens,
+      message.chars,
+      message.stopReason,
+    ]);
     if (trace.state !== "running" && key === lastSent) return;
     lastSent = key;
     send(message);

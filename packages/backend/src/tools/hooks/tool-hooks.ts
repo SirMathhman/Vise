@@ -1,11 +1,6 @@
 import { config } from "../../config.ts";
 import { noAudit, type AuditSink } from "@vise/core";
-import {
-  matchesTool,
-  type PreToolVerdict,
-  type ToolHookEntry,
-  type ToolHooks,
-} from "@vise/core";
+import { matchesTool, type PreToolVerdict, type ToolHookEntry, type ToolHooks } from "@vise/core";
 import { spawnPowerShell } from "../shell.ts";
 
 /** Exit code a pre-tool hook uses to veto the call. */
@@ -23,7 +18,9 @@ interface HookRun {
 }
 
 const cap = (text: string, limit: number): string =>
-  text.length > limit ? `${text.slice(0, limit)}... (${text.length - limit} more characters)` : text;
+  text.length > limit
+    ? `${text.slice(0, limit)}... (${text.length - limit} more characters)`
+    : text;
 
 /** Run one hook command with the call described in its environment and on its standard input. */
 async function runHook(
@@ -49,9 +46,7 @@ async function runHook(
         reject(err);
       });
     });
-    const output = [record.stdout.trim(), record.stderr.trim()]
-      .filter((s) => s !== "")
-      .join("\n");
+    const output = [record.stdout.trim(), record.stderr.trim()].filter((s) => s !== "").join("\n");
     return {
       status,
       output: timedOut

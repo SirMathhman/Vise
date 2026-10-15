@@ -34,11 +34,7 @@ const notFound = (ref: string): Result<never> => ({
   error: { kind: "malformed", body: `session '${ref}' not found` },
 });
 
-function saved(
-  id: string,
-  name: string,
-  extra: Partial<SavedSession> = {},
-): SavedSession {
+function saved(id: string, name: string, extra: Partial<SavedSession> = {}): SavedSession {
   return {
     id,
     name,
@@ -63,14 +59,10 @@ describe("Session /save and /resume (core)", () => {
   }
 
   /** An in-memory SessionSource keyed by id, recording every save call. */
-  function makeSessionSource(
-    sessions: SavedSession[],
-    calls: SaveCall[] = [],
-  ): SessionSource {
+  function makeSessionSource(sessions: SavedSession[], calls: SaveCall[] = []): SessionSource {
     const store = new Map(sessions.map((s) => [s.id, s]));
     let next = 1;
-    const resolve = (ref: string) =>
-      [...store.keys()].find((id) => id.startsWith(ref));
+    const resolve = (ref: string) => [...store.keys()].find((id) => id.startsWith(ref));
     return {
       async save(id, name, messages, activeProfile) {
         const finalId = id ?? `generated-${next++}`;
@@ -136,16 +128,12 @@ describe("Session /save and /resume (core)", () => {
   test("/save <name> before any turn creates a new session", async () => {
     const calls: SaveCall[] = [];
     const session = makeSession(makeSessionSource([], calls));
-    expect(await ok(session, "/save fresh")).toBe(
-      "saved session 'fresh' (generated-1)",
-    );
+    expect(await ok(session, "/save fresh")).toBe("saved session 'fresh' (generated-1)");
     expect(calls[0]?.id).toBeUndefined();
   });
 
   test("/save with no args lists sessions with names and ids", async () => {
-    const session = makeSession(
-      makeSessionSource([saved(ID_A, "alpha"), saved(ID_B, "beta")]),
-    );
+    const session = makeSession(makeSessionSource([saved(ID_A, "alpha"), saved(ID_B, "beta")]));
     const value = await ok(session, "/save");
     expect(value).toContain(`alpha  (${ID_A})`);
     expect(value).toContain(`beta  (${ID_B})`);
@@ -157,9 +145,7 @@ describe("Session /save and /resume (core)", () => {
       { role: "user", content: "hi" },
     ];
     const session = makeSession(
-      makeSessionSource([
-        saved(ID_A, "alpha", { messages: body, activeProfile: "plan" }),
-      ]),
+      makeSessionSource([saved(ID_A, "alpha", { messages: body, activeProfile: "plan" })]),
     );
     const value = await ok(session, `/resume ${ID_A}`);
     expect(value).toContain("resumed session 'alpha'");
@@ -167,12 +153,8 @@ describe("Session /save and /resume (core)", () => {
   });
 
   test("/resume accepts a unique id prefix", async () => {
-    const session = makeSession(
-      makeSessionSource([saved(ID_A, "alpha"), saved(ID_B, "beta")]),
-    );
-    expect(await ok(session, "/resume bbbb")).toContain(
-      "resumed session 'beta'",
-    );
+    const session = makeSession(makeSessionSource([saved(ID_A, "alpha"), saved(ID_B, "beta")]));
+    expect(await ok(session, "/resume bbbb")).toContain("resumed session 'beta'");
   });
 
   test("/resume keeps the live system message at index 0 (invariant #6)", async () => {
@@ -206,9 +188,7 @@ describe("Session /save and /resume (core)", () => {
 
   test("auto-save after resume overwrites the resumed session", async () => {
     const calls: SaveCall[] = [];
-    const session = makeSession(
-      makeSessionSource([saved(ID_A, "alpha")], calls),
-    );
+    const session = makeSession(makeSessionSource([saved(ID_A, "alpha")], calls));
     await ok(session, `/resume ${ID_A}`);
     await ok(session, "continue");
     expect(calls).toHaveLength(1);
@@ -243,9 +223,7 @@ describe("Session /save and /resume (core)", () => {
     await ok(session, "first message");
     expect(calls).toHaveLength(1);
     expect(calls[0]?.name).toBe("first message");
-    expect(calls[0]?.messages.some((m) => m.content === "first message")).toBe(
-      true,
-    );
+    expect(calls[0]?.messages.some((m) => m.content === "first message")).toBe(true);
   });
 
   test("auto-save reuses the id it was given on the first save", async () => {
@@ -270,9 +248,7 @@ describe("Session /save and /resume (core)", () => {
 
   test("/delete <id> removes the session and reports success", async () => {
     const session = makeSession(makeSessionSource([saved(ID_A, "alpha")]));
-    expect(await ok(session, `/delete ${ID_A}`)).toBe(
-      `deleted session ${ID_A}`,
-    );
+    expect(await ok(session, `/delete ${ID_A}`)).toBe(`deleted session ${ID_A}`);
     expect(await ok(session, "/resume")).toBe("no saved sessions");
   });
 

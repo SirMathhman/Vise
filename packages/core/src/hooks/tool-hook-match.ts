@@ -36,11 +36,7 @@ export interface ToolHooks {
 }
 
 /** Whether `entry` applies to the tool `name` of `category`. */
-export function matchesTool(
-  entry: ToolHookEntry,
-  name: string,
-  category?: string,
-): boolean {
+export function matchesTool(entry: ToolHookEntry, name: string, category?: string): boolean {
   const wanted = entry.tools;
   if (wanted === undefined || wanted.length === 0) return true;
   return wanted.some((w) => w === name || (category !== undefined && w === category));

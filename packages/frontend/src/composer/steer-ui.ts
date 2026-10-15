@@ -58,9 +58,7 @@ export function createSteerUi(deps: {
       remove.title = "Remove from the queue";
       remove.setAttribute("aria-label", `Remove queued message: ${text}`);
       remove.textContent = "✕";
-      remove.addEventListener("click", () =>
-        deps.sendMessage({ type: "unqueue", qid }),
-      );
+      remove.addEventListener("click", () => deps.sendMessage({ type: "unqueue", qid }));
       row.append(label, remove);
       deps.list.append(row);
     }
@@ -92,8 +90,7 @@ export function createSteerUi(deps: {
         return true;
       }
       if (message.type === "line_started") {
-        const entry =
-          message.qid === undefined ? undefined : held.get(message.qid);
+        const entry = message.qid === undefined ? undefined : held.get(message.qid);
         if (message.qid !== undefined) held.delete(message.qid);
         entry?.show();
         return true;

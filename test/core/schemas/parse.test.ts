@@ -58,9 +58,7 @@ describe("parseTodos (schema)", () => {
 
 describe("todosSchema", () => {
   test("valid todos pass", () => {
-    const result = parse(todosSchema, [
-      { content: "a", status: "completed" },
-    ]);
+    const result = parse(todosSchema, [{ content: "a", status: "completed" }]);
     expect(result.ok).toBe(true);
   });
 
@@ -175,9 +173,7 @@ describe("workflowSchema", () => {
 
   test("tool step with args passes", () => {
     const wf: Workflow = {
-      steps: [
-        { type: "tool", name: "read_file", args: { path: "x" }, exact: true },
-      ],
+      steps: [{ type: "tool", name: "read_file", args: { path: "x" }, exact: true }],
     };
     const result = parse(workflowSchema, wf);
     expect(result.ok).toBe(true);
@@ -253,7 +249,12 @@ describe("auditCallSchema", () => {
   });
 
   test("missing required field fails", () => {
-    const result = parse(auditCallSchema, { purpose: "chat", model: "gpt-4", state: "done", ms: 100 });
+    const result = parse(auditCallSchema, {
+      purpose: "chat",
+      model: "gpt-4",
+      state: "done",
+      ms: 100,
+    });
     expect(result.ok).toBe(false);
   });
 });
@@ -307,7 +308,7 @@ describe("parseProfileText", () => {
   });
 
   test("parses frontmatter with hooks", () => {
-    const result = parseProfileText("---\nhooks: [\"pre:cmd\"]\n---\nBody\n");
+    const result = parseProfileText('---\nhooks: ["pre:cmd"]\n---\nBody\n');
     expect(result.hooks).toEqual(["pre:cmd"]);
   });
 

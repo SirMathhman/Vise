@@ -33,8 +33,7 @@ function inPolygon(x: number, y: number): boolean {
   for (let i = 0, j = V.length - 1; i < V.length; j = i++) {
     const [xi, yi] = V[i]!;
     const [xj, yj] = V[j]!;
-    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi)
-      inside = !inside;
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
   }
   return inside;
 }
@@ -60,9 +59,7 @@ function render(size: number): Buffer {
       const o = (py * size + pxl) * 4;
       const mix = shape === 0 ? 0 : glyph / shape;
       for (let c = 0; c < 3; c++)
-        px[o + c] = Math.round(
-          BACKGROUND[c]! * (1 - mix) + FOREGROUND[c]! * mix,
-        );
+        px[o + c] = Math.round(BACKGROUND[c]! * (1 - mix) + FOREGROUND[c]! * mix);
       px[o + 3] = Math.round((shape / n) * 255);
     }
   }

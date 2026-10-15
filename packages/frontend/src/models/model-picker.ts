@@ -84,8 +84,10 @@ function modelRow(model: ModelEntry, active: string, choose: (id: string) => voi
   // A bare id is already the name, so the id is the subtitle only when a name is shown above it.
   if (model.name) text.append(make("span", "model-id", model.id));
   const meta = make("span", "model-meta");
-  if (model.contextLength) meta.append(make("span", "badge badge--sm", contextLabel(model.contextLength)));
-  if (model.provider && model.provider !== "local") meta.append(make("span", "badge badge--sm", model.provider));
+  if (model.contextLength)
+    meta.append(make("span", "badge badge--sm", contextLabel(model.contextLength)));
+  if (model.provider && model.provider !== "local")
+    meta.append(make("span", "badge badge--sm", model.provider));
   if (model.vision) meta.append(make("span", "badge badge--sm", "vision"));
   choice.append(text, meta);
   choice.addEventListener("click", () => choose(model.id));
@@ -101,7 +103,8 @@ function moveFocus(panel: HTMLElement, event: KeyboardEvent): void {
   event.preventDefault();
   const at = items.indexOf(document.activeElement as HTMLButtonElement);
   const step = event.key === "ArrowDown" ? 1 : -1;
-  const next = at < 0 ? (step > 0 ? 0 : items.length - 1) : (at + step + items.length) % items.length;
+  const next =
+    at < 0 ? (step > 0 ? 0 : items.length - 1) : (at + step + items.length) % items.length;
   items[next]?.focus();
 }
 
@@ -147,13 +150,22 @@ export function createModelPicker(parts: ModelPickerParts): ModelPicker {
     const query = search.value.trim().toLowerCase();
     shown = models.filter(
       (model) =>
-        !query || model.id.toLowerCase().includes(query) || (model.name ?? "").toLowerCase().includes(query),
+        !query ||
+        model.id.toLowerCase().includes(query) ||
+        (model.name ?? "").toLowerCase().includes(query),
     );
     list.textContent = "";
-    if (failure !== undefined) list.append(make("li", "list-empty", `Could not load models: ${failure}`));
+    if (failure !== undefined)
+      list.append(make("li", "list-empty", `Could not load models: ${failure}`));
     else if (!loaded) list.append(make("li", "list-empty", "Loading…"));
     else if (shown.length === 0)
-      list.append(make("li", "list-empty", models.length === 0 ? "No models available" : "No model matches the search"));
+      list.append(
+        make(
+          "li",
+          "list-empty",
+          models.length === 0 ? "No models available" : "No model matches the search",
+        ),
+      );
     else for (const model of shown) list.append(modelRow(model, active, choose));
 
     // "Recently used" shows while nothing is typed; ids the list no longer has are skipped.

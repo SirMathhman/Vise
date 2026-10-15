@@ -17,14 +17,9 @@ interface RaisedDialog {
 const raised: RaisedDialog[] = [];
 (window as unknown as { __viseDialogs: RaisedDialog[] }).__viseDialogs = raised;
 
-const page = (window as unknown as { wrappedJSObject: Record<string, unknown> })
-  .wrappedJSObject;
+const page = (window as unknown as { wrappedJSObject: Record<string, unknown> }).wrappedJSObject;
 
-function replace(
-  name: string,
-  answer: string,
-  value: boolean | null | undefined,
-): void {
+function replace(name: string, answer: string, value: boolean | null | undefined): void {
   page[name] = exportFunction((message?: unknown) => {
     raised.push({ type: name, message: String(message ?? ""), answer });
     return value;

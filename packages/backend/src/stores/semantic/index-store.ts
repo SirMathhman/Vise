@@ -60,7 +60,9 @@ export class IndexStore {
     return this.run("read the semantic index", () =>
       (
         this.db
-          .query("SELECT file_path AS path, MAX(mtime_ms) AS mtimeMs, model FROM file_embeddings GROUP BY file_path")
+          .query(
+            "SELECT file_path AS path, MAX(mtime_ms) AS mtimeMs, model FROM file_embeddings GROUP BY file_path",
+          )
           .all() as StoredFile[]
       ).map((f) => ({ path: f.path, mtimeMs: f.mtimeMs, model: f.model })),
     );
@@ -85,7 +87,18 @@ export class IndexStore {
         );
         chunks.forEach((chunk, i) => {
           const vector = vectors[i] ?? [];
-          insert.run(path, i, chunk.start, chunk.end, chunk.content, encodeVector(vector), vector.length, model, mtimeMs, now);
+          insert.run(
+            path,
+            i,
+            chunk.start,
+            chunk.end,
+            chunk.content,
+            encodeVector(vector),
+            vector.length,
+            model,
+            mtimeMs,
+            now,
+          );
         });
       })();
       this.cache = undefined;
@@ -114,7 +127,9 @@ export class IndexStore {
   totals(model: string): Result<IndexTotals> {
     return this.run("read the semantic index", () => {
       const mine = this.db
-        .query("SELECT COUNT(DISTINCT file_path) AS files, COUNT(*) AS chunks FROM file_embeddings WHERE model = ?")
+        .query(
+          "SELECT COUNT(DISTINCT file_path) AS files, COUNT(*) AS chunks FROM file_embeddings WHERE model = ?",
+        )
         .get(model) as { files: number; chunks: number };
       const other = this.db
         .query("SELECT COUNT(*) AS chunks FROM file_embeddings WHERE model != ?")

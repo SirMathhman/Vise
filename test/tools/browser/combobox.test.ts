@@ -78,13 +78,10 @@ describe("chooseInCombobox", () => {
   });
 
   test("an ambiguous option is an error that names the candidates", async () => {
-    const { browser, log } = fakeCombo([
-      "Park Ridge, Illinois",
-      "Park Ridge, New Jersey",
-    ]);
-    await expect(
-      chooseInCombobox(browser, 1, "e9", "Park Ridge"),
-    ).rejects.toThrow(/matches several options.*Illinois.*New Jersey/);
+    const { browser, log } = fakeCombo(["Park Ridge, Illinois", "Park Ridge, New Jersey"]);
+    await expect(chooseInCombobox(browser, 1, "e9", "Park Ridge")).rejects.toThrow(
+      /matches several options.*Illinois.*New Jersey/,
+    );
     expect(log).toEqual(["click e9"]);
   });
 

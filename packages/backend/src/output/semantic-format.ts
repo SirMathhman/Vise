@@ -11,7 +11,9 @@ export function formatSemanticStatus(status: SemanticStatus): string {
     case "unavailable":
       return `semantic search is unavailable: ${status.reason ?? "the embedding model cannot be used"}`;
     default:
-      return status.reason ? `nothing indexed yet: ${status.reason}` : "nothing indexed yet (run /embed)";
+      return status.reason
+        ? `nothing indexed yet: ${status.reason}`
+        : "nothing indexed yet (run /embed)";
   }
 }
 
@@ -27,7 +29,11 @@ export function formatUpdateStats(stats: SemanticUpdateStats): string {
 const score = (hit: SemanticHit): string => hit.score.toFixed(2);
 
 /** The hits of a search as `path:lines  score` rows each followed by the start of the passage. */
-export function formatSemanticHits(query: string, hits: SemanticHit[], status: SemanticStatus): string {
+export function formatSemanticHits(
+  query: string,
+  hits: SemanticHit[],
+  status: SemanticStatus,
+): string {
   if (hits.length === 0) {
     const empty =
       status.state === "indexing"
@@ -46,6 +52,9 @@ export function formatSemanticHits(query: string, hits: SemanticHit[], status: S
       .join("\n");
     return `${where}  (${score(hit)})\n${body}`;
   });
-  const note = status.state === "indexing" ? `\n(still indexing: ${status.done ?? 0}/${status.total ?? 0} files)` : "";
+  const note =
+    status.state === "indexing"
+      ? `\n(still indexing: ${status.done ?? 0}/${status.total ?? 0} files)`
+      : "";
   return `${rows.join("\n")}${note}`;
 }

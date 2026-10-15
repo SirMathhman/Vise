@@ -71,4 +71,3 @@ export function promptAction(request: PromptRequest): Promise<string | null> {
     input.select();
   });
 }
-

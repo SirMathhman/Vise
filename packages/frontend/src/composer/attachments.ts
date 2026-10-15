@@ -67,9 +67,7 @@ export function createAttachments(parts: {
   const add = async (files: File[]): Promise<void> => {
     for (const file of files) {
       if (!TYPES.includes(file.type)) {
-        say(
-          `${file.name || "that file"} is not a png, jpeg, gif or webp image`,
-        );
+        say(`${file.name || "that file"} is not a png, jpeg, gif or webp image`);
       } else if (file.size > MAX_BYTES) {
         say(`${file.name || "that image"} is larger than 10 MB`);
       } else if (items.length >= MAX_ATTACHED) {
@@ -85,9 +83,7 @@ export function createAttachments(parts: {
   };
 
   input.addEventListener("paste", (event) => {
-    const files = Array.from(
-      (event as ClipboardEvent).clipboardData?.files ?? [],
-    );
+    const files = Array.from((event as ClipboardEvent).clipboardData?.files ?? []);
     if (files.some((f) => f.type.startsWith("image/"))) {
       event.preventDefault();
       void add(files);

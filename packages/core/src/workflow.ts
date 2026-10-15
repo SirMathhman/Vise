@@ -25,8 +25,7 @@ export type WorkflowStep =
     };
 
 /** Put the workflow's input where a step's text says `{{input}}` (an empty string when it ran with none). */
-const withInput = (text: string, input: string): string =>
-  text.replaceAll("{{input}}", input);
+const withInput = (text: string, input: string): string => text.replaceAll("{{input}}", input);
 
 /** The model-provided argument marker: its value is a hint for the model. */
 const modelHint = (value: unknown): string | undefined => {
@@ -79,9 +78,7 @@ interface WorkflowRunOptions {
 }
 
 /** Execute workflow steps in order, then ask the model for a final response. */
-export async function runWorkflow(
-  options: WorkflowRunOptions,
-): Promise<Result<string>> {
+export async function runWorkflow(options: WorkflowRunOptions): Promise<Result<string>> {
   const { name, workflow, onWorkflow } = options;
   const total = workflow.steps.length + 1;
   const progress = { step: 0 };
@@ -122,11 +119,7 @@ async function runSteps(
       label: stepLabel(step),
     });
     if (step.type === "instruction") {
-      const result = await runInstructionStep(
-        options,
-        index + 1,
-        withInput(step.text, request),
-      );
+      const result = await runInstructionStep(options, index + 1, withInput(step.text, request));
       if (!result.ok) return result;
       continue;
     }
@@ -261,9 +254,7 @@ async function generateArguments(
       JSON.stringify(schema),
     ].join("\n"),
   });
-  const generated = await (
-    options.client.as?.("workflow") ?? options.client
-  ).chat(
+  const generated = await (options.client.as?.("workflow") ?? options.client).chat(
     options.messages,
     // The tool list keeps the request encoded as the conversation's own turns are,
     // so it shares their prompt prefix (and the server's cache) instead of re-reading it.
@@ -275,11 +266,7 @@ async function generateArguments(
     options.callbacks.abort,
   );
   if (!generated.ok) return generated;
-  const args = parseAndValidateArguments(
-    generated.value.content,
-    toolName,
-    schema,
-  );
+  const args = parseAndValidateArguments(generated.value.content, toolName, schema);
   if (args.ok) {
     options.messages.push({ role: "assistant", content: generated.value.content });
   }
@@ -291,9 +278,7 @@ async function runToolStep(
   number: number,
   step: Extract<WorkflowStep, { type: "tool" }>,
 ): Promise<Result<void>> {
-  const tool = options.toolDefs.find(
-    (definition) => definition.function.name === step.name,
-  );
+  const tool = options.toolDefs.find((definition) => definition.function.name === step.name);
   if (!tool) {
     return {
       ok: false,
@@ -304,11 +289,7 @@ async function runToolStep(
     };
   }
   const properties = tool.function.parameters.properties;
-  if (
-    typeof properties !== "object" ||
-    properties === null ||
-    Array.isArray(properties)
-  ) {
+  if (typeof properties !== "object" || properties === null || Array.isArray(properties)) {
     return {
       ok: false,
       error: {
@@ -317,9 +298,7 @@ async function runToolStep(
       },
     };
   }
-  const unsupported = Object.keys(step.args).find(
-    (key) => !(key in properties),
-  );
+  const unsupported = Object.keys(step.args).find((key) => !(key in properties));
   if (unsupported) {
     return {
       ok: false,
@@ -335,11 +314,7 @@ async function runToolStep(
   options.callbacks.onToolCall?.(step.name, 0, args.value);
   let output: string;
   try {
-    output = await options.tools.run(
-      step.name,
-      args.value,
-      options.callbacks.abort,
-    );
+    output = await options.tools.run(step.name, args.value, options.callbacks.abort);
   } catch (error) {
     output = `error: ${error instanceof Error ? error.message : String(error)}`;
   }
@@ -384,17 +359,10 @@ function parseAndValidateArguments(
   return args;
 }
 
-function parseArguments(
-  content: string,
-  toolName: string,
-): Result<Record<string, unknown>> {
+function parseArguments(content: string, toolName: string): Result<Record<string, unknown>> {
   try {
     const parsed: unknown = JSON.parse(content);
-    if (
-      typeof parsed !== "object" ||
-      parsed === null ||
-      Array.isArray(parsed)
-    ) {
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
       throw new Error("expected an object");
     }
     return { ok: true, value: parsed as Record<string, unknown> };
@@ -416,9 +384,7 @@ function withRequiredPlaceholders(
 ): Record<string, unknown> {
   const schema = { ...source };
   const required = Array.isArray(schema.required)
-    ? schema.required.filter(
-        (entry): entry is string => typeof entry === "string",
-      )
+    ? schema.required.filter((entry): entry is string => typeof entry === "string")
     : [];
   schema.required = [...new Set([...required, ...placeholders])];
   return schema;
@@ -433,18 +399,12 @@ function validateArguments(
   schema: Record<string, unknown>,
 ): string | undefined {
   const properties = schema.properties;
-  if (
-    typeof properties !== "object" ||
-    properties === null ||
-    Array.isArray(properties)
-  ) {
+  if (typeof properties !== "object" || properties === null || Array.isArray(properties)) {
     return "tool schema properties must be an object";
   }
   const propertySchemas = properties as Record<string, unknown>;
   const required = Array.isArray(schema.required)
-    ? schema.required.filter(
-        (entry): entry is string => typeof entry === "string",
-      )
+    ? schema.required.filter((entry): entry is string => typeof entry === "string")
     : [];
   for (const key of required) {
     if (!(key in args)) return `missing required argument '${key}'`;
@@ -452,18 +412,10 @@ function validateArguments(
   for (const [key, value] of Object.entries(args)) {
     if (!(key in propertySchemas)) return `unknown argument '${key}'`;
     const definition = propertySchemas[key];
-    if (
-      typeof definition !== "object" ||
-      definition === null ||
-      Array.isArray(definition)
-    ) {
+    if (typeof definition !== "object" || definition === null || Array.isArray(definition)) {
       return `invalid schema for argument '${key}'`;
     }
-    const error = validateValue(
-      value,
-      definition as Record<string, unknown>,
-      key,
-    );
+    const error = validateValue(value, definition as Record<string, unknown>, key);
     if (error) return error;
   }
   return undefined;
@@ -487,9 +439,7 @@ function validateValue(
             : type === "array"
               ? Array.isArray(value)
               : type === "object"
-                ? typeof value === "object" &&
-                  value !== null &&
-                  !Array.isArray(value)
+                ? typeof value === "object" && value !== null && !Array.isArray(value)
                 : true;
   if (!valid) return `argument '${path}' must be ${String(type)}`;
   if (Array.isArray(schema.enum) && !schema.enum.includes(value)) {
@@ -507,18 +457,9 @@ function validateValue(
       if (error) return error;
     }
   }
-  if (
-    type === "object" &&
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value)
-  ) {
+  if (type === "object" && typeof value === "object" && value !== null && !Array.isArray(value)) {
     const nested = schema.properties;
-    if (
-      typeof nested === "object" &&
-      nested !== null &&
-      !Array.isArray(nested)
-    ) {
+    if (typeof nested === "object" && nested !== null && !Array.isArray(nested)) {
       return validateArguments(value as Record<string, unknown>, {
         properties: nested,
         required: schema.required,

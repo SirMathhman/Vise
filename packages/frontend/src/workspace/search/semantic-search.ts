@@ -45,7 +45,10 @@ function hitRow(hit: SemanticHit, open: (path: string, line: number) => void): H
   button.type = "button";
   button.title = `Open ${hitLocation(hit)}`;
   const head = make("span", "sem-hit-head");
-  head.append(make("span", "sem-hit-path", hitLocation(hit)), make("span", "badge badge--sm", hit.score.toFixed(2)));
+  head.append(
+    make("span", "sem-hit-path", hitLocation(hit)),
+    make("span", "badge badge--sm", hit.score.toFixed(2)),
+  );
   button.append(head, make("pre", "sem-hit-snippet", hit.snippet));
   button.addEventListener("click", () => open(hit.path, hit.startLine));
   item.append(button);
@@ -58,7 +61,9 @@ function hitRow(hit: SemanticHit, open: (path: string, line: number) => void): H
  * passages, clearing it brings the tree back. Replies are matched to the
  * query that is still in the box, so a slow answer never overwrites a newer one.
  */
-export function createSemanticSearch(ui: SemanticSearchUi): { handle(message: SemanticSearchMessage): boolean } {
+export function createSemanticSearch(ui: SemanticSearchUi): {
+  handle(message: SemanticSearchMessage): boolean;
+} {
   let latest = "";
   let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -120,7 +125,11 @@ export function createSemanticSearch(ui: SemanticSearchUi): { handle(message: Se
       if (message.query !== latest) return true; // an answer to something no longer in the box
       if (message.error) note(message.error);
       else if (!message.hits || message.hits.length === 0) {
-        note(message.status && message.status.state !== "ready" ? statusText(message.status) : `Nothing close to "${latest}".`);
+        note(
+          message.status && message.status.state !== "ready"
+            ? statusText(message.status)
+            : `Nothing close to "${latest}".`,
+        );
       } else {
         ui.results.textContent = "";
         for (const hit of message.hits) ui.results.append(hitRow(hit, ui.open));
@@ -142,7 +151,9 @@ export function mountSemanticSearch(
   const openAt = async (path: string, line: number): Promise<void> => {
     await openFile(path);
     const lineHeight = parseFloat(getComputedStyle(viewer).lineHeight);
-    const px = Number.isFinite(lineHeight) ? lineHeight : parseFloat(getComputedStyle(viewer).fontSize) * 1.4;
+    const px = Number.isFinite(lineHeight)
+      ? lineHeight
+      : parseFloat(getComputedStyle(viewer).fontSize) * 1.4;
     viewer.scrollTop = Math.max(0, (line - 1) * px);
   };
   return createSemanticSearch({

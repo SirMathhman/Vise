@@ -27,8 +27,7 @@ import type { TabInfo } from "@vise/backend";
 const LOAD_TIMEOUT_MS = 15_000;
 const SETTLE_TIMEOUT_MS = 5_000;
 
-const sleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Only web pages: the agent never opens browser-internal or `file:` pages. */
 function checkUrl(raw: unknown): string {
@@ -158,9 +157,7 @@ export const ops: Record<string, (params: Params) => Promise<unknown>> = {
     const id = requireOwned(tab);
     const outline = await run<string>(id, SNAPSHOT_SCRIPT);
     const dialogs = await run<string>(id, DIALOG_NOTES);
-    return dialogs
-      ? `${outline}\n[dialogs answered automatically: ${dialogs}]`
-      : outline;
+    return dialogs ? `${outline}\n[dialogs answered automatically: ${dialogs}]` : outline;
   },
 
   async click({ tab, ref }) {
@@ -189,19 +186,12 @@ export const ops: Record<string, (params: Params) => Promise<unknown>> = {
     const id = requireOwned(tab);
     const press = typeof key === "string" && key !== "" ? keyScript(key) : null;
     if (typeof key === "string" && key !== "" && !press) {
-      throw new Error(
-        `unsupported key ${key}; use one of ${PRESSABLE_KEYS.join(", ")}`,
-      );
+      throw new Error(`unsupported key ${key}; use one of ${PRESSABLE_KEYS.join(", ")}`);
     }
     if (ref !== undefined) {
-      const focused = await run<boolean>(
-        id,
-        focusScript(checkRef(ref), replace === true),
-      );
+      const focused = await run<boolean>(id, focusScript(checkRef(ref), replace === true));
       if (!focused) {
-        throw new Error(
-          `unknown element ${String(ref)}: call browser_read for fresh refs`,
-        );
+        throw new Error(`unknown element ${String(ref)}: call browser_read for fresh refs`);
       }
     }
     if (typeof text === "string" && text !== "") {

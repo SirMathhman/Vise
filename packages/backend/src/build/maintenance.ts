@@ -12,10 +12,7 @@ import { VERSION } from "../version.ts";
 export const extensionDir = join(globalDataDir, "extension");
 
 async function installExtension(): Promise<string> {
-  const missing = missingBuildOutput(
-    "apps/extension/dist/background.js",
-    "bun run build:ext",
-  );
+  const missing = missingBuildOutput("apps/extension/dist/background.js", "bun run build:ext");
   if (missing) {
     process.exitCode = 1;
     return missing;
@@ -30,14 +27,10 @@ async function installExtension(): Promise<string> {
 }
 
 function setupPlaywright(): string {
-  const run = spawnSync(
-    "npm",
-    ["install", "--prefix", globalDataDir, "playwright-core"],
-    {
-      stdio: "inherit",
-      shell: true,
-    },
-  );
+  const run = spawnSync("npm", ["install", "--prefix", globalDataDir, "playwright-core"], {
+    stdio: "inherit",
+    shell: true,
+  });
   if (run.status !== 0) {
     process.exitCode = 1;
     return "could not install playwright-core: npm failed or is not on the PATH (browser_run_code needs node and npm).";
@@ -69,13 +62,10 @@ const MAINTENANCE_FLAGS = [
  * `--version`, `--install-extension`, `--setup-playwright`. Returns whether one
  * was given (the caller then starts nothing).
  */
-export async function runMaintenance(
-  argv: string[] = process.argv,
-): Promise<boolean> {
+export async function runMaintenance(argv: string[] = process.argv): Promise<boolean> {
   if (MAINTENANCE_FLAGS.some((flag) => argv.includes(flag))) useParentConsole();
   if (argv.includes("--version")) console.log(`vise ${VERSION}`);
-  else if (argv.includes("--install-extension"))
-    console.log(await installExtension());
+  else if (argv.includes("--install-extension")) console.log(await installExtension());
   else if (argv.includes("--setup-playwright")) console.log(setupPlaywright());
   else if (argv.includes("--audit-export"))
     console.log(auditExport(argv[argv.indexOf("--audit-export") + 1]));

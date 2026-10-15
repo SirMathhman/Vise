@@ -24,7 +24,6 @@ import { failedResult, str, type Reply } from "./wire/reply.ts";
  *                     { type:"profile_result", ok, deleted?, error?, name?, from? }   after a save or delete
  */
 
-
 const list = (base: string): Reply => ({
   type: "profiles",
   profiles: listProfiles(base),
@@ -51,10 +50,7 @@ function save(base: string, msg: Record<string, unknown>): Reply[] {
 }
 
 /** Handle a profile editor message; null when it is not one. */
-export function handleProfileMessage(
-  base: string,
-  msg: Record<string, unknown>,
-): Reply[] | null {
+export function handleProfileMessage(base: string, msg: Record<string, unknown>): Reply[] | null {
   const name = str(msg["name"]);
   switch (msg["type"]) {
     case "profiles_list":

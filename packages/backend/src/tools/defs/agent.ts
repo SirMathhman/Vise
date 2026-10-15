@@ -24,7 +24,7 @@ export const agentTools: Tool[] = [
     function: {
       name: "ask_user",
       description:
-        "Ask the user a question and wait for their answer. Use this when you need clarification or a decision from the user before continuing. You may provide predefined choices the user can pick from, or leave options empty for a free-form question. To ask several things at once, pass `questions`: a list of {question, options, multi_select}, asked one after another, with every answer returned together. The user's reply is returned as the tool result. Example: {\"question\": \"Which scope?\", \"options\": [{\"label\": \"Minimal\", \"description\": \"Only the list of commits\"}, {\"label\": \"Full\", \"description\": \"List, diff and branch switching\"}], \"multi_select\": false}. Every list element is ONE choice (never several joined with newlines), and multi_select is its own argument, never an option.",
+        'Ask the user a question and wait for their answer. Use this when you need clarification or a decision from the user before continuing. You may provide predefined choices the user can pick from, or leave options empty for a free-form question. To ask several things at once, pass `questions`: a list of {question, options, multi_select}, asked one after another, with every answer returned together. The user\'s reply is returned as the tool result. Example: {"question": "Which scope?", "options": [{"label": "Minimal", "description": "Only the list of commits"}, {"label": "Full", "description": "List, diff and branch switching"}], "multi_select": false}. Every list element is ONE choice (never several joined with newlines), and multi_select is its own argument, never an option.',
       parameters: {
         type: "object",
         properties: {

@@ -30,10 +30,7 @@ export interface CallReading {
 export function readCall(progress: PromptProgress): CallReading | undefined {
   if (progress.total <= 0) return undefined;
   const processed = Math.min(Math.max(progress.processed, 0), progress.total);
-  const reused = Math.min(
-    Math.max(progress.cache, 0),
-    processed || progress.total,
-  );
+  const reused = Math.min(Math.max(progress.cache, 0), processed || progress.total);
   return {
     name: NAMES[progress.purpose ?? "reply"],
     total: progress.total - reused,

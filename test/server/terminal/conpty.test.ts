@@ -28,8 +28,7 @@ describe.skipIf(process.platform !== "win32")("ConPTY", () => {
     const done = exited(pty, output);
     pty.resize(100, 30);
     pty.write("echo typed-%PROCESSOR_ARCHITECTURE:~0,0%ok\r");
-    for (let i = 0; i < 100 && !output.join("").includes("typed-ok"); i++)
-      await Bun.sleep(50);
+    for (let i = 0; i < 100 && !output.join("").includes("typed-ok"); i++) await Bun.sleep(50);
     expect(output.join("")).toContain("typed-ok");
     pty.kill();
     pty.kill();

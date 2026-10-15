@@ -1,14 +1,8 @@
-import {
-  type BrowserSettingsFields,
-  createBrowserSettings,
-} from "./browser-settings.ts";
+import { type BrowserSettingsFields, createBrowserSettings } from "./browser-settings.ts";
 import { createEnvPanel, type EnvMessage } from "./env-panel.ts";
 import { createMcpPanel, type McpMessage } from "./mcp/mcp-panel.ts";
 import { createNotesPanel, type NotesMessage } from "./notes-panel.ts";
-import {
-  createWorkflowsPanel,
-  type WorkflowsMessage,
-} from "./workflows/workflows-panel.ts";
+import { createWorkflowsPanel, type WorkflowsMessage } from "./workflows/workflows-panel.ts";
 import { requiredElement as el } from "../dom.ts";
 
 /** The slice of a server message the settings tabs react to. */
@@ -29,18 +23,9 @@ export function createSettingsPanels(
   isBusy: () => boolean,
 ): { handle(message: SettingsMessage): boolean } {
   const browser = createBrowserSettings(el("browser-settings-body"), send);
-  const general = createEnvPanel(el("general-body"), send, [
-    el("settings-btn"),
-    el("general-tab"),
-  ]);
-  const mcp = createMcpPanel(el("mcp-body"), send, [
-    el("settings-btn"),
-    el("mcp-tab"),
-  ], isBusy);
-  const notes = createNotesPanel(el("notes-body"), send, [
-    el("settings-btn"),
-    el("notes-tab"),
-  ]);
+  const general = createEnvPanel(el("general-body"), send, [el("settings-btn"), el("general-tab")]);
+  const mcp = createMcpPanel(el("mcp-body"), send, [el("settings-btn"), el("mcp-tab")], isBusy);
+  const notes = createNotesPanel(el("notes-body"), send, [el("settings-btn"), el("notes-tab")]);
   const workflows = createWorkflowsPanel(el("workflows-body"), send, [
     el("settings-btn"),
     el("workflows-tab"),

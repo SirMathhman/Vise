@@ -8,11 +8,7 @@ import type { SearchHit } from "./repl/ports.ts";
 import type { Message, Result } from "@vise/core";
 import type { GoalTraceEntry } from "@vise/core";
 import type { TodoItem } from "@vise/core";
-import {
-  parseToolHookEntries,
-  toolHookConfig,
-  type ToolHookEntry,
-} from "@vise/core";
+import { parseToolHookEntries, toolHookConfig, type ToolHookEntry } from "@vise/core";
 import { buildInitialTree } from "./fs-tree.ts";
 import { formatNotes, formatNotesWithin } from "./stores/notes-format.ts";
 import { NoteStore } from "./stores/note-store.ts";
@@ -79,10 +75,7 @@ export class FileProfileSource implements ProfileSource {
     return { ok: true, value: readProfileTools(this.base, name) };
   }
 
-  async setProfileTools(
-    name: string,
-    tools: string[] | undefined,
-  ): Promise<Result<string>> {
+  async setProfileTools(name: string, tools: string[] | undefined): Promise<Result<string>> {
     try {
       setProfileTools(this.base, name, tools);
       return { ok: true, value: name };
@@ -101,10 +94,7 @@ export class FileProfileSource implements ProfileSource {
     return { ok: true, value: readAllProfileHooks(this.base) };
   }
 
-  async setProfileHooks(
-    name: string,
-    hooks: string[],
-  ): Promise<Result<string>> {
+  async setProfileHooks(name: string, hooks: string[]): Promise<Result<string>> {
     try {
       setProfileHooks(this.base, name, hooks);
       return { ok: true, value: name };
@@ -166,9 +156,7 @@ export class ShellHook implements PreTurnHook, PostTurnHook {
         });
       });
       const res = { status, stdout: record.stdout, stderr: record.stderr };
-      const body = [res.stdout.trim(), res.stderr.trim()]
-        .filter((s) => s !== "")
-        .join("\n");
+      const body = [res.stdout.trim(), res.stderr.trim()].filter((s) => s !== "").join("\n");
       if (res.status !== 0) {
         return `hook error (exit code ${res.status}):\n${body}`.trim();
       }
@@ -207,9 +195,7 @@ export class FileNoteSource implements NoteSource {
       .filter((n) => n.name === name)
       .map((n) => ({ ...n, body: this.store.read(n) }))
       .flatMap((n) =>
-        n.body === undefined
-          ? []
-          : [{ scope: n.scope, category: n.category, body: n.body }],
+        n.body === undefined ? [] : [{ scope: n.scope, category: n.category, body: n.body }],
       );
     return { ok: true, value: found };
   }
@@ -251,15 +237,7 @@ export class FileSessionSource implements SessionSource {
     todos?: TodoItem[],
     goalTrace?: GoalTraceEntry[],
   ): Promise<Result<string>> {
-    return saveSession(
-      this.base,
-      id,
-      name,
-      messages,
-      activeProfile,
-      todos,
-      goalTrace,
-    );
+    return saveSession(this.base, id, name, messages, activeProfile, todos, goalTrace);
   }
 
   async load(ref: string): Promise<Result<SavedSession>> {
@@ -322,10 +300,7 @@ export class FileWorkflowSource implements WorkflowSource {
 
   async initWorkflow(name: string, scope: "project" | "global") {
     try {
-      initWorkflow(
-        scope === "project" ? this.projectBase : this.globalBase,
-        name,
-      );
+      initWorkflow(scope === "project" ? this.projectBase : this.globalBase, name);
       return { ok: true as const, value: name };
     } catch (err) {
       return {
@@ -376,10 +351,7 @@ export function loadHookCommands(root: string = process.cwd()): HookConfig {
     }
     if (typeof post === "string") {
       result.post = [post];
-    } else if (
-      Array.isArray(post) &&
-      post.every((c) => typeof c === "string")
-    ) {
+    } else if (Array.isArray(post) && post.every((c) => typeof c === "string")) {
       result.post = post;
     }
     return result;
@@ -446,10 +418,20 @@ export class HookStore implements HookSource {
         ["preTurnCommand", hooks.pre],
         ["postTurnCommand", hooks.post],
         ...(hooks.preTool
-          ? [["preToolCommand", hooks.preTool.map(toolHookConfig)] as [string, (string | ToolHookEntry)[]]]
+          ? [
+              ["preToolCommand", hooks.preTool.map(toolHookConfig)] as [
+                string,
+                (string | ToolHookEntry)[],
+              ],
+            ]
           : []),
         ...(hooks.postTool
-          ? [["postToolCommand", hooks.postTool.map(toolHookConfig)] as [string, (string | ToolHookEntry)[]]]
+          ? [
+              ["postToolCommand", hooks.postTool.map(toolHookConfig)] as [
+                string,
+                (string | ToolHookEntry)[],
+              ],
+            ]
           : []),
       ];
       for (const [key, list] of lists) {

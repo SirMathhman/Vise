@@ -36,7 +36,9 @@ function createXterm(
 ): { term: Terminal; fit: FitAddon } {
   const term = new Terminal({
     cursorBlink: true,
-    fontFamily: getComputedStyle(document.documentElement).getPropertyValue("--font-mono").trim() || "monospace",
+    fontFamily:
+      getComputedStyle(document.documentElement).getPropertyValue("--font-mono").trim() ||
+      "monospace",
     fontSize: 13,
     scrollback: 5000,
     theme: themeFromPage(),
@@ -153,7 +155,9 @@ export function createTerminalPanel(
         }
         case "term_exit":
           exited = true;
-          term?.write(`\r\n\x1b[2m[process exited ${message.code ?? "?"} — press Enter to restart]\x1b[0m\r\n`);
+          term?.write(
+            `\r\n\x1b[2m[process exited ${message.code ?? "?"} — press Enter to restart]\x1b[0m\r\n`,
+          );
           return true;
         case "term_error":
           onError(`terminal: ${message.message ?? "error"}`);

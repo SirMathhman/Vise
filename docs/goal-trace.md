@@ -23,32 +23,32 @@ shortened there; the saved text is complete up to about 4000 characters each.)
 `after` (how many messages the conversation had then, to place it in the
 transcript), `kind`, and `data` (the whole entry as JSON).
 
-| `kind`       | What it says                                                                                   |
-| ------------ | ---------------------------------------------------------------------------------------------- |
-| `setting`    | goal checking was switched on or off                                                           |
-| `turn_start` | a turn began: the user's line, whether goal checking was on, the goal carried in               |
-| `ask`        | one hidden model call (each retry too): `purpose`, the exact `question`, the raw `reply` or the `failure` |
+| `kind`       | What it says                                                                                                                                                                     |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `setting`    | goal checking was switched on or off                                                                                                                                             |
+| `turn_start` | a turn began: the user's line, whether goal checking was on, the goal carried in                                                                                                 |
+| `ask`        | one hidden model call (each retry too): `purpose`, the exact `question`, the raw `reply` or the `failure`                                                                        |
 | `goal`       | the goal derived for the turn and when it is done; `fallback` = it is just the user's words; `hold` = the user's standing restriction ("don't submit yet"), carried until lifted |
-| `verdict`    | the goal check's answer: `yes`, `no`, `blocked` or `unknown`, with its detail                  |
-| `progress`   | a mid-turn progress check; for `stuck`, whether the user chose to keep going                   |
-| `continue`   | the note sent to push the model back to work, and the counters behind the decision             |
-| `exit`       | **why the goal loop ended**, exactly one per turn, with the model's last reply                 |
+| `verdict`    | the goal check's answer: `yes`, `no`, `blocked` or `unknown`, with its detail                                                                                                    |
+| `progress`   | a mid-turn progress check; for `stuck`, whether the user chose to keep going                                                                                                     |
+| `continue`   | the note sent to push the model back to work, and the counters behind the decision                                                                                               |
+| `exit`       | **why the goal loop ended**, exactly one per turn, with the model's last reply                                                                                                   |
 
 ## Why a turn ended (`exit.reason`)
 
-| Reason                   | Meaning                                                                          |
-| ------------------------ | -------------------------------------------------------------------------------- |
-| `met`                    | the check said the goal is accomplished                                          |
-| `blocked`                | the check said it needs the user (the detail says what)                          |
-| `unknown`                | the goal check could not be made (the detail is the exact reason)                |
-| `same-step`              | the check kept asking for the same step and nothing was done in between          |
-| `max-continues-declined` | after many automatic continues the user was asked and said stop                  |
+| Reason                   | Meaning                                                                           |
+| ------------------------ | --------------------------------------------------------------------------------- |
+| `met`                    | the check said the goal is accomplished                                           |
+| `blocked`                | the check said it needs the user (the detail says what)                           |
+| `unknown`                | the goal check could not be made (the detail is the exact reason)                 |
+| `same-step`              | the check kept asking for the same step and nothing was done in between           |
+| `max-continues-declined` | after many automatic continues the user was asked and said stop                   |
 | `halted-progress`        | the mid-turn progress check found the work stuck and the user did not override it |
-| `turn-failed`            | the turn itself failed (the detail is the error); no check was made              |
-| `interrupted`            | the turn was stopped (Ctrl+C, stop button)                                       |
-| `exception`              | something threw; the detail is the message                                       |
-| `goal-off`               | goal checking was off for this turn                                              |
-| `no-goal`                | no goal could be derived, so nothing was checked                                 |
+| `turn-failed`            | the turn itself failed (the detail is the error); no check was made               |
+| `interrupted`            | the turn was stopped (Ctrl+C, stop button)                                        |
+| `exception`              | something threw; the detail is the message                                        |
+| `goal-off`               | goal checking was off for this turn                                               |
+| `no-goal`                | no goal could be derived, so nothing was checked                                  |
 
 `exit.lastReply` (the start of the model's last reply) and `exit.toolResults`
 (tool results in the turn) are usually the clue when the model "just stopped".

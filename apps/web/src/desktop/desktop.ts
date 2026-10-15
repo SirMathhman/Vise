@@ -49,9 +49,7 @@ export function logToFile(path: string = logPath): void {
     (level: string) =>
     (...parts: unknown[]): void => {
       try {
-        const text = parts
-          .map((p) => (typeof p === "string" ? p : Bun.inspect(p)))
-          .join(" ");
+        const text = parts.map((p) => (typeof p === "string" ? p : Bun.inspect(p))).join(" ");
         appendFileSync(path, `${new Date().toISOString()} ${level} ${text}\n`);
       } catch {
         // Logging must never break the program.
@@ -87,10 +85,7 @@ const START_TIMEOUT_MS = 10_000;
  * is up, `closed` when the user closes it, `failed` if it cannot start,
  * crashes or does not appear in time. Returns a function that ends the window thread.
  */
-export function openWindow(
-  url: string,
-  onEvent: (event: WindowEvent) => void,
-): () => void {
+export function openWindow(url: string, onEvent: (event: WindowEvent) => void): () => void {
   // Bun embeds a worker only when the compiled build names it as a plain literal, relative to the folder
   // the entry points share (src/web, see scripts/build-exe.ts); from source the path is relative to this file.
   let worker: Worker;
@@ -160,9 +155,7 @@ export function useParentConsole(): void {
     if (!symbols.AttachConsole(0xffffffff)) return;
     const out = openSync("CONOUT$", "w");
     const print = (...parts: unknown[]): void => {
-      const text = parts.map((p) =>
-        typeof p === "string" ? p : Bun.inspect(p),
-      );
+      const text = parts.map((p) => (typeof p === "string" ? p : Bun.inspect(p)));
       writeSync(out, `${text.join(" ")}\r\n`);
     };
     console.log = print;

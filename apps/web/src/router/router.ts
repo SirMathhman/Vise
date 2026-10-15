@@ -38,13 +38,20 @@ interface Route {
 }
 
 const prefix = (start: string) => (type: string) => type.startsWith(start);
-const exact = (...types: string[]) => (type: string) => types.includes(type);
+const exact =
+  (...types: string[]) =>
+  (type: string) =>
+    types.includes(type);
 
 /** The message as the plain record the API handlers take. */
-const record = (msg: WireMessage): Record<string, unknown> => msg as unknown as Record<string, unknown>;
+const record = (msg: WireMessage): Record<string, unknown> =>
+  msg as unknown as Record<string, unknown>;
 
 /** Send every reply an API handler produced (it answers undefined for a message that is not its own). */
-function sendAll(conn: ConnectionState, replies: Record<string, unknown>[] | null | undefined): void {
+function sendAll(
+  conn: ConnectionState,
+  replies: Record<string, unknown>[] | null | undefined,
+): void {
   for (const reply of replies ?? []) conn.send(reply);
 }
 
@@ -97,16 +104,21 @@ const ROUTES: Route[] = [
   // Browser view traffic.
   { owns: prefix("browser_"), run: (conn, msg) => void conn.bridge.handle(record(msg)) },
   // The integrated terminal.
-  { owns: prefix("term_"), run: (conn, msg) => handleTerminalMessage(conn.terminal, msg, conn.send) },
+  {
+    owns: prefix("term_"),
+    run: (conn, msg) => handleTerminalMessage(conn.terminal, msg, conn.send),
+  },
   // MCP server settings.
   {
     owns: prefix("mcp_"),
-    run: async (conn, msg) => conn.send(await handleMcpMessage(conn.mcp, conn.ws.data.root, record(msg))),
+    run: async (conn, msg) =>
+      conn.send(await handleMcpMessage(conn.mcp, conn.ws.data.root, record(msg))),
   },
   // The model picker's list and switch.
   {
     owns: prefix("model_"),
-    run: async (conn, msg) => conn.send(await handleModelMessage(conn.edge.modelPicker, record(msg))),
+    run: async (conn, msg) =>
+      conn.send(await handleModelMessage(conn.edge.modelPicker, record(msg))),
   },
   // The live look at model calls (the turn is what it watches, so it must not wait for it).
   {
@@ -125,17 +137,25 @@ const ROUTES: Route[] = [
     },
   },
   // The settings file.
-  { owns: exact("env_choices"), run: async (conn, msg) => sendAll(conn, await handleEnvChoices(record(msg))) },
-  { owns: exact("env_get", "env_set"), run: (conn, msg) => sendAll(conn, handleSettingsMessage(record(msg))) },
+  {
+    owns: exact("env_choices"),
+    run: async (conn, msg) => sendAll(conn, await handleEnvChoices(record(msg))),
+  },
+  {
+    owns: exact("env_get", "env_set"),
+    run: (conn, msg) => sendAll(conn, handleSettingsMessage(record(msg))),
+  },
   // The notes, workflow and profile editors read and write their stores directly.
   {
-    owns: (type) => type.startsWith("note") || type.startsWith("workflow") || type.startsWith("profile"),
+    owns: (type) =>
+      type.startsWith("note") || type.startsWith("workflow") || type.startsWith("profile"),
     run: (conn, msg) => sendAll(conn, handleEditorMessage(conn.dataDir, msg as never)),
   },
   // The file explorer's semantic search.
   {
     owns: prefix("sem_"),
-    run: async (conn, msg) => sendAll(conn, await handleSemanticMessage(conn.edge.semantic, record(msg))),
+    run: async (conn, msg) =>
+      sendAll(conn, await handleSemanticMessage(conn.edge.semantic, record(msg))),
   },
   { owns: exact("hooks_get"), run: (conn) => pushHooks(conn) },
   { owns: exact("lists_get"), run: (conn) => sendLists(conn.edge, conn.send) },
@@ -145,7 +165,10 @@ const ROUTES: Route[] = [
 ];
 
 /** Route one raw WebSocket message from the page. */
-export function handleMessage(conn: ConnectionState, message: string | Buffer<ArrayBuffer> | null): void {
+export function handleMessage(
+  conn: ConnectionState,
+  message: string | Buffer<ArrayBuffer> | null,
+): void {
   let raw: unknown;
   try {
     raw = JSON.parse(String(message));

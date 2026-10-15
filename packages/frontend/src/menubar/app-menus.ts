@@ -56,7 +56,9 @@ function sessionMenu(ctx: AppMenuContext): MenuEntry[] {
   ];
   for (const session of saved.slice(0, RECENT)) {
     const detail = session.updated ? relativeTime(session.updated, new Date()) : undefined;
-    entries.push(item(session.name, () => ctx.sendLine(`/resume ${session.id}`), { disabled: busy, detail }));
+    entries.push(
+      item(session.name, () => ctx.sendLine(`/resume ${session.id}`), { disabled: busy, detail }),
+    );
   }
   entries.push(
     item("All sessions…", () => ctx.pages.open("sessions")),
@@ -81,7 +83,9 @@ function viewMenu(ctx: AppMenuContext): MenuEntry[] {
   }
   entries.push({ kind: "heading", label: "Theme" });
   for (const [value, label] of THEME_CHOICES) {
-    entries.push(item(label, () => theme.set(value), { checked: theme.choice() === value, radio: true }));
+    entries.push(
+      item(label, () => theme.set(value), { checked: theme.choice() === value, radio: true }),
+    );
   }
   entries.push(
     { kind: "separator" },
@@ -118,10 +122,14 @@ function agentMenu(ctx: AppMenuContext): MenuEntry[] {
     entries.push({ kind: "heading", label: "Reasoning effort" });
     for (const option of levels) {
       entries.push(
-        item(option.textContent ?? option.value, () => {
-          ctx.reasoning.value = option.value;
-          ctx.reasoning.dispatchEvent(new Event("change"));
-        }, { checked: ctx.reasoning.value === option.value, radio: true, disabled: busy }),
+        item(
+          option.textContent ?? option.value,
+          () => {
+            ctx.reasoning.value = option.value;
+            ctx.reasoning.dispatchEvent(new Event("change"));
+          },
+          { checked: ctx.reasoning.value === option.value, radio: true, disabled: busy },
+        ),
       );
     }
   }
@@ -137,11 +145,14 @@ function agentMenu(ctx: AppMenuContext): MenuEntry[] {
 }
 
 /** The menu bar's three menus, in order. */
-export function appMenus(ctx: AppMenuContext, triggers: {
-  session: HTMLButtonElement;
-  view: HTMLButtonElement;
-  agent: HTMLButtonElement;
-}): MenuSpec[] {
+export function appMenus(
+  ctx: AppMenuContext,
+  triggers: {
+    session: HTMLButtonElement;
+    view: HTMLButtonElement;
+    agent: HTMLButtonElement;
+  },
+): MenuSpec[] {
   return [
     { trigger: triggers.session, entries: () => sessionMenu(ctx) },
     { trigger: triggers.view, entries: () => viewMenu(ctx) },

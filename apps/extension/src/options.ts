@@ -11,11 +11,9 @@ void getPort().then((value) => {
 document.getElementById("save")?.addEventListener("click", () => {
   const n = Number(port.value);
   const valid = Number.isInteger(n) && n >= 1 && n <= 65535;
-  void browser.storage.local
-    .set({ port: valid ? n : DEFAULT_PORT })
-    .then(() => {
-      note.textContent = valid
-        ? "saved: reload the extension to reconnect"
-        : `not a valid port; using ${DEFAULT_PORT}`;
-    });
+  void browser.storage.local.set({ port: valid ? n : DEFAULT_PORT }).then(() => {
+    note.textContent = valid
+      ? "saved: reload the extension to reconnect"
+      : `not a valid port; using ${DEFAULT_PORT}`;
+  });
 });

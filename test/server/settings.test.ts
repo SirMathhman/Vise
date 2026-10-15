@@ -3,10 +3,12 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { applySettings, config } from "../../packages/backend/src/config.ts";
-import { loadSettingsFile, saveSettings } from "../../packages/backend/src/settings/settings-file.ts";
+import {
+  loadSettingsFile,
+  saveSettings,
+} from "../../packages/backend/src/settings/settings-file.ts";
 
-const file = (): string =>
-  join(mkdtempSync(join(tmpdir(), "vise-env-")), ".env");
+const file = (): string => join(mkdtempSync(join(tmpdir(), "vise-env-")), ".env");
 
 afterEach(() => applySettings({}));
 
@@ -27,9 +29,7 @@ test("an empty value goes back to the default", () => {
 
 test("a bad number or unknown name is refused and nothing changes", () => {
   const path = file();
-  expect(saveSettings({ VISE_SAVE_EVERY_ROUNDS: "lots" }, path)).toContain(
-    "number",
-  );
+  expect(saveSettings({ VISE_SAVE_EVERY_ROUNDS: "lots" }, path)).toContain("number");
   expect(saveSettings({ NOPE: "1" }, path)).toContain("unknown");
   expect(config.saveEvery).toBe(25);
 });

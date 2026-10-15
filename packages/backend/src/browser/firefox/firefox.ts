@@ -6,24 +6,10 @@ import { dataDir } from "../../data-dir.ts";
 import { BidiConnection } from "./bidi.ts";
 import * as actions from "./bidi-actions.ts";
 import { dispatchInput, startScreencast } from "./bidi-view.ts";
-import {
-  pageActionScript,
-  probeScript,
-  type PageAction,
-} from "../page-scripts.ts";
+import { pageActionScript, probeScript, type PageAction } from "../page-scripts.ts";
 import type { PageProbe } from "../probe.ts";
-import {
-  killBrowsersUsing,
-  removeProfile,
-  sweepStaleProfiles,
-} from "../processes.ts";
-import type {
-  BrowserBackend,
-  BrowserInput,
-  DialogInfo,
-  FrameListener,
-  TabInfo,
-} from "../types.ts";
+import { killBrowsersUsing, removeProfile, sweepStaleProfiles } from "../processes.ts";
+import type { BrowserBackend, BrowserInput, DialogInfo, FrameListener, TabInfo } from "../types.ts";
 
 /** Firefox install locations (forward slashes work for Windows paths). */
 const CANDIDATES = [
@@ -82,10 +68,9 @@ export class FirefoxBackend implements BrowserBackend {
 
   async openTab(url: string): Promise<TabInfo> {
     const bidi = await this.connection();
-    const { context } = await bidi.send<{ context: string }>(
-      "browsingContext.create",
-      { type: "tab" },
-    );
+    const { context } = await bidi.send<{ context: string }>("browsingContext.create", {
+      type: "tab",
+    });
     const id = this.register(context);
     return this.navigate(id, url);
   }
@@ -132,9 +117,7 @@ export class FirefoxBackend implements BrowserBackend {
   }
 
   async snapshot(id: number): Promise<string> {
-    const outline = await this.inTab(id, (bidi, context) =>
-      actions.snapshot(bidi, context),
-    );
+    const outline = await this.inTab(id, (bidi, context) => actions.snapshot(bidi, context));
     return outline ?? "(a dialog opened while reading the page)";
   }
 
@@ -143,9 +126,7 @@ export class FirefoxBackend implements BrowserBackend {
   }
 
   async uploadFiles(id: number, ref: string, paths: string[]): Promise<void> {
-    await this.inTab(id, (bidi, context) =>
-      actions.uploadFiles(bidi, context, ref, paths),
-    );
+    await this.inTab(id, (bidi, context) => actions.uploadFiles(bidi, context, ref, paths));
   }
 
   runPageAction(id: number, action: PageAction): Promise<unknown> {
@@ -156,10 +137,10 @@ export class FirefoxBackend implements BrowserBackend {
 
   async screenshot(id: number, fullPage: boolean): Promise<string> {
     const data = await this.inTab(id, async (bidi, context) => {
-      const shot = await bidi.send<{ data: string }>(
-        "browsingContext.captureScreenshot",
-        { context, origin: fullPage ? "document" : "viewport" },
-      );
+      const shot = await bidi.send<{ data: string }>("browsingContext.captureScreenshot", {
+        context,
+        origin: fullPage ? "document" : "viewport",
+      });
       return shot.data;
     });
     if (data === undefined) throw new Error("a dialog is open on that tab");
@@ -171,9 +152,7 @@ export class FirefoxBackend implements BrowserBackend {
   }
 
   async drag(id: number, fromRef: string, toRef: string): Promise<void> {
-    await this.inTab(id, (bidi, context) =>
-      actions.drag(bidi, context, fromRef, toRef),
-    );
+    await this.inTab(id, (bidi, context) => actions.drag(bidi, context, fromRef, toRef));
   }
 
   async typeText(
@@ -182,9 +161,7 @@ export class FirefoxBackend implements BrowserBackend {
     text: string,
     options: { replace: boolean; key?: string },
   ): Promise<void> {
-    await this.inTab(id, (bidi, context) =>
-      actions.typeText(bidi, context, ref, text, options),
-    );
+    await this.inTab(id, (bidi, context) => actions.typeText(bidi, context, ref, text, options));
   }
 
   pendingDialog(id: number): DialogInfo | null {
@@ -192,11 +169,7 @@ export class FirefoxBackend implements BrowserBackend {
     return (context && this.dialogs.get(context)) || null;
   }
 
-  async handleDialog(
-    id: number,
-    accept: boolean,
-    promptText?: string,
-  ): Promise<void> {
+  async handleDialog(id: number, accept: boolean, promptText?: string): Promise<void> {
     const bidi = await this.connection();
     const context = this.context(id);
     await bidi.send("browsingContext.handleUserPrompt", {
@@ -208,9 +181,7 @@ export class FirefoxBackend implements BrowserBackend {
   }
 
   runCode(): Promise<string> {
-    return Promise.reject(
-      new Error("browser_run_code is not supported with Firefox"),
-    );
+    return Promise.reject(new Error("browser_run_code is not supported with Firefox"));
   }
 
   async closeTab(id: number): Promise<void> {
@@ -307,9 +278,7 @@ export class FirefoxBackend implements BrowserBackend {
   /** The tab's title; empty while a dialog blocks its script. */
   private async title(bidi: BidiConnection, context: string): Promise<string> {
     if (this.dialogs.has(context)) return "";
-    const read = actions
-      .evalJson<string>(bidi, context, "document.title")
-      .catch(() => "");
+    const read = actions.evalJson<string>(bidi, context, "document.title").catch(() => "");
     const late = new Promise<string>((resolve) =>
       setTimeout(() => resolve(""), config.firefoxTitleTimeoutMs),
     );
@@ -319,9 +288,7 @@ export class FirefoxBackend implements BrowserBackend {
   private async info(bidi: BidiConnection, id: number): Promise<TabInfo> {
     const context = this.context(id);
     const url =
-      (await actions
-        .evalJson<string>(bidi, context, "location.href")
-        .catch(() => "")) ?? "";
+      (await actions.evalJson<string>(bidi, context, "location.href").catch(() => "")) ?? "";
     return { id, url, title: await this.title(bidi, context) };
   }
 
@@ -410,16 +377,16 @@ export class FirefoxBackend implements BrowserBackend {
 
   private async connect(): Promise<BidiConnection> {
     const port = this.options.port ?? (await this.launch());
-    const bidi = await BidiConnection.connect(
-      `ws://127.0.0.1:${port}/session`,
-    ).catch((error: unknown) => {
-      const reason = error instanceof Error ? error.message : String(error);
-      throw new Error(
-        /active sessions/i.test(reason)
-          ? "Firefox already has a WebDriver client attached (it allows only one)"
-          : `cannot attach to Firefox on port ${port}: ${reason}`,
-      );
-    });
+    const bidi = await BidiConnection.connect(`ws://127.0.0.1:${port}/session`).catch(
+      (error: unknown) => {
+        const reason = error instanceof Error ? error.message : String(error);
+        throw new Error(
+          /active sessions/i.test(reason)
+            ? "Firefox already has a WebDriver client attached (it allows only one)"
+            : `cannot attach to Firefox on port ${port}: ${reason}`,
+        );
+      },
+    );
     this.trackDialogs(bidi);
     await this.watchTabs(bidi);
     return bidi;
@@ -457,9 +424,7 @@ async function readPort(file: string): Promise<number> {
   while (Date.now() < deadline) {
     if (existsSync(file)) {
       try {
-        const port = (
-          JSON.parse(readFileSync(file, "utf8")) as { ws_port?: number }
-        ).ws_port;
+        const port = (JSON.parse(readFileSync(file, "utf8")) as { ws_port?: number }).ws_port;
         if (port) return port;
       } catch {
         // the file is still being written

@@ -33,9 +33,7 @@ export function pruneAudit(db: Database, cutoff: string): number {
     for (const table of BY_SESSION) {
       db.query(`DELETE FROM ${table} WHERE session_id IN (${old})`).run(cutoff);
     }
-    return db
-      .query(`DELETE FROM audit_sessions WHERE id IN (${old})`)
-      .run(cutoff).changes;
+    return db.query(`DELETE FROM audit_sessions WHERE id IN (${old})`).run(cutoff).changes;
   })();
 }
 
@@ -47,9 +45,7 @@ const pruned = new Set<string>();
  * starts recording (never from the write path of a turn). A failure is
  * returned, not thrown, and the next call tries again.
  */
-export function pruneAuditLog(
-  path: string = join(globalDataDir, "audit.db"),
-): void {
+export function pruneAuditLog(path: string = join(globalDataDir, "audit.db")): void {
   if (pruned.has(path) || config.auditRetentionDays <= 0) return;
   const opened = openDb(path, AUDIT_MIGRATIONS);
   if (!opened.ok) return;

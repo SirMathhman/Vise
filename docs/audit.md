@@ -16,15 +16,15 @@ prefix is enough; ids are in `audit_sessions`).
 
 ## Tables
 
-| Table               | One row per                                                                |
-| ------------------- | -------------------------------------------------------------------------- |
-| `audit_sessions`    | conversation (`root`, `saved_session_id` = the id `/resume` takes)         |
-| `audit_turns`       | user message (`user_text`, `outcome` ok/failed/interrupted, `error`)       |
-| `audit_messages`    | message in the conversation, subagents' too (`depth` > 0)                  |
-| `audit_model_calls` | call to the model (`purpose`, `ms`, `prompt_tokens`, reply, `error`)       |
-| `audit_tool_calls`  | tool call (`args`, whole `result`, `ok`, `ms`, `depth`)                    |
-| `audit_events`      | command, hook run, compaction, goal event (`name`, JSON `payload`)         |
-| `audit_fts`         | full-text index of messages and tool results                               |
+| Table               | One row per                                                          |
+| ------------------- | -------------------------------------------------------------------- |
+| `audit_sessions`    | conversation (`root`, `saved_session_id` = the id `/resume` takes)   |
+| `audit_turns`       | user message (`user_text`, `outcome` ok/failed/interrupted, `error`) |
+| `audit_messages`    | message in the conversation, subagents' too (`depth` > 0)            |
+| `audit_model_calls` | call to the model (`purpose`, `ms`, `prompt_tokens`, reply, `error`) |
+| `audit_tool_calls`  | tool call (`args`, whole `result`, `ok`, `ms`, `depth`)              |
+| `audit_events`      | command, hook run, compaction, goal event (`name`, JSON `payload`)   |
+| `audit_fts`         | full-text index of messages and tool results                         |
 
 ## Example queries
 
@@ -65,13 +65,13 @@ what the model had written. `raw` is everything the call wrote **before** it
 was parsed (tool calls included, which the chat never shows); `raw_reasoning`
 is the end of its reasoning.
 
-| Column (`audit_model_calls`)       | Meaning                                                              |
-| ---------------------------------- | -------------------------------------------------------------------- |
-| `request`                          | the client's number for the call (`/audit call <n>`)                 |
-| `state`                            | `running`, `done`, `stopped`, `error`, `abandoned` (the program died) |
-| `stop_reason`                      | `loop`, `token_cap`, `interrupted`, `error` when it was cut short    |
-| `completion_tokens`, `finish_reason` | what the server counted and why it ended the call                  |
-| `loop_period`, `loop_repeats`      | what repeated at the end of the call, if anything                    |
+| Column (`audit_model_calls`)         | Meaning                                                               |
+| ------------------------------------ | --------------------------------------------------------------------- |
+| `request`                            | the client's number for the call (`/audit call <n>`)                  |
+| `state`                              | `running`, `done`, `stopped`, `error`, `abandoned` (the program died) |
+| `stop_reason`                        | `loop`, `token_cap`, `interrupted`, `error` when it was cut short     |
+| `completion_tokens`, `finish_reason` | what the server counted and why it ended the call                     |
+| `loop_period`, `loop_repeats`        | what repeated at the end of the call, if anything                     |
 
 Vise stops a call itself when it repeats the same text (`VISE_LOOP_GUARD`) or
 writes more than `VISE_MAX_CALL_TOKENS` tokens (0 = no limit). The turn then

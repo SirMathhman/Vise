@@ -10,7 +10,10 @@ export function createToolDetails(): {
   /** The last call's full result arrived. */
   result(text: string | undefined): void;
 } {
-  const details = new WeakMap<HTMLElement, { args?: string; result?: string; block?: HTMLElement }>();
+  const details = new WeakMap<
+    HTMLElement,
+    { args?: string; result?: string; block?: HTMLElement }
+  >();
   let last: HTMLElement | null = null;
 
   function render(line: HTMLElement): void {

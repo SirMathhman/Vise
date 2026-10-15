@@ -95,8 +95,7 @@ export const fileTools: Tool[] = [
           },
           new_string: {
             type: "string",
-            description:
-              "Exact literal text to replace old_string with. May be empty to delete.",
+            description: "Exact literal text to replace old_string with. May be empty to delete.",
           },
         },
         required: ["path", "old_string", "new_string"],
@@ -127,8 +126,7 @@ export const fileTools: Tool[] = [
     display: { label: "Delete folder", icon: "🗑" },
     function: {
       name: "delete_directory",
-      description:
-        "Delete the directory at the given path and everything inside it",
+      description: "Delete the directory at the given path and everything inside it",
       parameters: {
         type: "object",
         properties: {
@@ -159,8 +157,7 @@ export const fileTools: Tool[] = [
           },
           root: {
             type: "string",
-            description:
-              "Directory to search from (default '.'). Traversed recursively.",
+            description: "Directory to search from (default '.'). Traversed recursively.",
           },
         },
         required: ["pattern"],
@@ -205,7 +202,8 @@ export const fileTools: Tool[] = [
         properties: {
           query: {
             type: "string",
-            description: "What you are looking for, in plain words (a question or a description of the code).",
+            description:
+              "What you are looking for, in plain words (a question or a description of the code).",
           },
           limit: {
             type: "integer",

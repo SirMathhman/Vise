@@ -79,7 +79,7 @@ Enforce a configurable maximum number of tabs the extension can control at once 
 
 1. **Unit test: `tryGrant` limit** — in a new or existing test file, verify that `tryGrant` succeeds when `owned.size < limit` and fails at `limit`. Verify that `release` promotes from `pending`.
 2. **Integration: server sends config** — verify that `ExtensionHub.attach()` sends the config message (check in `test/web/ext-hub.test.ts` or similar).
-3. **Manual: agent opens tabs to the limit** — with the extension loaded, have the agent open 5 tabs (default limit). The 6th `browser_open` should fail with `"tab limit reached"`. 
+3. **Manual: agent opens tabs to the limit** — with the extension loaded, have the agent open 5 tabs (default limit). The 6th `browser_open` should fail with `"tab limit reached"`.
 4. **Manual: auto-grant queue** — with 5 tabs open, navigate to a page with a `target=_blank` link. Click it. The new tab opens in Firefox but is not owned. Close one of the 5 tabs via `browser_close_tab`. The queued tab should be promoted and the agent should get a notice.
 5. **Manual: user shares at limit** — with 5 tabs open, click "Give Vise this tab" in the sidebar. It should show an error/notice.
 6. **Manual: `browser_close_tab`** — agent calls it with a valid tab id. The tab closes in Firefox and is removed from the owned list.

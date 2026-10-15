@@ -9,8 +9,7 @@ const PAIR_RETRY_MS = 1500;
  * from the local server.
  */
 
-const el = <T extends HTMLElement>(id: string): T =>
-  document.getElementById(id) as T;
+const el = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
 const frame = el<HTMLIFrameElement>("app");
 const offline = el("offline");
@@ -189,9 +188,7 @@ function render(status: Status): void {
     const drop = document.createElement("button");
     drop.textContent = "release";
     drop.addEventListener("click", () => {
-      void browser.runtime
-        .sendMessage({ type: "release", tab: tab.id })
-        .then(refresh);
+      void browser.runtime.sendMessage({ type: "release", tab: tab.id }).then(refresh);
     });
     item.append(title, drop);
     list.append(item);
@@ -209,10 +206,8 @@ async function refresh(): Promise<void> {
     const reason = error instanceof Error ? error.message : String(error);
     el("badge").className = "bad";
     el("badge-text").textContent = "✕ The Vise extension is not responding";
-    el("badge-help").textContent =
-      `Reload it from about:debugging (${reason}).`;
-    el("checks").textContent =
-      `Server ${serverUp ? "✓" : "✕"} · Extension ✕ (not responding)`;
+    el("badge-help").textContent = `Reload it from about:debugging (${reason}).`;
+    el("checks").textContent = `Server ${serverUp ? "✓" : "✕"} · Extension ✕ (not responding)`;
   }
 }
 
@@ -247,9 +242,7 @@ function describeGive(result: GiveResult): { ok: boolean; text: string } {
   const name = result.tab ? `"${result.tab}"` : "this tab";
   return {
     ok: true,
-    text: result.already
-      ? `Vise already has ${name}.`
-      : `Vise can now use ${name}.`,
+    text: result.already ? `Vise already has ${name}.` : `Vise can now use ${name}.`,
   };
 }
 

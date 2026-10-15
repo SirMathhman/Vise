@@ -4,9 +4,7 @@ import { answerFrom, decideKey } from "../../packages/frontend/src/composer/ask-
 const choices = ["Red", "Green", "Blue"];
 
 test("a single answer is what was typed", () => {
-  expect(answerFrom(choices, new Set(), "  something else ", false)).toBe(
-    "something else",
-  );
+  expect(answerFrom(choices, new Set(), "  something else ", false)).toBe("something else");
 });
 
 test("several allowed: the ticked choices in the order offered, then anything typed", () => {
@@ -68,9 +66,9 @@ test("Enter confirms in the reply box or on the question, and sends what is tick
   });
   // On a choice button Enter is the browser's own click, unless ticked choices are waiting to be sent.
   expect(decideKey({ ...idle, key: "Enter" })).toEqual({ type: "none" });
-  expect(
-    decideKey({ ...idle, key: "Enter", multi: true, selectedCount: 2 }),
-  ).toEqual({ type: "confirm" });
+  expect(decideKey({ ...idle, key: "Enter", multi: true, selectedCount: 2 })).toEqual({
+    type: "confirm",
+  });
 });
 
 test("a letter moves into the reply box, a shortcut does not", () => {

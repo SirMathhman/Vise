@@ -10,9 +10,7 @@ export function pairWithExtension(): void {
     if (data?.type !== "vise-hello") return;
     if (!event.origin.startsWith("moz-extension://")) return;
     void fetch("/api/ext-token", { method: "POST" })
-      .then((res) =>
-        res.ok ? (res.json() as Promise<{ token: string }>) : null,
-      )
+      .then((res) => (res.ok ? (res.json() as Promise<{ token: string }>) : null))
       .then((body) => {
         if (body) {
           (event.source as Window | null)?.postMessage(

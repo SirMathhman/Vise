@@ -47,11 +47,7 @@ function parseArgs(raw: string): Record<string, unknown> | undefined {
  * session itself writes: the opening context (the first message) and
  * bracketed notices.
  */
-function typedByUser(
-  message: Message,
-  index: number,
-  marked: boolean,
-): boolean {
+function typedByUser(message: Message, index: number, marked: boolean): boolean {
   if (marked) return message.typed === true;
   return index > 0 && !message.content.startsWith("[");
 }
@@ -95,6 +91,7 @@ export function historyEntries(messages: Message[]): HistoryEntry[] {
       }
     } else if (m.role === "tool") {
       for (const image of m.images ?? []) {
+        if (image.quiet) continue;
         bodies.push({ kind: "image", id: image.id, label: image.label });
       }
     }

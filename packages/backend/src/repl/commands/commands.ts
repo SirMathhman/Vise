@@ -101,10 +101,7 @@ export function handleReasoningCommand(
     const current = reasoningController.getReasoningEffort() ?? "default";
     return {
       ok: true,
-      value: formatReasoningList(
-        REASONING_EFFORTS as unknown as string[],
-        current,
-      ),
+      value: formatReasoningList(REASONING_EFFORTS as unknown as string[], current),
     };
   }
 
@@ -120,9 +117,7 @@ export function handleReasoningCommand(
     };
   }
 
-  reasoningController.setReasoningEffort(
-    lower === "default" ? undefined : lower,
-  );
+  reasoningController.setReasoningEffort(lower === "default" ? undefined : lower);
   return {
     ok: true,
     value:
@@ -160,8 +155,7 @@ export function handleBurstCommand(
       },
     };
   }
-  if (arg === "")
-    return { ok: true, value: `burst mode is ${isOn() ? "on" : "off"}` };
+  if (arg === "") return { ok: true, value: `burst mode is ${isOn() ? "on" : "off"}` };
   if (arg !== "on" && arg !== "off") {
     return {
       ok: false,
@@ -215,9 +209,7 @@ export function handleToolCommand(
   const all = toolController.list();
   const isTool = all.some((t) => t.name === name);
   const enabled = verb === "enable";
-  const names = isTool
-    ? [name]
-    : all.filter((t) => t.category === name).map((t) => t.name);
+  const names = isTool ? [name] : all.filter((t) => t.category === name).map((t) => t.name);
   if (names.length === 0) {
     return {
       ok: false,
@@ -232,9 +224,7 @@ export function handleToolCommand(
   onToggle?.(names, enabled);
   return {
     ok: true,
-    value: isTool
-      ? `${name} ${verb}d`
-      : `category '${name}' ${verb}d (${names.length} tools)`,
+    value: isTool ? `${name} ${verb}d` : `category '${name}' ${verb}d (${names.length} tools)`,
   };
 }
 

@@ -77,8 +77,7 @@ function describeError(error: ViseError): string {
 }
 
 /** The reply to a one-off question, or exactly why there is none. */
-type Asked =
-  { ok: true; reply: Record<string, unknown> } | { ok: false; why: string };
+type Asked = { ok: true; reply: Record<string, unknown> } | { ok: false; why: string };
 
 /**
  * Ask the model for JSON matching `schema`, as a one-off question at the end of
@@ -100,7 +99,12 @@ async function ask(
 ): Promise<Asked> {
   let why = "no attempt was made";
   for (let attempt = 0; attempt < ASK_ATTEMPTS; attempt++) {
-    const asked = { kind: "ask" as const, purpose, attempt: attempt + 1, question: capTrace(question) };
+    const asked = {
+      kind: "ask" as const,
+      purpose,
+      attempt: attempt + 1,
+      question: capTrace(question),
+    };
     const result = await (client.as?.(purpose) ?? client).chat(
       [...messages, { role: "user", content: question }],
       toolDefs,
@@ -130,14 +134,10 @@ async function ask(
   return { ok: false, why };
 }
 
-const text = (value: unknown): string =>
-  typeof value === "string" ? value.trim() : "";
+const text = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
 
 /** What the user last said (skipping `skip`ped messages, such as the notes that send the model back to work). */
-function lastUserText(
-  messages: Message[],
-  skip: (m: Message) => boolean,
-): string {
+function lastUserText(messages: Message[], skip: (m: Message) => boolean): string {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
     if (m && m.role === "user" && !skip(m)) return m.content.trim();
@@ -160,13 +160,16 @@ export async function deriveGoal(
   signal?: AbortSignal,
   skip: (m: Message) => boolean = () => false,
   trace?: TraceSink,
+  /** What the user asked, when it is not (yet) a message of the conversation (a workflow run pushes its request later). */
+  asked?: string,
 ): Promise<Goal | undefined> {
   const known = current
     ? `Current goal: ${current.text} (done when: ${current.doneWhen})${current.hold ? ` Current hold: ${current.hold}` : ""}`
     : "There is no current goal.";
   // Quoted, because "the latest message above" is ambiguous in a conversation that opens with the
   // project map and notes: a weaker model answered with a goal about those instead of the request.
-  const latest = JSON.stringify(lastUserText(messages, skip).slice(0, 400));
+  const userSaid = asked ?? lastUserText(messages, skip);
+  const latest = JSON.stringify(userSaid.slice(0, 400));
   const reply = await ask(
     client,
     messages,
@@ -184,7 +187,7 @@ export async function deriveGoal(
     trace?.({ kind: "goal", goal, doneWhen, hold, previous: current?.text, fallback: false });
     return hold ? { text: goal, doneWhen, hold } : { text: goal, doneWhen };
   }
-  const said = lastUserText(messages, skip).slice(0, 400);
+  const said = userSaid.slice(0, 400);
   if (said === "") return undefined;
   const doneWhen = "the request has been fully handled";
   // A failed derivation must not drop a restriction the user set.
@@ -272,6 +275,8 @@ This turn has been running for a long time. Judging only from the recent tool ca
 
 /** The message that sends the model back to work after a "no" verdict. */
 export function continueNote(goal: Goal, verdict: Verdict): string {
-  const hold = goal.hold ? `\nThe user's standing restriction, which still applies: ${goal.hold}` : "";
+  const hold = goal.hold
+    ? `\nThe user's standing restriction, which still applies: ${goal.hold}`
+    : "";
   return `Your goal is not met yet: ${goal.text}\nNext step: ${verdict.detail}${hold}\nDo it now by calling the tool, without describing it first.`;
 }

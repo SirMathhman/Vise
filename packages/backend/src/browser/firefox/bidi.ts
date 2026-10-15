@@ -27,9 +27,7 @@ export class BidiConnection {
   private readonly handlers = new Map<string, Set<Handler>>();
 
   private constructor(private readonly ws: WebSocket) {
-    ws.addEventListener("message", (event) =>
-      this.onMessage(String(event.data)),
-    );
+    ws.addEventListener("message", (event) => this.onMessage(String(event.data)));
     ws.addEventListener("close", () => this.failAll("connection closed"));
   }
 
@@ -38,9 +36,7 @@ export class BidiConnection {
     const ws = await new Promise<WebSocket>((resolve, reject) => {
       const socket = new WebSocket(url);
       socket.addEventListener("open", () => resolve(socket));
-      socket.addEventListener("error", () =>
-        reject(new Error(`cannot connect to ${url}`)),
-      );
+      socket.addEventListener("error", () => reject(new Error(`cannot connect to ${url}`)));
     });
     const bidi = new BidiConnection(ws);
     await bidi.send("session.new", {

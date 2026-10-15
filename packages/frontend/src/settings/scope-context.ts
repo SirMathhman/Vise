@@ -3,10 +3,7 @@
  * folder is connected (or that none is), so the user always knows whether
  * the tabs below them are project- or global-scoped.
  */
-export function renderScopeContext(
-  root: string | null,
-  el: HTMLElement,
-): void {
+export function renderScopeContext(root: string | null, el: HTMLElement): void {
   el.textContent = "";
   if (root === null) {
     el.textContent = "No folder connected";

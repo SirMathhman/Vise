@@ -19,8 +19,7 @@ export function parseEnv(text: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const line of text.split(/\r?\n/)) {
     const match = NAME_LINE.exec(line);
-    if (match)
-      out[match[1]!] = match[2]!.trim().replace(/^(["'])(.*)\1$/, "$2");
+    if (match) out[match[1]!] = match[2]!.trim().replace(/^(["'])(.*)\1$/, "$2");
   }
   return out;
 }
@@ -37,8 +36,6 @@ function readValues(path: string): Record<string, string> {
 export function loadSettingsFile(path = settingsPath): void {
   applySettings(readValues(path));
 }
-
-
 
 /**
  * Save the values the page sent (variable name to text; "" means the default)
@@ -70,7 +67,8 @@ export function saveSettings(
     if (!spec) return `unknown setting ${name}`;
     const value = raw.trim();
     if (spec.secret && value === "") continue;
-    const bad = value === "" ? undefined : validateSettingValue(value, spec.label, spec.def, spec.min);
+    const bad =
+      value === "" ? undefined : validateSettingValue(value, spec.label, spec.def, spec.min);
     if (bad) return bad;
     if (value === "") delete next[name];
     else next[name] = value;

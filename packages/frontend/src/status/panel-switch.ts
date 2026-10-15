@@ -37,8 +37,7 @@ export interface PanelGroup {
  */
 export function createPanelGroup(): PanelGroup {
   const specs: PanelSpec[] = [];
-  const isOpen = ({ panel }: PanelSpec): boolean =>
-    !panel.classList.contains("hidden");
+  const isOpen = ({ panel }: PanelSpec): boolean => !panel.classList.contains("hidden");
   const close = ({ button, panel }: PanelSpec): void => {
     panel.classList.add("hidden");
     button?.setAttribute("aria-expanded", "false");
@@ -108,8 +107,18 @@ export interface Pages {
 export function registerPages(hooks: PageHooks, group: PanelGroup): Pages {
   const tabs = setupTabs(el("settings-page"));
   const pages = {
-    sessions: { page: el("sessions-page"), close: el("sessions-close"), refresh: hooks.sessions, button: null as HTMLButtonElement | null },
-    settings: { page: el("settings-page"), close: el("page-close"), refresh: hooks.settings, button: el<HTMLButtonElement>("settings-btn") },
+    sessions: {
+      page: el("sessions-page"),
+      close: el("sessions-close"),
+      refresh: hooks.sessions,
+      button: null as HTMLButtonElement | null,
+    },
+    settings: {
+      page: el("settings-page"),
+      close: el("page-close"),
+      refresh: hooks.settings,
+      button: el<HTMLButtonElement>("settings-btn"),
+    },
   };
   let returnFocus: HTMLElement | null = null;
   const isOpen = (name?: PageName): boolean =>

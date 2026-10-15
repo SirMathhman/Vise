@@ -40,20 +40,10 @@ export function parseInput(raw: unknown): BrowserInput | null {
   if (r["kind"] === "mouse") {
     const type = r["type"];
     const button = r["button"];
-    if (
-      type !== "move" &&
-      type !== "down" &&
-      type !== "up" &&
-      type !== "wheel"
-    ) {
+    if (type !== "move" && type !== "down" && type !== "up" && type !== "wheel") {
       return null;
     }
-    if (
-      button !== "left" &&
-      button !== "middle" &&
-      button !== "right" &&
-      button !== "none"
-    ) {
+    if (button !== "left" && button !== "middle" && button !== "right" && button !== "none") {
       return null;
     }
     return {
@@ -98,11 +88,9 @@ export class BrowserBridge {
     private readonly settings?: SwitchableBrowser,
   ) {
     this.offTabs = browser.onTabsChanged(() => void this.pushTabs());
-    this.offSettings =
-      settings?.onSettingsChanged(() => this.pushSettings()) ?? (() => {});
+    this.offSettings = settings?.onSettingsChanged(() => this.pushSettings()) ?? (() => {});
     // The live view belongs to the browser about to be closed: let go of it first.
-    this.offBeforeSwitch =
-      settings?.onBeforeSwitch(() => this.unwatch()) ?? (() => {});
+    this.offBeforeSwitch = settings?.onBeforeSwitch(() => this.unwatch()) ?? (() => {});
   }
 
   /** Release the screencast and the tab-change subscription. */
@@ -128,10 +116,7 @@ export class BrowserBridge {
     return true;
   }
 
-  private async dispatch(
-    type: string,
-    msg: Record<string, unknown>,
-  ): Promise<void> {
+  private async dispatch(type: string, msg: Record<string, unknown>): Promise<void> {
     const tab = num(msg["tab"], -1);
     if (type === "browser_tabs") await this.pushTabs();
     else if (type === "browser_settings_get") this.pushSettings();
@@ -170,26 +155,16 @@ export class BrowserBridge {
   private async pushTabs(): Promise<void> {
     const tabs = this.browser.running ? await this.browser.listTabs() : [];
     this.send({ type: "browser_tabs", tabs });
-    if (
-      this.watchedTab !== null &&
-      !tabs.some((t) => t.id === this.watchedTab)
-    ) {
+    if (this.watchedTab !== null && !tabs.some((t) => t.id === this.watchedTab)) {
       await this.unwatch();
     }
   }
 
-  private async watch(
-    tab: number,
-    width: number,
-    height: number,
-  ): Promise<void> {
+  private async watch(tab: number, width: number, height: number): Promise<void> {
     await this.unwatch();
     this.watchedTab = tab;
-    this.stopWatching = await this.browser.startScreencast(
-      tab,
-      width,
-      height,
-      (data) => this.send({ type: "browser_frame", tab, data }),
+    this.stopWatching = await this.browser.startScreencast(tab, width, height, (data) =>
+      this.send({ type: "browser_frame", tab, data }),
     );
   }
 

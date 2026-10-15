@@ -23,11 +23,7 @@ export function openLightbox(uri: string, label: string): void {
 }
 
 /** Add a picture to the transcript as a thumbnail; a click enlarges it. */
-export function appendPicture(
-  transcript: TranscriptView,
-  uri: string,
-  label: string,
-): void {
+export function appendPicture(transcript: TranscriptView, uri: string, label: string): void {
   transcript.flushAssistant();
   transcript.finishThinking();
   const image = document.createElement("img");

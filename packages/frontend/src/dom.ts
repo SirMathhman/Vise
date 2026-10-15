@@ -18,4 +18,5 @@ export function requiredElement<T extends HTMLElement>(id: string): T {
 }
 
 /** Whether this page is the Firefox extension's sidebar (`/?ui=sidebar`). */
-export const isSidebar = (): boolean => new URLSearchParams(location.search).get("ui") === "sidebar";
+export const isSidebar = (): boolean =>
+  new URLSearchParams(location.search).get("ui") === "sidebar";

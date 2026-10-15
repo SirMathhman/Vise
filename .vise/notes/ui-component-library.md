@@ -2,9 +2,10 @@
 
 Extract a simple component library from Vise's web UI. Each component is a self-contained module with its own `.ts` (rendering logic) and `.css` (styles), replacing the current 12-file centralized `web/styles/` directory. The component library is shared between the main web UI and the Firefox extension sidebar.
 
-**Why:** the current CSS is organized by *page region* (transcript.css, composer.css, workspace.css…) not by *component*. Reusing a button style in a new panel means reaching into `controls.css` and hoping the class name still matches. Refactoring one widget touches 5 files. A component library makes each widget self-contained: change a Button and only `button.ts` + `button.css` change.
+**Why:** the current CSS is organized by _page region_ (transcript.css, composer.css, workspace.css…) not by _component_. Reusing a button style in a new panel means reaching into `controls.css` and hoping the class name still matches. Refactoring one widget touches 5 files. A component library makes each widget self-contained: change a Button and only `button.ts` + `button.css` change.
 
 **Approach:**
+
 1. Define the primitive component set (Button, Field, List, Panel, Badge, Dialog, Toast, Menu, StatusPill).
 2. Extract each into `web/src/components/<name>/` as `<name>.ts` + `<name>.css`.
 3. Co-locate remaining feature-level CSS with its TS module (each feature directory gets its own `.css`).
@@ -52,6 +53,7 @@ web/src/components/
 Each component's `.ts` exports a factory function that creates and returns DOM. The `.css` uses only the shared tokens from `tokens.css` (never hard-coded hex). Class names are prefixed `vise-` to avoid collisions with feature CSS.
 
 **1b. `web/src/components/index.ts`** — barrel re-export:
+
 ```ts
 export { createButton } from "./button/button.ts";
 export { createField } from "./field/field.ts";
@@ -59,10 +61,12 @@ export { createField } from "./field/field.ts";
 ```
 
 **1c. CSS import convention.** Each `.ts` file imports its own `.css` directly:
+
 ```ts
 // button/button.ts
 import "./button.css";
 ```
+
 Bun bundles imported CSS into the output. The global `web/styles/index.css` `@import` chain is **replaced** by explicit imports from `web/src/app.ts` (or a new `web/src/styles.ts` that imports tokens + base first, then each component and feature CSS in dependency order). Order: `tokens.css` → `base.css` → components → features.
 
 **Depends on:** nothing (green-field structure).
@@ -74,39 +78,48 @@ Bun bundles imported CSS into the output. The global `web/styles/index.css` `@im
 For each primitive, move the relevant rules from `web/styles/controls.css` (and other feature CSS files) into the component's `.css`, and create the `.ts` factory that returns DOM with the right classes.
 
 **2a. Button** — from `controls.css` `.btn`, `.btn.primary`, `.btn.danger`, `.btn.small`.
+
 - `createButton({ label, primary?, danger?, small? })` → `<button class="vise-btn [vise-btn-primary] [vise-btn-danger] [vise-btn-sm]">label</button>`.
 - Refactor call sites: search for `class="btn"` in `web/src/` → replace with `createButton()`.
 
 **2b. Field** — from `controls.css` `.field`.
+
 - `createField({ label?, type?, placeholder?, value? })` → wrapped `<div class="vise-field"><label class="vise-field-label">…</label><input class="vise-field-input" …></div>`.
 - Refactor call sites in settings panels, composer, etc.
 
 **2c. List** — from `controls.css` `.list`, `.list-item`.
+
 - `createList(items: { id, label, meta?, danger? }[], opts?)` → `<ul class="vise-list"><li class="vise-list-item">…</li></ul>`.
 - Refactor: tools panel, session list, profile list, notes list, workflow list.
 
 **2d. Panel** — from `controls.css` `.two-pane` and the panel header/body pattern used in settings and tools.
+
 - `createPanel({ title, actions? })` → `<div class="vise-panel"><header class="vise-panel-header"><span>title</span><div class="vise-panel-actions">…</div></header><div class="vise-panel-body">…</div></div>`.
 - Refactor: settings tabs, tools dropdown, git panel.
 
 **2e. Badge** — from `controls.css` (if present) or `topbar.css` status indicators.
+
 - `createBadge({ text, tone: "ok" | "warn" | "error" })` → `<span class="vise-badge vise-badge-ok">text</span>`.
 - Refactor: status pill area, extension sidebar badges.
 
 **2f. Dialog** — from `web/styles/feedback.css` (confirm dialog) and `web/src/feedback/confirm.ts`.
+
 - `showDialog({ title, body, actions: { id, label, primary? }[] })` → returns a Promise resolving with the clicked action's `id` or `null` (Escape/Cancel).
 - Replaces the ad-hoc `<dialog>` creation in `confirm.ts`.
 - Refactor: `confirmAction`, `ifConfirmed`, any other `<dialog>` usage.
 
 **2g. Toast** — from `web/styles/feedback.css` and `web/src/feedback/toast.ts`.
+
 - `showToast({ text, tone?: "ok" | "error" })` → appends a `<div class="vise-toast …">` to a fixed container, auto-removes after 4 s.
 - Refactor: replace existing `toast()` in `web/src/feedback/toast.ts` (keep the export name as an alias for compatibility).
 
 **2h. Menu** — from `web/styles/feedback.css` (context menu) and `web/src/workspace/tab-menu.ts`.
+
 - `showMenu(x, y, items: { id, label, danger?, disabled? }[])` → positions a `<div class="vise-menu">` at (x,y), returns the clicked item's `id` or `null`.
 - Refactor: `showMenu` in `tab-menu.ts`, any other context-menu usage.
 
 **2i. StatusPill** — from `web/styles/topbar.css` and `web/src/status/pill.ts` (or wherever the connected/working/disconnected pill lives).
+
 - `createStatusPill()` → `<span class="vise-status">` with `.set("connected" | "working" | "offline")` method.
 - Refactor: the topbar's status indicator.
 
@@ -119,19 +132,20 @@ For each primitive, move the relevant rules from `web/styles/controls.css` (and 
 
 Move the remaining feature-level CSS (everything not extracted into primitives) from `web/styles/` into the feature's own directory.
 
-| Source file | Target | What remains after extracting primitives |
-|---|---|---|
-| `web/styles/transcript.css` (502 ln) | `web/src/transcript/transcript.css` | chat line styles, code block styling, thinking collapse, image/lightbox |
-| `web/styles/composer.css` (329 ln) | `web/src/composer/composer.css` | textarea, steer/queue buttons, ask-choices, slash-command bar |
-| `web/styles/workspace.css` (412 ln) | `web/src/workspace/workspace.css` | file tree, viewer, tab strip, git status colors |
-| `web/styles/topbar.css` (319 ln) | `web/src/menubar/topbar.css` | menu bar layout, dropdown positioning, model/profile selects |
-| `web/styles/settings.css` (276 ln) | `web/src/settings/settings.css` | tab list, form layout, env panel specific styles |
-| `web/styles/feedback.css` (213 ln) | `web/src/feedback/feedback.css` | whatever remains after dialog/toast/menu extraction |
-| `web/styles/terminal.css` (54 ln) | `web/src/terminal/terminal.css` | panel wrapper (xterm keeps its own) |
-| `web/styles/layout.css` (114 ln) | `web/src/layout.css` (or keep in `web/styles/` as the shell layout) | the flexbox grid for the page |
-| `web/styles/base.css` (82 ln) | `web/src/base.css` (or keep in `web/styles/`) | reset, body, scrollbar tokens |
+| Source file                          | Target                                                              | What remains after extracting primitives                                |
+| ------------------------------------ | ------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `web/styles/transcript.css` (502 ln) | `web/src/transcript/transcript.css`                                 | chat line styles, code block styling, thinking collapse, image/lightbox |
+| `web/styles/composer.css` (329 ln)   | `web/src/composer/composer.css`                                     | textarea, steer/queue buttons, ask-choices, slash-command bar           |
+| `web/styles/workspace.css` (412 ln)  | `web/src/workspace/workspace.css`                                   | file tree, viewer, tab strip, git status colors                         |
+| `web/styles/topbar.css` (319 ln)     | `web/src/menubar/topbar.css`                                        | menu bar layout, dropdown positioning, model/profile selects            |
+| `web/styles/settings.css` (276 ln)   | `web/src/settings/settings.css`                                     | tab list, form layout, env panel specific styles                        |
+| `web/styles/feedback.css` (213 ln)   | `web/src/feedback/feedback.css`                                     | whatever remains after dialog/toast/menu extraction                     |
+| `web/styles/terminal.css` (54 ln)    | `web/src/terminal/terminal.css`                                     | panel wrapper (xterm keeps its own)                                     |
+| `web/styles/layout.css` (114 ln)     | `web/src/layout.css` (or keep in `web/styles/` as the shell layout) | the flexbox grid for the page                                           |
+| `web/styles/base.css` (82 ln)        | `web/src/base.css` (or keep in `web/styles/`)                       | reset, body, scrollbar tokens                                           |
 
 Each feature's `.ts` (or the module's entry) imports its own `.css`:
+
 ```ts
 // web/src/transcript/transcript.ts
 import "./transcript.css";
@@ -140,8 +154,9 @@ import "./transcript.css";
 **`web/styles/tokens.css`** stays where it is — it's the global token layer, imported first by everything.
 
 **Delete** `web/styles/index.css` and the old `@import` chain. Replace with a single `web/src/styles.css` (or inline imports in `app.ts`) that imports in the correct order:
+
 ```css
-@import "../../styles/tokens.css";  /* or import from the TS entry */
+@import "../../styles/tokens.css"; /* or import from the TS entry */
 @import "./base.css";
 @import "./layout.css";
 @import "../components/index.css"; /* or individual component CSS via the TS barrel */
@@ -153,16 +168,19 @@ import "./transcript.css";
 @import "./feedback/feedback.css";
 @import "./terminal/terminal.css";
 ```
+
 Actually, since Bun handles CSS imports from TS, the cleanest approach is: `web/src/app.ts` (or a dedicated `web/src/styles.ts` imported by `app.ts`) does:
+
 ```ts
 import "../styles/tokens.css";
 import "./base.css";
 import "./layout.css";
-import "../components/index.css";  // or import each component CSS in order
+import "../components/index.css"; // or import each component CSS in order
 import "./transcript/transcript.css";
 import "./composer/composer.css";
 // etc.
 ```
+
 Bun flattens all imported CSS into the output in import order.
 
 **Depends on:** Phase 2 (the feature CSS files need to have the extracted primitive rules removed first, so they don't duplicate).
@@ -183,6 +201,7 @@ The existing `toast()` function body becomes a call to the component. Keep the e
 The existing `showMenu(x, y, items)` delegates to the component. Keep the `MenuItem` type as a re-export.
 
 **4d. Settings panels** (`web/src/settings/`) → use `createPanel`, `createField`, `createList` where they apply.
+
 - The settings tab list → `createList`
 - Form rows → `createField`
 - The tab container → `createPanel`
@@ -204,11 +223,13 @@ The existing `showMenu(x, y, items)` delegates to the component. Keep the `MenuI
 The extension sidebar currently has all CSS inlined in `extension/sidebar.html` with hard-coded hex values (`#e6e6e6`, `#15171c`, `#333`, etc.). To share the component library:
 
 **5a. Extract the sidebar's CSS into a file.**
+
 - Create `extension/src/sidebar.css` — move the `<style>` block content there.
 - Replace hard-coded values with the same CSS custom properties as `tokens.css` (`--bg`, `--panel`, `--text`, `--dim`, `--accent`, `--border`, `--user`, `--error`, etc.).
 - The extension doesn't load `tokens.css` (it's a separate page, not the web app), so create a minimal `extension/src/tokens.css` that defines the same variable names with the same values as the web UI's dark theme. This is a small (~30 line) file that could be generated from `tokens.css` by a build script, or hand-maintained (it's stable).
 
 **5b. Use shared component CSS.**
+
 - The sidebar's `#badge` (ok/warn/bad) maps to the `Badge` component. Either:
   - **Option A (light):** Import the component's `.css` into the extension build. Add `import "../../web/src/components/badge/badge.css"` (or a copy) to the extension's sidebar HTML. The badge CSS only uses tokens, so it works as long as the tokens are defined.
   - **Option B (full):** Build a small component bundle for the extension: `bun build` a tiny entry that imports the needed component CSS and the extension's own CSS, outputting a single `sidebar.css`.
@@ -260,6 +281,7 @@ The extension sidebar currently has all CSS inlined in `extension/sidebar.html` 
 - `extension/src/sidebar.css` — **new** (or `extension/src/tokens.css`)
 
 **New files:**
+
 - `web/src/components/index.ts`
 - `web/src/components/button/button.ts` + `button.css`
 - `web/src/components/field/field.ts` + `field.css`

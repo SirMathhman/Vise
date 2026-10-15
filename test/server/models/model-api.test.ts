@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 import { handleModelMessage } from "../../../apps/web/src/api/models/model-api.ts";
 
-
 function ports(
   models: { ok: boolean; value?: unknown; error?: unknown },
   switched: string[] = [],
@@ -51,7 +50,10 @@ test("model_list reports a failed fetch as an error, not an empty list", async (
 
 test("model_set goes through the /model controller, which re-checks the vision tools", async () => {
   const switched: string[] = [];
-  const reply = await handleModelMessage(ports({ ok: true, value: [] }, switched), { type: "model_set", model: "b/two" });
+  const reply = await handleModelMessage(ports({ ok: true, value: [] }, switched), {
+    type: "model_set",
+    model: "b/two",
+  });
   expect(switched).toEqual(["b/two"]);
   expect(reply).toEqual({ type: "model_set", ok: true, active: "b/two" });
 });

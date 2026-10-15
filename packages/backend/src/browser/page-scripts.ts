@@ -16,8 +16,44 @@ const MAX_ELEMENTS = config.snapshotMaxElements;
 /** How many in-view elements the scan looks at before it stops (it still says that more exist). */
 const MAX_SCANNED = config.snapshotMaxScanned;
 
-/** Returns one line per visible interactive element: `<ref> <role> "<name>" ...`. */
-export const SNAPSHOT_SCRIPT = `(() => {
+/** Marker the region scripts answer when their ref is no longer on the page. */
+export const MISSING_REGION = "\u0000missing";
+
+/**
+ * In-page code that finds the part of the page a scoped read covers: the
+ * element behind `ref`, widened to its enclosing form, dialog, section, etc.
+ * when it is an interactive leaf (a field's ref should give its form). Defines
+ * `viseRegion(ref)`, which answers null for a ref that is gone.
+ */
+const REGION_HELPER = `const viseRegion = (ref) => {
+  const el = document.querySelector('[data-vise-ref="' + ref + '"]');
+  if (!el) return null;
+  const leaf = el.matches('input,button,a,select,textarea,summary,[role=button],[role=link],[role=checkbox],[role=radio],[role=tab],[role=menuitem],[role=combobox]');
+  if (!leaf) return el;
+  return el.closest('form,fieldset,dialog,[role=dialog],section,article,main,aside,nav,table,[role=group]') || el.parentElement || el;
+};`;
+
+/** The text of the page, or of the region around `ref` (the marker when that ref is gone). */
+export function readScript(ref?: string): string {
+  if (ref === undefined) return "document.body ? document.body.innerText : ''";
+  return `(() => {
+    ${REGION_HELPER}
+    const r = viseRegion(${JSON.stringify(ref)});
+    return r ? r.innerText : ${JSON.stringify(MISSING_REGION)};
+  })()`;
+}
+
+/** Returns one line per visible interactive element: `<ref> <role> "<name>" ...`; scoped to the region around `ref` when given. */
+export function snapshotScript(ref?: string): string {
+  return `(() => {
+  ${REGION_HELPER}
+  const ROOT = ${ref === undefined ? "document" : `viseRegion(${JSON.stringify(ref)})`};
+  if (!ROOT) return ${JSON.stringify(MISSING_REGION)};
+  ${SNAPSHOT_BODY}
+})()`;
+}
+
+const SNAPSHOT_BODY = `
   ${COMBO_HELPERS}
   const SEL = 'a[href],button,input:not([type=hidden]),select,textarea,summary,[role=button],[role=link],[role=checkbox],[role=radio],[role=combobox],[role=tab],[role=menuitem],[onclick],[onmouseover],[onmouseenter],[ondrop],[ondragover],[draggable=true],[contenteditable=""],[contenteditable=true],[tabindex]:not([tabindex="-1"])';
   window.__viseNext = window.__viseNext || 1;
@@ -26,7 +62,7 @@ export const SNAPSHOT_SCRIPT = `(() => {
   let scanCut = false;
   const vw = window.innerWidth, vh = window.innerHeight;
   const out = { above: 0, below: 0, left: 0, right: 0, covered: 0 };
-  for (const el of document.querySelectorAll(SEL)) {
+  for (const el of ROOT.querySelectorAll(SEL)) {
     let r = el.getBoundingClientRect();
     let st = getComputedStyle(el);
     // Styled radios and checkboxes hide the real input (zero box, 1px, or display:none) behind a visible label: that label is what can be seen and clicked.
@@ -92,7 +128,7 @@ export const SNAPSHOT_SCRIPT = `(() => {
   if (root.scrollHeight > vh + 1) notes.push('page vertically ' + span(root.scrollTop, root.scrollHeight, vh, 'above', 'below'));
   if (root.scrollWidth > vw + 1) notes.push('page horizontally ' + span(root.scrollLeft, root.scrollWidth, vw, 'to the left', 'to the right'));
   let panels = 0;
-  for (const el of document.querySelectorAll('div,ul,ol,section,main,aside,nav,table,form')) {
+  for (const el of ROOT.querySelectorAll('div,ul,ol,section,main,aside,nav,table,form')) {
     if (panels >= 5) break;
     if (el.clientHeight < 120 || el.clientWidth < 150 || el.scrollHeight <= el.clientHeight + 20) continue;
     if (!/(auto|scroll|overlay)/.test(getComputedStyle(el).overflowY)) continue;
@@ -105,7 +141,10 @@ export const SNAPSHOT_SCRIPT = `(() => {
     panels++;
   }
   return lines.concat(notes.map((n) => '[' + n + ']')).join('\\n');
-})()`;
+`;
+
+/** The whole-page outline script (see `snapshotScript`). */
+export const SNAPSHOT_SCRIPT = snapshotScript();
 
 /** Scrolls the element into view and returns the centre of its box, or null when the ref is gone. */
 export function centerScript(ref: string): string {
@@ -182,11 +221,7 @@ export function fileInputScript(ref: string): string {
 }
 
 /** The error to report for a `fileInputScript` result and a number of files, or null when the upload can go ahead. */
-export function fileInputProblem(
-  status: string,
-  ref: string,
-  count: number,
-): string | null {
+export function fileInputProblem(status: string, ref: string, count: number): string | null {
   if (status === "missing") {
     return `unknown element ${ref}: call browser_read for fresh refs`;
   }
@@ -246,17 +281,11 @@ export function selectedOrThrow(
   const options = (result.options ?? []).slice(0, 60).join(" | ");
   switch (result.error) {
     case "missing":
-      throw new Error(
-        `unknown element ${ref}: call browser_read for fresh refs`,
-      );
+      throw new Error(`unknown element ${ref}: call browser_read for fresh refs`);
     case "notselect":
-      throw new Error(
-        `${ref} is not a drop-down (<select>); use browser_click or browser_type`,
-      );
+      throw new Error(`${ref} is not a drop-down (<select>); use browser_click or browser_type`);
     case "disabled":
-      throw new Error(
-        `${ref} is disabled (an earlier choice may enable it). Options: ${options}`,
-      );
+      throw new Error(`${ref} is disabled (an earlier choice may enable it). Options: ${options}`);
     case "single":
       throw new Error(`${ref} takes one choice. Options: ${options}`);
     default:
@@ -276,6 +305,8 @@ export function selectedOrThrow(
 export type PageAction =
   | { name: "select"; ref: string; wanted: string[] }
   | { name: "combobox"; ref: string }
+  | { name: "read"; ref: string }
+  | { name: "snapshot"; ref: string }
   | {
       name: "scroll";
       /** An element inside the area to scroll; without one, the page (or its largest scrollable area). */
@@ -285,14 +316,7 @@ export type PageAction =
       amount?: number;
     };
 
-export const SCROLL_DIRECTIONS = [
-  "up",
-  "down",
-  "left",
-  "right",
-  "top",
-  "bottom",
-] as const;
+export const SCROLL_DIRECTIONS = ["up", "down", "left", "right", "top", "bottom"] as const;
 export type ScrollDirection = (typeof SCROLL_DIRECTIONS)[number];
 
 /** The script for an action; throws when its ref is not a valid one or the action is unknown. */
@@ -305,27 +329,24 @@ export function pageActionScript(action: PageAction): string {
   }
   switch (action.name) {
     case "select":
-      if (action.ref === undefined)
-        throw new Error("a drop-down ref is required");
+      if (action.ref === undefined) throw new Error("a drop-down ref is required");
       return selectScript(action.ref, [...action.wanted].map(String));
     case "combobox":
       if (action.ref === undefined) throw new Error("a combobox ref is required");
       return comboboxScript(action.ref);
+    case "read":
+      if (action.ref === undefined) throw new Error("a ref is required");
+      return readScript(action.ref);
+    case "snapshot":
+      if (action.ref === undefined) throw new Error("a ref is required");
+      return snapshotScript(action.ref);
     case "scroll":
       if (!SCROLL_DIRECTIONS.includes(action.direction)) {
-        throw new Error(
-          `direction must be one of ${SCROLL_DIRECTIONS.join(", ")}`,
-        );
+        throw new Error(`direction must be one of ${SCROLL_DIRECTIONS.join(", ")}`);
       }
-      return scrollScript(
-        action.ref,
-        action.direction,
-        Number(action.amount) || 0,
-      );
+      return scrollScript(action.ref, action.direction, Number(action.amount) || 0);
     default:
-      throw new Error(
-        `unknown page action: ${String((action as { name: unknown }).name)}`,
-      );
+      throw new Error(`unknown page action: ${String((action as { name: unknown }).name)}`);
   }
 }
 
@@ -410,18 +431,13 @@ export function scrollSummary(
   }
   const where = result.area ? `area ${result.area}` : "the page";
   const axis =
-    direction === "up" ||
-    direction === "down" ||
-    direction === "top" ||
-    direction === "bottom"
+    direction === "up" || direction === "down" || direction === "top" || direction === "bottom"
       ? "vertically"
       : "horizontally";
   const edge = (before: string, after: string): string =>
     `${(result.from ?? 0) > 1 ? ` (more ${before})` : ""}${(result.to ?? 0) < (result.total ?? 0) - 1 ? ` (more ${after})` : ""}`;
   const where2 =
-    axis === "vertically"
-      ? edge("above", "below")
-      : edge("to the left", "to the right");
+    axis === "vertically" ? edge("above", "below") : edge("to the left", "to the right");
   const moved =
     result.moved === 0
       ? `could not scroll ${direction} any further`

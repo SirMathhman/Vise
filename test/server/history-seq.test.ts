@@ -33,14 +33,10 @@ test("the raw JSON a workflow generates for a tool step is not replayed as a rep
     { role: "user", content: "do it", typed: true },
     {
       role: "user",
-      content:
-        "Workflow tool step 4: generate arguments for 'run_subagent'.\nUser request: do it",
+      content: "Workflow tool step 4: generate arguments for 'run_subagent'.\nUser request: do it",
     },
     { role: "assistant", content: '{"task":"Review the `thing`"}' },
     { role: "assistant", content: "done" },
   ]);
-  expect(entries.map((e) => e.kind === "assistant" && e.text)).toEqual([
-    false,
-    "done",
-  ]);
+  expect(entries.map((e) => e.kind === "assistant" && e.text)).toEqual([false, "done"]);
 });

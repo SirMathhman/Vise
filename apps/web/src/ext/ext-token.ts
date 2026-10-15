@@ -12,9 +12,7 @@ import { dirname, join } from "node:path";
  */
 
 /** Read the token, creating it on first use. */
-export function loadExtensionToken(
-  file: string = join(homedir(), ".vise", "ext-token"),
-): string {
+export function loadExtensionToken(file: string = join(homedir(), ".vise", "ext-token")): string {
   try {
     const existing = readFileSync(file, "utf8").trim();
     if (existing.length >= 32) return existing;

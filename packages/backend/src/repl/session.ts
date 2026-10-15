@@ -1,17 +1,11 @@
 import { config } from "../config.ts";
 import type { Picture } from "@vise/core";
-import type {
-  Client,
-  Tool,
-  ToolController,
-  ToolRunner,
-  TurnCallbacks,
-} from "@vise/core";
+import type { Client, Tool, ToolController, ToolRunner, TurnCallbacks } from "@vise/core";
 import { runTurn } from "@vise/core";
 import { SessionAudit } from "./turn/session-audit.ts";
 import { deriveSessionName } from "./session-name.ts";
 import { GoalLog } from "@vise/core";
-import { GoalTracker, handleGoalCommand } from "./turn/goal-loop.ts";
+import { GoalTracker, handleGoalCommand, type GoalHooks } from "./turn/goal-loop.ts";
 import type { Message, Result } from "@vise/core";
 import { formatHelp } from "../output/format.ts";
 import type { CommandNeed } from "./command-catalog.ts";
@@ -86,7 +80,6 @@ import type {
 
 type OnRound = TurnCallbacks["onRound"];
 
-
 export type { SessionOptions } from "./session-options.ts";
 import { PendingImages } from "./commands/image-command.ts";
 import { systemMessageFor, type SessionOptions } from "./session-options.ts";
@@ -142,12 +135,7 @@ export class Session {
   private readonly compactionSource: CompactionSource;
   private readonly workflowCommands: WorkflowCommands;
 
-  constructor(
-    client: Client,
-    tools: ToolRunner,
-    toolDefs: Tool[],
-    options: SessionOptions,
-  ) {
+  constructor(client: Client, tools: ToolRunner, toolDefs: Tool[], options: SessionOptions) {
     this.client = client;
     this.tools = tools;
     this.toolDefs = toolDefs;
@@ -162,10 +150,14 @@ export class Session {
     this.hooks = new SessionHooks(options, () => this.activeProfile);
     this.audit = new SessionAudit(options.auditSink, options.auditReader);
     this.attachments = new PendingImages(options.imageSource);
-    this.goals = new GoalTracker(options.goalChecking ?? false, (event) => {
-      this.audit.goal(event);
-      options.onGoal?.(event);
-    }, this.goalLog.add);
+    this.goals = new GoalTracker(
+      options.goalChecking ?? false,
+      (event) => {
+        this.audit.goal(event);
+        options.onGoal?.(event);
+      },
+      this.goalLog.add,
+    );
     this.initialMessage = options.initialMessage;
     this.sessionSource = options.sessionSource;
     this.systemMessage = systemMessageFor(options);
@@ -240,6 +232,7 @@ export class Session {
       setCurrentAbort: (controller) => {
         this.currentAbort = controller;
       },
+      underGoal: (said, signal, first) => this.runUnderGoal(said, signal, first),
     };
   }
 
@@ -251,15 +244,11 @@ export class Session {
     this.audit.skip(this.messages.length);
   }
 
-  private buildProfileCommands(
-    toolController: ToolController | undefined,
-  ): ProfileCommands {
+  private buildProfileCommands(toolController: ToolController | undefined): ProfileCommands {
     // Switching profile is lazy: its messages wait in `pendingProfile` until
     // the next turn, and each switch discards the previous switch's messages,
     // so only the last `/profile` before a turn reaches the conversation.
-    const profileTools = new ProfileToolGate(toolController, (m) =>
-      this.pendingProfile.push(m),
-    );
+    const profileTools = new ProfileToolGate(toolController, (m) => this.pendingProfile.push(m));
     return {
       profileSource: () => this.profileSource,
       activeProfile: () => this.activeProfile,
@@ -377,11 +366,7 @@ export class Session {
             this.turnCallbacks(abort.signal, roundHook),
           ),
         abort.signal,
-        {
-          confirmMore: this.opts.onMaxRounds,
-          // Save first: a session that dies between continues keeps its goal trace.
-          beforeContinue: () => this.saveSession().then(() => this.maybeAutoCompact()),
-        },
+        this.goalHooks(),
       );
       this.audit.turnResult(turn);
       if (!turn.ok) {
@@ -415,6 +400,54 @@ export class Session {
     }
   }
 
+  /** What the goal loop needs from the session: asking to go on, upkeep between continues, the todo list. */
+  private goalHooks(said?: string): GoalHooks {
+    return {
+      confirmMore: this.opts.onMaxRounds,
+      // Save first: a session that dies between continues keeps its goal trace.
+      beforeContinue: () => this.saveSession().then(() => this.maybeAutoCompact()),
+      openTodos: () =>
+        (this.opts.todos?.get() ?? [])
+          .filter((t) => t.status !== "completed")
+          .map((t) => t.content),
+      ...(said === undefined ? {} : { said }),
+    };
+  }
+
+  /**
+   * Run `first` (a workflow) as a turn under the goal, so it ends only when the
+   * goal is met and the todo list is finished; when it is not, the model is
+   * sent back with ordinary turns, never the workflow again.
+   */
+  private runUnderGoal(
+    said: string,
+    signal: AbortSignal,
+    first: () => Promise<Result<string>>,
+  ): Promise<Result<string>> {
+    let started = false;
+    const roundHook = this.roundHook(signal);
+    return this.goals.run(
+      this.client,
+      this.messages,
+      this.toolDefs,
+      () => {
+        if (!started) {
+          started = true;
+          return first();
+        }
+        return runTurn(
+          this.client,
+          this.tools,
+          this.messages,
+          this.toolDefs,
+          this.turnCallbacks(signal, roundHook),
+        );
+      },
+      signal,
+      this.goalHooks(said),
+    );
+  }
+
   private async workflowLine(trimmed: string): Promise<LineResult> {
     this.flushPendingProfile();
     await this.hooks.refresh();
@@ -442,7 +475,10 @@ export class Session {
     { name: "/resume", run: (line) => handleResumeCommand(this.sessionCommands, line) },
     { name: "/save", run: (line) => handleSaveCommand(this.sessionCommands, line) },
     { name: "/delete", run: (line) => handleDeleteCommand(this.sessionCommands, line) },
-    { name: "/search", run: (line) => handleSearch(this.sessionCommands, this.opts.semantic, line) },
+    {
+      name: "/search",
+      run: (line) => handleSearch(this.sessionCommands, this.opts.semantic, line),
+    },
     { name: "/embed", run: (line) => handleEmbed(this.opts.semantic, line) },
     { name: "/audit", run: (line) => this.audit.slash(line) ?? unsupported("audit log") },
   ];
@@ -479,9 +515,7 @@ export class Session {
   }
 
   /** Run a slash command; undefined when `trimmed` is not one (it is then a normal turn). */
-  private slashCommand(
-    trimmed: string,
-  ): LineResult | Promise<LineResult> | undefined {
+  private slashCommand(trimmed: string): LineResult | Promise<LineResult> | undefined {
     return findBuiltin(this.commands, trimmed)?.run(trimmed);
   }
 
@@ -546,11 +580,7 @@ export class Session {
    * caller can log it, but never blocks the turn.
    */
   private maybeAutoCompact(): Promise<Result<string>> {
-    return autoCompact(
-      this.compactionSource,
-      this.context,
-      config.compactionThreshold,
-    );
+    return autoCompact(this.compactionSource, this.context, config.compactionThreshold);
   }
 
   /** `/compact`: summarize the older conversation (`compaction.ts`); on any error it is left untouched. */
@@ -584,10 +614,7 @@ export class Session {
     this.audit.restart(oldMessages);
     const profile = this.activeProfile;
     if (profile !== undefined) {
-      const applied = await handleProfileCommand(
-        this.profileCommands,
-        `/profile ${profile}`,
-      );
+      const applied = await handleProfileCommand(this.profileCommands, `/profile ${profile}`);
       if (!applied.ok) return applied;
     }
     return { ok: true, value: "started a new conversation" };

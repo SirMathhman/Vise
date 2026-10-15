@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { writeFileSync, existsSync, mkdirSync } from "node:fs";
-import { annotateIgnored, deletePath, isGitRoot, listDir, readTextFile, type DirEntry } from "../../apps/web/src/api/files.ts";
+import {
+  annotateIgnored,
+  deletePath,
+  isGitRoot,
+  listDir,
+  readTextFile,
+  type DirEntry,
+} from "../../apps/web/src/api/files.ts";
 
 const root = process.cwd();
 

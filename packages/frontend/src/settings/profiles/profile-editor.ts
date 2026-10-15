@@ -1,12 +1,7 @@
 import { ifConfirmed } from "../../feedback/confirm.ts";
 import type { HooksFields } from "../hooks/hooks-panel.ts";
 import { renderHookLists } from "../hooks/hook-lists.ts";
-import {
-  applyToggle,
-  checkedTools,
-  renderWhitelist,
-  setAllTools,
-} from "./whitelist.ts";
+import { applyToggle, checkedTools, renderWhitelist, setAllTools } from "./whitelist.ts";
 import { requiredElement as el } from "../../dom.ts";
 
 export interface ProfileEditorActions {
@@ -157,8 +152,12 @@ export function createProfileEditor(actions: ProfileEditorActions): ProfileEdito
     select(null);
     ui.name.focus();
   });
-  el<HTMLButtonElement>("pe-check-all").addEventListener("click", () => setAllTools(ui.tools, true));
-  el<HTMLButtonElement>("pe-uncheck-all").addEventListener("click", () => setAllTools(ui.tools, false));
+  el<HTMLButtonElement>("pe-check-all").addEventListener("click", () =>
+    setAllTools(ui.tools, true),
+  );
+  el<HTMLButtonElement>("pe-uncheck-all").addEventListener("click", () =>
+    setAllTools(ui.tools, false),
+  );
   ui.tools.addEventListener("change", (event) => applyToggle(ui.tools, event.target));
   ui.save.addEventListener("click", () => {
     const next = ui.name.value.trim();
@@ -168,7 +167,12 @@ export function createProfileEditor(actions: ProfileEditorActions): ProfileEdito
     // Every tool ticked means no restriction.
     state.pendingTools = ticked.length === actions.toolNames().length ? undefined : ticked;
     showStatus("Saving…", false, true);
-    actions.send({ type: "profile_save", name: next, body: ui.body.value, from: state.current ?? undefined });
+    actions.send({
+      type: "profile_save",
+      name: next,
+      body: ui.body.value,
+      from: state.current ?? undefined,
+    });
   });
   ui.del.addEventListener("click", () => {
     const target = state.current;
@@ -192,7 +196,8 @@ export function createProfileEditor(actions: ProfileEditorActions): ProfileEdito
   function handleList(profiles: string[]): void {
     state.profiles = profiles;
     actions.profilesChanged(profiles);
-    if (state.current !== null && profiles.includes(state.current)) return drawList(ui, state, select);
+    if (state.current !== null && profiles.includes(state.current))
+      return drawList(ui, state, select);
     if (profiles.length === 0) {
       state.current = "";
       return redraw();

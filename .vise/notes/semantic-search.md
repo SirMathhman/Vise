@@ -9,6 +9,7 @@ Add semantic (embedding-based) search across file content in the working directo
 **Why:** The existing `search_files` tool and `/search` command are exact/regex. Semantic search finds content by meaning — "how does auth work" should find the auth module even if it doesn't contain the word "auth." Useful for codebases where naming is inconsistent or for natural-language queries.
 
 **Key decisions (from discussion):**
+
 - Separate command (`/search semantic <text>`), not a replacement for `/search`
 - All files in the working directory (skip `node_modules`, `.git`, binary files, files > 1 MB)
 - Fixed-size windows for chunking (~50 lines or ~2 KB, whichever is shorter, with ~10-line overlap)

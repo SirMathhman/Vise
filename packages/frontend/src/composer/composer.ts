@@ -14,7 +14,11 @@ interface ComposerState {
   active: number;
 }
 
-const slashCommands: [string, string, boolean][] = COMMANDS.map((c) => [c.name, c.summary, c.takesArgs]);
+const slashCommands: [string, string, boolean][] = COMMANDS.map((c) => [
+  c.name,
+  c.summary,
+  c.takesArgs,
+]);
 
 export function setupComposer(
   input: HTMLTextAreaElement,
@@ -69,8 +73,7 @@ export function setupComposer(
       : slashCommands
           .filter(
             ([command]) =>
-              command.startsWith(value.toLowerCase()) &&
-              command !== value.toLowerCase(),
+              command.startsWith(value.toLowerCase()) && command !== value.toLowerCase(),
           )
           .map(([command, description, takesArguments]) => ({
             label: command,
@@ -218,16 +221,16 @@ function createRecall(): Recall {
  * ↑ in an empty box (or on a recalled message) brings back the previous
  * message sent from this page, ↓ the next; true when the key was used.
  */
-function recallKey(
-  event: KeyboardEvent,
-  input: HTMLTextAreaElement,
-  recall: Recall,
-): boolean {
+function recallKey(event: KeyboardEvent, input: HTMLTextAreaElement, recall: Recall): boolean {
   if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return false;
   const usable = input.value === "" || recall.walking();
   if (!usable) return false;
   const text =
-    event.key === "ArrowUp" ? recall.older() : event.key === "ArrowDown" ? recall.newer() : undefined;
+    event.key === "ArrowUp"
+      ? recall.older()
+      : event.key === "ArrowDown"
+        ? recall.newer()
+        : undefined;
   if (text === undefined) return false;
   event.preventDefault();
   input.value = text;
@@ -256,19 +259,13 @@ function moveActiveSuggestion(
   direction: number,
 ): void {
   if (state.visible.length === 0) return;
-  state.active =
-    (state.active + direction + state.visible.length) % state.visible.length;
-  suggestions
-    .querySelectorAll(".command-suggestion")
-    .forEach((button, index) => {
-      const active = index === state.active;
-      button.classList.toggle("active", active);
-      button.setAttribute("aria-selected", String(active));
-    });
-  input.setAttribute(
-    "aria-activedescendant",
-    `command-suggestion-${state.active}`,
-  );
+  state.active = (state.active + direction + state.visible.length) % state.visible.length;
+  suggestions.querySelectorAll(".command-suggestion").forEach((button, index) => {
+    const active = index === state.active;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+  });
+  input.setAttribute("aria-activedescendant", `command-suggestion-${state.active}`);
 }
 
 function renderSuggestionButtons(

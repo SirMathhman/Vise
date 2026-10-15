@@ -40,8 +40,7 @@ function confine(root: string, rel: string): string | null {
     const realRoot = realpathSync(root);
     const abs = realpathSync(resolve(realRoot, rel));
     const back = relative(realRoot, abs);
-    if (back === ".." || back.startsWith(`..${sep}`) || resolve(back) === back)
-      return null;
+    if (back === ".." || back.startsWith(`..${sep}`) || resolve(back) === back) return null;
     return abs;
   } catch {
     return null;
@@ -54,14 +53,11 @@ export function listDir(
   rel: string,
 ): ExplorerResult<{ root: string; entries: DirEntry[] }> {
   const abs = confine(root, rel);
-  if (abs === null)
-    return { ok: false, error: "path outside root or missing", status: 400 };
+  if (abs === null) return { ok: false, error: "path outside root or missing", status: 400 };
   try {
     const entries = readdirSync(abs, { withFileTypes: true })
       .map((e) => ({ name: e.name, dir: e.isDirectory() }))
-      .sort(
-        (a, b) => Number(b.dir) - Number(a.dir) || a.name.localeCompare(b.name),
-      );
+      .sort((a, b) => Number(b.dir) - Number(a.dir) || a.name.localeCompare(b.name));
     return { ok: true, value: { root, entries } };
   } catch {
     return { ok: false, error: "cannot read directory", status: 404 };
@@ -69,21 +65,16 @@ export function listDir(
 }
 
 /** Read a text file; refuses oversize and binary (NUL-containing) files. */
-export function readTextFile(
-  root: string,
-  rel: string,
-): ExplorerResult<string> {
+export function readTextFile(root: string, rel: string): ExplorerResult<string> {
   const abs = confine(root, rel);
-  if (abs === null)
-    return { ok: false, error: "path outside root or missing", status: 400 };
+  if (abs === null) return { ok: false, error: "path outside root or missing", status: 400 };
   try {
     const stat = statSync(abs);
     if (!stat.isFile()) return { ok: false, error: "not a file", status: 400 };
     if (stat.size > config.maxFileBytes)
       return { ok: false, error: "file too large to view", status: 413 };
     const buf = readFileSync(abs);
-    if (buf.includes(0))
-      return { ok: false, error: "binary file", status: 415 };
+    if (buf.includes(0)) return { ok: false, error: "binary file", status: 415 };
     return { ok: true, value: buf.toString("utf8") };
   } catch {
     return { ok: false, error: "cannot read file", status: 404 };
@@ -91,13 +82,9 @@ export function readTextFile(
 }
 
 /** Delete a file or directory (recursive) under `root`. */
-export function deletePath(
-  root: string,
-  rel: string,
-): ExplorerResult<null> {
+export function deletePath(root: string, rel: string): ExplorerResult<null> {
   const abs = confine(root, rel);
-  if (abs === null)
-    return { ok: false, error: "path outside root or missing", status: 400 };
+  if (abs === null) return { ok: false, error: "path outside root or missing", status: 400 };
   try {
     const stat = statSync(abs);
     if (stat.isDirectory()) rmSync(abs, { recursive: true });
@@ -118,11 +105,7 @@ export function isGitRoot(root: string): boolean {
  * delimited path relative to `root`; the parent must already exist (no
  * recursive mkdir). Only the leaf name is validated.
  */
-export function createPath(
-  root: string,
-  rel: string,
-  isDir: boolean,
-): ExplorerResult<null> {
+export function createPath(root: string, rel: string, isDir: boolean): ExplorerResult<null> {
   const slash = rel.lastIndexOf("/");
   const name = slash === -1 ? rel : rel.slice(slash + 1);
   const parent = slash === -1 ? "" : rel.slice(0, slash);
@@ -140,10 +123,7 @@ export function createPath(
     }
     return { ok: true, value: null };
   } catch (err) {
-    if (
-      err instanceof Error &&
-      (err as NodeJS.ErrnoException).code === "EEXIST"
-    )
+    if (err instanceof Error && (err as NodeJS.ErrnoException).code === "EEXIST")
       return { ok: false, error: "already exists", status: 409 };
     return { ok: false, error: "cannot create", status: 404 };
   }
@@ -154,11 +134,7 @@ export function createPath(
  * Returns the same array unchanged when the root is not a git repo or git
  * is unavailable.
  */
-export function annotateIgnored(
-  root: string,
-  rel: string,
-  entries: DirEntry[],
-): DirEntry[] {
+export function annotateIgnored(root: string, rel: string, entries: DirEntry[]): DirEntry[] {
   if (!isGitRoot(root) || entries.length === 0) return entries;
   const paths = entries.map((e) => (rel ? rel + "/" + e.name : e.name));
   const stdin = paths.join("\n") + "\n";
@@ -188,11 +164,7 @@ export function annotateIgnored(
  * differ from HEAD. Returns the same array unchanged when the root is not
  * a git repo or git is unavailable.
  */
-export function annotateGitStatus(
-  root: string,
-  rel: string,
-  entries: DirEntry[],
-): DirEntry[] {
+export function annotateGitStatus(root: string, rel: string, entries: DirEntry[]): DirEntry[] {
   if (!isGitRoot(root) || entries.length === 0) return entries;
   // Scope git to this directory's subtree so the scan is O(dir) not O(repo).
   const args = rel

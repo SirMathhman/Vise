@@ -1,6 +1,14 @@
 import { imageStore } from "@vise/backend";
 import { pickFolder, RootRegistry } from "./api/roots.ts";
-import { listDir, readTextFile, deletePath, createPath, annotateIgnored, annotateGitStatus, type DirEntry } from "./api/files.ts";
+import {
+  listDir,
+  readTextFile,
+  deletePath,
+  createPath,
+  annotateIgnored,
+  annotateGitStatus,
+  type DirEntry,
+} from "./api/files.ts";
 
 /** Non-browser clients send no Origin; browsers must come from the Vise page itself. */
 export function isLocalOrigin(origin: string | null, port: number): boolean {
@@ -22,7 +30,10 @@ export function isLocalHost(host: string | null, port: number): boolean {
 function withRoot(
   url: URL,
   roots: RootRegistry,
-  act: (root: string, rel: string) => { ok: true; value: unknown } | { ok: false; error: string; status: number },
+  act: (
+    root: string,
+    rel: string,
+  ) => { ok: true; value: unknown } | { ok: false; error: string; status: number },
 ): Response {
   const root = roots.resolve(url.searchParams.get("root"));
   if (!root || !roots.isActive(root)) {
@@ -106,9 +117,7 @@ export function serveApi(
     if (!isLocalOrigin(req.headers.get("origin"), port)) {
       return new Response("forbidden", { status: 403 });
     }
-    return pickFolder(roots.defaultRoot).then((path) =>
-      Response.json({ path }),
-    );
+    return pickFolder(roots.defaultRoot).then((path) => Response.json({ path }));
   }
   return null;
 }

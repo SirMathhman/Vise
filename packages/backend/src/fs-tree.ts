@@ -29,12 +29,7 @@ export function buildInitialTree(dir: string): string {
     // `depth` is the number of directory levels below root whose children
     // we are about to enumerate. When depth reaches MAX_DEPTH, the children
     // would be at MAX_DEPTH + 1 levels below root, which is beyond the cap.
-    if (
-      truncated ||
-      depth >= config.treeMaxDepth ||
-      entries >= config.treeMaxEntries
-    )
-      return;
+    if (truncated || depth >= config.treeMaxDepth || entries >= config.treeMaxEntries) return;
 
     let items: string[];
     try {

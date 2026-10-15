@@ -1,11 +1,6 @@
 import { expect, test } from "bun:test";
 import { createServer } from "node:net";
-import {
-  anyFreePort,
-  choosePort,
-  isPortFree,
-  suggestPort,
-} from "../../apps/web/src/port.ts";
+import { anyFreePort, choosePort, isPortFree, suggestPort } from "../../apps/web/src/port.ts";
 
 const taken =
   (...ports: number[]) =>

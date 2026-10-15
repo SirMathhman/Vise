@@ -52,8 +52,8 @@ describe("edit_file line endings", () => {
   test("replacement text is written as given, without `$` patterns being expanded", () => {
     for (const text of [CRLF_CSS, CRLF_CSS.replaceAll("\r\n", "\n")]) {
       const path = fileWith(text);
-      editFile({ path, old_string: "margin: 0;", new_string: "content: \"echo $& $' $$ $1 $`\";" });
-      expect(read(path)).toContain("content: \"echo $& $' $$ $1 $`\";");
+      editFile({ path, old_string: "margin: 0;", new_string: 'content: "echo $& $\' $$ $1 $`";' });
+      expect(read(path)).toContain('content: "echo $& $\' $$ $1 $`";');
     }
   });
 

@@ -70,7 +70,8 @@ export const SPEC = {
     env: "VISE_EMBEDDING_MODEL",
     def: "",
     group: LLM,
-    label: "embedding model for semantic search (a model on the local server that can embed; empty = the default local model)",
+    label:
+      "embedding model for semantic search (a model on the local server that can embed; empty = the default local model)",
     choices: "local-models",
   },
   semanticAutoIndex: n(
@@ -100,25 +101,11 @@ export const SPEC = {
     "slot lookup timeout for helper agents (ms)",
   ),
   port: n("PORT", 3000, "Web server", "port", { restart: true }),
-  recentTurnsToKeep: n(
-    "VISE_RECENT_TURNS_TO_KEEP",
-    2,
-    COMPACT,
-    "turns kept when compacting",
-  ),
-  roundsToKeep: n(
-    "VISE_ROUNDS_TO_KEEP",
-    10,
-    COMPACT,
-    "rounds kept when compacting inside a turn",
-  ),
-  tailShare: n(
-    "VISE_TAIL_SHARE",
-    0.25,
-    COMPACT,
-    "share of the window kept verbatim",
-    { min: 0.05 },
-  ),
+  recentTurnsToKeep: n("VISE_RECENT_TURNS_TO_KEEP", 2, COMPACT, "turns kept when compacting"),
+  roundsToKeep: n("VISE_ROUNDS_TO_KEEP", 10, COMPACT, "rounds kept when compacting inside a turn"),
+  tailShare: n("VISE_TAIL_SHARE", 0.25, COMPACT, "share of the window kept verbatim", {
+    min: 0.05,
+  }),
   inTurnCompactionThreshold: n(
     "VISE_IN_TURN_COMPACTION_THRESHOLD",
     0.75,
@@ -147,6 +134,20 @@ export const SPEC = {
     "stop a model call after this many tokens (0 = no limit)",
     { min: 0 },
   ),
+  maxCallBlockChars: n(
+    "VISE_MAX_CALL_BLOCK_CHARS",
+    60_000,
+    "Audit log",
+    "stop a model call when one tool call runs past this many characters without closing (0 = no limit)",
+    { min: 0 },
+  ),
+  maxCallsPerReply: n(
+    "VISE_MAX_CALLS_PER_REPLY",
+    8,
+    "Audit log",
+    "most tool calls one model reply may contain; the grammar ends the reply after this many",
+    { min: 1 },
+  ),
   loopGuard: n(
     "VISE_LOOP_GUARD",
     1,
@@ -168,55 +169,20 @@ export const SPEC = {
     "delete audit records older than this many days (0 = keep forever)",
     { min: 0 },
   ),
-  saveEvery: n(
-    "VISE_SAVE_EVERY_ROUNDS",
-    25,
-    COMPACT,
-    "save the session every N rounds",
-  ),
-  progressEvery: n(
-    "VISE_PROGRESS_EVERY_ROUNDS",
-    50,
-    COMPACT,
-    "check progress every N rounds",
-  ),
-  maxSameStep: n(
-    "VISE_GOAL_MAX_SAME_STEP",
-    4,
-    GOAL,
-    "same step repeated before giving up",
-  ),
+  saveEvery: n("VISE_SAVE_EVERY_ROUNDS", 25, COMPACT, "save the session every N rounds"),
+  progressEvery: n("VISE_PROGRESS_EVERY_ROUNDS", 50, COMPACT, "check progress every N rounds"),
+  maxSameStep: n("VISE_GOAL_MAX_SAME_STEP", 4, GOAL, "same step repeated before giving up"),
   continuesBeforeAsking: n(
     "VISE_GOAL_CONTINUES_BEFORE_ASKING",
     8,
     GOAL,
     "automatic continues before asking",
   ),
-  startupNoteLimit: n(
-    "VISE_STARTUP_NOTE_LIMIT",
-    30,
-    TOOLS,
-    "notes listed at start-up",
-  ),
+  startupNoteLimit: n("VISE_STARTUP_NOTE_LIMIT", 30, TOOLS, "notes listed at start-up"),
   treeMaxDepth: n("VISE_TREE_MAX_DEPTH", 5, TOOLS, "project tree depth"),
-  treeMaxEntries: n(
-    "VISE_TREE_MAX_ENTRIES",
-    25,
-    TOOLS,
-    "project tree entries per folder",
-  ),
-  toolLinePartMax: n(
-    "VISE_TOOL_LINE_PART_MAX",
-    60,
-    TOOLS,
-    "tool line: characters per part",
-  ),
-  toolLineDetailMax: n(
-    "VISE_TOOL_LINE_DETAIL_MAX",
-    140,
-    TOOLS,
-    "tool line: characters of detail",
-  ),
+  treeMaxEntries: n("VISE_TREE_MAX_ENTRIES", 25, TOOLS, "project tree entries per folder"),
+  toolLinePartMax: n("VISE_TOOL_LINE_PART_MAX", 60, TOOLS, "tool line: characters per part"),
+  toolLineDetailMax: n("VISE_TOOL_LINE_DETAIL_MAX", 140, TOOLS, "tool line: characters of detail"),
   resultMaxLines: n(
     "VISE_RESULT_MAX_LINES",
     250,
@@ -229,30 +195,10 @@ export const SPEC = {
     TOOLS,
     "result characters shown before saving the rest",
   ),
-  previewLines: n(
-    "VISE_PREVIEW_LINES",
-    40,
-    TOOLS,
-    "preview lines of a saved result",
-  ),
-  previewChars: n(
-    "VISE_PREVIEW_CHARS",
-    2_000,
-    TOOLS,
-    "preview characters of a saved result",
-  ),
-  searchMaxMatches: n(
-    "VISE_SEARCH_MAX_MATCHES",
-    100,
-    TOOLS,
-    "search matches returned",
-  ),
-  searchMaxMatchChars: n(
-    "VISE_SEARCH_MAX_MATCH_CHARS",
-    300,
-    TOOLS,
-    "characters per search match",
-  ),
+  previewLines: n("VISE_PREVIEW_LINES", 40, TOOLS, "preview lines of a saved result"),
+  previewChars: n("VISE_PREVIEW_CHARS", 2_000, TOOLS, "preview characters of a saved result"),
+  searchMaxMatches: n("VISE_SEARCH_MAX_MATCHES", 100, TOOLS, "search matches returned"),
+  searchMaxMatchChars: n("VISE_SEARCH_MAX_MATCH_CHARS", 300, TOOLS, "characters per search match"),
   tempStaleMs: n(
     "VISE_TEMP_STALE_MS",
     24 * 60 * 60 * 1000,
@@ -265,12 +211,7 @@ export const SPEC = {
     TOOLS,
     "temp folder refresh interval (ms)",
   ),
-  toolSearchMaxResults: n(
-    "VISE_TOOL_SEARCH_MAX_RESULTS",
-    5,
-    TOOLS,
-    "tool search results",
-  ),
+  toolSearchMaxResults: n("VISE_TOOL_SEARCH_MAX_RESULTS", 5, TOOLS, "tool search results"),
   toolHookTimeoutMs: n(
     "VISE_TOOL_HOOK_TIMEOUT_MS",
     30_000,
@@ -278,24 +219,9 @@ export const SPEC = {
     "pre/post tool hook timeout (ms)",
     { min: 1000 },
   ),
-  mcpConnectTimeoutMs: n(
-    "VISE_MCP_CONNECT_TIMEOUT_MS",
-    15_000,
-    MCP,
-    "server connect timeout (ms)",
-  ),
-  mcpToolTimeoutMs: n(
-    "VISE_MCP_TOOL_TIMEOUT_MS",
-    120_000,
-    MCP,
-    "tool call timeout (ms)",
-  ),
-  maxImageBytes: n(
-    "VISE_MAX_IMAGE_BYTES",
-    10_000_000,
-    TOOLS,
-    "largest image (bytes)",
-  ),
+  mcpConnectTimeoutMs: n("VISE_MCP_CONNECT_TIMEOUT_MS", 15_000, MCP, "server connect timeout (ms)"),
+  mcpToolTimeoutMs: n("VISE_MCP_TOOL_TIMEOUT_MS", 120_000, MCP, "tool call timeout (ms)"),
+  maxImageBytes: n("VISE_MAX_IMAGE_BYTES", 10_000_000, TOOLS, "largest image (bytes)"),
   maxPictures: n("VISE_MAX_PICTURES", 6, TOOLS, "images per message"),
   maxFileBytes: n(
     "VISE_WEB_MAX_FILE_BYTES",
@@ -303,23 +229,27 @@ export const SPEC = {
     TOOLS,
     "largest file shown in the explorer (bytes)",
   ),
-  historyMaxEntries: n(
-    "VISE_HISTORY_MAX_ENTRIES",
-    400,
-    TOOLS,
-    "chat lines replayed on reload",
-  ),
-  shellTimeoutMs: n(
-    "VISE_SHELL_TIMEOUT_MS",
-    60_000,
-    TOOLS,
-    "foreground shell timeout (ms)",
-  ),
+  historyMaxEntries: n("VISE_HISTORY_MAX_ENTRIES", 400, TOOLS, "chat lines replayed on reload"),
+  shellTimeoutMs: n("VISE_SHELL_TIMEOUT_MS", 60_000, TOOLS, "foreground shell timeout (ms)"),
   maxOutlineChars: n(
     "VISE_BROWSER_MAX_OUTLINE_CHARS",
     30_000,
     BROWSER,
     "page outline size (characters)",
+  ),
+  browserAutoScreenshot: n(
+    "VISE_BROWSER_AUTO_SCREENSHOT",
+    1,
+    BROWSER,
+    "attach a screenshot to every browser action while the model can see images (1 = on, 0 = off)",
+    { min: 0 },
+  ),
+  browserShotSettleMs: n(
+    "VISE_BROWSER_SHOT_SETTLE_MS",
+    250,
+    BROWSER,
+    "pause before an automatic screenshot, so the page can settle (ms)",
+    { min: 0 },
   ),
   snapshotMaxElements: n(
     "VISE_BROWSER_MAX_ELEMENTS",
@@ -335,49 +265,19 @@ export const SPEC = {
     "elements scanned per page view",
     { restart: true },
   ),
-  maxUploadBytes: n(
-    "VISE_BROWSER_MAX_UPLOAD_BYTES",
-    10_000_000,
-    BROWSER,
-    "largest upload (bytes)",
-  ),
+  maxUploadBytes: n("VISE_BROWSER_MAX_UPLOAD_BYTES", 10_000_000, BROWSER, "largest upload (bytes)"),
   waitPollMs: n("VISE_WAIT_POLL_MS", 250, BROWSER, "wait: poll interval (ms)"),
-  waitQuietMs: n(
-    "VISE_WAIT_QUIET_MS",
-    600,
-    BROWSER,
-    "wait: quiet time to count as idle (ms)",
-  ),
-  waitMinIdleMs: n(
-    "VISE_WAIT_MIN_IDLE_MS",
-    1_500,
-    BROWSER,
-    "wait: shortest idle wait (ms)",
-  ),
+  waitQuietMs: n("VISE_WAIT_QUIET_MS", 600, BROWSER, "wait: quiet time to count as idle (ms)"),
+  waitMinIdleMs: n("VISE_WAIT_MIN_IDLE_MS", 1_500, BROWSER, "wait: shortest idle wait (ms)"),
   waitProbeTimeoutMs: n(
     "VISE_WAIT_PROBE_TIMEOUT_MS",
     2_000,
     BROWSER,
     "wait: one probe timeout (ms)",
   ),
-  waitDefaultSeconds: n(
-    "VISE_WAIT_DEFAULT_SECONDS",
-    10,
-    BROWSER,
-    "wait: default timeout (s)",
-  ),
-  waitMaxSeconds: n(
-    "VISE_WAIT_MAX_SECONDS",
-    60,
-    BROWSER,
-    "wait: longest timeout (s)",
-  ),
-  tabSettleMs: n(
-    "VISE_TAB_SETTLE_MS",
-    300,
-    BROWSER,
-    "new-tab detection delay (ms)",
-  ),
+  waitDefaultSeconds: n("VISE_WAIT_DEFAULT_SECONDS", 10, BROWSER, "wait: default timeout (s)"),
+  waitMaxSeconds: n("VISE_WAIT_MAX_SECONDS", 60, BROWSER, "wait: longest timeout (s)"),
+  tabSettleMs: n("VISE_TAB_SETTLE_MS", 300, BROWSER, "new-tab detection delay (ms)"),
   chromiumLoadTimeoutMs: n(
     "VISE_CHROMIUM_LOAD_TIMEOUT_MS",
     15_000,
@@ -450,16 +350,13 @@ export const SPEC = {
 export type SettingKey = keyof typeof SPEC;
 
 type Values = {
-  -readonly [K in SettingKey]: (typeof SPEC)[K]["def"] extends string
-    ? string
-    : number;
+  -readonly [K in SettingKey]: (typeof SPEC)[K]["def"] extends string ? string : number;
 };
 
 export type Config = Readonly<Values> & { readonly llmChatUrl: string };
 
 const processEnv: Record<string, string | undefined> =
-  (globalThis as { process?: { env: Record<string, string | undefined> } })
-    .process?.env ?? {};
+  (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env ?? {};
 
 /** The values from the settings file, by variable name. */
 let fileValues: Record<string, string> = {};
@@ -496,10 +393,7 @@ export const config: Config = Object.defineProperties(
   {},
   {
     ...Object.fromEntries(
-      Object.keys(SPEC).map((key) => [
-        key,
-        { enumerable: true, get: () => current[key] },
-      ]),
+      Object.keys(SPEC).map((key) => [key, { enumerable: true, get: () => current[key] }]),
     ),
     llmChatUrl: {
       enumerable: true,

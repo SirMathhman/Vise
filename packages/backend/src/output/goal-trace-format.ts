@@ -55,10 +55,7 @@ function lines(e: GoalTraceEntry): string[] {
  * its `turn_start` and ends at its `exit`), oldest first. `turns` limits it to
  * the last few turns.
  */
-export function formatGoalTrace(
-  entries: GoalTraceEntry[],
-  turns?: number,
-): string {
+export function formatGoalTrace(entries: GoalTraceEntry[], turns?: number): string {
   if (entries.length === 0) {
     return "no goal trace yet (it is recorded while goal checking is on)";
   }
@@ -73,7 +70,9 @@ export function formatGoalTrace(
     .map((block, i) => {
       const head = block[0];
       const title = `--- turn ${first + i + 1}${head ? `, ${head.at}, after ${head.after} messages` : ""} ---`;
-      const body = block.flatMap((e) => lines(e).map((l, n) => (n === 0 ? `${e.at.slice(11, 19)} ${l}` : `         ${l}`)));
+      const body = block.flatMap((e) =>
+        lines(e).map((l, n) => (n === 0 ? `${e.at.slice(11, 19)} ${l}` : `         ${l}`)),
+      );
       return [title, ...body].join("\n");
     })
     .join("\n\n");

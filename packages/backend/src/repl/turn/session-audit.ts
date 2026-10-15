@@ -1,9 +1,4 @@
-import {
-  noAudit,
-  type AuditReader,
-  type AuditSink,
-  type AuditTopic,
-} from "@vise/core";
+import { noAudit, type AuditReader, type AuditSink, type AuditTopic } from "@vise/core";
 import type { GoalEvent } from "./goal-loop.ts";
 import type { Message, Result, ViseError } from "@vise/core";
 import { formatAuditReport } from "../../output/audit-format.ts";
@@ -88,11 +83,7 @@ export class SessionAudit {
   }
 
   /** Run a slash command (already started, or finished), noting it, and record the messages it added once it is done. */
-  async command<T>(
-    line: string,
-    running: T | Promise<T>,
-    messages: () => Message[],
-  ): Promise<T> {
+  async command<T>(line: string, running: T | Promise<T>, messages: () => Message[]): Promise<T> {
     this.event("command", { line });
     try {
       return await running;
@@ -156,7 +147,8 @@ export class SessionAudit {
       }
       if (arg === "call" || arg.startsWith("call ")) {
         const request = Number(arg.slice("call".length).trim());
-        if (!Number.isInteger(request) || request < 1) return fail("usage: /audit call <n>  (n is the # of /audit calls)");
+        if (!Number.isInteger(request) || request < 1)
+          return fail("usage: /audit call <n>  (n is the # of /audit calls)");
         return { ok: true, value: formatAuditReport(this.reader.call(this.session, request)) };
       }
       if (!TOPICS.includes(topic as AuditTopic)) {

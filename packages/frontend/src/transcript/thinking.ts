@@ -20,9 +20,7 @@ export function enableThinkingToggle(log: HTMLElement): void {
     const line = (event.target as HTMLElement | null)?.closest?.(".line.thinking");
     if (!(line instanceof HTMLElement)) return;
     const open = !line.className.endsWith(" open");
-    line.className = open
-      ? `${line.className} open`
-      : line.className.replace(/ open$/, "");
+    line.className = open ? `${line.className} open` : line.className.replace(/ open$/, "");
     setThinkingState(line, open);
   };
   log.addEventListener?.("pointerdown", (event) => {

@@ -81,9 +81,7 @@ async function connect(): Promise<void> {
   }
   setLink("connecting");
   const port = await findServerPort();
-  const ws = new WebSocket(
-    `ws://127.0.0.1:${port}/ext?token=${encodeURIComponent(token)}`,
-  );
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/ext?token=${encodeURIComponent(token)}`);
   socket = ws;
   let opened = false;
   ws.addEventListener("open", () => {
@@ -135,16 +133,13 @@ browser.tabs.onUpdated.addListener((_id, _change, tab) => {
 /** The tab the user is looking at in a window (the sidebar's own window when given). */
 async function activeTab(windowId?: number): Promise<browser.tabs.Tab | null> {
   const [tab] = await browser.tabs.query(
-    windowId === undefined
-      ? { active: true, lastFocusedWindow: true }
-      : { active: true, windowId },
+    windowId === undefined ? { active: true, lastFocusedWindow: true } : { active: true, windowId },
   );
   return tab ?? null;
 }
 
 /** Vise only drives web pages; browser-internal pages cannot be scripted. */
-const isWebPage = (url: string | undefined): boolean =>
-  /^https?:/.test(url ?? "");
+const isWebPage = (url: string | undefined): boolean => /^https?:/.test(url ?? "");
 
 async function status(windowId?: number): Promise<unknown> {
   const tabs = [];
@@ -247,16 +242,11 @@ browser.runtime.onMessage.addListener(
 );
 
 // The toolbar button opens and closes the sidebar.
-browser.browserAction.onClicked.addListener(
-  () => void browser.sidebarAction.toggle(),
-);
+browser.browserAction.onClicked.addListener(() => void browser.sidebarAction.toggle());
 
 // Test builds only (`define`): open the sidebar page in a tab so the pairing flow can run without a sidebar.
 declare const __VISE_TEST_SIDEBAR_TAB__: boolean | undefined;
-if (
-  typeof __VISE_TEST_SIDEBAR_TAB__ !== "undefined" &&
-  __VISE_TEST_SIDEBAR_TAB__
-) {
+if (typeof __VISE_TEST_SIDEBAR_TAB__ !== "undefined" && __VISE_TEST_SIDEBAR_TAB__) {
   void browser.tabs.create({
     url: browser.runtime.getURL("sidebar.html"),
     active: false,

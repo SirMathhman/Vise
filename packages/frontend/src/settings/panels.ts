@@ -71,11 +71,7 @@ function populateReasoningSelect(
  * A category heading row inside a tool list. With `toggle`, it carries a
  * checkbox (value = the category name) that enables or disables the group.
  */
-export function appendToolCategory(
-  list: HTMLUListElement,
-  name: string,
-  toggle = false,
-): void {
+export function appendToolCategory(list: HTMLUListElement, name: string, toggle = false): void {
   const item = document.createElement("li");
   item.className = "tool-category";
   if (toggle) {
@@ -109,11 +105,7 @@ export function syncCategoryToggles(list: HTMLUListElement): void {
 }
 
 /** One tool as a checkbox row; unchecked rows are dimmed. */
-export function appendToolItem(
-  list: HTMLUListElement,
-  name: string,
-  checked: boolean,
-): void {
+export function appendToolItem(list: HTMLUListElement, name: string, checked: boolean): void {
   const item = document.createElement("li");
   if (!checked) item.classList.add("disabled");
   const checkbox = document.createElement("input");
@@ -185,11 +177,7 @@ function syncProfileOptions(select: HTMLSelectElement, names: string[]): void {
   }
 }
 
-function appendPlaceholder(
-  select: HTMLSelectElement,
-  text: string,
-  before = false,
-): void {
+function appendPlaceholder(select: HTMLSelectElement, text: string, before = false): void {
   const option = document.createElement("option");
   option.value = "";
   option.textContent = text;

@@ -1,6 +1,9 @@
 import { expect, test } from "bun:test";
 import { describeCall, readCall } from "@vise/core";
-import { describeProgress, startsNewBar } from "../../packages/frontend/src/status/prompt-progress.ts";
+import {
+  describeProgress,
+  startsNewBar,
+} from "../../packages/frontend/src/status/prompt-progress.ts";
 
 test("a call reports only the tokens it has to read, not the cached conversation", () => {
   const reading = readCall({
@@ -16,15 +19,15 @@ test("a call reports only the tokens it has to read, not the cached conversation
     reused: 400,
     finished: false,
   });
-  expect(
-    describeCall({ total: 1000, cache: 400, processed: 700, time_ms: 900 }),
-  ).toBe("prompt: 300/600 tokens · 400 reused");
+  expect(describeCall({ total: 1000, cache: 400, processed: 700, time_ms: 900 })).toBe(
+    "prompt: 300/600 tokens · 400 reused",
+  );
 });
 
 test("a finished call is a summary of what it read, with the time", () => {
-  expect(
-    describeCall({ total: 1000, cache: 0, processed: 1000, time_ms: 2500 }),
-  ).toBe("prompt: 1000 tokens · 2.5 s");
+  expect(describeCall({ total: 1000, cache: 0, processed: 1000, time_ms: 2500 })).toBe(
+    "prompt: 1000 tokens · 2.5 s",
+  );
   // A prompt that was all but cached shows how little was new, not how long the conversation is.
   expect(
     describeCall({
@@ -38,15 +41,9 @@ test("a finished call is a summary of what it read, with the time", () => {
 
 test("each call says what it is for", () => {
   const base = { total: 100, cache: 0, processed: 10, time_ms: 0 };
-  expect(describeCall({ ...base, purpose: "goal" })).toBe(
-    "goal: 10/100 tokens",
-  );
-  expect(describeCall({ ...base, purpose: "goal-check" })).toBe(
-    "goal check: 10/100 tokens",
-  );
-  expect(describeCall({ ...base, purpose: "compaction" })).toBe(
-    "compaction: 10/100 tokens",
-  );
+  expect(describeCall({ ...base, purpose: "goal" })).toBe("goal: 10/100 tokens");
+  expect(describeCall({ ...base, purpose: "goal-check" })).toBe("goal check: 10/100 tokens");
+  expect(describeCall({ ...base, purpose: "compaction" })).toBe("compaction: 10/100 tokens");
 });
 
 test("odd numbers are kept inside the bar, and no prompt size means nothing to draw", () => {

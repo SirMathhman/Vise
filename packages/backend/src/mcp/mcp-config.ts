@@ -45,10 +45,7 @@ export function parseServer(value: unknown): McpServerSpec | string {
 }
 
 /** The `mcpServers` object of a JSON file, or why it could not be read (a missing file is just empty). */
-function readServers(
-  path: string,
-  problems: string[],
-): Record<string, unknown> {
+function readServers(path: string, problems: string[]): Record<string, unknown> {
   if (!existsSync(path)) return {};
   try {
     const file: unknown = JSON.parse(readFileSync(path, "utf8"));
@@ -68,10 +65,7 @@ function readServers(
  * overlaid by the project's `.viserc.json`, both keyed `mcpServers`. A project
  * entry replaces a global one of the same name; `"disabled": true` removes it.
  */
-export function loadMcpServers(
-  root: string,
-  globalDir: string = globalDataDir,
-): McpConfig {
+export function loadMcpServers(root: string, globalDir: string = globalDataDir): McpConfig {
   const problems: string[] = [];
   const merged: Record<string, unknown> = {
     ...readServers(join(globalDir, "mcp.json"), problems),

@@ -145,6 +145,7 @@ describe("profile after a workflow", () => {
       setSessionName: () => {},
       profileScope: () => scope,
       setCurrentAbort: () => {},
+      underGoal: (_said: string, _signal: AbortSignal, first: () => unknown) => first(),
     } as unknown as WorkflowCommands;
     return { session, restored, events, active: () => active };
   };

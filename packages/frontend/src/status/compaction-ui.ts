@@ -10,9 +10,9 @@ export const COMPACTED = "🗜 Conversation compacted";
  * into "compacted" when the call ends. It stays, so the log shows where the
  * earlier conversation was folded into a summary.
  */
-export function createCompactionMarker(
-  addLine: (cls: string, text: string) => HTMLElement,
-): { observe(message: ServerMessage): void } {
+export function createCompactionMarker(addLine: (cls: string, text: string) => HTMLElement): {
+  observe(message: ServerMessage): void;
+} {
   let open: { request: number | undefined; line: HTMLElement } | null = null;
   return {
     observe(message) {

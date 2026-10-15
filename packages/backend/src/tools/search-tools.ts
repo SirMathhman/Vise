@@ -48,8 +48,7 @@ function rank(defs: Tool[], query: string): Tool[] {
       const name = t.function.name.toLowerCase();
       const text = t.function.description.toLowerCase();
       const score = words.reduce(
-        (sum, w) =>
-          sum + (name.includes(w) ? 3 : 0) + (text.includes(w) ? 1 : 0),
+        (sum, w) => sum + (name.includes(w) ? 3 : 0) + (text.includes(w) ? 1 : 0),
         0,
       );
       return { t, score };
@@ -77,14 +76,12 @@ export function makeSearchToolsHandler(
     const exact = defs.filter((t) => names.includes(t.function.name));
     // A bare category name returns the whole group.
     const group = defs.filter((t) => t.category === query.trim().toLowerCase());
-    const found =
-      exact.length > 0 ? exact : group.length > 0 ? group : rank(defs, query);
+    const found = exact.length > 0 ? exact : group.length > 0 ? group : rank(defs, query);
     if (found.length === 0) return `no tools match "${query}"`;
     return found
       .map(
         (t) =>
-          JSON.stringify(t.function) +
-          (isEnabled(t.function.name) ? "" : "  (currently disabled)"),
+          JSON.stringify(t.function) + (isEnabled(t.function.name) ? "" : "  (currently disabled)"),
       )
       .join("\n");
   };

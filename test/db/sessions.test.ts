@@ -1,12 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Message } from "@vise/core";
@@ -53,9 +47,7 @@ function idOf(result: { ok: boolean; value?: string }): string {
 describe("saveSession (edge)", () => {
   test("creates the database and keys the session by a generated uuid", () => {
     const base = freshBase();
-    const id = idOf(
-      saveSession(base, undefined, "My work", messages, undefined),
-    );
+    const id = idOf(saveSession(base, undefined, "My work", messages, undefined));
     expect(id).toMatch(/^[0-9a-f-]{36}$/);
     expect(existsSync(join(base, "vise.db"))).toBe(true);
     expect(existsSync(join(base, "sessions"))).toBe(false);
@@ -63,15 +55,7 @@ describe("saveSession (edge)", () => {
 
   test("keeps the display name out of the file name, whatever it contains", () => {
     const base = freshBase();
-    const id = idOf(
-      saveSession(
-        base,
-        undefined,
-        "weird: name/with *chars* ",
-        messages,
-        undefined,
-      ),
-    );
+    const id = idOf(saveSession(base, undefined, "weird: name/with *chars* ", messages, undefined));
     const loaded = loadSession(base, id);
     expect(loaded.ok && loaded.value.name).toBe("weird: name/with *chars*");
   });
@@ -81,9 +65,7 @@ describe("saveSession (edge)", () => {
     const id = idOf(saveSession(base, undefined, "first", messages, undefined));
     const again = idOf(saveSession(base, id, "renamed", messages, undefined));
     expect(again).toBe(id);
-    expect(listSessions(base)).toEqual(
-      ok([{ id, name: "renamed", updated: expect.any(String) }]),
-    );
+    expect(listSessions(base)).toEqual(ok([{ id, name: "renamed", updated: expect.any(String) }]));
   });
 
   test("two sessions may share a display name", () => {
@@ -96,24 +78,12 @@ describe("saveSession (edge)", () => {
   });
 
   test("rejects a blank name", () => {
-    const result = saveSession(
-      freshBase(),
-      undefined,
-      "   ",
-      messages,
-      undefined,
-    );
+    const result = saveSession(freshBase(), undefined, "   ", messages, undefined);
     expect(result.ok).toBe(false);
   });
 
   test("rejects an id that is not path-safe", () => {
-    const result = saveSession(
-      freshBase(),
-      "../evil",
-      "x",
-      messages,
-      undefined,
-    );
+    const result = saveSession(freshBase(), "../evil", "x", messages, undefined);
     expect(result.ok).toBe(false);
   });
 
@@ -298,13 +268,7 @@ describe("searchSessions (edge)", () => {
   test("a deleted session no longer matches", () => {
     const base = freshBase();
     const id = idOf(
-      saveSession(
-        base,
-        undefined,
-        "gone",
-        [{ role: "user", content: "zebra" }],
-        undefined,
-      ),
+      saveSession(base, undefined, "gone", [{ role: "user", content: "zebra" }], undefined),
     );
     deleteSession(base, id);
     const found = searchSessions(base, "zebra");

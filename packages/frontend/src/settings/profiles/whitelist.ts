@@ -1,15 +1,9 @@
-import {
-  appendToolCategory,
-  appendToolItem,
-  syncCategoryToggles,
-} from "../panels.ts";
+import { appendToolCategory, appendToolItem, syncCategoryToggles } from "../panels.ts";
 
 /** The tools ticked in a whitelist list (the category boxes only switch groups; they are not tools). */
 export function checkedTools(list: HTMLUListElement): string[] {
   return Array.from(
-    list.querySelectorAll<HTMLInputElement>(
-      "li:not(.tool-category) input:checked",
-    ),
+    list.querySelectorAll<HTMLInputElement>("li:not(.tool-category) input:checked"),
     (el) => el.value,
   );
 }
@@ -34,10 +28,7 @@ function setGroup(head: Element, on: boolean): void {
 }
 
 /** A checkbox in the list changed: a tool dims its row, a category switches its whole group; then the category boxes are re-synced. */
-export function applyToggle(
-  list: HTMLUListElement,
-  target: EventTarget | null,
-): void {
+export function applyToggle(list: HTMLUListElement, target: EventTarget | null): void {
   if (target instanceof HTMLInputElement) {
     const row = target.closest("li");
     if (row?.classList.contains("tool-category")) setGroup(row, target.checked);

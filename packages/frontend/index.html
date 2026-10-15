@@ -33,7 +33,9 @@
       <div class="appbar-menus" role="menubar" aria-label="Main menu">
         <span class="brand" aria-hidden="true">vise</span>
         <div class="menu-wrap">
-          <button id="menu-session" class="menu-trigger" type="button" role="menuitem">Session</button>
+          <button id="menu-session" class="menu-trigger" type="button" role="menuitem">
+            Session
+          </button>
         </div>
         <div class="menu-wrap">
           <button id="menu-view" class="menu-trigger" type="button" role="menuitem">View</button>
@@ -50,7 +52,16 @@
           title="Burst mode is on: the agent plans once, then runs tools without thinking (Agent menu)"
           >Burst</span
         >
-        <button id="model-btn" class="field appbar-select appbar-btn" type="button" aria-haspopup="dialog" aria-expanded="false" title="Model">Loading…</button>
+        <button
+          id="model-btn"
+          class="field appbar-select appbar-btn"
+          type="button"
+          aria-haspopup="dialog"
+          aria-expanded="false"
+          title="Model"
+        >
+          Loading…
+        </button>
         <select id="profile" class="field appbar-select" aria-label="Profile" title="Profile">
           <option value="">Loading…</option>
         </select>
@@ -59,7 +70,12 @@
           <option value="">Loading…</option>
         </select>
         <span id="status" class="status-pill" data-state="connecting">Connecting…</span>
-        <button id="stop" class="btn btn--danger hidden" type="button" title="Interrupt the current turn (Esc)">
+        <button
+          id="stop"
+          class="btn btn--danger hidden"
+          type="button"
+          title="Interrupt the current turn (Esc)"
+        >
           Stop
         </button>
         <button
@@ -69,13 +85,35 @@
           aria-label="Settings"
           title="Settings (Ctrl+,)"
         >
-          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <svg
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            aria-hidden="true"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <circle cx="12" cy="12" r="3" />
+            <path
+              d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+            />
+          </svg>
         </button>
       </div>
       <div id="tools-panel" class="dropdown tools-panel hidden" role="dialog" aria-label="Tools">
         <div class="dropdown-head">
           <strong>Tools for this conversation</strong>
-          <input id="tools-filter" class="field" type="search" placeholder="Filter…" aria-label="Filter tools" autocomplete="off" />
+          <input
+            id="tools-filter"
+            class="field"
+            type="search"
+            placeholder="Filter…"
+            aria-label="Filter tools"
+            autocomplete="off"
+          />
         </div>
         <ul id="tools-list" class="list tool-list"></ul>
         <p class="hint dropdown-foot">
@@ -84,7 +122,14 @@
       </div>
       <div id="model-panel" class="dropdown model-panel hidden" role="dialog" aria-label="Models">
         <div class="dropdown-head">
-          <input id="model-search" class="field" type="search" placeholder="Search models…" aria-label="Search models" autocomplete="off" />
+          <input
+            id="model-search"
+            class="field"
+            type="search"
+            placeholder="Search models…"
+            aria-label="Search models"
+            autocomplete="off"
+          />
         </div>
         <div class="model-body">
           <div id="model-recent" class="model-section hidden">
@@ -100,19 +145,39 @@
     <section id="sessions-page" class="page hidden" aria-labelledby="sessions-title">
       <div class="page-head">
         <h1 id="sessions-title" class="page-title" tabindex="-1">Sessions</h1>
-        <button id="sessions-close" class="btn btn--ghost btn--icon" type="button" aria-label="Close" title="Back to the chat (Esc)">
+        <button
+          id="sessions-close"
+          class="btn btn--ghost btn--icon"
+          type="button"
+          aria-label="Close"
+          title="Back to the chat (Esc)"
+        >
           ×
         </button>
       </div>
       <div class="page-body">
         <div class="sessions-page">
           <div class="actions sessions-tools">
-            <input id="sessions-filter" class="field" type="search" placeholder="Filter by name…" aria-label="Filter sessions" autocomplete="off" />
+            <input
+              id="sessions-filter"
+              class="field"
+              type="search"
+              placeholder="Filter by name…"
+              aria-label="Filter sessions"
+              autocomplete="off"
+            />
           </div>
           <ul id="sessions-list" class="list sessions-list"></ul>
           <h2 class="form-section">Save this conversation</h2>
           <div class="actions">
-            <input id="save-name" class="field" type="text" placeholder="Name" aria-label="Session name" autocomplete="off" />
+            <input
+              id="save-name"
+              class="field"
+              type="text"
+              placeholder="Name"
+              aria-label="Session name"
+              autocomplete="off"
+            />
             <button id="save-btn" class="btn btn--primary" type="button">Save</button>
           </div>
         </div>
@@ -124,19 +189,56 @@
           <h1 id="settings-title" class="page-title" tabindex="-1">Settings</h1>
           <div id="scope-context" class="scope-context"></div>
         </div>
-        <button id="page-close" class="btn btn--ghost btn--icon" type="button" aria-label="Close" title="Back to the chat (Esc)">
+        <button
+          id="page-close"
+          class="btn btn--ghost btn--icon"
+          type="button"
+          aria-label="Close"
+          title="Back to the chat (Esc)"
+        >
           ×
         </button>
       </div>
       <div class="settings-layout">
-        <nav class="settings-nav tabs" role="tablist" aria-label="Settings sections" aria-orientation="vertical">
-          <button id="general-tab" class="tab" role="tab" type="button" data-tab="settings-general">General</button>
-          <button id="profiles-tab" class="tab" role="tab" type="button" data-tab="settings-profiles">Profiles</button>
-          <button id="hooks-tab" class="tab" role="tab" type="button" data-tab="settings-hooks">Hooks</button>
-          <button id="notes-tab" class="tab" role="tab" type="button" data-tab="settings-notes">Notes</button>
-          <button id="workflows-tab" class="tab" role="tab" type="button" data-tab="settings-workflows">Workflows</button>
-          <button id="mcp-tab" class="tab" role="tab" type="button" data-tab="settings-mcp">MCP servers</button>
-          <button id="browser-tab" class="tab" role="tab" type="button" data-tab="settings-browser">Browser</button>
+        <nav
+          class="settings-nav tabs"
+          role="tablist"
+          aria-label="Settings sections"
+          aria-orientation="vertical"
+        >
+          <button id="general-tab" class="tab" role="tab" type="button" data-tab="settings-general">
+            General
+          </button>
+          <button
+            id="profiles-tab"
+            class="tab"
+            role="tab"
+            type="button"
+            data-tab="settings-profiles"
+          >
+            Profiles
+          </button>
+          <button id="hooks-tab" class="tab" role="tab" type="button" data-tab="settings-hooks">
+            Hooks
+          </button>
+          <button id="notes-tab" class="tab" role="tab" type="button" data-tab="settings-notes">
+            Notes
+          </button>
+          <button
+            id="workflows-tab"
+            class="tab"
+            role="tab"
+            type="button"
+            data-tab="settings-workflows"
+          >
+            Workflows
+          </button>
+          <button id="mcp-tab" class="tab" role="tab" type="button" data-tab="settings-mcp">
+            MCP servers
+          </button>
+          <button id="browser-tab" class="tab" role="tab" type="button" data-tab="settings-browser">
+            Browser
+          </button>
         </nav>
         <div class="page-body settings-body">
           <div id="settings-general" class="tab-page hidden">
@@ -150,7 +252,8 @@
               </div>
               <div class="two-pane__main">
                 <p id="pe-empty" class="list-empty hidden">
-                  No profiles yet. A profile gives the agent a persona or standing instructions, and can limit its tools.
+                  No profiles yet. A profile gives the agent a persona or standing instructions, and
+                  can limit its tools.
                 </p>
                 <div id="pe-form" class="editor-form">
                   <label class="form-label" for="pe-name">Name</label>
@@ -160,7 +263,9 @@
                   <h2 class="form-section">Tools it may use</h2>
                   <div class="actions actions--tight">
                     <button id="pe-check-all" class="btn btn--sm" type="button">Allow all</button>
-                    <button id="pe-uncheck-all" class="btn btn--sm" type="button">Allow none</button>
+                    <button id="pe-uncheck-all" class="btn btn--sm" type="button">
+                      Allow none
+                    </button>
                   </div>
                   <ul id="pe-tools" class="list tool-list tool-list--columns"></ul>
                   <h2 class="form-section">Its own hooks</h2>
@@ -176,8 +281,8 @@
           </div>
           <div id="settings-hooks" class="tab-page hidden">
             <p class="hint">
-              Commands run before or after every turn; their output is added to the conversation. A profile can own
-              hooks of its own (Profiles).
+              Commands run before or after every turn; their output is added to the conversation. A
+              profile can own hooks of its own (Profiles).
             </p>
             <div id="hooks-body"></div>
           </div>
@@ -236,10 +341,21 @@
           </form>
           <div class="fs-head">
             <div id="files-tabs" class="fs-tabs" role="tablist"></div>
-            <button id="files-mode" class="btn btn--sm hidden" type="button" title="Toggle markdown / text view"></button>
+            <button
+              id="files-mode"
+              class="btn btn--sm hidden"
+              type="button"
+              title="Toggle markdown / text view"
+            ></button>
           </div>
           <form id="files-addr-form" class="fs-url hidden">
-            <input name="url" class="field" type="text" aria-label="Address of this tab" autocomplete="off" />
+            <input
+              name="url"
+              class="field"
+              type="text"
+              aria-label="Address of this tab"
+              autocomplete="off"
+            />
             <button type="submit" class="btn">Go</button>
           </form>
           <p id="files-empty" class="viewer-empty">Open a file from the tree, or a URL above.</p>
@@ -266,19 +382,42 @@
         <section id="log" class="log" aria-label="Conversation"></section>
         <div id="sr-status" class="sr-only" role="status"></div>
         <footer class="context-bar">
-          <button id="context" class="context" type="button" title="Show what fills the context (/context)">
-            <span class="context-meter" aria-hidden="true"><span id="context-fill" class="context-fill"></span></span>
+          <button
+            id="context"
+            class="context"
+            type="button"
+            title="Show what fills the context (/context)"
+          >
+            <span class="context-meter" aria-hidden="true"
+              ><span id="context-fill" class="context-fill"></span
+            ></span>
             <span id="context-text" class="context-text"></span>
           </button>
-          <button id="compact-btn" class="btn btn--sm hidden" type="button" title="Summarise older turns to free context (/compact)">
+          <button
+            id="compact-btn"
+            class="btn btn--sm hidden"
+            type="button"
+            title="Summarise older turns to free context (/compact)"
+          >
             Compact
           </button>
-          <button id="jump-latest" class="jump-latest hidden" type="button" title="Scroll to the newest message">
+          <button
+            id="jump-latest"
+            class="jump-latest hidden"
+            type="button"
+            title="Scroll to the newest message"
+          >
             ↓ Latest
           </button>
         </footer>
         <section class="composer">
-          <div id="ask" class="ask hidden" tabindex="-1" role="group" aria-labelledby="ask-question">
+          <div
+            id="ask"
+            class="ask hidden"
+            tabindex="-1"
+            role="group"
+            aria-labelledby="ask-question"
+          >
             <div id="ask-question" class="ask-question"></div>
             <ul id="ask-options" class="ask-options"></ul>
             <div class="ask-row">
@@ -311,7 +450,21 @@
                 title="Attach images (or paste or drop them)"
                 aria-label="Attach images"
               >
-                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                <svg
+                  viewBox="0 0 24 24"
+                  width="18"
+                  height="18"
+                  aria-hidden="true"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path
+                    d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"
+                  />
+                </svg>
               </button>
               <input
                 id="attach-picker"
@@ -351,7 +504,8 @@
               </button>
             </div>
             <div id="composer-hint" class="composer-hint hidden">
-              Enter steers the running task · Ctrl+Enter queues for after it · Shift+Enter adds a line
+              Enter steers the running task · Ctrl+Enter queues for after it · Shift+Enter adds a
+              line
             </div>
           </div>
         </section>
@@ -369,8 +523,22 @@
       ></div>
       <div class="terminal-head">
         <span class="terminal-title">Terminal</span>
-        <button id="terminal-restart" class="btn btn--ghost btn--sm" type="button" title="Start a new shell">Restart</button>
-        <button id="terminal-kill" class="btn btn--ghost btn--sm" type="button" title="Stop the shell">Kill</button>
+        <button
+          id="terminal-restart"
+          class="btn btn--ghost btn--sm"
+          type="button"
+          title="Start a new shell"
+        >
+          Restart
+        </button>
+        <button
+          id="terminal-kill"
+          class="btn btn--ghost btn--sm"
+          type="button"
+          title="Stop the shell"
+        >
+          Kill
+        </button>
         <button
           id="terminal-hide"
           class="btn btn--ghost btn--icon btn--sm"

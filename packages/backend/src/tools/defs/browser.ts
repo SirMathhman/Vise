@@ -64,13 +64,23 @@ export const browserTools: Tool[] = [
     function: {
       name: "browser_read",
       description:
-        "Read a browser tab's current page: its text followed by an outline of the interactive elements that are clearly inside the viewport right now, each with a ref such as e3 (the text covers the whole page, the outline only what is on screen; the outline ends with notes on how many more elements lie above, below or to the side, how far the page is scrolled, and any scrollable panels). Use browser_scroll to bring other parts into view. The outline is always shown in full. A long page's text is saved to a temp file and only its start is shown: search or page through the rest with search_temp and read_temp. After an action that changes the page without loading it (a search, a filter), first call browser_wait_for_text with a word you expect in the new content (or browser_wait_for_idle if you cannot name one); otherwise the read may show the old content. Form fields show their label, and a native drop-down shows its options and a custom one (combobox) shows what it currently shows (`shows=\"...\"`; open ones are marked): choose in either with browser_select, never by clicking or typing into it. Pass a ref to browser_click, browser_hover, browser_drag or browser_type. Refs are valid until the page navigates; read again for fresh ones.",
+        "Read a browser tab's current page: its text followed by an outline of the interactive elements that are clearly inside the viewport right now, each with a ref such as e3 (the text covers the whole page, the outline only what is on screen; the outline ends with notes on how many more elements lie above, below or to the side, how far the page is scrolled, and any scrollable panels). While you can see images, every action also returns a screenshot of the page afterwards: when the picture and this text disagree, the picture is what the page shows. On a long page pass 'ref' to read just one region, or text=false for the outline alone. Use browser_scroll to bring other parts into view. The outline is always shown in full. A long page's text is saved to a temp file and only its start is shown: search or page through the rest with search_temp and read_temp. After an action that changes the page without loading it (a search, a filter), first call browser_wait_for_text with a word you expect in the new content (or browser_wait_for_idle if you cannot name one); otherwise the read may show the old content. Form fields show their label, and a native drop-down shows its options and a custom one (combobox) shows what it currently shows (`shows=\"...\"`; open ones are marked): choose in either with browser_select, never by clicking or typing into it. Pass a ref to browser_click, browser_hover, browser_drag or browser_type. Refs are valid until the page navigates; read again for fresh ones.",
       parameters: {
         type: "object",
         properties: {
           tab: {
             type: "integer",
             description: "Tab number from browser_open or browser_tabs",
+          },
+          ref: {
+            type: "string",
+            description:
+              "Read only the region around this element (its text and the elements inside it) instead of the whole page. A field or button gives the form, dialog or section it belongs to. Use it on long pages.",
+          },
+          text: {
+            type: "boolean",
+            description:
+              "false: only the outline of interactive elements, without the page text (the cheap way to check a form's state). Default true.",
           },
         },
         required: ["tab"],
@@ -353,7 +363,7 @@ export const browserTools: Tool[] = [
     function: {
       name: "browser_screenshot",
       description:
-        "Take a screenshot of a browser tab (what is in view, like the element list of browser_read, unless full_page is set): the picture is shown to you with this tool's result. Use it to check how a page or a UI you are building actually looks (layout, colours, spacing, whether something rendered), which the text from browser_read cannot tell you. full_page captures the whole scrollable page instead of just the visible part (not available in the Firefox extension, which shows only the visible part).",
+        "Take a screenshot of a browser tab (what is in view, like the element list of browser_read, unless full_page is set): the picture is shown to you with this tool's result. Use it to look at the page: to confirm the result of an action, to check how a page or a UI you are building actually looks (layout, colours, spacing, whether something rendered), or when the text from browser_read is unclear. While you can see images, each browser action (click, type, select, scroll, navigate...) already returns a screenshot of the page afterwards, so you usually do not need to ask. full_page captures the whole scrollable page instead of just the visible part (not available in the Firefox extension, which shows only the visible part).",
       parameters: {
         type: "object",
         properties: {
@@ -363,8 +373,7 @@ export const browserTools: Tool[] = [
           },
           full_page: {
             type: "boolean",
-            description:
-              "Capture the whole page, not just the visible part (default false)",
+            description: "Capture the whole page, not just the visible part (default false)",
           },
         },
         required: ["tab"],
@@ -424,8 +433,7 @@ export const browserTools: Tool[] = [
           },
           amount: {
             type: "integer",
-            description:
-              "Pixels to scroll (optional; default one page-sized step)",
+            description: "Pixels to scroll (optional; default one page-sized step)",
           },
           ref: {
             type: "string",

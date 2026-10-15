@@ -82,7 +82,12 @@ export function createWorkspace(
   const semantic = mountSemanticSearch(send, (path) => explorer.openFile(path));
 
   bindHResizeGrip(root, el<HTMLElement>("workspace-divider"), "vise-workspace-width");
-  bindHResizeGrip(el<HTMLElement>("files-list").closest(".fs-tree")!, el<HTMLElement>("tree-divider"), "vise-tree-width", 100);
+  bindHResizeGrip(
+    el<HTMLElement>("files-list").closest(".fs-tree")!,
+    el<HTMLElement>("tree-divider"),
+    "vise-tree-width",
+    100,
+  );
 
   return {
     toggle() {

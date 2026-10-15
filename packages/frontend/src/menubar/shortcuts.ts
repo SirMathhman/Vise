@@ -25,32 +25,40 @@ export const SHORTCUTS: [keys: string, what: string][] = [
 /** Whether keys typed now go into a field (so "/" must not be taken from it). */
 function typing(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
-  return target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName) || !!target.closest(".xterm");
+  return (
+    target.isContentEditable ||
+    /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName) ||
+    !!target.closest(".xterm")
+  );
 }
 
 /** Bind the page-wide keyboard shortcuts. */
 export function bindShortcuts(targets: ShortcutTargets): void {
-  document.addEventListener("keydown", (event) => {
-    if (event.defaultPrevented) return;
-    const ctrl = event.ctrlKey || event.metaKey;
-    const inShell = !!(event.target as Element | null)?.closest?.(".xterm");
-    if (ctrl && !event.shiftKey && !event.altKey && !inShell && event.key.toLowerCase() === "b") {
-      event.preventDefault();
-      targets.toggleFiles();
-    } else if (ctrl && event.key === ",") {
-      event.preventDefault();
-      targets.openSettings();
-    } else if (event.key === "Escape" && !targets.overlayOpen()) {
-      // In the message box, unless its suggestions are open (Escape closes those).
-      const box = event.target as HTMLElement | null;
-      const inComposer = box?.id === "input" && box.getAttribute("aria-expanded") !== "true";
-      if (inComposer && targets.stop()) event.preventDefault();
-    } else if (event.key === "/" && !ctrl && !typing(event.target) && !targets.overlayOpen()) {
-      event.preventDefault();
-      targets.focusComposer();
-    }
-    // Capture: seen before the menus close themselves on Escape, so closing a menu never also stops the turn.
-  }, true);
+  document.addEventListener(
+    "keydown",
+    (event) => {
+      if (event.defaultPrevented) return;
+      const ctrl = event.ctrlKey || event.metaKey;
+      const inShell = !!(event.target as Element | null)?.closest?.(".xterm");
+      if (ctrl && !event.shiftKey && !event.altKey && !inShell && event.key.toLowerCase() === "b") {
+        event.preventDefault();
+        targets.toggleFiles();
+      } else if (ctrl && event.key === ",") {
+        event.preventDefault();
+        targets.openSettings();
+      } else if (event.key === "Escape" && !targets.overlayOpen()) {
+        // In the message box, unless its suggestions are open (Escape closes those).
+        const box = event.target as HTMLElement | null;
+        const inComposer = box?.id === "input" && box.getAttribute("aria-expanded") !== "true";
+        if (inComposer && targets.stop()) event.preventDefault();
+      } else if (event.key === "/" && !ctrl && !typing(event.target) && !targets.overlayOpen()) {
+        event.preventDefault();
+        targets.focusComposer();
+      }
+      // Capture: seen before the menus close themselves on Escape, so closing a menu never also stops the turn.
+    },
+    true,
+  );
 }
 
 /** A dialog listing the shortcuts. */

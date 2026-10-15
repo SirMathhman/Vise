@@ -1,5 +1,10 @@
 import { expect, test } from "bun:test";
-import { cosine, decodeVector, encodeVector, topScored } from "../../packages/backend/src/stores/semantic/vectors.ts";
+import {
+  cosine,
+  decodeVector,
+  encodeVector,
+  topScored,
+} from "../../packages/backend/src/stores/semantic/vectors.ts";
 
 test("a vector survives the database's bytes, even from an unaligned view", () => {
   const original = [0.25, -1.5, 3, 0];
@@ -18,6 +23,13 @@ test("cosine is 1 for the same direction, 0 for orthogonal, -1 for opposite, 0 f
 });
 
 test("the best items come first and no more than the limit", () => {
-  const top = topScored([{ score: 0.2, item: "a" }, { score: 0.9, item: "b" }, { score: 0.5, item: "c" }], 2);
+  const top = topScored(
+    [
+      { score: 0.2, item: "a" },
+      { score: 0.9, item: "b" },
+      { score: 0.5, item: "c" },
+    ],
+    2,
+  );
   expect(top.map((t) => t.item)).toEqual(["b", "c"]);
 });

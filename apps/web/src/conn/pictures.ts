@@ -4,8 +4,7 @@ import { imageStore, sniffImage } from "@vise/backend";
 
 /** Most pictures that may come with one message. */
 
-const DATA_URI =
-  /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/]+={0,2})$/;
+const DATA_URI = /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/]+={0,2})$/;
 
 /**
  * The pictures a browser attached to a message: each a base64 data URI of a
@@ -16,18 +15,13 @@ const DATA_URI =
  */
 export function acceptPictures(raw: unknown): Picture[] {
   if (raw === undefined || raw === null) return [];
-  if (!Array.isArray(raw))
-    throw new Error("the attached images must be a list");
+  if (!Array.isArray(raw)) throw new Error("the attached images must be a list");
   if (raw.length > config.maxPictures) {
-    throw new Error(
-      `at most ${config.maxPictures} images can come with one message`,
-    );
+    throw new Error(`at most ${config.maxPictures} images can come with one message`);
   }
   return raw.map((item: unknown, index): Picture => {
     const fields =
-      typeof item === "object" && item !== null
-        ? (item as Record<string, unknown>)
-        : {};
+      typeof item === "object" && item !== null ? (item as Record<string, unknown>) : {};
     const uri = typeof fields["uri"] === "string" ? fields["uri"] : "";
     const match = DATA_URI.exec(uri);
     const which = `attached image ${index + 1}`;
@@ -41,8 +35,7 @@ export function acceptPictures(raw: unknown): Picture[] {
     if (sniffImage(bytes) !== match[1]) {
       throw new Error(`${which} is not really a ${match[1]!.slice(6)} file`);
     }
-    const name =
-      typeof fields["label"] === "string" ? fields["label"].trim() : "";
+    const name = typeof fields["label"] === "string" ? fields["label"].trim() : "";
     return imageStore.put(bytes, (name || `image ${index + 1}`).slice(0, 80));
   });
 }

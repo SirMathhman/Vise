@@ -90,7 +90,7 @@ describe("modelInfo", () => {
 describe("stream reader", () => {
   test("shows `reasoning` deltas as thinking", async () => {
     const sse = [
-      ': PROCESSING',
+      ": PROCESSING",
       'data: {"choices":[{"delta":{"reasoning":"hmm"}}]}',
       'data: {"choices":[{"delta":{"content":"hi"}}]}',
       "data: [DONE]",

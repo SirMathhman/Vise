@@ -90,9 +90,9 @@ test("a 503 then a good reply is one successful chat; a 400 is reported at once"
 });
 
 test("an error body is shown as its message, with what to do for the common statuses", () => {
-  expect(httpReason(400, '{"error":{"message":"x/y is not a valid model ID","code":400},"user_id":"u"}')).toBe(
-    "x/y is not a valid model ID",
-  );
+  expect(
+    httpReason(400, '{"error":{"message":"x/y is not a valid model ID","code":400},"user_id":"u"}'),
+  ).toBe("x/y is not a valid model ID");
   expect(httpReason(401, '{"error":{"message":"No auth credentials found"}}')).toContain("API key");
   expect(httpReason(402, '{"error":"insufficient credits"}')).toContain("insufficient credits");
   expect(httpReason(500, "plain text body")).toBe("plain text body");

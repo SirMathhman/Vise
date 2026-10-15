@@ -48,8 +48,12 @@ async function lookForOptions(
 }
 
 function listOf(options: Option[]): string {
-  return options.slice(0, 40).map((o) => o.text).join(" | ") +
-    (options.length > 40 ? ` | ... ${options.length - 40} more` : "");
+  return (
+    options
+      .slice(0, 40)
+      .map((o) => o.text)
+      .join(" | ") + (options.length > 40 ? ` | ... ${options.length - 40} more` : "")
+  );
 }
 
 /**
@@ -80,9 +84,10 @@ export async function chooseInCombobox(
   }
   if (!found.option) {
     const pool = found.candidates.length > 0 ? found.candidates : (state.options ?? []);
-    const why = found.candidates.length > 1
-      ? `${JSON.stringify(wanted)} matches several options; name one exactly`
-      : `no option matching ${JSON.stringify(wanted)}`;
+    const why =
+      found.candidates.length > 1
+        ? `${JSON.stringify(wanted)} matches several options; name one exactly`
+        : `no option matching ${JSON.stringify(wanted)}`;
     throw new Error(`${why} in ${ref}. Options: ${listOf(pool) || "(none listed)"}`);
   }
   await browser.click(id, found.option.ref);

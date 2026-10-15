@@ -6,7 +6,11 @@ import type { Client, Tool, ToolRunner, WorkflowEvent } from "@vise/core";
 import type { Message } from "@vise/core";
 import type { ContextSource, WorkflowSource } from "../../packages/backend/src/repl/session.ts";
 import { Session } from "../../packages/backend/src/repl/session.ts";
-import { initWorkflow, listWorkflows, loadWorkflow } from "../../packages/backend/src/stores/workflows.ts";
+import {
+  initWorkflow,
+  listWorkflows,
+  loadWorkflow,
+} from "../../packages/backend/src/stores/workflows.ts";
 import { workflowMessage } from "../../apps/web/src/server.ts";
 
 let root: string;
@@ -25,9 +29,7 @@ describe("workflow storage (edge)", () => {
     const global = join(root, "global");
     initWorkflow(project, "review");
     expect(loadWorkflow(project, global, "review")).toEqual({
-      steps: [
-        { type: "instruction", text: "TODO: describe the required step" },
-      ],
+      steps: [{ type: "instruction", text: "TODO: describe the required step" }],
     });
     expect(listWorkflows(project, global)).toEqual([
       { name: "review", scope: "project", active: true },
@@ -39,14 +41,8 @@ describe("workflow storage (edge)", () => {
     const global = join(root, "shadow-global");
     mkdirSync(join(project, "workflows"), { recursive: true });
     mkdirSync(join(global, "workflows"), { recursive: true });
-    writeFileSync(
-      join(project, "workflows", "review.json"),
-      JSON.stringify({ steps: [] }),
-    );
-    writeFileSync(
-      join(global, "workflows", "review.json"),
-      JSON.stringify({ steps: [] }),
-    );
+    writeFileSync(join(project, "workflows", "review.json"), JSON.stringify({ steps: [] }));
+    writeFileSync(join(global, "workflows", "review.json"), JSON.stringify({ steps: [] }));
     expect(listWorkflows(project, global)).toEqual([
       { name: "review", scope: "project", active: true },
       { name: "review", scope: "global", active: false },
@@ -92,9 +88,7 @@ describe("runWorkflow (core)", () => {
             required: ["path", "encoding"],
           });
           expect(
-            messages.some(
-              (message) => message.content === "instruction tool output",
-            ),
+            messages.some((message) => message.content === "instruction tool output"),
           ).toBeTrue();
           return {
             ok: true,
@@ -170,9 +164,7 @@ describe("runWorkflow (core)", () => {
       "run:read_file:README.md",
       "final-turn",
     ]);
-    expect(
-      messages.some((message) => message.content.includes("step output")),
-    ).toBeTrue();
+    expect(messages.some((message) => message.content.includes("step output"))).toBeTrue();
     expect(
       messages.some(
         (message) =>
@@ -181,15 +173,12 @@ describe("runWorkflow (core)", () => {
       ),
     ).toBeTrue();
     expect(
-      messages.filter(
-        (message) => message.role === "assistant" && message.tool_calls,
-      ),
+      messages.filter((message) => message.role === "assistant" && message.tool_calls),
     ).toHaveLength(1);
     expect(
       messages.some(
         (message) =>
-          message.role === "user" &&
-          message.content.startsWith("Workflow tool step 2 result"),
+          message.role === "user" && message.content.startsWith("Workflow tool step 2 result"),
       ),
     ).toBeTrue();
     expect(visibleTools).toEqual(["read_file", "read_file"]);
@@ -330,8 +319,7 @@ describe("Session /workflow command (core)", () => {
     });
 
     const listed = await session.handleLine("/workflow");
-    if (listed === "exit" || !listed.ok)
-      throw new Error("expected workflow list");
+    if (listed === "exit" || !listed.ok) throw new Error("expected workflow list");
     expect(listed.value).toContain("review [project] (active)");
     expect(listed.value).toContain("review [global] (shadowed)");
 
@@ -361,8 +349,7 @@ describe("Session /workflow command (core)", () => {
     const client: Client = {
       async chat(messages) {
         requestSeen =
-          messages.find((message) => message.content.startsWith("Run workflow"))
-            ?.content ?? "";
+          messages.find((message) => message.content.startsWith("Run workflow"))?.content ?? "";
         return { ok: true, value: { content: "review complete" } };
       },
     };
@@ -388,11 +375,8 @@ describe("Session /workflow command (core)", () => {
       preTurnHooks: [],
       postTurnHooks: [],
     });
-    const result = await session.handleLine(
-      "/workflow review Check the auth changes",
-    );
-    if (result === "exit" || !result.ok)
-      throw new Error("expected workflow success");
+    const result = await session.handleLine("/workflow review Check the auth changes");
+    if (result === "exit" || !result.ok) throw new Error("expected workflow success");
     expect(result.value).toBe("review complete");
     expect(autoSavedNames).toEqual(["Check the auth changes"]);
     expect(requestSeen).toContain("Check the auth changes");

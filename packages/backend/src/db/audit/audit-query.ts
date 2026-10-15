@@ -1,11 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { join } from "node:path";
-import type {
-  AuditCall,
-  AuditReader,
-  AuditReport,
-  AuditTopic,
-} from "@vise/core";
+import type { AuditCall, AuditReader, AuditReport, AuditTopic } from "@vise/core";
 import { parse, auditCallSchema } from "@vise/core";
 import { globalDataDir } from "../../data-dir.ts";
 import { AUDIT_MIGRATIONS } from "./audit-schema.ts";
@@ -39,12 +34,7 @@ function summary(db: Database, s: string): AuditReport {
   );
   const named = (name: string): number =>
     num(
-      one(
-        db,
-        "SELECT COUNT(*) n FROM audit_events WHERE session_id = ? AND name = ?",
-        s,
-        name,
-      ).n,
+      one(db, "SELECT COUNT(*) n FROM audit_events WHERE session_id = ? AND name = ?", s, name).n,
     );
   return {
     topic: "summary",
@@ -154,24 +144,30 @@ const STATES = ["running", "done", "stopped", "error", "abandoned"] as const;
 function callOf(r: Row, full: boolean): AuditCall {
   const state = STATES.find((s) => s === r.state) ?? "done";
   const raw = r.raw === null || r.raw === undefined ? undefined : str(r.raw);
-  const reasoning = r.raw_reasoning === null || r.raw_reasoning === undefined ? undefined : str(r.raw_reasoning);
+  const reasoning =
+    r.raw_reasoning === null || r.raw_reasoning === undefined ? undefined : str(r.raw_reasoning);
   const call: AuditCall = {
     request: num(r.request),
     purpose: str(r.purpose),
     model: str(r.model),
     state,
-    stopReason: r.stop_reason === null || r.stop_reason === undefined ? undefined : str(r.stop_reason),
+    stopReason:
+      r.stop_reason === null || r.stop_reason === undefined ? undefined : str(r.stop_reason),
     ms: num(r.ms),
     promptTokens: r.prompt_tokens === null ? undefined : num(r.prompt_tokens),
     completionTokens: r.completion_tokens === null ? undefined : num(r.completion_tokens),
-    finishReason: r.finish_reason === null || r.finish_reason === undefined ? undefined : str(r.finish_reason),
+    finishReason:
+      r.finish_reason === null || r.finish_reason === undefined ? undefined : str(r.finish_reason),
     toolCalls: r.tool_calls === null ? undefined : num(r.tool_calls),
     error: r.error === null || r.error === undefined ? undefined : str(r.error),
     rawChars: raw?.length,
     raw: full ? raw : undefined,
     reasoning: full ? reasoning : undefined,
     reasoningChars: reasoning?.length,
-    loop: r.loop_period === null || r.loop_period === undefined ? undefined : { period: num(r.loop_period), repeats: num(r.loop_repeats) },
+    loop:
+      r.loop_period === null || r.loop_period === undefined
+        ? undefined
+        : { period: num(r.loop_period), repeats: num(r.loop_repeats) },
     startedAt: r.started_at === null || r.started_at === undefined ? undefined : str(r.started_at),
   };
   const checked = parse(auditCallSchema, call);

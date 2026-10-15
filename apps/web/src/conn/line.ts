@@ -107,8 +107,7 @@ export function queueLine(
     reply(error instanceof Error ? error.message : String(error));
     return;
   }
-  const held: HeldLine | undefined =
-    qid === undefined ? undefined : { qid, text };
+  const held: HeldLine | undefined = qid === undefined ? undefined : { qid, text };
   if (held) {
     conn.held.push(held);
     publishQueue(conn);
@@ -140,11 +139,7 @@ export function queueLine(
  * instead of waiting for the whole task. With no turn running (it just ended)
  * the words simply start one.
  */
-export function steerLine(
-  conn: LineConnection,
-  text: string,
-  images: unknown,
-): void {
+export function steerLine(conn: LineConnection, text: string, images: unknown): void {
   if (!conn.running) {
     queueLine(conn, text, undefined, images);
     return;
@@ -209,14 +204,7 @@ async function runLine(
     for (let left = session.notices.takeSteers(); left.length > 0;) {
       for (const steer of left) {
         send({ type: "line_started", text: steer.content });
-        await handleLine(
-          session,
-          display,
-          send,
-          steer.content,
-          undefined,
-          steer.images,
-        );
+        await handleLine(session, display, send, steer.content, undefined, steer.images);
       }
       left = session.notices.takeSteers();
     }
@@ -258,9 +246,7 @@ async function handleLine(
       context,
       ...(result.compactionWarning
         ? {
-            compactionWarning: formatCompactionFailure(
-              result.compactionWarning,
-            ),
+            compactionWarning: formatCompactionFailure(result.compactionWarning),
           }
         : {}),
     });

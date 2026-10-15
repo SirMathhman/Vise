@@ -1,12 +1,6 @@
 import type { BrowserView } from "./browser-view.ts";
 import { emojiFor } from "./file-icons.ts";
-import {
-  type BrowserTab,
-  OpenTabs,
-  type OpenFile,
-  isMarkdown,
-  viewerMode,
-} from "./open-tabs.ts";
+import { type BrowserTab, OpenTabs, type OpenFile, isMarkdown, viewerMode } from "./open-tabs.ts";
 import { showMenu } from "./tab-menu.ts";
 import { confirmAction } from "../feedback/confirm.ts";
 import { promptAction } from "../feedback/prompt.ts";
@@ -63,9 +57,14 @@ export function createExplorer(
     const name = await promptAction({ title: isDir ? "New Directory" : "New File" });
     if (!name) return;
     const rel = parentPath === "" ? name : parentPath + "/" + name;
-    const res = await fetch(api("/api/create", rel) + "&dir=" + (isDir ? "1" : "0"), { method: "POST" });
+    const res = await fetch(api("/api/create", rel) + "&dir=" + (isDir ? "1" : "0"), {
+      method: "POST",
+    });
     if (res.ok) void reload();
-    else { const body = (await res.json().catch(() => ({}))) as { error?: string }; toast(`Could not create ${name} (${body.error ?? "error"})`, "error"); }
+    else {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      toast(`Could not create ${name} (${body.error ?? "error"})`, "error");
+    }
   }
   const entryContext = makeEntryOps(() => void reload(), newEntry);
   async function open(path: string, ul: HTMLUListElement = list): Promise<void> {
@@ -74,7 +73,26 @@ export function createExplorer(
     pathEl.textContent = "/";
     for (const entry of entries) {
       const child = path ? `${path}/${entry.name}` : entry.name;
-      ul.appendChild(entry.dir ? dirRow(entry.name, child, expanded, (c) => void open(child, c), (e) => entryContext(e, child, true), entry.ignored) : fileRow(entry.name, child, set.has(child), () => void openFile(child), (e) => entryContext(e, child), entry.ignored, entry.status));
+      ul.appendChild(
+        entry.dir
+          ? dirRow(
+              entry.name,
+              child,
+              expanded,
+              (c) => void open(child, c),
+              (e) => entryContext(e, child, true),
+              entry.ignored,
+            )
+          : fileRow(
+              entry.name,
+              child,
+              set.has(child),
+              () => void openFile(child),
+              (e) => entryContext(e, child),
+              entry.ignored,
+              entry.status,
+            ),
+      );
     }
   }
   function openUrl(raw: string): void {
@@ -86,7 +104,10 @@ export function createExplorer(
     if (target.closest(".fs-row")) return;
     e.preventDefault();
     const parent = target.closest<HTMLElement>("li[data-dir]")?.dataset.dir ?? "";
-    showMenu(e.clientX, e.clientY, [{ label: "New File", run: () => void newEntry(parent, false) }, { label: "New Directory", run: () => void newEntry(parent, true) }]);
+    showMenu(e.clientX, e.clientY, [
+      { label: "New File", run: () => void newEntry(parent, false) },
+      { label: "New Directory", run: () => void newEntry(parent, true) },
+    ]);
   });
   bindUrlForm(md.urlForm, openUrl, true);
   bindUrlForm(md.addrForm, (raw) => navigateTab(set.current, raw, md) && redraw(), false);
@@ -112,7 +133,14 @@ export function createExplorer(
     retain((i) => i !== index);
   }
   function tabMenu(index: number, x: number, y: number): void {
-    showMenu(x, y, [{ label: "Close all", run: () => retain(() => false) }, { label: "Close all to right", disabled: index === set.files.length - 1, run: () => retain((i) => i <= index) }]);
+    showMenu(x, y, [
+      { label: "Close all", run: () => retain(() => false) },
+      {
+        label: "Close all to right",
+        disabled: index === set.files.length - 1,
+        run: () => retain((i) => i <= index),
+      },
+    ]);
   }
   md.modeBtn.addEventListener("click", () => {
     if (toggleMode(set.current)) renderViewer(set.current, viewer, md);
@@ -136,10 +164,7 @@ export function createExplorer(
 }
 
 /** Fetch a directory's entries, showing loading/error/empty messages in `ul`; null when there is nothing to list. */
-async function fetchEntries(
-  path: string,
-  ul: HTMLUListElement,
-): Promise<DirEntry[] | null> {
+async function fetchEntries(path: string, ul: HTMLUListElement): Promise<DirEntry[] | null> {
   // On a refresh the old rows stay until the new ones arrive (no flicker).
   if (ul.childElementCount === 0) showMessage(ul, "Loading…", "loading");
   try {
@@ -213,18 +238,15 @@ function drawTabs(
 }
 
 /** Show a file as text, rendered markdown, or a rendered svg image, and sync the mode toggle. */
-function renderViewer(
-  file: OpenFile | undefined,
-  viewer: HTMLPreElement,
-  md: MarkdownView,
-): void {
+function renderViewer(file: OpenFile | undefined, viewer: HTMLPreElement, md: MarkdownView): void {
   const rendered = file?.mode === "markdown";
   const url = file?.mode === "url";
   const live = file?.mode === "browser";
   const svg = file?.mode === "svg";
   const plain = url || live || svg;
   // A source file is shown highlighted when its extension names a language we know (the text is escaped).
-  const highlighted = !plain && file ? highlightCode(file.text, languageOfPath(file.path)) : undefined;
+  const highlighted =
+    !plain && file ? highlightCode(file.text, languageOfPath(file.path)) : undefined;
   if (highlighted !== undefined) viewer.innerHTML = highlighted;
   else viewer.textContent = plain ? "" : (file?.text ?? "");
   viewer.classList.toggle("hidden", rendered || url || live || svg);
@@ -233,15 +255,13 @@ function renderViewer(
   md.pane.classList.toggle("hidden", !live);
   md.svg.classList.toggle("hidden", !svg);
   md.addrForm.classList.toggle("hidden", !url && !live);
-  if (file && (url || live))
-    showAddress(md.addrForm, url ? file.path : file.text);
+  if (file && (url || live)) showAddress(md.addrForm, url ? file.path : file.text);
   if (file && rendered) md.mdView.innerHTML = md.renderMarkdown(file.text);
   // Only (re)load the picture when the file changes, so tab switches don't re-decode it.
   if (file && svg && md.svgImg.getAttribute("src") !== svgUri(file.text)) {
     md.svgImg.setAttribute("src", svgUri(file.text));
   }
-  if (!svg && md.svgImg.hasAttribute("src"))
-    md.svgImg.removeAttribute("src");
+  if (!svg && md.svgImg.hasAttribute("src")) md.svgImg.removeAttribute("src");
   // Only (re)load the frame when its target changes, so tab switches don't reset the page.
   if (file && url && md.frame.getAttribute("src") !== file.path) {
     md.frame.setAttribute("src", file.path);
@@ -249,10 +269,7 @@ function renderViewer(
   if (!url && md.frame.hasAttribute("src")) md.frame.removeAttribute("src");
   if (file && live) md.browser.show(browserId(file));
   else md.browser.hide();
-  md.modeBtn.classList.toggle(
-    "hidden",
-    !file || url || live || svg || !isMarkdown(file.path),
-  );
+  md.modeBtn.classList.toggle("hidden", !file || url || live || svg || !isMarkdown(file.path));
   md.modeBtn.textContent = rendered ? "view text" : "view markdown";
 }
 
@@ -349,9 +366,7 @@ function dirRow(
       load(children);
     }
   };
-  head.addEventListener("click", () =>
-    setOpen(children.classList.contains("hidden")),
-  );
+  head.addEventListener("click", () => setOpen(children.classList.contains("hidden")));
   head.addEventListener("contextmenu", onContext);
   if (expanded.has(path)) setOpen(true);
   item.append(head, children);
@@ -414,11 +429,7 @@ async function rereadFiles(files: OpenFile[]): Promise<void> {
 }
 
 /** Point a URL or browser tab at a new address in place. False when nothing needs redrawing. */
-function navigateTab(
-  file: OpenFile | undefined,
-  raw: string,
-  md: MarkdownView,
-): boolean {
+function navigateTab(file: OpenFile | undefined, raw: string, md: MarkdownView): boolean {
   const url = normalizeUrl(raw);
   if (!url || !file) return false;
   if (file.mode === "browser") {
@@ -434,13 +445,7 @@ function navigateTab(
 
 /** Flip a file between text and rendered markdown. False for URL, browser, svg, or no tab. */
 function toggleMode(file: OpenFile | undefined): boolean {
-  if (
-    !file ||
-    file.mode === "url" ||
-    file.mode === "browser" ||
-    file.mode === "svg"
-  )
-    return false;
+  if (!file || file.mode === "url" || file.mode === "browser" || file.mode === "svg") return false;
   file.mode = file.mode === "markdown" ? "text" : "markdown";
   return true;
 }
@@ -460,7 +465,8 @@ function makeEntryOps(
   const deleteEntry = async (path: string): Promise<void> => {
     const yes = await confirmAction({
       title: `Delete ${path}?`,
-      message: "The file or folder is removed from disk, not moved to the recycle bin. This cannot be undone.",
+      message:
+        "The file or folder is removed from disk, not moved to the recycle bin. This cannot be undone.",
     });
     if (!yes) return;
     const res = await fetch(api("/api/delete", path), { method: "POST" });

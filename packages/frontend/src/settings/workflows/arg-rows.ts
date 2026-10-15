@@ -104,10 +104,7 @@ export function createArgRows(
       const result: Record<string, unknown> = {};
       for (const { name, mode, text } of rows) {
         if (mode.value === "unset") continue;
-        result[name] =
-          mode.value === "model"
-            ? { $model: text.value }
-            : fixedValue(text.value);
+        result[name] = mode.value === "model" ? { $model: text.value } : fixedValue(text.value);
       }
       return result;
     },

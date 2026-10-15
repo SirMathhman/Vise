@@ -1,13 +1,7 @@
 import { config } from "../../config.ts";
 import { type ChildProcess, spawn } from "node:child_process";
 import { createInterface } from "node:readline";
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { globalDataDir } from "../../data-dir.ts";
 import { VERSION } from "../../version.ts";
@@ -69,15 +63,11 @@ export class PlaywrightSession {
     return new Promise<string>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(
-          new Error(`snippet timed out after ${config.playwrightTimeoutMs} ms`),
-        );
+        reject(new Error(`snippet timed out after ${config.playwrightTimeoutMs} ms`));
         this.stop();
       }, config.playwrightTimeoutMs);
       this.pending.set(id, { resolve, reject, timer });
-      child.stdin?.write(
-        `${JSON.stringify({ id, wsUrl: this.wsUrl(), targetId, code })}\n`,
-      );
+      child.stdin?.write(`${JSON.stringify({ id, wsUrl: this.wsUrl(), targetId, code })}\n`);
     });
   }
 
@@ -92,18 +82,14 @@ export class PlaywrightSession {
       stdio: ["pipe", "pipe", "ignore"],
       windowsHide: true,
     });
-    child.on("error", (error) =>
-      this.failAll(`cannot start node: ${error.message}`),
-    );
+    child.on("error", (error) => this.failAll(`cannot start node: ${error.message}`));
     child.on("exit", () => {
       if (this.child === child) this.child = null;
       this.failAll(
         "the Playwright runner exited (it needs node and playwright-core; a packaged Vise installs it with `--setup-playwright`)",
       );
     });
-    createInterface({ input: child.stdout! }).on("line", (line) =>
-      this.onLine(line),
-    );
+    createInterface({ input: child.stdout! }).on("line", (line) => this.onLine(line));
     this.child = child;
     return child;
   }

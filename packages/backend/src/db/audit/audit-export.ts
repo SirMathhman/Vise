@@ -28,9 +28,9 @@ export function exportAudit(
     "read the audit log",
     path,
     () =>
-      db
-        .query("SELECT * FROM audit_sessions WHERE substr(id, 1, ?) = ?")
-        .all(ref.length, ref) as { id: string }[],
+      db.query("SELECT * FROM audit_sessions WHERE substr(id, 1, ?) = ?").all(ref.length, ref) as {
+        id: string;
+      }[],
   );
   if (!found.ok) return found;
   const [session, extra] = found.value;

@@ -83,8 +83,7 @@ describe("Session /profile init command (core)", () => {
       profileSource: ps,
     });
     const result = await session.handleLine("/profile init");
-    if (result === "exit" || result.ok)
-      throw new Error("expected error result");
+    if (result === "exit" || result.ok) throw new Error("expected error result");
     expect(result.error.kind).toBe("malformed");
     if (result.error.kind === "malformed") {
       expect(result.error.body).toBe("usage: /profile init <name>");
@@ -102,8 +101,7 @@ describe("Session /profile init command (core)", () => {
       profileSource: ps,
     });
     const result = await session.handleLine("/profile init dup");
-    if (result === "exit" || result.ok)
-      throw new Error("expected error result");
+    if (result === "exit" || result.ok) throw new Error("expected error result");
     if (result.error.kind === "malformed") {
       expect(result.error.body).toBe("profile 'dup' already exists");
     }
@@ -117,13 +115,10 @@ describe("Session /profile init command (core)", () => {
       postTurnHooks: [],
     });
     const result = await session.handleLine("/profile init x");
-    if (result === "exit" || result.ok)
-      throw new Error("expected error result");
+    if (result === "exit" || result.ok) throw new Error("expected error result");
     expect(result.error.kind).toBe("malformed");
     if (result.error.kind === "malformed") {
-      expect(result.error.body).toBe(
-        "profiles not supported by the current client",
-      );
+      expect(result.error.body).toBe("profiles not supported by the current client");
     }
   });
 });
@@ -183,9 +178,7 @@ describe("Session /profile default (core)", () => {
     const first = last[0];
     if (first === undefined) throw new Error("expected a system message");
     expect(first.role).toBe("system");
-    expect(last.some((m) => m.content.includes("helpful assistant"))).toBe(
-      true,
-    );
+    expect(last.some((m) => m.content.includes("helpful assistant"))).toBe(true);
   });
 
   test("/profile default is listed first even when no profile files exist", async () => {

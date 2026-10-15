@@ -22,7 +22,11 @@ export async function handleModelMessage(
   if (type === "model_list") {
     const result = await ports.details();
     if (!result.ok) {
-      return { type: "model_list", error: formatError(result.error), active: ports.controller.getModel() };
+      return {
+        type: "model_list",
+        error: formatError(result.error),
+        active: ports.controller.getModel(),
+      };
     }
     return { type: "model_list", models: result.value, active: ports.controller.getModel() };
   }

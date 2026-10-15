@@ -23,5 +23,8 @@ export async function handleMcpCommand(
   const result = await mcp.restart(name);
   return result.startsWith("error:")
     ? { ok: false, error: { kind: "malformed", body: result.slice(7) } }
-    : { ok: true, value: `${result}; any new tools reach a conversation only when a page is reloaded or Vise restarted` };
+    : {
+        ok: true,
+        value: `${result}; any new tools reach a conversation only when a page is reloaded or Vise restarted`,
+      };
 }

@@ -7,8 +7,7 @@ const EVERY_MS = 250;
 
 /** The name of the tool whose call is being written, read from the end of the text so far; undefined outside a call. */
 export function toolBeingCalled(tail: string): string | undefined {
-  if (tail.lastIndexOf(CALL_OPEN) <= tail.lastIndexOf(CALL_CLOSE))
-    return undefined;
+  if (tail.lastIndexOf(CALL_OPEN) <= tail.lastIndexOf(CALL_CLOSE)) return undefined;
   const names = [...tail.matchAll(/"name"\s*:\s*"([A-Za-z0-9_]+)"/g)];
   return names[names.length - 1]?.[1];
 }
@@ -55,8 +54,7 @@ export function generationReporter(
       // A call to a tool is reported the moment its name is known, however short the call is.
       const named = opens > announcedOpens && toolBeingCalled(tail) !== undefined;
       if (named) announcedOpens = opens;
-      if (!named && n - reportedTokens < EVERY_TOKENS && now() - reportedAt < EVERY_MS)
-        return;
+      if (!named && n - reportedTokens < EVERY_TOKENS && now() - reportedAt < EVERY_MS) return;
       reportedTokens = n;
       reportedAt = now();
       report(false);

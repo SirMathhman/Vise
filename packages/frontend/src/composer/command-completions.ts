@@ -88,10 +88,7 @@ export function getArgumentSuggestions(
       ],
       "burst mode",
     ],
-    "/reasoning": [
-      reasoningLevels.map((value) => ({ label: value, value })),
-      "reasoning effort",
-    ],
+    "/reasoning": [reasoningLevels.map((value) => ({ label: value, value })), "reasoning effort"],
     "/resume": [choices.sessions, "resume session"],
     "/delete": [choices.sessions, "delete session"],
   } as const;
@@ -104,17 +101,12 @@ export function getArgumentSuggestions(
   if (command === "/tool") {
     const nameEnd = rawArgs.search(/\s/);
     const name = nameEnd === -1 ? rawArgs : rawArgs.slice(0, nameEnd);
-    const exactName = choices.tools.find(
-      (tool) => tool.label.toLowerCase() === name.toLowerCase(),
-    );
+    const exactName = choices.tools.find((tool) => tool.label.toLowerCase() === name.toLowerCase());
     if (exactName && nameEnd !== -1) {
       const verb = rawArgs.slice(nameEnd).trimStart();
       if (/\s/.test(verb)) return [];
       return ["enable", "disable"]
-        .filter(
-          (item) =>
-            item.startsWith(verb.toLowerCase()) && item !== verb.toLowerCase(),
-        )
+        .filter((item) => item.startsWith(verb.toLowerCase()) && item !== verb.toLowerCase())
         .map((item) => ({
           label: item,
           description: "toggle tool",

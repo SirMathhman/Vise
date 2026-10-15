@@ -32,11 +32,7 @@ export interface McpMessage {
 type Ref = { name: string; scope: string };
 
 /** Lines of `name<separator>value` to an object; throws a message for the user on a line without the separator. */
-function parsePairs(
-  text: string,
-  separator: string,
-  example: string,
-): Record<string, string> {
+function parsePairs(text: string, separator: string, example: string): Record<string, string> {
   const pairs: Record<string, string> = {};
   for (const line of text.split("\n")) {
     if (line.trim() === "") continue;
@@ -52,8 +48,7 @@ const showPairs = (pairs: Record<string, string> | undefined, separator: string)
     .map(([k, v]) => `${k}${separator}${v}`)
     .join("\n");
 
-const lines = (text: string): string[] =>
-  text.split("\n").filter((l) => l.trim() !== "");
+const lines = (text: string): string[] => text.split("\n").filter((l) => l.trim() !== "");
 
 /** The label of a list entry: its name and how it is doing. */
 function describe(server: McpServer): string {
@@ -65,9 +60,7 @@ function describe(server: McpServer): string {
 /** What a server is doing: its state, why it is not working, what it printed. */
 function detailsText(server: McpServer | undefined): string {
   if (!server) return "";
-  return [describe(server), server.reason, server.stderr]
-    .filter(Boolean)
-    .join("\n");
+  return [describe(server), server.reason, server.stderr].filter(Boolean).join("\n");
 }
 
 /** Fill the server list, grouped under scope headings; clicking an entry opens it in the form. */
@@ -280,8 +273,7 @@ export function createMcpPanel(
     ui.details.textContent = detailsText(find(current));
   };
 
-  const renderList = (): void =>
-    renderServers(ui.list, servers, current, edit);
+  const renderList = (): void => renderServers(ui.list, servers, current, edit);
 
   function edit(target: McpServer | null): void {
     current = target ? { name: target.name, scope: target.scope } : null;

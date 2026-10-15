@@ -17,7 +17,8 @@ export function mockFetch(
   const original = globalThis.fetch;
   const calls: FetchCall[] = [];
   const replacement = async (input: string | URL | Request, init?: RequestInit) => {
-    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    const url =
+      typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
     calls.push({
       url,
       method: init?.method ?? "GET",

@@ -4,11 +4,7 @@ import { dim } from "../output/color.ts";
 import { formatGoalEvent } from "../output/format.ts";
 import { formatWorkflowEvent } from "../output/workflow-format.ts";
 import type { WorkflowEvent } from "@vise/core";
-import {
-  formatPicture,
-  formatToolCall,
-  summarizeToolResult,
-} from "../output/tool-line.ts";
+import { formatPicture, formatToolCall, summarizeToolResult } from "../output/tool-line.ts";
 import { displayOfTool } from "../tools/display.ts";
 import type { Picture } from "@vise/core";
 import type { GoalEvent } from "../repl/turn/goal-loop.ts";
@@ -93,9 +89,7 @@ export class StreamDisplay {
     const shown = describeCall(progress) ?? "";
     const text = dim(shown);
     if (this.promptActive) {
-      process.stdout.write(
-        "\r" + " ".repeat(this.lastText.length + 1) + "\r" + text,
-      );
+      process.stdout.write("\r" + " ".repeat(this.lastText.length + 1) + "\r" + text);
     } else {
       if (this.contentWritten) {
         this.flushMdLine();
@@ -121,11 +115,7 @@ export class StreamDisplay {
   };
 
   /** Display a tool invocation as a visible event between model rounds. */
-  onToolCall = (
-    name: string,
-    depth = 0,
-    args?: Record<string, unknown>,
-  ): void => {
+  onToolCall = (name: string, depth = 0, args?: Record<string, unknown>): void => {
     if (this.promptActive) {
       this.promptActive = false;
       process.stdout.write("\n");
@@ -136,8 +126,7 @@ export class StreamDisplay {
     }
     if (this.contentWritten) this.flushMdLine();
     process.stdout.write(
-      dim(`${"  ".repeat(depth)}${formatToolCall(name, args, displayOfTool)}`) +
-        "\n",
+      dim(`${"  ".repeat(depth)}${formatToolCall(name, args, displayOfTool)}`) + "\n",
     );
   };
 
@@ -145,8 +134,7 @@ export class StreamDisplay {
   onGoal = (event: GoalEvent): void => this.printEvent(formatGoalEvent(event));
 
   /** Show each workflow step as it starts (and how the run ended) as a visible event between model rounds. */
-  onWorkflow = (event: WorkflowEvent): void =>
-    this.printEvent(formatWorkflowEvent(event));
+  onWorkflow = (event: WorkflowEvent): void => this.printEvent(formatWorkflowEvent(event));
 
   /** Burst mode switched on or off (the engine turns it off after a failed call). */
   onBurst = (active: boolean): void =>
@@ -187,10 +175,7 @@ export class StreamDisplay {
 
   private flushMdLine(): void {
     if (this.mdLineBuffer.length > 0) {
-      const [styled, newInFence] = renderLine(
-        this.mdLineBuffer,
-        this.mdInFence,
-      );
+      const [styled, newInFence] = renderLine(this.mdLineBuffer, this.mdInFence);
       this.mdInFence = newInFence;
       this.mdLineBuffer = "";
       process.stdout.write(styled + "\n");

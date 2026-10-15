@@ -2,11 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { config } from "../../packages/backend/src/config.ts";
 import type { Client } from "@vise/core";
 import type { Message, Result } from "@vise/core";
-import {
-  capTrace,
-  type GoalTraceFact,
-  TRACE_TEXT_MAX,
-} from "@vise/core";
+import { capTrace, type GoalTraceFact, TRACE_TEXT_MAX } from "@vise/core";
 import { GoalTracker } from "../../packages/backend/src/repl/turn/goal-loop.ts";
 
 type Reply = Record<string, string> | undefined;
@@ -55,8 +51,7 @@ function setup(enabled = true, messages?: Message[]): Setup {
   };
 }
 
-const exits = (facts: GoalTraceFact[]) =>
-  facts.flatMap((f) => (f.kind === "exit" ? [f] : []));
+const exits = (facts: GoalTraceFact[]) => facts.flatMap((f) => (f.kind === "exit" ? [f] : []));
 
 /** A turn that runs one tool and says something. */
 const working = (messages: Message[]) => async (): Promise<Result<string>> => {
@@ -71,9 +66,20 @@ describe("goal trace", () => {
     ["blocked", "blocked"],
   ])("a %s verdict ends the turn with the exit reason %s", async (v, reason) => {
     const { facts, tracker, messages } = setup();
-    await tracker.run(scripted({ verdict: () => verdict(v) }), messages, [], working(messages), new AbortController().signal);
+    await tracker.run(
+      scripted({ verdict: () => verdict(v) }),
+      messages,
+      [],
+      working(messages),
+      new AbortController().signal,
+    );
     expect(exits(facts)).toHaveLength(1);
-    expect(exits(facts)[0]).toMatchObject({ reason, detail: "because", lastReply: "I did a thing", toolResults: 1 });
+    expect(exits(facts)[0]).toMatchObject({
+      reason,
+      detail: "because",
+      lastReply: "I did a thing",
+      toolResults: 1,
+    });
     // The hidden calls are in the trace with their exact question and raw reply.
     const asks = facts.flatMap((f) => (f.kind === "ask" ? [f] : []));
     expect(asks.map((a) => a.purpose)).toEqual(["goal", "goal-check"]);
@@ -91,7 +97,9 @@ describe("goal trace", () => {
     await tracker.run(client, messages, [], working(messages), new AbortController().signal);
     expect(facts.find((f) => f.kind === "goal")).toMatchObject({ hold: "do not submit yet" });
     const check = facts.find((f) => f.kind === "ask" && f.purpose === "goal-check");
-    expect(check?.kind === "ask" && check.question).toContain("User's hold, still in force: do not submit yet");
+    expect(check?.kind === "ask" && check.question).toContain(
+      "User's hold, still in force: do not submit yet",
+    );
     expect(facts.some((f) => f.kind === "continue")).toBe(false);
     expect(exits(facts)[0]).toMatchObject({ reason: "blocked" });
   });
@@ -100,15 +108,33 @@ describe("goal trace", () => {
     const { tracker, messages } = setup();
     const signal = new AbortController().signal;
     const hold = { goal: "apply", done_when: "submitted", hold: "wait" };
-    await tracker.run(scripted({ goal: hold, verdict: () => verdict("blocked") }), messages, [], working(messages), signal);
+    await tracker.run(
+      scripted({ goal: hold, verdict: () => verdict("blocked") }),
+      messages,
+      [],
+      working(messages),
+      signal,
+    );
     expect(tracker.goal?.hold).toBe("wait");
     messages.push({ role: "user", content: "hmm" });
     const nothing = { goal: "", done_when: "", hold: "" };
-    await tracker.run(scripted({ goal: nothing, verdict: () => verdict("blocked") }), messages, [], working(messages), signal);
+    await tracker.run(
+      scripted({ goal: nothing, verdict: () => verdict("blocked") }),
+      messages,
+      [],
+      working(messages),
+      signal,
+    );
     expect(tracker.goal?.hold).toBe("wait");
     messages.push({ role: "user", content: "go ahead" });
     const lifted = { goal: "apply", done_when: "submitted", hold: "" };
-    await tracker.run(scripted({ goal: lifted, verdict: () => verdict("yes") }), messages, [], working(messages), signal);
+    await tracker.run(
+      scripted({ goal: lifted, verdict: () => verdict("yes") }),
+      messages,
+      [],
+      working(messages),
+      signal,
+    );
     expect(tracker.goal).toBeUndefined();
   });
 
@@ -116,17 +142,34 @@ describe("goal trace", () => {
     const { facts, tracker, messages } = setup();
     const answers = [verdict("no", "fill the form"), verdict("yes")];
     const goal = { goal: "apply", done_when: "filled", hold: "do not submit" };
-    await tracker.run(scripted({ goal, verdict: (n) => answers[n] }), messages, [], working(messages), new AbortController().signal);
+    await tracker.run(
+      scripted({ goal, verdict: (n) => answers[n] }),
+      messages,
+      [],
+      working(messages),
+      new AbortController().signal,
+    );
     const cont = facts.find((f) => f.kind === "continue");
-    expect(cont?.kind === "continue" && cont.note).toContain("standing restriction, which still applies: do not submit");
+    expect(cont?.kind === "continue" && cont.note).toContain(
+      "standing restriction, which still applies: do not submit",
+    );
   });
 
   test("a check that cannot be made is traced as unknown with the failure", async () => {
     const { facts, tracker, messages } = setup();
-    await tracker.run(scripted({ verdict: () => undefined }), messages, [], working(messages), new AbortController().signal);
+    await tracker.run(
+      scripted({ verdict: () => undefined }),
+      messages,
+      [],
+      working(messages),
+      new AbortController().signal,
+    );
     const failed = facts.filter((f) => f.kind === "ask" && f.failure !== undefined);
     expect(failed).toHaveLength(3); // every attempt
-    expect(exits(facts)[0]).toMatchObject({ reason: "unknown", detail: expect.stringContaining("socket closed") });
+    expect(exits(facts)[0]).toMatchObject({
+      reason: "unknown",
+      detail: expect.stringContaining("socket closed"),
+    });
   });
 
   test("a goal that could not be derived falls back to the user's words, and says so", async () => {
@@ -139,7 +182,13 @@ describe("goal trace", () => {
   test("a continue records the note that is kept out of the saved conversation, and whether tools ran", async () => {
     const { facts, tracker, messages } = setup();
     const answers = [verdict("no", "open the file"), verdict("yes")];
-    await tracker.run(scripted({ verdict: (n) => answers[n] }), messages, [], working(messages), new AbortController().signal);
+    await tracker.run(
+      scripted({ verdict: (n) => answers[n] }),
+      messages,
+      [],
+      working(messages),
+      new AbortController().signal,
+    );
     const cont = facts.find((f) => f.kind === "continue");
     expect(cont).toMatchObject({ continues: 1, repeats: 0, toolsRan: true });
     expect(cont?.kind === "continue" && cont.note).toContain("Next step: open the file");
@@ -176,14 +225,29 @@ describe("goal trace", () => {
 
   test("a stuck progress check the user declines to override halts the turn", async () => {
     const { facts, tracker, messages } = setup();
-    const client = scripted({ verdict: () => verdict("yes"), progress: { progress: "stuck", detail: "going in circles" } });
+    const client = scripted({
+      verdict: () => verdict("yes"),
+      progress: { progress: "stuck", detail: "going in circles" },
+    });
     const signal = new AbortController().signal;
-    await tracker.run(client, messages, [], async () => {
-      await tracker.progress(client, messages, [], signal, async () => false);
-      return ok();
-    }, signal);
-    expect(facts.find((f) => f.kind === "progress")).toMatchObject({ progress: "stuck", keepGoing: false });
-    expect(exits(facts)[0]).toMatchObject({ reason: "halted-progress", detail: "going in circles" });
+    await tracker.run(
+      client,
+      messages,
+      [],
+      async () => {
+        await tracker.progress(client, messages, [], signal, async () => false);
+        return ok();
+      },
+      signal,
+    );
+    expect(facts.find((f) => f.kind === "progress")).toMatchObject({
+      progress: "stuck",
+      keepGoing: false,
+    });
+    expect(exits(facts)[0]).toMatchObject({
+      reason: "halted-progress",
+      detail: "going in circles",
+    });
   });
 
   test("with goal checking off the turn is traced as goal-off", async () => {
@@ -216,7 +280,10 @@ describe("goal trace", () => {
       async () => ({ ok: false, error: { kind: "network", cause: "connection reset" } }),
       new AbortController().signal,
     );
-    expect(exits(facts)[0]).toMatchObject({ reason: "turn-failed", detail: expect.stringContaining("connection reset") });
+    expect(exits(facts)[0]).toMatchObject({
+      reason: "turn-failed",
+      detail: expect.stringContaining("connection reset"),
+    });
     expect(facts.some((f) => f.kind === "verdict")).toBeFalse();
   });
 
@@ -250,7 +317,10 @@ describe("goal trace", () => {
     );
     await expect(run).rejects.toThrow("kaboom");
     expect(exits(facts)).toHaveLength(1);
-    expect(exits(facts)[0]).toMatchObject({ reason: "exception", detail: expect.stringContaining("kaboom") });
+    expect(exits(facts)[0]).toMatchObject({
+      reason: "exception",
+      detail: expect.stringContaining("kaboom"),
+    });
   });
 
   test("long text is capped", () => {

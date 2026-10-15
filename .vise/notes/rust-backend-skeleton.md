@@ -5,7 +5,7 @@ A bare Rust process that serves the frontend and accepts WebSocket connections �
 **Scope boundaries**
 
 - **In:** HTTP static file serving, Host-header rejection, port selection (same algorithm as `choosePort`), WebSocket upgrade on `/ws` and `/ext` with ping/pong echo, a clean binary that runs on Windows.
-- **Out (everything else is later phases):** all `/api/*` HTTP routes, the conversation loop, LLM client, tool protocol, goal loop, compaction, MCP, browser backend, semantic index, terminal panel, `/ext-token` pairing, WebView2 window, embedded assets. The Rust server is a *transport placeholder* only.
+- **Out (everything else is later phases):** all `/api/*` HTTP routes, the conversation loop, LLM client, tool protocol, goal loop, compaction, MCP, browser backend, semantic index, terminal panel, `/ext-token` pairing, WebView2 window, embedded assets. The Rust server is a _transport placeholder_ only.
 
 **Steps**
 
@@ -27,27 +27,27 @@ A bare Rust process that serves the frontend and accepts WebSocket connections �
 2. `crates/vise-rs/src/main.rs` — single file for now (split if it grows past ~100 lines).
 
    a. **Port selection** — reimplement `choosePort` from `apps/web/src/port.ts`:
-      - Bind a probe to `127.0.0.1:PORT` (default 3000, overridable via `--port=N` CLI arg).
-      - If busy, scan `PORT+1` through `PORT+100` for the first free.
-      - If still busy, bind to port `0` and use whatever the OS gives.
-      - Print the resolved port and any busy-port note to stdout (matching `startWebServer`'s output).
-      - Bind the actual listener to `127.0.0.1:RESOLVED_PORT`.
+   - Bind a probe to `127.0.0.1:PORT` (default 3000, overridable via `--port=N` CLI arg).
+   - If busy, scan `PORT+1` through `PORT+100` for the first free.
+   - If still busy, bind to port `0` and use whatever the OS gives.
+   - Print the resolved port and any busy-port note to stdout (matching `startWebServer`'s output).
+   - Bind the actual listener to `127.0.0.1:RESOLVED_PORT`.
 
    b. **Request handler** — a `hyper::service::service_fn` with a `match` on `(method, path)`:
-      - Any method on `/ws` or `/ext` → handled by the WS upgrade path (step 3).
-      - `GET` on the 4 asset paths → serve the file with the correct `Content-Type`:
-        | path | file (relative to repo root) | Content-Type |
-        |---|---|---|
-        | `/` | `packages/frontend/index.html` | `text/html; charset=utf-8` |
-        | `/index.html` | same | same |
-        | `/icon.svg` | `assets/icon.svg` | `image/svg+xml` |
-        | `/dist/app.js` | `packages/frontend/dist/app.js` | `text/javascript; charset=utf-8` |
-        | `/dist/app.css` | `packages/frontend/dist/app.css` | `text/css; charset=utf-8` |
-      - Everything else → `404`.
+   - Any method on `/ws` or `/ext` → handled by the WS upgrade path (step 3).
+   - `GET` on the 4 asset paths → serve the file with the correct `Content-Type`:
+     | path            | file (relative to repo root)     | Content-Type                     |
+     | --------------- | -------------------------------- | -------------------------------- |
+     | `/`             | `packages/frontend/index.html`   | `text/html; charset=utf-8`       |
+     | `/index.html`   | same                             | same                             |
+     | `/icon.svg`     | `assets/icon.svg`                | `image/svg+xml`                  |
+     | `/dist/app.js`  | `packages/frontend/dist/app.js`  | `text/javascript; charset=utf-8` |
+     | `/dist/app.css` | `packages/frontend/dist/app.css` | `text/css; charset=utf-8`        |
+   - Everything else → `404`.
 
    c. **Host-header check** — before serving any request (including static files), inspect the `Host` header:
-      - Must be exactly `localhost:PORT` or `127.0.0.1:PORT` where `PORT` is the resolved port. Anything else → `403`.
-      - This mirrors the DNS-rebinding guard in `apps/web/src/server.ts`.
+   - Must be exactly `localhost:PORT` or `127.0.0.1:PORT` where `PORT` is the resolved port. Anything else → `403`.
+   - This mirrors the DNS-rebinding guard in `apps/web/src/server.ts`.
 
    d. **Reading files** — read from disk on every request (no caching, no embedding). Paths are resolved relative to the current working directory. If a file is missing, return `500` with a body naming the path. This is development-only; embedding comes when the Rust server is production.
 

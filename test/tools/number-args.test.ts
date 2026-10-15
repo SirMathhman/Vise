@@ -8,10 +8,7 @@ import { createFile, readFile } from "../../packages/backend/src/tools/files.ts"
 
 const bigFile = (): string => {
   const path = join(mkdtempSync(join(tmpdir(), "vise-read-")), "big.txt");
-  writeFileSync(
-    path,
-    Array.from({ length: 600 }, (_, i) => `line ${i + 1}`).join("\n"),
-  );
+  writeFileSync(path, Array.from({ length: 600 }, (_, i) => `line ${i + 1}`).join("\n"));
   return path;
 };
 
@@ -41,9 +38,9 @@ test("an argument that is not a number is refused, not ignored", () => {
 });
 
 test("the call line shows the range for a range given as text too", () => {
-  expect(
-    toolDetail({ path: "a.ts", offset: "300", limit: "5" }, "read_file"),
-  ).toBe("a.ts · lines 300–304");
+  expect(toolDetail({ path: "a.ts", offset: "300", limit: "5" }, "read_file")).toBe(
+    "a.ts · lines 300–304",
+  );
 });
 
 test("a missing path is refused, not read as an empty string", () => {
@@ -53,7 +50,5 @@ test("a missing path is refused, not read as an empty string", () => {
 
 test("a garbled limit is refused, not silently truncated", () => {
   const path = bigFile();
-  expect(readFile({ path, limit: "30," })).toBe(
-    'error: limit must be a number (got "30,")',
-  );
+  expect(readFile({ path, limit: "30," })).toBe('error: limit must be a number (got "30,")');
 });

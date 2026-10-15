@@ -25,23 +25,23 @@ const isHttpUrl = (value: string): boolean => {
   }
 };
 
-export const stdioServerSpecSchema: z.ZodType<StdioServerSpec> = z
-  .object({
-    command: z.string().min(1),
-    args: z.array(z.string()).default([]),
-    env: z.record(z.string(), z.string()).default({}),
-  }) as z.ZodType<StdioServerSpec>;
+export const stdioServerSpecSchema: z.ZodType<StdioServerSpec> = z.object({
+  command: z.string().min(1),
+  args: z.array(z.string()).default([]),
+  env: z.record(z.string(), z.string()).default({}),
+}) as z.ZodType<StdioServerSpec>;
 
-export const urlServerSpecSchema: z.ZodType<UrlServerSpec> = z
-  .object({
-    url: z.string().refine(isHttpUrl, {
-      message: "'url' must be an http or https address",
-    }),
-    headers: z.record(z.string(), z.string()).default({}),
-  }) as z.ZodType<UrlServerSpec>;
+export const urlServerSpecSchema: z.ZodType<UrlServerSpec> = z.object({
+  url: z.string().refine(isHttpUrl, {
+    message: "'url' must be an http or https address",
+  }),
+  headers: z.record(z.string(), z.string()).default({}),
+}) as z.ZodType<UrlServerSpec>;
 
-export const mcpServerSpecSchema: z.ZodType<McpServerSpec> = z
-  .union([stdioServerSpecSchema, urlServerSpecSchema]) as z.ZodType<McpServerSpec>;
+export const mcpServerSpecSchema: z.ZodType<McpServerSpec> = z.union([
+  stdioServerSpecSchema,
+  urlServerSpecSchema,
+]) as z.ZodType<McpServerSpec>;
 
 export const mcpFileSchema: z.ZodType<{
   mcpServers: Record<string, McpServerSpec>;

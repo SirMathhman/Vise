@@ -7,11 +7,7 @@ const MAX_NAME = 64;
 const clean = (s: string): string => s.replace(/[^A-Za-z0-9_-]/g, "_");
 
 /** A unique Vise tool name `mcp__<server>__<tool>` (at most 64 characters), adding a numeric suffix on a clash. */
-export function toolName(
-  server: string,
-  tool: string,
-  taken: Set<string>,
-): string {
+export function toolName(server: string, tool: string, taken: Set<string>): string {
   const base = `mcp__${clean(server)}__${clean(tool)}`.slice(0, MAX_NAME);
   let name = base;
   for (let i = 2; taken.has(name); i++) {
@@ -23,11 +19,7 @@ export function toolName(
 }
 
 /** The Vise tool definition for one MCP tool (deferred, in the category `mcp_<server>`). */
-export function toVisTool(
-  server: string,
-  name: string,
-  info: McpToolInfo,
-): Tool {
+export function toVisTool(server: string, name: string, info: McpToolInfo): Tool {
   const description = info.description?.trim() || info.title || info.name;
   return {
     type: "function",
@@ -43,10 +35,7 @@ export function toVisTool(
 }
 
 /** Turn a tool result into text the model reads; pictures go to the outbox. A failed call starts with `error:`. */
-export function formatResult(
-  result: McpCallResult,
-  images: ImageOutbox | undefined,
-): string {
+export function formatResult(result: McpCallResult, images: ImageOutbox | undefined): string {
   const parts: string[] = [];
   for (const part of result.content ?? []) {
     const type = part["type"];

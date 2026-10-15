@@ -38,8 +38,7 @@ export class SessionLease {
   /** Drop every lease this connection holds (except `keep`). */
   release(keep?: string): void {
     for (const [k, owner] of held) {
-      if (owner === this && k !== (keep && key(this.root, keep)))
-        held.delete(k);
+      if (owner === this && k !== (keep && key(this.root, keep))) held.delete(k);
     }
   }
 }

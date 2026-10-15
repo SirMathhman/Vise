@@ -156,9 +156,7 @@ describe("handleReasoningCommand", () => {
     );
     expect(result.ok).toBeTrue();
     if (result.ok) {
-      expect(result.value).toBe(
-        "reasoning effort set to default (template default)",
-      );
+      expect(result.value).toBe("reasoning effort set to default (template default)");
     }
     expect(controller.getValue()).toBeUndefined();
   });

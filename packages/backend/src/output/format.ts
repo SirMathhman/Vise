@@ -1,10 +1,7 @@
 import { type CommandNeed, helpLines } from "../repl/command-catalog.ts";
 import type { GoalEvent } from "../repl/turn/goal-loop.ts";
 import type { ViseError } from "@vise/core";
-import {
-  describeToolHook,
-  type ToolHookEntry,
-} from "@vise/core";
+import { describeToolHook, type ToolHookEntry } from "@vise/core";
 import type { SessionEntry } from "../repl/ports.ts";
 
 /**
@@ -90,9 +87,7 @@ export function formatCompactionFailure(err: ViseError): string {
  */
 export function formatModelList(models: string[], activeModel: string): string {
   if (models.length === 0) return "no models available";
-  return models
-    .map((m) => (m === activeModel ? `* ${m} (active)` : `  ${m}`))
-    .join("\n");
+  return models.map((m) => (m === activeModel ? `* ${m} (active)` : `  ${m}`)).join("\n");
 }
 
 /**
@@ -100,10 +95,7 @@ export function formatModelList(models: string[], activeModel: string): string {
  * one with an asterisk. `active` is the effective level in use (`default` when
  * nothing is set, since an unset value behaves like the template default).
  */
-export function formatReasoningList(
-  levels: readonly string[],
-  active: string,
-): string {
+export function formatReasoningList(levels: readonly string[], active: string): string {
   if (levels.length === 0) return "no reasoning efforts available";
   return levels
     .map((level) => (level === active ? `* ${level} (active)` : `  ${level}`))
@@ -160,14 +152,8 @@ export function formatHooks(
       ? `${label}: none`
       : `${label}:\n${commands.map((c, i) => `  ${i + 1}. ${c}`).join("\n")}`;
   const sections = [
-    section(
-      `pre-turn hooks (${scope ?? "output injected before every turn"})`,
-      hooks.pre,
-    ),
-    section(
-      `post-turn hooks (${scope ?? "output injected after every turn"})`,
-      hooks.post,
-    ),
+    section(`pre-turn hooks (${scope ?? "output injected before every turn"})`, hooks.pre),
+    section(`post-turn hooks (${scope ?? "output injected after every turn"})`, hooks.post),
   ];
   // Tool hooks are global only; a profile's listing has none.
   if (hooks.preTool !== undefined) {
@@ -230,14 +216,9 @@ export function formatWorkflowList(
  * Render the list of available profiles, marking the active profile with an
  * asterisk. `activeProfile` is undefined when no profile is set.
  */
-export function formatProfileList(
-  profiles: string[],
-  activeProfile: string | undefined,
-): string {
+export function formatProfileList(profiles: string[], activeProfile: string | undefined): string {
   if (profiles.length === 0) return "no profiles found";
-  return profiles
-    .map((p) => (p === activeProfile ? `* ${p} (active)` : `  ${p}`))
-    .join("\n");
+  return profiles.map((p) => (p === activeProfile ? `* ${p} (active)` : `  ${p}`)).join("\n");
 }
 
 /** `  saved 2026-10-10 14:03 UTC` for an ISO time; nothing when there is none or it is not one. */
@@ -256,9 +237,7 @@ function savedAt(iso: string | undefined): string {
  */
 export function formatSessionList(entries: SessionEntry[]): string {
   if (entries.length === 0) return "no saved sessions";
-  const lines = entries
-    .map((e) => `  ${e.name}  (${e.id})${savedAt(e.updated)}`)
-    .join("\n");
+  const lines = entries.map((e) => `  ${e.name}  (${e.id})${savedAt(e.updated)}`).join("\n");
   return `saved sessions:
 ${lines}
 

@@ -9,11 +9,16 @@ export const save = storage.set;
 export function bindResizeGrip(panel: HTMLElement, grip: HTMLElement, key: string): void {
   const height = Number(load(key));
   if (height >= MIN_HEIGHT) panel.style.height = `${height}px`;
-  bindGripKeys(grip, { grow: "ArrowUp", shrink: "ArrowDown" }, () => panel.getBoundingClientRect().height, (next) => {
-    const clamped = Math.min(window.innerHeight * 0.85, Math.max(MIN_HEIGHT, next));
-    panel.style.height = `${clamped}px`;
-    save(key, String(Math.round(clamped)));
-  });
+  bindGripKeys(
+    grip,
+    { grow: "ArrowUp", shrink: "ArrowDown" },
+    () => panel.getBoundingClientRect().height,
+    (next) => {
+      const clamped = Math.min(window.innerHeight * 0.85, Math.max(MIN_HEIGHT, next));
+      panel.style.height = `${clamped}px`;
+      save(key, String(Math.round(clamped)));
+    },
+  );
   grip.addEventListener("pointerdown", (down) => {
     down.preventDefault();
     grip.setPointerCapture(down.pointerId);
@@ -39,15 +44,25 @@ export function bindResizeGrip(panel: HTMLElement, grip: HTMLElement, key: strin
 const MIN_WIDTH = 80;
 
 /** Let the user drag `grip` (the panel's right edge) to resize `panel` horizontally; the width is remembered under `key`. */
-export function bindHResizeGrip(panel: HTMLElement, grip: HTMLElement, key: string, minWidth = MIN_WIDTH): void {
+export function bindHResizeGrip(
+  panel: HTMLElement,
+  grip: HTMLElement,
+  key: string,
+  minWidth = MIN_WIDTH,
+): void {
   const width = Number(load(key));
   if (width >= minWidth) panel.style.flex = `0 0 ${width}px`;
-  bindGripKeys(grip, { grow: "ArrowRight", shrink: "ArrowLeft" }, () => panel.getBoundingClientRect().width, (next) => {
-    const max = (panel.parentElement?.getBoundingClientRect().width ?? window.innerWidth) * 0.8;
-    const clamped = Math.min(max, Math.max(minWidth, next));
-    panel.style.flex = `0 0 ${clamped}px`;
-    save(key, String(Math.round(clamped)));
-  });
+  bindGripKeys(
+    grip,
+    { grow: "ArrowRight", shrink: "ArrowLeft" },
+    () => panel.getBoundingClientRect().width,
+    (next) => {
+      const max = (panel.parentElement?.getBoundingClientRect().width ?? window.innerWidth) * 0.8;
+      const clamped = Math.min(max, Math.max(minWidth, next));
+      panel.style.flex = `0 0 ${clamped}px`;
+      save(key, String(Math.round(clamped)));
+    },
+  );
   grip.addEventListener("pointerdown", (down) => {
     down.preventDefault();
     grip.setPointerCapture(down.pointerId);

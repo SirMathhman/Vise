@@ -1,10 +1,4 @@
-export type ThemeChoice =
-  | "system"
-  | "light"
-  | "dark"
-  | "forest"
-  | "volcano"
-  | "underwater";
+export type ThemeChoice = "system" | "light" | "dark" | "forest" | "volcano" | "underwater";
 
 /** The resolved value that appears on `data-theme`. */
 export type ResolvedTheme = "light" | "dark" | "forest" | "volcano" | "underwater";
@@ -23,13 +17,12 @@ export const THEME_CHOICES: readonly (readonly [ThemeChoice, string])[] = [
   ["underwater", "Underwater"],
 ];
 
-const EXPLICIT: readonly string[] = THEME_CHOICES.map(([value]) => value).filter((value) => value !== "system");
+const EXPLICIT: readonly string[] = THEME_CHOICES.map(([value]) => value).filter(
+  (value) => value !== "system",
+);
 
 /** The colours to use for a choice: "system" follows the operating system. */
-export function resolveTheme(
-  choice: ThemeChoice,
-  systemDark: boolean,
-): ResolvedTheme {
+export function resolveTheme(choice: ThemeChoice, systemDark: boolean): ResolvedTheme {
   if (choice === "system") return systemDark ? "dark" : "light";
   return choice;
 }

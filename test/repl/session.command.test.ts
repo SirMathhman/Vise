@@ -1,10 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type {
-  Client,
-  Tool,
-  ToolController,
-  ToolRunner,
-} from "@vise/core";
+import type { Client, Tool, ToolController, ToolRunner } from "@vise/core";
 import type { Message } from "@vise/core";
 import type { ContextSource } from "../../packages/backend/src/repl/session.ts";
 import { Session } from "../../packages/backend/src/repl/session.ts";
@@ -84,8 +79,7 @@ describe("Session.interrupt (core)", () => {
     session.interrupt();
     const result = await turnPromise;
     expect(result).not.toBe("exit");
-    if (result === "exit" || result.ok)
-      throw new Error("expected interrupted error");
+    if (result === "exit" || result.ok) throw new Error("expected interrupted error");
     expect(result.error).toEqual({ kind: "interrupted" });
   });
 
@@ -176,13 +170,10 @@ describe("Session /tool command (core)", () => {
     const tc = makeToolController();
     const session = makeSession(tc);
     const result = await session.handleLine("/tool gamma disable");
-    if (result === "exit" || result.ok)
-      throw new Error("expected error result");
+    if (result === "exit" || result.ok) throw new Error("expected error result");
     expect(result.error.kind).toBe("malformed");
     if (result.error.kind === "malformed") {
-      expect(result.error.body).toBe(
-        "unknown tool 'gamma'. Run '/tool' to see available tools.",
-      );
+      expect(result.error.body).toBe("unknown tool 'gamma'. Run '/tool' to see available tools.");
     }
   });
 
@@ -190,8 +181,7 @@ describe("Session /tool command (core)", () => {
     const tc = makeToolController();
     const session = makeSession(tc);
     const result = await session.handleLine("/tool alpha toggle");
-    if (result === "exit" || result.ok)
-      throw new Error("expected error result");
+    if (result === "exit" || result.ok) throw new Error("expected error result");
     expect(result.error.kind).toBe("malformed");
     if (result.error.kind === "malformed") {
       expect(result.error.body).toBe("usage: /tool <name> enable|disable");
@@ -206,13 +196,10 @@ describe("Session /tool command (core)", () => {
       postTurnHooks: [],
     });
     const result = await session.handleLine("/tool");
-    if (result === "exit" || result.ok)
-      throw new Error("expected error result");
+    if (result === "exit" || result.ok) throw new Error("expected error result");
     expect(result.error.kind).toBe("malformed");
     if (result.error.kind === "malformed") {
-      expect(result.error.body).toBe(
-        "tools not supported by the current client",
-      );
+      expect(result.error.body).toBe("tools not supported by the current client");
     }
   });
 

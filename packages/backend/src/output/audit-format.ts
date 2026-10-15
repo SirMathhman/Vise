@@ -28,8 +28,7 @@ export function formatAuditReport(report: AuditReport): string {
       return table(
         "tool calls",
         report.rows,
-        (r) =>
-          `${r.name}: ${r.calls} calls, ${r.failures} failed, ${r.avgMs} ms on average`,
+        (r) => `${r.name}: ${r.calls} calls, ${r.failures} failed, ${r.avgMs} ms on average`,
       );
     case "models":
       return table(
@@ -39,11 +38,7 @@ export function formatAuditReport(report: AuditReport): string {
           `${r.purpose}: ${r.calls} calls, ${r.errors} failed, ${r.avgMs} ms on average, up to ${r.maxPromptTokens} prompt tokens`,
       );
     case "errors":
-      return table(
-        "errors",
-        report.rows,
-        (r) => `${r.what}: ${clip(r.detail)}`,
-      );
+      return table("errors", report.rows, (r) => `${r.what}: ${clip(r.detail)}`);
     case "hooks":
       return table(
         "hook runs",
@@ -104,7 +99,11 @@ export function formatCall(call: AuditCall): string {
     );
   }
   if (call.reasoning) {
-    lines.push("", `reasoning (${call.reasoningChars ?? call.reasoning.length} characters, the end):`, headAndTail(call.reasoning, 0, 1500));
+    lines.push(
+      "",
+      `reasoning (${call.reasoningChars ?? call.reasoning.length} characters, the end):`,
+      headAndTail(call.reasoning, 0, 1500),
+    );
   }
   lines.push(
     "",
@@ -120,9 +119,7 @@ function table<T>(title: string, rows: T[], line: (row: T) => string): string {
 }
 
 /** Matches of `/search` in the saved sessions. */
-export function formatSearchHits(
-  hits: { id: string; name: string; snippet: string }[],
-): string {
+export function formatSearchHits(hits: { id: string; name: string; snippet: string }[]): string {
   if (hits.length === 0) return "no saved session mentions that";
   return [
     "saved sessions that mention it:",

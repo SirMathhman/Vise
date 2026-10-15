@@ -41,10 +41,7 @@ function queueNote(conn: OpeningConnection, note: string | undefined): void {
 }
 
 /** The first messages, watchers and shell of a page whose connection was just built. */
-export function finishOpening(
-  conn: OpeningConnection,
-  c: OpeningContext,
-): void {
+export function finishOpening(conn: OpeningConnection, c: OpeningContext): void {
   conn.send(c.rootMessage);
   conn.send({ type: "goal_state", enabled: conn.session.goalChecking() });
   // The shared browser's engine setting, for the settings panel.
@@ -61,7 +58,8 @@ export function finishOpening(
     reindex = setTimeout(() => void c.semantic?.update(), 3000);
   };
   const stopWatching = c.noFolder ? () => {} : watchRoot(c.root, filesChanged);
-  const pushSemantic = (): void => conn.send({ type: "sem_status", status: c.semantic?.status() ?? null });
+  const pushSemantic = (): void =>
+    conn.send({ type: "sem_status", status: c.semantic?.status() ?? null });
   const offSemantic = c.semantic?.onChange(pushSemantic);
   pushSemantic();
   conn.unwatch = () => {

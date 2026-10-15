@@ -5,11 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AuditEvent, AuditSink } from "@vise/core";
 import { LlmClient } from "../../packages/backend/src/client/llm.ts";
-import {
-  runSubagent,
-  type Client,
-  type ToolRunner,
-} from "@vise/core";
+import { runSubagent, type Client, type ToolRunner } from "@vise/core";
 import type { Message } from "@vise/core";
 import { runCompaction } from "../../packages/backend/src/repl/turn/compaction.ts";
 import { createToolRunner, ToolSet } from "../../packages/backend/src/tools.ts";
@@ -55,9 +51,7 @@ describe("Session audit events", () => {
     expect(kinds[0]).toBe("session_start");
     expect(kinds).toContain("turn_start");
     expect(kinds.at(-1)).toBe("turn_end");
-    const roles = sink.events.flatMap((e) =>
-      e.kind === "message" ? [e.message.role] : [],
-    );
+    const roles = sink.events.flatMap((e) => (e.kind === "message" ? [e.message.role] : []));
     expect(roles).toEqual(["system", "user", "assistant"]);
   });
 
@@ -69,21 +63,15 @@ describe("Session audit events", () => {
         error: { kind: "network", cause: "down" },
       }),
     };
-    await new Session(bad, tools, [], { ...base, auditSink: sink }).handleLine(
-      "hi",
-    );
+    await new Session(bad, tools, [], { ...base, auditSink: sink }).handleLine("hi");
     const end = sink.events.find((e) => e.kind === "turn_end");
     expect(end).toMatchObject({ outcome: "failed" });
   });
 
   test("a slash command is recorded as an event", async () => {
     const sink = recorder();
-    await new Session(ok, tools, [], { ...base, auditSink: sink }).handleLine(
-      "/context",
-    );
-    expect(sink.events).toContainEqual(
-      expect.objectContaining({ kind: "event", name: "command" }),
-    );
+    await new Session(ok, tools, [], { ...base, auditSink: sink }).handleLine("/context");
+    expect(sink.events).toContainEqual(expect.objectContaining({ kind: "event", name: "command" }));
   });
 });
 
@@ -106,9 +94,10 @@ describe("SqliteAuditSink", () => {
     sink.record({ kind: "turn_end", outcome: "ok" });
     sink.close();
     const db = new Database(path, { readonly: true });
-    expect(
-      db.query("SELECT root, saved_session_id FROM audit_sessions").get(),
-    ).toEqual({ root: "/proj", saved_session_id: "abc" });
+    expect(db.query("SELECT root, saved_session_id FROM audit_sessions").get()).toEqual({
+      root: "/proj",
+      saved_session_id: "abc",
+    });
     expect(db.query("SELECT outcome FROM audit_turns").get()).toEqual({
       outcome: "ok",
     });
@@ -171,8 +160,7 @@ describe("what the capture points record", () => {
     const body =
       'data: {"choices":[{"delta":{"content":"hi"}}]}\n\n' +
       'data: {"choices":[],"usage":{"prompt_tokens":7}}\n\ndata: [DONE]\n\n';
-    globalThis.fetch = (async () =>
-      new Response(body, { status: 200 })) as unknown as typeof fetch;
+    globalThis.fetch = (async () => new Response(body, { status: 200 })) as unknown as typeof fetch;
     try {
       await client.as("goal").chat([{ role: "user", content: "x" }]);
     } finally {
@@ -230,20 +218,10 @@ describe("what the capture points record", () => {
 
   test("a subagent's conversation is handed over when it ends", async () => {
     const seen: Message[][] = [];
-    await runSubagent(
-      ok,
-      tools,
-      [],
-      { role: "system", content: "sys" },
-      "",
-      "do it",
-      { onSubagentDone: (m) => void seen.push(m) },
-    );
-    expect(seen[0]?.map((m) => m.role)).toEqual([
-      "system",
-      "user",
-      "assistant",
-    ]);
+    await runSubagent(ok, tools, [], { role: "system", content: "sys" }, "", "do it", {
+      onSubagentDone: (m) => void seen.push(m),
+    });
+    expect(seen[0]?.map((m) => m.role)).toEqual(["system", "user", "assistant"]);
   });
 
   test("a failed turn is still saved", async () => {
@@ -352,9 +330,7 @@ describe("reading the audit log", () => {
     const left = db.value.query("SELECT session_id FROM audit_messages").all();
     expect(left).toEqual([{ session_id: "new" }]);
     expect(
-      db.value
-        .query("SELECT COUNT(*) n FROM audit_fts WHERE audit_fts MATCH 'old'")
-        .get(),
+      db.value.query("SELECT COUNT(*) n FROM audit_fts WHERE audit_fts MATCH 'old'").get(),
     ).toEqual({ n: 0 });
   });
 
@@ -368,15 +344,9 @@ describe("reading the audit log", () => {
     const db = openDb(path, AUDIT_MIGRATIONS);
     if (!db.ok) throw new Error("open failed");
     db.value.query("UPDATE audit_sessions SET started_at = '2000-01-01'").run();
-    db.value
-      .query(
-        "UPDATE audit_messages SET ts = '2000-01-02' WHERE session_id = 'dead'",
-      )
-      .run();
+    db.value.query("UPDATE audit_messages SET ts = '2000-01-02' WHERE session_id = 'dead'").run();
     expect(pruneAudit(db.value, "2020-01-01")).toBe(1);
-    expect(db.value.query("SELECT id FROM audit_sessions").all()).toEqual([
-      { id: "live" },
-    ]);
+    expect(db.value.query("SELECT id FROM audit_sessions").all()).toEqual([{ id: "live" }]);
   });
 
   test("every audit table keyed by session_id is pruned", () => {

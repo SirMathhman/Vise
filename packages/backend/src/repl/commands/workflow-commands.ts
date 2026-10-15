@@ -53,6 +53,15 @@ export interface WorkflowCommands {
   profileScope(): WorkflowProfileScope;
   /** Store the per-turn AbortController (the source of truth for interrupt). */
   setCurrentAbort(controller: AbortController | null): void;
+  /**
+   * Run `first` as a turn under the goal tracker: the run is over only once the
+   * goal is met and the todo list is finished (`said` is what was asked).
+   */
+  underGoal(
+    said: string,
+    signal: AbortSignal,
+    first: () => Promise<Result<string>>,
+  ): Promise<Result<string>>;
 }
 
 /**
@@ -61,10 +70,7 @@ export interface WorkflowCommands {
  * post-turn paths so the parallel execution, non-blank filter, and
  * injection logic live in one place.
  */
-async function runHooks(
-  hooks: PreTurnHook[] | PostTurnHook[],
-  messages: Message[],
-): Promise<void> {
+async function runHooks(hooks: PreTurnHook[] | PostTurnHook[], messages: Message[]): Promise<void> {
   if (hooks.length === 0) return;
   const outputs = await Promise.all(hooks.map((h) => h.run()));
   for (const output of outputs) {
@@ -144,28 +150,31 @@ export async function handleWorkflowCommand(
     if (request.trim() !== "") session.setSessionName(request);
     const auto = await session.maybeAutoCompact();
     const streamed = session.onToken() !== undefined;
-    const result = await runWorkflow({
-      client: session.client(),
-      tools: session.tools(),
-      toolDefs: session.toolDefs(),
-      messages,
-      name,
-      workflow: loaded.value,
-      request,
-      profiles: scope.profiles,
-      onWorkflow: session.onWorkflow(),
-      callbacks: {
-        onToken: session.onToken(),
-        onThinking: session.onThinking(),
-        onToolCall: session.onToolCall(),
-        onToolResult: session.onToolResult(),
-        onImage: session.onImage(),
-        onMaxRounds: session.onMaxRounds(),
-        onRound: session.roundHook(abort.signal),
-        isToolEnabled: session.isToolEnabled(),
-        abort: abort.signal,
-      },
-    });
+    const said = `Run workflow '${name}'. User request: ${request || "(none)"}`;
+    const result = await session.underGoal(said, abort.signal, () =>
+      runWorkflow({
+        client: session.client(),
+        tools: session.tools(),
+        toolDefs: session.toolDefs(),
+        messages,
+        name,
+        workflow: loaded.value,
+        request,
+        profiles: scope.profiles,
+        onWorkflow: session.onWorkflow(),
+        callbacks: {
+          onToken: session.onToken(),
+          onThinking: session.onThinking(),
+          onToolCall: session.onToolCall(),
+          onToolResult: session.onToolResult(),
+          onImage: session.onImage(),
+          onMaxRounds: session.onMaxRounds(),
+          onRound: session.roundHook(abort.signal),
+          isToolEnabled: session.isToolEnabled(),
+          abort: abort.signal,
+        },
+      }),
+    );
     if (!result.ok) return result;
     succeeded = true;
     await runHooks(session.postTurnHooks(), messages);

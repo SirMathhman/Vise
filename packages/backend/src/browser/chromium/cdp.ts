@@ -16,9 +16,7 @@ export class CdpConnection {
   private readonly handlers = new Map<string, Set<Handler>>();
 
   private constructor(private readonly ws: WebSocket) {
-    ws.addEventListener("message", (event) =>
-      this.onMessage(String(event.data)),
-    );
+    ws.addEventListener("message", (event) => this.onMessage(String(event.data)));
     ws.addEventListener("close", () => this.failAll("connection closed"));
   }
 
@@ -27,9 +25,7 @@ export class CdpConnection {
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(url);
       ws.addEventListener("open", () => resolve(new CdpConnection(ws)));
-      ws.addEventListener("error", () =>
-        reject(new Error(`cannot connect to ${url}`)),
-      );
+      ws.addEventListener("error", () => reject(new Error(`cannot connect to ${url}`)));
     });
   }
 

@@ -1,10 +1,21 @@
 import { describe, expect, test } from "bun:test";
-import { newestFirst, relativeTime } from "../../../packages/frontend/src/settings/sessions-list.ts";
+import {
+  newestFirst,
+  relativeTime,
+} from "../../../packages/frontend/src/settings/sessions-list.ts";
 
 describe("saved sessions", () => {
   const entries = [
-    { id: "aaaaaaaa-0000-4000-8000-000000000001", name: "alpha", updated: "2026-10-01T09:30:00.000Z" },
-    { id: "bbbbbbbb-0000-4000-8000-000000000002", name: "beta", updated: "2026-10-09T18:05:00.000Z" },
+    {
+      id: "aaaaaaaa-0000-4000-8000-000000000001",
+      name: "alpha",
+      updated: "2026-10-01T09:30:00.000Z",
+    },
+    {
+      id: "bbbbbbbb-0000-4000-8000-000000000002",
+      name: "beta",
+      updated: "2026-10-09T18:05:00.000Z",
+    },
     { id: "cccccccc-0000-4000-8000-000000000003", name: "old one" },
   ];
 

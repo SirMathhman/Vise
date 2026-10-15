@@ -65,30 +65,10 @@ describe("buildInitialTree", () => {
     // File at depth 6 (inside level5) should NOT appear.
     // level5/ is at 5 levels below root and is listed, but its children
     // (at5.txt, level6/) would be at 6 levels and are not enumerated.
-    writeFileSync(
-      join(
-        depthDir,
-        "level1",
-        "level2",
-        "level3",
-        "level4",
-        "level5",
-        "at5.txt",
-      ),
-      "",
-    );
+    writeFileSync(join(depthDir, "level1", "level2", "level3", "level4", "level5", "at5.txt"), "");
     // File at depth 6 (inside level6) should NOT appear.
     writeFileSync(
-      join(
-        depthDir,
-        "level1",
-        "level2",
-        "level3",
-        "level4",
-        "level5",
-        "level6",
-        "at6.txt",
-      ),
+      join(depthDir, "level1", "level2", "level3", "level4", "level5", "level6", "at6.txt"),
       "",
     );
 

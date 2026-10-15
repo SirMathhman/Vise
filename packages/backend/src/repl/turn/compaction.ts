@@ -84,13 +84,7 @@ export async function compactInPlace(
       messages.splice(1, messages.length, ...body); // the first message is the system message
     },
   };
-  const result = await autoCompact(
-    source,
-    context,
-    threshold,
-    true,
-    addedSinceLastCall(messages),
-  );
+  const result = await autoCompact(source, context, threshold, true, addedSinceLastCall(messages));
   return result.ok
     ? undefined
     : "Stopped: the conversation is too long and could not be compacted.";
@@ -120,11 +114,7 @@ export async function runCompaction(
   if (split.toSummarize.length === 0) {
     return okNoop();
   }
-  const summary = await summarize(
-    source.client,
-    split.toSummarize,
-    source.prefix?.(),
-  );
+  const summary = await summarize(source.client, split.toSummarize, source.prefix?.());
   if (!summary.ok) {
     // Leave the conversation untouched; report the error.
     return { ok: false, error: summary.error };
@@ -134,9 +124,13 @@ export async function runCompaction(
   const block = renderPins(pins);
   const framed: Message = {
     role: "user",
-    content: `${SUMMARY_FRAME_PREFIX} ${summary.value}${block ? `
+    content: `${SUMMARY_FRAME_PREFIX} ${summary.value}${
+      block
+        ? `
 
-${block}` : ""}`,
+${block}`
+        : ""
+    }`,
   };
   const recent = split.recent;
   source.audit?.record({

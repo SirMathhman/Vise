@@ -1,10 +1,6 @@
 import type { ToolController } from "@vise/core";
 import { REASONING_EFFORTS } from "@vise/core";
-import type {
-  ProfileSource,
-  ReasoningController,
-  SessionSource,
-} from "./ports.ts";
+import type { ProfileSource, ReasoningController, SessionSource } from "./ports.ts";
 
 /** The built-in profile every session can switch to (it has no file). */
 const DEFAULT_PROFILE = "default";

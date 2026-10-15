@@ -60,8 +60,7 @@ function stepRow(
   const fillProfiles = (selected: string): void => {
     const names = profiles();
     profileName.textContent = "";
-    const choices =
-      selected && !names.includes(selected) ? [selected, ...names] : names;
+    const choices = selected && !names.includes(selected) ? [selected, ...names] : names;
     for (const name of choices) profileName.append(new Option(name, name));
     profileName.value = selected || profileName.options[0]?.value || "";
   };
@@ -72,8 +71,7 @@ function stepRow(
   const fillTools = (selected: string): void => {
     const names = tools().map((t) => t.name);
     toolName.textContent = "";
-    const choices =
-      selected && !names.includes(selected) ? [selected, ...names] : names;
+    const choices = selected && !names.includes(selected) ? [selected, ...names] : names;
     for (const name of choices) toolName.append(new Option(name, name));
     toolName.value = selected || toolName.options[0]?.value || "";
   };
@@ -164,11 +162,7 @@ function renderList(
 }
 
 /** The ordered, editable step rows inside `box`. */
-function createStepList(
-  box: HTMLElement,
-  tools: () => ToolInfo[],
-  profiles: () => string[],
-) {
+function createStepList(box: HTMLElement, tools: () => ToolInfo[], profiles: () => string[]) {
   let rows: ReturnType<typeof stepRow>[] = [];
   function add(step: Step): void {
     const index = (): number => rows.indexOf(entry);
@@ -257,10 +251,16 @@ export function createWorkflowsPanel(
   refreshOn: HTMLElement[],
 ): { handle(message: WorkflowsMessage): boolean } {
   let current: Ref | null = null;
-  let entries: WorkflowEntry[] = [], profileNames: string[] = [], toolInfos: ToolInfo[] = [];
+  let entries: WorkflowEntry[] = [],
+    profileNames: string[] = [],
+    toolInfos: ToolInfo[] = [];
   const ui = buildUi();
   const { list, name, scope, saveBtn, deleteBtn, status } = ui;
-  const steps = createStepList(ui.stepsBox, () => toolInfos, () => profileNames);
+  const steps = createStepList(
+    ui.stepsBox,
+    () => toolInfos,
+    () => profileNames,
+  );
 
   const say = (message: string, error = false): void => {
     status.textContent = message;
@@ -284,9 +284,7 @@ export function createWorkflowsPanel(
   }
 
   ui.newBtn.addEventListener("click", () => edit(null));
-  ui.addBtn.addEventListener("click", () =>
-    steps.add({ type: "instruction", text: "" }),
-  );
+  ui.addBtn.addEventListener("click", () => steps.add({ type: "instruction", text: "" }));
   saveBtn.addEventListener("click", () => {
     try {
       const read = steps.read();
@@ -305,7 +303,9 @@ export function createWorkflowsPanel(
   deleteBtn.addEventListener("click", () => {
     const target = current;
     if (!target) return;
-    ifConfirmed({ title: `Delete the workflow “${target.name}”?` }, () => send({ type: "workflow_delete", ...target }));
+    ifConfirmed({ title: `Delete the workflow “${target.name}”?` }, () =>
+      send({ type: "workflow_delete", ...target }),
+    );
   });
   for (const trigger of refreshOn) {
     trigger.addEventListener("click", () => {

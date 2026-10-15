@@ -66,8 +66,7 @@ export function createReplies(deps: {
 
   function renderOpen(): void {
     queued = false;
-    if (subagent.element)
-      showMarkdown(subagent.element, subagent.raw, renderHtml);
+    if (subagent.element) showMarkdown(subagent.element, subagent.raw, renderHtml);
     if (assistant.element) stream.render(assistant.element, assistant.raw);
     follow();
   }

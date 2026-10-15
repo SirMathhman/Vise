@@ -26,8 +26,9 @@ export class ImageOutbox {
   constructor(private readonly store: ImageStore) {}
 
   /** Keep a picture and queue it for the model; throws when the bytes are not a supported image. */
-  add(bytes: Uint8Array, label: string): Picture {
-    const picture = this.store.put(bytes, label);
+  add(bytes: Uint8Array, label: string, options: { quiet?: boolean } = {}): Picture {
+    const stored = this.store.put(bytes, label);
+    const picture = options.quiet ? { ...stored, quiet: true } : stored;
     this.items.push(picture);
     return picture;
   }
@@ -41,13 +42,9 @@ export class ImageOutbox {
 }
 
 /** Read a picture file; throws an `Error` with a message fit to show when it cannot be used. */
-export async function readImageFile(
-  path: string,
-): Promise<{ bytes: Buffer; label: string }> {
+export async function readImageFile(path: string): Promise<{ bytes: Buffer; label: string }> {
   if (!EXTENSIONS.includes(extname(path).toLowerCase())) {
-    throw new Error(
-      `${basename(path)} is not a supported image (png, jpg, gif or webp)`,
-    );
+    throw new Error(`${basename(path)} is not a supported image (png, jpg, gif or webp)`);
   }
   const info = await stat(path).catch(() => null);
   if (!info?.isFile()) throw new Error(`${path} is not a file`);
@@ -61,10 +58,7 @@ export async function readImageFile(
 
 /** How a picture is described in the tool's text result. */
 export function describeImage(image: Picture): string {
-  const size =
-    image.width && image.height
-      ? `${image.width}x${image.height}`
-      : "size unknown";
+  const size = image.width && image.height ? `${image.width}x${image.height}` : "size unknown";
   return `${image.label} (${size})`;
 }
 
@@ -112,9 +106,7 @@ export class FileImageSource implements ImageSource {
       return fail("there is no working directory, use an absolute path");
     }
     try {
-      const file = await readImageFile(
-        this.cwd ? resolve(this.cwd, path) : path,
-      );
+      const file = await readImageFile(this.cwd ? resolve(this.cwd, path) : path);
       return { ok: true, value: this.store.put(file.bytes, file.label) };
     } catch (err) {
       return fail(err instanceof Error ? err.message : String(err));

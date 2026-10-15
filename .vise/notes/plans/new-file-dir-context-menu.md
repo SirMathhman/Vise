@@ -27,6 +27,7 @@ Add "New File" and "New Directory" items to the right-click context menu in the 
 6. **Root-level / empty-space context menu:** Add a `contextmenu` event listener on `#files-list` (the root `<ul>`). In the handler, check `if ((e.target as HTMLElement).closest(".fs-row"))` — if it's a row, the row's own handler already fired (and called `preventDefault()`), so return early. Otherwise, `e.preventDefault()` and `showMenu(e.clientX, e.clientY, [New File, New Directory])` calling `newEntry("", isDir)` (empty parent = root). _Depends on 4._
 
 **Verification for Phase 3 (manual):**
+
 - Right-click on a directory row → context menu shows "New File", "New Directory", "Copy relative path", "Copy absolute path", "Delete…". Pick "New File" → prompt appears → type name → OK → file appears in tree after reload.
 - Right-click on a file row → context menu shows only the existing items (no "New File"/"New Directory").
 - Right-click in the empty space below all entries at the root → "New File" / "New Directory" → creates at root.
@@ -58,7 +59,7 @@ Add "New File" and "New Directory" items to the right-click context menu in the 
 
 - **Prompt dialog over inline input:** the user chose a prompt dialog (modal) for entering the name, not inline editing in the tree.
 - **Context-aware parent:** right-clicking on a directory row creates inside that directory; right-clicking in empty space at the root creates at the root; right-clicking in the empty space inside a directory's children creates inside that directory (determined by walking up to the nearest `<li>` with a `fs-dir` row).
-- **Directory rows get the new items, file rows do not:** "New File" and "New Directory" make sense only on directories (you create *inside* a directory). File rows keep their existing menu unchanged.
+- **Directory rows get the new items, file rows do not:** "New File" and "New Directory" make sense only on directories (you create _inside_ a directory). File rows keep their existing menu unchanged.
 - **Creation is atomic and simple:** the server creates an empty file or an empty directory. No content is written. No recursive mkdir. If the entry already exists, return an error.
 - **No keyboard shortcut:** right-click is the trigger; no additional shortcut is added in this plan.
 - **`fs_changed` watcher will pick up the new entry** automatically and reload the tree — no explicit `fs_changed` message is needed from the server, but we call `reload()` in the frontend for immediate feedback.

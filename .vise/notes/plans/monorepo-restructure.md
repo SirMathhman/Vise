@@ -141,7 +141,7 @@ No circular dependencies.
 
 ### Phase 3 — Extract `packages/common`
 
-6. **Create `packages/common/src/messages.ts`** with the protocol types currently defined in `src/web/router/connection.ts` (`WireMessage`, and any server→client message type definitions). Move the *type definitions* only; the router logic stays in the web app.
+6. **Create `packages/common/src/messages.ts`** with the protocol types currently defined in `src/web/router/connection.ts` (`WireMessage`, and any server→client message type definitions). Move the _type definitions_ only; the router logic stays in the web app.
 
 7. **Update imports:**
    - `src/web/router/connection.ts` imports types from `@vise/common`.

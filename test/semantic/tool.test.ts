@@ -1,5 +1,9 @@
 import { expect, test } from "bun:test";
-import type { SemanticHit, SemanticIndexPort, SemanticStatus } from "../../packages/backend/src/repl/ports.ts";
+import type {
+  SemanticHit,
+  SemanticIndexPort,
+  SemanticStatus,
+} from "../../packages/backend/src/repl/ports.ts";
 import { tools } from "../../packages/backend/src/tools.ts";
 import { makeSemanticSearchHandler } from "../../packages/backend/src/tools/semantic/semantic-search.ts";
 
@@ -77,5 +81,7 @@ test("every way it cannot answer says so and names the fallback", async () => {
   expect(c).toContain("2/8");
 
   const none = port({}, []);
-  expect(await makeSemanticSearchHandler(none.index)({ query: "xyz" })).toBe("no semantic matches for 'xyz'");
+  expect(await makeSemanticSearchHandler(none.index)({ query: "xyz" })).toBe(
+    "no semantic matches for 'xyz'",
+  );
 });

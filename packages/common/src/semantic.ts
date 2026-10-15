@@ -47,6 +47,8 @@ export function formatSemanticStatus(status: SemanticStatus): string {
     case "unavailable":
       return `semantic search is unavailable: ${status.reason ?? "the embedding model cannot be used"}`;
     default:
-      return status.reason ? `nothing indexed yet: ${status.reason}` : "nothing indexed yet (run /embed)";
+      return status.reason
+        ? `nothing indexed yet: ${status.reason}`
+        : "nothing indexed yet (run /embed)";
   }
 }

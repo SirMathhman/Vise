@@ -180,7 +180,8 @@ export function createEnvPanel(
     bar.classList.toggle("is-clean", !dirty && status.textContent === "");
   };
 
-  const row = (field: EnvField): HTMLElement => settingRow(field, { inputs, shown, clearing, lists, changed: syncBar });
+  const row = (field: EnvField): HTMLElement =>
+    settingRow(field, { inputs, shown, clearing, lists, changed: syncBar });
 
   const fill = (source: string): void => fillList(lists.get(source), offered.get(source) ?? []);
 
@@ -227,7 +228,9 @@ export function createEnvPanel(
         for (const [env, input] of inputs) {
           const field = fields.find((f) => f.env === env);
           if (field?.choices === source) {
-            input.title = message.error ? `${env}: could not list the models (${message.error})` : env;
+            input.title = message.error
+              ? `${env}: could not list the models (${message.error})`
+              : env;
           }
         }
         return true;

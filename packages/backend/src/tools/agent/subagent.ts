@@ -1,10 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import type {
-  Client,
-  Tool,
-  ToolRunner,
-  TurnCallbacks,
-} from "@vise/core";
+import type { Client, Tool, ToolRunner, TurnCallbacks } from "@vise/core";
 import { runSubagent } from "@vise/core";
 import { withToolScope } from "./agent-scope.ts";
 import { dim } from "../../output/color.ts";
@@ -74,17 +69,12 @@ export function makeSubagentHandler(
     const depth = (subagentDepth.getStore() ?? 0) + 1;
     // A subagent has permissions of its own, never the main agent's: the tools its profile lists, or else
     // the ones the user has enabled (see `agent-scope.ts`).
-    const listed =
-      profile === "default"
-        ? undefined
-        : await profileSource.profileTools?.(profile);
+    const listed = profile === "default" ? undefined : await profileSource.profileTools?.(profile);
     const allowed =
       listed?.ok && listed.value
         ? new Set(listed.value)
         : baselineEnabled
-          ? new Set(
-              toolDefs.map((t) => t.function.name).filter(baselineEnabled),
-            )
+          ? new Set(toolDefs.map((t) => t.function.name).filter(baselineEnabled))
           : undefined;
     const systemMessage = {
       role: "system" as const,
@@ -117,9 +107,7 @@ export function makeSubagentHandler(
     const run = () =>
       runSubagent(client, tools, toolDefs, systemMessage, profileText, task, {
         ...callbacks,
-        ...(allowed
-          ? { isToolEnabled: (name: string) => allowed.has(name) }
-          : {}),
+        ...(allowed ? { isToolEnabled: (name: string) => allowed.has(name) } : {}),
         onToken: indentedOnToken,
         onToolCall: (name, _depth, args) => {
           callbacks.onToolCall?.(name, depth, args);
@@ -133,9 +121,7 @@ export function makeSubagentHandler(
         abort: currentAbortSignal?.(),
       });
     const result = await subagentDepth.run(depth, () =>
-      withToolScope(allowed, () =>
-        withSideSlot ? withSideSlot(run) : run(),
-      ),
+      withToolScope(allowed, () => (withSideSlot ? withSideSlot(run) : run())),
     );
     if (!result.ok) return `error: ${formatError(result.error)}`;
     return result.value;

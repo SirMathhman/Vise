@@ -9,12 +9,7 @@ import {
   hooksView,
   readProfileHooks,
 } from "../commands/hooks-commands.ts";
-import type {
-  HookSource,
-  PostTurnHook,
-  PreTurnHook,
-  ProfileSource,
-} from "../ports.ts";
+import type { HookSource, PostTurnHook, PreTurnHook, ProfileSource } from "../ports.ts";
 
 type AnyHook = PreTurnHook | PostTurnHook;
 
@@ -67,9 +62,9 @@ export class SessionHooks {
     const global: AnyHook[] = phase === "pre" ? this.pre : this.post;
     const active = this.activeProfile();
     // A command already running globally is not run a second time for the profile.
-    const owned = (
-      active ? (this.profileHooks[active]?.[phase] ?? []) : []
-    ).filter((c) => !global.some((g) => g.command === c));
+    const owned = (active ? (this.profileHooks[active]?.[phase] ?? []) : []).filter(
+      (c) => !global.some((g) => g.command === c),
+    );
     const make = this.source?.create.bind(this.source);
     return make ? [...global, ...owned.map((c) => make(c))] : global;
   }

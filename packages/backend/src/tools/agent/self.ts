@@ -75,18 +75,14 @@ export function makeSelfHandler(
 
     lines.push(`  active profile: ${info.activeProfile() ?? "none"}`);
     lines.push(`  ${formatHooks("pre-turn hooks", listOf(info.preTurnHooks))}`);
-    lines.push(
-      `  ${formatHooks("post-turn hooks", listOf(info.postTurnHooks))}`,
-    );
+    lines.push(`  ${formatHooks("post-turn hooks", listOf(info.postTurnHooks))}`);
     if (info.preToolHooks) {
       lines.push(
         `  ${formatHooks("pre-tool hooks (exit code 2 blocks the call)", listOf(info.preToolHooks))}`,
       );
     }
     if (info.postToolHooks) {
-      lines.push(
-        `  ${formatHooks("post-tool hooks", listOf(info.postToolHooks))}`,
-      );
+      lines.push(`  ${formatHooks("post-tool hooks", listOf(info.postToolHooks))}`);
     }
 
     return lines.join("\n");

@@ -1,10 +1,5 @@
 import { expect, test } from "bun:test";
-import {
-  describeToolHook,
-  matchesTool,
-  parseToolHookEntries,
-  toolHookConfig,
-} from "@vise/core";
+import { describeToolHook, matchesTool, parseToolHookEntries, toolHookConfig } from "@vise/core";
 
 test("an entry with no tool list applies to every tool", () => {
   expect(matchesTool({ command: "x" }, "read_file", "files")).toBe(true);

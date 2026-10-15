@@ -15,7 +15,10 @@ export function formatWorkflowEvent(event: WorkflowEvent): WorkflowLine | undefi
     // "profile <name>", so no separate text is needed.
     if (event.was === undefined) return undefined;
     const now = event.name ?? "no profile";
-    const back = event.was === undefined ? "/profile with no name lists them" : `/profile ${event.was} goes back`;
+    const back =
+      event.was === undefined
+        ? "/profile with no name lists them"
+        : `/profile ${event.was} goes back`;
     return {
       text: `workflow stopped early: staying in profile '${now}' so you can continue (you were in '${event.was ?? "none"}'; ${back})`,
       level: "info",

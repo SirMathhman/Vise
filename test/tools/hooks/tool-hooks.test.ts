@@ -7,12 +7,7 @@ import { ShellToolHooks } from "../../../packages/backend/src/tools/hooks/tool-h
 import { TempStore } from "../../../packages/backend/src/tools/temp-store.ts";
 
 /** A runner whose `list_directory` (category files) is a stub that records its calls. */
-function setup(
-  pre: ToolHookEntry[],
-  post: ToolHookEntry[],
-  result = "listing",
-  spill?: TempStore,
-) {
+function setup(pre: ToolHookEntry[], post: ToolHookEntry[], result = "listing", spill?: TempStore) {
   const calls: Record<string, unknown>[] = [];
   const events: AuditEvent[] = [];
   const audit = { ...noAudit, record: (e: AuditEvent) => void events.push(e) };
@@ -35,10 +30,7 @@ function setup(
 }
 
 test("a pre-tool hook that exits 2 blocks the call and the model sees why", async () => {
-  const { runner, calls } = setup(
-    [{ command: "Write-Output 'no listing here'; exit 2" }],
-    [],
-  );
+  const { runner, calls } = setup([{ command: "Write-Output 'no listing here'; exit 2" }], []);
   const out = await runner.run("list_directory", { path: "." });
   expect(out).toBe("error: blocked by pre-tool hook: no listing here");
   expect(calls).toHaveLength(0);
@@ -71,7 +63,7 @@ test("hooks see the call in their environment and on standard input", async () =
       {
         command:
           "$in = [Console]::In.ReadToEnd() | ConvertFrom-Json; " +
-          "Write-Output \"$env:VISE_TOOL_NAME $env:VISE_TOOL_OK $env:VISE_TOOL_DEPTH $($in.phase) $($in.args.path) $($in.result)\"",
+          'Write-Output "$env:VISE_TOOL_NAME $env:VISE_TOOL_OK $env:VISE_TOOL_DEPTH $($in.phase) $($in.args.path) $($in.result)"',
       },
     ],
   );

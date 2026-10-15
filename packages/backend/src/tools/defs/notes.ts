@@ -27,8 +27,7 @@ export const noteTools: Tool[] = [
           },
           category: {
             type: "string",
-            description:
-              "Only list this category (optional; default lists every category)",
+            description: "Only list this category (optional; default lists every category)",
           },
         },
       },
@@ -72,18 +71,15 @@ export const noteTools: Tool[] = [
           scope: scopeProperty,
           name: {
             type: "string",
-            description:
-              "Short unique name for the note (becomes the filename)",
+            description: "Short unique name for the note (becomes the filename)",
           },
           body: {
             type: "string",
-            description:
-              "Note contents. The first non-empty line is its summary.",
+            description: "Note contents. The first non-empty line is its summary.",
           },
           category: {
             type: "string",
-            description:
-              "Category to file the note under (optional; default: 'default')",
+            description: "Category to file the note under (optional; default: 'default')",
           },
         },
         required: ["scope", "name", "body"],

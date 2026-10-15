@@ -5,7 +5,11 @@ import { join } from "node:path";
 import { noAudit } from "@vise/core";
 import { createToolRunner, ToolSet, tools } from "../../../packages/backend/src/tools.ts";
 import { readFile } from "../../../packages/backend/src/tools/files.ts";
-import { killProcess, runPowershell, waitForProcess } from "../../../packages/backend/src/tools/shell.ts";
+import {
+  killProcess,
+  runPowershell,
+  waitForProcess,
+} from "../../../packages/backend/src/tools/shell.ts";
 
 test("a failing file tool returns an error: result, never a bare message", () => {
   const missing = join(mkdtempSync(join(tmpdir(), "vise-err-")), "nope.txt");

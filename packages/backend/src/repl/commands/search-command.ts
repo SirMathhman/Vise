@@ -1,6 +1,10 @@
 import type { Result } from "@vise/core";
 import { formatSearchHits } from "../../output/audit-format.ts";
-import { formatSemanticHits, formatSemanticStatus, formatUpdateStats } from "../../output/semantic-format.ts";
+import {
+  formatSemanticHits,
+  formatSemanticStatus,
+  formatUpdateStats,
+} from "../../output/semantic-format.ts";
 import type { SemanticIndexPort, SessionCommands } from "../ports.ts";
 import { unsupported } from "./registry.ts";
 
@@ -12,8 +16,7 @@ export async function handleSearchCommand(
   const text = line.slice("/search".length).trim();
   const source = session.sessionSource();
   if (text === "" || !source?.search) {
-    const body =
-      text === "" ? "usage: /search <text>" : "searching is not supported here";
+    const body = text === "" ? "usage: /search <text>" : "searching is not supported here";
     return { ok: false, error: { kind: "malformed", body } };
   }
   const hits = await source.search(text);
@@ -65,5 +68,8 @@ export async function handleEmbed(
   }
   const done = await index.update({ rebuild: arg === "rebuild" });
   if (!done.ok) return done;
-  return { ok: true, value: `${formatUpdateStats(done.value)}. ${formatSemanticStatus(index.status())}` };
+  return {
+    ok: true,
+    value: `${formatUpdateStats(done.value)}. ${formatSemanticStatus(index.status())}`,
+  };
 }

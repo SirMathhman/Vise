@@ -30,11 +30,7 @@ export async function startScreencast(
     if (session !== sessionId) return;
     onFrame(String(params["data"]));
     void cdp
-      .send(
-        "Page.screencastFrameAck",
-        { sessionId: params["sessionId"] },
-        sessionId,
-      )
+      .send("Page.screencastFrameAck", { sessionId: params["sessionId"] }, sessionId)
       .catch(() => undefined);
   });
   await cdp.send(

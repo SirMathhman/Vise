@@ -44,9 +44,7 @@ describe("web transcript ordering", () => {
       transcript.appendAssistantToken("After tool call.");
       transcript.flushAssistant();
 
-      expect(
-        children.map((line) => [line.className, line.textContent]),
-      ).toEqual([
+      expect(children.map((line) => [line.className, line.textContent])).toEqual([
         ["line assistant", "Before tool call."],
         ["line tool", "tool: self"],
         ["line assistant", "After tool call."],
@@ -68,9 +66,7 @@ describe("web transcript ordering", () => {
       transcript.appendThinkingToken("More reasoning.");
       transcript.flushAssistant();
 
-      expect(
-        children.map((line) => [line.className, line.textContent]),
-      ).toEqual([
+      expect(children.map((line) => [line.className, line.textContent])).toEqual([
         ["line assistant", "First."],
         ["line thinking", "Reasoning."],
         ["line assistant", "Second."],
@@ -138,9 +134,7 @@ describe("web transcript subagent output", () => {
       transcript.appendToolCall("read_file", 1);
       transcript.appendSubagentToken("Again");
 
-      expect(
-        children.map((line) => [line.className, line.textContent]),
-      ).toEqual([
+      expect(children.map((line) => [line.className, line.textContent])).toEqual([
         ["line assistant subagent", "Hello"],
         ["line tool", "tool: read_file (subagent)"],
         ["line assistant subagent", "Again"],

@@ -13,10 +13,7 @@ import { McpHub } from "@vise/backend";
  * MCP server processes), which is closed when the last connection leaves.
  */
 export class RootRegistry {
-  private readonly stores = new Map<
-    string,
-    { store: HookStore; hub: McpHub; refs: number }
-  >();
+  private readonly stores = new Map<string, { store: HookStore; hub: McpHub; refs: number }>();
 
   /** `defaultRoot` is where a connection with no `root` parameter lands. */
   constructor(readonly defaultRoot: string) {}
@@ -149,11 +146,9 @@ export function pickFolder(startDir: string): Promise<string | null> {
   ].join("\n");
   const encoded = Buffer.from(script, "utf16le").toString("base64");
   return new Promise((done) => {
-    const proc = spawn(
-      "powershell.exe",
-      ["-NoProfile", "-STA", "-EncodedCommand", encoded],
-      { windowsHide: true },
-    );
+    const proc = spawn("powershell.exe", ["-NoProfile", "-STA", "-EncodedCommand", encoded], {
+      windowsHide: true,
+    });
     let out = "";
     proc.stdout.on("data", (chunk: Buffer) => {
       out += chunk.toString("utf8");

@@ -3,11 +3,7 @@ import type { ToolHandler } from "../tools.ts";
 import type { ImageOutbox } from "../tools/images.ts";
 import { globalDataDir } from "../data-dir.ts";
 import { loadMcpServers, type McpConfig, type McpServerSpec } from "./mcp-config.ts";
-import {
-  McpConnection,
-  statusReason,
-  type McpStatus,
-} from "./mcp-connection.ts";
+import { McpConnection, statusReason, type McpStatus } from "./mcp-connection.ts";
 import { formatResult, toolName, toVisTool } from "./mcp-tools.ts";
 
 export interface McpServerReport {
@@ -131,13 +127,9 @@ export class McpHub {
     const out: Record<string, ToolHandler> = {};
     for (const [name, { server, tool }] of this.routes) {
       out[name] = async (args, signal) => {
-        const result = await this.connections
-          .get(server)
-          ?.call(tool, args, signal);
+        const result = await this.connections.get(server)?.call(tool, args, signal);
         if (result === undefined) return `error: unknown MCP server ${server}`;
-        return typeof result === "string"
-          ? result
-          : formatResult(result, images);
+        return typeof result === "string" ? result : formatResult(result, images);
       };
     }
     return out;

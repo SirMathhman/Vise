@@ -16,6 +16,7 @@
     "typecheck:web": "tsc --project web/tsconfig.json",
     "test": "bun test",
     "lint": "eslint src/ test/ index.ts web/ extension/",
+    "format": "prettier --write .",
     "build:ext": "bun scripts/build-ext.ts",
     "typecheck:ext": "tsc --project extension/tsconfig.json",
     "build:exe": "bun scripts/build-exe.ts"

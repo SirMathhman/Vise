@@ -1,15 +1,7 @@
 import type { Result } from "@vise/core";
-import {
-  describeToolHook,
-  type ToolHookEntry,
-} from "@vise/core";
+import { describeToolHook, type ToolHookEntry } from "@vise/core";
 import { formatHooks } from "../../output/format.ts";
-import type {
-  HookSource,
-  PostTurnHook,
-  PreTurnHook,
-  ProfileSource,
-} from "../ports.ts";
+import type { HookSource, PostTurnHook, PreTurnHook, ProfileSource } from "../ports.ts";
 
 /** The live global hook lists (mutated in place), the store that persists them, and the profiles that can own hooks. */
 export interface HooksState {
@@ -69,10 +61,7 @@ export function splitProfileHooks(keys: string[]): HookCommands {
 }
 
 function joinProfileHooks(hooks: HookCommands): string[] {
-  return [
-    ...hooks.pre.map((c) => `pre:${c}`),
-    ...hooks.post.map((c) => `post:${c}`),
-  ];
+  return [...hooks.pre.map((c) => `pre:${c}`), ...hooks.post.map((c) => `post:${c}`)];
 }
 
 /** The hooks each profile owns (profiles with none are omitted); empty when profiles cannot carry hooks. */
@@ -82,10 +71,7 @@ export async function readProfileHooks(
   const result = await profiles?.profileHooks?.();
   if (!result?.ok) return {};
   return Object.fromEntries(
-    Object.entries(result.value).map(([name, keys]) => [
-      name,
-      splitProfileHooks(keys),
-    ]),
+    Object.entries(result.value).map(([name, keys]) => [name, splitProfileHooks(keys)]),
   );
 }
 
@@ -110,19 +96,14 @@ export async function hooksView(state: HooksState): Promise<HooksView> {
  * edits them (stored in the profile file's `hooks:` frontmatter). Edits apply to
  * the running session at once; a failed save is rolled back.
  */
-export async function handleHooksCommand(
-  line: string,
-  state: HooksState,
-): Promise<Result<string>> {
+export async function handleHooksCommand(line: string, state: HooksState): Promise<Result<string>> {
   const args = line.slice("/hooks".length).trim();
   if (args === "") {
     const view = await hooksView(state);
     // A client with no tool hook lists shows none.
     return {
       ok: true,
-      value: formatHooks(
-        state.preTool ? view : { pre: view.pre, post: view.post },
-      ),
+      value: formatHooks(state.preTool ? view : { pre: view.pre, post: view.post }),
     };
   }
   const tool = /^(add|remove)\s+(pretool|posttool)\s*([\s\S]*)$/.exec(args);
@@ -140,16 +121,10 @@ export async function handleHooksCommand(
   }
   const match = /^(add|remove)\s+(pre|post)\s*([\s\S]*)$/.exec(args);
   if (!match) return fail(USAGE);
-  return globalEdit(
-    state,
-    match[1] === "add",
-    match[2] === "pre" ? "pre" : "post",
-    match[3] ?? "",
-  );
+  return globalEdit(state, match[1] === "add", match[2] === "pre" ? "pre" : "post", match[3] ?? "");
 }
 
-const labelOf = (phase: HookPhase): string =>
-  phase === "pre" ? "pre-turn" : "post-turn";
+const labelOf = (phase: HookPhase): string => (phase === "pre" ? "pre-turn" : "post-turn");
 
 async function globalEdit(
   state: HooksState,
@@ -185,9 +160,7 @@ async function globalEdit(
   const index = Number(rest.trim()) - 1;
   const hook = Number.isInteger(index) ? hooks[index] : undefined;
   if (!hook) {
-    return fail(
-      `no ${label} hook numbered '${rest.trim()}'. Run '/hooks' to see them.`,
-    );
+    return fail(`no ${label} hook numbered '${rest.trim()}'. Run '/hooks' to see them.`);
   }
   hooks.splice(index, 1);
   const saved = persist();
@@ -205,7 +178,10 @@ async function globalEdit(
 function splitToolFilter(rest: string): ToolHookEntry {
   const m = /^([\s\S]*?)\s+--tools\s+(\S+)\s*$/.exec(rest.trim());
   const command = unquote(m ? (m[1] ?? "") : rest);
-  const tools = (m?.[2] ?? "").split(",").map((t) => t.trim()).filter((t) => t !== "");
+  const tools = (m?.[2] ?? "")
+    .split(",")
+    .map((t) => t.trim())
+    .filter((t) => t !== "");
   return tools.length > 0 ? { command, tools } : { command };
 }
 
@@ -246,9 +222,7 @@ function toolEdit(
   const index = Number(rest.trim()) - 1;
   const hook = Number.isInteger(index) ? list[index] : undefined;
   if (!hook) {
-    return fail(
-      `no ${label} hook numbered '${rest.trim()}'. Run '/hooks' to see them.`,
-    );
+    return fail(`no ${label} hook numbered '${rest.trim()}'. Run '/hooks' to see them.`);
   }
   list.splice(index, 1);
   const saved = persist();
@@ -275,9 +249,7 @@ async function profileCommand(
   const names = await profiles.listProfiles();
   if (!names.ok) return names;
   if (!names.value.includes(name)) {
-    return fail(
-      `unknown profile '${name}'. Run '/profile' to see available profiles.`,
-    );
+    return fail(`unknown profile '${name}'. Run '/profile' to see available profiles.`);
   }
   const owned = (await readProfileHooks(profiles))[name] ?? {
     pre: [],
@@ -286,10 +258,7 @@ async function profileCommand(
   if (rest.trim() === "") {
     return {
       ok: true,
-      value: formatHooks(
-        owned,
-        `profile '${name}': runs only while it is active`,
-      ),
+      value: formatHooks(owned, `profile '${name}': runs only while it is active`),
     };
   }
   const match = /^(add|remove)\s+(pre|post)\s*([\s\S]*)$/.exec(rest.trim());
@@ -311,9 +280,7 @@ async function profileCommand(
     const index = Number(arg.trim()) - 1;
     const command = Number.isInteger(index) ? list[index] : undefined;
     if (command === undefined) {
-      return fail(
-        `profile '${name}' has no ${label} hook numbered '${arg.trim()}'.`,
-      );
+      return fail(`profile '${name}' has no ${label} hook numbered '${arg.trim()}'.`);
     }
     list.splice(index, 1);
     message = `removed ${label} hook ${index + 1} from profile '${name}': ${command}`;

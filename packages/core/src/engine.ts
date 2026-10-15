@@ -74,11 +74,7 @@ export interface Client {
  */
 export interface ToolRunner {
   /** `signal` aborts a long-running tool (a wait) when the user interrupts the turn. */
-  run(
-    name: string,
-    args: Record<string, unknown>,
-    signal?: AbortSignal,
-  ): Promise<string>;
+  run(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<string>;
   /** The pictures the last `run` produced (handed over once): they travel with its result. */
   takeImages?(): Picture[];
 }
@@ -91,11 +87,7 @@ export type ToolCallListener = (
 ) => void;
 
 /** Told that a tool call finished: its name, how deep in subagents it is, and the result the model got (for display). */
-export type ToolResultListener = (
-  name: string,
-  depth: number,
-  result: string,
-) => void;
+export type ToolResultListener = (name: string, depth: number, result: string) => void;
 
 export interface TurnCallbacks {
   onToken?: (token: string) => void;
@@ -222,10 +214,7 @@ export interface CompactionSplit {
  * Pure: no I/O, depends only on the `Message` type. If there are no user
  * turns at all, everything goes to `toSummarize` and `recent` is empty.
  */
-export function splitForCompaction(
-  messages: Message[],
-  recentTurns: number,
-): CompactionSplit {
+export function splitForCompaction(messages: Message[], recentTurns: number): CompactionSplit {
   // Find the indexes of every user message; these are turn boundaries.
   const boundaries: number[] = [];
   for (let i = 0; i < messages.length; i++) {
@@ -236,9 +225,7 @@ export function splitForCompaction(
     return { toSummarize: messages.slice(), recent: [] };
   }
   const keepFromIndex =
-    boundaries.length <= recentTurns
-      ? boundaries[0]
-      : boundaries[boundaries.length - recentTurns];
+    boundaries.length <= recentTurns ? boundaries[0] : boundaries[boundaries.length - recentTurns];
   return {
     toSummarize: messages.slice(0, keepFromIndex),
     recent: messages.slice(keepFromIndex),
@@ -346,10 +333,7 @@ export function splitWithinTurn(
   }
   // The kept rounds: the last `keepRounds`, fewer when they alone are too big for `maxTailTokens`.
   let from = Math.max(0, rounds.length - keepRounds);
-  while (
-    from < rounds.length - 1 &&
-    approxTokens(messages.slice(rounds[from])) > maxTailTokens
-  ) {
+  while (from < rounds.length - 1 && approxTokens(messages.slice(rounds[from])) > maxTailTokens) {
     from++;
   }
   const tail = rounds[from];
@@ -357,10 +341,7 @@ export function splitWithinTurn(
     return { toSummarize: [], recent: messages.slice() };
   }
   return {
-    toSummarize: [
-      ...messages.slice(0, start),
-      ...messages.slice(start + 1, tail),
-    ],
+    toSummarize: [...messages.slice(0, start), ...messages.slice(start + 1, tail)],
     recent: [opening, ...messages.slice(tail)],
   };
 }
@@ -488,9 +469,7 @@ export async function runTurn(
     const reply = result.value;
     if (
       act &&
-      (reply.done ||
-        !reply.tool_calls?.length ||
-        (reply.confidence ?? 1) < BURST_MIN_CONFIDENCE)
+      (reply.done || !reply.tool_calls?.length || (reply.confidence ?? 1) < BURST_MIN_CONFIDENCE)
     ) {
       // Plan complete or choice uncertain: discard the reply and think.
       act = false;
@@ -515,9 +494,7 @@ ${reply.content}`
         announceTool(callbacks, tc);
         const output = await runToolCall(tools, tc, callbacks);
         failed ||= output.startsWith("error:");
-        messages.push(
-          toolResult(tc.function.name, output, tc.id, tools, callbacks),
-        );
+        messages.push(toolResult(tc.function.name, output, tc.id, tools, callbacks));
       }
       act = !!callbacks.burst && !failed;
       if (!act) setBurst(false);
@@ -555,13 +532,7 @@ export async function runSubagent(
   }
   messages.push({ role: "user", content: task });
   try {
-    return await runTurn(
-      client.as?.("subagent") ?? client,
-      tools,
-      messages,
-      toolDefs,
-      callbacks,
-    );
+    return await runTurn(client.as?.("subagent") ?? client, tools, messages, toolDefs, callbacks);
   } finally {
     callbacks.onSubagentDone?.(messages);
   }

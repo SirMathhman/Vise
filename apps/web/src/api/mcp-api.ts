@@ -1,13 +1,7 @@
 import { formatError } from "@vise/backend";
 import { globalDataDir } from "@vise/backend";
 import type { McpHub } from "@vise/backend";
-import {
-  readEntries,
-  removeEntry,
-  saveEntry,
-  type McpEntry,
-  type McpScope,
-} from "@vise/backend";
+import { readEntries, removeEntry, saveEntry, type McpEntry, type McpScope } from "@vise/backend";
 import { strings } from "./wire/reply.ts";
 
 /**
@@ -60,12 +54,8 @@ const toRef = (v: unknown): { name: string; scope: McpScope } | undefined => {
     : undefined;
 };
 
-
 function toEntry(v: unknown): McpEntry {
-  const e = (typeof v === "object" && v !== null ? v : {}) as Record<
-    string,
-    unknown
-  >;
+  const e = (typeof v === "object" && v !== null ? v : {}) as Record<string, unknown>;
   const common = {
     name: typeof e["name"] === "string" ? e["name"] : "",
     scope: toScope(e["scope"]),
@@ -104,9 +94,7 @@ function view(
 ): Record<string, unknown> {
   const entries = readEntries(root, globalDir);
   const live = new Map(hub.status().map((s) => [s.name, s]));
-  const projectNames = new Set(
-    entries.filter((e) => e.scope === "project").map((e) => e.name),
-  );
+  const projectNames = new Set(entries.filter((e) => e.scope === "project").map((e) => e.name));
   const servers = entries.map((e) => {
     const shadowed = e.scope === "global" && projectNames.has(e.name);
     const status = shadowed || e.disabled ? undefined : live.get(e.name);
@@ -114,8 +102,7 @@ function view(
       ...e,
       shadowed,
       state: e.disabled ? "disabled" : (status?.status.state ?? "off"),
-      reason:
-        status && "reason" in status.status ? status.status.reason : undefined,
+      reason: status && "reason" in status.status ? status.status.reason : undefined,
       tools: status?.tools ?? 0,
       stderr: status?.stderr ?? "",
     };

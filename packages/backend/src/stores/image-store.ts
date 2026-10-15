@@ -54,11 +54,7 @@ export function imageSize(
         if (bytes[at] !== 0xff) return undefined;
         const marker = bytes[at + 1]!;
         // Start-of-frame markers (not the DHT, JPG and DAC ones in the same range) carry the size.
-        if (
-          marker >= 0xc0 &&
-          marker <= 0xcf &&
-          ![0xc4, 0xc8, 0xcc].includes(marker)
-        ) {
+        if (marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker)) {
           return {
             height: view.getUint16(at + 5),
             width: view.getUint16(at + 7),
@@ -89,8 +85,7 @@ export class ImageStore {
    */
   put(bytes: Uint8Array, label: string): Picture {
     const mime = sniffImage(bytes);
-    if (!mime)
-      throw new Error(`${label} is not a png, jpeg, gif or webp image`);
+    if (!mime) throw new Error(`${label} is not a png, jpeg, gif or webp image`);
     const id = createHash("sha256").update(bytes).digest("hex");
     const file = this.fileFor(id, mime);
     if (!existsSync(file)) {

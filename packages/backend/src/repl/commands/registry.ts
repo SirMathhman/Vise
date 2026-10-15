@@ -27,10 +27,7 @@ export function newNameProblem(name: string): string | undefined {
 }
 
 /** The built-in command a line invokes, if any. A name that is not in the table is open to notes and workflows (`shortcut-command.ts`). */
-export function findBuiltin(
-  table: BuiltinCommand[],
-  line: string,
-): BuiltinCommand | undefined {
+export function findBuiltin(table: BuiltinCommand[], line: string): BuiltinCommand | undefined {
   return table.find(({ name, exact }) =>
     exact ? line === name : line === name || line.startsWith(`${name} `),
   );

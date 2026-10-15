@@ -44,10 +44,7 @@ export interface ProfileSource {
   /** The profile's tool whitelist, or undefined when it has none. */
   profileTools?(name: string): Promise<Result<string[] | undefined>>;
   /** Set (or clear with undefined) the profile's tool whitelist. */
-  setProfileTools?(
-    name: string,
-    tools: string[] | undefined,
-  ): Promise<Result<string>>;
+  setProfileTools?(name: string, tools: string[] | undefined): Promise<Result<string>>;
   /** The hooks each profile owns, as `pre:<command>` / `post:<command>` entries (profiles with none are omitted). */
   profileHooks?(): Promise<Result<Record<string, string[]>>>;
   /** Set (or clear with an empty list) the hooks a profile owns. */
@@ -91,15 +88,9 @@ export interface NoteSource {
   /** List all notes grouped by category, with their one-line summaries. */
   listNotes(): Promise<Result<string[]>>;
   /** Initialize a new note (in `category`, default when omitted; in the project unless `global`) with a placeholder template body. */
-  initNote(
-    name: string,
-    category?: string,
-    scope?: "project" | "global",
-  ): Promise<Result<string>>;
+  initNote(name: string, category?: string, scope?: "project" | "global"): Promise<Result<string>>;
   /** Every note with exactly this name, in any scope and category, with its body. */
-  findNotes(
-    name: string,
-  ): Promise<Result<{ scope: string; category: string; body: string }[]>>;
+  findNotes(name: string): Promise<Result<{ scope: string; category: string; body: string }[]>>;
 }
 
 /** Edge-owned loading of an image file the user attaches with `/image <path>`. */
@@ -109,9 +100,7 @@ export interface ImageSource {
 
 /** Edge-owned workflow listing, loading, and creation. */
 export interface WorkflowSource {
-  listWorkflows(): Promise<
-    Result<{ name: string; scope: WorkflowScope; active: boolean }[]>
-  >;
+  listWorkflows(): Promise<Result<{ name: string; scope: WorkflowScope; active: boolean }[]>>;
   loadWorkflow(name: string): Promise<Result<Workflow>>;
   initWorkflow(name: string, scope: WorkflowScope): Promise<Result<string>>;
 }

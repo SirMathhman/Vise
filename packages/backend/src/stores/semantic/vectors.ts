@@ -21,7 +21,12 @@ export function norm(vector: ArrayLike<number>): number {
 }
 
 /** Cosine similarity of two vectors of the same length (0 when either is the zero vector). */
-export function cosine(a: ArrayLike<number>, b: ArrayLike<number>, normA = norm(a), normB = norm(b)): number {
+export function cosine(
+  a: ArrayLike<number>,
+  b: ArrayLike<number>,
+  normA = norm(a),
+  normB = norm(b),
+): number {
   const denom = normA * normB;
   if (denom === 0) return 0;
   let dot = 0;
@@ -31,6 +36,9 @@ export function cosine(a: ArrayLike<number>, b: ArrayLike<number>, normA = norm(
 }
 
 /** The `limit` best-scoring items, best first. */
-export function topScored<T>(items: { score: number; item: T }[], limit: number): { score: number; item: T }[] {
+export function topScored<T>(
+  items: { score: number; item: T }[],
+  limit: number,
+): { score: number; item: T }[] {
   return [...items].sort((x, y) => y.score - x.score).slice(0, Math.max(0, limit));
 }

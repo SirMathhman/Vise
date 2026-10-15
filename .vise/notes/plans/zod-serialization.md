@@ -3,6 +3,7 @@
 Add `zod` as a direct dependency (already present transitively at 4.6.7 via `@modelcontextprotocol/sdk`) and make it the single runtime-validation layer at every trust boundary. Schemas live in `packages/core` (pure JS, no `node:` imports — compatible with core's purity rule). All parse calls return `Result<T>` (the existing `Result` union from `packages/core/src/errors.ts`; a parse failure is `{ kind: "malformed", body: <raw text> }`).
 
 **What it covers (all paths):**
+
 - Disk → code: sessions DB, profiles, workflows, MCP config, settings `.env`, audit DB
 - Page → server (WebSocket): all `WireMessage` variants
 - Server → page (WebSocket): TypeScript discriminated unions for compile-time safety
@@ -22,23 +23,24 @@ Add `zod` as a direct dependency (already present transitively at 4.6.7 via `@mo
 
 Each file is pure (no `node:` imports, no `process`). Hand-written types stay as the canonical exported types; each schema is annotated with a type parameter so TypeScript catches drift (e.g., `z.object({…}) as unknown as z.ZodType<TodoItem[]>`).
 
-| File | Schemas | Replaces | Covers |
-|---|---|---|---|
-| `todo.ts` | `todoItemSchema`, `todosSchema` | `parseTodos` in `core/src/todos.ts` | Session todos column |
-| `message.ts` | `pictureSchema`, `toolCallSchema`, `messageSchema` | none (no existing validator in session read) | Sessions DB `tool_calls`, `images` columns |
-| `goal-trace.ts` | `goalTraceFactSchema` (discriminated union on `kind`, 8 variants), `goalTraceEntrySchema` (fact + `at: string` + `after: number`) | the try/catch in `readTrace()` (session-write.ts:97–105) | Sessions DB goal_trace table |
-| `workflow.ts` | `workflowStepSchema` (discriminated union: `instruction`/`profile`/`tool`), `workflowSchema` (`{ steps: WorkflowStep[] }`) | `validateWorkflow` + `validateStep` in `backend/src/stores/workflows.ts:152–195` | Workflow `.json` files; Web editor save path |
-| `mcp.ts` | `mcpServerSpecSchema` (discriminated: `command` present = stdio, `url` present = remote), `mcpFileSchema` (`{ mcpServers: Record<string, McpServerSpec> }`) | `parseServer`, `isRecord`, `isStringMap` in `backend/src/mcp/mcp-config.ts:28–62` | MCP config `.json` files; Web settings save path |
-| `profile.ts` | `profileFrontmatterSchema` (pre-transform: regex split, then per-line parse: `tools?` string, `hooks?` JSON-array-of-strings, rest = meta), `profileFileSchema` (frontmatter + body string) | `parseProfile` in `backend/src/stores/profiles.ts:71–105`, `parseHookList` (line 98) | Profile `.md` files |
-| `settings.ts` | `settingValueSchema` (string with no embedded newlines; numeric variant checks `>= min`) | `problem()` in `backend/src/settings/settings-file.ts:41–48` | Settings `.env` file; Web settings save path |
-| `audit-event.ts` | `auditEventSchema` (discriminated union on `kind`, ~15 variants matching `AuditEvent` in `core/src/audit.ts`) | none (no existing validator) | Audit DB read-back (for `/audit` display and export) |
-| `tool-args.ts` | `toolCallArgsSchema` (object: `name: string`, `arguments: Record<string, unknown>`) | none (currently unchecked) | Model output → tool dispatch |
+| File             | Schemas                                                                                                                                                                                     | Replaces                                                                             | Covers                                               |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------- |
+| `todo.ts`        | `todoItemSchema`, `todosSchema`                                                                                                                                                             | `parseTodos` in `core/src/todos.ts`                                                  | Session todos column                                 |
+| `message.ts`     | `pictureSchema`, `toolCallSchema`, `messageSchema`                                                                                                                                          | none (no existing validator in session read)                                         | Sessions DB `tool_calls`, `images` columns           |
+| `goal-trace.ts`  | `goalTraceFactSchema` (discriminated union on `kind`, 8 variants), `goalTraceEntrySchema` (fact + `at: string` + `after: number`)                                                           | the try/catch in `readTrace()` (session-write.ts:97–105)                             | Sessions DB goal_trace table                         |
+| `workflow.ts`    | `workflowStepSchema` (discriminated union: `instruction`/`profile`/`tool`), `workflowSchema` (`{ steps: WorkflowStep[] }`)                                                                  | `validateWorkflow` + `validateStep` in `backend/src/stores/workflows.ts:152–195`     | Workflow `.json` files; Web editor save path         |
+| `mcp.ts`         | `mcpServerSpecSchema` (discriminated: `command` present = stdio, `url` present = remote), `mcpFileSchema` (`{ mcpServers: Record<string, McpServerSpec> }`)                                 | `parseServer`, `isRecord`, `isStringMap` in `backend/src/mcp/mcp-config.ts:28–62`    | MCP config `.json` files; Web settings save path     |
+| `profile.ts`     | `profileFrontmatterSchema` (pre-transform: regex split, then per-line parse: `tools?` string, `hooks?` JSON-array-of-strings, rest = meta), `profileFileSchema` (frontmatter + body string) | `parseProfile` in `backend/src/stores/profiles.ts:71–105`, `parseHookList` (line 98) | Profile `.md` files                                  |
+| `settings.ts`    | `settingValueSchema` (string with no embedded newlines; numeric variant checks `>= min`)                                                                                                    | `problem()` in `backend/src/settings/settings-file.ts:41–48`                         | Settings `.env` file; Web settings save path         |
+| `audit-event.ts` | `auditEventSchema` (discriminated union on `kind`, ~15 variants matching `AuditEvent` in `core/src/audit.ts`)                                                                               | none (no existing validator)                                                         | Audit DB read-back (for `/audit` display and export) |
+| `tool-args.ts`   | `toolCallArgsSchema` (object: `name: string`, `arguments: Record<string, unknown>`)                                                                                                         | none (currently unchecked)                                                           | Model output → tool dispatch                         |
 
 **Phase 2 — Wire schemas (page→server)**
 
 File: `apps/web/src/router/wire-schemas.ts` (lives with the router, since `WireMessage` is a web-app type, not core).
 
 Define a discriminated union by `type` literal, one schema per message family:
+
 - `line` (text required, qid optional, images optional)
 - `steer` (text required)
 - `unqueue` (qid required)
@@ -109,6 +111,7 @@ Replace each hand-rolled validator with the corresponding schema + `parse()` cal
 **Phase 5 — Cleanup**
 
 Remove the replaced validators and update all import sites:
+
 - `parseTodos` from `core/src/todos.ts` (replaced by `schemas/todo.ts`)
 - `validateWorkflow` / `validateStep` from `backend/src/stores/workflows.ts`
 - `parseServer` / `isRecord` / `isStringMap` from `backend/src/mcp/mcp-config.ts`
@@ -119,11 +122,13 @@ Remove the replaced validators and update all import sites:
 **Phase 6 — Tests**
 
 For each schema, a test file in `packages/core/test/schemas/`:
+
 - Parse success (valid data in → `Result.ok` with correct value)
 - Parse failure (invalid data in → `Result.err` with the right field path in the error body)
 - Edge cases: empty arrays, missing optional fields, wrong types, deeply nested bad values
 
 Integration-level tests in `test/`:
+
 - Corrupt a session DB row (bad JSON in `tool_calls`), `loadSession` → message loads without the `tool_calls` field, no crash
 - Corrupt a workflow `.json`, `loadWorkflow` → returns `Result.err` (not a throw)
 - Send a malformed WS message via the router, verify it's dropped and logged
@@ -168,7 +173,7 @@ Integration-level tests in `test/`:
 - **Server→page messages:** no zod runtime validation in the frontend. The discriminated union type is the guarantee. Rationale: the server is our own code; adding a zod parse per message on the hot path (token streaming) costs CPU for a risk already covered by type checking.
 - **Tool-call arguments:** validated at the `ToolRunner` dispatch boundary (where `<|tool_call|>` JSON is parsed), not inside each individual handler. This is a **new** validation layer (doesn't replace anything).
 - **Notes:** no schema. Note bodies are opaque plain text; only the name validation (`validName`) exists and it's a path-traversal guard, not a data-shape validation. Notes are out of scope for zod.
-- **Settings `.env` format parse:** `parseEnv` (the line-by-line regex) stays as-is — it's a format parser, not a shape validator. The zod schema covers *value* validation (no newlines, numeric range), replacing `problem()`.
+- **Settings `.env` format parse:** `parseEnv` (the line-by-line regex) stays as-is — it's a format parser, not a shape validator. The zod schema covers _value_ validation (no newlines, numeric range), replacing `problem()`.
 - **Error messages:** for schemas that surface to users (todos, workflow, MCP, settings), use zod's `error` override to match the existing hand-rolled messages (e.g., `"todo 3 needs a status of pending, in_progress, or completed"`). For internal-only schemas (audit rows, internal wire fields), keep zod's default messages.
 
 **Further Considerations**

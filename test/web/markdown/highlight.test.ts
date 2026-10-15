@@ -21,7 +21,7 @@ test("a fenced block in a known language comes out as coloured token spans", () 
 
 test("aliases and an info string with extra words still pick the language", () => {
   expect(render("```sh title=run\necho hi\n```")).toContain("hljs-");
-  expect(render("```JSON\n{\"a\": 1}\n```")).toContain("language-json");
+  expect(render('```JSON\n{"a": 1}\n```')).toContain("language-json");
   expect(render("```ps1\nGet-ChildItem\n```")).toContain("language-ps1");
 });
 

@@ -38,9 +38,7 @@ export class SwitchableBrowser implements BrowserBackend {
   constructor(
     initial: BrowserSettings,
     private readonly store?: BrowserSettingsStore,
-    private readonly create: (
-      settings: BrowserSettings,
-    ) => BrowserBackend = createBackend,
+    private readonly create: (settings: BrowserSettings) => BrowserBackend = createBackend,
   ) {
     this.current = initial;
     this.inner = this.create(initial);
@@ -74,10 +72,7 @@ export class SwitchableBrowser implements BrowserBackend {
   }
 
   private async apply(next: BrowserSettings): Promise<string | null> {
-    if (
-      next.engine === this.current.engine &&
-      next.firefoxPort === this.current.firefoxPort
-    ) {
+    if (next.engine === this.current.engine && next.firefoxPort === this.current.firefoxPort) {
       return null;
     }
     const saveError = this.store?.save(next) ?? null;
@@ -152,11 +147,7 @@ export class SwitchableBrowser implements BrowserBackend {
   pendingDialog(id: number): DialogInfo | null {
     return this.inner.pendingDialog(id);
   }
-  handleDialog(
-    id: number,
-    accept: boolean,
-    promptText?: string,
-  ): Promise<void> {
+  handleDialog(id: number, accept: boolean, promptText?: string): Promise<void> {
     return this.inner.handleDialog(id, accept, promptText);
   }
   runCode(id: number, code: string): Promise<string> {

@@ -28,27 +28,10 @@ test("each model call says what it is for, so its prompt processing can be label
     [],
     undefined,
   );
-  await checkGoal(
-    labelling('{"verdict":"yes","detail":"d"}', purposes),
-    [],
-    [],
-    goal,
-  );
-  await checkProgress(
-    labelling('{"progress":"progressing","detail":"d"}', purposes),
-    [],
-    [],
-    goal,
-  );
-  await summarize(labelling("summary", purposes), [
-    { role: "user", content: "x" },
-  ]);
-  expect(purposes).toEqual([
-    "goal",
-    "goal-check",
-    "progress-check",
-    "compaction",
-  ]);
+  await checkGoal(labelling('{"verdict":"yes","detail":"d"}', purposes), [], [], goal);
+  await checkProgress(labelling('{"progress":"progressing","detail":"d"}', purposes), [], [], goal);
+  await summarize(labelling("summary", purposes), [{ role: "user", content: "x" }]);
+  expect(purposes).toEqual(["goal", "goal-check", "progress-check", "compaction"]);
 });
 
 test("a client that does not label is simply used as it is", async () => {
@@ -79,12 +62,7 @@ test("the reason names the failure: a network error, an HTTP error, a server tha
     chat: async () => ({ ok: false, error }),
   });
   const goal = { text: "g", doneWhen: "d" };
-  const net = await checkGoal(
-    failing({ kind: "network", cause: "socket closed" }),
-    [],
-    [],
-    goal,
-  );
+  const net = await checkGoal(failing({ kind: "network", cause: "socket closed" }), [], [], goal);
   expect(net).toEqual({
     kind: "unknown",
     detail: "the connection to the model failed: socket closed",

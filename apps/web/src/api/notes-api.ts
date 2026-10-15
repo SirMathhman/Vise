@@ -20,7 +20,6 @@ import { failedResult, str, type Reply } from "./wire/reply.ts";
  *                     { type:"note_result", ok, deleted?, error?, name?, category?, scope?, version? }   after a save or delete
  */
 
-
 function refOf(value: unknown): NoteId | undefined {
   if (typeof value !== "object" || value === null) return undefined;
   const r = value as Record<string, unknown>;
@@ -53,16 +52,10 @@ function save(store: NoteStore, msg: Record<string, unknown>): Reply[] {
       );
     }
     const moved =
-      from &&
-      (from.name !== name ||
-        from.category !== category ||
-        from.scope !== id.scope);
+      from && (from.name !== name || from.category !== category || from.scope !== id.scope);
     if (from && moved) store.move(from, id);
     store.save(id, str(msg["body"]), from !== undefined);
-    return [
-      { type: "note_result", ok: true, ...id, version: store.version(id) },
-      list(store),
-    ];
+    return [{ type: "note_result", ok: true, ...id, version: store.version(id) }, list(store)];
   } catch (error) {
     return failure(error);
   }
@@ -73,10 +66,7 @@ function save(store: NoteStore, msg: Record<string, unknown>): Reply[] {
  * failure (invalid or clashing name, missing note) comes back as a
  * `note_result` with `ok: false`.
  */
-export function handleNoteMessage(
-  store: NoteStore,
-  msg: Record<string, unknown>,
-): Reply[] | null {
+export function handleNoteMessage(store: NoteStore, msg: Record<string, unknown>): Reply[] | null {
   const type = msg["type"];
   if (type === "notes_list") return [list(store)];
   if (type === "note_save") return save(store, msg);
@@ -93,10 +83,7 @@ export function handleNoteMessage(
       return [{ type: "note", ...id, body, version: store.version(id) }];
     }
     store.delete(id);
-    return [
-      { type: "note_result", ok: true, deleted: true, ...id },
-      list(store),
-    ];
+    return [{ type: "note_result", ok: true, deleted: true, ...id }, list(store)];
   } catch (error) {
     return failure(error);
   }

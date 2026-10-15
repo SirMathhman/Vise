@@ -34,10 +34,30 @@ export interface CommandInfo {
 }
 
 export const COMMANDS: readonly CommandInfo[] = [
-  { name: "/exit", summary: "exit the REPL", takesArgs: false, usage: ["/exit          exit the REPL"] },
-  { name: "/help", summary: "show available commands", takesArgs: false, usage: ["/help          show this help"] },
-  { name: "/context", summary: "show context window usage", takesArgs: false, usage: ["/context       show context window usage"] },
-  { name: "/compact", summary: "compact the conversation", takesArgs: false, usage: ["/compact       compact the conversation now"] },
+  {
+    name: "/exit",
+    summary: "exit the REPL",
+    takesArgs: false,
+    usage: ["/exit          exit the REPL"],
+  },
+  {
+    name: "/help",
+    summary: "show available commands",
+    takesArgs: false,
+    usage: ["/help          show this help"],
+  },
+  {
+    name: "/context",
+    summary: "show context window usage",
+    takesArgs: false,
+    usage: ["/context       show context window usage"],
+  },
+  {
+    name: "/compact",
+    summary: "compact the conversation",
+    takesArgs: false,
+    usage: ["/compact       compact the conversation now"],
+  },
   {
     name: "/new",
     summary: "start a new conversation",
@@ -221,7 +241,9 @@ export const COMMANDS: readonly CommandInfo[] = [
     summary: "list held messages, or: clear, remove <number>",
     takesArgs: true,
     webOnly: true,
-    usage: ["/queue [clear|remove <number>]  list or edit the messages held until the agent is idle"],
+    usage: [
+      "/queue [clear|remove <number>]  list or edit the messages held until the agent is idle",
+    ],
   },
 ];
 

@@ -35,10 +35,7 @@ function hintFor(cause: string): string | undefined {
 }
 
 /** Open (or reuse) the database at `path`, creating it and applying `migrations`. */
-export function openDb(
-  path: string,
-  migrations: Migration[],
-): Result<Database> {
+export function openDb(path: string, migrations: Migration[]): Result<Database> {
   const key = path === ":memory:" ? path : resolve(path);
   const cached = open.get(key);
   if (cached) return { ok: true, value: cached };

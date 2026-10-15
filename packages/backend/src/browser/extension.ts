@@ -3,13 +3,7 @@ import type { PageAction } from "./page-scripts.ts";
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
 import type { PageProbe } from "./probe.ts";
-import type {
-  BrowserBackend,
-  BrowserInput,
-  DialogInfo,
-  FrameListener,
-  TabInfo,
-} from "./types.ts";
+import type { BrowserBackend, BrowserInput, DialogInfo, FrameListener, TabInfo } from "./types.ts";
 
 /**
  * The browser as seen through the Firefox extension: every call is relayed to
@@ -36,9 +30,7 @@ function pageText(text: string, max: number): string {
   const flat = [...text]
     .map((c) => {
       const code = c.charCodeAt(0);
-      return code < 32 || code === 127 || code === 0x2028 || code === 0x2029
-        ? " "
-        : c;
+      return code < 32 || code === 127 || code === 0x2028 || code === 0x2029 ? " " : c;
     })
     .join("")
     .trim();
@@ -87,10 +79,7 @@ export class ExtensionBackend implements BrowserBackend {
     return this.link.connected;
   }
 
-  private async tab<T>(
-    op: string,
-    params: Record<string, unknown>,
-  ): Promise<T> {
+  private async tab<T>(op: string, params: Record<string, unknown>): Promise<T> {
     return (await this.link.call(op, params)) as T;
   }
 
@@ -220,10 +209,7 @@ export class ExtensionBackend implements BrowserBackend {
   }
 
   onUserShare(listener: (message: string) => void): () => void {
-    return (
-      this.link.onShare?.((event) => listener(describeShare(event))) ??
-      (() => undefined)
-    );
+    return this.link.onShare?.((event) => listener(describeShare(event))) ?? (() => undefined);
   }
 
   /** The browser belongs to the user: there is nothing for Vise to shut down. */

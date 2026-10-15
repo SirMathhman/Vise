@@ -1,7 +1,10 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { COMMANDS, helpLines } from "../../packages/backend/src/repl/command-catalog.ts";
-import { newNameProblem, RESERVED_COMMAND_NAMES } from "../../packages/backend/src/repl/commands/registry.ts";
+import {
+  newNameProblem,
+  RESERVED_COMMAND_NAMES,
+} from "../../packages/backend/src/repl/commands/registry.ts";
 
 /** The slash names of the session's dispatch table (`Session.commands`). */
 function dispatched(): string[] {

@@ -66,19 +66,13 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
   }
   try {
     const result = await run(request);
-    process.stdout.write(
-      `${JSON.stringify({ id: request.id, ok: true, result })}\n`,
-    );
+    process.stdout.write(`${JSON.stringify({ id: request.id, ok: true, result })}\n`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    process.stdout.write(
-      `${JSON.stringify({ id: request.id, ok: false, error: message })}\n`,
-    );
+    process.stdout.write(`${JSON.stringify({ id: request.id, ok: false, error: message })}\n`);
   }
 });
 // The parent closing our stdin ends the session: disconnect so the process drains and exits.
 process.stdin.on("end", () => {
-  void browserPromise
-    ?.then((browser) => browser.close())
-    .catch(() => undefined);
+  void browserPromise?.then((browser) => browser.close()).catch(() => undefined);
 });

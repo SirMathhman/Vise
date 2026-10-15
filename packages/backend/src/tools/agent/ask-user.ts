@@ -50,10 +50,7 @@ export interface UserPrompter {
  * Ask whether a long turn should go on past its round limit (or a stuck
  * progress check). Both frontends share the words that count as yes.
  */
-export async function askToContinue(
-  prompter: UserPrompter,
-  question: string,
-): Promise<boolean> {
+export async function askToContinue(prompter: UserPrompter, question: string): Promise<boolean> {
   const answer = await prompter.ask({ question, options: ["Continue", "Stop"] });
   const a = answer.trim().toLowerCase();
   return a === "1" || a === "continue" || a === "yes" || a === "y";
@@ -83,9 +80,7 @@ export class RlUserPrompter implements UserPrompter {
         });
         lines.push("");
       }
-      lines.push(
-        multiSelect ? "Answer (separate multiple with commas): " : "Answer: ",
-      );
+      lines.push(multiSelect ? "Answer (separate multiple with commas): " : "Answer: ");
 
       const answerLine = lines[lines.length - 1] as string;
       process.stdout.write(red("ask_user: "));
@@ -176,7 +171,10 @@ function readChoices(raw: unknown): { labels: string[]; descriptions?: string[] 
   const labels: string[] = [];
   const descriptions: string[] = [];
   for (const item of raw) {
-    const entry = typeof item === "string" ? { label: item } : (item as { label?: unknown; description?: unknown } | null);
+    const entry =
+      typeof item === "string"
+        ? { label: item }
+        : (item as { label?: unknown; description?: unknown } | null);
     const label = typeof entry?.label === "string" ? entry.label.trim() : "";
     if (label === "") {
       return 'error: each ask_user option must be a non-empty string or {"label": "...", "description": "..."}';
@@ -209,7 +207,9 @@ export function readQuestions(args: Record<string, unknown>): AskRequest[] | str
   }
   const requests: AskRequest[] = [];
   for (const item of list) {
-    const one = readRequest(typeof item === "object" && item !== null ? (item as Record<string, unknown>) : {});
+    const one = readRequest(
+      typeof item === "object" && item !== null ? (item as Record<string, unknown>) : {},
+    );
     if (typeof one === "string") return one;
     requests.push(one);
   }

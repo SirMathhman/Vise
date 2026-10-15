@@ -14,7 +14,10 @@ test("every list comes from its own source, default profile first", async () => 
     sessionSource: {
       list: async () => ({
         ok: true as const,
-        value: [{ id: "a", name: "first", updated: "2026-10-01T00:00:00.000Z" }, { id: "b", name: "second" }],
+        value: [
+          { id: "a", name: "first", updated: "2026-10-01T00:00:00.000Z" },
+          { id: "b", name: "second" },
+        ],
       }),
     } as never,
     burst: true,

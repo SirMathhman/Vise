@@ -30,9 +30,7 @@ export interface HttpFixture {
   close(): Promise<void>;
 }
 
-export async function startHttpFixture(
-  mode: "streamable" | "sse",
-): Promise<HttpFixture> {
+export async function startHttpFixture(mode: "streamable" | "sse"): Promise<HttpFixture> {
   const sessions = new Map<string, SSEServerTransport>();
   const http = createServer((req: IncomingMessage, res: ServerResponse) => {
     void (async () => {

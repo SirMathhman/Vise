@@ -92,7 +92,9 @@ export function createWorkflowPicker(
     target.textContent = "";
     target.append(make("h2", "confirm-title", "Run a workflow"));
     if (workflows.length === 0) {
-      target.append(make("p", "confirm-message", "No workflows yet. Create one in Settings → Workflows."));
+      target.append(
+        make("p", "confirm-message", "No workflows yet. Create one in Settings → Workflows."),
+      );
       const close = make("button", "btn btn--lg", "Close");
       close.type = "button";
       close.addEventListener("click", () => dismiss(target));
@@ -152,7 +154,9 @@ export function createWorkflowPicker(
       }
       if (!line) return showStrip(null);
       const bare = line.startsWith("/") ? line.slice(1).split(/\s/)[0] : null;
-      showStrip(bare && workflows.some((w) => w.name === bare) ? `Running workflow ${bare}…` : null);
+      showStrip(
+        bare && workflows.some((w) => w.name === bare) ? `Running workflow ${bare}…` : null,
+      );
     },
     observe(message) {
       if (message.type === "workflow") {

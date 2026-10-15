@@ -18,6 +18,8 @@ export interface Picture {
   bytes: number;
   width?: number;
   height?: number;
+  /** Sent to the model but not shown to the user as it happens (a screenshot taken automatically after a browser action). */
+  quiet?: boolean;
 }
 
 export interface Message {
@@ -48,13 +50,7 @@ export interface AssistantMessage {
 
 /** Why a model call was made, so a display can say what the tokens it reports are for. */
 export type CallPurpose =
-  | "reply"
-  | "goal"
-  | "goal-check"
-  | "progress-check"
-  | "compaction"
-  | "workflow"
-  | "subagent";
+  "reply" | "goal" | "goal-check" | "progress-check" | "compaction" | "workflow" | "subagent";
 
 /**
  * Prompt-processing progress, reported in every streaming chunk when the
@@ -107,5 +103,4 @@ export type ViseError =
     }
   | { kind: "interrupted" };
 
-export type Result<T> =
-  { ok: true; value: T } | { ok: false; error: ViseError };
+export type Result<T> = { ok: true; value: T } | { ok: false; error: ViseError };

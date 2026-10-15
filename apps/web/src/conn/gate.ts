@@ -26,9 +26,7 @@ export interface Gate<W, M> {
   close(ws: W): void;
 }
 
-export function createGate<W, C, M>(
-  h: GateHandlers<W, C, M>,
-): Gate<W, M> {
+export function createGate<W, C, M>(h: GateHandlers<W, C, M>): Gate<W, M> {
   const waiting = new Map<W, M[]>();
   const open = new Map<W, C>();
 

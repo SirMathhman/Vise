@@ -12,8 +12,7 @@ export interface OpenFile {
 export type FileMode = "text" | "markdown" | "svg";
 
 /** True when the name ends in a markdown extension. */
-export const isMarkdown = (path: string): boolean =>
-  /\.(md|markdown)$/i.test(path);
+export const isMarkdown = (path: string): boolean => /\.(md|markdown)$/i.test(path);
 
 /** True when the name ends in an svg extension. */
 export const isSvg = (path: string): boolean => /\.svg$/i.test(path);
@@ -69,9 +68,7 @@ export class OpenTabs {
     const old = this.active;
     this.files.splice(0, this.files.length, ...kept);
     this.active =
-      focused && kept.includes(focused)
-        ? kept.indexOf(focused)
-        : Math.min(old, kept.length - 1);
+      focused && kept.includes(focused) ? kept.indexOf(focused) : Math.min(old, kept.length - 1);
     return removed;
   }
 
@@ -83,9 +80,7 @@ export class OpenTabs {
   sync(tabs: BrowserTab[]): boolean {
     const focused = this.current;
     const live = new Map(tabs.map((tab) => [`browser:${tab.id}`, tab]));
-    const gone = this.files.filter(
-      (f) => f.mode === "browser" && !live.has(f.path),
-    );
+    const gone = this.files.filter((f) => f.mode === "browser" && !live.has(f.path));
     this.retain((i) => !gone.includes(this.files[i] as OpenFile));
     let added = false;
     for (const [path, tab] of live) {

@@ -2,11 +2,7 @@ import type { Result } from "@vise/core";
 import { newNameProblem, unsupported } from "./registry.ts";
 import { formatProfileList, formatSessionList } from "../../output/format.ts";
 import { saveProfileWhitelist } from "../profile-tools.ts";
-import type {
-  ProfileCommands,
-  ProfileSource,
-  SessionCommands,
-} from "../session.ts";
+import type { ProfileCommands, ProfileSource, SessionCommands } from "../session.ts";
 
 /**
  * The reserved name of the built-in profile. `default` is not a file under
@@ -51,21 +47,13 @@ export async function handleProfileCommand(
     // exist under profiles/; surface it first so it is discoverable.
     return {
       ok: true,
-      value: formatProfileList(
-        [DEFAULT_PROFILE_NAME, ...profiles.value],
-        session.activeProfile(),
-      ),
+      value: formatProfileList([DEFAULT_PROFILE_NAME, ...profiles.value], session.activeProfile()),
     };
   }
 
   const words = arg.split(/\s+/);
   if (words[1] === "tools") {
-    return handleProfileTools(
-      session,
-      profileSource,
-      words[0] ?? "",
-      words.slice(2),
-    );
+    return handleProfileTools(session, profileSource, words[0] ?? "", words.slice(2));
   }
   const sub = words[0];
   if (sub === "init") {
@@ -102,8 +90,7 @@ export async function handleProfileCommand(
   } else {
     session.pushMessage({
       role: "user",
-      content:
-        "Profile cleared. Please disregard any previous profile instructions.",
+      content: "Profile cleared. Please disregard any previous profile instructions.",
     });
   }
   await applyWhitelist(session, profileSource, body === "" ? undefined : arg);
@@ -158,12 +145,7 @@ async function handleProfileTools(
     .filter((t) => t !== "");
   if (list.length === 0) return show(current.value);
   const next = list.length === 1 && list[0] === "all" ? undefined : list;
-  const saved = await saveProfileWhitelist(
-    source,
-    session.toolNames(),
-    name,
-    next,
-  );
+  const saved = await saveProfileWhitelist(source, session.toolNames(), name, next);
   return saved.ok ? show(next) : saved;
 }
 

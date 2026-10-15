@@ -30,10 +30,7 @@ function workflowPath(base: string, name: string): string {
   return join(base, "workflows", `${name}.json`);
 }
 
-export function listWorkflows(
-  projectBase: string,
-  globalBase: string,
-): WorkflowEntry[] {
+export function listWorkflows(projectBase: string, globalBase: string): WorkflowEntry[] {
   const projectNames = namesAt(projectBase);
   const globalNames = namesAt(globalBase);
   return [
@@ -68,11 +65,7 @@ export function initWorkflow(base: string, name: string): void {
   const path = workflowPath(base, name);
   if (existsSync(path)) throw new Error(`workflow '${name}' already exists`);
   mkdirSync(join(base, "workflows"), { recursive: true });
-  writeFileSync(
-    path,
-    `${JSON.stringify(WORKFLOW_TEMPLATE, null, 2)}\n`,
-    "utf8",
-  );
+  writeFileSync(path, `${JSON.stringify(WORKFLOW_TEMPLATE, null, 2)}\n`, "utf8");
 }
 
 const fail = <T>(body: string): Result<T> => ({
@@ -153,9 +146,7 @@ function parseWorkflow(text: string): Workflow {
 function parseWorkflowJson(value: unknown): Result<Workflow> {
   const result = parse(workflowSchema, value);
   if (!result.ok) {
-    return fail(
-      `workflow: ${(result.error as { body: string }).body.split("\n")[0]}`,
-    );
+    return fail(`workflow: ${(result.error as { body: string }).body.split("\n")[0]}`);
   }
   return result;
 }

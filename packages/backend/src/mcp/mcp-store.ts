@@ -27,14 +27,8 @@ const fail = (body: string): Result<void> => ({
 });
 
 /** The file that holds `scope`'s servers: the project's `.viserc.json` or the global `mcp.json`. */
-export function mcpFile(
-  scope: McpScope,
-  root: string,
-  globalDir: string = globalDataDir,
-): string {
-  return scope === "global"
-    ? join(globalDir, "mcp.json")
-    : join(root, ".viserc.json");
+export function mcpFile(scope: McpScope, root: string, globalDir: string = globalDataDir): string {
+  return scope === "global" ? join(globalDir, "mcp.json") : join(root, ".viserc.json");
 }
 
 function readFile(path: string): Record<string, unknown> {
@@ -47,10 +41,7 @@ function readFile(path: string): Record<string, unknown> {
 }
 
 /** Every valid server entry of both files (entries that fail validation are left out; the hub reports them). */
-export function readEntries(
-  root: string,
-  globalDir: string = globalDataDir,
-): McpEntry[] {
+export function readEntries(root: string, globalDir: string = globalDataDir): McpEntry[] {
   const out: McpEntry[] = [];
   for (const scope of ["project", "global"] as const) {
     let servers: unknown;
@@ -71,10 +62,7 @@ export function readEntries(
 }
 
 /** Change the `mcpServers` object of one file, keeping its other keys; written through a temp file and a rename. */
-function edit(
-  path: string,
-  change: (servers: Record<string, unknown>) => void,
-): Result<void> {
+function edit(path: string, change: (servers: Record<string, unknown>) => void): Result<void> {
   try {
     const file = readFile(path);
     const servers = (file["mcpServers"] ?? {}) as Record<string, unknown>;
@@ -101,8 +89,7 @@ export function saveEntry(
   const spec = parseServer(entry);
   if (typeof spec === "string") return fail(spec);
   const moved =
-    previous !== undefined &&
-    (previous.name !== name || previous.scope !== entry.scope);
+    previous !== undefined && (previous.name !== name || previous.scope !== entry.scope);
   const taken = readEntries(root, globalDir).some(
     (e) => e.name === name && e.scope === entry.scope,
   );

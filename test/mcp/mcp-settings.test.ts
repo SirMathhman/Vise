@@ -29,8 +29,12 @@ test("saving keeps the file's other keys; rename and removal edit the right scop
 
   expect(saveEntry(entry(), undefined, root, global).ok).toBe(true);
   expect(saveEntry(entry(), undefined, root, global).ok).toBe(false); // duplicate name
-  expect(saveEntry(entry({ name: "renamed" }), { name: "fx", scope: "project" }, root, global).ok).toBe(true);
-  expect(saveEntry(entry({ name: "g", scope: "global", disabled: true }), undefined, root, global).ok).toBe(true);
+  expect(
+    saveEntry(entry({ name: "renamed" }), { name: "fx", scope: "project" }, root, global).ok,
+  ).toBe(true);
+  expect(
+    saveEntry(entry({ name: "g", scope: "global", disabled: true }), undefined, root, global).ok,
+  ).toBe(true);
 
   const names = readEntries(root, global).map((e) => `${e.scope}:${e.name}:${e.disabled}`);
   expect(names).toEqual(["project:renamed:false", "global:g:true"]);
@@ -53,13 +57,28 @@ test("the settings api saves, reconnects the hub, restarts and deletes", async (
     expect(servers[0]).toMatchObject({ name: "fx", state: "ready", tools: 3 });
     expect(hub.tools()).toHaveLength(3);
 
-    const restarted = await handleMcpMessage(hub, root, { type: "mcp_restart", name: "fx" }, global);
+    const restarted = await handleMcpMessage(
+      hub,
+      root,
+      { type: "mcp_restart", name: "fx" },
+      global,
+    );
     expect(restarted["error"]).toBeUndefined();
 
-    const bad = await handleMcpMessage(hub, root, { type: "mcp_save", entry: entry({ name: "" }) }, global);
+    const bad = await handleMcpMessage(
+      hub,
+      root,
+      { type: "mcp_save", entry: entry({ name: "" }) },
+      global,
+    );
     expect(bad["error"]).toContain("needs a name");
 
-    const gone = await handleMcpMessage(hub, root, { type: "mcp_delete", name: "fx", scope: "project" }, global);
+    const gone = await handleMcpMessage(
+      hub,
+      root,
+      { type: "mcp_delete", name: "fx", scope: "project" },
+      global,
+    );
     expect(gone["servers"]).toEqual([]);
     expect(hub.tools()).toHaveLength(0);
   } finally {

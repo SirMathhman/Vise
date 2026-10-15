@@ -81,7 +81,10 @@ function fileGroup(
   const all = make("button", "btn btn--ghost btn--sm", `${verb} all`);
   all.type = "button";
   all.addEventListener("click", () =>
-    actions.send({ type: verb === "Stage" ? "git_stage" : "git_unstage", paths: files.map((f) => f.path) }),
+    actions.send({
+      type: verb === "Stage" ? "git_stage" : "git_unstage",
+      paths: files.map((f) => f.path),
+    }),
   );
   heading.append(all);
   const list = make("ul", "list git-files");
@@ -156,7 +159,9 @@ export function createGitPanel(
       return empty("This folder is not in a git repository.");
     }
     prefix = state.prefix ?? "";
-    const counts = [state.ahead ? `↑${state.ahead}` : "", state.behind ? `↓${state.behind}` : ""].filter(Boolean).join(" ");
+    const counts = [state.ahead ? `↑${state.ahead}` : "", state.behind ? `↓${state.behind}` : ""]
+      .filter(Boolean)
+      .join(" ");
     ui.title.textContent = `⎇ ${state.branch ?? "detached"}${counts ? ` ${counts}` : ""}`;
     stagedCount = state.staged?.length ?? 0;
     syncCommit();

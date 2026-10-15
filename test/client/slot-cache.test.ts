@@ -11,17 +11,23 @@ function jsonResponse(value: unknown, status = 200): Response {
   });
 }
 
-const isSlotList = (url: string): boolean =>
-  url.includes("/slots?") && !url.includes("/slots/");
+const isSlotList = (url: string): boolean => url.includes("/slots?") && !url.includes("/slots/");
 const isChat = (call: FetchCall): boolean => call.url.includes("/chat/");
-const chatReply = (): Response =>
-  jsonResponse({ choices: [{ message: { content: "ok" } }] });
+const chatReply = (): Response => jsonResponse({ choices: [{ message: { content: "ok" } }] });
 
 /** A non-streamed, tool-less model call (the simplest request the client makes). */
 async function ask(client: LlmClient): Promise<void> {
   const messages: Message[] = [{ role: "user", content: "hi" }];
   const result = await client.chat(
-    messages, undefined, undefined, undefined, undefined, undefined, undefined, undefined, true,
+    messages,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    true,
   );
   expect(result.ok).toBeTrue();
 }
@@ -94,9 +100,26 @@ describe("llama.cpp side slot (edge)", () => {
     );
     try {
       const client = new LlmClient();
-      const tools = [{ type: "function" as const, function: { name: "run_subagent", description: "d", parameters: { type: "object", properties: {} } } }];
+      const tools = [
+        {
+          type: "function" as const,
+          function: {
+            name: "run_subagent",
+            description: "d",
+            parameters: { type: "object", properties: {} },
+          },
+        },
+      ];
       const reply = await client.chat(
-        [{ role: "user", content: "hi" }], tools, undefined, undefined, undefined, undefined, undefined, undefined, true,
+        [{ role: "user", content: "hi" }],
+        tools,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        true,
       );
       expect(reply.ok).toBeTrue();
       // The reply's slot (0, the highest task then) is remembered; now slot 1 looks used last.
@@ -138,7 +161,11 @@ describe("llama.cpp side slot (edge)", () => {
     for (const slots of [
       () => jsonResponse({ error: "slots disabled" }, 501),
       () => jsonResponse({ not: "a list" }),
-      () => jsonResponse([{ id: 0, n_ctx: 1 }, { id: 1, n_ctx: 1 }]),
+      () =>
+        jsonResponse([
+          { id: 0, n_ctx: 1 },
+          { id: 1, n_ctx: 1 },
+        ]),
     ]) {
       const mock = mockFetch((url) => (isSlotList(url) ? slots() : chatReply()));
       try {
@@ -175,7 +202,8 @@ describe("llama.cpp side slot (edge)", () => {
 const longText = (seed: string): string =>
   Array.from(
     { length: 400 },
-    (_, i) => `${seed} entry ${i}: the quick brown fox ${seed}-${(i * 7919) % 10007} jumps over lazy dog number ${i}.`,
+    (_, i) =>
+      `${seed} entry ${i}: the quick brown fox ${seed}-${(i * 7919) % 10007} jumps over lazy dog number ${i}.`,
   ).join("\n");
 
 /** Send `text` and stop as soon as the model starts answering; resolves to how much of the prompt was read from the cache. */

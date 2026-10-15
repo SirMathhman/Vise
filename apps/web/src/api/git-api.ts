@@ -71,7 +71,8 @@ export function parseStatus(text: string): GitStatus {
       status.untracked.push({ path, code: "?" });
       continue;
     }
-    const conflicted = x === "U" || y === "U" || (x === "A" && y === "A") || (x === "D" && y === "D");
+    const conflicted =
+      x === "U" || y === "U" || (x === "A" && y === "A") || (x === "D" && y === "D");
     if (conflicted) {
       status.changed.push({ path, code: "U" });
       continue;
@@ -119,7 +120,8 @@ function topLevel(root: string): string | null {
 
 function statusReply(root: string): Reply {
   const top = topLevel(root);
-  if (!top) return { type: "git_status", ok: true, repo: false, staged: [], changed: [], untracked: [] };
+  if (!top)
+    return { type: "git_status", ok: true, repo: false, staged: [], changed: [], untracked: [] };
   const result = git(top, ["status", "--porcelain=v1", "--branch", "-z", "-uall"]);
   if (!result.ok) return { type: "git_status", ok: false, repo: true, error: result.out };
   // Status paths are the repository's; `prefix` is where the session's folder sits in it, so the page can open them.
@@ -143,18 +145,30 @@ export function handleGitMessage(
 ): Reply[] | null {
   const type = msg["type"];
   if (typeof type !== "string" || !type.startsWith("git_")) return null;
-  if (noFolder) return [{ type: "git_result", ok: false, action: type, error: "this session has no folder" }];
+  if (noFolder)
+    return [{ type: "git_result", ok: false, action: type, error: "this session has no folder" }];
   if (type === "git_status") return [statusReply(root)];
   if (type === "git_commit") {
     const message = typeof msg["message"] === "string" ? msg["message"].trim() : "";
-    if (!message) return [{ type: "git_result", ok: false, action: "commit", error: "a commit needs a message" }];
+    if (!message)
+      return [
+        { type: "git_result", ok: false, action: "commit", error: "a commit needs a message" },
+      ];
     return action(root, root, "commit", ["commit", "-m", message]);
   }
   if (type !== "git_stage" && type !== "git_unstage") return null;
   // The panel names files as the status does: relative to the repository's top folder.
   const top = topLevel(root);
   const paths = top ? insidePaths(top, msg["paths"]) : null;
-  if (!top || !paths) return [{ type: "git_result", ok: false, action: type, error: "paths must lie inside the repository" }];
+  if (!top || !paths)
+    return [
+      {
+        type: "git_result",
+        ok: false,
+        action: type,
+        error: "paths must lie inside the repository",
+      },
+    ];
   return type === "git_stage"
     ? action(root, top, "stage", ["add", "--", ...paths])
     : action(root, top, "unstage", ["restore", "--staged", "--", ...paths]);

@@ -20,18 +20,13 @@ export const DEFAULT_SETTINGS: BrowserSettings = { engine: "chromium" };
  * dropped. Returns an error string for a port that was given but is invalid.
  */
 export function parseSettings(raw: unknown): BrowserSettings | string {
-  const r = (typeof raw === "object" && raw !== null ? raw : {}) as Record<
-    string,
-    unknown
-  >;
-  const engine: BrowserEngine =
-    r["engine"] === "firefox" ? "firefox" : "chromium";
+  const r = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
+  const engine: BrowserEngine = r["engine"] === "firefox" ? "firefox" : "chromium";
   const port = r["firefoxPort"];
   if (port === undefined || port === null || port === "") return { engine };
   // Digits only: Number() would accept `true`, hex and exponent forms.
   const n =
-    typeof port === "number" ||
-    (typeof port === "string" && /^\d+$/.test(port.trim()))
+    typeof port === "number" || (typeof port === "string" && /^\d+$/.test(port.trim()))
       ? Number(port)
       : NaN;
   if (!Number.isInteger(n) || n < 1 || n > 65535) {
@@ -42,9 +37,7 @@ export function parseSettings(raw: unknown): BrowserSettings | string {
 
 /** The global browser settings file (not per project: one browser is shared by every session). */
 export class BrowserSettingsStore {
-  constructor(
-    private readonly file: string = join(homedir(), ".vise", "browser.json"),
-  ) {}
+  constructor(private readonly file: string = join(homedir(), ".vise", "browser.json")) {}
 
   load(): BrowserSettings {
     try {

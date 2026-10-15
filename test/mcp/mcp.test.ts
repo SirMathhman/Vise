@@ -56,14 +56,9 @@ describe("mcp tools", () => {
   });
 
   test("results become text, errors are prefixed", () => {
+    expect(formatResult({ content: [{ type: "text", text: "hi" }] }, undefined)).toBe("hi");
     expect(
-      formatResult({ content: [{ type: "text", text: "hi" }] }, undefined),
-    ).toBe("hi");
-    expect(
-      formatResult(
-        { isError: true, content: [{ type: "text", text: "no" }] },
-        undefined,
-      ),
+      formatResult({ isError: true, content: [{ type: "text", text: "no" }] }, undefined),
     ).toBe("error: no");
     expect(formatResult({ structuredContent: { a: 1 } }, undefined)).toBe('{"a":1}');
     expect(formatResult({}, undefined)).toBe("(no output)");
@@ -79,11 +74,7 @@ describe("mcp hub", () => {
     await hub.start();
     try {
       const names = hub.tools().map((t) => t.function.name);
-      expect(names).toEqual([
-        "mcp__fx__echo",
-        "mcp__fx__fail",
-        "mcp__fx__crash",
-      ]);
+      expect(names).toEqual(["mcp__fx__echo", "mcp__fx__fail", "mcp__fx__crash"]);
       expect(hub.tools()[0]?.deferred).toBe(true);
       const run = hub.handlers();
       expect(await run["mcp__fx__echo"]!({ text: "yo" })).toBe("echo: yo");

@@ -33,8 +33,7 @@ export type McpStatus =
 const STDERR_LINES = 8;
 const NEWLINE = new RegExp(String.fromCharCode(92) + "r?" + String.fromCharCode(92) + "n");
 
-const reasonOf = (err: unknown): string =>
-  err instanceof Error ? err.message : String(err);
+const reasonOf = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 /** Why a server is not usable, for messages. */
 export const statusReason = (status: McpStatus): string =>
@@ -80,9 +79,7 @@ export class McpConnection {
       stderr: "pipe",
     });
     transport.stderr?.on("data", (chunk: Buffer) => {
-      this.stderr.push(
-        ...chunk.toString("utf8").split(NEWLINE).filter(Boolean),
-      );
+      this.stderr.push(...chunk.toString("utf8").split(NEWLINE).filter(Boolean));
       this.stderr = this.stderr.slice(-STDERR_LINES);
     });
     return transport;
@@ -169,11 +166,10 @@ export class McpConnection {
       return `error: MCP server ${this.name} is not connected (${statusReason(this.status)})`;
     }
     try {
-      return (await this.client.callTool(
-        { name: tool, arguments: args },
-        undefined,
-        { signal, timeout: config.mcpToolTimeoutMs },
-      )) as McpCallResult;
+      return (await this.client.callTool({ name: tool, arguments: args }, undefined, {
+        signal,
+        timeout: config.mcpToolTimeoutMs,
+      })) as McpCallResult;
     } catch (err) {
       return `error: MCP server ${this.name}: ${reasonOf(err)}`;
     }

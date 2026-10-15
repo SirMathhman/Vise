@@ -41,8 +41,12 @@ describe("tool protocol (edge)", () => {
     };
     const g = buildGrammar([read]) ?? "";
     // The required key comes first and is not optional; the others are optional.
-    expect(g).toContain('args0 ::= "{" ws "\\"path\\"" ws ":" ws string ( ws "," ws opt0-0 )? ws "}"');
-    expect(g).toContain('opt0-0 ::= "\\"offset\\"" ws ":" ws numlike ( ws "," ws opt0-1 )? | opt0-1');
+    expect(g).toContain(
+      'args0 ::= "{" ws "\\"path\\"" ws ":" ws string ( ws "," ws opt0-0 )? ws "}"',
+    );
+    expect(g).toContain(
+      'opt0-0 ::= "\\"offset\\"" ws ":" ws numlike ( ws "," ws opt0-1 )? | opt0-1',
+    );
     expect(g).toContain('opt0-1 ::= "\\"limit\\"" ws ":" ws numlike');
     // GBNF rule names allow only letters, digits and "-" (llama.cpp rejects "_").
     for (const m of g.matchAll(/^([^\s:]+) ::=/gm)) {
@@ -58,7 +62,7 @@ describe("tool protocol (edge)", () => {
 
   test("grammar allows free text before calls", () => {
     const g = buildGrammar(["a"]) ?? "";
-    expect(g).toContain("root ::= t0 call*");
+    expect(g).toContain("root ::= t0 calls?");
     expect(g).toContain("t10 ::=");
   });
 
@@ -70,9 +74,7 @@ describe("tool protocol (edge)", () => {
   });
 
   test("parses calls out of content", () => {
-    const r = parseToolCalls(
-      'hi <tool_call>\n{"name":"a","arguments":{"x":1}}\n</tool_call>',
-    );
+    const r = parseToolCalls('hi <tool_call>\n{"name":"a","arguments":{"x":1}}\n</tool_call>');
     expect(r.content).toBe("hi");
     expect(r.tool_calls[0]?.function.name).toBe("a");
     expect(r.tool_calls[0]?.function.arguments).toBe('{"x":1}');
@@ -105,8 +107,17 @@ describe("burst helpers (edge)", () => {
 
   test("act grammar allows only calls or done", () => {
     const g = buildGrammar(["a"], true) ?? "";
-    expect(g).toContain('root ::= call+ | "<done/>"');
+    expect(g).toContain('root ::= calls | "<done/>"');
     expect(g).not.toContain("t0");
+  });
+});
+
+describe("bounded calls", () => {
+  test("a reply holds at most the given number of calls", () => {
+    const g = buildGrammar(["a"], false, 3) ?? "";
+    expect(g).toContain("root ::= t0 calls?");
+    expect(g).toContain("calls ::= call (call (call)?)?");
+    expect(buildGrammar(["a"], false, 1)).toMatch(/calls ::= call\r?\n/);
   });
 });
 

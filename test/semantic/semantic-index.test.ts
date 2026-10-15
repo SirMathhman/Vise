@@ -8,7 +8,17 @@ import { SemanticIndex } from "../../packages/backend/src/stores/semantic/semant
 
 afterAll(() => closeAllDbs());
 
-const VOCABULARY = ["login", "password", "token", "database", "query", "sql", "button", "style", "render"];
+const VOCABULARY = [
+  "login",
+  "password",
+  "token",
+  "database",
+  "query",
+  "sql",
+  "button",
+  "style",
+  "render",
+];
 
 /** A stand-in embedder: a text becomes how often each vocabulary word occurs in it. */
 function bagOfWords(texts: string[]): Result<number[][]> {
@@ -28,8 +38,14 @@ function project(): { root: string; dataDir: string } {
     mkdirSync(join(root, ...path.split("/").slice(0, -1)), { recursive: true });
     writeFileSync(join(root, ...path.split("/")), text);
   };
-  put("src/auth.ts", "// login with a password\nexport function login(password: string, token: string) {}\n");
-  put("src/db.ts", "// database query\nexport const sql = 'select * from a';\nexport function query() {}\n");
+  put(
+    "src/auth.ts",
+    "// login with a password\nexport function login(password: string, token: string) {}\n",
+  );
+  put(
+    "src/db.ts",
+    "// database query\nexport const sql = 'select * from a';\nexport function query() {}\n",
+  );
   put("src/ui.css", "button { style: render; }\n");
   put(".env", "TOKEN=login password token\n");
   return { root, dataDir };
@@ -115,7 +131,14 @@ test("a changed embedding model leaves the old vectors unsearched until a rebuil
 test("an embedder that refuses is a status with what to do, not a throw", async () => {
   const { root, dataDir } = project();
   const index = indexOf(root, dataDir, {
-    embed: async () => ({ ok: false, error: { kind: "http", status: 501, body: '{"error":{"message":"embeddings not supported"}}' } }),
+    embed: async () => ({
+      ok: false,
+      error: {
+        kind: "http",
+        status: 501,
+        body: '{"error":{"message":"embeddings not supported"}}',
+      },
+    }),
   });
   const run = await index.update();
   expect(run.ok).toBe(false);

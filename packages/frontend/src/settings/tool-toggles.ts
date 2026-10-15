@@ -1,8 +1,5 @@
 /** Turn a tools-panel checkbox change into a `/tool <name|category> enable|disable` line. */
-export function bindToolToggles(
-  list: HTMLElement,
-  request: (line: string) => void,
-): void {
+export function bindToolToggles(list: HTMLElement, request: (line: string) => void): void {
   list.addEventListener("change", (event) => {
     const checkbox = event.target;
     if (!(checkbox instanceof HTMLInputElement) || !checkbox.value) return;

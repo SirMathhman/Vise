@@ -1,10 +1,6 @@
 import type { Tool } from "@vise/core";
-import type {
-  AssistantMessage,
-  Message,
-  Picture,
-  ToolCall,
-} from "@vise/core";
+import { config } from "../config.ts";
+import type { AssistantMessage, Message, Picture, ToolCall } from "@vise/core";
 
 /**
  * Prompt-text tool-call protocol. Tool definitions are rendered into the
@@ -35,9 +31,7 @@ function byCategory(deferred: Tool[]): string[] {
   }
   return [...groups].flatMap(([category, group]) => [
     `[${category}]`,
-    ...group.map(
-      (t) => `- ${t.function.name}: ${summarize(t.function.description)}`,
-    ),
+    ...group.map((t) => `- ${t.function.name}: ${summarize(t.function.description)}`),
   ]);
 }
 
@@ -136,8 +130,7 @@ function argsRules(tool: Tool, i: number): string[] {
       ? params.required.filter((k): k is string => typeof k === "string")
       : [],
   );
-  const kv = (k: string): string =>
-    `${lit(`"${k}"`)} ws ":" ws ${valueRule(props[k])}`;
+  const kv = (k: string): string => `${lit(`"${k}"`)} ws ":" ws ${valueRule(props[k])}`;
   const required = keys.filter((k) => need.has(k)).map(kv);
   const optional = keys.filter((k) => !need.has(k));
   const rules: string[] = [];
@@ -159,9 +152,18 @@ function argsRules(tool: Tool, i: number): string[] {
   return [`args${i} ::= "{" ws ${body} ws "}"`, ...rules];
 }
 
+/** Calls one reply may hold when the caller names no limit. */
+const DEFAULT_MAX_CALLS = 8;
+
+/** `call (call (call)?)?` for `n` calls: a reply can never hold more, so a model stuck repeating a call is cut off by the grammar itself. */
+function boundedCalls(n: number): string {
+  const count = Math.max(1, Math.floor(n));
+  return `call${" (call".repeat(count - 1)}${")?".repeat(count - 1)}`;
+}
+
 /**
- * GBNF grammar: `text` (which cannot contain `CALL_OPEN`) followed by any
- * number of calls to an enabled tool, each with arguments that fit that tool's
+ * GBNF grammar: `text` (which cannot contain `CALL_OPEN`) followed by up to
+ * `maxCalls` calls to an enabled tool, each with arguments that fit that tool's
  * parameter schema (see `argsRules`). The model can therefore think, answer in
  * plain text, or call an enabled tool \u2014 and never call a disabled one or leave
  * out a required argument. A bare name (no definition) gets any JSON object.
@@ -172,6 +174,7 @@ function argsRules(tool: Tool, i: number): string[] {
 export function buildGrammar(
   enabled: (string | Tool)[],
   act = false,
+  maxCalls = DEFAULT_MAX_CALLS,
 ): string | undefined {
   if (act && enabled.length === 0) return `root ::= "${DONE}"`;
   if (enabled.length === 0) return undefined;
@@ -179,17 +182,14 @@ export function buildGrammar(
   const rules: string[] = [];
   enabled.forEach((tool, i) => {
     const name = typeof tool === "string" ? tool : tool.function.name;
-    rules.push(
-      typeof tool === "string"
-        ? `args${i} ::= object`
-        : argsRules(tool, i).join("\n"),
-    );
+    rules.push(typeof tool === "string" ? `args${i} ::= object` : argsRules(tool, i).join("\n"));
     calls.push(
       `c${i} ::= "${CALL_OPEN}" ws "{" ws "\\"name\\"" ws ":" ws ${lit(`"${name}"`)} ws "," ws "\\"arguments\\"" ws ":" ws args${i} ws "}" ws "${CALL_CLOSE}" ws`,
     );
   });
   return [
-    act ? `root ::= call+ | "${DONE}"` : "root ::= t0 call*",
+    act ? `root ::= calls | "${DONE}"` : "root ::= t0 calls?",
+    `calls ::= ${boundedCalls(maxCalls)}`,
     ...(act ? [] : textRules()),
     `call ::= ${enabled.map((_, i) => `c${i}`).join(" | ")}`,
     ...calls,
@@ -211,10 +211,8 @@ export function toolRequestFields(
   isToolEnabled?: (name: string) => boolean,
   act = false,
 ): Record<string, unknown> {
-  const enabled = tools.filter(
-    (t) => isToolEnabled?.(t.function.name) ?? true,
-  );
-  const grammar = buildGrammar(enabled, act);
+  const enabled = tools.filter((t) => isToolEnabled?.(t.function.name) ?? true);
+  const grammar = buildGrammar(enabled, act, config.maxCallsPerReply);
   if (grammar === undefined) return {};
   return act ? { grammar, logprobs: true, top_logprobs: 1 } : { grammar };
 }
@@ -254,12 +252,42 @@ export function parseReply(
 /** Turns a picture reference into the `data:` URI sent to the model (undefined when its file is gone). */
 export type ImageResolver = (picture: Picture) => string | undefined;
 
+/**
+ * The conversation as it is sent: pictures that tools produced are sent only
+ * with the tool results of the latest round (those after the last assistant
+ * message). A picture is sent once, in the request right after its action, and
+ * is left out of every later one (its text stays, with a note).
+ *
+ * This is deliberate, and is the only way history may change: the server can
+ * reuse its cache only up to the first token that differs from the previous
+ * request, and a model with few checkpoints cannot restore the middle of a
+ * long prompt. Dropping a picture one request after it was sent changes the
+ * previous request's own tail (cheap); dropping it later would change the
+ * middle and make the server read the whole conversation again. The stored
+ * messages are not changed, and pictures a user attached are never left out.
+ * Pure.
+ */
+export function elideOldImages(messages: Message[]): Message[] {
+  let lastAssistant = -1;
+  messages.forEach((m, i) => {
+    if (m.role === "assistant") lastAssistant = i;
+  });
+  const stale = (m: Message, i: number): boolean =>
+    m.role === "tool" && i < lastAssistant && (m.images?.length ?? 0) > 0;
+  if (!messages.some(stale)) return messages;
+  return messages.map((m, i) => {
+    if (!stale(m, i)) return m;
+    const { images: _images, ...rest } = m;
+    return {
+      ...rest,
+      content: `${m.content}
+[older screenshot omitted]`,
+    };
+  });
+}
+
 /** A message body with its pictures: plain text, or text and image parts when there are any. */
-export function withImages(
-  message: Message,
-  text: string,
-  resolve?: ImageResolver,
-): unknown {
+export function withImages(message: Message, text: string, resolve?: ImageResolver): unknown {
   if (!message.images || message.images.length === 0) return text;
   return [
     { type: "text", text },
@@ -298,11 +326,7 @@ export function encodeMessages(
     if (m.role === "tool") {
       return {
         role: "user",
-        content: withImages(
-          m,
-          `${RESPONSE_OPEN}${m.content}${RESPONSE_CLOSE}`,
-          resolve,
-        ),
+        content: withImages(m, `${RESPONSE_OPEN}${m.content}${RESPONSE_CLOSE}`, resolve),
       };
     }
     const calls = (m.tool_calls ?? [])

@@ -16,8 +16,7 @@ import type { BrowserBackend } from "../../browser/types.ts";
 /** A page that has not changed at all is only called settled after this long: an update may still be coming. */
 /** One probe must not hang the wait (a blocking dialog can stall a page's script). */
 
-const sleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** The wait limit in milliseconds from a `timeout_seconds` argument. */
 export function timeoutMs(value: unknown): number {
@@ -32,10 +31,7 @@ export function timeoutMs(value: unknown): number {
 const seconds = (ms: number): string => `${(ms / 1000).toFixed(1)}s`;
 
 /** `promise`, or undefined when it does not settle within `ms` (the timer is always cleared). */
-async function within<T>(
-  promise: Promise<T>,
-  ms: number,
-): Promise<T | undefined> {
+async function within<T>(promise: Promise<T>, ms: number): Promise<T | undefined> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const late = new Promise<undefined>((resolve) => {
     timer = setTimeout(() => resolve(undefined), ms);
@@ -82,12 +78,7 @@ async function poll(
 }
 
 /** The message when a wait ended without its condition: interrupted or a dialog, or the time running out. */
-function gaveUp(
-  browser: BrowserBackend,
-  id: number,
-  outcome: Outcome,
-  timedOut: string,
-): string {
+function gaveUp(browser: BrowserBackend, id: number, outcome: Outcome, timedOut: string): string {
   if (outcome.how === "timeout") return timedOut;
   return browser.pendingDialog(id)
     ? "error: stopped waiting because a dialog opened"
@@ -102,22 +93,10 @@ export async function waitForText(
   limitMs: number,
   signal?: AbortSignal,
 ): Promise<string> {
-  const outcome = await poll(
-    browser,
-    id,
-    limitMs,
-    signal,
-    text,
-    (probe) => probe.contains,
-  );
+  const outcome = await poll(browser, id, limitMs, signal, text, (probe) => probe.contains);
   return outcome.how === "done"
     ? `"${text}" appeared after ${seconds(outcome.took)}`
-    : gaveUp(
-        browser,
-        id,
-        outcome,
-        `error: "${text}" did not appear within ${seconds(limitMs)}`,
-      );
+    : gaveUp(browser, id, outcome, `error: "${text}" did not appear within ${seconds(limitMs)}`);
 }
 
 /** Wait until `text` is no longer on the page. */
@@ -128,14 +107,7 @@ export async function waitForTextGone(
   limitMs: number,
   signal?: AbortSignal,
 ): Promise<string> {
-  const outcome = await poll(
-    browser,
-    id,
-    limitMs,
-    signal,
-    text,
-    (probe) => !probe.contains,
-  );
+  const outcome = await poll(browser, id, limitMs, signal, text, (probe) => !probe.contains);
   return outcome.how === "done"
     ? `"${text}" was gone after ${seconds(outcome.took)}`
     : gaveUp(
@@ -161,24 +133,16 @@ export async function waitForIdle(
   let last: string | undefined;
   let changedAt = 0;
   let changed = false;
-  const outcome = await poll(
-    browser,
-    id,
-    limitMs,
-    signal,
-    undefined,
-    (probe, elapsed) => {
-      if (probe.fingerprint !== last) {
-        changed ||= last !== undefined;
-        last = probe.fingerprint;
-        changedAt = elapsed;
-      }
-      return (
-        elapsed - changedAt >= config.waitQuietMs &&
-        (changed || elapsed >= config.waitMinIdleMs)
-      );
-    },
-  );
+  const outcome = await poll(browser, id, limitMs, signal, undefined, (probe, elapsed) => {
+    if (probe.fingerprint !== last) {
+      changed ||= last !== undefined;
+      last = probe.fingerprint;
+      changedAt = elapsed;
+    }
+    return (
+      elapsed - changedAt >= config.waitQuietMs && (changed || elapsed >= config.waitMinIdleMs)
+    );
+  });
   return outcome.how === "done"
     ? `the page settled after ${seconds(outcome.took)}`
     : gaveUp(
@@ -189,10 +153,7 @@ export async function waitForIdle(
       );
 }
 
-type Handler = (
-  args: Record<string, unknown>,
-  signal?: AbortSignal,
-) => Promise<string>;
+type Handler = (args: Record<string, unknown>, signal?: AbortSignal) => Promise<string>;
 
 /** Runs `action` on the tab named in `args` (validating it) and reports its result. */
 type OnTab = (
@@ -207,21 +168,12 @@ export function waitHandlers(
   onTab: OnTab,
   text: (args: Record<string, unknown>) => string,
 ): Record<string, Handler> {
-  const limit = (args: Record<string, unknown>): number =>
-    timeoutMs(args["timeout_seconds"]);
+  const limit = (args: Record<string, unknown>): number => timeoutMs(args["timeout_seconds"]);
   return {
     browser_wait_for_text: (args, signal) =>
-      onTab(
-        args,
-        (id) => waitForText(browser, id, text(args), limit(args), signal),
-        "",
-      ),
+      onTab(args, (id) => waitForText(browser, id, text(args), limit(args), signal), ""),
     browser_wait_for_text_gone: (args, signal) =>
-      onTab(
-        args,
-        (id) => waitForTextGone(browser, id, text(args), limit(args), signal),
-        "",
-      ),
+      onTab(args, (id) => waitForTextGone(browser, id, text(args), limit(args), signal), ""),
     browser_wait_for_idle: (args, signal) =>
       onTab(args, (id) => waitForIdle(browser, id, limit(args), signal), ""),
   };

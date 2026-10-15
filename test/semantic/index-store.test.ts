@@ -17,12 +17,25 @@ const chunk = (start: number, end: number, content: string) => ({ start, end, co
 
 test("a file's chunks are replaced as a whole and read back with their line ranges", () => {
   const s = store();
-  expect(s.replaceFile("a.ts", [chunk(0, 9, "one"), chunk(8, 20, "two")], [[1, 0], [0, 1]], "m1", 100).ok).toBe(true);
+  expect(
+    s.replaceFile(
+      "a.ts",
+      [chunk(0, 9, "one"), chunk(8, 20, "two")],
+      [
+        [1, 0],
+        [0, 1],
+      ],
+      "m1",
+      100,
+    ).ok,
+  ).toBe(true);
   expect(s.replaceFile("a.ts", [chunk(0, 4, "only")], [[1, 1]], "m1", 200).ok).toBe(true);
   const files = s.files();
   expect(files.ok && files.value).toEqual([{ path: "a.ts", mtimeMs: 200, model: "m1" }]);
   const chunks = s.chunks("m1");
-  expect(chunks.ok && chunks.value.map((c) => [c.path, c.startLine, c.endLine, c.content])).toEqual([["a.ts", 0, 4, "only"]]);
+  expect(chunks.ok && chunks.value.map((c) => [c.path, c.startLine, c.endLine, c.content])).toEqual(
+    [["a.ts", 0, 4, "only"]],
+  );
 });
 
 test("chunks of another model are counted apart and never returned for a search", () => {

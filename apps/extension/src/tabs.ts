@@ -118,11 +118,7 @@ browser.tabs.onUpdated.addListener(
 // website") is part of the same task, so the agent may use it too (the user can still release it).
 // If the limit is reached, the tab is queued and promoted when a slot frees up.
 browser.tabs.onCreated.addListener((tab) => {
-  if (
-    tab.id !== undefined &&
-    tab.openerTabId !== undefined &&
-    owned.has(tab.openerTabId)
-  ) {
+  if (tab.id !== undefined && tab.openerTabId !== undefined && owned.has(tab.openerTabId)) {
     const result = tryGrant(tab.id);
     if (!result.ok) {
       enqueue(tab.id, tab.title ?? "", tab.url ?? "");

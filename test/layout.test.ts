@@ -13,20 +13,14 @@ const ROOT = join(import.meta.dir, "..");
 /** Every directory under `dir` with how many `.ts` files sit directly in it. */
 function counts(dir: string, found: Map<string, number> = new Map()) {
   const entries = readdirSync(dir, { withFileTypes: true });
-  found.set(
-    dir,
-    entries.filter((e) => e.isFile() && e.name.endsWith(".ts")).length,
-  );
+  found.set(dir, entries.filter((e) => e.isFile() && e.name.endsWith(".ts")).length);
   for (const e of entries) {
-    if (e.isDirectory() && !SKIPPED.has(e.name))
-      counts(join(dir, e.name), found);
+    if (e.isDirectory() && !SKIPPED.has(e.name)) counts(join(dir, e.name), found);
   }
   return found;
 }
 
 test(`no directory has ${LIMIT} or more .ts files`, () => {
-  const crowded = [...counts(ROOT)]
-    .filter(([, n]) => n >= LIMIT)
-    .map(([dir, n]) => `${dir}: ${n}`);
+  const crowded = [...counts(ROOT)].filter(([, n]) => n >= LIMIT).map(([dir, n]) => `${dir}: ${n}`);
   expect(crowded).toEqual([]);
 });

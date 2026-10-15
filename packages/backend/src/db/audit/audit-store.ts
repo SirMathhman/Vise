@@ -83,9 +83,7 @@ export class SqliteAuditSink implements AuditSink {
     if (!written.ok) this.dropped += batch.length;
     if (!written.ok && !this.warned) {
       this.warned = true;
-      console.error(
-        `vise: audit log not written (${JSON.stringify(written.error)})`,
-      );
+      console.error(`vise: audit log not written (${JSON.stringify(written.error)})`);
     }
   }
 
@@ -124,15 +122,14 @@ type Writer<K extends AuditEvent["kind"]> = (
 
 const WRITERS: { [K in AuditEvent["kind"]]: Writer<K> } = {
   session_start: (db, e, at, root) => {
-    db.query(
-      "INSERT OR IGNORE INTO audit_sessions (id, root, started_at) VALUES (?, ?, ?)",
-    ).run(e.session, root, at.ts);
+    db.query("INSERT OR IGNORE INTO audit_sessions (id, root, started_at) VALUES (?, ?, ?)").run(
+      e.session,
+      root,
+      at.ts,
+    );
   },
   session_end: (db, _e, at) => {
-    db.query("UPDATE audit_sessions SET ended_at = ? WHERE id = ?").run(
-      at.ts,
-      at.session,
-    );
+    db.query("UPDATE audit_sessions SET ended_at = ? WHERE id = ?").run(at.ts, at.session);
   },
   link: (db, e, at) => {
     db.query("UPDATE audit_sessions SET saved_session_id = ? WHERE id = ?").run(
@@ -146,9 +143,12 @@ const WRITERS: { [K in AuditEvent["kind"]]: Writer<K> } = {
     ).run(e.turn, at.session, clip(e.text), at.ts);
   },
   turn_end: (db, e, at) => {
-    db.query(
-      "UPDATE audit_turns SET ended_at = ?, outcome = ?, error = ? WHERE id = ?",
-    ).run(at.ts, e.outcome, clipped(e.error), at.turn);
+    db.query("UPDATE audit_turns SET ended_at = ?, outcome = ?, error = ? WHERE id = ?").run(
+      at.ts,
+      e.outcome,
+      clipped(e.error),
+      at.turn,
+    );
   },
   message: (db, e, at) => {
     const m = e.message;
@@ -185,7 +185,12 @@ const WRITERS: { [K in AuditEvent["kind"]]: Writer<K> } = {
     ).run(clip(e.raw), clip(e.rawReasoning), e.completionTokens, at.ts, at.session, e.request);
   },
   model_call: (db, e, at) => {
-    const state = e.error === undefined ? "done" : e.stopReason === "loop" || e.stopReason === "token_cap" || e.stopReason === "interrupted" ? "stopped" : "error";
+    const state =
+      e.error === undefined
+        ? "done"
+        : e.stopReason === "loop" || e.stopReason === "token_cap" || e.stopReason === "interrupted"
+          ? "stopped"
+          : "error";
     const values = [
       Math.round(e.ms),
       e.promptTokens ?? null,
@@ -251,20 +256,16 @@ const WRITERS: { [K in AuditEvent["kind"]]: Writer<K> } = {
 /** Make text findable by `/audit search`. */
 function index(db: Database, at: Place, kind: string, text: string): void {
   if (text === "") return;
-  db.query(
-    "INSERT INTO audit_fts (text, kind, session_id) VALUES (?, ?, ?)",
-  ).run(clip(text), kind, at.session);
+  db.query("INSERT INTO audit_fts (text, kind, session_id) VALUES (?, ?, ?)").run(
+    clip(text),
+    kind,
+    at.session,
+  );
 }
 
 /** The free-form table: for the rare, low-volume things. */
 function event(db: Database, at: Place, name: string, payload: unknown): void {
   db.query(
     "INSERT INTO audit_events (session_id, turn_id, ts, name, payload) VALUES (?, ?, ?, ?, ?)",
-  ).run(
-    at.session,
-    at.turn,
-    at.ts,
-    name,
-    clip(JSON.stringify(payload) ?? "null"),
-  );
+  ).run(at.session, at.turn, at.ts, name, clip(JSON.stringify(payload) ?? "null"));
 }

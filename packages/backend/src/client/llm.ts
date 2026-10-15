@@ -1,15 +1,54 @@
 import { config } from "../config.ts";
 import { noAudit, type AuditSink } from "@vise/core";
-import { encodeMessages, type ImageResolver, plainMessages, hideCalls, nameConfidence, parseReply, toolRequestFields } from "./tool-protocol.ts";
+import {
+  elideOldImages,
+  encodeMessages,
+  type ImageResolver,
+  plainMessages,
+  hideCalls,
+  nameConfidence,
+  parseReply,
+  toolRequestFields,
+} from "./tool-protocol.ts";
 import { collectThinking, readJsonReply, streamChat } from "./stream/stream-reader.ts";
 import { generationReporter } from "./stream/generation.ts";
-import { ANTI_REPEAT_FIELDS, LLAMA_STREAM_FIELDS, STREAM_FIELDS, readReply } from "./stream/request-fields.ts";
-import { modelRef, parseModelRef, providerFor, providerOf, reasoningFields, responseFormat, type ModelInfo, type Provider } from "./provider.ts";
+import {
+  ANTI_REPEAT_FIELDS,
+  LLAMA_STREAM_FIELDS,
+  STREAM_FIELDS,
+  readReply,
+} from "./stream/request-fields.ts";
+import {
+  modelRef,
+  parseModelRef,
+  providerFor,
+  providerOf,
+  reasoningFields,
+  responseFormat,
+  type ModelInfo,
+  type Provider,
+} from "./provider.ts";
 import { chooseSideSlot as chooseSlot, slotJustUsed } from "./slots.ts";
 import { isTransient, pause, retryDelayMs, streamFailureError } from "./retry.ts";
 import { REASONING_EFFORTS, type ReasoningEffort } from "@vise/core";
-import { fetchEmbeddings, fetchHostedInfo, fetchModelDetails, fetchSlotContext, localSupportsVision, type ModelDetail } from "./model-queries.ts";
-import { CallLog, CallTrace, recordCallEnd, recordCallStart, noteServerCut, runawayError, traceListener, traceThinking } from "./stream/call-trace.ts";
+import {
+  fetchEmbeddings,
+  fetchHostedInfo,
+  fetchModelDetails,
+  fetchSlotContext,
+  localSupportsVision,
+  type ModelDetail,
+} from "./model-queries.ts";
+import {
+  CallLog,
+  CallTrace,
+  recordCallEnd,
+  recordCallStart,
+  noteServerCut,
+  runawayError,
+  traceListener,
+  traceThinking,
+} from "./stream/call-trace.ts";
 
 export { streamChat };
 import type { Client, Tool } from "@vise/core";
@@ -21,7 +60,6 @@ import type {
   PromptProgress,
   Result,
 } from "@vise/core";
-
 
 /** The active provider, read live from the settings (they can change while running). */
 export function activeProvider(): Provider {
@@ -48,7 +86,6 @@ interface Slot {
 export { REASONING_EFFORTS, type ReasoningEffort };
 export type { ModelDetail };
 
-
 export class LlmClient implements Client {
   private lastPromptTokens: number | undefined;
   /** The active model's reference (see `modelRef`). */
@@ -61,9 +98,7 @@ export class LlmClient implements Client {
   /** Hears the prompt processing of every model call of this client (set by the edge): the one place progress is reported. */
   private progressSink?: (progress: PromptProgress) => void;
 
-  setProgressSink(
-    sink: ((progress: PromptProgress) => void) | undefined,
-  ): void {
+  setProgressSink(sink: ((progress: PromptProgress) => void) | undefined): void {
     this.progressSink = sink;
   }
 
@@ -106,9 +141,7 @@ export class LlmClient implements Client {
   /** Hears how much each model call has generated so far (set by the edge). */
   private generationSink?: (progress: GenerationProgress) => void;
 
-  setGenerationSink(
-    sink: ((progress: GenerationProgress) => void) | undefined,
-  ): void {
+  setGenerationSink(sink: ((progress: GenerationProgress) => void) | undefined): void {
     this.generationSink = sink;
   }
 
@@ -201,11 +234,7 @@ export class LlmClient implements Client {
     }
   }
 
-  private async slotFetch(
-    url: string,
-    init: RequestInit,
-    timeoutMs: number,
-  ): Promise<Response> {
+  private async slotFetch(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
@@ -214,10 +243,7 @@ export class LlmClient implements Client {
         new Promise<Response>((_resolve, reject) => {
           controller.signal.addEventListener(
             "abort",
-            () =>
-              reject(
-                new DOMException("slot request timed out", "TimeoutError"),
-              ),
+            () => reject(new DOMException("slot request timed out", "TimeoutError")),
             { once: true },
           );
         }),
@@ -320,7 +346,8 @@ export class LlmClient implements Client {
   /** After a call: tell the generation sink how full its prompt made the context window (not waited for). */
   private async reportUsage(request: number, purpose: CallPurpose, used: number): Promise<void> {
     const max = await this.contextMax().catch(() => undefined);
-    if (max?.ok) this.generationSink?.({ request, purpose, tokens: 0, done: true, used, max: max.value });
+    if (max?.ok)
+      this.generationSink?.({ request, purpose, tokens: 0, done: true, used, max: max.value });
   }
 
   /** What a provider's `/models` says about one model (window, vision); cached, undefined when unknown. */
@@ -344,7 +371,10 @@ export class LlmClient implements Client {
       if (info?.contextLength !== undefined) return { ok: true, value: info.contextLength };
       return { ok: false, error: { kind: "malformed", body: "model list had no context_length" } };
     } catch (err) {
-      return { ok: false, error: { kind: "network", cause: err instanceof Error ? err.message : String(err) } };
+      return {
+        ok: false,
+        error: { kind: "network", cause: err instanceof Error ? err.message : String(err) },
+      };
     }
   }
 
@@ -353,10 +383,7 @@ export class LlmClient implements Client {
     // (and the unset case) omit the field so the template uses its built-in
     // default; every other level — including `none`, which disables
     // reasoning — is sent through.
-    Object.assign(
-      body,
-      reasoningFields(this.provider(), this.reasoningEffort),
-    );
+    Object.assign(body, reasoningFields(this.provider(), this.reasoningEffort));
   }
 
   /**
@@ -364,9 +391,7 @@ export class LlmClient implements Client {
    * guard stopped for repeating itself is asked again (`VISE_LOOP_RETRIES`
    * times) with a repeat penalty, as a call of its own on the record.
    */
-  async chat(
-    ...args: Parameters<LlmClient["send"]>
-  ): Promise<Result<AssistantMessage>> {
+  async chat(...args: Parameters<LlmClient["send"]>): Promise<Result<AssistantMessage>> {
     const purpose = args[9] ?? "reply";
     let result = await this.attempt(args, false);
     for (let retry = 0; retry < config.loopRetries; retry++) {
@@ -409,14 +434,25 @@ export class LlmClient implements Client {
     antiRepeat: boolean,
   ): Promise<Result<AssistantMessage>> {
     const purpose = args[9] ?? "reply";
-    const trace = this.calls.start(
-      new CallTrace(++this.requestSeq, purpose, this.currentModel),
-    );
+    const trace = this.calls.start(new CallTrace(++this.requestSeq, purpose, this.currentModel));
     const stopRecording = recordCallStart(this.auditSink, trace);
     const [m, t, onToken, onThinking, onProgress, schema, signal, enabled, act] = args;
     let result: Result<AssistantMessage>;
     try {
-      result = await this.send(m, t, onToken, onThinking, onProgress, schema, signal, enabled, act, purpose, trace, antiRepeat);
+      result = await this.send(
+        m,
+        t,
+        onToken,
+        onThinking,
+        onProgress,
+        schema,
+        signal,
+        enabled,
+        act,
+        purpose,
+        trace,
+        antiRepeat,
+      );
     } finally {
       stopRecording();
     }
@@ -436,6 +472,8 @@ export class LlmClient implements Client {
   ): Record<string, unknown> {
     const useTools = !!tools && tools.length > 0 && !responseSchema;
     const provider = this.provider();
+    // Pictures tools produced are sent once, with the latest round; see elideOldImages for why only the tail may change.
+    messages = elideOldImages(messages);
     const body: Record<string, unknown> = {
       model: this.modelId(),
       // A schema-constrained request (a one-off question about the conversation)
@@ -483,14 +521,7 @@ export class LlmClient implements Client {
     // of the prompt, so toggling a tool leaves the KV cache intact.
     const useTools = !!tools && tools.length > 0 && !responseSchema;
     const request = trace?.request ?? ++this.requestSeq;
-    const body = this.requestBody(
-      messages,
-      tools,
-      responseSchema,
-      isToolEnabled,
-      act,
-      antiRepeat,
-    );
+    const body = this.requestBody(messages, tools, responseSchema, isToolEnabled, act, antiRepeat);
     // An act round shows the user nothing; its reasoning is only captured.
     const thought = collectThinking(act ? undefined : onThinking);
     // The runaway guard aborts the call through its own controller, chained to the turn's signal.

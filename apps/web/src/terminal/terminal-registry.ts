@@ -137,8 +137,7 @@ export class TerminalRegistry {
   /** Start a new shell with an empty screen on every page that shows it. */
   private startFresh(root: string, shell: Shell, requester: Send): void {
     shell.scrollback.clear();
-    for (const viewer of shell.viewers)
-      viewer({ type: "term_data", data: "", replay: true });
+    for (const viewer of shell.viewers) viewer({ type: "term_data", data: "", replay: true });
     this.start(root, shell, requester);
   }
 

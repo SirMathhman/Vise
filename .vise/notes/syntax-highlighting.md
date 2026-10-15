@@ -1,5 +1,7 @@
-> **Status:** implemented (the dependency and the `--code-*` tokens had been added earlier, but the renderer, the 
-> `.hljs-*` rules and the viewer wiring were missing, so nothing showed). Languages are registered from `highlight.js/lib/core`
+> **Status:** implemented (the dependency and the `--code-*` tokens had been added earlier, but the renderer, the
+
+> `.hljs-*` rules and the viewer wiring were missing, so nothing showed). Languages are registered from `highlight.js/lib/core`
+
 > (see `web/src/highlight.ts`), plus bash, powershell, python, yaml and diff.
 
 ## Plan: Syntax Highlighting for Web UI
@@ -30,6 +32,7 @@ Add highlight.js-based syntax highlighting to fenced code blocks in the chat tra
    Dark themes (the default and forest/volcano/underwater): keywords bright, strings greenish/amber, comments dim gray-italic, functions light-blue, types teal, literals orange, meta purple. Light theme: same hues but darker for contrast on white.
 
 3. **`web/styles/transcript.css`** — add rules mapping highlight.js's span classes to the new tokens. highlight.js wraps tokens in `<span class="hljs-keyword">` etc. inside the `<code>` element. Rules needed:
+
    ```
    .line.assistant code .hljs-keyword { color: var(--code-keyword) }
    .line.assistant code .hljs-string { color: var(--code-string) }
@@ -44,6 +47,7 @@ Add highlight.js-based syntax highlighting to fenced code blocks in the chat tra
    .line.assistant code .hljs-operator { color: var(--code-operator) }
    .line.assistant code .hljs-punctuation { color: var(--code-punct) }
    ```
+
    The existing `.line.assistant pre code` reset (background:none, border:none, padding:0) stays as-is.
 
 4. **`web/styles/workspace.css`** (or wherever the file viewer's `<pre>` is styled) — add the same rules scoped to the viewer's `<pre>`. The viewer will share the exact same token classes since we use the same highlight.js output.
@@ -73,7 +77,7 @@ Add highlight.js-based syntax highlighting to fenced code blocks in the chat tra
    hljs.registerLanguage("css", css);
    hljs.registerLanguage("xml", xml);
    ```
-   Only these five languages are loaded into the bundle. Any other language tag (e.g. ```` ```python ````) falls through to the no-highlight path.
+   Only these five languages are loaded into the bundle. Any other language tag (e.g. ` ```python `) falls through to the no-highlight path.
 
 ### Phase 4 — File viewer
 

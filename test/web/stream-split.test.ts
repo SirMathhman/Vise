@@ -2,8 +2,7 @@ import { expect, test } from "bun:test";
 import { MIN_FROZEN, stableCut } from "../../packages/frontend/src/transcript/stream-split.ts";
 
 const para = (n: number): string => `paragraph ${n} ${"word ".repeat(40)}\n\n`;
-const long = (count: number): string =>
-  Array.from({ length: count }, (_, i) => para(i)).join("");
+const long = (count: number): string => Array.from({ length: count }, (_, i) => para(i)).join("");
 
 test("a short reply is never split", () => {
   expect(stableCut("hello\n\nworld\n\n")).toBe(0);

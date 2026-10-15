@@ -44,7 +44,12 @@ describe("model calls in the audit log", () => {
     });
     rows = (reader.calls("s1", 10) as { rows: AuditCall[] }).rows;
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ state: "done", completionTokens: 42, finishReason: "stop", ms: 1500 });
+    expect(rows[0]).toMatchObject({
+      state: "done",
+      completionTokens: 42,
+      finishReason: "stop",
+      ms: 1500,
+    });
   });
 
   test("progress keeps the raw text of a call that never ends", () => {
@@ -86,7 +91,9 @@ describe("model calls in the audit log", () => {
     const text = formatAuditReport(report);
     expect(text).toContain("STOPPED: repeating itself");
     expect(text).toContain("repeated about 600 times");
-    expect(formatAuditReport(reader.calls("s1", 5))).toContain("#2 reply: STOPPED: repeating itself");
+    expect(formatAuditReport(reader.calls("s1", 5))).toContain(
+      "#2 reply: STOPPED: repeating itself",
+    );
   });
 
   test("a call with no record says so", () => {

@@ -23,9 +23,31 @@ const messages: Message[] = [
 ];
 
 const trace: GoalTraceEntry[] = [
-  { kind: "turn_start", line: "fix the build", enabled: true, at: "2026-10-09T01:00:00.000Z", after: 2 },
-  { kind: "ask", purpose: "goal-check", attempt: 1, question: "[goal check] zebrafish?", reply: "{\"verdict\":\"yes\"}", at: "2026-10-09T01:00:01.000Z", after: 3 },
-  { kind: "exit", reason: "met", detail: "ok", lastReply: "done", toolResults: 0, at: "2026-10-09T01:00:02.000Z", after: 3 },
+  {
+    kind: "turn_start",
+    line: "fix the build",
+    enabled: true,
+    at: "2026-10-09T01:00:00.000Z",
+    after: 2,
+  },
+  {
+    kind: "ask",
+    purpose: "goal-check",
+    attempt: 1,
+    question: "[goal check] zebrafish?",
+    reply: '{"verdict":"yes"}',
+    at: "2026-10-09T01:00:01.000Z",
+    after: 3,
+  },
+  {
+    kind: "exit",
+    reason: "met",
+    detail: "ok",
+    lastReply: "done",
+    toolResults: 0,
+    at: "2026-10-09T01:00:02.000Z",
+    after: 3,
+  },
 ];
 
 const rows = (dir: string, sql: string): unknown[] => {
@@ -82,9 +104,11 @@ describe("the goal trace in a saved session", () => {
     const dir = base();
     const old = openDb(join(dir, "vise.db"), SESSION_MIGRATIONS.slice(0, 2));
     if (!old.ok) throw new Error("open failed");
-    old.value.query(
-      "INSERT INTO sessions (id, name, active_profile, created_at, updated_at) VALUES ('11111111-0000-4000-8000-000000000001', 'old', NULL, 't', 't')",
-    ).run();
+    old.value
+      .query(
+        "INSERT INTO sessions (id, name, active_profile, created_at, updated_at) VALUES ('11111111-0000-4000-8000-000000000001', 'old', NULL, 't', 't')",
+      )
+      .run();
     // A real upgrade happens in a new process; connections are cached per file here.
     closeAllDbs();
     const loaded = loadSession(dir, "11111111");

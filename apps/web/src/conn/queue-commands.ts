@@ -6,18 +6,14 @@ import type { LineConnection } from "./line.ts";
  * on the connection directly, never behind the turn they are meant to affect.
  * Returns false when the line is not one of them.
  */
-export function handleQueueCommand(
-  conn: LineConnection,
-  line: string,
-): boolean {
+export function handleQueueCommand(conn: LineConnection, line: string): boolean {
   const match = /^\/(steer|queue)(?:\s+(.*))?$/s.exec(line.trim());
   if (!match) return false;
   const [, command, rest = ""] = match;
   const say = (text: string): void => conn.send({ type: "notice", text });
   if (command === "steer") {
     if (rest.trim()) steerLine(conn, rest.trim(), undefined);
-    else
-      say("usage: /steer <message> (sent to the agent before its next step)");
+    else say("usage: /steer <message> (sent to the agent before its next step)");
     return true;
   }
   const arg = rest.trim();

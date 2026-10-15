@@ -24,20 +24,11 @@ import {
   readFile,
   searchFiles,
 } from "./tools/files.ts";
-import {
-  deleteNoteTool,
-  listNotesTool,
-  readNoteTool,
-  saveNoteTool,
-} from "./tools/notes-tool.ts";
+import { deleteNoteTool, listNotesTool, readNoteTool, saveNoteTool } from "./tools/notes-tool.ts";
 import { currentToolScope } from "./tools/agent/agent-scope.ts";
 import { deferTools, searchToolsDef } from "./tools/search-tools.ts";
 import { killProcess, runPowershell, waitForProcess } from "./tools/shell.ts";
-import {
-  isTooLarge,
-  truncateInline,
-  type TempStore,
-} from "./tools/temp-store.ts";
+import { isTooLarge, truncateInline, type TempStore } from "./tools/temp-store.ts";
 
 /** Tag every tool of a definition group with its category and the flags the whole group shares; a tool's own flags (in `defs/`) are kept. */
 const group = (category: string, defs: Tool[], flags: Partial<Tool> = {}): Tool[] =>
@@ -50,16 +41,19 @@ const allTools: Tool[] = [
   ...group("shell", shellTools, { requiresFileSystem: true }),
   ...group("notes", noteTools),
   ...group("temp", tempTools),
-  ...group("agent", agentTools.filter((t) => t.function.name !== "run_subagent")),
+  ...group(
+    "agent",
+    agentTools.filter((t) => t.function.name !== "run_subagent"),
+  ),
   ...group("browser", browserTools),
-  ...group("agent", agentTools.filter((t) => t.function.name === "run_subagent")),
+  ...group(
+    "agent",
+    agentTools.filter((t) => t.function.name === "run_subagent"),
+  ),
 ];
 
 /** The tool list the app uses: `search_tools` added and the non-core tools deferred. */
-export const tools: Tool[] = deferTools([
-  ...allTools,
-  { ...searchToolsDef, category: "search" },
-]);
+export const tools: Tool[] = deferTools([...allTools, { ...searchToolsDef, category: "search" }]);
 
 /** A single tool handler, mapping a tool's arguments to its result text. */
 export type ToolHandler = (
@@ -80,11 +74,7 @@ export type ToolHandler = (
  * matter what the process working directory is. This is a default, not a
  * sandbox: absolute paths and `..` still reach outside the root.
  */
-function resolveAgainstRoot(
-  root: string,
-  keys: string[],
-  handler: ToolHandler,
-): ToolHandler {
+function resolveAgainstRoot(root: string, keys: string[], handler: ToolHandler): ToolHandler {
   return (args) => {
     const next = { ...args };
     for (const key of keys) {
@@ -215,9 +205,7 @@ export function createToolRunner(
   // A tool that is not offered to the session has no handler either.
   const offered = new Set(toolDefs.map((t) => t.function.name));
   // Tools that bound their own output (the temp tools; browser_read saves a long page itself).
-  const bounded = new Set(
-    toolDefs.filter((t) => t.boundsOwnOutput).map((t) => t.function.name),
-  );
+  const bounded = new Set(toolDefs.filter((t) => t.boundsOwnOutput).map((t) => t.function.name));
   for (const name of Object.keys(handlers)) {
     if (!offered.has(name)) delete handlers[name];
   }
@@ -247,9 +235,7 @@ export function createToolRunner(
           );
         }
       }
-      const result = await auditCall(audit, name, args, () =>
-        handler(args, signal),
-      );
+      const result = await auditCall(audit, name, args, () => handler(args, signal));
       // The temp tools bound their own output; everything else too big to show is saved instead.
       let shown = result;
       if (!bounded.has(name) && isTooLarge(result)) {

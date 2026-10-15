@@ -52,18 +52,13 @@ export function decideKey(s: AskKeyState): AskEffect {
     const index = Number(s.key) - 1;
     if (index < s.choiceCount) return { type: "pick", index };
   }
-  if (!s.typing && s.key === " " && s.choiceCount > 0)
-    return { type: "pickActive" };
+  if (!s.typing && s.key === " " && s.choiceCount > 0) return { type: "pickActive" };
   if (s.choiceCount > 0 && (s.key === "ArrowDown" || s.key === "ArrowUp")) {
     return { type: "move", by: s.key === "ArrowDown" ? 1 : -1 };
   }
-  if (
-    s.key === "Enter" &&
-    (s.typing || s.onBox || (s.multi && s.selectedCount > 0))
-  ) {
+  if (s.key === "Enter" && (s.typing || s.onBox || (s.multi && s.selectedCount > 0))) {
     return { type: "confirm" };
   }
-  if (!s.typing && !s.modified && s.key.length === 1)
-    return { type: "focusInput" };
+  if (!s.typing && !s.modified && s.key.length === 1) return { type: "focusInput" };
   return { type: "none" };
 }

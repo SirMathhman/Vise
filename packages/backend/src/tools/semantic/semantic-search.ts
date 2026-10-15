@@ -49,7 +49,9 @@ export function makeSemanticSearchHandler(index: SemanticIndexPort) {
     }
     const done = index.status();
     const note =
-      done.state === "indexing" ? `\n(the index is still being built: ${done.done ?? 0}/${done.total ?? 0} files)` : "";
+      done.state === "indexing"
+        ? `\n(the index is still being built: ${done.done ?? 0}/${done.total ?? 0} files)`
+        : "";
     return `${hits.value.map(formatHit).join("\n")}${note}\nRead a file with read_file (offset = the first line) to see more.`;
   };
 }

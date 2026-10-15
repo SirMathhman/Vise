@@ -49,16 +49,8 @@ function checkRef(ref: string): string {
 }
 
 /** Scroll an element into view and return its centre; refs vanish on navigation. */
-async function locate(
-  cdp: CdpConnection,
-  sessionId: string,
-  ref: string,
-): Promise<Point> {
-  const point = await evaluate<Point | null>(
-    cdp,
-    sessionId,
-    centerScript(checkRef(ref)),
-  );
+async function locate(cdp: CdpConnection, sessionId: string, ref: string): Promise<Point> {
+  const point = await evaluate<Point | null>(cdp, sessionId, centerScript(checkRef(ref)));
   if (!point) {
     throw new Error(`unknown element ${ref}: call browser_read for fresh refs`);
   }
@@ -86,10 +78,7 @@ function mouse(
 }
 
 /** Outline of the visible interactive elements, each tagged with a ref. */
-export function snapshot(
-  cdp: CdpConnection,
-  sessionId: string,
-): Promise<string> {
+export function snapshot(cdp: CdpConnection, sessionId: string): Promise<string> {
   return evaluate<string>(cdp, sessionId, SNAPSHOT_SCRIPT);
 }
 
@@ -100,11 +89,7 @@ export async function uploadFiles(
   ref: string,
   paths: string[],
 ): Promise<void> {
-  const status = await evaluate<string>(
-    cdp,
-    sessionId,
-    fileInputScript(checkRef(ref)),
-  );
+  const status = await evaluate<string>(cdp, sessionId, fileInputScript(checkRef(ref)));
   const problem = fileInputProblem(status, ref, paths.length);
   if (problem) throw new Error(problem);
   const { result } = await cdp.send<{ result: { objectId?: string } }>(
@@ -115,27 +100,15 @@ export async function uploadFiles(
     sessionId,
   );
   if (!result.objectId) throw new Error("the file input disappeared");
-  await cdp.send(
-    "DOM.setFileInputFiles",
-    { files: paths, objectId: result.objectId },
-    sessionId,
-  );
+  await cdp.send("DOM.setFileInputFiles", { files: paths, objectId: result.objectId }, sessionId);
 }
 
-export async function hover(
-  cdp: CdpConnection,
-  sessionId: string,
-  ref: string,
-): Promise<void> {
+export async function hover(cdp: CdpConnection, sessionId: string, ref: string): Promise<void> {
   const point = await locate(cdp, sessionId, ref);
   await mouse(cdp, sessionId, "mouseMoved", point, false);
 }
 
-export async function click(
-  cdp: CdpConnection,
-  sessionId: string,
-  ref: string,
-): Promise<void> {
+export async function click(cdp: CdpConnection, sessionId: string, ref: string): Promise<void> {
   const point = await locate(cdp, sessionId, ref);
   await mouse(cdp, sessionId, "mouseMoved", point, false);
   await mouse(cdp, sessionId, "mousePressed", point, true);
@@ -179,23 +152,15 @@ export async function typeText(
   options: TypeOptions,
 ): Promise<void> {
   if (ref !== undefined) {
-    const ok = await evaluate<boolean>(
-      cdp,
-      sessionId,
-      focusScript(checkRef(ref), options.replace),
-    );
+    const ok = await evaluate<boolean>(cdp, sessionId, focusScript(checkRef(ref), options.replace));
     if (!ok) {
-      throw new Error(
-        `unknown element ${ref}: call browser_read for fresh refs`,
-      );
+      throw new Error(`unknown element ${ref}: call browser_read for fresh refs`);
     }
   }
   if (text) await cdp.send("Input.insertText", { text }, sessionId);
   const key = options.key ? KEYS[options.key] : undefined;
   if (options.key && !key) {
-    throw new Error(
-      `unsupported key ${options.key}; use one of ${PRESSABLE_KEYS.join(", ")}`,
-    );
+    throw new Error(`unsupported key ${options.key}; use one of ${PRESSABLE_KEYS.join(", ")}`);
   }
   if (key && options.key) {
     for (const type of ["keyDown", "keyUp"] as const) {

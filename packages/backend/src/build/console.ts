@@ -22,9 +22,7 @@ export function useParentConsole(): void {
     if (!symbols.AttachConsole(0xffffffff)) return;
     const out = openSync("CONOUT$", "w");
     const print = (...parts: unknown[]): void => {
-      const text = parts.map((p) =>
-        typeof p === "string" ? p : Bun.inspect(p),
-      );
+      const text = parts.map((p) => (typeof p === "string" ? p : Bun.inspect(p)));
       writeSync(out, `${text.join(" ")}\r\n`);
     };
     console.log = print;

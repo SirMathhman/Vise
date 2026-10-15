@@ -82,9 +82,7 @@ export function createBrowserSettings(
           ? " (Firefox is not installed at its usual location)"
           : "";
       status.textContent =
-        message.engine === "firefox"
-          ? `using Firefox${missing}`
-          : "using Chromium";
+        message.engine === "firefox" ? `using Firefox${missing}` : "using Chromium";
     },
   };
 }

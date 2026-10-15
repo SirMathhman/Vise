@@ -33,7 +33,9 @@ export async function handleSemanticMessage(
     const limit = Number.isInteger(asked) && asked > 0 ? Math.min(asked, 25) : 12;
     const found = await index.search(query, limit);
     if (!found.ok) {
-      return [{ type: "sem_results", query, error: formatError(found.error), status: index.status() }];
+      return [
+        { type: "sem_results", query, error: formatError(found.error), status: index.status() },
+      ];
     }
     return [{ type: "sem_results", query, hits: found.value, status: index.status() }];
   }

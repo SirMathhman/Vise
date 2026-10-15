@@ -139,8 +139,7 @@ export function modelInfo(body: unknown, id: string): ModelInfo | undefined {
   const m = Array.isArray(data) ? data.find((x) => x.id === id) : undefined;
   if (!m) return undefined;
   return {
-    contextLength:
-      typeof m.context_length === "number" ? m.context_length : undefined,
+    contextLength: typeof m.context_length === "number" ? m.context_length : undefined,
     vision: m.architecture?.input_modalities?.includes("image") === true,
   };
 }

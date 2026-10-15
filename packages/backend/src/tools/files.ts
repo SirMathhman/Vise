@@ -39,9 +39,7 @@ export function listDirectory(args: Record<string, unknown>): string {
  */
 export function numberLines(lines: string[], from: number): string {
   const width = String(from + lines.length - 1).length;
-  return lines
-    .map((line, i) => `${String(from + i).padStart(width)} | ${line}`)
-    .join("\n");
+  return lines.map((line, i) => `${String(from + i).padStart(width)} | ${line}`).join("\n");
 }
 
 /**
@@ -53,14 +51,11 @@ export function numberLines(lines: string[], from: number): string {
 export function readFile(args: Record<string, unknown>): string {
   const path = String(args.path ?? "");
   if (path === "") return `error: path is required`;
-  const refused =
-    badNumber("offset", args.offset) ?? badNumber("limit", args.limit);
+  const refused = badNumber("offset", args.offset) ?? badNumber("limit", args.limit);
   if (refused) return refused;
   try {
     const text = readFileSync(path, "utf8");
-    const ranged =
-      numberArg(args.offset) !== undefined ||
-      numberArg(args.limit) !== undefined;
+    const ranged = numberArg(args.offset) !== undefined || numberArg(args.limit) !== undefined;
     if (!ranged && !isTooLarge(text)) {
       if (text === "") return text;
       const whole = text.split(/\r?\n/);
@@ -68,8 +63,7 @@ export function readFile(args: Record<string, unknown>): string {
       return numberLines(endsWithNewline ? whole.slice(0, -1) : whole, 1);
     }
     const all = text.split(/\r?\n/);
-    const num = (v: unknown, fallback: number): number =>
-      Math.floor(numberArg(v) ?? fallback);
+    const num = (v: unknown, fallback: number): number => Math.floor(numberArg(v) ?? fallback);
     const from = Math.max(1, num(args.offset, 1));
     if (all.length < from) {
       return `error: the file has ${all.length} lines; there is nothing at line ${from}`;
@@ -123,10 +117,7 @@ export function createFile(args: Record<string, unknown>): string {
 }
 
 const CRLF = new RegExp(String.fromCharCode(13, 10), "g");
-const LONE_LF = new RegExp(
-  "(?<!" + String.fromCharCode(13) + ")" + String.fromCharCode(10),
-  "g",
-);
+const LONE_LF = new RegExp("(?<!" + String.fromCharCode(13) + ")" + String.fromCharCode(10), "g");
 
 /** Whether most of a text's line breaks are CRLF (a Windows file) rather than LF. */
 function usesCrlf(text: string): boolean {

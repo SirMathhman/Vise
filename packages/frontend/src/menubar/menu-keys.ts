@@ -30,8 +30,7 @@ function typeahead(items: KeyItem[], start: number, letter: string): number {
   for (let i = 0; i < n; i++) {
     const at = (start + i) % n;
     const item = items[at];
-    if (item?.enabled && item.label.trim().toLowerCase().startsWith(wanted))
-      return at;
+    if (item?.enabled && item.label.trim().toLowerCase().startsWith(wanted)) return at;
   }
   return -1;
 }
@@ -43,11 +42,7 @@ function typeahead(items: KeyItem[], start: number, letter: string): number {
  * close, and Left/Right move to the neighbouring menu on the bar. Pure, so the
  * rules are tested without a page.
  */
-export function menuKey(
-  key: string,
-  items: KeyItem[],
-  active: number,
-): MenuKeyAction {
+export function menuKey(key: string, items: KeyItem[], active: number): MenuKeyAction {
   if (items.length === 0) return key === "Escape" ? { kind: "close" } : { kind: "none" };
   switch (key) {
     case "ArrowDown":

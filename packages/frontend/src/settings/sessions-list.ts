@@ -12,7 +12,9 @@ export interface SavedSession {
  * The server's saved sessions as the page keeps them: newest first (those
  * without a time last, in listed order). Pure.
  */
-export function newestFirst(entries: { id: string; name: string; updated?: string }[]): SavedSession[] {
+export function newestFirst(
+  entries: { id: string; name: string; updated?: string }[],
+): SavedSession[] {
   const sessions: SavedSession[] = entries.map((e) => ({
     id: e.id,
     name: e.name,
@@ -55,7 +57,10 @@ export function renderSessionList(
   if (shown.length === 0) {
     const empty = list.appendChild(document.createElement("li"));
     empty.className = "list-empty";
-    empty.textContent = sessions.length === 0 ? "No saved sessions yet. Conversations are saved as you go." : "No session matches.";
+    empty.textContent =
+      sessions.length === 0
+        ? "No saved sessions yet. Conversations are saved as you go."
+        : "No session matches.";
     return;
   }
   const now = new Date();

@@ -30,8 +30,7 @@ export class ProfileToolGate {
     if (tools === undefined) {
       if (!this.snapshot) return;
       const before = enabledSet(controller);
-      for (const [name, enabled] of this.snapshot)
-        controller.set(name, enabled);
+      for (const [name, enabled] of this.snapshot) controller.set(name, enabled);
       this.snapshot = undefined;
       controller.setBaseline?.(undefined);
       this.push({
@@ -41,13 +40,10 @@ export class ProfileToolGate {
       return;
     }
     const before = enabledSet(controller);
-    this.snapshot ??= new Map(
-      controller.list().map((t) => [t.name, t.enabled]),
-    );
+    this.snapshot ??= new Map(controller.list().map((t) => [t.name, t.enabled]));
     controller.setBaseline?.(this.snapshot);
     const allowed = new Set(tools);
-    for (const t of controller.list())
-      controller.set(t.name, allowed.has(t.name));
+    for (const t of controller.list()) controller.set(t.name, allowed.has(t.name));
     this.push({
       role: "user",
       content: `This profile restricts tools. ${changeNote(before, controller)} All other tools are disabled; do not call them.`,
@@ -56,7 +52,12 @@ export class ProfileToolGate {
 }
 
 function enabledSet(controller: ToolController): Set<string> {
-  return new Set(controller.list().filter((t) => t.enabled).map((t) => t.name));
+  return new Set(
+    controller
+      .list()
+      .filter((t) => t.enabled)
+      .map((t) => t.name),
+  );
 }
 
 /**
@@ -70,7 +71,9 @@ export function changeNote(before: Set<string>, controller: ToolController): str
   const lost = [...before].filter((n) => !now.has(n));
   const parts = [`Enabled tools: ${enabledNames(controller)}.`];
   if (gained.length > 0) {
-    parts.push(`Newly available: ${gained.join(", ")} (use search_tools to see how to call any of them).`);
+    parts.push(
+      `Newly available: ${gained.join(", ")} (use search_tools to see how to call any of them).`,
+    );
   }
   if (lost.length > 0) parts.push(`No longer available: ${lost.join(", ")}.`);
   return parts.join(" ");

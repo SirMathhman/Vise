@@ -75,7 +75,10 @@ export async function fetchModelDetails(provider: Provider): Promise<Result<Mode
 }
 
 /** What a provider's `/models` says about one model (window, vision); undefined when unknown. */
-export async function fetchHostedInfo(provider: Provider, id: string): Promise<ModelInfo | undefined> {
+export async function fetchHostedInfo(
+  provider: Provider,
+  id: string,
+): Promise<ModelInfo | undefined> {
   const res = await fetch(provider.modelsUrl, { headers: provider.headers });
   if (!res.ok) return undefined;
   return modelInfo(await res.json(), id);
@@ -91,11 +94,15 @@ export async function localSupportsVision(provider: Provider, id: string): Promi
   try {
     const listed = await fetch(provider.modelsUrl, { headers });
     if (listed.ok) {
-      const body = (await listed.json()) as { data?: { id: string; status?: { args?: string[] } }[] };
+      const body = (await listed.json()) as {
+        data?: { id: string; status?: { args?: string[] } }[];
+      };
       const args = body.data?.find((m) => m.id === id)?.status?.args;
       if (args) return args.some((a) => a === "--mmproj" || a === "-mm");
     }
-    const props = await fetch(`${provider.rootUrl}/props?model=${encodeURIComponent(id)}`, { headers });
+    const props = await fetch(`${provider.rootUrl}/props?model=${encodeURIComponent(id)}`, {
+      headers,
+    });
     if (!props.ok) return false;
     const info = (await props.json()) as { modalities?: { vision?: boolean } };
     return info.modalities?.vision === true;
@@ -152,10 +159,16 @@ export async function fetchEmbeddings(
     // The answer may come in any order: `index` says which input a vector is for.
     const ordered = [...(data.data ?? [])].sort((x, y) => (x.index ?? 0) - (y.index ?? 0));
     const vectors = ordered.map((d) => d.embedding);
-    if (vectors.length !== texts.length || vectors.some((v) => !Array.isArray(v) || v.length === 0)) {
+    if (
+      vectors.length !== texts.length ||
+      vectors.some((v) => !Array.isArray(v) || v.length === 0)
+    ) {
       return {
         ok: false,
-        error: { kind: "malformed", body: `expected ${texts.length} embeddings, the server sent ${vectors.length}` },
+        error: {
+          kind: "malformed",
+          body: `expected ${texts.length} embeddings, the server sent ${vectors.length}`,
+        },
       };
     }
     return { ok: true, value: vectors as number[][] };

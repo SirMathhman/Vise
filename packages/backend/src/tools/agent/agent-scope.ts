@@ -11,10 +11,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 const scope = new AsyncLocalStorage<ReadonlySet<string> | undefined>();
 
 /** Run `work` as an agent limited to `allowed` (undefined: the session's own settings apply). */
-export function withToolScope<T>(
-  allowed: ReadonlySet<string> | undefined,
-  work: () => T,
-): T {
+export function withToolScope<T>(allowed: ReadonlySet<string> | undefined, work: () => T): T {
   return scope.run(allowed, work);
 }
 

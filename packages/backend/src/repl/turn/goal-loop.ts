@@ -1,19 +1,8 @@
 import { config } from "../../config.ts";
 import type { Client, Tool } from "@vise/core";
 import type { Message, Result } from "@vise/core";
-import {
-  checkGoal,
-  checkProgress,
-  continueNote,
-  deriveGoal,
-  type Goal,
-} from "@vise/core";
-import {
-  capTrace,
-  type ExitReason,
-  type GoalLog,
-  type TraceSink,
-} from "@vise/core";
+import { checkGoal, checkProgress, continueNote, deriveGoal, type Goal } from "@vise/core";
+import { capTrace, type ExitReason, type GoalLog, type TraceSink } from "@vise/core";
 import { formatError } from "../../output/format.ts";
 import { formatGoalTrace } from "../../output/goal-trace-format.ts";
 
@@ -43,16 +32,20 @@ export interface GoalHooks {
   confirmMore?: (question: string) => Promise<boolean>;
   /** Run before each continue (the session compacts a conversation that is getting full). */
   beforeContinue?: () => Promise<unknown>;
+  /** The unfinished items of the agent's todo list; a goal is not met while any remain. */
+  openTodos?: () => string[];
+  /** What the user asked, when it is not the conversation's last user message (a workflow run). */
+  said?: string;
+}
+
+/** The step that sends the model back to a todo list it left unfinished. */
+function todoStep(open: string[]): string {
+  return `The todo list still has ${open.length} unfinished item${open.length === 1 ? "" : "s"}: ${open.join("; ")}. Work on the first one now, and mark each completed with todo_write as it is done (remove one that no longer applies).`;
 }
 
 /** What the user last said (the tracker's own continue notes do not count). */
-function lastUserLine(
-  messages: Message[],
-  isNote: (m: Message) => boolean,
-): string {
-  const last = [...messages]
-    .reverse()
-    .find((m) => m.role === "user" && !isNote(m));
+function lastUserLine(messages: Message[], isNote: (m: Message) => boolean): string {
+  const last = [...messages].reverse().find((m) => m.role === "user" && !isNote(m));
   return last?.content ?? "";
 }
 
@@ -96,14 +89,7 @@ export class GoalTracker {
     ask?: (question: string) => Promise<boolean>,
   ): Promise<string | undefined> {
     if (!this.on || !this.goal) return undefined;
-    const progress = await checkProgress(
-      client,
-      messages,
-      toolDefs,
-      this.goal,
-      signal,
-      this.trace,
-    );
+    const progress = await checkProgress(client, messages, toolDefs, this.goal, signal, this.trace);
     if (progress.kind !== "stuck") {
       this.trace?.({
         kind: "progress",
@@ -114,9 +100,7 @@ export class GoalTracker {
     }
     const why = progress.detail || "the same steps keep repeating";
     // One model opinion must not end the user's task: repetitive work (paging, scrolling) can be right.
-    const keepGoing = await ask?.(
-      `This does not seem to be getting anywhere: ${why} Keep going?`,
-    );
+    const keepGoing = await ask?.(`This does not seem to be getting anywhere: ${why} Keep going?`);
     this.trace?.({
       kind: "progress",
       progress: "stuck",
@@ -131,9 +115,7 @@ export class GoalTracker {
   /** End the turn the progress check stopped: tell the edge, and keep the goal for the user's reply. */
   private halt(turn: Result<string>): Ended {
     const why = this.halted;
-    this.block(
-      `${why} (the work was stopped because it was not getting anywhere)`,
-    );
+    this.block(`${why} (the work was stopped because it was not getting anywhere)`);
     this.halted = undefined;
     return { turn, reason: "halted-progress", detail: why };
   }
@@ -180,7 +162,7 @@ export class GoalTracker {
     const start = messages.length;
     this.trace?.({
       kind: "turn_start",
-      line: capTrace(lastUserLine(messages, this.isNote)),
+      line: capTrace(hooks.said ?? lastUserLine(messages, this.isNote)),
       enabled: this.on,
       goal: this.goal?.text,
     });
@@ -196,12 +178,7 @@ export class GoalTracker {
   }
 
   /** Write the turn's single `exit` entry. */
-  private exit(
-    messages: Message[],
-    start: number,
-    reason: ExitReason,
-    detail?: string,
-  ): void {
+  private exit(messages: Message[], start: number, reason: ExitReason, detail?: string): void {
     const last = [...messages].reverse().find((m) => m.role === "assistant");
     this.trace?.({
       kind: "exit",
@@ -218,6 +195,7 @@ export class GoalTracker {
     messages: Message[],
     toolDefs: Tool[],
     signal: AbortSignal,
+    said?: string,
   ): Promise<void> {
     this.goal = await deriveGoal(
       client,
@@ -227,6 +205,7 @@ export class GoalTracker {
       signal,
       this.isNote,
       this.trace,
+      said,
     );
     if (this.goal && !signal.aborted) {
       const { text, doneWhen, hold } = this.goal;
@@ -235,11 +214,7 @@ export class GoalTracker {
   }
 
   /** After many automatic continues the user is asked whether to keep going; false means stop (and tell the edge why). */
-  private async mayGoOn(
-    hooks: GoalHooks,
-    continues: number,
-    detail: string,
-  ): Promise<boolean> {
+  private async mayGoOn(hooks: GoalHooks, continues: number, detail: string): Promise<boolean> {
     if (continues === 0 || continues % config.continuesBeforeAsking !== 0) {
       return true;
     }
@@ -279,7 +254,7 @@ export class GoalTracker {
     };
     if (!this.on) return { turn: await runTurn(), reason: "goal-off" };
     this.halted = undefined;
-    await this.setGoal(client, messages, toolDefs, signal);
+    await this.setGoal(client, messages, toolDefs, signal, hooks.said);
     if (signal.aborted) return interrupted;
     // The tool results before the turn: what "tools ran since" is measured from.
     let results = toolResults(messages);
@@ -289,19 +264,15 @@ export class GoalTracker {
     let repeats = 0;
     let continues = 0;
     while (turn.ok && this.goal) {
-      const verdict = await checkGoal(
-        client,
-        messages,
-        toolDefs,
-        this.goal,
-        signal,
-        this.trace,
-      );
+      let verdict = await checkGoal(client, messages, toolDefs, this.goal, signal, this.trace);
       this.trace?.({
         kind: "verdict",
         verdict: verdict.kind,
         detail: verdict.detail,
       });
+      // A turn is over only when the goal is met AND the todo list is finished.
+      const open = verdict.kind === "yes" ? (hooks.openTodos?.() ?? []) : [];
+      if (open.length > 0) verdict = { kind: "no", detail: todoStep(open) };
       if (signal.aborted) return interrupted;
       if (verdict.kind !== "no") {
         this.emit?.({
@@ -322,9 +293,7 @@ export class GoalTracker {
       repeats = sameStep ? repeats + 1 : 0;
       const idle = toolResults(messages) === results;
       if (sameStep && (idle || repeats >= config.maxSameStep)) {
-        this.block(
-          `${verdict.detail} (it is not getting anywhere with this step)`,
-        );
+        this.block(`${verdict.detail} (it is not getting anywhere with this step)`);
         return { turn, reason: "same-step", detail: verdict.detail };
       }
       if (!(await this.mayGoOn(hooks, continues, verdict.detail))) {

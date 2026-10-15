@@ -4,6 +4,15 @@
  * reasoning/thinking; the remaining levels are forwarded to the chat template
  * as-is. One source of truth for the terminal, the web page, and tests.
  */
-export const REASONING_EFFORTS = ["default", "none", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+export const REASONING_EFFORTS = [
+  "default",
+  "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+] as const;
 
 export type ReasoningEffort = (typeof REASONING_EFFORTS)[number];

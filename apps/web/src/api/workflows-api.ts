@@ -1,9 +1,4 @@
-import {
-  deleteWorkflowAt,
-  listWorkflows,
-  readWorkflowAt,
-  saveWorkflowAt,
-} from "@vise/backend";
+import { deleteWorkflowAt, listWorkflows, readWorkflowAt, saveWorkflowAt } from "@vise/backend";
 import type { ViseError } from "@vise/core";
 import { listProfiles } from "@vise/backend";
 import { tools } from "@vise/backend";
@@ -26,13 +21,11 @@ import { str, type Reply } from "./wire/reply.ts";
  *                     { type:"workflow_result", ok, deleted?, error?, name?, scope? }   after a save or delete
  */
 
-
 /** The two data directories a workflow can live in. */
 export interface WorkflowBases {
   project: string;
   global: string;
 }
-
 
 const list = (bases: WorkflowBases): Reply => ({
   type: "workflows",
@@ -54,21 +47,17 @@ function toolList(bases: WorkflowBases): Reply {
       };
       return {
         name: t.function.name,
-        params: Object.entries(parameters.properties ?? {}).map(
-          ([name, spec]) => ({
-            name,
-            required: parameters.required?.includes(name) ?? false,
-            description: spec.description ?? "",
-          }),
-        ),
+        params: Object.entries(parameters.properties ?? {}).map(([name, spec]) => ({
+          name,
+          required: parameters.required?.includes(name) ?? false,
+          description: spec.description ?? "",
+        })),
       };
     }),
   };
 }
 
-const failed = (error: string): Reply[] => [
-  { type: "workflow_result", ok: false, error },
-];
+const failed = (error: string): Reply[] => [{ type: "workflow_result", ok: false, error }];
 
 /** Handle one workflow message; null when `msg` is not a workflow message. */
 export function handleWorkflowMessage(
@@ -78,11 +67,7 @@ export function handleWorkflowMessage(
   const type = msg["type"];
   if (type === "workflows_list") return [list(bases)];
   if (type === "workflow_tools") return [toolList(bases)];
-  if (
-    type !== "workflow_get" &&
-    type !== "workflow_save" &&
-    type !== "workflow_delete"
-  ) {
+  if (type !== "workflow_get" && type !== "workflow_save" && type !== "workflow_delete") {
     return null;
   }
   const scope = msg["scope"];
@@ -102,8 +87,5 @@ export function handleWorkflowMessage(
       : saveWorkflowAt(base, name, msg["steps"], msg["replace"] === true);
   if (!done.ok) return failed(why(done.error));
   const deleted = type === "workflow_delete" ? { deleted: true } : {};
-  return [
-    { type: "workflow_result", ok: true, ...deleted, name, scope },
-    list(bases),
-  ];
+  return [{ type: "workflow_result", ok: true, ...deleted, name, scope }, list(bases)];
 }
