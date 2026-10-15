@@ -12,6 +12,25 @@ export function parse<T>(schema: z.ZodType<T>, data: unknown): Result<T> {
   return { ok: false, error: { kind: "malformed", body } satisfies ViseError };
 }
 
+/**
+ * Parse a JSON string and validate the result against a zod schema.
+ * Combines JSON.parse (step 1) and schema validation (step 2) into a
+ * single Result. Returns a ViseError on JSON syntax failure or schema
+ * mismatch.
+ */
+export function parseJson<T>(schema: z.ZodType<T>, json: string): Result<T> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    return {
+      ok: false,
+      error: { kind: "malformed", body: `invalid JSON: ${json.slice(0, 200)}` } satisfies ViseError,
+    };
+  }
+  return parse(schema, parsed);
+}
+
 /** Format zod issues into a human-readable string with the raw input. */
 function formatIssues(issues: z.core.$ZodIssue[], data: unknown): string {
   const lines = issues.map((issue) => {
