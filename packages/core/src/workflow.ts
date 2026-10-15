@@ -1,6 +1,8 @@
 import type { Client, Tool, ToolRunner, TurnCallbacks } from "./engine.ts";
 import { runTurn } from "./engine.ts";
 import type { Message, Result, ViseError } from "./errors.ts";
+import { z } from "zod";
+import { parse } from "./schemas/parse.ts";
 import {
   checkToolAvailability,
   runProfileStep,
@@ -360,12 +362,9 @@ function parseAndValidateArguments(
 }
 
 function parseArguments(content: string, toolName: string): Result<Record<string, unknown>> {
+  let parsed: unknown;
   try {
-    const parsed: unknown = JSON.parse(content);
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      throw new Error("expected an object");
-    }
-    return { ok: true, value: parsed as Record<string, unknown> };
+    parsed = JSON.parse(content);
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     return {
@@ -376,6 +375,17 @@ function parseArguments(content: string, toolName: string): Result<Record<string
       },
     };
   }
+  const checked = parse(z.record(z.string(), z.unknown()), parsed);
+  if (!checked.ok) {
+    return {
+      ok: false,
+      error: {
+        kind: "malformed",
+        body: `workflow could not generate arguments for '${toolName}': expected an object`,
+      },
+    };
+  }
+  return { ok: true, value: checked.value };
 }
 
 function withRequiredPlaceholders(

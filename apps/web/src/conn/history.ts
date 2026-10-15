@@ -1,7 +1,9 @@
 import { config } from "@vise/backend";
 import type { Message } from "@vise/core";
+import { parse } from "@vise/core";
 import { formatToolCall } from "@vise/backend";
 import { displayOfTool } from "@vise/backend";
+import { z } from "zod";
 
 /**
  * A saved conversation as the lines the web page shows when it restores it:
@@ -33,9 +35,8 @@ const PLAN = /^<plan>[\s\S]*?<\/plan>\n?/;
 function parseArgs(raw: string): Record<string, unknown> | undefined {
   try {
     const parsed: unknown = JSON.parse(raw);
-    return typeof parsed === "object" && parsed !== null
-      ? (parsed as Record<string, unknown>)
-      : undefined;
+    const checked = parse(z.record(z.string(), z.unknown()), parsed);
+    return checked.ok ? checked.value : undefined;
   } catch {
     return undefined;
   }

@@ -4,7 +4,7 @@ import type { GoalTraceEntry } from "@vise/core";
 import type { TodoItem } from "@vise/core";
 import type { ToolCall } from "@vise/core";
 import type { Picture } from "@vise/core";
-import { parse, goalTraceFactSchema, toolCallsArraySchema, picturesArraySchema } from "@vise/core";
+import { parseJson, goalTraceFactSchema, toolCallsArraySchema, picturesArraySchema } from "@vise/core";
 
 /**
  * Write (or overwrite) one session and all its messages in a single
@@ -81,12 +81,12 @@ export function readMessages(db: Database, id: string): Message[] {
     const m: Message = { role: r.role, content: r.content };
     if (r.typed !== null) m.typed = r.typed === 1;
     if (r.tool_calls !== null) {
-      const parsed = parse(toolCallsArraySchema, JSON.parse(r.tool_calls));
+      const parsed = parseJson(toolCallsArraySchema, r.tool_calls);
       if (parsed.ok) m.tool_calls = parsed.value;
     }
     if (r.tool_call_id !== null) m.tool_call_id = r.tool_call_id;
     if (r.images !== null) {
-      const parsed = parse(picturesArraySchema, JSON.parse(r.images));
+      const parsed = parseJson(picturesArraySchema, r.images);
       if (parsed.ok) m.images = parsed.value;
     }
     return m;
@@ -100,12 +100,8 @@ export function readTrace(db: Database, id: string): GoalTraceEntry[] {
     .all(id) as { data: string }[];
   const entries: GoalTraceEntry[] = [];
   for (const row of rows) {
-    try {
-      const parsed = parse(goalTraceFactSchema, JSON.parse(row.data));
-      if (parsed.ok) entries.push(parsed.value);
-    } catch {
-      // A damaged entry must not stop the rest of the trace from being read.
-    }
+    const parsed = parseJson(goalTraceFactSchema, row.data);
+    if (parsed.ok) entries.push(parsed.value);
   }
   return entries;
 }

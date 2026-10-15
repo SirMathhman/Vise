@@ -228,7 +228,7 @@ describe("legacy JSON import", () => {
 });
 
 describe("storage failures", () => {
-  test("a corrupt column is returned as a storage error, not thrown", () => {
+  test("a corrupt column is returned gracefully, not thrown", () => {
     const base = freshBase();
     const id = idOf(saveSession(base, undefined, "x", messages, undefined));
     const db = new Database(join(base, "vise.db"));
@@ -236,7 +236,12 @@ describe("storage failures", () => {
     db.close();
     closeAllDbs();
     const loaded = loadSession(base, id);
-    expect(!loaded.ok && loaded.error.kind).toBe("storage");
+    expect(loaded.ok).toBe(true);
+    if (loaded.ok) {
+      // The corrupt images field is dropped; the message still loads.
+      const m = loaded.value.messages[0];
+      expect(m?.images).toBeUndefined();
+    }
   });
 
   test("an unopenable database is returned as a storage error", () => {

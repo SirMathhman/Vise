@@ -1,6 +1,8 @@
 import type { Client, Tool } from "./engine.ts";
 import type { CallPurpose, Message, ViseError } from "./errors.ts";
 import { capTrace, type TraceSink } from "./goal-trace.ts";
+import { z } from "zod";
+import { parse } from "./schemas/parse.ts";
 
 /**
  * Goal tracking. A model that has been working can stop on a sentence like
@@ -120,16 +122,23 @@ async function ask(
       if (result.error.kind === "interrupted" || signal?.aborted) break;
       continue;
     }
+    let reply: Record<string, unknown>;
     try {
-      const reply = JSON.parse(result.value.content);
-      trace?.({ ...asked, reply: capTrace(result.value.content) });
-      return { ok: true, reply };
+      reply = JSON.parse(result.value.content);
     } catch {
       // Only a server that ignored the schema gets here; asking again would not change that.
       const bad = `the server did not apply the response schema (reply: ${result.value.content.slice(0, 200)})`;
       trace?.({ ...asked, reply: capTrace(result.value.content), failure: bad });
       return { ok: false, why: bad };
     }
+    const checked = parse(z.record(z.string(), z.unknown()), reply);
+    if (!checked.ok) {
+      const bad = `the server did not return a JSON object (reply: ${result.value.content.slice(0, 200)})`;
+      trace?.({ ...asked, reply: capTrace(result.value.content), failure: bad });
+      return { ok: false, why: bad };
+    }
+    trace?.({ ...asked, reply: capTrace(result.value.content) });
+    return { ok: true, reply: checked.value };
   }
   return { ok: false, why };
 }

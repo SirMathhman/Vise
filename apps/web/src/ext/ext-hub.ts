@@ -1,5 +1,7 @@
 import { config } from "@vise/backend";
 import type { ExtensionLink, ShareEvent } from "@vise/backend";
+import { z } from "zod";
+import { parse } from "@vise/core";
 
 /**
  * The server's end of the Firefox extension's WebSocket (`/ext`). The
@@ -31,6 +33,21 @@ interface Pending {
   reject: (error: Error) => void;
   timer: ReturnType<typeof setTimeout>;
 }
+
+const extHubMessageSchema = z.object({
+  id: z.number().optional(),
+  ok: z.boolean().optional(),
+  result: z.unknown().optional(),
+  error: z.string().optional(),
+  event: z.string().optional(),
+  tab: z
+    .object({
+      id: z.number(),
+      title: z.string(),
+      url: z.string(),
+    })
+    .optional(),
+});
 
 export class ExtensionHub implements ExtensionLink {
   private socket: ExtensionSocket | null = null;
@@ -98,7 +115,10 @@ export class ExtensionHub implements ExtensionLink {
       tab?: ShareEvent["tab"];
     };
     try {
-      msg = JSON.parse(raw);
+      const parsed: unknown = JSON.parse(raw);
+      const checked = parse(extHubMessageSchema, parsed);
+      if (!checked.ok) return;
+      msg = checked.value;
     } catch {
       return;
     }

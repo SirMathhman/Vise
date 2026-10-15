@@ -9,7 +9,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import type { Result } from "@vise/core";
-import { parse, workflowSchema } from "@vise/core";
+import { parse, parseJson, workflowSchema } from "@vise/core";
 import { formatError } from "../output/format.ts";
 import { validName } from "./notes.ts";
 import type { Workflow, WorkflowScope, WorkflowStep } from "@vise/core";
@@ -90,11 +90,9 @@ export function readWorkflowAt(base: string, name: string): Result<Workflow> {
   }
   const text = tryIo("read", name, () => readFileSync(path, "utf8"));
   if (!text.ok) return text;
-  try {
-    return parseWorkflowJson(JSON.parse(text.value));
-  } catch (e) {
-    return fail(`workflow '${name}' is not valid JSON: ${String(e)}`);
-  }
+  const result = parseJson(workflowSchema, text.value);
+  if (!result.ok) return fail(`workflow '${name}': ${(result.error as { body: string }).body.split("\n")[0]}`);
+  return result;
 }
 
 /** Write a workflow from the editor; a new workflow may not replace an existing one. */
@@ -138,7 +136,7 @@ function namesAt(base: string): string[] {
 }
 
 function parseWorkflow(text: string): Workflow {
-  const result = parseWorkflowJson(JSON.parse(text));
+  const result = parseJson(workflowSchema, text);
   if (!result.ok) throw new Error(formatError(result.error));
   return result.value;
 }

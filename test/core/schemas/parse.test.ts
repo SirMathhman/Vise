@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   parse,
+  parseJson,
   todosSchema,
   parseTodos,
   messageSchema,
@@ -23,6 +24,7 @@ import {
   type AuditEvent,
   type AuditCall,
 } from "@vise/core";
+import { z } from "zod";
 
 describe("parseTodos (schema)", () => {
   test("accepts a valid list", () => {
@@ -321,5 +323,30 @@ describe("parseProfileText", () => {
   test("keeps other meta lines", () => {
     const result = parseProfileText("---\nauthor: bob\ntools: x\n---\nBody\n");
     expect(result.meta).toContain("author: bob");
+  });
+});
+
+describe("parseJson", () => {
+  test("valid JSON + passing schema returns ok", () => {
+    const result = parseJson(z.array(z.string()), '["a","b"]');
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value).toEqual(["a", "b"]);
+  });
+
+  test("valid JSON + schema mismatch returns malformed", () => {
+    const result = parseJson(z.array(z.string()), '[1,2,3]');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe("malformed");
+  });
+
+  test("invalid JSON returns malformed with truncated body", () => {
+    const long = "not json at all, just a plain string without any structure";
+    const result = parseJson(z.string(), long);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.kind).toBe("malformed");
+      if (result.error.kind === "malformed")
+        expect(result.error.body.startsWith("invalid JSON:")).toBe(true);
+    }
   });
 });

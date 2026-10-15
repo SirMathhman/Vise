@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parse } from "./parse.ts";
 
 /** Parsed profile file: frontmatter fields and body. */
 export interface ParsedProfile {
@@ -28,9 +29,8 @@ export function parseProfileText(text: string): ParsedProfile {
     if (h) {
       try {
         const value: unknown = JSON.parse(h[1] ?? "");
-        if (Array.isArray(value) && value.every((c) => typeof c === "string")) {
-          hooks = value as string[];
-        }
+        const checked = parse(z.array(z.string()), value);
+        if (checked.ok) hooks = checked.value;
       } catch {
         // not a valid hooks list; treat as meta
       }
