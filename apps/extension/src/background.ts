@@ -11,6 +11,7 @@ import {
   tryGrant,
   pendingCount,
 } from "./tabs.ts";
+import { z } from "zod";
 
 /**
  * The extension's background page: holds the WebSocket to the Vise server
@@ -27,6 +28,15 @@ let link: Link = "connecting";
 /** Why the link is down, in words the user can act on. */
 let linkNote = "";
 
+const configMessageSchema = z.object({
+  config: z.object({ tabLimit: z.number().int().min(1) }),
+});
+const requestMessageSchema = z.object({
+  id: z.number(),
+  op: z.string(),
+  params: z.record(z.string(), z.unknown()).optional(),
+});
+
 function send(message: Record<string, unknown>): void {
   if (socket?.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify(message));
@@ -34,31 +44,30 @@ function send(message: Record<string, unknown>): void {
 }
 
 async function handle(raw: string): Promise<void> {
-  let msg: Record<string, unknown>;
+  let parsed: unknown;
   try {
-    msg = JSON.parse(raw);
+    parsed = JSON.parse(raw);
   } catch {
     return;
   }
-  // The server pushes config on connect; store it and do not respond.
-  if (typeof msg["config"] === "object" && msg["config"] !== null) {
-    const config = msg["config"] as Record<string, unknown>;
-    const limit = config["tabLimit"];
-    if (typeof limit === "number" && Number.isInteger(limit) && limit >= 1) {
-      setTabLimit(limit);
-      void browser.storage.local.set({ tabLimit: limit });
-    }
+  const config = configMessageSchema.safeParse(parsed);
+  if (config.success) {
+    // The server pushes config on connect; store it and do not respond.
+    const limit = config.data.config.tabLimit;
+    setTabLimit(limit);
+    void browser.storage.local.set({ tabLimit: limit });
     return;
   }
-  const request = msg as { id: number; op: string; params?: Record<string, unknown> };
-  const op = ops[request.op];
+  const request = requestMessageSchema.safeParse(parsed);
+  if (!request.success) return;
+  const op = ops[request.data.op];
   try {
-    if (!op) throw new Error(`unknown operation ${request.op}`);
-    const result = await op(request.params ?? {});
-    send({ id: request.id, ok: true, result: result ?? null });
+    if (!op) throw new Error(`unknown operation ${request.data.op}`);
+    const result = await op(request.data.params ?? {});
+    send({ id: request.data.id, ok: true, result: result ?? null });
   } catch (error) {
     send({
-      id: request.id,
+      id: request.data.id,
       ok: false,
       error: error instanceof Error ? error.message : String(error),
     });

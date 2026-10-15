@@ -5,6 +5,7 @@
   "private": true,
   "dependencies": {
     "@vise/backend": "*",
-    "@vise/common": "*"
+    "@vise/common": "*",
+    "zod": "^4.6.7"
   }
 }

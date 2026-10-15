@@ -7,6 +7,7 @@ import type {
   Result,
   ToolCall,
 } from "./errors.ts";
+import { z } from "zod";
 import { parse } from "./schemas/parse.ts";
 import { toolCallArgsSchema } from "./schemas/tool-args.ts";
 
@@ -385,9 +386,8 @@ function announceTool(callbacks: TurnCallbacks, tc: ToolCall): void {
 function parseArgs(raw: string): Record<string, unknown> | undefined {
   try {
     const parsed: unknown = JSON.parse(raw);
-    return typeof parsed === "object" && parsed !== null
-      ? (parsed as Record<string, unknown>)
-      : undefined;
+    const checked = parse(z.record(z.string(), z.unknown()), parsed);
+    return checked.ok ? checked.value : undefined;
   } catch {
     return undefined;
   }

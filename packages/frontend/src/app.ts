@@ -2,6 +2,8 @@ import "../styles/index.css";
 import { createAttachments } from "./composer/attachments.ts";
 import { createHooksPanel } from "./settings/hooks/hooks-panel.ts";
 import type { ResultMessage, ServerMessage } from "./server-message.ts";
+import { z } from "zod";
+import { parse } from "@vise/core";
 import { replayHistory, showImage } from "./log/history.ts";
 import { appendPicture } from "./log/lightbox.ts";
 import { createGoalUi } from "./status/goal-ui.ts";
@@ -425,13 +427,18 @@ function onClose(retryInMs: number): void {
   resetBusy();
 }
 
+const serverMessageBaseSchema = z.object({ type: z.string() });
+
 function onMessage(data: string): void {
-  let message: ServerMessage;
+  let parsed: unknown;
   try {
-    message = JSON.parse(data) as ServerMessage;
+    parsed = JSON.parse(data);
   } catch {
     return;
   }
+  const checked = parse(serverMessageBaseSchema, parsed);
+  if (!checked.ok) return;
+  const message = parsed as ServerMessage;
   for (const observer of observers) observer().observe(message);
   if (serverPanels.some((panel) => panel.handle(message))) return;
   switch (message.type) {

@@ -1,6 +1,8 @@
 import type { ServerMessage } from "../server-message.ts";
 import { make } from "../dom.ts";
 import { storage } from "../storage.ts";
+import { z } from "zod";
+import { parse } from "@vise/core";
 
 /** One model as the server lists it (`ModelDetail` in src/client/llm.ts). */
 export interface ModelEntry {
@@ -51,11 +53,13 @@ const RECENT_KEY = "vise-recent-models";
 const RECENT_MAX = 5;
 
 /** The recently picked model ids, newest first. Storage may be blocked (a private window): then none. */
-function readRecent(): string[] {
+export function readRecent(): string[] {
   try {
     const value: unknown = JSON.parse(storage.get(RECENT_KEY) ?? "[]");
-    if (!Array.isArray(value)) return [];
-    return value.filter((id): id is string => typeof id === "string").slice(0, RECENT_MAX);
+    // Reject the whole array if any entry is not a string (a corrupted value shouldn't partially load).
+    const checked = parse(z.array(z.string()), value);
+    if (!checked.ok) return [];
+    return checked.value.slice(0, RECENT_MAX);
   } catch {
     return []; // not JSON: start over
   }
