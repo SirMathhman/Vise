@@ -8,6 +8,7 @@ import type {
   ToolCall,
 } from "./errors.ts";
 import { z } from "zod";
+import { isSummaryFrame } from "./compaction/pins.ts";
 import { parse } from "./schemas/parse.ts";
 import { toolCallArgsSchema } from "./schemas/tool-args.ts";
 
@@ -220,7 +221,8 @@ export function splitForCompaction(messages: Message[], recentTurns: number): Co
   const boundaries: number[] = [];
   for (let i = 0; i < messages.length; i++) {
     const m = messages[i];
-    if (m && m.role === "user") boundaries.push(i);
+    // A summary frame is a user message but not a turn: it is what earlier turns became.
+    if (m && m.role === "user" && !isSummaryFrame(m)) boundaries.push(i);
   }
   if (boundaries.length === 0) {
     return { toSummarize: messages.slice(), recent: [] };

@@ -203,17 +203,19 @@ describe("what the capture points record", () => {
     const sink = recorder();
     const conversation: Message[] = [{ role: "system", content: "sys" }];
     for (let i = 0; i < 8; i++) {
-      conversation.push({ role: "user", content: `q${i}` });
-      conversation.push({ role: "assistant", content: `a${i}` });
+      conversation.push({ role: "user", content: `q${i} ${"x".repeat(300)}` });
+      conversation.push({ role: "assistant", content: `a${i} ${"y".repeat(300)}` });
     }
     const result = await runCompaction({
-      client: { chat: async () => ({ ok: true, value: { content: "SUM" } }) },
+      client: { chat: async () => ({ ok: true, value: { content: `SUM${"z".repeat(400)}` } }) },
       messages: () => [...conversation],
       resetMessages: () => undefined,
       audit: sink,
     });
     expect(result.ok).toBe(true);
-    expect(sink.events).toMatchObject([{ kind: "compaction", summary: "SUM" }]);
+    expect(sink.events).toMatchObject([
+      { kind: "compaction", summary: expect.stringContaining("SUM") },
+    ]);
   });
 
   test("a subagent's conversation is handed over when it ends", async () => {

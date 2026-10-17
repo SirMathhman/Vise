@@ -3,6 +3,7 @@ export * from "./engine.ts";
 export * from "./audit.ts";
 export * from "./goal.ts";
 export * from "./compaction/pins.ts";
+export * from "./compaction/validate.ts";
 export * from "./goal-trace.ts";
 export * from "./progress.ts";
 export * from "./meta/todos.ts";

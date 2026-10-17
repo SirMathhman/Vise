@@ -4,9 +4,12 @@ import {
   pinUserWords,
   renderPins,
   SUMMARY_FRAME_PREFIX,
+  growthProblem,
   splitForCompaction,
   splitWithinTurn,
   summarize,
+  summaryProblem,
+  summarizesNothing,
 } from "@vise/core";
 import type { Message, Result } from "@vise/core";
 import type { Client, Tool } from "@vise/core";
@@ -30,6 +33,11 @@ import type { CompactionSource } from "../session.ts";
  */
 export function okNoop(): Result<string> {
   return { ok: true, value: "nothing to compact" };
+}
+
+/** A compaction that did not happen, with the conversation left as it was. */
+function failed(why: string): Result<string> {
+  return { ok: false, error: { kind: "malformed", body: `compaction skipped: ${why}` } };
 }
 
 /**
@@ -109,9 +117,10 @@ export async function runCompaction(
     splitForCompaction(conversation, config.recentTurnsToKeep);
   const inTurn = (): ReturnType<typeof splitForCompaction> =>
     splitWithinTurn(conversation, config.roundsToKeep, tailBudget);
+  // A split that would only re-summarize an earlier summary is as useless as an empty one.
   let split = withinTurn ? inTurn() : byTurns();
-  if (split.toSummarize.length === 0) split = withinTurn ? byTurns() : inTurn();
-  if (split.toSummarize.length === 0) {
+  if (summarizesNothing(split.toSummarize)) split = withinTurn ? byTurns() : inTurn();
+  if (summarizesNothing(split.toSummarize)) {
     return okNoop();
   }
   const summary = await summarize(source.client, split.toSummarize, source.prefix?.());
@@ -119,6 +128,8 @@ export async function runCompaction(
     // Leave the conversation untouched; report the error.
     return { ok: false, error: summary.error };
   }
+  const problem = summaryProblem(summary.value, split.toSummarize);
+  if (problem) return failed(problem);
   // The user's own words are copied, not paraphrased, so a standing instruction cannot be lost in the summary.
   const pins = pinUserWords(split.toSummarize);
   const block = renderPins(pins);
@@ -133,6 +144,8 @@ ${block}`
     }`,
   };
   const recent = split.recent;
+  const shrink = growthProblem(conversation, [framed, ...recent]);
+  if (shrink) return failed(shrink);
   source.audit?.record({
     kind: "compaction",
     summarized: split.toSummarize.length,
