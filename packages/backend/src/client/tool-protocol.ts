@@ -360,11 +360,93 @@ function safeParse(args: string): unknown {
   }
 }
 
-/** Split assistant text into prose and parsed tool calls. */
-export function parseToolCalls(content: string): {
-  content: string;
-  tool_calls: ToolCall[];
-} {
+type Parsed = { content: string; tool_calls: ToolCall[] };
+
+/** Whether text holds call delimiters: after parsing found no call, a reply that does is a call the model wrote badly (or prose about the format). */
+export function writesBrokenCall(text: string): boolean {
+  return text.includes(CALL_OPEN) || text.includes(CALL_CLOSE);
+}
+
+/**
+ * Split assistant text into prose and parsed tool calls. The strict reading is
+ * exact; only when it finds no call but the text closes one (`</tool_call>`)
+ * is it read loosely, for a server with no grammar to keep the model's call
+ * text well-formed (a doubled `<tool_call>` wrapper, a lost opener).
+ */
+export function parseToolCalls(content: string): Parsed {
+  const strict = parseStrict(content);
+  if (strict.tool_calls.length > 0 || !content.includes(CALL_CLOSE)) return strict;
+  return parseLoose(content) ?? strict;
+}
+
+/** The index just past the JSON object that opens at `from` (a `{`), or -1 when it never closes. */
+function objectEnd(s: string, from: number): number {
+  let depth = 0;
+  let inString = false;
+  for (let i = from; i < s.length; i++) {
+    const ch = s[i];
+    if (inString) {
+      if (ch === "\\") i++;
+      else if (ch === '"') inString = false;
+    } else if (ch === '"') inString = true;
+    else if (ch === "{") depth++;
+    else if (ch === "}" && --depth === 0) return i + 1;
+  }
+  return -1;
+}
+
+const CLOSER_AHEAD = /^\s*<\/tool_call>/;
+/** What may sit between the prose and a call: any run of (possibly damaged) openers. */
+const OPENERS_BEFORE = /(?:\s*(?:<tool_call>|<tool_call|tool_call>?|<))+\s*$/;
+
+/**
+ * Every `{"name": ..., "arguments": {...}}` object that a `</tool_call>` follows,
+ * wherever its opener went. Null when there is none, so the strict result stands.
+ */
+function parseLoose(content: string): Parsed | null {
+  const calls: ToolCall[] = [];
+  const stamp = Date.now();
+  let firstAt = -1;
+  let from = content.indexOf("{");
+  while (from >= 0) {
+    const end = objectEnd(content, from);
+    if (end < 0) break;
+    let call: { name?: unknown; arguments?: unknown } | undefined;
+    if (CLOSER_AHEAD.test(content.slice(end))) {
+      try {
+        call = JSON.parse(content.slice(from, end)) as typeof call;
+      } catch {
+        call = undefined;
+      }
+    }
+    const args = call?.arguments ?? {};
+    if (
+      call &&
+      typeof call.name === "string" &&
+      call.name !== "" &&
+      typeof args === "object" &&
+      args !== null &&
+      !Array.isArray(args)
+    ) {
+      if (firstAt < 0) firstAt = from;
+      calls.push({
+        type: "function",
+        id: `call_${stamp}_${calls.length}`,
+        function: { name: call.name, arguments: JSON.stringify(args) },
+      });
+      from = content.indexOf("{", end);
+    } else {
+      from = content.indexOf("{", from + 1);
+    }
+  }
+  if (calls.length === 0) return null;
+  return {
+    content: content.slice(0, firstAt).replace(OPENERS_BEFORE, "").trimEnd(),
+    tool_calls: calls,
+  };
+}
+
+function parseStrict(content: string): Parsed {
   const start = content.indexOf(CALL_OPEN);
   if (start < 0) return { content, tool_calls: [] };
   const calls: ToolCall[] = [];

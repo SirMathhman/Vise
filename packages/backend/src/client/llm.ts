@@ -9,6 +9,7 @@ import {
   nameConfidence,
   parseReply,
   toolRequestFields,
+  writesBrokenCall,
 } from "./tool-protocol.ts";
 import { collectThinking, readJsonReply, streamChat } from "./stream/stream-reader.ts";
 import { generationReporter } from "./stream/generation.ts";
@@ -19,6 +20,7 @@ import {
   readReply,
 } from "./stream/request-fields.ts";
 import {
+  detectBackend,
   modelRef,
   parseModelRef,
   providerFor,
@@ -173,6 +175,8 @@ export class LlmClient implements Client {
   private mainSlot: number | undefined;
   private mainSlotProbe: Promise<void> | undefined;
   private readonly slotRequestTimeoutMs: number;
+  /** Replies that wrote a tool call nobody could read (see `send`); `chat` asks again once. */
+  private readonly unreadCalls = new WeakSet<AssistantMessage>();
 
   constructor(slotRequestTimeoutMs = config.slotRequestTimeoutMs) {
     this.slotRequestTimeoutMs = slotRequestTimeoutMs;
@@ -415,6 +419,14 @@ export class LlmClient implements Client {
       if (signal?.aborted) break;
       result = await this.attempt(args, false);
     }
+    // A tool call the model wrote badly is not run and not shown as the answer: sample once more.
+    if (result.ok && this.unreadCalls.has(result.value) && !signal?.aborted) {
+      args[2]?.("\n\n⚠ the model wrote a tool call that could not be read; asking again\n\n");
+      result = await this.attempt(args, false);
+      if (result.ok && this.unreadCalls.has(result.value)) {
+        args[2]?.("\n\n⚠ that reply holds tool call text that could not be read either\n\n");
+      }
+    }
     // A reply that calls tools may start side work next: the slot it ran on is the main one.
     if (
       this.sideDepth === 0 &&
@@ -521,6 +533,8 @@ export class LlmClient implements Client {
     // of the prompt, so toggling a tool leaves the KV cache intact.
     const useTools = !!tools && tools.length > 0 && !responseSchema;
     const request = trace?.request ?? ++this.requestSeq;
+    // The request's fields depend on what the server is (llama.cpp or Strata), so find out first.
+    await detectBackend(this.provider().rootUrl ?? "");
     const body = this.requestBody(messages, tools, responseSchema, isToolEnabled, act, antiRepeat);
     // An act round shows the user nothing; its reasoning is only captured.
     const thought = collectThinking(act ? undefined : onThinking);
@@ -579,13 +593,20 @@ export class LlmClient implements Client {
       }
       this.lastPromptTokens = acc.usage;
       if (useTools) {
-        return {
-          ok: true,
-          value: {
-            ...parseReply(acc.message, thought.text(), act),
-            ...(act ? { confidence: nameConfidence(acc.logprobs) } : {}),
-          },
+        const value: AssistantMessage = {
+          ...parseReply(acc.message, thought.text(), act),
+          ...(act ? { confidence: nameConfidence(acc.logprobs) } : {}),
         };
+        // Without a grammar nothing keeps the model's call text well-formed: note a reply that tried and failed.
+        if (
+          !this.provider().capabilities.grammar &&
+          !value.tool_calls &&
+          !value.done &&
+          writesBrokenCall(`${acc.message.content}\n${thought.text()}`)
+        ) {
+          this.unreadCalls.add(value);
+        }
+        return { ok: true, value };
       }
       return { ok: true, value: acc.message };
     } catch (err) {

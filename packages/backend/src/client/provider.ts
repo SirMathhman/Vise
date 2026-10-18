@@ -1,5 +1,5 @@
 /**
- * The model provider the client talks to: today the local llama.cpp server.
+ * The model provider the client talks to: the local server, llama.cpp or Strata (see `detectBackend`).
  * Pure: built from setting values, it says where requests go, what headers they
  * carry and which llama.cpp-only features the server understands, so
  * `LlmClient` never branches on a URL. Another OpenAI-compatible engine (vLLM)
@@ -43,7 +43,7 @@ export interface ProviderCapabilities {
   serverState: boolean;
   /** `reasoning_effort` is a top-level field (else `reasoning: { effort }`). */
   flatReasoning: boolean;
-  /** The `json_schema` response format needs a name and `strict`. */
+  /** The `json_schema` response format carries a `name` and `strict` (OpenAI's shape; Strata and hosted engines require it, llama.cpp ignores both). */
   namedSchema: boolean;
 }
 
@@ -54,10 +54,57 @@ const LLAMA_CPP: ProviderCapabilities = {
   antiRepeat: true,
   serverState: true,
   flatReasoning: true,
-  namedSchema: false,
+  namedSchema: true,
 };
 
+/**
+ * Strata (an OpenAI-compatible engine for large MoE models) takes the extra llama.cpp fields without
+ * complaint but acts on none of them: no grammar decoding (it validates after the fact), one sequence
+ * so no slots, no `dry_*`. It does report `/props` and `/slots`, and answers `return_progress`.
+ */
+const STRATA: ProviderCapabilities = {
+  grammar: false,
+  slots: false,
+  progress: true,
+  antiRepeat: false,
+  serverState: true,
+  flatReasoning: true,
+  namedSchema: true,
+};
+
+type Backend = "llama.cpp" | "strata";
+
+/** What each server (by base URL) turned out to be; absent until `detectBackend` has asked. */
+const backends = new Map<string, Backend>();
+const probes = new Map<string, Promise<void>>();
+
 const trim = (url: string): string => url.replace(/\/+$/, "");
+
+/**
+ * Ask the server what it is (`GET /v1/status` names Strata) once per base URL, so `providerOf` can give
+ * it the right capabilities. Anything else, or no answer, means llama.cpp. A server that cannot be
+ * reached is not remembered, so the next call asks again. Tests set `VISE_BACKEND_DETECT=0` to skip it.
+ */
+export function detectBackend(baseUrl: string): Promise<void> {
+  const base = trim(baseUrl);
+  if (process.env.VISE_BACKEND_DETECT === "0" || backends.has(base)) return Promise.resolve();
+  const running = probes.get(base);
+  if (running) return running;
+  const probe = (async () => {
+    try {
+      const res = await fetch(`${base}/v1/status`, { signal: AbortSignal.timeout(2_000) });
+      const body: unknown = res.ok ? await res.json().catch(() => undefined) : undefined;
+      const service = (body as { service?: unknown } | null | undefined)?.service;
+      backends.set(base, service === "strata" ? "strata" : "llama.cpp");
+    } catch {
+      // Unreachable now: assume llama.cpp for this call and ask again next time.
+    } finally {
+      probes.delete(base);
+    }
+  })();
+  probes.set(base, probe);
+  return probe;
+}
 
 /** The provider the settings name as the default (the one a session starts on). */
 export function defaultProviderId(_s: ProviderSettings): ProviderId {
@@ -86,15 +133,16 @@ export function providerFor(s: ProviderSettings): Provider {
 export function providerOf(s: ProviderSettings, id: ProviderId): Provider {
   void id;
   const base = trim(s.llmBaseUrl);
+  const backend = backends.get(base) ?? "llama.cpp";
   return {
     id: "local",
-    backend: "llama.cpp",
+    backend,
     defaultModel: s.llmModel,
     chatUrl: `${base}/v1/chat/completions`,
     modelsUrl: `${base}/v1/models`,
     rootUrl: base,
     headers: { authorization: `Bearer ${s.llmApiKey}` },
-    capabilities: LLAMA_CPP,
+    capabilities: backend === "strata" ? STRATA : LLAMA_CPP,
   };
 }
 

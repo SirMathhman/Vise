@@ -80,6 +80,58 @@ describe("tool protocol (edge)", () => {
     expect(r.tool_calls[0]?.function.arguments).toBe('{"x":1}');
   });
 
+  test("reads a call the model wrapped twice (no grammar keeps it well-formed)", () => {
+    // Seen from Qwen3.8 on Strata, which has no grammar decoding.
+    const text =
+      '<tool_call>\n<tool_call>\n{"name": "get_temperature", "arguments": {"city": "Paris"}}\n</tool_call>\n</tool_call>\n' +
+      '<tool_call>\n<tool_call>\n{"name": "get_temperature", "arguments": {"city": "Tokyo"}}\n</tool_call>\n</tool_call>';
+    const r = parseToolCalls(text);
+    expect(r.content).toBe("");
+    expect(r.tool_calls.map((c) => c.function.arguments)).toEqual([
+      '{"city":"Paris"}',
+      '{"city":"Tokyo"}',
+    ]);
+    expect(r.tool_calls.map((c) => c.id)).toEqual([
+      expect.stringMatching(/_0$/),
+      expect.stringMatching(/_1$/),
+    ]);
+  });
+
+  test("reads a call whose opener lost its brackets, and keeps the prose before it", () => {
+    const r = parseToolCalls('Checking.\ntool_call\n{"name":"add","arguments":{"a":1,"b":2}}\n</tool_call>');
+    expect(r.content).toBe("Checking.");
+    expect(r.tool_calls[0]?.function.name).toBe("add");
+    expect(r.tool_calls[0]?.function.arguments).toBe('{"a":1,"b":2}');
+  });
+
+  test("a call without arguments gets an empty object; braces inside strings do not end the object", () => {
+    const r = parseToolCalls('<tool_call><tool_call>{"name":"now"}</tool_call></tool_call>');
+    expect(r.tool_calls[0]?.function.arguments).toBe("{}");
+    const s = parseToolCalls('tool_call\n{"name":"say","arguments":{"t":"a } b"}}\n</tool_call>');
+    expect(s.tool_calls[0]?.function.arguments).toBe('{"t":"a } b"}');
+  });
+
+  test("prose that only mentions the format is never read as a call", () => {
+    for (const text of [
+      'Use <tool_call> tags like {"name":"x","arguments":{}} to call tools.',
+      'Example: {"name":"x","arguments":{}} then </tool_call> ends it? no.',
+      'tool_call\n{"name":7,"arguments":{}}\n</tool_call>',
+      'tool_call\n{"name":"x","arguments":[1]}\n</tool_call>',
+      "just text </tool_call>",
+    ]) {
+      const r = parseToolCalls(text);
+      expect(r.tool_calls).toEqual([]);
+      // (the strict reading has always cut the prose at a literal opener; the loose one adds no cut)
+      if (!text.includes("<tool_call>")) expect(r.content).toBe(text);
+    }
+  });
+
+  test("a well-formed call is read the strict way, byte for byte as before", () => {
+    const r = parseToolCalls('<tool_call>\n{"name":"a","arguments":{"x":1}}\n</tool_call>\nthen more');
+    expect(r.tool_calls).toHaveLength(1);
+    expect(r.content).toBe("");
+  });
+
   test("hideCalls stops streaming at the delimiter", () => {
     const seen: string[] = [];
     const f = hideCalls((t) => seen.push(t));

@@ -49,9 +49,14 @@ describe("request shaping", () => {
     expect(reasoningFields(hosted, undefined)).toEqual({});
   });
 
-  test("response_format needs a name when the provider asks for one", () => {
+  test("response_format is named, since Strata and hosted engines require it", () => {
     const schema = { type: "object" };
     expect(responseFormat(local, schema)).toEqual({
+      type: "json_schema",
+      json_schema: { name: "vise", strict: true, schema },
+    });
+    const unnamed = { ...local, capabilities: { ...local.capabilities, namedSchema: false } };
+    expect(responseFormat(unnamed, schema)).toEqual({
       type: "json_schema",
       json_schema: { schema },
     });
