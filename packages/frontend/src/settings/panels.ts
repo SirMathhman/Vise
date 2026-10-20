@@ -1,5 +1,5 @@
 import { newestFirst, renderSessionList, type SavedSession } from "./sessions-list.ts";
-import type { ListsSnapshot } from "../../../src/repl/lists.ts";
+import type { ListsSnapshot } from "@vise/backend/src/repl/lists.ts";
 
 export interface PanelActions {
   resumeSession(name: string): void;

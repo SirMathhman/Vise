@@ -112,6 +112,29 @@ function moveFocus(panel: HTMLElement, event: KeyboardEvent): void {
   items[next]?.focus();
 }
 
+/** The models whose id or name contains the query (all of them for an empty one). */
+function matching(models: ModelEntry[], query: string): ModelEntry[] {
+  return models.filter(
+    (model) =>
+      !query ||
+      model.id.toLowerCase().includes(query) ||
+      (model.name ?? "").toLowerCase().includes(query),
+  );
+}
+
+/** What the list says instead of rows, or nothing when it has rows to show. */
+function emptyNote(
+  failure: string | undefined,
+  loaded: boolean,
+  shown: number,
+  total: number,
+): string | undefined {
+  if (failure !== undefined) return `Could not load models: ${failure}`;
+  if (!loaded) return "Loading…";
+  if (shown === 0) return total === 0 ? "No models available" : "No model matches the search";
+  return undefined;
+}
+
 /** The model button and its panel: a search box, the recently used models, and the full list. */
 export function createModelPicker(parts: ModelPickerParts): ModelPicker {
   const { button, panel, search, recent, recentList, list, send, close, onChoose, onError } = parts;
@@ -152,24 +175,10 @@ export function createModelPicker(parts: ModelPickerParts): ModelPicker {
 
   function render(): void {
     const query = search.value.trim().toLowerCase();
-    shown = models.filter(
-      (model) =>
-        !query ||
-        model.id.toLowerCase().includes(query) ||
-        (model.name ?? "").toLowerCase().includes(query),
-    );
+    shown = matching(models, query);
     list.textContent = "";
-    if (failure !== undefined)
-      list.append(make("li", "list-empty", `Could not load models: ${failure}`));
-    else if (!loaded) list.append(make("li", "list-empty", "Loading…"));
-    else if (shown.length === 0)
-      list.append(
-        make(
-          "li",
-          "list-empty",
-          models.length === 0 ? "No models available" : "No model matches the search",
-        ),
-      );
+    const note = emptyNote(failure, loaded, shown.length, models.length);
+    if (note !== undefined) list.append(make("li", "list-empty", note));
     else for (const model of shown) list.append(modelRow(model, active, choose));
 
     // "Recently used" shows while nothing is typed; ids the list no longer has are skipped.

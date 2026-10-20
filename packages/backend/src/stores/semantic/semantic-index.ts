@@ -163,6 +163,10 @@ export class SemanticIndex implements SemanticIndexPort {
   /** The error as one sentence that says what to do about an embedder that did not work. */
   private explain(error: ViseError, model: string): ViseError {
     const why = formatError(error).replace(/^vise: /, "");
+    // A server that cannot embed at all (Strata): no model setting would help, so the reason is the whole answer.
+    if (error.kind === "malformed" && error.body.includes("no embeddings endpoint")) {
+      return { kind: "malformed", body: why };
+    }
     return {
       kind: "malformed",
       body: `the embedding model "${model}" could not embed (${why}). Set VISE_EMBEDDING_MODEL to a model the local server can embed with.`,

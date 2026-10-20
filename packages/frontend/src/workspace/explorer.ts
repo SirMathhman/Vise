@@ -32,6 +32,66 @@ interface MarkdownView {
   renderMarkdown(source: string): string;
 }
 
+/** Ask for a name, then create a file or directory under `parentPath` (the root for ""). */
+async function createEntry(parentPath: string, isDir: boolean, reload: () => void): Promise<void> {
+  const name = await promptAction({ title: isDir ? "New Directory" : "New File" });
+  if (!name) return;
+  const rel = parentPath === "" ? name : parentPath + "/" + name;
+  const res = await fetch(api("/api/create", rel) + "&dir=" + (isDir ? "1" : "0"), {
+    method: "POST",
+  });
+  if (res.ok) return reload();
+  const body = (await res.json().catch(() => ({}))) as { error?: string };
+  toast(`Could not create ${name} (${body.error ?? "error"})`, "error");
+}
+
+/** A right-click on the tree outside any row offers to create a file or directory there. */
+function bindBlankMenu(
+  list: HTMLUListElement,
+  newEntry: (parentPath: string, isDir: boolean) => Promise<void>,
+): void {
+  list.addEventListener("contextmenu", (e: MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest(".fs-row")) return;
+    e.preventDefault();
+    const parent = target.closest<HTMLElement>("li[data-dir]")?.dataset.dir ?? "";
+    showMenu(e.clientX, e.clientY, [
+      { label: "New File", run: () => void newEntry(parent, false) },
+      { label: "New Directory", run: () => void newEntry(parent, true) },
+    ]);
+  });
+}
+
+/** What a tree row needs from the explorer: which folders are open, which files have tabs, and what a click does. */
+interface RowActions {
+  expanded: Set<string>;
+  isOpen(path: string): boolean;
+  openDir(path: string, children: HTMLUListElement): void;
+  openFile(path: string): void;
+  menu(e: MouseEvent, path: string, isDir?: boolean): void;
+}
+
+function entryRow(entry: DirEntry, child: string, act: RowActions): HTMLLIElement {
+  return entry.dir
+    ? dirRow(
+        entry.name,
+        child,
+        act.expanded,
+        (c) => act.openDir(child, c),
+        (e) => act.menu(e, child, true),
+        entry.ignored,
+      )
+    : fileRow(
+        entry.name,
+        child,
+        act.isOpen(child),
+        () => act.openFile(child),
+        (e) => act.menu(e, child),
+        entry.ignored,
+        entry.status,
+      );
+}
+
 /**
  * Read-only file workspace over `/api/fs` and `/api/file`, rooted at the
  * server's working directory: a directory tree plus a tab strip so several
@@ -53,62 +113,29 @@ export function createExplorer(
 } {
   const set = new OpenTabs();
   const expanded = new Set<string>();
-  async function newEntry(parentPath: string, isDir: boolean): Promise<void> {
-    const name = await promptAction({ title: isDir ? "New Directory" : "New File" });
-    if (!name) return;
-    const rel = parentPath === "" ? name : parentPath + "/" + name;
-    const res = await fetch(api("/api/create", rel) + "&dir=" + (isDir ? "1" : "0"), {
-      method: "POST",
-    });
-    if (res.ok) void reload();
-    else {
-      const body = (await res.json().catch(() => ({}))) as { error?: string };
-      toast(`Could not create ${name} (${body.error ?? "error"})`, "error");
-    }
-  }
-  const entryContext = makeEntryOps(() => void reload(), newEntry);
+  const newEntry = (parentPath: string, isDir: boolean): Promise<void> =>
+    createEntry(parentPath, isDir, () => void reload());
+  const rowActions: RowActions = {
+    expanded,
+    isOpen: (path) => set.has(path),
+    openDir: (path, children) => void open(path, children),
+    openFile: (path) => void openFile(path),
+    menu: makeEntryOps(() => void reload(), newEntry),
+  };
   async function open(path: string, ul: HTMLUListElement = list): Promise<void> {
     const entries = await fetchEntries(path, ul);
     if (!entries) return;
     pathEl.textContent = "/";
     for (const entry of entries) {
       const child = path ? `${path}/${entry.name}` : entry.name;
-      ul.appendChild(
-        entry.dir
-          ? dirRow(
-              entry.name,
-              child,
-              expanded,
-              (c) => void open(child, c),
-              (e) => entryContext(e, child, true),
-              entry.ignored,
-            )
-          : fileRow(
-              entry.name,
-              child,
-              set.has(child),
-              () => void openFile(child),
-              (e) => entryContext(e, child),
-              entry.ignored,
-              entry.status,
-            ),
-      );
+      ul.appendChild(entryRow(entry, child, rowActions));
     }
   }
   function openUrl(raw: string): void {
     const url = normalizeUrl(raw);
     if (url) activate(set.urlIndex(url));
   }
-  list.addEventListener("contextmenu", (e: MouseEvent) => {
-    const target = e.target as HTMLElement;
-    if (target.closest(".fs-row")) return;
-    e.preventDefault();
-    const parent = target.closest<HTMLElement>("li[data-dir]")?.dataset.dir ?? "";
-    showMenu(e.clientX, e.clientY, [
-      { label: "New File", run: () => void newEntry(parent, false) },
-      { label: "New Directory", run: () => void newEntry(parent, true) },
-    ]);
-  });
+  bindBlankMenu(list, newEntry);
   bindUrlForm(md.urlForm, openUrl, true);
   bindUrlForm(md.addrForm, (raw) => navigateTab(set.current, raw, md) && redraw(), false);
   async function openFile(path: string): Promise<void> {

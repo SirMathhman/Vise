@@ -57,7 +57,7 @@ test("a goal check that fails on the network is asked again instead of counting 
   expect(calls).toBe(3);
 });
 
-test("the reason names the failure: a network error, an HTTP error, a server that ignored the schema", async () => {
+test("the reason names the failure: a network error, an HTTP error, a reply in another shape", async () => {
   const failing = (error: ViseError): Client => ({
     chat: async () => ({ ok: false, error }),
   });
@@ -78,6 +78,26 @@ test("the reason names the failure: a network error, an HTTP error, a server tha
     chat: async () => ({ ok: true, value: { content: "sure!" } }),
   };
   expect((await checkGoal(text, [], [], goal)).detail).toBe(
-    `the server did not apply the response schema (reply: sure!)`,
+    `the reply did not match the response schema (reply: sure!)`,
   );
+});
+
+test("a reply in another shape (an unconstrained server) is asked again", async () => {
+  let calls = 0;
+  const client: Client = {
+    chat: async () => {
+      calls++;
+      const content =
+        calls === 1
+          ? '{"name":"read_file","arguments":{"path":"a"}}'
+          : '{"verdict":"maybe","detail":"x"}';
+      return {
+        ok: true,
+        value: { content: calls === 3 ? '{"verdict":"yes","detail":"done"}' : content },
+      };
+    },
+  };
+  const verdict = await checkGoal(client, [], [], { text: "g", doneWhen: "d" });
+  expect(verdict).toEqual({ kind: "yes", detail: "done" });
+  expect(calls).toBe(3);
 });

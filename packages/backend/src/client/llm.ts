@@ -27,6 +27,8 @@ import {
   providerOf,
   reasoningFields,
   responseFormat,
+  schemaReply,
+  withSchemaPrompt,
   type ModelInfo,
   type Provider,
 } from "./provider.ts";
@@ -90,8 +92,12 @@ export type { ModelDetail };
 
 export class LlmClient implements Client {
   private lastPromptTokens: number | undefined;
+  /** The model the user switched to; until then the provider's default, read live (it is known only once the server has said what it is). */
+  private chosenModel: string | undefined;
   /** The active model's reference (see `modelRef`). */
-  private currentModel: string = modelRef(providerFor(config).id, providerFor(config).defaultModel);
+  private get currentModel(): string {
+    return this.chosenModel ?? modelRef(providerFor(config).id, providerFor(config).defaultModel);
+  }
   /** `/models` facts per model id (window, vision) for providers without server state, fetched once. */
   private readonly infoCache = new Map<string, ModelInfo>();
   private requestSeq = 0;
@@ -180,6 +186,8 @@ export class LlmClient implements Client {
 
   constructor(slotRequestTimeoutMs = config.slotRequestTimeoutMs) {
     this.slotRequestTimeoutMs = slotRequestTimeoutMs;
+    // Find out early what the server is, so the first look at the model (the page's header) already names the right one.
+    void detectBackend(config.llmBaseUrl);
   }
 
   /**
@@ -283,7 +291,7 @@ export class LlmClient implements Client {
    * Change the active model.
    */
   setModel(name: string): void {
-    this.currentModel = name;
+    this.chosenModel = name;
   }
 
   /**
@@ -320,7 +328,8 @@ export class LlmClient implements Client {
   }
 
   /** Every model the user can pick, under its reference, as the local server lists them. */
-  listModelDetails(): Promise<Result<ModelDetail[]>> {
+  async listModelDetails(): Promise<Result<ModelDetail[]>> {
+    await detectBackend(config.llmBaseUrl);
     return fetchModelDetails(providerOf(config, "local"));
   }
 
@@ -335,8 +344,14 @@ export class LlmClient implements Client {
    * `POST /v1/embeddings`. Always the local provider with `embeddingModel()`,
    * whatever the chat is on: file contents are never sent to another provider.
    */
-  embedMany(texts: string[]): Promise<Result<number[][]>> {
-    return fetchEmbeddings(providerOf(config, "local"), embeddingModel(), texts);
+  async embedMany(texts: string[]): Promise<Result<number[][]>> {
+    await detectBackend(config.llmBaseUrl);
+    const provider = providerOf(config, "local");
+    if (!provider.capabilities.embeddings) {
+      const body = `the ${provider.backend} server has no embeddings endpoint (POST /v1/embeddings); semantic search needs a server that can embed`;
+      return { ok: false, error: { kind: "malformed", body } };
+    }
+    return fetchEmbeddings(provider, embeddingModel(), texts);
   }
 
   /**
@@ -486,6 +501,9 @@ export class LlmClient implements Client {
     const provider = this.provider();
     // Pictures tools produced are sent once, with the latest round; see elideOldImages for why only the tail may change.
     messages = elideOldImages(messages);
+    // A server that does not decode to the schema reads it at the end of the question instead (see `schemaPrompt`).
+    const promptSchema = !!responseSchema && !provider.capabilities.schemaDecoding;
+    if (promptSchema) messages = withSchemaPrompt(messages, responseSchema);
     const body: Record<string, unknown> = {
       model: this.modelId(),
       // A schema-constrained request (a one-off question about the conversation)
@@ -502,7 +520,7 @@ export class LlmClient implements Client {
     if (useTools && provider.capabilities.grammar) {
       Object.assign(body, toolRequestFields(tools, isToolEnabled, act));
     }
-    if (responseSchema) {
+    if (responseSchema && !promptSchema) {
       body.response_format = responseFormat(provider, responseSchema);
     }
     this.applyReasoningEffort(body);
@@ -608,7 +626,7 @@ export class LlmClient implements Client {
         }
         return { ok: true, value };
       }
-      return { ok: true, value: acc.message };
+      return { ok: true, value: schemaReply(this.provider(), acc.message, responseSchema) };
     } catch (err) {
       // An abort by the guard surfaces as a failed read: say what it really was.
       const cut = runawayError(trace);

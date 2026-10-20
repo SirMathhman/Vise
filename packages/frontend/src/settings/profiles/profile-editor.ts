@@ -108,6 +108,29 @@ function drawList(ui: Ui, state: EditorState, select: (name: string) => void): v
   ui.form.classList.toggle("hidden", none);
 }
 
+/** The buttons beside the form that need no state: new profile, and ticking every tool or none. */
+function wireToolButtons(ui: Ui, startNew: () => void): void {
+  el<HTMLButtonElement>("pe-new").addEventListener("click", () => {
+    startNew();
+    ui.name.focus();
+  });
+  el<HTMLButtonElement>("pe-check-all").addEventListener("click", () =>
+    setAllTools(ui.tools, true),
+  );
+  el<HTMLButtonElement>("pe-uncheck-all").addEventListener("click", () =>
+    setAllTools(ui.tools, false),
+  );
+  ui.tools.addEventListener("change", (event) => applyToggle(ui.tools, event.target));
+}
+
+/** Ask, then delete the profile being edited (nothing when none is). */
+function confirmDelete(target: string | null, send: ProfileEditorActions["send"]): void {
+  if (!target) return;
+  const title = `Delete the profile “${target}”?`;
+  const message = "Its file, tool list and own hooks are removed. This cannot be undone.";
+  ifConfirmed({ title, message }, () => send({ type: "profile_delete", name: target }));
+}
+
 /**
  * The profiles tab: a list of the profile files beside a form for the selected
  * one (its name, its instructions, the tools it may use and the hooks it owns).
@@ -148,17 +171,7 @@ export function createProfileEditor(actions: ProfileEditorActions): ProfileEdito
     redraw();
   }
 
-  el<HTMLButtonElement>("pe-new").addEventListener("click", () => {
-    select(null);
-    ui.name.focus();
-  });
-  el<HTMLButtonElement>("pe-check-all").addEventListener("click", () =>
-    setAllTools(ui.tools, true),
-  );
-  el<HTMLButtonElement>("pe-uncheck-all").addEventListener("click", () =>
-    setAllTools(ui.tools, false),
-  );
-  ui.tools.addEventListener("change", (event) => applyToggle(ui.tools, event.target));
+  wireToolButtons(ui, () => select(null));
   ui.save.addEventListener("click", () => {
     const next = ui.name.value.trim();
     if (!next) return showStatus("A profile needs a name.", true);
@@ -174,13 +187,7 @@ export function createProfileEditor(actions: ProfileEditorActions): ProfileEdito
       from: state.current ?? undefined,
     });
   });
-  ui.del.addEventListener("click", () => {
-    const target = state.current;
-    if (!target) return;
-    const title = `Delete the profile “${target}”?`;
-    const message = "Its file, tool list and own hooks are removed. This cannot be undone.";
-    ifConfirmed({ title, message }, () => actions.send({ type: "profile_delete", name: target }));
-  });
+  ui.del.addEventListener("click", () => confirmDelete(state.current, actions.send));
 
   function handleResult(message: ProfileMessage): void {
     if (!message.ok) return showStatus(message.error ?? "Failed.", true, true);

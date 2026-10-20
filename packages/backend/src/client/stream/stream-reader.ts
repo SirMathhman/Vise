@@ -42,7 +42,7 @@ interface StreamChunk {
   usage?: Usage;
   error?: StreamError;
   prompt_progress?: PromptProgress;
-  timings?: { predicted_n?: number };
+  timings?: { predicted_n?: number; prompt_ms?: number };
 }
 
 /** Receives what a call generates: the raw text as it streams and the server's running token count. */
@@ -51,6 +51,37 @@ export interface GenerationListener {
   tokens(count: number): void;
   /** The server's reason the call ended (`stop`, `length`, `tool_calls`...), when it says. */
   finish?(reason: string): void;
+}
+
+/**
+ * Strata reports prompt progress every few thousand tokens but never the last step. Once the call
+ * writes anything (or ends), the prompt has been read: `close` says so, so the progress line can close.
+ */
+function progressCloser(onPromptProgress?: (progress: PromptProgress) => void) {
+  let open: { progress: PromptProgress; at: number } | undefined;
+  return {
+    seen(progress: PromptProgress): void {
+      onPromptProgress?.(progress);
+      open = progress.processed < progress.total ? { progress, at: Date.now() } : undefined;
+    },
+    close(promptMs?: number): void {
+      if (!open) return;
+      const { progress, at } = open;
+      open = undefined;
+      const time_ms = promptMs ?? progress.time_ms + (Date.now() - at);
+      onPromptProgress?.({ ...progress, processed: progress.total, time_ms });
+    },
+  };
+}
+
+/** Whether a chunk shows the call has begun writing (or ended), so its prompt has been read. */
+function writes(chunk: StreamChunk): boolean {
+  const choice = chunk.choices?.[0];
+  const delta = choice?.delta;
+  const reasoning = delta?.reasoning_content ?? delta?.reasoning ?? "";
+  return (
+    !!chunk.timings || !!choice?.finish_reason || (delta?.content ?? "") !== "" || reasoning !== ""
+  );
 }
 
 /** Fold one chunk's tool-call deltas into the calls being assembled (a call arrives in pieces, by index). */
@@ -107,6 +138,7 @@ export async function streamChat(
   let sawData = false;
   const toolCallParts = new Map<number, ToolCall>();
   const logprobs: TokenLogprob[] = [];
+  const progress = progressCloser(onPromptProgress);
 
   const handleData = (line: string) => {
     if (line === "" || !line.startsWith("data:")) return;
@@ -119,9 +151,8 @@ export async function streamChat(
       return;
     }
     sawData = true;
-    if (chunk.prompt_progress) {
-      onPromptProgress?.(chunk.prompt_progress);
-    }
+    if (chunk.prompt_progress) progress.seen(chunk.prompt_progress);
+    if (writes(chunk)) progress.close(chunk.timings?.prompt_ms);
     const choice = chunk.choices?.[0];
     const delta = choice?.delta;
     for (const lp of choice?.logprobs?.content ?? []) logprobs.push(lp);
@@ -170,6 +201,7 @@ export async function streamChat(
     }
   }
 
+  if (!signal?.aborted && !failure) progress.close();
   // A provider that sends no running count still reports what the call wrote, at the end.
   if (!reportedTimings && completionTokens !== undefined && completionTokens > 0) {
     generation?.tokens(completionTokens);

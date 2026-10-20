@@ -7,8 +7,9 @@ import { deriveSessionName } from "./session-name.ts";
 import { GoalLog } from "@vise/core";
 import { GoalTracker, handleGoalCommand, type GoalHooks } from "./turn/goal-loop.ts";
 import type { Message, Result } from "@vise/core";
-import { formatHelp } from "../output/format.ts";
 import type { CommandNeed } from "./command-catalog.ts";
+import { firstThen, freshConversation, helpResult } from "./session-parts.ts";
+import { saveConversation, turnLineResult } from "./session-parts.ts";
 import { SessionHooks } from "./turn/session-hooks.ts";
 import {
   handleModelCommand,
@@ -38,28 +39,10 @@ import { resolveShortcut } from "./commands/shortcut-command.ts";
 import { handleWorkflowCommand } from "./commands/workflow-commands.ts";
 import type { WorkflowCommands } from "./commands/workflow-commands.ts";
 
-import type { LineResult } from "./ports.ts";
-
-export type { LineResult };
-
-export type {
-  ContextSource,
-  ProfileSource,
-  ModelController,
-  ReasoningController,
-  NoteSource,
-  WorkflowSource,
-  HookSource,
-  PreTurnHook,
-  PostTurnHook,
-  SavedSession,
-  SessionEntry,
-  SessionSource,
-  ProfileCommands,
-  SessionCommands,
-  CompactionSource,
-} from "./ports.ts";
+// The ports are re-exported here, where most of their users already import `Session` from.
+export type * from "./ports.ts";
 import type {
+  LineResult,
   ContextSource,
   ProfileSource,
   ModelController,
@@ -161,10 +144,7 @@ export class Session {
     this.initialMessage = options.initialMessage;
     this.sessionSource = options.sessionSource;
     this.systemMessage = systemMessageFor(options);
-    this.messages = [this.systemMessage];
-    if (this.initialMessage !== undefined && this.initialMessage !== "") {
-      this.messages.push({ role: "user", content: this.initialMessage });
-    }
+    this.messages = freshConversation(this.systemMessage, this.initialMessage);
     // The command handlers are plain functions in `session-commands.ts`;
     // the Session wires them to its own state with closures, so the
     // handlers stay free of class-internal references (the `commands.ts`
@@ -375,20 +355,7 @@ export class Session {
       }
       await this.runHooks("post");
       await this.saveSession();
-      // A failed auto-compact is non-fatal: proceed with the (uncut)
-      // conversation and let the edge report that compaction did not happen.
-      // The `streamed` flag tells the edge the reply text (if any) was
-      // already written token-by-token, so it only needs to emit the trailing
-      // newline rather than re-print.
-      if (auto.ok) {
-        return { ok: true, value: turn.value, streamed };
-      }
-      return {
-        ok: true,
-        value: turn.value,
-        streamed,
-        compactionWarning: auto.error,
-      };
+      return turnLineResult(turn.value, streamed, auto);
     } catch (e) {
       this.audit.turnThrew(e);
       await this.saveSession(); // the goal trace of the turn that threw is kept
@@ -424,25 +391,20 @@ export class Session {
     signal: AbortSignal,
     first: () => Promise<Result<string>>,
   ): Promise<Result<string>> {
-    let started = false;
     const roundHook = this.roundHook(signal);
+    const turn = () =>
+      runTurn(
+        this.client,
+        this.tools,
+        this.messages,
+        this.toolDefs,
+        this.turnCallbacks(signal, roundHook),
+      );
     return this.goals.run(
       this.client,
       this.messages,
       this.toolDefs,
-      () => {
-        if (!started) {
-          started = true;
-          return first();
-        }
-        return runTurn(
-          this.client,
-          this.tools,
-          this.messages,
-          this.toolDefs,
-          this.turnCallbacks(signal, roundHook),
-        );
-      },
+      firstThen(first, turn),
       signal,
       this.goalHooks(said),
     );
@@ -496,15 +458,8 @@ export class Session {
       ["mcp", !!this.opts.mcp],
       ["semantic", !!this.opts.semantic],
     ];
-    return {
-      ok: true,
-      value: formatHelp({
-        available: new Set(has.filter(([, on]) => on).map(([need]) => need)),
-        web: this.opts.surface === "web",
-        preTurnHookCount: this.hooks.pre.length,
-        postTurnHookCount: this.hooks.post.length,
-      }),
-    };
+    const hooks = { pre: this.hooks.pre.length, post: this.hooks.post.length };
+    return helpResult(has, this.opts.surface === "web", hooks);
   }
 
   private toolCommand(line: string): Result<string> {
@@ -603,12 +558,8 @@ export class Session {
     this.goals.goal = undefined;
     this.goalLog.clear();
     this.opts.todos?.set([]);
-    const oldMessages = [...this.messages];
-    this.messages.length = 0;
-    this.messages.push(this.systemMessage);
-    if (this.initialMessage) {
-      this.messages.push({ role: "user", content: this.initialMessage });
-    }
+    const fresh = freshConversation(this.systemMessage, this.initialMessage);
+    const oldMessages = this.messages.splice(0, this.messages.length, ...fresh);
     this.sessionName = undefined;
     this.sessionId = undefined;
     this.audit.restart(oldMessages);
@@ -646,18 +597,14 @@ export class Session {
 
   private async saveSession(): Promise<void> {
     if (!this.sessionSource || this.sessionName === undefined) return;
-    try {
-      const saved = await this.sessionSource.save(
-        this.sessionId,
-        this.sessionName,
-        this.persistableMessages(),
-        this.activeProfile,
-        this.opts.todos?.get(),
-        this.goalLog.entries(),
-      );
-      if (saved.ok) this.sessionId = saved.value;
-    } catch {
-      // Persistence is best-effort; a rejected edge promise must not fail a turn.
-    }
+    const id = await saveConversation(this.sessionSource, {
+      id: this.sessionId,
+      name: this.sessionName,
+      messages: this.persistableMessages(),
+      profile: this.activeProfile,
+      todos: this.opts.todos,
+      goalLog: this.goalLog,
+    });
+    if (id !== undefined) this.sessionId = id;
   }
 }

@@ -19,7 +19,6 @@ import {
   askToContinue,
   McpHub,
   type BrowserBackend,
-  type McpHub as McpHubType,
 } from "@vise/backend";
 import { ExtensionHub, isExtensionOrigin } from "./ext/ext-hub.ts";
 import { loadExtensionToken, tokensMatch } from "./ext/ext-token.ts";

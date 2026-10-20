@@ -4,7 +4,7 @@ import { watch } from "node:fs";
 /** Build the browser bundle, then watch browser and server source changes. */
 await $`bun run build:web`;
 
-const server = Bun.spawn(["bun", "--watch", "src/web/main.ts"], {
+const server = Bun.spawn(["bun", "--watch", "apps/web/src/main.ts"], {
   stdin: "inherit",
   stdout: "inherit",
   stderr: "inherit",
@@ -14,11 +14,11 @@ const server = Bun.spawn(["bun", "--watch", "src/web/main.ts"], {
 let rebuilding = false;
 let rebuildQueued = false;
 let debounce: ReturnType<typeof setTimeout> | undefined;
-const watcher = watch("web/src", { recursive: true }, (_event, filename) => {
+const watcher = watch("packages/frontend/src", { recursive: true }, (_event, filename) => {
   if (filename?.toString().endsWith(".ts")) scheduleRebuild();
 });
-// The page's styles are bundled too (`web/src/app.ts` imports `web/styles/index.css`).
-const styleWatcher = watch("web/styles", { recursive: true }, (_event, filename) => {
+// The page's styles are bundled too (`packages/frontend/src/app.ts` imports `packages/frontend/styles/index.css`).
+const styleWatcher = watch("packages/frontend/styles", { recursive: true }, (_event, filename) => {
   if (filename?.toString().endsWith(".css")) scheduleRebuild();
 });
 

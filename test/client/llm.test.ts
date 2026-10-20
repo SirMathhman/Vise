@@ -56,7 +56,8 @@ describe("streamChat (edge)", () => {
     const result = await streamChat(sseStream(chunks), undefined, undefined, (p) => {
       seen.push(p.processed);
     });
-    expect(seen).toEqual([10, 60]);
+    // The reply began, so the prompt was read: the last report says so even when the server did not.
+    expect(seen).toEqual([10, 60, 100]);
     expect(result.message.content).toBe("hi");
   });
 

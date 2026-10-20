@@ -401,6 +401,29 @@ function selfInfo(
   };
 }
 
+/** The hook lists a session runs (live: edits through the store show up at once). */
+function hookOptions(hookStore: HookStore) {
+  return {
+    preTurnHooks: hookStore.pre,
+    postTurnHooks: hookStore.post,
+    preToolHooks: hookStore.preTool,
+    postToolHooks: hookStore.postTool,
+    hookSource: hookStore,
+  };
+}
+
+/**
+ * The file stores under one data directory (`.vise/`): every runtime store
+ * lives there, so the working directory is not polluted by them.
+ */
+function storesFor(dataDir: string) {
+  return {
+    profileSource: new FileProfileSource(dataDir),
+    sessionSource: new FileSessionSource(dataDir),
+    workflowSource: new FileWorkflowSource(dataDir, globalDataDir),
+  };
+}
+
 /**
  * Construct the full edge stack: the `LlmClient`, every edge data source, the
  * composed `ToolRunner`, and the `Session`. Shared by the terminal and web
@@ -426,13 +449,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
   wireClientSinks(client, options, audit.auditSink);
   const browser: BrowserBackend = options.browser ?? new ChromiumBackend();
 
-  // Single directory that holds every runtime data store (profiles/, notes/,
-  // sessions/) so the working directory is not polluted by them. The edge I/O
-  // modules each join this `base` with their own subdirectory, so pointing the
-  // data sources at `.vise/` relocates all three stores under it.
-  const profileSource = new FileProfileSource(dataDir);
-  const sessionSource = new FileSessionSource(dataDir);
-  const workflowSource = new FileWorkflowSource(dataDir, globalDataDir);
+  const { profileSource, sessionSource, workflowSource } = storesFor(dataDir);
 
   // The subagent handler needs the ToolRunner for recursion, and the runner
   // needs the handler. Break the cycle with a lazily-resolving structural
@@ -502,11 +519,7 @@ export function createEdgeSession(options: EdgeSessionOptions): EdgeSession {
     sessionSource,
     todos,
     ...audit,
-    preTurnHooks: hookStore.pre,
-    postTurnHooks: hookStore.post,
-    preToolHooks: hookStore.preTool,
-    postToolHooks: hookStore.postTool,
-    hookSource: hookStore,
+    ...hookOptions(hookStore),
     ...displayCallbacks(options),
     // Every turn is checked against a goal unless the frontend opts out.
     goalChecking: options.goalChecking ?? true,

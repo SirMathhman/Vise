@@ -2,8 +2,6 @@ import type { Database } from "bun:sqlite";
 import type { Message } from "@vise/core";
 import type { GoalTraceEntry } from "@vise/core";
 import type { TodoItem } from "@vise/core";
-import type { ToolCall } from "@vise/core";
-import type { Picture } from "@vise/core";
 import { parseJson, goalTraceFactSchema, toolCallsArraySchema, picturesArraySchema } from "@vise/core";
 
 /**

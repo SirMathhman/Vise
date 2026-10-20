@@ -237,6 +237,27 @@ function buildUi() {
   };
 }
 
+/** Each click on a trigger asks again for the list and the tools (the first request may have gone out before the connection opened). */
+function refreshOnClick(
+  refreshOn: HTMLElement[],
+  send: (msg: Record<string, unknown>) => void,
+): void {
+  for (const trigger of refreshOn) {
+    trigger.addEventListener("click", () => {
+      send({ type: "workflows_list" });
+      send({ type: "workflow_tools" });
+    });
+  }
+}
+
+/** Ask, then delete the workflow being edited (nothing when none is). */
+function confirmDelete(target: Ref | null, send: (msg: Record<string, unknown>) => void): void {
+  if (!target) return;
+  ifConfirmed({ title: `Delete the workflow “${target.name}”?` }, () =>
+    send({ type: "workflow_delete", ...target }),
+  );
+}
+
 /**
  * The "workflows" settings tab: the project's and global workflows, and a step
  * list editor (instruction or tool-call rows, reorderable) to create, edit and
@@ -300,19 +321,8 @@ export function createWorkflowsPanel(
       say(error instanceof Error ? error.message : String(error), true);
     }
   });
-  deleteBtn.addEventListener("click", () => {
-    const target = current;
-    if (!target) return;
-    ifConfirmed({ title: `Delete the workflow “${target.name}”?` }, () =>
-      send({ type: "workflow_delete", ...target }),
-    );
-  });
-  for (const trigger of refreshOn) {
-    trigger.addEventListener("click", () => {
-      send({ type: "workflows_list" });
-      send({ type: "workflow_tools" }); // the first request may have gone out before the connection opened
-    });
-  }
+  deleteBtn.addEventListener("click", () => confirmDelete(current, send));
+  refreshOnClick(refreshOn, send);
 
   send({ type: "workflow_tools" });
   body.append(ui.layout);

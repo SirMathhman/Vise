@@ -17,6 +17,7 @@
         "marked": "^18.1.0",
         "playwright-core": "^1.63.0",
         "webview-bun": "^2.4.0",
+        "zod": "^4.6.7",
       },
       "devDependencies": {
         "@eslint/js": "^10.0.1",
@@ -44,6 +45,7 @@
       "dependencies": {
         "@vise/backend": "*",
         "@vise/common": "*",
+        "zod": "^4.6.7",
       },
     },
     "apps/web": {

@@ -27,5 +27,5 @@
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false
   },
-  "exclude": ["node_modules", "web", "extension"]
+  "exclude": ["node_modules", "packages/frontend", "apps/extension"]
 }

@@ -20,6 +20,31 @@ interface WorkspaceMessage extends SemanticSearchMessage {
   badRoot?: string;
 }
 
+/** The file tree and viewers, over the page's own elements. */
+function mountExplorer(
+  browser: ReturnType<typeof createBrowserView>,
+  renderMarkdown: (source: string) => string,
+): ReturnType<typeof createExplorer> {
+  return createExplorer(
+    el<HTMLElement>("files-path"),
+    el<HTMLUListElement>("files-list"),
+    el<HTMLElement>("files-tabs"),
+    el<HTMLPreElement>("files-viewer"),
+    {
+      mdView: el<HTMLElement>("files-md"),
+      frame: el<HTMLIFrameElement>("files-frame"),
+      urlForm: el<HTMLFormElement>("files-url-form"),
+      addrForm: el<HTMLFormElement>("files-addr-form"),
+      modeBtn: el<HTMLButtonElement>("files-mode"),
+      pane: el<HTMLElement>("files-browser"),
+      browser,
+      svg: el<HTMLElement>("files-svg"),
+      svgImg: el<HTMLImageElement>("files-svg-img"),
+      renderMarkdown,
+    },
+  );
+}
+
 /**
  * The left-hand workspace: file tree, tabs, file/markdown/URL viewers and the
  * integrated browser's live view. Owns its DOM and the server messages that
@@ -60,24 +85,7 @@ export function createWorkspace(
     el<HTMLImageElement>("files-browser-img"),
     send,
   );
-  const explorer = createExplorer(
-    el<HTMLElement>("files-path"),
-    el<HTMLUListElement>("files-list"),
-    el<HTMLElement>("files-tabs"),
-    el<HTMLPreElement>("files-viewer"),
-    {
-      mdView: el<HTMLElement>("files-md"),
-      frame: el<HTMLIFrameElement>("files-frame"),
-      urlForm: el<HTMLFormElement>("files-url-form"),
-      addrForm: el<HTMLFormElement>("files-addr-form"),
-      modeBtn: el<HTMLButtonElement>("files-mode"),
-      pane: el<HTMLElement>("files-browser"),
-      browser,
-      svg: el<HTMLElement>("files-svg"),
-      svgImg: el<HTMLImageElement>("files-svg-img"),
-      renderMarkdown,
-    },
-  );
+  const explorer = mountExplorer(browser, renderMarkdown);
 
   const semantic = mountSemanticSearch(send, (path) => explorer.openFile(path));
 

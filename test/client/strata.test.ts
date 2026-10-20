@@ -3,6 +3,8 @@ import { LlmClient } from "../../packages/backend/src/client/llm.ts";
 import { detectBackend, providerFor } from "../../packages/backend/src/client/provider.ts";
 import { applySettings } from "../../packages/backend/src/config.ts";
 import { jsonResponse, mockFetch } from "../helpers/fetch-mock.ts";
+import { streamChat } from "../../packages/backend/src/client/stream/stream-reader.ts";
+import type { PromptProgress } from "@vise/core";
 
 const settings = (url: string) => ({
   llmProvider: "local",
@@ -24,8 +26,7 @@ const sse = (...events: (object | string)[]): Response =>
     events.map((e) => `data: ${typeof e === "string" ? e : JSON.stringify(e)}\n\n`).join(""),
     { headers: { "content-type": "text/event-stream" } },
   );
-const say = (content: string): Response =>
-  sse({ choices: [{ delta: { content } }] }, "[DONE]");
+const say = (content: string): Response => sse({ choices: [{ delta: { content } }] }, "[DONE]");
 
 const CALL = '<tool_call>\n{"name":"add","arguments":{"a":1,"b":2}}\n</tool_call>';
 const BROKEN = '<tool_call>\n{"name":"add","arguments":{"a":1,'; // cut off: nothing to read
@@ -92,7 +93,11 @@ describe("a tool call written badly (no grammar to prevent it)", () => {
         tools,
         (t) => shown.push(t),
       );
-      return { result, shown: shown.join(""), requests: mock.calls.filter((c) => c.url.endsWith("/chat/completions")).length };
+      return {
+        result,
+        shown: shown.join(""),
+        requests: mock.calls.filter((c) => c.url.endsWith("/chat/completions")).length,
+      };
     } finally {
       mock.restore();
     }
@@ -107,7 +112,9 @@ describe("a tool call written badly (no grammar to prevent it)", () => {
     });
     const shown: string[] = [];
     try {
-      const r = await new LlmClient().chat([{ role: "user", content: "add" }], tools, (t) => shown.push(t));
+      const r = await new LlmClient().chat([{ role: "user", content: "add" }], tools, (t) =>
+        shown.push(t),
+      );
       if (!r.ok) throw new Error("expected ok");
       expect(r.value.tool_calls?.[0]?.function.name).toBe("add");
       expect(mock.calls.filter((c) => c.url.endsWith("/chat/completions"))).toHaveLength(2);
@@ -142,4 +149,95 @@ describe("a tool call written badly (no grammar to prevent it)", () => {
       mock.restore();
     }
   });
+});
+
+describe("what Strata does not do", () => {
+  const SCHEMA = { type: "object", properties: { verdict: { enum: ["yes", "no"] } } };
+
+  test("a schema goes at the end of the question, not in response_format, and the JSON is taken out of the reply", async () => {
+    applySettings({ VISE_LLM_URL: "http://sch.test:1", VISE_LLM_RETRIES: "0" });
+    const mock = mockFetch((u) =>
+      u.endsWith("/v1/status")
+        ? jsonResponse({ service: "strata", model: "q" })
+        : say('```json\n{"verdict":"yes"}\n```'),
+    );
+    try {
+      const messages = [
+        { role: "user" as const, content: "do it" },
+        { role: "user" as const, content: "[goal check] done?" },
+      ];
+      const r = await new LlmClient().chat(
+        messages,
+        tools,
+        undefined,
+        undefined,
+        undefined,
+        SCHEMA,
+      );
+      if (!r.ok) throw new Error("expected ok");
+      expect(r.value.content).toBe('{"verdict":"yes"}');
+      const sent = mock.calls.find((c) => c.url.endsWith("/chat/completions"));
+      const body = JSON.parse(sent?.body ?? "{}") as {
+        response_format?: unknown;
+        messages: { content: string }[];
+      };
+      expect(body.response_format).toBeUndefined();
+      const last = body.messages[body.messages.length - 1]?.content ?? "";
+      expect(last.startsWith("[goal check] done?")).toBe(true);
+      expect(last).toContain(JSON.stringify(SCHEMA));
+      // The conversation before the question is untouched, so the server's cache still covers it.
+      expect(body.messages.some((m) => m.content === "do it")).toBe(true);
+      expect(messages[1]?.content).toBe("[goal check] done?");
+    } finally {
+      mock.restore();
+    }
+  });
+
+  test("the default model is the one Strata serves, until the user picks another", async () => {
+    applySettings({ VISE_LLM_URL: "http://served.test:1", VISE_LLM_MODEL: "router/model" });
+    const mock = mockFetch(() => jsonResponse({ service: "strata", model: "served-q" }));
+    try {
+      await detectBackend("http://served.test:1");
+      const client = new LlmClient();
+      expect(client.getModel()).toBe("served-q");
+      client.setModel("other");
+      expect(client.getModel()).toBe("other");
+    } finally {
+      mock.restore();
+    }
+  });
+
+  test("embeddings are refused with the reason, without a request", async () => {
+    applySettings({ VISE_LLM_URL: "http://emb.test:1" });
+    const mock = mockFetch(() => jsonResponse({ service: "strata", model: "q" }));
+    try {
+      const r = await new LlmClient().embedMany(["a"]);
+      expect(r.ok).toBe(false);
+      if (!r.ok && r.error.kind === "malformed")
+        expect(r.error.body).toContain("no embeddings endpoint");
+      expect(mock.calls.some((c) => c.url.endsWith("/embeddings"))).toBe(false);
+    } finally {
+      mock.restore();
+    }
+  });
+});
+
+test("prompt progress that stops short of the total (Strata) is finished once the call writes", async () => {
+  const res = sse(
+    {
+      choices: [{ delta: {} }],
+      prompt_progress: { total: 20000, cache: 0, processed: 8192, time_ms: 2700 },
+    },
+    {
+      choices: [{ delta: {} }],
+      prompt_progress: { total: 20000, cache: 0, processed: 16384, time_ms: 5300 },
+    },
+    { choices: [{ delta: { reasoning_content: "hm" } }] },
+    { choices: [{ delta: { content: "ok" } }] },
+    "[DONE]",
+  );
+  const seen: PromptProgress[] = [];
+  await streamChat(res.body!, undefined, undefined, (p) => seen.push(p));
+  expect(seen.map((p) => p.processed)).toEqual([8192, 16384, 20000]);
+  expect(seen[2]?.time_ms).toBeGreaterThanOrEqual(5300);
 });

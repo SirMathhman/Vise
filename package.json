@@ -11,14 +11,14 @@
   "scripts": {
     "start": "bun index.ts",
     "build:web": "bun build ./packages/frontend/src/app.ts --outdir ./packages/frontend/dist --target browser --minify",
-    "web": "bun run build:web && bun src/web/main.ts",
+    "web": "bun run build:web && bun apps/web/src/main.ts",
     "dev:web": "bun run scripts/dev-web.ts",
-    "typecheck:web": "tsc --project web/tsconfig.json",
+    "typecheck:web": "tsc --project packages/frontend/tsconfig.json",
     "test": "bun test",
-    "lint": "eslint src/ test/ index.ts web/ extension/",
+    "lint": "eslint packages/ apps/ test/ index.ts",
     "format": "prettier --write .",
     "build:ext": "bun scripts/build-ext.ts",
-    "typecheck:ext": "tsc --project extension/tsconfig.json",
+    "typecheck:ext": "tsc --project apps/extension/tsconfig.json",
     "build:exe": "bun scripts/build-exe.ts"
   },
   "devDependencies": {

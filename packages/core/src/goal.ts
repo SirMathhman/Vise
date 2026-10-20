@@ -11,8 +11,8 @@ import { parse } from "./schemas/parse.ts";
  * conversation when the user speaks, and once the model stops, a throwaway
  * question asks whether the goal was actually met. Both calls are appended to
  * the conversation only for the one request (never stored), answer in
- * schema-constrained JSON, and never loop on a broken check: a call that fails
- * is asked again (up to `ASK_ATTEMPTS`
+ * JSON of a fixed shape, and never loop on a broken check: a call that fails,
+ * or answers in the wrong shape, is asked again (up to `ASK_ATTEMPTS`
  * times). The goal check then reports "unknown" with the exact reason (it never
  * claims "met" for a check that did not run), and the turn ends with the goal
  * kept. The goal and progress checks fall back to the user's words and to
@@ -82,12 +82,33 @@ function describeError(error: ViseError): string {
 type Asked = { ok: true; reply: Record<string, unknown> } | { ok: false; why: string };
 
 /**
+ * Whether a reply has the shape `schema` asks for, as far as the answer
+ * depends on it: it uses the schema's properties (not some other object, such
+ * as a tool call), every `enum` property is there with one of its values, and
+ * every string property present is a string (a missing one reads as empty).
+ * Only what the goal schemas use.
+ */
+export function fitsSchema(
+  reply: Record<string, unknown>,
+  schema: Record<string, unknown>,
+): boolean {
+  const properties = (schema["properties"] ?? {}) as Record<string, Record<string, unknown>>;
+  const entries = Object.entries(properties);
+  if (!entries.some(([key]) => key in reply)) return false;
+  return entries.every(([key, spec]) => {
+    const value = reply[key];
+    const allowed = spec["enum"];
+    if (Array.isArray(allowed)) return allowed.includes(value);
+    return !(key in reply) || spec["type"] !== "string" || typeof value === "string";
+  });
+}
+
+/**
  * Ask the model for JSON matching `schema`, as a one-off question at the end of
- * the conversation. The request is constrained to the schema (the server
- * decodes only tokens that keep the reply valid), so the reply is trusted to
- * have its shape: a wrong shape is not something the model can produce. A call
- * that fails is asked again; after `ASK_ATTEMPTS` the answer is why the last
- * attempt failed.
+ * the conversation. A server that constrains decoding (llama.cpp) can only
+ * produce the shape; another (Strata) is only asked for it, so the reply is
+ * checked. A call that fails or answers in another shape is asked again; after
+ * `ASK_ATTEMPTS` the answer is why the last attempt failed.
  */
 async function ask(
   client: Client,
@@ -122,20 +143,18 @@ async function ask(
       if (result.error.kind === "interrupted" || signal?.aborted) break;
       continue;
     }
-    let reply: Record<string, unknown>;
+    let reply: unknown;
     try {
       reply = JSON.parse(result.value.content);
     } catch {
-      // Only a server that ignored the schema gets here; asking again would not change that.
-      const bad = `the server did not apply the response schema (reply: ${result.value.content.slice(0, 200)})`;
-      trace?.({ ...asked, reply: capTrace(result.value.content), failure: bad });
-      return { ok: false, why: bad };
+      reply = undefined;
     }
     const checked = parse(z.record(z.string(), z.unknown()), reply);
-    if (!checked.ok) {
-      const bad = `the server did not return a JSON object (reply: ${result.value.content.slice(0, 200)})`;
-      trace?.({ ...asked, reply: capTrace(result.value.content), failure: bad });
-      return { ok: false, why: bad };
+    if (!checked.ok || !fitsSchema(checked.value, schema)) {
+      // The model answered in another shape (possible where the server does not constrain decoding): ask again.
+      why = `the reply did not match the response schema (reply: ${result.value.content.slice(0, 200)})`;
+      trace?.({ ...asked, reply: capTrace(result.value.content), failure: why });
+      continue;
     }
     trace?.({ ...asked, reply: capTrace(result.value.content) });
     return { ok: true, reply: checked.value };
@@ -230,7 +249,7 @@ export async function checkGoal(
     trace,
   );
   if (!reply.ok) return { kind: "unknown", detail: reply.why };
-  // The schema allows only these three.
+  // `fitsSchema` allowed only these three.
   const kind = reply.reply["verdict"] as "yes" | "no" | "blocked";
   return { kind, detail: text(reply.reply["detail"]) };
 }

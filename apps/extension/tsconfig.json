@@ -11,5 +11,5 @@
     "skipLibCheck": true,
     "noUnusedLocals": true
   },
-  "include": ["src/**/*.ts", "../src/browser/page-scripts.ts"]
+  "include": ["src/**/*.ts", "../../packages/backend/src/browser/page-scripts.ts"]
 }

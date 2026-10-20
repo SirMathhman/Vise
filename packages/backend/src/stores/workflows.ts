@@ -12,7 +12,7 @@ import type { Result } from "@vise/core";
 import { parse, parseJson, workflowSchema } from "@vise/core";
 import { formatError } from "../output/format.ts";
 import { validName } from "./notes.ts";
-import type { Workflow, WorkflowScope, WorkflowStep } from "@vise/core";
+import type { Workflow, WorkflowScope } from "@vise/core";
 
 export type { WorkflowScope } from "@vise/core";
 

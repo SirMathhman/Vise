@@ -1,4 +1,4 @@
-import type { ListsSnapshot } from "../../src/repl/lists.ts";
+import type { ListsSnapshot } from "@vise/backend/src/repl/lists.ts";
 import type { CallPurpose } from "@vise/core";
 import type { HistoryEntry } from "./log/history.ts";
 import type { HooksFields } from "./settings/hooks/hooks-panel.ts";

@@ -3,7 +3,7 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: ["node_modules/**", "sessions/**", "web/dist/**", "extension/dist/**"],
+    ignores: ["node_modules/**", "sessions/**", "packages/*/dist/**", "apps/*/dist/**"],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
@@ -28,7 +28,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ["src/core/**/*.ts"],
+    files: ["packages/core/src/**/*.ts"],
     rules: {
       "no-restricted-imports": [
         "error",
@@ -44,21 +44,21 @@ export default tseslint.config(
     },
   },
   {
-    files: ["src/**/*.ts", "index.ts"],
+    files: ["packages/*/src/**/*.ts", "apps/*/src/**/*.ts", "index.ts"],
     rules: {
       "max-lines": ["error", { max: 500, skipBlankLines: true, skipComments: true }],
       "max-lines-per-function": ["error", { max: 100, skipBlankLines: true, skipComments: true }],
     },
   },
   {
-    files: ["extension/src/**/*.ts"],
+    files: ["apps/extension/src/**/*.ts"],
     rules: {
       "max-lines": ["error", { max: 500, skipBlankLines: true, skipComments: true }],
       "max-lines-per-function": ["error", { max: 100, skipBlankLines: true, skipComments: true }],
     },
   },
   {
-    files: ["web/src/**/*.ts", "web/src/**/*.tsx"],
+    files: ["packages/frontend/src/**/*.ts", "packages/frontend/src/**/*.tsx"],
     languageOptions: {
       globals: {
         document: "readonly",
@@ -73,7 +73,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ["web/src/**/*.ts", "web/src/**/*.tsx"],
+    files: ["packages/frontend/src/**/*.ts", "packages/frontend/src/**/*.tsx"],
     rules: {
       "max-lines": ["error", { max: 500, skipBlankLines: true, skipComments: true }],
       "max-lines-per-function": ["error", { max: 100, skipBlankLines: true, skipComments: true }],

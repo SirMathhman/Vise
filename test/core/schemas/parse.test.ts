@@ -19,7 +19,6 @@ import {
   type Message,
   type ToolCall,
   type Picture,
-  type GoalTraceFact,
   type Workflow,
   type AuditEvent,
   type AuditCall,

@@ -20,7 +20,7 @@ import {
   uploadScript,
 } from "./page-actions.ts";
 import { ownedIds, release, requireOwned, tryGrant } from "./tabs.ts";
-import type { TabInfo } from "@vise/backend";
+import type { TabInfo } from "../../../packages/backend/src/browser/types.ts";
 
 /** The operations the Vise server asks for (see `src/web/ext/ext-hub.ts` and `src/browser/extension.ts`). */
 

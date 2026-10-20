@@ -311,7 +311,8 @@ export interface McpStatusSource {
   restart(name: string): Promise<string>;
 }
 
-export type { SemanticHit, SemanticStatus, SemanticUpdateStats } from "@vise/common";
+import type { SemanticHit, SemanticStatus, SemanticUpdateStats } from "@vise/common";
+export type { SemanticHit, SemanticStatus, SemanticUpdateStats };
 
 /**
  * A folder's files searchable by meaning. One per project, shared by every

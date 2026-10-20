@@ -1,3 +1,5 @@
+import type { AssistantMessage, Message } from "@vise/core";
+
 /**
  * The model provider the client talks to: the local server, llama.cpp or Strata (see `detectBackend`).
  * Pure: built from setting values, it says where requests go, what headers they
@@ -45,6 +47,10 @@ export interface ProviderCapabilities {
   flatReasoning: boolean;
   /** The `json_schema` response format carries a `name` and `strict` (OpenAI's shape; Strata and hosted engines require it, llama.cpp ignores both). */
   namedSchema: boolean;
+  /** A `response_format` schema constrains decoding. Without it the schema is asked for in the prompt and the reply checked by the caller (see `schemaPrompt`). */
+  schemaDecoding: boolean;
+  /** `POST /v1/embeddings` exists. */
+  embeddings: boolean;
 }
 
 const LLAMA_CPP: ProviderCapabilities = {
@@ -55,12 +61,17 @@ const LLAMA_CPP: ProviderCapabilities = {
   serverState: true,
   flatReasoning: true,
   namedSchema: true,
+  schemaDecoding: true,
+  embeddings: true,
 };
 
 /**
  * Strata (an OpenAI-compatible engine for large MoE models) takes the extra llama.cpp fields without
  * complaint but acts on none of them: no grammar decoding (it validates after the fact), one sequence
  * so no slots, no `dry_*`. It does report `/props` and `/slots`, and answers `return_progress`.
+ * A `response_format` is only validated after the fact, and Strata puts its own schema instructions near
+ * the start of the prompt, which throws away the cached conversation for that call and the one after it
+ * (it keeps one cache): so the schema goes in the question at the end instead. It has no embeddings.
  */
 const STRATA: ProviderCapabilities = {
   grammar: false,
@@ -70,6 +81,8 @@ const STRATA: ProviderCapabilities = {
   serverState: true,
   flatReasoning: true,
   namedSchema: true,
+  schemaDecoding: false,
+  embeddings: false,
 };
 
 type Backend = "llama.cpp" | "strata";
@@ -77,6 +90,8 @@ type Backend = "llama.cpp" | "strata";
 /** What each server (by base URL) turned out to be; absent until `detectBackend` has asked. */
 const backends = new Map<string, Backend>();
 const probes = new Map<string, Promise<void>>();
+/** The one model a Strata server serves (`/v1/status` `model`), per base URL. */
+const servedModels = new Map<string, string>();
 
 const trim = (url: string): string => url.replace(/\/+$/, "");
 
@@ -94,8 +109,11 @@ export function detectBackend(baseUrl: string): Promise<void> {
     try {
       const res = await fetch(`${base}/v1/status`, { signal: AbortSignal.timeout(2_000) });
       const body: unknown = res.ok ? await res.json().catch(() => undefined) : undefined;
-      const service = (body as { service?: unknown } | null | undefined)?.service;
-      backends.set(base, service === "strata" ? "strata" : "llama.cpp");
+      const status = body as { service?: unknown; model?: unknown } | null | undefined;
+      backends.set(base, status?.service === "strata" ? "strata" : "llama.cpp");
+      if (status?.service === "strata" && typeof status.model === "string" && status.model !== "") {
+        servedModels.set(base, status.model);
+      }
     } catch {
       // Unreachable now: assume llama.cpp for this call and ask again next time.
     } finally {
@@ -137,7 +155,8 @@ export function providerOf(s: ProviderSettings, id: ProviderId): Provider {
   return {
     id: "local",
     backend,
-    defaultModel: s.llmModel,
+    // Strata serves exactly one model: a default named for llama.cpp's router would mean nothing there.
+    defaultModel: (backend === "strata" ? servedModels.get(base) : undefined) ?? s.llmModel,
     chatUrl: `${base}/v1/chat/completions`,
     modelsUrl: `${base}/v1/models`,
     rootUrl: base,
@@ -167,6 +186,41 @@ export function responseFormat(
         json_schema: { name: "vise", strict: true, schema },
       }
     : { type: "json_schema", json_schema: { schema } };
+}
+
+/**
+ * The question's addition when the server does not constrain decoding to a schema: the schema itself, as
+ * the last thing the model reads (the conversation before it stays byte-identical, so it stays cached).
+ */
+export function schemaPrompt(schema: Record<string, unknown>): string {
+  return `
+
+Answer with only a JSON object matching this JSON schema, with no other text and no tool call:
+${JSON.stringify(schema)}`;
+}
+
+/** The JSON object in an unconstrained reply: without a code fence or words around it, when there are any. */
+export function jsonObjectIn(text: string): string {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  return start >= 0 && end > start ? text.slice(start, end + 1) : text.trim();
+}
+
+/** The conversation with the schema appended to its last message (the one-off question). */
+export function withSchemaPrompt(messages: Message[], schema: Record<string, unknown>): Message[] {
+  const last = messages[messages.length - 1];
+  if (!last) return messages;
+  return [...messages.slice(0, -1), { ...last, content: last.content + schemaPrompt(schema) }];
+}
+
+/** A reply as the caller gets it: where nothing constrained it to the schema, only its JSON object (the caller checks the shape). */
+export function schemaReply(
+  provider: Provider,
+  message: AssistantMessage,
+  schema: Record<string, unknown> | undefined,
+): AssistantMessage {
+  if (!schema || provider.capabilities.schemaDecoding) return message;
+  return { ...message, content: jsonObjectIn(message.content) };
 }
 
 /** What `GET /models` says about one model. */

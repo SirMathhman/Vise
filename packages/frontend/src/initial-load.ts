@@ -1,4 +1,4 @@
-import type { ListsSnapshot } from "../../src/repl/lists.ts";
+import type { ListsSnapshot } from "@vise/backend/src/repl/lists.ts";
 import type { ResultMessage, ServerMessage } from "./server-message.ts";
 import type { Panels } from "./settings/panels.ts";
 import type { ProfileEditor } from "./settings/profiles/profile-editor.ts";

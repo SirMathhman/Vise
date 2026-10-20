@@ -27,6 +27,28 @@ function dismiss(dialog: HTMLDialogElement): void {
   dialog.remove();
 }
 
+/** The dialog's content when there is no workflow to run: a pointer to where they are made. */
+function renderEmpty(target: HTMLDialogElement): void {
+  target.append(
+    make("p", "confirm-message", "No workflows yet. Create one in Settings → Workflows."),
+  );
+  const close = make("button", "btn btn--lg", "Close");
+  close.type = "button";
+  close.addEventListener("click", () => dismiss(target));
+  const row = make("div", "actions confirm-actions");
+  row.append(close);
+  target.append(row);
+}
+
+/** The strip's title for the line now running: a workflow by `/workflow <name>` or its own shortcut, else none. */
+function runningTitle(line: string | null, workflows: WorkflowEntry[]): string | null {
+  const match = line ? /^\/workflow\s+(\S+)/.exec(line) : null;
+  if (match) return match[1] === "init" ? null : `Running workflow ${match[1]}…`;
+  if (!line) return null;
+  const bare = line.startsWith("/") ? line.slice(1).split(/\s/)[0] : null;
+  return bare && workflows.some((w) => w.name === bare) ? `Running workflow ${bare}…` : null;
+}
+
 /** What a `workflow` message changes: the strip, the chat log, and the profile select. */
 function followRun(
   message: WorkflowListMessage,
@@ -91,18 +113,7 @@ export function createWorkflowPicker(
   function render(target: HTMLDialogElement): void {
     target.textContent = "";
     target.append(make("h2", "confirm-title", "Run a workflow"));
-    if (workflows.length === 0) {
-      target.append(
-        make("p", "confirm-message", "No workflows yet. Create one in Settings → Workflows."),
-      );
-      const close = make("button", "btn btn--lg", "Close");
-      close.type = "button";
-      close.addEventListener("click", () => dismiss(target));
-      const row = make("div", "actions confirm-actions");
-      row.append(close);
-      target.append(row);
-      return;
-    }
+    if (workflows.length === 0) return renderEmpty(target);
     const form = make("form", "picker-form");
     form.method = "dialog";
     const label = make("label", "form-label", "Workflow");
@@ -146,17 +157,7 @@ export function createWorkflowPicker(
       opened.showModal();
     },
     running(line) {
-      const match = line ? /^\/workflow\s+(\S+)/.exec(line) : null;
-      if (match) {
-        const name = match[1];
-        showStrip(name === "init" ? null : `Running workflow ${name}…`);
-        return;
-      }
-      if (!line) return showStrip(null);
-      const bare = line.startsWith("/") ? line.slice(1).split(/\s/)[0] : null;
-      showStrip(
-        bare && workflows.some((w) => w.name === bare) ? `Running workflow ${bare}…` : null,
-      );
+      showStrip(runningTitle(line, workflows));
     },
     observe(message) {
       if (message.type === "workflow") {

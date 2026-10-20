@@ -39,6 +39,28 @@ export interface TranscriptView {
   lines(): readonly ChatLine[];
 }
 
+/** Where a new line goes, what records it, and what scrolls it into view. */
+interface LineSink {
+  boxes: ReturnType<typeof createBoxes>;
+  model: ReturnType<typeof createLineModel>;
+  follow: () => void;
+}
+
+/** Put an element at the end of the log (inside the open subagent box, if any) and record it. */
+function append<T extends HTMLElement>(sink: LineSink, cls: string, text: string, element: T): T {
+  sink.boxes.container().appendChild(element);
+  sink.model.add(cls, text, element);
+  sink.follow();
+  return element;
+}
+
+function plainLine(cls: string, text: string): HTMLDivElement {
+  const div = document.createElement("div");
+  div.className = `line ${cls}`;
+  div.textContent = text;
+  return div;
+}
+
 /**
  * `renderHtml`, when given, turns assistant markdown into sanitized HTML; when
  * omitted, assistant text is shown verbatim. `onPinned` hears whether the log is
@@ -73,15 +95,9 @@ export function createTranscript(
   const endThinking = thinking.end;
 
   enableThinkingToggle(log);
-  function addLine(cls: string, text: string): HTMLDivElement {
-    const div = document.createElement("div");
-    div.className = `line ${cls}`;
-    div.textContent = text;
-    boxes.container().appendChild(div);
-    model.add(cls, text, div);
-    follow();
-    return div;
-  }
+  const sink: LineSink = { boxes, model, follow };
+  const addLine = (cls: string, text: string): HTMLDivElement =>
+    append(sink, cls, text, plainLine(cls, text));
 
   /** Whatever was streaming or thinking ends before an event of another kind starts. */
   function settle(): void {
@@ -89,13 +105,8 @@ export function createTranscript(
     endThinking();
   }
 
-  function addCollapsed(cls: string, title: string, detail: string): HTMLElement {
-    const box = buildCollapsed(cls, title, detail);
-    boxes.container().appendChild(box);
-    model.add(cls, detail ? `${title} — ${detail}` : title, box);
-    follow();
-    return box;
-  }
+  const addCollapsed = (cls: string, title: string, detail: string): HTMLElement =>
+    append(sink, cls, detail ? `${title} — ${detail}` : title, buildCollapsed(cls, title, detail));
 
   return {
     addLine,

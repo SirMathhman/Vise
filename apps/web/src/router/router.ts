@@ -13,15 +13,7 @@ import { handleQueueCommand } from "../conn/queue-commands.ts";
 import { createInspector } from "../inspect/inspect.ts";
 import { handleTerminalMessage } from "../terminal/terminal-api.ts";
 import type { ConnectionState, WireMessage } from "./connection.ts";
-import {
-  wireBaseSchema,
-  lineSchema,
-  steerSchema,
-  unqueueSchema,
-  askAnswerSchema,
-  profileToolsSchema,
-  envSetSchema,
-} from "./wire-schemas.ts";
+import { wireBaseSchema } from "./wire-schemas.ts";
 
 /**
  * Where each message type from the page goes. One table, one shape: a route
