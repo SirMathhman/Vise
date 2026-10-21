@@ -4,13 +4,14 @@ Written for: developers working on this crate.
 
 ## Definitions
 
-- **Strata**: a local inference server that exposes an OpenAI-compatible API. This crate expects it at `http://127.0.0.1:8080`. Replies are streamed as server-sent events.
-- **REPL**: the terminal read-eval-print loop in `src/main.rs`. Each line of input is added to the conversation, sent to Strata, and the reply streams to the terminal. Reasoning appears under `[thinking]`, then the answer. `exit` or `quit` ends it, and `/new` starts a fresh conversation. It runs when `vise` is started without arguments.
-- **Web UI**: a browser page served by `vise web` on `127.0.0.1:3000`. It has the same chat behavior as the REPL. Reasoning appears in a collapsible Thinking block above the answer. The page is written in TypeScript and compiled to `web/app.js`.
-- **Proxy**: the `/api/chat` route in `src/web.rs`. Strata sends no CORS headers, so the browser calls this same-origin route, and only the Rust server calls Strata. The route relays Strata's stream to the browser as server-sent events.
+- **Strata**: a local inference server that exposes an OpenAI-compatible API. This crate expects it at `http://127.0.0.1:8080`. Replies are streamed as server-sent events, and tool calls are streamed as fragments indexed by call.
+- **REPL**: the terminal read-eval-print loop in `src/main.rs`. Each line of input is added to the conversation and run as a turn. Reasoning appears under `[thinking]`, tool calls under `[tool]`, then the answer. `exit` or `quit` ends it, and `/new` starts a fresh conversation. It runs when `vise` is started without arguments.
+- **Web UI**: a browser page served by `vise web` on `127.0.0.1:3000`. It has the same chat behavior as the REPL. Reasoning appears in a collapsible Thinking block, and tool calls appear as monospace lines in the reply. The page is written in TypeScript and compiled to `web/app.js`.
+- **Proxy**: the `/api/chat` route in `src/web.rs`. Strata sends no CORS headers, so the browser calls this same-origin route, and only the Rust server calls Strata. The route runs a turn and relays its events to the browser as server-sent events.
+- **Turn**: one user message and everything the model does in response, including any tool rounds. `agent::run_turn` runs it.
 - **Session**: the in-memory conversation history in `src/session.rs`. It lasts for one REPL run and is used only by the REPL. The web UI keeps its own copy in the page, which is lost on reload.
 - **Message**: one turn in a conversation, a `Role` (`User` or `Assistant`) plus its text. Defined in `src/strata.rs`.
-- **Chunk**: one streamed delta, either reasoning or answer text. Defined in `src/strata.rs`.
+- **Chunk**: one streamed piece of a turn: reasoning text, answer text, or a tool call (`Chunk::Tool`, currently a preformatted `name arguments` string). Defined in `src/strata.rs`.
 - **Config**: the server URL, model name, read timeout, and working directory, held in `strata::Config`. It defaults to the local server, the `qwen3.8-flash-next-iq2_xs` model, a 60-second read timeout, and no working directory. `main.rs` reads the current directory once at startup and passes it to both the REPL and the web server. When set, it is sent to the model as a leading system message on each request, and it is not stored in the session history. If the directory cannot be read, a warning is printed once at startup and the model is not told.
 - **StrataError**: the error type for a failed call. Its variants are `Network` (no connection), `Timeout` (no bytes within the read timeout), `Http` (non-2xx status), and `Malformed` (unparseable or unexpected response).
 
@@ -19,13 +20,15 @@ Written for: developers working on this crate.
 ```
 src/
   main.rs     stdin loop, or `web` argument to start the web server
+  agent.rs    run_turn: streams a reply, runs requested tools, repeats up to 8 rounds
+  tools.rs    tool definitions and run(): currently list_files
   session.rs  Session: message list with push, pop, reset, and messages (REPL only)
-  strata.rs   Config, Role, Message, Chunk, StrataError, and the streaming client
+  strata.rs   Config, Role, Message, Chunk, Reply, StrataError, and the streaming client
   web.rs      std TcpListener HTTP server, one thread per connection:
               serves the UI and proxies /api/chat as server-sent events
 web/
   index.html  page markup and styles
-  src/app.ts  client: reads the event stream and renders reasoning and answer
+  src/app.ts  client: reads the event stream and renders reasoning, tool calls, and answer
   app.js      compiled output of app.ts, committed so the server needs no build
   tsconfig.json
 package.json  TypeScript and concurrently dev dependencies. Scripts: `build` (tsc -p web),
@@ -33,32 +36,55 @@ package.json  TypeScript and concurrently dev dependencies. Scripts: `build` (ts
               and `dev` (runs both together)
 ```
 
+Dependencies run one way: `main` and `web` call `agent`, `agent` calls `strata` and `tools`, `strata` calls `tools` for the definitions sent with each request, and `session` uses `strata` for `Message`. There are no cycles.
+
 `strata.rs` is split into layers:
 
-- `open_stream(messages, config)` builds a `ureq` agent with the configured read timeout, sends the request, and returns a reader over the response body. Failures before any reply text are reported here.
-- `relay(reader, url, on_chunk)` reads server-sent events until `[DONE]`, passes each reasoning or content delta to `on_chunk`, and returns the full answer text.
-- `send_message(messages, config, on_chunk)` is `open_stream` followed by `relay`.
-- `build_body(messages, config)` builds the JSON body with `stream: true`. It is pure.
-- `parse_reply(url, data)` extracts `choices[0].message.content` from a non-streaming response. It is pure and used only by tests.
+- `message_items(messages, config)` converts messages to wire-format items, with the working directory first when set.
+- `open_stream(items, config)` builds a `ureq` agent with the configured read timeout, sends the request with the tool definitions, and returns a reader over the response body. Failures before any reply text are reported here.
+- `relay(reader, url, on_chunk)` reads server-sent events until `[DONE]`, passes each reasoning and content delta to `on_chunk`, assembles streamed tool-call fragments by index, and returns a `Reply` with the answer text and tool calls.
+- `stream_reply(items, config, on_chunk)` is `open_stream` followed by `relay`.
+- `request_body(items, config)` builds the JSON body with `stream: true` and the tool definitions. It is pure.
+- `build_body(messages, config)` is `request_body` over `message_items`. It is pure, tested, and used only by tests.
+- `parse_reply(url, data)` extracts `choices[0].message.content` from a non-streaming response. It is pure, tested, and used only by tests.
 
-Only `open_stream` and `relay` touch the network. `build_request` (a single-message wrapper around `build_body`) and `parse_reply` have unit tests in `strata.rs`. Neither is used at runtime, so both produce `dead_code` warnings in the binary build. `build_body` is not tested directly.
+`build_request` (a single-message wrapper around `build_body`) also exists only for tests. `build_request`, `build_body`, and `parse_reply` therefore produce `dead_code` warnings in the binary build.
 
-On a failed request, the REPL pops the user message it just added, so a failed turn does not stay in the history. The web UI does the same with its own copy.
+## Tools and the Turn Loop
 
-`web.rs` limits requests before reading the body: bodies over 1 MiB get 413, and POST `/api/chat` requires `Content-Type: application/json` or it gets 415. Each connection has a 10-second read timeout on the client socket. Each connection is handled on its own thread, so one slow client does not block others.
+`agent::run_turn` starts from the session's messages, streams a reply, and if the reply contains tool calls it:
+
+1. Adds the assistant's tool-call item to the working list.
+2. Reports each call as a `Chunk::Tool`, runs it with `tools::run`, and adds a `tool` message with the result.
+3. Streams the next reply.
+
+When a reply has no tool calls, its answer text is the turn's result. More than 8 rounds in one turn is an error.
+
+`tools::run(name, arguments)` returns the result text for the model. A failed call returns text beginning with `error:`, so the model can recover and the turn continues. The only tool is `list_files`, which takes a required `path` and a required `depth` of at least 1. Depth 1 lists only the directory's own entries, and subdirectories end with `/`.
+
+Tool exchanges are not stored in the session. Only the user message and the final answer are kept, so later turns do not see earlier tool results.
+
+On a failed turn the REPL pops the user message it just added, so a failed turn does not stay in the history. The web UI does the same with its own copy.
+
+`web.rs` limits requests before reading the body: bodies over 1 MiB get 413, and POST `/api/chat` requires `Content-Type: application/json` or it gets 415. Each connection has a 10-second read timeout on the client socket. Each connection is handled on its own thread, so one slow client does not block others. The chat route sends the event-stream headers when the first event is ready. A failure before that is a 502 JSON response.
 
 ## Potential Problems
 
+- **REPL and web histories diverge after tool calls.** The REPL keeps only the user message and the final answer. The web UI concatenates answer text from every round and keeps that. The same input can therefore give the model different histories in the two front ends.
+- **Tool output is unbounded.** `list_files` has no cap on entries or bytes, and depth has no maximum. Its full result is sent back to the model and re-sent with every later request, against a 131072-token context. The walk also runs on the request thread.
+- **`list_files` accepts any absolute path.** Output from injected content could list the filesystem. The web server binds to `127.0.0.1` and has no Origin check, which limits exposure but does not remove the risk.
 - **Strata read timeout is per read, not per reply.** A reply that keeps producing bytes can run longer than 60 seconds without timing out. Only a stall between bytes trips the timeout.
-- **Full history is sent every turn.** There is no cap, so a long session can exceed the model's context window (131072 tokens for this model).
-- **Config is compile-time only.** The URL, model, and timeout come from `Config::default()`, so changing them requires a rebuild. The web route calls it per request.
+- **Full history is sent every turn.** There is no cap, so a long session can exceed the model's context window.
+- **Config is compile-time only.** The URL, model, and timeout come from `Config::default()`, so changing them requires a rebuild. The web route uses the config passed at startup.
 - **Ctrl+C is not handled.** The OS default handler ends the process, so the `bye` message is not printed on Ctrl+C.
-- **Duplicated turn logic.** The REPL and the web UI each implement history, the pop-on-error rule, and chunk handling separately.
+- **Duplicated turn logic.** History handling and pop-on-error are still implemented separately in `main.rs` and `web/src/app.ts`.
+- **Layering.** The wire client knows the tool registry because `request_body` calls `tools::definitions()`. Tool-call wire format is split between `strata.rs` (fragment parsing) and `agent.rs` (building the assistant and tool messages).
+- **Error kinds.** Exceeding the tool-round cap is reported as `Malformed`, which reads as an unexpected response from Strata. Tool errors are plain text, not a type.
 - **Error handling gaps.** `StrataError` does not implement `std::error::Error`. A failed body read in the `Http` branch is silently replaced with an empty string. The web route maps every Strata error to 502, so the distinction between error kinds is lost there. The `Network` message repeats the URL, because the underlying error text already includes it.
 - **Only some errors suggest a next step.** The `Network` and `Timeout` messages do. The `Http` and `Malformed` messages do not.
 - **Web UI rollback is partial.** On a failed turn, the web UI drops the user message from its history, but the user message and any partial reply stay on screen. A retry does not include the failed turn in the history, which matches the REPL, but the screen and the history disagree.
 - **Non-JSON error bodies** fall back to a generic `HTTP <status>` message in the web UI, which does not say what to do.
-- **Dead functions.** `build_request` and `parse_reply` exist only for tests and produce `dead_code` warnings in the binary build.
+- **Dead functions.** `build_request`, `build_body`, and `parse_reply` exist only for tests and produce `dead_code` warnings in the binary build.
 - **Web UI race.** The New button stays enabled while a request is in flight. If it is clicked mid-request, the reply lands in a cleared conversation, and a later failure pops the wrong message.
 - **Web UI accessibility.** The chat input has no label or placeholder, and the page shows no hint when empty.
 
@@ -70,23 +96,25 @@ Error text is produced in three places:
 - **`parse_messages`** in `src/web.rs`. It returns the 400 messages for a bad request body.
 - **`web/src/app.ts`**. It builds its own messages for an unreachable server, a dropped connection, a reply that ends before `done`, and a non-JSON error response (`HTTP <status>`).
 
-Errors cross the wire as text only. The client cannot branch on the kind of error, and the JSON and SSE error shapes are handled by separate code paths in `app.ts`.
+Tool errors are returned to the model as `error:` text and are not shown as errors to the user. Errors cross the wire as text only. The client cannot branch on the kind of error, and the JSON and SSE error shapes are handled by separate code paths in `app.ts`.
 
 ## Future Work
 
-1. Move the turn loop (history, pop-on-error, chunk mapping) into one place that both the REPL and the web server call.
-2. Move `Role` and `Message` into their own module so the Strata client is a leaf module.
-3. Cap the history sent per request, or drop the oldest turns once it gets long.
-4. Read the URL, model, and timeout from environment variables or command-line arguments, keeping `Config` as the injection point.
-5. Handle Ctrl+C so the REPL prints `bye` and exits cleanly, for example with the `ctrlc` crate.
-6. Implement `std::error::Error` for `StrataError`, stop discarding body-read errors, and let the web route map error kinds to distinct statuses.
-7. Disable the New button while a request is in flight, and label the chat input.
-8. Dev loop: a TypeScript compile error leaves the server on the previous build with no signal beyond the terminal. Consider live reload. Also check on Windows whether restarting the server leaves the old `vise.exe` holding port 3000, and pin the dev tooling so `npm run dev` fails clearly when cargo-watch is missing.
+1. Make the turn loop own history: have `run_turn` return the new items for the turn, and store them the same way in the REPL and the web UI.
+2. Cap `list_files` output by entry count and bytes, and cap depth. Consider limiting paths to the working directory.
+3. Move the tool-call wire format into `strata.rs`, make `Chunk::Tool` carry structured data, and let each front end format it. Pass tool definitions in through `Config` rather than having the client call `tools`.
+4. Give tool and turn-loop errors their own types, so the round cap is not reported as a Strata response error.
+5. Cap the history sent per request, or drop the oldest turns once it gets long.
+6. Read the URL, model, and timeout from environment variables or command-line arguments, keeping `Config` as the injection point.
+7. Handle Ctrl+C so the REPL prints `bye` and exits cleanly, for example with the `ctrlc` crate.
+8. Implement `std::error::Error` for `StrataError`, stop discarding body-read errors, and let the web route map error kinds to distinct statuses.
+9. Disable the New button while a request is in flight, and label the chat input.
+10. Dev loop: a TypeScript compile error leaves the server on the previous build with no signal beyond the terminal. Consider live reload. Also check on Windows whether restarting the server leaves the old `vise.exe` holding port 3000, and pin the dev tooling so `npm run dev` fails clearly when cargo-watch is missing.
 
 ## Performance
 
 - Replies stream, so text appears as it is generated in both the REPL and the web UI.
 - Each web request runs on its own thread. The Strata call blocks only that thread.
 - Each request opens a new connection to Strata. Connections are not deliberately reused.
-- Each request re-sends the entire session, so request size and latency grow with conversation length.
-- Latency is dominated by model generation on the Strata server, not by this crate. The client adds only JSON encoding and one HTTP round trip.
+- Each request re-sends the entire session, and each tool round re-sends the whole turn, so request size and latency grow with conversation length and tool output.
+- Latency is dominated by model generation on the Strata server, not by this crate. The client adds only JSON encoding and one HTTP round trip per model round.
