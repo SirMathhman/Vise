@@ -2,6 +2,7 @@ use std::path::Path;
 
 use serde_json::{Value, json};
 
+use crate::grammar;
 use crate::strata::{self, Chunk, Config, Message, StrataError, ToolCall};
 use crate::tools::{self, Switches};
 
@@ -18,7 +19,16 @@ pub fn run_turn(
     let mut items = strata::message_items(messages, config);
     for _ in 0..MAX_TOOL_ROUNDS {
         let disabled = switches.snapshot();
-        let reply = strata::stream_reply(&items, config, on_chunk)?;
+        // The grammar is sent only while a tool is off, so normal decoding is untouched otherwise.
+        let grammar = (!disabled.is_empty()).then(|| {
+            let enabled: Vec<&str> = tools::NAMES
+                .iter()
+                .copied()
+                .filter(|name| !disabled.contains(*name))
+                .collect();
+            grammar::enabled_calls_only(&enabled)
+        });
+        let reply = strata::stream_reply(&items, config, grammar.as_deref(), on_chunk)?;
         if reply.tool_calls.is_empty() {
             return Ok(reply.content);
         }

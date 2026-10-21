@@ -76,6 +76,7 @@ pub enum StrataError {
     Network { url: String, cause: String },
     Timeout { url: String },
     Http { url: String, status: u16, body: String },
+    GrammarRejected { url: String, body: String },
     Malformed { url: String, reason: String },
 }
 
@@ -93,6 +94,10 @@ impl fmt::Display for StrataError {
             StrataError::Http { url, status, body } => {
                 write!(f, "Strata at {url} returned HTTP {status}: {body}")
             }
+            StrataError::GrammarRejected { url, body } => write!(
+                f,
+                "Strata at {url} rejected the grammar that blocks disabled tools: {body}. It may be running with batching or without grammar support. Re-enable the tools with /enable, or restart Strata without --batch."
+            ),
             StrataError::Malformed { url, reason } => {
                 write!(f, "Strata at {url} returned an unexpected response ({reason}).")
             }
@@ -104,9 +109,10 @@ impl fmt::Display for StrataError {
 pub fn stream_reply(
     items: &[Value],
     config: &Config,
+    grammar: Option<&str>,
     on_chunk: &mut dyn FnMut(Chunk),
 ) -> Result<Reply, StrataError> {
-    let reader = open_stream(items, config)?;
+    let reader = open_stream(items, config, grammar)?;
     relay(reader, &config.url, on_chunk)
 }
 
@@ -126,15 +132,25 @@ pub fn message_items(messages: &[Message], config: &Config) -> Vec<Value> {
 }
 
 /// Opens a streaming chat-completions request. Fails before any reply text is read.
-fn open_stream(items: &[Value], config: &Config) -> Result<EventReader, StrataError> {
+fn open_stream(
+    items: &[Value],
+    config: &Config,
+    grammar: Option<&str>,
+) -> Result<EventReader, StrataError> {
     let agent = ureq::AgentBuilder::new()
         .timeout_read(config.read_timeout)
         .build();
     match agent
         .post(&config.url)
-        .send_json(request_body(items, config))
+        .send_json(request_body(items, config, grammar))
     {
         Ok(response) => Ok(BufReader::new(response.into_reader())),
+        Err(ureq::Error::Status(400, response)) if grammar.is_some() => {
+            Err(StrataError::GrammarRejected {
+                url: config.url.clone(),
+                body: response.into_string().unwrap_or_default(),
+            })
+        }
         Err(ureq::Error::Status(status, response)) => Err(StrataError::Http {
             url: config.url.clone(),
             status,
@@ -262,13 +278,17 @@ fn is_timeout_kind(kind: io::ErrorKind) -> bool {
 
 /// Builds the chat-completions request body from wire-format items. The tool list is always the
 /// full list, so it never changes between requests and the prompt cache stays valid.
-fn request_body(items: &[Value], config: &Config) -> Value {
-    json!({
+fn request_body(items: &[Value], config: &Config, grammar: Option<&str>) -> Value {
+    let mut body = json!({
         "model": config.model,
         "messages": items,
         "stream": true,
         "tools": tools::definitions(),
-    })
+    });
+    if let Some(grammar) = grammar {
+        body["grammar"] = json!(grammar);
+    }
+    body
 }
 
 /// Builds the request body for a single user message.
@@ -282,7 +302,7 @@ fn build_request(content: &str, config: &Config) -> Value {
 
 /// Builds the streaming chat-completions request body from the full conversation.
 fn build_body(messages: &[Message], config: &Config) -> Value {
-    request_body(&message_items(messages, config), config)
+    request_body(&message_items(messages, config), config, None)
 }
 
 /// Extracts `choices[0].message.content` from a non-streaming chat-completions response.

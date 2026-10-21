@@ -1,5 +1,6 @@
 mod agent;
 mod commands;
+mod grammar;
 mod session;
 mod strata;
 mod tools;
