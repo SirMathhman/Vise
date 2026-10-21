@@ -1,4 +1,5 @@
 mod agent;
+mod commands;
 mod session;
 mod strata;
 mod tools;
@@ -87,6 +88,10 @@ fn main() -> io::Result<()> {
         if trimmed == "/new" {
             session.reset();
             println!("Started a new conversation.");
+            continue;
+        }
+        if let Some(output) = commands::handle(trimmed, &config) {
+            println!("{output}");
             continue;
         }
 

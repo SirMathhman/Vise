@@ -68,7 +68,11 @@ form.addEventListener("submit", async (event) => {
         return;
     }
     input.value = "";
-    conversation.push({ role: "user", content: text });
+    // Tool commands are answered by the server and kept out of the conversation.
+    const command = /^\/(tools|enable|disable)(\s|$)/.test(text);
+    if (!command) {
+        conversation.push({ role: "user", content: text });
+    }
     addEntry("user").textContent = text;
     input.disabled = true;
     const bubble = addEntry("assistant");
@@ -83,7 +87,8 @@ form.addEventListener("submit", async (event) => {
     let answerText = document.createElement("div");
     bubble.append(thinking, answerText);
     try {
-        const reply = await streamChat(conversation, (streamed) => {
+        const messages = command ? [...conversation, { role: "user", content: text }] : conversation;
+        const reply = await streamChat(messages, (streamed) => {
             if (streamed.type === "reasoning") {
                 thinking.hidden = false;
                 thinkingText.textContent += streamed.text;
@@ -101,10 +106,14 @@ form.addEventListener("submit", async (event) => {
             }
             scrollToEnd();
         });
-        conversation.push({ role: "assistant", content: reply });
+        if (!command) {
+            conversation.push({ role: "assistant", content: reply });
+        }
     }
     catch (err) {
-        conversation.pop();
+        if (!command) {
+            conversation.pop();
+        }
         if (answerText.textContent === "" && thinkingText.textContent === "") {
             bubble.remove();
         }

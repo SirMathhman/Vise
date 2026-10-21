@@ -1,6 +1,8 @@
+use std::collections::BTreeSet;
 use std::error::Error as _;
 use std::fmt;
 use std::io::{self, BufRead, BufReader, Read};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use serde_json::{Value, json};
@@ -15,6 +17,8 @@ pub struct Config {
     pub read_timeout: Duration,
     /// Directory the model is told it is working in. Sent as a system message when set.
     pub working_dir: Option<String>,
+    /// Names of tools that are switched off. Shared, so a change is seen by every request.
+    pub disabled_tools: Arc<Mutex<BTreeSet<String>>>,
 }
 
 impl Default for Config {
@@ -24,7 +28,29 @@ impl Default for Config {
             model: "qwen3.8-flash-next-iq2_xs".to_owned(),
             read_timeout: Duration::from_secs(60),
             working_dir: None,
+            disabled_tools: Arc::new(Mutex::new(BTreeSet::new())),
         }
+    }
+}
+
+impl Config {
+    pub fn tool_enabled(&self, name: &str) -> bool {
+        !self.lock_disabled().contains(name)
+    }
+
+    pub fn set_tool_enabled(&self, name: &str, enabled: bool) {
+        let mut disabled = self.lock_disabled();
+        if enabled {
+            disabled.remove(name);
+        } else {
+            disabled.insert(name.to_owned());
+        }
+    }
+
+    fn lock_disabled(&self) -> std::sync::MutexGuard<'_, BTreeSet<String>> {
+        self.disabled_tools
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
     }
 }
 
@@ -260,14 +286,28 @@ fn is_timeout_kind(kind: io::ErrorKind) -> bool {
     matches!(kind, io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock)
 }
 
-/// Builds the chat-completions request body from wire-format items.
+/// Builds the chat-completions request body from wire-format items. Only enabled tools are offered.
 fn request_body(items: &[Value], config: &Config) -> Value {
-    json!({
+    let offered: Vec<Value> = tools::definitions()
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|tool| {
+            tool["function"]["name"]
+                .as_str()
+                .is_some_and(|name| config.tool_enabled(name))
+        })
+        .cloned()
+        .collect();
+    let mut body = json!({
         "model": config.model,
         "messages": items,
         "stream": true,
-        "tools": tools::definitions(),
-    })
+    });
+    if !offered.is_empty() {
+        body["tools"] = json!(offered);
+    }
+    body
 }
 
 /// Builds the request body for a single user message.

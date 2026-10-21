@@ -7,6 +7,7 @@ use std::time::Duration;
 use serde_json::{Value, json};
 
 use crate::agent;
+use crate::commands;
 use crate::strata::{Chunk, Config, Message, Role};
 
 pub const DEFAULT_PORT: u16 = 3000;
@@ -152,6 +153,16 @@ fn chat(mut stream: TcpStream, request: &Request, config: &Config) -> io::Result
     };
 
     let mut started = false;
+    if let Some(reply) = messages
+        .last()
+        .filter(|message| matches!(message.role, Role::User))
+        .and_then(|message| commands::handle(&message.content, config))
+    {
+        start_stream(&mut stream, &mut started)?;
+        write_event(&mut stream, &json!({ "type": "content", "text": reply }))?;
+        return write_event(&mut stream, &json!({ "type": "done", "answer": reply }));
+    }
+
     let outcome = agent::run_turn(&messages, config, &mut |chunk| {
         let event = match chunk {
             Chunk::Reasoning(text) => json!({ "type": "reasoning", "text": text }),

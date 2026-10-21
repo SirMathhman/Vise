@@ -11,6 +11,16 @@ pub const CREATE_DIRECTORY: &str = "create_directory";
 pub const DELETE_FILE: &str = "delete_file";
 pub const DELETE_DIRECTORY: &str = "delete_directory";
 
+/// Every tool name, in the order they are listed to the user.
+pub const NAMES: [&str; 6] = [
+    LIST_FILES,
+    READ_FILE,
+    CREATE_FILE,
+    CREATE_DIRECTORY,
+    DELETE_FILE,
+    DELETE_DIRECTORY,
+];
+
 /// The tool definitions sent with every chat request.
 pub fn definitions() -> Value {
     json!([
