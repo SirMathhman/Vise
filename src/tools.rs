@@ -1,6 +1,6 @@
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
-use std::path::{Component, Path, PathBuf, Prefix};
+use std::path::{Component, Path, PathBuf};
 
 use serde_json::{Value, json};
 
@@ -133,13 +133,13 @@ fn resolve(root: Option<&Path>, path: &str, allow_root: bool) -> Result<PathBuf,
         .ok_or("no working directory is set, so file tools are unavailable")?
         .canonicalize()
         .map_err(|err| format!("could not read the working directory: {err}"))?;
-    let mut parts = Path::new(path).components();
-    if let Some(Component::Prefix(prefix)) = parts.next() {
-        let local_drive =
-            matches!(prefix.kind(), Prefix::Disk(_)) && matches!(parts.next(), Some(Component::RootDir));
-        if !local_drive {
-            return Err(format!("network, device, and drive-relative paths are refused: {path}"));
-        }
+    if Path::new(path)
+        .components()
+        .any(|part| matches!(part, Component::Prefix(_) | Component::RootDir))
+    {
+        return Err(format!(
+            "absolute, network, device, and drive-relative paths are refused; use a path relative to the working directory: {path}"
+        ));
     }
     let requested = root.join(path);
 
@@ -345,7 +345,8 @@ mod tests {
         let root = std::env::temp_dir().join(format!("vise-scope-{}", std::process::id()));
         fs::create_dir_all(&root).unwrap();
         let outside = root.join("..").join(format!("vise-outside-{}.txt", std::process::id()));
-        let args = json!({ "path": outside.display().to_string(), "content": "x" }).to_string();
+        let relative = format!("../vise-outside-{}.txt", std::process::id());
+        let args = json!({ "path": relative, "content": "x" }).to_string();
 
         let result = run(CREATE_FILE, &args, Some(&root));
         let without_root = run(CREATE_FILE, &args, None);
@@ -357,12 +358,56 @@ mod tests {
     }
 
     #[test]
+    fn refuses_working_directory_and_non_relative_paths() {
+        let root = std::env::temp_dir().join(format!("vise-refuse-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let run_in_root = |name: &str, path: &str| {
+            run(name, &json!({ "path": path, "depth": 1 }).to_string(), Some(&root))
+        };
+
+        let dot = run_in_root(DELETE_DIRECTORY, ".");
+        let empty = run_in_root(DELETE_DIRECTORY, "");
+        let drive_relative = run_in_root(LIST_FILES, "C:foo");
+        let unc = run_in_root(LIST_FILES, r"\\server\share");
+        let slash_unc = run_in_root(LIST_FILES, "//server/share");
+        let absolute = run_in_root(LIST_FILES, "C:\\Windows");
+        let root_still_exists = root.is_dir();
+        fs::remove_dir_all(&root).unwrap();
+
+        assert!(dot.starts_with("error: the working directory itself cannot be changed"));
+        assert!(empty.starts_with("error: the working directory itself cannot be changed"));
+        assert!(drive_relative.starts_with("error: absolute, network, device, and drive-relative"));
+        assert!(unc.starts_with("error: absolute, network, device, and drive-relative"));
+        assert!(slash_unc.starts_with("error: absolute, network, device, and drive-relative"));
+        assert!(absolute.starts_with("error: absolute, network, device, and drive-relative"));
+        assert!(root_still_exists);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn symlink_loop_inside_root_is_refused_not_treated_as_missing() {
+        let root = std::env::temp_dir().join(format!("vise-loop-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let link = root.join("loop");
+        std::os::windows::fs::symlink_dir(&link, &link).unwrap();
+
+        let result = run(
+            LIST_FILES,
+            &json!({ "path": "loop", "depth": 1 }).to_string(),
+            Some(&root),
+        );
+        fs::remove_dir_all(&root).unwrap();
+
+        assert!(result.starts_with("error: could not resolve loop"));
+    }
+
+    #[test]
     fn list_files_respects_depth() {
         let root = std::env::temp_dir().join(format!("vise-list-{}", std::process::id()));
         fs::create_dir_all(root.join("sub")).unwrap();
         fs::write(root.join("a.txt"), "").unwrap();
         fs::write(root.join("sub").join("b.txt"), "").unwrap();
-        let path = root.display().to_string().replace('\\', "\\\\");
+        let path = root.file_name().unwrap().to_str().unwrap().to_owned();
 
         let shallow = run_in_temp(LIST_FILES, &format!(r#"{{"path":"{path}","depth":1}}"#));
         let deep = run_in_temp(LIST_FILES, &format!(r#"{{"path":"{path}","depth":2}}"#));
@@ -377,7 +422,7 @@ mod tests {
     fn read_file_returns_numbered_lines_from_start_to_excluded_end() {
         let file = std::env::temp_dir().join(format!("vise-read-{}.txt", std::process::id()));
         fs::write(&file, "a\nb\nc\n").unwrap();
-        let path = file.display().to_string();
+        let path = file.file_name().unwrap().to_str().unwrap().to_owned();
 
         let middle = run_in_temp(READ_FILE, &json!({ "path": path, "start": 2, "end": 4 }).to_string());
         let clipped = run_in_temp(READ_FILE, &json!({ "path": path, "start": 1, "end": 10 }).to_string());
@@ -397,7 +442,8 @@ mod tests {
 
         let result = run_in_temp(
             READ_FILE,
-            &json!({ "path": file.display().to_string(), "start": 1, "end": 2001 }).to_string(),
+            &json!({ "path": file.file_name().unwrap().to_str().unwrap(), "start": 1, "end": 2001 })
+                .to_string(),
         );
         fs::remove_file(&file).unwrap();
 
@@ -409,8 +455,8 @@ mod tests {
     fn create_and_delete_refuse_wrong_kinds_and_existing_paths() {
         let root = std::env::temp_dir().join(format!("vise-edit-{}", std::process::id()));
         let file = root.join("made.txt");
-        let file_path = file.display().to_string();
-        let dir_path = root.display().to_string();
+        let file_path = format!("vise-edit-{}/made.txt", std::process::id());
+        let dir_path = format!("vise-edit-{}", std::process::id());
 
         let created_dir = run_in_temp(CREATE_DIRECTORY, &json!({ "path": dir_path }).to_string());
         let created_file = run_in_temp(

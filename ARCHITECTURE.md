@@ -74,7 +74,7 @@ The write tools change the disk and run without confirmation:
 
 All six file tools (the two read tools above and these four) resolve their path with `tools::resolve(root, path, allow_root)` against the working directory. Checks are applied in this order:
 
-1. Network, device, and drive-relative paths (`\\host\share`, `//host/share`, `C:foo`) are refused before any filesystem call. Relative paths and drive-absolute paths such as `C:\...` pass this step.
+1. Absolute paths (`C:\...`, `\...`), network and device paths (`\\host\share`, `//host/share`), and drive-relative paths (`C:foo`) are refused before any filesystem call. Only relative paths continue.
 2. The path is joined to the working directory. Each existing component is inspected with `symlink_metadata`, and only "not found" lets the walk move to the parent. Any other error fails the call.
 3. The nearest existing ancestor is canonicalized, the missing components are appended, and the result must start with the canonical working directory. This catches `..` and symlinks that point outside.
 4. Unless `allow_root` is set, the working directory itself is refused. Only the read tools allow it, so a write or delete can never target the directory.
