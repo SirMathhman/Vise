@@ -12,7 +12,8 @@ pub fn enabled_calls_only(enabled: &[&str]) -> String {
     } else {
         let names: Vec<String> = enabled.iter().map(|name| literal(name)).collect();
         rules.push("root ::= prose calls?".to_owned());
-        rules.push("calls ::= call+".to_owned());
+        rules.push("calls ::= call (ws call)* ws".to_owned());
+        rules.push("ws ::= [ \\t\\n]*".to_owned());
         rules.push(format!(
             "call ::= {} name {} params {}",
             literal("<tool_call>\n<function="),
