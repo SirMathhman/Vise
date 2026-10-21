@@ -1,25 +1,5 @@
 import { createInterface } from "node:readline";
-
-const STRATA_URL = "http://127.0.0.1:8080/v1/chat/completions";
-const MODEL = "qwen3.8-flash-next-iq2_xs";
-
-async function send(content: string): Promise<string> {
-  const res = await fetch(STRATA_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: MODEL,
-      messages: [{ role: "user", content }],
-    }),
-  });
-  if (!res.ok) {
-    throw new Error(`Strata responded ${res.status}: ${await res.text()}`);
-  }
-  const data = (await res.json()) as {
-    choices: { message: { content: string } }[];
-  };
-  return data.choices[0]?.message.content ?? "";
-}
+import { DEFAULT_CONFIG, describeStrataError, sendMessage } from "./strata.ts";
 
 const rl = createInterface({
   input: process.stdin,
@@ -38,10 +18,11 @@ rl.on("line", async (line) => {
     return;
   }
   if (trimmed !== "") {
-    try {
-      console.log(await send(trimmed));
-    } catch (err) {
-      console.error(err instanceof Error ? err.message : err);
+    const result = await sendMessage(trimmed, DEFAULT_CONFIG);
+    if (result.ok) {
+      console.log(result.value);
+    } else {
+      console.error(describeStrataError(result.error));
     }
   }
   rl.prompt();
