@@ -81,6 +81,8 @@ All six file tools (the two read tools above and these four) resolve their path 
 
 These checks run when the tool is called. They are not a sandbox: a link created between the check and the operation is not caught. Without a working directory every file tool returns an error.
 
+Tools can be switched off at runtime. `/tools` lists each tool as on or off, `/disable <tool>` switches one off, and `/enable <tool>` switches it back on. The state is a set of disabled names held in `Config` behind an `Arc<Mutex<...>>`, so the REPL and every web request share it. Disabled tools are left out of the request's tool list, and a call to one returns an error. The commands are handled in `src/commands.rs`. The REPL handles them before a turn starts, and the web server answers a command in place of a turn. The page keeps commands out of its conversation. Everything is on at startup, and the state is not saved between runs.
+
 Tool exchanges are not stored in the session. Only the user message and the final answer are kept, so later turns do not see earlier tool results.
 
 On a failed turn the REPL pops the user message it just added, so a failed turn does not stay in the history. The web UI does the same with its own copy.
