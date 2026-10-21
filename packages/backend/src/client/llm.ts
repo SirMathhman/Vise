@@ -25,6 +25,7 @@ import {
   parseModelRef,
   providerFor,
   providerOf,
+  effortOrDefault,
   reasoningFields,
   responseFormat,
   schemaReply,
@@ -402,7 +403,8 @@ export class LlmClient implements Client {
     // (and the unset case) omit the field so the template uses its built-in
     // default; every other level — including `none`, which disables
     // reasoning — is sent through.
-    Object.assign(body, reasoningFields(this.provider(), this.reasoningEffort));
+    const level = effortOrDefault(this.reasoningEffort, config.defaultReasoningEffort);
+    Object.assign(body, reasoningFields(this.provider(), level));
   }
 
   /**

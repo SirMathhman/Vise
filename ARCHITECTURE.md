@@ -1,837 +1,201 @@
 # Vise — Architecture
 
-This document describes the architecture that `vise` is working toward. The
-layout and the design sections (settings, packaging, the desktop window,
-steering) describe what exists and end with what is still to do; the rest
-points ahead of the current code. It is not a changelog: completed work is
-visible in the git log. `AGENTS.md` has the file-level details.
+Design rationale, invariants and layout for `vise`. It describes what exists and, where marked, what is still to do; it is not a changelog (see the git log). `AGENTS.md` is the quick reference with file-level detail and the non-obvious behaviours.
 
 ## Definitions
 
-- **Vise** — the tool itself: an interactive LLM chat REPL run on the Bun
-  runtime. The user types lines; each line is appended to a conversation and
-  sent to a local LLM server; the assistant's reply is printed. The name
-  evokes a vice: something that grips and holds its subject in place.
-- **Line** — a single unit of user input, one line of stdin, terminated by a
-  newline.
-- **Session** — one running invocation of the tool, from process start until
-  clean termination.
-- **Core** — the pure evaluation pipeline that consumes lines and produces
-  results. The core must know nothing about `process`, `stdin`, `stdout`, or
-  any specific transport.
-- **Driver** — the thin edge code that adapts a transport (the interactive
-  terminal, a pipe, a script file, a future host embedding) to the core.
-- **Result** — a structured value the core returns for each line, carrying
-  either a successful value or a structured error. The core must not throw.
-- **Structured error** — a typed error value that answers four questions:
-  what went wrong, where it came from, why it is an error, and what the user
-  can do to fix it.
+- **Vise** — an interactive LLM chat REPL on the Bun runtime. The user types lines; each is appended to a conversation and sent to a local LLM server; the reply is shown. The name evokes a vice: something that grips its subject.
+- **Line** — one unit of user input.
+- **Session** — one conversation's live state: the `messages` array, the active profile, settings of the turn loop.
+- **Core** — the pure pipeline that consumes lines and produces results. It knows nothing of `process`, `stdin`, `stdout` or any transport.
+- **Driver** — the thin edge code adapting a transport (the terminal, the web server) to the core.
+- **Result** — a structured value carrying either a value or a structured error. The core does not throw.
+- **Structured error** — a typed value answering: what went wrong, where it came from, why it is an error, and what the user can do.
 
 ### Invariants
 
-1. The core is pure: same input lines in, same results out. No `node:` imports,
-   no globals, no I/O.
-2. All I/O lives at the edge. Only the driver touches `process`, `stdin`,
-   `stdout`, and `node:readline`.
-3. The process never exits via `process.exit()`; termination happens when the
-   event loop drains, and exit codes are set with `process.exitCode`. This is
-   what guarantees buffered output is always flushed.
-4. Dependency arrows point one way only: edge → core. The core never imports
-   anything from a driver or from `index.ts`.
-5. No module in the core imports `node:readline`, `console`, or `process`.
-6. The system message (the first element of the conversation's `messages`
-   array) is set once in the `Session` constructor and never modified after
-   initialization. This preserves prompt-prefix caching: the LLM server can
-   reuse cached KV positions for the system prompt across turns. Profile
-   instructions are appended as user messages, not injected into the system
-   prompt.
+1. The core is pure: same input, same results. No `node:` imports, globals, or I/O.
+2. All I/O lives at the edge. Only drivers touch `process`, stdin and stdout.
+3. The process never exits via `process.exit()`; it ends when the event loop drains, with `process.exitCode` set. Buffered output is then always flushed.
+4. Dependency arrows point edge → core only.
+5. No core module imports `node:readline`, `console` or `process`.
+6. The system message is set once and never modified, to preserve prompt-prefix caching. Profile instructions and notices are appended as user messages.
+7. Every file stays under 500 code lines and every function under 100 (lint); at most 9 `.ts` files directly in a directory. Split along a natural seam.
 
 ## Structure
 
-Target module layout and dependency direction:
+A Bun workspace monorepo. Packages import each other by `@vise/*` name; dependency direction is `apps/*` → `packages/backend` → `packages/core`, with `packages/common` (types and pure data shared by server and page) beneath both and `packages/frontend` as the browser side.
 
 ```
-index.ts            # terminal entry point: settings, maintenance flags, then terminal-main.ts
-src/                # at most 9 .ts files per directory (enforced by test/layout.test.ts)
-  terminal-main.ts  # terminal wiring: readline, TerminalDriver over the shared edge session
-  wiring.ts         # shared edge factory: constructs client, sources, tools, and Session
-  edge-sources.ts   # edge implementations of the core-owned sources (profiles, notes,
-                    # hooks and the live HookStore, the initial context message)
-  config.ts         # live settings: the SPEC table and `config.x` reads
-  data-dir.ts       # per-root data directory helpers (<root>/.vise, ~/.vise)
-  version.ts        # build-time VERSION ("dev" from source)
-  tools.ts          # edge-provided tool definitions (`Tool[]`) and `ToolRunner`
-                    # implementation: all tool I/O (file ops, shell commands)
-  global-prompt.ts, fs-tree.ts  # the built-in system prompt; the startup directory tree
-  settings/         # settings-file.ts (user-level ~/.vise/.env: load, validate, save),
-                    # settings-init.ts (imported first by each entry so settings apply early)
-  mcp/              # MCP client: mcp-config (read/validate servers), mcp-connection (one server),
-                    # mcp-tools (MCP tool -> Vise tool), mcp-hub (a root's servers), mcp-store
-                    # (edit the config files), mcp-command (/mcp); see "MCP servers"
-  build/            # build-check.ts (missing build output), extension-assets.ts (the Firefox
-                    # extension's files, embedded), maintenance.ts (--version, --install-extension,
-                    # --setup-playwright, --audit-export)
-  stores/           # edge stores: notes, notes-format, note-store (notes by scope/category),
-                    # profiles, workflows, sessions (saved conversations), image-store (pictures)
-  db/               # bun:sqlite plumbing: open.ts (one connection per file), migrate.ts
-    audit/          # the global audit.db: schema, sink (store), reader (query), prune, export
-    session/        # the per-project vise.db: schema, writes, one-time JSON import
-  browser/          # BrowserBackend interface and shared pieces (types, probe, page-scripts,
-                    # settings, processes, the switchable shared browser, the extension backend)
-    chromium/       # CDP backend, its actions and view, and the Playwright runner
-    firefox/        # WebDriver BiDi backend, its actions and view
-  tools/            # tool handlers: files, shell, images, notes, search-tools, temp-store, display
-    browser/        # browser tool handlers, waits and new-tab detection
-    agent/          # subagents and their permission scope, ask_user, self, audit wrapper
-    defs/           # model-facing tool definitions per domain
-  driver/
-    terminal.ts     # interactive TTY driver: prompt, echo, readline wiring
-    stream.ts       # streaming display state machine: owns live prompt,
-                    # thinking, visible tool-call events, and markdown
-                    # buffering; exposes onToken/onThinking/onPromptProgress/
-                    # onToolCall plus beginTurn/finish and callback ordering invariants
-  client/
-    llm.ts          # LLM transport: implements the core's `Client` type,
-                    # `ContextSource`, and `ModelController`; wraps fetch,
-                    # owns URL/key/model config
-    stream/         # call-trace, generation, request-fields, stream-reader: one call's stream and its record
-    retry.ts        # which failures are asked again, and how long to wait
-    model-queries.ts # what a provider says about its models and its embeddings: list, window,
-                    # vision, embeddings (with llm.ts, the only network I/O)
-    provider.ts     # pure: which provider, its URLs and `capabilities`
-  core/             # pure: engine, workflow, errors, goal, goal-trace, audit types (no node: imports)
-  output/
-    format.ts       # Result -> text for terminal or plain output
-    color.ts        # terminal styling: decides whether ANSI SGR codes are
-                    # emitted; single source of truth for color availability
-    markdown.ts     # per-line markdown-aware terminal styling for streamed output
-    tool-line.ts    # pure one-line display of a tool call; shared by terminal and web
-    audit-format.ts # /audit and /search results as text
-  repl/
-    session.ts      # orchestrates: lines in, results out; owns conversation
-                    # state (the growing messages array); defines the core-owned
-                    # interfaces (ProfileSource, SessionSource, ProfileCommands,
-                    # SessionCommands, CompactionSource, etc.)
-    ports.ts, session-options.ts, session-name.ts, profile-tools.ts  # port types and session helpers
-    command-catalog.ts # every built-in slash command once: help, the page's suggestions, reserved names
-    # (semantic search: stores/semantic/ the index, tools/semantic/ the tool, web/api/semantic/ the page's
-    #  messages, web/src/workspace/search/ the explorer's box; all through SemanticIndexPort in ports.ts)
-    lists.ts        # the controls' data (profiles, tools, reasoning, sessions, burst) for a frontend
-    commands/       # slash-command handlers: commands (immutable state), session-commands
-                    # (mutable state), hooks, image, search and workflow commands — plain
-                    # module-level functions over narrow facade interfaces
-    turn/           # per-turn mechanics: compaction, goal-loop, round-hooks, session-hooks,
-                    # session-audit
-  web/
-    main.ts         # web entry point (`bun run web`, vise.exe): settings, maintenance flags,
-                    # port choice, server, and in the compiled build the desktop window
-    server.ts       # Bun HTTP/WebSocket driver; one Session per connection
-    http.ts         # the HTTP side: Host/Origin checks, explorer, image and pairing APIs
-    assets.ts       # the page's files (embedded when compiled); the only static paths served
-    port.ts         # busy-port fallback
-    router/         # the one table that routes each message type from the page (router.ts)
-                    # and the connection types (connection.ts)
-    conn/           # a connection's lines: line (turn chain, steering, held queue),
-                    # queue-commands, resume, leases, history, pictures, prompter (ask_user over the socket),
-                    # gate (holds a socket's messages until its connection is built), open
-    api/            # panel messages never queued behind a turn: settings-api, notes-api,
-                    # profiles-api, workflows-api, git-api, mcp-api, models/ (the picker),
-                    # wire/ (reply helpers, the `lists` push), files (workspace explorer),
-                    # roots (folder chooser, per-root hooks and MCP hub)
-    ext/            # Firefox extension link: ext-hub, ext-token, browser-bridge
-    desktop/        # the native window: desktop.ts and window-worker.ts (see "Desktop window")
-    terminal/       # the integrated terminal: conpty (FFI), pty + pty-reader-worker,
-                    # scrollback, terminal-registry, terminal-api (see "Integrated terminal")
-web/
-  index.html        # web UI shell
-  src/              # app.ts is the build entry; modules grouped by feature
-    app.ts, markdown.ts, server-message.ts  # entry, markdown rendering, message types
-    transcript/     # the conversation log: transcript, replies, boxes, follow, stream-render...
-    log/            # restored history, lightbox, log view
-    composer/       # input box, completions, attachments, steer/queue, ask_user prompts
-    status/         # generating indicator, prompt progress, compaction and goal markers,
-                    # context meter, theme, the panel group and pages (panel-switch.ts)
-    menubar/        # the top bar's menus, their keyboard rules, shortcuts, workflow picker
-    feedback/       # confirmation dialog and toasts
-    git/            # the git panel
-    settings/       # settings tabs, sessions list, tools panel; profiles/, hooks/,
-                    # mcp/ and workflows/ hold those tabs
-    workspace/      # file explorer, tabs, integrated browser view, root restore
-  dist/app.js       # generated browser bundle (not hand-edited); dist/app.css its styles
-  styles/           # web UI styling: tokens, shared controls, one file per part of the page
-test/               # tests sit in sub-directories beside the area they cover
-                    # (core, client, repl, tools, output, db, server, web); setup.ts is the
-                    # bunfig preload; layout.test.ts enforces the 9-files-per-directory rule
+index.ts                  # terminal entry: settings, maintenance flags, then terminal-main.ts
+packages/
+  core/src/               # PURE: engine, goal, goal-trace, workflow, compaction/, call/ (runaway),
+                          #   cancel/ (abortable), hooks/, audit types, errors, schemas/ (zod)
+  common/src/             # wire messages, ListsSnapshot, semantic types, command table
+  backend/src/            # the edge (all I/O)
+    wiring.ts             # createEdgeSession: shared factory for client, sources, tools, Session
+    terminal-main.ts      # terminal wiring (readline, TerminalDriver)
+    edge-sources.ts       # edge implementations of core-owned sources: profiles, notes, hooks
+                          #   (live HookStore), the initial context message
+    config.ts, data-dir.ts, version.ts, global-prompt.ts, fs-tree.ts
+    tools.ts, tools/      # tool registry + ToolRunner; tools/{defs,browser,agent,hooks,semantic}/
+    client/               # the only model network layer: llm.ts, model-queries.ts, provider.ts
+                          #   (pure), retry.ts, slots.ts, tool-protocol.ts, stream/
+    repl/                 # Session, ports.ts, command-catalog.ts, lists.ts, commands/, turn/
+    driver/               # terminal.ts, stream.ts (StreamDisplay)
+    output/               # pure text formatting: format, color, markdown, tool-line, audit-format…
+    stores/               # notes, profiles, workflows, sessions, image-store, semantic/
+    db/                   # bun:sqlite: open, migrate; audit/ (audit.db), session/ (vise.db)
+    browser/              # BrowserBackend, page-scripts, switchable, extension; chromium/, firefox/
+    mcp/                  # MCP client (config, connection, tools, hub, store, command)
+    settings/, build/     # ~/.vise/.env loading; build checks, extension assets, maintenance flags
+  frontend/               # the web page: index.html, src/ (by feature), styles/, dist/ (generated)
+apps/
+  web/src/                # Bun HTTP/WebSocket server: main.ts, server.ts, http.ts, assets.ts, port.ts,
+                          #   router/, conn/, api/, ext/, desktop/, terminal/, inspect/
+  extension/              # Firefox extension (Manifest V2)
+  cli/                    # placeholder (no sources)
+crates/vise-rs/           # experimental Rust port of the web server (not in the Bun build)
+test/                     # sub-directories beside the area they cover; setup.ts is the preload
+scripts/                  # build-exe, build-ext, build-icon, dev-web, install-exe, rebuild.ps1
 ```
 
-Dependency direction (arrows point from dependent to dependency):
+Dependency direction:
 
 ```
-index.ts ──> wiring ──> session ──> engine
-src/web/main.ts ──> src/web/server.ts ──> wiring ──> session ──> engine
-index.ts ──> driver/terminal.ts ──> session
-                                       │        │
-                                       │        └──> client/llm  (transport)
-                                       │
-                                       └────────> output/format
-                                       └────────> output/color   # edge: terminal styling
-tools.ts ──> engine                  # edge: tool definitions + ToolRunner implementation
-tools/* ──> output/color             # edge: subagent handler dims streamed tokens
-driver/stream.ts ──> output/markdown # edge: streaming display renders lines
-index.ts ──> output/markdown         # edge: driver renders streamed lines with markdown styling
-errors.ts is imported by engine, session, output, and client — and by nothing else
+index.ts ──> terminal-main ──> wiring ──> Session ──> engine (core)
+apps/web/src/main.ts ──> server.ts ──> wiring ──> Session ──> engine
+Session ──> client/llm (transport), output/*
+tools.ts ──> engine            # edge: tool definitions + ToolRunner implementation
+errors.ts is imported by engine, session, output and client, and by nothing else
 ```
 
-`output/` is imported by edge modules only (`index.ts`, `tools/*`); the core
-never imports from it. `color.ts` is the single place that decides whether
-ANSI SGR codes are emitted; it reads `process.env`/`process.stdout` per call
-(edge, not core), so it is testable via env mutation and stays pure with
-respect to the core's I/O invariants.
+`output/` is imported by edge modules only; the core never imports from it. `color.ts` alone decides whether ANSI codes are emitted.
 
-Rules:
+### Rules
 
-- `repl/` command handlers follow the facade pattern: the `Session` class
-  implements narrow interface objects (e.g. `ProfileCommands`,
-  `SessionCommands`, `CompactionSource`) via closures over its own fields;
-  the handler modules are plain module-level functions that take those
-  interfaces and are free of class-internal references. This keeps
-  `session.ts` under the size limit while preserving testability of each
-  handler with a stub interface.
-- `index.ts` stays a thin entry point: wire argv to a driver and run. It
-  should remain under 50 lines and never contain a `for` loop over lines.
-- `core/` has zero `node:` imports and is unit-testable with plain assertions.
-- `driver/terminal.ts` and the web server (`web/server.ts`) are siblings
-  sharing the same session API through `createEdgeSession`; the entry point
-  picks one, nothing special-cases a surface inside the loop. (A pipe/script
-  driver would be a third sibling; there is none yet.)
-- `src/client/` is the sole layer that performs model network I/O (`llm.ts`
-  for chat and slots, `model-queries.ts` for model lists, windows, vision and
-  embeddings). `llm.ts` receives a
-  messages array and returns a `Result<AssistantMessage>`, swallowing all HTTP
-  and network errors into structured variants. The `Client` and `Tool` types
-  are owned by the core (`core/engine.ts`); the edge _implements_ `Client`
-  (today `LlmClient`) and provides the `Tool[]` definitions plus a
-  `ToolRunner`, so every dependency arrow points edge → core and the core can
-  be tested with stubs.
+- **Core owns the type, the edge does the I/O.** `Client`, `Tool`, `ToolRunner`, `ToolController`, `ProfileSource`, `NoteSource`, `SessionSource`, `WorkflowSource`, the turn hooks and `ToolHooks` are core-owned interfaces; the edge implements them (`LlmClient`, `ToolSet`, `FileProfileSource`, `FileNoteSource`, `stores/sessions.ts`, `ShellHook`, `ShellToolHooks`, …), so every arrow points edge → core and the core is testable with stubs. `ask_user`'s `UserPrompter` is the variant with no core type: edge-owned, passed to `createEdgeSession` by the driver (`RlUserPrompter`, `WebUserPrompter`).
+- **Facade pattern for `repl/commands/`.** `Session` implements narrow interface objects (`ProfileCommands`, `SessionCommands`, `CompactionSource`…) by closure over its fields; handler modules are plain functions over those interfaces, which keeps `session.ts` under the size limit and each handler testable with a stub.
+- **`index.ts` stays thin:** wire argv to a driver and run. The terminal driver and the web server are siblings over `createEdgeSession`; nothing special-cases a surface inside the loop. A pipe/script driver would be a third sibling (not built).
+- **`packages/backend/src/client/`** is the sole layer doing model network I/O. `llm.ts` returns `Result<AssistantMessage>`, swallowing HTTP and network errors into structured variants.
+- **Edge extras pattern.** A tool whose handler needs services built later (subagent `Client`, `ask_user` prompter) is passed as an `extra` handler to `createToolRunner`.
+- **Per-session state.** Conversation, interrupt handling, tool toggles and streaming display state live in objects owned by the session or driver (`Session`, `ToolSet`, `StreamDisplay`), never module-level `let`s. `StreamDisplay` owns cross-callback ordering (flush a partial line before a counter or tool event); the web transcript owns the browser equivalent (finalise streamed text before appending thinking or tool entries).
+- **Presentation state is not conversation state.** The web `result` message may carry a formatted `context` snapshot (`used / window`), rendered in a footer from the read-only `/context` path; it adds no message and triggers no turn. Window limits are queried live per model, never cached.
 
-- `ProfileSource` is a core-owned type (`repl/session.ts`) for loading profile
-  text at runtime. The edge provides the implementation (`FileProfileSource`
-  in `src/edge-sources.ts`, backed by `.vise/profiles/*.md` files). Same pattern as
-  `ModelController`: core owns the interface, edge does the I/O.
-- `PreTurnHook` and `PostTurnHook` are core-owned types (`repl/session.ts`)
-  that run configured shell commands before and after every chat turn and
-  return their combined output. The edge provides the implementation
-  (`ShellHook` in `src/edge-sources.ts`, spawning `powershell.exe` with the command
-  from `.viserc.json`). Multiple hooks of the same kind run in parallel;
-  each hook's output is injected as its own user message, in config order —
-  pre-turn before the user's input, post-turn after the assistant's reply.
-  Same edge-owns-I/O pattern as `ProfileSource`.
-  **Tool hooks** run around one tool call instead of a turn
-  (`preToolCommand` / `postToolCommand` in `.viserc.json`: a string or
-  `{command, tools?}`, `tools` naming tools and/or categories; matching is the
-  pure `src/core/hooks/tool-hook-match.ts`). `ShellToolHooks`
-  (`src/tools/hooks/tool-hooks.ts`) implements the core `ToolHooks` port and
-  `createToolRunner` calls it: a pre hook that exits 2 vetoes the call (the
-  model gets `error: blocked by pre-tool hook: <output>`; any other failure
-  fails open), a post hook's output is appended to the result after the
-  too-large spill step. Hooks see the call in `VISE_TOOL_*` environment
-  variables and as JSON on stdin, run only for calls that would actually run
-  (not refused ones), apply to subagents' calls too, and never go through the
-  runner themselves, so they cannot trigger hooks.
-- `NoteSource` is a core-owned type (`repl/session.ts`) for the `/note`
-  command. A note is the project's store of short facts and how-to
-  procedures: one `.md` file per note under `.vise/notes/` (a subdirectory per category; notes directly in it are `default`), the
-  filename (minus extension) is the note name, the first non-empty line is
-  its one-line summary (shown by listing), the rest is the body. Note names
-  are unique. Recall is all on-demand — nothing is auto-injected into
-  context; the model reads/writes notes through the `list_notes`/
-  `read_note`/`save_note`/`delete_note` tools when it decides it needs them,
-  and the user sees the same store via `/note` (list) and can create new
-  notes via `/note init [--global] <name> [category]`. A note has a scope: `project` (`.vise/notes/`) or `global` (`~/.vise/notes/`, shared by every project and by no-folder sessions); the tools that act on one note require it. Notes are the standard memory and skill systems consolidated into one store (suggested categories `user-info`, `memories`, `skills`). The shared file I/O lives in `src/stores/notes.ts`
-  (edge); the `FileNoteSource` in `src/edge-sources.ts` implements `NoteSource`. Same
-  edge-owns-I/O pattern as `ProfileSource`.
-- `SessionSource` is a core-owned type (`repl/ports.ts`) for saving,
-  loading, listing, deleting and searching conversation snapshots. The edge
-  implementation (`src/stores/sessions.ts`, over `src/db/`) stores them in the
-  project's SQLite database `.vise/vise.db`: a `sessions` row (uuid id, display
-  name, active profile, times) and its `messages` rows, rewritten in one
-  transaction per save, with an FTS5 index for `/search`. Successful and failed
-  turns auto-save under the conversation's id; `/save <name>` names it. An
-  id prefix is enough to resume or delete. Schema versions are
-  `PRAGMA user_version` with append-only migrations (`src/db/migrate.ts`); one
-  connection per database file is shared by every web connection
-  (`src/db/open.ts`); storage failures come back as the `storage` `ViseError`,
-  never thrown. Old `.vise/sessions/<uuid>.json` files are imported once,
-  verified by message count, then deleted. `/save`, `/resume`, `/delete`,
-  `/search` and the web sessions panel share this source; there is no second
-  persistence path.
-- `WorkflowSource` is a core-owned type (`repl/session.ts`) for listing,
-  loading, and creating workflows. Workflow JSON lives under
-  `.vise/workflows/` and `~/.vise/workflows/`; project workflows shadow
-  same-named global workflows. The edge validates and persists definitions in
-  `src/stores/workflows.ts`. Pure orchestration in `core/workflow.ts` executes
-  instruction steps through normal model/tool turns and explicit tool steps
-  through schema-constrained argument generation followed by direct
-  `ToolRunner` execution, in order, then requests a final model response.
-  llama.cpp's response format constraints are used only on argument-generation
-  requests (without native tool definitions), since its automatic tool-call
-  grammar cannot be combined with a user grammar in the same request.
-  A `profile` step switches profile mid-run through the `/profile` machinery
-  behind the core-owned `WorkflowProfiles` port (`core/workflow-profiles.ts`;
-  the edge adapter is `repl/commands/workflow-profiles.ts`). Ideal: a step
-  kind is one registered descriptor (validate, pre-run check, run, editor
-  form) rather than an `if` chain repeated in the store validator, runner,
-  availability check and web editor, so a new step type is added in one place;
-  the pre-run availability check is a pure fold over those descriptors, and the
-  restore of the previous profile is owned by the run scope (not a `finally`
-  that re-scans the steps).
-- `LlmClient.withSideSlot` keeps a subagent's work from disturbing the main
-  conversation's llama.cpp cache. Slots are for concurrent activity, so with two
-  or more slots the side work's requests carry `id_slot` of the least recently
-  used slot other than the one used last (read from `/slots`, `id_task`); the
-  main slot and its context checkpoints are never touched. With one slot, or
-  when `/slots` cannot be read, the work runs unpinned and the server's own
-  prompt cache (`--cache-ram`) keeps the evicted context. Saving a slot to a
-  file and restoring it was removed: a restore brings back the tokens but not
-  the context checkpoints this kind of model needs to reuse a prefix, so the
-  next request re-processed the whole prompt (measured: `cache_n` 0 after a
-  restore, about 2k tokens processed without one).
-- `ToolController` is a core-owned type (`core/engine.ts`) for the `/tool`
-  command. It lets the user inspect and toggle the model-facing tools. The
-  full set of tool definitions is always sent to the model regardless of
-  enabled state — disabling a tool does not change the definitions offered;
-  it only makes the `ToolRunner` reject invocations of that tool. When a tool
-  is enabled or disabled, the `Session` injects a user message into the
-  conversation informing the model of the state change. State is in-memory
-  per-process only (not persisted), matching the other controllers. The edge
-  provides the implementation (`ToolSet` in `src/tools.ts`). Same
-  edge-owns-I/O pattern as `ProfileSource`.
-- Subagents are run by the `run_subagent` tool. The core `runSubagent`
-  (`core/engine.ts`) is pure: it builds a fresh conversation
-  (`[system, profile-as-user, task-as-user]`) and delegates to `runTurn`,
-  returning the subagent's final assistant text. The subagent receives the
-  same `ToolRunner` and `Tool[]` as its parent, so it may spawn its own
-  subagents. The subagent's defining instructions come from a profile: the
-  `profile` argument is required, `"default"` resolves to a built-in
-  constant, and any other name is loaded from `.vise/profiles/<name>.md` via
-  `ProfileSource` — the same edge I/O as `/profile`. The edge handler
-  (`src/tools/agent/subagent.ts` `makeSubagentHandler`) performs the `ProfileSource`
-  I/O and calls the core; it is registered in `src/wiring.ts` by passing it as the
-  `run_subagent` `extra` handler to `createToolRunner` because its handler
-  depends on the `Client` and `ProfileSource`.
-  Same edge-owns-I/O pattern as `ProfileSource`.
-- `ask_user` is a model-facing tool that pauses the turn to ask the user a
-  question (with optional predefined choices) and return the answer as the
-  tool result. The `UserPrompter` interface is edge-owned (`src/tools/agent/ask-user.ts`)
-  — unlike `ProfileSource` or `ToolController`, nothing in the core references
-  this type. The edge handler (`makeAskUserHandler` in `src/tools/agent/ask-user.ts`)
-  is registered in `src/wiring.ts` as the `ask_user` `extra` handler to
-  `createToolRunner`; its dependency is the `UserPrompter` the driver passes to
-  `createEdgeSession` (`RlUserPrompter` over the terminal's readline in
-  `terminal-main.ts`, `WebUserPrompter` in the web server). This is the variant of the
-  `createToolRunner` extras pattern where a tool handler depends on an
-  edge-owned interface rather than a core-owned one.
-- Every file stays under 500 code lines and every function under 100 lines;
-  when a module approaches that, split it along a natural seam.
+### Notable edge designs
 
-Current implementation: `src/wiring.ts` constructs the shared edge services
-and `Session` via `createEdgeSession`. `src/terminal-main.ts` (started by `index.ts`) wires that session to the
-interactive `TerminalDriver`; `src/web/server.ts` is a second driver that
-serves `web/` and bridges browser turns and streaming events over WebSocket.
-Each web connection receives an independent edge session. The web driver also
-exposes a read-only workspace explorer: `src/web/api/files.ts` confines `/api/fs`
-and `/api/file` requests to the working directory, while `web/src/workspace/explorer.ts`
-renders the directory tree and tabbed file viewer. The web UI is started with
-`bun run web` (default port 3000, a setting; a busy port falls back to a free one); `bun run dev:web`
-rebuilds the browser bundle and restarts the watched server on source changes.
-The transport to the LLM remains in `src/client/llm.ts`. The non-TTY
-pipe/script driver and `cli.ts` remain future work.
-
-The web driver's successful `result` message may include a formatted `context`
-snapshot (`used / window tokens` and percentage). The browser renders the most
-recent successful snapshot in a persistent footer, retaining it when a result
-does not carry a new snapshot. The server obtains this through the session's
-read-only `/context` path after successful lines; context-window limits are
-queried live rather than cached across model changes. Keep this status
-reporting on the web edge: it is presentation state, not conversation state,
-and must not add a user/assistant message or trigger a model turn.
+- **Hooks.** Pre/post-turn hooks (`PreTurnHook`/`PostTurnHook`) run configured commands from `.viserc.json` in parallel and inject each output as its own user message (pre before the user's input, post after the reply). **Tool hooks** run around one tool call (`preToolCommand`/`postToolCommand`, matching in the pure `core/hooks/tool-hook-match.ts`, `ShellToolHooks` called by `createToolRunner`): a pre hook exiting 2 vetoes the call, other failures fail open, post output is appended after the too-large spill step; they see `VISE_TOOL_*` env and JSON on stdin, run only for calls that will run, apply to subagents too, and never go through the runner themselves.
+- **Notes** are one `.md` file each under `.vise/notes/<category>/` (project) or `~/.vise/notes/` (global); the first non-empty line is the summary. Recall is on-demand through the note tools; only the list is in the startup message. All access goes through `NoteStore`.
+- **Sessions** are rows of the project database `.vise/vise.db` (a `sessions` row and its `messages` rows rewritten in one transaction per save, an FTS5 index for `/search`). Turns auto-save under the conversation's id. Schema versions are `PRAGMA user_version` with append-only migrations; one connection per database file is shared by every web connection; storage failures return the `storage` `ViseError`. Old JSON snapshots are imported once, verified by message count, then deleted. There is no second persistence path.
+- **Workflows** (`core/workflow.ts`, pure): instruction steps run as normal turns, explicit tool steps via schema-constrained argument generation then direct `ToolRunner` execution, then a final model response. A `profile` step switches profile through the `WorkflowProfiles` port. Target: a step kind as one registered descriptor (validate, pre-run check, run, editor form) instead of an `if` chain repeated in the store validator, runner, availability check and web editor, with profile restore owned by the run scope.
+- **Subagents** (`run_subagent`): `runSubagent` (core, pure) builds `[system, profile-as-user, task-as-user]` and delegates to `runTurn`; the edge handler loads the profile and calls it. A subagent gets the parent's `ToolRunner` and `Tool[]`, so it can spawn subagents (bounded only by `MAX_TOOL_ROUNDS` and the window; a depth cap is future work). `LlmClient.withSideSlot` pins its requests to the least recently used slot other than the main one so the main cache is never disturbed; slot save/restore was removed because a restore brings back tokens but not the context checkpoints the model needs, so the next request re-read the whole prompt.
+- **Tools toggling** never changes the prompt: all definitions are always offered, disabling only makes the runner reject (and the grammar exclude) the call, and the session tells the model of the change with a user message. State is in-memory per session.
+- **Initial context** is one user message built at startup by `buildInitialMessage` (`edge-sources.ts`): a capped directory tree, the project's `AGENTS.md`, profile names and note summaries, each only when non-empty and best-effort (unreadable parts are omitted). The `Session` takes it as an opaque string. All runtime data lives under `.vise/`, which the tree skips.
+- **Compaction** summarises the older part of the conversation (`splitForCompaction` pure; the summary goes through the `Client`) on `/compact` and automatically near the window; the verbatim tail and the user's own words are preserved. Tool results over the size limit are saved to a temp store and replaced by their start (`TempStore`, `read_temp`/`search_temp`).
+- **Web driver:** `apps/web/src/server.ts` serves the page, bridges turns and streaming events over WebSocket (one independent edge session per connection) and exposes a read-only workspace explorer confined to the session root (`api/files.ts`).
 
 ## Session roots
 
-A session is rooted at one directory, fixed when it starts (terminal: the working directory; web: the `?root=` query, validated by `RootRegistry`). The root is a **default, not a sandbox**: it sets where relative tool paths resolve, the cwd of `run_powershell` and hooks, and the data directory (`dataDirFor(root)`). Absolute paths and `..` in tools still escape it. Only the web file explorer confines to the root (realpath containment, and only for roots with an open session). Hooks come from the root's `.viserc.json`, so opening a folder trusts its hooks. The shared browser profile lives under the server start directory, not under any session root. Enforcing confinement for tools would be a future `RootPolicy` at the edge.
+A session is rooted at one directory, fixed when it starts (terminal: the working directory; web: the `?root=` query, validated by `RootRegistry`). The root is a **default, not a sandbox**: it sets where relative tool paths resolve, the cwd of `run_powershell` and hooks, and the data directory (`dataDirFor(root)`). Absolute paths and `..` in tools still escape it; only the web file explorer confines to the root. Hooks and MCP servers come from the root's `.viserc.json`, so opening a folder trusts them. The shared browser profile lives under the server start directory. Enforcing confinement for tools would be a future `RootPolicy` at the edge.
 
 ## Browser engines
 
-The integrated browser sits behind the `BrowserBackend` interface (`src/browser/types.ts`); tools and the web bridge never see a protocol. `ChromiumBackend` speaks CDP; `FirefoxBackend` speaks WebDriver BiDi (Firefox removed CDP in v129). Page logic that is protocol-independent (the element snapshot and ref scripts in `page-scripts.ts`) is shared; input, evaluation, dialogs, tab events and the live view are reimplemented per protocol. BiDi has no screencast, so the Firefox live view polls `captureScreenshot`. Firefox can be launched by Vise (private profile, killed by profile name on close) or attached to by port (never killed; only one BiDi client may be attached). The web server holds one `SwitchableBrowser` so the engine is a runtime setting rather than a startup flag.
+The integrated browser sits behind `BrowserBackend` (`browser/types.ts`); tools and the web bridge never see a protocol. `ChromiumBackend` speaks CDP; `FirefoxBackend` speaks WebDriver BiDi (Firefox removed CDP in v129). Protocol-independent page logic (the snapshot and ref scripts in `page-scripts.ts`) is shared; input, evaluation, dialogs, tab events and the live view are per protocol. BiDi has no screencast, so the Firefox live view polls screenshots. Vise can launch Firefox (private profile) or attach by port (never killed; one BiDi client only). The web server holds one `SwitchableBrowser`, so the engine is a runtime setting.
 
 ## Firefox extension
 
-Besides the browsers Vise launches itself, the agent can work in the user's own Firefox through an extension (`extension/`). It is deliberately thin: the Bun server keeps the model loop, tools, notes and hooks, and the extension is only UI (the Vise web page in a sidebar) and hands (browser operations in real tabs). The two meet over one WebSocket (`/ext`, requests `{id, op, params}` answered by `{id, ok, result|error}`, plus `{event:"tabs"}`). The server side is `ExtensionBackend`, a third `BrowserBackend` built on the `ExtensionLink` interface that `src/web/ext/ext-hub.ts` implements, so `src/browser/` does not depend on the web layer. A session opened by the sidebar page (`?ui=sidebar`) uses it; other sessions keep their own headless browser. Trust: the extension, not the server, limits the agent to tabs it opened or was handed, and `/ext` accepts only an extension Origin plus a pairing token (a random secret the server keeps and hands only to the Vise page, which passes it to the sidebar, so another extension or local process posing as the extension cannot become the hands) on top of the usual loopback/Host checks. Input is synthetic, so some sites will not respond.
+Besides launched browsers, the agent can work in the user's own Firefox through `apps/extension/`. It is deliberately thin: the Bun server keeps the model loop, tools, notes and hooks; the extension is only UI (the Vise page in a sidebar) and hands (operations in real tabs). They meet over one WebSocket (`/ext`, requests `{id, op, params}` answered by `{id, ok, result|error}`, plus `{event:"tabs"}`). The server side is `ExtensionBackend`, built on the `ExtensionLink` interface that `apps/web/src/ext/ext-hub.ts` implements, so `browser/` does not depend on the web layer. Only a session opened by the sidebar (`?ui=sidebar`) uses it. Trust: the extension limits the agent to tabs it opened or was handed; `/ext` accepts only an extension Origin plus a pairing token (a random secret the server hands only to the Vise page, which passes it to the sidebar) on top of the loopback/Host checks. Input is synthetic, so some sites will not respond.
 
 ## Settings
 
-One declarative `SPEC` table (`src/config.ts`) describes every tunable:
-variable name, default, minimum, group, label, `secret`, `restart`. The live
-values, the file loader and validator (`src/settings/settings-file.ts`), the settings
-page's "general" tab and `.env.example` all follow it.
+One declarative `SPEC` table (`packages/backend/src/config.ts`) describes every tunable (name, default, minimum, group, label, `secret`, `restart`); the live values, the file loader (`settings/settings-file.ts`), the page's "general" tab and `.env.example` all follow it.
 
-- **Live.** Code reads `config.x` at the point of use, never into a module
-  constant, constructor field or closure, so a value saved from the page applies
-  at once. Only `restart` settings (the port, the page-snapshot limits baked
-  into a script shared with the Firefox extension) are read once.
-- **Where values come from.** The user-level file `~/.vise/.env` (shared by
-  every project, outside any dev directory), then the process environment, then
-  the default. The file wins so that a value saved from the page can never be
-  silently overridden by a stale launch-time variable. A missing, empty or
-  invalid value falls back to the default; Vise never fails to start over a
-  setting.
-- **Secrets.** The API key is never sent to the page (only whether one is set),
-  the file is written owner-only and atomically, a blank key box keeps the saved
-  key, and an explicit "clear" removes it.
-- **Saves are patches.** The page sends only the fields it changed, so a stale
-  page cannot revert another setting; a file that exists but cannot be read is
-  never overwritten.
-- **Pure core stays pure.** The core receives values as parameters and keeps its
-  few constants (`MAX_TOOL_ROUNDS` and friends); only edge code imports
-  `config`.
+- **Live.** Code reads `config.x` at the point of use, never into a constant or closure, so a saved value applies at once. Only `restart` settings (the port, the snapshot limits baked into a script shared with the extension) are read once.
+- **Sources.** `~/.vise/.env` (shared by every project), then the process environment, then the default. The file wins so a value saved from the page is never silently overridden by a stale launch-time variable. A missing or invalid value falls back to the default; Vise never fails to start over a setting.
+- **Secrets.** The API key never goes to the page (only whether one is set); the file is written owner-only and atomically; a blank key box keeps the saved key.
+- **Saves are patches:** the page sends only changed fields; an unreadable existing file is never overwritten.
+- **The core stays pure:** it takes values as parameters and keeps a few constants (`MAX_TOOL_ROUNDS` and friends); only edge code imports `config`.
 
-Still to do: show each setting's effective value and source on the page; push a
-save to every open settings page (as hooks do); a lint rule against module-scope
-`config.*` reads; `config.ts` is bundled into the Firefox extension through
-`page-scripts.ts`, so code shared with the extension should take its limits as
-arguments instead; and say so on the page when the LLM address changes while a
-key is stored.
+Still to do: show each setting's effective value and source; push a save to every open settings page (as hooks do); a lint rule against module-scope `config.*` reads; code shared with the extension should take limits as arguments (`config.ts` is bundled into it).
 
 ## Packaging
 
-Vise ships as two compiled executables built by `scripts/build-exe.ts`
-(`bun run build:exe`): `vise.exe` (web server and window) and `vise-cli.exe`
-(terminal). Everything a build embeds (the page's files, the Firefox extension,
-the Playwright runner script, the window library's DLL) is imported with
-`type: "file"`; the server serves only the paths in a fixed map
-(`src/web/assets.ts`), never a filesystem path derived from the request. Build
-outputs (`web/dist`, `extension/dist`) are prerequisites, and running from
-source without one fails with the command that creates it
-(`src/build/build-check.ts`). A build's identity is `package version + commit`
-(plus `-dirty` for uncommitted changes), stamped as `VISE_VERSION`; compiled
-versus source is decided by that one flag, and anything extracted to disk
-(`~/.vise/runtime/<version>`) is keyed by it and superseded folders are pruned.
-All user state lives outside the executable (`<project>/.vise`, `~/.vise`),
-so updating means replacing it; `--install-extension` and `--setup-playwright`
-refresh the pieces that cannot live inside it.
+Two executables from `scripts/build-exe.ts` (`bun run build:exe`): `vise.exe` (web server and window) and `vise-cli.exe` (terminal). Everything a build embeds (the page, the extension, the Playwright runner, the window library's DLL) is imported with `type: "file"`; the server serves only the paths in a fixed map (`apps/web/src/assets.ts`), never a path derived from the request. Build outputs (`packages/frontend/dist`, `apps/extension/dist`) are prerequisites, and running from source without one fails with the command that creates it (`build/build-check.ts`). The version is `package version + commit` (plus `-dirty`), stamped as `VISE_VERSION`; compiled versus source is decided by that one flag, and anything extracted to disk (`~/.vise/runtime/<version>`) is keyed by it. All user state lives outside the exe, so updating means replacing it; `--install-extension` and `--setup-playwright` refresh what cannot live inside it. The build renames the live exe aside, so rebuilding while running is safe.
 
-Still to do: serve assets with a content-hash ETag so a replaced executable
-never shows a stale page; have the extension report a version mismatch with its
-server; sign the executables after the header patch (the patch invalidates any
-earlier signature).
+Still to do: serve assets with a content-hash ETag; have the extension report a version mismatch; sign the executables after the header patch.
 
 ## Desktop window
 
-The compiled `vise.exe` shows Vise in its own native window instead of a
-browser tab. The server keeps the main thread; the window runs on a worker
-thread (`src/web/desktop/window-worker.ts`) because the webview library's `run` blocks
-until the window closes. The worker binds the WebView2 DLL with `bun:ffi` and
-reports typed events (`ready`, `closed`, `failed`; `src/web/desktop/desktop.ts`).
-Closing the window shuts the server down and the program ends; a window that
-cannot start (WebView2 runtime missing, DLL not loading, no window within 10
-seconds) is fatal and visible (a message box, exit code 1), so Vise never runs
-unseen. `vise.exe` is a GUI-subsystem program (the build patches the PE header),
-so it has no console: console output goes to `~/.vise/vise.log` and the
-maintenance flags print to the terminal that started it or to a redirect.
-`--no-window` serves only, for a browser; `vise-cli.exe` is unchanged.
+`vise.exe` shows Vise in a native window. The server keeps the main thread; the window runs on a worker (`apps/web/src/desktop/window-worker.ts`) because the webview's `run` blocks. The worker binds the WebView2 DLL with `bun:ffi` and reports typed events (`ready`, `closed`, `failed`). Closing the window shuts the server down; a window that cannot start (no WebView2, DLL not loading, none within 10 s) is fatal and visible (message box, exit code 1), so Vise never runs unseen. The exe is a GUI-subsystem program (the build patches the PE header), so console output goes to `~/.vise/vise.log`. `--no-window` serves only; `vise-cli.exe` is unchanged.
 
-**Server location is a preference, not an identity.** A busy port never stops
-startup: the server takes the next free port (any free one if none is near),
-shows a note in the page, and the Firefox extension finds it again by probing
-`/api/vise-hello` on its configured port and the 100 above. The port is chosen
-in settings (restart-only).
+**Server location is a preference, not an identity.** A busy port never stops startup: the server takes the next free port, shows a note in the page, and the extension finds it by probing `/api/vise-hello` on its configured port and the 100 above.
 
 ## Integrated terminal
 
-The web page has a terminal panel along its bottom (top-bar `terminal`,
-Ctrl+\`), rendered with xterm.js. It is for the user only; the agent keeps
-`run_powershell`. **The shell belongs to the folder, not the page:**
-`TerminalRegistry` (`src/web/terminal/terminal-registry.ts`) keeps one shell per
-session root, shared by every page open on that folder; a page that opens the
-panel gets the recent output replayed (`Scrollback`, capped by
-`VISE_TERMINAL_SCROLLBACK_KB`), so a reload shows the same shell. With no page
-showing it, a shell is stopped after `VISE_TERMINAL_IDLE_MINUTES`; the server's
-shutdown stops all of them. No-folder sessions and the extension's sidebar have
-no terminal. Messages are `term_*` (see the protocol in `src/web/server.ts`) and
-are never queued behind a turn.
+A bottom panel (xterm.js) for the user only; the agent keeps `run_powershell`. **The shell belongs to the folder, not the page:** `TerminalRegistry` keeps one shell per session root, shared by every page on the folder, with recent output replayed on open (`Scrollback`, `VISE_TERMINAL_SCROLLBACK_KB`). An unwatched shell stops after `VISE_TERMINAL_IDLE_MINUTES`; shutdown stops all. No-folder sessions and the sidebar have none. Messages are `term_*` and never queue behind a turn.
 
-The shell runs under a Windows pseudo console (ConPTY) through `bun:ffi`
-(`conpty.ts`; Windows-only, the command is `VISE_TERMINAL_SHELL`). Reading its
-output blocks, so it runs on a reader thread (`pty-reader-worker.ts`) that does
-nothing else; spawning, writing, resizing and closing do not block and run on
-the main thread (`pty.ts`, which also polls for the shell's exit, since the
-output pipe stays open until the console is closed). Every shell is put in one
-job object that kills its members when Vise exits, so a crash leaves no shells
-behind. The child gets `STARTF_USESTDHANDLES` with invalid handles; without it a
-Vise whose own output is redirected (the GUI exe logs to a file) would hand that
-to the shell instead of the console.
+The shell runs under ConPTY through `bun:ffi` (`conpty.ts`, Windows-only, `VISE_TERMINAL_SHELL`). Reading blocks, so it runs on a reader thread (`pty-reader-worker.ts`); spawn, write, resize and close run on the main thread (`pty.ts`, which polls for exit because the output pipe stays open until the console closes). Every shell joins one kill-on-close job object so a crash leaves none behind. The child gets `STARTF_USESTDHANDLES` with invalid handles, otherwise a Vise with redirected output would hand that to the shell.
 
 ## Steering and queueing
 
-A message sent while a turn runs is either **steering** or **queued**; the
-terminal has no input mid-turn, so both are web features. Steering is added to
-the conversation as the user's words before the model's next round
-(`NoticeQueue`, drained by the round hook, never between a tool call and its
-result); words the turn ended without reading run as turns of their own. A queued
-line (`qid` on the `line` message) waits for everything before it, including
-automatic goal continues, is listed by the server (`queue` message) and can be
-removed until it starts. `/steer` and `/queue` act at once, never behind the
-turn. The turn-admission state is spread over `web/line.ts`,
-`web/queue-commands.ts` and `web/server.ts`; see Future Work for the
-single-module target.
+A message sent while a turn runs is **steering** or **queued** (web only; the terminal has no mid-turn input). Steering is added as the user's words before the model's next round (`NoticeQueue`, drained by the round hook, never between a tool call and its result); words the turn ended without reading run as turns of their own. A queued line (`qid`) waits for everything before it, including goal continues, is listed by the server (`queue` message) and removable until it starts. `/steer` and `/queue` act at once. The admission state is currently spread over `conn/line.ts`, `conn/queue-commands.ts` and `server.ts` (see Future work).
 
 ## MCP servers
 
-`src/mcp/` is an edge-only MCP client built on the official SDK. A server is either a local program spoken to over stdio (`command`, `args`, `env`) or a remote one reached at an http(s) `url` with static `headers` (Streamable HTTP first, the older SSE transport if that fails; no OAuth). Its tools become ordinary deferred Vise tools named `mcp__<server>__<tool>` in the category `mcp_<server>`, so tool search, `/tool`, profile whitelists, subagents and the audit log need no special case.
+`packages/backend/src/mcp/` is an edge-only client on the official SDK: a stdio program (`command`, `args`, `env`) or an http(s) `url` with static `headers` (Streamable HTTP, then SSE; no OAuth). Their tools become ordinary deferred tools `mcp__<server>__<tool>` in category `mcp_<server>`, so tool search, `/tool`, whitelists, subagents and audit need no special case.
 
-- **Modules.** `mcp-config.ts` reads and validates `mcpServers` from `~/.vise/mcp.json` and the project's `.viserc.json` (a project entry replaces a global one of the same name; bad entries are skipped and reported). `McpConnection` wraps one server (status `connecting|ready|failed|exited`, stderr tail kept for messages). `mcp-tools.ts` maps tools and results (text, pictures to the image outbox, `isError` to an `error:` prefix). `McpHub` owns the connections of one root, routes calls, and can `reload()` (re-read the files; only servers whose entry changed are reconnected), `restart(name)` and `close()`. `mcp-store.ts` edits the two config files for the settings page (atomic writes that keep the file's other keys).
-- **A fixed tool list.** The hub is started before `createEdgeSession`, and a session keeps the tool list it was built with, because the tool list is part of the system prompt and so of the KV cache. Changed servers reach a conversation only when it is built again: the settings tab reloads the page after a save or delete (never mid-turn), and the terminal needs a restart. Calls never throw: a lost server returns an `error:` string, like every other tool.
-- **Lifecycle.** The web server keeps one hub per root in `RootRegistry`, shared by every page on the folder and closed when the last page leaves. A page's connection is built only after its hub is ready: `createGate` (`src/web/conn/gate.ts`) holds the socket's messages meanwhile and gives the folder back exactly once if the page leaves or the start fails; `finishOpening` (`conn/open.ts`) sends the first messages and starts the watchers. Closing a hub or a connection is safe at any point, including while a server is still connecting (the process is stopped as soon as the handshake ends), and hub operations run one at a time.
-- **Settings page.** The "mcp" tab (`web/src/settings/mcp/`) lists the servers of both scopes with their live state and edits them (type, scope, command or URL, arguments, environment, headers, disabled) through `mcp_get`, `mcp_save`, `mcp_delete` and `mcp_restart`, handled by `src/web/api/mcp-api.ts`. The profile editor lists tools by category with a checkbox per category, so a server with many tools can be allowed or denied as a group.
-- **Trust.** Configuring a server runs a program from the project's files (or sends requests to a remote address); tool descriptions and results are untrusted data. Environment values and headers are stored in plain text, so credentials are better kept in the global file than in a project's `.viserc.json`.
-- **Future work.** Refreshing the tool list of a conversation that is already open, and OAuth for remote servers.
+- **Modules.** `mcp-config` reads and validates `mcpServers` from `~/.vise/mcp.json` and `.viserc.json` (project replaces global by name; bad entries are skipped and reported). `McpConnection` wraps one server. `mcp-tools` maps tools and results (text, pictures to the image outbox, `isError` to `error:`). `McpHub` owns a root's connections, routes calls, and offers `reload()` (reconnect only changed entries), `restart(name)`, `close()`. `mcp-store` edits the config files atomically.
+- **Fixed tool list.** The hub starts before `createEdgeSession` and a session keeps the list it was built with (it is part of the system prompt and KV cache). Changes reach a conversation when it is rebuilt: the settings tab reloads the page after a save (never mid-turn); the terminal needs a restart. Calls never throw: a lost server returns an `error:` string.
+- **Lifecycle.** One hub per root in `RootRegistry`, shared by all pages and closed with the last. A page's connection is built after its hub is ready: `createGate` (`conn/gate.ts`) holds the socket's messages meanwhile and releases the folder exactly once if the page leaves or the start fails; `finishOpening` (`conn/open.ts`) sends the first messages. Closing is safe at any point, including mid-handshake, and hub operations run one at a time.
+- **Trust.** A configured server runs a program from the project's files; its descriptions and results are untrusted data. Env values and headers are plain text, so keep credentials in the global file.
+- **Future work:** refreshing the tool list of an open conversation; OAuth for remote servers.
 
 ## Goal trace
 
-Why a session stopped although a goal was set must be answerable afterwards, so
-the goal machinery writes every decision to a trace that is saved with the
-conversation (`docs/goal-trace.md`). The core stays pure: `goal.ts` functions
-take an optional `TraceSink` and report each hidden model call (the exact
-question, the raw reply or failure, each retry) and the derived goal;
-`GoalTracker` adds the turn start, verdicts, progress checks, continue notes
-(the notes themselves are still kept out of the saved conversation) and exactly
-one `exit` entry per turn naming why the loop ended, including the quiet exits
-(goal checking off, no goal, a failed turn, an interrupt, an exception).
-`Session` owns the `GoalLog` and saves it with the conversation through
-`SessionSource.save` (the same path as the todo list), after every turn, before
-each automatic continue and when a turn throws. Storage is the `goal_trace`
-table of the session database, separate from `messages`: loading returns the
-conversation untouched (nothing to strip), full-text search and history paging
-never see it, and deleting the session removes it. Resume puts the trace back
-only so later saves keep it.
+Why a session stopped although a goal was set must be answerable afterwards, so the goal machinery writes every decision to a trace saved with the conversation (`docs/goal-trace.md`). The core stays pure: `goal.ts` functions take an optional `TraceSink` and report each hidden model call (question, raw reply or failure, each retry) and the derived goal; `GoalTracker` adds turn start, verdicts, progress checks, continue notes (themselves kept out of the saved conversation) and exactly one `exit` entry per turn naming why the loop ended, including quiet exits (checking off, no goal, failed turn, interrupt, exception). `Session` owns the `GoalLog` and saves it through `SessionSource.save` after every turn, before each automatic continue and when a turn throws. Storage is the `goal_trace` table, separate from `messages`: loading returns the conversation untouched, search and history paging never see it, deleting the session removes it. Resume restores it only so later saves keep it.
 
 ## Audit log
 
-An append-only record of everything the agent did, in the global
-`~/.vise/audit.db` (one database across projects, each conversation tagged with
-its root). Turn it off with `VISE_AUDIT=0`; `VISE_AUDIT_RETENTION_DAYS` deletes
-whole conversations older than that, once per run.
+An append-only record of everything the agent did, in the global `~/.vise/audit.db` (each conversation tagged with its root). `VISE_AUDIT=0` turns it off; `VISE_AUDIT_RETENTION_DAYS` deletes older conversations once per run.
 
-- **Capture** is a write-only port: the core defines the typed `AuditEvent`
-  union and `AuditSink` (`src/core/audit.ts`, pure; `record` never throws and
-  never waits on I/O). Each fact has one emitter: model calls
-  `LlmClient.chat`, tool calls `createToolRunner` (`src/tools/agent/audit-call.ts`,
-  with the whole result before any is saved aside as too large), hook runs
-  `SessionHooks.run`, compactions `runCompaction`, goal events the
-  `GoalTracker` emit, subagent conversations `TurnCallbacks.onSubagentDone`
-  (also when the subagent fails), and the conversation's messages, turns,
-  commands and saved-id links `SessionAudit` (`src/repl/turn/session-audit.ts`),
-  which picks messages up by position because the engine appends in place.
-- **Storage:** `SqliteAuditSink` (`src/db/audit/audit-store.ts`) stamps the time on
-  `record`, queues, and writes in one transaction after 250 ms, at the end of a
-  turn or conversation. Events arrive in order, so the sink itself follows
-  which conversation and turn they belong to; each kind has its own writer.
-  Text fields are cut at 200,000 characters. A failed write drops that batch,
-  counted in `dropped`, and warns once. Tables: `audit_sessions`,
-  `audit_turns`, `audit_messages` (with subagent `depth`), `audit_model_calls`,
-  `audit_tool_calls`, the low-volume `audit_events` (commands, hooks,
-  compactions, goals), and the `audit_fts` search index.
-- **Query** is a separate read port, `AuditReader` (`report`, `search`; core
-  types in `src/core/audit.ts`, `SqliteAuditReader` in `src/db/audit/audit-query.ts`)
-  returning data that `src/output/audit-format.ts` renders. `/audit`,
-  `/audit tools|models|errors|hooks` and `/audit search <text>` use it, and
-  `--audit-export <id>` (`src/db/audit/audit-export.ts`) prints a whole conversation
-  as JSON.
-- **Retention:** `pruneAuditLog` (`src/db/audit/audit-prune.ts`) runs once per run,
-  before a session starts recording (never from the write path), and removes
-  each conversation whose last sign of life (its end, else its newest message)
-  is older than the setting, from every table in one transaction; a conversation
-  still in use is never taken. The file is not vacuumed (that would stall every
-  connection); freed pages are reused.
-- Arguments and results are stored verbatim, so a tool result that held a
-  secret is in the log in plaintext; there is no redaction yet.
+- **Capture** is a write-only port: the core defines the `AuditEvent` union and `AuditSink` (`packages/core/src/audit.ts`; `record` never throws or waits on I/O). Each fact has one emitter: model calls `LlmClient.chat`; tool calls `createToolRunner` (`tools/agent/audit-call.ts`, with the whole result before any spill); hook runs `SessionHooks.run`; compactions `runCompaction`; goal events `GoalTracker`; subagent conversations `TurnCallbacks.onSubagentDone`; and messages, turns, commands and saved-id links `SessionAudit` (`repl/turn/session-audit.ts`), which picks messages up by position because the engine appends in place.
+- **Storage:** `SqliteAuditSink` (`db/audit/audit-store.ts`) stamps time on `record`, queues, and writes in one transaction after 250 ms or at the end of a turn or conversation. Text fields are cut at 200,000 characters; a failed write drops that batch (counted in `dropped`) and warns once. Tables: `audit_sessions`, `audit_turns`, `audit_messages` (with subagent `depth`), `audit_model_calls`, `audit_tool_calls`, `audit_events`, `audit_fts`.
+- **Query** is a separate read port (`AuditReader`: `report`, `search`; `SqliteAuditReader` in `db/audit/audit-query.ts`) whose data `output/audit-format.ts` renders for `/audit`; `--audit-export <id>` prints a conversation as JSON.
+- **Retention:** `pruneAuditLog` runs once per run before recording starts, removes each conversation whose last sign of life is older than the setting from every table in one transaction, and never takes one in use. The file is not vacuumed.
+- Arguments and results are stored verbatim; there is no redaction yet.
 
-## Potential Problems
+## Potential problems
 
-- **Forced process exit.** Any `process.exit()` anywhere will truncate
-  buffered `stdout` when the output is a pipe and can mask real exit codes.
-  Audit new code for it; termination must flow through event-loop draining.
-- **Stringly-typed errors.** If `throw` or `console.error` with a bare string
-  appears in core code, convert it to a structured `Result`/error type before
-  the pattern spreads. The client already returns `Result<string>` with
-  structured error variants; the remaining surface is the driver formatting
-  those variants for display — keep that formatting in `output/format.ts`
-  once it exists, not inline in the entry point.
-- **One file doing every job.** Done for the entries: `index.ts` and
-  `src/web/main.ts` only apply settings, handle maintenance flags and hand over;
-  the edge service implementations live in `src/edge-sources.ts` and the shared
-  wiring in `src/wiring.ts`. What remains is the driver split (TTY vs. pipe)
-  and the `cli.ts` surface.
-- **Pure core vs. network I/O.** The core's fundamental operation is an HTTP
-  round-trip, which is I/O. The resolution is the `Client` interface: the
-  core owns the _type_, the edge provides the _implementation_. Do not
-  put `fetch` in `core/engine.ts`; do not put HTTP logic in `driver/`. If a
-  future driver (e.g. a mock client for tests) needs to swap the transport,
-  that is the mechanism — not a new module at the core level.
-- **Unbounded conversation.** The `messages` array grows with every turn and
-  has no size cap; on a local llama.cpp server with a finite context window it
-  eventually overflows. This is addressed by compaction: the session
-  summarizes the older portion of the conversation (via the core's
-  `summarize`/`splitForCompaction`) and keeps only the most recent turns
-  verbatim, on demand (`/compact`) and automatically when the server-reported
-  token count nears the window. The core's `splitForCompaction` is pure; the
-  summarize round-trip goes through the `Client`, so no I/O is added to the
-  core.
-- **Tool output size.** A tool result like `read_file` can be arbitrarily
-  long. Bounded: a result of more than 250 lines or about 20,000 characters is
-  saved to the session's temp directory by the tool runner and replaced by its
-  start plus how to read the rest (`TempStore`, `read_temp`/`search_temp`), and
-  `read_file` pages by `offset`/`limit`. Tools that bound their own output set
-  `boundsOwnOutput` on their definition. The `messages` array itself has no
-  size cap: compaction (above) is what keeps it inside the window.
-- **Unbounded subagent recursion.** `run_subagent` receives the same
-  `ToolRunner` and `Tool[]` as its parent, so a subagent can spawn its own
-  subagents with no depth limit. Each level runs a full tool loop, so
-  recursive spawning multiplies context usage quickly on a local server.
-  The only bounds are `MAX_TOOL_ROUNDS` per turn and the model's context
-  window; a depth cap or cost-aware guard is a future concern.
-- **Unbounded line input.** A piped file is unbounded. The core must process
-  lines streaming, one at a time, and never buffer the whole input in memory.
-- **Session snapshot durability and deletion races.** Named snapshots are
-  user data. Persistence must preserve the reserved auto-save contract, reject
-  path traversal, report missing names accurately, and avoid corrupting a
-  usable snapshot if a write is interrupted. If multiple drivers or processes
-  mutate the same project store concurrently, define an explicit consistency
-  policy rather than silently relying on process-local serialization.
-- **Auto-save name ownership.** An internal command such as `/workflow` is not
-  the conversation's first user message and must not claim its derived
-  auto-save name before a user message exists. Keep workflow-turn persistence
-  while deferring first-name selection until the first conversational input;
-  otherwise a command can give the session a surprising name that remains
-  stable for all later turns.
-- **Initial context seeding.** At startup the edge composes the conversation's
-  first user message (after the system message) from the working directory: a
-  capped directory tree, the project's `AGENTS.md` agent-instructions file when
-  present, a comma-separated list of available profile names when the
-  `.vise/profiles/` directory has entries, and a list of available notes
-  (name — summary) when the `.vise/notes/` directory has entries. Each section
-  is conditionally included only when non-empty. All runtime data stores
-  (profiles, notes, sessions) live under a single `.vise/` directory to keep
-  the working directory clean; the dot name also excludes `.vise/` from the
-  startup directory tree (dotfiles are skipped). The composition is a named
-  edge function (`buildInitialMessage` in `src/edge-sources.ts`); adding a new section is
-  a two-line addition inside that function, not a new nested ternary at the
-  call site. The `Session` receives the result as an opaque `initialMessage`
-  string and injects it once; it never re-reads the directory, files, or
-  listings. All reads are best-effort at the edge (invariant #2): a missing or
-  unreadable `AGENTS.md`, an empty `.vise/profiles/` or `.vise/notes/`
-  directory, is silently omitted, matching the tree's "unreadable directories
-  are silently skipped" behavior and the profile "absent → empty string"
-  sentinel. Because this is a one-shot value built at construction, no
-  core-owned `Source` interface is needed — the session takes an opaque string,
-  not a queryable edge service.
-- **TTY-only assumptions.** Today the readline interface hard-codes
-  `terminal: false` and assumes a TTY. The driver split exists precisely so
-  TTY and non-TTY paths are tested independently; do not re-couple them.
-- **Blocking tools.** Tool implementations run child processes and
-  file I/O. `ToolRunner.run` is async to prevent blocking the REPL event
-  loop, but long-running commands (e.g. unbounded child processes) can
-  still stall turn completion. Bounding execution time and supporting
-  cancellation/interrupts remain essential driver/engine concerns.
-- **Implicit global state.** Session state (conversation state, interrupt
-  handling) must live in the session object, not in module-level `let`
-  bindings, or the core becomes untestable and un-reentrant. The streaming
-  display state is the live instance of this: prompt/thinking counters, tool
-  invocation events, and the markdown line buffer (fence state) are driven
-  by callbacks (`onToken`/`onThinking`/`onPromptProgress`/`onToolCall`) that
-  all write to the same stdout stream. That state must live in a single
-  driver object (e.g. `driver/stream.ts` `StreamDisplay`) that owns the
-  cross-callback ordering invariants (e.g. flush any partial content line
-  before a counter or tool event starts a fresh line, so buffered content is
-  never emitted after that event), not in module-level `let`s in an entry point.
-  The web transcript (`web/src/transcript/transcript.ts`) owns the equivalent browser
-  ordering: streamed assistant text is finalized before thinking or tool-call
-  entries are appended, so the visible log follows server event order.
-- **Dynamic model switching and context awareness.** Model switching
-  via `/model` changes the active model on the client. Because context
-  limits and token usages vary per model, the session must query `contextMax`
-  and context usage dynamically with each model rather than caching a static
-  limit across model transitions.
+- **Stringly-typed errors.** A bare-string `throw` or `console.error` in core code should become a structured `Result`; keep display formatting in `output/format.ts`.
+- **Pure core vs. network I/O.** The core's basic operation is an HTTP round-trip: the core owns the `Client` _type_, the edge the _implementation_. Never put `fetch` in the core or HTTP logic in `driver/`.
+- **Unbounded context.** Compaction keeps `messages` inside the window (see above); tool output is bounded by the spill rule and `read_file` paging.
+- **Unbounded subagent recursion.** See Subagents; a depth cap or cost-aware guard is future work.
+- **Snapshot durability.** Saved sessions are user data. If several processes ever write the same project store, define an explicit consistency policy rather than relying on process-local serialisation.
+- **Auto-save naming.** An internal command such as `/workflow` is not the conversation's first user message and must not claim its auto-save name before a user message exists.
+- **Blocking tools.** `ToolRunner.run` is async, but a long child process can still stall a turn; bounded execution time and cancellation (Stop) are driver/engine concerns (see `AGENTS.md`, "Stop").
+- **Model switching.** Context limits and usage vary per model; query them per model, never cache a limit across `/model`.
+- **TTY assumptions.** The terminal driver hard-codes `terminal: false` readline and a TTY; keep TTY and non-TTY paths separate so each is testable.
 
-## Future Work
+## Future work
 
-- **Slash-command registry (done).** Built-in commands are a table in
-  `Session` and `/<name> [input]` shortcuts run only for names outside it.
-  `src/repl/command-catalog.ts` lists every command once (summary, help lines,
-  what it needs, web-only or not); `/help`, the web composer's suggestions and
-  the reserved names a new note, profile or workflow may not take all derive
-  from it, and a test fails when the catalog and the table disagree. Still to
-  do: the web-only `/steer` and `/queue` are answered before the session, so
-  the terminal has neither (see the turn-admission item below).
-
-- **One labelled model-call channel (partly done).** Done: the client owns one
-  progress sink, every call is labelled through `Client.as(purpose)`, and no
-  core helper takes a progress callback. Still to do: the nine positional
-  parameters of `Client.chat` (one of them, the per-call progress callback, is
-  passed by nobody). The target: every model call (reply, goal derivation,
-  goal check, progress check, compaction summary, workflow step, subagent round)
-  is a `ChatRequest` object `{ messages, tools?, schema?, act?, signal?,
-purpose }` handed to `Client.chat`, replacing the nine positional parameters.
-  Prompt progress and streaming do not travel as per-call callbacks threaded
-  through core helpers: the client owns a per-session `CallObserver` sink, and
-  every call reports `{ call, purpose, tokens... }` to it, including
-  non-streaming `act` calls (which report start and end with the measured
-  prompt size). The observer allocates the call number, so numbering covers
-  every request, and displays render one labelled bar per purpose ("checking
-  the goal", "reading", "compacting"). Core helpers then need no progress
-  parameter at all, and a new call site cannot be silently invisible.
-- **One turn-admission state machine per conversation.** Which line runs, which
-  are held, and which steers are pending is a single piece of state with
-  explicit states (`idle`, `running`, `draining`) and transitions: submit,
-  hold, unhold, steer, finish. It lives in one module (`repl/turn-queue.ts`,
-  pure, no I/O) that the web connection and the terminal both drive, instead
-  of `running`/`chain`/`held` booleans and arrays mutated from `web/line.ts`,
-  `web/queue-commands.ts` and `web/server.ts`. A steer is accepted or refused
-  atomically with the transition that ends the turn, so no steer can land
-  after the last drain and wait for an unrelated later turn. The terminal gets
-  `/steer` and `/queue` from the same module, and the browser's `steer-ui.ts`
-  mirrors only the `queue` message, never its own copy of the rules.
-
-- **Pictures are blobs referenced by id.** Done: a `Picture` carries a content
-  hash, type (sniffed from the bytes) and size; the bytes live in the shared
-  `ImageStore` and are resolved to a data URI only when a request is built.
-  Still to do: a per-root store behind a port in `repl/ports.ts`, sweeping
-  unreferenced files when a session is deleted, letting compaction drop a
-  picture's bytes while keeping its reference, an opt-out from persisting
-  screenshots of sensitive pages, and collecting pictures per tool call (the
-  result carrying them) instead of from a shared outbox, so concurrent tool
-  calls could not take each other's pictures.
-
-- **Vision tools are absent, not disabled.** While the active model cannot see
-  images, `view_image` and `browser_screenshot` should not be listed in the
-  prompt at all (the grammar already excludes disabled tools); changing the
-  model rebuilds that section once, at a point where the cache is invalid anyway.
-
-- **Tool display metadata lives on the tool.** Done for the label and the icon: a `Tool` carries `display: { label, icon }`, tests require every tool to have one, and the display code takes a lookup built from the definitions (`src/tools/display.ts`). Still to do: the arguments worth showing and the sensitive ones (`SHOWN` and `SENSITIVE` in `output/tool-line.ts` are still name-keyed), and the same readable names in error messages that name a tool.
-- **Structured list payloads for UI panels (done for the header and menus).**
-  The profile choices, tools with their category and state, reasoning levels,
-  saved sessions and burst state reach the browser as one typed `lists`
-  message (`src/repl/lists.ts`, sent by `src/web/api/wire/lists.ts` on
-  `lists_get` and after every line); `formatToolList` and the other text
-  formats are terminal-only. Still to do: the same for the hooks, workflow and
-  note lists that other panels still read through their own messages, and a
-  closed vocabulary for category names (lowercase, no brackets, `other`
-  reserved for uncategorised) validated at registration.
-- **Engine (done).** `core/engine.ts` already contains `runTurn`,
-  `splitForCompaction`, and `summarize`; it is pure and unit-testable with a
-  stub `Client`.
-- **Session (done).** `repl/session.ts` already owns the conversation state
-  (`messages` array) and handles `/exit`, `/context`, `/compact`, `/model`,
-  and turn dispatch. The session owns state; the engine is stateless.
-- **Drivers.** Add the pipe/script driver alongside the terminal driver so the
-  same session can be driven non-interactively; this is what makes the tool
-  scriptable and CI-able.
-- **CLI surface.** `cli.ts` with subcommands and flags; `index.ts` shrinks to
-  pure wiring.
-- **Tool system.** Tool definitions (`Tool[]`, carrying their own flags:
-  `core`, `defaultDisabled`, `boundsOwnOutput`, `requiresFileSystem`,
-  `requiresVision`) and the `ToolRunner` interface (edge provides
-  implementations in `src/tools.ts`, engine dispatches by name) are
-  implemented, and output is bounded. A failing tool returns an `error:`
-  string and a throwing handler is turned into one by the runner. What
-  remains: structured tool-execution errors as a `ViseError` variant (e.g.
-  `kind: "tool"`) so failure is not recognised by a string prefix, in
-  `engine.ts`, `workflow.ts`, `audit-call.ts`, `tool-line.ts` and the MCP
-  commands.
-- **Model management & configuration.** Model selection via `/model` and
-  model enumeration via `GET /v1/models` are now supported at runtime. Future
-  work includes model parameter configuration (temperature, top_p), model
-  aliasing, and persisting default model selection across invocations.
-- **Session state and persistence.** Conversation state (the growing
-  `messages` array), interrupt (Ctrl+C) handling, and clean termination state
-  are owned by `session.ts`, exercisable without a real TTY. Saved snapshots
-  use the edge-owned `SessionSource`; keep storage validation and file I/O out
-  of the core. Before supporting concurrent writers or relying on snapshots
-  as durable backups, define atomic-write, schema-versioning, and cross-process
-  conflict policies.
-- **Tests.** Core tests first (pure, fast, no I/O — use a stub `Client`), then
-  driver tests against piped input. A core test must never open a real
-  stdin/stdout or make a real HTTP call.
-- **Lint enforcement.** Keep the configured file/function size limits and
-  core import restrictions aligned with the architecture invariants as modules
-  are added; browser JavaScript should remain included in lint with its own
-  environment globals.
-- **Finding things without blind scrolling.** `browser_read` lists only what is
-  in the viewport (capped at 200 with the count of what is left out, a modal
-  first) while its text covers the whole page. A `browser_find` helper should
-  scroll until given text appears, or report the nearest ref and how far away
-  it is; `browser_scroll` could end by waiting for lazy-loaded content;
-  `SNAPSHOT_SCRIPT` should become a typed function (stringified) with unit
-  tests of the cap and the in-view rules; elements inside iframes and shadow
-  roots are not handled (`elementFromPoint` sees only their host); a sticky
-  header can still cover a click target after the scroll into view; and the
-  scrollable-panel scan runs `getComputedStyle` over many elements per snapshot.
-
-- **Page actions are data, not backend methods.** Done for `select` and
-  `scroll`: a `PageAction` in `page-scripts.ts` runs through one backend
-  method, `runPageAction` (required of every backend), implemented once per protocol and forwarded once
-  by `SwitchableBrowser`; the extension builds the script from the named action
-  and never runs script text from the server. Still to do: move the other
-  widgets (combobox, checkbox/radio, date and contenteditable setters, the
-  first step of `uploadFiles`) onto it. Snapshot refs should carry a
-  page-generation stamp so a ref from before a re-render fails with "page
-  changed, read again" instead of acting on the wrong element; the outline
-  should be paged or filtered (by region or field) rather than capped
-  silently, and tool results should report repeated identical failures so the
-  loop can stop and ask the user.
-
-- **Simplification follow-ups.** What the last pass left, in rough order of
-  value: the stores (`profiles`, `notes`, `workflows`) throw in some paths and
-  return `Result` in others (`tryIo` in `workflows.ts` is the shape to adopt);
-  `readFile`'s paging reimplements `TempStore.read`; `ChromiumBackend` and
-  `FirefoxBackend` are copy-paste siblings (dialog tracking, tab registry,
-  key tables, the `inTab` race) that want a shared base; the page's settings
-  tabs refresh two different ways and the tools/git/model dropdowns are built
-  three different ways (a `createXPanel(group, send)` factory each); the
-  terminal's Ctrl+C path is unconfirmed (see AGENTS.md "Known gaps").
-- **Semantic search follow-ups.** The index holds every chunk's vector in
-  memory for a search (fine for thousands of chunks; a vector index would be
-  needed beyond tens of thousands); the explorer shows hits but not a
-  per-file "similar passages" view; hybrid ranking with the saved-sessions
-  full-text search is not attempted; an index built while the chat model is
-  also generating competes with it for the local server (batches are small and
-  sequential, no throttle yet).
+- **One labelled model-call channel (partly done).** Done: the client owns one progress sink and every call is labelled through `Client.as(purpose)`. Still to do: replace the nine positional parameters of `Client.chat` (one, the per-call progress callback, is passed by nobody) with a `ChatRequest` object `{ messages, tools?, schema?, act?, signal?, purpose }`, and have non-streaming `act` calls report start and end with the measured prompt size to a per-session observer so a new call site cannot be invisible.
+- **One turn-admission state machine per conversation.** Which line runs, which are held and which steers are pending should be one pure module (`repl/turn-queue.ts`) with explicit states (`idle`, `running`, `draining`) and transitions (submit, hold, unhold, steer, finish), driven by both the web connection and the terminal instead of booleans and arrays mutated from three files. A steer is accepted or refused atomically with the transition that ends the turn, so none lands after the last drain. The terminal then gets `/steer` and `/queue`.
+- **Pictures** (done: content-hashed `Picture`s resolved from the shared `ImageStore` when a request is built). To do: a per-root store behind a port, sweeping unreferenced files on session delete, letting compaction drop bytes but keep the reference, an opt-out for sensitive screenshots, and per-call picture collection instead of a shared outbox.
+- **Vision tools absent, not disabled.** While the model cannot see images, `view_image` and `browser_screenshot` should not be in the prompt at all; rebuild that section on model change, when the cache is invalid anyway.
+- **Tool display metadata on the tool** (done for label and icon). To do: the arguments worth showing and the sensitive ones (`SHOWN`/`SENSITIVE` in `output/tool-line.ts` are still name-keyed), and readable names in error messages.
+- **Structured list payloads** (done for the header and menus via the `lists` message). To do: hooks, workflow and note lists still use their own messages; a closed vocabulary for category names validated at registration.
+- **Drivers and CLI.** A pipe/script driver beside the terminal one (makes the tool scriptable and CI-able) and a `cli.ts` with subcommands, shrinking `index.ts` to wiring; `apps/cli` is the placeholder.
+- **Structured tool errors.** A `ViseError` variant (e.g. `kind: "tool"`) so failure is not recognised by the `error:` prefix in `engine.ts`, `workflow.ts`, `audit-call.ts`, `tool-line.ts` and the MCP commands.
+- **Model configuration.** Parameters (temperature, top_p), aliases, and persisting the default model.
+- **Browser reading.** `browser_read` lists only in-viewport elements (capped at 200, a modal first) while text covers the page. To do: a `browser_find` that scrolls until text appears or reports the nearest ref; `SNAPSHOT_SCRIPT` as a typed function with unit tests of the cap and in-view rules; iframes and shadow roots; sticky headers covering click targets; the cost of the scrollable-panel scan.
+- **Page actions as data** (done for `select` and `scroll` via `PageAction`/`runPageAction`). To do: move the other widgets (combobox, checkbox/radio, date and contenteditable setters, the first step of `uploadFiles`) onto it; stamp refs with a page generation so a stale ref fails with "page changed, read again"; page or filter the outline instead of capping silently; report repeated identical failures so the loop can stop and ask.
+- **Simplification follow-ups.** The stores (`profiles`, `notes`, `workflows`) throw in some paths and return `Result` in others (`tryIo` in `workflows.ts` is the shape to adopt); `readFile` paging reimplements `TempStore.read`; `ChromiumBackend` and `FirefoxBackend` are copy-paste siblings (dialogs, tab registry, key tables, the `inTab` race) wanting a shared base; the page's settings tabs refresh two ways and the tools/git/model dropdowns are built three ways (a `createXPanel(group, send)` factory each); the terminal's Ctrl+C path is unconfirmed.
+- **Semantic search.** The index holds every vector in memory (fine for thousands of chunks, not tens of thousands); no per-file "similar passages" view; no hybrid ranking with session full-text search; indexing competes with generation on the local server (small sequential batches, no throttle).
+- **Tests and lint.** Core tests first (pure, stub `Client`, never real I/O), then driver tests. Keep lint limits and core import restrictions aligned with the invariants; `test/layout.test.ts` currently skips every directory named `packages`.
 
 ## Performance
 
-- **The web chat log.** Appending a line, streaming a reply and scrolling must
-  cost the same at 100 lines and at 10,000. Measure with `?bench=<lines>` on
-  the page (`web/src/log/bench.ts`, development only): per-line cost, frame time
-  while a long reply streams, cost of 50 scroll jumps, DOM size, heap. Done:
-  follow the bottom only while reading there, one render per frame with the
-  finished part of a long reply rendered once, lazy pictures, no live region.
-  The conversation is also kept as data (`web/src/transcript/chat-lines.ts`), so the next
-  steps need no rewrite: keep only the newest lines mounted (older ones rebuilt
-  from the data, a spacer standing for them), then page older history from the
-  server by `seq` instead of the 400-line cap. Do not rely on
-  `content-visibility` with one guessed height per line: it makes the
-  scrollbar jump.
+Real optimisation should be profiler-driven; these are the known concerns.
 
-Obvious concerns only — real optimization should be profiler-driven.
-
-- **Throughput of the pipe path is I/O-bound.** The only things that could
-  hurt it: per-line allocations in formatting, and any accidental buffering
-  of the whole input before processing. Streaming one line at a time keeps
-  memory flat in input size.
-- **Interactive latency.** The prompt→echo path should have no measurable
-  overhead beyond the syscall; if line latency ever becomes noticeable, profile
-  before optimizing — the usual suspect is work done synchronously in the
-  `line` handler that should have been deferred.
-- **Startup.** Keep the entry point's import graph small; the cost of loading
-  the CLI surface for a plain REPL session is the one startup cost worth
-  watching.
+- **The web chat log.** Appending a line, streaming a reply and scrolling must cost the same at 100 lines and 10,000. Measure with `?bench=<lines>` (`packages/frontend/src/log/bench.ts`, development only). Done: follow the bottom only while reading there, one render per frame with the finished part of a long reply rendered once, lazy pictures, no live region. The conversation is also kept as data (`transcript/chat-lines.ts`), so next: mount only the newest lines (older rebuilt from data, a spacer standing for them), then page older history from the server by `seq` instead of the 400-line cap. Do not rely on `content-visibility` with one guessed height per line: the scrollbar jumps.
+- **Interactive latency and startup.** Keep work out of the `line` handler that can be deferred, and keep the entry point's import graph small.

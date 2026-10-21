@@ -5,6 +5,7 @@ import {
   growthProblem,
   splitForCompaction,
   summarizesNothing,
+  summarize,
   summaryProblem,
 } from "@vise/core";
 import { runCompaction } from "../../../packages/backend/src/repl/turn/compaction.ts";
@@ -125,5 +126,36 @@ describe("runCompaction", () => {
     const result = await runCompaction(t.source);
     expect(result).toEqual({ ok: true, value: "nothing to compact" });
     expect(t.calls()).toBe(0);
+  });
+});
+
+describe("summarize", () => {
+  const body: Message[] = [user("hi"), assistant("hello")];
+  const call = {
+    type: "function" as const,
+    id: "c",
+    function: { name: "list_directory", arguments: "{}" },
+  };
+
+  test("asks again, firmly, when the first answer tries to call a tool", async () => {
+    const asked: string[] = [];
+    const client: Client = {
+      chat: async (messages) => {
+        asked.push(messages[messages.length - 1]?.content ?? "");
+        return asked.length === 1
+          ? { ok: true, value: { content: "Let me check first.", tool_calls: [call] } }
+          : { ok: true, value: { content: "the real summary" } };
+      },
+    };
+    expect(await summarize(client, body)).toEqual({ ok: true, value: "the real summary" });
+    expect(asked[1]).toContain("plain text only");
+    expect(asked[0]).not.toContain("plain text only");
+  });
+
+  test("fails when the model keeps calling tools", async () => {
+    const client: Client = {
+      chat: async () => ({ ok: true, value: { content: "Let me check.", tool_calls: [call] } }),
+    };
+    expect((await summarize(client, body)).ok).toBe(false);
   });
 });

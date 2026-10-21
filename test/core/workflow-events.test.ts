@@ -6,6 +6,7 @@ import type { WorkflowCommands } from "../../packages/backend/src/repl/commands/
 import { handleWorkflowCommand } from "../../packages/backend/src/repl/commands/workflow-commands.ts";
 import type { WorkflowProfileScope } from "../../packages/backend/src/repl/commands/workflow-profiles.ts";
 import { formatWorkflowEvent } from "../../packages/backend/src/output/workflow-format.ts";
+import { RunScope } from "../../packages/backend/src/repl/turn/run-scope.ts";
 
 const okClient: Client = {
   async chat() {
@@ -144,7 +145,7 @@ describe("profile after a workflow", () => {
       save: async () => {},
       setSessionName: () => {},
       profileScope: () => scope,
-      setCurrentAbort: () => {},
+      scope: () => new RunScope(),
       underGoal: (_said: string, _signal: AbortSignal, first: () => unknown) => first(),
     } as unknown as WorkflowCommands;
     return { session, restored, events, active: () => active };

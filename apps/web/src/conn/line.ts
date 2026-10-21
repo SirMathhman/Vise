@@ -31,13 +31,23 @@ export interface LineConnection {
   running: boolean;
   /** The running line is a turn the user can steer (not a command). */
   steerable?: boolean;
+  /**
+   * Set by Stop: nothing lined up starts by itself (held lines wait, unread
+   * steering becomes held lines) until the user sends a new line or resumes.
+   */
+  paused?: boolean;
 }
 
 /** A line waiting its turn, shown in the page's queue. */
 export interface HeldLine {
   qid: string;
   text: string;
+  /** Pictures sent with it (never part of the queue the page is shown). */
+  images?: Picture[];
 }
+
+/** Ids for steering that Stop turned into held lines. */
+let stoppedSteers = 0;
 
 /** Tell the page what is waiting. */
 function publishQueue(conn: LineConnection): void {
@@ -56,7 +66,50 @@ function publishState(conn: LineConnection): void {
     type: "state",
     running: conn.running,
     steerable: conn.running && conn.steerable === true,
+    paused: conn.paused === true,
   });
+}
+
+/**
+ * Stop: interrupt the line in flight and pause what is lined up behind it, so
+ * nothing starts on its own after the user pressed Stop. The session's
+ * interrupt resolves the line at once, whatever it was waiting on.
+ */
+export function stopLine(conn: LineConnection): void {
+  if (conn.running || conn.held.length > 0) conn.paused = true;
+  conn.session.interrupt();
+  publishState(conn);
+}
+
+/** Resume after Stop: every held line runs again, in order. */
+export function resumeQueue(conn: LineConnection): void {
+  if (!conn.paused) return;
+  conn.paused = false;
+  publishState(conn);
+  rechainHeld(conn);
+}
+
+/**
+ * Give every held line a place on the chain again. A held line whose first
+ * place has not come up yet still runs once: whichever entry comes first takes
+ * it out of `held`, and the other finds it gone.
+ */
+function rechainHeld(conn: LineConnection): void {
+  for (const held of [...conn.held]) chainLine(conn, held.text, undefined, held.images ?? [], held);
+}
+
+/** Unread steering of a stopped line, kept as held lines the user can resume or remove. */
+function holdSteers(conn: LineConnection): void {
+  const left = conn.session.notices.takeSteers();
+  if (left.length === 0) return;
+  for (const steer of left) {
+    conn.held.push({
+      qid: `stopped-${++stoppedSteers}`,
+      text: steer.content,
+      ...(steer.images ? { images: steer.images } : {}),
+    });
+  }
+  publishQueue(conn);
 }
 
 /** Drop held lines: one by id, or all of them. */
@@ -107,29 +160,57 @@ export function queueLine(
     reply(error instanceof Error ? error.message : String(error));
     return;
   }
-  const held: HeldLine | undefined = qid === undefined ? undefined : { qid, text };
+  const held: HeldLine | undefined =
+    qid === undefined
+      ? undefined
+      : { qid, text, ...(pictures.length > 0 ? { images: pictures } : {}) };
   if (held) {
     conn.held.push(held);
     publishQueue(conn);
   }
+  chainLine(conn, text, id, pictures, held);
+}
+
+/** Put a line on the connection's chain: it runs after everything before it. */
+function chainLine(
+  conn: LineConnection,
+  text: string,
+  id: string | undefined,
+  pictures: Picture[],
+  held: HeldLine | undefined,
+): void {
+  const reply = (error: string): void => {
+    conn.send({ type: "result", ok: false, error, ...(id === undefined ? {} : { id }) });
+    if (id === undefined) publishState(conn);
+  };
   conn.chain = conn.chain
     .then(async () => {
+      // A line the user typed after Stop ends the pause; held lines follow it.
+      const resumeAfter = !held && id === undefined && conn.paused === true;
+      if (resumeAfter) conn.paused = false;
       if (held) {
         // Removed from the queue while it waited: it never runs.
         if (!conn.held.includes(held)) return;
+        // Paused by Stop: it stays held until the user resumes.
+        if (conn.paused) return;
         conn.held = conn.held.filter((h) => h !== held);
         publishQueue(conn);
       }
-      if (pictures.length > 0 && !(await conn.edge.canSeeImages())) {
-        reply("the active model cannot see images (switch with /model)");
-        return;
+      try {
+        if (pictures.length > 0 && !(await conn.edge.canSeeImages())) {
+          reply("the active model cannot see images (switch with /model)");
+          return;
+        }
+        const taken = openElsewhere(conn, text);
+        if (taken) {
+          reply(taken);
+          return;
+        }
+        await runLine(conn, text, id, pictures, held?.qid);
+      } finally {
+        // Stopped again meanwhile: the held lines keep waiting.
+        if (resumeAfter && !conn.paused) rechainHeld(conn);
       }
-      const taken = openElsewhere(conn, text);
-      if (taken) {
-        reply(taken);
-        return;
-      }
-      await runLine(conn, text, id, pictures, qid);
     })
     .catch((error: unknown) => reply(String(error)));
 }
@@ -201,12 +282,12 @@ async function runLine(
     // Steering the model never read runs as turns of its own. The empty check
     // and `running = false` happen with no await between them, so a steer
     // either lands in this loop or sees `running` false and starts a turn.
-    for (let left = session.notices.takeSteers(); left.length > 0;) {
+    // After Stop it is held instead: nothing starts on its own.
+    for (let left = takeSteers(conn); left.length > 0; left = takeSteers(conn)) {
       for (const steer of left) {
         send({ type: "line_started", text: steer.content });
         await handleLine(session, display, send, steer.content, undefined, steer.images);
       }
-      left = session.notices.takeSteers();
     }
   } finally {
     conn.running = false;
@@ -216,6 +297,15 @@ async function runLine(
     // A command may have changed what the header and menus list (profile, tools, sessions, burst).
     await conn.lists?.().catch(() => undefined);
   }
+}
+
+/** The steering left to run after a line, or none when Stop paused the connection (it is held then). */
+function takeSteers(conn: LineConnection): ReturnType<Session["notices"]["takeSteers"]> {
+  if (conn.paused) {
+    holdSteers(conn);
+    return [];
+  }
+  return conn.session.notices.takeSteers();
 }
 
 async function handleLine(

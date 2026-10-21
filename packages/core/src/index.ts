@@ -11,6 +11,7 @@ export * from "./workflow.ts";
 export * from "./workflow-profiles.ts";
 export * from "./call/reasoning.ts";
 export * from "./call/runaway.ts";
+export * from "./cancel/abortable.ts";
 export * from "./hooks/tool-hook-match.ts";
 export { parse, parseJson } from "./schemas/parse.ts";
 export { todosSchema, todoItemSchema } from "./schemas/todo.ts";

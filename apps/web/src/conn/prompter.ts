@@ -17,6 +17,16 @@ export class WebUserPrompter implements UserPrompter {
     });
   }
 
+  /**
+   * Stop: the turn no longer waits for an answer (its wait is raced against the
+   * stop signal), so close the question on the page and drop the pending slot.
+   */
+  cancel(): void {
+    if (!this.pending) return;
+    this.settle("");
+    this.send({ type: "ask_cancel" });
+  }
+
   /** Resolve the pending ask with the user's reply; no-op when none is open. */
   settle(answer: string): void {
     if (this.pending) {

@@ -19,8 +19,30 @@ export interface RoundDeps {
   compact: (messages: Message[]) => Promise<Result<string>>;
   /** Write the session to disk. */
   save: () => Promise<void>;
-  /** The goal's progress check: a reason to stop the turn, or undefined. */
-  progress: () => Promise<string | undefined>;
+  /** The goal's progress check (`quiet`: rounds since a file last changed): a reason to stop the turn, or undefined. */
+  progress: (quiet?: number) => Promise<string | undefined>;
+  /** Whether a tool changes files (`Tool.writes`); without it the turn is never judged by its lack of edits. */
+  writes?: (toolName: string) => boolean;
+}
+
+/** How many rounds ago a file was last changed, counting from the start of the conversation when none was. */
+export function roundsSinceWrite(
+  messages: Message[],
+  writes: (toolName: string) => boolean,
+): number {
+  let rounds = 0;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i] as Message;
+    if (m.role !== "assistant" || !m.tool_calls?.length) continue;
+    if (m.tool_calls.some((c) => writes(c.function.name))) return rounds;
+    rounds += 1;
+  }
+  return rounds;
+}
+
+/** The note that pushes a model that has only been reading towards its first edit. */
+export function noWriteNote(quiet: number): string {
+  return `[note, not from the user] ${quiet} rounds have passed without changing any file. If the task is to change files, stop researching: make the first edit now, the largest part first, and refine after.`;
 }
 
 /**
@@ -69,6 +91,13 @@ export function makeRoundHook(
   return async (round, messages) => {
     notices?.drainInto(messages);
     const stop = await hook(round, messages);
+    if (stop === undefined && notices && deps.writes && config.noWriteRounds > 0) {
+      const quiet = roundsSinceWrite(messages, deps.writes);
+      if (quiet >= config.noWriteRounds && quiet % config.noWriteRounds === 0) {
+        notices.add(noWriteNote(quiet));
+        notices.drainInto(messages);
+      }
+    }
     if (stop !== undefined)
       announce?.(`
 ${stop}
@@ -89,7 +118,10 @@ function upkeep(
       return `Stopped: the conversation is too big for the model and could not be compacted (${formatError(compacted.error)}).`;
     }
     if (rounds % config.saveEvery === 0) await deps.save();
-    if (rounds % config.progressEvery === 0) return deps.progress();
+    const limit = config.noWriteRounds;
+    const quiet = deps.writes && limit > 0 ? roundsSinceWrite(messages, deps.writes) : 0;
+    const stalled = limit > 0 && quiet >= limit && quiet % limit === 0;
+    if (rounds % config.progressEvery === 0 || stalled) return deps.progress(stalled ? quiet : 0);
     return undefined;
   };
 }

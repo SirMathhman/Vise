@@ -183,6 +183,8 @@
 
 /* Thinking: collapsed (the default), only the header shows; the text appears when opened. */
 .line.thinking {
+  /* The log is a flex column and this line clips its overflow, so without this it shrinks to nothing when the log is full. */
+  flex-shrink: 0;
   color: transparent;
   user-select: none;
   font-style: italic;

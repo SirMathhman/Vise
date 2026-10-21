@@ -3,6 +3,7 @@ import type { Client, Tool } from "@vise/core";
 import type { Message, Result } from "@vise/core";
 import { checkGoal, checkProgress, continueNote, deriveGoal, type Goal } from "@vise/core";
 import { capTrace, type ExitReason, type GoalLog, type TraceSink } from "@vise/core";
+import { abortable, abortableResult, INTERRUPTED } from "@vise/core";
 import { formatError } from "../../output/format.ts";
 import { formatGoalTrace } from "../../output/goal-trace-format.ts";
 
@@ -87,9 +88,17 @@ export class GoalTracker {
     toolDefs: Tool[],
     signal: AbortSignal,
     ask?: (question: string) => Promise<boolean>,
+    quiet = 0,
   ): Promise<string | undefined> {
     if (!this.on || !this.goal) return undefined;
-    const progress = await checkProgress(client, messages, toolDefs, this.goal, signal, this.trace);
+    // Every wait here is raced against the stop signal (see `abortable`): a stopped
+    // turn never waits on a model call or on a question the user will not answer.
+    const checked = await abortable(
+      signal,
+      checkProgress(client, messages, toolDefs, this.goal, signal, this.trace, quiet),
+    );
+    if (!checked.ok) return undefined;
+    const progress = checked.value;
     if (progress.kind !== "stuck") {
       this.trace?.({
         kind: "progress",
@@ -100,7 +109,12 @@ export class GoalTracker {
     }
     const why = progress.detail || "the same steps keep repeating";
     // One model opinion must not end the user's task: repetitive work (paging, scrolling) can be right.
-    const keepGoing = await ask?.(`This does not seem to be getting anywhere: ${why} Keep going?`);
+    const asked = await abortable(
+      signal,
+      ask?.(`This does not seem to be getting anywhere: ${why} Keep going?`),
+    );
+    if (!asked.ok) return undefined;
+    const keepGoing = asked.value;
     this.trace?.({
       kind: "progress",
       progress: "stuck",
@@ -197,16 +211,13 @@ export class GoalTracker {
     signal: AbortSignal,
     said?: string,
   ): Promise<void> {
-    this.goal = await deriveGoal(
-      client,
-      messages,
-      toolDefs,
-      this.goal,
+    const derived = await abortable(
       signal,
-      this.isNote,
-      this.trace,
-      said,
+      deriveGoal(client, messages, toolDefs, this.goal, signal, this.isNote, this.trace, said),
     );
+    // A stopped derivation leaves the goal as it was (a late answer is never applied).
+    if (!derived.ok) return;
+    this.goal = derived.value;
     if (this.goal && !signal.aborted) {
       const { text, doneWhen, hold } = this.goal;
       this.emit?.({ kind: "goal", goal: text, doneWhen, ...(hold ? { hold } : {}) });
@@ -214,14 +225,23 @@ export class GoalTracker {
   }
 
   /** After many automatic continues the user is asked whether to keep going; false means stop (and tell the edge why). */
-  private async mayGoOn(hooks: GoalHooks, continues: number, detail: string): Promise<boolean> {
+  private async mayGoOn(
+    hooks: GoalHooks,
+    continues: number,
+    detail: string,
+    signal: AbortSignal,
+  ): Promise<boolean> {
     if (continues === 0 || continues % config.continuesBeforeAsking !== 0) {
       return true;
     }
-    const more =
-      (await hooks.confirmMore?.(
+    const asked = await abortable(
+      signal,
+      hooks.confirmMore?.(
         `The goal still is not met after ${continues} automatic continues. Keep going?`,
-      )) ?? false;
+      ),
+    );
+    if (!asked.ok) return false;
+    const more = asked.value ?? false;
     if (!more) {
       this.block(`${detail} (stopped after ${continues} automatic continues)`);
     }
@@ -249,22 +269,32 @@ export class GoalTracker {
     hooks: GoalHooks,
   ): Promise<Ended> {
     const interrupted: Ended = {
-      turn: { ok: false, error: { kind: "interrupted" } },
+      turn: INTERRUPTED,
       reason: "interrupted",
     };
-    if (!this.on) return { turn: await runTurn(), reason: "goal-off" };
+    if (!this.on) {
+      const turn = await abortableResult(signal, runTurn());
+      return signal.aborted ? interrupted : { turn, reason: "goal-off" };
+    }
     this.halted = undefined;
     await this.setGoal(client, messages, toolDefs, signal, hooks.said);
     if (signal.aborted) return interrupted;
     // The tool results before the turn: what "tools ran since" is measured from.
     let results = toolResults(messages);
-    let turn = await runTurn();
+    // The turn itself is raced too, so a workflow step that waits on something
+    // that ignores the signal cannot hold a stopped turn.
+    let turn = await abortableResult(signal, runTurn());
     if (this.halted !== undefined) return this.halt(turn);
     let step = "";
     let repeats = 0;
     let continues = 0;
     while (turn.ok && this.goal) {
-      let verdict = await checkGoal(client, messages, toolDefs, this.goal, signal, this.trace);
+      const judged = await abortable(
+        signal,
+        checkGoal(client, messages, toolDefs, this.goal, signal, this.trace),
+      );
+      if (!judged.ok) return interrupted;
+      let verdict = judged.value;
       this.trace?.({
         kind: "verdict",
         verdict: verdict.kind,
@@ -296,7 +326,8 @@ export class GoalTracker {
         this.block(`${verdict.detail} (it is not getting anywhere with this step)`);
         return { turn, reason: "same-step", detail: verdict.detail };
       }
-      if (!(await this.mayGoOn(hooks, continues, verdict.detail))) {
+      if (!(await this.mayGoOn(hooks, continues, verdict.detail, signal))) {
+        if (signal.aborted) return interrupted;
         return {
           turn,
           reason: "max-continues-declined",
@@ -312,13 +343,13 @@ export class GoalTracker {
         detail: verdict.detail,
         continuing: true,
       });
-      await hooks.beforeContinue?.();
+      if (!(await abortable(signal, hooks.beforeContinue?.())).ok) return interrupted;
       this.sendBack(messages, continueNote(this.goal, verdict), {
         continues,
         repeats,
         toolsRan: !idle,
       });
-      turn = await runTurn();
+      turn = await abortableResult(signal, runTurn());
       if (this.halted !== undefined) return this.halt(turn);
     }
     if (!turn.ok) {

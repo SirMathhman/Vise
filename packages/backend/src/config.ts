@@ -88,6 +88,13 @@ export const SPEC = {
     "ask again after a busy or rate-limited reply (HTTP 408, 429, 502, 503, 504; 0 = never)",
     { min: 0 },
   ),
+  defaultReasoningEffort: {
+    env: "VISE_REASONING_EFFORT_DEFAULT",
+    def: "",
+    group: LLM,
+    label:
+      "reasoning level used while the level is left at default (none, minimal, low, medium, high, xhigh, max; empty = the model's own default, which may think for minutes)",
+  },
   llmProvider: {
     env: "VISE_LLM_PROVIDER",
     def: "local",
@@ -129,7 +136,7 @@ export const SPEC = {
   ),
   maxCallTokens: n(
     "VISE_MAX_CALL_TOKENS",
-    32_768,
+    12_000,
     "Audit log",
     "stop a model call after this many tokens (0 = no limit)",
     { min: 0 },
@@ -171,6 +178,13 @@ export const SPEC = {
   ),
   saveEvery: n("VISE_SAVE_EVERY_ROUNDS", 25, COMPACT, "save the session every N rounds"),
   progressEvery: n("VISE_PROGRESS_EVERY_ROUNDS", 50, COMPACT, "check progress every N rounds"),
+  noWriteRounds: n(
+    "VISE_NO_WRITE_ROUNDS",
+    25,
+    COMPACT,
+    "check progress after this many rounds with no file changed (0 = off)",
+    { min: 0 },
+  ),
   maxSameStep: n("VISE_GOAL_MAX_SAME_STEP", 4, GOAL, "same step repeated before giving up"),
   continuesBeforeAsking: n(
     "VISE_GOAL_CONTINUES_BEFORE_ASKING",

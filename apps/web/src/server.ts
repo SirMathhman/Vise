@@ -57,6 +57,7 @@ import type { ConnectionState } from "./router/connection.ts";
  *   browser → server: { type:"line", text }        a user line
  *                     { type:"ask_answer", text }   answer to an ask/max-rounds
  *                     { type:"interrupt" }          abort the in-flight turn
+ *                     { type:"resume_queue" }       run the lines Stop held back
  *                     { type:"steer", text, images? } reach the agent before its next step
  *                     { type:"line", text, qid }    qid: hold until the work in flight is done (shown in the queue)
  *                     { type:"unqueue", qid }       remove a held line
@@ -76,6 +77,8 @@ import type { ConnectionState } from "./router/connection.ts";
  *                     { type:"ask", question, options, multiSelect? }
  *                     { type:"line_started", text, qid? } a line's turn began (a held line leaves the queue)
  *                     { type:"state", running, steerable } a line is running (the page's busy state follows this alone)
+ *                     { type:"ask_cancel" }         Stop closed the open question
+ *                     (state also carries paused: Stop held the queue back until a new line or resume_queue)
  *                     { type:"queue", items:[{qid,text}] } the lines being held
  *                     { type:"notice", text }       a short system note for the chat log
  *                     { type:"fs_changed" }          something under the project root changed

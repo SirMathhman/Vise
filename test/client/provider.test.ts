@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   modelInfo,
   providerFor,
+  effortOrDefault,
   reasoningFields,
   responseFormat,
   type ProviderSettings,
@@ -39,6 +40,13 @@ describe("request shaping", () => {
     ...local,
     capabilities: { ...local.capabilities, flatReasoning: false, namedSchema: true },
   };
+
+  test("the configured effort applies only while the user's level is unset", () => {
+    expect(effortOrDefault(undefined, "low")).toBe("low");
+    expect(effortOrDefault("default", "low")).toBe("low");
+    expect(effortOrDefault("high", "low")).toBe("high");
+    expect(effortOrDefault("default", "")).toBe("default");
+  });
 
   test("reasoning effort field", () => {
     expect(reasoningFields(local, "high")).toEqual({ reasoning_effort: "high" });

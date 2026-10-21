@@ -8,7 +8,8 @@ import type {
   ToolCall,
 } from "./errors.ts";
 import { z } from "zod";
-import { isSummaryFrame } from "./compaction/pins.ts";
+import { abortable, abortableResult, INTERRUPTED } from "./cancel/abortable.ts";
+import { isSummaryFrame, pinUserWords, renderPins } from "./compaction/pins.ts";
 import { parse } from "./schemas/parse.ts";
 import { toolCallArgsSchema } from "./schemas/tool-args.ts";
 
@@ -43,6 +44,8 @@ export interface Tool {
   defaultDisabled?: boolean;
   /** Bounds its own output, so the runner does not spill a long result to a temp file. */
   boundsOwnOutput?: boolean;
+  /** Changes files: a long stretch of rounds without one is what the progress check watches for. */
+  writes?: boolean;
 }
 
 /**
@@ -194,6 +197,11 @@ export const SUMMARIZE_PROMPT =
   "decisions made and questions still open; and the identifiers needed to continue " +
   "(tab numbers, file paths, ids, URLs, names).";
 
+/** Added to the summarize request when the first answer tried to call a tool. */
+const NO_TOOLS_NOTE =
+  "\n\nReply with the summary as plain text only. You cannot call tools here and nothing you call will run; " +
+  "work from the conversation above, even if you would like to verify something first.";
+
 /**
  * A partition of the conversation for compaction. `toSummarize` is the older
  * portion that will be replaced by a summary; `recent` is the tail of
@@ -251,29 +259,43 @@ export async function summarize(
   toSummarize: Message[],
   prefix?: SummaryPrefix,
 ): Promise<Result<string>> {
-  const messages: Message[] = [
-    ...(prefix ? [prefix.system] : []),
-    ...toSummarize,
-    { role: "user", content: SUMMARIZE_PROMPT },
-  ];
   const labelled = client.as?.("compaction") ?? client;
-  // With the conversation's own system message and tool list the request is
-  // encoded as its turns are, so the server reuses their cached prefix instead
-  // of re-reading it; no tool may be called, the answer is the summary.
-  const result = prefix
-    ? await labelled.chat(
-        messages,
-        prefix.tools,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        () => false,
-      )
-    : await labelled.chat(messages);
-  if (!result.ok) return result;
-  return { ok: true, value: result.value.content };
+  let last: Result<string> = { ok: true, value: "" };
+  // A model that still sees the tool list may answer with a call ("let me check the files
+  // first") instead of a summary: ask again once, more firmly, before giving up.
+  // The summary's "task" comes from what the user typed, not from the profile or notices around it.
+  const pinned = renderPins(pinUserWords(toSummarize));
+  const base = pinned ? `${SUMMARIZE_PROMPT}
+
+${pinned}` : SUMMARIZE_PROMPT;
+  for (const ask of [base, `${base}${NO_TOOLS_NOTE}`]) {
+    const messages: Message[] = [
+      ...(prefix ? [prefix.system] : []),
+      ...toSummarize,
+      { role: "user", content: ask },
+    ];
+    // With the conversation's own system message and tool list the request is
+    // encoded as its turns are, so the server reuses their cached prefix instead
+    // of re-reading it; no tool may be called, the answer is the summary.
+    const result = prefix
+      ? await labelled.chat(
+          messages,
+          prefix.tools,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          () => false,
+        )
+      : await labelled.chat(messages);
+    if (!result.ok) return result;
+    last = { ok: true, value: result.value.content };
+    if (!result.value.tool_calls?.length) return last;
+  }
+  return last.ok && last.value.trim()
+    ? { ok: false, error: { kind: "malformed", body: "the summary asked to call a tool instead" } }
+    : last;
 }
 
 /**
@@ -288,10 +310,9 @@ async function betweenRounds(
   toolDefs: Tool[],
 ): Promise<Result<string> | undefined> {
   if (rounds === 0 || !callbacks.onRound) return undefined;
-  const stop = await callbacks.onRound(rounds, messages, toolDefs);
-  if (callbacks.abort?.aborted) {
-    return { ok: false, error: { kind: "interrupted" } };
-  }
+  const raced = await abortable(callbacks.abort, callbacks.onRound(rounds, messages, toolDefs));
+  if (!raced.ok || callbacks.abort?.aborted) return INTERRUPTED;
+  const stop = raced.value;
   if (stop === undefined) return undefined;
   // Kept in the conversation so the model (and the next turn) knows why it stopped.
   messages.push({ role: "assistant", content: stop });
@@ -395,12 +416,20 @@ function parseArgs(raw: string): Record<string, unknown> | undefined {
   }
 }
 
-/** One tool call of a reply: its output, or an `error:` result saying why it did not run (bad arguments, a handler that threw). */
+/** The result recorded for a tool call the user stopped (or that never started because of it). */
+export const STOPPED_TOOL_RESULT = "error: interrupted by the user before this tool finished";
+
+/**
+ * One tool call of a reply: its output, or an `error:` result saying why it
+ * did not run (bad arguments, a handler that threw); `undefined` when the user
+ * stopped the turn while it ran. The wait is raced against the abort signal,
+ * so a tool that ignores the signal (or never finishes) cannot hold the turn.
+ */
 async function runToolCall(
   tools: ToolRunner,
   tc: ToolCall,
   callbacks: TurnCallbacks,
-): Promise<string> {
+): Promise<string | undefined> {
   const name = tc.function.name;
   const args = parseArgs(tc.function.arguments);
   if (args === undefined) {
@@ -411,11 +440,41 @@ async function runToolCall(
     return `error: the arguments of ${name} were not a valid JSON object`;
   }
   try {
-    return await tools.run(name, args, callbacks.abort);
+    const raced = await abortable(callbacks.abort, tools.run(name, args, callbacks.abort));
+    return raced.ok && !callbacks.abort?.aborted ? raced.value : undefined;
   } catch (error) {
     const why = error instanceof Error ? error.message : String(error);
     return `error: failed to execute ${name}: ${why}`;
   }
+}
+
+/**
+ * Run a reply's tool calls in order, adding each result to `messages`. Returns
+ * whether any failed, or `undefined` when the user stopped the turn: every call
+ * left without a result then gets `STOPPED_TOOL_RESULT`, so the conversation
+ * stays well formed (each call answered) for the next turn.
+ */
+async function runToolCalls(
+  tools: ToolRunner,
+  calls: ToolCall[],
+  messages: Message[],
+  callbacks: TurnCallbacks,
+): Promise<boolean | undefined> {
+  let failed = false;
+  for (const [i, tc] of calls.entries()) {
+    announceTool(callbacks, tc);
+    const output = await runToolCall(tools, tc, callbacks);
+    if (output === undefined) {
+      for (const left of calls.slice(i)) {
+        messages.push({ role: "tool", content: STOPPED_TOOL_RESULT, tool_call_id: left.id });
+      }
+      callbacks.onToolResult?.(tc.function.name, 0, STOPPED_TOOL_RESULT);
+      return undefined;
+    }
+    failed ||= output.startsWith("error:");
+    messages.push(toolResult(tc.function.name, output, tc.id, tools, callbacks));
+  }
+  return failed;
 }
 
 export async function runTurn(
@@ -435,36 +494,37 @@ export async function runTurn(
   while (true) {
     if (rounds >= MAX_TOOL_ROUNDS) {
       if (callbacks.onMaxRounds) {
-        const keepGoing = await callbacks.onMaxRounds(
-          `This turn has run ${rounds} rounds of tool calls. Keep going?`,
+        const keepGoing = await abortable(
+          callbacks.abort,
+          callbacks.onMaxRounds(`This turn has run ${rounds} rounds of tool calls. Keep going?`),
         );
-        if (keepGoing) {
+        if (!keepGoing.ok) return INTERRUPTED;
+        if (keepGoing.value) {
           rounds = 0;
           continue;
         }
       }
       return { ok: false, error: { kind: "malformed", body: "exceeded maximum tool rounds" } };
     }
-    if (callbacks.abort?.aborted) {
-      return { ok: false, error: { kind: "interrupted" } };
-    }
+    if (callbacks.abort?.aborted) return INTERRUPTED;
     const between = await betweenRounds(callbacks, messages, rounds, toolDefs);
     if (between) return between;
     rounds += 1;
-    const result = await client.chat(
-      messages,
-      toolDefs,
-      callbacks.onToken,
-      callbacks.onThinking,
-      undefined,
-      undefined,
+    const result = await abortableResult(
       callbacks.abort,
-      callbacks.isToolEnabled,
-      act,
+      client.chat(
+        messages,
+        toolDefs,
+        callbacks.onToken,
+        callbacks.onThinking,
+        undefined,
+        undefined,
+        callbacks.abort,
+        callbacks.isToolEnabled,
+        act,
+      ),
     );
-    if (callbacks.abort?.aborted) {
-      return { ok: false, error: { kind: "interrupted" } };
-    }
+    if (callbacks.abort?.aborted) return INTERRUPTED;
     if (!result.ok) {
       return { ok: false, error: result.error };
     }
@@ -491,13 +551,8 @@ ${reply.content}`
           : reply.content,
         tool_calls: reply.tool_calls,
       });
-      let failed = false;
-      for (const tc of reply.tool_calls) {
-        announceTool(callbacks, tc);
-        const output = await runToolCall(tools, tc, callbacks);
-        failed ||= output.startsWith("error:");
-        messages.push(toolResult(tc.function.name, output, tc.id, tools, callbacks));
-      }
+      const failed = await runToolCalls(tools, reply.tool_calls, messages, callbacks);
+      if (failed === undefined) return INTERRUPTED;
       act = !!callbacks.burst && !failed;
       if (!act) setBurst(false);
     } else {

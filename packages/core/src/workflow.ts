@@ -1,5 +1,6 @@
 import type { Client, Tool, ToolRunner, TurnCallbacks } from "./engine.ts";
 import { runTurn } from "./engine.ts";
+import { abortable, abortableResult, INTERRUPTED } from "./cancel/abortable.ts";
 import type { Message, Result, ViseError } from "./errors.ts";
 import { z } from "zod";
 import { parse } from "./schemas/parse.ts";
@@ -112,6 +113,8 @@ async function runSteps(
   onWorkflow?.({ kind: "start", name, total });
 
   for (const [index, step] of workflow.steps.entries()) {
+    // Stopped between steps: nothing more starts.
+    if (options.callbacks.abort?.aborted) return INTERRUPTED;
     progress.step = index + 1;
     onWorkflow?.({
       kind: "step",
@@ -256,16 +259,20 @@ async function generateArguments(
       JSON.stringify(schema),
     ].join("\n"),
   });
-  const generated = await (options.client.as?.("workflow") ?? options.client).chat(
-    options.messages,
-    // The tool list keeps the request encoded as the conversation's own turns are,
-    // so it shares their prompt prefix (and the server's cache) instead of re-reading it.
-    options.toolDefs,
-    undefined,
-    options.callbacks.onThinking,
-    undefined,
-    { type: "object", ...schema },
+  // Raced against Stop, like every wait of a turn: a late answer is never applied.
+  const generated = await abortableResult(
     options.callbacks.abort,
+    (options.client.as?.("workflow") ?? options.client).chat(
+      options.messages,
+      // The tool list keeps the request encoded as the conversation's own turns are,
+      // so it shares their prompt prefix (and the server's cache) instead of re-reading it.
+      options.toolDefs,
+      undefined,
+      options.callbacks.onThinking,
+      undefined,
+      { type: "object", ...schema },
+      options.callbacks.abort,
+    ),
   );
   if (!generated.ok) return generated;
   const args = parseAndValidateArguments(generated.value.content, toolName, schema);
@@ -316,7 +323,13 @@ async function runToolStep(
   options.callbacks.onToolCall?.(step.name, 0, args.value);
   let output: string;
   try {
-    output = await options.tools.run(step.name, args.value, options.callbacks.abort);
+    const raced = await abortable(
+      options.callbacks.abort,
+      options.tools.run(step.name, args.value, options.callbacks.abort),
+    );
+    // Stopped while the tool ran: its result (whenever it comes) is never added.
+    if (!raced.ok || options.callbacks.abort?.aborted) return INTERRUPTED;
+    output = raced.value;
   } catch (error) {
     output = `error: ${error instanceof Error ? error.message : String(error)}`;
   }

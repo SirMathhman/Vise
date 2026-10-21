@@ -23,6 +23,7 @@ import {
 } from "./commands/commands.ts";
 import { addedSinceLastCall, autoCompact, runCompaction } from "./turn/compaction.ts";
 import { makeRoundHook, NoticeQueue } from "./turn/round-hooks.ts";
+import { RunScope, RunScopes } from "./turn/run-scope.ts";
 import { ProfileToolGate } from "./profile-tools.ts";
 import {
   applyWhitelist,
@@ -108,14 +109,14 @@ export class Session {
   /** The generated id of the session file; undefined until the first save. */
   private sessionId: string | undefined;
   /**
-   * The AbortController for the turn in flight. A fresh controller is created
-   * at the start of each normal turn; `interrupt()` aborts it so the in-flight
-   * model call and tool rounds stop. `null` when no turn is running.
+   * The line in flight. Every line (turn, workflow or command) gets its scope
+   * synchronously as `handleLine` starts; `interrupt()` stops it, and every
+   * wait of the line is raced against it, so Stop never depends on the work
+   * underneath cooperating.
    */
-  private currentAbort: AbortController | null = null;
+  private readonly runs = new RunScopes();
   private readonly profileCommands: ProfileCommands;
   private readonly sessionCommands: SessionCommands;
-  private readonly compactionSource: CompactionSource;
   private readonly workflowCommands: WorkflowCommands;
 
   constructor(client: Client, tools: ToolRunner, toolDefs: Tool[], options: SessionOptions) {
@@ -176,13 +177,6 @@ export class Session {
         if (id !== undefined) this.audit.link(id);
       },
     };
-    this.compactionSource = {
-      client: this.client,
-      audit: this.audit.sink,
-      messages: () => this.persistableMessages(),
-      resetMessages: (body) => this.replaceConversation(body),
-      prefix: () => ({ system: this.systemMessage, tools: this.toolDefs }),
-    };
     this.workflowCommands = {
       workflowSource: () => this.workflowSource,
       client: () => this.client,
@@ -209,10 +203,31 @@ export class Session {
         workflowProfileScope(this.profileCommands, this.opts.toolController, () =>
           this.flushPendingProfile(),
         ),
-      setCurrentAbort: (controller) => {
-        this.currentAbort = controller;
-      },
+      scope: () => this.scope(),
       underGoal: (said, signal, first) => this.runUnderGoal(said, signal, first),
+    };
+  }
+
+  /** The line in flight's scope; a detached one when called outside a line (tests calling a handler directly). */
+  private scope(): RunScope {
+    return this.runs.current ?? new RunScope();
+  }
+
+  /**
+   * What compaction works on, bound to the line that starts it: a compaction
+   * the line stopped waiting for (the user pressed Stop) never replaces the
+   * conversation when it finishes later.
+   */
+  private compaction(): CompactionSource {
+    const scope = this.runs.current;
+    return {
+      client: this.client,
+      audit: this.audit.sink,
+      messages: () => this.persistableMessages(),
+      resetMessages: (body) => {
+        if (scope === null || scope.live()) this.replaceConversation(body);
+      },
+      prefix: () => ({ system: this.systemMessage, tools: this.toolDefs }),
     };
   }
 
@@ -267,7 +282,7 @@ export class Session {
       compact: (messages: Message[]) => {
         this.audit.messages(this.messages);
         return autoCompact(
-          this.compactionSource,
+          this.compaction(),
           this.context,
           config.inTurnCompactionThreshold,
           true,
@@ -275,14 +290,16 @@ export class Session {
         );
       },
       save: () => this.saveSession(),
-      progress: () =>
+      progress: (quiet?: number) =>
         this.goals.progress(
           this.client,
           this.messages,
           this.toolDefs,
           signal,
           this.opts.onMaxRounds,
+          quiet,
         ),
+      writes: (name: string) => this.toolDefs.some((t) => t.function.name === name && t.writes),
     };
     return makeRoundHook(deps, this.opts.onToken, this.notices);
   }
@@ -305,34 +322,53 @@ export class Session {
    * successful result so the edge can surface it (the session performs no I/O).
    */
   async handleLine(line: string, images: Picture[] = []): Promise<LineResult> {
+    // The scope exists before anything else happens, so Stop always has a line to
+    // stop, and the whole line is raced against it: whatever the line is waiting
+    // on (now or in code added later), Stop ends it at once. The waits inside are
+    // raced too, so work the line stopped waiting for never lands afterwards.
+    const scope = this.runs.begin();
+    try {
+      return await scope.waitLine(this.runLine(scope, line, images));
+    } finally {
+      this.runs.end(scope);
+    }
+  }
+
+  private async runLine(scope: RunScope, line: string, images: Picture[]): Promise<LineResult> {
     const trimmed = line.trim();
-    // Not awaited: a normal turn must create its abort controller synchronously (see `interrupt`).
     const command = this.slashCommand(trimmed);
     if (command !== undefined) {
-      return this.audit.command(trimmed, command, () => this.messages);
+      return this.audit.command(trimmed, scope.waitLine(command), () => this.messages);
     }
-    const shortcut = trimmed.startsWith("/")
-      ? await resolveShortcut(this.noteSource, this.workflowSource, trimmed)
+    const resolved = trimmed.startsWith("/")
+      ? await scope.wait(resolveShortcut(this.noteSource, this.workflowSource, trimmed))
       : undefined;
+    if (resolved && !resolved.ok) return resolved;
+    const shortcut = resolved?.value;
     if (shortcut?.kind === "error") return { ok: false, error: shortcut.error };
     if (shortcut?.kind === "workflow") {
-      return this.audit.command(trimmed, this.workflowLine(shortcut.line), () => this.messages);
+      const run = scope.waitLine(this.workflowLine(shortcut.line));
+      return this.audit.command(trimmed, run, () => this.messages);
     }
     // A note's body is the message the agent receives.
     if (shortcut?.kind === "note") line = shortcut.text;
-    const abort = new AbortController();
-    this.currentAbort = abort;
+    return this.runTurnLine(scope, line, images);
+  }
+
+  /** A line that is a turn for the model: hooks, the turn under the goal, saving. */
+  private async runTurnLine(scope: RunScope, line: string, images: Picture[]): Promise<LineResult> {
     this.audit.turnStart(line);
     try {
       this.flushPendingProfile();
-      await this.runHooks("pre");
+      await this.runHooks("pre", scope);
       this.messages.push(this.attachments.message(line, images));
       if (this.sessionName === undefined) {
         this.sessionName = deriveSessionName(line);
       }
       const auto = await this.maybeAutoCompact();
+      if (!scope.live()) return await this.stopped();
       const streamed = this.opts.onToken !== undefined;
-      const roundHook = this.roundHook(abort.signal);
+      const roundHook = this.roundHook(scope.signal);
       const turn = await this.goals.run(
         this.client,
         this.messages,
@@ -343,9 +379,9 @@ export class Session {
             this.tools,
             this.messages,
             this.toolDefs,
-            this.turnCallbacks(abort.signal, roundHook),
+            this.turnCallbacks(scope.signal, roundHook),
           ),
-        abort.signal,
+        scope.signal,
         this.goalHooks(),
       );
       this.audit.turnResult(turn);
@@ -353,7 +389,7 @@ export class Session {
         await this.saveSession(); // what the turn did before it failed is kept too
         return turn;
       }
-      await this.runHooks("post");
+      await this.runHooks("post", scope);
       await this.saveSession();
       return turnLineResult(turn.value, streamed, auto);
     } catch (e) {
@@ -361,7 +397,6 @@ export class Session {
       await this.saveSession(); // the goal trace of the turn that threw is kept
       throw e;
     } finally {
-      this.currentAbort = null;
       this.audit.messages(this.messages);
       this.audit.turnEnd(this.sessionId);
     }
@@ -475,16 +510,16 @@ export class Session {
   }
 
   /**
-   * Interrupt the turn in flight, if any. Aborts the in-flight model call and
-   * stops the tool loop between rounds; the running turn's promise then
-   * resolves with an `interrupted` error. Returns `true` if a turn was running
-   * and was interrupted, `false` if no turn was running (no-op). Called by the
+   * Interrupt the line in flight (a turn, workflow or command), if any. Its
+   * promise resolves with an `interrupted` error at once, whatever it was
+   * waiting on, and the in-flight model call and tools are told to stop through
+   * the signal. Returns `true` if a line was running and was interrupted,
+   * `false` if none was running (no-op). Called by the
    * edge's SIGINT handler, which uses the return value to decide whether to
    * interrupt (turn in flight) or exit (idle prompt).
    */
   interrupt(): boolean {
-    this.currentAbort?.abort();
-    return this.currentAbort !== null;
+    return this.runs.interrupt();
   }
 
   /**
@@ -495,7 +530,7 @@ export class Session {
    * subagent).
    */
   get currentAbortSignal(): AbortSignal | undefined {
-    return this.currentAbort?.signal;
+    return this.runs.current?.signal;
   }
 
   /** Whether turns are checked against a goal (for the edge to show the setting). */
@@ -520,10 +555,21 @@ export class Session {
    * post-turn paths so the parallel execution, non-blank filter, and
    * injection logic live in one place.
    */
-  private async runHooks(phase: "pre" | "post"): Promise<void> {
-    for (const output of await this.hooks.run(phase)) {
+  private async runHooks(phase: "pre" | "post", scope: RunScope): Promise<void> {
+    const outputs = await scope.wait(this.hooks.run(phase));
+    // A stopped line adds nothing from hooks that finish after it.
+    if (!outputs.ok || !scope.live()) return;
+    for (const output of outputs.value) {
       this.messages.push({ role: "user", content: output });
     }
+  }
+
+  /** The outcome of a line the user stopped; what it did so far is saved. */
+  private async stopped(): Promise<LineResult> {
+    const turn: LineResult = { ok: false, error: { kind: "interrupted" } };
+    this.audit.turnResult(turn);
+    await this.saveSession();
+    return turn;
   }
 
   /**
@@ -535,11 +581,13 @@ export class Session {
    * caller can log it, but never blocks the turn.
    */
   private maybeAutoCompact(): Promise<Result<string>> {
-    return autoCompact(this.compactionSource, this.context, config.compactionThreshold);
+    return this.scope().waitResult(
+      autoCompact(this.compaction(), this.context, config.compactionThreshold),
+    );
   }
 
   /** `/compact`: summarize the older conversation (`compaction.ts`); on any error it is left untouched. */
-  private doCompact = (): Promise<Result<string>> => runCompaction(this.compactionSource);
+  private doCompact = (): Promise<Result<string>> => runCompaction(this.compaction());
 
   /** The id of the saved session this conversation writes to, once it has one. */
   getSessionId = (): string | undefined => this.sessionId;

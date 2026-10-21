@@ -12,6 +12,7 @@ import { runWorkflow } from "@vise/core";
 import type { WorkflowEvent, WorkflowScope } from "@vise/core";
 import type { Message, Result } from "@vise/core";
 import type { LineResult } from "../ports.ts";
+import type { RunScope } from "../turn/run-scope.ts";
 import { formatWorkflowList } from "../../output/format.ts";
 import type { WorkflowProfileScope } from "./workflow-profiles.ts";
 import type { PreTurnHook, PostTurnHook, WorkflowSource } from "../session.ts";
@@ -51,8 +52,8 @@ export interface WorkflowCommands {
   setSessionName(name: string): void;
   /** Profile switching for the run, and the way back to the profile active now. */
   profileScope(): WorkflowProfileScope;
-  /** Store the per-turn AbortController (the source of truth for interrupt). */
-  setCurrentAbort(controller: AbortController | null): void;
+  /** The line in flight: its signal stops the run, and every wait of the run is raced against it. */
+  scope(): RunScope;
   /**
    * Run `first` as a turn under the goal tracker: the run is over only once the
    * goal is met and the todo list is finished (`said` is what was asked).
@@ -70,10 +71,15 @@ export interface WorkflowCommands {
  * post-turn paths so the parallel execution, non-blank filter, and
  * injection logic live in one place.
  */
-async function runHooks(hooks: PreTurnHook[] | PostTurnHook[], messages: Message[]): Promise<void> {
+async function runHooks(
+  hooks: PreTurnHook[] | PostTurnHook[],
+  messages: Message[],
+  scope: RunScope,
+): Promise<void> {
   if (hooks.length === 0) return;
-  const outputs = await Promise.all(hooks.map((h) => h.run()));
-  for (const output of outputs) {
+  const raced = await scope.wait(Promise.all(hooks.map((h) => h.run())));
+  if (!raced.ok || !scope.live()) return;
+  for (const output of raced.value) {
     if (output.trim() !== "") {
       messages.push({ role: "user", content: output });
     }
@@ -105,10 +111,9 @@ async function initWorkflow(source: WorkflowSource, rest: string): Promise<LineR
  * Handle `/workflow` and `/workflow <name> [input]`.
  * When name is omitted: lists available workflows from both scopes.
  * `/workflow init <name>`: creates a starter workflow definition.
- * Otherwise: runs the workflow, which is a turn in flight — a per-turn
- * `AbortController` is created here and its signal passed into
- * `runWorkflow`, so a Ctrl+C interrupts the run the same way a plain prompt
- * is interrupted.
+ * Otherwise: runs the workflow, which is a turn in flight: it runs under the
+ * session's scope for the line, so Stop (or Ctrl+C) interrupts the run the
+ * same way a plain prompt is interrupted.
  */
 export async function handleWorkflowCommand(
   session: WorkflowCommands,
@@ -133,12 +138,8 @@ export async function handleWorkflowCommand(
   const request = separator < 0 ? "" : arg.slice(separator).trim();
   const loaded = await source.loadWorkflow(name);
   if (!loaded.ok) return loaded;
-  // A workflow run is a turn in flight, so a Ctrl+C interrupts it the same
-  // way a plain prompt is interrupted. The per-turn controller is created
-  // here (not in `handleLine`, which returned control before the command was
-  // dispatched) and cleared in a `finally`.
-  const abort = new AbortController();
-  session.setCurrentAbort(abort);
+  const run = session.scope();
+  const abort = { signal: run.signal };
   const scope = session.profileScope();
   // A run that stops early stays in the profile it was working in: putting
   // back the one you had (often a restricted planning profile) would take the
@@ -146,7 +147,7 @@ export async function handleWorkflowCommand(
   let succeeded = false;
   try {
     const messages = session.messages();
-    await runHooks(session.preTurnHooks(), messages);
+    await runHooks(session.preTurnHooks(), messages, run);
     if (request.trim() !== "") session.setSessionName(request);
     const auto = await session.maybeAutoCompact();
     const streamed = session.onToken() !== undefined;
@@ -177,7 +178,7 @@ export async function handleWorkflowCommand(
     );
     if (!result.ok) return result;
     succeeded = true;
-    await runHooks(session.postTurnHooks(), messages);
+    await runHooks(session.postTurnHooks(), messages, run);
     await session.save();
     if (auto.ok) {
       return { ok: true, value: result.value, streamed };
@@ -195,6 +196,5 @@ export async function handleWorkflowCommand(
       else if (scope.current() !== scope.active)
         session.onWorkflow()?.({ kind: "profile", name: scope.current(), was: scope.active });
     }
-    session.setCurrentAbort(null);
   }
 }

@@ -20,6 +20,8 @@ export interface ConnectionState {
   chain: Promise<void>;
   held: HeldLine[];
   running: boolean;
+  /** Stop paused what is lined up (see `stopLine`). */
+  paused?: boolean;
   bridge: BrowserBridge;
   /** The folder's MCP servers (shared by its pages). */
   mcp?: McpHub;

@@ -51,6 +51,7 @@ export const fileTools: Tool[] = [
   },
   {
     type: "function",
+    writes: true,
     core: true,
     display: { label: "Create file", icon: "🆕" },
     function: {
@@ -75,6 +76,7 @@ export const fileTools: Tool[] = [
   },
   {
     type: "function",
+    writes: true,
     core: true,
     display: { label: "Edit file", icon: "📝" },
     function: {
@@ -104,6 +106,7 @@ export const fileTools: Tool[] = [
   },
   {
     type: "function",
+    writes: true,
     core: true,
     display: { label: "Delete file", icon: "🗑" },
     function: {
@@ -123,6 +126,7 @@ export const fileTools: Tool[] = [
   },
   {
     type: "function",
+    writes: true,
     display: { label: "Delete folder", icon: "🗑" },
     function: {
       name: "delete_directory",

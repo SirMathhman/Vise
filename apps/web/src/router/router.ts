@@ -6,7 +6,7 @@ import { handleGitMessage } from "../api/git-api.ts";
 import { handleMcpMessage } from "../api/mcp-api.ts";
 import { handleModelMessage } from "../api/models/model-api.ts";
 import { handleEnvChoices, handleSettingsMessage } from "../api/settings-api.ts";
-import { queueLine, steerLine, unqueue } from "../conn/line.ts";
+import { queueLine, resumeQueue, steerLine, stopLine, unqueue } from "../conn/line.ts";
 import { handleSemanticMessage } from "../api/semantic/semantic-api.ts";
 import { sendLists } from "../api/wire/lists.ts";
 import { handleQueueCommand } from "../conn/queue-commands.ts";
@@ -151,7 +151,15 @@ const ROUTES: Route[] = [
   },
   { owns: exact("hooks_get"), run: (conn) => pushHooks(conn) },
   { owns: exact("lists_get"), run: (conn) => sendLists(conn.edge, conn.send) },
-  { owns: exact("interrupt"), run: (conn) => void conn.session.interrupt() },
+  // Stop: answered at once, never behind the turn it stops.
+  {
+    owns: exact("interrupt"),
+    run: (conn) => {
+      stopLine(conn);
+      conn.prompter.cancel();
+    },
+  },
+  { owns: exact("resume_queue"), run: (conn) => resumeQueue(conn) },
   { owns: exact("ask_answer"), run: (conn, msg) => conn.prompter.settle(msg.text ?? "") },
   { owns: exact("line", "steer", "unqueue"), run: handleLineFamily },
 ];

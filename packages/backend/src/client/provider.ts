@@ -72,6 +72,8 @@ const LLAMA_CPP: ProviderCapabilities = {
  * A `response_format` is only validated after the fact, and Strata puts its own schema instructions near
  * the start of the prompt, which throws away the cached conversation for that call and the one after it
  * (it keeps one cache): so the schema goes in the question at the end instead. It has no embeddings.
+ * A build with constrained decoding (`/v1/status` `grammar.constrained_decoding`) does constrain a GBNF `grammar`
+ * (tool calls cannot come out malformed there): `providerOf` turns `grammar` on for such a server.
  */
 const STRATA: ProviderCapabilities = {
   grammar: false,
@@ -90,6 +92,8 @@ type Backend = "llama.cpp" | "strata";
 /** What each server (by base URL) turned out to be; absent until `detectBackend` has asked. */
 const backends = new Map<string, Backend>();
 const probes = new Map<string, Promise<void>>();
+/** The Strata servers (by base URL) that constrain decoding to a GBNF `grammar`. */
+const constrainedGrammar = new Set<string>();
 /** The one model a Strata server serves (`/v1/status` `model`), per base URL. */
 const servedModels = new Map<string, string>();
 
@@ -109,8 +113,14 @@ export function detectBackend(baseUrl: string): Promise<void> {
     try {
       const res = await fetch(`${base}/v1/status`, { signal: AbortSignal.timeout(2_000) });
       const body: unknown = res.ok ? await res.json().catch(() => undefined) : undefined;
-      const status = body as { service?: unknown; model?: unknown } | null | undefined;
+      const status = body as
+        | { service?: unknown; model?: unknown; grammar?: { constrained_decoding?: unknown } }
+        | null
+        | undefined;
       backends.set(base, status?.service === "strata" ? "strata" : "llama.cpp");
+      if (status?.service === "strata" && status.grammar?.constrained_decoding === true) {
+        constrainedGrammar.add(base);
+      }
       if (status?.service === "strata" && typeof status.model === "string" && status.model !== "") {
         servedModels.set(base, status.model);
       }
@@ -161,8 +171,16 @@ export function providerOf(s: ProviderSettings, id: ProviderId): Provider {
     modelsUrl: `${base}/v1/models`,
     rootUrl: base,
     headers: { authorization: `Bearer ${s.llmApiKey}` },
-    capabilities: backend === "strata" ? STRATA : LLAMA_CPP,
+    capabilities:
+      backend === "strata"
+        ? { ...STRATA, grammar: constrainedGrammar.has(base) }
+        : LLAMA_CPP,
   };
+}
+
+/** The level to send: the user's, or the configured fallback while theirs is unset or "default". */
+export function effortOrDefault(level: string | undefined, fallback: string): string | undefined {
+  return (level === undefined || level === "default") && fallback !== "" ? fallback : level;
 }
 
 /** Request fields that differ by provider: the reasoning level and the schema-constrained reply. */

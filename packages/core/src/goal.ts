@@ -282,6 +282,8 @@ export async function checkProgress(
   goal: Goal,
   signal?: AbortSignal,
   trace?: TraceSink,
+  /** Rounds since any file was changed (0 = unknown or recent). */
+  quiet = 0,
 ): Promise<Progress> {
   const reply = await ask(
     client,
@@ -289,7 +291,7 @@ export async function checkProgress(
     toolDefs,
     `[progress check, not from the user] Goal: ${goal.text}
 Done when: ${goal.doneWhen}
-This turn has been running for a long time. Judging only from the recent tool calls and their results: is real headway being made toward the goal, or are the same steps being repeated, the same errors hit, or the work going in circles? Reply with JSON. "progress": "progressing" if each recent step moved the work forward, "stuck" if not. "detail": one sentence saying why.`,
+This turn has been running for a long time.${quiet > 0 ? ` No file has been changed in the last ${quiet} rounds: if the goal needs changes to files, reading and checking alone is not headway.` : ""} Judging only from the recent tool calls and their results: is real headway being made toward the goal, or are the same steps being repeated, the same errors hit, or the work going in circles? Reply with JSON. "progress": "progressing" if each recent step moved the work forward, "stuck" if not. "detail": one sentence saying why.`,
     PROGRESS_SCHEMA,
     "progress-check",
     signal,

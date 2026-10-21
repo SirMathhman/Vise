@@ -14,7 +14,10 @@ function fake() {
   const conn = {
     send: (m: Record<string, unknown>) => sent.push(m),
     session,
-    prompter: { settle: (t: string) => void log.push(`answer:${t}`) },
+    prompter: {
+      settle: (t: string) => void log.push(`answer:${t}`),
+      cancel: () => void log.push("cancel-ask"),
+    },
     edge: {
       session,
       profileSource: { listProfiles: async () => ({ ok: true as const, value: ["plan"] }) },
@@ -45,7 +48,7 @@ test("interrupt and ask_answer reach the session and the prompter, never the tur
   handleMessage(conn, JSON.stringify({ type: "interrupt" }));
   handleMessage(conn, JSON.stringify({ type: "ask_answer", text: "yes" }));
   await settle();
-  expect(log).toEqual(["interrupt", "answer:yes"]);
+  expect(log).toEqual(["interrupt", "cancel-ask", "answer:yes"]);
 });
 
 test("lists_get answers with the profiles, tools, reasoning level and burst state", async () => {

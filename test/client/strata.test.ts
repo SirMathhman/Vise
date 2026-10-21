@@ -54,6 +54,21 @@ describe("backend detection", () => {
     }
   });
 
+  test("a Strata build that constrains decoding to a grammar gets the grammar capability", async () => {
+    const mock = mockFetch(() =>
+      jsonResponse({ service: "strata", model: "q", grammar: { constrained_decoding: true } }),
+    );
+    try {
+      await detectBackend("http://strata-grammar.test:1");
+      const p = providerFor(settings("http://strata-grammar.test:1"));
+      expect(p.backend).toBe("strata");
+      expect(p.capabilities.grammar).toBe(true);
+      expect(p.capabilities.schemaDecoding).toBe(false);
+    } finally {
+      mock.restore();
+    }
+  });
+
   test("anything else is llama.cpp, and an unreachable server is asked again next time", async () => {
     const other = mockFetch(() => new Response("not found", { status: 404 }));
     try {
