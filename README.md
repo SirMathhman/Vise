@@ -1,15 +1,11 @@
 # vise
 
-To install dependencies:
+A Rust REPL that sends each line to a Strata server at `http://127.0.0.1:8080`.
+
+To build and run:
 
 ```bash
-bun install
+cargo run
 ```
 
-To run:
-
-```bash
-bun run index.ts
-```
-
-This project was created using `bun init` in bun v1.3.14. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
+Type `exit` or `quit` to leave the REPL.
