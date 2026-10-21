@@ -8,6 +8,7 @@ interface Message {
 type StreamEvent =
   | { type: "reasoning"; text: string }
   | { type: "content"; text: string }
+  | { type: "tool"; text: string }
   | { type: "done" }
   | { type: "error"; error: string };
 
@@ -111,7 +112,7 @@ form.addEventListener("submit", async (event) => {
   thinkingSummary.textContent = "Thinking";
   const thinkingText = document.createElement("div");
   thinking.append(thinkingSummary, thinkingText);
-  const answerText = document.createElement("div");
+  let answerText = document.createElement("div");
   bubble.append(thinking, answerText);
 
   try {
@@ -121,6 +122,13 @@ form.addEventListener("submit", async (event) => {
         thinkingText.textContent += streamed.text;
       } else if (streamed.type === "content") {
         answerText.textContent += streamed.text;
+      } else if (streamed.type === "tool") {
+        // Text after a tool call goes in a new block below it, so the order matches the stream.
+        const toolLine = document.createElement("div");
+        toolLine.className = "tool";
+        toolLine.textContent = `[tool] ${streamed.text}`;
+        answerText = document.createElement("div");
+        bubble.append(toolLine, answerText);
       }
       scrollToEnd();
     });

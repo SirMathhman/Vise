@@ -5,6 +5,8 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
+use crate::tools;
+
 #[derive(Clone)]
 pub struct Config {
     pub url: String,
@@ -46,10 +48,25 @@ pub struct Message {
     pub content: String,
 }
 
-/// One piece of a streamed reply: the model's reasoning or its answer text.
+/// One piece of a streamed turn: the model's reasoning, its answer text, or a tool it ran.
 pub enum Chunk<'a> {
     Reasoning(&'a str),
     Content(&'a str),
+    Tool(&'a str),
+}
+
+/// A tool call the model asked for, assembled from streamed fragments.
+#[derive(Default)]
+pub struct ToolCall {
+    pub id: String,
+    pub name: String,
+    pub arguments: String,
+}
+
+/// One streamed model response: its answer text and any tool calls.
+pub struct Reply {
+    pub content: String,
+    pub tool_calls: Vec<ToolCall>,
 }
 
 pub type EventReader = BufReader<Box<dyn Read + Send + Sync>>;
@@ -83,25 +100,39 @@ impl fmt::Display for StrataError {
     }
 }
 
-/// Sends the conversation and streams the reply, calling `on_chunk` as each piece arrives.
-/// Returns the full answer text (without reasoning).
-pub fn send_message(
-    messages: &[Message],
+/// Streams one model response for the given conversation items, calling `on_chunk` for each delta.
+pub fn stream_reply(
+    items: &[Value],
     config: &Config,
     on_chunk: &mut dyn FnMut(Chunk),
-) -> Result<String, StrataError> {
-    let reader = open_stream(messages, config)?;
+) -> Result<Reply, StrataError> {
+    let reader = open_stream(items, config)?;
     relay(reader, &config.url, on_chunk)
 }
 
+/// Converts messages to wire-format items, with the working directory first when set.
+pub fn message_items(messages: &[Message], config: &Config) -> Vec<Value> {
+    let mut items: Vec<Value> = Vec::new();
+    if let Some(dir) = &config.working_dir {
+        items.push(json!({
+            "role": "system",
+            "content": format!("The current working directory is {dir}."),
+        }));
+    }
+    items.extend(messages.iter().map(
+        |message| json!({ "role": message.role.as_str(), "content": message.content }),
+    ));
+    items
+}
+
 /// Opens a streaming chat-completions request. Fails before any reply text is read.
-pub fn open_stream(messages: &[Message], config: &Config) -> Result<EventReader, StrataError> {
+fn open_stream(items: &[Value], config: &Config) -> Result<EventReader, StrataError> {
     let agent = ureq::AgentBuilder::new()
         .timeout_read(config.read_timeout)
         .build();
     match agent
         .post(&config.url)
-        .send_json(build_body(messages, config))
+        .send_json(request_body(items, config))
     {
         Ok(response) => Ok(BufReader::new(response.into_reader())),
         Err(ureq::Error::Status(status, response)) => Err(StrataError::Http {
@@ -120,12 +151,13 @@ pub fn open_stream(messages: &[Message], config: &Config) -> Result<EventReader,
 }
 
 /// Reads server-sent events until `[DONE]`, passing each delta to `on_chunk`.
-pub fn relay(
+fn relay(
     reader: impl BufRead,
     url: &str,
     on_chunk: &mut dyn FnMut(Chunk),
-) -> Result<String, StrataError> {
-    let mut answer = String::new();
+) -> Result<Reply, StrataError> {
+    let mut content = String::new();
+    let mut tool_calls: Vec<ToolCall> = Vec::new();
     for line in reader.lines() {
         let line = line.map_err(|err| io_error(url, err))?;
         let Some(data) = line.strip_prefix("data: ") else {
@@ -147,7 +179,7 @@ pub fn relay(
             .and_then(|delta| delta.get("reasoning_content"))
             .and_then(Value::as_str)
             .unwrap_or("");
-        let content = delta
+        let text = delta
             .and_then(|delta| delta.get("content"))
             .and_then(Value::as_str)
             .unwrap_or("");
@@ -155,12 +187,53 @@ pub fn relay(
         if !reasoning.is_empty() {
             on_chunk(Chunk::Reasoning(reasoning));
         }
-        if !content.is_empty() {
-            answer.push_str(content);
-            on_chunk(Chunk::Content(content));
+        if !text.is_empty() {
+            content.push_str(text);
+            on_chunk(Chunk::Content(text));
+        }
+        if let Some(fragments) = delta
+            .and_then(|delta| delta.get("tool_calls"))
+            .and_then(Value::as_array)
+        {
+            for fragment in fragments {
+                add_tool_call_fragment(&mut tool_calls, fragment);
+            }
         }
     }
-    Ok(answer)
+    Ok(Reply {
+        content,
+        tool_calls,
+    })
+}
+
+/// Adds one streamed tool-call fragment to the call at its index. Fragments for a new call
+/// arrive in order, so an index past the end starts a call only when it is the next one.
+fn add_tool_call_fragment(tool_calls: &mut Vec<ToolCall>, fragment: &Value) {
+    let index = fragment
+        .get("index")
+        .and_then(Value::as_u64)
+        .and_then(|index| usize::try_from(index).ok());
+    let Some(index) = index.filter(|index| *index <= tool_calls.len()) else {
+        return;
+    };
+    if index == tool_calls.len() {
+        tool_calls.push(ToolCall::default());
+    }
+    let call = &mut tool_calls[index];
+
+    if let Some(id) = fragment.get("id").and_then(Value::as_str) {
+        call.id.push_str(id);
+    }
+    let function = fragment.get("function");
+    if let Some(name) = function.and_then(|function| function.get("name")).and_then(Value::as_str) {
+        call.name.push_str(name);
+    }
+    if let Some(arguments) = function
+        .and_then(|function| function.get("arguments"))
+        .and_then(Value::as_str)
+    {
+        call.arguments.push_str(arguments);
+    }
 }
 
 fn io_error(url: &str, err: io::Error) -> StrataError {
@@ -187,7 +260,17 @@ fn is_timeout_kind(kind: io::ErrorKind) -> bool {
     matches!(kind, io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock)
 }
 
-/// Builds the chat-completions request body for a single user message.
+/// Builds the chat-completions request body from wire-format items.
+fn request_body(items: &[Value], config: &Config) -> Value {
+    json!({
+        "model": config.model,
+        "messages": items,
+        "stream": true,
+        "tools": tools::definitions(),
+    })
+}
+
+/// Builds the request body for a single user message.
 fn build_request(content: &str, config: &Config) -> Value {
     let message = Message {
         role: Role::User,
@@ -198,21 +281,7 @@ fn build_request(content: &str, config: &Config) -> Value {
 
 /// Builds the streaming chat-completions request body from the full conversation.
 fn build_body(messages: &[Message], config: &Config) -> Value {
-    let mut items: Vec<Value> = Vec::new();
-    if let Some(dir) = &config.working_dir {
-        items.push(json!({
-            "role": "system",
-            "content": format!("The current working directory is {dir}."),
-        }));
-    }
-    items.extend(messages.iter().map(
-        |message| json!({ "role": message.role.as_str(), "content": message.content }),
-    ));
-    json!({
-        "model": config.model,
-        "messages": items,
-        "stream": true,
-    })
+    request_body(&message_items(messages, config), config)
 }
 
 /// Extracts `choices[0].message.content` from a non-streaming chat-completions response.

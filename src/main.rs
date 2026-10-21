@@ -1,5 +1,7 @@
+mod agent;
 mod session;
 mod strata;
+mod tools;
 mod web;
 
 use std::io::{self, BufRead, Write};
@@ -20,6 +22,39 @@ fn startup_config() -> strata::Config {
         working_dir,
         ..strata::Config::default()
     }
+}
+
+#[derive(PartialEq, Clone, Copy)]
+enum Section {
+    Thinking,
+    Answer,
+}
+
+/// Prints streamed reasoning and answer text, labeling each section as it starts.
+fn print_chunk(chunk: Chunk, section: &mut Option<Section>) {
+    let (next, text) = match chunk {
+        Chunk::Reasoning(text) => (Section::Thinking, text),
+        Chunk::Content(text) => (Section::Answer, text),
+        Chunk::Tool(text) => {
+            if section.is_some() {
+                println!();
+            }
+            println!("[tool] {text}");
+            *section = None;
+            return;
+        }
+    };
+    if *section != Some(next) {
+        if section.is_some() {
+            println!();
+        }
+        if next == Section::Thinking {
+            print!("[thinking] ");
+        }
+        *section = Some(next);
+    }
+    print!("{text}");
+    let _ = io::stdout().flush();
 }
 
 fn main() -> io::Result<()> {
@@ -56,21 +91,9 @@ fn main() -> io::Result<()> {
         }
 
         session.push(Role::User, trimmed.to_owned());
-        let mut in_reasoning = None;
-        let result = strata::send_message(session.messages(), &config, &mut |chunk| {
-            let reasoning = matches!(chunk, Chunk::Reasoning(_));
-            if in_reasoning != Some(reasoning) {
-                if in_reasoning.is_some() {
-                    println!();
-                }
-                print!("{}", if reasoning { "[thinking] " } else { "" });
-                in_reasoning = Some(reasoning);
-            }
-            let text = match chunk {
-                Chunk::Reasoning(text) | Chunk::Content(text) => text,
-            };
-            print!("{text}");
-            let _ = io::stdout().flush();
+        let mut section = None;
+        let result = agent::run_turn(session.messages(), &config, &mut |chunk| {
+            print_chunk(chunk, &mut section)
         });
         println!();
         match result {

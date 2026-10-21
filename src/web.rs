@@ -6,7 +6,8 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
-use crate::strata::{self, Chunk, Config, Message, Role};
+use crate::agent;
+use crate::strata::{Chunk, Config, Message, Role};
 
 pub const DEFAULT_PORT: u16 = 3000;
 
@@ -150,32 +151,42 @@ fn chat(mut stream: TcpStream, request: &Request, config: &Config) -> io::Result
         }
     };
 
-    let reader = match strata::open_stream(&messages, config) {
-        Ok(reader) => reader,
-        Err(err) => {
-            let response = json_response(502, json!({ "error": err.to_string() }));
-            return write_response(&mut stream, &response);
-        }
-    };
-
-    write!(
-        stream,
-        "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n"
-    )?;
-    let outcome = strata::relay(reader, &config.url, &mut |chunk| {
+    let mut started = false;
+    let outcome = agent::run_turn(&messages, config, &mut |chunk| {
         let event = match chunk {
             Chunk::Reasoning(text) => json!({ "type": "reasoning", "text": text }),
             Chunk::Content(text) => json!({ "type": "content", "text": text }),
+            Chunk::Tool(text) => json!({ "type": "tool", "text": text }),
         };
         // A failed write means the browser closed the page; the rest of the reply is dropped.
+        let _ = start_stream(&mut stream, &mut started);
         let _ = write_event(&mut stream, &event);
     });
 
-    let final_event = match outcome {
-        Ok(_) => json!({ "type": "done" }),
-        Err(err) => json!({ "type": "error", "error": err.to_string() }),
-    };
-    write_event(&mut stream, &final_event)
+    match outcome {
+        Ok(_) => {
+            start_stream(&mut stream, &mut started)?;
+            write_event(&mut stream, &json!({ "type": "done" }))
+        }
+        // Nothing was sent yet, so the failure can still be a plain JSON error response.
+        Err(err) if !started => {
+            let response = json_response(502, json!({ "error": err.to_string() }));
+            write_response(&mut stream, &response)
+        }
+        Err(err) => write_event(&mut stream, &json!({ "type": "error", "error": err.to_string() })),
+    }
+}
+
+/// Sends the event-stream headers once, before the first event.
+fn start_stream(stream: &mut TcpStream, started: &mut bool) -> io::Result<()> {
+    if !*started {
+        *started = true;
+        write!(
+            stream,
+            "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n"
+        )?;
+    }
+    Ok(())
 }
 
 fn write_event(stream: &mut TcpStream, event: &Value) -> io::Result<()> {
