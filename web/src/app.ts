@@ -33,11 +33,18 @@ async function streamChat(
   messages: Message[],
   onEvent: (event: StreamEvent) => void,
 ): Promise<string> {
-  const res = await fetch("/api/chat", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ messages }),
-  });
+  let res: Response;
+  try {
+    res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages }),
+    });
+  } catch {
+    throw new Error(
+      `Could not reach the Vise server at ${location.origin}. Check that "vise web" is still running, then try again.`,
+    );
+  }
   if (!res.ok || res.body === null) {
     const data = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(data.error ?? `HTTP ${res.status}`);
@@ -49,7 +56,9 @@ async function streamChat(
   let answer = "";
 
   for (;;) {
-    const { done, value } = await reader.read();
+    const { done, value } = await reader.read().catch(() => {
+      throw new Error("The connection dropped partway through the reply. Try again.");
+    });
     if (done) {
       break;
     }
@@ -78,7 +87,7 @@ async function streamChat(
       onEvent(event);
     }
   }
-  return answer;
+  throw new Error("The reply ended before it finished. Try again.");
 }
 
 form.addEventListener("submit", async (event) => {
@@ -118,6 +127,9 @@ form.addEventListener("submit", async (event) => {
     conversation.push({ role: "assistant", content: reply });
   } catch (err) {
     conversation.pop();
+    if (answerText.textContent === "" && thinkingText.textContent === "") {
+      bubble.remove();
+    }
     addEntry("error").textContent = err instanceof Error ? err.message : String(err);
   } finally {
     input.disabled = false;
