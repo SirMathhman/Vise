@@ -72,7 +72,14 @@ The write tools change the disk and run without confirmation:
 - `delete_file` takes `path`. It refuses directories.
 - `delete_directory` takes `path`. It removes only an empty directory, and it refuses files.
 
-All six file tools (the two read tools above and these four) resolve their path with `tools::resolve` against the working directory. A relative path is joined to that directory, and the result must stay inside it after canonicalization, so `..` and symlinks cannot escape. For a path that does not exist yet, the nearest existing ancestor is canonicalized. Without a working directory every file tool returns an error.
+All six file tools (the two read tools above and these four) resolve their path with `tools::resolve(root, path, allow_root)` against the working directory. Checks are applied in this order:
+
+1. Network, device, and drive-relative paths (`\\host\share`, `//host/share`, `C:foo`) are refused before any filesystem call. Relative paths and drive-absolute paths such as `C:\...` pass this step.
+2. The path is joined to the working directory. Each existing component is inspected with `symlink_metadata`, and only "not found" lets the walk move to the parent. Any other error fails the call.
+3. The nearest existing ancestor is canonicalized, the missing components are appended, and the result must start with the canonical working directory. This catches `..` and symlinks that point outside.
+4. Unless `allow_root` is set, the working directory itself is refused. Only the read tools allow it, so a write or delete can never target the directory.
+
+These checks run when the tool is called. They are not a sandbox: a link created between the check and the operation is not caught. Without a working directory every file tool returns an error.
 
 Tool exchanges are not stored in the session. Only the user message and the final answer are kept, so later turns do not see earlier tool results.
 

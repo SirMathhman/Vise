@@ -1,6 +1,6 @@
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf, Prefix};
 
 use serde_json::{Value, json};
 
@@ -124,24 +124,40 @@ pub fn run(name: &str, arguments: &str, root: Option<&Path>) -> String {
     truncate(output.unwrap_or_else(|err| format!("error: {err}")))
 }
 
-/// Resolves a tool path and refuses it unless it lies inside the working directory. Missing
-/// trailing components are allowed, so new files are checked against their existing parent.
-fn resolve(root: Option<&Path>, path: &str) -> Result<PathBuf, String> {
+/// Resolves a tool path and refuses it unless it lies inside the working directory. The path must
+/// be relative and is checked lexically before any filesystem call. Missing trailing components are
+/// allowed, so new files are checked against their existing parent. The root itself is refused
+/// unless `allow_root` is set, so a write or delete can never target the working directory.
+fn resolve(root: Option<&Path>, path: &str, allow_root: bool) -> Result<PathBuf, String> {
     let root = root
         .ok_or("no working directory is set, so file tools are unavailable")?
         .canonicalize()
         .map_err(|err| format!("could not read the working directory: {err}"))?;
+    let mut parts = Path::new(path).components();
+    if let Some(Component::Prefix(prefix)) = parts.next() {
+        let local_drive =
+            matches!(prefix.kind(), Prefix::Disk(_)) && matches!(parts.next(), Some(Component::RootDir));
+        if !local_drive {
+            return Err(format!("network, device, and drive-relative paths are refused: {path}"));
+        }
+    }
     let requested = root.join(path);
 
     let mut existing = requested.as_path();
     let mut missing = Vec::new();
-    while !existing.exists() {
-        match (existing.parent(), existing.file_name()) {
-            (Some(parent), Some(name)) => {
-                missing.push(name.to_owned());
-                existing = parent;
+    loop {
+        match existing.symlink_metadata() {
+            Ok(_) => break,
+            Err(err) if err.kind() == io::ErrorKind::NotFound => {
+                match (existing.parent(), existing.file_name()) {
+                    (Some(parent), Some(name)) => {
+                        missing.push(name.to_owned());
+                        existing = parent;
+                    }
+                    _ => return Err(format!("cannot resolve path: {path}")),
+                }
             }
-            _ => return Err(format!("cannot resolve path: {path}")),
+            Err(err) => return Err(format!("could not inspect {path}: {err}")),
         }
     }
     let mut resolved = existing
@@ -149,11 +165,13 @@ fn resolve(root: Option<&Path>, path: &str) -> Result<PathBuf, String> {
         .map_err(|err| format!("could not resolve {path}: {err}"))?;
     resolved.extend(missing.iter().rev());
 
-    if resolved.starts_with(&root) {
-        Ok(resolved)
-    } else {
-        Err(format!("path is outside the working directory: {path}"))
+    if !resolved.starts_with(&root) {
+        return Err(format!("path is outside the working directory: {path}"));
     }
+    if resolved == root && !allow_root {
+        return Err(format!("the working directory itself cannot be changed: {path}"));
+    }
+    Ok(resolved)
 }
 
 fn truncate(output: String) -> String {
@@ -186,7 +204,7 @@ fn list_files(arguments: &str, root: Option<&Path>) -> Result<String, String> {
         .filter(|depth| *depth >= 1)
         .ok_or("depth must be an integer of at least 1")?;
 
-    let target = resolve(root, path)?;
+    let target = resolve(root, path, true)?;
     if !target.is_dir() {
         return Err(format!("not a directory: {path}"));
     }
@@ -233,7 +251,7 @@ fn read_file(arguments: &str, root: Option<&Path>) -> Result<String, String> {
         .filter(|end| *end >= 1)
         .ok_or("end must be an integer of at least 1")?;
 
-    let target = resolve(root, path)?;
+    let target = resolve(root, path, true)?;
     let text = fs::read_to_string(&target).map_err(|err| format!("could not read {path}: {err}"))?;
     let lines: Vec<&str> = text.lines().collect();
     let total = lines.len() as u64;
@@ -262,7 +280,7 @@ fn create_file(arguments: &str, root: Option<&Path>) -> Result<String, String> {
     let args = parse_arguments(arguments)?;
     let path = string_arg(&args, "path")?;
     let content = string_arg(&args, "content")?;
-    let target = resolve(root, path)?;
+    let target = resolve(root, path, false)?;
 
     let mut file = match OpenOptions::new().write(true).create_new(true).open(&target) {
         Ok(file) => file,
@@ -280,7 +298,7 @@ fn create_file(arguments: &str, root: Option<&Path>) -> Result<String, String> {
 fn create_directory(arguments: &str, root: Option<&Path>) -> Result<String, String> {
     let args = parse_arguments(arguments)?;
     let path = string_arg(&args, "path")?;
-    let target = resolve(root, path)?;
+    let target = resolve(root, path, false)?;
     if target.exists() {
         return Err(format!("already exists: {path}"));
     }
@@ -291,7 +309,7 @@ fn create_directory(arguments: &str, root: Option<&Path>) -> Result<String, Stri
 fn delete_file(arguments: &str, root: Option<&Path>) -> Result<String, String> {
     let args = parse_arguments(arguments)?;
     let path = string_arg(&args, "path")?;
-    let target = resolve(root, path)?;
+    let target = resolve(root, path, false)?;
     if target.is_dir() {
         return Err(format!("is a directory, use delete_directory: {path}"));
     }
@@ -303,7 +321,7 @@ fn delete_file(arguments: &str, root: Option<&Path>) -> Result<String, String> {
 fn delete_directory(arguments: &str, root: Option<&Path>) -> Result<String, String> {
     let args = parse_arguments(arguments)?;
     let path = string_arg(&args, "path")?;
-    let target = resolve(root, path)?;
+    let target = resolve(root, path, false)?;
     if target.is_file() {
         return Err(format!("is a file, use delete_file: {path}"));
     }
