@@ -1,4 +1,3 @@
-use std::collections::BTreeSet;
 use std::error::Error as _;
 use std::fmt;
 use std::io::{self, BufRead, BufReader, Read};
@@ -105,10 +104,9 @@ impl fmt::Display for StrataError {
 pub fn stream_reply(
     items: &[Value],
     config: &Config,
-    disabled: &BTreeSet<String>,
     on_chunk: &mut dyn FnMut(Chunk),
 ) -> Result<Reply, StrataError> {
-    let reader = open_stream(items, config, disabled)?;
+    let reader = open_stream(items, config)?;
     relay(reader, &config.url, on_chunk)
 }
 
@@ -128,17 +126,13 @@ pub fn message_items(messages: &[Message], config: &Config) -> Vec<Value> {
 }
 
 /// Opens a streaming chat-completions request. Fails before any reply text is read.
-fn open_stream(
-    items: &[Value],
-    config: &Config,
-    disabled: &BTreeSet<String>,
-) -> Result<EventReader, StrataError> {
+fn open_stream(items: &[Value], config: &Config) -> Result<EventReader, StrataError> {
     let agent = ureq::AgentBuilder::new()
         .timeout_read(config.read_timeout)
         .build();
     match agent
         .post(&config.url)
-        .send_json(request_body(items, config, disabled))
+        .send_json(request_body(items, config))
     {
         Ok(response) => Ok(BufReader::new(response.into_reader())),
         Err(ureq::Error::Status(status, response)) => Err(StrataError::Http {
@@ -266,19 +260,15 @@ fn is_timeout_kind(kind: io::ErrorKind) -> bool {
     matches!(kind, io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock)
 }
 
-/// Builds the chat-completions request body from wire-format items. Only tools that are not
-/// in `disabled` are offered, and the `tools` key is left out when none are left.
-fn request_body(items: &[Value], config: &Config, disabled: &BTreeSet<String>) -> Value {
-    let offered = tools::definitions(disabled);
-    let mut body = json!({
+/// Builds the chat-completions request body from wire-format items. The tool list is always the
+/// full list, so it never changes between requests and the prompt cache stays valid.
+fn request_body(items: &[Value], config: &Config) -> Value {
+    json!({
         "model": config.model,
         "messages": items,
         "stream": true,
-    });
-    if offered.as_array().is_some_and(|tools| !tools.is_empty()) {
-        body["tools"] = offered;
-    }
-    body
+        "tools": tools::definitions(),
+    })
 }
 
 /// Builds the request body for a single user message.
@@ -292,7 +282,7 @@ fn build_request(content: &str, config: &Config) -> Value {
 
 /// Builds the streaming chat-completions request body from the full conversation.
 fn build_body(messages: &[Message], config: &Config) -> Value {
-    request_body(&message_items(messages, config), config, &BTreeSet::new())
+    request_body(&message_items(messages, config), config)
 }
 
 /// Extracts `choices[0].message.content` from a non-streaming chat-completions response.

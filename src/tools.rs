@@ -51,23 +51,9 @@ impl Switches {
     }
 }
 
-/// The tool definitions to offer the model: every tool that is not in `disabled`.
-pub fn definitions(disabled: &BTreeSet<String>) -> Value {
-    let offered: Vec<Value> = all_definitions()
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter(|tool| {
-            tool["function"]["name"]
-                .as_str()
-                .is_some_and(|name| !disabled.contains(name))
-        })
-        .cloned()
-        .collect();
-    json!(offered)
-}
-
-fn all_definitions() -> Value {
+/// The tool definitions offered to the model. Switched-off tools stay in this list, so the request
+/// prefix does not change when a tool is toggled. Calls to them are refused in `agent`.
+pub fn definitions() -> Value {
     json!([
         {
             "type": "function",

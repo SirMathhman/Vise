@@ -17,9 +17,8 @@ pub fn run_turn(
 ) -> Result<String, StrataError> {
     let mut items = strata::message_items(messages, config);
     for _ in 0..MAX_TOOL_ROUNDS {
-        // One snapshot per round, so the tools offered and the tools allowed to run agree.
         let disabled = switches.snapshot();
-        let reply = strata::stream_reply(&items, config, &disabled, on_chunk)?;
+        let reply = strata::stream_reply(&items, config, on_chunk)?;
         if reply.tool_calls.is_empty() {
             return Ok(reply.content);
         }
