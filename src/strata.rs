@@ -363,3 +363,29 @@ mod tests {
         ));
     }
 }
+
+#[cfg(test)]
+mod grammar_tests {
+    use super::*;
+
+    #[test]
+    fn grammar_is_added_to_the_body_only_when_given() {
+        let config = Config::default();
+        let plain = request_body(&[], &config, None);
+        let constrained = request_body(&[], &config, Some("root ::= \"x\""));
+
+        assert!(plain.get("grammar").is_none());
+        assert_eq!(constrained["grammar"], "root ::= \"x\"");
+        assert_eq!(plain["tools"], constrained["tools"]);
+    }
+
+    #[test]
+    fn grammar_rejection_names_the_next_step() {
+        let error = StrataError::GrammarRejected {
+            url: "http://127.0.0.1:8080/v1/chat/completions".to_owned(),
+            body: "unsupported".to_owned(),
+        };
+
+        assert!(error.to_string().contains("/enable"));
+    }
+}

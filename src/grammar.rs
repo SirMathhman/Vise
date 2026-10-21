@@ -72,3 +72,30 @@ fn class_escape(c: char) -> String {
         _ => c.to_string(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn grammar_names_only_the_enabled_tools() {
+        let text = enabled_calls_only(&["read_file", "list_files"]);
+
+        assert!(text.contains(r#"name ::= "read_file" | "list_files""#));
+        assert!(!text.contains("delete_file"));
+        assert!(text.starts_with("root ::= prose calls?"));
+    }
+
+    #[test]
+    fn grammar_with_no_enabled_tools_allows_no_calls() {
+        let text = enabled_calls_only(&[]);
+
+        assert!(text.starts_with("root ::= prose\n"));
+        assert!(!text.contains("calls"));
+    }
+
+    #[test]
+    fn literals_escape_quotes_backslashes_and_newlines() {
+        assert_eq!(literal("a\"b\\c\nd"), r#""a\"b\\c\nd""#);
+    }
+}
