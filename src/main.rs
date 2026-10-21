@@ -12,7 +12,7 @@ fn main() -> io::Result<()> {
         return web::serve(web::DEFAULT_PORT);
     }
 
-    let config = strata::Config::default();
+    let config = strata::Config::in_current_dir();
     let mut session = Session::new();
     let mut input = io::stdin().lock();
 

@@ -148,7 +148,7 @@ fn chat(mut stream: TcpStream, request: &Request) -> io::Result<()> {
         }
     };
 
-    let config = Config::default();
+    let config = Config::in_current_dir();
     let reader = match strata::open_stream(&messages, &config) {
         Ok(reader) => reader,
         Err(err) => {

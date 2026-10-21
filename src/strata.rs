@@ -10,6 +10,8 @@ pub struct Config {
     pub model: String,
     /// Longest the client waits for the next bytes from Strata before giving up.
     pub read_timeout: Duration,
+    /// Directory the model is told it is working in. Sent as a system message when set.
+    pub working_dir: Option<String>,
 }
 
 impl Default for Config {
@@ -18,6 +20,19 @@ impl Default for Config {
             url: "http://127.0.0.1:8080/v1/chat/completions".to_owned(),
             model: "qwen3.8-flash-next-iq2_xs".to_owned(),
             read_timeout: Duration::from_secs(60),
+            working_dir: None,
+        }
+    }
+}
+
+impl Config {
+    /// The default config, telling the model the directory the program was started in.
+    pub fn in_current_dir() -> Self {
+        Config {
+            working_dir: std::env::current_dir()
+                .ok()
+                .map(|dir| dir.display().to_string()),
+            ..Config::default()
         }
     }
 }
@@ -194,13 +209,19 @@ fn build_request(content: &str, config: &Config) -> Value {
 
 /// Builds the streaming chat-completions request body from the full conversation.
 fn build_body(messages: &[Message], config: &Config) -> Value {
-    let messages: Vec<Value> = messages
-        .iter()
-        .map(|message| json!({ "role": message.role.as_str(), "content": message.content }))
-        .collect();
+    let mut items: Vec<Value> = Vec::new();
+    if let Some(dir) = &config.working_dir {
+        items.push(json!({
+            "role": "system",
+            "content": format!("The current working directory is {dir}."),
+        }));
+    }
+    items.extend(messages.iter().map(
+        |message| json!({ "role": message.role.as_str(), "content": message.content }),
+    ));
     json!({
         "model": config.model,
-        "messages": messages,
+        "messages": items,
         "stream": true,
     })
 }
@@ -230,6 +251,20 @@ mod tests {
 
         assert_eq!(body["model"], config.model);
         assert_eq!(body["messages"], json!([{ "role": "user", "content": "hi" }]));
+    }
+
+    #[test]
+    fn build_body_puts_working_directory_first_as_system_message() {
+        let config = Config {
+            working_dir: Some("C:\\work".to_owned()),
+            ..Config::default()
+        };
+        let body = build_body(&[], &config);
+
+        assert_eq!(
+            body["messages"],
+            json!([{ "role": "system", "content": "The current working directory is C:\\work." }])
+        );
     }
 
     #[test]
