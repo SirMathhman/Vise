@@ -16,6 +16,26 @@ impl Default for Config {
     }
 }
 
+#[derive(Clone, Copy)]
+pub enum Role {
+    User,
+    Assistant,
+}
+
+impl Role {
+    fn as_str(self) -> &'static str {
+        match self {
+            Role::User => "user",
+            Role::Assistant => "assistant",
+        }
+    }
+}
+
+pub struct Message {
+    pub role: Role,
+    pub content: String,
+}
+
 #[derive(Debug)]
 pub enum StrataError {
     Network { url: String, cause: String },
@@ -40,8 +60,8 @@ impl fmt::Display for StrataError {
     }
 }
 
-pub fn send_message(content: &str, config: &Config) -> Result<String, StrataError> {
-    let response = match ureq::post(&config.url).send_json(build_request(content, config)) {
+pub fn send_message(messages: &[Message], config: &Config) -> Result<String, StrataError> {
+    let response = match ureq::post(&config.url).send_json(build_body(messages, config)) {
         Ok(response) => response,
         Err(ureq::Error::Status(status, response)) => {
             return Err(StrataError::Http {
@@ -68,9 +88,22 @@ pub fn send_message(content: &str, config: &Config) -> Result<String, StrataErro
 
 /// Builds the chat-completions request body for a single user message.
 fn build_request(content: &str, config: &Config) -> Value {
+    let message = Message {
+        role: Role::User,
+        content: content.to_owned(),
+    };
+    build_body(&[message], config)
+}
+
+/// Builds the chat-completions request body from the full conversation.
+fn build_body(messages: &[Message], config: &Config) -> Value {
+    let messages: Vec<Value> = messages
+        .iter()
+        .map(|message| json!({ "role": message.role.as_str(), "content": message.content }))
+        .collect();
     json!({
         "model": config.model,
-        "messages": [{ "role": "user", "content": content }],
+        "messages": messages,
     })
 }
 
