@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use serde_json::{Value, json};
 
 use crate::strata::{self, Chunk, Config, Message, StrataError, ToolCall};
@@ -22,7 +24,8 @@ pub fn run_turn(
         items.push(assistant_item(&reply.content, &reply.tool_calls));
         for call in &reply.tool_calls {
             on_chunk(Chunk::Tool(&format!("{} {}", call.name, call.arguments)));
-            let result = tools::run(&call.name, &call.arguments);
+            let root = config.working_dir.as_deref().map(Path::new);
+            let result = tools::run(&call.name, &call.arguments, root);
             items.push(json!({ "role": "tool", "tool_call_id": call.id, "content": result }));
         }
     }

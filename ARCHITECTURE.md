@@ -72,7 +72,7 @@ The write tools change the disk and run without confirmation:
 - `delete_file` takes `path`. It refuses directories.
 - `delete_directory` takes `path`. It removes only an empty directory, and it refuses files.
 
-All four accept any path, as the read tools do.
+All six file tools (the two read tools above and these four) resolve their path with `tools::resolve` against the working directory. A relative path is joined to that directory, and the result must stay inside it after canonicalization, so `..` and symlinks cannot escape. For a path that does not exist yet, the nearest existing ancestor is canonicalized. Without a working directory every file tool returns an error.
 
 Tool exchanges are not stored in the session. Only the user message and the final answer are kept, so later turns do not see earlier tool results.
 
@@ -84,9 +84,9 @@ The `done` event carries the turn's final answer, and the web page stores that t
 
 ## Potential Problems
 
-- **The model can change files anywhere.** The four write tools accept any path and run without confirmation. A model error or injected instruction can create or delete files the user can reach. There is no working-directory boundary yet.
+- **Write tools run without confirmation.** The four write tools change files inside the working directory as soon as the model asks. A model error or injected instruction can create or delete files there. The boundary limits the blast radius but does not prevent it.
 - **Tool results are capped, but reading is not.** `tools::run` cuts any result over 16 KiB, so one result cannot fill the context. `read_file` still reads the whole file into memory before selecting the range, and `list_files` walks the whole tree to the requested depth, both on the request thread. Depth has no maximum.
-- **Tools accept any absolute path.** `list_files` and `read_file` take any path, so output from injected content could read the filesystem. The web server binds to `127.0.0.1` and has no Origin check, which limits exposure but does not remove the risk.
+- **Tools are limited to the working directory, not to the rest of the machine.** Files under that directory are still readable and changeable by the model, including anything secret stored there. The web server binds to `127.0.0.1` and has no Origin check, which limits exposure but does not remove the risk.
 - **Strata read timeout is per read, not per reply.** A reply that keeps producing bytes can run longer than 60 seconds without timing out. Only a stall between bytes trips the timeout.
 - **Full history is sent every turn.** There is no cap, so a long session can exceed the model's context window.
 - **Config is compile-time only.** The URL, model, and timeout come from `Config::default()`, so changing them requires a rebuild. The web route uses the config passed at startup.
