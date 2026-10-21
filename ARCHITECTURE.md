@@ -62,7 +62,7 @@ When a reply has no tool calls, its answer text is the turn's result. More than 
 
 `tools::run(name, arguments)` returns the result text for the model. A failed call returns text beginning with `error:`, so the model can recover and the turn continues. `list_files` takes a required `path` and a required `depth` of at least 1. Depth 1 lists only the directory's own entries, and subdirectories end with `/`.
 
-`read_file` takes a required `path`, a required `start`, and a required `end`, all in 1-based lines. `start` is included and `end` is excluded. The result has each line prefixed with its number and a tab. An `end` past the last line is clipped to the file, and a range with no lines is an error. Its output is not size-capped.
+`read_file` takes a required `path`, a required `start`, and a required `end`, all in 1-based lines. `start` is included and `end` is excluded. The result has each line prefixed with its number and a tab. An `end` past the last line is clipped to the file, and a range with no lines is an error. Results over 16 KiB are cut short with a notice asking the model to narrow the range.
 
 Tool exchanges are not stored in the session. Only the user message and the final answer are kept, so later turns do not see earlier tool results.
 
@@ -74,8 +74,8 @@ The `done` event carries the turn's final answer, and the web page stores that t
 
 ## Potential Problems
 
-- **Tool output is unbounded.** `list_files` has no cap on entries or bytes, and depth has no maximum. Its full result is sent back to the model and re-sent with every later request, against a 131072-token context. The walk also runs on the request thread.
-- **`list_files` accepts any absolute path.** Output from injected content could list the filesystem. The web server binds to `127.0.0.1` and has no Origin check, which limits exposure but does not remove the risk.
+- **Tool results are capped, but reading is not.** `tools::run` cuts any result over 16 KiB, so one result cannot fill the context. `read_file` still reads the whole file into memory before selecting the range, and `list_files` walks the whole tree to the requested depth, both on the request thread. Depth has no maximum.
+- **Tools accept any absolute path.** `list_files` and `read_file` take any path, so output from injected content could read the filesystem. The web server binds to `127.0.0.1` and has no Origin check, which limits exposure but does not remove the risk.
 - **Strata read timeout is per read, not per reply.** A reply that keeps producing bytes can run longer than 60 seconds without timing out. Only a stall between bytes trips the timeout.
 - **Full history is sent every turn.** There is no cap, so a long session can exceed the model's context window.
 - **Config is compile-time only.** The URL, model, and timeout come from `Config::default()`, so changing them requires a rebuild. The web route uses the config passed at startup.
@@ -104,7 +104,7 @@ Tool errors are returned to the model as `error:` text and are not shown as erro
 ## Future Work
 
 1. Decide whether tool results should stay in the history. Today both front ends keep only the user message and the final answer, so the model cannot see earlier tool output in later turns.
-2. Cap `list_files` output by entry count and bytes, and cap depth. Consider limiting paths to the working directory.
+2. Cap tool output for both `list_files` and `read_file` by bytes, and cap `list_files` depth and entries. Consider limiting paths to the working directory.
 3. Move the tool-call wire format into `strata.rs`, make `Chunk::Tool` carry structured data, and let each front end format it. Pass tool definitions in through `Config` rather than having the client call `tools`.
 4. Give tool and turn-loop errors their own types, so the round cap is not reported as a Strata response error.
 5. Cap the history sent per request, or drop the oldest turns once it gets long.

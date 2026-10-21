@@ -43,14 +43,32 @@ pub fn definitions() -> Value {
     ])
 }
 
+/// Longest tool result sent back to the model, in bytes.
+const MAX_TOOL_OUTPUT: usize = 16 * 1024;
+
 /// Runs a tool call and returns the text the model should see. Failures are returned as text too,
-/// so the model can recover instead of the whole turn failing.
+/// so the model can recover instead of the whole turn failing. Long results are cut short.
 pub fn run(name: &str, arguments: &str) -> String {
-    match name {
+    let output = match name {
         LIST_FILES => list_files(arguments).unwrap_or_else(|err| format!("error: {err}")),
         READ_FILE => read_file(arguments).unwrap_or_else(|err| format!("error: {err}")),
         _ => format!("error: unknown tool {name}"),
+    };
+    truncate(output)
+}
+
+fn truncate(output: String) -> String {
+    if output.len() <= MAX_TOOL_OUTPUT {
+        return output;
     }
+    let mut end = MAX_TOOL_OUTPUT;
+    while !output.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!(
+        "{}\n... output truncated at {MAX_TOOL_OUTPUT} bytes; narrow the range or depth",
+        &output[..end]
+    )
 }
 
 fn parse_arguments(arguments: &str) -> Result<Value, String> {
@@ -170,5 +188,21 @@ mod tests {
         assert_eq!(middle, "2\tb\n3\tc");
         assert_eq!(clipped, "1\ta\n2\tb\n3\tc");
         assert!(empty.starts_with("error: no lines in range 3 to 3"));
+    }
+
+    #[test]
+    fn long_tool_output_is_truncated_with_notice() {
+        let file = std::env::temp_dir().join(format!("vise-long-{}.txt", std::process::id()));
+        let text: Vec<String> = (1..=2000).map(|n| format!("row {n}")).collect();
+        fs::write(&file, text.join("\n")).unwrap();
+
+        let result = run(
+            READ_FILE,
+            &json!({ "path": file.display().to_string(), "start": 1, "end": 2001 }).to_string(),
+        );
+        fs::remove_file(&file).unwrap();
+
+        assert!(result.len() <= MAX_TOOL_OUTPUT + 100);
+        assert!(result.ends_with("narrow the range or depth"));
     }
 }
