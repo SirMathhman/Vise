@@ -21,7 +21,7 @@ Written for: developers working on this crate.
 src/
   main.rs     stdin loop, or `web` argument to start the web server
   agent.rs    run_turn: streams a reply, runs requested tools, repeats up to 8 rounds
-  tools.rs    tool definitions and run(): currently list_files
+  tools.rs    tool definitions and run(): list_files and read_file
   session.rs  Session: message list with push, pop, reset, and messages (REPL only)
   strata.rs   Config, Role, Message, Chunk, Reply, StrataError, and the streaming client
   web.rs      std TcpListener HTTP server, one thread per connection:
@@ -60,7 +60,9 @@ Dependencies run one way: `main` and `web` call `agent`, `agent` calls `strata` 
 
 When a reply has no tool calls, its answer text is the turn's result. More than 8 rounds in one turn is an error.
 
-`tools::run(name, arguments)` returns the result text for the model. A failed call returns text beginning with `error:`, so the model can recover and the turn continues. The only tool is `list_files`, which takes a required `path` and a required `depth` of at least 1. Depth 1 lists only the directory's own entries, and subdirectories end with `/`.
+`tools::run(name, arguments)` returns the result text for the model. A failed call returns text beginning with `error:`, so the model can recover and the turn continues. `list_files` takes a required `path` and a required `depth` of at least 1. Depth 1 lists only the directory's own entries, and subdirectories end with `/`.
+
+`read_file` takes a required `path`, a required `start`, and a required `end`, all in 1-based lines. `start` is included and `end` is excluded. The result has each line prefixed with its number and a tab. An `end` past the last line is clipped to the file, and a range with no lines is an error. Its output is not size-capped.
 
 Tool exchanges are not stored in the session. Only the user message and the final answer are kept, so later turns do not see earlier tool results.
 
