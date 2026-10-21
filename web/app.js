@@ -32,7 +32,6 @@ async function streamChat(messages, onEvent) {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
-    let answer = "";
     for (;;) {
         const { done, value } = await reader.read().catch(() => {
             throw new Error("The connection dropped partway through the reply. Try again.");
@@ -55,10 +54,7 @@ async function streamChat(messages, onEvent) {
                 throw new Error(event.error);
             }
             if (event.type === "done") {
-                return answer;
-            }
-            if (event.type === "content") {
-                answer += event.text;
+                return event.answer;
             }
             onEvent(event);
         }

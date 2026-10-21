@@ -164,9 +164,9 @@ fn chat(mut stream: TcpStream, request: &Request, config: &Config) -> io::Result
     });
 
     match outcome {
-        Ok(_) => {
+        Ok(answer) => {
             start_stream(&mut stream, &mut started)?;
-            write_event(&mut stream, &json!({ "type": "done" }))
+            write_event(&mut stream, &json!({ "type": "done", "answer": answer }))
         }
         // Nothing was sent yet, so the failure can still be a plain JSON error response.
         Err(err) if !started => {

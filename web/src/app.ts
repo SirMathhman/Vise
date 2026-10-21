@@ -9,7 +9,7 @@ type StreamEvent =
   | { type: "reasoning"; text: string }
   | { type: "content"; text: string }
   | { type: "tool"; text: string }
-  | { type: "done" }
+  | { type: "done"; answer: string }
   | { type: "error"; error: string };
 
 const conversation: Message[] = [];
@@ -54,7 +54,6 @@ async function streamChat(
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  let answer = "";
 
   for (;;) {
     const { done, value } = await reader.read().catch(() => {
@@ -80,10 +79,7 @@ async function streamChat(
         throw new Error(event.error);
       }
       if (event.type === "done") {
-        return answer;
-      }
-      if (event.type === "content") {
-        answer += event.text;
+        return event.answer;
       }
       onEvent(event);
     }

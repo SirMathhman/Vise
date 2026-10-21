@@ -66,11 +66,12 @@ Tool exchanges are not stored in the session. Only the user message and the fina
 
 On a failed turn the REPL pops the user message it just added, so a failed turn does not stay in the history. The web UI does the same with its own copy.
 
+The `done` event carries the turn's final answer, and the web page stores that text as the assistant message. Text from earlier rounds of the turn is shown on screen but not stored, as in the REPL.
+
 `web.rs` limits requests before reading the body: bodies over 1 MiB get 413, and POST `/api/chat` requires `Content-Type: application/json` or it gets 415. Each connection has a 10-second read timeout on the client socket. Each connection is handled on its own thread, so one slow client does not block others. The chat route sends the event-stream headers when the first event is ready. A failure before that is a 502 JSON response.
 
 ## Potential Problems
 
-- **REPL and web histories diverge after tool calls.** The REPL keeps only the user message and the final answer. The web UI concatenates answer text from every round and keeps that. The same input can therefore give the model different histories in the two front ends.
 - **Tool output is unbounded.** `list_files` has no cap on entries or bytes, and depth has no maximum. Its full result is sent back to the model and re-sent with every later request, against a 131072-token context. The walk also runs on the request thread.
 - **`list_files` accepts any absolute path.** Output from injected content could list the filesystem. The web server binds to `127.0.0.1` and has no Origin check, which limits exposure but does not remove the risk.
 - **Strata read timeout is per read, not per reply.** A reply that keeps producing bytes can run longer than 60 seconds without timing out. Only a stall between bytes trips the timeout.
@@ -100,7 +101,7 @@ Tool errors are returned to the model as `error:` text and are not shown as erro
 
 ## Future Work
 
-1. Make the turn loop own history: have `run_turn` return the new items for the turn, and store them the same way in the REPL and the web UI.
+1. Decide whether tool results should stay in the history. Today both front ends keep only the user message and the final answer, so the model cannot see earlier tool output in later turns.
 2. Cap `list_files` output by entry count and bytes, and cap depth. Consider limiting paths to the working directory.
 3. Move the tool-call wire format into `strata.rs`, make `Chunk::Tool` carry structured data, and let each front end format it. Pass tool definitions in through `Config` rather than having the client call `tools`.
 4. Give tool and turn-loop errors their own types, so the round cap is not reported as a Strata response error.
