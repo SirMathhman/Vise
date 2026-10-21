@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "build": "tsc -p web",
-    "watch:ts": "tsc -p web --watch",
+    "watch:ts": "tsc -p web --watch --preserveWatchOutput",
     "watch:rs": "cargo watch -w src -w web/index.html -w web/app.js -x \"run -- web\"",
     "dev": "concurrently -n ts,rs \"npm run watch:ts\" \"npm run watch:rs\""
   },

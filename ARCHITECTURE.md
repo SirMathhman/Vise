@@ -28,7 +28,9 @@ web/
   src/app.ts  client: reads the event stream and renders reasoning and answer
   app.js      compiled output of app.ts, committed so the server needs no build
   tsconfig.json
-package.json  TypeScript dev dependency and `build` script (tsc -p web)
+package.json  TypeScript and concurrently dev dependencies. Scripts: `build` (tsc -p web),
+              `watch:ts` (tsc --watch), `watch:rs` (cargo watch, needs cargo-watch installed),
+              and `dev` (runs both together)
 ```
 
 `strata.rs` is split into layers:
@@ -79,6 +81,7 @@ Errors cross the wire as text only. The client cannot branch on the kind of erro
 5. Handle Ctrl+C so the REPL prints `bye` and exits cleanly, for example with the `ctrlc` crate.
 6. Implement `std::error::Error` for `StrataError`, stop discarding body-read errors, and let the web route map error kinds to distinct statuses.
 7. Disable the New button while a request is in flight, and label the chat input.
+8. Dev loop: a TypeScript compile error leaves the server on the previous build with no signal beyond the terminal. Consider live reload. Also check on Windows whether restarting the server leaves the old `vise.exe` holding port 3000, and pin the dev tooling so `npm run dev` fails clearly when cargo-watch is missing.
 
 ## Performance
 
