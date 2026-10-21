@@ -145,17 +145,21 @@ fn open_stream(
         .send_json(request_body(items, config, grammar))
     {
         Ok(response) => Ok(BufReader::new(response.into_reader())),
-        Err(ureq::Error::Status(400, response)) if grammar.is_some() => {
-            Err(StrataError::GrammarRejected {
-                url: config.url.clone(),
-                body: response.into_string().unwrap_or_default(),
-            })
+        Err(ureq::Error::Status(status, response)) => {
+            let body = response.into_string().unwrap_or_default();
+            if status == 400 && grammar.is_some() && is_grammar_error(&body) {
+                Err(StrataError::GrammarRejected {
+                    url: config.url.clone(),
+                    body,
+                })
+            } else {
+                Err(StrataError::Http {
+                    url: config.url.clone(),
+                    status,
+                    body,
+                })
+            }
         }
-        Err(ureq::Error::Status(status, response)) => Err(StrataError::Http {
-            url: config.url.clone(),
-            status,
-            body: response.into_string().unwrap_or_default(),
-        }),
         Err(ureq::Error::Transport(transport)) if is_timeout(&transport) => Err(StrataError::Timeout {
             url: config.url.clone(),
         }),
@@ -164,6 +168,15 @@ fn open_stream(
             cause: transport.to_string(),
         }),
     }
+}
+
+/// Strata reports a grammar it cannot use as a 400 whose `error.message` starts with `grammar`
+/// (for example `grammar line 1: missing )`).
+fn is_grammar_error(body: &str) -> bool {
+    serde_json::from_str::<Value>(body)
+        .ok()
+        .and_then(|value| value["error"]["message"].as_str().map(str::to_owned))
+        .is_some_and(|message| message.starts_with("grammar"))
 }
 
 /// Reads server-sent events until `[DONE]`, passing each delta to `on_chunk`.
