@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
-use crate::strata::{self, Config, Message, Role};
+use crate::strata::{self, Chunk, Config, Message, Role};
 
 pub const DEFAULT_PORT: u16 = 3000;
 
@@ -40,17 +40,20 @@ pub fn serve(port: u16) -> io::Result<()> {
     Ok(())
 }
 
-fn handle(stream: TcpStream) -> io::Result<()> {
+fn handle(mut stream: TcpStream) -> io::Result<()> {
     stream.set_read_timeout(Some(READ_TIMEOUT))?;
     let mut reader = BufReader::new(stream.try_clone()?);
     let mut request = read_request(&mut reader)?;
-    let response = if request.content_length > MAX_BODY_BYTES {
-        json_response(413, json!({ "error": "request body too large" }))
-    } else {
-        request.body = read_body(&mut reader, request.content_length)?;
-        route(&request)
-    };
-    write_response(stream, &response)
+    if request.content_length > MAX_BODY_BYTES {
+        let response = json_response(413, json!({ "error": "request body too large" }));
+        return write_response(&mut stream, &response);
+    }
+
+    request.body = read_body(&mut reader, request.content_length)?;
+    if request.method == "POST" && request.path == "/api/chat" {
+        return chat(stream, &request);
+    }
+    write_response(&mut stream, &route(&request))
 }
 
 fn read_request(reader: &mut impl BufRead) -> io::Result<Request> {
@@ -105,7 +108,6 @@ fn route(request: &Request) -> Response {
             content_type: "text/javascript; charset=utf-8",
             body: APP_JS.to_owned(),
         },
-        ("POST", "/api/chat") => chat(request),
         _ => Response {
             status: 404,
             content_type: "text/plain; charset=utf-8",
@@ -114,27 +116,58 @@ fn route(request: &Request) -> Response {
     }
 }
 
-fn chat(request: &Request) -> Response {
+/// Streams the reply as server-sent events: `reasoning` and `content` deltas, then `done` or `error`.
+fn chat(mut stream: TcpStream, request: &Request) -> io::Result<()> {
     let is_json = request
         .content_type
         .as_deref()
         .is_some_and(|content_type| content_type.starts_with("application/json"));
     if !is_json {
-        return json_response(
+        let response = json_response(
             415,
             json!({ "error": "expected Content-Type application/json" }),
         );
+        return write_response(&mut stream, &response);
     }
 
     let messages = match parse_messages(&request.body) {
         Ok(messages) => messages,
-        Err(reason) => return json_response(400, json!({ "error": reason })),
+        Err(reason) => {
+            return write_response(&mut stream, &json_response(400, json!({ "error": reason })));
+        }
     };
 
-    match strata::send_message(&messages, &Config::default()) {
-        Ok(reply) => json_response(200, json!({ "reply": reply })),
-        Err(err) => json_response(502, json!({ "error": err.to_string() })),
-    }
+    let config = Config::default();
+    let reader = match strata::open_stream(&messages, &config) {
+        Ok(reader) => reader,
+        Err(err) => {
+            let response = json_response(502, json!({ "error": err.to_string() }));
+            return write_response(&mut stream, &response);
+        }
+    };
+
+    write!(
+        stream,
+        "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n"
+    )?;
+    let outcome = strata::relay(reader, &config.url, &mut |chunk| {
+        let event = match chunk {
+            Chunk::Reasoning(text) => json!({ "type": "reasoning", "text": text }),
+            Chunk::Content(text) => json!({ "type": "content", "text": text }),
+        };
+        // A failed write means the browser closed the page; the rest of the reply is dropped.
+        let _ = write_event(&mut stream, &event);
+    });
+
+    let final_event = match outcome {
+        Ok(_) => json!({ "type": "done" }),
+        Err(err) => json!({ "type": "error", "error": err.to_string() }),
+    };
+    write_event(&mut stream, &final_event)
+}
+
+fn write_event(stream: &mut TcpStream, event: &Value) -> io::Result<()> {
+    write!(stream, "data: {event}\n\n")
 }
 
 fn json_response(status: u16, value: Value) -> Response {
@@ -172,7 +205,7 @@ fn parse_messages(body: &[u8]) -> Result<Vec<Message>, String> {
         .collect()
 }
 
-fn write_response(mut stream: TcpStream, response: &Response) -> io::Result<()> {
+fn write_response(stream: &mut TcpStream, response: &Response) -> io::Result<()> {
     let reason = match response.status {
         200 => "OK",
         400 => "Bad Request",

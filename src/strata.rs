@@ -1,4 +1,5 @@
 use std::fmt;
+use std::io::{BufRead, BufReader, Read};
 
 use serde_json::{Value, json};
 
@@ -36,6 +37,14 @@ pub struct Message {
     pub content: String,
 }
 
+/// One piece of a streamed reply: the model's reasoning or its answer text.
+pub enum Chunk<'a> {
+    Reasoning(&'a str),
+    Content(&'a str),
+}
+
+pub type EventReader = BufReader<Box<dyn Read + Send + Sync>>;
+
 #[derive(Debug)]
 pub enum StrataError {
     Network { url: String, cause: String },
@@ -60,30 +69,78 @@ impl fmt::Display for StrataError {
     }
 }
 
-pub fn send_message(messages: &[Message], config: &Config) -> Result<String, StrataError> {
-    let response = match ureq::post(&config.url).send_json(build_body(messages, config)) {
-        Ok(response) => response,
-        Err(ureq::Error::Status(status, response)) => {
-            return Err(StrataError::Http {
-                url: config.url.clone(),
-                status,
-                body: response.into_string().unwrap_or_default(),
-            });
-        }
-        Err(ureq::Error::Transport(transport)) => {
-            return Err(StrataError::Network {
-                url: config.url.clone(),
-                cause: transport.to_string(),
-            });
-        }
-    };
+/// Sends the conversation and streams the reply, calling `on_chunk` as each piece arrives.
+/// Returns the full answer text (without reasoning).
+pub fn send_message(
+    messages: &[Message],
+    config: &Config,
+    on_chunk: &mut dyn FnMut(Chunk),
+) -> Result<String, StrataError> {
+    let reader = open_stream(messages, config)?;
+    relay(reader, &config.url, on_chunk)
+}
 
-    let data: Value = response.into_json().map_err(|err| StrataError::Malformed {
-        url: config.url.clone(),
-        reason: err.to_string(),
-    })?;
+/// Opens a streaming chat-completions request. Fails before any reply text is read.
+pub fn open_stream(messages: &[Message], config: &Config) -> Result<EventReader, StrataError> {
+    match ureq::post(&config.url).send_json(build_body(messages, config)) {
+        Ok(response) => Ok(BufReader::new(response.into_reader())),
+        Err(ureq::Error::Status(status, response)) => Err(StrataError::Http {
+            url: config.url.clone(),
+            status,
+            body: response.into_string().unwrap_or_default(),
+        }),
+        Err(ureq::Error::Transport(transport)) => Err(StrataError::Network {
+            url: config.url.clone(),
+            cause: transport.to_string(),
+        }),
+    }
+}
 
-    parse_reply(&config.url, &data)
+/// Reads server-sent events until `[DONE]`, passing each delta to `on_chunk`.
+pub fn relay(
+    reader: impl BufRead,
+    url: &str,
+    on_chunk: &mut dyn FnMut(Chunk),
+) -> Result<String, StrataError> {
+    let mut answer = String::new();
+    for line in reader.lines() {
+        let line = line.map_err(|err| StrataError::Network {
+            url: url.to_owned(),
+            cause: err.to_string(),
+        })?;
+        let Some(data) = line.strip_prefix("data: ") else {
+            continue;
+        };
+        if data == "[DONE]" {
+            break;
+        }
+
+        let event: Value = serde_json::from_str(data).map_err(|err| StrataError::Malformed {
+            url: url.to_owned(),
+            reason: err.to_string(),
+        })?;
+        let delta = event
+            .get("choices")
+            .and_then(|choices| choices.get(0))
+            .and_then(|choice| choice.get("delta"));
+        let reasoning = delta
+            .and_then(|delta| delta.get("reasoning_content"))
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let content = delta
+            .and_then(|delta| delta.get("content"))
+            .and_then(Value::as_str)
+            .unwrap_or("");
+
+        if !reasoning.is_empty() {
+            on_chunk(Chunk::Reasoning(reasoning));
+        }
+        if !content.is_empty() {
+            answer.push_str(content);
+            on_chunk(Chunk::Content(content));
+        }
+    }
+    Ok(answer)
 }
 
 /// Builds the chat-completions request body for a single user message.
@@ -95,7 +152,7 @@ fn build_request(content: &str, config: &Config) -> Value {
     build_body(&[message], config)
 }
 
-/// Builds the chat-completions request body from the full conversation.
+/// Builds the streaming chat-completions request body from the full conversation.
 fn build_body(messages: &[Message], config: &Config) -> Value {
     let messages: Vec<Value> = messages
         .iter()
@@ -104,10 +161,11 @@ fn build_body(messages: &[Message], config: &Config) -> Value {
     json!({
         "model": config.model,
         "messages": messages,
+        "stream": true,
     })
 }
 
-/// Extracts `choices[0].message.content` from a chat-completions response.
+/// Extracts `choices[0].message.content` from a non-streaming chat-completions response.
 fn parse_reply(url: &str, data: &Value) -> Result<String, StrataError> {
     data.get("choices")
         .and_then(|choices| choices.get(0))

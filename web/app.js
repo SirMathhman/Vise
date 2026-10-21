@@ -4,24 +4,58 @@ const log = document.getElementById("log");
 const form = document.getElementById("form");
 const input = document.getElementById("input");
 const newButton = document.getElementById("new");
-function append(kind, text) {
+function addEntry(kind) {
     const entry = document.createElement("div");
     entry.className = kind;
-    entry.textContent = text;
     log.appendChild(entry);
-    entry.scrollIntoView();
+    return entry;
 }
-async function sendChat(messages) {
+function scrollToEnd() {
+    log.scrollTop = log.scrollHeight;
+}
+async function streamChat(messages, onEvent) {
     const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages }),
     });
-    const data = (await res.json());
-    if (!res.ok || data.reply === undefined) {
+    if (!res.ok || res.body === null) {
+        const data = (await res.json().catch(() => ({})));
         throw new Error(data.error ?? `HTTP ${res.status}`);
     }
-    return data.reply;
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let answer = "";
+    for (;;) {
+        const { done, value } = await reader.read();
+        if (done) {
+            break;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        let end = buffer.indexOf("\n\n");
+        while (end !== -1) {
+            const block = buffer.slice(0, end);
+            buffer = buffer.slice(end + 2);
+            end = buffer.indexOf("\n\n");
+            const line = block.split("\n").find((l) => l.startsWith("data: "));
+            if (line === undefined) {
+                continue;
+            }
+            const event = JSON.parse(line.slice("data: ".length));
+            if (event.type === "error") {
+                throw new Error(event.error);
+            }
+            if (event.type === "done") {
+                return answer;
+            }
+            if (event.type === "content") {
+                answer += event.text;
+            }
+            onEvent(event);
+        }
+    }
+    return answer;
 }
 form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -31,20 +65,40 @@ form.addEventListener("submit", async (event) => {
     }
     input.value = "";
     conversation.push({ role: "user", content: text });
-    append("user", text);
+    addEntry("user").textContent = text;
     input.disabled = true;
+    const bubble = addEntry("assistant");
+    const thinking = document.createElement("details");
+    thinking.className = "thinking";
+    thinking.open = true;
+    thinking.hidden = true;
+    const thinkingSummary = document.createElement("summary");
+    thinkingSummary.textContent = "Thinking";
+    const thinkingText = document.createElement("div");
+    thinking.append(thinkingSummary, thinkingText);
+    const answerText = document.createElement("div");
+    bubble.append(thinking, answerText);
     try {
-        const reply = await sendChat(conversation);
+        const reply = await streamChat(conversation, (streamed) => {
+            if (streamed.type === "reasoning") {
+                thinking.hidden = false;
+                thinkingText.textContent += streamed.text;
+            }
+            else if (streamed.type === "content") {
+                answerText.textContent += streamed.text;
+            }
+            scrollToEnd();
+        });
         conversation.push({ role: "assistant", content: reply });
-        append("assistant", reply);
     }
     catch (err) {
         conversation.pop();
-        append("error", err instanceof Error ? err.message : String(err));
+        addEntry("error").textContent = err instanceof Error ? err.message : String(err);
     }
     finally {
         input.disabled = false;
         input.focus();
+        scrollToEnd();
     }
 });
 newButton.addEventListener("click", () => {

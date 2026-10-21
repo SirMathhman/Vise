@@ -5,7 +5,7 @@ mod web;
 use std::io::{self, BufRead, Write};
 
 use session::Session;
-use strata::Role;
+use strata::{Chunk, Role};
 
 fn main() -> io::Result<()> {
     if std::env::args().nth(1).as_deref() == Some("web") {
@@ -41,11 +41,25 @@ fn main() -> io::Result<()> {
         }
 
         session.push(Role::User, trimmed.to_owned());
-        match strata::send_message(session.messages(), &config) {
-            Ok(reply) => {
-                println!("{reply}");
-                session.push(Role::Assistant, reply);
+        let mut in_reasoning = None;
+        let result = strata::send_message(session.messages(), &config, &mut |chunk| {
+            let reasoning = matches!(chunk, Chunk::Reasoning(_));
+            if in_reasoning != Some(reasoning) {
+                if in_reasoning.is_some() {
+                    println!();
+                }
+                print!("{}", if reasoning { "[thinking] " } else { "" });
+                in_reasoning = Some(reasoning);
             }
+            let text = match chunk {
+                Chunk::Reasoning(text) | Chunk::Content(text) => text,
+            };
+            print!("{text}");
+            let _ = io::stdout().flush();
+        });
+        println!();
+        match result {
+            Ok(reply) => session.push(Role::Assistant, reply),
             Err(err) => {
                 session.pop();
                 eprintln!("{err}");
