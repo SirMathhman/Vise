@@ -1,6 +1,8 @@
+use std::collections::BTreeSet;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use serde_json::{Value, json};
 
@@ -21,8 +23,51 @@ pub const NAMES: [&str; 6] = [
     DELETE_DIRECTORY,
 ];
 
-/// The tool definitions sent with every chat request.
-pub fn definitions() -> Value {
+/// Which tools are switched off. One instance is shared by the whole run, so a change made by a
+/// command applies to every later request.
+#[derive(Default)]
+pub struct Switches {
+    disabled: Mutex<BTreeSet<String>>,
+}
+
+impl Switches {
+    /// The names of the tools that are switched off right now.
+    pub fn snapshot(&self) -> BTreeSet<String> {
+        self.lock().clone()
+    }
+
+    pub fn set(&self, name: &str, enabled: bool) {
+        let mut disabled = self.lock();
+        if enabled {
+            disabled.remove(name);
+        } else {
+            disabled.insert(name.to_owned());
+        }
+    }
+
+    fn lock(&self) -> MutexGuard<'_, BTreeSet<String>> {
+        // A panic cannot leave this set half-updated, so a poisoned lock is still safe to use.
+        self.disabled.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
+/// The tool definitions to offer the model: every tool that is not in `disabled`.
+pub fn definitions(disabled: &BTreeSet<String>) -> Value {
+    let offered: Vec<Value> = all_definitions()
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|tool| {
+            tool["function"]["name"]
+                .as_str()
+                .is_some_and(|name| !disabled.contains(name))
+        })
+        .cloned()
+        .collect();
+    json!(offered)
+}
+
+fn all_definitions() -> Value {
     json!([
         {
             "type": "function",

@@ -2,7 +2,6 @@ use std::collections::BTreeSet;
 use std::error::Error as _;
 use std::fmt;
 use std::io::{self, BufRead, BufReader, Read};
-use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use serde_json::{Value, json};
@@ -17,8 +16,6 @@ pub struct Config {
     pub read_timeout: Duration,
     /// Directory the model is told it is working in. Sent as a system message when set.
     pub working_dir: Option<String>,
-    /// Names of tools that are switched off. Shared, so a change is seen by every request.
-    pub disabled_tools: Arc<Mutex<BTreeSet<String>>>,
 }
 
 impl Default for Config {
@@ -28,29 +25,7 @@ impl Default for Config {
             model: "qwen3.8-flash-next-iq2_xs".to_owned(),
             read_timeout: Duration::from_secs(60),
             working_dir: None,
-            disabled_tools: Arc::new(Mutex::new(BTreeSet::new())),
         }
-    }
-}
-
-impl Config {
-    pub fn tool_enabled(&self, name: &str) -> bool {
-        !self.lock_disabled().contains(name)
-    }
-
-    pub fn set_tool_enabled(&self, name: &str, enabled: bool) {
-        let mut disabled = self.lock_disabled();
-        if enabled {
-            disabled.remove(name);
-        } else {
-            disabled.insert(name.to_owned());
-        }
-    }
-
-    fn lock_disabled(&self) -> std::sync::MutexGuard<'_, BTreeSet<String>> {
-        self.disabled_tools
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
     }
 }
 
@@ -130,9 +105,10 @@ impl fmt::Display for StrataError {
 pub fn stream_reply(
     items: &[Value],
     config: &Config,
+    disabled: &BTreeSet<String>,
     on_chunk: &mut dyn FnMut(Chunk),
 ) -> Result<Reply, StrataError> {
-    let reader = open_stream(items, config)?;
+    let reader = open_stream(items, config, disabled)?;
     relay(reader, &config.url, on_chunk)
 }
 
@@ -152,13 +128,17 @@ pub fn message_items(messages: &[Message], config: &Config) -> Vec<Value> {
 }
 
 /// Opens a streaming chat-completions request. Fails before any reply text is read.
-fn open_stream(items: &[Value], config: &Config) -> Result<EventReader, StrataError> {
+fn open_stream(
+    items: &[Value],
+    config: &Config,
+    disabled: &BTreeSet<String>,
+) -> Result<EventReader, StrataError> {
     let agent = ureq::AgentBuilder::new()
         .timeout_read(config.read_timeout)
         .build();
     match agent
         .post(&config.url)
-        .send_json(request_body(items, config))
+        .send_json(request_body(items, config, disabled))
     {
         Ok(response) => Ok(BufReader::new(response.into_reader())),
         Err(ureq::Error::Status(status, response)) => Err(StrataError::Http {
@@ -286,26 +266,17 @@ fn is_timeout_kind(kind: io::ErrorKind) -> bool {
     matches!(kind, io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock)
 }
 
-/// Builds the chat-completions request body from wire-format items. Only enabled tools are offered.
-fn request_body(items: &[Value], config: &Config) -> Value {
-    let offered: Vec<Value> = tools::definitions()
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter(|tool| {
-            tool["function"]["name"]
-                .as_str()
-                .is_some_and(|name| config.tool_enabled(name))
-        })
-        .cloned()
-        .collect();
+/// Builds the chat-completions request body from wire-format items. Only tools that are not
+/// in `disabled` are offered, and the `tools` key is left out when none are left.
+fn request_body(items: &[Value], config: &Config, disabled: &BTreeSet<String>) -> Value {
+    let offered = tools::definitions(disabled);
     let mut body = json!({
         "model": config.model,
         "messages": items,
         "stream": true,
     });
-    if !offered.is_empty() {
-        body["tools"] = json!(offered);
+    if offered.as_array().is_some_and(|tools| !tools.is_empty()) {
+        body["tools"] = offered;
     }
     body
 }
@@ -321,7 +292,7 @@ fn build_request(content: &str, config: &Config) -> Value {
 
 /// Builds the streaming chat-completions request body from the full conversation.
 fn build_body(messages: &[Message], config: &Config) -> Value {
-    request_body(&message_items(messages, config), config)
+    request_body(&message_items(messages, config), config, &BTreeSet::new())
 }
 
 /// Extracts `choices[0].message.content` from a non-streaming chat-completions response.

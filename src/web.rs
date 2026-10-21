@@ -8,6 +8,7 @@ use serde_json::{Value, json};
 
 use crate::agent;
 use crate::commands;
+use crate::tools::Switches;
 use crate::strata::{Chunk, Config, Message, Role};
 
 pub const DEFAULT_PORT: u16 = 3000;
@@ -32,20 +33,21 @@ struct Response {
     body: String,
 }
 
-pub fn serve(port: u16, config: Config) -> io::Result<()> {
+pub fn serve(port: u16, config: Config, switches: Switches) -> io::Result<()> {
     let listener = TcpListener::bind(("127.0.0.1", port))?;
     println!("Serving UI at http://127.0.0.1:{port}");
-    accept_loop(listener, Arc::new(config));
+    accept_loop(listener, Arc::new(config), Arc::new(switches));
     Ok(())
 }
 
-fn accept_loop(listener: TcpListener, config: Arc<Config>) {
+fn accept_loop(listener: TcpListener, config: Arc<Config>, switches: Arc<Switches>) {
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
                 let config = Arc::clone(&config);
+                let switches = Arc::clone(&switches);
                 thread::spawn(move || {
-                    if let Err(err) = handle(stream, &config) {
+                    if let Err(err) = handle(stream, &config, &switches) {
                         eprintln!("request failed: {err}");
                     }
                 });
@@ -55,7 +57,7 @@ fn accept_loop(listener: TcpListener, config: Arc<Config>) {
     }
 }
 
-fn handle(mut stream: TcpStream, config: &Config) -> io::Result<()> {
+fn handle(mut stream: TcpStream, config: &Config, switches: &Switches) -> io::Result<()> {
     stream.set_read_timeout(Some(READ_TIMEOUT))?;
     let mut reader = BufReader::new(stream.try_clone()?);
     let mut request = read_request(&mut reader)?;
@@ -66,7 +68,7 @@ fn handle(mut stream: TcpStream, config: &Config) -> io::Result<()> {
 
     request.body = read_body(&mut reader, request.content_length)?;
     if request.method == "POST" && request.path == "/api/chat" {
-        return chat(stream, &request, config);
+        return chat(stream, &request, config, switches);
     }
     write_response(&mut stream, &route(&request))
 }
@@ -132,7 +134,12 @@ fn route(request: &Request) -> Response {
 }
 
 /// Streams the reply as server-sent events: `reasoning` and `content` deltas, then `done` or `error`.
-fn chat(mut stream: TcpStream, request: &Request, config: &Config) -> io::Result<()> {
+fn chat(
+    mut stream: TcpStream,
+    request: &Request,
+    config: &Config,
+    switches: &Switches,
+) -> io::Result<()> {
     let is_json = request
         .content_type
         .as_deref()
@@ -156,14 +163,14 @@ fn chat(mut stream: TcpStream, request: &Request, config: &Config) -> io::Result
     if let Some(reply) = messages
         .last()
         .filter(|message| matches!(message.role, Role::User))
-        .and_then(|message| commands::handle(&message.content, config))
+        .and_then(|message| commands::handle(&message.content, switches))
     {
         start_stream(&mut stream, &mut started)?;
         write_event(&mut stream, &json!({ "type": "content", "text": reply }))?;
         return write_event(&mut stream, &json!({ "type": "done", "answer": reply }));
     }
 
-    let outcome = agent::run_turn(&messages, config, &mut |chunk| {
+    let outcome = agent::run_turn(&messages, config, switches, &mut |chunk| {
         let event = match chunk {
             Chunk::Reasoning(text) => json!({ "type": "reasoning", "text": text }),
             Chunk::Content(text) => json!({ "type": "content", "text": text }),
@@ -268,7 +275,13 @@ mod tests {
     fn stalled_client_does_not_block_other_requests() {
         let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
         let port = listener.local_addr().unwrap().port();
-        thread::spawn(move || accept_loop(listener, Arc::new(Config::default())));
+        thread::spawn(move || {
+            accept_loop(
+                listener,
+                Arc::new(Config::default()),
+                Arc::new(Switches::default()),
+            )
+        });
 
         let _stalled = TcpStream::connect(("127.0.0.1", port)).unwrap();
         let mut client = TcpStream::connect(("127.0.0.1", port)).unwrap();

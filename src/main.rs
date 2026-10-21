@@ -60,8 +60,9 @@ fn print_chunk(chunk: Chunk, section: &mut Option<Section>) {
 
 fn main() -> io::Result<()> {
     let config = startup_config();
+    let switches = tools::Switches::default();
     if std::env::args().nth(1).as_deref() == Some("web") {
-        return web::serve(web::DEFAULT_PORT, config);
+        return web::serve(web::DEFAULT_PORT, config, switches);
     }
 
     let mut session = Session::new();
@@ -90,14 +91,14 @@ fn main() -> io::Result<()> {
             println!("Started a new conversation.");
             continue;
         }
-        if let Some(output) = commands::handle(trimmed, &config) {
+        if let Some(output) = commands::handle(trimmed, &switches) {
             println!("{output}");
             continue;
         }
 
         session.push(Role::User, trimmed.to_owned());
         let mut section = None;
-        let result = agent::run_turn(session.messages(), &config, &mut |chunk| {
+        let result = agent::run_turn(session.messages(), &config, &switches, &mut |chunk| {
             print_chunk(chunk, &mut section)
         });
         println!();
