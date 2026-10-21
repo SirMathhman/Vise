@@ -1,5 +1,6 @@
 mod session;
 mod strata;
+mod web;
 
 use std::io::{self, BufRead, Write};
 
@@ -7,6 +8,10 @@ use session::Session;
 use strata::Role;
 
 fn main() -> io::Result<()> {
+    if std::env::args().nth(1).as_deref() == Some("web") {
+        return web::serve(web::DEFAULT_PORT);
+    }
+
     let config = strata::Config::default();
     let mut session = Session::new();
     let mut input = io::stdin().lock();

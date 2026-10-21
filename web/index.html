@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Strata Chat</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: system-ui, sans-serif;
+        background: #fff;
+        color: #111;
+      }
+      main {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        max-width: 48rem;
+        margin: 0 auto;
+        padding: 1rem;
+        box-sizing: border-box;
+      }
+      #log {
+        flex: 1;
+        overflow-y: auto;
+      }
+      #log > div {
+        margin: 0.5rem 0;
+        padding: 0.5rem 0.75rem;
+        border-radius: 0.5rem;
+        white-space: pre-wrap;
+      }
+      .user {
+        background: #e8f0fe;
+      }
+      .assistant {
+        background: #f3f3f3;
+      }
+      .error {
+        background: #fde7e7;
+        color: #8a1c1c;
+      }
+      form {
+        display: flex;
+        gap: 0.5rem;
+      }
+      #input {
+        flex: 1;
+        padding: 0.5rem;
+        font: inherit;
+      }
+      button {
+        padding: 0.5rem 1rem;
+        font: inherit;
+      }
+      @media (prefers-color-scheme: dark) {
+        body {
+          background: #1b1b1b;
+          color: #eee;
+        }
+        .user {
+          background: #263247;
+        }
+        .assistant {
+          background: #2a2a2a;
+        }
+        .error {
+          background: #4a1f1f;
+          color: #ffb4b4;
+        }
+        #input {
+          background: #222;
+          color: #eee;
+          border: 1px solid #444;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div id="log"></div>
+      <form id="form">
+        <input id="input" autocomplete="off" autofocus />
+        <button type="submit">Send</button>
+        <button type="button" id="new">New</button>
+      </form>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>

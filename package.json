@@ -1,0 +1,10 @@
+{
+  "name": "vise",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p web"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2"
+  }
+}
