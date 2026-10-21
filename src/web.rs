@@ -190,3 +190,22 @@ fn write_response(mut stream: TcpStream, response: &Response) -> io::Result<()> 
         response.body
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use std::io::Cursor;
+
+    use super::*;
+
+    #[test]
+    fn read_request_reports_oversized_content_length_without_reading_body() {
+        let head = format!(
+            "POST /api/chat HTTP/1.1\r\nContent-Length: {}\r\n\r\n",
+            MAX_BODY_BYTES + 1
+        );
+        let request = read_request(&mut Cursor::new(head)).unwrap();
+
+        assert!(request.content_length > MAX_BODY_BYTES);
+        assert!(request.body.is_empty());
+    }
+}
