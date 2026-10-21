@@ -1,10 +1,15 @@
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::{self, Write};
 use std::path::Path;
 
 use serde_json::{Value, json};
 
 pub const LIST_FILES: &str = "list_files";
 pub const READ_FILE: &str = "read_file";
+pub const CREATE_FILE: &str = "create_file";
+pub const CREATE_DIRECTORY: &str = "create_directory";
+pub const DELETE_FILE: &str = "delete_file";
+pub const DELETE_DIRECTORY: &str = "delete_directory";
 
 /// The tool definitions sent with every chat request.
 pub fn definitions() -> Value {
@@ -39,6 +44,63 @@ pub fn definitions() -> Value {
                     "required": ["path", "start", "end"]
                 }
             }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": CREATE_FILE,
+                "description": "Create a new text file with the given content. Fails if the file already exists or its parent directory does not exist.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string", "description": "File to create" },
+                        "content": { "type": "string", "description": "Full text of the new file" }
+                    },
+                    "required": ["path", "content"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": CREATE_DIRECTORY,
+                "description": "Create a directory, including any missing parent directories. Fails if the path already exists.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string", "description": "Directory to create" }
+                    },
+                    "required": ["path"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": DELETE_FILE,
+                "description": "Delete a file. Fails if the path is a directory or does not exist.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string", "description": "File to delete" }
+                    },
+                    "required": ["path"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": DELETE_DIRECTORY,
+                "description": "Delete an empty directory. Fails if the directory contains anything, or if the path is a file.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string", "description": "Empty directory to delete" }
+                    },
+                    "required": ["path"]
+                }
+            }
         }
     ])
 }
@@ -52,6 +114,14 @@ pub fn run(name: &str, arguments: &str) -> String {
     let output = match name {
         LIST_FILES => list_files(arguments).unwrap_or_else(|err| format!("error: {err}")),
         READ_FILE => read_file(arguments).unwrap_or_else(|err| format!("error: {err}")),
+        CREATE_FILE => create_file(arguments).unwrap_or_else(|err| format!("error: {err}")),
+        CREATE_DIRECTORY => {
+            create_directory(arguments).unwrap_or_else(|err| format!("error: {err}"))
+        }
+        DELETE_FILE => delete_file(arguments).unwrap_or_else(|err| format!("error: {err}")),
+        DELETE_DIRECTORY => {
+            delete_directory(arguments).unwrap_or_else(|err| format!("error: {err}"))
+        }
         _ => format!("error: unknown tool {name}"),
     };
     truncate(output)
@@ -151,6 +221,62 @@ fn read_file(arguments: &str) -> Result<String, String> {
         .join("\n"))
 }
 
+fn string_arg<'a>(args: &'a Value, key: &str) -> Result<&'a str, String> {
+    args.get(key)
+        .and_then(Value::as_str)
+        .ok_or_else(|| format!("{key} must be a string"))
+}
+
+/// Creates a new file. An existing file is never changed, and the parent directory must exist.
+fn create_file(arguments: &str) -> Result<String, String> {
+    let args = parse_arguments(arguments)?;
+    let path = string_arg(&args, "path")?;
+    let content = string_arg(&args, "content")?;
+
+    let mut file = match OpenOptions::new().write(true).create_new(true).open(path) {
+        Ok(file) => file,
+        Err(err) if err.kind() == io::ErrorKind::AlreadyExists => {
+            return Err(format!("already exists: {path}"));
+        }
+        Err(err) => return Err(format!("could not create {path}: {err}")),
+    };
+    file.write_all(content.as_bytes())
+        .map_err(|err| format!("could not write {path}: {err}"))?;
+    Ok(format!("created file {path}"))
+}
+
+/// Creates a directory and any missing parents. Fails if the path already exists.
+fn create_directory(arguments: &str) -> Result<String, String> {
+    let args = parse_arguments(arguments)?;
+    let path = string_arg(&args, "path")?;
+    if Path::new(path).exists() {
+        return Err(format!("already exists: {path}"));
+    }
+    fs::create_dir_all(path).map_err(|err| format!("could not create {path}: {err}"))?;
+    Ok(format!("created directory {path}"))
+}
+
+fn delete_file(arguments: &str) -> Result<String, String> {
+    let args = parse_arguments(arguments)?;
+    let path = string_arg(&args, "path")?;
+    if Path::new(path).is_dir() {
+        return Err(format!("is a directory, use delete_directory: {path}"));
+    }
+    fs::remove_file(path).map_err(|err| format!("could not delete {path}: {err}"))?;
+    Ok(format!("deleted file {path}"))
+}
+
+/// Deletes a directory only when it is empty.
+fn delete_directory(arguments: &str) -> Result<String, String> {
+    let args = parse_arguments(arguments)?;
+    let path = string_arg(&args, "path")?;
+    if Path::new(path).is_file() {
+        return Err(format!("is a file, use delete_file: {path}"));
+    }
+    fs::remove_dir(path).map_err(|err| format!("could not delete {path}: {err}"))?;
+    Ok(format!("deleted directory {path}"))
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -204,5 +330,38 @@ mod tests {
 
         assert!(result.len() <= MAX_TOOL_OUTPUT + 100);
         assert!(result.ends_with("narrow the range or depth"));
+    }
+
+    #[test]
+    fn create_and_delete_refuse_wrong_kinds_and_existing_paths() {
+        let root = std::env::temp_dir().join(format!("vise-edit-{}", std::process::id()));
+        let file = root.join("made.txt");
+        let file_path = file.display().to_string();
+        let dir_path = root.display().to_string();
+
+        let created_dir = run(CREATE_DIRECTORY, &json!({ "path": dir_path }).to_string());
+        let created_file = run(
+            CREATE_FILE,
+            &json!({ "path": file_path, "content": "hi" }).to_string(),
+        );
+        let read_back = fs::read_to_string(&file).unwrap();
+        let file_again = run(
+            CREATE_FILE,
+            &json!({ "path": file_path, "content": "again" }).to_string(),
+        );
+        let delete_nonempty = run(DELETE_DIRECTORY, &json!({ "path": dir_path }).to_string());
+        let delete_file_as_dir = run(DELETE_DIRECTORY, &json!({ "path": file_path }).to_string());
+        let deleted_file = run(DELETE_FILE, &json!({ "path": file_path }).to_string());
+        let deleted_dir = run(DELETE_DIRECTORY, &json!({ "path": dir_path }).to_string());
+
+        assert_eq!(created_dir, format!("created directory {dir_path}"));
+        assert_eq!(created_file, format!("created file {file_path}"));
+        assert_eq!(read_back, "hi");
+        assert!(file_again.starts_with("error: already exists"));
+        assert!(delete_nonempty.starts_with("error: could not delete"));
+        assert!(delete_file_as_dir.starts_with("error: is a file"));
+        assert_eq!(deleted_file, format!("deleted file {file_path}"));
+        assert_eq!(deleted_dir, format!("deleted directory {dir_path}"));
+        assert!(!root.exists());
     }
 }

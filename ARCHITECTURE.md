@@ -21,7 +21,8 @@ Written for: developers working on this crate.
 src/
   main.rs     stdin loop, or `web` argument to start the web server
   agent.rs    run_turn: streams a reply, runs requested tools, repeats up to 8 rounds
-  tools.rs    tool definitions and run(): list_files and read_file
+  tools.rs    tool definitions and run(): list_files, read_file, create_file,
+              create_directory, delete_file, and delete_directory
   session.rs  Session: message list with push, pop, reset, and messages (REPL only)
   strata.rs   Config, Role, Message, Chunk, Reply, StrataError, and the streaming client
   web.rs      std TcpListener HTTP server, one thread per connection:
@@ -64,6 +65,15 @@ When a reply has no tool calls, its answer text is the turn's result. More than 
 
 `read_file` takes a required `path`, a required `start`, and a required `end`, all in 1-based lines. `start` is included and `end` is excluded. The result has each line prefixed with its number and a tab. An `end` past the last line is clipped to the file, and a range with no lines is an error. Results over 16 KiB are cut short with a notice asking the model to narrow the range.
 
+The write tools change the disk and run without confirmation:
+
+- `create_file` takes `path` and `content`. It creates a new file with `create_new`, so an existing file is never changed, and the parent directory must already exist.
+- `create_directory` takes `path`. It creates the directory and any missing parents, and it fails if the path already exists.
+- `delete_file` takes `path`. It refuses directories.
+- `delete_directory` takes `path`. It removes only an empty directory, and it refuses files.
+
+All four accept any path, as the read tools do.
+
 Tool exchanges are not stored in the session. Only the user message and the final answer are kept, so later turns do not see earlier tool results.
 
 On a failed turn the REPL pops the user message it just added, so a failed turn does not stay in the history. The web UI does the same with its own copy.
@@ -74,6 +84,7 @@ The `done` event carries the turn's final answer, and the web page stores that t
 
 ## Potential Problems
 
+- **The model can change files anywhere.** The four write tools accept any path and run without confirmation. A model error or injected instruction can create or delete files the user can reach. There is no working-directory boundary yet.
 - **Tool results are capped, but reading is not.** `tools::run` cuts any result over 16 KiB, so one result cannot fill the context. `read_file` still reads the whole file into memory before selecting the range, and `list_files` walks the whole tree to the requested depth, both on the request thread. Depth has no maximum.
 - **Tools accept any absolute path.** `list_files` and `read_file` take any path, so output from injected content could read the filesystem. The web server binds to `127.0.0.1` and has no Origin check, which limits exposure but does not remove the risk.
 - **Strata read timeout is per read, not per reply.** A reply that keeps producing bytes can run longer than 60 seconds without timing out. Only a stall between bytes trips the timeout.
