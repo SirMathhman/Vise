@@ -41,12 +41,7 @@ impl fmt::Display for StrataError {
 }
 
 pub fn send_message(content: &str, config: &Config) -> Result<String, StrataError> {
-    let body = json!({
-        "model": config.model,
-        "messages": [{ "role": "user", "content": content }],
-    });
-
-    let response = match ureq::post(&config.url).send_json(body) {
+    let response = match ureq::post(&config.url).send_json(build_request(content, config)) {
         Ok(response) => response,
         Err(ureq::Error::Status(status, response)) => {
             return Err(StrataError::Http {
@@ -68,17 +63,27 @@ pub fn send_message(content: &str, config: &Config) -> Result<String, StrataErro
         reason: err.to_string(),
     })?;
 
-    extract_reply(&data).ok_or_else(|| StrataError::Malformed {
-        url: config.url.clone(),
-        reason: "no choices[0].message.content string".to_owned(),
+    parse_reply(&config.url, &data)
+}
+
+/// Builds the chat-completions request body for a single user message.
+fn build_request(content: &str, config: &Config) -> Value {
+    json!({
+        "model": config.model,
+        "messages": [{ "role": "user", "content": content }],
     })
 }
 
-fn extract_reply(data: &Value) -> Option<String> {
-    data.get("choices")?
-        .get(0)?
-        .get("message")?
-        .get("content")?
-        .as_str()
+/// Extracts `choices[0].message.content` from a chat-completions response.
+fn parse_reply(url: &str, data: &Value) -> Result<String, StrataError> {
+    data.get("choices")
+        .and_then(|choices| choices.get(0))
+        .and_then(|choice| choice.get("message"))
+        .and_then(|message| message.get("content"))
+        .and_then(Value::as_str)
         .map(str::to_owned)
+        .ok_or_else(|| StrataError::Malformed {
+            url: url.to_owned(),
+            reason: "no choices[0].message.content string".to_owned(),
+        })
 }
