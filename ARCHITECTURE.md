@@ -54,9 +54,21 @@ On a failed request, the REPL pops the user message it just added, so a failed t
 - **Duplicated turn logic.** The REPL and the web UI each implement history, the pop-on-error rule, and chunk handling separately.
 - **Error handling gaps.** `StrataError` does not implement `std::error::Error`. A failed body read in the `Http` branch is silently replaced with an empty string. The web route maps every Strata error to 502, so the distinction between error kinds is lost there. The `Network` message repeats the URL, because the underlying error text already includes it.
 - **Only some errors suggest a next step.** The `Network` and `Timeout` messages do. The `Http` and `Malformed` messages do not.
+- **Web UI rollback is partial.** On a failed turn, the web UI drops the user message from its history, but the user message and any partial reply stay on screen. A retry does not include the failed turn in the history, which matches the REPL, but the screen and the history disagree.
+- **Non-JSON error bodies** fall back to a generic `HTTP <status>` message in the web UI, which does not say what to do.
 - **Dead functions.** `build_request` and `parse_reply` exist only for tests and produce `dead_code` warnings in the binary build.
 - **Web UI race.** The New button stays enabled while a request is in flight. If it is clicked mid-request, the reply lands in a cleared conversation, and a later failure pops the wrong message.
 - **Web UI accessibility.** The chat input has no label or placeholder, and the page shows no hint when empty.
+
+## Error Layers
+
+Error text is produced in three places:
+
+- **`StrataError` Display** in `src/strata.rs`. The REPL prints it, and the web server sends it as the 502 JSON body `{"error": ...}` or as the SSE event `{"type": "error", "error": ...}`.
+- **`parse_messages`** in `src/web.rs`. It returns the 400 messages for a bad request body.
+- **`web/src/app.ts`**. It builds its own messages for an unreachable server, a dropped connection, a reply that ends before `done`, and a non-JSON error response (`HTTP <status>`).
+
+Errors cross the wire as text only. The client cannot branch on the kind of error, and the JSON and SSE error shapes are handled by separate code paths in `app.ts`.
 
 ## Future Work
 
