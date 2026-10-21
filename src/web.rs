@@ -32,7 +32,11 @@ struct Response {
 pub fn serve(port: u16) -> io::Result<()> {
     let listener = TcpListener::bind(("127.0.0.1", port))?;
     println!("Serving UI at http://127.0.0.1:{port}");
+    accept_loop(listener);
+    Ok(())
+}
 
+fn accept_loop(listener: TcpListener) {
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
@@ -45,7 +49,6 @@ pub fn serve(port: u16) -> io::Result<()> {
             Err(err) => eprintln!("connection failed: {err}"),
         }
     }
-    Ok(())
 }
 
 fn handle(mut stream: TcpStream) -> io::Result<()> {
@@ -234,9 +237,27 @@ fn write_response(stream: &mut TcpStream, response: &Response) -> io::Result<()>
 
 #[cfg(test)]
 mod tests {
-    use std::io::Cursor;
+    use std::io::{Cursor, Read};
 
     use super::*;
+
+    #[test]
+    fn stalled_client_does_not_block_other_requests() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        thread::spawn(move || accept_loop(listener));
+
+        let _stalled = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        let mut client = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        client.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        client
+            .write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+            .unwrap();
+
+        let mut response = String::new();
+        client.read_to_string(&mut response).unwrap();
+        assert!(response.starts_with("HTTP/1.1 200 OK"));
+    }
 
     #[test]
     fn read_request_reports_oversized_content_length_without_reading_body() {
