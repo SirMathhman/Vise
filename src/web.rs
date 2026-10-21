@@ -1,5 +1,6 @@
 use std::io::{self, BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
+use std::thread;
 use std::time::Duration;
 
 use serde_json::{Value, json};
@@ -33,8 +34,15 @@ pub fn serve(port: u16) -> io::Result<()> {
     println!("Serving UI at http://127.0.0.1:{port}");
 
     for stream in listener.incoming() {
-        if let Err(err) = stream.and_then(handle) {
-            eprintln!("request failed: {err}");
+        match stream {
+            Ok(stream) => {
+                thread::spawn(move || {
+                    if let Err(err) = handle(stream) {
+                        eprintln!("request failed: {err}");
+                    }
+                });
+            }
+            Err(err) => eprintln!("connection failed: {err}"),
         }
     }
     Ok(())

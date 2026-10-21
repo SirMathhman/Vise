@@ -1,11 +1,15 @@
+use std::error::Error as _;
 use std::fmt;
-use std::io::{BufRead, BufReader, Read};
+use std::io::{self, BufRead, BufReader, Read};
+use std::time::Duration;
 
 use serde_json::{Value, json};
 
 pub struct Config {
     pub url: String,
     pub model: String,
+    /// Longest the client waits for the next bytes from Strata before giving up.
+    pub read_timeout: Duration,
 }
 
 impl Default for Config {
@@ -13,6 +17,7 @@ impl Default for Config {
         Config {
             url: "http://127.0.0.1:8080/v1/chat/completions".to_owned(),
             model: "qwen3.8-flash-next-iq2_xs".to_owned(),
+            read_timeout: Duration::from_secs(60),
         }
     }
 }
@@ -48,6 +53,7 @@ pub type EventReader = BufReader<Box<dyn Read + Send + Sync>>;
 #[derive(Debug)]
 pub enum StrataError {
     Network { url: String, cause: String },
+    Timeout { url: String },
     Http { url: String, status: u16, body: String },
     Malformed { url: String, reason: String },
 }
@@ -58,6 +64,10 @@ impl fmt::Display for StrataError {
             StrataError::Network { url, cause } => write!(
                 f,
                 "Strata not reachable at {url} ({cause}). Start the Strata server and try again."
+            ),
+            StrataError::Timeout { url } => write!(
+                f,
+                "Strata at {url} stopped responding. Check that the server is running and not overloaded."
             ),
             StrataError::Http { url, status, body } => {
                 write!(f, "Strata at {url} returned HTTP {status}: {body}")
@@ -82,12 +92,21 @@ pub fn send_message(
 
 /// Opens a streaming chat-completions request. Fails before any reply text is read.
 pub fn open_stream(messages: &[Message], config: &Config) -> Result<EventReader, StrataError> {
-    match ureq::post(&config.url).send_json(build_body(messages, config)) {
+    let agent = ureq::AgentBuilder::new()
+        .timeout_read(config.read_timeout)
+        .build();
+    match agent
+        .post(&config.url)
+        .send_json(build_body(messages, config))
+    {
         Ok(response) => Ok(BufReader::new(response.into_reader())),
         Err(ureq::Error::Status(status, response)) => Err(StrataError::Http {
             url: config.url.clone(),
             status,
             body: response.into_string().unwrap_or_default(),
+        }),
+        Err(ureq::Error::Transport(transport)) if is_timeout(&transport) => Err(StrataError::Timeout {
+            url: config.url.clone(),
         }),
         Err(ureq::Error::Transport(transport)) => Err(StrataError::Network {
             url: config.url.clone(),
@@ -104,10 +123,7 @@ pub fn relay(
 ) -> Result<String, StrataError> {
     let mut answer = String::new();
     for line in reader.lines() {
-        let line = line.map_err(|err| StrataError::Network {
-            url: url.to_owned(),
-            cause: err.to_string(),
-        })?;
+        let line = line.map_err(|err| io_error(url, err))?;
         let Some(data) = line.strip_prefix("data: ") else {
             continue;
         };
@@ -141,6 +157,30 @@ pub fn relay(
         }
     }
     Ok(answer)
+}
+
+fn io_error(url: &str, err: io::Error) -> StrataError {
+    if is_timeout_kind(err.kind()) {
+        StrataError::Timeout {
+            url: url.to_owned(),
+        }
+    } else {
+        StrataError::Network {
+            url: url.to_owned(),
+            cause: err.to_string(),
+        }
+    }
+}
+
+fn is_timeout(transport: &ureq::Transport) -> bool {
+    transport
+        .source()
+        .and_then(|source| source.downcast_ref::<io::Error>())
+        .is_some_and(|err| is_timeout_kind(err.kind()))
+}
+
+fn is_timeout_kind(kind: io::ErrorKind) -> bool {
+    matches!(kind, io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock)
 }
 
 /// Builds the chat-completions request body for a single user message.
