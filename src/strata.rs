@@ -87,3 +87,34 @@ fn parse_reply(url: &str, data: &Value) -> Result<String, StrataError> {
             reason: "no choices[0].message.content string".to_owned(),
         })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_request_wraps_content_as_single_user_message() {
+        let config = Config::default();
+        let body = build_request("hi", &config);
+
+        assert_eq!(body["model"], config.model);
+        assert_eq!(body["messages"], json!([{ "role": "user", "content": "hi" }]));
+    }
+
+    #[test]
+    fn parse_reply_returns_first_choice_content() {
+        let data = json!({ "choices": [{ "message": { "content": "hello" } }] });
+
+        assert_eq!(parse_reply("url", &data).unwrap(), "hello");
+    }
+
+    #[test]
+    fn parse_reply_is_malformed_when_content_missing() {
+        let data = json!({ "choices": [] });
+
+        assert!(matches!(
+            parse_reply("url", &data),
+            Err(StrataError::Malformed { .. })
+        ));
+    }
+}
