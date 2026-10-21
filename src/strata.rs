@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
+#[derive(Clone)]
 pub struct Config {
     pub url: String,
     pub model: String,
@@ -21,18 +22,6 @@ impl Default for Config {
             model: "qwen3.8-flash-next-iq2_xs".to_owned(),
             read_timeout: Duration::from_secs(60),
             working_dir: None,
-        }
-    }
-}
-
-impl Config {
-    /// The default config, telling the model the directory the program was started in.
-    pub fn in_current_dir() -> Self {
-        Config {
-            working_dir: std::env::current_dir()
-                .ok()
-                .map(|dir| dir.display().to_string()),
-            ..Config::default()
         }
     }
 }

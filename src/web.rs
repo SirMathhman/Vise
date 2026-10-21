@@ -1,5 +1,6 @@
 use std::io::{self, BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
@@ -29,19 +30,20 @@ struct Response {
     body: String,
 }
 
-pub fn serve(port: u16) -> io::Result<()> {
+pub fn serve(port: u16, config: Config) -> io::Result<()> {
     let listener = TcpListener::bind(("127.0.0.1", port))?;
     println!("Serving UI at http://127.0.0.1:{port}");
-    accept_loop(listener);
+    accept_loop(listener, Arc::new(config));
     Ok(())
 }
 
-fn accept_loop(listener: TcpListener) {
+fn accept_loop(listener: TcpListener, config: Arc<Config>) {
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
+                let config = Arc::clone(&config);
                 thread::spawn(move || {
-                    if let Err(err) = handle(stream) {
+                    if let Err(err) = handle(stream, &config) {
                         eprintln!("request failed: {err}");
                     }
                 });
@@ -51,7 +53,7 @@ fn accept_loop(listener: TcpListener) {
     }
 }
 
-fn handle(mut stream: TcpStream) -> io::Result<()> {
+fn handle(mut stream: TcpStream, config: &Config) -> io::Result<()> {
     stream.set_read_timeout(Some(READ_TIMEOUT))?;
     let mut reader = BufReader::new(stream.try_clone()?);
     let mut request = read_request(&mut reader)?;
@@ -62,7 +64,7 @@ fn handle(mut stream: TcpStream) -> io::Result<()> {
 
     request.body = read_body(&mut reader, request.content_length)?;
     if request.method == "POST" && request.path == "/api/chat" {
-        return chat(stream, &request);
+        return chat(stream, &request, config);
     }
     write_response(&mut stream, &route(&request))
 }
@@ -128,7 +130,7 @@ fn route(request: &Request) -> Response {
 }
 
 /// Streams the reply as server-sent events: `reasoning` and `content` deltas, then `done` or `error`.
-fn chat(mut stream: TcpStream, request: &Request) -> io::Result<()> {
+fn chat(mut stream: TcpStream, request: &Request, config: &Config) -> io::Result<()> {
     let is_json = request
         .content_type
         .as_deref()
@@ -148,8 +150,7 @@ fn chat(mut stream: TcpStream, request: &Request) -> io::Result<()> {
         }
     };
 
-    let config = Config::in_current_dir();
-    let reader = match strata::open_stream(&messages, &config) {
+    let reader = match strata::open_stream(&messages, config) {
         Ok(reader) => reader,
         Err(err) => {
             let response = json_response(502, json!({ "error": err.to_string() }));
@@ -245,7 +246,7 @@ mod tests {
     fn stalled_client_does_not_block_other_requests() {
         let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
         let port = listener.local_addr().unwrap().port();
-        thread::spawn(move || accept_loop(listener));
+        thread::spawn(move || accept_loop(listener, Arc::new(Config::default())));
 
         let _stalled = TcpStream::connect(("127.0.0.1", port)).unwrap();
         let mut client = TcpStream::connect(("127.0.0.1", port)).unwrap();

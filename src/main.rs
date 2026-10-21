@@ -7,12 +7,27 @@ use std::io::{self, BufRead, Write};
 use session::Session;
 use strata::{Chunk, Role};
 
+/// Reads the working directory once at startup, for both the REPL and the web server.
+fn startup_config() -> strata::Config {
+    let working_dir = match std::env::current_dir() {
+        Ok(dir) => Some(dir.display().to_string()),
+        Err(err) => {
+            eprintln!("warning: could not read the working directory: {err}");
+            None
+        }
+    };
+    strata::Config {
+        working_dir,
+        ..strata::Config::default()
+    }
+}
+
 fn main() -> io::Result<()> {
+    let config = startup_config();
     if std::env::args().nth(1).as_deref() == Some("web") {
-        return web::serve(web::DEFAULT_PORT);
+        return web::serve(web::DEFAULT_PORT, config);
     }
 
-    let config = strata::Config::in_current_dir();
     let mut session = Session::new();
     let mut input = io::stdin().lock();
 

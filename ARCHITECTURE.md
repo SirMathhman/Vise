@@ -11,7 +11,7 @@ Written for: developers working on this crate.
 - **Session**: the in-memory conversation history in `src/session.rs`. It lasts for one REPL run and is used only by the REPL. The web UI keeps its own copy in the page, which is lost on reload.
 - **Message**: one turn in a conversation, a `Role` (`User` or `Assistant`) plus its text. Defined in `src/strata.rs`.
 - **Chunk**: one streamed delta, either reasoning or answer text. Defined in `src/strata.rs`.
-- **Config**: the server URL, model name, and read timeout, held in `strata::Config`. It defaults to the local server, the `qwen3.8-flash-next-iq2_xs` model, and a 60-second read timeout.
+- **Config**: the server URL, model name, read timeout, and working directory, held in `strata::Config`. It defaults to the local server, the `qwen3.8-flash-next-iq2_xs` model, a 60-second read timeout, and no working directory. `main.rs` reads the current directory once at startup and passes it to both the REPL and the web server. When set, it is sent to the model as a leading system message on each request, and it is not stored in the session history. If the directory cannot be read, a warning is printed once at startup and the model is not told.
 - **StrataError**: the error type for a failed call. Its variants are `Network` (no connection), `Timeout` (no bytes within the read timeout), `Http` (non-2xx status), and `Malformed` (unparseable or unexpected response).
 
 ## Structure
