@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::io::{self, BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
@@ -8,7 +9,7 @@ use serde_json::{Value, json};
 
 use crate::agent;
 use crate::commands;
-use crate::tools::Switches;
+use crate::tools::{self, Switches};
 use crate::strata::{Chunk, Config, Message, Role};
 
 pub const DEFAULT_PORT: u16 = 3000;
@@ -170,14 +171,16 @@ fn chat(
         return write_event(&mut stream, &json!({ "type": "done", "answer": reply }));
     }
 
-    // The note about switch changes goes on the user message. The page stores the returned text.
-    let previous = messages
+    // The page sends the switches it has told the model about. The note goes on the user message, and
+    // the new record is returned in the done event, which the page keeps only once it arrives.
+    let now = switches.snapshot();
+    let told = parse_told(&request.body);
+    let noted = messages
         .last_mut()
         .filter(|message| matches!(message.role, Role::User))
         .map(|message| {
-            let (text, previous) = switches.announce(&message.content);
-            message.content = text;
-            previous
+            message.content = tools::note_changes(&message.content, &told, &now);
+            message.content.clone()
         });
 
     let outcome = agent::run_turn(&messages, config, switches, &mut |chunk| {
@@ -191,16 +194,12 @@ fn chat(
         let _ = write_event(&mut stream, &event);
     });
 
-    if let (Err(_), Some(previous)) = (&outcome, previous) {
-        switches.restore(previous);
-    }
     match outcome {
         Ok(answer) => {
             start_stream(&mut stream, &mut started)?;
-            let user_message = messages.last().map(|message| message.content.clone());
             write_event(
                 &mut stream,
-                &json!({ "type": "done", "answer": answer, "user_message": user_message }),
+                &json!({ "type": "done", "answer": answer, "user_message": noted, "told": now }),
             )
         }
         // Nothing was sent yet, so the failure can still be a plain JSON error response.
@@ -226,6 +225,17 @@ fn start_stream(stream: &mut TcpStream, started: &mut bool) -> io::Result<()> {
 
 fn write_event(stream: &mut TcpStream, event: &Value) -> io::Result<()> {
     write!(stream, "data: {event}\n\n")
+}
+
+/// The switched-off tools the page has already told the model about, sent with each chat request.
+fn parse_told(body: &[u8]) -> BTreeSet<String> {
+    serde_json::from_slice::<Value>(body)
+        .ok()
+        .and_then(|data| data.get("told").and_then(Value::as_array).cloned())
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|name| name.as_str().map(str::to_owned))
+        .collect()
 }
 
 fn json_response(status: u16, value: Value) -> Response {

@@ -1,5 +1,7 @@
 "use strict";
 const conversation = [];
+// The switched-off tools the model has been told about in this conversation.
+let told = [];
 const log = document.getElementById("log");
 const form = document.getElementById("form");
 const input = document.getElementById("input");
@@ -19,7 +21,7 @@ async function streamChat(messages, onEvent) {
         res = await fetch("/api/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ messages }),
+            body: JSON.stringify({ messages, told }),
         });
     }
     catch {
@@ -107,9 +109,13 @@ form.addEventListener("submit", async (event) => {
             scrollToEnd();
         });
         if (!command) {
-            // The server may have added a note about switch changes to this user message.
-            if (done.user_message) {
+            // The server may have added a note about switch changes to this user message, and returns the
+            // record of switches the model now knows about. Both are kept only once the reply has arrived.
+            if (done.user_message != null) {
                 conversation[conversation.length - 1].content = done.user_message;
+            }
+            if (done.told) {
+                told = done.told;
             }
             conversation.push({ role: "assistant", content: done.answer });
         }
@@ -131,5 +137,6 @@ form.addEventListener("submit", async (event) => {
 });
 newButton.addEventListener("click", () => {
     conversation.length = 0;
+    told = [];
     log.replaceChildren();
 });

@@ -28,8 +28,6 @@ pub const NAMES: [&str; 6] = [
 #[derive(Default)]
 pub struct Switches {
     disabled: Mutex<BTreeSet<String>>,
-    /// The switched-off tools the model was last told about.
-    announced: Mutex<BTreeSet<String>>,
 }
 
 impl Switches {
@@ -46,34 +44,25 @@ impl Switches {
             disabled.insert(name.to_owned());
         }
     }
+}
 
-    /// Prefixes `text` with a note of any switch changes the model has not been told about yet.
-    /// Returns the text and the announced set from before, so a failed turn can `restore` it.
-    pub fn announce(&self, text: &str) -> (String, BTreeSet<String>) {
-        let now = self.snapshot();
-        let mut announced = lock(&self.announced);
-        let previous = announced.clone();
-        let off: Vec<&str> = now.difference(&previous).map(String::as_str).collect();
-        let on: Vec<&str> = previous.difference(&now).map(String::as_str).collect();
-        if off.is_empty() && on.is_empty() {
-            return (text.to_owned(), previous);
-        }
-
-        let mut parts = Vec::new();
-        if !off.is_empty() {
-            parts.push(format!("now switched off: {}", off.join(", ")));
-        }
-        if !on.is_empty() {
-            parts.push(format!("now switched on: {}", on.join(", ")));
-        }
-        *announced = now;
-        (format!("[Tool status changed: {}.]\n\n{text}", parts.join("; ")), previous)
+/// Prefixes `text` with a note of the switch changes since the model was last told (`told`), given
+/// the switches now (`now`). Returns `text` unchanged when nothing changed. The caller records `now`
+/// as the new `told` only once the reply has been delivered.
+pub fn note_changes(text: &str, told: &BTreeSet<String>, now: &BTreeSet<String>) -> String {
+    let off: Vec<&str> = now.difference(told).map(String::as_str).collect();
+    let on: Vec<&str> = told.difference(now).map(String::as_str).collect();
+    let mut parts = Vec::new();
+    if !off.is_empty() {
+        parts.push(format!("now switched off: {}", off.join(", ")));
     }
-
-    /// Forgets the announcement made by a turn that failed, so the change is announced again.
-    pub fn restore(&self, previous: BTreeSet<String>) {
-        *lock(&self.announced) = previous;
+    if !on.is_empty() {
+        parts.push(format!("now switched on: {}", on.join(", ")));
     }
+    if parts.is_empty() {
+        return text.to_owned();
+    }
+    format!("[Tool status changed: {}.]\n\n{text}", parts.join("; "))
 }
 
 fn lock(set: &Mutex<BTreeSet<String>>) -> MutexGuard<'_, BTreeSet<String>> {
@@ -556,22 +545,33 @@ mod tests {
     }
 }
 
+
 #[cfg(test)]
-mod announce_tests {
+mod note_tests {
     use super::*;
 
+    fn names(items: &[&str]) -> BTreeSet<String> {
+        items.iter().map(|item| item.to_string()).collect()
+    }
+
     #[test]
-    fn switch_changes_are_announced_once_and_can_be_restored() {
-        let switches = Switches::default();
-        switches.set("delete_file", false);
+    fn note_lists_switch_changes_in_both_directions() {
+        let off = note_changes("hi", &names(&[]), &names(&["delete_file"]));
+        let on = note_changes("hi", &names(&["delete_file"]), &names(&[]));
+        let both = note_changes("hi", &names(&["read_file"]), &names(&["delete_file"]));
 
-        let (first, previous) = switches.announce("hi");
-        let (second, _) = switches.announce("again");
-        switches.restore(previous);
-        let (retry, _) = switches.announce("retry");
+        assert_eq!(off, "[Tool status changed: now switched off: delete_file.]\n\nhi");
+        assert_eq!(on, "[Tool status changed: now switched on: delete_file.]\n\nhi");
+        assert_eq!(
+            both,
+            "[Tool status changed: now switched off: delete_file; now switched on: read_file.]\n\nhi"
+        );
+    }
 
-        assert_eq!(first, "[Tool status changed: now switched off: delete_file.]\n\nhi");
-        assert_eq!(second, "again");
-        assert!(retry.starts_with("[Tool status changed: now switched off: delete_file.]"));
+    #[test]
+    fn no_change_leaves_text_alone() {
+        let same = names(&["delete_file"]);
+
+        assert_eq!(note_changes("hi", &same, &same), "hi");
     }
 }

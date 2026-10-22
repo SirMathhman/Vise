@@ -97,18 +97,20 @@ fn main() -> io::Result<()> {
             continue;
         }
 
-        let (text, previous) = switches.announce(trimmed);
-        session.push(Role::User, text);
+        let now = switches.snapshot();
+        session.push(Role::User, tools::note_changes(trimmed, session.told(), &now));
         let mut section = None;
         let result = agent::run_turn(session.messages(), &config, &switches, &mut |chunk| {
             print_chunk(chunk, &mut section)
         });
         println!();
         match result {
-            Ok(reply) => session.push(Role::Assistant, reply),
+            Ok(reply) => {
+                session.push(Role::Assistant, reply);
+                session.set_told(now);
+            }
             Err(err) => {
                 session.pop();
-                switches.restore(previous);
                 eprintln!("{err}");
             }
         }

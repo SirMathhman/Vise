@@ -9,12 +9,14 @@ type StreamEvent =
   | { type: "reasoning"; text: string }
   | { type: "content"; text: string }
   | { type: "tool"; text: string }
-  | { type: "done"; answer: string; user_message?: string | null }
+  | { type: "done"; answer: string; user_message?: string | null; told?: string[] }
   | { type: "error"; error: string };
 
 type Done = Extract<StreamEvent, { type: "done" }>;
 
 const conversation: Message[] = [];
+// The switched-off tools the model has been told about in this conversation.
+let told: string[] = [];
 
 const log = document.getElementById("log") as HTMLDivElement;
 const form = document.getElementById("form") as HTMLFormElement;
@@ -41,7 +43,7 @@ async function streamChat(
     res = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages }),
+      body: JSON.stringify({ messages, told }),
     });
   } catch {
     throw new Error(
@@ -136,9 +138,13 @@ form.addEventListener("submit", async (event) => {
       scrollToEnd();
     });
     if (!command) {
-      // The server may have added a note about switch changes to this user message.
-      if (done.user_message) {
+      // The server may have added a note about switch changes to this user message, and returns the
+      // record of switches the model now knows about. Both are kept only once the reply has arrived.
+      if (done.user_message != null) {
         conversation[conversation.length - 1].content = done.user_message;
+      }
+      if (done.told) {
+        told = done.told;
       }
       conversation.push({ role: "assistant", content: done.answer });
     }
@@ -159,5 +165,6 @@ form.addEventListener("submit", async (event) => {
 
 newButton.addEventListener("click", () => {
   conversation.length = 0;
+  told = [];
   log.replaceChildren();
 });
