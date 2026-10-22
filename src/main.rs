@@ -109,11 +109,11 @@ fn main() -> io::Result<()> {
             Ok(reply) => {
                 session.push(Role::Assistant, reply);
                 session.set_told(now);
-                if compaction::needs_summary(session.messages()) {
-                    match compaction::summarize(session.messages(), &config) {
-                        Ok(summary) => session.push(Role::Summary, summary),
-                        Err(err) => eprintln!("warning: could not summarize the conversation: {err}"),
+                if let Some(entry) = compaction::after_turn(session.messages(), &config) {
+                    if matches!(entry.role, Role::SummaryFailed) {
+                        eprintln!("warning: could not summarize the conversation: {}", entry.content);
                     }
+                    session.push(entry.role, entry.content);
                 }
             }
             Err(err) => {

@@ -1,4 +1,4 @@
-type Role = "user" | "assistant" | "summary";
+type Role = "user" | "assistant" | "summary" | "summary_failed";
 
 interface Message {
   role: Role;
@@ -9,7 +9,7 @@ type StreamEvent =
   | { type: "reasoning"; text: string }
   | { type: "content"; text: string }
   | { type: "tool"; text: string }
-  | { type: "done"; answer: string; user_message?: string | null; told?: string[]; summary?: string | null }
+  | { type: "done"; answer: string; user_message?: string | null; told?: string[]; summary?: string | null; summary_failed?: string | null }
   | { type: "error"; error: string };
 
 type Done = Extract<StreamEvent, { type: "done" }>;
@@ -151,6 +151,9 @@ form.addEventListener("submit", async (event) => {
       if (done.summary != null) {
         conversation.push({ role: "summary", content: done.summary });
         addEntry("summary").textContent = "Earlier conversation summarized.";
+      } else if (done.summary_failed != null) {
+        conversation.push({ role: "summary_failed", content: done.summary_failed });
+        addEntry("summary").textContent = "Could not summarize the conversation. It will be tried again later.";
       }
     }
   } catch (err) {

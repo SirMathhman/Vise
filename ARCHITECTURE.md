@@ -10,7 +10,7 @@ Written for: developers working on this crate.
 - **Proxy**: the `/api/chat` route in `src/web.rs`. Strata sends no CORS headers, so the browser calls this same-origin route, and only the Rust server calls Strata. The route runs a turn and relays its events to the browser as server-sent events.
 - **Turn**: one user message and everything the model does in response, including any tool rounds. `agent::run_turn` runs it.
 - **Session**: the in-memory conversation history in `src/session.rs`. It lasts for one REPL run and is used only by the REPL. The web UI keeps its own copy in the page, which is lost on reload.
-- **Message**: one turn in a conversation, a `Role` (`User` or `Assistant`) plus its text. Defined in `src/strata.rs`.
+- **Message**: one turn in a conversation, a `Role` (`User`, `Assistant`, `Summary`, or `SummaryFailed`) plus its text. Defined in `src/strata.rs`.
 - **Chunk**: one streamed piece of a turn: reasoning text, answer text, or a tool call (`Chunk::Tool`, currently a preformatted `name arguments` string). Defined in `src/strata.rs`.
 - **Config**: the server URL, model name, read timeout, and working directory, held in `strata::Config`. It defaults to the local server, the `qwen3.8-flash-next-iq2_xs` model, a 60-second read timeout, and no working directory. `main.rs` reads the current directory once at startup and passes it to both the REPL and the web server. When set, it is sent to the model as a leading system message on each request, and it is not stored in the session history. If the directory cannot be read, a warning is printed once at startup and the model is not told.
 - **StrataError**: the error type for a failed call. Its variants are `Network` (no connection), `Timeout` (no bytes within the read timeout), `Http` (non-2xx status), and `Malformed` (unparseable or unexpected response).
@@ -23,7 +23,9 @@ src/
   agent.rs    run_turn: streams a reply, runs requested tools, repeats up to 8 rounds
   tools.rs    tool definitions and run(): list_files, read_file, create_file,
               create_directory, delete_file, and delete_directory
-  session.rs  Session: message list with push, pop, reset, and messages (REPL only)
+  session.rs  Session: message list and the told set, with push, pop, reset, messages, told, and set_told (REPL only)
+  compaction.rs  after_turn, needs_summary, and summarize: append-only summaries of long conversations
+  grammar.rs  the GBNF grammar that blocks calls to disabled tools
   strata.rs   Config, Role, Message, Chunk, Reply, StrataError, and the streaming client
   web.rs      std TcpListener HTTP server, one thread per connection:
               serves the UI and proxies /api/chat as server-sent events
@@ -44,7 +46,7 @@ Dependencies run one way: `main` and `web` call `agent`, `agent` calls `strata` 
 - `message_items(messages, config)` converts messages to wire-format items, with the working directory first when set.
 - `open_stream(items, config)` builds a `ureq` agent with the configured read timeout, sends the request with the tool definitions, and returns a reader over the response body. Failures before any reply text are reported here.
 - `relay(reader, url, on_chunk)` reads server-sent events until `[DONE]`, passes each reasoning and content delta to `on_chunk`, assembles streamed tool-call fragments by index, and returns a `Reply` with the answer text and tool calls.
-- `stream_reply(items, config, on_chunk)` is `open_stream` followed by `relay`.
+- `stream_reply(items, config, grammar, on_chunk)` is `open_stream` followed by `relay`. The grammar is optional and is sent only when given.
 - `request_body(items, config)` builds the JSON body with `stream: true` and the tool definitions. It is pure.
 - `build_body(messages, config)` is `request_body` over `message_items`. It is pure, tested, and used only by tests.
 - `parse_reply(url, data)` extracts `choices[0].message.content` from a non-streaming response. It is pure, tested, and used only by tests.
@@ -107,7 +109,7 @@ The `done` event carries the turn's final answer, and the web page stores that t
 - **Tool results are capped, but reading is not.** `tools::run` cuts any result over 16 KiB, so one result cannot fill the context. `read_file` still reads the whole file into memory before selecting the range, and `list_files` walks the whole tree to the requested depth, both on the request thread. Depth has no maximum.
 - **Tools are limited to the working directory, not to the rest of the machine.** Files under that directory are still readable and changeable by the model, including anything secret stored there. The web server binds to `127.0.0.1` and has no Origin check, which limits exposure but does not remove the risk.
 - **Strata read timeout is per read, not per reply.** A reply that keeps producing bytes can run longer than 60 seconds without timing out. Only a stall between bytes trips the timeout.
-- **Full history is sent every turn.** There is no cap, so a long session can exceed the model's context window.
+- **Compaction is estimated and runs after the reply.** The size is estimated from bytes, not Strata's real token counts, and the check runs after a turn finishes, so a single turn can still overflow the window. A failed summary is recorded in the log and retried only after ten more messages.
 - **Config is fixed at startup.** The URL, model, and timeout come from `Config::default()`, so changing them requires a rebuild. The web route uses the config passed at startup. Tool switches are not part of `Config`.
 - **Grammar limits.** The grammar refuses to let a tool argument contain `</parameter>`, even where Strata itself would accept it, and it refuses prose that quotes `<tool_call>` while any tool is off. Whitespace is allowed between and after calls. The grammar was checked against Strata's parser with eight fixture cases (prose, calls in prose, two calls with a newline between, disabled names, `<` in a value, quoted `<tool_call>`), but that check is manual, not a test.
 - **Grammar-constrained decoding has costs.** While a tool is off, Strata decodes one token at a time with no speculative drafting, and it computes the mask in Python. The grammar also assumes Strata's XML call format and the `<parameter=...>` body. If Strata rejects the grammar (for example with batching on), the turn fails with `GrammarRejected` instead of running without enforcement.
@@ -140,7 +142,6 @@ Tool errors are returned to the model as `error:` text and are not shown as erro
 2. Cap tool output for both `list_files` and `read_file` by bytes, and cap `list_files` depth and entries. Consider limiting paths to the working directory.
 3. Move the tool-call wire format into `strata.rs`, make `Chunk::Tool` carry structured data, and let each front end format it. Pass tool definitions in through `Config` rather than having the client call `tools`.
 4. Give tool and turn-loop errors their own types, so the round cap is not reported as a Strata response error.
-5. Cap the history sent per request, or drop the oldest turns once it gets long.
 6. Read the URL, model, and timeout from environment variables or command-line arguments, keeping `Config` as the injection point.
 7. Handle Ctrl+C so the REPL prints `bye` and exits cleanly, for example with the `ctrlc` crate.
 8. Implement `std::error::Error` for `StrataError`, stop discarding body-read errors, and let the web route map error kinds to distinct statuses.
@@ -152,5 +153,5 @@ Tool errors are returned to the model as `error:` text and are not shown as erro
 - Replies stream, so text appears as it is generated in both the REPL and the web UI.
 - Each web request runs on its own thread. The Strata call blocks only that thread.
 - Each request opens a new connection to Strata. Connections are not deliberately reused.
-- Each request re-sends the entire session, and each tool round re-sends the whole turn, so request size and latency grow with conversation length and tool output.
+- Requests send the latest summary and the messages after it, so their size is bounded by the compaction threshold plus one turn. Each tool round re-sends the whole turn, so latency still grows with tool output.
 - Latency is dominated by model generation on the Strata server, not by this crate. The client adds only JSON encoding and one HTTP round trip per model round.

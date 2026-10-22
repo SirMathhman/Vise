@@ -16,8 +16,29 @@ const SUMMARY_AT_TOKENS: usize = CONTEXT_TOKENS * 3 / 4;
 const CHARS_PER_TOKEN: usize = 3;
 const SUMMARY_REQUEST: &str = "Summarize this conversation so it can be continued later. Keep the user's goals, decisions, file paths, and open tasks. Answer with the summary only.";
 
-/// Whether the messages that would be sent now are large enough to summarize.
+/// After a failed attempt, this many more messages must be added before trying again.
+const RETRY_AFTER_MESSAGES: usize = 10;
+
+/// The entry to append after a finished turn: a new summary, a record of a failed attempt, or
+/// nothing if the conversation is still small enough.
+pub fn after_turn(messages: &[Message], config: &Config) -> Option<Message> {
+    if !needs_summary(messages) {
+        return None;
+    }
+    Some(match summarize(messages, config) {
+        Ok(content) => Message { role: Role::Summary, content },
+        Err(err) => Message { role: Role::SummaryFailed, content: err.to_string() },
+    })
+}
+
+/// Whether the messages that would be sent now are large enough to summarize, and whether enough
+/// has been added since the last failed attempt to try again.
 pub fn needs_summary(messages: &[Message]) -> bool {
+    if let Some(failed_at) = messages.iter().rposition(|m| matches!(m.role, Role::SummaryFailed))
+        && messages.len() - failed_at <= RETRY_AFTER_MESSAGES
+    {
+        return false;
+    }
     let chars: usize = since_last_summary(messages).iter().map(|m| m.content.len()).sum();
     chars / CHARS_PER_TOKEN >= SUMMARY_AT_TOKENS
 }
@@ -64,6 +85,18 @@ mod tests {
 
         assert!(needs_summary(&[message(Role::User, big)]));
         assert!(!needs_summary(&[message(Role::User, 100)]));
+    }
+
+    #[test]
+    fn a_failed_attempt_waits_for_more_messages_before_retrying() {
+        let big = SUMMARY_AT_TOKENS * CHARS_PER_TOKEN;
+        let mut log = vec![message(Role::User, big), message(Role::SummaryFailed, 20)];
+
+        assert!(!needs_summary(&log));
+        for _ in 0..RETRY_AFTER_MESSAGES {
+            log.push(message(Role::User, 1));
+        }
+        assert!(needs_summary(&log));
     }
 
     #[test]

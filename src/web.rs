@@ -203,12 +203,10 @@ fn chat(
                 role: Role::Assistant,
                 content: answer.clone(),
             });
-            let summary = if compaction::needs_summary(&log) {
-                compaction::summarize(&log, config)
-                    .map_err(|err| eprintln!("warning: could not summarize the conversation: {err}"))
-                    .ok()
-            } else {
-                None
+            let (summary, summary_failed) = match compaction::after_turn(&log, config) {
+                Some(Message { role: Role::Summary, content }) => (Some(content), None),
+                Some(Message { content, .. }) => (None, Some(content)),
+                None => (None, None),
             };
             write_event(
                 &mut stream,
@@ -218,6 +216,7 @@ fn chat(
                     "user_message": noted,
                     "told": now,
                     "summary": summary,
+                    "summary_failed": summary_failed,
                 }),
             )
         }
@@ -279,7 +278,8 @@ fn parse_messages(body: &[u8]) -> Result<Vec<Message>, String> {
                 Some("user") => Role::User,
                 Some("assistant") => Role::Assistant,
                 Some("summary") => Role::Summary,
-                _ => return Err("each message needs role user, assistant, or summary".to_owned()),
+                Some("summary_failed") => Role::SummaryFailed,
+                _ => return Err("each message needs role user, assistant, summary, or summary_failed".to_owned()),
             };
             let content = item
                 .get("content")

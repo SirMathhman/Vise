@@ -34,6 +34,8 @@ pub enum Role {
     Assistant,
     /// A compaction summary of the messages before it. Sent to the model as a system message.
     Summary,
+    /// A record that a summary attempt failed. It is kept in the log but never sent to the model.
+    SummaryFailed,
 }
 
 impl Role {
@@ -41,7 +43,7 @@ impl Role {
         match self {
             Role::User => "user",
             Role::Assistant => "assistant",
-            Role::Summary => "system",
+            Role::Summary | Role::SummaryFailed => "system",
         }
     }
 }
@@ -129,7 +131,7 @@ pub fn message_items(messages: &[Message], config: &Config) -> Vec<Value> {
             "content": format!("The current working directory is {dir}."),
         }));
     }
-    items.extend(messages.iter().map(|message| match message.role {
+    items.extend(messages.iter().filter(|message| !matches!(message.role, Role::SummaryFailed)).map(|message| match message.role {
         Role::Summary => json!({
             "role": message.role.as_str(),
             "content": format!("Summary of the earlier conversation:\n{}", message.content),

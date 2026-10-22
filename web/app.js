@@ -123,6 +123,10 @@ form.addEventListener("submit", async (event) => {
                 conversation.push({ role: "summary", content: done.summary });
                 addEntry("summary").textContent = "Earlier conversation summarized.";
             }
+            else if (done.summary_failed != null) {
+                conversation.push({ role: "summary_failed", content: done.summary_failed });
+                addEntry("summary").textContent = "Could not summarize the conversation. It will be tried again later.";
+            }
         }
     }
     catch (err) {
