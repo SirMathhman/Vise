@@ -28,16 +28,18 @@ pub const NAMES: [&str; 6] = [
 #[derive(Default)]
 pub struct Switches {
     disabled: Mutex<BTreeSet<String>>,
+    /// The switched-off tools the model was last told about.
+    announced: Mutex<BTreeSet<String>>,
 }
 
 impl Switches {
     /// The names of the tools that are switched off right now.
     pub fn snapshot(&self) -> BTreeSet<String> {
-        self.lock().clone()
+        lock(&self.disabled).clone()
     }
 
     pub fn set(&self, name: &str, enabled: bool) {
-        let mut disabled = self.lock();
+        let mut disabled = lock(&self.disabled);
         if enabled {
             disabled.remove(name);
         } else {
@@ -45,10 +47,38 @@ impl Switches {
         }
     }
 
-    fn lock(&self) -> MutexGuard<'_, BTreeSet<String>> {
-        // A panic cannot leave this set half-updated, so a poisoned lock is still safe to use.
-        self.disabled.lock().unwrap_or_else(PoisonError::into_inner)
+    /// Prefixes `text` with a note of any switch changes the model has not been told about yet.
+    /// Returns the text and the announced set from before, so a failed turn can `restore` it.
+    pub fn announce(&self, text: &str) -> (String, BTreeSet<String>) {
+        let now = self.snapshot();
+        let mut announced = lock(&self.announced);
+        let previous = announced.clone();
+        let off: Vec<&str> = now.difference(&previous).map(String::as_str).collect();
+        let on: Vec<&str> = previous.difference(&now).map(String::as_str).collect();
+        if off.is_empty() && on.is_empty() {
+            return (text.to_owned(), previous);
+        }
+
+        let mut parts = Vec::new();
+        if !off.is_empty() {
+            parts.push(format!("now switched off: {}", off.join(", ")));
+        }
+        if !on.is_empty() {
+            parts.push(format!("now switched on: {}", on.join(", ")));
+        }
+        *announced = now;
+        (format!("[Tool status changed: {}.]\n\n{text}", parts.join("; ")), previous)
     }
+
+    /// Forgets the announcement made by a turn that failed, so the change is announced again.
+    pub fn restore(&self, previous: BTreeSet<String>) {
+        *lock(&self.announced) = previous;
+    }
+}
+
+fn lock(set: &Mutex<BTreeSet<String>>) -> MutexGuard<'_, BTreeSet<String>> {
+    // A panic cannot leave a set half-updated, so a poisoned lock is still safe to use.
+    set.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 /// The tool definitions offered to the model. Switched-off tools stay in this list, so the request
@@ -523,5 +553,25 @@ mod tests {
         assert_eq!(deleted_file, format!("deleted file {file_path}"));
         assert_eq!(deleted_dir, format!("deleted directory {dir_path}"));
         assert!(!root.exists());
+    }
+}
+
+#[cfg(test)]
+mod announce_tests {
+    use super::*;
+
+    #[test]
+    fn switch_changes_are_announced_once_and_can_be_restored() {
+        let switches = Switches::default();
+        switches.set("delete_file", false);
+
+        let (first, previous) = switches.announce("hi");
+        let (second, _) = switches.announce("again");
+        switches.restore(previous);
+        let (retry, _) = switches.announce("retry");
+
+        assert_eq!(first, "[Tool status changed: now switched off: delete_file.]\n\nhi");
+        assert_eq!(second, "again");
+        assert!(retry.starts_with("[Tool status changed: now switched off: delete_file.]"));
     }
 }

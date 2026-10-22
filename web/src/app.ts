@@ -9,8 +9,10 @@ type StreamEvent =
   | { type: "reasoning"; text: string }
   | { type: "content"; text: string }
   | { type: "tool"; text: string }
-  | { type: "done"; answer: string }
+  | { type: "done"; answer: string; user_message?: string | null }
   | { type: "error"; error: string };
+
+type Done = Extract<StreamEvent, { type: "done" }>;
 
 const conversation: Message[] = [];
 
@@ -33,7 +35,7 @@ function scrollToEnd(): void {
 async function streamChat(
   messages: Message[],
   onEvent: (event: StreamEvent) => void,
-): Promise<string> {
+): Promise<Done> {
   let res: Response;
   try {
     res = await fetch("/api/chat", {
@@ -79,7 +81,7 @@ async function streamChat(
         throw new Error(event.error);
       }
       if (event.type === "done") {
-        return event.answer;
+        return event;
       }
       onEvent(event);
     }
@@ -117,7 +119,7 @@ form.addEventListener("submit", async (event) => {
 
   try {
     const messages = command ? [...conversation, { role: "user" as const, content: text }] : conversation;
-    const reply = await streamChat(messages, (streamed) => {
+    const done = await streamChat(messages, (streamed) => {
       if (streamed.type === "reasoning") {
         thinking.hidden = false;
         thinkingText.textContent += streamed.text;
@@ -134,7 +136,11 @@ form.addEventListener("submit", async (event) => {
       scrollToEnd();
     });
     if (!command) {
-      conversation.push({ role: "assistant", content: reply });
+      // The server may have added a note about switch changes to this user message.
+      if (done.user_message) {
+        conversation[conversation.length - 1].content = done.user_message;
+      }
+      conversation.push({ role: "assistant", content: done.answer });
     }
   } catch (err) {
     if (!command) {

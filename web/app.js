@@ -54,7 +54,7 @@ async function streamChat(messages, onEvent) {
                 throw new Error(event.error);
             }
             if (event.type === "done") {
-                return event.answer;
+                return event;
             }
             onEvent(event);
         }
@@ -88,7 +88,7 @@ form.addEventListener("submit", async (event) => {
     bubble.append(thinking, answerText);
     try {
         const messages = command ? [...conversation, { role: "user", content: text }] : conversation;
-        const reply = await streamChat(messages, (streamed) => {
+        const done = await streamChat(messages, (streamed) => {
             if (streamed.type === "reasoning") {
                 thinking.hidden = false;
                 thinkingText.textContent += streamed.text;
@@ -107,7 +107,11 @@ form.addEventListener("submit", async (event) => {
             scrollToEnd();
         });
         if (!command) {
-            conversation.push({ role: "assistant", content: reply });
+            // The server may have added a note about switch changes to this user message.
+            if (done.user_message) {
+                conversation[conversation.length - 1].content = done.user_message;
+            }
+            conversation.push({ role: "assistant", content: done.answer });
         }
     }
     catch (err) {

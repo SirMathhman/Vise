@@ -152,7 +152,7 @@ fn chat(
         return write_response(&mut stream, &response);
     }
 
-    let messages = match parse_messages(&request.body) {
+    let mut messages = match parse_messages(&request.body) {
         Ok(messages) => messages,
         Err(reason) => {
             return write_response(&mut stream, &json_response(400, json!({ "error": reason })));
@@ -170,6 +170,16 @@ fn chat(
         return write_event(&mut stream, &json!({ "type": "done", "answer": reply }));
     }
 
+    // The note about switch changes goes on the user message. The page stores the returned text.
+    let previous = messages
+        .last_mut()
+        .filter(|message| matches!(message.role, Role::User))
+        .map(|message| {
+            let (text, previous) = switches.announce(&message.content);
+            message.content = text;
+            previous
+        });
+
     let outcome = agent::run_turn(&messages, config, switches, &mut |chunk| {
         let event = match chunk {
             Chunk::Reasoning(text) => json!({ "type": "reasoning", "text": text }),
@@ -181,10 +191,17 @@ fn chat(
         let _ = write_event(&mut stream, &event);
     });
 
+    if let (Err(_), Some(previous)) = (&outcome, previous) {
+        switches.restore(previous);
+    }
     match outcome {
         Ok(answer) => {
             start_stream(&mut stream, &mut started)?;
-            write_event(&mut stream, &json!({ "type": "done", "answer": answer }))
+            let user_message = messages.last().map(|message| message.content.clone());
+            write_event(
+                &mut stream,
+                &json!({ "type": "done", "answer": answer, "user_message": user_message }),
+            )
         }
         // Nothing was sent yet, so the failure can still be a plain JSON error response.
         Err(err) if !started => {

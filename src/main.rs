@@ -97,7 +97,8 @@ fn main() -> io::Result<()> {
             continue;
         }
 
-        session.push(Role::User, trimmed.to_owned());
+        let (text, previous) = switches.announce(trimmed);
+        session.push(Role::User, text);
         let mut section = None;
         let result = agent::run_turn(session.messages(), &config, &switches, &mut |chunk| {
             print_chunk(chunk, &mut section)
@@ -107,6 +108,7 @@ fn main() -> io::Result<()> {
             Ok(reply) => session.push(Role::Assistant, reply),
             Err(err) => {
                 session.pop();
+                switches.restore(previous);
                 eprintln!("{err}");
             }
         }
