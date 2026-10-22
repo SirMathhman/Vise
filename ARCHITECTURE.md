@@ -46,7 +46,7 @@ package.json  TypeScript and concurrently dev dependencies. Scripts: `build` (ts
               and `dev` (runs both together)
 ```
 
-Dependencies run one way: `main` and `web` call `agent`. `agent` calls `strata`, `tools`, and `compaction`. `compaction` calls `strata` and `grammar`. `strata` calls `tools` for the definitions. `tools` calls `notes`. `notes` and `tools` both call `workspace`, which is a leaf and calls nothing else in the crate. `session` uses `strata` for `Message`. There are no cycles.
+Dependencies run one way: `main` and `web` call `agent`. `agent` calls `strata`, `tools`, and `compaction`. `compaction` calls `strata` and `grammar`. `strata` calls `tools` for the definitions. `tools` calls `notes`. Inside `notes`, `mod.rs` calls `store.rs` and `index.rs`, and `index.rs` calls `store.rs`. `notes` and `tools` both call `workspace`, which is a leaf and calls nothing else in the crate. `session` uses `strata` for `Message`. There are no cycles.
 
 `strata.rs` is split into layers:
 
