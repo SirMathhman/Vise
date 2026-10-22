@@ -8,7 +8,24 @@ To build and run:
 cargo run
 ```
 
-Type `exit` or `quit` to leave the REPL.
+Type `exit` or `quit` to leave the REPL. These commands work in the REPL and in the web UI:
+
+- `/new` starts a fresh conversation. (The web UI has a New button instead.)
+- `/tools` lists each tool as on or off.
+- `/disable <tool>` and `/enable <tool>` switch a tool off or on. A tool that is off cannot be called. Strata is also asked not to generate calls to it.
+
+Strata must be running at `http://127.0.0.1:8080`. Replies stream, and a model reply can call the file tools
+(`list_files`, `read_file`, `create_file`, `create_directory`, `delete_file`, `delete_directory`). Those tools only act
+inside the directory the program was started in. Long conversations are summarized automatically, and the summary
+keeps the conversation going without rewriting its history.
+
+To serve the web UI from Rust, without the watch tools:
+
+```bash
+cargo run -- web
+```
+
+The web UI is then at `http://127.0.0.1:3000`.
 
 ## Web UI
 
