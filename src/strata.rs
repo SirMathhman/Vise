@@ -164,6 +164,12 @@ pub fn stream_reply(
     relay(reader, &config.url, cancel, on_chunk)
 }
 
+/// Whether a message about to be sent starts the conversation's first turn: `history` is the messages before it.
+/// Profile and summary messages do not count, so a profile chosen first does not end the first turn.
+pub fn is_first_turn(history: &[Message]) -> bool {
+    !history.iter().any(|message| matches!(message.role, Role::User))
+}
+
 /// Converts messages to wire-format items, with the working directory first when set.
 pub fn message_items(messages: &[Message], config: &Config) -> Vec<Value> {
     let mut items: Vec<Value> = Vec::new();
@@ -395,6 +401,16 @@ fn parse_reply(url: &str, data: &Value) -> Result<String, StrataError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_profile_before_the_first_message_does_not_end_the_first_turn() {
+        let profile = Message { role: Role::Profile, content: "instructions".to_owned() };
+        let user = Message { role: Role::User, content: "hello".to_owned() };
+
+        assert!(is_first_turn(&[]));
+        assert!(is_first_turn(std::slice::from_ref(&profile)));
+        assert!(!is_first_turn(&[profile, user]));
+    }
 
     #[test]
     fn build_request_wraps_content_as_single_user_message() {

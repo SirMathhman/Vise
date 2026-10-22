@@ -134,7 +134,7 @@ fn main() -> io::Result<()> {
             continue;
         }
 
-        let text = if session.messages().is_empty() {
+        let text = if strata::is_first_turn(session.messages()) {
             notes::with_index(trimmed, roots)
         } else {
             trimmed.to_owned()

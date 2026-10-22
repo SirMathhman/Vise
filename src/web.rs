@@ -14,7 +14,7 @@ use crate::commands;
 use crate::compaction;
 use crate::notes;
 use crate::tools::{self, Switches};
-use crate::strata::{Chunk, Config, Message, Role};
+use crate::strata::{self, Chunk, Config, Message, Role};
 
 pub const DEFAULT_PORT: u16 = 3000;
 
@@ -228,7 +228,7 @@ fn chat(
     let now = switches.snapshot();
     let told = parse_told(&request.body);
     // The notes index goes on the first message of a conversation only, so it is kept in the page's history.
-    let first = messages.len() == 1;
+    let first = messages.split_last().is_some_and(|(_, history)| strata::is_first_turn(history));
     let noted = messages
         .last_mut()
         .filter(|message| matches!(message.role, Role::User))
