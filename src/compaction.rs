@@ -3,7 +3,7 @@
 //! the messages after it. The summary request is appended after those messages, so the prefix they
 //! form stays the same and the prompt cache still applies.
 
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::grammar;
 use crate::strata::{self, Config, Message, Role, StrataError};
@@ -46,7 +46,35 @@ pub fn needs_summary(messages: &[Message]) -> bool {
 /// Asks the model to summarize the messages that would be sent now. The request is appended after
 /// them. Tool calls are forbidden so the reply is text only.
 pub fn summarize(messages: &[Message], config: &Config) -> Result<String, StrataError> {
-    let mut items = strata::message_items(since_last_summary(messages), config);
+    request_summary(strata::message_items(since_last_summary(messages), config), config)
+}
+
+/// Whether the working items of one turn have grown past the threshold.
+pub fn turn_needs_summary(items: &[Value]) -> bool {
+    let chars: usize = items.iter().map(|item| item.to_string().len()).sum();
+    chars / CHARS_PER_TOKEN >= SUMMARY_AT_TOKENS
+}
+
+/// Summarizes the working items of a turn. Nothing is logged; the summary only replaces those items.
+pub fn summarize_turn(items: &[Value], config: &Config) -> Result<String, StrataError> {
+    request_summary(items.to_vec(), config)
+}
+
+/// The working items to carry on with after a turn-level summary: the leading system items (the
+/// working directory and any log summary), the summary, and a prompt to go on.
+pub fn continue_turn(items: &[Value], summary: String) -> Vec<Value> {
+    let mut next: Vec<Value> = items
+        .iter()
+        .take_while(|item| item["role"] == "system")
+        .cloned()
+        .collect();
+    next.push(json!({ "role": "system", "content": format!("Summary of this turn so far:\n{summary}") }));
+    next.push(json!({ "role": "user", "content": "Continue the task from the summary above." }));
+    next
+}
+
+/// Sends `items` followed by the summary request, with tool calls forbidden so the reply is text.
+fn request_summary(mut items: Vec<Value>, config: &Config) -> Result<String, StrataError> {
     items.push(json!({ "role": "user", "content": SUMMARY_REQUEST }));
     let text_only = grammar::enabled_calls_only(&[]);
     let reply = strata::stream_reply(&items, config, Some(&text_only), &mut |_| {})?;
@@ -97,6 +125,21 @@ mod tests {
             log.push(message(Role::User, 1));
         }
         assert!(needs_summary(&log));
+    }
+
+    #[test]
+    fn continuing_a_turn_keeps_the_leading_system_items_and_adds_the_summary() {
+        let items = vec![
+            json!({ "role": "system", "content": "working dir" }),
+            json!({ "role": "user", "content": "task" }),
+            json!({ "role": "tool", "content": "lots of output" }),
+        ];
+        let next = continue_turn(&items, "done so far".to_owned());
+
+        assert_eq!(next.len(), 3);
+        assert_eq!(next[0]["content"], "working dir");
+        assert!(next[1]["content"].as_str().unwrap().ends_with("done so far"));
+        assert_eq!(next[2]["role"], "user");
     }
 
     #[test]

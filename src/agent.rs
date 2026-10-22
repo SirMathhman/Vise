@@ -2,6 +2,7 @@ use std::path::Path;
 
 use serde_json::{Value, json};
 
+use crate::compaction;
 use crate::grammar;
 use crate::strata::{self, Chunk, Config, Message, StrataError, ToolCall};
 use crate::tools::{self, Switches};
@@ -18,6 +19,12 @@ pub fn run_turn(
 ) -> Result<String, StrataError> {
     let mut items = strata::message_items(messages, config);
     for _ in 0..MAX_TOOL_ROUNDS {
+        // Tool results can grow a turn past the window, so the turn is summarized in place. The
+        // summary is not logged, so the history is unchanged.
+        if compaction::turn_needs_summary(&items) {
+            let summary = compaction::summarize_turn(&items, config)?;
+            items = compaction::continue_turn(&items, summary);
+        }
         let disabled = switches.snapshot();
         // The grammar is sent only while a tool is off, so normal decoding is untouched otherwise.
         let grammar = (!disabled.is_empty()).then(|| {

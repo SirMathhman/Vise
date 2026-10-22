@@ -59,6 +59,8 @@ Dependencies run one way: `main` and `web` call `agent`, `agent` calls `strata` 
 
 A request sends the latest summary (as a system message) followed by the messages after it. Messages before that summary are neither sent nor counted. To make the summary, Vise sends those messages again with the request `Summarize this conversation so it can be continued later...` appended at the end, so the prefix stays the same and the prompt cache still applies. A grammar forbids tool calls in that request. A failed summary is appended as a `SummaryFailed` entry. That entry is never sent to the model, and a new attempt waits until ten more messages have been added.
 
+Compaction also runs inside a turn. Before each tool round, `agent::run_turn` checks the turn's working items against the same threshold. If they are too large, the model summarizes them (`compaction::summarize_turn`), and the working items are replaced by the leading system items, that summary, and a prompt to continue (`compaction::continue_turn`). The turn summary is never logged, so the history is unchanged. A failed turn summary fails the turn, and the log is untouched.
+
 The REPL appends the summary to its session. The web server returns it in the `done` event (as `summary`, or as `summary_failed` with the reason when it failed), and the page appends the matching entry to its log. A summary entry shows as "Earlier conversation summarized." Both sides therefore keep the same log.
 
 ## Tools and the Turn Loop
