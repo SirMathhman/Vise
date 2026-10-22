@@ -61,6 +61,62 @@
         color: #555;
         white-space: pre-wrap;
       }
+      .markdown {
+        white-space: normal;
+        overflow-wrap: anywhere;
+      }
+      .markdown p {
+        margin: 0.4rem 0;
+      }
+      .markdown h1,
+      .markdown h2,
+      .markdown h3 {
+        font-size: 1.1em;
+        margin: 0.6rem 0 0.3rem;
+      }
+      .markdown code {
+        font-family: ui-monospace, monospace;
+        font-size: 0.9em;
+        background: #ececec;
+        padding: 0 0.2em;
+        border-radius: 0.2rem;
+      }
+      .markdown pre {
+        overflow-x: auto;
+        padding: 0.5rem;
+        background: #ececec;
+        border-radius: 0.4rem;
+      }
+      .markdown pre code {
+        background: none;
+        padding: 0;
+      }
+      .markdown ul,
+      .markdown ol {
+        padding-left: 1.4rem;
+      }
+      .markdown blockquote {
+        margin: 0.4rem 0;
+        padding-left: 0.6rem;
+        border-left: 3px solid #bbb;
+        color: #555;
+      }
+      .markdown table {
+        border-collapse: collapse;
+      }
+      .markdown th,
+      .markdown td {
+        border: 1px solid #ccc;
+        padding: 0.2rem 0.4rem;
+      }
+      #note-preview {
+        min-height: 10rem;
+        padding: 0.5rem;
+        border: 1px solid #ccc;
+        border-radius: 0.4rem;
+        box-sizing: border-box;
+        width: 100%;
+      }
       .error {
         background: #fde7e7;
         color: #8a1c1c;
@@ -241,6 +297,23 @@
           color: #eee;
           border: 1px solid #444;
         }
+        .markdown code {
+          background: #333;
+        }
+        .markdown pre {
+          background: #333;
+        }
+        .markdown blockquote {
+          border-left-color: #555;
+          color: #aaa;
+        }
+        .markdown th,
+        .markdown td {
+          border-color: #555;
+        }
+        #note-preview {
+          border-color: #444;
+        }
         #note-form input,
         #note-form select,
         #note-form textarea {
@@ -291,14 +364,18 @@
             <label>Category <input id="note-category" autocomplete="off" /></label>
             <label>Name <input id="note-name" autocomplete="off" /></label>
             <textarea id="note-content" rows="12" spellcheck="false"></textarea>
+            <div id="note-preview" class="markdown" hidden></div>
             <div class="note-actions">
               <button type="submit" id="note-save">Save</button>
+              <button type="button" id="note-preview-toggle">Preview</button>
               <button type="button" id="note-delete" hidden>Delete</button>
             </div>
           </form>
         </section>
       </aside>
     </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
     <script src="/app.js"></script>
   </body>
 </html>

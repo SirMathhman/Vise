@@ -22,6 +22,32 @@ function describeFailure(error: string, ran?: string[] | null): string {
 
 type Done = Extract<StreamEvent, { type: "done" }>;
 
+// marked and DOMPurify come from the page's script tags.
+declare const marked: { parse(text: string): string; use(extension: { renderer: { html(html: string): string } }): void };
+declare const DOMPurify: { sanitize(dirty: string): string };
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+// Raw HTML in markdown is shown as text, never inserted as HTML.
+if (typeof marked !== "undefined") {
+  marked.use({ renderer: { html: escapeHtml } });
+}
+
+// Markdown to sanitized HTML. Without the libraries the text is escaped, so it still shows as text.
+function renderMarkdown(text: string): string {
+  if (typeof marked === "undefined" || typeof DOMPurify === "undefined") {
+    return escapeHtml(text);
+  }
+  return DOMPurify.sanitize(marked.parse(text));
+}
+
 const conversation: Message[] = [];
 // The switched-off tools the model has been told about in this conversation.
 let told: string[] = [];
@@ -150,6 +176,9 @@ form.addEventListener("submit", async (event) => {
   const thinkingText = document.createElement("div");
   thinking.append(thinkingSummary, thinkingText);
   let answerText = document.createElement("div");
+  answerText.className = "markdown";
+  // The reply so far as the model wrote it. It is rendered again as each piece arrives.
+  let answerRaw = "";
   bubble.append(thinking, answerText);
 
   try {
@@ -163,13 +192,16 @@ form.addEventListener("submit", async (event) => {
         thinking.hidden = false;
         thinkingText.textContent += streamed.text;
       } else if (streamed.type === "content") {
-        answerText.textContent += streamed.text;
+        answerRaw += streamed.text;
+        answerText.innerHTML = renderMarkdown(answerRaw);
       } else if (streamed.type === "tool") {
         // Text after a tool call goes in a new block below it, so the order matches the stream.
         const toolLine = document.createElement("div");
         toolLine.className = "tool";
         toolLine.textContent = `[tool] ${streamed.text}`;
         answerText = document.createElement("div");
+        answerText.className = "markdown";
+        answerRaw = "";
         bubble.append(toolLine, answerText);
       }
       scrollToEnd();
@@ -308,7 +340,7 @@ function renderTools(tools: ToolInfo[]): void {
       label.append(toggle, name);
       const description = document.createElement("div");
       description.className = "description";
-      description.textContent = tool.description;
+      description.innerHTML = renderMarkdown(tool.description);
       item.append(label, description);
       return item;
     }),
@@ -409,6 +441,8 @@ const noteCategory = document.getElementById("note-category") as HTMLInputElemen
 const noteName = document.getElementById("note-name") as HTMLInputElement;
 const noteContent = document.getElementById("note-content") as HTMLTextAreaElement;
 const noteDelete = document.getElementById("note-delete") as HTMLButtonElement;
+const notePreview = document.getElementById("note-preview") as HTMLDivElement;
+const notePreviewToggle = document.getElementById("note-preview-toggle") as HTMLButtonElement;
 const profilePicker = document.getElementById("profile-picker") as HTMLSelectElement;
 const NEW_NOTE_TEXT = "---\nname: \nsummary: \n---\n";
 // The note open in the editor. Null while a new note is being written.
@@ -445,7 +479,20 @@ function setEditing(note: NoteRef | null, text: string): void {
   noteName.readOnly = note !== null;
   noteContent.value = text;
   noteDelete.hidden = note === null;
+  showPreview(false);
 }
+
+// Shows the note's rendered markdown in place of the editor, or the editor again. Saving uses the editor's text.
+function showPreview(on: boolean): void {
+  noteContent.hidden = on;
+  notePreview.hidden = !on;
+  notePreviewToggle.textContent = on ? "Edit" : "Preview";
+  if (on) {
+    notePreview.innerHTML = renderMarkdown(noteContent.value);
+  }
+}
+
+notePreviewToggle.addEventListener("click", () => showPreview(notePreview.hidden === true));
 
 async function refreshNotes(): Promise<void> {
   try {
@@ -468,7 +515,7 @@ async function refreshNotes(): Promise<void> {
         if (note.summary !== null) {
           const summary = document.createElement("div");
           summary.className = "description";
-          summary.textContent = note.summary;
+          summary.innerHTML = renderMarkdown(note.summary);
           item.append(summary);
         }
         return item;
