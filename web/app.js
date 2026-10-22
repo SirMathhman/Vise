@@ -309,6 +309,120 @@ function endDrag() {
 }
 divider.addEventListener("pointerup", endDrag);
 divider.addEventListener("pointercancel", endDrag);
+const notesList = document.getElementById("notes-list");
+const notesStatus = document.getElementById("notes-status");
+const notesNew = document.getElementById("notes-new");
+const noteForm = document.getElementById("note-form");
+const noteScope = document.getElementById("note-scope");
+const noteCategory = document.getElementById("note-category");
+const noteName = document.getElementById("note-name");
+const noteContent = document.getElementById("note-content");
+const noteDelete = document.getElementById("note-delete");
+const NEW_NOTE_TEXT = "---\nname: \nsummary: \n---\n";
+// The note open in the editor. Null while a new note is being written.
+let editing = null;
+// One request to the notes API. A failure is thrown with the server's reason.
+async function notesApi(body) {
+    const res = await fetch("/api/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+    });
+    const data = (await res.json().catch(() => ({})));
+    if (!res.ok) {
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+    }
+    return data;
+}
+function showNotesStatus(message, isError) {
+    notesStatus.textContent = message;
+    notesStatus.className = isError ? "error" : "summary";
+    notesStatus.hidden = false;
+}
+function setEditing(note, text) {
+    editing = note;
+    noteScope.value = note?.scope ?? "local";
+    noteCategory.value = note?.category ?? "";
+    noteName.value = note?.name ?? "";
+    // An existing note keeps its address, so saving it cannot rename it.
+    noteScope.disabled = note !== null;
+    noteCategory.readOnly = note !== null;
+    noteName.readOnly = note !== null;
+    noteContent.value = text;
+    noteDelete.hidden = note === null;
+}
+async function refreshNotes() {
+    try {
+        const { notes } = await notesApi({ action: "list" });
+        notesList.replaceChildren(...notes.map((note) => {
+            const item = document.createElement("li");
+            const button = document.createElement("button");
+            button.type = "button";
+            button.textContent = `${note.scope} ${note.category}/${note.name}`;
+            button.addEventListener("click", () => {
+                void openNote({ scope: note.scope, category: note.category, name: note.name });
+            });
+            item.append(button);
+            if (note.summary !== null) {
+                const summary = document.createElement("div");
+                summary.className = "description";
+                summary.textContent = note.summary;
+                item.append(summary);
+            }
+            return item;
+        }));
+    }
+    catch (err) {
+        showNotesStatus(err instanceof Error ? err.message : String(err), true);
+    }
+}
+async function openNote(note) {
+    try {
+        const { text } = await notesApi({ action: "read", ...note });
+        setEditing(note, text);
+        notesStatus.hidden = true;
+    }
+    catch (err) {
+        showNotesStatus(err instanceof Error ? err.message : String(err), true);
+    }
+}
+function newNote() {
+    setEditing(null, NEW_NOTE_TEXT);
+    notesStatus.hidden = true;
+}
+notesNew.addEventListener("click", newNote);
+noteForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const note = editing ?? { scope: noteScope.value, category: noteCategory.value, name: noteName.value };
+    try {
+        const { message } = await notesApi({
+            action: editing === null ? "create" : "update",
+            ...note,
+            content: noteContent.value,
+        });
+        setEditing(note, noteContent.value);
+        showNotesStatus(message, false);
+        await refreshNotes();
+    }
+    catch (err) {
+        showNotesStatus(err instanceof Error ? err.message : String(err), true);
+    }
+});
+noteDelete.addEventListener("click", async () => {
+    if (editing === null || !window.confirm(`Delete ${editing.scope} ${editing.category}/${editing.name}?`)) {
+        return;
+    }
+    try {
+        const { message } = await notesApi({ action: "delete", ...editing });
+        newNote();
+        showNotesStatus(message, false);
+        await refreshNotes();
+    }
+    catch (err) {
+        showNotesStatus(err instanceof Error ? err.message : String(err), true);
+    }
+});
+void refreshNotes();
 // A narrower window clamps the shown width without changing the chosen one, and nothing is saved here.
 window.addEventListener("resize", () => {
     if (toolsWidth > 0) {

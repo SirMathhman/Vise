@@ -144,6 +144,39 @@ pub fn command(line: &str, roots: Roots) -> Option<String> {
     })
 }
 
+/// The web UI's notes requests. `action` is `list`, `read`, `create`, `update` or `delete`; the other fields are
+/// the same as the tools'.
+pub fn web(body: &Value, roots: Roots) -> Result<Value, String> {
+    match body["action"].as_str() {
+        Some("list") => Ok(json!({ "notes": note_entries(roots)? })),
+        Some("read") => {
+            let scope = scope_of(body)?;
+            let (category, name) = note_names(body)?;
+            Ok(json!({ "text": show(scope, category, name, roots)? }))
+        }
+        Some("create") => create(body, roots).map(|message| json!({ "message": message })),
+        Some("update") => update(body, roots).map(|message| json!({ "message": message })),
+        Some("delete") => delete(body, roots).map(|message| json!({ "message": message })),
+        _ => Err("unknown action".to_owned()),
+    }
+}
+
+/// Every note in both scopes, with its summary, or `null` when it has no frontmatter.
+fn note_entries(roots: Roots) -> Result<Vec<Value>, String> {
+    let mut found = Vec::new();
+    for scope in SCOPES {
+        for (category, name) in note_files(scope, roots)? {
+            let summary = note_path(scope, roots, &category, &name)
+                .ok()
+                .and_then(|target| fs::read_to_string(target).ok())
+                .and_then(|text| frontmatter(&text))
+                .map(|(_, summary)| summary);
+            found.push(json!({ "scope": scope, "category": category, "name": name, "summary": summary }));
+        }
+    }
+    Ok(found)
+}
+
 fn text(result: Result<String, String>) -> String {
     result.unwrap_or_else(|err| format!("error: {err}"))
 }
@@ -363,6 +396,20 @@ fn create(args: &Value, roots: Roots) -> Result<String, String> {
     Ok(format!("created {category}/{name}"))
 }
 
+/// Replaces a whole existing note. The new text must keep its frontmatter, as a created note's must.
+fn update(args: &Value, roots: Roots) -> Result<String, String> {
+    let scope = scope_of(args)?;
+    let (category, name) = note_names(args)?;
+    let content = workspace::string_arg(args, "content")?;
+    let target = note_path(scope, roots, category, name)?;
+    frontmatter(content).ok_or("content must start with frontmatter giving name and summary, between --- lines")?;
+    if !target.is_file() {
+        return Err(format!("no such note: {category}/{name}"));
+    }
+    fs::write(&target, content).map_err(|err| format!("could not write {category}/{name}: {err}"))?;
+    Ok(format!("updated {category}/{name}"))
+}
+
 fn edit(args: &Value, roots: Roots) -> Result<String, String> {
     let scope = scope_of(args)?;
     let (category, name) = note_names(args)?;
@@ -568,5 +615,34 @@ mod tests {
 
         assert_eq!(listed, Ok("local c/n".to_owned()));
         assert!(global.unwrap_err().starts_with("no home directory is set"));
+    }
+
+    #[test]
+    fn the_web_requests_manage_local_notes() {
+        let root = folder("web");
+        let roots = Roots { working: Some(&root), home: None };
+        let created = web(
+            &json!({ "action": "create", "category": "c", "name": "n", "content": "---\nname: n\nsummary: First\n---\nbody" }),
+            roots,
+        );
+        let listed = web(&json!({ "action": "list" }), roots).map(|value| value["notes"].clone());
+        let missing = web(
+            &json!({ "action": "update", "category": "c", "name": "gone", "content": "---\nname: g\nsummary: s\n---\n" }),
+            roots,
+        );
+        let updated = web(
+            &json!({ "action": "update", "category": "c", "name": "n", "content": "---\nname: n\nsummary: Second\n---\nnew" }),
+            roots,
+        );
+        let read = web(&json!({ "action": "read", "category": "c", "name": "n" }), roots).map(|value| value["text"].clone());
+        let deleted = web(&json!({ "action": "delete", "category": "c", "name": "n" }), roots);
+        fs::remove_dir_all(&root).unwrap();
+
+        assert_eq!(created, Ok(json!({ "message": "created c/n" })));
+        assert_eq!(listed, Ok(json!([{ "scope": "local", "category": "c", "name": "n", "summary": "First" }])));
+        assert!(missing.unwrap_err().starts_with("no such note"));
+        assert_eq!(updated, Ok(json!({ "message": "updated c/n" })));
+        assert_eq!(read, Ok(json!("---\nname: n\nsummary: Second\n---\nnew")));
+        assert_eq!(deleted, Ok(json!({ "message": "deleted c/n" })));
     }
 }

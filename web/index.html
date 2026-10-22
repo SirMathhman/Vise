@@ -123,6 +123,60 @@
         padding: 0.5rem;
         border-radius: 0.5rem;
       }
+      #notes-section {
+        margin-top: 1.5rem;
+      }
+      #notes-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      #notes-list li {
+        margin: 0.5rem 0;
+      }
+      #notes-list button {
+        width: 100%;
+        padding: 0.25rem 0.5rem;
+        text-align: left;
+        font-family: ui-monospace, monospace;
+        font-size: 0.85em;
+      }
+      #notes-list .description {
+        margin: 0.2rem 0 0 0.5rem;
+        color: #666;
+        font-size: 0.8em;
+      }
+      #notes-status {
+        margin: 0.5rem 0;
+        padding: 0.5rem;
+        border-radius: 0.5rem;
+      }
+      #note-form {
+        flex-direction: column;
+        margin-top: 0.75rem;
+      }
+      #note-form label {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        font-size: 0.85em;
+      }
+      #note-form input,
+      #note-form select,
+      #note-form textarea {
+        width: 100%;
+        box-sizing: border-box;
+        font: inherit;
+        font-size: 0.9em;
+      }
+      #note-content {
+        min-height: 10rem;
+        font-family: ui-monospace, monospace;
+      }
+      .note-actions {
+        display: flex;
+        gap: 0.5rem;
+      }
       @media (max-width: 40rem) {
         .layout {
           flex-direction: column;
@@ -169,6 +223,13 @@
         #divider {
           background: #444;
         }
+        #note-form input,
+        #note-form select,
+        #note-form textarea {
+          background: #222;
+          color: #eee;
+          border: 1px solid #444;
+        }
         #tools-list .description {
           color: #aaa;
         }
@@ -196,6 +257,27 @@
         <h2>Tools</h2>
         <p id="tools-error" class="error" hidden></p>
         <ul id="tools-list"></ul>
+        <section id="notes-section">
+          <h2>Notes</h2>
+          <p id="notes-status" hidden></p>
+          <ul id="notes-list"></ul>
+          <button type="button" id="notes-new">New note</button>
+          <form id="note-form">
+            <label>Scope
+              <select id="note-scope">
+                <option value="local">local</option>
+                <option value="global">global</option>
+              </select>
+            </label>
+            <label>Category <input id="note-category" autocomplete="off" /></label>
+            <label>Name <input id="note-name" autocomplete="off" /></label>
+            <textarea id="note-content" rows="12" spellcheck="false"></textarea>
+            <div class="note-actions">
+              <button type="submit" id="note-save">Save</button>
+              <button type="button" id="note-delete" hidden>Delete</button>
+            </div>
+          </form>
+        </section>
       </aside>
     </div>
     <script src="/app.js"></script>

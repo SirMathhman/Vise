@@ -16,6 +16,7 @@ Type `exit` or `quit` to leave the REPL. These commands work in the REPL and in 
 - `/disable <tool>` and `/enable <tool>` switch a tool off or on for this session only: this REPL, or this browser tab. Other tabs and other REPL runs are not affected. A tool that is off cannot be called. Strata is also asked not to generate calls to it.
 - The web UI has a Tools panel beside the chat. It lists every tool with its description and an on/off switch. A switch there works like `/enable` and `/disable` for this browser tab, and it applies from the next message. Drag the divider between the chat and the panel to change the panel's width; the width is remembered in this browser.
 - `/notes` lists every note as `scope category/name`. `/notes <scope>/<category>/<name>` shows one note in full, where scope is `local` or `global`.
+- The web UI has a Notes section under the Tools list. It lists notes from both scopes and opens one in an editor. You can create, edit and delete notes there. Edits made in the UI reach the model at the start of its next conversation, not in the current one.
 
 Strata must be running at `http://127.0.0.1:8080`. Replies stream, and a model reply can call the file tools
 (`list_files`, `read_file`, `create_file`, `create_directory`, `delete_file`, `delete_directory`). Those tools only act

@@ -98,6 +98,11 @@ fn handle(mut stream: TcpStream, config: &Config, sessions: &Sessions) -> io::Re
     if request.method == "POST" && request.path == "/api/tools" {
         return write_response(&mut stream, &tools_response(&request.body, sessions));
     }
+    if request.method == "POST" && request.path == "/api/notes" {
+        let home = std::env::home_dir();
+        let roots = notes::Roots { working: config.working_dir.as_deref().map(Path::new), home: home.as_deref() };
+        return write_response(&mut stream, &notes_response(&request.body, roots));
+    }
     write_response(&mut stream, &route(&request))
 }
 
@@ -294,6 +299,18 @@ fn write_event(stream: &mut TcpStream, event: &Value) -> io::Result<()> {
     write!(stream, "data: {event}\n\n")
 }
 
+/// Runs one notes request from the web UI. Failures are reported as a 400 with the reason.
+fn notes_response(body: &[u8], roots: notes::Roots) -> Response {
+    let data: Value = match serde_json::from_slice(body) {
+        Ok(data) => data,
+        Err(err) => return json_response(400, json!({ "error": format!("invalid JSON: {err}") })),
+    };
+    match notes::web(&data, roots) {
+        Ok(value) => json_response(200, value),
+        Err(error) => json_response(400, json!({ "error": error })),
+    }
+}
+
 /// Lists the tools for the tab's session. A body with `name` and `enabled` also switches that tool first.
 fn tools_response(body: &[u8], sessions: &Sessions) -> Response {
     let Some(session) = parse_session(body) else {
@@ -481,6 +498,16 @@ mod tests {
         assert_eq!(parse_session(br#"{"session":"a b"}"#), None);
         assert_eq!(parse_session(br#"{"session":""}"#), None);
         assert_eq!(parse_session(format!(r#"{{"session":"{}"}}"#, "x".repeat(65)).as_bytes()), None);
+    }
+
+    #[test]
+    fn notes_endpoint_reports_failures_as_bad_requests() {
+        let roots = notes::Roots { working: None, home: None };
+        let unknown = notes_response(br#"{"action":"explode"}"#, roots);
+        let malformed = notes_response(b"not json", roots);
+
+        assert_eq!(unknown.status, 400);
+        assert_eq!(malformed.status, 400);
     }
 
     #[test]
