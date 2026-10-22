@@ -78,8 +78,15 @@
         padding: 0.5rem 1rem;
         font: inherit;
       }
+      #divider {
+        width: 6px;
+        flex-shrink: 0;
+        cursor: col-resize;
+        touch-action: none;
+        background: #ddd;
+      }
       aside {
-        width: 17rem;
+        width: var(--tools-width, 17rem);
         flex-shrink: 0;
         overflow-y: auto;
         padding: 1rem;
@@ -123,6 +130,9 @@
         main {
           height: 70vh;
         }
+        #divider {
+          display: none;
+        }
         aside {
           width: auto;
           border-left: none;
@@ -155,6 +165,9 @@
         aside {
           border-color: #444;
         }
+        #divider {
+          background: #444;
+        }
         #tools-list .description {
           color: #aaa;
         }
@@ -177,6 +190,7 @@
           <button type="button" id="new">New</button>
         </form>
       </main>
+      <div id="divider" role="separator" aria-orientation="vertical" aria-label="Drag to resize the Tools panel"></div>
       <aside>
         <h2>Tools</h2>
         <p id="tools-error" class="error" hidden></p>

@@ -255,3 +255,52 @@ async function refreshTools() {
     }
 }
 void refreshTools();
+// The divider between the chat and the Tools panel. Dragging it sets the panel's width, which is kept in this browser.
+const DIVIDER_KEY = "vise-tools-width";
+const MIN_TOOLS_PX = 160;
+const MIN_CHAT_PX = 320;
+const divider = document.getElementById("divider");
+const layout = document.querySelector(".layout");
+let toolsWidth = 0;
+function clampToolsWidth(px) {
+    return Math.max(MIN_TOOLS_PX, Math.min(px, layout.clientWidth - MIN_CHAT_PX));
+}
+function setToolsWidth(px) {
+    toolsWidth = px;
+    document.documentElement.style.setProperty("--tools-width", `${px}px`);
+}
+// Restores the width this browser last used. Storage can be blocked, in which case the default width is used.
+try {
+    const stored = Number(localStorage.getItem(DIVIDER_KEY));
+    if (stored > 0) {
+        setToolsWidth(clampToolsWidth(stored));
+    }
+}
+catch {
+    // The default width stays.
+}
+let dragging = false;
+divider.addEventListener("pointerdown", (event) => {
+    dragging = true;
+    divider.setPointerCapture(event.pointerId);
+    event.preventDefault();
+});
+divider.addEventListener("pointermove", (event) => {
+    if (dragging) {
+        setToolsWidth(clampToolsWidth(layout.getBoundingClientRect().right - event.clientX));
+    }
+});
+function endDrag() {
+    if (!dragging) {
+        return;
+    }
+    dragging = false;
+    try {
+        localStorage.setItem(DIVIDER_KEY, String(toolsWidth));
+    }
+    catch {
+        // Not saved: the width lasts for this page load only.
+    }
+}
+divider.addEventListener("pointerup", endDrag);
+divider.addEventListener("pointercancel", endDrag);
