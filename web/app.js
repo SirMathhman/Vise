@@ -200,7 +200,22 @@ newButton.addEventListener("click", () => {
     conversation.length = 0;
     told = [];
     log.replaceChildren();
+    void applyDefaultProfile();
 });
+// Starts the conversation with the built-in default profile. The server applies its tools and returns its
+// instructions, if it has any, which join the conversation. Nothing is shown in the log.
+async function applyDefaultProfile() {
+    try {
+        const done = await streamChat([{ role: "user", content: "/profile default" }], () => { }, new AbortController().signal);
+        if (done.profile != null) {
+            conversation.push({ role: "profile", content: done.profile });
+        }
+    }
+    catch (err) {
+        addEntry("error").textContent = err instanceof Error ? err.message : String(err);
+    }
+    void refreshTools();
+}
 const toolsList = document.getElementById("tools-list");
 const toolsError = document.getElementById("tools-error");
 // Lists this tab's tools, or switches one of them, on the server. The panel always shows the server's answer, so it
@@ -441,6 +456,7 @@ noteDelete.addEventListener("click", async () => {
     }
 });
 void refreshNotes();
+void applyDefaultProfile();
 // A narrower window clamps the shown width without changing the chosen one, and nothing is saved here.
 window.addEventListener("resize", () => {
     if (toolsWidth > 0) {

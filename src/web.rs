@@ -213,7 +213,7 @@ fn chat(
                 return Some((reply, None));
             }
             commands::profile(&message.content, &switches, roots).map(|result| match result {
-                Ok(choice) => (choice.reply, Some(choice.instructions)),
+                Ok(choice) => (choice.reply, (!choice.instructions.is_empty()).then_some(choice.instructions)),
                 Err(err) => (format!("error: {err}"), None),
             })
         });

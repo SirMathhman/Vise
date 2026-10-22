@@ -62,6 +62,8 @@ Dependencies run one way: `main` and `web` call `agent`. `agent` calls `strata`,
 
 ## Profiles
 
+There is one built-in default profile, in `src/commands.rs` (`DEFAULT_TOOLS` and `DEFAULT_INSTRUCTIONS`). It is applied whenever a conversation starts: the REPL at startup and on `/new`, and the web page when it loads and when New is clicked. `/profile default` applies it again. It cannot be skipped. Applying it sets the tool switches to its tool list, or leaves them alone when the list is `None`. Its instructions join the conversation, or add nothing when the text is empty. The current default leaves every tool as it is and adds no instructions, so it changes nothing until those constants are filled in.
+
 A profile is a note with `profile: true` in its frontmatter and an optional `tools` line, a comma-separated list. `/profile <scope>/<category>/<name>` chooses one. The REPL accepts the command, and the web UI's picker sends the same command through the chat. The `tools` list, when there is one, sets the switches: the listed tools go on and every other tool goes off. A list naming an unknown tool is refused. The note's text, without the frontmatter, joins the conversation as a `profile` message with a header saying the profile is active. Strata receives it as a system message. It stays in the log, so later requests carry it. `/new` clears it with the rest of the conversation, but the switches stay as the profile set them. `src/notes/profile.rs` reads the note, and `commands::profile` applies it. A profile does not end the conversation's first turn (`strata::is_first_turn`), so the notes index still goes on the first user message after a profile is chosen.
 
 ## Compaction

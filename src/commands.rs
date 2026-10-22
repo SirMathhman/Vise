@@ -47,8 +47,37 @@ pub struct Choice {
 /// switched on for this session and every other tool is switched off. Returns `None` if the line is not this
 /// command.
 pub fn profile(line: &str, switches: &Switches, roots: notes::Roots) -> Option<Result<Choice, String>> {
+    if line.split_whitespace().eq(["/profile", "default"]) {
+        return Some(Ok(default_profile(switches)));
+    }
     let chosen = notes::profile_command(line, roots)?;
     Some(chosen.and_then(|profile| choose(profile, switches)))
+}
+
+/// The built-in default profile. It is applied when a conversation starts. `None` leaves the tool switches alone,
+/// and an empty text adds nothing to the conversation.
+const DEFAULT_TOOLS: Option<&[&str]> = None;
+const DEFAULT_INSTRUCTIONS: &str = "";
+
+/// Applies the built-in default profile, as a new conversation does. The instructions come back empty when the
+/// default has none.
+pub fn default_profile(switches: &Switches) -> Choice {
+    if let Some(names) = DEFAULT_TOOLS {
+        set_tools(names, switches);
+    }
+    let instructions = if DEFAULT_INSTRUCTIONS.is_empty() {
+        String::new()
+    } else {
+        format!("[Profile default is active. Follow these instructions from now on.]\n\n{DEFAULT_INSTRUCTIONS}")
+    };
+    Choice { reply: "Default profile is active.".to_owned(), instructions }
+}
+
+/// Switches on the tools in `names` and switches every other tool off.
+fn set_tools<S: AsRef<str>>(names: &[S], switches: &Switches) {
+    for name in tools::NAMES {
+        switches.set(name, names.iter().any(|listed| listed.as_ref() == name));
+    }
 }
 
 fn choose(profile: notes::Profile, switches: &Switches) -> Result<Choice, String> {
@@ -57,9 +86,7 @@ fn choose(profile: notes::Profile, switches: &Switches) -> Result<Choice, String
             if let Some(unknown) = names.iter().find(|name| !tools::NAMES.contains(&name.as_str())) {
                 return Err(format!("profile {} lists an unknown tool: {unknown}", profile.label));
             }
-            for name in tools::NAMES {
-                switches.set(name, names.iter().any(|listed| listed.as_str() == name));
-            }
+            set_tools(names, switches);
             format!("Profile {} is active. Tools on: {}.", profile.label, names.join(", "))
         }
         None => format!("Profile {} is active. Tools are unchanged.", profile.label),
@@ -74,6 +101,18 @@ fn choose(profile: notes::Profile, switches: &Switches) -> Result<Choice, String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_default_profile_leaves_tools_and_adds_no_instructions() {
+        let switches = Switches::default();
+        switches.set("delete_file", false);
+        let roots = notes::Roots { working: None, home: None };
+        let choice = profile("/profile default", &switches, roots).unwrap().unwrap();
+
+        assert_eq!(choice.reply, "Default profile is active.");
+        assert!(choice.instructions.is_empty());
+        assert!(switches.snapshot().contains("delete_file"));
+    }
 
     #[test]
     fn choosing_a_profile_switches_tools_to_its_list() {

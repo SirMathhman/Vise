@@ -73,6 +73,15 @@ fn print_chunk(chunk: Chunk, section: &mut Option<Section>) {
     let _ = io::stdout().flush();
 }
 
+/// Starts a conversation with the built-in default profile: its tools are applied, and its instructions, if any,
+/// join the conversation.
+fn start_conversation(session: &mut Session, switches: &tools::Switches) {
+    let choice = commands::default_profile(switches);
+    if !choice.instructions.is_empty() {
+        session.push(Role::Profile, choice.instructions);
+    }
+}
+
 fn main() -> io::Result<()> {
     let config = startup_config();
     if std::env::args().nth(1).as_deref() == Some("web") {
@@ -90,6 +99,7 @@ fn main() -> io::Result<()> {
     }
 
     let mut session = Session::new();
+    start_conversation(&mut session, &switches);
     let mut input = io::stdin().lock();
 
     println!("Strata REPL ready. Type 'exit' or press Ctrl+C to quit. Type '/new' to start over.");
@@ -112,6 +122,7 @@ fn main() -> io::Result<()> {
         }
         if trimmed == "/new" {
             session.reset();
+            start_conversation(&mut session, &switches);
             println!("Started a new conversation.");
             continue;
         }
@@ -126,7 +137,9 @@ fn main() -> io::Result<()> {
         if let Some(result) = commands::profile(trimmed, &switches, roots) {
             match result {
                 Ok(choice) => {
-                    session.push(Role::Profile, choice.instructions);
+                    if !choice.instructions.is_empty() {
+                        session.push(Role::Profile, choice.instructions);
+                    }
                     println!("{}", choice.reply);
                 }
                 Err(err) => println!("error: {err}"),
