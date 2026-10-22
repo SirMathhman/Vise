@@ -5,7 +5,7 @@ Written for: developers working on this crate.
 ## Definitions
 
 - **Strata**: a local inference server that exposes an OpenAI-compatible API. This crate expects it at `http://127.0.0.1:8080`. Replies are streamed as server-sent events, and tool calls are streamed as fragments indexed by call.
-- **REPL**: the terminal read-eval-print loop in `src/main.rs`. Each line of input is added to the conversation and run as a turn. Reasoning appears under `[thinking]`, tool calls under `[tool]`, then the answer. `exit` or `quit` ends it, and `/new` starts a fresh conversation. It runs when `vise` is started without arguments.
+- **REPL**: the terminal read-eval-print loop in `src/main.rs`. Each line of input is added to the conversation and run as a turn. Reasoning appears under `[thinking]`, tool calls under `[tool]`, then the answer. `exit` or `quit` ends it, and `/new` starts a fresh conversation. Ctrl+C stops a running reply, and a second Ctrl+C quits. It runs when `vise` is started without arguments.
 - **Web UI**: a browser page served by `vise web` on `127.0.0.1:3000`. It has the same chat behavior as the REPL. Reasoning appears in a collapsible Thinking block, and tool calls appear as monospace lines in the reply. The page is written in TypeScript and compiled to `web/app.js`.
 - **Proxy**: the `/api/chat` route in `src/web.rs`. Strata sends no CORS headers, so the browser calls this same-origin route, and only the Rust server calls Strata. The route runs a turn and relays its events to the browser as server-sent events.
 - **Turn**: one user message and everything the model does in response, including any tool rounds. `agent::run_turn` runs it.
@@ -46,9 +46,9 @@ Dependencies run one way: `main` and `web` call `agent`. `agent` calls `strata`,
 `strata.rs` is split into layers:
 
 - `message_items(messages, config)` converts messages to wire-format items, with the working directory first when set.
-- `open_stream(items, config)` builds a `ureq` agent with the configured read timeout, sends the request with the tool definitions, and returns a reader over the response body. Failures before any reply text are reported here.
-- `relay(reader, url, on_chunk)` reads server-sent events until `[DONE]`, passes each reasoning and content delta to `on_chunk`, assembles streamed tool-call fragments by index, and returns a `Reply` with the answer text and tool calls.
-- `stream_reply(items, config, constraint, on_chunk)` is `open_stream` followed by `relay`. `constraint` is an optional `Constraint { grammar, lazy }`; a lazy one is sent with `grammar_lazy` and a `<tool_call>` token trigger. Whether Strata supports lazy grammars is read once at startup from `/v1/status` (`Config::lazy_grammar`).
+- `open_stream(items, config, constraint)` builds a `ureq` agent with the configured read timeout, sends the request with the tool definitions, and returns a reader over the response body. Failures before any reply text are reported here.
+- `relay(reader, url, cancel, on_chunk)` reads server-sent events until `[DONE]`, checks `cancel` before each line, passes each reasoning and content delta to `on_chunk`, assembles streamed tool-call fragments by index, and returns a `Reply` with the answer text and tool calls.
+- `stream_reply(items, config, constraint, cancel, on_chunk)` is `open_stream` followed by `relay`. `constraint` is an optional `Constraint { grammar, lazy }`; a lazy one is sent with `grammar_lazy` and a `<tool_call>` token trigger. Whether Strata supports lazy grammars is read once at startup from `/v1/status` (`Config::lazy_grammar`).
 - `request_body(items, config)` builds the JSON body with `stream: true` and the tool definitions. It is pure.
 - `build_body(messages, config)` is `request_body` over `message_items`. It is pure, tested, and used only by tests.
 - `parse_reply(url, data)` extracts `choices[0].message.content` from a non-streaming response. It is pure, tested, and used only by tests.
@@ -75,9 +75,9 @@ The REPL appends the summary to its session. The web server returns it in the `d
 
 When a reply has no tool calls, its answer text is the turn's result. More than 8 rounds in one turn is an error.
 
-A turn can be stopped. `run_turn` takes a cancel flag, which the turn checks before each round and each tool call. The stream reader checks it before each line, so a stop takes effect at the next line Strata sends. Returning from the reader drops the connection, and Strata then stops generating. A stopped turn returns `StrataError::Stopped` and is not kept, the same as a failed turn. In the REPL, Ctrl+C sets the flag while a turn runs, and a second Ctrl+C quits. In the web UI, the Stop button aborts the request. A write that fails because the page went away also sets the flag, so a closed tab stops its turn too. A stop cannot interrupt a tool that is already running; it takes effect when that tool returns.
+A turn can be stopped. `run_turn` takes a cancel flag, which the turn checks before each round, each tool call, and each line of the stream. Returning from the stream reader drops the connection, so Strata stops generating. A stopped turn returns `StrataError::Stopped { ran }`, where `ran` lists the tool calls that had already run. Their effects on disk remain, although the turn is not kept, so the REPL reports them and the web page's note says the calls shown above may have run. A tool that is already running finishes before the stop takes effect. In the REPL, Ctrl+C sets the flag while a turn runs, and a second Ctrl+C quits. In the web UI, the Stop button aborts the request, and the server cannot send the list after an abort. A write that fails because the page went away also sets the flag, so a closed tab stops its turn too.
 
-`tools::run(name, arguments)` returns the result text for the model. A failed call returns text beginning with `error:`, so the model can recover and the turn continues. `list_files` takes a required `path` and a required `depth` of at least 1. Depth 1 lists only the directory's own entries, and subdirectories end with `/`.
+`tools::run(name, arguments, root)` returns the result text for the model. A failed call returns text beginning with `error:`, so the model can recover and the turn continues. `list_files` takes a required `path` and a required `depth` of at least 1. Depth 1 lists only the directory's own entries, and subdirectories end with `/`.
 
 `read_file` takes a required `path`, a required `start`, and a required `end`, all in 1-based lines. `start` is included and `end` is excluded. The result has each line prefixed with its number and a tab. An `end` past the last line is clipped to the file, and a range with no lines is an error. Results over 16 KiB are cut short with a notice asking the model to narrow the range.
 
@@ -120,7 +120,7 @@ The `done` event carries the turn's final answer, and the web page stores that t
 - **Grammar limits.** The grammar refuses to let a tool argument contain `</parameter>`, even where Strata itself would accept it, and it refuses prose that quotes `<tool_call>` while any tool is off. Whitespace is allowed between and after calls. The grammar was checked against Strata's parser with eight fixture cases (prose, calls in prose, two calls with a newline between, disabled names, `<` in a value, quoted `<tool_call>`), but that check is manual, not a test.
 - **Grammar enforcement depends on Strata's grammar support.** When Strata reports lazy grammars (`/v1/status` `grammar.lazy`, read once at startup into `Config::lazy_grammar`), Vise sends `grammar::enabled_calls_after_trigger` with `grammar_lazy` and a `<tool_call>` token trigger, so prose and reasoning are unconstrained and the grammar starts at the first call. Older builds, or every tool off, get the full-output `enabled_calls_only` grammar. Strata keeps speculative drafting on under a grammar when its engine reports `constrain_rows=1`, so constrained turns run near unconstrained speed once Strata's mask cache is warm; the first request per grammar builds masks and is slower. The grammar assumes Strata's XML call format and the `<parameter=...>` body. If Strata rejects it, the turn fails with `GrammarRejected` instead of running without enforcement.
 - **Switches are per session, but the session table is unbounded.** Each web tab's switches are kept until the server process exits, and nothing evicts them. Each entry is small, but a client that sends many session ids grows the table without limit.
-- **Ctrl+C is not handled.** The OS default handler ends the process, so the `bye` message is not printed on Ctrl+C.
+- **Ctrl+C at the prompt quits without printing `bye`.** While a turn runs, Ctrl+C stops the turn instead (see Tools and the Turn Loop). A second Ctrl+C, or a press at the prompt, exits the process directly.
 - **Duplicated turn logic.** History handling and pop-on-error are still implemented separately in `main.rs` and `web/src/app.ts`.
 - **Layering.** The wire client knows the tool registry because `request_body` calls `tools::definitions()`. Tool-call wire format is split between `strata.rs` (fragment parsing) and `agent.rs` (building the assistant and tool messages).
 - **Error kinds.** Exceeding the tool-round cap is reported as `Malformed`, which reads as an unexpected response from Strata. Tool errors are plain text, not a type.
@@ -163,11 +163,11 @@ Controls the architecture should have, and their status:
 2. Cap tool output for both `list_files` and `read_file` by bytes, and cap `list_files` depth and entries. Consider limiting paths to the working directory.
 3. Move the tool-call wire format into `strata.rs`, make `Chunk::Tool` carry structured data, and let each front end format it. Pass tool definitions in through `Config` rather than having the client call `tools`.
 4. Give tool and turn-loop errors their own types, so the round cap is not reported as a Strata response error.
-6. Read the URL, model, and timeout from environment variables or command-line arguments, keeping `Config` as the injection point.
-7. Handle Ctrl+C so the REPL prints `bye` and exits cleanly, for example with the `ctrlc` crate.
-8. Implement `std::error::Error` for `StrataError`, stop discarding body-read errors, and let the web route map error kinds to distinct statuses.
-9. Disable the New button while a request is in flight, and label the chat input.
-10. Dev loop: a TypeScript compile error leaves the server on the previous build with no signal beyond the terminal. Consider live reload. Also check on Windows whether restarting the server leaves the old `vise.exe` holding port 3000, and pin the dev tooling so `npm run dev` fails clearly when cargo-watch is missing.
+5. Read the URL, model, and timeout from environment variables or command-line arguments, keeping `Config` as the injection point.
+6. Print `bye` when Ctrl+C quits the REPL at the prompt, as the normal exit does (Ctrl+C during a turn already stops the turn).
+7. Implement `std::error::Error` for `StrataError`, stop discarding body-read errors, and let the web route map error kinds to distinct statuses.
+8. Disable the New button while a request is in flight (Stop is already shown in its place), and label the chat input.
+9. Dev loop: a TypeScript compile error leaves the server on the previous build with no signal beyond the terminal. Consider live reload. Also check on Windows whether restarting the server leaves the old `vise.exe` holding port 3000, and pin the dev tooling so `npm run dev` fails clearly when cargo-watch is missing.
 
 ## Performance
 

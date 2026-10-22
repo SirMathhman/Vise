@@ -221,7 +221,7 @@ fn chat(
 
     match outcome {
         // The page stopped the turn itself: nothing more is sent, and the connection is already gone.
-        Err(StrataError::Stopped) => Ok(()),
+        Err(StrataError::Stopped { .. }) => Ok(()),
         Ok(answer) => {
             start_stream(&mut stream, &mut started)?;
             let mut log = messages.clone();

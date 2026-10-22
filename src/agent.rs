@@ -20,14 +20,15 @@ pub fn run_turn(
     on_chunk: &mut dyn FnMut(Chunk),
 ) -> Result<String, StrataError> {
     let mut items = strata::message_items(messages, config);
+    let mut ran: Vec<String> = Vec::new();
     for _ in 0..MAX_TOOL_ROUNDS {
         if cancel.load(Ordering::Relaxed) {
-            return Err(StrataError::Stopped);
+            return Err(StrataError::Stopped { ran });
         }
         // Tool results can grow a turn past the window, so the turn is summarized in place. The
         // summary is not logged, so the history is unchanged.
         if compaction::turn_needs_summary(&items) {
-            let summary = compaction::summarize_turn(&items, config, cancel)?;
+            let summary = compaction::summarize_turn(&items, config, cancel).map_err(|err| with_ran(err, &ran))?;
             items = compaction::continue_turn(&items, summary);
         }
         let disabled = switches.snapshot();
@@ -49,7 +50,7 @@ pub fn run_turn(
         let constraint = grammar
             .as_ref()
             .map(|(text, lazy)| strata::Constraint { grammar: text, lazy: *lazy });
-        let reply = strata::stream_reply(&items, config, constraint, cancel, on_chunk)?;
+        let reply = strata::stream_reply(&items, config, constraint, cancel, on_chunk).map_err(|err| with_ran(err, &ran))?;
         if reply.tool_calls.is_empty() {
             return Ok(reply.content);
         }
@@ -58,7 +59,7 @@ pub fn run_turn(
         for call in &reply.tool_calls {
             on_chunk(Chunk::Tool(&format!("{} {}", call.name, call.arguments)));
             if cancel.load(Ordering::Relaxed) {
-                return Err(StrataError::Stopped);
+                return Err(StrataError::Stopped { ran });
             }
             let result = if disabled.contains(&call.name) {
                 format!("error: tool {} is disabled", call.name)
@@ -67,6 +68,7 @@ pub fn run_turn(
                 "error: context is full; the turn will be summarized before the next call".to_owned()
             } else {
                 let root = config.working_dir.as_deref().map(Path::new);
+                ran.push(format!("{} {}", call.name, call.arguments));
                 tools::run(&call.name, &call.arguments, root)
             };
             items.push(json!({ "role": "tool", "tool_call_id": call.id, "content": result }));
@@ -76,6 +78,14 @@ pub fn run_turn(
         url: config.url.clone(),
         reason: format!("more than {MAX_TOOL_ROUNDS} tool rounds in one turn"),
     })
+}
+
+/// Adds the tool calls that already ran to a stop that came from the stream or a summary.
+fn with_ran(err: StrataError, ran: &[String]) -> StrataError {
+    match err {
+        StrataError::Stopped { .. } => StrataError::Stopped { ran: ran.to_vec() },
+        other => other,
+    }
 }
 
 fn assistant_item(content: &str, calls: &[ToolCall]) -> Value {

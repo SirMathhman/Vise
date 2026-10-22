@@ -127,9 +127,13 @@ fn main() -> io::Result<()> {
         TURN_ACTIVE.store(false, Ordering::SeqCst);
         println!();
         match result {
-            Err(StrataError::Stopped) => {
+            Err(StrataError::Stopped { ran }) => {
                 session.pop();   // a stopped turn is not kept, as a failed one is not
-                println!("[stopped]");
+                if ran.is_empty() {
+                    println!("[stopped]");
+                } else {
+                    println!("[stopped] {} tool call(s) ran before the stop, and their effects remain: {}", ran.len(), ran.join("; "));
+                }
             }
             Ok(reply) => {
                 session.push(Role::Assistant, reply);

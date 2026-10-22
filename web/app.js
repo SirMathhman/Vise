@@ -161,7 +161,8 @@ form.addEventListener("submit", async (event) => {
         }
         if (inFlight?.signal.aborted) {
             // Stopped by the user: what streamed stays on screen, but the turn is not kept, as a failed one is not.
-            addEntry("summary").textContent = "Stopped. This turn was not kept in the conversation.";
+            addEntry("summary").textContent =
+                "Stopped. Tool calls shown above may already have run, and their effects remain. This turn was not kept in the conversation.";
         }
         else {
             if (answerText.textContent === "" && thinkingText.textContent === "") {
