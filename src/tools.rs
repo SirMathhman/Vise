@@ -175,6 +175,24 @@ pub fn definitions() -> Value {
     all
 }
 
+/// Every tool with its description and whether it is switched on, for the web UI's tool panel.
+pub fn listing(switches: &Switches) -> Vec<Value> {
+    let disabled = switches.snapshot();
+    definitions()
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|definition| {
+            let name = definition["function"]["name"].as_str().unwrap_or_default();
+            json!({
+                "name": name,
+                "description": definition["function"]["description"],
+                "enabled": !disabled.contains(name),
+            })
+        })
+        .collect()
+}
+
 /// Longest tool result sent back to the model, in bytes.
 const MAX_TOOL_OUTPUT: usize = 16 * 1024;
 

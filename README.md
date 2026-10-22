@@ -14,6 +14,7 @@ Type `exit` or `quit` to leave the REPL. These commands work in the REPL and in 
 - Ctrl+C in the REPL stops a running reply. A second Ctrl+C quits. The web UI's Stop button does the same. A stopped reply stays on screen, but it is not kept in the conversation.
 - `/tools` lists each tool as on or off.
 - `/disable <tool>` and `/enable <tool>` switch a tool off or on for this session only: this REPL, or this browser tab. Other tabs and other REPL runs are not affected. A tool that is off cannot be called. Strata is also asked not to generate calls to it.
+- The web UI has a Tools panel beside the chat. It lists every tool with its description and an on/off switch. A switch there works like `/enable` and `/disable` for this browser tab, and it applies from the next message.
 - `/notes` lists every note as `scope category/name`. `/notes <scope>/<category>/<name>` shows one note in full, where scope is `local` or `global`.
 
 Strata must be running at `http://127.0.0.1:8080`. Replies stream, and a model reply can call the file tools
