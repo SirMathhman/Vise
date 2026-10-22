@@ -179,6 +179,35 @@ fn without_a_home_directory_global_notes_are_simply_absent() {
 }
 
 #[test]
+fn a_profile_is_a_marked_note_with_its_tools_and_instructions() {
+    let root = folder("profile");
+    let roots = Roots { working: Some(&root), home: None };
+    call(
+        CREATE_NOTE,
+        json!({ "category": "c", "name": "r", "content": "---\nname: r\nsummary: Careful review\nprofile: true\ntools: list_files, read_file\n---\nBe careful.\n" }),
+        &root,
+    )
+    .unwrap();
+    call(
+        CREATE_NOTE,
+        json!({ "category": "c", "name": "plain", "content": "---\nname: plain\nsummary: Not a profile\n---\nBody" }),
+        &root,
+    )
+    .unwrap();
+    let chosen = profile_command("/profile local/c/r", roots);
+    let plain = profile_command("/profile local/c/plain", roots);
+    let listed = web(&json!({ "action": "profiles" }), roots).map(|value| value["notes"].clone());
+    fs::remove_dir_all(&root).unwrap();
+
+    let profile = chosen.unwrap().unwrap();
+    assert_eq!(profile.label, "local c/r");
+    assert_eq!(profile.tools, Some(vec!["list_files".to_owned(), "read_file".to_owned()]));
+    assert_eq!(profile.instructions, "Be careful.");
+    assert_eq!(plain.unwrap().err(), Some("local c/plain is not a profile".to_owned()));
+    assert_eq!(listed, Ok(json!([{ "scope": "local", "category": "c", "name": "r" }])));
+}
+
+#[test]
 fn the_web_requests_manage_local_notes() {
     let root = folder("web");
     let roots = Roots { working: Some(&root), home: None };

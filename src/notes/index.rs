@@ -5,6 +5,7 @@ use std::fs;
 
 use serde_json::{Value, json};
 
+use super::profile::profile_of;
 use super::store::{Roots, SCOPES, frontmatter, note_files, note_path};
 
 /// Most notes listed in the index at the start of a conversation.
@@ -71,6 +72,24 @@ pub(super) fn note_entries(roots: Roots) -> Result<Vec<Value>, String> {
                 .and_then(|text| frontmatter(&text))
                 .map(|(_, summary)| summary);
             found.push(json!({ "scope": scope, "category": category, "name": name, "summary": summary }));
+        }
+    }
+    Ok(found)
+}
+
+/// Every note in both scopes that is marked as a profile.
+pub(super) fn profile_entries(roots: Roots) -> Result<Vec<Value>, String> {
+    let mut found = Vec::new();
+    for scope in SCOPES {
+        for (category, name) in note_files(scope, roots)? {
+            let is_profile = note_path(scope, roots, &category, &name)
+                .ok()
+                .and_then(|target| fs::read_to_string(target).ok())
+                .and_then(|text| profile_of(&text))
+                .is_some();
+            if is_profile {
+                found.push(json!({ "scope": scope, "category": category, "name": name }));
+            }
         }
     }
     Ok(found)

@@ -123,6 +123,17 @@ fn main() -> io::Result<()> {
         }
 
         let now = switches.snapshot();
+        if let Some(result) = commands::profile(trimmed, &switches, roots) {
+            match result {
+                Ok(choice) => {
+                    session.push(Role::Profile, choice.instructions);
+                    println!("{}", choice.reply);
+                }
+                Err(err) => println!("error: {err}"),
+            }
+            continue;
+        }
+
         let text = if session.messages().is_empty() {
             notes::with_index(trimmed, roots)
         } else {

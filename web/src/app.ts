@@ -1,4 +1,4 @@
-type Role = "user" | "assistant" | "summary" | "summary_failed";
+type Role = "user" | "assistant" | "summary" | "summary_failed" | "profile";
 
 interface Message {
   role: Role;
@@ -9,7 +9,7 @@ type StreamEvent =
   | { type: "reasoning"; text: string }
   | { type: "content"; text: string }
   | { type: "tool"; text: string }
-  | { type: "done"; answer: string; user_message?: string | null; told?: string[]; summary?: string | null; summary_failed?: string | null }
+  | { type: "done"; answer: string; user_message?: string | null; told?: string[]; summary?: string | null; summary_failed?: string | null; profile?: string | null }
   | { type: "error"; error: string; ran?: string[] };
 
 // The error, with the tool calls that ran before it: their effects remain even though the turn did not finish.
@@ -130,7 +130,7 @@ form.addEventListener("submit", async (event) => {
 
   input.value = "";
   // Tool commands are answered by the server and kept out of the conversation.
-  const command = /^\/(tools|enable|disable)(\s|$)/.test(text);
+  const command = /^\/(tools|enable|disable|notes|profile)(\s|$)/.test(text);
   if (!command) {
     conversation.push({ role: "user", content: text });
   }
@@ -171,6 +171,10 @@ form.addEventListener("submit", async (event) => {
       }
       scrollToEnd();
     }, controller.signal);
+    if (done.profile != null) {
+      // A chosen profile's instructions join the conversation, so the later requests keep following them.
+      conversation.push({ role: "profile", content: done.profile });
+    }
     if (!command) {
       // The server may have added a note about switch changes to this user message, and returns the
       // record of switches the model now knows about. Both are kept only once the reply has arrived.
@@ -374,6 +378,7 @@ const noteCategory = document.getElementById("note-category") as HTMLInputElemen
 const noteName = document.getElementById("note-name") as HTMLInputElement;
 const noteContent = document.getElementById("note-content") as HTMLTextAreaElement;
 const noteDelete = document.getElementById("note-delete") as HTMLButtonElement;
+const profilePicker = document.getElementById("profile-picker") as HTMLSelectElement;
 const NEW_NOTE_TEXT = "---\nname: \nsummary: \n---\n";
 // The note open in the editor. Null while a new note is being written.
 let editing: NoteRef | null = null;
@@ -413,6 +418,11 @@ function setEditing(note: NoteRef | null, text: string): void {
 
 async function refreshNotes(): Promise<void> {
   try {
+    const { notes: profiles } = await notesApi<{ notes: NoteRef[] }>({ action: "profiles" });
+    profilePicker.replaceChildren(
+      new Option("Use a profile…", ""),
+      ...profiles.map((profile) => new Option(`${profile.scope} ${profile.category}/${profile.name}`, `${profile.scope}/${profile.category}/${profile.name}`)),
+    );
     const { notes } = await notesApi<{ notes: NoteInfo[] }>({ action: "list" });
     notesList.replaceChildren(
       ...notes.map((note) => {
@@ -454,6 +464,18 @@ function newNote(): void {
 }
 
 notesNew.addEventListener("click", newNote);
+
+// Choosing a profile sends /profile through the chat, the same as typing it, so the reply and the instructions take
+// the same path as any command.
+profilePicker.addEventListener("change", () => {
+  const ref = profilePicker.value;
+  profilePicker.value = "";
+  if (ref === "" || input.disabled) {
+    return;
+  }
+  input.value = `/profile ${ref}`;
+  form.requestSubmit();
+});
 
 noteForm.addEventListener("submit", async (event) => {
   event.preventDefault();

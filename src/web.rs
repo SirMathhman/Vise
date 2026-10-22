@@ -201,16 +201,26 @@ fn chat(
     let mut started = false;
     let home = std::env::home_dir();
     let roots = notes::Roots { working: config.working_dir.as_deref().map(Path::new), home: home.as_deref() };
-    if let Some(reply) = messages
+    // A command's reply is shown and kept out of the conversation. A chosen profile also returns its instructions,
+    // which the page adds to the conversation.
+    let command = messages
         .last()
         .filter(|message| matches!(message.role, Role::User))
         .and_then(|message| {
-            commands::handle(&message.content, &switches).or_else(|| notes::command(&message.content, roots))
-        })
-    {
+            if let Some(reply) = commands::handle(&message.content, &switches)
+                .or_else(|| notes::command(&message.content, roots))
+            {
+                return Some((reply, None));
+            }
+            commands::profile(&message.content, &switches, roots).map(|result| match result {
+                Ok(choice) => (choice.reply, Some(choice.instructions)),
+                Err(err) => (format!("error: {err}"), None),
+            })
+        });
+    if let Some((reply, instructions)) = command {
         start_stream(&mut stream, &mut started)?;
         write_event(&mut stream, &json!({ "type": "content", "text": reply }))?;
-        return write_event(&mut stream, &json!({ "type": "done", "answer": reply }));
+        return write_event(&mut stream, &json!({ "type": "done", "answer": reply, "profile": instructions }));
     }
 
     // The page sends the switches it has told the model about. The note goes on the user message, and
@@ -376,6 +386,7 @@ fn parse_messages(body: &[u8]) -> Result<Vec<Message>, String> {
                 Some("assistant") => Role::Assistant,
                 Some("summary") => Role::Summary,
                 Some("summary_failed") => Role::SummaryFailed,
+                Some("profile") => Role::Profile,
                 _ => return Err("each message needs role user, assistant, summary, or summary_failed".to_owned()),
             };
             let content = item

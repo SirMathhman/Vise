@@ -58,6 +58,8 @@ pub enum Role {
     Summary,
     /// A record that a summary attempt failed. It is kept in the log but never sent to the model.
     SummaryFailed,
+    /// The instructions of a chosen profile. Sent to the model as a system message.
+    Profile,
 }
 
 impl Role {
@@ -65,7 +67,7 @@ impl Role {
         match self {
             Role::User => "user",
             Role::Assistant => "assistant",
-            Role::Summary | Role::SummaryFailed => "system",
+            Role::Summary | Role::SummaryFailed | Role::Profile => "system",
         }
     }
 }

@@ -100,7 +100,7 @@ form.addEventListener("submit", async (event) => {
     }
     input.value = "";
     // Tool commands are answered by the server and kept out of the conversation.
-    const command = /^\/(tools|enable|disable)(\s|$)/.test(text);
+    const command = /^\/(tools|enable|disable|notes|profile)(\s|$)/.test(text);
     if (!command) {
         conversation.push({ role: "user", content: text });
     }
@@ -141,6 +141,10 @@ form.addEventListener("submit", async (event) => {
             }
             scrollToEnd();
         }, controller.signal);
+        if (done.profile != null) {
+            // A chosen profile's instructions join the conversation, so the later requests keep following them.
+            conversation.push({ role: "profile", content: done.profile });
+        }
         if (!command) {
             // The server may have added a note about switch changes to this user message, and returns the
             // record of switches the model now knows about. Both are kept only once the reply has arrived.
@@ -318,6 +322,7 @@ const noteCategory = document.getElementById("note-category");
 const noteName = document.getElementById("note-name");
 const noteContent = document.getElementById("note-content");
 const noteDelete = document.getElementById("note-delete");
+const profilePicker = document.getElementById("profile-picker");
 const NEW_NOTE_TEXT = "---\nname: \nsummary: \n---\n";
 // The note open in the editor. Null while a new note is being written.
 let editing = null;
@@ -353,6 +358,8 @@ function setEditing(note, text) {
 }
 async function refreshNotes() {
     try {
+        const { notes: profiles } = await notesApi({ action: "profiles" });
+        profilePicker.replaceChildren(new Option("Use a profile…", ""), ...profiles.map((profile) => new Option(`${profile.scope} ${profile.category}/${profile.name}`, `${profile.scope}/${profile.category}/${profile.name}`)));
         const { notes } = await notesApi({ action: "list" });
         notesList.replaceChildren(...notes.map((note) => {
             const item = document.createElement("li");
@@ -391,6 +398,17 @@ function newNote() {
     notesStatus.hidden = true;
 }
 notesNew.addEventListener("click", newNote);
+// Choosing a profile sends /profile through the chat, the same as typing it, so the reply and the instructions take
+// the same path as any command.
+profilePicker.addEventListener("change", () => {
+    const ref = profilePicker.value;
+    profilePicker.value = "";
+    if (ref === "" || input.disabled) {
+        return;
+    }
+    input.value = `/profile ${ref}`;
+    form.requestSubmit();
+});
 noteForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const note = editing ?? { scope: noteScope.value, category: noteCategory.value, name: noteName.value };

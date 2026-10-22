@@ -7,6 +7,7 @@
 //! the tools, the `/notes` command and the web UI call.
 
 mod index;
+mod profile;
 mod store;
 #[cfg(test)]
 mod tests;
@@ -18,9 +19,10 @@ use serde_json::{Value, json};
 use crate::workspace;
 
 pub use index::with_index;
+pub use profile::{Profile, command as profile_command};
 pub use store::Roots;
 
-use index::note_entries;
+use index::{note_entries, profile_entries};
 use store::{GLOBAL, LOCAL, SCOPES, create, delete, note_files, note_names, note_path, scope_of, show, update};
 
 pub const LIST_NOTES: &str = "list_notes";
@@ -144,6 +146,7 @@ pub fn command(line: &str, roots: Roots) -> Option<String> {
 pub fn web(body: &Value, roots: Roots) -> Result<Value, String> {
     match body["action"].as_str() {
         Some("list") => Ok(json!({ "notes": note_entries(roots)? })),
+        Some("profiles") => Ok(json!({ "notes": profile_entries(roots)? })),
         Some("read") => {
             let scope = scope_of(body)?;
             let (category, name) = note_names(body)?;

@@ -169,6 +169,19 @@
         font: inherit;
         font-size: 0.9em;
       }
+      .profile-choice {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        margin-bottom: 0.5rem;
+        font-size: 0.85em;
+      }
+      #profile-picker {
+        width: 100%;
+        box-sizing: border-box;
+        font: inherit;
+        font-size: 0.9em;
+      }
       #note-content {
         min-height: 10rem;
         font-family: ui-monospace, monospace;
@@ -223,6 +236,11 @@
         #divider {
           background: #444;
         }
+        #profile-picker {
+          background: #222;
+          color: #eee;
+          border: 1px solid #444;
+        }
         #note-form input,
         #note-form select,
         #note-form textarea {
@@ -260,6 +278,7 @@
         <section id="notes-section">
           <h2>Notes</h2>
           <p id="notes-status" hidden></p>
+          <label class="profile-choice">Profile <select id="profile-picker"></select></label>
           <ul id="notes-list"></ul>
           <button type="button" id="notes-new">New note</button>
           <form id="note-form">

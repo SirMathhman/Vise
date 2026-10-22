@@ -10,7 +10,7 @@ Written for: developers working on this crate.
 - **Proxy**: the `/api/chat` route in `src/web.rs`. Strata sends no CORS headers, so the browser calls this same-origin route, and only the Rust server calls Strata. The route runs a turn and relays its events to the browser as server-sent events.
 - **Turn**: one user message and everything the model does in response, including any tool rounds. `agent::run_turn` runs it.
 - **Session**: the in-memory conversation history in `src/session.rs`. It lasts for one REPL run and is used only by the REPL. The web UI keeps its own copy in the page, which is lost on reload.
-- **Message**: one turn in a conversation, a `Role` (`User`, `Assistant`, `Summary`, or `SummaryFailed`) plus its text. Defined in `src/strata.rs`.
+- **Message**: one turn in a conversation, a `Role` (`User`, `Assistant`, `Summary`, `SummaryFailed`, or `Profile`) plus its text. Defined in `src/strata.rs`.
 - **Chunk**: one streamed piece of a turn: reasoning text, answer text, or a tool call (`Chunk::Tool`, currently a preformatted `name arguments` string). Defined in `src/strata.rs`.
 - **Config**: the server URL, model name, read timeout, and working directory, held in `strata::Config`. It defaults to the local server, the `qwen3.8-flash-next-iq2_xs` model, a 60-second read timeout, and no working directory. `main.rs` reads the current directory once at startup and passes it to both the REPL and the web server. When set, it is sent to the model as a leading system message on each request, and it is not stored in the session history. If the directory cannot be read, a warning is printed once at startup and the model is not told.
 - **StrataError**: the error type for a failed call to Strata. Its variants are `Network` (no connection), `Timeout` (no bytes within the read timeout), `Http` (non-2xx status), `Malformed` (unparseable or unexpected response), `GrammarRejected` (Strata refused the grammar), and `Stopped` (the stream was cancelled).
@@ -24,7 +24,7 @@ src/
   agent.rs    run_turn: streams a reply, runs requested tools, repeats up to 8 rounds
   tools.rs    tool definitions and run(): list_files, read_file, create_file,
               create_directory, delete_file, and delete_directory, plus the note tools
-  notes/      mod.rs: note tools, the /notes command and the web notes requests; store.rs: scopes, paths and file operations; index.rs: the start-of-conversation index and summaries; tests.rs. Notes: Markdown notes in .vise/notes/<category>/<name>.md, local (working directory) or global (home directory)
+  notes/      mod.rs: note tools, the /notes command and the web notes requests; store.rs: scopes, paths and file operations; index.rs: the start-of-conversation index and summaries; profile.rs: reads profile notes; tests.rs. Notes: Markdown notes in .vise/notes/<category>/<name>.md, local (working directory) or global (home directory)
   workspace.rs  leaf helpers shared by the file and note tools: resolve (path confinement), string_arg,
               line_range, and read_range
   session.rs  Session: message list and the told set, with push, pop, reset, messages, told, and set_told (REPL only)
@@ -59,6 +59,10 @@ Dependencies run one way: `main` and `web` call `agent`. `agent` calls `strata`,
 - `parse_reply(url, data)` extracts `choices[0].message.content` from a non-streaming response. It is pure, tested, and used only by tests.
 
 `build_request` (a single-message wrapper around `build_body`) also exists only for tests. `build_request`, `build_body`, and `parse_reply` therefore produce `dead_code` warnings in the binary build.
+
+## Profiles
+
+A profile is a note with `profile: true` in its frontmatter and an optional `tools` line, a comma-separated list. `/profile <scope>/<category>/<name>` chooses one. The REPL accepts the command, and the web UI's picker sends the same command through the chat. The `tools` list, when there is one, sets the switches: the listed tools go on and every other tool goes off. A list naming an unknown tool is refused. The note's text, without the frontmatter, joins the conversation as a `profile` message with a header saying the profile is active. Strata receives it as a system message. It stays in the log, so later requests carry it. `/new` clears it with the rest of the conversation, but the switches stay as the profile set them. `src/notes/profile.rs` reads the note, and `commands::profile` applies it.
 
 ## Compaction
 
@@ -130,6 +134,7 @@ The `done` event carries the turn's final answer, and the web page stores that t
 - **Tool results are capped, but reading is not.** `tools::run` cuts any result over 16 KiB, so one result cannot fill the context. `read_file` and `read_note` still read the whole file into memory before selecting the range, and `list_files` walks the whole tree to the requested depth, both on the request thread. Depth has no maximum.
 - **Tools are limited to the working directory, not to the rest of the machine.** Files under that directory are still readable and changeable by the model, including anything secret stored there. The web server binds to `127.0.0.1` and has no Origin check, which limits exposure but does not remove the risk.
 - **Strata read timeout is per read, not per reply.** A reply that keeps producing bytes can run longer than 60 seconds without timing out. Only a stall between bytes trips the timeout.
+- **Summaries do not shrink the requests.** `agent::run_turn` passes the whole message log to `strata::message_items`. `compaction::since_last_summary` selects only the messages after the latest summary, and it is used for the size check and the summary request, never for the request itself. So after a summary the model still receives the full history, and the prompt keeps growing. Profile instructions are kept in the log the same way, so they reach every later request. Changing this alters the prompt of long conversations and needs a decision first.
 - **Compaction is estimated and runs after the reply.** The size is estimated from bytes, not Strata's real token counts, and the check runs after a turn finishes, so a single turn can still overflow the window. A failed summary is recorded in the log and retried only after ten more messages.
 - **Config is fixed at startup.** The URL, model, and timeout come from `Config::default()`, so changing them requires a rebuild. The web route uses the config passed at startup. Tool switches are not part of `Config`.
 - **Grammar limits.** The grammar refuses to let a tool argument contain `</parameter>`, even where Strata itself would accept it, and it refuses prose that quotes `<tool_call>` while any tool is off. Whitespace is allowed between and after calls. The grammar was checked against Strata's parser with eight fixture cases (prose, calls in prose, two calls with a newline between, disabled names, `<` in a value, quoted `<tool_call>`), but that check is manual, not a test.

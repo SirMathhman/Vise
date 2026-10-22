@@ -1,3 +1,4 @@
+use crate::notes;
 use crate::tools::{self, Switches};
 
 /// Handles a `/tools`, `/enable <tool>`, or `/disable <tool>` line. Returns the text to show,
@@ -36,9 +37,64 @@ fn set(name: Option<&str>, enabled: bool, switches: &Switches) -> String {
     }
 }
 
+/// What choosing a profile gives back: the reply to show, and the text the conversation takes as instructions.
+pub struct Choice {
+    pub reply: String,
+    pub instructions: String,
+}
+
+/// Handles `/profile <scope>/<category>/<name>`. When the profile has a tool list, the tools on the list are
+/// switched on for this session and every other tool is switched off. Returns `None` if the line is not this
+/// command.
+pub fn profile(line: &str, switches: &Switches, roots: notes::Roots) -> Option<Result<Choice, String>> {
+    let chosen = notes::profile_command(line, roots)?;
+    Some(chosen.and_then(|profile| choose(profile, switches)))
+}
+
+fn choose(profile: notes::Profile, switches: &Switches) -> Result<Choice, String> {
+    let reply = match &profile.tools {
+        Some(names) => {
+            if let Some(unknown) = names.iter().find(|name| !tools::NAMES.contains(&name.as_str())) {
+                return Err(format!("profile {} lists an unknown tool: {unknown}", profile.label));
+            }
+            for name in tools::NAMES {
+                switches.set(name, names.iter().any(|listed| listed.as_str() == name));
+            }
+            format!("Profile {} is active. Tools on: {}.", profile.label, names.join(", "))
+        }
+        None => format!("Profile {} is active. Tools are unchanged.", profile.label),
+    };
+    let instructions = format!(
+        "[Profile {} is active. Follow these instructions from now on.]\n\n{}",
+        profile.label, profile.instructions
+    );
+    Ok(Choice { reply, instructions })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn choosing_a_profile_switches_tools_to_its_list() {
+        use serde_json::json;
+
+        let root = std::env::temp_dir().join(format!("vise-profile-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let roots = notes::Roots { working: Some(&root), home: None };
+        let content = "---\nname: r\nsummary: S\nprofile: true\ntools: list_files, read_file\n---\nBe careful.\n";
+        notes::run(notes::CREATE_NOTE, &json!({ "category": "c", "name": "r", "content": content }).to_string(), roots)
+            .unwrap();
+        let switches = Switches::default();
+        let choice = profile("/profile local/c/r", &switches, roots).unwrap();
+        let off = switches.snapshot();
+        std::fs::remove_dir_all(&root).unwrap();
+
+        assert!(choice.unwrap().instructions.ends_with("Be careful."));
+        assert!(off.contains("delete_file"));
+        assert!(!off.contains("list_files") && !off.contains("read_file"));
+    }
 
     #[test]
     fn disable_and_enable_switch_a_tool_off_and_on() {

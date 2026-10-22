@@ -1,6 +1,7 @@
 //! Where notes live, and the file operations on them. Local notes sit under the working directory and global
 //! notes under the home directory. Every name is checked before it becomes a path.
 
+use std::collections::BTreeMap;
 use std::fs::{self, DirEntry, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -109,27 +110,31 @@ pub(super) fn note_files(scope: &str, roots: Roots) -> Result<Vec<(String, Strin
     Ok(notes)
 }
 
-/// The `name` and `summary` in a note's frontmatter: `key: value` lines between two `---` lines at the
-/// top. Both must be present and non-empty.
-pub(super) fn frontmatter(text: &str) -> Option<(String, String)> {
-    let mut lines = text.lines();
+/// A note's frontmatter fields and the text after them. The frontmatter is the `key: value` lines between two
+/// `---` lines at the top. `None` when the note has no closed frontmatter block.
+pub(super) fn split_frontmatter(text: &str) -> Option<(BTreeMap<String, String>, String)> {
+    let mut lines = text.split_inclusive('\n');
     if lines.next()?.trim_end() != "---" {
         return None;
     }
-    let (mut name, mut summary) = (String::new(), String::new());
-    for line in lines {
+    let mut fields = BTreeMap::new();
+    while let Some(line) = lines.next() {
         if line.trim_end() == "---" {
-            return (!name.is_empty() && !summary.is_empty()).then_some((name, summary));
+            return Some((fields, lines.collect()));
         }
         if let Some((key, value)) = line.split_once(':') {
-            match key.trim() {
-                "name" => name = value.trim().to_owned(),
-                "summary" => summary = value.trim().to_owned(),
-                _ => {}
-            }
+            fields.insert(key.trim().to_owned(), value.trim().to_owned());
         }
     }
     None
+}
+
+/// The `name` and `summary` in a note's frontmatter. Both must be present and non-empty.
+pub(super) fn frontmatter(text: &str) -> Option<(String, String)> {
+    let (fields, _) = split_frontmatter(text)?;
+    let name = fields.get("name").filter(|value| !value.is_empty())?.clone();
+    let summary = fields.get("summary").filter(|value| !value.is_empty())?.clone();
+    Some((name, summary))
 }
 
 /// The whole text of a note, for the user's `/notes` command.
