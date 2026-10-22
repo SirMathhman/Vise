@@ -140,6 +140,21 @@ Error text is produced in three places:
 
 Tool errors are returned to the model as `error:` text and are not shown as errors to the user. Errors cross the wire as text only. The client cannot branch on the kind of error, and the JSON and SSE error shapes are handled by separate code paths in `app.ts`.
 
+## Security Concerns
+
+Trust boundaries. Four inputs are untrusted: the user's typed messages (trusted in intent, not in content), the text of files the tools read, the arguments the model writes for tool calls, and the bodies of HTTP requests to `vise web`. The model is not a trust boundary: anything it reads from a file, a listing, or a web page can steer its next tool call, so it can carry injected instructions into the tools.
+
+Controls the architecture should have, and their status:
+
+- **Confinement of file tools.** Every path is resolved against the working directory and must stay inside it after canonicalization. Absolute, network, device, and drive-relative paths are refused before any filesystem call, and the working directory itself cannot be written or deleted. Status: in place (`tools::resolve`). Gap: the check and the operation are separate calls, so a link created between them is not caught, and confinement is only as wide as the working directory.
+- **Confirmation for destructive actions.** Deletes and overwrites should need the user's approval, or at least a visible trail the user can review. Status: missing. `create_file` refuses existing paths, and `delete_directory` removes only empty directories, but no tool asks the user first.
+- **Separation of data from instructions.** Tool results, file contents, and listings should reach the model marked as data it must not follow as instructions. Status: missing. Results are plain tool messages, and the model has no marker that they are untrusted.
+- **Authentication of the web server.** `vise web` changes process-wide state, including `/disable` and `/enable`, with no credentials. Status: missing. It relies on binding to `127.0.0.1`.
+- **Origin and Host checks on the web server.** A page on another origin cannot read responses, because the server sends no CORS headers, and a JSON POST needs a preflight it does not answer. A DNS-rebinding page could still reach the server, since the `Host` header is not checked. Status: partly in place (`text/plain` POSTs are refused with 415); the `Host` check is missing.
+- **Bounded resource use.** Request bodies are capped at 1 MiB, and each connection has a 10-second read timeout. Status: partly in place. Missing: a limit on concurrent connections (each connection gets a thread), a depth limit on `list_files`, and a limit on the bytes `read_file` loads from disk. Tool results are capped at 16 KiB before they reach the model.
+- **Minimal exposure of content.** Only what a request needs should leave the process. Status: partly in place. The working directory's path is sent to the model, and compaction sends conversation text, including file contents the tools returned, to Strata. Strata is local, so this stays on the machine, but it is still exposure.
+- **Grammar is not a security boundary.** Constrained decoding steers what the model writes; it does not enforce policy by itself. The tool switches rely on it together with the call-time refusal, and that refusal is the backstop. Status: in place as a design rule.
+
 ## Future Work
 
 1. Decide whether tool results should stay in the history. Today both front ends keep only the user message and the final answer, so the model cannot see earlier tool output in later turns.
