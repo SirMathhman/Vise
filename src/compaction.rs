@@ -51,8 +51,21 @@ pub fn summarize(messages: &[Message], config: &Config) -> Result<String, Strata
 
 /// Whether the working items of one turn have grown past the threshold.
 pub fn turn_needs_summary(items: &[Value]) -> bool {
-    let chars: usize = items.iter().map(|item| item.to_string().len()).sum();
+    let chars: usize = items.iter().map(item_chars).sum();
     chars / CHARS_PER_TOKEN >= SUMMARY_AT_TOKENS
+}
+
+/// The characters an item carries: its content and the arguments of its tool calls. This is measured
+/// the same way as the log check, so the two thresholds agree.
+fn item_chars(item: &Value) -> usize {
+    let content = item["content"].as_str().map_or(0, str::len);
+    let calls: usize = item["tool_calls"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|call| call["function"]["arguments"].as_str().map_or(0, str::len))
+        .sum();
+    content + calls
 }
 
 /// Summarizes the working items of a turn. Nothing is logged; the summary only replaces those items.
@@ -125,6 +138,15 @@ mod tests {
             log.push(message(Role::User, 1));
         }
         assert!(needs_summary(&log));
+    }
+
+    #[test]
+    fn turn_check_counts_content_not_json_escaping() {
+        let big = SUMMARY_AT_TOKENS * CHARS_PER_TOKEN;
+        let quoted = json!({ "role": "tool", "content": "\"".repeat(big / 2) });
+
+        assert!(!turn_needs_summary(&[quoted]));
+        assert!(turn_needs_summary(&[json!({ "role": "tool", "content": "x".repeat(big) })]));
     }
 
     #[test]

@@ -39,7 +39,7 @@ package.json  TypeScript and concurrently dev dependencies. Scripts: `build` (ts
               and `dev` (runs both together)
 ```
 
-Dependencies run one way: `main` and `web` call `agent`, `agent` calls `strata` and `tools`, `strata` calls `tools` for the definitions sent with each request, and `session` uses `strata` for `Message`. There are no cycles.
+Dependencies run one way: `main` and `web` call `agent`. `agent` calls `strata`, `tools`, and `compaction`. `compaction` calls `strata` and `grammar`. `strata` calls `tools` for the definitions. `session` uses `strata` for `Message`. There are no cycles.
 
 `strata.rs` is split into layers:
 
@@ -59,7 +59,7 @@ Dependencies run one way: `main` and `web` call `agent`, `agent` calls `strata` 
 
 A request sends the latest summary (as a system message) followed by the messages after it. Messages before that summary are neither sent nor counted. To make the summary, Vise sends those messages again with the request `Summarize this conversation so it can be continued later...` appended at the end, so the prefix stays the same and the prompt cache still applies. A grammar forbids tool calls in that request. A failed summary is appended as a `SummaryFailed` entry. That entry is never sent to the model, and a new attempt waits until ten more messages have been added.
 
-Compaction also runs inside a turn. Before each tool round, `agent::run_turn` checks the turn's working items against the same threshold. If they are too large, the model summarizes them (`compaction::summarize_turn`), and the working items are replaced by the leading system items, that summary, and a prompt to continue (`compaction::continue_turn`). The turn summary is never logged, so the history is unchanged. A failed turn summary fails the turn, and the log is untouched.
+Compaction also runs inside a turn. Before every model request, including the first, `agent::run_turn` checks the turn's working items. This check measures content and tool-call arguments, the same way as the log check. If the items are too large, the model summarizes them (`compaction::summarize_turn`), and the working items are replaced by the leading system items, that summary, and a prompt to continue (`compaction::continue_turn`). The summary replaces the current user message as well as the tool work, so the task survives only as the summary. Within one round, once the turn is over the threshold, the calls still left in that round return an error instead of running, which keeps the overshoot to one round. A round can still exceed the threshold before the check, and the turn summary is not logged. A failed turn summary fails the turn, and the log is untouched.
 
 The REPL appends the summary to its session. The web server returns it in the `done` event (as `summary`, or as `summary_failed` with the reason when it failed), and the page appends the matching entry to its log. A summary entry shows as "Earlier conversation summarized." Both sides therefore keep the same log.
 
@@ -155,5 +155,5 @@ Tool errors are returned to the model as `error:` text and are not shown as erro
 - Replies stream, so text appears as it is generated in both the REPL and the web UI.
 - Each web request runs on its own thread. The Strata call blocks only that thread.
 - Each request opens a new connection to Strata. Connections are not deliberately reused.
-- Requests send the latest summary and the messages after it, so their size is bounded by the compaction threshold plus one turn. Each tool round re-sends the whole turn, so latency still grows with tool output.
+- Requests send the latest summary and the messages after it, so their size is bounded by the compaction threshold plus one round. Each tool round re-sends the whole turn, so latency still grows with tool output.
 - Latency is dominated by model generation on the Strata server, not by this crate. The client adds only JSON encoding and one HTTP round trip per model round.

@@ -45,6 +45,9 @@ pub fn run_turn(
             on_chunk(Chunk::Tool(&format!("{} {}", call.name, call.arguments)));
             let result = if disabled.contains(&call.name) {
                 format!("error: tool {} is disabled", call.name)
+            } else if compaction::turn_needs_summary(&items) {
+                // Stop the round from growing the turn past the window; the next round summarizes it.
+                "error: context is full; the turn will be summarized before the next call".to_owned()
             } else {
                 let root = config.working_dir.as_deref().map(Path::new);
                 tools::run(&call.name, &call.arguments, root)
