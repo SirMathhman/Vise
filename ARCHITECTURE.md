@@ -14,7 +14,7 @@ Written for: developers working on this crate.
 - **Chunk**: one streamed piece of a turn: reasoning text, answer text, or a tool call (`Chunk::Tool`, currently a preformatted `name arguments` string). Defined in `src/strata.rs`.
 - **Config**: the server URL, model name, read timeout, and working directory, held in `strata::Config`. It defaults to the local server, the `qwen3.8-flash-next-iq2_xs` model, a 60-second read timeout, and no working directory. `main.rs` reads the current directory once at startup and passes it to both the REPL and the web server. When set, it is sent to the model as a leading system message on each request, and it is not stored in the session history. If the directory cannot be read, a warning is printed once at startup and the model is not told.
 - **StrataError**: the error type for a failed call to Strata. Its variants are `Network` (no connection), `Timeout` (no bytes within the read timeout), `Http` (non-2xx status), `Malformed` (unparseable or unexpected response), `GrammarRejected` (Strata refused the grammar), and `Stopped` (the stream was cancelled).
-- **TurnError**: the error type for a turn that did not finish, in `src/agent.rs`. `Stopped` means the user stopped it; `Failed` wraps a `StrataError` or a round-limit error. Both carry `ran`, the tool calls that ran before the failure, as `name arguments` strings.
+- **TurnError**: the error type for a turn that did not finish, in `src/agent.rs`. `Stopped` means the user stopped it; `Failed` wraps a `StrataError`. The round limit is reported as a `Malformed` error, which the doc does not yet treat as its own kind. Both carry `ran`, the tool calls that ran before the failure, as `name arguments` strings.
 
 ## Structure
 
@@ -137,7 +137,7 @@ The `done` event carries the turn's final answer, and the web page stores that t
 
 Error text is produced in three places:
 
-- **`StrataError` Display** in `src/strata.rs`. The REPL prints it, and the web server sends it as the 502 JSON body `{"error": ...}` or as the SSE event `{"type": "error", "error": ...}`.
+- **`StrataError` Display** in `src/strata.rs`. The REPL prints it, and the web server sends it as the 502 JSON body `{"error": ..., "ran": [...]}` or as the SSE event `{"type": "error", "error": ..., "ran": [...]}`, where `ran` lists the tool calls that ran before the failure.
 - **`parse_messages`** in `src/web.rs`. It returns the 400 messages for a bad request body.
 - **`web/src/app.ts`**. It builds its own messages for an unreachable server, a dropped connection, a reply that ends before `done`, and a non-JSON error response (`HTTP <status>`).
 
