@@ -98,6 +98,9 @@ form.addEventListener("submit", async (event) => {
     if (text === "") {
         return;
     }
+    // The default profile must be in place before the user's message joins the conversation.
+    input.disabled = true;
+    await defaultProfile;
     input.value = "";
     // Tool commands are answered by the server and kept out of the conversation.
     const command = /^\/(tools|enable|disable|notes|profile)(\s|$)/.test(text);
@@ -195,6 +198,7 @@ form.addEventListener("submit", async (event) => {
 });
 stopButton.addEventListener("click", () => {
     inFlight?.abort();
+    defaultAbort?.abort();
 });
 newButton.addEventListener("click", () => {
     conversation.length = 0;
@@ -202,19 +206,30 @@ newButton.addEventListener("click", () => {
     log.replaceChildren();
     void applyDefaultProfile();
 });
+// The default profile's request, started on load and on New. The first message waits for it, so the profile's
+// instructions join the conversation before the user's message does. Stop cancels it.
+let defaultProfile = Promise.resolve();
+let defaultAbort = null;
 // Starts the conversation with the built-in default profile. The server applies its tools and returns its
 // instructions, if it has any, which join the conversation. Nothing is shown in the log.
-async function applyDefaultProfile() {
-    try {
-        const done = await streamChat([{ role: "user", content: "/profile default" }], () => { }, new AbortController().signal);
-        if (done.profile != null) {
-            conversation.push({ role: "profile", content: done.profile });
+function applyDefaultProfile() {
+    const controller = new AbortController();
+    defaultAbort = controller;
+    defaultProfile = (async () => {
+        try {
+            const done = await streamChat([{ role: "user", content: "/profile default" }], () => { }, controller.signal);
+            if (done.profile != null) {
+                conversation.push({ role: "profile", content: done.profile });
+            }
         }
-    }
-    catch (err) {
-        addEntry("error").textContent = err instanceof Error ? err.message : String(err);
-    }
-    void refreshTools();
+        catch (err) {
+            if (!controller.signal.aborted) {
+                addEntry("error").textContent = err instanceof Error ? err.message : String(err);
+            }
+        }
+        void refreshTools();
+    })();
+    return defaultProfile;
 }
 const toolsList = document.getElementById("tools-list");
 const toolsError = document.getElementById("tools-error");
