@@ -1,5 +1,6 @@
 mod agent;
 mod commands;
+mod compaction;
 mod grammar;
 mod session;
 mod strata;
@@ -108,6 +109,12 @@ fn main() -> io::Result<()> {
             Ok(reply) => {
                 session.push(Role::Assistant, reply);
                 session.set_told(now);
+                if compaction::needs_summary(session.messages()) {
+                    match compaction::summarize(session.messages(), &config) {
+                        Ok(summary) => session.push(Role::Summary, summary),
+                        Err(err) => eprintln!("warning: could not summarize the conversation: {err}"),
+                    }
+                }
             }
             Err(err) => {
                 session.pop();

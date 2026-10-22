@@ -1,4 +1,4 @@
-type Role = "user" | "assistant";
+type Role = "user" | "assistant" | "summary";
 
 interface Message {
   role: Role;
@@ -9,7 +9,7 @@ type StreamEvent =
   | { type: "reasoning"; text: string }
   | { type: "content"; text: string }
   | { type: "tool"; text: string }
-  | { type: "done"; answer: string; user_message?: string | null; told?: string[] }
+  | { type: "done"; answer: string; user_message?: string | null; told?: string[]; summary?: string | null }
   | { type: "error"; error: string };
 
 type Done = Extract<StreamEvent, { type: "done" }>;
@@ -147,6 +147,11 @@ form.addEventListener("submit", async (event) => {
         told = done.told;
       }
       conversation.push({ role: "assistant", content: done.answer });
+      // A summary is appended after the reply. The earlier messages stay in the log, unchanged.
+      if (done.summary != null) {
+        conversation.push({ role: "summary", content: done.summary });
+        addEntry("summary").textContent = "Earlier conversation summarized.";
+      }
     }
   } catch (err) {
     if (!command) {

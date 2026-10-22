@@ -118,6 +118,11 @@ form.addEventListener("submit", async (event) => {
                 told = done.told;
             }
             conversation.push({ role: "assistant", content: done.answer });
+            // A summary is appended after the reply. The earlier messages stay in the log, unchanged.
+            if (done.summary != null) {
+                conversation.push({ role: "summary", content: done.summary });
+                addEntry("summary").textContent = "Earlier conversation summarized.";
+            }
         }
     }
     catch (err) {

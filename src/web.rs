@@ -9,6 +9,7 @@ use serde_json::{Value, json};
 
 use crate::agent;
 use crate::commands;
+use crate::compaction;
 use crate::tools::{self, Switches};
 use crate::strata::{Chunk, Config, Message, Role};
 
@@ -197,9 +198,27 @@ fn chat(
     match outcome {
         Ok(answer) => {
             start_stream(&mut stream, &mut started)?;
+            let mut log = messages.clone();
+            log.push(Message {
+                role: Role::Assistant,
+                content: answer.clone(),
+            });
+            let summary = if compaction::needs_summary(&log) {
+                compaction::summarize(&log, config)
+                    .map_err(|err| eprintln!("warning: could not summarize the conversation: {err}"))
+                    .ok()
+            } else {
+                None
+            };
             write_event(
                 &mut stream,
-                &json!({ "type": "done", "answer": answer, "user_message": noted, "told": now }),
+                &json!({
+                    "type": "done",
+                    "answer": answer,
+                    "user_message": noted,
+                    "told": now,
+                    "summary": summary,
+                }),
             )
         }
         // Nothing was sent yet, so the failure can still be a plain JSON error response.
@@ -259,7 +278,8 @@ fn parse_messages(body: &[u8]) -> Result<Vec<Message>, String> {
             let role = match item.get("role").and_then(Value::as_str) {
                 Some("user") => Role::User,
                 Some("assistant") => Role::Assistant,
-                _ => return Err("each message needs role user or assistant".to_owned()),
+                Some("summary") => Role::Summary,
+                _ => return Err("each message needs role user, assistant, or summary".to_owned()),
             };
             let content = item
                 .get("content")

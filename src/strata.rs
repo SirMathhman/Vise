@@ -32,6 +32,8 @@ impl Default for Config {
 pub enum Role {
     User,
     Assistant,
+    /// A compaction summary of the messages before it. Sent to the model as a system message.
+    Summary,
 }
 
 impl Role {
@@ -39,10 +41,12 @@ impl Role {
         match self {
             Role::User => "user",
             Role::Assistant => "assistant",
+            Role::Summary => "system",
         }
     }
 }
 
+#[derive(Clone)]
 pub struct Message {
     pub role: Role,
     pub content: String,
@@ -125,9 +129,13 @@ pub fn message_items(messages: &[Message], config: &Config) -> Vec<Value> {
             "content": format!("The current working directory is {dir}."),
         }));
     }
-    items.extend(messages.iter().map(
-        |message| json!({ "role": message.role.as_str(), "content": message.content }),
-    ));
+    items.extend(messages.iter().map(|message| match message.role {
+        Role::Summary => json!({
+            "role": message.role.as_str(),
+            "content": format!("Summary of the earlier conversation:\n{}", message.content),
+        }),
+        _ => json!({ "role": message.role.as_str(), "content": message.content }),
+    }));
     items
 }
 
