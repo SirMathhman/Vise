@@ -24,7 +24,7 @@ src/
   agent.rs    run_turn: streams a reply, runs requested tools, repeats up to 8 rounds
   tools.rs    tool definitions and run(): list_files, read_file, create_file,
               create_directory, delete_file, and delete_directory, plus the note tools
-  notes.rs    note tools and the /notes command: Markdown notes in .vise/notes/<category>/<name>.md, local (working directory) or global (home directory)
+  notes/      mod.rs: note tools, the /notes command and the web notes requests; store.rs: scopes, paths and file operations; index.rs: the start-of-conversation index and summaries; tests.rs. Notes: Markdown notes in .vise/notes/<category>/<name>.md, local (working directory) or global (home directory)
   workspace.rs  leaf helpers shared by the file and note tools: resolve (path confinement), string_arg,
               line_range, and read_range
   session.rs  Session: message list and the told set, with push, pop, reset, messages, told, and set_told (REPL only)
@@ -93,7 +93,7 @@ The write tools change the disk and run without confirmation:
 - `delete_file` takes `path`. It refuses directories.
 - `delete_directory` takes `path`. It removes only an empty directory, and it refuses files.
 
-The note tools keep Markdown notes at `.vise/notes/<category>/<name>.md`. A local note sits under the working directory; a global note sits under the home directory and is shared by every project. Each tool takes `scope` (`local` by default, or `global`). They live in `src/notes.rs` and receive the two folders as `notes::Roots`, which `tools::run` fills in with the home directory and tests fill in with their own folders:
+The note tools keep Markdown notes at `.vise/notes/<category>/<name>.md`. A local note sits under the working directory; a global note sits under the home directory and is shared by every project. Each tool takes `scope` (`local` by default, or `global`). They live in `src/notes/` (`mod.rs` is the surface, `store.rs` and `index.rs` do the work) and receive the two folders as `notes::Roots`, which `tools::run` fills in with the home directory and tests fill in with their own folders:
 
 - `list_notes` takes no arguments and lists every note as `scope category/name`, local first.
 - `read_note` takes `scope`, `category`, `name`, `start` and `end`, and reads lines the same way as `read_file`.
