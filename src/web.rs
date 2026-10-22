@@ -1,6 +1,7 @@
 use std::collections::{BTreeSet, HashMap};
 use std::io::{self, BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 use std::time::Duration;
@@ -11,7 +12,7 @@ use crate::agent;
 use crate::commands;
 use crate::compaction;
 use crate::tools::{self, Switches};
-use crate::strata::{Chunk, Config, Message, Role};
+use crate::strata::{Chunk, Config, Message, Role, StrataError};
 
 pub const DEFAULT_PORT: u16 = 3000;
 
@@ -204,18 +205,23 @@ fn chat(
             message.content.clone()
         });
 
-    let outcome = agent::run_turn(&messages, config, &switches, &mut |chunk| {
+    // A failed write means the browser closed the page (or stopped the reply): the turn stops there.
+    let cancel = AtomicBool::new(false);
+    let outcome = agent::run_turn(&messages, config, &switches, &cancel, &mut |chunk| {
         let event = match chunk {
             Chunk::Reasoning(text) => json!({ "type": "reasoning", "text": text }),
             Chunk::Content(text) => json!({ "type": "content", "text": text }),
             Chunk::Tool(text) => json!({ "type": "tool", "text": text }),
         };
-        // A failed write means the browser closed the page; the rest of the reply is dropped.
-        let _ = start_stream(&mut stream, &mut started);
-        let _ = write_event(&mut stream, &event);
+        let sent = start_stream(&mut stream, &mut started).and_then(|()| write_event(&mut stream, &event));
+        if sent.is_err() {
+            cancel.store(true, Ordering::Relaxed);
+        }
     });
 
     match outcome {
+        // The page stopped the turn itself: nothing more is sent, and the connection is already gone.
+        Err(StrataError::Stopped) => Ok(()),
         Ok(answer) => {
             start_stream(&mut stream, &mut started)?;
             let mut log = messages.clone();

@@ -1,6 +1,7 @@
 use std::error::Error as _;
 use std::fmt;
 use std::io::{self, BufRead, BufReader, Read};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use serde_json::{Value, json};
@@ -100,6 +101,8 @@ pub type EventReader = BufReader<Box<dyn Read + Send + Sync>>;
 
 #[derive(Debug)]
 pub enum StrataError {
+    /// The user stopped the turn. Nothing from it is kept.
+    Stopped,
     Network { url: String, cause: String },
     Timeout { url: String },
     Http { url: String, status: u16, body: String },
@@ -110,6 +113,7 @@ pub enum StrataError {
 impl fmt::Display for StrataError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            StrataError::Stopped => write!(f, "Stopped."),
             StrataError::Network { url, cause } => write!(
                 f,
                 "Strata not reachable at {url} ({cause}). Start the Strata server and try again."
@@ -151,10 +155,11 @@ pub fn stream_reply(
     items: &[Value],
     config: &Config,
     constraint: Option<Constraint>,
+    cancel: &AtomicBool,
     on_chunk: &mut dyn FnMut(Chunk),
 ) -> Result<Reply, StrataError> {
     let reader = open_stream(items, config, constraint)?;
-    relay(reader, &config.url, on_chunk)
+    relay(reader, &config.url, cancel, on_chunk)
 }
 
 /// Converts messages to wire-format items, with the working directory first when set.
@@ -231,11 +236,16 @@ fn is_grammar_error(body: &str) -> bool {
 fn relay(
     reader: impl BufRead,
     url: &str,
+    cancel: &AtomicBool,
     on_chunk: &mut dyn FnMut(Chunk),
 ) -> Result<Reply, StrataError> {
     let mut content = String::new();
     let mut tool_calls: Vec<ToolCall> = Vec::new();
     for line in reader.lines() {
+        if cancel.load(Ordering::Relaxed) {
+            // Returning drops the reader, which closes the connection; Strata then stops generating.
+            return Err(StrataError::Stopped);
+        }
         let line = line.map_err(|err| io_error(url, err))?;
         let Some(data) = line.strip_prefix("data: ") else {
             continue;
@@ -405,6 +415,19 @@ mod tests {
             body["messages"],
             json!([{ "role": "system", "content": "The current working directory is C:\\work." }])
         );
+    }
+
+    #[test]
+    fn a_cancelled_relay_stops_before_reading_the_reply() {
+        let cancel = AtomicBool::new(true);
+        let reply = "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}
+
+data: [DONE]
+";
+
+        let result = relay(reply.as_bytes(), "url", &cancel, &mut |_| {});
+
+        assert!(matches!(result, Err(StrataError::Stopped)));
     }
 
     #[test]

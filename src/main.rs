@@ -8,9 +8,15 @@ mod tools;
 mod web;
 
 use std::io::{self, BufRead, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// Set while a turn runs, so Ctrl+C stops the turn instead of quitting.
+static TURN_ACTIVE: AtomicBool = AtomicBool::new(false);
+/// Set by Ctrl+C during a turn; the turn checks it and stops.
+static STOP: AtomicBool = AtomicBool::new(false);
 
 use session::Session;
-use strata::{Chunk, Role};
+use strata::{Chunk, Role, StrataError};
 
 /// Reads the working directory once at startup, for both the REPL and the web server.
 fn startup_config() -> strata::Config {
@@ -69,6 +75,15 @@ fn main() -> io::Result<()> {
         return web::serve(web::DEFAULT_PORT, config);   // each browser tab has its own switches (web::Sessions)
     }
     let switches = tools::Switches::default();   // the REPL is one session: its own process and switches
+    // Ctrl+C stops a running turn; at the prompt, or on a second Ctrl+C, it quits as before.
+    if let Err(err) = ctrlc::set_handler(|| {
+        if TURN_ACTIVE.load(Ordering::SeqCst) && !STOP.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        std::process::exit(0);
+    }) {
+        eprintln!("warning: Ctrl+C cannot stop a turn: {err}");
+    }
 
     let mut session = Session::new();
     let mut input = io::stdin().lock();
@@ -104,11 +119,18 @@ fn main() -> io::Result<()> {
         let now = switches.snapshot();
         session.push(Role::User, tools::note_changes(trimmed, session.told(), &now));
         let mut section = None;
-        let result = agent::run_turn(session.messages(), &config, &switches, &mut |chunk| {
+        STOP.store(false, Ordering::SeqCst);
+        TURN_ACTIVE.store(true, Ordering::SeqCst);
+        let result = agent::run_turn(session.messages(), &config, &switches, &STOP, &mut |chunk| {
             print_chunk(chunk, &mut section)
         });
+        TURN_ACTIVE.store(false, Ordering::SeqCst);
         println!();
         match result {
+            Err(StrataError::Stopped) => {
+                session.pop();   // a stopped turn is not kept, as a failed one is not
+                println!("[stopped]");
+            }
             Ok(reply) => {
                 session.push(Role::Assistant, reply);
                 session.set_told(now);

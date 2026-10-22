@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde_json::{Value, json};
 
@@ -15,14 +16,18 @@ pub fn run_turn(
     messages: &[Message],
     config: &Config,
     switches: &Switches,
+    cancel: &AtomicBool,
     on_chunk: &mut dyn FnMut(Chunk),
 ) -> Result<String, StrataError> {
     let mut items = strata::message_items(messages, config);
     for _ in 0..MAX_TOOL_ROUNDS {
+        if cancel.load(Ordering::Relaxed) {
+            return Err(StrataError::Stopped);
+        }
         // Tool results can grow a turn past the window, so the turn is summarized in place. The
         // summary is not logged, so the history is unchanged.
         if compaction::turn_needs_summary(&items) {
-            let summary = compaction::summarize_turn(&items, config)?;
+            let summary = compaction::summarize_turn(&items, config, cancel)?;
             items = compaction::continue_turn(&items, summary);
         }
         let disabled = switches.snapshot();
@@ -44,7 +49,7 @@ pub fn run_turn(
         let constraint = grammar
             .as_ref()
             .map(|(text, lazy)| strata::Constraint { grammar: text, lazy: *lazy });
-        let reply = strata::stream_reply(&items, config, constraint, on_chunk)?;
+        let reply = strata::stream_reply(&items, config, constraint, cancel, on_chunk)?;
         if reply.tool_calls.is_empty() {
             return Ok(reply.content);
         }
@@ -52,6 +57,9 @@ pub fn run_turn(
         items.push(assistant_item(&reply.content, &reply.tool_calls));
         for call in &reply.tool_calls {
             on_chunk(Chunk::Tool(&format!("{} {}", call.name, call.arguments)));
+            if cancel.load(Ordering::Relaxed) {
+                return Err(StrataError::Stopped);
+            }
             let result = if disabled.contains(&call.name) {
                 format!("error: tool {} is disabled", call.name)
             } else if compaction::turn_needs_summary(&items) {

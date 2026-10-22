@@ -3,6 +3,8 @@
 //! the messages after it. The summary request is appended after those messages, so the prefix they
 //! form stays the same and the prompt cache still applies.
 
+use std::sync::atomic::AtomicBool;
+
 use serde_json::{Value, json};
 
 use crate::grammar;
@@ -46,7 +48,8 @@ pub fn needs_summary(messages: &[Message]) -> bool {
 /// Asks the model to summarize the messages that would be sent now. The request is appended after
 /// them. Tool calls are forbidden so the reply is text only.
 pub fn summarize(messages: &[Message], config: &Config) -> Result<String, StrataError> {
-    request_summary(strata::message_items(since_last_summary(messages), config), config)
+    let never = AtomicBool::new(false);   // a summary after a finished turn is not stopped
+    request_summary(strata::message_items(since_last_summary(messages), config), config, &never)
 }
 
 /// Whether the working items of one turn have grown past the threshold.
@@ -69,8 +72,8 @@ fn item_chars(item: &Value) -> usize {
 }
 
 /// Summarizes the working items of a turn. Nothing is logged; the summary only replaces those items.
-pub fn summarize_turn(items: &[Value], config: &Config) -> Result<String, StrataError> {
-    request_summary(items.to_vec(), config)
+pub fn summarize_turn(items: &[Value], config: &Config, cancel: &AtomicBool) -> Result<String, StrataError> {
+    request_summary(items.to_vec(), config, cancel)
 }
 
 /// The working items to carry on with after a turn-level summary: the leading system items (the
@@ -87,10 +90,10 @@ pub fn continue_turn(items: &[Value], summary: String) -> Vec<Value> {
 }
 
 /// Sends `items` followed by the summary request, with tool calls forbidden so the reply is text.
-fn request_summary(mut items: Vec<Value>, config: &Config) -> Result<String, StrataError> {
+fn request_summary(mut items: Vec<Value>, config: &Config, cancel: &AtomicBool) -> Result<String, StrataError> {
     items.push(json!({ "role": "user", "content": SUMMARY_REQUEST }));
     let text_only = grammar::enabled_calls_only(&[]);
-    let reply = strata::stream_reply(&items, config, Some(text_only.as_str().into()), &mut |_| {})?;
+    let reply = strata::stream_reply(&items, config, Some(text_only.as_str().into()), cancel, &mut |_| {})?;
     if reply.content.trim().is_empty() {
         return Err(StrataError::Malformed {
             url: config.url.clone(),

@@ -23,6 +23,10 @@ const log = document.getElementById("log");
 const form = document.getElementById("form");
 const input = document.getElementById("input");
 const newButton = document.getElementById("new");
+const stopButton = document.getElementById("stop");
+const sendButton = document.getElementById("send");
+// The request in flight, if any: Stop aborts it. Aborting closes the connection, and the server stops the turn.
+let inFlight = null;
 function addEntry(kind) {
     const entry = document.createElement("div");
     entry.className = kind;
@@ -32,13 +36,14 @@ function addEntry(kind) {
 function scrollToEnd() {
     log.scrollTop = log.scrollHeight;
 }
-async function streamChat(messages, onEvent) {
+async function streamChat(messages, onEvent, signal) {
     let res;
     try {
         res = await fetch("/api/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ messages, told, session }),
+            signal,
         });
     }
     catch {
@@ -107,6 +112,10 @@ form.addEventListener("submit", async (event) => {
     bubble.append(thinking, answerText);
     try {
         const messages = command ? [...conversation, { role: "user", content: text }] : conversation;
+        const controller = new AbortController();
+        inFlight = controller;
+        sendButton.hidden = true;
+        stopButton.hidden = false;
         const done = await streamChat(messages, (streamed) => {
             if (streamed.type === "reasoning") {
                 thinking.hidden = false;
@@ -124,7 +133,7 @@ form.addEventListener("submit", async (event) => {
                 bubble.append(toolLine, answerText);
             }
             scrollToEnd();
-        });
+        }, controller.signal);
         if (!command) {
             // The server may have added a note about switch changes to this user message, and returns the
             // record of switches the model now knows about. Both are kept only once the reply has arrived.
@@ -150,16 +159,28 @@ form.addEventListener("submit", async (event) => {
         if (!command) {
             conversation.pop();
         }
-        if (answerText.textContent === "" && thinkingText.textContent === "") {
-            bubble.remove();
+        if (inFlight?.signal.aborted) {
+            // Stopped by the user: what streamed stays on screen, but the turn is not kept, as a failed one is not.
+            addEntry("summary").textContent = "Stopped. This turn was not kept in the conversation.";
         }
-        addEntry("error").textContent = err instanceof Error ? err.message : String(err);
+        else {
+            if (answerText.textContent === "" && thinkingText.textContent === "") {
+                bubble.remove();
+            }
+            addEntry("error").textContent = err instanceof Error ? err.message : String(err);
+        }
     }
     finally {
+        inFlight = null;
+        sendButton.hidden = false;
+        stopButton.hidden = true;
         input.disabled = false;
         input.focus();
         scrollToEnd();
     }
+});
+stopButton.addEventListener("click", () => {
+    inFlight?.abort();
 });
 newButton.addEventListener("click", () => {
     conversation.length = 0;

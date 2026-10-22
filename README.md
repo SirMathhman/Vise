@@ -11,6 +11,7 @@ cargo run
 Type `exit` or `quit` to leave the REPL. These commands work in the REPL and in the web UI:
 
 - `/new` starts a fresh conversation. (The web UI has a New button instead.)
+- Ctrl+C in the REPL stops a running reply. A second Ctrl+C quits. The web UI's Stop button does the same. A stopped reply stays on screen, but it is not kept in the conversation.
 - `/tools` lists each tool as on or off.
 - `/disable <tool>` and `/enable <tool>` switch a tool off or on for this session only: this REPL, or this browser tab. Other tabs and other REPL runs are not affected. A tool that is off cannot be called. Strata is also asked not to generate calls to it.
 
