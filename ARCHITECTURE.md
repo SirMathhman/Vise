@@ -23,7 +23,10 @@ src/
   main.rs     stdin loop, or `web` argument to start the web server
   agent.rs    run_turn: streams a reply, runs requested tools, repeats up to 8 rounds
   tools.rs    tool definitions and run(): list_files, read_file, create_file,
-              create_directory, delete_file, and delete_directory
+              create_directory, delete_file, and delete_directory, plus the note tools
+  notes.rs    note tools and the /notes and /note commands: Markdown notes in .vise/notes/<category>/<name>.md
+  workspace.rs  leaf helpers shared by the file and note tools: resolve (path confinement), string_arg,
+              line_range, and read_range
   session.rs  Session: message list and the told set, with push, pop, reset, messages, told, and set_told (REPL only)
   compaction.rs  after_turn, needs_summary, and summarize: append-only summaries of long conversations
   grammar.rs  the GBNF grammars that block calls to disabled tools: enabled_calls_only (the whole output,
@@ -42,7 +45,7 @@ package.json  TypeScript and concurrently dev dependencies. Scripts: `build` (ts
               and `dev` (runs both together)
 ```
 
-Dependencies run one way: `main` and `web` call `agent`. `agent` calls `strata`, `tools`, and `compaction`. `compaction` calls `strata` and `grammar`. `strata` calls `tools` for the definitions. `session` uses `strata` for `Message`. There are no cycles.
+Dependencies run one way: `main` and `web` call `agent`. `agent` calls `strata`, `tools`, and `compaction`. `compaction` calls `strata` and `grammar`. `strata` calls `tools` for the definitions. `tools` calls `notes`. `notes` and `tools` both call `workspace`, which is a leaf and calls nothing else in the crate. `session` uses `strata` for `Message`. There are no cycles.
 
 `strata.rs` is split into layers:
 
@@ -89,7 +92,17 @@ The write tools change the disk and run without confirmation:
 - `delete_file` takes `path`. It refuses directories.
 - `delete_directory` takes `path`. It removes only an empty directory, and it refuses files.
 
-All six file tools (the two read tools above and these four) resolve their path with `tools::resolve(root, path, allow_root)` against the working directory. Checks are applied in this order:
+The note tools keep Markdown notes at `.vise/notes/<category>/<name>.md` under the working directory. They live in `src/notes.rs`:
+
+- `list_notes` takes no arguments and lists every note as `category/name`.
+- `read_note` takes `category`, `name`, `start` and `end`, and reads lines the same way as `read_file`.
+- `create_note` takes `category`, `name` and `content`. It fails if the note exists, and it creates the category directory when needed.
+- `edit_note` takes `category`, `name`, `old` and `new`. It replaces `old` only when `old` occurs exactly once in the note.
+- `delete_note` takes `category` and `name`.
+
+`category` and `name` may use only letters, digits, `-` and `_`, so a note cannot leave `.vise/notes`. Notes are not added to the prompt. The model sees a note only when it reads it. The user's `/notes` and `/note` commands use the same checks.
+
+Every file tool and note tool resolves its path with `tools::resolve(root, path, allow_root)` against the working directory. Checks are applied in this order:
 
 1. Absolute paths (`C:\...`, `\...`), network and device paths (`\\host\share`, `//host/share`), and drive-relative paths (`C:foo`) are refused before any filesystem call. Only relative paths continue.
 2. The path is joined to the working directory. Each existing component is inspected with `symlink_metadata`, and only "not found" lets the walk move to the parent. Any other error fails the call.
@@ -113,7 +126,7 @@ The `done` event carries the turn's final answer, and the web page stores that t
 ## Potential Problems
 
 - **Write tools run without confirmation.** The four write tools change files inside the working directory as soon as the model asks. A model error or injected instruction can create or delete files there. The boundary limits the blast radius but does not prevent it.
-- **Tool results are capped, but reading is not.** `tools::run` cuts any result over 16 KiB, so one result cannot fill the context. `read_file` still reads the whole file into memory before selecting the range, and `list_files` walks the whole tree to the requested depth, both on the request thread. Depth has no maximum.
+- **Tool results are capped, but reading is not.** `tools::run` cuts any result over 16 KiB, so one result cannot fill the context. `read_file` and `read_note` still read the whole file into memory before selecting the range, and `list_files` walks the whole tree to the requested depth, both on the request thread. Depth has no maximum.
 - **Tools are limited to the working directory, not to the rest of the machine.** Files under that directory are still readable and changeable by the model, including anything secret stored there. The web server binds to `127.0.0.1` and has no Origin check, which limits exposure but does not remove the risk.
 - **Strata read timeout is per read, not per reply.** A reply that keeps producing bytes can run longer than 60 seconds without timing out. Only a stall between bytes trips the timeout.
 - **Compaction is estimated and runs after the reply.** The size is estimated from bytes, not Strata's real token counts, and the check runs after a turn finishes, so a single turn can still overflow the window. A failed summary is recorded in the log and retried only after ten more messages.
@@ -150,6 +163,7 @@ Trust boundaries. Four inputs are untrusted: the user's typed messages (trusted 
 Controls the architecture should have, and their status:
 
 - **Confinement of file tools.** Every path is resolved against the working directory and must stay inside it after canonicalization. Absolute, network, device, and drive-relative paths are refused before any filesystem call, and the working directory itself cannot be written or deleted. Status: in place (`tools::resolve`). Gap: the check and the operation are separate calls, so a link created between them is not caught, and confinement is only as wide as the working directory.
+- **Notes are reachable through the file tools.** Notes live under `.vise/notes`, inside the working directory, so `list_files`, `read_file`, `create_file`, and `delete_file` can read, create, or delete them, including names the note tools would refuse. Status: not restricted. Reserving `.vise` from the file tools would close this, but it is a policy change the file tools do not yet make. Notes are also text the model later reads back into its context, so a note can carry injected instructions into a later turn.
 - **Confirmation for destructive actions.** Deletes and overwrites should need the user's approval, or at least a visible trail the user can review. Status: missing. `create_file` refuses existing paths, and `delete_directory` removes only empty directories, but no tool asks the user first.
 - **Separation of data from instructions.** Tool results, file contents, and listings should reach the model marked as data it must not follow as instructions. Status: missing. Results are plain tool messages, and the model has no marker that they are untrusted.
 - **Authentication of the web server.** Anyone who can reach `vise web` can change a tab's switches, read its id from its requests, or send messages as that tab. Status: missing. It relies on binding to `127.0.0.1`. Session ids are random but are not secrets from other local software.

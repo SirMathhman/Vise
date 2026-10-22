@@ -2,12 +2,15 @@ mod agent;
 mod commands;
 mod compaction;
 mod grammar;
+mod notes;
 mod session;
 mod strata;
 mod tools;
 mod web;
+mod workspace;
 
 use std::io::{self, BufRead, Write};
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Set while a turn runs, so Ctrl+C stops the turn instead of quitting.
@@ -112,7 +115,8 @@ fn main() -> io::Result<()> {
             println!("Started a new conversation.");
             continue;
         }
-        if let Some(output) = commands::handle(trimmed, &switches) {
+        let root = config.working_dir.as_deref().map(Path::new);
+        if let Some(output) = commands::handle(trimmed, &switches).or_else(|| notes::command(trimmed, root)) {
             println!("{output}");
             continue;
         }

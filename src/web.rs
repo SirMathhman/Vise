@@ -1,6 +1,7 @@
 use std::collections::{BTreeSet, HashMap};
 use std::io::{self, BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
@@ -11,6 +12,7 @@ use serde_json::{Value, json};
 use crate::agent::{self, TurnError};
 use crate::commands;
 use crate::compaction;
+use crate::notes;
 use crate::tools::{self, Switches};
 use crate::strata::{Chunk, Config, Message, Role};
 
@@ -186,7 +188,10 @@ fn chat(
     if let Some(reply) = messages
         .last()
         .filter(|message| matches!(message.role, Role::User))
-        .and_then(|message| commands::handle(&message.content, &switches))
+        .and_then(|message| {
+            commands::handle(&message.content, &switches)
+                .or_else(|| notes::command(&message.content, config.working_dir.as_deref().map(Path::new)))
+        })
     {
         start_stream(&mut stream, &mut started)?;
         write_event(&mut stream, &json!({ "type": "content", "text": reply }))?;
