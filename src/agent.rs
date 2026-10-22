@@ -33,9 +33,18 @@ pub fn run_turn(
                 .copied()
                 .filter(|name| !disabled.contains(*name))
                 .collect();
-            grammar::enabled_calls_only(&enabled)
+            // A lazy grammar leaves prose and reasoning unconstrained and starts at the first call. With every tool
+            // off there is no call to allow, so the full grammar keeps calls out instead.
+            if config.lazy_grammar && !enabled.is_empty() {
+                (grammar::enabled_calls_after_trigger(&enabled), true)
+            } else {
+                (grammar::enabled_calls_only(&enabled), false)
+            }
         });
-        let reply = strata::stream_reply(&items, config, grammar.as_deref(), on_chunk)?;
+        let constraint = grammar
+            .as_ref()
+            .map(|(text, lazy)| strata::Constraint { grammar: text, lazy: *lazy });
+        let reply = strata::stream_reply(&items, config, constraint, on_chunk)?;
         if reply.tool_calls.is_empty() {
             return Ok(reply.content);
         }

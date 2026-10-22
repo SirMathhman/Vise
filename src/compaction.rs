@@ -90,7 +90,7 @@ pub fn continue_turn(items: &[Value], summary: String) -> Vec<Value> {
 fn request_summary(mut items: Vec<Value>, config: &Config) -> Result<String, StrataError> {
     items.push(json!({ "role": "user", "content": SUMMARY_REQUEST }));
     let text_only = grammar::enabled_calls_only(&[]);
-    let reply = strata::stream_reply(&items, config, Some(&text_only), &mut |_| {})?;
+    let reply = strata::stream_reply(&items, config, Some(text_only.as_str().into()), &mut |_| {})?;
     if reply.content.trim().is_empty() {
         return Err(StrataError::Malformed {
             url: config.url.clone(),

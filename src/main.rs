@@ -21,10 +21,13 @@ fn startup_config() -> strata::Config {
             None
         }
     };
-    strata::Config {
+    let config = strata::Config {
         working_dir,
         ..strata::Config::default()
-    }
+    };
+    // Lazy grammars keep prose unconstrained while a tool is off; older Strata builds get the full grammar.
+    let lazy_grammar = strata::supports_lazy_grammar(&config);
+    strata::Config { lazy_grammar, ..config }
 }
 
 #[derive(PartialEq, Clone, Copy)]

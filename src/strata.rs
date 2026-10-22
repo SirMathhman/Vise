@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
+use crate::grammar;
 use crate::tools;
 
 #[derive(Clone)]
@@ -15,6 +16,8 @@ pub struct Config {
     pub read_timeout: Duration,
     /// Directory the model is told it is working in. Sent as a system message when set.
     pub working_dir: Option<String>,
+    /// Whether Strata supports lazy grammars (`/v1/status` `grammar.lazy`), read once at startup.
+    pub lazy_grammar: bool,
 }
 
 impl Default for Config {
@@ -24,8 +27,26 @@ impl Default for Config {
             model: "qwen3.8-flash-next-iq2_xs".to_owned(),
             read_timeout: Duration::from_secs(60),
             working_dir: None,
+            lazy_grammar: false,
         }
     }
+}
+
+/// Whether the Strata at `config.url` reports lazy grammar support in `/v1/status`. False when it cannot be asked.
+pub fn supports_lazy_grammar(config: &Config) -> bool {
+    let Some(base) = config.url.strip_suffix("/v1/chat/completions") else {
+        return false;
+    };
+    let agent = ureq::AgentBuilder::new()
+        .timeout(Duration::from_secs(3))
+        .build();
+    agent
+        .get(&format!("{base}/v1/status"))
+        .call()
+        .ok()
+        .and_then(|response| response.into_json::<Value>().ok())
+        .and_then(|status| status["grammar"]["lazy"].as_bool())
+        .unwrap_or(false)
 }
 
 #[derive(Clone, Copy)]
@@ -111,14 +132,28 @@ impl fmt::Display for StrataError {
     }
 }
 
+/// A grammar for one request: its GBNF text, and whether it is lazy (Strata's `grammar_lazy`, idle until the model
+/// starts a call with `<tool_call>`).
+#[derive(Clone, Copy)]
+pub struct Constraint<'a> {
+    pub grammar: &'a str,
+    pub lazy: bool,
+}
+
+impl<'a> From<&'a str> for Constraint<'a> {
+    fn from(grammar: &'a str) -> Self {
+        Constraint { grammar, lazy: false }
+    }
+}
+
 /// Streams one model response for the given conversation items, calling `on_chunk` for each delta.
 pub fn stream_reply(
     items: &[Value],
     config: &Config,
-    grammar: Option<&str>,
+    constraint: Option<Constraint>,
     on_chunk: &mut dyn FnMut(Chunk),
 ) -> Result<Reply, StrataError> {
-    let reader = open_stream(items, config, grammar)?;
+    let reader = open_stream(items, config, constraint)?;
     relay(reader, &config.url, on_chunk)
 }
 
@@ -145,15 +180,18 @@ pub fn message_items(messages: &[Message], config: &Config) -> Vec<Value> {
 fn open_stream(
     items: &[Value],
     config: &Config,
-    grammar: Option<&str>,
+    constraint: Option<Constraint>,
 ) -> Result<EventReader, StrataError> {
     let agent = ureq::AgentBuilder::new()
         .timeout_read(config.read_timeout)
         .build();
-    match agent
-        .post(&config.url)
-        .send_json(request_body(items, config, grammar))
-    {
+    let grammar = constraint.map(|c| c.grammar);
+    let mut body = request_body(items, config, grammar);
+    if constraint.is_some_and(|c| c.lazy) {
+        body["grammar_lazy"] = json!(true);
+        body["grammar_triggers"] = json!([{ "type": "token", "value": grammar::CALL_TRIGGER }]);
+    }
+    match agent.post(&config.url).send_json(body) {
         Ok(response) => Ok(BufReader::new(response.into_reader())),
         Err(ureq::Error::Status(status, response)) => {
             let body = response.into_string().unwrap_or_default();
