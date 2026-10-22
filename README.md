@@ -14,19 +14,21 @@ Type `exit` or `quit` to leave the REPL. These commands work in the REPL and in 
 - Ctrl+C in the REPL stops a running reply. A second Ctrl+C quits. The web UI's Stop button does the same. A stopped reply stays on screen, but it is not kept in the conversation.
 - `/tools` lists each tool as on or off.
 - `/disable <tool>` and `/enable <tool>` switch a tool off or on for this session only: this REPL, or this browser tab. Other tabs and other REPL runs are not affected. A tool that is off cannot be called. Strata is also asked not to generate calls to it.
-- `/notes` lists every note as `category/name`. `/note <category>/<name>` shows one note in full.
+- `/notes` lists every note as `scope category/name`. `/notes <scope>/<category>/<name>` shows one note in full, where scope is `local` or `global`.
 
 Strata must be running at `http://127.0.0.1:8080`. Replies stream, and a model reply can call the file tools
 (`list_files`, `read_file`, `create_file`, `create_directory`, `delete_file`, `delete_directory`). Those tools only act
 inside the directory the program was started in. Long conversations are summarized automatically, and the summary
 keeps the conversation going without rewriting its history.
 
-Notes are Markdown files at `.vise/notes/<category>/<name>.md` under the working directory. The model can list, read,
-create, edit and delete them (`list_notes`, `read_note`, `create_note`, `edit_note`, `delete_note`). A note's text is sent
+Notes are Markdown files at `.vise/notes/<category>/<name>.md`. Local notes sit in the working directory. Global notes sit
+in the home directory (`~/.vise/notes`) and are shared by every project. The model can list, read, create, edit and
+delete both kinds (`list_notes`, `read_note`, `create_note`, `edit_note`, `delete_note`). Each of the tools takes a
+`scope` of `local` (the default) or `global`. A note's text is sent
 to the model only when it reads the note. A note must start with frontmatter giving `name` and `summary`, between `---`
 lines, to be created. At the start of each conversation, the model also gets a list of the notes that have frontmatter,
-each with its summary. Notes without frontmatter are not listed. The user can list and show notes with the commands above;
-writes are made by the model.
+each with its summary, local and global alike. Notes without frontmatter are not listed. The user can list and show notes
+with `/notes`; writes are made by the model.
 
 ```
 ---

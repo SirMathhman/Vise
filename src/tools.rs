@@ -190,7 +190,8 @@ pub fn run(name: &str, arguments: &str, root: Option<&Path>) -> String {
         DELETE_FILE => delete_file(arguments, root),
         DELETE_DIRECTORY => delete_directory(arguments, root),
         notes::LIST_NOTES | notes::READ_NOTE | notes::CREATE_NOTE | notes::EDIT_NOTE | notes::DELETE_NOTE => {
-            notes::run(name, arguments, root)
+            let home = std::env::home_dir();
+            notes::run(name, arguments, notes::Roots { working: root, home: home.as_deref() })
         }
         _ => Err(format!("unknown tool {name}")),
     };

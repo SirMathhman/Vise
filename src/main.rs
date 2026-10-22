@@ -115,15 +115,16 @@ fn main() -> io::Result<()> {
             println!("Started a new conversation.");
             continue;
         }
-        let root = config.working_dir.as_deref().map(Path::new);
-        if let Some(output) = commands::handle(trimmed, &switches).or_else(|| notes::command(trimmed, root)) {
+        let home = std::env::home_dir();
+        let roots = notes::Roots { working: config.working_dir.as_deref().map(Path::new), home: home.as_deref() };
+        if let Some(output) = commands::handle(trimmed, &switches).or_else(|| notes::command(trimmed, roots)) {
             println!("{output}");
             continue;
         }
 
         let now = switches.snapshot();
         let text = if session.messages().is_empty() {
-            notes::with_index(trimmed, root)
+            notes::with_index(trimmed, roots)
         } else {
             trimmed.to_owned()
         };

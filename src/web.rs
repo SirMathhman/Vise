@@ -185,12 +185,13 @@ fn chat(
     };
 
     let mut started = false;
+    let home = std::env::home_dir();
+    let roots = notes::Roots { working: config.working_dir.as_deref().map(Path::new), home: home.as_deref() };
     if let Some(reply) = messages
         .last()
         .filter(|message| matches!(message.role, Role::User))
         .and_then(|message| {
-            commands::handle(&message.content, &switches)
-                .or_else(|| notes::command(&message.content, config.working_dir.as_deref().map(Path::new)))
+            commands::handle(&message.content, &switches).or_else(|| notes::command(&message.content, roots))
         })
     {
         start_stream(&mut stream, &mut started)?;
@@ -204,13 +205,12 @@ fn chat(
     let told = parse_told(&request.body);
     // The notes index goes on the first message of a conversation only, so it is kept in the page's history.
     let first = messages.len() == 1;
-    let root = config.working_dir.as_deref().map(Path::new);
     let noted = messages
         .last_mut()
         .filter(|message| matches!(message.role, Role::User))
         .map(|message| {
             if first {
-                message.content = notes::with_index(&message.content, root);
+                message.content = notes::with_index(&message.content, roots);
             }
             message.content = tools::note_changes(&message.content, &told, &now);
             message.content.clone()
