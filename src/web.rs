@@ -50,6 +50,12 @@ impl Sessions {
         let mut by_id = self.by_id.lock().unwrap_or_else(PoisonError::into_inner);
         Arc::clone(by_id.entry(id.to_owned()).or_insert_with(|| Arc::new(Switches::default())))
     }
+
+    /// The tab's switches if it has any. Unlike `get`, this never adds an entry.
+    fn find(&self, id: &str) -> Option<Arc<Switches>> {
+        let by_id = self.by_id.lock().unwrap_or_else(PoisonError::into_inner);
+        by_id.get(id).cloned()
+    }
 }
 
 pub fn serve(port: u16, config: Config) -> io::Result<()> {
@@ -293,7 +299,6 @@ fn tools_response(body: &[u8], sessions: &Sessions) -> Response {
     let Some(session) = parse_session(body) else {
         return json_response(400, json!({ "error": "missing or invalid session" }));
     };
-    let switches = sessions.get(&session);
     let data: Value = serde_json::from_slice(body).unwrap_or(Value::Null);
     if data.get("name").is_some() {
         let Some(name) = data["name"].as_str().filter(|name| tools::NAMES.contains(name)) else {
@@ -302,8 +307,10 @@ fn tools_response(body: &[u8], sessions: &Sessions) -> Response {
         let Some(enabled) = data["enabled"].as_bool() else {
             return json_response(400, json!({ "error": "enabled must be true or false" }));
         };
-        switches.set(name, enabled);
+        sessions.get(&session).set(name, enabled);
     }
+    // A listing alone does not record the session, so reads cannot grow the session map.
+    let switches = sessions.find(&session).unwrap_or_default();
     json_response(200, json!({ "tools": tools::listing(&switches) }))
 }
 
@@ -474,6 +481,15 @@ mod tests {
         assert_eq!(parse_session(br#"{"session":"a b"}"#), None);
         assert_eq!(parse_session(br#"{"session":""}"#), None);
         assert_eq!(parse_session(format!(r#"{{"session":"{}"}}"#, "x".repeat(65)).as_bytes()), None);
+    }
+
+    #[test]
+    fn a_tools_listing_does_not_record_the_session() {
+        let sessions = Sessions::default();
+        let response = tools_response(br#"{"session":"tab-3"}"#, &sessions);
+
+        assert_eq!(response.status, 200);
+        assert!(sessions.by_id.lock().unwrap().is_empty());
     }
 
     #[test]
