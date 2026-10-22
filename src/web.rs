@@ -202,10 +202,16 @@ fn chat(
     // the new record is returned in the done event, which the page keeps only once it arrives.
     let now = switches.snapshot();
     let told = parse_told(&request.body);
+    // The notes index goes on the first message of a conversation only, so it is kept in the page's history.
+    let first = messages.len() == 1;
+    let root = config.working_dir.as_deref().map(Path::new);
     let noted = messages
         .last_mut()
         .filter(|message| matches!(message.role, Role::User))
         .map(|message| {
+            if first {
+                message.content = notes::with_index(&message.content, root);
+            }
             message.content = tools::note_changes(&message.content, &told, &now);
             message.content.clone()
         });

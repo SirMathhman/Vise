@@ -22,8 +22,19 @@ inside the directory the program was started in. Long conversations are summariz
 keeps the conversation going without rewriting its history.
 
 Notes are Markdown files at `.vise/notes/<category>/<name>.md` under the working directory. The model can list, read,
-create, edit and delete them (`list_notes`, `read_note`, `create_note`, `edit_note`, `delete_note`). Notes are not sent
-to the model unless it reads them. The user can list and show notes with the commands above; writes are made by the model.
+create, edit and delete them (`list_notes`, `read_note`, `create_note`, `edit_note`, `delete_note`). A note's text is sent
+to the model only when it reads the note. A note must start with frontmatter giving `name` and `summary`, between `---`
+lines, to be created. At the start of each conversation, the model also gets a list of the notes that have frontmatter,
+each with its summary. Notes without frontmatter are not listed. The user can list and show notes with the commands above;
+writes are made by the model.
+
+```
+---
+name: plan
+summary: Steps for the import rewrite
+---
+The text of the note.
+```
 
 To serve the web UI from Rust, without the watch tools:
 

@@ -122,7 +122,12 @@ fn main() -> io::Result<()> {
         }
 
         let now = switches.snapshot();
-        session.push(Role::User, tools::note_changes(trimmed, session.told(), &now));
+        let text = if session.messages().is_empty() {
+            notes::with_index(trimmed, root)
+        } else {
+            trimmed.to_owned()
+        };
+        session.push(Role::User, tools::note_changes(&text, session.told(), &now));
         let mut section = None;
         STOP.store(false, Ordering::SeqCst);
         TURN_ACTIVE.store(true, Ordering::SeqCst);
