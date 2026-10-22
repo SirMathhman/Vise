@@ -10,6 +10,41 @@ use crate::tools::{self, Switches};
 
 const MAX_TOOL_ROUNDS: usize = 8;
 
+/// A turn that did not finish. Every variant lists the tool calls that ran before it (`name arguments`): their
+/// effects on disk remain, even though the turn itself is not kept.
+#[derive(Debug)]
+pub enum TurnError {
+    /// The user stopped the turn.
+    Stopped { ran: Vec<String> },
+    /// The turn failed for another reason.
+    Failed { ran: Vec<String>, cause: StrataError },
+}
+
+impl TurnError {
+    pub fn ran(&self) -> &[String] {
+        match self {
+            TurnError::Stopped { ran } | TurnError::Failed { ran, .. } => ran,
+        }
+    }
+}
+
+impl std::fmt::Display for TurnError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TurnError::Stopped { .. } => write!(f, "Stopped."),
+            TurnError::Failed { cause, .. } => write!(f, "{cause}"),
+        }
+    }
+}
+
+/// Maps an error from inside a turn, keeping the calls that had run. The stream's own cancel signal is a stop.
+fn turn_error(err: StrataError, ran: &[String]) -> TurnError {
+    match err {
+        StrataError::Stopped => TurnError::Stopped { ran: ran.to_vec() },
+        cause => TurnError::Failed { ran: ran.to_vec(), cause },
+    }
+}
+
 /// Runs one user turn: streams the model's reply and runs any tools it asks for, repeating until
 /// it answers without a tool call. Returns the final answer text. Tool activity goes to `on_chunk`.
 pub fn run_turn(
@@ -18,17 +53,17 @@ pub fn run_turn(
     switches: &Switches,
     cancel: &AtomicBool,
     on_chunk: &mut dyn FnMut(Chunk),
-) -> Result<String, StrataError> {
+) -> Result<String, TurnError> {
     let mut items = strata::message_items(messages, config);
     let mut ran: Vec<String> = Vec::new();
     for _ in 0..MAX_TOOL_ROUNDS {
         if cancel.load(Ordering::Relaxed) {
-            return Err(StrataError::Stopped { ran });
+            return Err(TurnError::Stopped { ran });
         }
         // Tool results can grow a turn past the window, so the turn is summarized in place. The
         // summary is not logged, so the history is unchanged.
         if compaction::turn_needs_summary(&items) {
-            let summary = compaction::summarize_turn(&items, config, cancel).map_err(|err| with_ran(err, &ran))?;
+            let summary = compaction::summarize_turn(&items, config, cancel).map_err(|err| turn_error(err, &ran))?;
             items = compaction::continue_turn(&items, summary);
         }
         let disabled = switches.snapshot();
@@ -50,7 +85,8 @@ pub fn run_turn(
         let constraint = grammar
             .as_ref()
             .map(|(text, lazy)| strata::Constraint { grammar: text, lazy: *lazy });
-        let reply = strata::stream_reply(&items, config, constraint, cancel, on_chunk).map_err(|err| with_ran(err, &ran))?;
+        let reply = strata::stream_reply(&items, config, constraint, cancel, on_chunk)
+            .map_err(|err| turn_error(err, &ran))?;
         if reply.tool_calls.is_empty() {
             return Ok(reply.content);
         }
@@ -59,7 +95,7 @@ pub fn run_turn(
         for call in &reply.tool_calls {
             on_chunk(Chunk::Tool(&format!("{} {}", call.name, call.arguments)));
             if cancel.load(Ordering::Relaxed) {
-                return Err(StrataError::Stopped { ran });
+                return Err(TurnError::Stopped { ran });
             }
             let result = if disabled.contains(&call.name) {
                 format!("error: tool {} is disabled", call.name)
@@ -74,17 +110,38 @@ pub fn run_turn(
             items.push(json!({ "role": "tool", "tool_call_id": call.id, "content": result }));
         }
     }
-    Err(StrataError::Malformed {
-        url: config.url.clone(),
-        reason: format!("more than {MAX_TOOL_ROUNDS} tool rounds in one turn"),
+    Err(TurnError::Failed {
+        ran,
+        cause: StrataError::Malformed {
+            url: config.url.clone(),
+            reason: format!("more than {MAX_TOOL_ROUNDS} tool rounds in one turn"),
+        },
     })
 }
 
-/// Adds the tool calls that already ran to a stop that came from the stream or a summary.
-fn with_ran(err: StrataError, ran: &[String]) -> StrataError {
-    match err {
-        StrataError::Stopped { .. } => StrataError::Stopped { ran: ran.to_vec() },
-        other => other,
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_failure_after_a_tool_round_still_lists_the_call_that_ran() {
+        let ran = vec!["delete_file x.txt".to_owned()];
+        let err = turn_error(
+            StrataError::Network { url: "u".to_owned(), cause: "down".to_owned() },
+            &ran,
+        );
+
+        assert!(matches!(err, TurnError::Failed { .. }));
+        assert_eq!(err.ran(), ran.as_slice());
+    }
+
+    #[test]
+    fn a_stream_stop_becomes_a_stop_with_the_same_calls() {
+        let ran = vec!["list_files .".to_owned()];
+        let err = turn_error(StrataError::Stopped, &ran);
+
+        assert!(matches!(err, TurnError::Stopped { .. }));
+        assert_eq!(err.ran(), ran.as_slice());
     }
 }
 

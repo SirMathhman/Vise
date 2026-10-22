@@ -101,9 +101,8 @@ pub type EventReader = BufReader<Box<dyn Read + Send + Sync>>;
 
 #[derive(Debug)]
 pub enum StrataError {
-    /// The user stopped the turn. `ran` lists the tool calls that had already run ("name arguments"): their effects
-    /// on disk remain, though the turn itself is not kept.
-    Stopped { ran: Vec<String> },
+    /// The reply was cancelled while it streamed. The turn layer (`agent::TurnError`) decides what that means.
+    Stopped,
     Network { url: String, cause: String },
     Timeout { url: String },
     Http { url: String, status: u16, body: String },
@@ -114,7 +113,7 @@ pub enum StrataError {
 impl fmt::Display for StrataError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            StrataError::Stopped { .. } => write!(f, "Stopped."),
+            StrataError::Stopped => write!(f, "Stopped."),
             StrataError::Network { url, cause } => write!(
                 f,
                 "Strata not reachable at {url} ({cause}). Start the Strata server and try again."
@@ -245,7 +244,7 @@ fn relay(
     for line in reader.lines() {
         if cancel.load(Ordering::Relaxed) {
             // Returning drops the reader, which closes the connection; Strata then stops generating.
-            return Err(StrataError::Stopped { ran: Vec::new() });
+            return Err(StrataError::Stopped);
         }
         let line = line.map_err(|err| io_error(url, err))?;
         let Some(data) = line.strip_prefix("data: ") else {
@@ -428,7 +427,7 @@ data: [DONE]
 
         let result = relay(reply.as_bytes(), "url", &cancel, &mut |_| {});
 
-        assert!(matches!(result, Err(StrataError::Stopped { .. })));
+        assert!(matches!(result, Err(StrataError::Stopped)));
     }
 
     #[test]

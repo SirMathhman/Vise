@@ -10,7 +10,15 @@ type StreamEvent =
   | { type: "content"; text: string }
   | { type: "tool"; text: string }
   | { type: "done"; answer: string; user_message?: string | null; told?: string[]; summary?: string | null; summary_failed?: string | null }
-  | { type: "error"; error: string };
+  | { type: "error"; error: string; ran?: string[] };
+
+// The error, with the tool calls that ran before it: their effects remain even though the turn did not finish.
+function describeFailure(error: string, ran?: string[] | null): string {
+  if (!ran || ran.length === 0) {
+    return error;
+  }
+  return `${error} ${ran.length} tool call(s) ran before this, and their effects remain: ${ran.join("; ")}`;
+}
 
 type Done = Extract<StreamEvent, { type: "done" }>;
 
@@ -73,8 +81,8 @@ async function streamChat(
     );
   }
   if (!res.ok || res.body === null) {
-    const data = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(data.error ?? `HTTP ${res.status}`);
+    const data = (await res.json().catch(() => ({}))) as { error?: string; ran?: string[] };
+    throw new Error(describeFailure(data.error ?? `HTTP ${res.status}`, data.ran));
   }
 
   const reader = res.body.getReader();
@@ -102,7 +110,7 @@ async function streamChat(
       }
       const event = JSON.parse(line.slice("data: ".length)) as StreamEvent;
       if (event.type === "error") {
-        throw new Error(event.error);
+        throw new Error(describeFailure(event.error, event.ran));
       }
       if (event.type === "done") {
         return event;

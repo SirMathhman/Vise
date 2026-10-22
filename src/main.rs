@@ -16,7 +16,8 @@ static TURN_ACTIVE: AtomicBool = AtomicBool::new(false);
 static STOP: AtomicBool = AtomicBool::new(false);
 
 use session::Session;
-use strata::{Chunk, Role, StrataError};
+use agent::TurnError;
+use strata::{Chunk, Role};
 
 /// Reads the working directory once at startup, for both the REPL and the web server.
 fn startup_config() -> strata::Config {
@@ -127,12 +128,15 @@ fn main() -> io::Result<()> {
         TURN_ACTIVE.store(false, Ordering::SeqCst);
         println!();
         match result {
-            Err(StrataError::Stopped { ran }) => {
-                session.pop();   // a stopped turn is not kept, as a failed one is not
-                if ran.is_empty() {
-                    println!("[stopped]");
-                } else {
-                    println!("[stopped] {} tool call(s) ran before the stop, and their effects remain: {}", ran.len(), ran.join("; "));
+            Err(err) => {
+                session.pop();   // a turn that did not finish is not kept
+                match &err {
+                    TurnError::Stopped { .. } => println!("[stopped]"),
+                    TurnError::Failed { .. } => eprintln!("{err}"),
+                }
+                let ran = err.ran();
+                if !ran.is_empty() {
+                    println!("{} tool call(s) ran before this, and their effects remain: {}", ran.len(), ran.join("; "));
                 }
             }
             Ok(reply) => {
@@ -144,10 +148,6 @@ fn main() -> io::Result<()> {
                     }
                     session.push(entry.role, entry.content);
                 }
-            }
-            Err(err) => {
-                session.pop();
-                eprintln!("{err}");
             }
         }
     }

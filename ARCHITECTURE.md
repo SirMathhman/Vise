@@ -13,7 +13,8 @@ Written for: developers working on this crate.
 - **Message**: one turn in a conversation, a `Role` (`User`, `Assistant`, `Summary`, or `SummaryFailed`) plus its text. Defined in `src/strata.rs`.
 - **Chunk**: one streamed piece of a turn: reasoning text, answer text, or a tool call (`Chunk::Tool`, currently a preformatted `name arguments` string). Defined in `src/strata.rs`.
 - **Config**: the server URL, model name, read timeout, and working directory, held in `strata::Config`. It defaults to the local server, the `qwen3.8-flash-next-iq2_xs` model, a 60-second read timeout, and no working directory. `main.rs` reads the current directory once at startup and passes it to both the REPL and the web server. When set, it is sent to the model as a leading system message on each request, and it is not stored in the session history. If the directory cannot be read, a warning is printed once at startup and the model is not told.
-- **StrataError**: the error type for a failed call. Its variants are `Network` (no connection), `Timeout` (no bytes within the read timeout), `Http` (non-2xx status), and `Malformed` (unparseable or unexpected response).
+- **StrataError**: the error type for a failed call to Strata. Its variants are `Network` (no connection), `Timeout` (no bytes within the read timeout), `Http` (non-2xx status), `Malformed` (unparseable or unexpected response), `GrammarRejected` (Strata refused the grammar), and `Stopped` (the stream was cancelled).
+- **TurnError**: the error type for a turn that did not finish, in `src/agent.rs`. `Stopped` means the user stopped it; `Failed` wraps a `StrataError` or a round-limit error. Both carry `ran`, the tool calls that ran before the failure, as `name arguments` strings.
 
 ## Structure
 
@@ -49,7 +50,7 @@ Dependencies run one way: `main` and `web` call `agent`. `agent` calls `strata`,
 - `open_stream(items, config, constraint)` builds a `ureq` agent with the configured read timeout, sends the request with the tool definitions, and returns a reader over the response body. Failures before any reply text are reported here.
 - `relay(reader, url, cancel, on_chunk)` reads server-sent events until `[DONE]`, checks `cancel` before each line, passes each reasoning and content delta to `on_chunk`, assembles streamed tool-call fragments by index, and returns a `Reply` with the answer text and tool calls.
 - `stream_reply(items, config, constraint, cancel, on_chunk)` is `open_stream` followed by `relay`. `constraint` is an optional `Constraint { grammar, lazy }`; a lazy one is sent with `grammar_lazy` and a `<tool_call>` token trigger. Whether Strata supports lazy grammars is read once at startup from `/v1/status` (`Config::lazy_grammar`).
-- `request_body(items, config)` builds the JSON body with `stream: true` and the tool definitions. It is pure.
+- `request_body(items, config, grammar)` builds the JSON body with `stream: true`, the tool definitions, and the grammar when one is given. It is pure.
 - `build_body(messages, config)` is `request_body` over `message_items`. It is pure, tested, and used only by tests.
 - `parse_reply(url, data)` extracts `choices[0].message.content` from a non-streaming response. It is pure, tested, and used only by tests.
 
@@ -75,7 +76,7 @@ The REPL appends the summary to its session. The web server returns it in the `d
 
 When a reply has no tool calls, its answer text is the turn's result. More than 8 rounds in one turn is an error.
 
-A turn can be stopped. `run_turn` takes a cancel flag, which the turn checks before each round, each tool call, and each line of the stream. Returning from the stream reader drops the connection, so Strata stops generating. A stopped turn returns `StrataError::Stopped { ran }`, where `ran` lists the tool calls that had already run. Their effects on disk remain, although the turn is not kept, so the REPL reports them and the web page's note says the calls shown above may have run. A tool that is already running finishes before the stop takes effect. In the REPL, Ctrl+C sets the flag while a turn runs, and a second Ctrl+C quits. In the web UI, the Stop button aborts the request, and the server cannot send the list after an abort. A write that fails because the page went away also sets the flag, so a closed tab stops its turn too.
+A turn can be stopped. `run_turn` takes a cancel flag, which the turn checks before each round, each tool call, and each line of the stream. Returning from the stream reader drops the connection, so Strata stops generating. Every failure of a turn is a `TurnError` whose `ran` lists the tool calls that ran before it, including network errors, timeouts, and the round limit. Their effects on disk remain, although the turn is not kept, so the REPL and the web error message report them. A tool that is already running finishes before a stop takes effect, and a call that was announced but stopped before it ran is not listed. In the REPL, Ctrl+C sets the flag while a turn runs, and a second Ctrl+C quits. In the web UI, the Stop button aborts the request, and the server cannot send the list after an abort, so the page only says that the calls shown above may have run. A write that fails because the page went away also sets the flag.
 
 `tools::run(name, arguments, root)` returns the result text for the model. A failed call returns text beginning with `error:`, so the model can recover and the turn continues. `list_files` takes a required `path` and a required `depth` of at least 1. Depth 1 lists only the directory's own entries, and subdirectories end with `/`.
 
@@ -162,7 +163,7 @@ Controls the architecture should have, and their status:
 1. Decide whether tool results should stay in the history. Today both front ends keep only the user message and the final answer, so the model cannot see earlier tool output in later turns.
 2. Cap tool output for both `list_files` and `read_file` by bytes, and cap `list_files` depth and entries. Consider limiting paths to the working directory.
 3. Move the tool-call wire format into `strata.rs`, make `Chunk::Tool` carry structured data, and let each front end format it. Pass tool definitions in through `Config` rather than having the client call `tools`.
-4. Give tool and turn-loop errors their own types, so the round cap is not reported as a Strata response error.
+4. Make tool errors typed, and carry `ran` as structured tool runs rather than preformatted strings, as `Chunk::Tool` does.
 5. Read the URL, model, and timeout from environment variables or command-line arguments, keeping `Config` as the injection point.
 6. Print `bye` when Ctrl+C quits the REPL at the prompt, as the normal exit does (Ctrl+C during a turn already stops the turn).
 7. Implement `std::error::Error` for `StrataError`, stop discarding body-read errors, and let the web route map error kinds to distinct statuses.

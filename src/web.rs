@@ -8,11 +8,11 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
-use crate::agent;
+use crate::agent::{self, TurnError};
 use crate::commands;
 use crate::compaction;
 use crate::tools::{self, Switches};
-use crate::strata::{Chunk, Config, Message, Role, StrataError};
+use crate::strata::{Chunk, Config, Message, Role};
 
 pub const DEFAULT_PORT: u16 = 3000;
 
@@ -221,7 +221,7 @@ fn chat(
 
     match outcome {
         // The page stopped the turn itself: nothing more is sent, and the connection is already gone.
-        Err(StrataError::Stopped { .. }) => Ok(()),
+        Err(TurnError::Stopped { .. }) => Ok(()),
         Ok(answer) => {
             start_stream(&mut stream, &mut started)?;
             let mut log = messages.clone();
@@ -247,11 +247,14 @@ fn chat(
             )
         }
         // Nothing was sent yet, so the failure can still be a plain JSON error response.
-        Err(err) if !started => {
-            let response = json_response(502, json!({ "error": err.to_string() }));
+        Err(err @ TurnError::Failed { .. }) if !started => {
+            let response = json_response(502, json!({ "error": err.to_string(), "ran": err.ran() }));
             write_response(&mut stream, &response)
         }
-        Err(err) => write_event(&mut stream, &json!({ "type": "error", "error": err.to_string() })),
+        Err(err @ TurnError::Failed { .. }) => write_event(
+            &mut stream,
+            &json!({ "type": "error", "error": err.to_string(), "ran": err.ran() }),
+        ),
     }
 }
 

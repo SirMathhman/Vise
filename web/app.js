@@ -1,4 +1,11 @@
 "use strict";
+// The error, with the tool calls that ran before it: their effects remain even though the turn did not finish.
+function describeFailure(error, ran) {
+    if (!ran || ran.length === 0) {
+        return error;
+    }
+    return `${error} ${ran.length} tool call(s) ran before this, and their effects remain: ${ran.join("; ")}`;
+}
 const conversation = [];
 // The switched-off tools the model has been told about in this conversation.
 let told = [];
@@ -51,7 +58,7 @@ async function streamChat(messages, onEvent, signal) {
     }
     if (!res.ok || res.body === null) {
         const data = (await res.json().catch(() => ({})));
-        throw new Error(data.error ?? `HTTP ${res.status}`);
+        throw new Error(describeFailure(data.error ?? `HTTP ${res.status}`, data.ran));
     }
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -75,7 +82,7 @@ async function streamChat(messages, onEvent, signal) {
             }
             const event = JSON.parse(line.slice("data: ".length));
             if (event.type === "error") {
-                throw new Error(event.error);
+                throw new Error(describeFailure(event.error, event.ran));
             }
             if (event.type === "done") {
                 return event;
