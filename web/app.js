@@ -265,15 +265,20 @@ let toolsWidth = 0;
 function clampToolsWidth(px) {
     return Math.max(MIN_TOOLS_PX, Math.min(px, layout.clientWidth - MIN_CHAT_PX));
 }
+// The width the user chose is kept as it is. The width shown is clamped to the window, so the chosen width comes back
+// when the window grows again.
 function setToolsWidth(px) {
     toolsWidth = px;
-    document.documentElement.style.setProperty("--tools-width", `${px}px`);
+    applyToolsWidth();
+}
+function applyToolsWidth() {
+    document.documentElement.style.setProperty("--tools-width", `${clampToolsWidth(toolsWidth)}px`);
 }
 // Restores the width this browser last used. Storage can be blocked, in which case the default width is used.
 try {
     const stored = Number(localStorage.getItem(DIVIDER_KEY));
     if (stored > 0) {
-        setToolsWidth(clampToolsWidth(stored));
+        setToolsWidth(stored);
     }
 }
 catch {
@@ -287,7 +292,7 @@ divider.addEventListener("pointerdown", (event) => {
 });
 divider.addEventListener("pointermove", (event) => {
     if (dragging) {
-        setToolsWidth(clampToolsWidth(layout.getBoundingClientRect().right - event.clientX));
+        setToolsWidth(layout.getBoundingClientRect().right - event.clientX);
     }
 });
 function endDrag() {
@@ -304,3 +309,9 @@ function endDrag() {
 }
 divider.addEventListener("pointerup", endDrag);
 divider.addEventListener("pointercancel", endDrag);
+// A narrower window clamps the shown width without changing the chosen one, and nothing is saved here.
+window.addEventListener("resize", () => {
+    if (toolsWidth > 0) {
+        applyToolsWidth();
+    }
+});

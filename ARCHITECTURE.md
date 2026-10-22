@@ -36,7 +36,8 @@ src/
   web.rs      std TcpListener HTTP server, one thread per connection:
               serves the UI, proxies /api/chat as server-sent events, and serves /api/tools for the Tools panel
 web/
-  index.html  page markup and styles
+  index.html  page markup and styles. The Tools panel width is set by a divider, clamped to keep a minimum chat width,
+              and kept per browser in localStorage (vise-tools-width). A narrower window clamps the shown width only.
   src/app.ts  client: reads the event stream and renders reasoning, tool calls, and answer
   app.js      compiled output of app.ts, committed so the server needs no build
   tsconfig.json
