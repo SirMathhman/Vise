@@ -57,9 +57,9 @@ Dependencies run one way: `main` and `web` call `agent`, `agent` calls `strata` 
 
 `src/compaction.rs` keeps long conversations within the model's context window. The log is append-only. Messages are never edited or removed, and a summary is appended after a reply once the messages that would be sent reach about 75% of 131072 tokens. The size is estimated as bytes divided by 3, because Vise does not read Strata's token counts.
 
-A request sends the latest summary (as a system message) followed by the messages after it. Messages before that summary are neither sent nor counted. To make the summary, Vise sends those messages again with the request `Summarize this conversation so it can be continued later...` appended at the end, so the prefix stays the same and the prompt cache still applies. A grammar forbids tool calls in that request. An empty or failed summary is reported as a warning and leaves the log unchanged.
+A request sends the latest summary (as a system message) followed by the messages after it. Messages before that summary are neither sent nor counted. To make the summary, Vise sends those messages again with the request `Summarize this conversation so it can be continued later...` appended at the end, so the prefix stays the same and the prompt cache still applies. A grammar forbids tool calls in that request. A failed summary is appended as a `SummaryFailed` entry. That entry is never sent to the model, and a new attempt waits until ten more messages have been added.
 
-The REPL appends the summary to its session. The web server returns it in the `done` event, and the page appends it to its log. A summary entry shows as "Earlier conversation summarized." Both sides therefore keep the same log.
+The REPL appends the summary to its session. The web server returns it in the `done` event (as `summary`, or as `summary_failed` with the reason when it failed), and the page appends the matching entry to its log. A summary entry shows as "Earlier conversation summarized." Both sides therefore keep the same log.
 
 ## Tools and the Turn Loop
 
