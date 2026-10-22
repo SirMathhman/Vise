@@ -12,7 +12,7 @@ Type `exit` or `quit` to leave the REPL. These commands work in the REPL and in 
 
 - `/new` starts a fresh conversation. (The web UI has a New button instead.)
 - `/tools` lists each tool as on or off.
-- `/disable <tool>` and `/enable <tool>` switch a tool off or on. A tool that is off cannot be called. Strata is also asked not to generate calls to it.
+- `/disable <tool>` and `/enable <tool>` switch a tool off or on for this session only: this REPL, or this browser tab. Other tabs and other REPL runs are not affected. A tool that is off cannot be called. Strata is also asked not to generate calls to it.
 
 Strata must be running at `http://127.0.0.1:8080`. Replies stream, and a model reply can call the file tools
 (`list_files`, `read_file`, `create_file`, `create_directory`, `delete_file`, `delete_directory`). Those tools only act

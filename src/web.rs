@@ -1,7 +1,7 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::io::{self, BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 use std::time::Duration;
 
@@ -35,21 +35,35 @@ struct Response {
     body: String,
 }
 
-pub fn serve(port: u16, config: Config, switches: Switches) -> io::Result<()> {
+/// Each browser tab's switches, keyed by the session id the tab sends. The map is shared; each tab's set is its own,
+/// so `/disable` in one tab never changes another.
+#[derive(Default)]
+struct Sessions {
+    by_id: Mutex<HashMap<String, Arc<Switches>>>,
+}
+
+impl Sessions {
+    fn get(&self, id: &str) -> Arc<Switches> {
+        let mut by_id = self.by_id.lock().unwrap_or_else(PoisonError::into_inner);
+        Arc::clone(by_id.entry(id.to_owned()).or_insert_with(|| Arc::new(Switches::default())))
+    }
+}
+
+pub fn serve(port: u16, config: Config) -> io::Result<()> {
     let listener = TcpListener::bind(("127.0.0.1", port))?;
     println!("Serving UI at http://127.0.0.1:{port}");
-    accept_loop(listener, Arc::new(config), Arc::new(switches));
+    accept_loop(listener, Arc::new(config), Arc::new(Sessions::default()));
     Ok(())
 }
 
-fn accept_loop(listener: TcpListener, config: Arc<Config>, switches: Arc<Switches>) {
+fn accept_loop(listener: TcpListener, config: Arc<Config>, sessions: Arc<Sessions>) {
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
                 let config = Arc::clone(&config);
-                let switches = Arc::clone(&switches);
+                let sessions = Arc::clone(&sessions);
                 thread::spawn(move || {
-                    if let Err(err) = handle(stream, &config, &switches) {
+                    if let Err(err) = handle(stream, &config, &sessions) {
                         eprintln!("request failed: {err}");
                     }
                 });
@@ -59,7 +73,7 @@ fn accept_loop(listener: TcpListener, config: Arc<Config>, switches: Arc<Switche
     }
 }
 
-fn handle(mut stream: TcpStream, config: &Config, switches: &Switches) -> io::Result<()> {
+fn handle(mut stream: TcpStream, config: &Config, sessions: &Sessions) -> io::Result<()> {
     stream.set_read_timeout(Some(READ_TIMEOUT))?;
     let mut reader = BufReader::new(stream.try_clone()?);
     let mut request = read_request(&mut reader)?;
@@ -70,7 +84,7 @@ fn handle(mut stream: TcpStream, config: &Config, switches: &Switches) -> io::Re
 
     request.body = read_body(&mut reader, request.content_length)?;
     if request.method == "POST" && request.path == "/api/chat" {
-        return chat(stream, &request, config, switches);
+        return chat(stream, &request, config, sessions);
     }
     write_response(&mut stream, &route(&request))
 }
@@ -140,7 +154,7 @@ fn chat(
     mut stream: TcpStream,
     request: &Request,
     config: &Config,
-    switches: &Switches,
+    sessions: &Sessions,
 ) -> io::Result<()> {
     let is_json = request
         .content_type
@@ -154,6 +168,12 @@ fn chat(
         return write_response(&mut stream, &response);
     }
 
+    let Some(session) = parse_session(&request.body) else {
+        let response = json_response(400, json!({ "error": "missing or invalid session" }));
+        return write_response(&mut stream, &response);
+    };
+    let switches = sessions.get(&session);
+
     let mut messages = match parse_messages(&request.body) {
         Ok(messages) => messages,
         Err(reason) => {
@@ -165,7 +185,7 @@ fn chat(
     if let Some(reply) = messages
         .last()
         .filter(|message| matches!(message.role, Role::User))
-        .and_then(|message| commands::handle(&message.content, switches))
+        .and_then(|message| commands::handle(&message.content, &switches))
     {
         start_stream(&mut stream, &mut started)?;
         write_event(&mut stream, &json!({ "type": "content", "text": reply }))?;
@@ -184,7 +204,7 @@ fn chat(
             message.content.clone()
         });
 
-    let outcome = agent::run_turn(&messages, config, switches, &mut |chunk| {
+    let outcome = agent::run_turn(&messages, config, &switches, &mut |chunk| {
         let event = match chunk {
             Chunk::Reasoning(text) => json!({ "type": "reasoning", "text": text }),
             Chunk::Content(text) => json!({ "type": "content", "text": text }),
@@ -243,6 +263,17 @@ fn start_stream(stream: &mut TcpStream, started: &mut bool) -> io::Result<()> {
 
 fn write_event(stream: &mut TcpStream, event: &Value) -> io::Result<()> {
     write!(stream, "data: {event}\n\n")
+}
+
+/// The tab's session id: a short token the page keeps in sessionStorage. Missing or malformed ids are refused.
+fn parse_session(body: &[u8]) -> Option<String> {
+    let id = serde_json::from_slice::<Value>(body)
+        .ok()?
+        .get("session")?
+        .as_str()?
+        .to_owned();
+    let valid = !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
+    valid.then_some(id)
 }
 
 /// The switched-off tools the page has already told the model about, sent with each chat request.
@@ -326,7 +357,7 @@ mod tests {
             accept_loop(
                 listener,
                 Arc::new(Config::default()),
-                Arc::new(Switches::default()),
+                Arc::new(Sessions::default()),
             )
         });
 
@@ -352,5 +383,54 @@ mod tests {
 
         assert!(request.content_length > MAX_BODY_BYTES);
         assert!(request.body.is_empty());
+    }
+    #[test]
+    fn a_tabs_switches_do_not_change_another_tab() {
+        let sessions = Sessions::default();
+        let a = sessions.get("tab-a");
+        let b = sessions.get("tab-b");
+
+        a.set("delete_file", false);
+
+        assert!(a.snapshot().contains("delete_file"));
+        assert!(!b.snapshot().contains("delete_file"));
+        assert!(Arc::ptr_eq(&a, &sessions.get("tab-a")));
+    }
+
+    #[test]
+    fn simultaneous_toggles_in_two_tabs_stay_separate() {
+        let sessions = Arc::new(Sessions::default());
+        let workers: Vec<_> = ["tab-a", "tab-b"]
+            .into_iter()
+            .map(|id| {
+                let sessions = Arc::clone(&sessions);
+                thread::spawn(move || {
+                    let switches = sessions.get(id);
+                    for _ in 0..500 {
+                        switches.set("delete_file", false);
+                        switches.set("delete_file", true);
+                    }
+                    switches.set("list_files", false);
+                })
+            })
+            .collect();
+        for worker in workers {
+            worker.join().unwrap();
+        }
+
+        for id in ["tab-a", "tab-b"] {
+            let switches = sessions.get(id);
+            assert!(!switches.snapshot().contains("delete_file"), "{id}");
+            assert!(switches.snapshot().contains("list_files"), "{id}");
+        }
+    }
+
+    #[test]
+    fn session_ids_are_required_and_short() {
+        assert_eq!(parse_session(br#"{"session":"tab-1"}"#).as_deref(), Some("tab-1"));
+        assert_eq!(parse_session(br#"{"messages":[]}"#), None);
+        assert_eq!(parse_session(br#"{"session":"a b"}"#), None);
+        assert_eq!(parse_session(br#"{"session":""}"#), None);
+        assert_eq!(parse_session(format!(r#"{{"session":"{}"}}"#, "x".repeat(65)).as_bytes()), None);
     }
 }

@@ -18,6 +18,22 @@ const conversation: Message[] = [];
 // The switched-off tools the model has been told about in this conversation.
 let told: string[] = [];
 
+// This tab's session: its switched-off tools live on the server under this id. It survives a reload of the tab and
+// is dropped when the tab closes. Storage can be blocked, in which case the session lasts for this page load.
+const SESSION_KEY = "vise-session";
+function sessionId(): string {
+  try {
+    const stored = sessionStorage.getItem(SESSION_KEY);
+    if (stored) return stored;
+    const fresh = crypto.randomUUID();
+    sessionStorage.setItem(SESSION_KEY, fresh);
+    return fresh;
+  } catch {
+    return crypto.randomUUID();
+  }
+}
+const session = sessionId();
+
 const log = document.getElementById("log") as HTMLDivElement;
 const form = document.getElementById("form") as HTMLFormElement;
 const input = document.getElementById("input") as HTMLInputElement;
@@ -43,7 +59,7 @@ async function streamChat(
     res = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages, told }),
+      body: JSON.stringify({ messages, told, session }),
     });
   } catch {
     throw new Error(

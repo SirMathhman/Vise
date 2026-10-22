@@ -65,10 +65,10 @@ fn print_chunk(chunk: Chunk, section: &mut Option<Section>) {
 
 fn main() -> io::Result<()> {
     let config = startup_config();
-    let switches = tools::Switches::default();
     if std::env::args().nth(1).as_deref() == Some("web") {
-        return web::serve(web::DEFAULT_PORT, config, switches);
+        return web::serve(web::DEFAULT_PORT, config);   // each browser tab has its own switches (web::Sessions)
     }
+    let switches = tools::Switches::default();   // the REPL is one session: its own process and switches
 
     let mut session = Session::new();
     let mut input = io::stdin().lock();
