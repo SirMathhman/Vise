@@ -695,7 +695,17 @@ function showPreview(on) {
     if (on) {
         notePreview.innerHTML = renderMarkdown(noteContent.value);
     }
+    else {
+        fitNoteContent();
+    }
 }
+// The editor is as tall as its text, so it never scrolls inside the Notes pane. An editor that is hidden has no height
+// to measure, so this runs again when it is shown.
+function fitNoteContent() {
+    noteContent.style.height = "auto";
+    noteContent.style.height = `${noteContent.scrollHeight}px`;
+}
+noteContent.addEventListener("input", fitNoteContent);
 notePreviewToggle.addEventListener("click", () => showPreview(notePreview.hidden === true));
 async function refreshNotes() {
     try {

@@ -91,8 +91,10 @@
         padding: 0 0.2em;
         border-radius: 0.2rem;
       }
+      /* Code blocks wrap like the rest of the reply, so the chat log is the only thing that scrolls. */
       .markdown pre {
-        overflow-x: auto;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
         padding: 0.5rem;
         background: #ececec;
         border-radius: 0.4rem;
@@ -325,6 +327,11 @@
         box-sizing: border-box;
         font: inherit;
         font-size: 0.9em;
+      }
+      /* The editor grows to its text (see fitNoteContent), so the Notes pane is the only thing that scrolls. */
+      #note-content {
+        overflow: hidden;
+        resize: none;
       }
       .profile-choice {
         display: flex;
