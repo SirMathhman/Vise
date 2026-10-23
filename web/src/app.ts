@@ -625,48 +625,86 @@ async function loadSession(name: string): Promise<void> {
   }
 }
 
-// The Files panel: the working directory's tree. Folders start closed, so only the top level shows until one is opened.
-interface TreeNode {
+// The Files panel: the working directory's tree. A folder's entries are fetched when it is first opened, a page at a
+// time, so no folder is read in full and no part of the tree is fetched until it is opened.
+interface TreeEntry {
   name: string;
   dir: boolean;
-  children?: TreeNode[];
 }
 
-interface FileTree {
+interface FolderPage {
+  dir: string;
   name: string;
-  children: TreeNode[];
-  truncated: boolean;
+  entries: TreeEntry[];
+  next: number;
+  more: boolean;
 }
 
 const filesTree = document.getElementById("files-tree") as HTMLDivElement;
-const filesStatus = document.getElementById("files-status") as HTMLParagraphElement;
 const filesRefresh = document.getElementById("files-refresh") as HTMLButtonElement;
 
-// `prefix` is the path of the folder these nodes sit in, relative to the working directory. A file's button opens it.
-function treeList(nodes: TreeNode[], prefix: string): HTMLUListElement {
-  const list = document.createElement("ul");
-  for (const node of nodes) {
-    const item = document.createElement("li");
-    if (node.dir) {
-      const details = document.createElement("details");
-      const summary = document.createElement("summary");
-      summary.textContent = `${node.name}/`;
-      details.append(summary, treeList(node.children ?? [], `${prefix}${node.name}/`));
-      item.append(details);
-    } else {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "file-link";
-      button.textContent = node.name;
-      const path = `${prefix}${node.name}`;
-      button.addEventListener("click", () => {
-        openFile(path);
-      });
-      item.append(button);
-    }
-    list.append(item);
+// One entry as a row. A folder is a closed section that fetches its entries when first opened. A file is a button that
+// opens it.
+function treeItem(entry: TreeEntry, dir: string): HTMLLIElement {
+  const item = document.createElement("li");
+  const path = dir === "" ? entry.name : `${dir}/${entry.name}`;
+  if (entry.dir) {
+    const details = document.createElement("details");
+    const summary = document.createElement("summary");
+    summary.textContent = `${entry.name}/`;
+    const body = document.createElement("div");
+    let fetched = false;
+    details.addEventListener("toggle", () => {
+      if (details.open && !fetched) {
+        fetched = true;
+        void loadFolderPage(path, body, 0);
+      }
+    });
+    details.append(summary, body);
+    item.append(details);
+  } else {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "file-link";
+    button.textContent = entry.name;
+    button.addEventListener("click", () => {
+      openFile(path);
+    });
+    item.append(button);
   }
-  return list;
+  return item;
+}
+
+// Adds one page of a folder's entries to its body, with Load more when more follow. The list and the button are found
+// as direct children, so a folder nested inside never picks up this one's controls.
+async function loadFolderPage(dir: string, body: HTMLElement, offset: number): Promise<FolderPage | null> {
+  body.querySelector(":scope > .tree-more")?.remove();
+  let list = body.querySelector<HTMLUListElement>(":scope > ul");
+  if (list === null) {
+    list = document.createElement("ul");
+    body.append(list);
+  }
+  try {
+    const page = await postJson<FolderPage>("/api/files", { dir, offset });
+    list.append(...page.entries.map((entry) => treeItem(entry, dir)));
+    if (page.more) {
+      const more = document.createElement("button");
+      more.type = "button";
+      more.className = "tree-more";
+      more.textContent = "Load more";
+      more.addEventListener("click", () => {
+        void loadFolderPage(dir, body, page.next);
+      });
+      body.append(more);
+    }
+    return page;
+  } catch (err) {
+    const error = document.createElement("p");
+    error.className = "error";
+    error.textContent = err instanceof Error ? err.message : String(err);
+    body.append(error);
+    return null;
+  }
 }
 
 const viewers = document.getElementById("viewers") as HTMLElement;
@@ -828,23 +866,13 @@ viewersCloseAll.addEventListener("click", () => {
 });
 
 async function refreshFiles(): Promise<void> {
-  try {
-    const res = await fetch("/api/files");
-    const data = (await res.json().catch(() => ({}))) as Partial<FileTree> & { error?: string };
-    if (!res.ok || data.children === undefined) {
-      throw new Error(data.error ?? `HTTP ${res.status}`);
-    }
+  filesTree.replaceChildren();
+  const page = await loadFolderPage("", filesTree, 0);
+  if (page !== null) {
     const title = document.createElement("p");
     title.className = "description";
-    title.textContent = `${data.name}/`;
-    filesTree.replaceChildren(title, treeList(data.children, ""));
-    filesStatus.textContent = data.truncated ? "The tree is cut short: only the first entries are listed." : "";
-    filesStatus.className = "summary";
-    filesStatus.hidden = !data.truncated;
-  } catch (err) {
-    filesStatus.textContent = err instanceof Error ? err.message : String(err);
-    filesStatus.className = "error";
-    filesStatus.hidden = false;
+    title.textContent = `${page.name}/`;
+    filesTree.prepend(title);
   }
 }
 

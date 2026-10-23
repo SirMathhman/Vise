@@ -108,8 +108,8 @@ fn handle(mut stream: TcpStream, config: &Config, sessions: &Sessions) -> io::Re
     if request.method == "POST" && request.path == "/api/sessions" {
         return write_response(&mut stream, &sessions_response(&request.body, config));
     }
-    if request.method == "GET" && request.path == "/api/files" {
-        return write_response(&mut stream, &files_response(config));
+    if request.method == "POST" && request.path == "/api/files" {
+        return write_response(&mut stream, &files_response(&request.body, config));
     }
     if request.method == "POST" && request.path == "/api/file" {
         return write_response(&mut stream, &file_response(&request.body, config));
@@ -136,13 +136,23 @@ fn file_response(body: &[u8], config: &Config) -> Response {
     }
 }
 
-/// The file tree of the working directory for the Files panel.
-fn files_response(config: &Config) -> Response {
+/// One page of a folder's entries for the Files panel. The folder is named relative to the working directory (`""` is
+/// the working directory). Failures are reported as a 400 with the reason.
+fn files_response(body: &[u8], config: &Config) -> Response {
+    let data: Value = match serde_json::from_slice(body) {
+        Ok(data) => data,
+        Err(err) => return json_response(400, json!({ "error": format!("invalid JSON: {err}") })),
+    };
+    let dir = data["dir"].as_str().unwrap_or("");
+    let offset = data["offset"].as_u64().and_then(|offset| usize::try_from(offset).ok()).unwrap_or(0);
     let Some(root) = config.working_dir.as_deref() else {
         return json_response(400, json!({ "error": "no working directory is set" }));
     };
-    match file_tree::build(Path::new(root)) {
-        Ok(tree) => json_response(200, tree),
+    match file_tree::list_dir(Path::new(root), dir, offset) {
+        Ok(page) => {
+            let entries: Vec<Value> = page.entries.iter().map(|entry| json!({ "name": entry.name, "dir": entry.dir })).collect();
+            json_response(200, json!({ "dir": dir, "name": page.name, "entries": entries, "next": page.next, "more": page.more }))
+        }
         Err(error) => json_response(400, json!({ "error": error })),
     }
 }

@@ -1,31 +1,58 @@
-//! The file tree of the working directory, for the web UI's Files panel. `.git`, `target` and `node_modules` are left
-//! out at every level. A folder that cannot be read is shown empty rather than failing the whole tree.
+//! The file tree and file contents for the web UI's Files panel. A folder is listed one page at a time, when it is
+//! opened, and a text file is read one block of lines at a time. `.git`, `target` and `node_modules` are left out.
 
 use std::fs;
 use std::io::{self, BufRead, BufReader, Read, Seek, SeekFrom};
-use std::path::{Path, PathBuf};
-
-use serde_json::{Value, json};
+use std::path::Path;
 
 use crate::workspace::resolve;
 
 const SKIPPED: [&str; 3] = [".git", "target", "node_modules"];
 
-/// The most entries a tree lists. A larger tree is cut short, and the result says so.
-pub const MAX_ENTRIES: usize = 2000;
+/// The most entries listed in one page of a folder.
+pub const ENTRIES_PER_PAGE: usize = 500;
 
-/// The tree of `root`: its name, its entries as `children`, and whether the listing was cut short.
-pub fn build(root: &Path) -> Result<Value, String> {
-    build_with_limit(root, MAX_ENTRIES)
+/// One entry of a folder: its name, and whether it is a folder.
+#[derive(Debug)]
+pub struct Entry {
+    pub name: String,
+    pub dir: bool,
 }
 
-fn build_with_limit(root: &Path, limit: usize) -> Result<Value, String> {
-    let mut builder = Builder { limit, count: 0, truncated: false };
-    let children = builder.children(root)?;
-    let name = root
+/// One page of a folder's entries: the folder's name, the entries, the index where the next page starts, and whether
+/// more entries follow.
+#[derive(Debug)]
+pub struct Page {
+    pub name: String,
+    pub entries: Vec<Entry>,
+    pub next: usize,
+    pub more: bool,
+}
+
+/// One page of the entries of a folder in the working directory (`""` is the working directory itself). Folders come
+/// first, each group sorted by name, and the page starts at index `offset` in that order. The path is confined to the
+/// working directory.
+pub fn list_dir(root: &Path, dir: &str, offset: usize) -> Result<Page, String> {
+    let target = resolve(Some(root), dir, true)?;
+    let reader = fs::read_dir(&target).map_err(|err| format!("could not read {dir}: {err}"))?;
+    let mut entries: Vec<Entry> = reader
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_name().to_str().is_none_or(|name| !SKIPPED.contains(&name)))
+        .map(|entry| Entry {
+            name: entry.file_name().to_string_lossy().into_owned(),
+            dir: entry.file_type().is_ok_and(|kind| kind.is_dir()),
+        })
+        .collect();
+    entries.sort_by(|a, b| b.dir.cmp(&a.dir).then_with(|| a.name.cmp(&b.name)));
+
+    let total = entries.len();
+    let end = total.min(offset.saturating_add(ENTRIES_PER_PAGE));
+    let start = offset.min(end);
+    let page: Vec<Entry> = entries.drain(start..end).collect();
+    let name = target
         .file_name()
-        .map_or_else(|| root.display().to_string(), |name| name.to_string_lossy().into_owned());
-    Ok(json!({ "name": name, "children": children, "truncated": builder.truncated }))
+        .map_or_else(|| target.display().to_string(), |name| name.to_string_lossy().into_owned());
+    Ok(Page { name, entries: page, next: end, more: end < total })
 }
 
 /// The most lines sent in one block of a file.
@@ -94,46 +121,10 @@ fn text_line(path: &str, bytes: &[u8]) -> Result<String, String> {
     }
 }
 
-struct Builder {
-    limit: usize,
-    count: usize,
-    truncated: bool,
-}
-
-impl Builder {
-    /// The entries of a folder: folders first, then files, each sorted by name.
-    fn children(&mut self, dir: &Path) -> Result<Vec<Value>, String> {
-        let reader = fs::read_dir(dir).map_err(|err| format!("could not read {}: {err}", dir.display()))?;
-        let mut entries: Vec<(bool, String, PathBuf)> = reader
-            .filter_map(Result::ok)
-            .filter(|entry| entry.file_name().to_str().is_none_or(|name| !SKIPPED.contains(&name)))
-            .map(|entry| {
-                let is_dir = entry.file_type().is_ok_and(|kind| kind.is_dir());
-                (is_dir, entry.file_name().to_string_lossy().into_owned(), entry.path())
-            })
-            .collect();
-        entries.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
-
-        let mut nodes = Vec::new();
-        for (is_dir, name, path) in entries {
-            if self.count >= self.limit {
-                self.truncated = true;
-                break;
-            }
-            self.count += 1;
-            let node = if is_dir {
-                json!({ "name": name, "dir": true, "children": self.children(&path).unwrap_or_default() })
-            } else {
-                json!({ "name": name, "dir": false })
-            };
-            nodes.push(node);
-        }
-        Ok(nodes)
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
 
     fn folder(test: &str) -> PathBuf {
@@ -150,13 +141,31 @@ mod tests {
     #[test]
     fn folders_come_first_and_skipped_folders_are_left_out() {
         let root = folder("skip");
-        let tree = build(&root);
+        let page = list_dir(&root, "", 0);
         fs::remove_dir_all(&root).unwrap();
 
-        let tree = tree.unwrap();
-        let names: Vec<&str> = tree["children"].as_array().unwrap().iter().map(|node| node["name"].as_str().unwrap()).collect();
+        let page = page.unwrap();
+        let names: Vec<&str> = page.entries.iter().map(|entry| entry.name.as_str()).collect();
         assert_eq!(names, ["src", "README.md"]);
-        assert_eq!(tree["truncated"], false);
+        assert!(!page.more);
+    }
+
+    #[test]
+    fn a_folder_is_listed_a_page_at_a_time() {
+        let root = folder("pages");
+        fs::create_dir_all(root.join("many")).unwrap();
+        for n in 0..=ENTRIES_PER_PAGE {
+            fs::write(root.join("many").join(format!("f{n:04}.txt")), "").unwrap();
+        }
+        let first = list_dir(&root, "many", 0).unwrap();
+        let second = list_dir(&root, "many", first.next);
+        fs::remove_dir_all(&root).unwrap();
+
+        assert_eq!(first.entries.len(), ENTRIES_PER_PAGE);
+        assert!(first.more);
+        let second = second.unwrap();
+        assert_eq!(second.entries.len(), 1);
+        assert!(!second.more);
     }
 
     #[test]
@@ -205,14 +214,4 @@ mod tests {
         assert!(!second.more);
     }
 
-    #[test]
-    fn a_tree_past_the_limit_is_cut_short_and_says_so() {
-        let root = folder("limit");
-        let tree = build_with_limit(&root, 1);
-        fs::remove_dir_all(&root).unwrap();
-
-        let tree = tree.unwrap();
-        assert_eq!(tree["children"].as_array().unwrap().len(), 1);
-        assert_eq!(tree["truncated"], true);
-    }
 }
