@@ -687,7 +687,15 @@ function treeItem(entry: TreeEntry, dir: string): HTMLLIElement {
 // Adds one page of a folder's entries to its body, with Load more when more follow. A failed request shows its reason
 // and keeps Load more, so the same page can be asked for again. The list and the controls are found as direct children,
 // so a folder nested inside never picks up this one's controls.
+// The folders whose page is being fetched. A second request for the same folder waits for the first, so a double click
+// on Load more cannot append the same entries twice.
+const fetchingFolders = new WeakSet<HTMLElement>();
+
 async function loadFolderPage(dir: string, body: HTMLElement, after: TreeCursor | null): Promise<FolderPage | null> {
+  if (fetchingFolders.has(body)) {
+    return null;
+  }
+  fetchingFolders.add(body);
   body.querySelector(":scope > .tree-error")?.remove();
   let list = body.querySelector<HTMLUListElement>(":scope > ul");
   if (list === null) {
@@ -716,6 +724,8 @@ async function loadFolderPage(dir: string, body: HTMLElement, after: TreeCursor 
     error.textContent = err instanceof Error ? err.message : String(err);
     body.append(error);
     return null;
+  } finally {
+    fetchingFolders.delete(body);
   }
 }
 
