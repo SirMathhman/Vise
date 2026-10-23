@@ -1069,10 +1069,21 @@ function startReply(chat) {
     thinking.append(thinkingSummary, thinkingText);
     const answerText = markdownBlock();
     bubble.append(thinking, answerText);
-    return { chat, bubble, thinking, thinkingText, answerText, answerRaw: "", subagent: null };
+    return { chat, bubble, thinking, thinkingText, reasoningDone: false, answerText, answerRaw: "", subagent: null };
+}
+// Folds the Thinking block away once the reasoning is over. It can be opened again from its summary.
+function finishReasoning(reply) {
+    if (!reply.reasoningDone) {
+        reply.reasoningDone = true;
+        reply.thinking.open = false;
+    }
 }
 // Shows one streamed piece of the reply in its place in the bubble.
 function showStreamed(reply, streamed) {
+    if (streamed.type !== "reasoning") {
+        // The answer or a tool call only starts after the reasoning has ended.
+        finishReasoning(reply);
+    }
     if (streamed.type === "reasoning") {
         reply.thinking.hidden = false;
         reply.thinkingText.textContent += streamed.text;
@@ -1198,6 +1209,7 @@ form.addEventListener("submit", async (event) => {
         chat.inFlight = controller;
         refreshForm();
         const done = await streamChat(messages, chat.told, (streamed) => showStreamed(reply, streamed), controller.signal);
+        finishReasoning(reply);
         keepReply(chat, done, command);
     }
     catch (err) {
