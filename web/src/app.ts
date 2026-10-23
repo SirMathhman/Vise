@@ -9,6 +9,9 @@ type StreamEvent =
   | { type: "reasoning"; text: string }
   | { type: "content"; text: string }
   | { type: "tool"; text: string }
+  | { type: "subagent_start"; profile: string; task: string }
+  | { type: "nested"; event: StreamEvent }
+  | { type: "subagent_end"; failed: boolean }
   | { type: "done"; answer: string; user_message?: string | null; told?: string[]; summary?: string | null; summary_failed?: string | null; profile?: string | null }
   | { type: "error"; error: string; ran?: string[] };
 
@@ -147,6 +150,65 @@ async function streamChat(
   throw new Error("The reply ended before it finished. Try again.");
 }
 
+// One subagent run in a reply: a block that is open while it runs and folds away when it finishes. Its reasoning,
+// answer text and tool lines appear in the order the subagent produced them.
+interface Subagent {
+  block: HTMLDetailsElement;
+  summary: HTMLElement;
+  label: string;
+  // The part being streamed into, and its kind. A tool line ends the part, so the next text starts a new one.
+  part: HTMLDivElement | null;
+  partKind: "reasoning" | "content" | null;
+  raw: string;
+}
+
+function openSubagent(bubble: HTMLElement, start: { profile: string; task: string }): Subagent {
+  const block = document.createElement("details");
+  block.className = "subagent";
+  block.open = true;
+  const summary = document.createElement("summary");
+  const label = `${start.profile}: ${start.task}`;
+  summary.textContent = `Subagent running, ${label}`;
+  block.append(summary);
+  bubble.append(block);
+  return { block, summary, label, part: null, partKind: null, raw: "" };
+}
+
+function subagentPart(sub: Subagent, kind: "reasoning" | "content"): HTMLDivElement {
+  if (sub.part === null || sub.partKind !== kind) {
+    const part = document.createElement("div");
+    part.className = kind === "content" ? "markdown" : "thinking";
+    sub.block.append(part);
+    sub.part = part;
+    sub.partKind = kind;
+    sub.raw = "";
+  }
+  return sub.part;
+}
+
+function renderSubagentStep(sub: Subagent, step: StreamEvent): void {
+  if (step.type === "reasoning") {
+    subagentPart(sub, "reasoning").textContent += step.text;
+  } else if (step.type === "content") {
+    const part = subagentPart(sub, "content");
+    sub.raw += step.text;
+    part.innerHTML = renderMarkdown(sub.raw);
+  } else if (step.type === "tool") {
+    const line = document.createElement("div");
+    line.className = "tool";
+    line.textContent = `[tool] ${step.text}`;
+    sub.block.append(line);
+    sub.part = null;
+    sub.partKind = null;
+  }
+}
+
+// A finished subagent folds away, unless it failed, so the reason stays in view.
+function closeSubagent(sub: Subagent, failed: boolean): void {
+  sub.summary.textContent = failed ? `Subagent failed, ${sub.label}` : `Subagent finished, ${sub.label}`;
+  sub.block.open = failed;
+}
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const text = input.value.trim();
@@ -187,6 +249,7 @@ form.addEventListener("submit", async (event) => {
     inFlight = controller;
     sendButton.hidden = true;
     stopButton.hidden = false;
+    let subagent: Subagent | null = null;
     const done = await streamChat(messages, (streamed) => {
       if (streamed.type === "reasoning") {
         thinking.hidden = false;
@@ -203,6 +266,22 @@ form.addEventListener("submit", async (event) => {
         answerText.className = "markdown";
         answerRaw = "";
         bubble.append(toolLine, answerText);
+      } else if (streamed.type === "subagent_start") {
+        subagent = openSubagent(bubble, streamed);
+      } else if (streamed.type === "nested") {
+        if (subagent !== null) {
+          renderSubagentStep(subagent, streamed.event);
+        }
+      } else if (streamed.type === "subagent_end") {
+        if (subagent !== null) {
+          closeSubagent(subagent, streamed.failed);
+        }
+        subagent = null;
+        // Text after a subagent goes in a new block below it, as text after a tool call does.
+        answerText = document.createElement("div");
+        answerText.className = "markdown";
+        answerRaw = "";
+        bubble.append(answerText);
       }
       scrollToEnd();
     }, controller.signal);

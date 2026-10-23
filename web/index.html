@@ -61,6 +61,16 @@
         color: #555;
         white-space: pre-wrap;
       }
+      .subagent {
+        margin: 0.5rem 0;
+        padding: 0.25rem 0.75rem;
+        border-left: 3px solid #bbb;
+        font-size: 0.95em;
+      }
+      .subagent > summary {
+        color: #555;
+        cursor: pointer;
+      }
       .markdown {
         white-space: normal;
         overflow-wrap: anywhere;
@@ -304,6 +314,12 @@
           background: #2a2a2a;
         }
         .tool {
+          color: #aaa;
+        }
+        .subagent {
+          border-left-color: #555;
+        }
+        .subagent > summary {
           color: #aaa;
         }
         .error {

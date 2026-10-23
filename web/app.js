@@ -111,6 +111,51 @@ async function streamChat(messages, onEvent, signal) {
     }
     throw new Error("The reply ended before it finished. Try again.");
 }
+function openSubagent(bubble, start) {
+    const block = document.createElement("details");
+    block.className = "subagent";
+    block.open = true;
+    const summary = document.createElement("summary");
+    const label = `${start.profile}: ${start.task}`;
+    summary.textContent = `Subagent running, ${label}`;
+    block.append(summary);
+    bubble.append(block);
+    return { block, summary, label, part: null, partKind: null, raw: "" };
+}
+function subagentPart(sub, kind) {
+    if (sub.part === null || sub.partKind !== kind) {
+        const part = document.createElement("div");
+        part.className = kind === "content" ? "markdown" : "thinking";
+        sub.block.append(part);
+        sub.part = part;
+        sub.partKind = kind;
+        sub.raw = "";
+    }
+    return sub.part;
+}
+function renderSubagentStep(sub, step) {
+    if (step.type === "reasoning") {
+        subagentPart(sub, "reasoning").textContent += step.text;
+    }
+    else if (step.type === "content") {
+        const part = subagentPart(sub, "content");
+        sub.raw += step.text;
+        part.innerHTML = renderMarkdown(sub.raw);
+    }
+    else if (step.type === "tool") {
+        const line = document.createElement("div");
+        line.className = "tool";
+        line.textContent = `[tool] ${step.text}`;
+        sub.block.append(line);
+        sub.part = null;
+        sub.partKind = null;
+    }
+}
+// A finished subagent folds away, unless it failed, so the reason stays in view.
+function closeSubagent(sub, failed) {
+    sub.summary.textContent = failed ? `Subagent failed, ${sub.label}` : `Subagent finished, ${sub.label}`;
+    sub.block.open = failed;
+}
 form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const text = input.value.trim();
@@ -148,6 +193,7 @@ form.addEventListener("submit", async (event) => {
         inFlight = controller;
         sendButton.hidden = true;
         stopButton.hidden = false;
+        let subagent = null;
         const done = await streamChat(messages, (streamed) => {
             if (streamed.type === "reasoning") {
                 thinking.hidden = false;
@@ -166,6 +212,25 @@ form.addEventListener("submit", async (event) => {
                 answerText.className = "markdown";
                 answerRaw = "";
                 bubble.append(toolLine, answerText);
+            }
+            else if (streamed.type === "subagent_start") {
+                subagent = openSubagent(bubble, streamed);
+            }
+            else if (streamed.type === "nested") {
+                if (subagent !== null) {
+                    renderSubagentStep(subagent, streamed.event);
+                }
+            }
+            else if (streamed.type === "subagent_end") {
+                if (subagent !== null) {
+                    closeSubagent(subagent, streamed.failed);
+                }
+                subagent = null;
+                // Text after a subagent goes in a new block below it, as text after a tool call does.
+                answerText = document.createElement("div");
+                answerText.className = "markdown";
+                answerRaw = "";
+                bubble.append(answerText);
             }
             scrollToEnd();
         }, controller.signal);
