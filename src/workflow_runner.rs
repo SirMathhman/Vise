@@ -16,7 +16,7 @@ use crate::grammar;
 use crate::notes;
 use crate::strata::{self, Chunk, Config, Constraint, Message, Role, ToolCall};
 use crate::tools::{self, Switches};
-use crate::workflows::{self, Step, Workflow};
+use crate::workflows::{self, Call, Step, Workflow};
 
 /// What a run starts from: the conversation before the workflow, the switch notes the model has been given, and the
 /// profile that is active when the workflow starts.
@@ -154,14 +154,15 @@ fn tool(run: &mut Run, name: &str, arguments: Option<&Value>, argument: &str, en
         Some(Value::Object(map)) => map,
         _ => Map::new(),
     };
-    let calls = if workflows::parameter_names(name).iter().all(|parameter| fixed.contains_key(parameter)) {
-        vec![ToolCall { name: name.to_owned(), arguments: Value::Object(fixed).to_string(), ..ToolCall::default() }]
-    } else {
-        let mut calls = forced_calls(run, name, env)?;
-        for call in &mut calls {
-            call.arguments = with_fixed(&call.arguments, &fixed).map_err(|reason| run.fail(reason))?;
+    let calls = match workflows::call_of(name, fixed) {
+        Call::Direct(fixed) => vec![ToolCall { name: name.to_owned(), arguments: Value::Object(fixed).to_string(), ..ToolCall::default() }],
+        Call::Forced { fixed, model } => {
+            let mut calls = forced_calls(run, name, &model, env)?;
+            for call in &mut calls {
+                call.arguments = with_fixed(&call.arguments, &fixed).map_err(|reason| run.fail(reason))?;
+            }
+            calls
         }
-        calls
     };
     let root = env.config.working_dir.as_deref().map(Path::new);
     for call in calls {
@@ -183,9 +184,9 @@ fn with_fixed(arguments: &str, fixed: &Map<String, Value>) -> Result<String, Str
 }
 
 /// The calls the model makes for a tool step. The grammar allows only calls to `name`, and one reply must make one.
-fn forced_calls(run: &mut Run, name: &str, env: &Env<'_>) -> Result<Vec<ToolCall>, TurnError> {
+fn forced_calls(run: &mut Run, name: &str, model: &[String], env: &Env<'_>) -> Result<Vec<ToolCall>, TurnError> {
     let mut items = strata::message_items(&run.messages, env.config);
-    items.push(json!({ "role": "user", "content": format!("Call the {name} tool now, with the arguments it needs.") }));
+    items.push(json!({ "role": "user", "content": format!("Call the {name} tool now. Supply these arguments: {}.", model.join(", ")) }));
     let grammar = grammar::forced_call(name);
     let constraint = Constraint { grammar: &grammar, lazy: false };
     let reply = strata::stream_reply(&items, env.config, Some(constraint), env.cancel, &mut |_| {})

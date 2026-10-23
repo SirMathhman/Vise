@@ -59,7 +59,9 @@ fn parse(text: &str, name: &str) -> Result<Workflow, String> {
 
 /// The steps of workflow `name` from their JSON form, the form a workflow file and the Workflows panel both use.
 pub fn from_steps(items: &[Value], name: &str) -> Result<Workflow, String> {
-    let steps = items
+    // Typing happens here, for a file as well as for the panel's save, so every tool step runs with typed arguments.
+    let typed = type_steps(items).map_err(|err| format!("workflow {name}, {err}"))?;
+    let steps = typed
         .iter()
         .enumerate()
         .map(|(index, item)| step(item).map_err(|err| format!("workflow {name}, step {}: {err}", index + 1)))
@@ -92,13 +94,55 @@ pub fn type_steps(items: &[Value]) -> Result<Vec<Value>, String> {
 fn typed_arguments(tool: &str, arguments: &Map<String, Value>) -> Result<Value, String> {
     let parameters = parameters(tool).ok_or_else(|| format!("unknown tool {tool}"))?;
     let mut typed = Map::new();
-    for (name, text) in arguments {
-        let text = text.as_str().ok_or_else(|| format!("argument {name} must be text"))?;
+    for (name, value) in arguments {
         let schema = parameters.get(name).ok_or_else(|| format!("{tool} takes no argument {name}"))?;
-        let value = typed_value(schema, text).map_err(|err| format!("argument {name} {err}"))?;
+        let value = match value {
+            Value::String(text) => typed_value(schema, text),
+            other => checked_value(schema, other),
+        }
+        .map_err(|err| format!("argument {name} {err}"))?;
         typed.insert(name.clone(), value);
     }
     Ok(Value::Object(typed))
+}
+
+/// A value that is already typed, as a workflow file written by the panel holds it, checked against its parameter.
+fn checked_value(schema: &Value, value: &Value) -> Result<Value, String> {
+    if let Some(choices) = schema["enum"].as_array() {
+        if choices.contains(value) {
+            return Ok(value.clone());
+        }
+        let listed: Vec<&str> = choices.iter().filter_map(Value::as_str).collect();
+        return Err(format!("must be one of {}", listed.join(", ")));
+    }
+    let kind = schema["type"].as_str().unwrap_or("string");
+    let fits = match kind {
+        "integer" => value.as_i64().is_some_and(|number| schema["minimum"].as_i64().map_or(true, |minimum| number >= minimum)),
+        "number" => value.is_number(),
+        "boolean" => value.is_boolean(),
+        _ => value.is_string(),
+    };
+    if fits {
+        Ok(value.clone())
+    } else {
+        Err(format!("must be a {kind} value"))
+    }
+}
+
+/// How a tool step runs. When its fixed arguments cover every parameter the tool declares, the call is made as it is.
+/// Otherwise the model makes the call, and `model` names the parameters it supplies.
+pub enum Call {
+    Direct(Map<String, Value>),
+    Forced { fixed: Map<String, Value>, model: Vec<String> },
+}
+
+pub fn call_of(tool: &str, fixed: Map<String, Value>) -> Call {
+    let model: Vec<String> = parameter_names(tool).into_iter().filter(|name| !fixed.contains_key(name)).collect();
+    if model.is_empty() {
+        Call::Direct(fixed)
+    } else {
+        Call::Forced { fixed, model }
+    }
 }
 
 /// The value of a text read as a parameter with `schema`. A parameter with a listed set of choices takes one of them;
@@ -354,6 +398,19 @@ mod tests {
         assert!(bad_choice.unwrap_err().contains("must be one of local, global"));
         assert!(unknown.unwrap_err().contains("takes no argument colour"));
         assert!(good.is_ok());
+    }
+
+    #[test]
+    fn a_hand_written_argument_is_typed_when_the_file_is_read_and_a_call_is_direct_only_when_all_are_fixed() {
+        let workflow = parse(r#"{"steps":[{"tool":"list_files","arguments":{"path":".","depth":"2"}}]}"#, "demo").unwrap();
+        let refused = parse(r#"{"steps":[{"tool":"list_files","arguments":{"path":".","depth":"deep"}}]}"#, "demo");
+        let whole = Map::from_iter([("path".to_owned(), json!(".")), ("depth".to_owned(), json!(2))]);
+        let part = Map::from_iter([("path".to_owned(), json!("."))]);
+
+        assert!(matches!(&workflow.steps[0], Step::Tool { arguments: Some(args), .. } if args["depth"] == json!(2)));
+        assert!(refused.is_err());
+        assert!(matches!(call_of("list_files", whole), Call::Direct(_)));
+        assert!(matches!(call_of("list_files", part), Call::Forced { model, .. } if model == ["depth"]));
     }
 
     #[test]
