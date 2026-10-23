@@ -2,11 +2,15 @@ use std::collections::BTreeSet;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::Path;
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use serde_json::{Value, json};
 
+use crate::approval::{self, Approvals, Source, Verdict};
+use crate::edits::Undo;
 use crate::notes;
+use crate::strata::Chunk;
 use crate::workspace::{line_range, read_range, resolve, string_arg};
 
 pub const LIST_FILES: &str = "list_files";
@@ -34,14 +38,39 @@ pub const NAMES: [&str; 12] = [
     RUN_SUBAGENT,
 ];
 
-/// Which tools are switched off. One instance is shared by the whole run, so a change made by a
-/// command applies to every later request.
+/// The tools that change files or notes. The user approves each call before it runs, unless they allowed the tool for
+/// this conversation.
+pub fn needs_approval(name: &str) -> bool {
+    matches!(
+        name,
+        CREATE_FILE | CREATE_DIRECTORY | DELETE_FILE | DELETE_DIRECTORY | notes::CREATE_NOTE | notes::EDIT_NOTE | notes::DELETE_NOTE
+    )
+}
+
+/// Which tools are switched off, and how the user answers for edits. One instance is shared by the whole run, so a change
+/// made by a command applies to every later request.
 #[derive(Default)]
 pub struct Switches {
     disabled: Mutex<BTreeSet<String>>,
+    approvals: Arc<Approvals>,
 }
 
 impl Switches {
+    /// Switches whose edits are approved from `source`: the terminal, or a browser tab.
+    pub fn with_source(source: Source) -> Self {
+        Self { disabled: Mutex::default(), approvals: Arc::new(Approvals::new(source)) }
+    }
+
+    /// Makes these switches share `parent`'s approvals, so a subagent's edits are approved by the same user.
+    pub fn sharing_approvals(mut self, parent: &Switches) -> Self {
+        self.approvals = Arc::clone(&parent.approvals);
+        self
+    }
+
+    pub fn approvals(&self) -> &Approvals {
+        &self.approvals
+    }
+
     /// The names of the tools that are switched off right now.
     pub fn snapshot(&self) -> BTreeSet<String> {
         lock(&self.disabled).clone()
@@ -233,6 +262,67 @@ pub fn run(name: &str, arguments: &str, root: Option<&Path>) -> String {
         _ => Err(format!("unknown tool {name}")),
     };
     truncate(output.unwrap_or_else(|err| format!("error: {err}")))
+}
+
+/// What a tool call came to: the text for the model, the text for an edit the user undid, or a stop during the question.
+pub enum Outcome {
+    Ran(String),
+    Undone(String),
+    Stopped,
+}
+
+/// Runs a tool call. An edit the user has not allowed for this conversation runs first, and then the user keeps or undoes
+/// it. A denied or stopped edit is taken back before this returns.
+pub fn call(
+    name: &str,
+    arguments: &str,
+    root: Option<&Path>,
+    switches: &Switches,
+    cancel: &AtomicBool,
+    on_chunk: &mut dyn FnMut(Chunk),
+) -> Outcome {
+    let approvals = switches.approvals();
+    if !needs_approval(name) || approvals.is_always(name) {
+        return Outcome::Ran(run(name, arguments, root));
+    }
+    let home = std::env::home_dir();
+    let undo = record(name, arguments, root, notes::Roots { working: root, home: home.as_deref() });
+    let result = run(name, arguments, root);
+    // A failed call changed nothing, so there is nothing for the user to keep or undo.
+    if result.starts_with("error:") {
+        return Outcome::Ran(result);
+    }
+    match approval::ask(approvals, name, arguments, &result, cancel, on_chunk) {
+        Verdict::Run => Outcome::Ran(result),
+        Verdict::Denied => Outcome::Undone(match undo.restore() {
+            Ok(()) => approval::DENIED.to_owned(),
+            Err(err) => format!("error: the user denied this edit, and undoing it failed: {err}"),
+        }),
+        Verdict::Stopped => {
+            // The turn is stopped, so an undo that fails has no reply to report to; the edit stays as it is.
+            let _ = undo.restore();
+            Outcome::Stopped
+        }
+    }
+}
+
+/// Records what an edit is about to change, so it can be taken back. A call that names nothing to change records nothing.
+fn record(name: &str, arguments: &str, root: Option<&Path>, roots: notes::Roots) -> Undo {
+    let Ok(args) = parse_arguments(arguments) else {
+        return Undo::default();
+    };
+    let file = || string_arg(&args, "path").ok().and_then(|path| resolve(root, path, false).ok());
+    match name {
+        CREATE_FILE => file().map_or_else(Undo::default, |path| Undo::created_file(&path)),
+        CREATE_DIRECTORY => file().map_or_else(Undo::default, |path| Undo::created_dir(&path)),
+        DELETE_FILE => file().map_or_else(Undo::default, |path| Undo::file_as_it_is(&path)),
+        DELETE_DIRECTORY => file().map_or_else(Undo::default, |path| Undo::deleted_dir(&path)),
+        notes::CREATE_NOTE => notes::named_note(arguments, roots).map_or_else(Undo::default, |path| Undo::created_file(&path)),
+        notes::EDIT_NOTE | notes::DELETE_NOTE => {
+            notes::named_note(arguments, roots).map_or_else(Undo::default, |path| Undo::file_as_it_is(&path))
+        }
+        _ => Undo::default(),
+    }
 }
 
 fn truncate(output: String) -> String {
@@ -539,5 +629,60 @@ mod note_tests {
         let same = names(&["delete_file"]);
 
         assert_eq!(note_changes("hi", &same, &same), "hi");
+    }
+}
+
+#[cfg(test)]
+mod call_tests {
+    use super::*;
+    use crate::approval::Answer;
+
+    fn scratch(name: &str) -> std::path::PathBuf {
+        let root = std::env::temp_dir().join(format!("vise-call-{}-{name}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    /// Runs a file creation, answering the question with `answer` as soon as it is asked.
+    fn create_and_answer(root: &Path, answer: Answer) -> Outcome {
+        let switches = Switches::with_source(Source::Browser);
+        let cancel = AtomicBool::new(false);
+        let args = r#"{"path":"hello.txt","content":"hi"}"#;
+        call(CREATE_FILE, args, Some(root), &switches, &cancel, &mut |chunk| {
+            if let Chunk::Approval { id, .. } = chunk {
+                switches.approvals().answer(id, answer);
+            }
+        })
+    }
+
+    #[test]
+    fn a_denied_edit_is_undone() {
+        let root = scratch("denied");
+        let outcome = create_and_answer(&root, Answer::Deny);
+
+        assert!(matches!(outcome, Outcome::Undone(ref text) if text.as_str() == approval::DENIED));
+        assert!(!root.join("hello.txt").exists());
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn only_the_edits_need_approval() {
+        for name in [CREATE_FILE, CREATE_DIRECTORY, DELETE_FILE, DELETE_DIRECTORY, notes::CREATE_NOTE, notes::EDIT_NOTE, notes::DELETE_NOTE] {
+            assert!(needs_approval(name), "{name} should need approval");
+        }
+        for name in [LIST_FILES, READ_FILE, notes::LIST_NOTES, notes::READ_NOTE, RUN_SUBAGENT] {
+            assert!(!needs_approval(name), "{name} should not need approval");
+        }
+    }
+
+    #[test]
+    fn a_kept_edit_stays() {
+        let root = scratch("kept");
+        let outcome = create_and_answer(&root, Answer::Allow);
+
+        assert!(matches!(outcome, Outcome::Ran(ref text) if text.as_str() == "created file hello.txt"));
+        assert_eq!(fs::read_to_string(root.join("hello.txt")).unwrap(), "hi");
+        fs::remove_dir_all(&root).unwrap();
     }
 }

@@ -13,6 +13,7 @@ Type `exit` or `quit` to leave the REPL. These commands work in the REPL and in 
 - `/new` starts a fresh conversation. (The web UI has a New button instead.)
 - Ctrl+C in the REPL stops a running reply. A second Ctrl+C quits. The web UI's Stop button does the same. A stopped reply stays on screen, but it is not kept in the conversation.
 - `/tools` lists each tool as on or off.
+- When the model creates, deletes or edits a file or a note, the change is made first and then you are asked whether to keep it. The question shows what the edit did. In the REPL, `y` keeps it, `a` keeps it and allows that tool for the rest of the conversation, and anything else undoes it. The web UI shows Keep, Keep and allow, and Undo buttons under the edit. Undo takes the change back, and so does a Stop. Starting a new conversation asks again.
 - `/disable <tool>` and `/enable <tool>` switch a tool off or on for this session only: this REPL, or this browser tab. Other tabs and other REPL runs are not affected. A tool that is off cannot be called. Strata is also asked not to generate calls to it.
 - The web UI has a Tools panel beside the chat. It lists every tool with its description and an on/off switch. A switch there works like `/enable` and `/disable` for this browser tab, and it applies from the next message. Drag the divider between the chat and the panel to change the panel's width; the width is remembered in this browser.
 - `/notes` lists every note as `scope category/name`. `/notes <scope>/<category>/<name>` shows one note in full, where scope is `local` or `global`.

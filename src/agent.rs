@@ -92,8 +92,15 @@ pub fn run_turn(
                 }
             } else {
                 let root = config.working_dir.as_deref().map(Path::new);
-                ran.push(format!("{} {}", call.name, call.arguments));
-                tools::run(&call.name, &call.arguments, root)
+                match tools::call(&call.name, &call.arguments, root, switches, cancel, on_chunk) {
+                    tools::Outcome::Ran(text) => {
+                        ran.push(format!("{} {}", call.name, call.arguments));
+                        text
+                    }
+                    // An undone edit no longer changes anything, so it is not listed as having run.
+                    tools::Outcome::Undone(text) => text,
+                    tools::Outcome::Stopped => return Err(TurnError::Stopped { ran }),
+                }
             };
             items.push(json!({ "role": "tool", "tool_call_id": call.id, "content": result }));
         }

@@ -113,6 +113,9 @@ pub enum Chunk<'a> {
     SubagentEnd { failed: bool },
     /// The start of a workflow step, with the text that names it. Only a workflow run sends these.
     Step(&'a str),
+    /// An edit that has run and waits for the user to keep or undo it. `id` names the request the answer goes to, and
+    /// `result` is what the edit reported.
+    Approval { id: u64, name: &'a str, arguments: &'a str, result: &'a str },
 }
 
 /// A tool call the model asked for, assembled from streamed fragments.

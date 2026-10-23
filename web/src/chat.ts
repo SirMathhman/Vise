@@ -16,6 +16,7 @@ type StreamEvent =
   | { type: "nested"; event: StreamEvent }
   | { type: "subagent_end"; failed: boolean }
   | { type: "step"; text: string }
+  | Approval
   | { type: "done"; answer: string; user_message?: string | null; told?: string[]; summary?: string | null; summary_failed?: string | null; profile?: string | null; workflow?: Message[] | null }
   | { type: "error"; error: string; ran?: string[] };
 
@@ -28,6 +29,7 @@ function describeFailure(error: string, ran?: string[] | null): string {
 }
 
 type Done = Extract<StreamEvent, { type: "done" }>;
+type Approval = { type: "approval"; id: number; name: string; arguments: string; result: string };
 
 // One open chat. A chat that is not shown keeps streaming a reply into its log, so switching away does not stop it.
 interface Chat {
@@ -48,6 +50,8 @@ interface Chat {
   // The default profile's request. The first message waits for it. Stop cancels it.
   defaultProfile: Promise<void>;
   defaultAbort: AbortController | null;
+  // The edits shown in this chat that are still waiting for an answer. Stop answers them, so the server ends the turn.
+  approvals: Set<number>;
 }
 
 // This tab's session: its switched-off tools live on the server under this id. It survives a reload of the tab and
@@ -104,6 +108,7 @@ function createChat(onClose: (chat: Chat) => void): Chat {
     closed: false,
     defaultProfile: Promise.resolve(),
     defaultAbort: null,
+    approvals: new Set(),
   };
   chats.push(chat);
   return chat;
@@ -161,6 +166,58 @@ function toolLine(text: string): HTMLDivElement {
   line.className = "tool";
   line.textContent = `[tool] ${text}`;
   return line;
+}
+
+type ApprovalAnswer = "allow" | "always" | "deny" | "stop";
+
+// The buttons under an edit that waits for approval: the answer each sends, and the line it leaves in their place.
+const APPROVAL_CHOICES: [label: string, answer: ApprovalAnswer, result: string][] = [
+  ["Keep", "allow", "Kept."],
+  ["Keep, and allow this tool for this conversation", "always", "Kept, and allowed for this conversation."],
+  ["Undo", "deny", "Undone."],
+];
+
+// Sends the answer to an edit that waits for one. The turn resumes once the server has it.
+async function answerApproval(chat: Chat, id: number, answer: ApprovalAnswer): Promise<void> {
+  chat.approvals.delete(id);
+  await postJson<Record<string, unknown>>("/api/approve", { session, id, answer });
+}
+
+// An edit the model made, with the result and buttons to keep it or undo it. Undo takes the edit back on the server.
+function approvalBlock(chat: Chat, request: Approval): HTMLDivElement {
+  const block = document.createElement("div");
+  block.className = "approval";
+  const question = document.createElement("div");
+  question.className = "tool";
+  question.textContent = `[approve] ${request.name} ${request.arguments}\n-> ${request.result}`;
+  const choices = document.createElement("div");
+  choices.className = "approval-choices";
+  for (const [label, answer, result] of APPROVAL_CHOICES) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = label;
+    button.addEventListener("click", () => {
+      choices.textContent = "Sending the answer...";
+      answerApproval(chat, request.id, answer).then(
+        () => (choices.textContent = result),
+        (err: unknown) => (choices.textContent = errorMessage(err)),
+      );
+    });
+    choices.append(button);
+  }
+  chat.approvals.add(request.id);
+  block.append(question, choices);
+  return block;
+}
+
+// Stops a chat's turn. Each edit still waiting is answered with stop, so the server ends the turn, and the request is
+// aborted as well.
+function abortTurn(chat: Chat): void {
+  for (const id of [...chat.approvals]) {
+    answerApproval(chat, id, "stop").catch(() => undefined);
+  }
+  chat.inFlight?.abort();
+  chat.defaultAbort?.abort();
 }
 
 // A block that holds markdown text, which is rendered again as each piece arrives.
@@ -266,8 +323,10 @@ function subagentPart(sub: Subagent, kind: "reasoning" | "content"): HTMLDivElem
   return sub.part;
 }
 
-function renderSubagentStep(sub: Subagent, step: StreamEvent): void {
-  if (step.type === "reasoning") {
+function renderSubagentStep(sub: Subagent, step: StreamEvent, chat: Chat): void {
+  if (step.type === "approval") {
+    sub.block.append(approvalBlock(chat, step));
+  } else if (step.type === "reasoning") {
     subagentPart(sub, "reasoning").textContent += step.text;
   } else if (step.type === "content") {
     const part = subagentPart(sub, "content");

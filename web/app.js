@@ -128,6 +128,7 @@ function createChat(onClose) {
         closed: false,
         defaultProfile: Promise.resolve(),
         defaultAbort: null,
+        approvals: new Set(),
     };
     chats.push(chat);
     return chat;
@@ -180,6 +181,49 @@ function toolLine(text) {
     line.className = "tool";
     line.textContent = `[tool] ${text}`;
     return line;
+}
+// The buttons under an edit that waits for approval: the answer each sends, and the line it leaves in their place.
+const APPROVAL_CHOICES = [
+    ["Keep", "allow", "Kept."],
+    ["Keep, and allow this tool for this conversation", "always", "Kept, and allowed for this conversation."],
+    ["Undo", "deny", "Undone."],
+];
+// Sends the answer to an edit that waits for one. The turn resumes once the server has it.
+async function answerApproval(chat, id, answer) {
+    chat.approvals.delete(id);
+    await postJson("/api/approve", { session, id, answer });
+}
+// An edit the model made, with the result and buttons to keep it or undo it. Undo takes the edit back on the server.
+function approvalBlock(chat, request) {
+    const block = document.createElement("div");
+    block.className = "approval";
+    const question = document.createElement("div");
+    question.className = "tool";
+    question.textContent = `[approve] ${request.name} ${request.arguments}\n-> ${request.result}`;
+    const choices = document.createElement("div");
+    choices.className = "approval-choices";
+    for (const [label, answer, result] of APPROVAL_CHOICES) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = label;
+        button.addEventListener("click", () => {
+            choices.textContent = "Sending the answer...";
+            answerApproval(chat, request.id, answer).then(() => (choices.textContent = result), (err) => (choices.textContent = errorMessage(err)));
+        });
+        choices.append(button);
+    }
+    chat.approvals.add(request.id);
+    block.append(question, choices);
+    return block;
+}
+// Stops a chat's turn. Each edit still waiting is answered with stop, so the server ends the turn, and the request is
+// aborted as well.
+function abortTurn(chat) {
+    for (const id of [...chat.approvals]) {
+        answerApproval(chat, id, "stop").catch(() => undefined);
+    }
+    chat.inFlight?.abort();
+    chat.defaultAbort?.abort();
 }
 // A block that holds markdown text, which is rendered again as each piece arrives.
 function markdownBlock() {
@@ -258,8 +302,11 @@ function subagentPart(sub, kind) {
     }
     return sub.part;
 }
-function renderSubagentStep(sub, step) {
-    if (step.type === "reasoning") {
+function renderSubagentStep(sub, step, chat) {
+    if (step.type === "approval") {
+        sub.block.append(approvalBlock(chat, step));
+    }
+    else if (step.type === "reasoning") {
         subagentPart(sub, "reasoning").textContent += step.text;
     }
     else if (step.type === "content") {
@@ -1482,9 +1529,12 @@ function showStreamed(reply, streamed) {
     else if (streamed.type === "subagent_start") {
         reply.subagent = openSubagent(reply.bubble, streamed);
     }
+    else if (streamed.type === "approval") {
+        reply.bubble.append(approvalBlock(reply.chat, streamed));
+    }
     else if (streamed.type === "nested") {
         if (reply.subagent !== null) {
-            renderSubagentStep(reply.subagent, streamed.event);
+            renderSubagentStep(reply.subagent, streamed.event, reply.chat);
         }
     }
     else if (streamed.type === "subagent_end") {
@@ -1614,10 +1664,7 @@ form.addEventListener("submit", async (event) => {
         endTurn(chat);
     }
 });
-stopButton.addEventListener("click", () => {
-    active.inFlight?.abort();
-    active.defaultAbort?.abort();
-});
+stopButton.addEventListener("click", () => abortTurn(active));
 // Opens a new chat with the default profile and shows it. The chats already open are kept.
 function newChat() {
     const chat = createChat(closeChat);
@@ -1627,8 +1674,7 @@ function newChat() {
 // Closes a chat. A reply still running in it is stopped. Closing the last chat opens a new one in its place.
 function closeChat(chat) {
     chat.closed = true;
-    chat.inFlight?.abort();
-    chat.defaultAbort?.abort();
+    abortTurn(chat);
     const index = chats.indexOf(chat);
     chats.splice(index, 1);
     chat.log.remove();

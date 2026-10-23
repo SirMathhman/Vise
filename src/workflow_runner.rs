@@ -167,9 +167,15 @@ fn tool(run: &mut Run, name: &str, arguments: Option<&Value>, argument: &str, en
     let root = env.config.working_dir.as_deref().map(Path::new);
     for call in calls {
         let line = format!("{} {}", call.name, call.arguments);
-        let result = tools::run(&call.name, &call.arguments, root);
+        let result = match tools::call(&call.name, &call.arguments, root, env.switches, env.cancel, on_chunk) {
+            tools::Outcome::Ran(text) => {
+                run.ran.push(line.clone());
+                text
+            }
+            tools::Outcome::Undone(text) => text,
+            tools::Outcome::Stopped => return Err(TurnError::Stopped { ran: run.ran.clone() }),
+        };
         on_chunk(Chunk::Tool(&format!("{line}\n{result}")));
-        run.ran.push(line);
     }
     Ok(())
 }

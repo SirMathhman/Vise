@@ -13,6 +13,7 @@ mod store;
 mod tests;
 
 use std::fs;
+use std::path::PathBuf;
 
 use serde_json::{Value, json};
 
@@ -126,6 +127,15 @@ pub fn run(name: &str, arguments: &str, roots: Roots) -> Result<String, String> 
         DELETE_NOTE => delete(&args, roots),
         _ => Err(format!("unknown tool {name}")),
     }
+}
+
+/// The file a note tool call names, after the same checks the call makes. `None` when the arguments do not name a note,
+/// in which case the call will fail and change nothing.
+pub fn named_note(arguments: &str, roots: Roots) -> Option<PathBuf> {
+    let args: Value = serde_json::from_str(arguments).ok()?;
+    let scope = scope_of(&args).ok()?;
+    let (category, name) = note_names(&args).ok()?;
+    note_path(scope, roots, category, name).ok()
 }
 
 /// Handles a `/notes` line typed by the user: `/notes` lists every note, and `/notes <scope>/<category>/<name>`

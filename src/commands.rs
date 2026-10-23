@@ -64,6 +64,8 @@ const DEFAULT_INSTRUCTIONS: &str = "";
 /// Applies the built-in default profile, as a new conversation does. The working directory's AGENTS.md, if it has
 /// one, joins the instructions too. The instructions come back empty when there is neither.
 pub fn default_profile(switches: &Switches, root: Option<&Path>) -> Choice {
+    // A new conversation forgets the edits the user allowed for the last one.
+    switches.approvals().clear_always();
     if let Some(names) = DEFAULT_TOOLS {
         set_tools(names, switches);
     }

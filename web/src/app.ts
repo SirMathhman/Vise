@@ -75,9 +75,11 @@ function showStreamed(reply: Reply, streamed: StreamEvent): void {
     reply.bubble.append(toolLine(streamed.text), reply.answerText);
   } else if (streamed.type === "subagent_start") {
     reply.subagent = openSubagent(reply.bubble, streamed);
+  } else if (streamed.type === "approval") {
+    reply.bubble.append(approvalBlock(reply.chat, streamed));
   } else if (streamed.type === "nested") {
     if (reply.subagent !== null) {
-      renderSubagentStep(reply.subagent, streamed.event);
+      renderSubagentStep(reply.subagent, streamed.event, reply.chat);
     }
   } else if (streamed.type === "subagent_end") {
     if (reply.subagent !== null) {
@@ -212,10 +214,7 @@ form.addEventListener("submit", async (event) => {
   }
 });
 
-stopButton.addEventListener("click", () => {
-  active.inFlight?.abort();
-  active.defaultAbort?.abort();
-});
+stopButton.addEventListener("click", () => abortTurn(active));
 
 // Opens a new chat with the default profile and shows it. The chats already open are kept.
 function newChat(): void {
@@ -227,8 +226,7 @@ function newChat(): void {
 // Closes a chat. A reply still running in it is stopped. Closing the last chat opens a new one in its place.
 function closeChat(chat: Chat): void {
   chat.closed = true;
-  chat.inFlight?.abort();
-  chat.defaultAbort?.abort();
+  abortTurn(chat);
   const index = chats.indexOf(chat);
   chats.splice(index, 1);
   chat.log.remove();

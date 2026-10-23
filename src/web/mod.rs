@@ -1,6 +1,7 @@
 //! The local web server: the page and its scripts, the chat stream, and the JSON requests the panels make. Each panel's
 //! requests are in their own module, and this file holds the server loop, the request and response handling, and the chat.
 
+mod approval_panel;
 mod files_panel;
 mod notes_panel;
 mod sessions_panel;
@@ -19,6 +20,7 @@ use std::time::Duration;
 use serde_json::{Value, json};
 
 use crate::agent;
+use crate::approval::Source;
 use crate::turn::TurnError;
 use crate::commands;
 use crate::compaction;
@@ -28,6 +30,7 @@ use crate::strata::{self, Chunk, Config, Message, Role};
 use crate::workflow_runner;
 use crate::workflows;
 
+use approval_panel::approve_response;
 use files_panel::{file_response, files_response};
 use notes_panel::notes_response;
 use sessions_panel::sessions_response;
@@ -68,7 +71,8 @@ struct Sessions {
 impl Sessions {
     fn get(&self, id: &str) -> Arc<Switches> {
         let mut by_id = self.by_id.lock().unwrap_or_else(PoisonError::into_inner);
-        Arc::clone(by_id.entry(id.to_owned()).or_insert_with(|| Arc::new(Switches::default())))
+        // A tab's edits are approved in its own chat, so its switches answer from the browser.
+        Arc::clone(by_id.entry(id.to_owned()).or_insert_with(|| Arc::new(Switches::with_source(Source::Browser))))
     }
 
     /// The tab's switches if it has any. Unlike `get`, this never adds an entry.
@@ -130,6 +134,9 @@ fn handle(mut stream: TcpStream, config: &Config, sessions: &Sessions) -> io::Re
     }
     if request.method == "POST" && request.path == "/api/tools" {
         return write_response(&mut stream, &tools_response(&request.body, sessions));
+    }
+    if request.method == "POST" && request.path == "/api/approve" {
+        return write_response(&mut stream, &approve_response(&request.body, sessions));
     }
     if request.method == "POST" && request.path == "/api/notes" {
         let home = std::env::home_dir();
@@ -454,6 +461,9 @@ fn chunk_event(chunk: Chunk) -> Value {
         Chunk::Nested(step) => json!({ "type": "nested", "event": chunk_event(*step) }),
         Chunk::SubagentEnd { failed } => json!({ "type": "subagent_end", "failed": failed }),
         Chunk::Step(text) => json!({ "type": "step", "text": text }),
+        Chunk::Approval { id, name, arguments, result } => {
+            json!({ "type": "approval", "id": id, "name": name, "arguments": arguments, "result": result })
+        }
     }
 }
 

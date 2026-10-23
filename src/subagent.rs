@@ -40,7 +40,7 @@ pub fn run_subagent(
         Err(err) => return Ok(format!("error: {err}")),
     };
 
-    let child = subagent_switches(profile.tools.as_deref(), &switches.snapshot());
+    let child = subagent_switches(profile.tools.as_deref(), &switches.snapshot()).sharing_approvals(switches);
     let mut messages = Vec::new();
     if !profile.instructions.is_empty() {
         let content = format!(

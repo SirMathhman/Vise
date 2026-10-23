@@ -1,6 +1,8 @@
 mod agent;
+mod approval;
 mod commands;
 mod compaction;
+mod edits;
 mod file_tree;
 mod grammar;
 mod notes;
@@ -16,7 +18,7 @@ mod workflow_runner;
 mod workflows;
 mod workspace;
 
-use std::io::{self, BufRead, Write};
+use std::io::{self, Write};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -93,6 +95,14 @@ impl Printer {
             }
             // The terminal does not run workflows, so no step starts here.
             Chunk::Step(_) => {}
+            // The answer is read right after this line, so the cursor is left where the user types it.
+            Chunk::Approval { name, arguments, result, .. } => {
+                self.end_line();
+                self.write(&format!(
+                    "[approve] {name} {arguments}\n-> {result}\nKeep this edit? [y = keep, a = keep and allow this tool for the conversation, n = undo] "
+                ));
+                self.mid_line = false;
+            }
         }
     }
 
@@ -157,7 +167,6 @@ fn main() -> io::Result<()> {
 
     let mut session = Session::new();
     start_conversation(&mut session, &switches, config.working_dir.as_deref().map(Path::new));
-    let mut input = io::stdin().lock();
 
     println!("Strata REPL ready. Type 'exit' or press Ctrl+C to quit. Type '/new' to start over.");
 
@@ -166,7 +175,7 @@ fn main() -> io::Result<()> {
         io::stdout().flush()?;
 
         let mut line = String::new();
-        if input.read_line(&mut line)? == 0 {
+        if io::stdin().read_line(&mut line)? == 0 {
             break;
         }
 
