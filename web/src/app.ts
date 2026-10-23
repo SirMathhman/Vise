@@ -8,7 +8,7 @@ interface Reply {
   bubble: HTMLDivElement;
   thinking: HTMLDetailsElement;
   thinkingText: HTMLDivElement;
-  // Set once the reasoning is over, so the Thinking block folds away only once.
+  // Set once the reasoning is over, so the Thinking block folds away only once for each stretch of reasoning.
   reasoningDone: boolean;
   answerText: HTMLDivElement;
   // The reply so far as the model wrote it. It is rendered again as each piece arrives.
@@ -47,6 +47,11 @@ function showStreamed(reply: Reply, streamed: StreamEvent): void {
     finishReasoning(reply);
   }
   if (streamed.type === "reasoning") {
+    if (reply.reasoningDone) {
+      // Reasoning after a tool round opens the block again, so it is seen. It folds again when the next round starts.
+      reply.reasoningDone = false;
+      reply.thinking.open = true;
+    }
     reply.thinking.hidden = false;
     reply.thinkingText.textContent += streamed.text;
   } else if (streamed.type === "content") {

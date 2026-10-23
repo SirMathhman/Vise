@@ -1085,6 +1085,11 @@ function showStreamed(reply, streamed) {
         finishReasoning(reply);
     }
     if (streamed.type === "reasoning") {
+        if (reply.reasoningDone) {
+            // Reasoning after a tool round opens the block again, so it is seen. It folds again when the next round starts.
+            reply.reasoningDone = false;
+            reply.thinking.open = true;
+        }
         reply.thinking.hidden = false;
         reply.thinkingText.textContent += streamed.text;
     }
