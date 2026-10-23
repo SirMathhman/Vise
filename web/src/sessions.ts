@@ -1,7 +1,7 @@
-// The Sessions panel: saved conversations, and the autosave after each completed turn.
+// The Sessions panel: saved conversations, and the autosave after each completed turn of each open chat.
 
-// Saved sessions in the side panel. The server writes and reads the files; loading replaces the conversation both on
-// screen and in the history the next request sends.
+// Saved sessions in the side panel. The server writes and reads the files; loading replaces the shown chat's conversation
+// both on screen and in the history the next request sends.
 const sessionForm = document.getElementById("session-form") as HTMLFormElement;
 const sessionName = document.getElementById("session-name") as HTMLInputElement;
 const sessionsList = document.getElementById("sessions-list") as HTMLUListElement;
@@ -28,19 +28,19 @@ async function refreshSessions(): Promise<void> {
   }
 }
 
-// Adds one saved message to the log the way the live conversation showed it. Profile instructions are not shown.
-function showMessage(message: Message): void {
+// Adds one saved message to a chat's log the way the live conversation showed it. Profile instructions are not shown.
+function showMessage(chat: Chat, message: Message): void {
   if (message.role === "user") {
-    addEntry("user").textContent = message.content;
+    addEntry(chat, "user").textContent = message.content;
   } else if (message.role === "assistant") {
-    const bubble = addEntry("assistant");
+    const bubble = addEntry(chat, "assistant");
     const answer = markdownBlock();
     answer.innerHTML = renderMarkdown(message.content);
     bubble.append(answer);
   } else if (message.role === "summary") {
-    addEntry("summary").textContent = "Earlier conversation summarized.";
+    addEntry(chat, "summary").textContent = "Earlier conversation summarized.";
   } else if (message.role === "summary_failed") {
-    addEntry("summary").textContent = "Could not summarize the conversation. It will be tried again later.";
+    addEntry(chat, "summary").textContent = "Could not summarize the conversation. It will be tried again later.";
   }
 }
 
@@ -50,8 +50,9 @@ sessionForm.addEventListener("submit", async (event) => {
   if (name === "") {
     return;
   }
+  const chat = active;
   // A reply in flight is not part of the conversation yet, so the save waits for it.
-  if (input.disabled) {
+  if (chat.busy) {
     showStatus(sessionsStatus, "Wait for the reply to finish, then save.", true);
     return;
   }
@@ -59,8 +60,8 @@ sessionForm.addEventListener("submit", async (event) => {
     const { message } = await postJson<{ message: string }>("/api/sessions", {
       action: "save",
       name,
-      messages: conversation,
-      told,
+      messages: chat.conversation,
+      told: chat.told,
     });
     sessionName.value = "";
     showStatus(sessionsStatus, message, false);
@@ -70,49 +71,57 @@ sessionForm.addEventListener("submit", async (event) => {
   }
 });
 
-// The name this conversation autosaves under. It is picked at the first completed turn, and New or Load clears it so
-// the next turn starts a new saved session.
-let autosaveName: string | null = null;
-
-// Saves the conversation after a completed turn. The save runs in the background: a failure shows in the Sessions
-// panel, and the chat is unaffected.
-function autosaveTurn(): void {
-  autosaveName ??= `auto-${Date.now()}`;
+// Saves a chat's conversation after a completed turn. The save runs in the background: a failure shows in the Sessions
+// panel, and the chat is unaffected. The chat's name is picked at its first save, so later turns update the same session.
+function autosaveTurn(chat: Chat): void {
+  if (chat.autosaveName === null) {
+    chat.autosaveName = `auto-${Date.now()}`;
+    saveChats();
+  }
   postJson<{ message: string }>("/api/sessions", {
     action: "save",
-    name: autosaveName,
-    messages: conversation,
-    told,
+    name: chat.autosaveName,
+    messages: chat.conversation,
+    told: chat.told,
   }).then(
     () => refreshSessions(),
     (err) => showStatus(sessionsStatus, errorMessage(err), true),
   );
 }
 
+// Fills a chat from a saved session: its conversation and switches are replaced, and its log shows the saved messages.
+async function loadInto(chat: Chat, name: string): Promise<void> {
+  const data = await postJson<{ messages: Message[]; told: string[] }>("/api/sessions", { action: "load", name });
+  // The default profile must land before the loaded conversation, or it could join the conversation after it.
+  await chat.defaultProfile;
+  chat.conversation.length = 0;
+  chat.conversation.push(...data.messages);
+  chat.told = data.told;
+  chat.log.replaceChildren();
+  data.messages.forEach((message) => showMessage(chat, message));
+  scrollToEnd(chat);
+}
+
+// Loads a saved session into the shown chat. The next turn starts a new saved session, as it did before chats were tabs.
 async function loadSession(name: string): Promise<void> {
-  if (input.disabled) {
+  const chat = active;
+  if (chat.busy) {
     showStatus(sessionsStatus, "Wait for the reply to finish, then load.", true);
     return;
   }
   // Input stays off while the session loads, so a message cannot slip in between the request and the replacement.
-  input.disabled = true;
+  chat.busy = true;
+  refreshForm();
   try {
-    const data = await postJson<{ messages: Message[]; told: string[] }>("/api/sessions", { action: "load", name });
-    // The default profile must land before the loaded conversation, or it could join the conversation after it.
-    await defaultProfile;
-    conversation.length = 0;
-    conversation.push(...data.messages);
-    told = data.told;
-    autosaveName = null;
-    log.replaceChildren();
-    data.messages.forEach(showMessage);
+    await loadInto(chat, name);
+    chat.autosaveName = null;
+    saveChats();
     showStatus(sessionsStatus, `Loaded session ${name}.`, false);
-    scrollToEnd();
   } catch (err) {
     showStatus(sessionsStatus, errorMessage(err), true);
   } finally {
-    input.disabled = false;
+    chat.busy = false;
+    refreshForm();
     input.focus();
   }
 }
-

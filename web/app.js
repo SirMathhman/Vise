@@ -46,7 +46,8 @@ function showStatus(status, message, isError) {
 }
 
 "use strict";
-// The chat's state, and the streaming of a reply into the log. The chat form itself is wired in app.ts.
+// The open chats: each one's history, log and tab, and the streaming of a reply into its log. The chat form itself is
+// wired in app.ts.
 // The error, with the tool calls that ran before it: their effects remain even though the turn did not finish.
 function describeFailure(error, ran) {
     if (!ran || ran.length === 0) {
@@ -54,9 +55,6 @@ function describeFailure(error, ran) {
     }
     return `${error} ${ran.length} tool call(s) ran before this, and their effects remain: ${ran.join("; ")}`;
 }
-const conversation = [];
-// The switched-off tools the model has been told about in this conversation.
-let told = [];
 // This tab's session: its switched-off tools live on the server under this id. It survives a reload of the tab and
 // is dropped when the tab closes. Storage can be blocked, in which case the session lasts for this page load.
 const SESSION_KEY = "vise-session";
@@ -74,17 +72,91 @@ function sessionId() {
     }
 }
 const session = sessionId();
-const log = document.getElementById("log");
+const logHost = document.getElementById("log");
+const chatTabs = document.getElementById("chat-tabs");
 const form = document.getElementById("form");
 const input = document.getElementById("input");
-function addEntry(kind) {
+const sendButton = document.getElementById("send");
+const stopButton = document.getElementById("stop");
+const chats = [];
+// The chat shown in the page. Every chat is shown in turn, so this is always set once the page has started.
+let active;
+let chatCount = 0;
+// Creates a chat with its own log and tab. It is not shown until showChat is called. Closing its tab calls onClose.
+function createChat(onClose) {
+    const log = document.createElement("div");
+    log.className = "chat-log";
+    log.hidden = true;
+    logHost.append(log);
+    const tab = document.createElement("div");
+    tab.className = "chat-tab-wrap";
+    const name = document.createElement("button");
+    name.type = "button";
+    name.className = "chat-tab";
+    chatCount += 1;
+    name.textContent = `Chat ${chatCount}`;
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "chat-close";
+    close.textContent = "×";
+    close.title = "Close chat";
+    tab.append(name, close);
+    chatTabs.append(tab);
+    const chat = {
+        conversation: [],
+        told: [],
+        autosaveName: null,
+        log,
+        tab,
+        inFlight: null,
+        busy: false,
+        defaultProfile: Promise.resolve(),
+        defaultAbort: null,
+    };
+    name.addEventListener("click", () => showChat(chat));
+    close.addEventListener("click", () => onClose(chat));
+    chats.push(chat);
+    return chat;
+}
+// Shows one chat: its log and tab are the ones shown, and the form follows its reply.
+function showChat(chat) {
+    active = chat;
+    for (const other of chats) {
+        other.log.hidden = other !== chat;
+        other.tab.classList.toggle("active", other === chat);
+    }
+    refreshForm();
+    scrollToEnd(chat);
+    saveChats();
+}
+// The form follows the shown chat: it is off while that chat's reply is pending, and Stop shows while it is streaming.
+function refreshForm() {
+    input.disabled = active.busy;
+    sendButton.hidden = active.inFlight !== null;
+    stopButton.hidden = active.inFlight === null;
+}
+// The open chats and which one is shown, kept in this browser so a reload brings them back. Storage can be blocked, in
+// which case the chats last for this page load only.
+const CHATS_KEY = "vise-chats";
+function saveChats() {
+    try {
+        localStorage.setItem(CHATS_KEY, JSON.stringify({ names: chats.map((chat) => chat.autosaveName), active: chats.indexOf(active) }));
+    }
+    catch {
+        // Not saved: the chats last for this page load only.
+    }
+}
+function addEntry(chat, kind) {
     const entry = document.createElement("div");
     entry.className = kind;
-    log.appendChild(entry);
+    chat.log.appendChild(entry);
     return entry;
 }
-function scrollToEnd() {
-    log.scrollTop = log.scrollHeight;
+// Keeps the end of a chat in view, when that chat is the one shown.
+function scrollToEnd(chat) {
+    if (chat === active) {
+        logHost.scrollTop = logHost.scrollHeight;
+    }
 }
 // A tool call's line in the reply.
 function toolLine(text) {
@@ -99,7 +171,7 @@ function markdownBlock() {
     block.className = "markdown";
     return block;
 }
-async function streamChat(messages, onEvent, signal) {
+async function streamChat(messages, told, onEvent, signal) {
     let res;
     try {
         res = await fetch("/api/chat", {
@@ -252,31 +324,27 @@ async function refreshTools() {
 }
 
 "use strict";
-// The default profile: the instructions the conversation starts with, requested again on New and on load.
-// The default profile's request, started on load and on New. The first message waits for it, so the profile's
-// instructions join the conversation before the user's message does. Stop cancels it.
-let defaultProfile = Promise.resolve();
-let defaultAbort = null;
-// Starts the conversation with the built-in default profile. The server applies its tools and returns its
-// instructions, if it has any, which join the conversation. Nothing is shown in the log.
-function applyDefaultProfile() {
+// The default profile: the instructions a chat starts with, requested when the chat is opened.
+// Starts a chat with the built-in default profile. The server applies its tools and returns its instructions, if it has
+// any, which join that chat's conversation. Nothing is shown in its log. The chat's first message waits for this.
+function applyDefaultProfile(chat) {
     const controller = new AbortController();
-    defaultAbort = controller;
-    defaultProfile = (async () => {
+    chat.defaultAbort = controller;
+    chat.defaultProfile = (async () => {
         try {
-            const done = await streamChat([{ role: "user", content: "/profile default" }], () => { }, controller.signal);
+            const done = await streamChat([{ role: "user", content: "/profile default" }], chat.told, () => { }, controller.signal);
             if (done.profile != null) {
-                conversation.push({ role: "profile", content: done.profile });
+                chat.conversation.push({ role: "profile", content: done.profile });
             }
         }
         catch (err) {
             if (!controller.signal.aborted) {
-                addEntry("error").textContent = errorMessage(err);
+                addEntry(chat, "error").textContent = errorMessage(err);
             }
         }
         void refreshTools();
     })();
-    return defaultProfile;
+    return chat.defaultProfile;
 }
 
 "use strict";
@@ -561,9 +629,9 @@ viewersCloseAll.addEventListener("click", () => {
 });
 
 "use strict";
-// The Sessions panel: saved conversations, and the autosave after each completed turn.
-// Saved sessions in the side panel. The server writes and reads the files; loading replaces the conversation both on
-// screen and in the history the next request sends.
+// The Sessions panel: saved conversations, and the autosave after each completed turn of each open chat.
+// Saved sessions in the side panel. The server writes and reads the files; loading replaces the shown chat's conversation
+// both on screen and in the history the next request sends.
 const sessionForm = document.getElementById("session-form");
 const sessionName = document.getElementById("session-name");
 const sessionsList = document.getElementById("sessions-list");
@@ -587,22 +655,22 @@ async function refreshSessions() {
         showStatus(sessionsStatus, errorMessage(err), true);
     }
 }
-// Adds one saved message to the log the way the live conversation showed it. Profile instructions are not shown.
-function showMessage(message) {
+// Adds one saved message to a chat's log the way the live conversation showed it. Profile instructions are not shown.
+function showMessage(chat, message) {
     if (message.role === "user") {
-        addEntry("user").textContent = message.content;
+        addEntry(chat, "user").textContent = message.content;
     }
     else if (message.role === "assistant") {
-        const bubble = addEntry("assistant");
+        const bubble = addEntry(chat, "assistant");
         const answer = markdownBlock();
         answer.innerHTML = renderMarkdown(message.content);
         bubble.append(answer);
     }
     else if (message.role === "summary") {
-        addEntry("summary").textContent = "Earlier conversation summarized.";
+        addEntry(chat, "summary").textContent = "Earlier conversation summarized.";
     }
     else if (message.role === "summary_failed") {
-        addEntry("summary").textContent = "Could not summarize the conversation. It will be tried again later.";
+        addEntry(chat, "summary").textContent = "Could not summarize the conversation. It will be tried again later.";
     }
 }
 sessionForm.addEventListener("submit", async (event) => {
@@ -611,8 +679,9 @@ sessionForm.addEventListener("submit", async (event) => {
     if (name === "") {
         return;
     }
+    const chat = active;
     // A reply in flight is not part of the conversation yet, so the save waits for it.
-    if (input.disabled) {
+    if (chat.busy) {
         showStatus(sessionsStatus, "Wait for the reply to finish, then save.", true);
         return;
     }
@@ -620,8 +689,8 @@ sessionForm.addEventListener("submit", async (event) => {
         const { message } = await postJson("/api/sessions", {
             action: "save",
             name,
-            messages: conversation,
-            told,
+            messages: chat.conversation,
+            told: chat.told,
         });
         sessionName.value = "";
         showStatus(sessionsStatus, message, false);
@@ -631,45 +700,54 @@ sessionForm.addEventListener("submit", async (event) => {
         showStatus(sessionsStatus, errorMessage(err), true);
     }
 });
-// The name this conversation autosaves under. It is picked at the first completed turn, and New or Load clears it so
-// the next turn starts a new saved session.
-let autosaveName = null;
-// Saves the conversation after a completed turn. The save runs in the background: a failure shows in the Sessions
-// panel, and the chat is unaffected.
-function autosaveTurn() {
-    autosaveName ??= `auto-${Date.now()}`;
+// Saves a chat's conversation after a completed turn. The save runs in the background: a failure shows in the Sessions
+// panel, and the chat is unaffected. The chat's name is picked at its first save, so later turns update the same session.
+function autosaveTurn(chat) {
+    if (chat.autosaveName === null) {
+        chat.autosaveName = `auto-${Date.now()}`;
+        saveChats();
+    }
     postJson("/api/sessions", {
         action: "save",
-        name: autosaveName,
-        messages: conversation,
-        told,
+        name: chat.autosaveName,
+        messages: chat.conversation,
+        told: chat.told,
     }).then(() => refreshSessions(), (err) => showStatus(sessionsStatus, errorMessage(err), true));
 }
+// Fills a chat from a saved session: its conversation and switches are replaced, and its log shows the saved messages.
+async function loadInto(chat, name) {
+    const data = await postJson("/api/sessions", { action: "load", name });
+    // The default profile must land before the loaded conversation, or it could join the conversation after it.
+    await chat.defaultProfile;
+    chat.conversation.length = 0;
+    chat.conversation.push(...data.messages);
+    chat.told = data.told;
+    chat.log.replaceChildren();
+    data.messages.forEach((message) => showMessage(chat, message));
+    scrollToEnd(chat);
+}
+// Loads a saved session into the shown chat. The next turn starts a new saved session, as it did before chats were tabs.
 async function loadSession(name) {
-    if (input.disabled) {
+    const chat = active;
+    if (chat.busy) {
         showStatus(sessionsStatus, "Wait for the reply to finish, then load.", true);
         return;
     }
     // Input stays off while the session loads, so a message cannot slip in between the request and the replacement.
-    input.disabled = true;
+    chat.busy = true;
+    refreshForm();
     try {
-        const data = await postJson("/api/sessions", { action: "load", name });
-        // The default profile must land before the loaded conversation, or it could join the conversation after it.
-        await defaultProfile;
-        conversation.length = 0;
-        conversation.push(...data.messages);
-        told = data.told;
-        autosaveName = null;
-        log.replaceChildren();
-        data.messages.forEach(showMessage);
+        await loadInto(chat, name);
+        chat.autosaveName = null;
+        saveChats();
         showStatus(sessionsStatus, `Loaded session ${name}.`, false);
-        scrollToEnd();
     }
     catch (err) {
         showStatus(sessionsStatus, errorMessage(err), true);
     }
     finally {
-        input.disabled = false;
+        chat.busy = false;
+        refreshForm();
         input.focus();
     }
 }
@@ -916,15 +994,11 @@ noteDelete.addEventListener("click", async () => {
 });
 
 "use strict";
-// The chat page: wires the chat form and its buttons to the chat, and starts each panel.
+// The chat page: wires the chat form, its buttons and the chat tabs to the chats, and starts each panel.
 const newButton = document.getElementById("new");
-const stopButton = document.getElementById("stop");
-const sendButton = document.getElementById("send");
-// The request in flight, if any: Stop aborts it. Aborting closes the connection, and the server stops the turn.
-let inFlight = null;
-// Adds the assistant's bubble to the log, with its Thinking block hidden until reasoning arrives.
-function startReply() {
-    const bubble = addEntry("assistant");
+// Adds the assistant's bubble to the chat's log, with its Thinking block hidden until reasoning arrives.
+function startReply(chat) {
+    const bubble = addEntry(chat, "assistant");
     const thinking = document.createElement("details");
     thinking.className = "thinking";
     thinking.open = true;
@@ -935,7 +1009,7 @@ function startReply() {
     thinking.append(thinkingSummary, thinkingText);
     const answerText = markdownBlock();
     bubble.append(thinking, answerText);
-    return { bubble, thinking, thinkingText, answerText, answerRaw: "", subagent: null };
+    return { chat, bubble, thinking, thinkingText, answerText, answerRaw: "", subagent: null };
 }
 // Shows one streamed piece of the reply in its place in the bubble.
 function showStreamed(reply, streamed) {
@@ -971,63 +1045,65 @@ function showStreamed(reply, streamed) {
         reply.answerRaw = "";
         reply.bubble.append(reply.answerText);
     }
-    scrollToEnd();
+    scrollToEnd(reply.chat);
 }
 // Keeps a finished reply. Its profile joins the conversation, and a turn that is not a tool command is kept and saved.
-function keepReply(done, command) {
+function keepReply(chat, done, command) {
     if (done.profile != null) {
         // A chosen profile's instructions join the conversation, so the later requests keep following them.
-        conversation.push({ role: "profile", content: done.profile });
+        chat.conversation.push({ role: "profile", content: done.profile });
     }
     if (!command) {
         // The server may have added a note about switch changes to this user message, and returns the
         // record of switches the model now knows about. Both are kept only once the reply has arrived.
         if (done.user_message != null) {
-            conversation[conversation.length - 1].content = done.user_message;
+            chat.conversation[chat.conversation.length - 1].content = done.user_message;
         }
         if (done.told) {
-            told = done.told;
+            chat.told = done.told;
         }
-        conversation.push({ role: "assistant", content: done.answer });
+        chat.conversation.push({ role: "assistant", content: done.answer });
         // A summary is appended after the reply. The earlier messages stay in the log, unchanged.
         if (done.summary != null) {
-            conversation.push({ role: "summary", content: done.summary });
-            addEntry("summary").textContent = "Earlier conversation summarized.";
+            chat.conversation.push({ role: "summary", content: done.summary });
+            addEntry(chat, "summary").textContent = "Earlier conversation summarized.";
         }
         else if (done.summary_failed != null) {
-            conversation.push({ role: "summary_failed", content: done.summary_failed });
-            addEntry("summary").textContent = "Could not summarize the conversation. It will be tried again later.";
+            chat.conversation.push({ role: "summary_failed", content: done.summary_failed });
+            addEntry(chat, "summary").textContent = "Could not summarize the conversation. It will be tried again later.";
         }
-        autosaveTurn();
+        autosaveTurn(chat);
     }
 }
 // A reply that failed or was stopped. Its turn is not kept, and a failure shows its reason.
 function failReply(reply, err, command) {
+    const { chat } = reply;
     if (!command) {
-        conversation.pop();
+        chat.conversation.pop();
     }
-    if (inFlight?.signal.aborted) {
+    if (chat.inFlight?.signal.aborted) {
         // Stopped by the user: what streamed stays on screen, but the turn is not kept, as a failed one is not.
-        addEntry("summary").textContent =
+        addEntry(chat, "summary").textContent =
             "Stopped. Tool calls shown above may already have run, and their effects remain. This turn was not kept in the conversation.";
     }
     else {
         if (reply.answerText.textContent === "" && reply.thinkingText.textContent === "") {
             reply.bubble.remove();
         }
-        addEntry("error").textContent = errorMessage(err);
+        addEntry(chat, "error").textContent = errorMessage(err);
     }
 }
-// Puts the form back once a reply has ended, whatever its outcome.
-function endTurn() {
-    inFlight = null;
-    sendButton.hidden = false;
-    stopButton.hidden = true;
-    input.disabled = false;
-    input.focus();
+// Ends a chat's turn, whatever its outcome. The form follows the shown chat, so it is only re-set when that is this one.
+function endTurn(chat) {
+    chat.inFlight = null;
+    chat.busy = false;
+    refreshForm();
+    if (chat === active) {
+        input.focus();
+    }
     // A typed /enable or /disable changes a switch on the server, so the panel is redrawn from it.
     void refreshTools();
-    scrollToEnd();
+    scrollToEnd(chat);
 }
 form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1035,49 +1111,103 @@ form.addEventListener("submit", async (event) => {
     if (text === "") {
         return;
     }
-    // The default profile must be in place before the user's message joins the conversation.
-    input.disabled = true;
-    await defaultProfile;
+    // The turn belongs to the chat shown when it was sent, even if another chat is shown by the time it ends.
+    const chat = active;
+    chat.busy = true;
+    refreshForm();
     input.value = "";
+    // The default profile must be in place before the user's message joins the conversation.
+    await chat.defaultProfile;
     // Tool commands are answered by the server and kept out of the conversation.
     const command = /^\/(tools|enable|disable|notes|profile)(\s|$)/.test(text);
     if (!command) {
-        conversation.push({ role: "user", content: text });
+        chat.conversation.push({ role: "user", content: text });
     }
-    addEntry("user").textContent = text;
-    input.disabled = true;
-    const reply = startReply();
+    addEntry(chat, "user").textContent = text;
+    const reply = startReply(chat);
     try {
-        const messages = command ? [...conversation, { role: "user", content: text }] : conversation;
+        const messages = command ? [...chat.conversation, { role: "user", content: text }] : chat.conversation;
         const controller = new AbortController();
-        inFlight = controller;
-        sendButton.hidden = true;
-        stopButton.hidden = false;
-        const done = await streamChat(messages, (streamed) => showStreamed(reply, streamed), controller.signal);
-        keepReply(done, command);
+        chat.inFlight = controller;
+        refreshForm();
+        const done = await streamChat(messages, chat.told, (streamed) => showStreamed(reply, streamed), controller.signal);
+        keepReply(chat, done, command);
     }
     catch (err) {
         failReply(reply, err, command);
     }
     finally {
-        endTurn();
+        endTurn(chat);
     }
 });
 stopButton.addEventListener("click", () => {
-    inFlight?.abort();
-    defaultAbort?.abort();
+    active.inFlight?.abort();
+    active.defaultAbort?.abort();
 });
-newButton.addEventListener("click", () => {
-    conversation.length = 0;
-    told = [];
-    autosaveName = null;
-    log.replaceChildren();
-    void applyDefaultProfile();
-});
+// Opens a new chat with the default profile and shows it. The chats already open are kept.
+function newChat() {
+    const chat = createChat(closeChat);
+    showChat(chat);
+    void applyDefaultProfile(chat);
+}
+// Closes a chat. A reply still running in it is stopped. Closing the last chat opens a new one in its place.
+function closeChat(chat) {
+    chat.inFlight?.abort();
+    chat.defaultAbort?.abort();
+    const index = chats.indexOf(chat);
+    chats.splice(index, 1);
+    chat.log.remove();
+    chat.tab.remove();
+    if (chats.length === 0) {
+        newChat();
+    }
+    else if (active === chat) {
+        showChat(chats[Math.max(0, index - 1)]);
+    }
+    else {
+        saveChats();
+    }
+}
+// Brings back the chats open at the last visit, with the one that was shown. A chat that was saved comes back from its
+// saved session. A chat that cannot be loaded starts empty, and its name is dropped so a reply cannot overwrite the file.
+function restoreChats() {
+    let saved = null;
+    try {
+        saved = JSON.parse(localStorage.getItem(CHATS_KEY) ?? "null");
+    }
+    catch {
+        // Unreadable or blocked storage: the page starts with one chat.
+    }
+    if (saved === null || !Array.isArray(saved.names) || saved.names.length === 0) {
+        newChat();
+        return;
+    }
+    for (const name of saved.names) {
+        const chat = createChat(closeChat);
+        if (name === null) {
+            void applyDefaultProfile(chat);
+        }
+        else {
+            chat.autosaveName = name;
+            chat.busy = true;
+            void loadInto(chat, name).then(() => {
+                chat.busy = false;
+                refreshForm();
+            }, (err) => {
+                chat.autosaveName = null;
+                chat.busy = false;
+                addEntry(chat, "error").textContent = errorMessage(err);
+                refreshForm();
+            });
+        }
+    }
+    showChat(chats[saved.active] ?? chats[0]);
+}
+newButton.addEventListener("click", newChat);
+restoreChats();
 void refreshTools();
 void refreshNotes();
 void refreshSessions();
 void refreshFiles();
-void applyDefaultProfile();
 // A narrower window clamps the shown width without changing the chosen one, and nothing is saved here.
 window.addEventListener("resize", applyPanelWidths);

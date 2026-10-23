@@ -1,12 +1,10 @@
-// The chat page: wires the chat form and its buttons to the chat, and starts each panel.
+// The chat page: wires the chat form, its buttons and the chat tabs to the chats, and starts each panel.
 
 const newButton = document.getElementById("new") as HTMLButtonElement;
-const stopButton = document.getElementById("stop") as HTMLButtonElement;
-const sendButton = document.getElementById("send") as HTMLButtonElement;
-// The request in flight, if any: Stop aborts it. Aborting closes the connection, and the server stops the turn.
-let inFlight: AbortController | null = null;
-// The reply being shown: its bubble, the reasoning block, and the markdown block the answer streams into.
+
+// The reply being shown: its chat, its bubble, the reasoning block, and the markdown block the answer streams into.
 interface Reply {
+  chat: Chat;
   bubble: HTMLDivElement;
   thinking: HTMLDetailsElement;
   thinkingText: HTMLDivElement;
@@ -16,9 +14,9 @@ interface Reply {
   subagent: Subagent | null;
 }
 
-// Adds the assistant's bubble to the log, with its Thinking block hidden until reasoning arrives.
-function startReply(): Reply {
-  const bubble = addEntry("assistant");
+// Adds the assistant's bubble to the chat's log, with its Thinking block hidden until reasoning arrives.
+function startReply(chat: Chat): Reply {
+  const bubble = addEntry(chat, "assistant");
   const thinking = document.createElement("details");
   thinking.className = "thinking";
   thinking.open = true;
@@ -29,7 +27,7 @@ function startReply(): Reply {
   thinking.append(thinkingSummary, thinkingText);
   const answerText = markdownBlock();
   bubble.append(thinking, answerText);
-  return { bubble, thinking, thinkingText, answerText, answerRaw: "", subagent: null };
+  return { chat, bubble, thinking, thinkingText, answerText, answerRaw: "", subagent: null };
 }
 
 // Shows one streamed piece of the reply in its place in the bubble.
@@ -61,64 +59,66 @@ function showStreamed(reply: Reply, streamed: StreamEvent): void {
     reply.answerRaw = "";
     reply.bubble.append(reply.answerText);
   }
-  scrollToEnd();
+  scrollToEnd(reply.chat);
 }
 
 // Keeps a finished reply. Its profile joins the conversation, and a turn that is not a tool command is kept and saved.
-function keepReply(done: Done, command: boolean): void {
+function keepReply(chat: Chat, done: Done, command: boolean): void {
   if (done.profile != null) {
     // A chosen profile's instructions join the conversation, so the later requests keep following them.
-    conversation.push({ role: "profile", content: done.profile });
+    chat.conversation.push({ role: "profile", content: done.profile });
   }
   if (!command) {
     // The server may have added a note about switch changes to this user message, and returns the
     // record of switches the model now knows about. Both are kept only once the reply has arrived.
     if (done.user_message != null) {
-      conversation[conversation.length - 1].content = done.user_message;
+      chat.conversation[chat.conversation.length - 1].content = done.user_message;
     }
     if (done.told) {
-      told = done.told;
+      chat.told = done.told;
     }
-    conversation.push({ role: "assistant", content: done.answer });
+    chat.conversation.push({ role: "assistant", content: done.answer });
     // A summary is appended after the reply. The earlier messages stay in the log, unchanged.
     if (done.summary != null) {
-      conversation.push({ role: "summary", content: done.summary });
-      addEntry("summary").textContent = "Earlier conversation summarized.";
+      chat.conversation.push({ role: "summary", content: done.summary });
+      addEntry(chat, "summary").textContent = "Earlier conversation summarized.";
     } else if (done.summary_failed != null) {
-      conversation.push({ role: "summary_failed", content: done.summary_failed });
-      addEntry("summary").textContent = "Could not summarize the conversation. It will be tried again later.";
+      chat.conversation.push({ role: "summary_failed", content: done.summary_failed });
+      addEntry(chat, "summary").textContent = "Could not summarize the conversation. It will be tried again later.";
     }
-    autosaveTurn();
+    autosaveTurn(chat);
   }
 }
 
 // A reply that failed or was stopped. Its turn is not kept, and a failure shows its reason.
 function failReply(reply: Reply, err: unknown, command: boolean): void {
+  const { chat } = reply;
   if (!command) {
-    conversation.pop();
+    chat.conversation.pop();
   }
-  if (inFlight?.signal.aborted) {
+  if (chat.inFlight?.signal.aborted) {
     // Stopped by the user: what streamed stays on screen, but the turn is not kept, as a failed one is not.
-    addEntry("summary").textContent =
+    addEntry(chat, "summary").textContent =
       "Stopped. Tool calls shown above may already have run, and their effects remain. This turn was not kept in the conversation.";
   } else {
     if (reply.answerText.textContent === "" && reply.thinkingText.textContent === "") {
       reply.bubble.remove();
     }
-    addEntry("error").textContent = errorMessage(err);
+    addEntry(chat, "error").textContent = errorMessage(err);
   }
 }
 
-// Puts the form back once a reply has ended, whatever its outcome.
-function endTurn(): void {
-  inFlight = null;
-  sendButton.hidden = false;
-  stopButton.hidden = true;
-  input.disabled = false;
-  input.focus();
+// Ends a chat's turn, whatever its outcome. The form follows the shown chat, so it is only re-set when that is this one.
+function endTurn(chat: Chat): void {
+  chat.inFlight = null;
+  chat.busy = false;
+  refreshForm();
+  if (chat === active) {
+    input.focus();
+  }
   // A typed /enable or /disable changes a switch on the server, so the panel is redrawn from it.
   void refreshTools();
-  scrollToEnd();
+  scrollToEnd(chat);
 }
 
 form.addEventListener("submit", async (event) => {
@@ -128,51 +128,107 @@ form.addEventListener("submit", async (event) => {
     return;
   }
 
-  // The default profile must be in place before the user's message joins the conversation.
-  input.disabled = true;
-  await defaultProfile;
+  // The turn belongs to the chat shown when it was sent, even if another chat is shown by the time it ends.
+  const chat = active;
+  chat.busy = true;
+  refreshForm();
   input.value = "";
+  // The default profile must be in place before the user's message joins the conversation.
+  await chat.defaultProfile;
   // Tool commands are answered by the server and kept out of the conversation.
   const command = /^\/(tools|enable|disable|notes|profile)(\s|$)/.test(text);
   if (!command) {
-    conversation.push({ role: "user", content: text });
+    chat.conversation.push({ role: "user", content: text });
   }
-  addEntry("user").textContent = text;
-  input.disabled = true;
+  addEntry(chat, "user").textContent = text;
 
-  const reply = startReply();
+  const reply = startReply(chat);
   try {
-    const messages = command ? [...conversation, { role: "user" as const, content: text }] : conversation;
+    const messages = command ? [...chat.conversation, { role: "user" as const, content: text }] : chat.conversation;
     const controller = new AbortController();
-    inFlight = controller;
-    sendButton.hidden = true;
-    stopButton.hidden = false;
-    const done = await streamChat(messages, (streamed) => showStreamed(reply, streamed), controller.signal);
-    keepReply(done, command);
+    chat.inFlight = controller;
+    refreshForm();
+    const done = await streamChat(messages, chat.told, (streamed) => showStreamed(reply, streamed), controller.signal);
+    keepReply(chat, done, command);
   } catch (err) {
     failReply(reply, err, command);
   } finally {
-    endTurn();
+    endTurn(chat);
   }
 });
 
 stopButton.addEventListener("click", () => {
-  inFlight?.abort();
-  defaultAbort?.abort();
+  active.inFlight?.abort();
+  active.defaultAbort?.abort();
 });
 
-newButton.addEventListener("click", () => {
-  conversation.length = 0;
-  told = [];
-  autosaveName = null;
-  log.replaceChildren();
-  void applyDefaultProfile();
-});
+// Opens a new chat with the default profile and shows it. The chats already open are kept.
+function newChat(): void {
+  const chat = createChat(closeChat);
+  showChat(chat);
+  void applyDefaultProfile(chat);
+}
+
+// Closes a chat. A reply still running in it is stopped. Closing the last chat opens a new one in its place.
+function closeChat(chat: Chat): void {
+  chat.inFlight?.abort();
+  chat.defaultAbort?.abort();
+  const index = chats.indexOf(chat);
+  chats.splice(index, 1);
+  chat.log.remove();
+  chat.tab.remove();
+  if (chats.length === 0) {
+    newChat();
+  } else if (active === chat) {
+    showChat(chats[Math.max(0, index - 1)]);
+  } else {
+    saveChats();
+  }
+}
+
+// Brings back the chats open at the last visit, with the one that was shown. A chat that was saved comes back from its
+// saved session. A chat that cannot be loaded starts empty, and its name is dropped so a reply cannot overwrite the file.
+function restoreChats(): void {
+  let saved: { names: (string | null)[]; active: number } | null = null;
+  try {
+    saved = JSON.parse(localStorage.getItem(CHATS_KEY) ?? "null");
+  } catch {
+    // Unreadable or blocked storage: the page starts with one chat.
+  }
+  if (saved === null || !Array.isArray(saved.names) || saved.names.length === 0) {
+    newChat();
+    return;
+  }
+  for (const name of saved.names) {
+    const chat = createChat(closeChat);
+    if (name === null) {
+      void applyDefaultProfile(chat);
+    } else {
+      chat.autosaveName = name;
+      chat.busy = true;
+      void loadInto(chat, name).then(
+        () => {
+          chat.busy = false;
+          refreshForm();
+        },
+        (err) => {
+          chat.autosaveName = null;
+          chat.busy = false;
+          addEntry(chat, "error").textContent = errorMessage(err);
+          refreshForm();
+        },
+      );
+    }
+  }
+  showChat(chats[saved.active] ?? chats[0]);
+}
+
+newButton.addEventListener("click", newChat);
+restoreChats();
 void refreshTools();
 void refreshNotes();
 void refreshSessions();
 void refreshFiles();
-void applyDefaultProfile();
 
 // A narrower window clamps the shown width without changing the chosen one, and nothing is saved here.
 window.addEventListener("resize", applyPanelWidths);

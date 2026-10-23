@@ -1,27 +1,22 @@
-// The default profile: the instructions the conversation starts with, requested again on New and on load.
+// The default profile: the instructions a chat starts with, requested when the chat is opened.
 
-// The default profile's request, started on load and on New. The first message waits for it, so the profile's
-// instructions join the conversation before the user's message does. Stop cancels it.
-let defaultProfile: Promise<void> = Promise.resolve();
-let defaultAbort: AbortController | null = null;
-
-// Starts the conversation with the built-in default profile. The server applies its tools and returns its
-// instructions, if it has any, which join the conversation. Nothing is shown in the log.
-function applyDefaultProfile(): Promise<void> {
+// Starts a chat with the built-in default profile. The server applies its tools and returns its instructions, if it has
+// any, which join that chat's conversation. Nothing is shown in its log. The chat's first message waits for this.
+function applyDefaultProfile(chat: Chat): Promise<void> {
   const controller = new AbortController();
-  defaultAbort = controller;
-  defaultProfile = (async () => {
+  chat.defaultAbort = controller;
+  chat.defaultProfile = (async () => {
     try {
-      const done = await streamChat([{ role: "user", content: "/profile default" }], () => {}, controller.signal);
+      const done = await streamChat([{ role: "user", content: "/profile default" }], chat.told, () => {}, controller.signal);
       if (done.profile != null) {
-        conversation.push({ role: "profile", content: done.profile });
+        chat.conversation.push({ role: "profile", content: done.profile });
       }
     } catch (err) {
       if (!controller.signal.aborted) {
-        addEntry("error").textContent = errorMessage(err);
+        addEntry(chat, "error").textContent = errorMessage(err);
       }
     }
     void refreshTools();
   })();
-  return defaultProfile;
+  return chat.defaultProfile;
 }

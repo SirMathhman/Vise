@@ -63,7 +63,32 @@
         flex: 1;
         overflow-y: auto;
       }
-      #log > div {
+      /* Each open chat has its own log inside #log, and only the shown one is visible. */
+      #chat-tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        margin-bottom: 0.5rem;
+      }
+      .chat-tab-wrap {
+        display: flex;
+        border: 1px solid var(--line);
+        border-radius: 0.3rem;
+      }
+      .chat-tab-wrap.active {
+        border-color: var(--muted);
+      }
+      .chat-tab,
+      .chat-close {
+        border: 0;
+        border-radius: 0;
+        padding: 0.25rem 0.5rem;
+        font-size: 0.85em;
+      }
+      .chat-tab-wrap.active .chat-tab {
+        font-weight: 600;
+      }
+      #log .chat-log > div {
         margin: 0.5rem 0;
         padding: 0.5rem 0.75rem;
         border-radius: 0.5rem;
@@ -470,6 +495,7 @@
   <body>
     <div class="layout">
       <main>
+        <div id="chat-tabs"></div>
         <div id="log"></div>
         <form id="form">
           <input id="input" autocomplete="off" autofocus />

@@ -1,4 +1,5 @@
-// The chat's state, and the streaming of a reply into the log. The chat form itself is wired in app.ts.
+// The open chats: each one's history, log and tab, and the streaming of a reply into its log. The chat form itself is
+// wired in app.ts.
 
 type Role = "user" | "assistant" | "summary" | "summary_failed" | "profile";
 
@@ -27,9 +28,24 @@ function describeFailure(error: string, ran?: string[] | null): string {
 
 type Done = Extract<StreamEvent, { type: "done" }>;
 
-const conversation: Message[] = [];
-// The switched-off tools the model has been told about in this conversation.
-let told: string[] = [];
+// One open chat. A chat that is not shown keeps streaming a reply into its log, so switching away does not stop it.
+interface Chat {
+  conversation: Message[];
+  // The switched-off tools the model has been told about in this conversation.
+  told: string[];
+  // The name this conversation autosaves under. It is picked at the first completed turn, and New or Load clears it so
+  // the next turn starts a new saved session.
+  autosaveName: string | null;
+  log: HTMLDivElement;
+  tab: HTMLDivElement;
+  // The request in flight, if any: Stop aborts it. Aborting closes the connection, and the server stops the turn.
+  inFlight: AbortController | null;
+  // True from the moment a message is sent until its reply ends.
+  busy: boolean;
+  // The default profile's request. The first message waits for it. Stop cancels it.
+  defaultProfile: Promise<void>;
+  defaultAbort: AbortController | null;
+}
 
 // This tab's session: its switched-off tools live on the server under this id. It survives a reload of the tab and
 // is dropped when the tab closes. Storage can be blocked, in which case the session lasts for this page load.
@@ -47,18 +63,99 @@ function sessionId(): string {
 }
 const session = sessionId();
 
-const log = document.getElementById("log") as HTMLDivElement;
+const logHost = document.getElementById("log") as HTMLDivElement;
+const chatTabs = document.getElementById("chat-tabs") as HTMLDivElement;
 const form = document.getElementById("form") as HTMLFormElement;
 const input = document.getElementById("input") as HTMLInputElement;
-function addEntry(kind: Role | "error"): HTMLDivElement {
+const sendButton = document.getElementById("send") as HTMLButtonElement;
+const stopButton = document.getElementById("stop") as HTMLButtonElement;
+
+const chats: Chat[] = [];
+// The chat shown in the page. Every chat is shown in turn, so this is always set once the page has started.
+let active: Chat;
+let chatCount = 0;
+
+// Creates a chat with its own log and tab. It is not shown until showChat is called. Closing its tab calls onClose.
+function createChat(onClose: (chat: Chat) => void): Chat {
+  const log = document.createElement("div");
+  log.className = "chat-log";
+  log.hidden = true;
+  logHost.append(log);
+
+  const tab = document.createElement("div");
+  tab.className = "chat-tab-wrap";
+  const name = document.createElement("button");
+  name.type = "button";
+  name.className = "chat-tab";
+  chatCount += 1;
+  name.textContent = `Chat ${chatCount}`;
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "chat-close";
+  close.textContent = "×";
+  close.title = "Close chat";
+  tab.append(name, close);
+  chatTabs.append(tab);
+
+  const chat: Chat = {
+    conversation: [],
+    told: [],
+    autosaveName: null,
+    log,
+    tab,
+    inFlight: null,
+    busy: false,
+    defaultProfile: Promise.resolve(),
+    defaultAbort: null,
+  };
+  name.addEventListener("click", () => showChat(chat));
+  close.addEventListener("click", () => onClose(chat));
+  chats.push(chat);
+  return chat;
+}
+
+// Shows one chat: its log and tab are the ones shown, and the form follows its reply.
+function showChat(chat: Chat): void {
+  active = chat;
+  for (const other of chats) {
+    other.log.hidden = other !== chat;
+    other.tab.classList.toggle("active", other === chat);
+  }
+  refreshForm();
+  scrollToEnd(chat);
+  saveChats();
+}
+
+// The form follows the shown chat: it is off while that chat's reply is pending, and Stop shows while it is streaming.
+function refreshForm(): void {
+  input.disabled = active.busy;
+  sendButton.hidden = active.inFlight !== null;
+  stopButton.hidden = active.inFlight === null;
+}
+
+// The open chats and which one is shown, kept in this browser so a reload brings them back. Storage can be blocked, in
+// which case the chats last for this page load only.
+const CHATS_KEY = "vise-chats";
+function saveChats(): void {
+  try {
+    localStorage.setItem(CHATS_KEY, JSON.stringify({ names: chats.map((chat) => chat.autosaveName), active: chats.indexOf(active) }));
+  } catch {
+    // Not saved: the chats last for this page load only.
+  }
+}
+
+function addEntry(chat: Chat, kind: Role | "error"): HTMLDivElement {
   const entry = document.createElement("div");
   entry.className = kind;
-  log.appendChild(entry);
+  chat.log.appendChild(entry);
   return entry;
 }
 
-function scrollToEnd(): void {
-  log.scrollTop = log.scrollHeight;
+// Keeps the end of a chat in view, when that chat is the one shown.
+function scrollToEnd(chat: Chat): void {
+  if (chat === active) {
+    logHost.scrollTop = logHost.scrollHeight;
+  }
 }
 
 // A tool call's line in the reply.
@@ -78,6 +175,7 @@ function markdownBlock(): HTMLDivElement {
 
 async function streamChat(
   messages: Message[],
+  told: string[],
   onEvent: (event: StreamEvent) => void,
   signal: AbortSignal,
 ): Promise<Done> {
