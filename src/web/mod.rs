@@ -51,6 +51,7 @@ const READ_TIMEOUT: Duration = Duration::from_secs(10);
 struct Request {
     method: String,
     path: String,
+    host: Option<String>,
     content_type: Option<String>,
     content_length: usize,
     body: Vec<u8>,
@@ -126,6 +127,18 @@ fn handle(mut stream: TcpStream, config: &Config, sessions: &Sessions) -> io::Re
     stream.set_read_timeout(Some(READ_TIMEOUT))?;
     let mut reader = BufReader::new(stream.try_clone()?);
     let mut request = read_request(&mut reader)?;
+    // A page on another site can reach this server only through a Host name it chose, which is not this machine's, so
+    // every request must name this machine. The API takes JSON only, so a plain-text form from another page cannot
+    // send a body the API reads.
+    if !host_is_local(request.host.as_deref()) {
+        return write_response(&mut stream, &json_response(421, json!({ "error": "host not allowed" })));
+    }
+    if request.method == "POST" && !is_json(&request) {
+        return write_response(
+            &mut stream,
+            &json_response(415, json!({ "error": "expected Content-Type application/json" })),
+        );
+    }
     if request.content_length > MAX_BODY_BYTES {
         let response = json_response(413, json!({ "error": "request body too large" }));
         return write_response(&mut stream, &response);
@@ -179,6 +192,7 @@ fn read_request(reader: &mut impl BufRead) -> io::Result<Request> {
 
     let mut content_length = 0;
     let mut content_type = None;
+    let mut host = None;
     loop {
         let mut header = String::new();
         if reader.read_line(&mut header)? == 0 || header.trim().is_empty() {
@@ -191,6 +205,8 @@ fn read_request(reader: &mut impl BufRead) -> io::Result<Request> {
                 content_length = value.parse().unwrap_or(0);
             } else if name.eq_ignore_ascii_case("content-type") {
                 content_type = Some(value.to_ascii_lowercase());
+            } else if name.eq_ignore_ascii_case("host") {
+                host = Some(value.to_owned());
             }
         }
     }
@@ -198,6 +214,7 @@ fn read_request(reader: &mut impl BufRead) -> io::Result<Request> {
     Ok(Request {
         method,
         path,
+        host,
         content_type,
         content_length,
         body: Vec::new(),
@@ -230,6 +247,23 @@ fn route(request: &Request) -> Response {
     }
 }
 
+/// Whether a request's Host header names this machine, with or without a port.
+fn host_is_local(host: Option<&str>) -> bool {
+    let Some(host) = host else {
+        return false;
+    };
+    let name = host.rsplit_once(':').map_or(host, |(name, _)| name);
+    matches!(name.to_ascii_lowercase().as_str(), "127.0.0.1" | "localhost")
+}
+
+/// Whether a request's body is JSON, as the API requires.
+fn is_json(request: &Request) -> bool {
+    request
+        .content_type
+        .as_deref()
+        .is_some_and(|content_type| content_type.starts_with("application/json"))
+}
+
 /// Streams the reply as server-sent events: `reasoning` and `content` deltas, then `done` or `error`.
 fn chat(
     mut stream: TcpStream,
@@ -237,18 +271,6 @@ fn chat(
     config: &Config,
     sessions: &Sessions,
 ) -> io::Result<()> {
-    let is_json = request
-        .content_type
-        .as_deref()
-        .is_some_and(|content_type| content_type.starts_with("application/json"));
-    if !is_json {
-        let response = json_response(
-            415,
-            json!({ "error": "expected Content-Type application/json" }),
-        );
-        return write_response(&mut stream, &response);
-    }
-
     let Some(session) = parse_session(&request.body) else {
         let response = json_response(400, json!({ "error": "missing or invalid session" }));
         return write_response(&mut stream, &response);
