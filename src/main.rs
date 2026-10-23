@@ -3,6 +3,7 @@ mod commands;
 mod compaction;
 mod grammar;
 mod notes;
+mod saved_sessions;
 mod session;
 mod strata;
 mod tools;
@@ -124,6 +125,10 @@ fn main() -> io::Result<()> {
             session.reset();
             start_conversation(&mut session, &switches);
             println!("Started a new conversation.");
+            continue;
+        }
+        if let Some(output) = saved_sessions::command(trimmed, &mut session, config.working_dir.as_deref().map(Path::new)) {
+            println!("{output}");
             continue;
         }
         let home = std::env::home_dir();

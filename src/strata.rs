@@ -70,6 +70,28 @@ impl Role {
             Role::Summary | Role::SummaryFailed | Role::Profile => "system",
         }
     }
+
+    /// The name a role has in saved sessions and in the web page's messages.
+    pub fn name(self) -> &'static str {
+        match self {
+            Role::User => "user",
+            Role::Assistant => "assistant",
+            Role::Summary => "summary",
+            Role::SummaryFailed => "summary_failed",
+            Role::Profile => "profile",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Role> {
+        match name {
+            "user" => Some(Role::User),
+            "assistant" => Some(Role::Assistant),
+            "summary" => Some(Role::Summary),
+            "summary_failed" => Some(Role::SummaryFailed),
+            "profile" => Some(Role::Profile),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone)]

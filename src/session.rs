@@ -44,4 +44,10 @@ impl Session {
         self.messages.clear();
         self.told.clear();
     }
+
+    /// Replaces the conversation with a saved one, including the switched-off tools the model was told about.
+    pub fn restore(&mut self, messages: Vec<Message>, told: BTreeSet<String>) {
+        self.messages = messages;
+        self.told = told;
+    }
 }

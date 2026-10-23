@@ -13,6 +13,7 @@ use crate::agent::{self, TurnError};
 use crate::commands;
 use crate::compaction;
 use crate::notes;
+use crate::saved_sessions;
 use crate::tools::{self, Switches};
 use crate::strata::{self, Chunk, Config, Message, Role};
 
@@ -102,6 +103,9 @@ fn handle(mut stream: TcpStream, config: &Config, sessions: &Sessions) -> io::Re
         let home = std::env::home_dir();
         let roots = notes::Roots { working: config.working_dir.as_deref().map(Path::new), home: home.as_deref() };
         return write_response(&mut stream, &notes_response(&request.body, roots));
+    }
+    if request.method == "POST" && request.path == "/api/sessions" {
+        return write_response(&mut stream, &sessions_response(&request.body, config));
     }
     write_response(&mut stream, &route(&request))
 }
@@ -321,6 +325,27 @@ fn notes_response(body: &[u8], roots: notes::Roots) -> Response {
     }
 }
 
+/// Runs one saved-session request from the web UI: `save` writes the page's conversation, `load` returns a saved
+/// one, and `list` names the saved ones. Failures are reported as a 400 with the reason.
+fn sessions_response(body: &[u8], config: &Config) -> Response {
+    let working = config.working_dir.as_deref().map(Path::new);
+    let data: Value = serde_json::from_slice(body).unwrap_or(Value::Null);
+    let name = data["name"].as_str().unwrap_or_default();
+    let result = match data["action"].as_str() {
+        Some("save") => parse_messages(body)
+            .and_then(|messages| saved_sessions::save(working, name, &messages, &parse_told(body)))
+            .map(|message| json!({ "message": message })),
+        Some("load") => saved_sessions::load(working, name)
+            .map(|saved| saved_sessions::to_value(&saved.messages, &saved.told)),
+        Some("list") => saved_sessions::list(working).map(|names| json!({ "sessions": names })),
+        _ => Err("action must be save, load, or list".to_owned()),
+    };
+    match result {
+        Ok(value) => json_response(200, value),
+        Err(error) => json_response(400, json!({ "error": error })),
+    }
+}
+
 /// Lists the tools for the tab's session. A body with `name` and `enabled` also switches that tool first.
 fn tools_response(body: &[u8], sessions: &Sessions) -> Response {
     let Some(session) = parse_session(body) else {
@@ -381,14 +406,11 @@ fn parse_messages(body: &[u8]) -> Result<Vec<Message>, String> {
     items
         .iter()
         .map(|item| {
-            let role = match item.get("role").and_then(Value::as_str) {
-                Some("user") => Role::User,
-                Some("assistant") => Role::Assistant,
-                Some("summary") => Role::Summary,
-                Some("summary_failed") => Role::SummaryFailed,
-                Some("profile") => Role::Profile,
-                _ => return Err("each message needs role user, assistant, summary, or summary_failed".to_owned()),
-            };
+            let role = item
+                .get("role")
+                .and_then(Value::as_str)
+                .and_then(Role::from_name)
+                .ok_or("each message needs role user, assistant, summary, summary_failed, or profile")?;
             let content = item
                 .get("content")
                 .and_then(Value::as_str)
