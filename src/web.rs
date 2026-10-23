@@ -329,7 +329,10 @@ fn notes_response(body: &[u8], roots: notes::Roots) -> Response {
 /// one, and `list` names the saved ones. Failures are reported as a 400 with the reason.
 fn sessions_response(body: &[u8], config: &Config) -> Response {
     let working = config.working_dir.as_deref().map(Path::new);
-    let data: Value = serde_json::from_slice(body).unwrap_or(Value::Null);
+    let data: Value = match serde_json::from_slice(body) {
+        Ok(data) => data,
+        Err(err) => return json_response(400, json!({ "error": format!("invalid JSON: {err}") })),
+    };
     let name = data["name"].as_str().unwrap_or_default();
     let result = match data["action"].as_str() {
         Some("save") => parse_messages(body)

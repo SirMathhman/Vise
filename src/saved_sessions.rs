@@ -26,9 +26,11 @@ pub fn command(line: &str, session: &mut Session, working: Option<&Path>) -> Opt
     let mut words = line.split_whitespace();
     let command = words.next()?;
     let name = words.next();
+    // A name is one word, so anything after it means the command was typed wrong.
+    let extra = words.next().is_some();
     let result = match (command, name) {
-        ("/save", Some(name)) => save(working, name, session.messages(), session.told()),
-        ("/load", Some(name)) => load(working, name).map(|saved| {
+        ("/save", Some(name)) if !extra => save(working, name, session.messages(), session.told()),
+        ("/load", Some(name)) if !extra => load(working, name).map(|saved| {
             session.restore(saved.messages, saved.told);
             format!("Loaded session {name}.")
         }),
@@ -39,8 +41,8 @@ pub fn command(line: &str, session: &mut Session, working: Option<&Path>) -> Opt
                 names.join("\n")
             }
         }),
-        ("/save" | "/load", None) => Err(format!("usage: {command} <name>")),
-        ("/sessions", Some(_)) => Err("usage: /sessions".to_owned()),
+        ("/save" | "/load", _) => Err(format!("usage: {command} <name>")),
+        ("/sessions", _) => Err("usage: /sessions".to_owned()),
         _ => return None,
     };
     Some(result.unwrap_or_else(|err| format!("error: {err}")))
@@ -207,6 +209,7 @@ mod tests {
         assert_eq!(loaded.as_deref(), Some("Loaded session work."));
         assert_eq!(session.messages()[0].content, "first question");
         assert_eq!(usage.as_deref(), Some("error: usage: /load <name>"));
+        assert_eq!(command("/save my work", &mut session, Some(&root)).as_deref(), Some("error: usage: /save <name>"));
         assert_eq!(command("hello", &mut session, Some(&root)), None);
     }
 
