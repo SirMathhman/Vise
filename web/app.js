@@ -594,6 +594,10 @@ const viewersBody = document.getElementById("viewers-body");
 const viewersCloseAll = document.getElementById("viewers-close-all");
 const viewed = [];
 let activePath = null;
+// Whether a file is markdown, which opens rendered and can be switched to its raw text.
+function isMarkdown(path) {
+    return path.toLowerCase().endsWith(".md");
+}
 function renderViewers() {
     viewers.hidden = viewed.length === 0;
     viewersPanel.divider.hidden = viewers.hidden;
@@ -625,10 +629,12 @@ function renderViewers() {
     close.type = "button";
     close.textContent = "Close";
     close.addEventListener("click", () => closeFile(file.path));
-    head.append(name, close);
-    // The text is set as plain text, so nothing in it is read as HTML.
-    const text = document.createElement("pre");
-    text.textContent = file.lines.join("\n");
+    head.append(name);
+    if (isMarkdown(file.path)) {
+        head.append(rendererToggle(file));
+    }
+    head.append(close);
+    const text = fileBody(file);
     const foot = document.createElement("div");
     foot.className = "viewer-foot";
     renderFoot(file, foot);
@@ -644,7 +650,8 @@ function renderFoot(file, foot) {
         error.textContent = file.error;
         foot.append(error);
     }
-    if (file.more) {
+    // A rendered file loads its blocks by itself, so Load more is only offered to retry a block that failed.
+    if (file.more && (!file.rendered || file.error !== null)) {
         const more = document.createElement("button");
         more.type = "button";
         more.className = "viewer-more";
@@ -699,11 +706,53 @@ async function loadBlock(path) {
         file.loading = false;
         refreshFoot(file);
     }
+    // A rendered file waits for every block, so it is rendered from its whole text. A failed block stops this, and Load more tries it again.
+    if (file.rendered && file.more && file.error === null) {
+        void loadBlock(path);
+    }
+    else if (file.rendered && file.path === activePath) {
+        renderViewers();
+    }
+}
+// The file's text: the raw lines, or the markdown rendered from the whole file once every block has loaded.
+function fileBody(file) {
+    if (!file.rendered) {
+        const pre = document.createElement("pre");
+        // The text is set as plain text, so nothing in it is read as HTML.
+        pre.textContent = file.lines.join("\n");
+        return pre;
+    }
+    const rendered = document.createElement("div");
+    rendered.className = "markdown";
+    if (file.loading) {
+        rendered.textContent = "Loading…";
+    }
+    else if (file.more) {
+        rendered.textContent = "The rest of the file has not loaded.";
+    }
+    else {
+        rendered.innerHTML = renderMarkdown(file.lines.join("\n"));
+    }
+    return rendered;
+}
+// Switches a file between its rendered markdown and its raw text. Showing it rendered loads the blocks it still lacks.
+function rendererToggle(file) {
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.textContent = file.rendered ? "Raw" : "Rendered";
+    toggle.addEventListener("click", () => {
+        file.rendered = !file.rendered;
+        if (file.rendered && file.more && !file.loading && file.error === null) {
+            void loadBlock(file.path);
+        }
+        renderViewers();
+    });
+    return toggle;
 }
 // Opens a file as a tab and makes it the one shown. Opening a file that is already open only shows its tab.
 function openFile(path) {
     if (!viewed.some((file) => file.path === path)) {
-        viewed.push({ path, lines: [], next: 0, more: false, loading: false, error: null });
+        viewed.push({ path, lines: [], next: 0, more: false, loading: false, error: null, rendered: isMarkdown(path) });
         void loadBlock(path);
     }
     activePath = path;
