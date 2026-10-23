@@ -728,6 +728,8 @@ viewersCloseAll.addEventListener("click", () => {
 });
 const MIN_TOOLS_PX = 160;
 const MIN_VIEWERS_PX = 224;
+// The chat's preferred width, 24rem. The panels leave it this much when they can, and it gives way in a narrow window.
+const CHAT_PX = 384;
 const layout = document.querySelector(".layout");
 const main = document.querySelector("main");
 const toolsPanel = {
@@ -748,7 +750,8 @@ const viewersPanel = {
     direction: 1,
     chosen: 0,
 };
-// The most a panel may take: the window less the chat's minimum and every other panel as it is now shown.
+// The most a panel may take: the window less the chat's preferred width and every other panel as it is now shown. A
+// panel still gets its own minimum when the window is too narrow, and the chat gives way instead.
 function roomFor(resizable) {
     let others = 0;
     for (const child of Array.from(layout.children)) {
@@ -756,7 +759,7 @@ function roomFor(resizable) {
             others += child.offsetWidth;
         }
     }
-    return layout.clientWidth - others - parseFloat(getComputedStyle(main).minWidth);
+    return layout.clientWidth - others - CHAT_PX;
 }
 // Sets each chosen width to what fits. Tools is set first, so the files take their room from it as it is now shown.
 function applyPanelWidths() {
