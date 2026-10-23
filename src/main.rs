@@ -1,5 +1,6 @@
 mod agent;
 mod approval;
+mod chunk;
 mod commands;
 mod compaction;
 mod edits;
@@ -29,7 +30,8 @@ static STOP: AtomicBool = AtomicBool::new(false);
 
 use session::Session;
 use turn::TurnError;
-use strata::{Chunk, Role};
+use chunk::Chunk;
+use strata::Role;
 
 /// Reads the working directory once at startup, for both the REPL and the web server.
 fn startup_config() -> strata::Config {

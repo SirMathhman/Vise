@@ -5,7 +5,8 @@ use serde_json::{Value, json};
 
 use crate::compaction;
 use crate::grammar;
-use crate::strata::{self, Chunk, Config, Message, StrataError, ToolCall};
+use crate::chunk::Chunk;
+use crate::strata::{self, Config, Message, StrataError, ToolCall};
 use crate::subagent;
 use crate::tools::{self, Switches};
 use crate::turn::{TurnError, turn_error};

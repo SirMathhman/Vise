@@ -26,7 +26,8 @@ use crate::commands;
 use crate::compaction;
 use crate::notes;
 use crate::tools::{self, Switches};
-use crate::strata::{self, Chunk, Config, Message, Role};
+use crate::chunk::Chunk;
+use crate::strata::{self, Config, Message, Role};
 use crate::workflow_runner;
 use crate::workflows;
 

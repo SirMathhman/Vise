@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 use crate::approval::{self, Approvals, Source, Verdict};
 use crate::edits::Undo;
 use crate::notes;
-use crate::strata::Chunk;
+use crate::chunk::Chunk;
 use crate::workspace::{line_range, read_range, resolve, string_arg};
 
 pub const LIST_FILES: &str = "list_files";

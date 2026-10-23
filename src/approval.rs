@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Condvar, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
-use crate::strata::Chunk;
+use crate::chunk::Chunk;
 
 /// The text a tool returns in place of an edit the user denied.
 pub const DENIED: &str = "error: the user denied this edit, so it was undone";

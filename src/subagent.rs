@@ -8,7 +8,8 @@ use std::sync::atomic::AtomicBool;
 use serde_json::Value;
 
 use crate::notes;
-use crate::strata::{Chunk, Config, Message, Role};
+use crate::chunk::Chunk;
+use crate::strata::{Config, Message, Role};
 use crate::tools::{self, Switches};
 use crate::turn::TurnError;
 

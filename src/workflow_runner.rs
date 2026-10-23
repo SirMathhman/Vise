@@ -14,7 +14,8 @@ use crate::turn::{TurnError, turn_error};
 use crate::commands;
 use crate::grammar;
 use crate::notes;
-use crate::strata::{self, Chunk, Config, Constraint, Message, Role, ToolCall};
+use crate::chunk::Chunk;
+use crate::strata::{self, Config, Constraint, Message, Role, ToolCall};
 use crate::tools::{self, Switches};
 use crate::workflows::{self, Call, Step, Workflow};
 
