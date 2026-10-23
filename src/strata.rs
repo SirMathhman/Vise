@@ -111,6 +111,8 @@ pub enum Chunk<'a> {
     Nested(&'a Chunk<'a>),
     /// `failed` is true when the subagent stopped or errored instead of answering.
     SubagentEnd { failed: bool },
+    /// The start of a workflow step, with the text that names it. Only a workflow run sends these.
+    Step(&'a str),
 }
 
 /// A tool call the model asked for, assembled from streamed fragments.

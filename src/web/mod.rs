@@ -23,6 +23,8 @@ use crate::compaction;
 use crate::notes;
 use crate::tools::{self, Switches};
 use crate::strata::{self, Chunk, Config, Message, Role};
+use crate::workflow_runner;
+use crate::workflows;
 
 use files_panel::{file_response, files_response};
 use notes_panel::notes_response;
@@ -56,6 +58,8 @@ struct Response {
 #[derive(Default)]
 struct Sessions {
     by_id: Mutex<HashMap<String, Arc<Switches>>>,
+    /// The profile each tab last applied, by its reference, so a workflow can apply it again when it ends.
+    profiles: Mutex<HashMap<String, String>>,
 }
 
 impl Sessions {
@@ -68,6 +72,19 @@ impl Sessions {
     fn find(&self, id: &str) -> Option<Arc<Switches>> {
         let by_id = self.by_id.lock().unwrap_or_else(PoisonError::into_inner);
         by_id.get(id).cloned()
+    }
+
+    fn profile(&self, id: &str) -> Option<String> {
+        let profiles = self.profiles.lock().unwrap_or_else(PoisonError::into_inner);
+        profiles.get(id).cloned()
+    }
+
+    fn set_profile(&self, id: &str, reference: Option<String>) {
+        let mut profiles = self.profiles.lock().unwrap_or_else(PoisonError::into_inner);
+        match reference {
+            Some(reference) => profiles.insert(id.to_owned(), reference),
+            None => profiles.remove(id),
+        };
     }
 }
 
@@ -223,10 +240,38 @@ fn chat(
     let mut started = false;
     let home = std::env::home_dir();
     let roots = notes::Roots { working: config.working_dir.as_deref().map(Path::new), home: home.as_deref() };
-    if let Some((reply, instructions)) = command_reply(&messages, &switches, roots) {
-        start_stream(&mut stream, &mut started)?;
-        write_event(&mut stream, &json!({ "type": "content", "text": reply }))?;
-        return write_event(&mut stream, &json!({ "type": "done", "answer": reply, "profile": instructions }));
+    if let Some(command) = command_reply(&messages, &switches, roots) {
+        if let Some(reference) = command.profile {
+            sessions.set_profile(&session, Some(reference));
+        }
+        return send_reply(&mut stream, &mut started, &command.reply, command.instructions);
+    }
+
+    // A line that names a workflow runs its steps, and the steps replace that line in the conversation.
+    if let Some((name, argument)) = messages.last().filter(|message| matches!(message.role, Role::User)).and_then(|message| workflows::command(&message.content)) {
+        let working = config.working_dir.as_deref().map(Path::new);
+        match workflows::load(working, name) {
+            Ok(Some(workflow)) => {
+                let cancel = AtomicBool::new(false);
+                let history = &messages[..messages.len() - 1];
+                let start = workflow_runner::Start {
+                    history,
+                    told: parse_told(&request.body),
+                    profile: sessions.profile(&session),
+                };
+                let env = workflow_runner::Env { config, switches: &switches, cancel: &cancel, roots };
+                let outcome = workflow_runner::run(&workflow, argument, start, &env, &mut |chunk| {
+                    let event = chunk_event(chunk);
+                    let sent = start_stream(&mut stream, &mut started).and_then(|()| write_event(&mut stream, &event));
+                    if sent.is_err() {
+                        cancel.store(true, Ordering::Relaxed);
+                    }
+                });
+                return finish_workflow(&mut stream, &mut started, history, outcome, config, sessions, &session);
+            }
+            Ok(None) => {}
+            Err(err) => return send_reply(&mut stream, &mut started, &format!("error: {err}"), None),
+        }
     }
 
     // The page sends the switches it has told the model about. The note goes on the user message, and
@@ -248,23 +293,73 @@ fn chat(
     finish_turn(&mut stream, &mut started, &messages, outcome, noted, &now, config)
 }
 
-/// The reply to a command typed as the last message, with the profile instructions it chose, if any. A command's reply
-/// is shown and kept out of the conversation.
-fn command_reply(messages: &[Message], switches: &Switches, roots: notes::Roots) -> Option<(String, Option<String>)> {
-    messages
-        .last()
-        .filter(|message| matches!(message.role, Role::User))
-        .and_then(|message| {
-            if let Some(reply) = commands::handle(&message.content, switches)
-                .or_else(|| notes::command(&message.content, roots))
-            {
-                return Some((reply, None));
-            }
-            commands::profile(&message.content, switches, roots).map(|result| match result {
-                Ok(choice) => (choice.reply, (!choice.instructions.is_empty()).then_some(choice.instructions)),
-                Err(err) => (format!("error: {err}"), None),
-            })
-        })
+/// A command's reply, with the profile instructions it chose and the profile it applied, if any.
+struct Command {
+    reply: String,
+    instructions: Option<String>,
+    profile: Option<String>,
+}
+
+/// The reply to a command typed as the last message. A command's reply is shown and kept out of the conversation.
+fn command_reply(messages: &[Message], switches: &Switches, roots: notes::Roots) -> Option<Command> {
+    let message = messages.last().filter(|message| matches!(message.role, Role::User))?;
+    if let Some(reply) = commands::handle(&message.content, switches).or_else(|| notes::command(&message.content, roots)) {
+        return Some(Command { reply, instructions: None, profile: None });
+    }
+    let result = commands::profile(&message.content, switches, roots)?;
+    Some(match result {
+        Ok(choice) => Command {
+            reply: choice.reply,
+            instructions: (!choice.instructions.is_empty()).then_some(choice.instructions),
+            // The reference is the word after `/profile`.
+            profile: message.content.split_whitespace().nth(1).map(str::to_owned),
+        },
+        Err(err) => Command { reply: format!("error: {err}"), instructions: None, profile: None },
+    })
+}
+
+/// Sends a command's reply as the whole turn.
+fn send_reply(stream: &mut TcpStream, started: &mut bool, reply: &str, instructions: Option<String>) -> io::Result<()> {
+    start_stream(stream, started)?;
+    write_event(stream, &json!({ "type": "content", "text": reply }))?;
+    write_event(stream, &json!({ "type": "done", "answer": reply, "profile": instructions }))
+}
+
+/// Ends a workflow run. Its messages are sent to replace the command line, with the switch notes the model now has. The
+/// profile it is left with is kept for the next run.
+fn finish_workflow(
+    stream: &mut TcpStream,
+    started: &mut bool,
+    history: &[Message],
+    outcome: Result<workflow_runner::Finished, TurnError>,
+    config: &Config,
+    sessions: &Sessions,
+    session: &str,
+) -> io::Result<()> {
+    let finished = match outcome {
+        Ok(finished) => finished,
+        Err(err) => return send_failure(stream, started, err),
+    };
+    sessions.set_profile(session, finished.profile.clone());
+    start_stream(stream, started)?;
+    let log: Vec<Message> = history.iter().chain(&finished.added).cloned().collect();
+    let (summary, summary_failed) = summary_fields(&log, config);
+    let added: Vec<Value> = finished
+        .added
+        .iter()
+        .map(|message| json!({ "role": message.role.name(), "content": message.content }))
+        .collect();
+    write_event(
+        stream,
+        &json!({
+            "type": "done",
+            "answer": "",
+            "workflow": added,
+            "told": finished.told,
+            "summary": summary,
+            "summary_failed": summary_failed,
+        }),
+    )
 }
 
 /// Adds the switch note to the last user message, and the notes index to the first message of a conversation. Returns
@@ -295,42 +390,49 @@ fn finish_turn(
     now: &BTreeSet<String>,
     config: &Config,
 ) -> io::Result<()> {
-    match outcome {
-        // The page stopped the turn itself: nothing more is sent, and the connection is already gone.
-        Err(TurnError::Stopped { .. }) => Ok(()),
-        Ok(answer) => {
-            start_stream(stream, started)?;
-            let mut log = messages.to_vec();
-            log.push(Message {
-                role: Role::Assistant,
-                content: answer.clone(),
-            });
-            let (summary, summary_failed) = match compaction::after_turn(&log, config) {
-                Some(Message { role: Role::Summary, content }) => (Some(content), None),
-                Some(Message { content, .. }) => (None, Some(content)),
-                None => (None, None),
-            };
-            write_event(
-                stream,
-                &json!({
-                    "type": "done",
-                    "answer": answer,
-                    "user_message": noted,
-                    "told": now,
-                    "summary": summary,
-                    "summary_failed": summary_failed,
-                }),
-            )
-        }
-        // Nothing was sent yet, so the failure can still be a plain JSON error response.
-        Err(err @ TurnError::Failed { .. }) if !*started => {
+    let answer = match outcome {
+        Ok(answer) => answer,
+        Err(err) => return send_failure(stream, started, err),
+    };
+    start_stream(stream, started)?;
+    let mut log = messages.to_vec();
+    log.push(Message {
+        role: Role::Assistant,
+        content: answer.clone(),
+    });
+    let (summary, summary_failed) = summary_fields(&log, config);
+    write_event(
+        stream,
+        &json!({
+            "type": "done",
+            "answer": answer,
+            "user_message": noted,
+            "told": now,
+            "summary": summary,
+            "summary_failed": summary_failed,
+        }),
+    )
+}
+
+/// The summary to send after a turn, if the log needs one, as the summary or the failure to make one.
+fn summary_fields(log: &[Message], config: &Config) -> (Option<String>, Option<String>) {
+    match compaction::after_turn(log, config) {
+        Some(Message { role: Role::Summary, content }) => (Some(content), None),
+        Some(Message { content, .. }) => (None, Some(content)),
+        None => (None, None),
+    }
+}
+
+/// Ends a turn that failed or was stopped. The page stopping it sends nothing more. A failure before any event is a JSON
+/// error response, and a failure after one is an error event.
+fn send_failure(stream: &mut TcpStream, started: &mut bool, err: TurnError) -> io::Result<()> {
+    match err {
+        TurnError::Stopped { .. } => Ok(()),
+        err if !*started => {
             let response = json_response(502, json!({ "error": err.to_string(), "ran": err.ran() }));
             write_response(stream, &response)
         }
-        Err(err @ TurnError::Failed { .. }) => write_event(
-            stream,
-            &json!({ "type": "error", "error": err.to_string(), "ran": err.ran() }),
-        ),
+        err => write_event(stream, &json!({ "type": "error", "error": err.to_string(), "ran": err.ran() })),
     }
 }
 
@@ -345,6 +447,7 @@ fn chunk_event(chunk: Chunk) -> Value {
         }
         Chunk::Nested(step) => json!({ "type": "nested", "event": chunk_event(*step) }),
         Chunk::SubagentEnd { failed } => json!({ "type": "subagent_end", "failed": failed }),
+        Chunk::Step(text) => json!({ "type": "step", "text": text }),
     }
 }
 

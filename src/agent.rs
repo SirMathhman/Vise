@@ -20,12 +20,14 @@ pub enum TurnError {
     Stopped { ran: Vec<String> },
     /// The turn failed for another reason.
     Failed { ran: Vec<String>, cause: StrataError },
+    /// A workflow step could not run, for a reason of its own (a switched-off tool, a model that did not make its call).
+    Step { ran: Vec<String>, reason: String },
 }
 
 impl TurnError {
     pub fn ran(&self) -> &[String] {
         match self {
-            TurnError::Stopped { ran } | TurnError::Failed { ran, .. } => ran,
+            TurnError::Stopped { ran } | TurnError::Failed { ran, .. } | TurnError::Step { ran, .. } => ran,
         }
     }
 }
@@ -35,12 +37,13 @@ impl std::fmt::Display for TurnError {
         match self {
             TurnError::Stopped { .. } => write!(f, "Stopped."),
             TurnError::Failed { cause, .. } => write!(f, "{cause}"),
+            TurnError::Step { reason, .. } => write!(f, "{reason}"),
         }
     }
 }
 
 /// Maps an error from inside a turn, keeping the calls that had run. The stream's own cancel signal is a stop.
-fn turn_error(err: StrataError, ran: &[String]) -> TurnError {
+pub fn turn_error(err: StrataError, ran: &[String]) -> TurnError {
     match err {
         StrataError::Stopped => TurnError::Stopped { ran: ran.to_vec() },
         cause => TurnError::Failed { ran: ran.to_vec(), cause },

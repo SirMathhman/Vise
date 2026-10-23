@@ -32,13 +32,15 @@ src/
   saved_sessions.rs  /save, /load, and /sessions (REPL), and save, load, list, and title for the web Sessions panel. A saved
               session is JSON at .vise/sessions/<name>.json: the messages, the told set, and an optional title, not the tool switches. A save keeps the title already in the file
   titles.rs   ensure: the title of a web session, asked of the model once from its first exchange with a text-only request, then written into the session file (POST /api/sessions with action title)
+  workflows.rs  load, parse, and command: a workflow is `.vise/workflows/<name>.json`, a list of steps. Each step is instructions, a profile, or a tool with fixed arguments (`{argument}` is replaced by the one argument the user types) or with arguments the model supplies. `/<name> <argument>` runs it. Names that are chat commands are never read
+  workflow_runner.rs  run: runs a workflow's steps in one reply. Instructions are a turn of their own, a profile is applied as /profile applies it, and a tool step is forced by grammar (grammar::forced_call) when the model supplies its arguments. When the steps end, the profile that was active before is applied again. A failure lists the calls that ran in the whole workflow
   compaction.rs  after_turn, needs_summary, and summarize: append-only summaries of long conversations
   grammar.rs  the GBNF grammars that block calls to disabled tools: enabled_calls_only (the whole output,
               used when Strata has no lazy grammars) and enabled_calls_after_trigger (a call-only grammar that
               Strata starts at a <tool_call> token)
   strata.rs   Config, Role, Message, Chunk, Reply, StrataError, and the streaming client
   web/mod.rs  std TcpListener HTTP server, one thread per connection:
-              serves the UI, proxies /api/chat as server-sent events, and routes the panels' requests to the modules beside it
+              serves the UI, proxies /api/chat as server-sent events, runs a workflow when the chat's last line names one, and routes the panels' requests to the modules beside it
   web/files_panel.rs, notes_panel.rs, sessions_panel.rs, tools_panel.rs  the JSON requests for the Files panel (/api/files, /api/file), the Notes section (/api/notes), the Sessions panel (/api/sessions: save, load, list, title), and the Tools panel (/api/tools)
 web/
   index.html  page markup and styles. The Tools panel width is set by a divider, clamped to keep a minimum chat width,

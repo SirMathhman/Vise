@@ -18,6 +18,16 @@ pub fn enabled_calls_only(enabled: &[&str]) -> String {
     rules.join("\n") + "\n"
 }
 
+/// The grammar for a reply that calls the `name` tool, after any prose, and no other tool. The call's arguments are
+/// free, so the model fills them in.
+pub fn forced_call(name: &str) -> String {
+    let mut rules = vec!["root ::= prose calls".to_owned()];
+    rules.extend(call_rules(&[name]));
+    rules.extend(avoid_rules("prose", "<tool_call>"));
+    rules.extend(avoid_rules("value", "</parameter>"));
+    rules.join("\n") + "\n"
+}
+
 /// The lazy grammar for Strata's `grammar_lazy`: it starts at the `<tool_call>` that triggers it and allows only calls
 /// to the `enabled` tools, so prose and reasoning before the first call are not constrained at all. `enabled` must
 /// not be empty: with every tool off there is no call to allow, and the full grammar keeps calls out instead.
@@ -125,6 +135,15 @@ mod tests {
         assert!(!text.contains("prose"));
         assert!(text.contains(&literal(&format!("{CALL_TRIGGER}
 <function="))));
+    }
+
+    #[test]
+    fn a_forced_call_grammar_names_only_that_tool_after_prose() {
+        let text = forced_call("create_file");
+
+        assert!(text.starts_with("root ::= prose calls\n"));
+        assert!(text.contains(r#"name ::= "create_file""#));
+        assert!(!text.contains("delete_file"));
     }
 
     #[test]

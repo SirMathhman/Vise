@@ -10,6 +10,8 @@ mod strata;
 mod titles;
 mod tools;
 mod web;
+mod workflow_runner;
+mod workflows;
 mod workspace;
 
 use std::io::{self, BufRead, Write};
@@ -87,6 +89,8 @@ impl Printer {
                     self.write("[subagent failed]\n");
                 }
             }
+            // The terminal does not run workflows, so no step starts here.
+            Chunk::Step(_) => {}
         }
     }
 
@@ -219,7 +223,7 @@ fn main() -> io::Result<()> {
                 session.pop();   // a turn that did not finish is not kept
                 match &err {
                     TurnError::Stopped { .. } => println!("[stopped]"),
-                    TurnError::Failed { .. } => eprintln!("{err}"),
+                    TurnError::Failed { .. } | TurnError::Step { .. } => eprintln!("{err}"),
                 }
                 let ran = err.ran();
                 if !ran.is_empty() {
