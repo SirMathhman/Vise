@@ -455,63 +455,6 @@ async function refreshTools(): Promise<void> {
 
 void refreshTools();
 
-// The divider between the chat and the Tools panel. Dragging it sets the panel's width, which is kept in this browser.
-const DIVIDER_KEY = "vise-tools-width";
-const MIN_TOOLS_PX = 160;
-const MIN_CHAT_PX = 320;
-const divider = document.getElementById("divider") as HTMLDivElement;
-const layout = document.querySelector(".layout") as HTMLDivElement;
-let toolsWidth = 0;
-
-function clampToolsWidth(px: number): number {
-  return Math.max(MIN_TOOLS_PX, Math.min(px, layout.clientWidth - MIN_CHAT_PX));
-}
-
-// The width the user chose is kept as it is. The width shown is clamped to the window, so the chosen width comes back
-// when the window grows again.
-function setToolsWidth(px: number): void {
-  toolsWidth = px;
-  applyToolsWidth();
-}
-
-function applyToolsWidth(): void {
-  document.documentElement.style.setProperty("--tools-width", `${clampToolsWidth(toolsWidth)}px`);
-}
-
-// Restores the width this browser last used. Storage can be blocked, in which case the default width is used.
-try {
-  const stored = Number(localStorage.getItem(DIVIDER_KEY));
-  if (stored > 0) {
-    setToolsWidth(stored);
-  }
-} catch {
-  // The default width stays.
-}
-
-let dragging = false;
-divider.addEventListener("pointerdown", (event) => {
-  dragging = true;
-  divider.setPointerCapture(event.pointerId);
-  event.preventDefault();
-});
-divider.addEventListener("pointermove", (event) => {
-  if (dragging) {
-    setToolsWidth(layout.getBoundingClientRect().right - event.clientX);
-  }
-});
-function endDrag(): void {
-  if (!dragging) {
-    return;
-  }
-  dragging = false;
-  try {
-    localStorage.setItem(DIVIDER_KEY, String(toolsWidth));
-  } catch {
-    // Not saved: the width lasts for this page load only.
-  }
-}
-divider.addEventListener("pointerup", endDrag);
-divider.addEventListener("pointercancel", endDrag);
 
 // Saved sessions in the side panel. The server writes and reads the files; loading replaces the conversation both on
 // screen and in the history the next request sends.
@@ -761,7 +704,8 @@ let activePath: string | null = null;
 
 function renderViewers(): void {
   viewers.hidden = viewed.length === 0;
-  viewersDivider.hidden = viewers.hidden;
+  viewersPanel.divider.hidden = viewers.hidden;
+  applyPanelWidths();
   viewersTabs.replaceChildren(
     ...viewed.map((file) => {
       const tab = document.createElement("button");
@@ -899,62 +843,107 @@ viewersCloseAll.addEventListener("click", () => {
   renderViewers();
 });
 
-// The divider between the chat and the open files. Dragging it sets the files' width, which is kept in this browser
-// like the Tools width. The chat is centered, so the drag is measured from where it started.
-const VIEWERS_WIDTH_KEY = "vise-viewers-width";
+// The two panels beside the chat whose widths the user drags: Tools on the right, the open files on the left. Each
+// divider sets its panel's width, which is kept in this browser. A panel never takes more than the window leaves it
+// after the chat's minimum and the other panel, so the two never push each other off screen.
+interface ResizablePanel {
+  panel: HTMLElement;
+  divider: HTMLElement;
+  cssVar: string;
+  storageKey: string;
+  min: number;
+  // The pointer movement that widens the panel: 1 for a panel left of its divider, -1 for one right of it.
+  direction: 1 | -1;
+  // The width the user chose, or 0 for the default. It is kept as it is, so it comes back when the window grows.
+  chosen: number;
+}
+
+const MIN_TOOLS_PX = 160;
 const MIN_VIEWERS_PX = 224;
-const viewersDivider = document.getElementById("viewers-divider") as HTMLDivElement;
-const aside = document.querySelector("aside") as HTMLElement;
-let viewersWidth = 0;
+const layout = document.querySelector(".layout") as HTMLDivElement;
+const main = document.querySelector("main") as HTMLElement;
+const toolsPanel: ResizablePanel = {
+  panel: document.querySelector("aside") as HTMLElement,
+  divider: document.getElementById("divider") as HTMLDivElement,
+  cssVar: "--tools-width",
+  storageKey: "vise-tools-width",
+  min: MIN_TOOLS_PX,
+  direction: -1,
+  chosen: 0,
+};
+const viewersPanel: ResizablePanel = {
+  panel: viewers,
+  divider: document.getElementById("viewers-divider") as HTMLDivElement,
+  cssVar: "--viewers-width",
+  storageKey: "vise-viewers-width",
+  min: MIN_VIEWERS_PX,
+  direction: 1,
+  chosen: 0,
+};
 
-function clampViewersWidth(px: number): number {
-  const room = layout.clientWidth - aside.offsetWidth - divider.offsetWidth - MIN_CHAT_PX;
-  return Math.max(MIN_VIEWERS_PX, Math.min(px, room));
+// The most a panel may take: the window less the chat's minimum and every other panel as it is now shown.
+function roomFor(resizable: ResizablePanel): number {
+  let others = 0;
+  for (const child of Array.from(layout.children) as HTMLElement[]) {
+    if (child !== main && child !== resizable.panel) {
+      others += child.offsetWidth;
+    }
+  }
+  return layout.clientWidth - others - parseFloat(getComputedStyle(main).minWidth);
 }
 
-function setViewersWidth(px: number): void {
-  viewersWidth = px;
-  applyViewersWidth();
+// Sets each chosen width to what fits. Tools is set first, so the files take their room from it as it is now shown.
+function applyPanelWidths(): void {
+  for (const resizable of [toolsPanel, viewersPanel]) {
+    if (resizable.chosen > 0) {
+      const px = Math.max(resizable.min, Math.min(resizable.chosen, roomFor(resizable)));
+      document.documentElement.style.setProperty(resizable.cssVar, `${px}px`);
+    }
+  }
 }
 
-function applyViewersWidth(): void {
-  document.documentElement.style.setProperty("--viewers-width", `${clampViewersWidth(viewersWidth)}px`);
+// Dragging a divider sets its panel's width. The width follows the pointer from where the drag began.
+function watchDivider(resizable: ResizablePanel): void {
+  let drag: { x: number; width: number } | null = null;
+  resizable.divider.addEventListener("pointerdown", (event) => {
+    drag = { x: event.clientX, width: resizable.panel.getBoundingClientRect().width };
+    resizable.divider.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  });
+  resizable.divider.addEventListener("pointermove", (event) => {
+    if (drag !== null) {
+      resizable.chosen = drag.width + resizable.direction * (event.clientX - drag.x);
+      applyPanelWidths();
+    }
+  });
+  function endDrag(): void {
+    if (drag === null) {
+      return;
+    }
+    drag = null;
+    try {
+      localStorage.setItem(resizable.storageKey, String(resizable.chosen));
+    } catch {
+      // Not saved: the width lasts for this page load only.
+    }
+  }
+  resizable.divider.addEventListener("pointerup", endDrag);
+  resizable.divider.addEventListener("pointercancel", endDrag);
 }
 
 // Restores the width this browser last used. Storage can be blocked, in which case the default width is used.
-try {
-  const stored = Number(localStorage.getItem(VIEWERS_WIDTH_KEY));
-  if (stored > 0) {
-    setViewersWidth(stored);
-  }
-} catch {
-  // The default width stays.
-}
-
-let viewersDrag: { x: number; width: number } | null = null;
-viewersDivider.addEventListener("pointerdown", (event) => {
-  viewersDrag = { x: event.clientX, width: viewers.getBoundingClientRect().width };
-  viewersDivider.setPointerCapture(event.pointerId);
-  event.preventDefault();
-});
-viewersDivider.addEventListener("pointermove", (event) => {
-  if (viewersDrag !== null) {
-    setViewersWidth(viewersDrag.width + event.clientX - viewersDrag.x);
-  }
-});
-function endViewersDrag(): void {
-  if (viewersDrag === null) {
-    return;
-  }
-  viewersDrag = null;
+for (const resizable of [toolsPanel, viewersPanel]) {
   try {
-    localStorage.setItem(VIEWERS_WIDTH_KEY, String(viewersWidth));
+    const stored = Number(localStorage.getItem(resizable.storageKey));
+    if (stored > 0) {
+      resizable.chosen = stored;
+    }
   } catch {
-    // Not saved: the width lasts for this page load only.
+    // The default width stays.
   }
+  watchDivider(resizable);
 }
-viewersDivider.addEventListener("pointerup", endViewersDrag);
-viewersDivider.addEventListener("pointercancel", endViewersDrag);
+applyPanelWidths();
 
 async function refreshFiles(): Promise<void> {
   filesTree.replaceChildren();
@@ -1156,11 +1145,4 @@ void refreshFiles();
 void applyDefaultProfile();
 
 // A narrower window clamps the shown width without changing the chosen one, and nothing is saved here.
-window.addEventListener("resize", () => {
-  if (toolsWidth > 0) {
-    applyToolsWidth();
-  }
-  if (viewersWidth > 0) {
-    applyViewersWidth();
-  }
-});
+window.addEventListener("resize", applyPanelWidths);
