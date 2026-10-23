@@ -233,6 +233,41 @@
       #files-tree summary {
         cursor: pointer;
       }
+      .file-link {
+        width: 100%;
+        padding: 0;
+        border: 0;
+        background: none;
+        color: inherit;
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+      }
+      .file-link:hover {
+        text-decoration: underline;
+      }
+      #file-view {
+        margin-top: 0.75rem;
+      }
+      .file-view-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.5rem;
+        font-family: ui-monospace, monospace;
+        font-size: 0.85em;
+      }
+      #file-view-text {
+        max-height: 20rem;
+        overflow: auto;
+        margin: 0.5rem 0 0;
+        padding: 0.5rem;
+        background: #f3f3f3;
+        border-radius: 0.4rem;
+        font-family: ui-monospace, monospace;
+        font-size: 0.8em;
+        white-space: pre;
+      }
       #notes-list,
       #sessions-list {
         list-style: none;
@@ -368,6 +403,9 @@
         .pane {
           border-top-color: #444;
         }
+        #file-view-text {
+          background: #222;
+        }
         #divider {
           background: #444;
         }
@@ -443,6 +481,13 @@
           <p id="files-status" hidden></p>
           <button type="button" id="files-refresh">Refresh</button>
           <div id="files-tree"></div>
+          <div id="file-view" hidden>
+            <div class="file-view-head">
+              <span id="file-view-name"></span>
+              <button type="button" id="file-view-close">Close</button>
+            </div>
+            <pre id="file-view-text"></pre>
+          </div>
         </details>
         <details class="pane" id="notes-section" open>
           <summary>Notes</summary>

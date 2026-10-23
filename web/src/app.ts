@@ -642,7 +642,8 @@ const filesTree = document.getElementById("files-tree") as HTMLDivElement;
 const filesStatus = document.getElementById("files-status") as HTMLParagraphElement;
 const filesRefresh = document.getElementById("files-refresh") as HTMLButtonElement;
 
-function treeList(nodes: TreeNode[]): HTMLUListElement {
+// `prefix` is the path of the folder these nodes sit in, relative to the working directory. A file's button opens it.
+function treeList(nodes: TreeNode[], prefix: string): HTMLUListElement {
   const list = document.createElement("ul");
   for (const node of nodes) {
     const item = document.createElement("li");
@@ -650,15 +651,46 @@ function treeList(nodes: TreeNode[]): HTMLUListElement {
       const details = document.createElement("details");
       const summary = document.createElement("summary");
       summary.textContent = `${node.name}/`;
-      details.append(summary, treeList(node.children ?? []));
+      details.append(summary, treeList(node.children ?? [], `${prefix}${node.name}/`));
       item.append(details);
     } else {
-      item.textContent = node.name;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "file-link";
+      button.textContent = node.name;
+      const path = `${prefix}${node.name}`;
+      button.addEventListener("click", () => {
+        void openFile(path);
+      });
+      item.append(button);
     }
     list.append(item);
   }
   return list;
 }
+
+const fileView = document.getElementById("file-view") as HTMLDivElement;
+const fileViewName = document.getElementById("file-view-name") as HTMLSpanElement;
+const fileViewText = document.getElementById("file-view-text") as HTMLPreElement;
+const fileViewClose = document.getElementById("file-view-close") as HTMLButtonElement;
+
+// Shows a file's text under the tree. The text is set as plain text, so nothing in it is read as HTML.
+async function openFile(path: string): Promise<void> {
+  try {
+    const data = await postJson<{ path: string; text: string }>("/api/file", { path });
+    fileViewName.textContent = data.path;
+    fileViewText.textContent = data.text;
+    fileView.hidden = false;
+  } catch (err) {
+    filesStatus.textContent = err instanceof Error ? err.message : String(err);
+    filesStatus.className = "error";
+    filesStatus.hidden = false;
+  }
+}
+
+fileViewClose.addEventListener("click", () => {
+  fileView.hidden = true;
+});
 
 async function refreshFiles(): Promise<void> {
   try {
@@ -670,7 +702,7 @@ async function refreshFiles(): Promise<void> {
     const title = document.createElement("p");
     title.className = "description";
     title.textContent = `${data.name}/`;
-    filesTree.replaceChildren(title, treeList(data.children));
+    filesTree.replaceChildren(title, treeList(data.children, ""));
     filesStatus.textContent = data.truncated ? "The tree is cut short: only the first entries are listed." : "";
     filesStatus.className = "summary";
     filesStatus.hidden = !data.truncated;
