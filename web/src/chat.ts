@@ -42,6 +42,8 @@ interface Chat {
   inFlight: AbortController | null;
   // True from the moment a message is sent until its reply ends.
   busy: boolean;
+  // Set when the chat's tab is closed. A message still waiting on the default profile is then not sent.
+  closed: boolean;
   // The default profile's request. The first message waits for it. Stop cancels it.
   defaultProfile: Promise<void>;
   defaultAbort: AbortController | null;
@@ -105,6 +107,7 @@ function createChat(onClose: (chat: Chat) => void): Chat {
     tab,
     inFlight: null,
     busy: false,
+    closed: false,
     defaultProfile: Promise.resolve(),
     defaultAbort: null,
   };

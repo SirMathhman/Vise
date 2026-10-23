@@ -110,6 +110,7 @@ function createChat(onClose) {
         tab,
         inFlight: null,
         busy: false,
+        closed: false,
         defaultProfile: Promise.resolve(),
         defaultAbort: null,
     };
@@ -1118,6 +1119,11 @@ form.addEventListener("submit", async (event) => {
     input.value = "";
     // The default profile must be in place before the user's message joins the conversation.
     await chat.defaultProfile;
+    // A chat closed while its profile was loading is not continued, so nothing is sent or saved for it.
+    if (chat.closed) {
+        endTurn(chat);
+        return;
+    }
     // Tool commands are answered by the server and kept out of the conversation.
     const command = /^\/(tools|enable|disable|notes|profile)(\s|$)/.test(text);
     if (!command) {
@@ -1152,6 +1158,7 @@ function newChat() {
 }
 // Closes a chat. A reply still running in it is stopped. Closing the last chat opens a new one in its place.
 function closeChat(chat) {
+    chat.closed = true;
     chat.inFlight?.abort();
     chat.defaultAbort?.abort();
     const index = chats.indexOf(chat);
