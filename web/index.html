@@ -301,6 +301,13 @@
         text-align: left;
         font-family: var(--mono);
       }
+      /* The shared form rule lays a form out in a row; the editor stacks its parts, and stays out of sight when hidden. */
+      #workflow-form {
+        flex-direction: column;
+      }
+      #workflow-form[hidden] {
+        display: none;
+      }
       #workflow-form label {
         display: block;
         margin: 0.5rem 0;
@@ -326,6 +333,10 @@
       }
       #workflow-steps .step-head strong {
         flex: 1;
+      }
+      #workflow-steps .step-head button {
+        padding: 0.2rem 0.45rem;
+        font-size: 0.85em;
       }
       #workflow-steps select {
         margin-top: 0.25rem;

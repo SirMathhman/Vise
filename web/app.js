@@ -1275,7 +1275,7 @@ function toolFields(step, index) {
     });
     const mode = document.createElement("select");
     mode.setAttribute("aria-label", `Step ${index + 1} arguments`);
-    mode.append(new Option("Model supplies the arguments", "model", false, !step.fixed));
+    mode.append(new Option("Model supplies", "model", false, !step.fixed));
     mode.append(new Option("Fixed arguments", "fixed", false, step.fixed));
     mode.addEventListener("change", () => {
         step.fixed = mode.value === "fixed";
