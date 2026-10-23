@@ -27,12 +27,19 @@ fn build_with_limit(root: &Path, limit: usize) -> Result<Value, String> {
     Ok(json!({ "name": name, "children": children, "truncated": builder.truncated }))
 }
 
+/// The largest file whose text is read, in bytes.
+pub const MAX_TEXT_BYTES: u64 = 1024 * 1024;
+
 /// The text of a file in the working directory, named relative to it. The path is confined to the working directory,
-/// and a file that is not UTF-8 text, or holds a NUL byte, is refused.
+/// a file larger than `MAX_TEXT_BYTES` is refused, and a file that is not UTF-8 text, or holds a NUL byte, is refused.
 pub fn read_text(root: &Path, path: &str) -> Result<String, String> {
     let target = resolve(Some(root), path, false)?;
     if !target.is_file() {
         return Err(format!("not a file: {path}"));
+    }
+    let size = target.metadata().map_err(|err| format!("could not read {path}: {err}"))?.len();
+    if size > MAX_TEXT_BYTES {
+        return Err(format!("{path} is larger than {MAX_TEXT_BYTES} bytes, so its contents are not shown"));
     }
     let bytes = fs::read(&target).map_err(|err| format!("could not read {path}: {err}"))?;
     match String::from_utf8(bytes) {

@@ -586,15 +586,25 @@ const fileView = document.getElementById("file-view");
 const fileViewName = document.getElementById("file-view-name");
 const fileViewText = document.getElementById("file-view-text");
 const fileViewClose = document.getElementById("file-view-close");
+// The latest file asked for. A response for an earlier click arrives late and is dropped, so the name and the text
+// always belong to the same file.
+let latestFile = 0;
 // Shows a file's text under the tree. The text is set as plain text, so nothing in it is read as HTML.
 async function openFile(path) {
+    const request = ++latestFile;
     try {
         const data = await postJson("/api/file", { path });
+        if (request !== latestFile) {
+            return;
+        }
         fileViewName.textContent = data.path;
         fileViewText.textContent = data.text;
         fileView.hidden = false;
     }
     catch (err) {
+        if (request !== latestFile) {
+            return;
+        }
         filesStatus.textContent = err instanceof Error ? err.message : String(err);
         filesStatus.className = "error";
         filesStatus.hidden = false;
