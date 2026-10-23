@@ -497,15 +497,10 @@ function renderViewers() {
     const name = document.createElement("span");
     name.className = "viewer-name";
     name.textContent = file.path;
-    const close = document.createElement("button");
-    close.type = "button";
-    close.textContent = "Close";
-    close.addEventListener("click", () => closeFile(file.path));
     head.append(name);
     if (isMarkdown(file.path)) {
         head.append(rendererToggle(file));
     }
-    head.append(close);
     const text = fileBody(file);
     const foot = document.createElement("div");
     foot.className = "viewer-foot";
