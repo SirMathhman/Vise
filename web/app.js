@@ -46,6 +46,33 @@ function showStatus(status, message, isError) {
 }
 
 "use strict";
+// The tabs of the chat page: the open chats and the open files share one row above the chat. Each tab is a name and a
+// close button. Each kind keeps its own shown item, so the shown chat and the shown file are both marked.
+// Adds a tab to a group of the row. Choosing its name calls onSelect, and its close button calls onClose.
+function createTab(group, label, onSelect, onClose) {
+    const tab = document.createElement("div");
+    tab.className = "tab-wrap";
+    const name = document.createElement("button");
+    name.type = "button";
+    name.className = "tab";
+    name.textContent = label;
+    name.addEventListener("click", onSelect);
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "tab-close";
+    close.textContent = "×";
+    close.title = "Close";
+    close.addEventListener("click", onClose);
+    tab.append(name, close);
+    group.append(tab);
+    return tab;
+}
+// Marks a tab as the shown one of its kind.
+function setTabActive(tab, shown) {
+    tab.classList.toggle("active", shown);
+}
+
+"use strict";
 // The open chats: each one's history, log and tab, and the streaming of a reply into its log. The chat form itself is
 // wired in app.ts.
 // The error, with the tool calls that ran before it: their effects remain even though the turn did not finish.
@@ -88,20 +115,8 @@ function createChat(onClose) {
     log.className = "chat-log";
     log.hidden = true;
     logHost.append(log);
-    const tab = document.createElement("div");
-    tab.className = "chat-tab-wrap";
-    const name = document.createElement("button");
-    name.type = "button";
-    name.className = "chat-tab";
     chatCount += 1;
-    name.textContent = `Chat ${chatCount}`;
-    const close = document.createElement("button");
-    close.type = "button";
-    close.className = "chat-close";
-    close.textContent = "×";
-    close.title = "Close chat";
-    tab.append(name, close);
-    chatTabs.append(tab);
+    const tab = createTab(chatTabs, `Chat ${chatCount}`, () => showChat(chat), () => onClose(chat));
     const chat = {
         conversation: [],
         told: [],
@@ -114,8 +129,6 @@ function createChat(onClose) {
         defaultProfile: Promise.resolve(),
         defaultAbort: null,
     };
-    name.addEventListener("click", () => showChat(chat));
-    close.addEventListener("click", () => onClose(chat));
     chats.push(chat);
     return chat;
 }
@@ -124,7 +137,7 @@ function showChat(chat) {
     active = chat;
     for (const other of chats) {
         other.log.hidden = other !== chat;
-        other.tab.classList.toggle("active", other === chat);
+        setTabActive(other.tab, other === chat);
     }
     refreshForm();
     scrollToEnd(chat);
@@ -439,14 +452,26 @@ for (const resizable of [toolsPanel, viewersPanel]) {
 applyPanelWidths();
 
 "use strict";
-// The file viewers beside the chat: the open files as tabs, and the blocks of each file that are loaded.
+// The file viewers beside the chat: the open files, whose tabs share the row above the chat, and the blocks of each file
+// that are loaded.
 const viewers = document.getElementById("viewers");
 const viewersDivider = document.getElementById("viewers-divider");
-const viewersTabs = document.getElementById("viewers-tabs");
+const fileTabs = document.getElementById("file-tabs");
 const viewersBody = document.getElementById("viewers-body");
 const viewersCloseAll = document.getElementById("viewers-close-all");
 const viewed = [];
 let activePath = null;
+// The open files and the one shown, kept in this browser so a reload brings them back. Storage can be blocked, in which
+// case the files last for this page load only.
+const FILES_KEY = "vise-files";
+function saveFiles() {
+    try {
+        localStorage.setItem(FILES_KEY, JSON.stringify({ paths: viewed.map((file) => file.path), active: activePath }));
+    }
+    catch {
+        // Not saved: the files last for this page load only.
+    }
+}
 // Whether a file is markdown, which opens rendered and can be switched to its raw text.
 function isMarkdown(path) {
     return path.toLowerCase().endsWith(".md");
@@ -455,17 +480,9 @@ function renderViewers() {
     viewers.hidden = viewed.length === 0;
     viewersDivider.hidden = viewers.hidden;
     applyPanelWidths();
-    viewersTabs.replaceChildren(...viewed.map((file) => {
-        const tab = document.createElement("button");
-        tab.type = "button";
-        tab.className = file.path === activePath ? "viewer-tab active" : "viewer-tab";
-        tab.textContent = file.path;
-        tab.addEventListener("click", () => {
-            activePath = file.path;
-            renderViewers();
-        });
-        return tab;
-    }));
+    for (const file of viewed) {
+        setTabActive(file.tab, file.path === activePath);
+    }
     viewersBody.replaceChildren();
     const file = viewed.find((candidate) => candidate.path === activePath);
     if (file === undefined) {
@@ -602,14 +619,20 @@ function rendererToggle(file) {
     });
     return toggle;
 }
+// Shows a file that is open. The file's tab is the one marked as shown.
+function selectFile(path) {
+    activePath = path;
+    saveFiles();
+    renderViewers();
+}
 // Opens a file as a tab and makes it the one shown. Opening a file that is already open only shows its tab.
 function openFile(path) {
     if (!viewed.some((file) => file.path === path)) {
-        viewed.push({ path, lines: [], next: 0, more: false, loading: false, error: null, rendered: isMarkdown(path) });
+        const tab = createTab(fileTabs, path, () => selectFile(path), () => closeFile(path));
+        viewed.push({ path, lines: [], next: 0, more: false, loading: false, error: null, rendered: isMarkdown(path), tab });
         void loadBlock(path);
     }
-    activePath = path;
-    renderViewers();
+    selectFile(path);
 }
 // Closes one file. When it was the one shown, the file opened last takes its place.
 function closeFile(path) {
@@ -617,17 +640,44 @@ function closeFile(path) {
     if (index === -1) {
         return;
     }
+    viewed[index].tab.remove();
     viewed.splice(index, 1);
     if (activePath === path) {
         activePath = viewed.length > 0 ? viewed[viewed.length - 1].path : null;
     }
+    saveFiles();
     renderViewers();
 }
 viewersCloseAll.addEventListener("click", () => {
+    for (const file of viewed) {
+        file.tab.remove();
+    }
     viewed.length = 0;
     activePath = null;
+    saveFiles();
     renderViewers();
 });
+// Opens the files that were open at the last visit, and shows the one that was shown then. A file that is no longer
+// there shows its error in its viewer.
+function restoreFiles() {
+    let saved = null;
+    try {
+        saved = JSON.parse(localStorage.getItem(FILES_KEY) ?? "null");
+    }
+    catch {
+        // Unreadable or blocked storage: no files are open.
+    }
+    if (saved === null || !Array.isArray(saved.paths)) {
+        return;
+    }
+    const shown = saved.active;
+    for (const path of saved.paths) {
+        openFile(path);
+    }
+    if (shown !== null && viewed.some((file) => file.path === shown)) {
+        selectFile(shown);
+    }
+}
 
 "use strict";
 // The Sessions panel: saved conversations, and the autosave after each completed turn of each open chat.
@@ -1212,6 +1262,7 @@ function restoreChats() {
 }
 newButton.addEventListener("click", newChat);
 restoreChats();
+restoreFiles();
 void refreshTools();
 void refreshNotes();
 void refreshSessions();

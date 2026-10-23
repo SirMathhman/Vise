@@ -1,8 +1,9 @@
-// The file viewers beside the chat: the open files as tabs, and the blocks of each file that are loaded.
+// The file viewers beside the chat: the open files, whose tabs share the row above the chat, and the blocks of each file
+// that are loaded.
 
 const viewers = document.getElementById("viewers") as HTMLElement;
 const viewersDivider = document.getElementById("viewers-divider") as HTMLDivElement;
-const viewersTabs = document.getElementById("viewers-tabs") as HTMLDivElement;
+const fileTabs = document.getElementById("file-tabs") as HTMLDivElement;
 const viewersBody = document.getElementById("viewers-body") as HTMLDivElement;
 const viewersCloseAll = document.getElementById("viewers-close-all") as HTMLButtonElement;
 
@@ -17,10 +18,23 @@ interface Viewed {
   error: string | null;
   // Whether the file is shown as markdown rather than as its raw text.
   rendered: boolean;
+  // The file's tab in the row above the chat.
+  tab: HTMLDivElement;
 }
 
 const viewed: Viewed[] = [];
 let activePath: string | null = null;
+
+// The open files and the one shown, kept in this browser so a reload brings them back. Storage can be blocked, in which
+// case the files last for this page load only.
+const FILES_KEY = "vise-files";
+function saveFiles(): void {
+  try {
+    localStorage.setItem(FILES_KEY, JSON.stringify({ paths: viewed.map((file) => file.path), active: activePath }));
+  } catch {
+    // Not saved: the files last for this page load only.
+  }
+}
 
 // Whether a file is markdown, which opens rendered and can be switched to its raw text.
 function isMarkdown(path: string): boolean {
@@ -31,19 +45,9 @@ function renderViewers(): void {
   viewers.hidden = viewed.length === 0;
   viewersDivider.hidden = viewers.hidden;
   applyPanelWidths();
-  viewersTabs.replaceChildren(
-    ...viewed.map((file) => {
-      const tab = document.createElement("button");
-      tab.type = "button";
-      tab.className = file.path === activePath ? "viewer-tab active" : "viewer-tab";
-      tab.textContent = file.path;
-      tab.addEventListener("click", () => {
-        activePath = file.path;
-        renderViewers();
-      });
-      return tab;
-    }),
-  );
+  for (const file of viewed) {
+    setTabActive(file.tab, file.path === activePath);
+  }
 
   viewersBody.replaceChildren();
   const file = viewed.find((candidate) => candidate.path === activePath);
@@ -183,14 +187,26 @@ function rendererToggle(file: Viewed): HTMLButtonElement {
   return toggle;
 }
 
+// Shows a file that is open. The file's tab is the one marked as shown.
+function selectFile(path: string): void {
+  activePath = path;
+  saveFiles();
+  renderViewers();
+}
+
 // Opens a file as a tab and makes it the one shown. Opening a file that is already open only shows its tab.
 function openFile(path: string): void {
   if (!viewed.some((file) => file.path === path)) {
-    viewed.push({ path, lines: [], next: 0, more: false, loading: false, error: null, rendered: isMarkdown(path) });
+    const tab = createTab(
+      fileTabs,
+      path,
+      () => selectFile(path),
+      () => closeFile(path),
+    );
+    viewed.push({ path, lines: [], next: 0, more: false, loading: false, error: null, rendered: isMarkdown(path), tab });
     void loadBlock(path);
   }
-  activePath = path;
-  renderViewers();
+  selectFile(path);
 }
 
 // Closes one file. When it was the one shown, the file opened last takes its place.
@@ -199,16 +215,42 @@ function closeFile(path: string): void {
   if (index === -1) {
     return;
   }
+  viewed[index].tab.remove();
   viewed.splice(index, 1);
   if (activePath === path) {
     activePath = viewed.length > 0 ? viewed[viewed.length - 1].path : null;
   }
+  saveFiles();
   renderViewers();
 }
 
 viewersCloseAll.addEventListener("click", () => {
+  for (const file of viewed) {
+    file.tab.remove();
+  }
   viewed.length = 0;
   activePath = null;
+  saveFiles();
   renderViewers();
 });
 
+// Opens the files that were open at the last visit, and shows the one that was shown then. A file that is no longer
+// there shows its error in its viewer.
+function restoreFiles(): void {
+  let saved: { paths: string[]; active: string | null } | null = null;
+  try {
+    saved = JSON.parse(localStorage.getItem(FILES_KEY) ?? "null");
+  } catch {
+    // Unreadable or blocked storage: no files are open.
+  }
+  if (saved === null || !Array.isArray(saved.paths)) {
+    return;
+  }
+  const shown = saved.active;
+  for (const path of saved.paths) {
+    openFile(path);
+  }
+  if (shown !== null && viewed.some((file) => file.path === shown)) {
+    selectFile(shown);
+  }
+}

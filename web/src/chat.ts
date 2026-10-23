@@ -84,20 +84,13 @@ function createChat(onClose: (chat: Chat) => void): Chat {
   log.hidden = true;
   logHost.append(log);
 
-  const tab = document.createElement("div");
-  tab.className = "chat-tab-wrap";
-  const name = document.createElement("button");
-  name.type = "button";
-  name.className = "chat-tab";
   chatCount += 1;
-  name.textContent = `Chat ${chatCount}`;
-  const close = document.createElement("button");
-  close.type = "button";
-  close.className = "chat-close";
-  close.textContent = "×";
-  close.title = "Close chat";
-  tab.append(name, close);
-  chatTabs.append(tab);
+  const tab = createTab(
+    chatTabs,
+    `Chat ${chatCount}`,
+    () => showChat(chat),
+    () => onClose(chat),
+  );
 
   const chat: Chat = {
     conversation: [],
@@ -111,8 +104,6 @@ function createChat(onClose: (chat: Chat) => void): Chat {
     defaultProfile: Promise.resolve(),
     defaultAbort: null,
   };
-  name.addEventListener("click", () => showChat(chat));
-  close.addEventListener("click", () => onClose(chat));
   chats.push(chat);
   return chat;
 }
@@ -122,7 +113,7 @@ function showChat(chat: Chat): void {
   active = chat;
   for (const other of chats) {
     other.log.hidden = other !== chat;
-    other.tab.classList.toggle("active", other === chat);
+    setTabActive(other.tab, other === chat);
   }
   refreshForm();
   scrollToEnd(chat);

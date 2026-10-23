@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 const compiled = "node_modules/.cache/vise-web";
 // Each file may only use what the files before it declare, so the order runs from the leaves up to app.ts.
-const order = ["markdown", "http", "chat", "tools", "profile", "layout", "viewers", "sessions", "files", "notes", "app"];
+const order = ["markdown", "http", "tabs", "chat", "tools", "profile", "layout", "viewers", "sessions", "files", "notes", "app"];
 
 function bundle() {
   // A compiled file that is not in the order would be left out of the page without an error, so it is refused here.

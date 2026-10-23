@@ -231,6 +231,7 @@ function restoreChats(): void {
 
 newButton.addEventListener("click", newChat);
 restoreChats();
+restoreFiles();
 void refreshTools();
 void refreshNotes();
 void refreshSessions();

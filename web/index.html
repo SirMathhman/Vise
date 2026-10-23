@@ -63,29 +63,36 @@
         flex: 1;
         overflow-y: auto;
       }
-      /* Each open chat has its own log inside #log, and only the shown one is visible. */
-      #chat-tabs {
+      /* The chats and the files share one row of tabs above the chat. Each open chat has its own log inside #log. */
+      #tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
+      }
+      .tab-group {
         display: flex;
         flex-wrap: wrap;
         gap: 0.35rem;
-        margin-bottom: 0.5rem;
       }
-      .chat-tab-wrap {
+      .tab-wrap {
         display: flex;
         border: 1px solid var(--line);
         border-radius: 0.3rem;
       }
-      .chat-tab-wrap.active {
+      .tab-wrap.active {
         border-color: var(--muted);
       }
-      .chat-tab,
-      .chat-close {
+      .tab,
+      .tab-close {
         border: 0;
         border-radius: 0;
         padding: 0.25rem 0.5rem;
         font-size: 0.85em;
+        overflow-wrap: anywhere;
+        text-align: left;
       }
-      .chat-tab-wrap.active .chat-tab {
+      .tab-wrap.active .tab {
         font-weight: 600;
       }
       #log .chat-log > div {
@@ -336,24 +343,6 @@
         justify-content: flex-end;
         margin-bottom: 0.5rem;
       }
-      /* Tabs wrap onto more rows instead of scrolling sideways, so any number of them fits. */
-      #viewers-tabs {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.35rem;
-        margin-bottom: 0.75rem;
-      }
-      .viewer-tab {
-        padding: 0.25rem 0.5rem;
-        font-family: var(--mono);
-        font-size: 0.8em;
-        overflow-wrap: anywhere;
-        text-align: left;
-      }
-      .viewer-tab.active {
-        font-weight: 600;
-        border-color: var(--muted);
-      }
       .viewer-head {
         display: flex;
         justify-content: space-between;
@@ -495,7 +484,10 @@
   <body>
     <div class="layout">
       <main>
-        <div id="chat-tabs"></div>
+        <div id="tabs">
+          <div id="chat-tabs" class="tab-group"></div>
+          <div id="file-tabs" class="tab-group"></div>
+        </div>
         <div id="log"></div>
         <form id="form">
           <input id="input" autocomplete="off" autofocus />
@@ -508,7 +500,6 @@
         <div class="viewers-head">
           <button type="button" id="viewers-close-all">Close all</button>
         </div>
-        <div id="viewers-tabs"></div>
         <div id="viewers-body"></div>
       </section>
       <div id="viewers-divider" role="separator" aria-orientation="vertical" aria-label="Drag to resize the open files" hidden></div>
