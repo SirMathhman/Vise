@@ -41,7 +41,8 @@ pub(super) fn workflows_response(body: &[u8], config: &Config) -> Response {
 fn save(working: Option<&Path>, roots: notes::Roots, name: &str, steps: &Value) -> Result<(), String> {
     workflows::check_name(name)?;
     let items = steps.as_array().ok_or("steps must be a list")?;
-    let workflow: Workflow = workflows::from_steps(items, name)?;
+    let typed = workflows::type_steps(items)?;
+    let workflow: Workflow = workflows::from_steps(&typed, name)?;
     for step in &workflow.steps {
         if let Step::Profile(reference) = step {
             if reference != "default" {

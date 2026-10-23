@@ -6,7 +6,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use serde_json::{Value, json};
+use serde_json::{Map, Number, Value, json};
 
 use crate::tools;
 
@@ -65,6 +65,72 @@ pub fn from_steps(items: &[Value], name: &str) -> Result<Workflow, String> {
         .map(|(index, item)| step(item).map_err(|err| format!("workflow {name}, step {}: {err}", index + 1)))
         .collect::<Result<Vec<Step>, String>>()?;
     Ok(Workflow { steps })
+}
+
+/// The steps with their fixed arguments typed by the tool's parameters. The editor sends each argument as text, and the
+/// text is read as the parameter's declared type, so a number is a number and a string stays the text it was. An argument
+/// the tool does not take, or a text its type cannot hold, is refused with the step and the argument named.
+pub fn type_steps(items: &[Value]) -> Result<Vec<Value>, String> {
+    items
+        .iter()
+        .enumerate()
+        .map(|(index, item)| {
+            let Some(arguments) = item.get("arguments").and_then(Value::as_object) else {
+                return Ok(item.clone());
+            };
+            let tool = item["tool"].as_str().unwrap_or_default();
+            let typed = typed_arguments(tool, arguments).map_err(|err| format!("step {}: {err}", index + 1))?;
+            let mut step = item.clone();
+            step["arguments"] = typed;
+            Ok(step)
+        })
+        .collect()
+}
+
+fn typed_arguments(tool: &str, arguments: &Map<String, Value>) -> Result<Value, String> {
+    let mut typed = Map::new();
+    for (name, text) in arguments {
+        let text = text.as_str().ok_or_else(|| format!("argument {name} must be text"))?;
+        let kind = parameter_type(tool, name).ok_or_else(|| format!("{tool} takes no argument {name}"))?;
+        let value = typed_value(&kind, text).map_err(|err| format!("argument {name} {err}"))?;
+        typed.insert(name.clone(), value);
+    }
+    Ok(Value::Object(typed))
+}
+
+/// The value of a text read as a parameter of type `kind`. A string parameter keeps the text exactly.
+fn typed_value(kind: &str, text: &str) -> Result<Value, String> {
+    match kind {
+        "integer" => text
+            .trim()
+            .parse::<i64>()
+            .map(Value::from)
+            .map_err(|_| format!("must be a whole number, not {text:?}")),
+        "number" => text
+            .trim()
+            .parse::<f64>()
+            .ok()
+            .and_then(Number::from_f64)
+            .map(Value::Number)
+            .ok_or_else(|| format!("must be a number, not {text:?}")),
+        "boolean" => match text.trim() {
+            "true" => Ok(Value::Bool(true)),
+            "false" => Ok(Value::Bool(false)),
+            _ => Err(format!("must be true or false, not {text:?}")),
+        },
+        _ => Ok(Value::String(text.to_owned())),
+    }
+}
+
+/// The declared type of a parameter of `tool`, or `None` if the tool takes no parameter of that name.
+fn parameter_type(tool: &str, name: &str) -> Option<String> {
+    let definitions = tools::definitions();
+    let function = definitions
+        .as_array()?
+        .iter()
+        .map(|entry| &entry["function"])
+        .find(|function| function["name"] == tool)?;
+    function["parameters"]["properties"][name]["type"].as_str().map(str::to_owned)
 }
 
 /// The JSON form of a workflow, as a workflow file holds it.
@@ -216,6 +282,20 @@ mod tests {
 
         assert_eq!(listed.unwrap(), ["demo"]);
         assert_eq!(to_value(&loaded.unwrap().unwrap()), to_value(&workflow));
+    }
+
+    #[test]
+    fn fixed_arguments_are_typed_by_the_tool_and_text_for_text_parameters_is_kept() {
+        let items = [
+            json!({ "tool": "list_files", "arguments": { "path": "007", "depth": "2" } }),
+            json!({ "tool": "read_file", "arguments": { "path": "true", "start": "3" } }),
+        ];
+        let typed = type_steps(&items).unwrap();
+
+        assert_eq!(typed[0]["arguments"], json!({ "path": "007", "depth": 2 }));
+        assert_eq!(typed[1]["arguments"], json!({ "path": "true", "start": 3 }));
+        assert!(type_steps(&[json!({ "tool": "list_files", "arguments": { "depth": "deep" } })]).is_err());
+        assert!(type_steps(&[json!({ "tool": "list_files", "arguments": { "nope": "x" } })]).is_err());
     }
 
     #[test]

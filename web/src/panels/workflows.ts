@@ -106,15 +106,8 @@ function toJsonStep(step: WorkflowStep): Record<string, unknown> {
   if (!step.fixed) {
     return { tool: step.name };
   }
-  return { tool: step.name, arguments: Object.fromEntries(step.args.map((arg) => [arg.key, argumentValue(arg.value)])) };
-}
-
-// A fixed argument is sent as a number or a boolean when its text reads as one, and as text otherwise.
-function argumentValue(text: string): string | number | boolean {
-  if (text === "true" || text === "false") {
-    return text === "true";
-  }
-  return /^-?\d+(\.\d+)?$/.test(text) ? Number(text) : text;
+  // Every argument is sent as the text typed. The server reads each one as its tool's parameter type.
+  return { tool: step.name, arguments: Object.fromEntries(step.args.map((arg) => [arg.key, arg.value])) };
 }
 
 // The first problem with the workflow as it stands, or null when it can be saved.
@@ -285,7 +278,7 @@ function fixedArguments(step: Extract<WorkflowStep, { type: "tool" }>, index: nu
   });
   const hint = document.createElement("p");
   hint.className = "description";
-  hint.textContent = "A value that reads as a number, true or false is sent as that; any other value is sent as text.";
+  hint.textContent = "Each value is read as the tool's parameter: a number, true or false where it takes one, otherwise text.";
   list.append(add, hint);
   return list;
 }
