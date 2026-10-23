@@ -1,6 +1,7 @@
 //! The file tree and file contents for the web UI's Files panel. A folder is listed one page at a time, when it is
 //! opened, and a text file is read one block of lines at a time. `.git`, `target` and `node_modules` are left out.
 
+use std::collections::BinaryHeap;
 use std::fs;
 use std::io::{self, BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::Path;
@@ -19,40 +20,55 @@ pub struct Entry {
     pub dir: bool,
 }
 
-/// One page of a folder's entries: the folder's name, the entries, the index where the next page starts, and whether
+/// The last entry of a page. The next page starts after it, in the order folders first and then names.
+#[derive(Debug, Clone)]
+pub struct Cursor {
+    pub name: String,
+    pub dir: bool,
+}
+
+/// One page of a folder's entries: the folder's name, the entries, the entry the next page starts after, and whether
 /// more entries follow.
 #[derive(Debug)]
 pub struct Page {
     pub name: String,
     pub entries: Vec<Entry>,
-    pub next: usize,
+    pub next: Option<Cursor>,
     pub more: bool,
 }
 
 /// One page of the entries of a folder in the working directory (`""` is the working directory itself). Folders come
-/// first, each group sorted by name, and the page starts at index `offset` in that order. The path is confined to the
-/// working directory.
-pub fn list_dir(root: &Path, dir: &str, offset: usize) -> Result<Page, String> {
+/// first, each group sorted by name. The page holds the entries after `after` (or the first ones when it is `None`), and
+/// only one page of candidates is kept in memory while the folder is read. The path is confined to the working directory.
+pub fn list_dir(root: &Path, dir: &str, after: Option<&Cursor>) -> Result<Page, String> {
     let target = resolve(Some(root), dir, true)?;
     let reader = fs::read_dir(&target).map_err(|err| format!("could not read {dir}: {err}"))?;
-    let mut entries: Vec<Entry> = reader
-        .filter_map(Result::ok)
-        .filter(|entry| entry.file_name().to_str().is_none_or(|name| !SKIPPED.contains(&name)))
-        .map(|entry| Entry {
-            name: entry.file_name().to_string_lossy().into_owned(),
-            dir: entry.file_type().is_ok_and(|kind| kind.is_dir()),
-        })
-        .collect();
-    entries.sort_by(|a, b| b.dir.cmp(&a.dir).then_with(|| a.name.cmp(&b.name)));
-
-    let total = entries.len();
-    let end = total.min(offset.saturating_add(ENTRIES_PER_PAGE));
-    let start = offset.min(end);
-    let page: Vec<Entry> = entries.drain(start..end).collect();
+    let cut = after.map(|cursor| (!cursor.dir, cursor.name.as_str()));
+    // A max-heap of the smallest entries after the cursor: its largest is dropped once it holds one more than a page.
+    let mut heap: BinaryHeap<(bool, String, bool)> = BinaryHeap::new();
+    for entry in reader.filter_map(Result::ok) {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if SKIPPED.contains(&name.as_str()) {
+            continue;
+        }
+        let dir = entry.file_type().is_ok_and(|kind| kind.is_dir());
+        if cut.is_some_and(|cut| (!dir, name.as_str()) <= cut) {
+            continue;
+        }
+        heap.push((!dir, name, dir));
+        if heap.len() > ENTRIES_PER_PAGE + 1 {
+            heap.pop();
+        }
+    }
+    let mut sorted = heap.into_sorted_vec();
+    let more = sorted.len() > ENTRIES_PER_PAGE;
+    sorted.truncate(ENTRIES_PER_PAGE);
+    let entries: Vec<Entry> = sorted.into_iter().map(|(_, name, dir)| Entry { name, dir }).collect();
+    let next = entries.last().map(|entry| Cursor { name: entry.name.clone(), dir: entry.dir });
     let name = target
         .file_name()
         .map_or_else(|| target.display().to_string(), |name| name.to_string_lossy().into_owned());
-    Ok(Page { name, entries: page, next: end, more: end < total })
+    Ok(Page { name, entries, next, more })
 }
 
 /// The most lines sent in one block of a file.
@@ -76,6 +92,10 @@ pub fn read_lines(root: &Path, path: &str, offset: u64) -> Result<Block, String>
     }
     let read_error = |err: io::Error| format!("could not read {path}: {err}");
     let mut file = fs::File::open(&target).map_err(read_error)?;
+    let len = file.metadata().map_err(read_error)?.len();
+    if offset >= len {
+        return Ok(Block { lines: Vec::new(), next: offset, more: false });
+    }
     if offset > 0 && !starts_a_line(&mut file, offset).map_err(read_error)? {
         return Err(format!("offset {offset} is not the start of a line in {path}; the file may have changed"));
     }
@@ -84,7 +104,7 @@ pub fn read_lines(root: &Path, path: &str, offset: u64) -> Result<Block, String>
     let mut lines = Vec::new();
     let mut next = offset;
     let mut bytes = Vec::new();
-    while lines.len() < LINES_PER_BLOCK {
+    while lines.len() < LINES_PER_BLOCK && next - offset < MAX_BLOCK_BYTES {
         bytes.clear();
         // At most one line longer than MAX_LINE_BYTES is read, so a file with no line endings cannot fill memory.
         let read = (&mut reader).take(MAX_LINE_BYTES + 1).read_until(b'\n', &mut bytes).map_err(read_error)?;
@@ -101,6 +121,9 @@ pub fn read_lines(root: &Path, path: &str, offset: u64) -> Result<Block, String>
     let more = !reader.fill_buf().map_err(read_error)?.is_empty();
     Ok(Block { lines, next, more })
 }
+
+/// The most bytes in one block of a file, so a block of long lines stays small too.
+pub const MAX_BLOCK_BYTES: u64 = 256 * 1024;
 
 /// The longest line read, in bytes, line ending included.
 pub const MAX_LINE_BYTES: u64 = 64 * 1024;
@@ -141,7 +164,7 @@ mod tests {
     #[test]
     fn folders_come_first_and_skipped_folders_are_left_out() {
         let root = folder("skip");
-        let page = list_dir(&root, "", 0);
+        let page = list_dir(&root, "", None);
         fs::remove_dir_all(&root).unwrap();
 
         let page = page.unwrap();
@@ -157,8 +180,8 @@ mod tests {
         for n in 0..=ENTRIES_PER_PAGE {
             fs::write(root.join("many").join(format!("f{n:04}.txt")), "").unwrap();
         }
-        let first = list_dir(&root, "many", 0).unwrap();
-        let second = list_dir(&root, "many", first.next);
+        let first = list_dir(&root, "many", None).unwrap();
+        let second = list_dir(&root, "many", first.next.as_ref());
         fs::remove_dir_all(&root).unwrap();
 
         assert_eq!(first.entries.len(), ENTRIES_PER_PAGE);

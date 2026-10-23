@@ -137,21 +137,24 @@ fn file_response(body: &[u8], config: &Config) -> Response {
 }
 
 /// One page of a folder's entries for the Files panel. The folder is named relative to the working directory (`""` is
-/// the working directory). Failures are reported as a 400 with the reason.
+/// the working directory), and `after` names the entry the page starts after. Failures are reported as a 400.
 fn files_response(body: &[u8], config: &Config) -> Response {
     let data: Value = match serde_json::from_slice(body) {
         Ok(data) => data,
         Err(err) => return json_response(400, json!({ "error": format!("invalid JSON: {err}") })),
     };
     let dir = data["dir"].as_str().unwrap_or("");
-    let offset = data["offset"].as_u64().and_then(|offset| usize::try_from(offset).ok()).unwrap_or(0);
+    let after = data["after"].as_object().and_then(|after| {
+        Some(file_tree::Cursor { name: after.get("name")?.as_str()?.to_owned(), dir: after.get("dir")?.as_bool()? })
+    });
     let Some(root) = config.working_dir.as_deref() else {
         return json_response(400, json!({ "error": "no working directory is set" }));
     };
-    match file_tree::list_dir(Path::new(root), dir, offset) {
+    match file_tree::list_dir(Path::new(root), dir, after.as_ref()) {
         Ok(page) => {
             let entries: Vec<Value> = page.entries.iter().map(|entry| json!({ "name": entry.name, "dir": entry.dir })).collect();
-            json_response(200, json!({ "dir": dir, "name": page.name, "entries": entries, "next": page.next, "more": page.more }))
+            let next = page.next.as_ref().map_or(Value::Null, |cursor| json!({ "name": cursor.name, "dir": cursor.dir }));
+            json_response(200, json!({ "dir": dir, "name": page.name, "entries": entries, "next": next, "more": page.more }))
         }
         Err(error) => json_response(400, json!({ "error": error })),
     }
