@@ -353,6 +353,24 @@
         flex: 1;
         min-width: 0;
       }
+      /* An argument's name sits above its controls: its mode, and its value when it is fixed. */
+      #workflow-steps .arg-row {
+        display: block;
+        margin: 0.4rem 0;
+      }
+      #workflow-steps .arg-row > span {
+        font-family: var(--mono);
+        font-size: 0.85em;
+      }
+      .arg-controls {
+        display: flex;
+        gap: 0.25rem;
+        margin-top: 0.2rem;
+      }
+      .arg-controls > * {
+        flex: 1;
+        min-width: 0;
+      }
       .workflow-add,
       .workflow-actions {
         display: flex;

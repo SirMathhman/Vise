@@ -69,8 +69,9 @@ pub fn from_steps(items: &[Value], name: &str) -> Result<Workflow, String> {
 
 /// The steps with their fixed arguments typed by the tool's parameters. The editor sends each argument as text, and the
 /// text is read as the parameter's declared type, so a number is a number and a string stays the text it was. A tool step
-/// must give every parameter its tool declares, and no others. A text its parameter cannot hold, or a value outside a
-/// parameter's listed choices, is refused with the step and the argument named.
+/// fixes the arguments it names, and a parameter it leaves out is supplied by the model. A name the tool does not take, a
+/// text its parameter cannot hold, or a value outside a parameter's listed choices, is refused with the step and the
+/// argument named.
 pub fn type_steps(items: &[Value]) -> Result<Vec<Value>, String> {
     items
         .iter()
@@ -90,9 +91,6 @@ pub fn type_steps(items: &[Value]) -> Result<Vec<Value>, String> {
 
 fn typed_arguments(tool: &str, arguments: &Map<String, Value>) -> Result<Value, String> {
     let parameters = parameters(tool).ok_or_else(|| format!("unknown tool {tool}"))?;
-    if let Some(missing) = parameters.keys().find(|name| !arguments.contains_key(*name)) {
-        return Err(format!("{tool} needs argument {missing}"));
-    }
     let mut typed = Map::new();
     for (name, text) in arguments {
         let text = text.as_str().ok_or_else(|| format!("argument {name} must be text"))?;
@@ -138,6 +136,11 @@ fn typed_value(schema: &Value, text: &str) -> Result<Value, String> {
         },
         _ => Ok(Value::String(text.to_owned())),
     }
+}
+
+/// The names of the parameters `tool` declares. Empty if there is no such tool.
+pub fn parameter_names(tool: &str) -> Vec<String> {
+    parameters(tool).map(|parameters| parameters.keys().cloned().collect()).unwrap_or_default()
 }
 
 /// The parameters `tool` declares, by name, with each one's schema. `None` if there is no such tool.
@@ -341,13 +344,15 @@ mod tests {
     }
 
     #[test]
-    fn a_tool_step_gives_every_parameter_and_only_listed_choices() {
-        let missing = type_steps(&[json!({ "tool": "create_note", "arguments": { "category": "c", "name": "n", "content": "x" } })]);
+    fn a_fixed_argument_is_checked_and_a_left_out_one_is_for_the_model() {
+        let left_out = type_steps(&[json!({ "tool": "create_note", "arguments": { "category": "c", "name": "n", "content": "x" } })]);
         let bad_choice = type_steps(&[json!({ "tool": "create_note", "arguments": { "scope": "nowhere", "category": "c", "name": "n", "content": "x" } })]);
+        let unknown = type_steps(&[json!({ "tool": "create_note", "arguments": { "colour": "red" } })]);
         let good = type_steps(&[json!({ "tool": "create_note", "arguments": { "scope": "global", "category": "c", "name": "n", "content": "x" } })]);
 
-        assert!(missing.unwrap_err().contains("needs argument scope"));
+        assert!(left_out.is_ok());
         assert!(bad_choice.unwrap_err().contains("must be one of local, global"));
+        assert!(unknown.unwrap_err().contains("takes no argument colour"));
         assert!(good.is_ok());
     }
 

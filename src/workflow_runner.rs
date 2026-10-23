@@ -7,7 +7,7 @@ use std::collections::BTreeSet;
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
 
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 use crate::agent;
 use crate::turn::{TurnError, turn_error};
@@ -142,20 +142,26 @@ fn apply_profile(run: &mut Run, reference: &str, env: &Env<'_>) -> Result<(), Tu
     Ok(())
 }
 
-/// A tool step: the tool runs, with its fixed arguments or with the arguments the model writes for it. Its result is
+/// A tool step: the tool runs. Each argument is fixed by the step or left to the model. When every argument is fixed the
+/// call is made as it is; otherwise the model makes the call, and each fixed argument is set to its value. Its result is
 /// shown under the call, but not kept in the conversation, as a tool call's result is not kept in a normal reply.
 fn tool(run: &mut Run, name: &str, arguments: Option<&Value>, argument: &str, env: &Env<'_>, on_chunk: &mut dyn FnMut(Chunk)) -> Result<(), TurnError> {
     on_chunk(Chunk::Step(&format!("Tool {name}")));
     if env.switches.snapshot().contains(name) {
         return Err(run.fail(format!("tool {name} is switched off, so its workflow step cannot run")));
     }
-    let calls = match arguments {
-        Some(fixed) => vec![ToolCall {
-            name: name.to_owned(),
-            arguments: workflows::fill_arguments(fixed, argument).to_string(),
-            ..ToolCall::default()
-        }],
-        None => forced_calls(run, name, env)?,
+    let fixed = match arguments.map(|value| workflows::fill_arguments(value, argument)) {
+        Some(Value::Object(map)) => map,
+        _ => Map::new(),
+    };
+    let calls = if workflows::parameter_names(name).iter().all(|parameter| fixed.contains_key(parameter)) {
+        vec![ToolCall { name: name.to_owned(), arguments: Value::Object(fixed).to_string(), ..ToolCall::default() }]
+    } else {
+        let mut calls = forced_calls(run, name, env)?;
+        for call in &mut calls {
+            call.arguments = with_fixed(&call.arguments, &fixed).map_err(|reason| run.fail(reason))?;
+        }
+        calls
     };
     let root = env.config.working_dir.as_deref().map(Path::new);
     for call in calls {
@@ -165,6 +171,15 @@ fn tool(run: &mut Run, name: &str, arguments: Option<&Value>, argument: &str, en
         run.ran.push(line);
     }
     Ok(())
+}
+
+/// The model's arguments for a call, with each fixed argument set to its fixed value, so the model cannot change one.
+fn with_fixed(arguments: &str, fixed: &Map<String, Value>) -> Result<String, String> {
+    let Ok(Value::Object(mut call)) = serde_json::from_str::<Value>(arguments) else {
+        return Err("the model's arguments for this workflow step were not an object".to_owned());
+    };
+    call.extend(fixed.clone());
+    Ok(Value::Object(call).to_string())
 }
 
 /// The calls the model makes for a tool step. The grammar allows only calls to `name`, and one reply must make one.
@@ -188,5 +203,20 @@ fn with_ran(err: TurnError, ran: &[String]) -> TurnError {
         TurnError::Stopped { .. } => TurnError::Stopped { ran },
         TurnError::Failed { cause, .. } => TurnError::Failed { ran, cause },
         TurnError::Step { reason, .. } => TurnError::Step { ran, reason },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_fixed_argument_overrides_the_models_value_and_the_rest_are_kept() {
+        let fixed = Map::from_iter([("scope".to_owned(), json!("global"))]);
+        let merged = with_fixed(r#"{"scope":"local","category":"c"}"#, &fixed).unwrap();
+        let refused = with_fixed("not json", &fixed);
+
+        assert_eq!(serde_json::from_str::<Value>(&merged).unwrap(), json!({ "scope": "global", "category": "c" }));
+        assert!(refused.is_err());
     }
 }
