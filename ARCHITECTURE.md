@@ -7,7 +7,7 @@ Written for: developers working on this crate.
 - **Strata**: a local inference server that exposes an OpenAI-compatible API. This crate expects it at `http://127.0.0.1:8080`. Replies are streamed as server-sent events, and tool calls are streamed as fragments indexed by call.
 - **REPL**: the terminal read-eval-print loop in `src/main.rs`. Each line of input is added to the conversation and run as a turn. Reasoning appears under `[thinking]`, tool calls under `[tool]`, then the answer. `exit` or `quit` ends it, and `/new` starts a fresh conversation. Ctrl+C stops a running reply, and a second Ctrl+C quits. It runs when `vise` is started without arguments.
 - **Web UI**: a browser page served by `vise web` on `127.0.0.1:3000`. It has the same chat behavior as the REPL. Reasoning appears in a collapsible Thinking block, and tool calls appear as monospace lines in the reply. The page is written in TypeScript and compiled to `web/app.js`.
-- **Proxy**: the `/api/chat` route in `src/web.rs`. Strata sends no CORS headers, so the browser calls this same-origin route, and only the Rust server calls Strata. The route runs a turn and relays its events to the browser as server-sent events.
+- **Proxy**: the `/api/chat` route in `src/web/mod.rs`. Strata sends no CORS headers, so the browser calls this same-origin route, and only the Rust server calls Strata. The route runs a turn and relays its events to the browser as server-sent events.
 - **Turn**: one user message and everything the model does in response, including any tool rounds. `agent::run_turn` runs it.
 - **Session**: the in-memory conversation history in `src/session.rs`. It lasts for one REPL run and is used only by the REPL. The web UI keeps its own copy in the page, which is lost on reload.
 - **Message**: one turn in a conversation, a `Role` (`User`, `Assistant`, `Summary`, `SummaryFailed`, or `Profile`) plus its text. Defined in `src/strata.rs`.
@@ -29,15 +29,17 @@ src/
               line_range, and read_range
   session.rs  Session: message list and the told set, with push, pop, reset, restore, messages, told, set_told, and autosave_name and set_autosave_name (the name the conversation autosaves under; reset and restore clear it) (REPL only)
   file_tree.rs  list_dir: one page of 500 entries of a folder for the web Files panel (POST /api/files, with a dir and an after cursor: the last name shown, so entries added or removed between pages cannot repeat or skip; only one page of candidates is held while a folder is read). Leaves out .git, target and node_modules. Folders load when opened, so no part of the tree is read until it is needed. read_lines: one block of up to 200 lines of a text file, from a byte offset, for the file viewer (POST /api/file)
-  saved_sessions.rs  /save, /load, and /sessions (REPL), and save, load, and list for the web Sessions panel. A saved
-              session is JSON at .vise/sessions/<name>.json: the messages and the told set, not the tool switches
+  saved_sessions.rs  /save, /load, and /sessions (REPL), and save, load, list, and title for the web Sessions panel. A saved
+              session is JSON at .vise/sessions/<name>.json: the messages, the told set, and an optional title, not the tool switches. A save keeps the title already in the file
+  titles.rs   ensure: the title of a web session, asked of the model once from its first exchange with a text-only request, then written into the session file (POST /api/sessions with action title)
   compaction.rs  after_turn, needs_summary, and summarize: append-only summaries of long conversations
   grammar.rs  the GBNF grammars that block calls to disabled tools: enabled_calls_only (the whole output,
               used when Strata has no lazy grammars) and enabled_calls_after_trigger (a call-only grammar that
               Strata starts at a <tool_call> token)
   strata.rs   Config, Role, Message, Chunk, Reply, StrataError, and the streaming client
-  web.rs      std TcpListener HTTP server, one thread per connection:
-              serves the UI, proxies /api/chat as server-sent events, and serves /api/tools for the Tools panel, /api/notes for the Notes section, and /api/sessions for the Sessions panel (save, load, list)
+  web/mod.rs  std TcpListener HTTP server, one thread per connection:
+              serves the UI, proxies /api/chat as server-sent events, and routes the panels' requests to the modules beside it
+  web/files_panel.rs, notes_panel.rs, sessions_panel.rs, tools_panel.rs  the JSON requests for the Files panel (/api/files, /api/file), the Notes section (/api/notes), the Sessions panel (/api/sessions: save, load, list, title), and the Tools panel (/api/tools)
 web/
   index.html  page markup and styles. The Tools panel width is set by a divider, clamped to keep a minimum chat width,
               and kept per browser in localStorage (vise-tools-width). A narrower window clamps the shown width only.
@@ -136,7 +138,7 @@ On a failed turn the REPL pops the user message it just added, so a failed turn 
 
 The `done` event carries the turn's final answer, and the web page stores that text as the assistant message. Text from earlier rounds of the turn is shown on screen but not stored, as in the REPL.
 
-`web.rs` limits requests before reading the body: bodies over 1 MiB get 413, and POST `/api/chat` requires `Content-Type: application/json` or it gets 415. Each connection has a 10-second read timeout on the client socket. Each connection is handled on its own thread, so one slow client does not block others. The chat route sends the event-stream headers when the first event is ready. A failure before that is a 502 JSON response.
+`src/web/mod.rs` limits requests before reading the body: bodies over 1 MiB get 413, and POST `/api/chat` requires `Content-Type: application/json` or it gets 415. Each connection has a 10-second read timeout on the client socket. Each connection is handled on its own thread, so one slow client does not block others. The chat route sends the event-stream headers when the first event is ready. A failure before that is a 502 JSON response.
 
 ## UI Principles
 
@@ -172,7 +174,7 @@ The `done` event carries the turn's final answer, and the web page stores that t
 Error text is produced in three places:
 
 - **`StrataError` Display** in `src/strata.rs`. The REPL prints it, and the web server sends it as the 502 JSON body `{"error": ..., "ran": [...]}` or as the SSE event `{"type": "error", "error": ..., "ran": [...]}`, where `ran` lists the tool calls that ran before the failure.
-- **`parse_messages`** in `src/web.rs`. It returns the 400 messages for a bad request body.
+- **`parse_messages`** in `src/web/mod.rs`. It returns the 400 messages for a bad request body.
 - **`web/src/app.ts`**. It builds its own messages for an unreachable server, a dropped connection, a reply that ends before `done`, and a non-JSON error response (`HTTP <status>`).
 
 Tool errors are returned to the model as `error:` text and are not shown as errors to the user. Errors cross the wire as text only. The client cannot branch on the kind of error, and the JSON and SSE error shapes are handled by separate code paths in `app.ts`.

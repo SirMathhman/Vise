@@ -1,3 +1,11 @@
+//! The local web server: the page and its scripts, the chat stream, and the JSON requests the panels make. Each panel's
+//! requests are in their own module, and this file holds the server loop, the request and response handling, and the chat.
+
+mod files_panel;
+mod notes_panel;
+mod sessions_panel;
+mod tools_panel;
+
 use std::collections::{BTreeSet, HashMap};
 use std::io::{self, BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
@@ -12,17 +20,19 @@ use serde_json::{Value, json};
 use crate::agent::{self, TurnError};
 use crate::commands;
 use crate::compaction;
-use crate::file_tree;
 use crate::notes;
-use crate::saved_sessions;
 use crate::tools::{self, Switches};
 use crate::strata::{self, Chunk, Config, Message, Role};
-use crate::titles;
+
+use files_panel::{file_response, files_response};
+use notes_panel::notes_response;
+use sessions_panel::sessions_response;
+use tools_panel::tools_response;
 
 pub const DEFAULT_PORT: u16 = 3000;
 
-const INDEX_HTML: &str = include_str!("../web/index.html");
-const APP_JS: &str = include_str!("../web/app.js");
+const INDEX_HTML: &str = include_str!("../../web/index.html");
+const APP_JS: &str = include_str!("../../web/app.js");
 const JSON_TYPE: &str = "application/json";
 const MAX_BODY_BYTES: usize = 1024 * 1024;
 const READ_TIMEOUT: Duration = Duration::from_secs(10);
@@ -116,49 +126,6 @@ fn handle(mut stream: TcpStream, config: &Config, sessions: &Sessions) -> io::Re
         return write_response(&mut stream, &file_response(&request.body, config));
     }
     write_response(&mut stream, &route(&request))
-}
-
-/// The text of one file in the working directory, for the Files panel. Failures are reported as a 400 with the reason.
-fn file_response(body: &[u8], config: &Config) -> Response {
-    let data: Value = match serde_json::from_slice(body) {
-        Ok(data) => data,
-        Err(err) => return json_response(400, json!({ "error": format!("invalid JSON: {err}") })),
-    };
-    let Some(path) = data["path"].as_str() else {
-        return json_response(400, json!({ "error": "path must be a string" }));
-    };
-    let offset = data["offset"].as_u64().unwrap_or(0);
-    let Some(root) = config.working_dir.as_deref() else {
-        return json_response(400, json!({ "error": "no working directory is set" }));
-    };
-    match file_tree::read_lines(Path::new(root), path, offset) {
-        Ok(block) => json_response(200, json!({ "path": path, "lines": block.lines, "next": block.next, "more": block.more })),
-        Err(error) => json_response(400, json!({ "error": error })),
-    }
-}
-
-/// One page of a folder's entries for the Files panel. The folder is named relative to the working directory (`""` is
-/// the working directory), and `after` names the entry the page starts after. Failures are reported as a 400.
-fn files_response(body: &[u8], config: &Config) -> Response {
-    let data: Value = match serde_json::from_slice(body) {
-        Ok(data) => data,
-        Err(err) => return json_response(400, json!({ "error": format!("invalid JSON: {err}") })),
-    };
-    let dir = data["dir"].as_str().unwrap_or("");
-    let after = data["after"].as_object().and_then(|after| {
-        Some(file_tree::Cursor { name: after.get("name")?.as_str()?.to_owned(), dir: after.get("dir")?.as_bool()? })
-    });
-    let Some(root) = config.working_dir.as_deref() else {
-        return json_response(400, json!({ "error": "no working directory is set" }));
-    };
-    match file_tree::list_dir(Path::new(root), dir, after.as_ref()) {
-        Ok(page) => {
-            let entries: Vec<Value> = page.entries.iter().map(|entry| json!({ "name": entry.name, "dir": entry.dir })).collect();
-            let next = page.next.as_ref().map_or(Value::Null, |cursor| json!({ "name": cursor.name, "dir": cursor.dir }));
-            json_response(200, json!({ "dir": dir, "name": page.name, "entries": entries, "next": next, "more": page.more }))
-        }
-        Err(error) => json_response(400, json!({ "error": error })),
-    }
 }
 
 fn read_request(reader: &mut impl BufRead) -> io::Result<Request> {
@@ -256,23 +223,7 @@ fn chat(
     let mut started = false;
     let home = std::env::home_dir();
     let roots = notes::Roots { working: config.working_dir.as_deref().map(Path::new), home: home.as_deref() };
-    // A command's reply is shown and kept out of the conversation. A chosen profile also returns its instructions,
-    // which the page adds to the conversation.
-    let command = messages
-        .last()
-        .filter(|message| matches!(message.role, Role::User))
-        .and_then(|message| {
-            if let Some(reply) = commands::handle(&message.content, &switches)
-                .or_else(|| notes::command(&message.content, roots))
-            {
-                return Some((reply, None));
-            }
-            commands::profile(&message.content, &switches, roots).map(|result| match result {
-                Ok(choice) => (choice.reply, (!choice.instructions.is_empty()).then_some(choice.instructions)),
-                Err(err) => (format!("error: {err}"), None),
-            })
-        });
-    if let Some((reply, instructions)) = command {
+    if let Some((reply, instructions)) = command_reply(&messages, &switches, roots) {
         start_stream(&mut stream, &mut started)?;
         write_event(&mut stream, &json!({ "type": "content", "text": reply }))?;
         return write_event(&mut stream, &json!({ "type": "done", "answer": reply, "profile": instructions }));
@@ -282,18 +233,7 @@ fn chat(
     // the new record is returned in the done event, which the page keeps only once it arrives.
     let now = switches.snapshot();
     let told = parse_told(&request.body);
-    // The notes index goes on the first message of a conversation only, so it is kept in the page's history.
-    let first = messages.split_last().is_some_and(|(_, history)| strata::is_first_turn(history));
-    let noted = messages
-        .last_mut()
-        .filter(|message| matches!(message.role, Role::User))
-        .map(|message| {
-            if first {
-                message.content = notes::with_index(&message.content, roots);
-            }
-            message.content = tools::note_changes(&message.content, &told, &now);
-            message.content.clone()
-        });
+    let noted = note_turn(&mut messages, &told, &now, roots);
 
     // A failed write means the browser closed the page (or stopped the reply): the turn stops there.
     let cancel = AtomicBool::new(false);
@@ -305,12 +245,62 @@ fn chat(
         }
     });
 
+    finish_turn(&mut stream, &mut started, &messages, outcome, noted, &now, config)
+}
+
+/// The reply to a command typed as the last message, with the profile instructions it chose, if any. A command's reply
+/// is shown and kept out of the conversation.
+fn command_reply(messages: &[Message], switches: &Switches, roots: notes::Roots) -> Option<(String, Option<String>)> {
+    messages
+        .last()
+        .filter(|message| matches!(message.role, Role::User))
+        .and_then(|message| {
+            if let Some(reply) = commands::handle(&message.content, switches)
+                .or_else(|| notes::command(&message.content, roots))
+            {
+                return Some((reply, None));
+            }
+            commands::profile(&message.content, switches, roots).map(|result| match result {
+                Ok(choice) => (choice.reply, (!choice.instructions.is_empty()).then_some(choice.instructions)),
+                Err(err) => (format!("error: {err}"), None),
+            })
+        })
+}
+
+/// Adds the switch note to the last user message, and the notes index to the first message of a conversation. Returns
+/// that message as it is kept in the page's history, or `None` if the last message is not a user's.
+fn note_turn(messages: &mut [Message], told: &BTreeSet<String>, now: &BTreeSet<String>, roots: notes::Roots) -> Option<String> {
+    // The notes index goes on the first message of a conversation only, so it is kept in the page's history.
+    let first = messages.split_last().is_some_and(|(_, history)| strata::is_first_turn(history));
+    messages
+        .last_mut()
+        .filter(|message| matches!(message.role, Role::User))
+        .map(|message| {
+            if first {
+                message.content = notes::with_index(&message.content, roots);
+            }
+            message.content = tools::note_changes(&message.content, told, now);
+            message.content.clone()
+        })
+}
+
+/// Sends the end of a turn: its answer, with the summary it may have added, or its failure. A turn the page stopped
+/// sends nothing more.
+fn finish_turn(
+    stream: &mut TcpStream,
+    started: &mut bool,
+    messages: &[Message],
+    outcome: Result<String, TurnError>,
+    noted: Option<String>,
+    now: &BTreeSet<String>,
+    config: &Config,
+) -> io::Result<()> {
     match outcome {
         // The page stopped the turn itself: nothing more is sent, and the connection is already gone.
         Err(TurnError::Stopped { .. }) => Ok(()),
         Ok(answer) => {
-            start_stream(&mut stream, &mut started)?;
-            let mut log = messages.clone();
+            start_stream(stream, started)?;
+            let mut log = messages.to_vec();
             log.push(Message {
                 role: Role::Assistant,
                 content: answer.clone(),
@@ -321,7 +311,7 @@ fn chat(
                 None => (None, None),
             };
             write_event(
-                &mut stream,
+                stream,
                 &json!({
                     "type": "done",
                     "answer": answer,
@@ -333,12 +323,12 @@ fn chat(
             )
         }
         // Nothing was sent yet, so the failure can still be a plain JSON error response.
-        Err(err @ TurnError::Failed { .. }) if !started => {
+        Err(err @ TurnError::Failed { .. }) if !*started => {
             let response = json_response(502, json!({ "error": err.to_string(), "ran": err.ran() }));
-            write_response(&mut stream, &response)
+            write_response(stream, &response)
         }
         Err(err @ TurnError::Failed { .. }) => write_event(
-            &mut stream,
+            stream,
             &json!({ "type": "error", "error": err.to_string(), "ran": err.ran() }),
         ),
     }
@@ -372,68 +362,6 @@ fn start_stream(stream: &mut TcpStream, started: &mut bool) -> io::Result<()> {
 
 fn write_event(stream: &mut TcpStream, event: &Value) -> io::Result<()> {
     write!(stream, "data: {event}\n\n")
-}
-
-/// Runs one notes request from the web UI. Failures are reported as a 400 with the reason.
-fn notes_response(body: &[u8], roots: notes::Roots) -> Response {
-    let data: Value = match serde_json::from_slice(body) {
-        Ok(data) => data,
-        Err(err) => return json_response(400, json!({ "error": format!("invalid JSON: {err}") })),
-    };
-    match notes::web(&data, roots) {
-        Ok(value) => json_response(200, value),
-        Err(error) => json_response(400, json!({ "error": error })),
-    }
-}
-
-/// Runs one saved-session request from the web UI: `save` writes the page's conversation, `load` returns a saved
-/// one, and `list` names the saved ones. Failures are reported as a 400 with the reason.
-fn sessions_response(body: &[u8], config: &Config) -> Response {
-    let working = config.working_dir.as_deref().map(Path::new);
-    let data: Value = match serde_json::from_slice(body) {
-        Ok(data) => data,
-        Err(err) => return json_response(400, json!({ "error": format!("invalid JSON: {err}") })),
-    };
-    let name = data["name"].as_str().unwrap_or_default();
-    let result = match data["action"].as_str() {
-        Some("save") => parse_messages(body)
-            .and_then(|messages| saved_sessions::save(working, name, &messages, &parse_told(body)))
-            .map(|message| json!({ "message": message })),
-        Some("load") => saved_sessions::load(working, name)
-            .map(|saved| saved_sessions::to_value(&saved.messages, &saved.told, saved.title.as_deref())),
-        Some("list") => saved_sessions::listed(working).map(|listed| {
-            let sessions: Vec<Value> = listed.into_iter().map(|item| json!({ "name": item.name, "title": item.title })).collect();
-            json!({ "sessions": sessions })
-        }),
-        Some("title") => parse_messages(body)
-            .and_then(|messages| titles::ensure(working, name, &messages, config))
-            .map(|title| json!({ "title": title })),
-        _ => Err("action must be save, load, list, or title".to_owned()),
-    };
-    match result {
-        Ok(value) => json_response(200, value),
-        Err(error) => json_response(400, json!({ "error": error })),
-    }
-}
-
-/// Lists the tools for the tab's session. A body with `name` and `enabled` also switches that tool first.
-fn tools_response(body: &[u8], sessions: &Sessions) -> Response {
-    let Some(session) = parse_session(body) else {
-        return json_response(400, json!({ "error": "missing or invalid session" }));
-    };
-    let data: Value = serde_json::from_slice(body).unwrap_or(Value::Null);
-    if data.get("name").is_some() {
-        let Some(name) = data["name"].as_str().filter(|name| tools::NAMES.contains(name)) else {
-            return json_response(400, json!({ "error": "unknown tool" }));
-        };
-        let Some(enabled) = data["enabled"].as_bool() else {
-            return json_response(400, json!({ "error": "enabled must be true or false" }));
-        };
-        sessions.get(&session).set(name, enabled);
-    }
-    // A listing alone does not record the session, so reads cannot grow the session map.
-    let switches = sessions.find(&session).unwrap_or_default();
-    json_response(200, json!({ "tools": tools::listing(&switches) }))
 }
 
 /// The tab's session id: a short token the page keeps in sessionStorage. Missing or malformed ids are refused.
@@ -601,38 +529,5 @@ mod tests {
         assert_eq!(parse_session(br#"{"session":"a b"}"#), None);
         assert_eq!(parse_session(br#"{"session":""}"#), None);
         assert_eq!(parse_session(format!(r#"{{"session":"{}"}}"#, "x".repeat(65)).as_bytes()), None);
-    }
-
-    #[test]
-    fn notes_endpoint_reports_failures_as_bad_requests() {
-        let roots = notes::Roots { working: None, home: None };
-        let unknown = notes_response(br#"{"action":"explode"}"#, roots);
-        let malformed = notes_response(b"not json", roots);
-
-        assert_eq!(unknown.status, 400);
-        assert_eq!(malformed.status, 400);
-    }
-
-    #[test]
-    fn a_tools_listing_does_not_record_the_session() {
-        let sessions = Sessions::default();
-        let response = tools_response(br#"{"session":"tab-3"}"#, &sessions);
-
-        assert_eq!(response.status, 200);
-        assert!(sessions.by_id.lock().unwrap().is_empty());
-    }
-
-    #[test]
-    fn tools_endpoint_switches_only_its_own_tab() {
-        let sessions = Sessions::default();
-        let response = tools_response(br#"{"session":"tab-1","name":"delete_file","enabled":false}"#, &sessions);
-        let data: Value = serde_json::from_str(&response.body).unwrap();
-        let unknown = tools_response(br#"{"session":"tab-1","name":"nope","enabled":true}"#, &sessions);
-
-        assert_eq!(response.status, 200);
-        let delete = data["tools"].as_array().unwrap().iter().find(|tool| tool["name"] == "delete_file").unwrap();
-        assert_eq!(delete["enabled"], false);
-        assert!(sessions.get("tab-2").snapshot().is_empty());
-        assert_eq!(unknown.status, 400);
     }
 }
