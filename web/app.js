@@ -621,12 +621,20 @@ function renderViewers() {
     // The text is set as plain text, so nothing in it is read as HTML.
     const text = document.createElement("pre");
     text.textContent = file.lines.join("\n");
-    viewer.append(head, text);
+    const foot = document.createElement("div");
+    foot.className = "viewer-foot";
+    renderFoot(file, foot);
+    viewer.append(head, text, foot);
+    viewersBody.append(viewer);
+}
+// The controls under the text: the error, and Load more (or Loading…). Only this part is redrawn while a block loads.
+function renderFoot(file, foot) {
+    foot.replaceChildren();
     if (file.error !== null) {
         const error = document.createElement("p");
         error.className = "error";
         error.textContent = file.error;
-        viewer.append(error);
+        foot.append(error);
     }
     if (file.more) {
         const more = document.createElement("button");
@@ -637,9 +645,26 @@ function renderViewers() {
         more.addEventListener("click", () => {
             void loadBlock(file.path);
         });
-        viewer.append(more);
+        foot.append(more);
     }
-    viewersBody.append(viewer);
+}
+// Redraws the foot of a file, if its tab is the one shown.
+function refreshFoot(file) {
+    if (file.path !== activePath) {
+        return;
+    }
+    const foot = viewersBody.querySelector(".viewer-foot");
+    if (foot !== null) {
+        renderFoot(file, foot);
+    }
+}
+// Adds a block's lines to a file. When its tab is the one shown, they are appended to the text already there.
+function addLines(file, lines) {
+    const text = (file.lines.length > 0 ? "\n" : "") + lines.join("\n");
+    file.lines.push(...lines);
+    if (file.path === activePath) {
+        viewersBody.querySelector("pre")?.append(document.createTextNode(text));
+    }
 }
 // Fetches the next block of a file that is still open. A response for a file that was closed meanwhile is dropped.
 async function loadBlock(path) {
@@ -649,13 +674,13 @@ async function loadBlock(path) {
     }
     file.loading = true;
     file.error = null;
-    renderViewers();
+    refreshFoot(file);
     try {
         const data = await postJson("/api/file", {
             path,
             offset: file.next,
         });
-        file.lines.push(...data.lines);
+        addLines(file, data.lines);
         file.next = data.next;
         file.more = data.more;
     }
@@ -664,7 +689,7 @@ async function loadBlock(path) {
     }
     finally {
         file.loading = false;
-        renderViewers();
+        refreshFoot(file);
     }
 }
 // Opens a file as a tab and makes it the one shown. Opening a file that is already open only shows its tab.

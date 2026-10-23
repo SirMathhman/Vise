@@ -2,7 +2,7 @@
 //! out at every level. A folder that cannot be read is shown empty rather than failing the whole tree.
 
 use std::fs;
-use std::io::{self, BufRead, BufReader, Seek, SeekFrom};
+use std::io::{self, BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
@@ -49,6 +49,9 @@ pub fn read_lines(root: &Path, path: &str, offset: u64) -> Result<Block, String>
     }
     let read_error = |err: io::Error| format!("could not read {path}: {err}");
     let mut file = fs::File::open(&target).map_err(read_error)?;
+    if offset > 0 && !starts_a_line(&mut file, offset).map_err(read_error)? {
+        return Err(format!("offset {offset} is not the start of a line in {path}; the file may have changed"));
+    }
     file.seek(SeekFrom::Start(offset)).map_err(read_error)?;
     let mut reader = BufReader::new(file);
     let mut lines = Vec::new();
@@ -56,9 +59,13 @@ pub fn read_lines(root: &Path, path: &str, offset: u64) -> Result<Block, String>
     let mut bytes = Vec::new();
     while lines.len() < LINES_PER_BLOCK {
         bytes.clear();
-        let read = reader.read_until(b'\n', &mut bytes).map_err(read_error)?;
+        // At most one line longer than MAX_LINE_BYTES is read, so a file with no line endings cannot fill memory.
+        let read = (&mut reader).take(MAX_LINE_BYTES + 1).read_until(b'\n', &mut bytes).map_err(read_error)?;
         if read == 0 {
             return Ok(Block { lines, next, more: false });
+        }
+        if bytes.len() as u64 > MAX_LINE_BYTES && !bytes.ends_with(b"\n") {
+            return Err(format!("a line in {path} is longer than {MAX_LINE_BYTES} bytes, so its contents are not shown"));
         }
         next += read as u64;
         lines.push(text_line(path, &bytes)?);
@@ -66,6 +73,17 @@ pub fn read_lines(root: &Path, path: &str, offset: u64) -> Result<Block, String>
     // The next line is looked at, not consumed, so the next block starts exactly where this one ends.
     let more = !reader.fill_buf().map_err(read_error)?.is_empty();
     Ok(Block { lines, next, more })
+}
+
+/// The longest line read, in bytes, line ending included.
+pub const MAX_LINE_BYTES: u64 = 64 * 1024;
+
+/// Whether byte `offset` is the first byte of a line: the byte before it is a line feed.
+fn starts_a_line(file: &mut fs::File, offset: u64) -> io::Result<bool> {
+    file.seek(SeekFrom::Start(offset - 1))?;
+    let mut before = [0u8; 1];
+    file.read_exact(&mut before)?;
+    Ok(before[0] == b'\n')
 }
 
 /// One line of text without its line ending. A line that is not UTF-8, or holds a NUL byte, is refused.
@@ -155,6 +173,19 @@ mod tests {
         assert!(!text.more);
         assert!(escape.is_err());
         assert!(binary.unwrap_err().contains("not a text file"));
+    }
+
+    #[test]
+    fn a_line_too_long_to_read_and_an_offset_inside_a_line_are_refused() {
+        let root = folder("refuse");
+        fs::write(root.join("one-line.txt"), "x".repeat(MAX_LINE_BYTES as usize + 10)).unwrap();
+        fs::write(root.join("two.txt"), "first\nsecond\n").unwrap();
+        let too_long = read_lines(&root, "one-line.txt", 0);
+        let inside = read_lines(&root, "two.txt", 2);
+        fs::remove_dir_all(&root).unwrap();
+
+        assert!(too_long.unwrap_err().contains("longer than"));
+        assert!(inside.unwrap_err().contains("not the start of a line"));
     }
 
     #[test]
