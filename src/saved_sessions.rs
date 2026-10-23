@@ -29,9 +29,8 @@ pub fn command(line: &str, session: &mut Session, working: Option<&Path>) -> Opt
     let result = match (command, name) {
         ("/save", Some(name)) => save(working, name, session.messages(), session.told()),
         ("/load", Some(name)) => load(working, name).map(|saved| {
-            let count = saved.messages.len();
             session.restore(saved.messages, saved.told);
-            format!("Loaded session {name} ({count} messages).")
+            format!("Loaded session {name}.")
         }),
         ("/sessions", None) => list(working).map(|names| {
             if names.is_empty() {
@@ -205,7 +204,7 @@ mod tests {
 
         assert_eq!(saved.as_deref(), Some("Saved session work."));
         assert_eq!(listed.as_deref(), Some("work"));
-        assert_eq!(loaded.as_deref(), Some("Loaded session work (1 messages)."));
+        assert_eq!(loaded.as_deref(), Some("Loaded session work."));
         assert_eq!(session.messages()[0].content, "first question");
         assert_eq!(usage.as_deref(), Some("error: usage: /load <name>"));
         assert_eq!(command("hello", &mut session, Some(&root)), None);

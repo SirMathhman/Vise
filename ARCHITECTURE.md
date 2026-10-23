@@ -27,7 +27,9 @@ src/
   notes/      mod.rs: note tools, the /notes command and the web notes requests; store.rs: scopes, paths and file operations; index.rs: the start-of-conversation index and summaries; profile.rs: reads profile notes; tests.rs. Notes: Markdown notes in .vise/notes/<category>/<name>.md, local (working directory) or global (home directory)
   workspace.rs  leaf helpers shared by the file and note tools: resolve (path confinement), string_arg,
               line_range, and read_range
-  session.rs  Session: message list and the told set, with push, pop, reset, messages, told, and set_told (REPL only)
+  session.rs  Session: message list and the told set, with push, pop, reset, restore, messages, told, and set_told (REPL only)
+  saved_sessions.rs  /save, /load, and /sessions (REPL), and save, load, and list for the web Sessions panel. A saved
+              session is JSON at .vise/sessions/<name>.json: the messages and the told set, not the tool switches
   compaction.rs  after_turn, needs_summary, and summarize: append-only summaries of long conversations
   grammar.rs  the GBNF grammars that block calls to disabled tools: enabled_calls_only (the whole output,
               used when Strata has no lazy grammars) and enabled_calls_after_trigger (a call-only grammar that
@@ -48,7 +50,7 @@ package.json  TypeScript and concurrently dev dependencies. Scripts: `build` (ts
               and `dev` (runs both together)
 ```
 
-Dependencies run one way: `main` and `web` call `agent`. `agent` calls `strata`, `tools`, and `compaction`. `compaction` calls `strata` and `grammar`. `strata` calls `tools` for the definitions. `tools` calls `notes`. Inside `notes`, `mod.rs` calls `store.rs` and `index.rs`, and `index.rs` calls `store.rs`. `notes` and `tools` both call `workspace`, which is a leaf and calls nothing else in the crate. `session` uses `strata` for `Message`. There are no cycles.
+Dependencies run one way: `main` and `web` call `agent`. `agent` calls `strata`, `tools`, and `compaction`. `compaction` calls `strata` and `grammar`. `strata` calls `tools` for the definitions. `tools` calls `notes`. Inside `notes`, `mod.rs` calls `store.rs` and `index.rs`, and `index.rs` calls `store.rs`. `notes` and `tools` both call `workspace`, which is a leaf and calls nothing else in the crate. `session` uses `strata` for `Message`. `saved_sessions` calls `session`, `strata`, and `workspace`. There are no cycles.
 
 `strata.rs` is split into layers:
 

@@ -421,6 +421,109 @@ function endDrag(): void {
 divider.addEventListener("pointerup", endDrag);
 divider.addEventListener("pointercancel", endDrag);
 
+// Saved sessions in the side panel. The server writes and reads the files; loading replaces the conversation both on
+// screen and in the history the next request sends.
+const sessionForm = document.getElementById("session-form") as HTMLFormElement;
+const sessionName = document.getElementById("session-name") as HTMLInputElement;
+const sessionsList = document.getElementById("sessions-list") as HTMLUListElement;
+const sessionsStatus = document.getElementById("sessions-status") as HTMLParagraphElement;
+
+function showSessionsStatus(message: string, isError: boolean): void {
+  sessionsStatus.textContent = message;
+  sessionsStatus.className = isError ? "error" : "summary";
+  sessionsStatus.hidden = false;
+}
+
+async function refreshSessions(): Promise<void> {
+  try {
+    const { sessions } = await postJson<{ sessions: string[] }>("/api/sessions", { action: "list" });
+    sessionsList.replaceChildren(
+      ...sessions.map((name) => {
+        const item = document.createElement("li");
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = name;
+        button.addEventListener("click", () => {
+          void loadSession(name);
+        });
+        item.append(button);
+        return item;
+      }),
+    );
+  } catch (err) {
+    showSessionsStatus(err instanceof Error ? err.message : String(err), true);
+  }
+}
+
+// Adds one saved message to the log the way the live conversation showed it. Profile instructions are not shown.
+function showMessage(message: Message): void {
+  if (message.role === "user") {
+    addEntry("user").textContent = message.content;
+  } else if (message.role === "assistant") {
+    const bubble = addEntry("assistant");
+    const answer = document.createElement("div");
+    answer.className = "markdown";
+    answer.innerHTML = renderMarkdown(message.content);
+    bubble.append(answer);
+  } else if (message.role === "summary") {
+    addEntry("summary").textContent = "Earlier conversation summarized.";
+  } else if (message.role === "summary_failed") {
+    addEntry("summary").textContent = "Could not summarize the conversation. It will be tried again later.";
+  }
+}
+
+sessionForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const name = sessionName.value.trim();
+  if (name === "") {
+    return;
+  }
+  // A reply in flight is not part of the conversation yet, so the save waits for it.
+  if (input.disabled) {
+    showSessionsStatus("Wait for the reply to finish, then save.", true);
+    return;
+  }
+  try {
+    const { message } = await postJson<{ message: string }>("/api/sessions", {
+      action: "save",
+      name,
+      messages: conversation,
+      told,
+    });
+    sessionName.value = "";
+    showSessionsStatus(message, false);
+    await refreshSessions();
+  } catch (err) {
+    showSessionsStatus(err instanceof Error ? err.message : String(err), true);
+  }
+});
+
+async function loadSession(name: string): Promise<void> {
+  if (input.disabled) {
+    showSessionsStatus("Wait for the reply to finish, then load.", true);
+    return;
+  }
+  // Input stays off while the session loads, so a message cannot slip in between the request and the replacement.
+  input.disabled = true;
+  try {
+    const data = await postJson<{ messages: Message[]; told: string[] }>("/api/sessions", { action: "load", name });
+    // The default profile must land before the loaded conversation, or it could join the conversation after it.
+    await defaultProfile;
+    conversation.length = 0;
+    conversation.push(...data.messages);
+    told = data.told;
+    log.replaceChildren();
+    data.messages.forEach(showMessage);
+    showSessionsStatus(`Loaded session ${name}.`, false);
+    scrollToEnd();
+  } catch (err) {
+    showSessionsStatus(err instanceof Error ? err.message : String(err), true);
+  } finally {
+    input.disabled = false;
+    input.focus();
+  }
+}
+
 // Notes in the side panel. The server keeps them; the page shows one at a time in the editor below the list.
 interface NoteRef {
   scope: string;
@@ -448,9 +551,9 @@ const NEW_NOTE_TEXT = "---\nname: \nsummary: \n---\n";
 // The note open in the editor. Null while a new note is being written.
 let editing: NoteRef | null = null;
 
-// One request to the notes API. A failure is thrown with the server's reason.
-async function notesApi<T>(body: Record<string, unknown>): Promise<T> {
-  const res = await fetch("/api/notes", {
+// One JSON request to the server. A failure is thrown with the server's reason.
+async function postJson<T>(url: string, body: Record<string, unknown>): Promise<T> {
+  const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -460,6 +563,11 @@ async function notesApi<T>(body: Record<string, unknown>): Promise<T> {
     throw new Error(data.error ?? `HTTP ${res.status}`);
   }
   return data;
+}
+
+// One request to the notes API.
+function notesApi<T>(body: Record<string, unknown>): Promise<T> {
+  return postJson<T>("/api/notes", body);
 }
 
 function showNotesStatus(message: string, isError: boolean): void {
@@ -587,6 +695,7 @@ noteDelete.addEventListener("click", async () => {
 });
 
 void refreshNotes();
+void refreshSessions();
 void applyDefaultProfile();
 
 // A narrower window clamps the shown width without changing the chosen one, and nothing is saved here.

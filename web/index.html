@@ -179,18 +179,22 @@
         padding: 0.5rem;
         border-radius: 0.5rem;
       }
-      #notes-section {
+      #notes-section,
+      #sessions-section {
         margin-top: 1.5rem;
       }
-      #notes-list {
+      #notes-list,
+      #sessions-list {
         list-style: none;
         margin: 0;
         padding: 0;
       }
-      #notes-list li {
+      #notes-list li,
+      #sessions-list li {
         margin: 0.5rem 0;
       }
-      #notes-list button {
+      #notes-list button,
+      #sessions-list button {
         width: 100%;
         padding: 0.25rem 0.5rem;
         text-align: left;
@@ -202,7 +206,19 @@
         color: #666;
         font-size: 0.8em;
       }
-      #notes-status {
+      #session-form {
+        display: flex;
+        gap: 0.5rem;
+        margin-top: 0.75rem;
+      }
+      #session-name {
+        flex: 1;
+        min-width: 0;
+        font: inherit;
+        font-size: 0.9em;
+      }
+      #notes-status,
+      #sessions-status {
         margin: 0.5rem 0;
         padding: 0.5rem;
         border-radius: 0.5rem;
@@ -348,6 +364,15 @@
         <h2>Tools</h2>
         <p id="tools-error" class="error" hidden></p>
         <ul id="tools-list"></ul>
+        <section id="sessions-section">
+          <h2>Sessions</h2>
+          <p id="sessions-status" hidden></p>
+          <form id="session-form">
+            <input id="session-name" autocomplete="off" placeholder="Name" aria-label="Session name" />
+            <button type="submit" id="session-save">Save</button>
+          </form>
+          <ul id="sessions-list"></ul>
+        </section>
         <section id="notes-section">
           <h2>Notes</h2>
           <p id="notes-status" hidden></p>
