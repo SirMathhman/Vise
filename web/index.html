@@ -248,10 +248,25 @@
       .file-link:hover {
         text-decoration: underline;
       }
-      #file-view {
-        margin-top: 0.75rem;
+      /* The viewers column is the only thing that scrolls. Each viewer grows to its text, and long lines wrap. */
+      #viewers {
+        flex: 1 1 0;
+        min-width: 0;
+        height: 100vh;
+        overflow-y: auto;
+        padding: 1rem;
+        box-sizing: border-box;
+        border-left: 1px solid #ddd;
       }
-      .file-view-head {
+      .viewers-head {
+        display: flex;
+        justify-content: flex-end;
+        margin-bottom: 0.5rem;
+      }
+      .viewer {
+        margin-bottom: 1rem;
+      }
+      .viewer-head {
         display: flex;
         justify-content: space-between;
         align-items: center;
@@ -259,8 +274,10 @@
         font-family: ui-monospace, monospace;
         font-size: 0.85em;
       }
-      /* The viewer has no scrollbar of its own: the Files pane scrolls, and long lines wrap rather than scroll sideways. */
-      #file-view-text {
+      .viewer-name {
+        overflow-wrap: anywhere;
+      }
+      .viewer pre {
         margin: 0.5rem 0 0;
         padding: 0.5rem;
         background: #f3f3f3;
@@ -374,6 +391,12 @@
         .pane {
           flex: none;
         }
+        #viewers {
+          height: auto;
+          overflow: visible;
+          border-left: none;
+          border-top: 1px solid #ddd;
+        }
       }
       @media (prefers-color-scheme: dark) {
         body {
@@ -410,7 +433,10 @@
         .pane {
           border-top-color: #444;
         }
-        #file-view-text {
+        #viewers {
+          border-left-color: #444;
+        }
+        .viewer pre {
           background: #222;
         }
         #divider {
@@ -467,6 +493,12 @@
           <button type="button" id="new">New</button>
         </form>
       </main>
+      <section id="viewers" aria-label="Open files" hidden>
+        <div class="viewers-head">
+          <button type="button" id="viewers-close-all">Close all</button>
+        </div>
+        <div id="viewers-list"></div>
+      </section>
       <div id="divider" role="separator" aria-orientation="vertical" aria-label="Drag to resize the Tools panel"></div>
       <aside>
         <details class="pane" id="tools-section">
@@ -488,13 +520,6 @@
           <p id="files-status" hidden></p>
           <button type="button" id="files-refresh">Refresh</button>
           <div id="files-tree"></div>
-          <div id="file-view" hidden>
-            <div class="file-view-head">
-              <span id="file-view-name"></span>
-              <button type="button" id="file-view-close">Close</button>
-            </div>
-            <pre id="file-view-text"></pre>
-          </div>
         </details>
         <details class="pane" id="notes-section" open>
           <summary>Notes</summary>

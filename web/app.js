@@ -574,7 +574,7 @@ function treeList(nodes, prefix) {
             button.textContent = node.name;
             const path = `${prefix}${node.name}`;
             button.addEventListener("click", () => {
-                void openFile(path);
+                openFile(path);
             });
             item.append(button);
         }
@@ -582,36 +582,56 @@ function treeList(nodes, prefix) {
     }
     return list;
 }
-const fileView = document.getElementById("file-view");
-const fileViewName = document.getElementById("file-view-name");
-const fileViewText = document.getElementById("file-view-text");
-const fileViewClose = document.getElementById("file-view-close");
-// The latest file asked for. A response for an earlier click arrives late and is dropped, so the name and the text
-// always belong to the same file.
-let latestFile = 0;
-// Shows a file's text under the tree. The text is set as plain text, so nothing in it is read as HTML.
-async function openFile(path) {
-    const request = ++latestFile;
+const viewers = document.getElementById("viewers");
+const viewersList = document.getElementById("viewers-list");
+const viewersCloseAll = document.getElementById("viewers-close-all");
+// Hides the viewers column when no file is open.
+function updateViewers() {
+    viewers.hidden = viewersList.children.length === 0;
+}
+// Opens a file in a viewer beside the chat. Each file has one viewer, so opening it again does nothing. The viewer is
+// added at once, so viewers keep the order of the clicks, and its text arrives later. The text is set as plain text.
+function openFile(path) {
+    const open = [...viewersList.children].some((child) => child.dataset.path === path);
+    if (open) {
+        return;
+    }
+    const viewer = document.createElement("article");
+    viewer.className = "viewer";
+    viewer.dataset.path = path;
+    const head = document.createElement("div");
+    head.className = "viewer-head";
+    const name = document.createElement("span");
+    name.className = "viewer-name";
+    name.textContent = path;
+    const close = document.createElement("button");
+    close.type = "button";
+    close.textContent = "Close";
+    close.addEventListener("click", () => {
+        viewer.remove();
+        updateViewers();
+    });
+    head.append(name, close);
+    const text = document.createElement("pre");
+    text.textContent = "Loading…";
+    viewer.append(head, text);
+    viewersList.append(viewer);
+    updateViewers();
+    void loadViewer(path, text);
+}
+async function loadViewer(path, text) {
     try {
         const data = await postJson("/api/file", { path });
-        if (request !== latestFile) {
-            return;
-        }
-        fileViewName.textContent = data.path;
-        fileViewText.textContent = data.text;
-        fileView.hidden = false;
+        text.textContent = data.text;
     }
     catch (err) {
-        if (request !== latestFile) {
-            return;
-        }
-        filesStatus.textContent = err instanceof Error ? err.message : String(err);
-        filesStatus.className = "error";
-        filesStatus.hidden = false;
+        text.textContent = err instanceof Error ? err.message : String(err);
+        text.className = "error";
     }
 }
-fileViewClose.addEventListener("click", () => {
-    fileView.hidden = true;
+viewersCloseAll.addEventListener("click", () => {
+    viewersList.replaceChildren();
+    updateViewers();
 });
 async function refreshFiles() {
     try {
