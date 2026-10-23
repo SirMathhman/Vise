@@ -8,7 +8,6 @@ use serde_json::{Value, json};
 use super::{Response, json_response};
 use crate::notes;
 use crate::strata::Config;
-use crate::tools;
 use crate::workflows::{self, Step, Workflow};
 
 /// Runs one workflow request from the Workflows panel. Failures are reported as a 400 with the reason.
@@ -22,8 +21,8 @@ pub(super) fn workflows_response(body: &[u8], config: &Config) -> Response {
     let roots = notes::Roots { working, home: home.as_deref() };
     let name = data["name"].as_str().unwrap_or_default();
     let result = match data["action"].as_str() {
-        // The tool names are listed too, so the editor can offer them without asking the tabs' switches.
-        Some("list") => workflows::list(working).map(|names| json!({ "workflows": names, "tools": tools::NAMES })),
+        // The tools are listed with their parameters, so the editor can offer exactly what each one takes.
+        Some("list") => workflows::list(working).map(|names| json!({ "workflows": names, "tools": workflows::tool_list() })),
         Some("load") => workflows::load(working, name)
             .and_then(|found| found.ok_or_else(|| format!("there is no workflow named {name}")))
             .map(|workflow| workflows::to_value(&workflow)),

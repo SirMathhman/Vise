@@ -1145,10 +1145,7 @@ function fromJsonStep(step) {
         type: "tool",
         name: String(step.tool),
         fixed: args !== null,
-        args: Object.entries(args ?? {}).map(([key, value]) => ({
-            key,
-            value: typeof value === "string" ? value : JSON.stringify(value),
-        })),
+        args: Object.fromEntries(Object.entries(args ?? {}).map(([key, value]) => [key, typeof value === "string" ? value : JSON.stringify(value)])),
     };
 }
 function toJsonStep(step) {
@@ -1161,8 +1158,8 @@ function toJsonStep(step) {
     if (!step.fixed) {
         return { tool: step.name };
     }
-    // Every argument is sent as the text typed. The server reads each one as its tool's parameter type.
-    return { tool: step.name, arguments: Object.fromEntries(step.args.map((arg) => [arg.key, arg.value])) };
+    // Every argument is sent as the text chosen or typed. The server reads each one as its tool's parameter type.
+    return { tool: step.name, arguments: { ...step.args } };
 }
 // The first problem with the workflow as it stands, or null when it can be saved.
 function workflowProblem(name) {
@@ -1184,12 +1181,12 @@ function workflowProblem(name) {
             return `${where} needs a tool.`;
         }
         if (step.type === "tool" && step.fixed) {
-            const keys = step.args.map((arg) => arg.key.trim());
-            if (keys.includes("")) {
-                return `${where} has an argument with no name.`;
-            }
-            if (new Set(keys).size !== keys.length) {
-                return `${where} names an argument twice.`;
+            // Every parameter the tool declares must have a value. The server checks the values' types as well.
+            const tool = workflowTools.find((known) => known.name === step.name);
+            for (const parameter of tool?.parameters ?? []) {
+                if ((step.args[parameter.name] ?? "").trim() === "") {
+                    return `${where} needs a value for ${parameter.name}.`;
+                }
             }
         }
     }
@@ -1267,11 +1264,14 @@ function toolFields(step, index) {
     const tool = document.createElement("select");
     tool.setAttribute("aria-label", `Step ${index + 1} tool`);
     tool.append(new Option("Choose a tool…", ""));
-    for (const name of workflowTools) {
-        tool.append(new Option(name, name, false, name === step.name));
+    for (const known of workflowTools) {
+        tool.append(new Option(known.name, known.name, false, known.name === step.name));
     }
     tool.addEventListener("change", () => {
+        // Another tool takes other arguments, so the values of the last one are dropped.
         step.name = tool.value;
+        step.args = {};
+        renderWorkflowSteps();
     });
     const mode = document.createElement("select");
     mode.setAttribute("aria-label", `Step ${index + 1} arguments`);
@@ -1287,42 +1287,65 @@ function toolFields(step, index) {
     }
     return fields;
 }
-// The fixed arguments of a tool step, one name and value per row.
+// The fixed arguments of a tool step: one field for each parameter the tool declares, and no others. Every one is required.
 function fixedArguments(step, index) {
     const list = document.createElement("div");
     list.className = "workflow-args";
-    step.args.forEach((arg, row) => {
-        const line = document.createElement("div");
-        const key = document.createElement("input");
-        key.placeholder = "name";
-        key.value = arg.key;
-        key.setAttribute("aria-label", `Step ${index + 1} argument ${row + 1} name`);
-        key.addEventListener("input", () => {
-            arg.key = key.value;
-        });
-        const value = document.createElement("input");
-        value.placeholder = "value";
-        value.value = arg.value;
-        value.setAttribute("aria-label", `Step ${index + 1} argument ${row + 1} value`);
-        value.addEventListener("input", () => {
-            arg.value = value.value;
-        });
-        const remove = stepButton("Remove", false, () => {
-            step.args.splice(row, 1);
-            renderWorkflowSteps();
-        });
-        line.append(key, value, remove);
-        list.append(line);
-    });
-    const add = stepButton("Add argument", false, () => {
-        step.args.push({ key: "", value: "" });
-        renderWorkflowSteps();
-    });
+    const tool = workflowTools.find((known) => known.name === step.name);
+    if (tool === undefined) {
+        const hint = document.createElement("p");
+        hint.className = "description";
+        hint.textContent = "Choose a tool to see the arguments it takes.";
+        list.append(hint);
+        return list;
+    }
+    for (const parameter of tool.parameters) {
+        step.args[parameter.name] ??= "";
+        list.append(argumentField(step, parameter, index));
+    }
     const hint = document.createElement("p");
     hint.className = "description";
-    hint.textContent = "Each value is read as the tool's parameter: a number, true or false where it takes one, otherwise text.";
-    list.append(add, hint);
+    hint.textContent = "Every argument the tool takes is required.";
+    list.append(hint);
     return list;
+}
+// One argument's field, shaped by its parameter: a choice box for a listed set of values, a number box for a number,
+// and a text box otherwise.
+function argumentField(step, parameter, index) {
+    const row = document.createElement("label");
+    row.title = parameter.description ?? parameter.name;
+    row.append(`${parameter.name} `);
+    const label = `Step ${index + 1} argument ${parameter.name}`;
+    const current = step.args[parameter.name];
+    const set = (value) => {
+        step.args[parameter.name] = value;
+    };
+    if (parameter.enum !== null || parameter.type === "boolean") {
+        const choices = parameter.enum ?? ["true", "false"];
+        const select = document.createElement("select");
+        select.setAttribute("aria-label", label);
+        select.append(new Option("Choose…", ""));
+        for (const choice of choices) {
+            select.append(new Option(choice, choice, false, choice === current));
+        }
+        select.addEventListener("change", () => set(select.value));
+        row.append(select);
+    }
+    else {
+        const input = document.createElement("input");
+        input.setAttribute("aria-label", label);
+        if (parameter.type === "integer" || parameter.type === "number") {
+            input.type = "number";
+            input.step = parameter.type === "integer" ? "1" : "any";
+            if (parameter.minimum !== null) {
+                input.min = String(parameter.minimum);
+            }
+        }
+        input.value = current;
+        input.addEventListener("input", () => set(input.value));
+        row.append(input);
+    }
+    return row;
 }
 workflowNew.addEventListener("click", () => {
     workflowEditing = null;
@@ -1339,7 +1362,7 @@ workflowAddProfile.addEventListener("click", () => {
     renderWorkflowSteps();
 });
 workflowAddTool.addEventListener("click", () => {
-    workflowDraft.push({ type: "tool", name: "", fixed: false, args: [] });
+    workflowDraft.push({ type: "tool", name: "", fixed: false, args: {} });
     renderWorkflowSteps();
 });
 workflowForm.addEventListener("submit", async (event) => {

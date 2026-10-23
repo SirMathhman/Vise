@@ -68,8 +68,9 @@ pub fn from_steps(items: &[Value], name: &str) -> Result<Workflow, String> {
 }
 
 /// The steps with their fixed arguments typed by the tool's parameters. The editor sends each argument as text, and the
-/// text is read as the parameter's declared type, so a number is a number and a string stays the text it was. An argument
-/// the tool does not take, or a text its type cannot hold, is refused with the step and the argument named.
+/// text is read as the parameter's declared type, so a number is a number and a string stays the text it was. A tool step
+/// must give every parameter its tool declares, and no others. A text its parameter cannot hold, or a value outside a
+/// parameter's listed choices, is refused with the step and the argument named.
 pub fn type_steps(items: &[Value]) -> Result<Vec<Value>, String> {
     items
         .iter()
@@ -88,24 +89,41 @@ pub fn type_steps(items: &[Value]) -> Result<Vec<Value>, String> {
 }
 
 fn typed_arguments(tool: &str, arguments: &Map<String, Value>) -> Result<Value, String> {
+    let parameters = parameters(tool).ok_or_else(|| format!("unknown tool {tool}"))?;
+    if let Some(missing) = parameters.keys().find(|name| !arguments.contains_key(*name)) {
+        return Err(format!("{tool} needs argument {missing}"));
+    }
     let mut typed = Map::new();
     for (name, text) in arguments {
         let text = text.as_str().ok_or_else(|| format!("argument {name} must be text"))?;
-        let kind = parameter_type(tool, name).ok_or_else(|| format!("{tool} takes no argument {name}"))?;
-        let value = typed_value(&kind, text).map_err(|err| format!("argument {name} {err}"))?;
+        let schema = parameters.get(name).ok_or_else(|| format!("{tool} takes no argument {name}"))?;
+        let value = typed_value(schema, text).map_err(|err| format!("argument {name} {err}"))?;
         typed.insert(name.clone(), value);
     }
     Ok(Value::Object(typed))
 }
 
-/// The value of a text read as a parameter of type `kind`. A string parameter keeps the text exactly.
-fn typed_value(kind: &str, text: &str) -> Result<Value, String> {
-    match kind {
-        "integer" => text
-            .trim()
-            .parse::<i64>()
-            .map(Value::from)
-            .map_err(|_| format!("must be a whole number, not {text:?}")),
+/// The value of a text read as a parameter with `schema`. A parameter with a listed set of choices takes one of them;
+/// a string parameter keeps the text exactly.
+fn typed_value(schema: &Value, text: &str) -> Result<Value, String> {
+    if let Some(choices) = schema["enum"].as_array() {
+        if choices.iter().any(|choice| choice.as_str() == Some(text)) {
+            return Ok(Value::String(text.to_owned()));
+        }
+        let listed: Vec<&str> = choices.iter().filter_map(Value::as_str).collect();
+        return Err(format!("must be one of {}, not {text:?}", listed.join(", ")));
+    }
+    match schema["type"].as_str().unwrap_or("string") {
+        "integer" => {
+            let number: i64 = text
+                .trim()
+                .parse()
+                .map_err(|_| format!("must be a whole number, not {text:?}"))?;
+            match schema["minimum"].as_i64() {
+                Some(minimum) if number < minimum => Err(format!("must be at least {minimum}")),
+                _ => Ok(Value::from(number)),
+            }
+        }
         "number" => text
             .trim()
             .parse::<f64>()
@@ -122,15 +140,39 @@ fn typed_value(kind: &str, text: &str) -> Result<Value, String> {
     }
 }
 
-/// The declared type of a parameter of `tool`, or `None` if the tool takes no parameter of that name.
-fn parameter_type(tool: &str, name: &str) -> Option<String> {
+/// The parameters `tool` declares, by name, with each one's schema. `None` if there is no such tool.
+fn parameters(tool: &str) -> Option<Map<String, Value>> {
     let definitions = tools::definitions();
     let function = definitions
         .as_array()?
         .iter()
         .map(|entry| &entry["function"])
         .find(|function| function["name"] == tool)?;
-    function["parameters"]["properties"][name]["type"].as_str().map(str::to_owned)
+    function["parameters"]["properties"].as_object().cloned()
+}
+
+/// Every tool the chat offers, with its parameters, for the Workflows panel's editor.
+pub fn tool_list() -> Value {
+    let tools: Vec<Value> = tools::NAMES
+        .iter()
+        .map(|name| {
+            let parameters: Vec<Value> = parameters(name)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|(key, schema)| {
+                    json!({
+                        "name": key,
+                        "type": schema["type"],
+                        "enum": schema["enum"],
+                        "minimum": schema["minimum"],
+                        "description": schema["description"],
+                    })
+                })
+                .collect();
+            json!({ "name": name, "parameters": parameters })
+        })
+        .collect();
+    Value::Array(tools)
 }
 
 /// The JSON form of a workflow, as a workflow file holds it.
@@ -288,14 +330,25 @@ mod tests {
     fn fixed_arguments_are_typed_by_the_tool_and_text_for_text_parameters_is_kept() {
         let items = [
             json!({ "tool": "list_files", "arguments": { "path": "007", "depth": "2" } }),
-            json!({ "tool": "read_file", "arguments": { "path": "true", "start": "3" } }),
+            json!({ "tool": "read_file", "arguments": { "path": "true", "start": "3", "end": "6" } }),
         ];
         let typed = type_steps(&items).unwrap();
 
         assert_eq!(typed[0]["arguments"], json!({ "path": "007", "depth": 2 }));
-        assert_eq!(typed[1]["arguments"], json!({ "path": "true", "start": 3 }));
+        assert_eq!(typed[1]["arguments"], json!({ "path": "true", "start": 3, "end": 6 }));
         assert!(type_steps(&[json!({ "tool": "list_files", "arguments": { "depth": "deep" } })]).is_err());
         assert!(type_steps(&[json!({ "tool": "list_files", "arguments": { "nope": "x" } })]).is_err());
+    }
+
+    #[test]
+    fn a_tool_step_gives_every_parameter_and_only_listed_choices() {
+        let missing = type_steps(&[json!({ "tool": "create_note", "arguments": { "category": "c", "name": "n", "content": "x" } })]);
+        let bad_choice = type_steps(&[json!({ "tool": "create_note", "arguments": { "scope": "nowhere", "category": "c", "name": "n", "content": "x" } })]);
+        let good = type_steps(&[json!({ "tool": "create_note", "arguments": { "scope": "global", "category": "c", "name": "n", "content": "x" } })]);
+
+        assert!(missing.unwrap_err().contains("needs argument scope"));
+        assert!(bad_choice.unwrap_err().contains("must be one of local, global"));
+        assert!(good.is_ok());
     }
 
     #[test]
