@@ -1,7 +1,7 @@
 "use strict";
 // The text of a thrown value, as it is shown to the user.
 function errorMessage(err) {
-    return errorMessage(err);
+    return err instanceof Error ? err.message : String(err);
 }
 // The error, with the tool calls that ran before it: their effects remain even though the turn did not finish.
 function describeFailure(error, ran) {
