@@ -131,9 +131,9 @@ impl Printer {
 }
 
 /// Starts a conversation with the built-in default profile: its tools are applied, and its instructions, if any,
-/// join the conversation.
-fn start_conversation(session: &mut Session, switches: &tools::Switches) {
-    let choice = commands::default_profile(switches);
+/// join the conversation. The working directory's AGENTS.md is one of those instructions.
+fn start_conversation(session: &mut Session, switches: &tools::Switches, working: Option<&Path>) {
+    let choice = commands::default_profile(switches, working);
     if !choice.instructions.is_empty() {
         session.push(Role::Profile, choice.instructions);
     }
@@ -156,7 +156,7 @@ fn main() -> io::Result<()> {
     }
 
     let mut session = Session::new();
-    start_conversation(&mut session, &switches);
+    start_conversation(&mut session, &switches, config.working_dir.as_deref().map(Path::new));
     let mut input = io::stdin().lock();
 
     println!("Strata REPL ready. Type 'exit' or press Ctrl+C to quit. Type '/new' to start over.");
@@ -179,7 +179,7 @@ fn main() -> io::Result<()> {
         }
         if trimmed == "/new" {
             session.reset();
-            start_conversation(&mut session, &switches);
+            start_conversation(&mut session, &switches, config.working_dir.as_deref().map(Path::new));
             println!("Started a new conversation.");
             continue;
         }

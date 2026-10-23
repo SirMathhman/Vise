@@ -1,5 +1,7 @@
 use crate::notes;
 use crate::tools::{self, Switches};
+use crate::workspace;
+use std::path::Path;
 
 /// Handles a `/tools`, `/enable <tool>`, or `/disable <tool>` line. Returns the text to show,
 /// or `None` if the line is not one of these commands.
@@ -48,7 +50,7 @@ pub struct Choice {
 /// command.
 pub fn profile(line: &str, switches: &Switches, roots: notes::Roots) -> Option<Result<Choice, String>> {
     if line.split_whitespace().eq(["/profile", "default"]) {
-        return Some(Ok(default_profile(switches)));
+        return Some(Ok(default_profile(switches, roots.working)));
     }
     let chosen = notes::profile_command(line, roots)?;
     Some(chosen.and_then(|profile| choose(profile, switches)))
@@ -59,18 +61,29 @@ pub fn profile(line: &str, switches: &Switches, roots: notes::Roots) -> Option<R
 const DEFAULT_TOOLS: Option<&[&str]> = None;
 const DEFAULT_INSTRUCTIONS: &str = "";
 
-/// Applies the built-in default profile, as a new conversation does. The instructions come back empty when the
-/// default has none.
-pub fn default_profile(switches: &Switches) -> Choice {
+/// Applies the built-in default profile, as a new conversation does. The working directory's AGENTS.md, if it has
+/// one, joins the instructions too. The instructions come back empty when there is neither.
+pub fn default_profile(switches: &Switches, root: Option<&Path>) -> Choice {
     if let Some(names) = DEFAULT_TOOLS {
         set_tools(names, switches);
     }
-    let instructions = if DEFAULT_INSTRUCTIONS.is_empty() {
-        String::new()
-    } else {
-        format!("[Profile default is active. Follow these instructions from now on.]\n\n{DEFAULT_INSTRUCTIONS}")
-    };
-    Choice { reply: "Default profile is active.".to_owned(), instructions }
+    let mut parts = Vec::new();
+    if !DEFAULT_INSTRUCTIONS.is_empty() {
+        parts.push(format!("[Profile default is active. Follow these instructions from now on.]\n\n{DEFAULT_INSTRUCTIONS}"));
+    }
+    parts.extend(project_instructions(root));
+    Choice { reply: "Default profile is active.".to_owned(), instructions: parts.join("\n\n") }
+}
+
+/// The file whose text joins every new conversation, read from the working directory.
+const PROJECT_FILE: &str = "AGENTS.md";
+
+/// The instructions from the working directory's AGENTS.md. `None` when there is no working directory, or the file
+/// is missing, unreadable, or blank. The path goes through the same confinement as the file tools.
+fn project_instructions(root: Option<&Path>) -> Option<String> {
+    let path = workspace::resolve(root, PROJECT_FILE, false).ok()?;
+    let text = std::fs::read_to_string(path).ok()?;
+    (!text.trim().is_empty()).then(|| format!("[Project instructions from {PROJECT_FILE}. Follow these instructions from now on.]\n\n{text}"))
 }
 
 /// Switches on the tools in `names` and switches every other tool off.
@@ -112,6 +125,32 @@ mod tests {
         assert_eq!(choice.reply, "Default profile is active.");
         assert!(choice.instructions.is_empty());
         assert!(switches.snapshot().contains("delete_file"));
+    }
+
+    #[test]
+    fn the_default_profile_carries_the_working_directorys_agents_file() {
+        let root = std::env::temp_dir().join(format!("vise-agents-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("AGENTS.md"), "Run cargo test.\n").unwrap();
+        let roots = notes::Roots { working: Some(&root), home: None };
+        let choice = profile("/profile default", &Switches::default(), roots).unwrap().unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+
+        assert!(choice.instructions.starts_with("[Project instructions from AGENTS.md."));
+        assert!(choice.instructions.ends_with("Run cargo test.\n"));
+    }
+
+    #[test]
+    fn the_default_profile_adds_nothing_without_an_agents_file() {
+        let root = std::env::temp_dir().join(format!("vise-no-agents-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let roots = notes::Roots { working: Some(&root), home: None };
+        let choice = profile("/profile default", &Switches::default(), roots).unwrap().unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+
+        assert!(choice.instructions.is_empty());
     }
 
     #[test]
