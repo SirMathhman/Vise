@@ -1,4 +1,3 @@
-use std::collections::BTreeSet;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -6,50 +5,17 @@ use serde_json::{Value, json};
 
 use crate::compaction;
 use crate::grammar;
-use crate::notes;
-use crate::strata::{self, Chunk, Config, Message, Role, StrataError, ToolCall};
+use crate::strata::{self, Chunk, Config, Message, StrataError, ToolCall};
+use crate::subagent;
 use crate::tools::{self, Switches};
+use crate::turn::{TurnError, turn_error};
+
+#[cfg(test)]
+use crate::subagent::subagent_switches;
+#[cfg(test)]
+use std::collections::BTreeSet;
 
 const MAX_TOOL_ROUNDS: usize = 8;
-
-/// A turn that did not finish. Every variant lists the tool calls that ran before it (`name arguments`): their
-/// effects on disk remain, even though the turn itself is not kept.
-#[derive(Debug)]
-pub enum TurnError {
-    /// The user stopped the turn.
-    Stopped { ran: Vec<String> },
-    /// The turn failed for another reason.
-    Failed { ran: Vec<String>, cause: StrataError },
-    /// A workflow step could not run, for a reason of its own (a switched-off tool, a model that did not make its call).
-    Step { ran: Vec<String>, reason: String },
-}
-
-impl TurnError {
-    pub fn ran(&self) -> &[String] {
-        match self {
-            TurnError::Stopped { ran } | TurnError::Failed { ran, .. } | TurnError::Step { ran, .. } => ran,
-        }
-    }
-}
-
-impl std::fmt::Display for TurnError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TurnError::Stopped { .. } => write!(f, "Stopped."),
-            TurnError::Failed { cause, .. } => write!(f, "{cause}"),
-            TurnError::Step { reason, .. } => write!(f, "{reason}"),
-        }
-    }
-}
-
-/// Maps an error from inside a turn, keeping the calls that had run. The stream's own cancel signal is a stop.
-pub fn turn_error(err: StrataError, ran: &[String]) -> TurnError {
-    match err {
-        StrataError::Stopped => TurnError::Stopped { ran: ran.to_vec() },
-        cause => TurnError::Failed { ran: ran.to_vec(), cause },
-    }
-}
-
 /// Runs one user turn: streams the model's reply and runs any tools it asks for, repeating until
 /// it answers without a tool call. Returns the final answer text. Tool activity goes to `on_chunk`.
 pub fn run_turn(
@@ -112,7 +78,7 @@ pub fn run_turn(
                 "error: context is full; the turn will be summarized before the next call".to_owned()
             } else if call.name == tools::RUN_SUBAGENT {
                 ran.push(format!("{} {}", call.name, call.arguments));
-                match run_subagent(&call.arguments, config, switches, cancel, on_chunk) {
+                match subagent::run_subagent(&call.arguments, config, switches, cancel, on_chunk, run_turn) {
                     Ok(answer) => answer,
                     // A stopped subagent stops this turn too, and the calls it ran are still listed.
                     Err(TurnError::Stopped { ran: steps }) => {
@@ -139,62 +105,6 @@ pub fn run_turn(
             reason: format!("more than {MAX_TOOL_ROUNDS} tool rounds in one turn"),
         },
     })
-}
-
-/// Runs a `run_subagent` call: a fresh conversation that follows the profile and is sent the task. Its steps go to
-/// `on_chunk` between the start and end chunks. Bad arguments and an unreadable profile come back as answer text for
-/// the model, so only a stop or a failed run is an error.
-fn run_subagent(
-    arguments: &str,
-    config: &Config,
-    switches: &Switches,
-    cancel: &AtomicBool,
-    on_chunk: &mut dyn FnMut(Chunk),
-) -> Result<String, TurnError> {
-    let args: Value = match serde_json::from_str(arguments) {
-        Ok(args) => args,
-        Err(err) => return Ok(format!("error: invalid arguments: {err}")),
-    };
-    let (Some(reference), Some(task)) = (args["profile"].as_str(), args["task"].as_str()) else {
-        return Ok("error: run_subagent needs a profile and a task, both strings".to_owned());
-    };
-    let home = std::env::home_dir();
-    let roots = notes::Roots { working: config.working_dir.as_deref().map(Path::new), home: home.as_deref() };
-    let profile = match notes::read_profile(reference, roots) {
-        Ok(profile) => profile,
-        Err(err) => return Ok(format!("error: {err}")),
-    };
-
-    let child = subagent_switches(profile.tools.as_deref(), &switches.snapshot());
-    let mut messages = Vec::new();
-    if !profile.instructions.is_empty() {
-        let content = format!(
-            "[Profile {} is active. Follow these instructions from now on.]\n\n{}",
-            profile.label, profile.instructions
-        );
-        messages.push(Message { role: Role::Profile, content });
-    }
-    messages.push(Message { role: Role::User, content: task.to_owned() });
-
-    on_chunk(Chunk::SubagentStart { profile: profile.label.as_str(), task });
-    let outcome = run_turn(&messages, config, &child, cancel, &mut |step: Chunk<'_>| on_chunk(Chunk::Nested(&step)));
-    on_chunk(Chunk::SubagentEnd { failed: outcome.is_err() });
-    outcome
-}
-
-/// The switches a subagent runs with. A profile with a tool list gets exactly those tools; otherwise it keeps the
-/// parent's switches. `run_subagent` is always off, so a subagent cannot start another one.
-fn subagent_switches(profile_tools: Option<&[String]>, parent_disabled: &BTreeSet<String>) -> Switches {
-    let child = Switches::default();
-    for name in tools::NAMES {
-        let enabled = match profile_tools {
-            Some(listed) => listed.iter().any(|tool| tool.as_str() == name),
-            None => !parent_disabled.contains(name),
-        };
-        child.set(name, enabled);
-    }
-    child.set(tools::RUN_SUBAGENT, false);
-    child
 }
 
 #[cfg(test)]

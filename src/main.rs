@@ -7,8 +7,10 @@ mod notes;
 mod saved_sessions;
 mod session;
 mod strata;
+mod subagent;
 mod titles;
 mod tools;
+mod turn;
 mod web;
 mod workflow_runner;
 mod workflows;
@@ -24,7 +26,7 @@ static TURN_ACTIVE: AtomicBool = AtomicBool::new(false);
 static STOP: AtomicBool = AtomicBool::new(false);
 
 use session::Session;
-use agent::TurnError;
+use turn::TurnError;
 use strata::{Chunk, Role};
 
 /// Reads the working directory once at startup, for both the REPL and the web server.

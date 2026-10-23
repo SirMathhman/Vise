@@ -1,7 +1,7 @@
 //! Runs a workflow's steps in order within one reply. An instructions step is a turn of its own: its text joins the
 //! conversation, and the model's answer follows it. A profile step applies that profile, as `/profile` does. A tool step
 //! runs its tool, with fixed arguments or with arguments the model supplies. When the steps are done, the profile that
-//! was active before the workflow is applied again.
+//! was active before the workflow is applied again, if the server knows which profile that was.
 
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -9,7 +9,8 @@ use std::sync::atomic::AtomicBool;
 
 use serde_json::{Value, json};
 
-use crate::agent::{self, TurnError};
+use crate::agent;
+use crate::turn::{TurnError, turn_error};
 use crate::commands;
 use crate::grammar;
 use crate::notes;
@@ -25,10 +26,10 @@ pub struct Start<'a> {
     pub profile: Option<String>,
 }
 
-/// What a run leaves behind: the messages the conversation keeps, the switch notes the model now has, and the profile
-/// that is active afterwards.
-pub struct Finished {
-    pub added: Vec<Message>,
+/// How a run ended. `result` holds the messages the conversation keeps, when every step ran. `told` holds the switch
+/// notes the model now has, and `profile` the profile active when the run ended, whether or not every step ran.
+pub struct Outcome {
+    pub result: Result<Vec<Message>, TurnError>,
     pub told: BTreeSet<String>,
     pub profile: Option<String>,
 }
@@ -65,7 +66,7 @@ impl Run {
 
 /// Runs `workflow` with `argument`. `on_chunk` gets the start of each step and the output of its turns. An error stops
 /// the run, and the calls that ran before it, in any step, are listed in the error.
-pub fn run(workflow: &Workflow, argument: &str, start: Start<'_>, env: &Env<'_>, on_chunk: &mut dyn FnMut(Chunk)) -> Result<Finished, TurnError> {
+pub fn run(workflow: &Workflow, argument: &str, start: Start<'_>, env: &Env<'_>, on_chunk: &mut dyn FnMut(Chunk)) -> Outcome {
     let initial = start.profile.clone();
     let mut run = Run {
         messages: start.history.to_vec(),
@@ -74,20 +75,34 @@ pub fn run(workflow: &Workflow, argument: &str, start: Start<'_>, env: &Env<'_>,
         profile: start.profile,
         ran: Vec::new(),
     };
+    let result = execute(&mut run, workflow, argument, env, initial, on_chunk);
+    Outcome { result: result.map(|()| run.added), told: run.told, profile: run.profile }
+}
+
+/// Runs the steps, then applies the profile from before the run. A step that fails stops here, so the profile is not
+/// applied again.
+fn execute(
+    run: &mut Run,
+    workflow: &Workflow,
+    argument: &str,
+    env: &Env<'_>,
+    initial: Option<String>,
+    on_chunk: &mut dyn FnMut(Chunk),
+) -> Result<(), TurnError> {
     for step in &workflow.steps {
         match step {
-            Step::Instructions(text) => instructions(&mut run, text, argument, env, on_chunk)?,
+            Step::Instructions(text) => instructions(run, text, argument, env, on_chunk)?,
             Step::Profile(reference) => {
                 on_chunk(Chunk::Step(&format!("Profile {reference}")));
-                apply_profile(&mut run, reference, env)?;
+                apply_profile(run, reference, env)?;
             }
-            Step::Tool { name, arguments } => tool(&mut run, name, arguments.as_ref(), argument, env, on_chunk)?,
+            Step::Tool { name, arguments } => tool(run, name, arguments.as_ref(), argument, env, on_chunk)?,
         }
     }
     if let Some(reference) = initial {
-        apply_profile(&mut run, &reference, env)?;
+        apply_profile(run, &reference, env)?;
     }
-    Ok(Finished { added: run.added, told: run.told, profile: run.profile })
+    Ok(())
 }
 
 /// An instructions step: its text, with the argument filled in, joins the conversation, and the model answers it in a
@@ -159,7 +174,7 @@ fn forced_calls(run: &mut Run, name: &str, env: &Env<'_>) -> Result<Vec<ToolCall
     let grammar = grammar::forced_call(name);
     let constraint = Constraint { grammar: &grammar, lazy: false };
     let reply = strata::stream_reply(&items, env.config, Some(constraint), env.cancel, &mut |_| {})
-        .map_err(|err| agent::turn_error(err, &run.ran))?;
+        .map_err(|err| turn_error(err, &run.ran))?;
     if reply.tool_calls.is_empty() {
         return Err(run.fail(format!("the model did not call {name} for this workflow step")));
     }

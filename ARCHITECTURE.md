@@ -14,14 +14,15 @@ Written for: developers working on this crate.
 - **Chunk**: one streamed piece of a turn: reasoning text, answer text, or a tool call (`Chunk::Tool`, currently a preformatted `name arguments` string). A subagent run is `SubagentStart`, then its steps as `Nested` chunks, then `SubagentEnd`. Defined in `src/strata.rs`.
 - **Config**: the server URL, model name, read timeout, and working directory, held in `strata::Config`. It defaults to the local server, the `qwen3.8-flash-next-iq2_xs` model, a 60-second read timeout, and no working directory. `main.rs` reads the current directory once at startup and passes it to both the REPL and the web server. When set, it is sent to the model as a leading system message on each request, and it is not stored in the session history. If the directory cannot be read, a warning is printed once at startup and the model is not told.
 - **StrataError**: the error type for a failed call to Strata. Its variants are `Network` (no connection), `Timeout` (no bytes within the read timeout), `Http` (non-2xx status), `Malformed` (unparseable or unexpected response), `GrammarRejected` (Strata refused the grammar), and `Stopped` (the stream was cancelled).
-- **TurnError**: the error type for a turn that did not finish, in `src/agent.rs`. `Stopped` means the user stopped it; `Failed` wraps a `StrataError`. The round limit is reported as a `Malformed` error, which the doc does not yet treat as its own kind. Both carry `ran`, the tool calls that ran before the failure, as `name arguments` strings.
+- **TurnError**: the error type for a turn that did not finish, in `src/turn.rs`. `Stopped` means the user stopped it; `Failed` wraps a `StrataError`; `Step` is a workflow step that could not run, with its reason. The round limit is reported as a `Malformed` error, which the doc does not yet treat as its own kind. Both carry `ran`, the tool calls that ran before the failure, as `name arguments` strings.
 
 ## Structure
 
 ```
 src/
   main.rs     stdin loop, or `web` argument to start the web server
-  agent.rs    run_turn: streams a reply, runs requested tools, repeats up to 8 rounds. run_subagent (the run_subagent tool) runs a profile's instructions and tools in a fresh turn with run_subagent switched off, and returns its final answer
+  agent.rs    run_turn: streams a reply, runs requested tools, repeats up to 8 rounds. It hands a run_subagent call to subagent.rs, passing itself as the turn runner
+  subagent.rs  run_subagent (the run_subagent tool): runs a profile's instructions and tools in a fresh turn with run_subagent switched off, and returns its final answer. The turn runner is passed in, so this file does not depend on agent.rs
   tools.rs    tool definitions and run(): list_files, read_file, create_file,
               create_directory, delete_file, and delete_directory, plus the note tools
   notes/      mod.rs: note tools, the /notes command and the web notes requests; store.rs: scopes, paths and file operations; index.rs: the start-of-conversation index and summaries; profile.rs: reads profile notes; tests.rs. Notes: Markdown notes in .vise/notes/<category>/<name>.md, local (working directory) or global (home directory)
@@ -33,7 +34,7 @@ src/
               session is JSON at .vise/sessions/<name>.json: the messages, the told set, and an optional title, not the tool switches. A save keeps the title already in the file
   titles.rs   ensure: the title of a web session, asked of the model once from its first exchange with a text-only request, then written into the session file (POST /api/sessions with action title)
   workflows.rs  load, parse, and command: a workflow is `.vise/workflows/<name>.json`, a list of steps. Each step is instructions, a profile, or a tool with fixed arguments (`{argument}` is replaced by the one argument the user types) or with arguments the model supplies. `/<name> <argument>` runs it. Names that are chat commands are never read
-  workflow_runner.rs  run: runs a workflow's steps in one reply. Instructions are a turn of their own, a profile is applied as /profile applies it, and a tool step is forced by grammar (grammar::forced_call) when the model supplies its arguments. When the steps end, the profile that was active before is applied again. A failure lists the calls that ran in the whole workflow
+  workflow_runner.rs  run: runs a workflow's steps in one reply. Instructions are a turn of their own, a profile is applied as /profile applies it, and a tool step is forced by grammar (grammar::forced_call) when the model supplies its arguments. When every step ran, the profile that was active before is applied again, if the server remembers one. A failure keeps the profile the last step applied, and lists the calls that ran in the whole workflow
   compaction.rs  after_turn, needs_summary, and summarize: append-only summaries of long conversations
   grammar.rs  the GBNF grammars that block calls to disabled tools: enabled_calls_only (the whole output,
               used when Strata has no lazy grammars) and enabled_calls_after_trigger (a call-only grammar that
@@ -58,7 +59,7 @@ package.json  TypeScript and concurrently dev dependencies. Scripts: `build` (ts
               and `dev` (runs both together)
 ```
 
-Dependencies run one way: `main` and `web` call `agent`. `agent` calls `strata`, `tools`, `compaction`, and `notes` (to read a subagent's profile). `run_subagent` lives in `agent` rather than `tools`, because it needs the model connection and `tools` cannot call `agent` without a cycle. `compaction` calls `strata` and `grammar`. `strata` calls `tools` for the definitions. `tools` calls `notes`. Inside `notes`, `mod.rs` calls `store.rs` and `index.rs`, and `index.rs` calls `store.rs`. `notes` and `tools` both call `workspace`, which is a leaf and calls nothing else in the crate. `session` uses `strata` for `Message`. `saved_sessions` calls `session`, `strata`, and `workspace`. There are no cycles.
+Dependencies run one way: `main`, `web`, and `workflow_runner` call `agent`. `agent` calls `strata`, `tools`, `compaction`, `grammar`, `subagent`, and `turn`. `subagent` calls `notes` (to read a profile), `strata`, `tools`, and `turn`, and receives `agent::run_turn` as a parameter, so it does not call `agent`. `workflow_runner` calls `agent`, `commands`, `grammar`, `notes`, `strata`, `tools`, and `workflows`. `turn` calls `strata` only. `compaction` calls `strata` and `grammar`. `strata` calls `tools` for the definitions. `tools` calls `notes`. Inside `notes`, `mod.rs` calls `store.rs` and `index.rs`, and `index.rs` calls `store.rs`. `notes` and `tools` both call `workspace`, which is a leaf and calls nothing else in the crate. `session` uses `strata` for `Message`. `saved_sessions` calls `session`, `strata`, and `workspace`. There are no cycles.
 
 `strata.rs` is split into layers:
 

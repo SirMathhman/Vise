@@ -17,7 +17,8 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
-use crate::agent::{self, TurnError};
+use crate::agent;
+use crate::turn::TurnError;
 use crate::commands;
 use crate::compaction;
 use crate::notes;
@@ -325,27 +326,27 @@ fn send_reply(stream: &mut TcpStream, started: &mut bool, reply: &str, instructi
     write_event(stream, &json!({ "type": "done", "answer": reply, "profile": instructions }))
 }
 
-/// Ends a workflow run. Its messages are sent to replace the command line, with the switch notes the model now has. The
-/// profile it is left with is kept for the next run.
+/// Ends a workflow run. The profile it was left with is remembered, whether or not every step ran, since the switches
+/// keep what it applied. When every step ran, its messages are sent to replace the command line, with the switch notes
+/// the model now has.
 fn finish_workflow(
     stream: &mut TcpStream,
     started: &mut bool,
     history: &[Message],
-    outcome: Result<workflow_runner::Finished, TurnError>,
+    outcome: workflow_runner::Outcome,
     config: &Config,
     sessions: &Sessions,
     session: &str,
 ) -> io::Result<()> {
-    let finished = match outcome {
-        Ok(finished) => finished,
+    sessions.set_profile(session, outcome.profile);
+    let added = match outcome.result {
+        Ok(added) => added,
         Err(err) => return send_failure(stream, started, err),
     };
-    sessions.set_profile(session, finished.profile.clone());
     start_stream(stream, started)?;
-    let log: Vec<Message> = history.iter().chain(&finished.added).cloned().collect();
+    let log: Vec<Message> = history.iter().chain(&added).cloned().collect();
     let (summary, summary_failed) = summary_fields(&log, config);
-    let added: Vec<Value> = finished
-        .added
+    let added: Vec<Value> = added
         .iter()
         .map(|message| json!({ "role": message.role.name(), "content": message.content }))
         .collect();
@@ -355,7 +356,7 @@ fn finish_workflow(
             "type": "done",
             "answer": "",
             "workflow": added,
-            "told": finished.told,
+            "told": outcome.told,
             "summary": summary,
             "summary_failed": summary_failed,
         }),
