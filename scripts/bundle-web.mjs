@@ -5,11 +5,27 @@ import { join } from "node:path";
 
 const compiled = "node_modules/.cache/vise-web";
 // Each file may only use what the files before it declare, so the order runs from the leaves up to app.ts.
-const order = ["markdown", "http", "tabs", "chat", "tools", "profile", "layout", "viewers", "sessions", "files", "notes", "app"];
+const order = [
+  "markdown",
+  "http",
+  "tabs",
+  "chat",
+  "panels/tools",
+  "panels/profile",
+  "layout",
+  "panels/viewers",
+  "panels/sessions",
+  "panels/files",
+  "panels/notes",
+  "app",
+];
 
 function bundle() {
   // A compiled file that is not in the order would be left out of the page without an error, so it is refused here.
-  const unlisted = readdirSync(compiled).filter((file) => file.endsWith(".js") && !order.includes(file.slice(0, -3)));
+  // Paths use forward slashes, as the order does, whatever the platform.
+  const unlisted = readdirSync(compiled, { recursive: true })
+    .map((file) => file.replaceAll("\\", "/"))
+    .filter((file) => file.endsWith(".js") && !order.includes(file.slice(0, -3)));
   if (unlisted.length > 0) {
     throw new Error(`Not in the bundle order, add to scripts/bundle-web.mjs: ${unlisted.join(", ")}`);
   }
@@ -30,7 +46,7 @@ if (process.argv.includes("--watch")) {
     }
   };
   retry();
-  watch(compiled, retry);
+  watch(compiled, { recursive: true }, retry);
 } else {
   bundle();
 }

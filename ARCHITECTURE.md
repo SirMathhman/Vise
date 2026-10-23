@@ -42,7 +42,7 @@ web/
   index.html  page markup and styles. The Tools panel width is set by a divider, clamped to keep a minimum chat width,
               and kept per browser in localStorage (vise-tools-width). A narrower window clamps the shown width only.
   src/app.ts  client entry: reads the event stream and renders reasoning, tool calls, and answer
-  src/tools.ts, sessions.ts, files.ts, notes.ts, viewers.ts  one file per side panel (Tools, Sessions, Files, Notes) and the file viewers
+  src/panels/  one file per side panel (tools, profile, sessions, files, notes) and the file viewers (viewers.ts)
   src/markdown.ts, http.ts  markdown rendering, and the JSON request and error helpers shared by the panels
   app.js      the page's one script, committed so the server needs no build. scripts/bundle-web.mjs joins the compiled
               files in a fixed order (refused if one is missing from the list). Markdown is rendered in the page by
