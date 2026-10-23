@@ -15,6 +15,11 @@ type StreamEvent =
   | { type: "done"; answer: string; user_message?: string | null; told?: string[]; summary?: string | null; summary_failed?: string | null; profile?: string | null }
   | { type: "error"; error: string; ran?: string[] };
 
+// The text of a thrown value, as it is shown to the user.
+function errorMessage(err: unknown): string {
+  return errorMessage(err);
+}
+
 // The error, with the tool calls that ran before it: their effects remain even though the turn did not finish.
 function describeFailure(error: string, ran?: string[] | null): string {
   if (!ran || ran.length === 0) {
@@ -89,6 +94,21 @@ function addEntry(kind: Role | "error"): HTMLDivElement {
 
 function scrollToEnd(): void {
   log.scrollTop = log.scrollHeight;
+}
+
+// A tool call's line in the reply.
+function toolLine(text: string): HTMLDivElement {
+  const line = document.createElement("div");
+  line.className = "tool";
+  line.textContent = `[tool] ${text}`;
+  return line;
+}
+
+// A block that holds markdown text, which is rendered again as each piece arrives.
+function markdownBlock(): HTMLDivElement {
+  const block = document.createElement("div");
+  block.className = "markdown";
+  return block;
 }
 
 async function streamChat(
@@ -194,10 +214,7 @@ function renderSubagentStep(sub: Subagent, step: StreamEvent): void {
     sub.raw += step.text;
     part.innerHTML = renderMarkdown(sub.raw);
   } else if (step.type === "tool") {
-    const line = document.createElement("div");
-    line.className = "tool";
-    line.textContent = `[tool] ${step.text}`;
-    sub.block.append(line);
+    sub.block.append(toolLine(step.text));
     sub.part = null;
     sub.partKind = null;
   }
@@ -237,8 +254,7 @@ form.addEventListener("submit", async (event) => {
   thinkingSummary.textContent = "Thinking";
   const thinkingText = document.createElement("div");
   thinking.append(thinkingSummary, thinkingText);
-  let answerText = document.createElement("div");
-  answerText.className = "markdown";
+  let answerText = markdownBlock();
   // The reply so far as the model wrote it. It is rendered again as each piece arrives.
   let answerRaw = "";
   bubble.append(thinking, answerText);
@@ -259,13 +275,9 @@ form.addEventListener("submit", async (event) => {
         answerText.innerHTML = renderMarkdown(answerRaw);
       } else if (streamed.type === "tool") {
         // Text after a tool call goes in a new block below it, so the order matches the stream.
-        const toolLine = document.createElement("div");
-        toolLine.className = "tool";
-        toolLine.textContent = `[tool] ${streamed.text}`;
-        answerText = document.createElement("div");
-        answerText.className = "markdown";
+        answerText = markdownBlock();
         answerRaw = "";
-        bubble.append(toolLine, answerText);
+        bubble.append(toolLine(streamed.text), answerText);
       } else if (streamed.type === "subagent_start") {
         subagent = openSubagent(bubble, streamed);
       } else if (streamed.type === "nested") {
@@ -278,8 +290,7 @@ form.addEventListener("submit", async (event) => {
         }
         subagent = null;
         // Text after a subagent goes in a new block below it, as text after a tool call does.
-        answerText = document.createElement("div");
-        answerText.className = "markdown";
+        answerText = markdownBlock();
         answerRaw = "";
         bubble.append(answerText);
       }
@@ -321,7 +332,7 @@ form.addEventListener("submit", async (event) => {
       if (answerText.textContent === "" && thinkingText.textContent === "") {
         bubble.remove();
       }
-      addEntry("error").textContent = err instanceof Error ? err.message : String(err);
+      addEntry("error").textContent = errorMessage(err);
     }
   } finally {
     inFlight = null;
@@ -366,7 +377,7 @@ function applyDefaultProfile(): Promise<void> {
       }
     } catch (err) {
       if (!controller.signal.aborted) {
-        addEntry("error").textContent = err instanceof Error ? err.message : String(err);
+        addEntry("error").textContent = errorMessage(err);
       }
     }
     void refreshTools();
@@ -429,7 +440,7 @@ function renderTools(tools: ToolInfo[]): void {
 }
 
 function showToolsError(err: unknown): void {
-  toolsError.textContent = err instanceof Error ? err.message : String(err);
+  toolsError.textContent = errorMessage(err);
   toolsError.hidden = false;
 }
 
@@ -509,10 +520,11 @@ const sessionName = document.getElementById("session-name") as HTMLInputElement;
 const sessionsList = document.getElementById("sessions-list") as HTMLUListElement;
 const sessionsStatus = document.getElementById("sessions-status") as HTMLParagraphElement;
 
-function showSessionsStatus(message: string, isError: boolean): void {
-  sessionsStatus.textContent = message;
-  sessionsStatus.className = isError ? "error" : "summary";
-  sessionsStatus.hidden = false;
+// Shows a message in one of the side panel's status lines. An error is shown as an error.
+function showStatus(status: HTMLParagraphElement, message: string, isError: boolean): void {
+  status.textContent = message;
+  status.className = isError ? "error" : "summary";
+  status.hidden = false;
 }
 
 async function refreshSessions(): Promise<void> {
@@ -532,7 +544,7 @@ async function refreshSessions(): Promise<void> {
       }),
     );
   } catch (err) {
-    showSessionsStatus(err instanceof Error ? err.message : String(err), true);
+    showStatus(sessionsStatus,errorMessage(err), true);
   }
 }
 
@@ -542,8 +554,7 @@ function showMessage(message: Message): void {
     addEntry("user").textContent = message.content;
   } else if (message.role === "assistant") {
     const bubble = addEntry("assistant");
-    const answer = document.createElement("div");
-    answer.className = "markdown";
+    const answer = markdownBlock();
     answer.innerHTML = renderMarkdown(message.content);
     bubble.append(answer);
   } else if (message.role === "summary") {
@@ -561,7 +572,7 @@ sessionForm.addEventListener("submit", async (event) => {
   }
   // A reply in flight is not part of the conversation yet, so the save waits for it.
   if (input.disabled) {
-    showSessionsStatus("Wait for the reply to finish, then save.", true);
+    showStatus(sessionsStatus,"Wait for the reply to finish, then save.", true);
     return;
   }
   try {
@@ -572,10 +583,10 @@ sessionForm.addEventListener("submit", async (event) => {
       told,
     });
     sessionName.value = "";
-    showSessionsStatus(message, false);
+    showStatus(sessionsStatus,message, false);
     await refreshSessions();
   } catch (err) {
-    showSessionsStatus(err instanceof Error ? err.message : String(err), true);
+    showStatus(sessionsStatus,errorMessage(err), true);
   }
 });
 
@@ -594,13 +605,13 @@ function autosaveTurn(): void {
     told,
   }).then(
     () => refreshSessions(),
-    (err) => showSessionsStatus(err instanceof Error ? err.message : String(err), true),
+    (err) => showStatus(sessionsStatus,errorMessage(err), true),
   );
 }
 
 async function loadSession(name: string): Promise<void> {
   if (input.disabled) {
-    showSessionsStatus("Wait for the reply to finish, then load.", true);
+    showStatus(sessionsStatus,"Wait for the reply to finish, then load.", true);
     return;
   }
   // Input stays off while the session loads, so a message cannot slip in between the request and the replacement.
@@ -615,10 +626,10 @@ async function loadSession(name: string): Promise<void> {
     autosaveName = null;
     log.replaceChildren();
     data.messages.forEach(showMessage);
-    showSessionsStatus(`Loaded session ${name}.`, false);
+    showStatus(sessionsStatus,`Loaded session ${name}.`, false);
     scrollToEnd();
   } catch (err) {
-    showSessionsStatus(err instanceof Error ? err.message : String(err), true);
+    showStatus(sessionsStatus,errorMessage(err), true);
   } finally {
     input.disabled = false;
     input.focus();
@@ -721,7 +732,7 @@ async function loadFolderPage(dir: string, body: HTMLElement, after: TreeCursor 
   } catch (err) {
     const error = document.createElement("p");
     error.className = "error tree-error";
-    error.textContent = err instanceof Error ? err.message : String(err);
+    error.textContent = errorMessage(err);
     body.append(error);
     return null;
   } finally {
@@ -851,7 +862,7 @@ async function loadBlock(path: string): Promise<void> {
     file.next = data.next;
     file.more = data.more;
   } catch (err) {
-    file.error = err instanceof Error ? err.message : String(err);
+    file.error = errorMessage(err);
   } finally {
     file.loading = false;
     refreshFoot(file);
@@ -948,12 +959,6 @@ function notesApi<T>(body: Record<string, unknown>): Promise<T> {
   return postJson<T>("/api/notes", body);
 }
 
-function showNotesStatus(message: string, isError: boolean): void {
-  notesStatus.textContent = message;
-  notesStatus.className = isError ? "error" : "summary";
-  notesStatus.hidden = false;
-}
-
 function setEditing(note: NoteRef | null, text: string): void {
   editing = note;
   noteScope.value = note?.scope ?? "local";
@@ -1023,7 +1028,7 @@ async function refreshNotes(): Promise<void> {
       }),
     );
   } catch (err) {
-    showNotesStatus(err instanceof Error ? err.message : String(err), true);
+    showStatus(notesStatus,errorMessage(err), true);
   }
 }
 
@@ -1033,7 +1038,7 @@ async function openNote(note: NoteRef): Promise<void> {
     setEditing(note, text);
     notesStatus.hidden = true;
   } catch (err) {
-    showNotesStatus(err instanceof Error ? err.message : String(err), true);
+    showStatus(notesStatus,errorMessage(err), true);
   }
 }
 
@@ -1066,10 +1071,10 @@ noteForm.addEventListener("submit", async (event) => {
       content: noteContent.value,
     });
     setEditing(note, noteContent.value);
-    showNotesStatus(message, false);
+    showStatus(notesStatus,message, false);
     await refreshNotes();
   } catch (err) {
-    showNotesStatus(err instanceof Error ? err.message : String(err), true);
+    showStatus(notesStatus,errorMessage(err), true);
   }
 });
 
@@ -1080,10 +1085,10 @@ noteDelete.addEventListener("click", async () => {
   try {
     const { message } = await notesApi<{ message: string }>({ action: "delete", ...editing });
     newNote();
-    showNotesStatus(message, false);
+    showStatus(notesStatus,message, false);
     await refreshNotes();
   } catch (err) {
-    showNotesStatus(err instanceof Error ? err.message : String(err), true);
+    showStatus(notesStatus,errorMessage(err), true);
   }
 });
 
