@@ -105,6 +105,7 @@ async function loadInto(chat: Chat, name: string): Promise<void> {
 // Loads a saved session into the shown chat. The next turn starts a new saved session, as it did before chats were tabs.
 async function loadSession(name: string): Promise<void> {
   const chat = active;
+  showChat(chat);
   if (chat.busy) {
     showStatus(sessionsStatus, "Wait for the reply to finish, then load.", true);
     return;

@@ -128,8 +128,10 @@ form.addEventListener("submit", async (event) => {
     return;
   }
 
-  // The turn belongs to the chat shown when it was sent, even if another chat is shown by the time it ends.
+  // The turn belongs to the chat shown when it was sent, even if another chat is shown by the time it ends. Sending
+  // shows that chat, in case a file was shown in its place.
   const chat = active;
+  showChat(chat);
   chat.busy = true;
   refreshForm();
   input.value = "";

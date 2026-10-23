@@ -1,8 +1,7 @@
 // The widths of the side panels: each divider sets its panel, and the window decides how much room each one gets.
 
-// The two panels beside the chat whose widths the user drags: Tools on the right, the open files on the left. Each
-// divider sets its panel's width, which is kept in this browser. A panel never takes more than the window leaves it
-// after the chat's minimum and the other panel, so the two never push each other off screen.
+// The Tools panel beside the chat, whose width the user drags. The width is kept in this browser. The panel never takes
+// more than the window leaves it after the chat's preferred width, so the panel never pushes the chat off screen.
 interface ResizablePanel {
   panel: HTMLElement;
   divider: HTMLElement;
@@ -16,7 +15,6 @@ interface ResizablePanel {
 }
 
 const MIN_TOOLS_PX = 160;
-const MIN_VIEWERS_PX = 224;
 // The chat's preferred width, 24rem. The panels leave it this much when they can, and it gives way in a narrow window.
 const CHAT_PX = 384;
 const layout = document.querySelector(".layout") as HTMLDivElement;
@@ -28,15 +26,6 @@ const toolsPanel: ResizablePanel = {
   storageKey: "vise-tools-width",
   min: MIN_TOOLS_PX,
   direction: -1,
-  chosen: 0,
-};
-const viewersPanel: ResizablePanel = {
-  panel: document.getElementById("viewers") as HTMLElement,
-  divider: document.getElementById("viewers-divider") as HTMLDivElement,
-  cssVar: "--viewers-width",
-  storageKey: "vise-viewers-width",
-  min: MIN_VIEWERS_PX,
-  direction: 1,
   chosen: 0,
 };
 
@@ -52,9 +41,9 @@ function roomFor(resizable: ResizablePanel): number {
   return layout.clientWidth - others - CHAT_PX;
 }
 
-// Sets each chosen width to what fits. Tools is set first, so the files take their room from it as it is now shown.
+// Sets the chosen width to what fits.
 function applyPanelWidths(): void {
-  for (const resizable of [toolsPanel, viewersPanel]) {
+  for (const resizable of [toolsPanel]) {
     if (resizable.chosen > 0) {
       const px = Math.max(resizable.min, Math.min(resizable.chosen, roomFor(resizable)));
       document.documentElement.style.setProperty(resizable.cssVar, `${px}px`);
@@ -92,7 +81,7 @@ function watchDivider(resizable: ResizablePanel): void {
 }
 
 // Restores the width this browser last used. Storage can be blocked, in which case the default width is used.
-for (const resizable of [toolsPanel, viewersPanel]) {
+for (const resizable of [toolsPanel]) {
   try {
     const stored = Number(localStorage.getItem(resizable.storageKey));
     if (stored > 0) {

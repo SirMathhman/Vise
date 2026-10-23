@@ -108,13 +108,15 @@ function createChat(onClose: (chat: Chat) => void): Chat {
   return chat;
 }
 
-// Shows one chat: its log and tab are the ones shown, and the form follows its reply.
+// Shows one chat in the chat's space: its log and tab are the ones shown, and the form follows its reply. A file that
+// was shown in that space is put away.
 function showChat(chat: Chat): void {
   active = chat;
   for (const other of chats) {
     other.log.hidden = other !== chat;
     setTabActive(other.tab, other === chat);
   }
+  hideFiles();
   refreshForm();
   scrollToEnd(chat);
   saveChats();

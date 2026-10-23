@@ -132,13 +132,15 @@ function createChat(onClose) {
     chats.push(chat);
     return chat;
 }
-// Shows one chat: its log and tab are the ones shown, and the form follows its reply.
+// Shows one chat in the chat's space: its log and tab are the ones shown, and the form follows its reply. A file that
+// was shown in that space is put away.
 function showChat(chat) {
     active = chat;
     for (const other of chats) {
         other.log.hidden = other !== chat;
         setTabActive(other.tab, other === chat);
     }
+    hideFiles();
     refreshForm();
     scrollToEnd(chat);
     saveChats();
@@ -364,7 +366,6 @@ function applyDefaultProfile(chat) {
 "use strict";
 // The widths of the side panels: each divider sets its panel, and the window decides how much room each one gets.
 const MIN_TOOLS_PX = 160;
-const MIN_VIEWERS_PX = 224;
 // The chat's preferred width, 24rem. The panels leave it this much when they can, and it gives way in a narrow window.
 const CHAT_PX = 384;
 const layout = document.querySelector(".layout");
@@ -378,15 +379,6 @@ const toolsPanel = {
     direction: -1,
     chosen: 0,
 };
-const viewersPanel = {
-    panel: document.getElementById("viewers"),
-    divider: document.getElementById("viewers-divider"),
-    cssVar: "--viewers-width",
-    storageKey: "vise-viewers-width",
-    min: MIN_VIEWERS_PX,
-    direction: 1,
-    chosen: 0,
-};
 // The most a panel may take: the window less the chat's preferred width and every other panel as it is now shown. A
 // panel still gets its own minimum when the window is too narrow, and the chat gives way instead.
 function roomFor(resizable) {
@@ -398,9 +390,9 @@ function roomFor(resizable) {
     }
     return layout.clientWidth - others - CHAT_PX;
 }
-// Sets each chosen width to what fits. Tools is set first, so the files take their room from it as it is now shown.
+// Sets the chosen width to what fits.
 function applyPanelWidths() {
-    for (const resizable of [toolsPanel, viewersPanel]) {
+    for (const resizable of [toolsPanel]) {
         if (resizable.chosen > 0) {
             const px = Math.max(resizable.min, Math.min(resizable.chosen, roomFor(resizable)));
             document.documentElement.style.setProperty(resizable.cssVar, `${px}px`);
@@ -437,7 +429,7 @@ function watchDivider(resizable) {
     resizable.divider.addEventListener("pointercancel", endDrag);
 }
 // Restores the width this browser last used. Storage can be blocked, in which case the default width is used.
-for (const resizable of [toolsPanel, viewersPanel]) {
+for (const resizable of [toolsPanel]) {
     try {
         const stored = Number(localStorage.getItem(resizable.storageKey));
         if (stored > 0) {
@@ -452,10 +444,8 @@ for (const resizable of [toolsPanel, viewersPanel]) {
 applyPanelWidths();
 
 "use strict";
-// The file viewers beside the chat: the open files, whose tabs share the row above the chat, and the blocks of each file
-// that are loaded.
-const viewers = document.getElementById("viewers");
-const viewersDivider = document.getElementById("viewers-divider");
+// The open files. One file at a time takes the chat's space, in place of the chat log, and the tabs of the open files
+// share the row above the chat. The blocks of each file arrive as they are loaded.
 const fileTabs = document.getElementById("file-tabs");
 const viewersBody = document.getElementById("viewers-body");
 const viewersCloseAll = document.getElementById("viewers-close-all");
@@ -477,12 +467,11 @@ function isMarkdown(path) {
     return path.toLowerCase().endsWith(".md");
 }
 function renderViewers() {
-    viewers.hidden = viewed.length === 0;
-    viewersDivider.hidden = viewers.hidden;
-    applyPanelWidths();
+    viewersCloseAll.hidden = viewed.length === 0;
     for (const file of viewed) {
         setTabActive(file.tab, file.path === activePath);
     }
+    viewersBody.hidden = activePath === null;
     viewersBody.replaceChildren();
     const file = viewed.find((candidate) => candidate.path === activePath);
     if (file === undefined) {
@@ -619,9 +608,19 @@ function rendererToggle(file) {
     });
     return toggle;
 }
-// Shows a file that is open. The file's tab is the one marked as shown.
+// Shows a file in the chat's space, in place of the chat log. The chat tabs stop being marked as shown.
 function selectFile(path) {
     activePath = path;
+    for (const chat of chats) {
+        chat.log.hidden = true;
+        setTabActive(chat.tab, false);
+    }
+    saveFiles();
+    renderViewers();
+}
+// Puts the shown file away, so the chat's space is free for the chat. Called when a chat is shown.
+function hideFiles() {
+    activePath = null;
     saveFiles();
     renderViewers();
 }
@@ -642,20 +641,25 @@ function closeFile(path) {
     }
     viewed[index].tab.remove();
     viewed.splice(index, 1);
-    if (activePath === path) {
-        activePath = viewed.length > 0 ? viewed[viewed.length - 1].path : null;
+    if (activePath !== path) {
+        saveFiles();
+        renderViewers();
     }
-    saveFiles();
-    renderViewers();
+    else if (viewed.length > 0) {
+        // The file opened last takes the place of the one closed.
+        selectFile(viewed[viewed.length - 1].path);
+    }
+    else {
+        // With no file left open, the chat is shown again.
+        showChat(active);
+    }
 }
 viewersCloseAll.addEventListener("click", () => {
     for (const file of viewed) {
         file.tab.remove();
     }
     viewed.length = 0;
-    activePath = null;
-    saveFiles();
-    renderViewers();
+    showChat(active);
 });
 // Opens the files that were open at the last visit, and shows the one that was shown then. A file that is no longer
 // there shows its error in its viewer.
@@ -676,6 +680,9 @@ function restoreFiles() {
     }
     if (shown !== null && viewed.some((file) => file.path === shown)) {
         selectFile(shown);
+    }
+    else {
+        showChat(active);
     }
 }
 
@@ -780,6 +787,7 @@ async function loadInto(chat, name) {
 // Loads a saved session into the shown chat. The next turn starts a new saved session, as it did before chats were tabs.
 async function loadSession(name) {
     const chat = active;
+    showChat(chat);
     if (chat.busy) {
         showStatus(sessionsStatus, "Wait for the reply to finish, then load.", true);
         return;
@@ -1162,8 +1170,10 @@ form.addEventListener("submit", async (event) => {
     if (text === "") {
         return;
     }
-    // The turn belongs to the chat shown when it was sent, even if another chat is shown by the time it ends.
+    // The turn belongs to the chat shown when it was sent, even if another chat is shown by the time it ends. Sending
+    // shows that chat, in case a file was shown in its place.
     const chat = active;
+    showChat(chat);
     chat.busy = true;
     refreshForm();
     input.value = "";

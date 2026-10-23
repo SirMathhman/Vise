@@ -1,14 +1,11 @@
-// The file viewers beside the chat: the open files, whose tabs share the row above the chat, and the blocks of each file
-// that are loaded.
+// The open files. One file at a time takes the chat's space, in place of the chat log, and the tabs of the open files
+// share the row above the chat. The blocks of each file arrive as they are loaded.
 
-const viewers = document.getElementById("viewers") as HTMLElement;
-const viewersDivider = document.getElementById("viewers-divider") as HTMLDivElement;
 const fileTabs = document.getElementById("file-tabs") as HTMLDivElement;
 const viewersBody = document.getElementById("viewers-body") as HTMLDivElement;
 const viewersCloseAll = document.getElementById("viewers-close-all") as HTMLButtonElement;
 
-// The file viewers beside the chat, as tabs: one file shows at a time. A file's lines arrive in blocks, and Load more
-// fetches the next block. Nothing scrolls inside the viewer; the column does. A file is open once, under its path.
+// A file's lines arrive in blocks, and Load more fetches the next block. A file is open once, under its path.
 interface Viewed {
   path: string;
   lines: string[];
@@ -42,13 +39,11 @@ function isMarkdown(path: string): boolean {
 }
 
 function renderViewers(): void {
-  viewers.hidden = viewed.length === 0;
-  viewersDivider.hidden = viewers.hidden;
-  applyPanelWidths();
+  viewersCloseAll.hidden = viewed.length === 0;
   for (const file of viewed) {
     setTabActive(file.tab, file.path === activePath);
   }
-
+  viewersBody.hidden = activePath === null;
   viewersBody.replaceChildren();
   const file = viewed.find((candidate) => candidate.path === activePath);
   if (file === undefined) {
@@ -187,9 +182,20 @@ function rendererToggle(file: Viewed): HTMLButtonElement {
   return toggle;
 }
 
-// Shows a file that is open. The file's tab is the one marked as shown.
+// Shows a file in the chat's space, in place of the chat log. The chat tabs stop being marked as shown.
 function selectFile(path: string): void {
   activePath = path;
+  for (const chat of chats) {
+    chat.log.hidden = true;
+    setTabActive(chat.tab, false);
+  }
+  saveFiles();
+  renderViewers();
+}
+
+// Puts the shown file away, so the chat's space is free for the chat. Called when a chat is shown.
+function hideFiles(): void {
+  activePath = null;
   saveFiles();
   renderViewers();
 }
@@ -217,11 +223,16 @@ function closeFile(path: string): void {
   }
   viewed[index].tab.remove();
   viewed.splice(index, 1);
-  if (activePath === path) {
-    activePath = viewed.length > 0 ? viewed[viewed.length - 1].path : null;
+  if (activePath !== path) {
+    saveFiles();
+    renderViewers();
+  } else if (viewed.length > 0) {
+    // The file opened last takes the place of the one closed.
+    selectFile(viewed[viewed.length - 1].path);
+  } else {
+    // With no file left open, the chat is shown again.
+    showChat(active);
   }
-  saveFiles();
-  renderViewers();
 }
 
 viewersCloseAll.addEventListener("click", () => {
@@ -229,9 +240,7 @@ viewersCloseAll.addEventListener("click", () => {
     file.tab.remove();
   }
   viewed.length = 0;
-  activePath = null;
-  saveFiles();
-  renderViewers();
+  showChat(active);
 });
 
 // Opens the files that were open at the last visit, and shows the one that was shown then. A file that is no longer
@@ -252,5 +261,7 @@ function restoreFiles(): void {
   }
   if (shown !== null && viewed.some((file) => file.path === shown)) {
     selectFile(shown);
+  } else {
+    showChat(active);
   }
 }
