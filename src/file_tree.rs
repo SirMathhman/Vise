@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
+use crate::workspace::resolve;
+
 const SKIPPED: [&str; 3] = [".git", "target", "node_modules"];
 
 /// The most entries a tree lists. A larger tree is cut short, and the result says so.
@@ -23,6 +25,20 @@ fn build_with_limit(root: &Path, limit: usize) -> Result<Value, String> {
         .file_name()
         .map_or_else(|| root.display().to_string(), |name| name.to_string_lossy().into_owned());
     Ok(json!({ "name": name, "children": children, "truncated": builder.truncated }))
+}
+
+/// The text of a file in the working directory, named relative to it. The path is confined to the working directory,
+/// and a file that is not UTF-8 text, or holds a NUL byte, is refused.
+pub fn read_text(root: &Path, path: &str) -> Result<String, String> {
+    let target = resolve(Some(root), path, false)?;
+    if !target.is_file() {
+        return Err(format!("not a file: {path}"));
+    }
+    let bytes = fs::read(&target).map_err(|err| format!("could not read {path}: {err}"))?;
+    match String::from_utf8(bytes) {
+        Ok(text) if !text.contains('\0') => Ok(text),
+        _ => Err(format!("{path} is not a text file, so its contents cannot be shown")),
+    }
 }
 
 struct Builder {
@@ -88,6 +104,20 @@ mod tests {
         let names: Vec<&str> = tree["children"].as_array().unwrap().iter().map(|node| node["name"].as_str().unwrap()).collect();
         assert_eq!(names, ["src", "README.md"]);
         assert_eq!(tree["truncated"], false);
+    }
+
+    #[test]
+    fn a_text_file_is_read_but_paths_outside_the_folder_and_binary_files_are_refused() {
+        let root = folder("read");
+        fs::write(root.join("data.bin"), [0u8, 159, 146, 150]).unwrap();
+        let text = read_text(&root, "src/main.rs");
+        let escape = read_text(&root, "../secret");
+        let binary = read_text(&root, "data.bin");
+        fs::remove_dir_all(&root).unwrap();
+
+        assert_eq!(text.unwrap(), "");
+        assert!(escape.is_err());
+        assert!(binary.unwrap_err().contains("not a text file"));
     }
 
     #[test]

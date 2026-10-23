@@ -111,7 +111,28 @@ fn handle(mut stream: TcpStream, config: &Config, sessions: &Sessions) -> io::Re
     if request.method == "GET" && request.path == "/api/files" {
         return write_response(&mut stream, &files_response(config));
     }
+    if request.method == "POST" && request.path == "/api/file" {
+        return write_response(&mut stream, &file_response(&request.body, config));
+    }
     write_response(&mut stream, &route(&request))
+}
+
+/// The text of one file in the working directory, for the Files panel. Failures are reported as a 400 with the reason.
+fn file_response(body: &[u8], config: &Config) -> Response {
+    let data: Value = match serde_json::from_slice(body) {
+        Ok(data) => data,
+        Err(err) => return json_response(400, json!({ "error": format!("invalid JSON: {err}") })),
+    };
+    let Some(path) = data["path"].as_str() else {
+        return json_response(400, json!({ "error": "path must be a string" }));
+    };
+    let Some(root) = config.working_dir.as_deref() else {
+        return json_response(400, json!({ "error": "no working directory is set" }));
+    };
+    match file_tree::read_text(Path::new(root), path) {
+        Ok(text) => json_response(200, json!({ "path": path, "text": text })),
+        Err(error) => json_response(400, json!({ "error": error })),
+    }
 }
 
 /// The file tree of the working directory for the Files panel.
