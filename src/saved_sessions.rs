@@ -52,7 +52,14 @@ pub fn command(line: &str, session: &mut Session, working: Option<&Path>) -> Opt
 /// Saves the conversation after a completed turn, under the conversation's autosave name. The first autosave picks a
 /// name from the time, and later ones reuse it.
 pub fn autosave(working: Option<&Path>, session: &mut Session) -> Result<(), String> {
-    let name = session.autosave_name().get_or_insert_with(auto_name).clone();
+    let name = match session.autosave_name() {
+        Some(name) => name.to_owned(),
+        None => {
+            let name = auto_name();
+            session.set_autosave_name(name.clone());
+            name
+        }
+    };
     save(working, &name, session.messages(), session.told()).map(|_| ())
 }
 
@@ -232,19 +239,23 @@ mod tests {
         let mut session = Session::new();
         session.push(Role::User, "one".to_owned());
         autosave(Some(&root), &mut session).unwrap();
-        let first = session.autosave_name().clone();
+        let first = session.autosave_name().map(str::to_owned);
         session.push(Role::Assistant, "two".to_owned());
         autosave(Some(&root), &mut session).unwrap();
-        let kept = session.autosave_name().clone();
+        let kept = session.autosave_name().map(str::to_owned);
         let count = list(Some(&root)).unwrap().len();
         session.reset();
-        let cleared = session.autosave_name().is_none();
+        let cleared_by_reset = session.autosave_name().is_none();
+        autosave(Some(&root), &mut session).unwrap();
+        session.restore(Vec::new(), BTreeSet::new());
+        let cleared_by_restore = session.autosave_name().is_none();
         fs::remove_dir_all(&root).unwrap();
 
         assert!(first.as_deref().is_some_and(|name| name.starts_with("auto-")));
         assert_eq!(kept, first);
         assert_eq!(count, 1);
-        assert!(cleared);
+        assert!(cleared_by_reset);
+        assert!(cleared_by_restore);
     }
 
     #[test]

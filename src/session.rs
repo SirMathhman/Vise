@@ -21,8 +21,12 @@ impl Session {
 
     /// The name this conversation autosaves under. It is `None` until the first autosave picks one. A reset or a
     /// load clears it, so the next autosave starts a new saved session.
-    pub fn autosave_name(&mut self) -> &mut Option<String> {
-        &mut self.autosave
+    pub fn autosave_name(&self) -> Option<&str> {
+        self.autosave.as_deref()
+    }
+
+    pub fn set_autosave_name(&mut self, name: String) {
+        self.autosave = Some(name);
     }
 
     pub fn messages(&self) -> &[Message] {

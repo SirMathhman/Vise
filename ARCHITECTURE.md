@@ -27,7 +27,7 @@ src/
   notes/      mod.rs: note tools, the /notes command and the web notes requests; store.rs: scopes, paths and file operations; index.rs: the start-of-conversation index and summaries; profile.rs: reads profile notes; tests.rs. Notes: Markdown notes in .vise/notes/<category>/<name>.md, local (working directory) or global (home directory)
   workspace.rs  leaf helpers shared by the file and note tools: resolve (path confinement), string_arg,
               line_range, and read_range
-  session.rs  Session: message list and the told set, with push, pop, reset, restore, messages, told, and set_told (REPL only)
+  session.rs  Session: message list and the told set, with push, pop, reset, restore, messages, told, set_told, and autosave_name and set_autosave_name (the name the conversation autosaves under; reset and restore clear it) (REPL only)
   saved_sessions.rs  /save, /load, and /sessions (REPL), and save, load, and list for the web Sessions panel. A saved
               session is JSON at .vise/sessions/<name>.json: the messages and the told set, not the tool switches
   compaction.rs  after_turn, needs_summary, and summarize: append-only summaries of long conversations
