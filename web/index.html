@@ -166,9 +166,21 @@
         flex: 1 1 0;
         min-height: 0;
         overflow-y: auto;
-        padding: 1rem;
+        padding: 0 1rem 1rem;
         box-sizing: border-box;
         border-top: 1px solid #ddd;
+      }
+      /* A closed section is only its heading, so it takes no more height than that. */
+      .pane:not([open]) {
+        flex: none;
+        overflow: visible;
+        padding-bottom: 0;
+      }
+      .pane > summary {
+        padding: 0.75rem 0;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
       }
       .pane:first-child {
         border-top: 0;
@@ -412,28 +424,28 @@
       </main>
       <div id="divider" role="separator" aria-orientation="vertical" aria-label="Drag to resize the Tools panel"></div>
       <aside>
-        <section class="pane" id="tools-section">
-          <h2>Tools</h2>
+        <details class="pane" id="tools-section">
+          <summary>Tools</summary>
           <p id="tools-error" class="error" hidden></p>
           <ul id="tools-list"></ul>
-        </section>
-        <section class="pane" id="sessions-section">
-          <h2>Sessions</h2>
+        </details>
+        <details class="pane" id="sessions-section">
+          <summary>Sessions</summary>
           <p id="sessions-status" hidden></p>
           <form id="session-form">
             <input id="session-name" autocomplete="off" placeholder="Name" aria-label="Session name" />
             <button type="submit" id="session-save">Save</button>
           </form>
           <ul id="sessions-list"></ul>
-        </section>
-        <section class="pane" id="files-section">
-          <h2>Files</h2>
+        </details>
+        <details class="pane" id="files-section">
+          <summary>Files</summary>
           <p id="files-status" hidden></p>
           <button type="button" id="files-refresh">Refresh</button>
           <div id="files-tree"></div>
-        </section>
-        <section class="pane" id="notes-section">
-          <h2>Notes</h2>
+        </details>
+        <details class="pane" id="notes-section" open>
+          <summary>Notes</summary>
           <p id="notes-status" hidden></p>
           <label class="profile-choice">Profile <select id="profile-picker"></select></label>
           <ul id="notes-list"></ul>
@@ -455,7 +467,7 @@
               <button type="button" id="note-delete" hidden>Delete</button>
             </div>
           </form>
-        </section>
+        </details>
       </aside>
     </div>
     <script
