@@ -552,6 +552,51 @@ async function loadSession(name) {
         input.focus();
     }
 }
+const filesTree = document.getElementById("files-tree");
+const filesStatus = document.getElementById("files-status");
+const filesRefresh = document.getElementById("files-refresh");
+function treeList(nodes) {
+    const list = document.createElement("ul");
+    for (const node of nodes) {
+        const item = document.createElement("li");
+        if (node.dir) {
+            const details = document.createElement("details");
+            const summary = document.createElement("summary");
+            summary.textContent = `${node.name}/`;
+            details.append(summary, treeList(node.children ?? []));
+            item.append(details);
+        }
+        else {
+            item.textContent = node.name;
+        }
+        list.append(item);
+    }
+    return list;
+}
+async function refreshFiles() {
+    try {
+        const res = await fetch("/api/files");
+        const data = (await res.json().catch(() => ({})));
+        if (!res.ok || data.children === undefined) {
+            throw new Error(data.error ?? `HTTP ${res.status}`);
+        }
+        const title = document.createElement("p");
+        title.className = "description";
+        title.textContent = `${data.name}/`;
+        filesTree.replaceChildren(title, treeList(data.children));
+        filesStatus.textContent = data.truncated ? "The tree is cut short: only the first entries are listed." : "";
+        filesStatus.className = "summary";
+        filesStatus.hidden = !data.truncated;
+    }
+    catch (err) {
+        filesStatus.textContent = err instanceof Error ? err.message : String(err);
+        filesStatus.className = "error";
+        filesStatus.hidden = false;
+    }
+}
+filesRefresh.addEventListener("click", () => {
+    void refreshFiles();
+});
 const notesList = document.getElementById("notes-list");
 const notesStatus = document.getElementById("notes-status");
 const notesNew = document.getElementById("notes-new");
@@ -698,6 +743,7 @@ noteDelete.addEventListener("click", async () => {
 });
 void refreshNotes();
 void refreshSessions();
+void refreshFiles();
 void applyDefaultProfile();
 // A narrower window clamps the shown width without changing the chosen one, and nothing is saved here.
 window.addEventListener("resize", () => {

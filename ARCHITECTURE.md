@@ -28,6 +28,7 @@ src/
   workspace.rs  leaf helpers shared by the file and note tools: resolve (path confinement), string_arg,
               line_range, and read_range
   session.rs  Session: message list and the told set, with push, pop, reset, restore, messages, told, set_told, and autosave_name and set_autosave_name (the name the conversation autosaves under; reset and restore clear it) (REPL only)
+  file_tree.rs  build: the working directory's tree for the web Files panel (GET /api/files). Leaves out .git, target and node_modules, and stops at 2000 entries
   saved_sessions.rs  /save, /load, and /sessions (REPL), and save, load, and list for the web Sessions panel. A saved
               session is JSON at .vise/sessions/<name>.json: the messages and the told set, not the tool switches
   compaction.rs  after_turn, needs_summary, and summarize: append-only summaries of long conversations

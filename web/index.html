@@ -202,6 +202,25 @@
         padding: 0.5rem;
         border-radius: 0.5rem;
       }
+      #files-tree {
+        margin-top: 0.5rem;
+        font-family: ui-monospace, monospace;
+        font-size: 0.85em;
+      }
+      #files-tree ul {
+        list-style: none;
+        margin: 0;
+        padding-left: 1rem;
+      }
+      #files-tree > ul {
+        padding-left: 0;
+      }
+      #files-tree li {
+        margin: 0.15rem 0;
+      }
+      #files-tree summary {
+        cursor: pointer;
+      }
       #notes-list,
       #sessions-list {
         list-style: none;
@@ -406,6 +425,12 @@
             <button type="submit" id="session-save">Save</button>
           </form>
           <ul id="sessions-list"></ul>
+        </section>
+        <section class="pane" id="files-section">
+          <h2>Files</h2>
+          <p id="files-status" hidden></p>
+          <button type="button" id="files-refresh">Refresh</button>
+          <div id="files-tree"></div>
         </section>
         <section class="pane" id="notes-section">
           <h2>Notes</h2>

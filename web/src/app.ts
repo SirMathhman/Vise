@@ -625,6 +625,66 @@ async function loadSession(name: string): Promise<void> {
   }
 }
 
+// The Files panel: the working directory's tree. Folders start closed, so only the top level shows until one is opened.
+interface TreeNode {
+  name: string;
+  dir: boolean;
+  children?: TreeNode[];
+}
+
+interface FileTree {
+  name: string;
+  children: TreeNode[];
+  truncated: boolean;
+}
+
+const filesTree = document.getElementById("files-tree") as HTMLDivElement;
+const filesStatus = document.getElementById("files-status") as HTMLParagraphElement;
+const filesRefresh = document.getElementById("files-refresh") as HTMLButtonElement;
+
+function treeList(nodes: TreeNode[]): HTMLUListElement {
+  const list = document.createElement("ul");
+  for (const node of nodes) {
+    const item = document.createElement("li");
+    if (node.dir) {
+      const details = document.createElement("details");
+      const summary = document.createElement("summary");
+      summary.textContent = `${node.name}/`;
+      details.append(summary, treeList(node.children ?? []));
+      item.append(details);
+    } else {
+      item.textContent = node.name;
+    }
+    list.append(item);
+  }
+  return list;
+}
+
+async function refreshFiles(): Promise<void> {
+  try {
+    const res = await fetch("/api/files");
+    const data = (await res.json().catch(() => ({}))) as Partial<FileTree> & { error?: string };
+    if (!res.ok || data.children === undefined) {
+      throw new Error(data.error ?? `HTTP ${res.status}`);
+    }
+    const title = document.createElement("p");
+    title.className = "description";
+    title.textContent = `${data.name}/`;
+    filesTree.replaceChildren(title, treeList(data.children));
+    filesStatus.textContent = data.truncated ? "The tree is cut short: only the first entries are listed." : "";
+    filesStatus.className = "summary";
+    filesStatus.hidden = !data.truncated;
+  } catch (err) {
+    filesStatus.textContent = err instanceof Error ? err.message : String(err);
+    filesStatus.className = "error";
+    filesStatus.hidden = false;
+  }
+}
+
+filesRefresh.addEventListener("click", () => {
+  void refreshFiles();
+});
+
 // Notes in the side panel. The server keeps them; the page shows one at a time in the editor below the list.
 interface NoteRef {
   scope: string;
@@ -797,6 +857,7 @@ noteDelete.addEventListener("click", async () => {
 
 void refreshNotes();
 void refreshSessions();
+void refreshFiles();
 void applyDefaultProfile();
 
 // A narrower window clamps the shown width without changing the chosen one, and nothing is saved here.
