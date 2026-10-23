@@ -228,6 +228,7 @@ form.addEventListener("submit", async (event) => {
         conversation.push({ role: "summary_failed", content: done.summary_failed });
         addEntry("summary").textContent = "Could not summarize the conversation. It will be tried again later.";
       }
+      autosaveTurn();
     }
   } catch (err) {
     if (!command) {
@@ -263,6 +264,7 @@ stopButton.addEventListener("click", () => {
 newButton.addEventListener("click", () => {
   conversation.length = 0;
   told = [];
+  autosaveName = null;
   log.replaceChildren();
   void applyDefaultProfile();
 });
@@ -498,6 +500,25 @@ sessionForm.addEventListener("submit", async (event) => {
   }
 });
 
+// The name this conversation autosaves under. It is picked at the first completed turn, and New or Load clears it so
+// the next turn starts a new saved session.
+let autosaveName: string | null = null;
+
+// Saves the conversation after a completed turn. The save runs in the background: a failure shows in the Sessions
+// panel, and the chat is unaffected.
+function autosaveTurn(): void {
+  autosaveName ??= `auto-${Date.now()}`;
+  postJson<{ message: string }>("/api/sessions", {
+    action: "save",
+    name: autosaveName,
+    messages: conversation,
+    told,
+  }).then(
+    () => refreshSessions(),
+    (err) => showSessionsStatus(err instanceof Error ? err.message : String(err), true),
+  );
+}
+
 async function loadSession(name: string): Promise<void> {
   if (input.disabled) {
     showSessionsStatus("Wait for the reply to finish, then load.", true);
@@ -512,6 +533,7 @@ async function loadSession(name: string): Promise<void> {
     conversation.length = 0;
     conversation.push(...data.messages);
     told = data.told;
+    autosaveName = null;
     log.replaceChildren();
     data.messages.forEach(showMessage);
     showSessionsStatus(`Loaded session ${name}.`, false);
