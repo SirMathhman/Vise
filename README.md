@@ -11,6 +11,7 @@ cargo run
 Type `exit` or `quit` to leave the REPL. These commands work in the REPL and in the web UI:
 
 - `/new` starts a fresh conversation. (The web UI has a New button instead.)
+- The web UI's New button first asks for a folder. Browse the server's folders and choose Open chat here. Each chat works in its own folder: its tab shows the folder's name, and the file tools, Files, Notes, Workflows and Sessions panels follow the chat being shown. A chat keeps its folder across a reload, with the chat list. Chats opened without a folder use the folder the server was started in.
 - Ctrl+C in the REPL stops a running reply. A second Ctrl+C quits. The web UI's Stop button does the same. A stopped reply stays on screen, but it is not kept in the conversation.
 - `/tools` lists each tool as on or off.
 - When the model creates, deletes or edits a file or a note, the change is made first and then you are asked whether to keep it. The question shows what the edit did. In the REPL, `y` keeps it, `a` keeps it and allows that tool for the rest of the conversation, and anything else undoes it. The web UI shows Keep, Keep and allow, and Undo buttons under the edit. Undo takes the change back, and so does a Stop. Starting a new conversation asks again.

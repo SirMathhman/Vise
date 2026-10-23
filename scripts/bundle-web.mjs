@@ -18,6 +18,7 @@ const order = [
   "panels/files",
   "panels/notes",
   "panels/workflows",
+  "panels/folders",
   "app",
 ];
 

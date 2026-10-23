@@ -204,6 +204,7 @@ form.addEventListener("submit", async (event) => {
         }
       },
       controller.signal,
+      chat.workingDir,
     );
     finishReasoning(reply);
     keepReply(chat, done, command);
@@ -216,11 +217,21 @@ form.addEventListener("submit", async (event) => {
 
 stopButton.addEventListener("click", () => abortTurn(active));
 
-// Opens a new chat with the default profile and shows it. The chats already open are kept.
-function newChat(): void {
-  const chat = createChat(closeChat);
+// Opens a new chat in `dir` (the server's startup folder for null), with the default profile, and shows it. The chats
+// already open are kept.
+function newChat(dir: string | null): void {
+  const chat = createChat(closeChat, dir);
   showChat(chat);
   void applyDefaultProfile(chat);
+}
+
+// Reloads the side panels for the folder of the shown chat.
+function refreshPanels(): void {
+  void refreshTools();
+  void refreshNotes();
+  void refreshSessions();
+  void refreshWorkflows();
+  void refreshFiles();
 }
 
 // Closes a chat. A reply still running in it is stopped. Closing the last chat opens a new one in its place.
@@ -232,7 +243,7 @@ function closeChat(chat: Chat): void {
   chat.log.remove();
   chat.tab.remove();
   if (chats.length === 0) {
-    newChat();
+    newChat(null);
   } else if (active === chat) {
     showChat(chats[Math.max(0, index - 1)]);
   } else {
@@ -243,18 +254,18 @@ function closeChat(chat: Chat): void {
 // Brings back the chats open at the last visit, with the one that was shown. A chat that was saved comes back from its
 // saved session. A chat that cannot be loaded starts empty, and its name is dropped so a reply cannot overwrite the file.
 function restoreChats(): void {
-  let saved: { names: (string | null)[]; active: number } | null = null;
+  let saved: { names: (string | null)[]; dirs?: (string | null)[]; active: number } | null = null;
   try {
     saved = JSON.parse(localStorage.getItem(CHATS_KEY) ?? "null");
   } catch {
     // Unreadable or blocked storage: the page starts with one chat.
   }
   if (saved === null || !Array.isArray(saved.names) || saved.names.length === 0) {
-    newChat();
+    newChat(null);
     return;
   }
-  for (const name of saved.names) {
-    const chat = createChat(closeChat);
+  for (const [index, name] of saved.names.entries()) {
+    const chat = createChat(closeChat, saved.dirs?.[index] ?? null);
     if (name === null) {
       void applyDefaultProfile(chat);
     } else {
@@ -277,14 +288,11 @@ function restoreChats(): void {
   showChat(chats[saved.active] ?? chats[0]);
 }
 
-newButton.addEventListener("click", newChat);
+// New asks for a folder first. The picker starts in the folder of the shown chat.
+newButton.addEventListener("click", () => openFolderPicker(currentFolder(), newChat));
+// Showing the restored chats refreshes the side panels, so they are not refreshed again here.
 restoreChats();
 restoreFiles();
-void refreshTools();
-void refreshNotes();
-void refreshSessions();
-void refreshWorkflows();
-void refreshFiles();
 
 // A narrower window clamps the shown width without changing the chosen one, and nothing is saved here.
 window.addEventListener("resize", applyPanelWidths);

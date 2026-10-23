@@ -36,6 +36,8 @@ interface Chat {
   conversation: Message[];
   // The switched-off tools the model has been told about in this conversation.
   told: string[];
+  // The folder this chat works in, or null for the server's startup folder.
+  workingDir: string | null;
   // The name this conversation autosaves under. It is picked at the first completed turn, and New or Load clears it so
   // the next turn starts a new saved session.
   autosaveName: string | null;
@@ -82,8 +84,9 @@ const chats: Chat[] = [];
 let active: Chat;
 let chatCount = 0;
 
-// Creates a chat with its own log and tab. It is not shown until showChat is called. Closing its tab calls onClose.
-function createChat(onClose: (chat: Chat) => void): Chat {
+// Creates a chat with its own log and tab, working in `workingDir`. It is not shown until showChat is called. Closing its
+// tab calls onClose.
+function createChat(onClose: (chat: Chat) => void, workingDir: string | null): Chat {
   const log = document.createElement("div");
   log.className = "chat-log";
   log.hidden = true;
@@ -92,14 +95,16 @@ function createChat(onClose: (chat: Chat) => void): Chat {
   chatCount += 1;
   const tab = createTab(
     chatTabs,
-    `Chat ${chatCount}`,
+    workingDir === null ? `Chat ${chatCount}` : `Chat ${chatCount} · ${folderName(workingDir)}`,
     () => showChat(chat),
     () => onClose(chat),
   );
+  tab.title = workingDir ?? "The server's startup folder";
 
   const chat: Chat = {
     conversation: [],
     told: [],
+    workingDir,
     autosaveName: null,
     log,
     tab,
@@ -114,6 +119,19 @@ function createChat(onClose: (chat: Chat) => void): Chat {
   return chat;
 }
 
+// The last part of a folder's path, which names the folder in a chat's tab.
+function folderName(dir: string): string {
+  return dir.split(/[\\/]/).filter((part) => part !== "").pop() ?? dir;
+}
+
+// The folder the shown chat works in. The side panels send it with their requests.
+function currentFolder(): string | null {
+  return active?.workingDir ?? null;
+}
+
+// The folder the side panels were last refreshed for, so they are refreshed only when the shown chat's folder changes.
+let panelFolder: string | null | undefined;
+
 // Shows one chat in the chat's space: its log and tab are the ones shown, and the form follows its reply. A file that
 // was shown in that space is put away.
 function showChat(chat: Chat): void {
@@ -126,6 +144,10 @@ function showChat(chat: Chat): void {
   refreshForm();
   scrollToEnd(chat);
   saveChats();
+  if (panelFolder !== chat.workingDir) {
+    panelFolder = chat.workingDir;
+    refreshPanels();
+  }
 }
 
 // The form follows the shown chat: it is off while that chat's reply is pending, and Stop shows while it is streaming.
@@ -140,7 +162,14 @@ function refreshForm(): void {
 const CHATS_KEY = "vise-chats";
 function saveChats(): void {
   try {
-    localStorage.setItem(CHATS_KEY, JSON.stringify({ names: chats.map((chat) => chat.autosaveName), active: chats.indexOf(active) }));
+    localStorage.setItem(
+      CHATS_KEY,
+      JSON.stringify({
+        names: chats.map((chat) => chat.autosaveName),
+        dirs: chats.map((chat) => chat.workingDir),
+        active: chats.indexOf(active),
+      }),
+    );
   } catch {
     // Not saved: the chats last for this page load only.
   }
@@ -232,13 +261,14 @@ async function streamChat(
   told: string[],
   onEvent: (event: StreamEvent) => void,
   signal: AbortSignal,
+  workingDir: string | null,
 ): Promise<Done> {
   let res: Response;
   try {
     res = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages, told, session }),
+      body: JSON.stringify({ messages, told, session, working_dir: workingDir }),
       signal,
     });
   } catch {

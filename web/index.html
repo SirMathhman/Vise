@@ -131,6 +131,18 @@
         color: var(--muted);
         white-space: pre-wrap;
       }
+      .folder-dialog {
+        width: min(32rem, 92vw);
+      }
+      .folder-path {
+        font-family: var(--mono);
+        overflow-wrap: anywhere;
+      }
+      .folder-list {
+        max-height: 50vh;
+        overflow: auto;
+        padding-left: 1.25rem;
+      }
       .approval {
         margin: 0.5rem 0;
         padding: 0.5rem 0.75rem;
@@ -648,6 +660,19 @@
       integrity="sha384-+VfUPEb0PdtChMwmBcBmykRMDd+v6D/oFmB3rZM/puCMDYcIvF968OimRh4KQY9a"
       crossorigin="anonymous"
     ></script>
+    <dialog id="folder-dialog" class="folder-dialog">
+      <h2>Open a chat in a folder</h2>
+      <p id="folder-path" class="folder-path"></p>
+      <div class="row">
+        <button type="button" id="folder-up">Up</button>
+      </div>
+      <ul id="folder-list" class="folder-list"></ul>
+      <p id="folder-status" hidden></p>
+      <div class="row">
+        <button type="button" id="folder-open">Open chat here</button>
+        <button type="button" id="folder-cancel">Cancel</button>
+      </div>
+    </dialog>
     <script src="/app.js"></script>
   </body>
 </html>

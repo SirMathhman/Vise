@@ -5,12 +5,13 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-// One JSON request to the server. A failure is thrown with the server's reason.
+// One JSON request to the server. The shown chat's folder goes with it, unless the body names one. A failure is thrown
+// with the server's reason.
 async function postJson<T>(url: string, body: Record<string, unknown>): Promise<T> {
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ working_dir: currentFolder(), ...body }),
   });
   const data = (await res.json().catch(() => ({}))) as T & { error?: string };
   if (!res.ok) {

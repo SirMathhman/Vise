@@ -85,15 +85,22 @@ function autosaveTurn(chat: Chat): void {
   const name = chat.autosaveName;
   const firstTurn = chat.conversation.filter((message) => message.role === "user").length === 1;
   const exchange = chat.conversation.filter((message) => message.role === "user" || message.role === "assistant").slice(0, 2);
+  // The save and the title are for this chat's folder, even when another chat is the one shown by now.
   postJson<{ message: string }>("/api/sessions", {
     action: "save",
     name,
     messages: chat.conversation,
     told: chat.told,
+    working_dir: chat.workingDir,
   })
     .then(async () => {
       if (firstTurn) {
-        await postJson<{ title: string }>("/api/sessions", { action: "title", name, messages: exchange });
+        await postJson<{ title: string }>("/api/sessions", {
+          action: "title",
+          name,
+          messages: exchange,
+          working_dir: chat.workingDir,
+        });
       }
     })
     .then(
@@ -104,7 +111,11 @@ function autosaveTurn(chat: Chat): void {
 
 // Fills a chat from a saved session: its conversation and switches are replaced, and its log shows the saved messages.
 async function loadInto(chat: Chat, name: string): Promise<void> {
-  const data = await postJson<{ messages: Message[]; told: string[] }>("/api/sessions", { action: "load", name });
+  const data = await postJson<{ messages: Message[]; told: string[] }>("/api/sessions", {
+    action: "load",
+    name,
+    working_dir: chat.workingDir,
+  });
   // The default profile must land before the loaded conversation, or it could join the conversation after it.
   await chat.defaultProfile;
   chat.conversation.length = 0;

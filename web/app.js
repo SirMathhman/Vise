@@ -25,12 +25,13 @@ function renderMarkdown(text) {
 function errorMessage(err) {
     return err instanceof Error ? err.message : String(err);
 }
-// One JSON request to the server. A failure is thrown with the server's reason.
+// One JSON request to the server. The shown chat's folder goes with it, unless the body names one. A failure is thrown
+// with the server's reason.
 async function postJson(url, body) {
     const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ working_dir: currentFolder(), ...body }),
     });
     const data = (await res.json().catch(() => ({})));
     if (!res.ok) {
@@ -109,17 +110,20 @@ const chats = [];
 // The chat shown in the page. Every chat is shown in turn, so this is always set once the page has started.
 let active;
 let chatCount = 0;
-// Creates a chat with its own log and tab. It is not shown until showChat is called. Closing its tab calls onClose.
-function createChat(onClose) {
+// Creates a chat with its own log and tab, working in `workingDir`. It is not shown until showChat is called. Closing its
+// tab calls onClose.
+function createChat(onClose, workingDir) {
     const log = document.createElement("div");
     log.className = "chat-log";
     log.hidden = true;
     logHost.append(log);
     chatCount += 1;
-    const tab = createTab(chatTabs, `Chat ${chatCount}`, () => showChat(chat), () => onClose(chat));
+    const tab = createTab(chatTabs, workingDir === null ? `Chat ${chatCount}` : `Chat ${chatCount} · ${folderName(workingDir)}`, () => showChat(chat), () => onClose(chat));
+    tab.title = workingDir ?? "The server's startup folder";
     const chat = {
         conversation: [],
         told: [],
+        workingDir,
         autosaveName: null,
         log,
         tab,
@@ -133,6 +137,16 @@ function createChat(onClose) {
     chats.push(chat);
     return chat;
 }
+// The last part of a folder's path, which names the folder in a chat's tab.
+function folderName(dir) {
+    return dir.split(/[\\/]/).filter((part) => part !== "").pop() ?? dir;
+}
+// The folder the shown chat works in. The side panels send it with their requests.
+function currentFolder() {
+    return active?.workingDir ?? null;
+}
+// The folder the side panels were last refreshed for, so they are refreshed only when the shown chat's folder changes.
+let panelFolder;
 // Shows one chat in the chat's space: its log and tab are the ones shown, and the form follows its reply. A file that
 // was shown in that space is put away.
 function showChat(chat) {
@@ -145,6 +159,10 @@ function showChat(chat) {
     refreshForm();
     scrollToEnd(chat);
     saveChats();
+    if (panelFolder !== chat.workingDir) {
+        panelFolder = chat.workingDir;
+        refreshPanels();
+    }
 }
 // The form follows the shown chat: it is off while that chat's reply is pending, and Stop shows while it is streaming.
 function refreshForm() {
@@ -157,7 +175,11 @@ function refreshForm() {
 const CHATS_KEY = "vise-chats";
 function saveChats() {
     try {
-        localStorage.setItem(CHATS_KEY, JSON.stringify({ names: chats.map((chat) => chat.autosaveName), active: chats.indexOf(active) }));
+        localStorage.setItem(CHATS_KEY, JSON.stringify({
+            names: chats.map((chat) => chat.autosaveName),
+            dirs: chats.map((chat) => chat.workingDir),
+            active: chats.indexOf(active),
+        }));
     }
     catch {
         // Not saved: the chats last for this page load only.
@@ -231,13 +253,13 @@ function markdownBlock() {
     block.className = "markdown";
     return block;
 }
-async function streamChat(messages, told, onEvent, signal) {
+async function streamChat(messages, told, onEvent, signal, workingDir) {
     let res;
     try {
         res = await fetch("/api/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ messages, told, session }),
+            body: JSON.stringify({ messages, told, session, working_dir: workingDir }),
             signal,
         });
     }
@@ -395,7 +417,7 @@ function applyDefaultProfile(chat) {
     chat.defaultAbort = controller;
     chat.defaultProfile = (async () => {
         try {
-            const done = await streamChat([{ role: "user", content: "/profile default" }], chat.told, () => { }, controller.signal);
+            const done = await streamChat([{ role: "user", content: "/profile default" }], chat.told, () => { }, controller.signal, chat.workingDir);
             if (done.profile != null) {
                 chat.conversation.push({ role: "profile", content: done.profile });
             }
@@ -820,22 +842,33 @@ function autosaveTurn(chat) {
     const name = chat.autosaveName;
     const firstTurn = chat.conversation.filter((message) => message.role === "user").length === 1;
     const exchange = chat.conversation.filter((message) => message.role === "user" || message.role === "assistant").slice(0, 2);
+    // The save and the title are for this chat's folder, even when another chat is the one shown by now.
     postJson("/api/sessions", {
         action: "save",
         name,
         messages: chat.conversation,
         told: chat.told,
+        working_dir: chat.workingDir,
     })
         .then(async () => {
         if (firstTurn) {
-            await postJson("/api/sessions", { action: "title", name, messages: exchange });
+            await postJson("/api/sessions", {
+                action: "title",
+                name,
+                messages: exchange,
+                working_dir: chat.workingDir,
+            });
         }
     })
         .then(() => refreshSessions(), (err) => showStatus(sessionsStatus, errorMessage(err), true));
 }
 // Fills a chat from a saved session: its conversation and switches are replaced, and its log shows the saved messages.
 async function loadInto(chat, name) {
-    const data = await postJson("/api/sessions", { action: "load", name });
+    const data = await postJson("/api/sessions", {
+        action: "load",
+        name,
+        working_dir: chat.workingDir,
+    });
     // The default profile must land before the loaded conversation, or it could join the conversation after it.
     await chat.defaultProfile;
     chat.conversation.length = 0;
@@ -1467,6 +1500,60 @@ workflowDelete.addEventListener("click", async () => {
 });
 
 "use strict";
+// The folder picker: a dialog that browses the server's folders, so a new chat can be opened in one of them.
+const folderDialog = document.getElementById("folder-dialog");
+const folderPath = document.getElementById("folder-path");
+const folderUp = document.getElementById("folder-up");
+const folderList = document.getElementById("folder-list");
+const folderStatus = document.getElementById("folder-status");
+const folderOpen = document.getElementById("folder-open");
+const folderCancel = document.getElementById("folder-cancel");
+// The folder the picker is showing, and the folder above it. An empty path is the top level, which has no folder to open.
+let shownFolder = "";
+let parentFolder = "";
+// Called with the chosen folder when the user opens it.
+let onFolderChosen = null;
+// Opens the picker at `start`, or at the server's startup folder when `start` is null. Opening a folder calls `onChosen`.
+function openFolderPicker(start, onChosen) {
+    onFolderChosen = onChosen;
+    void browseFolder(start);
+    folderDialog.showModal();
+}
+// Shows the folders in `path`. A null path asks the server for its startup folder.
+async function browseFolder(path) {
+    folderStatus.hidden = true;
+    try {
+        const listing = await postJson("/api/dirs", path === null ? {} : { path });
+        shownFolder = listing.path;
+        parentFolder = listing.parent;
+        folderPath.textContent = listing.path === "" ? "Top level" : listing.path;
+        folderUp.disabled = listing.path === "";
+        folderOpen.disabled = listing.path === "";
+        folderList.replaceChildren(...listing.folders.map((folder) => {
+            const item = document.createElement("li");
+            const button = document.createElement("button");
+            button.type = "button";
+            button.textContent = folder.name;
+            button.addEventListener("click", () => void browseFolder(folder.path));
+            item.append(button);
+            return item;
+        }));
+    }
+    catch (err) {
+        showStatus(folderStatus, errorMessage(err), true);
+    }
+}
+folderUp.addEventListener("click", () => void browseFolder(parentFolder));
+folderOpen.addEventListener("click", () => {
+    const chosen = onFolderChosen;
+    folderDialog.close();
+    if (chosen !== null && shownFolder !== "") {
+        chosen(shownFolder);
+    }
+});
+folderCancel.addEventListener("click", () => folderDialog.close());
+
+"use strict";
 // The chat page: wires the chat form, its buttons and the chat tabs to the chats, and starts each panel.
 const newButton = document.getElementById("new");
 // Adds the assistant's bubble to the chat's log, with its Thinking block hidden until reasoning arrives.
@@ -1653,7 +1740,7 @@ form.addEventListener("submit", async (event) => {
             else {
                 showStreamed(reply, streamed);
             }
-        }, controller.signal);
+        }, controller.signal, chat.workingDir);
         finishReasoning(reply);
         keepReply(chat, done, command);
     }
@@ -1665,11 +1752,20 @@ form.addEventListener("submit", async (event) => {
     }
 });
 stopButton.addEventListener("click", () => abortTurn(active));
-// Opens a new chat with the default profile and shows it. The chats already open are kept.
-function newChat() {
-    const chat = createChat(closeChat);
+// Opens a new chat in `dir` (the server's startup folder for null), with the default profile, and shows it. The chats
+// already open are kept.
+function newChat(dir) {
+    const chat = createChat(closeChat, dir);
     showChat(chat);
     void applyDefaultProfile(chat);
+}
+// Reloads the side panels for the folder of the shown chat.
+function refreshPanels() {
+    void refreshTools();
+    void refreshNotes();
+    void refreshSessions();
+    void refreshWorkflows();
+    void refreshFiles();
 }
 // Closes a chat. A reply still running in it is stopped. Closing the last chat opens a new one in its place.
 function closeChat(chat) {
@@ -1680,7 +1776,7 @@ function closeChat(chat) {
     chat.log.remove();
     chat.tab.remove();
     if (chats.length === 0) {
-        newChat();
+        newChat(null);
     }
     else if (active === chat) {
         showChat(chats[Math.max(0, index - 1)]);
@@ -1700,11 +1796,11 @@ function restoreChats() {
         // Unreadable or blocked storage: the page starts with one chat.
     }
     if (saved === null || !Array.isArray(saved.names) || saved.names.length === 0) {
-        newChat();
+        newChat(null);
         return;
     }
-    for (const name of saved.names) {
-        const chat = createChat(closeChat);
+    for (const [index, name] of saved.names.entries()) {
+        const chat = createChat(closeChat, saved.dirs?.[index] ?? null);
         if (name === null) {
             void applyDefaultProfile(chat);
         }
@@ -1724,13 +1820,10 @@ function restoreChats() {
     }
     showChat(chats[saved.active] ?? chats[0]);
 }
-newButton.addEventListener("click", newChat);
+// New asks for a folder first. The picker starts in the folder of the shown chat.
+newButton.addEventListener("click", () => openFolderPicker(currentFolder(), newChat));
+// Showing the restored chats refreshes the side panels, so they are not refreshed again here.
 restoreChats();
 restoreFiles();
-void refreshTools();
-void refreshNotes();
-void refreshSessions();
-void refreshWorkflows();
-void refreshFiles();
 // A narrower window clamps the shown width without changing the chosen one, and nothing is saved here.
 window.addEventListener("resize", applyPanelWidths);

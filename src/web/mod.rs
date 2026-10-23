@@ -3,6 +3,7 @@
 
 mod approval_panel;
 mod files_panel;
+mod folders_panel;
 mod notes_panel;
 mod sessions_panel;
 mod tools_panel;
@@ -32,6 +33,7 @@ use crate::workflow_runner;
 use crate::workflows;
 
 use approval_panel::approve_response;
+use folders_panel::{folder_config, folders_response};
 use files_panel::{file_response, files_response};
 use notes_panel::notes_response;
 use sessions_panel::sessions_response;
@@ -130,14 +132,23 @@ fn handle(mut stream: TcpStream, config: &Config, sessions: &Sessions) -> io::Re
     }
 
     request.body = read_body(&mut reader, request.content_length)?;
-    if request.method == "POST" && request.path == "/api/chat" {
-        return chat(stream, &request, config, sessions);
-    }
     if request.method == "POST" && request.path == "/api/tools" {
         return write_response(&mut stream, &tools_response(&request.body, sessions));
     }
     if request.method == "POST" && request.path == "/api/approve" {
         return write_response(&mut stream, &approve_response(&request.body, sessions));
+    }
+    if request.method == "POST" && request.path == "/api/dirs" {
+        return write_response(&mut stream, &folders_response(&request.body, config));
+    }
+    // Every other request runs in the folder its chat names, or in the startup folder when it names none.
+    let scoped = match folder_config(config, &request.body) {
+        Ok(scoped) => scoped,
+        Err(reason) => return write_response(&mut stream, &json_response(400, json!({ "error": reason }))),
+    };
+    let config = &scoped;
+    if request.method == "POST" && request.path == "/api/chat" {
+        return chat(stream, &request, config, sessions);
     }
     if request.method == "POST" && request.path == "/api/notes" {
         let home = std::env::home_dir();
