@@ -1,6 +1,7 @@
 mod agent;
 mod commands;
 mod compaction;
+mod file_tree;
 mod grammar;
 mod notes;
 mod saved_sessions;

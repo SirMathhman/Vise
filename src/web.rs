@@ -12,6 +12,7 @@ use serde_json::{Value, json};
 use crate::agent::{self, TurnError};
 use crate::commands;
 use crate::compaction;
+use crate::file_tree;
 use crate::notes;
 use crate::saved_sessions;
 use crate::tools::{self, Switches};
@@ -107,7 +108,21 @@ fn handle(mut stream: TcpStream, config: &Config, sessions: &Sessions) -> io::Re
     if request.method == "POST" && request.path == "/api/sessions" {
         return write_response(&mut stream, &sessions_response(&request.body, config));
     }
+    if request.method == "GET" && request.path == "/api/files" {
+        return write_response(&mut stream, &files_response(config));
+    }
     write_response(&mut stream, &route(&request))
+}
+
+/// The file tree of the working directory for the Files panel.
+fn files_response(config: &Config) -> Response {
+    let Some(root) = config.working_dir.as_deref() else {
+        return json_response(400, json!({ "error": "no working directory is set" }));
+    };
+    match file_tree::build(Path::new(root)) {
+        Ok(tree) => json_response(200, tree),
+        Err(error) => json_response(400, json!({ "error": error })),
+    }
 }
 
 fn read_request(reader: &mut impl BufRead) -> io::Result<Request> {
