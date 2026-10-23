@@ -806,14 +806,18 @@ function showPreview(on: boolean): void {
   }
 }
 
-// The editor is as tall as its text, so it never scrolls inside the Notes pane. An editor that is hidden has no height
-// to measure, so this runs again when it is shown.
+// The editor is as tall as its text, so it never scrolls inside the Notes pane. The height includes the border, which
+// scrollHeight leaves out.
 function fitNoteContent(): void {
   noteContent.style.height = "auto";
-  noteContent.style.height = `${noteContent.scrollHeight}px`;
+  const border = noteContent.offsetHeight - noteContent.clientHeight;
+  noteContent.style.height = `${noteContent.scrollHeight + border}px`;
 }
 
 noteContent.addEventListener("input", fitNoteContent);
+// Wrapping changes with the width, and an editor inside a closed section has no height until it is opened. Both are
+// measured again when the editor's size changes.
+new ResizeObserver(fitNoteContent).observe(noteContent);
 
 notePreviewToggle.addEventListener("click", () => showPreview(notePreview.hidden === true));
 
