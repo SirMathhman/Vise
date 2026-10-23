@@ -195,8 +195,18 @@
         background: var(--error-bg);
         color: var(--error-fg);
       }
-      form {
+      /* A hidden element is hidden whatever its own display rule says. */
+      [hidden] {
+        display: none !important;
+      }
+      /* Forms lay out only when they say so: a row or a stack, by class. */
+      .row {
         display: flex;
+        gap: 0.5rem;
+      }
+      .stack {
+        display: flex;
+        flex-direction: column;
         gap: 0.5rem;
       }
       /* One look for every text field and button. Checkboxes keep their native look. */
@@ -301,13 +311,6 @@
         text-align: left;
         font-family: var(--mono);
       }
-      /* The shared form rule lays a form out in a row; the editor stacks its parts, and stays out of sight when hidden. */
-      #workflow-form {
-        flex-direction: column;
-      }
-      #workflow-form[hidden] {
-        display: none;
-      }
       #workflow-form label {
         display: block;
         margin: 0.5rem 0;
@@ -389,9 +392,6 @@
       .file-link:hover {
         text-decoration: underline;
       }
-      .tree-more {
-        margin-top: 0.25rem;
-      }
       /* A shown file takes the chat's space, in place of the chat log. The viewer grows to its text, and long lines wrap. */
       #viewers-close-all {
         align-self: center;
@@ -448,8 +448,6 @@
         font-size: 0.8em;
       }
       #session-form {
-        display: flex;
-        gap: 0.5rem;
         margin-top: 0.75rem;
       }
       #session-name {
@@ -464,7 +462,6 @@
         border-radius: 0.5rem;
       }
       #note-form {
-        flex-direction: column;
         margin-top: 0.75rem;
       }
       #note-form label,
@@ -538,7 +535,7 @@
         <div id="log">
           <div id="viewers-body" hidden></div>
         </div>
-        <form id="form">
+        <form id="form" class="row">
           <input id="input" autocomplete="off" autofocus />
           <button type="submit" id="send">Send</button>
           <button type="button" id="stop" hidden>Stop</button>
@@ -555,7 +552,7 @@
         <details class="pane" id="sessions-section">
           <summary>Sessions</summary>
           <p id="sessions-status" hidden></p>
-          <form id="session-form">
+          <form id="session-form" class="row">
             <input id="session-name" autocomplete="off" placeholder="Name" aria-label="Session name" />
             <button type="submit" id="session-save">Save</button>
           </form>
@@ -571,7 +568,7 @@
           <p id="workflows-status" hidden></p>
           <ul id="workflows-list"></ul>
           <button type="button" id="workflow-new">New workflow</button>
-          <form id="workflow-form" hidden>
+          <form id="workflow-form" class="stack" hidden>
             <label>Name <input id="workflow-name" autocomplete="off" /></label>
             <ol id="workflow-steps"></ol>
             <div class="workflow-add">
@@ -592,7 +589,7 @@
           <label class="profile-choice">Profile <select id="profile-picker"></select></label>
           <ul id="notes-list"></ul>
           <button type="button" id="notes-new">New note</button>
-          <form id="note-form">
+          <form id="note-form" class="stack">
             <label>Scope
               <select id="note-scope">
                 <option value="local">local</option>

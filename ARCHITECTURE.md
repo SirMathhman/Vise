@@ -147,6 +147,7 @@ The `done` event carries the turn's final answer, and the web page stores that t
 
 - **Avoid nested scrollbars.** A region that scrolls should sit inside a pane that does not also scroll, so a user never has to scroll one box to reach another. Content inside a pane grows to its full height, and the pane is the only thing that scrolls. Long lines wrap instead of scrolling sideways. Where a control cannot avoid its own scroll (a textarea, for example), it should be the only scrolling thing in its pane.
 - Side-panel sections are native `details` elements. Only the open ones take height, and a closed one is just its heading.
+- **Shared styles are opt-in.** A shared layout rule applies to a class (such as `.row` or `.stack`), never to a bare element type, so a new form or panel gets no layout it did not ask for. The `hidden` attribute always hides its element, whatever display rule the element has. A panel that needs a different layout states it with its own class, not by overriding a shared rule.
 
 ## Potential Problems
 
