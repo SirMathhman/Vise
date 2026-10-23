@@ -100,11 +100,17 @@ pub struct Message {
     pub content: String,
 }
 
-/// One piece of a streamed turn: the model's reasoning, its answer text, or a tool it ran.
+/// One piece of a streamed turn: the model's reasoning, its answer text, or a tool it ran. A subagent run is
+/// bracketed by `SubagentStart` and `SubagentEnd`, and each step inside it arrives as `Nested`.
+#[derive(Clone, Copy)]
 pub enum Chunk<'a> {
     Reasoning(&'a str),
     Content(&'a str),
     Tool(&'a str),
+    SubagentStart { profile: &'a str, task: &'a str },
+    Nested(&'a Chunk<'a>),
+    /// `failed` is true when the subagent stopped or errored instead of answering.
+    SubagentEnd { failed: bool },
 }
 
 /// A tool call the model asked for, assembled from streamed fragments.

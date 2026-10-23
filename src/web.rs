@@ -247,11 +247,7 @@ fn chat(
     // A failed write means the browser closed the page (or stopped the reply): the turn stops there.
     let cancel = AtomicBool::new(false);
     let outcome = agent::run_turn(&messages, config, &switches, &cancel, &mut |chunk| {
-        let event = match chunk {
-            Chunk::Reasoning(text) => json!({ "type": "reasoning", "text": text }),
-            Chunk::Content(text) => json!({ "type": "content", "text": text }),
-            Chunk::Tool(text) => json!({ "type": "tool", "text": text }),
-        };
+        let event = chunk_event(chunk);
         let sent = start_stream(&mut stream, &mut started).and_then(|()| write_event(&mut stream, &event));
         if sent.is_err() {
             cancel.store(true, Ordering::Relaxed);
@@ -294,6 +290,20 @@ fn chat(
             &mut stream,
             &json!({ "type": "error", "error": err.to_string(), "ran": err.ran() }),
         ),
+    }
+}
+
+/// The event for one streamed chunk. A subagent's steps are `nested` events between its start and end events.
+fn chunk_event(chunk: Chunk) -> Value {
+    match chunk {
+        Chunk::Reasoning(text) => json!({ "type": "reasoning", "text": text }),
+        Chunk::Content(text) => json!({ "type": "content", "text": text }),
+        Chunk::Tool(text) => json!({ "type": "tool", "text": text }),
+        Chunk::SubagentStart { profile, task } => {
+            json!({ "type": "subagent_start", "profile": profile, "task": task })
+        }
+        Chunk::Nested(step) => json!({ "type": "nested", "event": chunk_event(*step) }),
+        Chunk::SubagentEnd { failed } => json!({ "type": "subagent_end", "failed": failed }),
     }
 }
 

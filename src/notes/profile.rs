@@ -39,6 +39,15 @@ pub fn command(line: &str, roots: Roots) -> Option<Result<Profile, String>> {
     })
 }
 
+/// Reads a profile named `<scope>/<category>/<name>`, the way the subagent tool names one.
+pub fn read(reference: &str, roots: Roots) -> Result<Profile, String> {
+    let parts: Vec<&str> = reference.split('/').collect();
+    match parts.as_slice() {
+        [scope, category, name] if SCOPES.contains(scope) => load(scope, category, name, roots),
+        _ => Err(format!("a profile is named local/<category>/<name> or global/<category>/<name>: {reference}")),
+    }
+}
+
 fn load(scope: &str, category: &str, name: &str, roots: Roots) -> Result<Profile, String> {
     let target = note_path(scope, roots, category, name)?;
     let text = fs::read_to_string(&target).map_err(|err| format!("could not read {category}/{name}: {err}"))?;

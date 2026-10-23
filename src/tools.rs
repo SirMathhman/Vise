@@ -15,9 +15,11 @@ pub const CREATE_FILE: &str = "create_file";
 pub const CREATE_DIRECTORY: &str = "create_directory";
 pub const DELETE_FILE: &str = "delete_file";
 pub const DELETE_DIRECTORY: &str = "delete_directory";
+/// Runs a subagent. The agent loop handles it, because it needs the model connection.
+pub const RUN_SUBAGENT: &str = "run_subagent";
 
 /// Every tool name, in the order they are listed to the user.
-pub const NAMES: [&str; 11] = [
+pub const NAMES: [&str; 12] = [
     LIST_FILES,
     READ_FILE,
     CREATE_FILE,
@@ -29,6 +31,7 @@ pub const NAMES: [&str; 11] = [
     notes::CREATE_NOTE,
     notes::EDIT_NOTE,
     notes::DELETE_NOTE,
+    RUN_SUBAGENT,
 ];
 
 /// Which tools are switched off. One instance is shared by the whole run, so a change made by a
@@ -169,6 +172,21 @@ pub fn definitions() -> Value {
                     "required": ["path"]
                 }
             }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": RUN_SUBAGENT,
+                "description": "Run a task in a fresh conversation that follows a profile. The profile's instructions guide it, and it can use only the tools the profile lists. Its steps are not shown to you; only its final answer comes back. Profiles are the notes marked profile: true in the notes index, named local/<category>/<name> or global/<category>/<name>. A subagent cannot run another subagent.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "profile": { "type": "string", "description": "The profile's name, such as local/review/strict" },
+                        "task": { "type": "string", "description": "What the subagent should do, in full, since it sees nothing else from this conversation" }
+                    },
+                    "required": ["profile", "task"]
+                }
+            }
         }
     ]);
     all.as_array_mut().expect("definitions are an array").extend(notes::definitions());
@@ -207,6 +225,7 @@ pub fn run(name: &str, arguments: &str, root: Option<&Path>) -> String {
         CREATE_DIRECTORY => create_directory(arguments, root),
         DELETE_FILE => delete_file(arguments, root),
         DELETE_DIRECTORY => delete_directory(arguments, root),
+        RUN_SUBAGENT => Err("run_subagent runs inside the turn, so it cannot be called here".to_owned()),
         notes::LIST_NOTES | notes::READ_NOTE | notes::CREATE_NOTE | notes::EDIT_NOTE | notes::DELETE_NOTE => {
             let home = std::env::home_dir();
             notes::run(name, arguments, notes::Roots { working: root, home: home.as_deref() })

@@ -47,31 +47,79 @@ enum Section {
     Answer,
 }
 
-/// Prints streamed reasoning and answer text, labeling each section as it starts.
-fn print_chunk(chunk: Chunk, section: &mut Option<Section>) {
-    let (next, text) = match chunk {
-        Chunk::Reasoning(text) => (Section::Thinking, text),
-        Chunk::Content(text) => (Section::Answer, text),
-        Chunk::Tool(text) => {
-            if section.is_some() {
-                println!();
+/// Writes a streamed turn to the terminal. The reply and a subagent each keep their own section, so a subagent's
+/// thinking and answer are labeled apart from the reply's, and every line of a subagent is indented under its header.
+#[derive(Default)]
+struct Printer {
+    section: Option<Section>,
+    subagent_section: Option<Section>,
+    in_subagent: bool,
+    /// True when the last text printed did not end a line.
+    mid_line: bool,
+}
+
+impl Printer {
+    fn chunk(&mut self, chunk: Chunk) {
+        match chunk {
+            Chunk::Reasoning(text) => self.text(text, Section::Thinking),
+            Chunk::Content(text) => self.text(text, Section::Answer),
+            Chunk::Tool(text) => {
+                self.end_line();
+                self.write(&format!("[tool] {text}\n"));
+                *self.section() = None;
             }
-            println!("[tool] {text}");
-            *section = None;
-            return;
+            Chunk::SubagentStart { profile, task } => {
+                self.end_line();
+                self.write(&format!("[subagent {profile}] {task}\n"));
+                self.section = None;
+                self.subagent_section = None;
+            }
+            Chunk::Nested(step) => {
+                self.in_subagent = true;
+                self.chunk(*step);
+                self.in_subagent = false;
+            }
+            Chunk::SubagentEnd { failed } => {
+                self.end_line();
+                if failed {
+                    self.write("[subagent failed]\n");
+                }
+            }
         }
-    };
-    if *section != Some(next) {
-        if section.is_some() {
-            println!();
-        }
-        if next == Section::Thinking {
-            print!("[thinking] ");
-        }
-        *section = Some(next);
     }
-    print!("{text}");
-    let _ = io::stdout().flush();
+
+    fn section(&mut self) -> &mut Option<Section> {
+        if self.in_subagent { &mut self.subagent_section } else { &mut self.section }
+    }
+
+    fn text(&mut self, text: &str, next: Section) {
+        if *self.section() != Some(next) {
+            self.end_line();
+            if next == Section::Thinking {
+                self.write("[thinking] ");
+            }
+            *self.section() = Some(next);
+        }
+        self.write(text);
+    }
+
+    /// Prints text, indenting each line that starts inside a subagent.
+    fn write(&mut self, text: &str) {
+        for piece in text.split_inclusive('\n') {
+            if self.in_subagent && !self.mid_line {
+                print!("    ");
+            }
+            print!("{piece}");
+            self.mid_line = !piece.ends_with('\n');
+        }
+        let _ = io::stdout().flush();
+    }
+
+    fn end_line(&mut self) {
+        if self.mid_line {
+            self.write("\n");
+        }
+    }
 }
 
 /// Starts a conversation with the built-in default profile: its tools are applied, and its instructions, if any,
@@ -158,12 +206,10 @@ fn main() -> io::Result<()> {
             trimmed.to_owned()
         };
         session.push(Role::User, tools::note_changes(&text, session.told(), &now));
-        let mut section = None;
+        let mut printer = Printer::default();
         STOP.store(false, Ordering::SeqCst);
         TURN_ACTIVE.store(true, Ordering::SeqCst);
-        let result = agent::run_turn(session.messages(), &config, &switches, &STOP, &mut |chunk| {
-            print_chunk(chunk, &mut section)
-        });
+        let result = agent::run_turn(session.messages(), &config, &switches, &STOP, &mut |chunk| printer.chunk(chunk));
         TURN_ACTIVE.store(false, Ordering::SeqCst);
         println!();
         match result {

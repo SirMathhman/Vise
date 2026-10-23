@@ -19,7 +19,7 @@ use serde_json::{Value, json};
 use crate::workspace;
 
 pub use index::with_index;
-pub use profile::{Profile, command as profile_command};
+pub use profile::{Profile, command as profile_command, read as read_profile};
 pub use store::Roots;
 
 use index::{note_entries, profile_entries};
