@@ -1,6 +1,7 @@
 // The file viewers beside the chat: the open files as tabs, and the blocks of each file that are loaded.
 
 const viewers = document.getElementById("viewers") as HTMLElement;
+const viewersDivider = document.getElementById("viewers-divider") as HTMLDivElement;
 const viewersTabs = document.getElementById("viewers-tabs") as HTMLDivElement;
 const viewersBody = document.getElementById("viewers-body") as HTMLDivElement;
 const viewersCloseAll = document.getElementById("viewers-close-all") as HTMLButtonElement;
@@ -28,7 +29,7 @@ function isMarkdown(path: string): boolean {
 
 function renderViewers(): void {
   viewers.hidden = viewed.length === 0;
-  viewersPanel.divider.hidden = viewers.hidden;
+  viewersDivider.hidden = viewers.hidden;
   applyPanelWidths();
   viewersTabs.replaceChildren(
     ...viewed.map((file) => {

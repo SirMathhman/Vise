@@ -4,7 +4,8 @@ import { readdirSync, readFileSync, writeFileSync, watch } from "node:fs";
 import { join } from "node:path";
 
 const compiled = "node_modules/.cache/vise-web";
-const order = ["markdown", "http", "viewers", "tools", "sessions", "files", "notes", "app"];
+// Each file may only use what the files before it declare, so the order runs from the leaves up to app.ts.
+const order = ["markdown", "http", "chat", "tools", "profile", "layout", "viewers", "sessions", "files", "notes", "app"];
 
 function bundle() {
   // A compiled file that is not in the order would be left out of the page without an error, so it is refused here.
@@ -17,12 +18,15 @@ function bundle() {
 }
 
 if (process.argv.includes("--watch")) {
-  // The compiler is still writing its first output, so a bundle that cannot be read yet waits for the next change.
+  // The compiler is still writing its first output, so a file that cannot be read yet waits for the next change. Any
+  // other failure is shown, so a stale bundle is never left without a message.
   const retry = () => {
     try {
       bundle();
-    } catch {
-      // Not ready: the next change bundles it.
+    } catch (err) {
+      if (err.code !== "ENOENT") {
+        console.error(err.message);
+      }
     }
   };
   retry();

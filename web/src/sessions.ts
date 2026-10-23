@@ -7,13 +7,6 @@ const sessionName = document.getElementById("session-name") as HTMLInputElement;
 const sessionsList = document.getElementById("sessions-list") as HTMLUListElement;
 const sessionsStatus = document.getElementById("sessions-status") as HTMLParagraphElement;
 
-// Shows a message in one of the side panel's status lines. An error is shown as an error.
-function showStatus(status: HTMLParagraphElement, message: string, isError: boolean): void {
-  status.textContent = message;
-  status.className = isError ? "error" : "summary";
-  status.hidden = false;
-}
-
 async function refreshSessions(): Promise<void> {
   try {
     const { sessions } = await postJson<{ sessions: string[] }>("/api/sessions", { action: "list" });
@@ -31,7 +24,7 @@ async function refreshSessions(): Promise<void> {
       }),
     );
   } catch (err) {
-    showStatus(sessionsStatus,errorMessage(err), true);
+    showStatus(sessionsStatus, errorMessage(err), true);
   }
 }
 
@@ -59,7 +52,7 @@ sessionForm.addEventListener("submit", async (event) => {
   }
   // A reply in flight is not part of the conversation yet, so the save waits for it.
   if (input.disabled) {
-    showStatus(sessionsStatus,"Wait for the reply to finish, then save.", true);
+    showStatus(sessionsStatus, "Wait for the reply to finish, then save.", true);
     return;
   }
   try {
@@ -70,10 +63,10 @@ sessionForm.addEventListener("submit", async (event) => {
       told,
     });
     sessionName.value = "";
-    showStatus(sessionsStatus,message, false);
+    showStatus(sessionsStatus, message, false);
     await refreshSessions();
   } catch (err) {
-    showStatus(sessionsStatus,errorMessage(err), true);
+    showStatus(sessionsStatus, errorMessage(err), true);
   }
 });
 
@@ -92,13 +85,13 @@ function autosaveTurn(): void {
     told,
   }).then(
     () => refreshSessions(),
-    (err) => showStatus(sessionsStatus,errorMessage(err), true),
+    (err) => showStatus(sessionsStatus, errorMessage(err), true),
   );
 }
 
 async function loadSession(name: string): Promise<void> {
   if (input.disabled) {
-    showStatus(sessionsStatus,"Wait for the reply to finish, then load.", true);
+    showStatus(sessionsStatus, "Wait for the reply to finish, then load.", true);
     return;
   }
   // Input stays off while the session loads, so a message cannot slip in between the request and the replacement.
@@ -113,10 +106,10 @@ async function loadSession(name: string): Promise<void> {
     autosaveName = null;
     log.replaceChildren();
     data.messages.forEach(showMessage);
-    showStatus(sessionsStatus,`Loaded session ${name}.`, false);
+    showStatus(sessionsStatus, `Loaded session ${name}.`, false);
     scrollToEnd();
   } catch (err) {
-    showStatus(sessionsStatus,errorMessage(err), true);
+    showStatus(sessionsStatus, errorMessage(err), true);
   } finally {
     input.disabled = false;
     input.focus();

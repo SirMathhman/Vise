@@ -18,3 +18,10 @@ async function postJson<T>(url: string, body: Record<string, unknown>): Promise<
   }
   return data;
 }
+
+// Shows a message in one of the side panel's status lines. An error is shown as an error.
+function showStatus(status: HTMLParagraphElement, message: string, isError: boolean): void {
+  status.textContent = message;
+  status.className = isError ? "error" : "summary";
+  status.hidden = false;
+}

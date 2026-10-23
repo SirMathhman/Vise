@@ -38,10 +38,341 @@ async function postJson(url, body) {
     }
     return data;
 }
+// Shows a message in one of the side panel's status lines. An error is shown as an error.
+function showStatus(status, message, isError) {
+    status.textContent = message;
+    status.className = isError ? "error" : "summary";
+    status.hidden = false;
+}
+
+"use strict";
+// The chat's state, and the streaming of a reply into the log. The chat form itself is wired in app.ts.
+// The error, with the tool calls that ran before it: their effects remain even though the turn did not finish.
+function describeFailure(error, ran) {
+    if (!ran || ran.length === 0) {
+        return error;
+    }
+    return `${error} ${ran.length} tool call(s) ran before this, and their effects remain: ${ran.join("; ")}`;
+}
+const conversation = [];
+// The switched-off tools the model has been told about in this conversation.
+let told = [];
+// This tab's session: its switched-off tools live on the server under this id. It survives a reload of the tab and
+// is dropped when the tab closes. Storage can be blocked, in which case the session lasts for this page load.
+const SESSION_KEY = "vise-session";
+function sessionId() {
+    try {
+        const stored = sessionStorage.getItem(SESSION_KEY);
+        if (stored)
+            return stored;
+        const fresh = crypto.randomUUID();
+        sessionStorage.setItem(SESSION_KEY, fresh);
+        return fresh;
+    }
+    catch {
+        return crypto.randomUUID();
+    }
+}
+const session = sessionId();
+const log = document.getElementById("log");
+const form = document.getElementById("form");
+const input = document.getElementById("input");
+function addEntry(kind) {
+    const entry = document.createElement("div");
+    entry.className = kind;
+    log.appendChild(entry);
+    return entry;
+}
+function scrollToEnd() {
+    log.scrollTop = log.scrollHeight;
+}
+// A tool call's line in the reply.
+function toolLine(text) {
+    const line = document.createElement("div");
+    line.className = "tool";
+    line.textContent = `[tool] ${text}`;
+    return line;
+}
+// A block that holds markdown text, which is rendered again as each piece arrives.
+function markdownBlock() {
+    const block = document.createElement("div");
+    block.className = "markdown";
+    return block;
+}
+async function streamChat(messages, onEvent, signal) {
+    let res;
+    try {
+        res = await fetch("/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ messages, told, session }),
+            signal,
+        });
+    }
+    catch {
+        throw new Error(`Could not reach the Vise server at ${location.origin}. Check that "vise web" is still running, then try again.`);
+    }
+    if (!res.ok || res.body === null) {
+        const data = (await res.json().catch(() => ({})));
+        throw new Error(describeFailure(data.error ?? `HTTP ${res.status}`, data.ran));
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    for (;;) {
+        const { done, value } = await reader.read().catch(() => {
+            throw new Error("The connection dropped partway through the reply. Try again.");
+        });
+        if (done) {
+            break;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        let end = buffer.indexOf("\n\n");
+        while (end !== -1) {
+            const block = buffer.slice(0, end);
+            buffer = buffer.slice(end + 2);
+            end = buffer.indexOf("\n\n");
+            const line = block.split("\n").find((l) => l.startsWith("data: "));
+            if (line === undefined) {
+                continue;
+            }
+            const event = JSON.parse(line.slice("data: ".length));
+            if (event.type === "error") {
+                throw new Error(describeFailure(event.error, event.ran));
+            }
+            if (event.type === "done") {
+                return event;
+            }
+            onEvent(event);
+        }
+    }
+    throw new Error("The reply ended before it finished. Try again.");
+}
+function openSubagent(bubble, start) {
+    const block = document.createElement("details");
+    block.className = "subagent";
+    block.open = true;
+    const summary = document.createElement("summary");
+    const label = `${start.profile}: ${start.task}`;
+    summary.textContent = `Subagent running, ${label}`;
+    block.append(summary);
+    bubble.append(block);
+    return { block, summary, label, part: null, partKind: null, raw: "" };
+}
+function subagentPart(sub, kind) {
+    if (sub.part === null || sub.partKind !== kind) {
+        const part = document.createElement("div");
+        part.className = kind === "content" ? "markdown" : "thinking";
+        sub.block.append(part);
+        sub.part = part;
+        sub.partKind = kind;
+        sub.raw = "";
+    }
+    return sub.part;
+}
+function renderSubagentStep(sub, step) {
+    if (step.type === "reasoning") {
+        subagentPart(sub, "reasoning").textContent += step.text;
+    }
+    else if (step.type === "content") {
+        const part = subagentPart(sub, "content");
+        sub.raw += step.text;
+        part.innerHTML = renderMarkdown(sub.raw);
+    }
+    else if (step.type === "tool") {
+        sub.block.append(toolLine(step.text));
+        sub.part = null;
+        sub.partKind = null;
+    }
+}
+// A finished subagent folds away, unless it failed, so the reason stays in view.
+function closeSubagent(sub, failed) {
+    sub.summary.textContent = failed ? `Subagent failed, ${sub.label}` : `Subagent finished, ${sub.label}`;
+    sub.block.open = failed;
+}
+
+"use strict";
+// The Tools panel: the tools this tab uses, each switched on or off on the server.
+const toolsList = document.getElementById("tools-list");
+const toolsError = document.getElementById("tools-error");
+// Lists this tab's tools, or switches one of them, on the server. The panel always shows the server's answer, so it
+// stays right when a tool is changed by a typed /enable or /disable.
+async function sendTools(change) {
+    const res = await fetch("/api/tools", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session, ...change }),
+    });
+    const data = (await res.json().catch(() => ({})));
+    if (!res.ok || data.tools === undefined) {
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+    }
+    return data.tools;
+}
+function renderTools(tools) {
+    toolsList.replaceChildren(...tools.map((tool) => {
+        const item = document.createElement("li");
+        const label = document.createElement("label");
+        const toggle = document.createElement("input");
+        toggle.type = "checkbox";
+        toggle.checked = tool.enabled;
+        toggle.addEventListener("change", async () => {
+            toggle.disabled = true;
+            try {
+                renderTools(await sendTools({ name: tool.name, enabled: toggle.checked }));
+                toolsError.hidden = true;
+            }
+            catch (err) {
+                showToolsError(err);
+                await refreshTools();
+            }
+        });
+        const name = document.createElement("span");
+        name.textContent = tool.name;
+        label.append(toggle, name);
+        const description = document.createElement("div");
+        description.className = "description";
+        description.innerHTML = renderMarkdown(tool.description);
+        item.append(label, description);
+        return item;
+    }));
+}
+function showToolsError(err) {
+    toolsError.textContent = errorMessage(err);
+    toolsError.hidden = false;
+}
+async function refreshTools() {
+    try {
+        renderTools(await sendTools());
+        toolsError.hidden = true;
+    }
+    catch (err) {
+        showToolsError(err);
+    }
+}
+
+"use strict";
+// The default profile: the instructions the conversation starts with, requested again on New and on load.
+// The default profile's request, started on load and on New. The first message waits for it, so the profile's
+// instructions join the conversation before the user's message does. Stop cancels it.
+let defaultProfile = Promise.resolve();
+let defaultAbort = null;
+// Starts the conversation with the built-in default profile. The server applies its tools and returns its
+// instructions, if it has any, which join the conversation. Nothing is shown in the log.
+function applyDefaultProfile() {
+    const controller = new AbortController();
+    defaultAbort = controller;
+    defaultProfile = (async () => {
+        try {
+            const done = await streamChat([{ role: "user", content: "/profile default" }], () => { }, controller.signal);
+            if (done.profile != null) {
+                conversation.push({ role: "profile", content: done.profile });
+            }
+        }
+        catch (err) {
+            if (!controller.signal.aborted) {
+                addEntry("error").textContent = errorMessage(err);
+            }
+        }
+        void refreshTools();
+    })();
+    return defaultProfile;
+}
+
+"use strict";
+// The widths of the side panels: each divider sets its panel, and the window decides how much room each one gets.
+const MIN_TOOLS_PX = 160;
+const MIN_VIEWERS_PX = 224;
+// The chat's preferred width, 24rem. The panels leave it this much when they can, and it gives way in a narrow window.
+const CHAT_PX = 384;
+const layout = document.querySelector(".layout");
+const main = document.querySelector("main");
+const toolsPanel = {
+    panel: document.querySelector("aside"),
+    divider: document.getElementById("divider"),
+    cssVar: "--tools-width",
+    storageKey: "vise-tools-width",
+    min: MIN_TOOLS_PX,
+    direction: -1,
+    chosen: 0,
+};
+const viewersPanel = {
+    panel: document.getElementById("viewers"),
+    divider: document.getElementById("viewers-divider"),
+    cssVar: "--viewers-width",
+    storageKey: "vise-viewers-width",
+    min: MIN_VIEWERS_PX,
+    direction: 1,
+    chosen: 0,
+};
+// The most a panel may take: the window less the chat's preferred width and every other panel as it is now shown. A
+// panel still gets its own minimum when the window is too narrow, and the chat gives way instead.
+function roomFor(resizable) {
+    let others = 0;
+    for (const child of Array.from(layout.children)) {
+        if (child !== main && child !== resizable.panel) {
+            others += child.offsetWidth;
+        }
+    }
+    return layout.clientWidth - others - CHAT_PX;
+}
+// Sets each chosen width to what fits. Tools is set first, so the files take their room from it as it is now shown.
+function applyPanelWidths() {
+    for (const resizable of [toolsPanel, viewersPanel]) {
+        if (resizable.chosen > 0) {
+            const px = Math.max(resizable.min, Math.min(resizable.chosen, roomFor(resizable)));
+            document.documentElement.style.setProperty(resizable.cssVar, `${px}px`);
+        }
+    }
+}
+// Dragging a divider sets its panel's width. The width follows the pointer from where the drag began.
+function watchDivider(resizable) {
+    let drag = null;
+    resizable.divider.addEventListener("pointerdown", (event) => {
+        drag = { x: event.clientX, width: resizable.panel.getBoundingClientRect().width };
+        resizable.divider.setPointerCapture(event.pointerId);
+        event.preventDefault();
+    });
+    resizable.divider.addEventListener("pointermove", (event) => {
+        if (drag !== null) {
+            resizable.chosen = drag.width + resizable.direction * (event.clientX - drag.x);
+            applyPanelWidths();
+        }
+    });
+    function endDrag() {
+        if (drag === null) {
+            return;
+        }
+        drag = null;
+        try {
+            localStorage.setItem(resizable.storageKey, String(resizable.chosen));
+        }
+        catch {
+            // Not saved: the width lasts for this page load only.
+        }
+    }
+    resizable.divider.addEventListener("pointerup", endDrag);
+    resizable.divider.addEventListener("pointercancel", endDrag);
+}
+// Restores the width this browser last used. Storage can be blocked, in which case the default width is used.
+for (const resizable of [toolsPanel, viewersPanel]) {
+    try {
+        const stored = Number(localStorage.getItem(resizable.storageKey));
+        if (stored > 0) {
+            resizable.chosen = stored;
+        }
+    }
+    catch {
+        // The default width stays.
+    }
+    watchDivider(resizable);
+}
+applyPanelWidths();
 
 "use strict";
 // The file viewers beside the chat: the open files as tabs, and the blocks of each file that are loaded.
 const viewers = document.getElementById("viewers");
+const viewersDivider = document.getElementById("viewers-divider");
 const viewersTabs = document.getElementById("viewers-tabs");
 const viewersBody = document.getElementById("viewers-body");
 const viewersCloseAll = document.getElementById("viewers-close-all");
@@ -53,7 +384,7 @@ function isMarkdown(path) {
 }
 function renderViewers() {
     viewers.hidden = viewed.length === 0;
-    viewersPanel.divider.hidden = viewers.hidden;
+    viewersDivider.hidden = viewers.hidden;
     applyPanelWidths();
     viewersTabs.replaceChildren(...viewed.map((file) => {
         const tab = document.createElement("button");
@@ -230,66 +561,6 @@ viewersCloseAll.addEventListener("click", () => {
 });
 
 "use strict";
-// The Tools panel: the tools this tab uses, each switched on or off on the server.
-const toolsList = document.getElementById("tools-list");
-const toolsError = document.getElementById("tools-error");
-// Lists this tab's tools, or switches one of them, on the server. The panel always shows the server's answer, so it
-// stays right when a tool is changed by a typed /enable or /disable.
-async function sendTools(change) {
-    const res = await fetch("/api/tools", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session, ...change }),
-    });
-    const data = (await res.json().catch(() => ({})));
-    if (!res.ok || data.tools === undefined) {
-        throw new Error(data.error ?? `HTTP ${res.status}`);
-    }
-    return data.tools;
-}
-function renderTools(tools) {
-    toolsList.replaceChildren(...tools.map((tool) => {
-        const item = document.createElement("li");
-        const label = document.createElement("label");
-        const toggle = document.createElement("input");
-        toggle.type = "checkbox";
-        toggle.checked = tool.enabled;
-        toggle.addEventListener("change", async () => {
-            toggle.disabled = true;
-            try {
-                renderTools(await sendTools({ name: tool.name, enabled: toggle.checked }));
-                toolsError.hidden = true;
-            }
-            catch (err) {
-                showToolsError(err);
-                await refreshTools();
-            }
-        });
-        const name = document.createElement("span");
-        name.textContent = tool.name;
-        label.append(toggle, name);
-        const description = document.createElement("div");
-        description.className = "description";
-        description.innerHTML = renderMarkdown(tool.description);
-        item.append(label, description);
-        return item;
-    }));
-}
-function showToolsError(err) {
-    toolsError.textContent = errorMessage(err);
-    toolsError.hidden = false;
-}
-async function refreshTools() {
-    try {
-        renderTools(await sendTools());
-        toolsError.hidden = true;
-    }
-    catch (err) {
-        showToolsError(err);
-    }
-}
-
-"use strict";
 // The Sessions panel: saved conversations, and the autosave after each completed turn.
 // Saved sessions in the side panel. The server writes and reads the files; loading replaces the conversation both on
 // screen and in the history the next request sends.
@@ -297,12 +568,6 @@ const sessionForm = document.getElementById("session-form");
 const sessionName = document.getElementById("session-name");
 const sessionsList = document.getElementById("sessions-list");
 const sessionsStatus = document.getElementById("sessions-status");
-// Shows a message in one of the side panel's status lines. An error is shown as an error.
-function showStatus(status, message, isError) {
-    status.textContent = message;
-    status.className = isError ? "error" : "summary";
-    status.hidden = false;
-}
 async function refreshSessions() {
     try {
         const { sessions } = await postJson("/api/sessions", { action: "list" });
@@ -651,154 +916,12 @@ noteDelete.addEventListener("click", async () => {
 });
 
 "use strict";
-// The error, with the tool calls that ran before it: their effects remain even though the turn did not finish.
-function describeFailure(error, ran) {
-    if (!ran || ran.length === 0) {
-        return error;
-    }
-    return `${error} ${ran.length} tool call(s) ran before this, and their effects remain: ${ran.join("; ")}`;
-}
-const conversation = [];
-// The switched-off tools the model has been told about in this conversation.
-let told = [];
-// This tab's session: its switched-off tools live on the server under this id. It survives a reload of the tab and
-// is dropped when the tab closes. Storage can be blocked, in which case the session lasts for this page load.
-const SESSION_KEY = "vise-session";
-function sessionId() {
-    try {
-        const stored = sessionStorage.getItem(SESSION_KEY);
-        if (stored)
-            return stored;
-        const fresh = crypto.randomUUID();
-        sessionStorage.setItem(SESSION_KEY, fresh);
-        return fresh;
-    }
-    catch {
-        return crypto.randomUUID();
-    }
-}
-const session = sessionId();
-const log = document.getElementById("log");
-const form = document.getElementById("form");
-const input = document.getElementById("input");
+// The chat page: wires the chat form and its buttons to the chat, and starts each panel.
 const newButton = document.getElementById("new");
 const stopButton = document.getElementById("stop");
 const sendButton = document.getElementById("send");
 // The request in flight, if any: Stop aborts it. Aborting closes the connection, and the server stops the turn.
 let inFlight = null;
-function addEntry(kind) {
-    const entry = document.createElement("div");
-    entry.className = kind;
-    log.appendChild(entry);
-    return entry;
-}
-function scrollToEnd() {
-    log.scrollTop = log.scrollHeight;
-}
-// A tool call's line in the reply.
-function toolLine(text) {
-    const line = document.createElement("div");
-    line.className = "tool";
-    line.textContent = `[tool] ${text}`;
-    return line;
-}
-// A block that holds markdown text, which is rendered again as each piece arrives.
-function markdownBlock() {
-    const block = document.createElement("div");
-    block.className = "markdown";
-    return block;
-}
-async function streamChat(messages, onEvent, signal) {
-    let res;
-    try {
-        res = await fetch("/api/chat", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ messages, told, session }),
-            signal,
-        });
-    }
-    catch {
-        throw new Error(`Could not reach the Vise server at ${location.origin}. Check that "vise web" is still running, then try again.`);
-    }
-    if (!res.ok || res.body === null) {
-        const data = (await res.json().catch(() => ({})));
-        throw new Error(describeFailure(data.error ?? `HTTP ${res.status}`, data.ran));
-    }
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    for (;;) {
-        const { done, value } = await reader.read().catch(() => {
-            throw new Error("The connection dropped partway through the reply. Try again.");
-        });
-        if (done) {
-            break;
-        }
-        buffer += decoder.decode(value, { stream: true });
-        let end = buffer.indexOf("\n\n");
-        while (end !== -1) {
-            const block = buffer.slice(0, end);
-            buffer = buffer.slice(end + 2);
-            end = buffer.indexOf("\n\n");
-            const line = block.split("\n").find((l) => l.startsWith("data: "));
-            if (line === undefined) {
-                continue;
-            }
-            const event = JSON.parse(line.slice("data: ".length));
-            if (event.type === "error") {
-                throw new Error(describeFailure(event.error, event.ran));
-            }
-            if (event.type === "done") {
-                return event;
-            }
-            onEvent(event);
-        }
-    }
-    throw new Error("The reply ended before it finished. Try again.");
-}
-function openSubagent(bubble, start) {
-    const block = document.createElement("details");
-    block.className = "subagent";
-    block.open = true;
-    const summary = document.createElement("summary");
-    const label = `${start.profile}: ${start.task}`;
-    summary.textContent = `Subagent running, ${label}`;
-    block.append(summary);
-    bubble.append(block);
-    return { block, summary, label, part: null, partKind: null, raw: "" };
-}
-function subagentPart(sub, kind) {
-    if (sub.part === null || sub.partKind !== kind) {
-        const part = document.createElement("div");
-        part.className = kind === "content" ? "markdown" : "thinking";
-        sub.block.append(part);
-        sub.part = part;
-        sub.partKind = kind;
-        sub.raw = "";
-    }
-    return sub.part;
-}
-function renderSubagentStep(sub, step) {
-    if (step.type === "reasoning") {
-        subagentPart(sub, "reasoning").textContent += step.text;
-    }
-    else if (step.type === "content") {
-        const part = subagentPart(sub, "content");
-        sub.raw += step.text;
-        part.innerHTML = renderMarkdown(sub.raw);
-    }
-    else if (step.type === "tool") {
-        sub.block.append(toolLine(step.text));
-        sub.part = null;
-        sub.partKind = null;
-    }
-}
-// A finished subagent folds away, unless it failed, so the reason stays in view.
-function closeSubagent(sub, failed) {
-    sub.summary.textContent = failed ? `Subagent failed, ${sub.label}` : `Subagent finished, ${sub.label}`;
-    sub.block.open = failed;
-}
 form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const text = input.value.trim();
@@ -935,118 +1058,6 @@ newButton.addEventListener("click", () => {
     log.replaceChildren();
     void applyDefaultProfile();
 });
-// The default profile's request, started on load and on New. The first message waits for it, so the profile's
-// instructions join the conversation before the user's message does. Stop cancels it.
-let defaultProfile = Promise.resolve();
-let defaultAbort = null;
-// Starts the conversation with the built-in default profile. The server applies its tools and returns its
-// instructions, if it has any, which join the conversation. Nothing is shown in the log.
-function applyDefaultProfile() {
-    const controller = new AbortController();
-    defaultAbort = controller;
-    defaultProfile = (async () => {
-        try {
-            const done = await streamChat([{ role: "user", content: "/profile default" }], () => { }, controller.signal);
-            if (done.profile != null) {
-                conversation.push({ role: "profile", content: done.profile });
-            }
-        }
-        catch (err) {
-            if (!controller.signal.aborted) {
-                addEntry("error").textContent = errorMessage(err);
-            }
-        }
-        void refreshTools();
-    })();
-    return defaultProfile;
-}
-const MIN_TOOLS_PX = 160;
-const MIN_VIEWERS_PX = 224;
-// The chat's preferred width, 24rem. The panels leave it this much when they can, and it gives way in a narrow window.
-const CHAT_PX = 384;
-const layout = document.querySelector(".layout");
-const main = document.querySelector("main");
-const toolsPanel = {
-    panel: document.querySelector("aside"),
-    divider: document.getElementById("divider"),
-    cssVar: "--tools-width",
-    storageKey: "vise-tools-width",
-    min: MIN_TOOLS_PX,
-    direction: -1,
-    chosen: 0,
-};
-const viewersPanel = {
-    panel: viewers,
-    divider: document.getElementById("viewers-divider"),
-    cssVar: "--viewers-width",
-    storageKey: "vise-viewers-width",
-    min: MIN_VIEWERS_PX,
-    direction: 1,
-    chosen: 0,
-};
-// The most a panel may take: the window less the chat's preferred width and every other panel as it is now shown. A
-// panel still gets its own minimum when the window is too narrow, and the chat gives way instead.
-function roomFor(resizable) {
-    let others = 0;
-    for (const child of Array.from(layout.children)) {
-        if (child !== main && child !== resizable.panel) {
-            others += child.offsetWidth;
-        }
-    }
-    return layout.clientWidth - others - CHAT_PX;
-}
-// Sets each chosen width to what fits. Tools is set first, so the files take their room from it as it is now shown.
-function applyPanelWidths() {
-    for (const resizable of [toolsPanel, viewersPanel]) {
-        if (resizable.chosen > 0) {
-            const px = Math.max(resizable.min, Math.min(resizable.chosen, roomFor(resizable)));
-            document.documentElement.style.setProperty(resizable.cssVar, `${px}px`);
-        }
-    }
-}
-// Dragging a divider sets its panel's width. The width follows the pointer from where the drag began.
-function watchDivider(resizable) {
-    let drag = null;
-    resizable.divider.addEventListener("pointerdown", (event) => {
-        drag = { x: event.clientX, width: resizable.panel.getBoundingClientRect().width };
-        resizable.divider.setPointerCapture(event.pointerId);
-        event.preventDefault();
-    });
-    resizable.divider.addEventListener("pointermove", (event) => {
-        if (drag !== null) {
-            resizable.chosen = drag.width + resizable.direction * (event.clientX - drag.x);
-            applyPanelWidths();
-        }
-    });
-    function endDrag() {
-        if (drag === null) {
-            return;
-        }
-        drag = null;
-        try {
-            localStorage.setItem(resizable.storageKey, String(resizable.chosen));
-        }
-        catch {
-            // Not saved: the width lasts for this page load only.
-        }
-    }
-    resizable.divider.addEventListener("pointerup", endDrag);
-    resizable.divider.addEventListener("pointercancel", endDrag);
-}
-// Restores the width this browser last used. Storage can be blocked, in which case the default width is used.
-for (const resizable of [toolsPanel, viewersPanel]) {
-    try {
-        const stored = Number(localStorage.getItem(resizable.storageKey));
-        if (stored > 0) {
-            resizable.chosen = stored;
-        }
-    }
-    catch {
-        // The default width stays.
-    }
-    watchDivider(resizable);
-}
-applyPanelWidths();
 void refreshTools();
 void refreshNotes();
 void refreshSessions();
