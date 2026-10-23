@@ -462,6 +462,19 @@ function saveFiles() {
         // Not saved: the files last for this page load only.
     }
 }
+function readSavedFiles() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(FILES_KEY) ?? "null");
+        return saved !== null && Array.isArray(saved.paths) ? saved : null;
+    }
+    catch {
+        // Unreadable or blocked storage: no files are open.
+        return null;
+    }
+}
+// The files open at the last visit, read as the page loads. Startup shows the chat, which saves the file list, so it is
+// read here, before anything can overwrite it.
+const savedFiles = readSavedFiles();
 // Whether a file is markdown, which opens rendered and can be switched to its raw text.
 function isMarkdown(path) {
     return path.toLowerCase().endsWith(".md");
@@ -664,18 +677,11 @@ viewersCloseAll.addEventListener("click", () => {
 // Opens the files that were open at the last visit, and shows the one that was shown then. A file that is no longer
 // there shows its error in its viewer.
 function restoreFiles() {
-    let saved = null;
-    try {
-        saved = JSON.parse(localStorage.getItem(FILES_KEY) ?? "null");
-    }
-    catch {
-        // Unreadable or blocked storage: no files are open.
-    }
-    if (saved === null || !Array.isArray(saved.paths)) {
+    if (savedFiles === null) {
         return;
     }
-    const shown = saved.active;
-    for (const path of saved.paths) {
+    const shown = savedFiles.active;
+    for (const path of savedFiles.paths) {
         openFile(path);
     }
     if (shown !== null && viewed.some((file) => file.path === shown)) {
