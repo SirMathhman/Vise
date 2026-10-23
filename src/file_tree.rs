@@ -2,6 +2,7 @@
 //! out at every level. A folder that cannot be read is shown empty rather than failing the whole tree.
 
 use std::fs;
+use std::io::{self, BufRead, BufReader, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
@@ -27,23 +28,50 @@ fn build_with_limit(root: &Path, limit: usize) -> Result<Value, String> {
     Ok(json!({ "name": name, "children": children, "truncated": builder.truncated }))
 }
 
-/// The largest file whose text is read, in bytes.
-pub const MAX_TEXT_BYTES: u64 = 1024 * 1024;
+/// The most lines sent in one block of a file.
+pub const LINES_PER_BLOCK: usize = 200;
 
-/// The text of a file in the working directory, named relative to it. The path is confined to the working directory,
-/// a file larger than `MAX_TEXT_BYTES` is refused, and a file that is not UTF-8 text, or holds a NUL byte, is refused.
-pub fn read_text(root: &Path, path: &str) -> Result<String, String> {
+/// One block of a text file: its lines, the byte offset where the next block starts, and whether more lines follow.
+#[derive(Debug)]
+pub struct Block {
+    pub lines: Vec<String>,
+    pub next: u64,
+    pub more: bool,
+}
+
+/// Up to `LINES_PER_BLOCK` lines of a file in the working directory, starting at byte `offset` (0 for the first block).
+/// The offset of the next block comes back in `next`, so each block costs only its own reads. The path is confined to
+/// the working directory, and a file that is not UTF-8 text, or holds a NUL byte, is refused.
+pub fn read_lines(root: &Path, path: &str, offset: u64) -> Result<Block, String> {
     let target = resolve(Some(root), path, false)?;
     if !target.is_file() {
         return Err(format!("not a file: {path}"));
     }
-    let size = target.metadata().map_err(|err| format!("could not read {path}: {err}"))?.len();
-    if size > MAX_TEXT_BYTES {
-        return Err(format!("{path} is larger than {MAX_TEXT_BYTES} bytes, so its contents are not shown"));
+    let read_error = |err: io::Error| format!("could not read {path}: {err}");
+    let mut file = fs::File::open(&target).map_err(read_error)?;
+    file.seek(SeekFrom::Start(offset)).map_err(read_error)?;
+    let mut reader = BufReader::new(file);
+    let mut lines = Vec::new();
+    let mut next = offset;
+    let mut bytes = Vec::new();
+    while lines.len() < LINES_PER_BLOCK {
+        bytes.clear();
+        let read = reader.read_until(b'\n', &mut bytes).map_err(read_error)?;
+        if read == 0 {
+            return Ok(Block { lines, next, more: false });
+        }
+        next += read as u64;
+        lines.push(text_line(path, &bytes)?);
     }
-    let bytes = fs::read(&target).map_err(|err| format!("could not read {path}: {err}"))?;
-    match String::from_utf8(bytes) {
-        Ok(text) if !text.contains('\0') => Ok(text),
+    // The next line is looked at, not consumed, so the next block starts exactly where this one ends.
+    let more = !reader.fill_buf().map_err(read_error)?.is_empty();
+    Ok(Block { lines, next, more })
+}
+
+/// One line of text without its line ending. A line that is not UTF-8, or holds a NUL byte, is refused.
+fn text_line(path: &str, bytes: &[u8]) -> Result<String, String> {
+    match std::str::from_utf8(bytes) {
+        Ok(line) if !line.contains('\0') => Ok(line.trim_end_matches(['\n', '\r']).to_owned()),
         _ => Err(format!("{path} is not a text file, so its contents cannot be shown")),
     }
 }
@@ -117,14 +145,33 @@ mod tests {
     fn a_text_file_is_read_but_paths_outside_the_folder_and_binary_files_are_refused() {
         let root = folder("read");
         fs::write(root.join("data.bin"), [0u8, 159, 146, 150]).unwrap();
-        let text = read_text(&root, "src/main.rs");
-        let escape = read_text(&root, "../secret");
-        let binary = read_text(&root, "data.bin");
+        let text = read_lines(&root, "src/main.rs", 0);
+        let escape = read_lines(&root, "../secret", 0);
+        let binary = read_lines(&root, "data.bin", 0);
         fs::remove_dir_all(&root).unwrap();
 
-        assert_eq!(text.unwrap(), "");
+        let text = text.unwrap();
+        assert!(text.lines.is_empty());
+        assert!(!text.more);
         assert!(escape.is_err());
         assert!(binary.unwrap_err().contains("not a text file"));
+    }
+
+    #[test]
+    fn a_long_file_is_read_a_block_at_a_time() {
+        let root = folder("blocks");
+        let body: String = (1..=LINES_PER_BLOCK + 50).map(|n| format!("line {n}\n")).collect();
+        fs::write(root.join("long.txt"), body).unwrap();
+        let first = read_lines(&root, "long.txt", 0).unwrap();
+        let second = read_lines(&root, "long.txt", first.next);
+        fs::remove_dir_all(&root).unwrap();
+
+        assert_eq!(first.lines.len(), LINES_PER_BLOCK);
+        assert!(first.more);
+        let second = second.unwrap();
+        assert_eq!(second.lines.first().map(String::as_str), Some("line 201"));
+        assert_eq!(second.lines.len(), 50);
+        assert!(!second.more);
     }
 
     #[test]

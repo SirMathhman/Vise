@@ -126,11 +126,12 @@ fn file_response(body: &[u8], config: &Config) -> Response {
     let Some(path) = data["path"].as_str() else {
         return json_response(400, json!({ "error": "path must be a string" }));
     };
+    let offset = data["offset"].as_u64().unwrap_or(0);
     let Some(root) = config.working_dir.as_deref() else {
         return json_response(400, json!({ "error": "no working directory is set" }));
     };
-    match file_tree::read_text(Path::new(root), path) {
-        Ok(text) => json_response(200, json!({ "path": path, "text": text })),
+    match file_tree::read_lines(Path::new(root), path, offset) {
+        Ok(block) => json_response(200, json!({ "path": path, "lines": block.lines, "next": block.next, "more": block.more })),
         Err(error) => json_response(400, json!({ "error": error })),
     }
 }

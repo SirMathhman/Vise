@@ -264,8 +264,23 @@
         justify-content: flex-end;
         margin-bottom: 0.5rem;
       }
-      .viewer {
-        margin-bottom: 1rem;
+      /* Tabs wrap onto more rows instead of scrolling sideways, so any number of them fits. */
+      #viewers-tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        margin-bottom: 0.75rem;
+      }
+      .viewer-tab {
+        padding: 0.25rem 0.5rem;
+        font-family: ui-monospace, monospace;
+        font-size: 0.8em;
+        overflow-wrap: anywhere;
+        text-align: left;
+      }
+      .viewer-tab.active {
+        font-weight: 600;
+        border-color: #555;
       }
       .viewer-head {
         display: flex;
@@ -277,6 +292,9 @@
       }
       .viewer-name {
         overflow-wrap: anywhere;
+      }
+      .viewer-more {
+        margin-top: 0.5rem;
       }
       .viewer pre {
         margin: 0.5rem 0 0;
@@ -500,7 +518,8 @@
         <div class="viewers-head">
           <button type="button" id="viewers-close-all">Close all</button>
         </div>
-        <div id="viewers-list"></div>
+        <div id="viewers-tabs"></div>
+        <div id="viewers-body"></div>
       </section>
       <div id="divider" role="separator" aria-orientation="vertical" aria-label="Drag to resize the Tools panel"></div>
       <aside>

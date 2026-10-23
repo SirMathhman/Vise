@@ -670,58 +670,133 @@ function treeList(nodes: TreeNode[], prefix: string): HTMLUListElement {
 }
 
 const viewers = document.getElementById("viewers") as HTMLElement;
-const viewersList = document.getElementById("viewers-list") as HTMLDivElement;
+const viewersTabs = document.getElementById("viewers-tabs") as HTMLDivElement;
+const viewersBody = document.getElementById("viewers-body") as HTMLDivElement;
 const viewersCloseAll = document.getElementById("viewers-close-all") as HTMLButtonElement;
 
-// Hides the viewers column when no file is open.
-function updateViewers(): void {
-  viewers.hidden = viewersList.children.length === 0;
+// The file viewers beside the chat, as tabs: one file shows at a time. A file's lines arrive in blocks, and Load more
+// fetches the next block. Nothing scrolls inside the viewer; the column does. A file is open once, under its path.
+interface Viewed {
+  path: string;
+  lines: string[];
+  next: number;
+  more: boolean;
+  loading: boolean;
+  error: string | null;
 }
 
-// Opens a file in a viewer beside the chat. Each file has one viewer, so opening it again does nothing. The viewer is
-// added at once, so viewers keep the order of the clicks, and its text arrives later. The text is set as plain text.
-function openFile(path: string): void {
-  const open = [...viewersList.children].some((child) => (child as HTMLElement).dataset.path === path);
-  if (open) {
+const viewed: Viewed[] = [];
+let activePath: string | null = null;
+
+function renderViewers(): void {
+  viewers.hidden = viewed.length === 0;
+  viewersTabs.replaceChildren(
+    ...viewed.map((file) => {
+      const tab = document.createElement("button");
+      tab.type = "button";
+      tab.className = file.path === activePath ? "viewer-tab active" : "viewer-tab";
+      tab.textContent = file.path;
+      tab.addEventListener("click", () => {
+        activePath = file.path;
+        renderViewers();
+      });
+      return tab;
+    }),
+  );
+
+  viewersBody.replaceChildren();
+  const file = viewed.find((candidate) => candidate.path === activePath);
+  if (file === undefined) {
     return;
   }
   const viewer = document.createElement("article");
   viewer.className = "viewer";
-  viewer.dataset.path = path;
   const head = document.createElement("div");
   head.className = "viewer-head";
   const name = document.createElement("span");
   name.className = "viewer-name";
-  name.textContent = path;
+  name.textContent = file.path;
   const close = document.createElement("button");
   close.type = "button";
   close.textContent = "Close";
-  close.addEventListener("click", () => {
-    viewer.remove();
-    updateViewers();
-  });
+  close.addEventListener("click", () => closeFile(file.path));
   head.append(name, close);
+  // The text is set as plain text, so nothing in it is read as HTML.
   const text = document.createElement("pre");
-  text.textContent = "Loading…";
+  text.textContent = file.lines.join("\n");
   viewer.append(head, text);
-  viewersList.append(viewer);
-  updateViewers();
-  void loadViewer(path, text);
+  if (file.error !== null) {
+    const error = document.createElement("p");
+    error.className = "error";
+    error.textContent = file.error;
+    viewer.append(error);
+  }
+  if (file.more) {
+    const more = document.createElement("button");
+    more.type = "button";
+    more.className = "viewer-more";
+    more.textContent = file.loading ? "Loading…" : "Load more";
+    more.disabled = file.loading;
+    more.addEventListener("click", () => {
+      void loadBlock(file.path);
+    });
+    viewer.append(more);
+  }
+  viewersBody.append(viewer);
 }
 
-async function loadViewer(path: string, text: HTMLPreElement): Promise<void> {
+// Fetches the next block of a file that is still open. A response for a file that was closed meanwhile is dropped.
+async function loadBlock(path: string): Promise<void> {
+  const file = viewed.find((candidate) => candidate.path === path);
+  if (file === undefined || file.loading) {
+    return;
+  }
+  file.loading = true;
+  file.error = null;
+  renderViewers();
   try {
-    const data = await postJson<{ path: string; text: string }>("/api/file", { path });
-    text.textContent = data.text;
+    const data = await postJson<{ lines: string[]; next: number; more: boolean }>("/api/file", {
+      path,
+      offset: file.next,
+    });
+    file.lines.push(...data.lines);
+    file.next = data.next;
+    file.more = data.more;
   } catch (err) {
-    text.textContent = err instanceof Error ? err.message : String(err);
-    text.className = "error";
+    file.error = err instanceof Error ? err.message : String(err);
+  } finally {
+    file.loading = false;
+    renderViewers();
   }
 }
 
+// Opens a file as a tab and makes it the one shown. Opening a file that is already open only shows its tab.
+function openFile(path: string): void {
+  if (!viewed.some((file) => file.path === path)) {
+    viewed.push({ path, lines: [], next: 0, more: false, loading: false, error: null });
+    void loadBlock(path);
+  }
+  activePath = path;
+  renderViewers();
+}
+
+// Closes one file. When it was the one shown, the file opened last takes its place.
+function closeFile(path: string): void {
+  const index = viewed.findIndex((file) => file.path === path);
+  if (index === -1) {
+    return;
+  }
+  viewed.splice(index, 1);
+  if (activePath === path) {
+    activePath = viewed.length > 0 ? viewed[viewed.length - 1].path : null;
+  }
+  renderViewers();
+}
+
 viewersCloseAll.addEventListener("click", () => {
-  viewersList.replaceChildren();
-  updateViewers();
+  viewed.length = 0;
+  activePath = null;
+  renderViewers();
 });
 
 async function refreshFiles(): Promise<void> {
