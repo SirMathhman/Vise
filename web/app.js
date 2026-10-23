@@ -650,6 +650,7 @@ const viewed = [];
 let activePath = null;
 function renderViewers() {
     viewers.hidden = viewed.length === 0;
+    viewersDivider.hidden = viewers.hidden;
     viewersTabs.replaceChildren(...viewed.map((file) => {
         const tab = document.createElement("button");
         tab.type = "button";
@@ -778,6 +779,59 @@ viewersCloseAll.addEventListener("click", () => {
     activePath = null;
     renderViewers();
 });
+// The divider between the chat and the open files. Dragging it sets the files' width, which is kept in this browser
+// like the Tools width. The chat is centered, so the drag is measured from where it started.
+const VIEWERS_WIDTH_KEY = "vise-viewers-width";
+const MIN_VIEWERS_PX = 224;
+const viewersDivider = document.getElementById("viewers-divider");
+const aside = document.querySelector("aside");
+let viewersWidth = 0;
+function clampViewersWidth(px) {
+    const room = layout.clientWidth - aside.offsetWidth - divider.offsetWidth - MIN_CHAT_PX;
+    return Math.max(MIN_VIEWERS_PX, Math.min(px, room));
+}
+function setViewersWidth(px) {
+    viewersWidth = px;
+    applyViewersWidth();
+}
+function applyViewersWidth() {
+    document.documentElement.style.setProperty("--viewers-width", `${clampViewersWidth(viewersWidth)}px`);
+}
+// Restores the width this browser last used. Storage can be blocked, in which case the default width is used.
+try {
+    const stored = Number(localStorage.getItem(VIEWERS_WIDTH_KEY));
+    if (stored > 0) {
+        setViewersWidth(stored);
+    }
+}
+catch {
+    // The default width stays.
+}
+let viewersDrag = null;
+viewersDivider.addEventListener("pointerdown", (event) => {
+    viewersDrag = { x: event.clientX, width: viewers.getBoundingClientRect().width };
+    viewersDivider.setPointerCapture(event.pointerId);
+    event.preventDefault();
+});
+viewersDivider.addEventListener("pointermove", (event) => {
+    if (viewersDrag !== null) {
+        setViewersWidth(viewersDrag.width + event.clientX - viewersDrag.x);
+    }
+});
+function endViewersDrag() {
+    if (viewersDrag === null) {
+        return;
+    }
+    viewersDrag = null;
+    try {
+        localStorage.setItem(VIEWERS_WIDTH_KEY, String(viewersWidth));
+    }
+    catch {
+        // Not saved: the width lasts for this page load only.
+    }
+}
+viewersDivider.addEventListener("pointerup", endViewersDrag);
+viewersDivider.addEventListener("pointercancel", endViewersDrag);
 async function refreshFiles() {
     filesTree.replaceChildren();
     const page = await loadFolderPage("", filesTree, null);
@@ -952,5 +1006,8 @@ void applyDefaultProfile();
 window.addEventListener("resize", () => {
     if (toolsWidth > 0) {
         applyToolsWidth();
+    }
+    if (viewersWidth > 0) {
+        applyViewersWidth();
     }
 });

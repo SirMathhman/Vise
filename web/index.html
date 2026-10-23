@@ -196,7 +196,8 @@
         flex: 1;
         min-width: 0;
       }
-      #divider {
+      #divider,
+      #viewers-divider {
         width: 6px;
         flex-shrink: 0;
         cursor: col-resize;
@@ -295,9 +296,9 @@
         margin-top: 0.25rem;
       }
       /* The viewers column is the only thing that scrolls. Each viewer grows to its text, and long lines wrap. */
-      /* The chat keeps at least 24rem. The viewers ask for 32rem and shrink to make room, but not below 14rem. */
+      /* The chat keeps at least 24rem. The viewers start at 32rem, or at the width dragged to, and shrink to make room, but not below 14rem. */
       #viewers {
-        flex: 0 1 32rem;
+        flex: 0 1 var(--viewers-width, 32rem);
         min-width: 14rem;
         height: 100vh;
         overflow-y: auto;
@@ -440,7 +441,8 @@
           height: 70vh;
           min-width: 0;
         }
-        #divider {
+        #divider,
+        #viewers-divider {
           display: none;
         }
         aside {
@@ -480,6 +482,7 @@
         <div id="viewers-tabs"></div>
         <div id="viewers-body"></div>
       </section>
+      <div id="viewers-divider" role="separator" aria-orientation="vertical" aria-label="Drag to resize the open files" hidden></div>
       <div id="divider" role="separator" aria-orientation="vertical" aria-label="Drag to resize the Tools panel"></div>
       <aside>
         <details class="pane" id="tools-section">
