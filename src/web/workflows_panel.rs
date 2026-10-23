@@ -45,7 +45,7 @@ fn save(working: Option<&Path>, roots: notes::Roots, name: &str, steps: &Value) 
     for step in &workflow.steps {
         if let Step::Profile(reference) = step {
             if reference != "default" {
-                notes::read_profile(reference, roots)?;
+                notes::read_profile(reference, roots).map_err(|err| format!("profile {reference} cannot be used: {err}"))?;
             }
         }
     }

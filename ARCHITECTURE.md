@@ -42,12 +42,12 @@ src/
   strata.rs   Config, Role, Message, Chunk, Reply, StrataError, and the streaming client
   web/mod.rs  std TcpListener HTTP server, one thread per connection:
               serves the UI, proxies /api/chat as server-sent events, runs a workflow when the chat's last line names one, and routes the panels' requests to the modules beside it
-  web/files_panel.rs, notes_panel.rs, sessions_panel.rs, tools_panel.rs  the JSON requests for the Files panel (/api/files, /api/file), the Notes section (/api/notes), the Sessions panel (/api/sessions: save, load, list, title), and the Tools panel (/api/tools)
+  web/files_panel.rs, notes_panel.rs, sessions_panel.rs, tools_panel.rs, workflows_panel.rs  the JSON requests for the Files panel, the Workflows panel (/api/workflows: list, load, save, delete; a save checks the steps and profiles first) (/api/files, /api/file), the Notes section (/api/notes), the Sessions panel (/api/sessions: save, load, list, title), and the Tools panel (/api/tools)
 web/
   index.html  page markup and styles. The Tools panel width is set by a divider, clamped to keep a minimum chat width,
               and kept per browser in localStorage (vise-tools-width). A narrower window clamps the shown width only.
   src/app.ts  client entry: reads the event stream and renders reasoning, tool calls, and answer
-  src/panels/  one file per side panel (tools, profile, sessions, files, notes) and the file viewers (viewers.ts)
+  src/panels/  one file per side panel (tools, profile, sessions, files, notes, workflows) and the file viewers (viewers.ts). The Workflows panel builds a workflow from fields, one row per step, and saves it through /api/workflows
   src/markdown.ts, http.ts  markdown rendering, and the JSON request and error helpers shared by the panels
   app.js      the page's one script, committed so the server needs no build. scripts/bundle-web.mjs joins the compiled
               files in a fixed order (refused if one is missing from the list). Markdown is rendered in the page by

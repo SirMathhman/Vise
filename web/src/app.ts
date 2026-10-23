@@ -285,6 +285,7 @@ restoreFiles();
 void refreshTools();
 void refreshNotes();
 void refreshSessions();
+void refreshWorkflows();
 void refreshFiles();
 
 // A narrower window clamps the shown width without changing the chosen one, and nothing is saved here.

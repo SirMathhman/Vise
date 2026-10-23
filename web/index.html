@@ -291,6 +291,61 @@
         padding: 0.5rem;
         border-radius: 0.5rem;
       }
+      #workflows-list {
+        list-style: none;
+        margin: 0.5rem 0;
+        padding: 0;
+      }
+      #workflows-list button {
+        width: 100%;
+        text-align: left;
+        font-family: var(--mono);
+      }
+      #workflow-form label {
+        display: block;
+        margin: 0.5rem 0;
+      }
+      #workflow-form input,
+      #workflow-form select,
+      #workflow-form textarea {
+        width: 100%;
+        box-sizing: border-box;
+      }
+      #workflow-steps {
+        margin: 0.5rem 0;
+        padding-left: 1.25rem;
+      }
+      #workflow-steps > li {
+        margin: 0.75rem 0;
+      }
+      #workflow-steps .step-head {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.25rem;
+        align-items: center;
+      }
+      #workflow-steps .step-head strong {
+        flex: 1;
+      }
+      #workflow-steps select {
+        margin-top: 0.25rem;
+      }
+      .workflow-args > div {
+        display: flex;
+        gap: 0.25rem;
+        margin: 0.25rem 0;
+      }
+      .workflow-args input {
+        flex: 1;
+        min-width: 0;
+      }
+      .workflow-add,
+      .workflow-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin: 0.5rem 0;
+      }
       #files-tree {
         margin-top: 0.5rem;
         font-family: var(--mono);
@@ -499,6 +554,26 @@
           <summary>Files</summary>
           <button type="button" id="files-refresh">Refresh</button>
           <div id="files-tree"></div>
+        </details>
+        <details class="pane" id="workflows-section">
+          <summary>Workflows</summary>
+          <p id="workflows-status" hidden></p>
+          <ul id="workflows-list"></ul>
+          <button type="button" id="workflow-new">New workflow</button>
+          <form id="workflow-form" hidden>
+            <label>Name <input id="workflow-name" autocomplete="off" /></label>
+            <ol id="workflow-steps"></ol>
+            <div class="workflow-add">
+              <button type="button" id="workflow-add-instructions">Add instructions</button>
+              <button type="button" id="workflow-add-profile">Add profile</button>
+              <button type="button" id="workflow-add-tool">Add tool</button>
+            </div>
+            <div class="workflow-actions">
+              <button type="submit" id="workflow-save">Save</button>
+              <button type="button" id="workflow-run" hidden>Run in chat</button>
+              <button type="button" id="workflow-delete" hidden>Delete</button>
+            </div>
+          </form>
         </details>
         <details class="pane" id="notes-section" open>
           <summary>Notes</summary>

@@ -17,6 +17,7 @@ const order = [
   "panels/sessions",
   "panels/files",
   "panels/notes",
+  "panels/workflows",
   "app",
 ];
 
