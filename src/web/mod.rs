@@ -5,6 +5,7 @@ mod files_panel;
 mod notes_panel;
 mod sessions_panel;
 mod tools_panel;
+mod workflows_panel;
 
 use std::collections::{BTreeSet, HashMap};
 use std::io::{self, BufRead, BufReader, Write};
@@ -31,6 +32,7 @@ use files_panel::{file_response, files_response};
 use notes_panel::notes_response;
 use sessions_panel::sessions_response;
 use tools_panel::tools_response;
+use workflows_panel::workflows_response;
 
 pub const DEFAULT_PORT: u16 = 3000;
 
@@ -136,6 +138,9 @@ fn handle(mut stream: TcpStream, config: &Config, sessions: &Sessions) -> io::Re
     }
     if request.method == "POST" && request.path == "/api/sessions" {
         return write_response(&mut stream, &sessions_response(&request.body, config));
+    }
+    if request.method == "POST" && request.path == "/api/workflows" {
+        return write_response(&mut stream, &workflows_response(&request.body, config));
     }
     if request.method == "POST" && request.path == "/api/files" {
         return write_response(&mut stream, &files_response(&request.body, config));

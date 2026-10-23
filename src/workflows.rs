@@ -4,9 +4,9 @@
 
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::tools;
 
@@ -54,12 +54,89 @@ pub fn load(working: Option<&Path>, name: &str) -> Result<Option<Workflow>, Stri
 fn parse(text: &str, name: &str) -> Result<Workflow, String> {
     let data: Value = serde_json::from_str(text).map_err(|err| format!("workflow {name} is not valid JSON: {err}"))?;
     let items = data["steps"].as_array().ok_or_else(|| format!("workflow {name} needs a steps array"))?;
+    from_steps(items, name)
+}
+
+/// The steps of workflow `name` from their JSON form, the form a workflow file and the Workflows panel both use.
+pub fn from_steps(items: &[Value], name: &str) -> Result<Workflow, String> {
     let steps = items
         .iter()
         .enumerate()
         .map(|(index, item)| step(item).map_err(|err| format!("workflow {name}, step {}: {err}", index + 1)))
         .collect::<Result<Vec<Step>, String>>()?;
     Ok(Workflow { steps })
+}
+
+/// The JSON form of a workflow, as a workflow file holds it.
+pub fn to_value(workflow: &Workflow) -> Value {
+    let steps: Vec<Value> = workflow
+        .steps
+        .iter()
+        .map(|step| match step {
+            Step::Instructions(text) => json!({ "instructions": text }),
+            Step::Profile(reference) => json!({ "profile": reference }),
+            Step::Tool { name, arguments: Some(arguments) } => json!({ "tool": name, "arguments": arguments }),
+            Step::Tool { name, arguments: None } => json!({ "tool": name }),
+        })
+        .collect();
+    json!({ "steps": steps })
+}
+
+/// The names of the workflows in the folder, sorted. A missing folder means there are none.
+pub fn list(working: Option<&Path>) -> Result<Vec<String>, String> {
+    let Some(root) = working else {
+        return Ok(Vec::new());
+    };
+    let entries = match fs::read_dir(root.join(WORKFLOWS_DIR)) {
+        Ok(entries) => entries,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(err) => return Err(format!("could not read {WORKFLOWS_DIR}: {err}")),
+    };
+    let mut names = Vec::new();
+    for entry in entries {
+        let file = entry.map_err(|err| format!("could not read {WORKFLOWS_DIR}: {err}"))?;
+        let file = file.file_name().to_string_lossy().into_owned();
+        if let Some(name) = file.strip_suffix(".json") {
+            if check_name(name).is_ok() {
+                names.push(name.to_owned());
+            }
+        }
+    }
+    names.sort();
+    Ok(names)
+}
+
+/// Writes workflow `name`, replacing any workflow already saved under that name.
+pub fn save(working: Option<&Path>, name: &str, workflow: &Workflow) -> Result<(), String> {
+    let path = file(working, name)?;
+    let folder = path.parent().ok_or_else(|| format!("cannot save workflow {name}"))?;
+    fs::create_dir_all(folder).map_err(|err| format!("could not create {WORKFLOWS_DIR}: {err}"))?;
+    let text = serde_json::to_string_pretty(&to_value(workflow)).map_err(|err| format!("workflow {name}: {err}"))?;
+    fs::write(&path, text).map_err(|err| format!("could not write workflow {name}: {err}"))
+}
+
+/// Deletes workflow `name`.
+pub fn delete(working: Option<&Path>, name: &str) -> Result<(), String> {
+    let path = file(working, name)?;
+    fs::remove_file(&path).map_err(|err| format!("could not delete workflow {name}: {err}"))
+}
+
+/// The file a workflow name stands for. The name is checked first, so it cannot leave the folder.
+fn file(working: Option<&Path>, name: &str) -> Result<PathBuf, String> {
+    check_name(name)?;
+    let root = working.ok_or("no working directory is set, so workflows are unavailable")?;
+    Ok(root.join(WORKFLOWS_DIR).join(format!("{name}.json")))
+}
+
+/// A name a workflow can be saved under: one word, not a chat command.
+pub fn check_name(name: &str) -> Result<(), String> {
+    if !valid_name(name) {
+        return Err(format!("a workflow name may only use letters, digits, '-' and '_': {name:?}"));
+    }
+    if COMMANDS.contains(&name) {
+        return Err(format!("{name} is a chat command, so it cannot name a workflow"));
+    }
+    Ok(())
 }
 
 fn step(item: &Value) -> Result<Step, String> {
@@ -124,6 +201,21 @@ mod tests {
         assert!(matches!(&workflow.steps[2], Step::Tool { name, arguments: Some(_) } if name == "create_file"));
         assert!(matches!(&workflow.steps[3], Step::Tool { name, arguments: None } if name == "read_file"));
         assert!(parse(r#"{"steps":[{"tool":"nope"}]}"#, "demo").is_err());
+    }
+
+    #[test]
+    fn a_saved_workflow_is_listed_and_loads_back_the_same() {
+        let root = std::env::temp_dir().join(format!("vise-workflows-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let workflow = parse(r#"{"steps":[{"instructions":"Hi {argument}."},{"tool":"read_file","arguments":{"path":"a.txt"}}]}"#, "demo").unwrap();
+        save(Some(&root), "demo", &workflow).unwrap();
+        let listed = list(Some(&root));
+        let loaded = load(Some(&root), "demo");
+        fs::remove_dir_all(&root).unwrap();
+
+        assert_eq!(listed.unwrap(), ["demo"]);
+        assert_eq!(to_value(&loaded.unwrap().unwrap()), to_value(&workflow));
     }
 
     #[test]
