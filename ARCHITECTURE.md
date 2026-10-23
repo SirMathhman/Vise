@@ -41,12 +41,15 @@ src/
 web/
   index.html  page markup and styles. The Tools panel width is set by a divider, clamped to keep a minimum chat width,
               and kept per browser in localStorage (vise-tools-width). A narrower window clamps the shown width only.
-  src/app.ts  client: reads the event stream and renders reasoning, tool calls, and answer
-  app.js      compiled output of app.ts, committed so the server needs no build. Markdown is rendered in the page by
+  src/app.ts  client entry: reads the event stream and renders reasoning, tool calls, and answer
+  src/tools.ts, sessions.ts, files.ts, notes.ts, viewers.ts  one file per side panel (Tools, Sessions, Files, Notes) and the file viewers
+  src/markdown.ts, http.ts  markdown rendering, and the JSON request and error helpers shared by the panels
+  app.js      the page's one script, committed so the server needs no build. scripts/bundle-web.mjs joins the compiled
+              files in a fixed order (refused if one is missing from the list). Markdown is rendered in the page by
               marked 12.0.2 and DOMPurify 3.1.6, loaded from cdnjs in index.html. Raw HTML is escaped before
               marked runs, and DOMPurify sanitizes the result. Without the libraries, text is shown escaped.
   tsconfig.json
-package.json  TypeScript and concurrently dev dependencies. Scripts: `build` (tsc -p web),
+package.json  TypeScript and concurrently dev dependencies. Scripts: `build` (tsc -p web, then scripts/bundle-web.mjs),
               `watch:ts` (tsc --watch), `watch:rs` (cargo watch, needs cargo-watch installed),
               and `dev` (runs both together)
 ```

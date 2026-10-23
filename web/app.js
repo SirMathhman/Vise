@@ -230,6 +230,427 @@ viewersCloseAll.addEventListener("click", () => {
 });
 
 "use strict";
+// The Tools panel: the tools this tab uses, each switched on or off on the server.
+const toolsList = document.getElementById("tools-list");
+const toolsError = document.getElementById("tools-error");
+// Lists this tab's tools, or switches one of them, on the server. The panel always shows the server's answer, so it
+// stays right when a tool is changed by a typed /enable or /disable.
+async function sendTools(change) {
+    const res = await fetch("/api/tools", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session, ...change }),
+    });
+    const data = (await res.json().catch(() => ({})));
+    if (!res.ok || data.tools === undefined) {
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+    }
+    return data.tools;
+}
+function renderTools(tools) {
+    toolsList.replaceChildren(...tools.map((tool) => {
+        const item = document.createElement("li");
+        const label = document.createElement("label");
+        const toggle = document.createElement("input");
+        toggle.type = "checkbox";
+        toggle.checked = tool.enabled;
+        toggle.addEventListener("change", async () => {
+            toggle.disabled = true;
+            try {
+                renderTools(await sendTools({ name: tool.name, enabled: toggle.checked }));
+                toolsError.hidden = true;
+            }
+            catch (err) {
+                showToolsError(err);
+                await refreshTools();
+            }
+        });
+        const name = document.createElement("span");
+        name.textContent = tool.name;
+        label.append(toggle, name);
+        const description = document.createElement("div");
+        description.className = "description";
+        description.innerHTML = renderMarkdown(tool.description);
+        item.append(label, description);
+        return item;
+    }));
+}
+function showToolsError(err) {
+    toolsError.textContent = errorMessage(err);
+    toolsError.hidden = false;
+}
+async function refreshTools() {
+    try {
+        renderTools(await sendTools());
+        toolsError.hidden = true;
+    }
+    catch (err) {
+        showToolsError(err);
+    }
+}
+
+"use strict";
+// The Sessions panel: saved conversations, and the autosave after each completed turn.
+// Saved sessions in the side panel. The server writes and reads the files; loading replaces the conversation both on
+// screen and in the history the next request sends.
+const sessionForm = document.getElementById("session-form");
+const sessionName = document.getElementById("session-name");
+const sessionsList = document.getElementById("sessions-list");
+const sessionsStatus = document.getElementById("sessions-status");
+// Shows a message in one of the side panel's status lines. An error is shown as an error.
+function showStatus(status, message, isError) {
+    status.textContent = message;
+    status.className = isError ? "error" : "summary";
+    status.hidden = false;
+}
+async function refreshSessions() {
+    try {
+        const { sessions } = await postJson("/api/sessions", { action: "list" });
+        sessionsList.replaceChildren(...sessions.map((name) => {
+            const item = document.createElement("li");
+            const button = document.createElement("button");
+            button.type = "button";
+            button.textContent = name;
+            button.addEventListener("click", () => {
+                void loadSession(name);
+            });
+            item.append(button);
+            return item;
+        }));
+    }
+    catch (err) {
+        showStatus(sessionsStatus, errorMessage(err), true);
+    }
+}
+// Adds one saved message to the log the way the live conversation showed it. Profile instructions are not shown.
+function showMessage(message) {
+    if (message.role === "user") {
+        addEntry("user").textContent = message.content;
+    }
+    else if (message.role === "assistant") {
+        const bubble = addEntry("assistant");
+        const answer = markdownBlock();
+        answer.innerHTML = renderMarkdown(message.content);
+        bubble.append(answer);
+    }
+    else if (message.role === "summary") {
+        addEntry("summary").textContent = "Earlier conversation summarized.";
+    }
+    else if (message.role === "summary_failed") {
+        addEntry("summary").textContent = "Could not summarize the conversation. It will be tried again later.";
+    }
+}
+sessionForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const name = sessionName.value.trim();
+    if (name === "") {
+        return;
+    }
+    // A reply in flight is not part of the conversation yet, so the save waits for it.
+    if (input.disabled) {
+        showStatus(sessionsStatus, "Wait for the reply to finish, then save.", true);
+        return;
+    }
+    try {
+        const { message } = await postJson("/api/sessions", {
+            action: "save",
+            name,
+            messages: conversation,
+            told,
+        });
+        sessionName.value = "";
+        showStatus(sessionsStatus, message, false);
+        await refreshSessions();
+    }
+    catch (err) {
+        showStatus(sessionsStatus, errorMessage(err), true);
+    }
+});
+// The name this conversation autosaves under. It is picked at the first completed turn, and New or Load clears it so
+// the next turn starts a new saved session.
+let autosaveName = null;
+// Saves the conversation after a completed turn. The save runs in the background: a failure shows in the Sessions
+// panel, and the chat is unaffected.
+function autosaveTurn() {
+    autosaveName ??= `auto-${Date.now()}`;
+    postJson("/api/sessions", {
+        action: "save",
+        name: autosaveName,
+        messages: conversation,
+        told,
+    }).then(() => refreshSessions(), (err) => showStatus(sessionsStatus, errorMessage(err), true));
+}
+async function loadSession(name) {
+    if (input.disabled) {
+        showStatus(sessionsStatus, "Wait for the reply to finish, then load.", true);
+        return;
+    }
+    // Input stays off while the session loads, so a message cannot slip in between the request and the replacement.
+    input.disabled = true;
+    try {
+        const data = await postJson("/api/sessions", { action: "load", name });
+        // The default profile must land before the loaded conversation, or it could join the conversation after it.
+        await defaultProfile;
+        conversation.length = 0;
+        conversation.push(...data.messages);
+        told = data.told;
+        autosaveName = null;
+        log.replaceChildren();
+        data.messages.forEach(showMessage);
+        showStatus(sessionsStatus, `Loaded session ${name}.`, false);
+        scrollToEnd();
+    }
+    catch (err) {
+        showStatus(sessionsStatus, errorMessage(err), true);
+    }
+    finally {
+        input.disabled = false;
+        input.focus();
+    }
+}
+
+"use strict";
+// The Files panel: the working directory's tree, and the refresh button.
+const filesTree = document.getElementById("files-tree");
+const filesRefresh = document.getElementById("files-refresh");
+// One entry as a row. A folder is a closed section that fetches its entries when first opened. A file is a button that
+// opens it.
+function treeItem(entry, dir) {
+    const item = document.createElement("li");
+    const path = dir === "" ? entry.name : `${dir}/${entry.name}`;
+    if (entry.dir) {
+        const details = document.createElement("details");
+        const summary = document.createElement("summary");
+        summary.textContent = `${entry.name}/`;
+        const body = document.createElement("div");
+        // A folder is fetched when it is first opened. A failed fetch is tried again on the next opening.
+        let fetched = false;
+        let fetching = false;
+        details.addEventListener("toggle", async () => {
+            if (details.open && !fetched && !fetching) {
+                fetching = true;
+                fetched = (await loadFolderPage(path, body, null)) !== null;
+                fetching = false;
+            }
+        });
+        details.append(summary, body);
+        item.append(details);
+    }
+    else {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "file-link";
+        button.textContent = entry.name;
+        button.addEventListener("click", () => {
+            openFile(path);
+        });
+        item.append(button);
+    }
+    return item;
+}
+// Adds one page of a folder's entries to its body, with Load more when more follow. A failed request shows its reason
+// and keeps Load more, so the same page can be asked for again. The list and the controls are found as direct children,
+// so a folder nested inside never picks up this one's controls.
+// The folders whose page is being fetched. A second request for the same folder waits for the first, so a double click
+// on Load more cannot append the same entries twice.
+const fetchingFolders = new WeakSet();
+async function loadFolderPage(dir, body, after) {
+    if (fetchingFolders.has(body)) {
+        return null;
+    }
+    fetchingFolders.add(body);
+    body.querySelector(":scope > .tree-error")?.remove();
+    let list = body.querySelector(":scope > ul");
+    if (list === null) {
+        list = document.createElement("ul");
+        body.append(list);
+    }
+    try {
+        const page = await postJson("/api/files", { dir, after });
+        body.querySelector(":scope > .tree-more")?.remove();
+        list.append(...page.entries.map((entry) => treeItem(entry, dir)));
+        if (page.more && page.next !== null) {
+            const next = page.next;
+            const more = document.createElement("button");
+            more.type = "button";
+            more.className = "tree-more";
+            more.textContent = "Load more";
+            more.addEventListener("click", () => {
+                void loadFolderPage(dir, body, next);
+            });
+            body.append(more);
+        }
+        return page;
+    }
+    catch (err) {
+        const error = document.createElement("p");
+        error.className = "error tree-error";
+        error.textContent = errorMessage(err);
+        body.append(error);
+        return null;
+    }
+    finally {
+        fetchingFolders.delete(body);
+    }
+}
+async function refreshFiles() {
+    filesTree.replaceChildren();
+    const page = await loadFolderPage("", filesTree, null);
+    if (page !== null) {
+        const title = document.createElement("p");
+        title.className = "description";
+        title.textContent = `${page.name}/`;
+        filesTree.prepend(title);
+    }
+}
+filesRefresh.addEventListener("click", () => {
+    void refreshFiles();
+});
+
+"use strict";
+// The Notes panel: the notes list, the editor for one note, and the profile picker.
+const notesList = document.getElementById("notes-list");
+const notesStatus = document.getElementById("notes-status");
+const notesNew = document.getElementById("notes-new");
+const noteForm = document.getElementById("note-form");
+const noteScope = document.getElementById("note-scope");
+const noteCategory = document.getElementById("note-category");
+const noteName = document.getElementById("note-name");
+const noteContent = document.getElementById("note-content");
+const noteDelete = document.getElementById("note-delete");
+const notePreview = document.getElementById("note-preview");
+const notePreviewToggle = document.getElementById("note-preview-toggle");
+const profilePicker = document.getElementById("profile-picker");
+const NEW_NOTE_TEXT = "---\nname: \nsummary: \n---\n";
+// The note open in the editor. Null while a new note is being written.
+let editing = null;
+// One request to the notes API.
+function notesApi(body) {
+    return postJson("/api/notes", body);
+}
+function setEditing(note, text) {
+    editing = note;
+    noteScope.value = note?.scope ?? "local";
+    noteCategory.value = note?.category ?? "";
+    noteName.value = note?.name ?? "";
+    // An existing note keeps its address, so saving it cannot rename it.
+    noteScope.disabled = note !== null;
+    noteCategory.readOnly = note !== null;
+    noteName.readOnly = note !== null;
+    noteContent.value = text;
+    noteDelete.hidden = note === null;
+    showPreview(false);
+}
+// Shows the note's rendered markdown in place of the editor, or the editor again. Saving uses the editor's text.
+function showPreview(on) {
+    noteContent.hidden = on;
+    notePreview.hidden = !on;
+    notePreviewToggle.textContent = on ? "Edit" : "Preview";
+    if (on) {
+        notePreview.innerHTML = renderMarkdown(noteContent.value);
+    }
+    else {
+        fitNoteContent();
+    }
+}
+// The editor is as tall as its text, so it never scrolls inside the Notes pane. The height includes the border, which
+// scrollHeight leaves out.
+function fitNoteContent() {
+    noteContent.style.height = "auto";
+    const border = noteContent.offsetHeight - noteContent.clientHeight;
+    noteContent.style.height = `${noteContent.scrollHeight + border}px`;
+}
+noteContent.addEventListener("input", fitNoteContent);
+// Wrapping changes with the width, and an editor inside a closed section has no height until it is opened. Both are
+// measured again when the editor's size changes.
+new ResizeObserver(fitNoteContent).observe(noteContent);
+notePreviewToggle.addEventListener("click", () => showPreview(notePreview.hidden === true));
+async function refreshNotes() {
+    try {
+        const { notes: profiles } = await notesApi({ action: "profiles" });
+        profilePicker.replaceChildren(new Option("Use a profile…", ""), ...profiles.map((profile) => new Option(`${profile.scope} ${profile.category}/${profile.name}`, `${profile.scope}/${profile.category}/${profile.name}`)));
+        const { notes } = await notesApi({ action: "list" });
+        notesList.replaceChildren(...notes.map((note) => {
+            const item = document.createElement("li");
+            const button = document.createElement("button");
+            button.type = "button";
+            button.textContent = `${note.scope} ${note.category}/${note.name}`;
+            button.addEventListener("click", () => {
+                void openNote({ scope: note.scope, category: note.category, name: note.name });
+            });
+            item.append(button);
+            if (note.summary !== null) {
+                const summary = document.createElement("div");
+                summary.className = "description";
+                summary.innerHTML = renderMarkdown(note.summary);
+                item.append(summary);
+            }
+            return item;
+        }));
+    }
+    catch (err) {
+        showStatus(notesStatus, errorMessage(err), true);
+    }
+}
+async function openNote(note) {
+    try {
+        const { text } = await notesApi({ action: "read", ...note });
+        setEditing(note, text);
+        notesStatus.hidden = true;
+    }
+    catch (err) {
+        showStatus(notesStatus, errorMessage(err), true);
+    }
+}
+function newNote() {
+    setEditing(null, NEW_NOTE_TEXT);
+    notesStatus.hidden = true;
+}
+notesNew.addEventListener("click", newNote);
+// Choosing a profile sends /profile through the chat, the same as typing it, so the reply and the instructions take
+// the same path as any command.
+profilePicker.addEventListener("change", () => {
+    const ref = profilePicker.value;
+    profilePicker.value = "";
+    if (ref === "" || input.disabled) {
+        return;
+    }
+    input.value = `/profile ${ref}`;
+    form.requestSubmit();
+});
+noteForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const note = editing ?? { scope: noteScope.value, category: noteCategory.value, name: noteName.value };
+    try {
+        const { message } = await notesApi({
+            action: editing === null ? "create" : "update",
+            ...note,
+            content: noteContent.value,
+        });
+        setEditing(note, noteContent.value);
+        showStatus(notesStatus, message, false);
+        await refreshNotes();
+    }
+    catch (err) {
+        showStatus(notesStatus, errorMessage(err), true);
+    }
+});
+noteDelete.addEventListener("click", async () => {
+    if (editing === null || !window.confirm(`Delete ${editing.scope} ${editing.category}/${editing.name}?`)) {
+        return;
+    }
+    try {
+        const { message } = await notesApi({ action: "delete", ...editing });
+        newNote();
+        showStatus(notesStatus, message, false);
+        await refreshNotes();
+    }
+    catch (err) {
+        showStatus(notesStatus, errorMessage(err), true);
+    }
+});
+
+"use strict";
 // The error, with the tool calls that ran before it: their effects remain even though the turn did not finish.
 function describeFailure(error, ran) {
     if (!ran || ran.length === 0) {
@@ -539,263 +960,6 @@ function applyDefaultProfile() {
     })();
     return defaultProfile;
 }
-const toolsList = document.getElementById("tools-list");
-const toolsError = document.getElementById("tools-error");
-// Lists this tab's tools, or switches one of them, on the server. The panel always shows the server's answer, so it
-// stays right when a tool is changed by a typed /enable or /disable.
-async function sendTools(change) {
-    const res = await fetch("/api/tools", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session, ...change }),
-    });
-    const data = (await res.json().catch(() => ({})));
-    if (!res.ok || data.tools === undefined) {
-        throw new Error(data.error ?? `HTTP ${res.status}`);
-    }
-    return data.tools;
-}
-function renderTools(tools) {
-    toolsList.replaceChildren(...tools.map((tool) => {
-        const item = document.createElement("li");
-        const label = document.createElement("label");
-        const toggle = document.createElement("input");
-        toggle.type = "checkbox";
-        toggle.checked = tool.enabled;
-        toggle.addEventListener("change", async () => {
-            toggle.disabled = true;
-            try {
-                renderTools(await sendTools({ name: tool.name, enabled: toggle.checked }));
-                toolsError.hidden = true;
-            }
-            catch (err) {
-                showToolsError(err);
-                await refreshTools();
-            }
-        });
-        const name = document.createElement("span");
-        name.textContent = tool.name;
-        label.append(toggle, name);
-        const description = document.createElement("div");
-        description.className = "description";
-        description.innerHTML = renderMarkdown(tool.description);
-        item.append(label, description);
-        return item;
-    }));
-}
-function showToolsError(err) {
-    toolsError.textContent = errorMessage(err);
-    toolsError.hidden = false;
-}
-async function refreshTools() {
-    try {
-        renderTools(await sendTools());
-        toolsError.hidden = true;
-    }
-    catch (err) {
-        showToolsError(err);
-    }
-}
-void refreshTools();
-// Saved sessions in the side panel. The server writes and reads the files; loading replaces the conversation both on
-// screen and in the history the next request sends.
-const sessionForm = document.getElementById("session-form");
-const sessionName = document.getElementById("session-name");
-const sessionsList = document.getElementById("sessions-list");
-const sessionsStatus = document.getElementById("sessions-status");
-// Shows a message in one of the side panel's status lines. An error is shown as an error.
-function showStatus(status, message, isError) {
-    status.textContent = message;
-    status.className = isError ? "error" : "summary";
-    status.hidden = false;
-}
-async function refreshSessions() {
-    try {
-        const { sessions } = await postJson("/api/sessions", { action: "list" });
-        sessionsList.replaceChildren(...sessions.map((name) => {
-            const item = document.createElement("li");
-            const button = document.createElement("button");
-            button.type = "button";
-            button.textContent = name;
-            button.addEventListener("click", () => {
-                void loadSession(name);
-            });
-            item.append(button);
-            return item;
-        }));
-    }
-    catch (err) {
-        showStatus(sessionsStatus, errorMessage(err), true);
-    }
-}
-// Adds one saved message to the log the way the live conversation showed it. Profile instructions are not shown.
-function showMessage(message) {
-    if (message.role === "user") {
-        addEntry("user").textContent = message.content;
-    }
-    else if (message.role === "assistant") {
-        const bubble = addEntry("assistant");
-        const answer = markdownBlock();
-        answer.innerHTML = renderMarkdown(message.content);
-        bubble.append(answer);
-    }
-    else if (message.role === "summary") {
-        addEntry("summary").textContent = "Earlier conversation summarized.";
-    }
-    else if (message.role === "summary_failed") {
-        addEntry("summary").textContent = "Could not summarize the conversation. It will be tried again later.";
-    }
-}
-sessionForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const name = sessionName.value.trim();
-    if (name === "") {
-        return;
-    }
-    // A reply in flight is not part of the conversation yet, so the save waits for it.
-    if (input.disabled) {
-        showStatus(sessionsStatus, "Wait for the reply to finish, then save.", true);
-        return;
-    }
-    try {
-        const { message } = await postJson("/api/sessions", {
-            action: "save",
-            name,
-            messages: conversation,
-            told,
-        });
-        sessionName.value = "";
-        showStatus(sessionsStatus, message, false);
-        await refreshSessions();
-    }
-    catch (err) {
-        showStatus(sessionsStatus, errorMessage(err), true);
-    }
-});
-// The name this conversation autosaves under. It is picked at the first completed turn, and New or Load clears it so
-// the next turn starts a new saved session.
-let autosaveName = null;
-// Saves the conversation after a completed turn. The save runs in the background: a failure shows in the Sessions
-// panel, and the chat is unaffected.
-function autosaveTurn() {
-    autosaveName ??= `auto-${Date.now()}`;
-    postJson("/api/sessions", {
-        action: "save",
-        name: autosaveName,
-        messages: conversation,
-        told,
-    }).then(() => refreshSessions(), (err) => showStatus(sessionsStatus, errorMessage(err), true));
-}
-async function loadSession(name) {
-    if (input.disabled) {
-        showStatus(sessionsStatus, "Wait for the reply to finish, then load.", true);
-        return;
-    }
-    // Input stays off while the session loads, so a message cannot slip in between the request and the replacement.
-    input.disabled = true;
-    try {
-        const data = await postJson("/api/sessions", { action: "load", name });
-        // The default profile must land before the loaded conversation, or it could join the conversation after it.
-        await defaultProfile;
-        conversation.length = 0;
-        conversation.push(...data.messages);
-        told = data.told;
-        autosaveName = null;
-        log.replaceChildren();
-        data.messages.forEach(showMessage);
-        showStatus(sessionsStatus, `Loaded session ${name}.`, false);
-        scrollToEnd();
-    }
-    catch (err) {
-        showStatus(sessionsStatus, errorMessage(err), true);
-    }
-    finally {
-        input.disabled = false;
-        input.focus();
-    }
-}
-const filesTree = document.getElementById("files-tree");
-const filesRefresh = document.getElementById("files-refresh");
-// One entry as a row. A folder is a closed section that fetches its entries when first opened. A file is a button that
-// opens it.
-function treeItem(entry, dir) {
-    const item = document.createElement("li");
-    const path = dir === "" ? entry.name : `${dir}/${entry.name}`;
-    if (entry.dir) {
-        const details = document.createElement("details");
-        const summary = document.createElement("summary");
-        summary.textContent = `${entry.name}/`;
-        const body = document.createElement("div");
-        // A folder is fetched when it is first opened. A failed fetch is tried again on the next opening.
-        let fetched = false;
-        let fetching = false;
-        details.addEventListener("toggle", async () => {
-            if (details.open && !fetched && !fetching) {
-                fetching = true;
-                fetched = (await loadFolderPage(path, body, null)) !== null;
-                fetching = false;
-            }
-        });
-        details.append(summary, body);
-        item.append(details);
-    }
-    else {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "file-link";
-        button.textContent = entry.name;
-        button.addEventListener("click", () => {
-            openFile(path);
-        });
-        item.append(button);
-    }
-    return item;
-}
-// Adds one page of a folder's entries to its body, with Load more when more follow. A failed request shows its reason
-// and keeps Load more, so the same page can be asked for again. The list and the controls are found as direct children,
-// so a folder nested inside never picks up this one's controls.
-// The folders whose page is being fetched. A second request for the same folder waits for the first, so a double click
-// on Load more cannot append the same entries twice.
-const fetchingFolders = new WeakSet();
-async function loadFolderPage(dir, body, after) {
-    if (fetchingFolders.has(body)) {
-        return null;
-    }
-    fetchingFolders.add(body);
-    body.querySelector(":scope > .tree-error")?.remove();
-    let list = body.querySelector(":scope > ul");
-    if (list === null) {
-        list = document.createElement("ul");
-        body.append(list);
-    }
-    try {
-        const page = await postJson("/api/files", { dir, after });
-        body.querySelector(":scope > .tree-more")?.remove();
-        list.append(...page.entries.map((entry) => treeItem(entry, dir)));
-        if (page.more && page.next !== null) {
-            const next = page.next;
-            const more = document.createElement("button");
-            more.type = "button";
-            more.className = "tree-more";
-            more.textContent = "Load more";
-            more.addEventListener("click", () => {
-                void loadFolderPage(dir, body, next);
-            });
-            body.append(more);
-        }
-        return page;
-    }
-    catch (err) {
-        const error = document.createElement("p");
-        error.className = "error tree-error";
-        error.textContent = errorMessage(err);
-        body.append(error);
-        return null;
-    }
-    finally {
-        fetchingFolders.delete(body);
-    }
-}
 const MIN_TOOLS_PX = 160;
 const MIN_VIEWERS_PX = 224;
 // The chat's preferred width, 24rem. The panels leave it this much when they can, and it gives way in a narrow window.
@@ -883,159 +1047,7 @@ for (const resizable of [toolsPanel, viewersPanel]) {
     watchDivider(resizable);
 }
 applyPanelWidths();
-async function refreshFiles() {
-    filesTree.replaceChildren();
-    const page = await loadFolderPage("", filesTree, null);
-    if (page !== null) {
-        const title = document.createElement("p");
-        title.className = "description";
-        title.textContent = `${page.name}/`;
-        filesTree.prepend(title);
-    }
-}
-filesRefresh.addEventListener("click", () => {
-    void refreshFiles();
-});
-const notesList = document.getElementById("notes-list");
-const notesStatus = document.getElementById("notes-status");
-const notesNew = document.getElementById("notes-new");
-const noteForm = document.getElementById("note-form");
-const noteScope = document.getElementById("note-scope");
-const noteCategory = document.getElementById("note-category");
-const noteName = document.getElementById("note-name");
-const noteContent = document.getElementById("note-content");
-const noteDelete = document.getElementById("note-delete");
-const notePreview = document.getElementById("note-preview");
-const notePreviewToggle = document.getElementById("note-preview-toggle");
-const profilePicker = document.getElementById("profile-picker");
-const NEW_NOTE_TEXT = "---\nname: \nsummary: \n---\n";
-// The note open in the editor. Null while a new note is being written.
-let editing = null;
-// One request to the notes API.
-function notesApi(body) {
-    return postJson("/api/notes", body);
-}
-function setEditing(note, text) {
-    editing = note;
-    noteScope.value = note?.scope ?? "local";
-    noteCategory.value = note?.category ?? "";
-    noteName.value = note?.name ?? "";
-    // An existing note keeps its address, so saving it cannot rename it.
-    noteScope.disabled = note !== null;
-    noteCategory.readOnly = note !== null;
-    noteName.readOnly = note !== null;
-    noteContent.value = text;
-    noteDelete.hidden = note === null;
-    showPreview(false);
-}
-// Shows the note's rendered markdown in place of the editor, or the editor again. Saving uses the editor's text.
-function showPreview(on) {
-    noteContent.hidden = on;
-    notePreview.hidden = !on;
-    notePreviewToggle.textContent = on ? "Edit" : "Preview";
-    if (on) {
-        notePreview.innerHTML = renderMarkdown(noteContent.value);
-    }
-    else {
-        fitNoteContent();
-    }
-}
-// The editor is as tall as its text, so it never scrolls inside the Notes pane. The height includes the border, which
-// scrollHeight leaves out.
-function fitNoteContent() {
-    noteContent.style.height = "auto";
-    const border = noteContent.offsetHeight - noteContent.clientHeight;
-    noteContent.style.height = `${noteContent.scrollHeight + border}px`;
-}
-noteContent.addEventListener("input", fitNoteContent);
-// Wrapping changes with the width, and an editor inside a closed section has no height until it is opened. Both are
-// measured again when the editor's size changes.
-new ResizeObserver(fitNoteContent).observe(noteContent);
-notePreviewToggle.addEventListener("click", () => showPreview(notePreview.hidden === true));
-async function refreshNotes() {
-    try {
-        const { notes: profiles } = await notesApi({ action: "profiles" });
-        profilePicker.replaceChildren(new Option("Use a profile…", ""), ...profiles.map((profile) => new Option(`${profile.scope} ${profile.category}/${profile.name}`, `${profile.scope}/${profile.category}/${profile.name}`)));
-        const { notes } = await notesApi({ action: "list" });
-        notesList.replaceChildren(...notes.map((note) => {
-            const item = document.createElement("li");
-            const button = document.createElement("button");
-            button.type = "button";
-            button.textContent = `${note.scope} ${note.category}/${note.name}`;
-            button.addEventListener("click", () => {
-                void openNote({ scope: note.scope, category: note.category, name: note.name });
-            });
-            item.append(button);
-            if (note.summary !== null) {
-                const summary = document.createElement("div");
-                summary.className = "description";
-                summary.innerHTML = renderMarkdown(note.summary);
-                item.append(summary);
-            }
-            return item;
-        }));
-    }
-    catch (err) {
-        showStatus(notesStatus, errorMessage(err), true);
-    }
-}
-async function openNote(note) {
-    try {
-        const { text } = await notesApi({ action: "read", ...note });
-        setEditing(note, text);
-        notesStatus.hidden = true;
-    }
-    catch (err) {
-        showStatus(notesStatus, errorMessage(err), true);
-    }
-}
-function newNote() {
-    setEditing(null, NEW_NOTE_TEXT);
-    notesStatus.hidden = true;
-}
-notesNew.addEventListener("click", newNote);
-// Choosing a profile sends /profile through the chat, the same as typing it, so the reply and the instructions take
-// the same path as any command.
-profilePicker.addEventListener("change", () => {
-    const ref = profilePicker.value;
-    profilePicker.value = "";
-    if (ref === "" || input.disabled) {
-        return;
-    }
-    input.value = `/profile ${ref}`;
-    form.requestSubmit();
-});
-noteForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const note = editing ?? { scope: noteScope.value, category: noteCategory.value, name: noteName.value };
-    try {
-        const { message } = await notesApi({
-            action: editing === null ? "create" : "update",
-            ...note,
-            content: noteContent.value,
-        });
-        setEditing(note, noteContent.value);
-        showStatus(notesStatus, message, false);
-        await refreshNotes();
-    }
-    catch (err) {
-        showStatus(notesStatus, errorMessage(err), true);
-    }
-});
-noteDelete.addEventListener("click", async () => {
-    if (editing === null || !window.confirm(`Delete ${editing.scope} ${editing.category}/${editing.name}?`)) {
-        return;
-    }
-    try {
-        const { message } = await notesApi({ action: "delete", ...editing });
-        newNote();
-        showStatus(notesStatus, message, false);
-        await refreshNotes();
-    }
-    catch (err) {
-        showStatus(notesStatus, errorMessage(err), true);
-    }
-});
+void refreshTools();
 void refreshNotes();
 void refreshSessions();
 void refreshFiles();
