@@ -7,6 +7,7 @@ use crate::strata::{Message, Role};
 pub struct Session {
     messages: Vec<Message>,
     told: BTreeSet<String>,
+    autosave: Option<String>,
 }
 
 impl Session {
@@ -14,7 +15,14 @@ impl Session {
         Session {
             messages: Vec::new(),
             told: BTreeSet::new(),
+            autosave: None,
         }
+    }
+
+    /// The name this conversation autosaves under. It is `None` until the first autosave picks one. A reset or a
+    /// load clears it, so the next autosave starts a new saved session.
+    pub fn autosave_name(&mut self) -> &mut Option<String> {
+        &mut self.autosave
     }
 
     pub fn messages(&self) -> &[Message] {
@@ -43,11 +51,13 @@ impl Session {
     pub fn reset(&mut self) {
         self.messages.clear();
         self.told.clear();
+        self.autosave = None;
     }
 
     /// Replaces the conversation with a saved one, including the switched-off tools the model was told about.
     pub fn restore(&mut self, messages: Vec<Message>, told: BTreeSet<String>) {
         self.messages = messages;
         self.told = told;
+        self.autosave = None;
     }
 }

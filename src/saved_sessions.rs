@@ -6,6 +6,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 
@@ -46,6 +47,18 @@ pub fn command(line: &str, session: &mut Session, working: Option<&Path>) -> Opt
         _ => return None,
     };
     Some(result.unwrap_or_else(|err| format!("error: {err}")))
+}
+
+/// Saves the conversation after a completed turn, under the conversation's autosave name. The first autosave picks a
+/// name from the time, and later ones reuse it.
+pub fn autosave(working: Option<&Path>, session: &mut Session) -> Result<(), String> {
+    let name = session.autosave_name().get_or_insert_with(auto_name).clone();
+    save(working, &name, session.messages(), session.told()).map(|_| ())
+}
+
+fn auto_name() -> String {
+    let millis = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |time| time.as_millis());
+    format!("auto-{millis}")
 }
 
 /// Writes the conversation as session `name`, replacing any session already saved under that name.
@@ -211,6 +224,27 @@ mod tests {
         assert_eq!(usage.as_deref(), Some("error: usage: /load <name>"));
         assert_eq!(command("/save my work", &mut session, Some(&root)).as_deref(), Some("error: usage: /save <name>"));
         assert_eq!(command("hello", &mut session, Some(&root)), None);
+    }
+
+    #[test]
+    fn autosave_keeps_one_name_until_the_conversation_is_reset() {
+        let root = folder("autosave");
+        let mut session = Session::new();
+        session.push(Role::User, "one".to_owned());
+        autosave(Some(&root), &mut session).unwrap();
+        let first = session.autosave_name().clone();
+        session.push(Role::Assistant, "two".to_owned());
+        autosave(Some(&root), &mut session).unwrap();
+        let kept = session.autosave_name().clone();
+        let count = list(Some(&root)).unwrap().len();
+        session.reset();
+        let cleared = session.autosave_name().is_none();
+        fs::remove_dir_all(&root).unwrap();
+
+        assert!(first.as_deref().is_some_and(|name| name.starts_with("auto-")));
+        assert_eq!(kept, first);
+        assert_eq!(count, 1);
+        assert!(cleared);
     }
 
     #[test]

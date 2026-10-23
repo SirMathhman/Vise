@@ -187,6 +187,9 @@ fn main() -> io::Result<()> {
                     }
                     session.push(entry.role, entry.content);
                 }
+                if let Err(err) = saved_sessions::autosave(config.working_dir.as_deref().map(Path::new), &mut session) {
+                    eprintln!("warning: could not autosave the conversation: {err}");
+                }
             }
         }
     }
