@@ -19,6 +19,13 @@ const SESSIONS_DIR: &str = ".vise/sessions";
 pub struct Saved {
     pub messages: Vec<Message>,
     pub told: BTreeSet<String>,
+    pub title: Option<String>,
+}
+
+/// A saved session's name, with its title if it has one.
+pub struct Listed {
+    pub name: String,
+    pub title: Option<String>,
 }
 
 /// Handles `/save <name>`, `/load <name>`, and `/sessions`. Returns the text to show, or `None` if the line is not
@@ -68,13 +75,15 @@ fn auto_name() -> String {
     format!("auto-{millis}")
 }
 
-/// Writes the conversation as session `name`, replacing any session already saved under that name.
+/// Writes the conversation as session `name`, replacing any session already saved under that name. The title the
+/// session already has is kept, so a later save does not lose it.
 pub fn save(working: Option<&Path>, name: &str, messages: &[Message], told: &BTreeSet<String>) -> Result<String, String> {
     let path = session_path(working, name)?;
     let replaced = path.exists();
     let folder = path.parent().ok_or_else(|| format!("cannot save session {name}"))?;
     fs::create_dir_all(folder).map_err(|err| format!("could not create {SESSIONS_DIR}: {err}"))?;
-    fs::write(&path, to_value(messages, told).to_string())
+    let title = stored_title(working, name);
+    fs::write(&path, to_value(messages, told, title.as_deref()).to_string())
         .map_err(|err| format!("could not write session {name}: {err}"))?;
     Ok(if replaced {
         format!("Replaced session {name}.")
@@ -88,6 +97,32 @@ pub fn load(working: Option<&Path>, name: &str) -> Result<Saved, String> {
     let text = fs::read_to_string(&path).map_err(|err| format!("could not read session {name}: {err}"))?;
     let data: Value = serde_json::from_str(&text).map_err(|err| format!("session {name} is not valid JSON: {err}"))?;
     from_value(&data).map_err(|err| format!("session {name}: {err}"))
+}
+
+/// Sets the title of session `name`, which must already be saved. The conversation is kept as it is.
+pub fn set_title(working: Option<&Path>, name: &str, title: &str) -> Result<(), String> {
+    let saved = load(working, name)?;
+    let path = session_path(working, name)?;
+    fs::write(&path, to_value(&saved.messages, &saved.told, Some(title)).to_string())
+        .map_err(|err| format!("could not write session {name}: {err}"))
+}
+
+/// The title of session `name`, if it has one. A file that cannot be read has none.
+pub fn stored_title(working: Option<&Path>, name: &str) -> Option<String> {
+    let path = session_path(working, name).ok()?;
+    let data: Value = serde_json::from_str(&fs::read_to_string(path).ok()?).ok()?;
+    data["title"].as_str().map(str::to_owned)
+}
+
+/// The saved sessions with their titles, sorted by name.
+pub fn listed(working: Option<&Path>) -> Result<Vec<Listed>, String> {
+    Ok(list(working)?
+        .into_iter()
+        .map(|name| {
+            let title = stored_title(working, &name);
+            Listed { name, title }
+        })
+        .collect())
 }
 
 /// The names of the saved sessions, sorted. A missing folder means there are none.
@@ -111,12 +146,12 @@ pub fn list(working: Option<&Path>) -> Result<Vec<String>, String> {
 }
 
 /// The JSON form of a conversation, as it is written to a session file and sent to the web page.
-pub fn to_value(messages: &[Message], told: &BTreeSet<String>) -> Value {
+pub fn to_value(messages: &[Message], told: &BTreeSet<String>, title: Option<&str>) -> Value {
     let items: Vec<Value> = messages
         .iter()
         .map(|message| json!({ "role": message.role.name(), "content": message.content }))
         .collect();
-    json!({ "messages": items, "told": told })
+    json!({ "messages": items, "told": told, "title": title })
 }
 
 fn from_value(data: &Value) -> Result<Saved, String> {
@@ -146,7 +181,8 @@ fn from_value(data: &Value) -> Result<Saved, String> {
         .iter()
         .map(|name| name.as_str().map(str::to_owned).ok_or("told must list tool names"))
         .collect::<Result<BTreeSet<String>, _>>()?;
-    Ok(Saved { messages, told })
+    let title = data["title"].as_str().map(str::to_owned);
+    Ok(Saved { messages, told, title })
 }
 
 /// The file a session name stands for. The name is checked before it becomes a path, so it cannot leave the folder.
@@ -256,6 +292,21 @@ mod tests {
         assert_eq!(count, 1);
         assert!(cleared_by_reset);
         assert!(cleared_by_restore);
+    }
+
+    #[test]
+    fn a_title_survives_later_saves_and_shows_in_the_listing() {
+        let root = folder("title");
+        let messages = vec![message(Role::User, "hi")];
+        save(Some(&root), "titled", &messages, &BTreeSet::new()).unwrap();
+        set_title(Some(&root), "titled", "Greeting").unwrap();
+        save(Some(&root), "titled", &messages, &BTreeSet::new()).unwrap();
+        let listed = listed(Some(&root));
+        fs::remove_dir_all(&root).unwrap();
+
+        let listed = listed.unwrap();
+        assert_eq!(listed[0].name, "titled");
+        assert_eq!(listed[0].title.as_deref(), Some("Greeting"));
     }
 
     #[test]

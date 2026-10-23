@@ -17,6 +17,7 @@ use crate::notes;
 use crate::saved_sessions;
 use crate::tools::{self, Switches};
 use crate::strata::{self, Chunk, Config, Message, Role};
+use crate::titles;
 
 pub const DEFAULT_PORT: u16 = 3000;
 
@@ -399,9 +400,15 @@ fn sessions_response(body: &[u8], config: &Config) -> Response {
             .and_then(|messages| saved_sessions::save(working, name, &messages, &parse_told(body)))
             .map(|message| json!({ "message": message })),
         Some("load") => saved_sessions::load(working, name)
-            .map(|saved| saved_sessions::to_value(&saved.messages, &saved.told)),
-        Some("list") => saved_sessions::list(working).map(|names| json!({ "sessions": names })),
-        _ => Err("action must be save, load, or list".to_owned()),
+            .map(|saved| saved_sessions::to_value(&saved.messages, &saved.told, saved.title.as_deref())),
+        Some("list") => saved_sessions::listed(working).map(|listed| {
+            let sessions: Vec<Value> = listed.into_iter().map(|item| json!({ "name": item.name, "title": item.title })).collect();
+            json!({ "sessions": sessions })
+        }),
+        Some("title") => parse_messages(body)
+            .and_then(|messages| titles::ensure(working, name, &messages, config))
+            .map(|title| json!({ "title": title })),
+        _ => Err("action must be save, load, list, or title".to_owned()),
     };
     match result {
         Ok(value) => json_response(200, value),

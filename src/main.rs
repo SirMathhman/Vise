@@ -7,6 +7,7 @@ mod notes;
 mod saved_sessions;
 mod session;
 mod strata;
+mod titles;
 mod tools;
 mod web;
 mod workspace;

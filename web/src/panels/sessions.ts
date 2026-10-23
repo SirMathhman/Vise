@@ -9,13 +9,16 @@ const sessionsStatus = document.getElementById("sessions-status") as HTMLParagra
 
 async function refreshSessions(): Promise<void> {
   try {
-    const { sessions } = await postJson<{ sessions: string[] }>("/api/sessions", { action: "list" });
+    const { sessions } = await postJson<{ sessions: { name: string; title: string | null }[] }>("/api/sessions", {
+      action: "list",
+    });
     sessionsList.replaceChildren(
-      ...sessions.map((name) => {
+      ...sessions.map(({ name, title }) => {
         const item = document.createElement("li");
         const button = document.createElement("button");
         button.type = "button";
-        button.textContent = name;
+        // A session without a title shows its name.
+        button.textContent = title ?? name;
         button.addEventListener("click", () => {
           void loadSession(name);
         });
@@ -73,20 +76,30 @@ sessionForm.addEventListener("submit", async (event) => {
 
 // Saves a chat's conversation after a completed turn. The save runs in the background: a failure shows in the Sessions
 // panel, and the chat is unaffected. The chat's name is picked at its first save, so later turns update the same session.
+// After the first turn, the session is also given a title, asked of the model from that first exchange.
 function autosaveTurn(chat: Chat): void {
   if (chat.autosaveName === null) {
     chat.autosaveName = `auto-${Date.now()}`;
     saveChats();
   }
+  const name = chat.autosaveName;
+  const firstTurn = chat.conversation.filter((message) => message.role === "user").length === 1;
+  const exchange = chat.conversation.filter((message) => message.role === "user" || message.role === "assistant").slice(0, 2);
   postJson<{ message: string }>("/api/sessions", {
     action: "save",
-    name: chat.autosaveName,
+    name,
     messages: chat.conversation,
     told: chat.told,
-  }).then(
-    () => refreshSessions(),
-    (err) => showStatus(sessionsStatus, errorMessage(err), true),
-  );
+  })
+    .then(async () => {
+      if (firstTurn) {
+        await postJson<{ title: string }>("/api/sessions", { action: "title", name, messages: exchange });
+      }
+    })
+    .then(
+      () => refreshSessions(),
+      (err) => showStatus(sessionsStatus, errorMessage(err), true),
+    );
 }
 
 // Fills a chat from a saved session: its conversation and switches are replaced, and its log shows the saved messages.
