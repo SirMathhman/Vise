@@ -1091,6 +1091,16 @@ function finishReasoning(reply) {
         reply.thinking.open = false;
     }
 }
+// Starts the next step of a workflow: a line that names the step, and a new reply under it. The reply before it is
+// removed if nothing was shown in it.
+function stepReply(chat, previous, text) {
+    finishReasoning(previous);
+    if (previous.bubble.textContent === "") {
+        previous.bubble.remove();
+    }
+    addEntry(chat, "summary").textContent = text;
+    return startReply(chat);
+}
 // Shows one streamed piece of the reply in its place in the bubble.
 function showStreamed(reply, streamed) {
     if (streamed.type !== "reasoning") {
@@ -1143,15 +1153,22 @@ function keepReply(chat, done, command) {
         chat.conversation.push({ role: "profile", content: done.profile });
     }
     if (!command) {
-        // The server may have added a note about switch changes to this user message, and returns the
-        // record of switches the model now knows about. Both are kept only once the reply has arrived.
-        if (done.user_message != null) {
-            chat.conversation[chat.conversation.length - 1].content = done.user_message;
+        if (done.workflow != null) {
+            // A workflow's messages take the place of the command line it was sent as.
+            chat.conversation.pop();
+            chat.conversation.push(...done.workflow);
+        }
+        else {
+            // The server may have added a note about switch changes to this user message. The note and the record of switches
+            // the model now knows about are kept only once the reply has arrived.
+            if (done.user_message != null) {
+                chat.conversation[chat.conversation.length - 1].content = done.user_message;
+            }
+            chat.conversation.push({ role: "assistant", content: done.answer });
         }
         if (done.told) {
             chat.told = done.told;
         }
-        chat.conversation.push({ role: "assistant", content: done.answer });
         // A summary is appended after the reply. The earlier messages stay in the log, unchanged.
         if (done.summary != null) {
             chat.conversation.push({ role: "summary", content: done.summary });
@@ -1220,13 +1237,20 @@ form.addEventListener("submit", async (event) => {
         chat.conversation.push({ role: "user", content: text });
     }
     addEntry(chat, "user").textContent = text;
-    const reply = startReply(chat);
+    let reply = startReply(chat);
     try {
         const messages = command ? [...chat.conversation, { role: "user", content: text }] : chat.conversation;
         const controller = new AbortController();
         chat.inFlight = controller;
         refreshForm();
-        const done = await streamChat(messages, chat.told, (streamed) => showStreamed(reply, streamed), controller.signal);
+        const done = await streamChat(messages, chat.told, (streamed) => {
+            if (streamed.type === "step") {
+                reply = stepReply(chat, reply, streamed.text);
+            }
+            else {
+                showStreamed(reply, streamed);
+            }
+        }, controller.signal);
         finishReasoning(reply);
         keepReply(chat, done, command);
     }

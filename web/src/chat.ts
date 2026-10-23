@@ -15,7 +15,8 @@ type StreamEvent =
   | { type: "subagent_start"; profile: string; task: string }
   | { type: "nested"; event: StreamEvent }
   | { type: "subagent_end"; failed: boolean }
-  | { type: "done"; answer: string; user_message?: string | null; told?: string[]; summary?: string | null; summary_failed?: string | null; profile?: string | null }
+  | { type: "step"; text: string }
+  | { type: "done"; answer: string; user_message?: string | null; told?: string[]; summary?: string | null; summary_failed?: string | null; profile?: string | null; workflow?: Message[] | null }
   | { type: "error"; error: string; ran?: string[] };
 
 // The error, with the tool calls that ran before it: their effects remain even though the turn did not finish.
