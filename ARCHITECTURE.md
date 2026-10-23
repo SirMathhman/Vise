@@ -135,6 +135,11 @@ The `done` event carries the turn's final answer, and the web page stores that t
 
 `web.rs` limits requests before reading the body: bodies over 1 MiB get 413, and POST `/api/chat` requires `Content-Type: application/json` or it gets 415. Each connection has a 10-second read timeout on the client socket. Each connection is handled on its own thread, so one slow client does not block others. The chat route sends the event-stream headers when the first event is ready. A failure before that is a 502 JSON response.
 
+## UI Principles
+
+- **Avoid nested scrollbars.** A region that scrolls should sit inside a pane that does not also scroll, so a user never has to scroll one box to reach another. Content inside a pane grows to its full height, and the pane is the only thing that scrolls. Long lines wrap instead of scrolling sideways. Where a control cannot avoid its own scroll (a textarea, for example), it should be the only scrolling thing in its pane.
+- Side-panel sections are native `details` elements. Only the open ones take height, and a closed one is just its heading.
+
 ## Potential Problems
 
 - **Write tools run without confirmation.** The four write tools change files inside the working directory as soon as the model asks. A model error or injected instruction can create or delete files there. The boundary limits the blast radius but does not prevent it.

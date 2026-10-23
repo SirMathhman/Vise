@@ -257,16 +257,16 @@
         font-family: ui-monospace, monospace;
         font-size: 0.85em;
       }
+      /* The viewer has no scrollbar of its own: the Files pane scrolls, and long lines wrap rather than scroll sideways. */
       #file-view-text {
-        max-height: 20rem;
-        overflow: auto;
         margin: 0.5rem 0 0;
         padding: 0.5rem;
         background: #f3f3f3;
         border-radius: 0.4rem;
         font-family: ui-monospace, monospace;
         font-size: 0.8em;
-        white-space: pre;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
       }
       #notes-list,
       #sessions-list {
