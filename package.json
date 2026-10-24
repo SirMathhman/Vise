@@ -5,7 +5,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "concurrently -n web,server -c blue,green \"pnpm --filter web dev\" \"cargo run --manifest-path apps/server/Cargo.toml\"",
+    "dev": "concurrently -n web,server -c blue,green \"pnpm --filter web dev\" \"cd apps/server && cargo-watch -x run\"",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

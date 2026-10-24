@@ -67,6 +67,7 @@ async fn chat(
 
 #[tokio::main]
 async fn main() {
+    dotenv::dotenv().ok();
     let config = Config::from_env().expect("failed to load config");
 
     let state = AppState {
@@ -85,3 +86,4 @@ async fn main() {
     let listener = TcpListener::bind(&addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
+
