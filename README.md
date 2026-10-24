@@ -53,7 +53,7 @@ The text of the note.
 To serve the web UI from Rust, without the watch tools:
 
 ```bash
-cargo run -- web
+cargo run --bin vise-web
 ```
 
 The web UI is then at `http://127.0.0.1:3000`.
@@ -82,3 +82,20 @@ To build the page once without watching:
 ```bash
 npm run build
 ```
+
+## Production build
+
+`npm run package` builds both executables in release mode and copies them into `dist/`:
+
+- `vise-repl.exe`: the terminal REPL.
+- `vise-web.exe`: the web UI and its server, in one executable. The page is compiled into it.
+
+Strata's URL, the model, and the read timeout come from a `.env` file, which is read from the folder beside the executable, or else from the folder it is started in. A variable already set in the environment wins over the file. `dist/.env.example` lists the three settings:
+
+```
+VISE_URL=http://127.0.0.1:8080/v1/chat/completions
+VISE_MODEL=qwen3.8-flash-next-iq2_xs
+VISE_READ_TIMEOUT_SECS=60
+```
+
+The web UI still listens on `http://127.0.0.1:3000`, which is fixed.
