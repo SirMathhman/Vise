@@ -14,6 +14,7 @@ use config::Config;
 struct AppState {
     client: reqwest::Client,
     config: Config,
+    cwd: String,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -36,9 +37,23 @@ async fn chat(
     Json(req): Json<ChatRequest>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
     let cfg = &state.config;
+    let system = format!(
+        "You are Vise, a local-first chat assistant. Your current working directory is: {}",
+        state.cwd
+    );
+    let messages = std::iter::once(serde_json::json!({
+        "role": "system",
+        "content": system,
+    }))
+    .chain(req.messages.iter().map(|m| serde_json::json!({
+        "role": m.role,
+        "content": m.content,
+    })))
+    .collect::<Vec<_>>();
+
     let body = serde_json::json!({
         "model": cfg.llama_model,
-        "messages": req.messages,
+        "messages": messages,
     });
 
     let resp = state
@@ -76,9 +91,14 @@ async fn main() {
     dotenv::dotenv().ok();
     let config = Config::from_env().expect("failed to load config");
 
+    let cwd = std::env::current_dir()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|_| "unknown".to_string());
+
     let state = AppState {
         client: reqwest::Client::new(),
         config,
+        cwd,
     };
 
     let port = state.config.server_port;
