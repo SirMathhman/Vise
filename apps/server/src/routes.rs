@@ -2,7 +2,7 @@ use axum::extract::State;
 use axum::Json;
 use serde_json::{json, Value};
 
-use crate::agent::run_agent;
+use crate::agent::{run_agent, AgentResult};
 use crate::error::AppError;
 use crate::llama::ChatRequest;
 
@@ -39,7 +39,7 @@ pub async fn chat(
         }));
     }
 
-    let content = run_agent(&state, &mut messages).await?;
+    let result: AgentResult = run_agent(&state, &mut messages).await?;
 
-    Ok(Json(json!({ "content": content })))
+    Ok(Json(serde_json::to_value(&result).map_err(|e| AppError::Internal(e.to_string()))?))
 }

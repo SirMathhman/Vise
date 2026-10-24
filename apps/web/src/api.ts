@@ -3,8 +3,15 @@ export interface Message {
   content: string;
 }
 
+export interface ToolUse {
+  name: string;
+  arguments: Record<string, unknown>;
+  result: string;
+}
+
 export interface ChatResponse {
   content?: string;
+  tool_calls?: ToolUse[];
 }
 
 export async function sendChat(messages: Message[]): Promise<ChatResponse> {

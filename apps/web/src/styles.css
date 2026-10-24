@@ -39,6 +39,49 @@ body {
   font-style: italic;
 }
 
+.tool-use {
+  max-width: 80%;
+  margin: 0.4rem 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #d0d7de;
+  border-left: 3px solid #6e7681;
+  border-radius: 6px;
+  background: #f6f8fa;
+  font-size: 0.85rem;
+}
+
+.tool-use-header {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  margin-bottom: 0.35rem;
+}
+
+.tool-name {
+  font-weight: 600;
+  color: #0969da;
+}
+
+.tool-args {
+  color: #57606a;
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+  word-break: break-all;
+}
+
+.tool-result {
+  margin: 0;
+  padding: 0.4rem;
+  background: #eaeef2;
+  border-radius: 4px;
+  white-space: pre-wrap;
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+  color: #24292f;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
 form {
   display: flex;
   gap: 0.5rem;

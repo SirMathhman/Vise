@@ -1,7 +1,11 @@
-import { Message, sendChat } from "./api";
+import { Message, ToolUse, sendChat } from "./api";
+
+interface AssistantMessage extends Message {
+  tool_calls?: ToolUse[];
+}
 
 export class ChatApp {
-  private history: Message[] = [];
+  private history: AssistantMessage[] = [];
   private log: HTMLElement;
   private input: HTMLInputElement;
 
@@ -17,6 +21,21 @@ export class ChatApp {
       div.className = `msg ${msg.role}`;
       div.textContent = msg.content;
       this.log.appendChild(div);
+
+      if (msg.tool_calls) {
+        for (const tool of msg.tool_calls) {
+          const block = document.createElement("div");
+          block.className = "tool-use";
+          block.innerHTML = `
+            <div class="tool-use-header">
+              <span class="tool-name">${tool.name}</span>
+              <span class="tool-args">${JSON.stringify(tool.arguments)}</span>
+            </div>
+            <pre class="tool-result">${escapeHtml(tool.result)}</pre>
+          `;
+          this.log.appendChild(block);
+        }
+      }
     }
     this.log.scrollTop = this.log.scrollHeight;
   }
@@ -38,7 +57,11 @@ export class ChatApp {
     try {
       const data = await sendChat(this.history);
       const reply = data.content ?? "(empty response)";
-      this.history.push({ role: "assistant", content: reply });
+      this.history.push({
+        role: "assistant",
+        content: reply,
+        tool_calls: data.tool_calls,
+      });
       pending.remove();
       this.render();
     } catch (err) {
@@ -47,4 +70,12 @@ export class ChatApp {
       this.render();
     }
   }
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
