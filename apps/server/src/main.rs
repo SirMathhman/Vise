@@ -2,6 +2,7 @@ use axum::routing::{get, post};
 use axum::Router;
 use tokio::net::TcpListener;
 
+mod agent;
 mod config;
 mod error;
 mod llama;
