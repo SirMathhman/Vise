@@ -11,7 +11,7 @@ use crate::approval::{self, Approvals, Source, Verdict};
 use crate::edits::Undo;
 use crate::notes;
 use crate::chunk::Chunk;
-use crate::workspace::{line_range, read_range, resolve, string_arg};
+use crate::workspace::{line_range, read_range, refuse_env_file, resolve, string_arg};
 
 pub const LIST_FILES: &str = "list_files";
 pub const READ_FILE: &str = "read_file";
@@ -395,6 +395,7 @@ fn read_file(arguments: &str, root: Option<&Path>) -> Result<String, String> {
 fn create_file(arguments: &str, root: Option<&Path>) -> Result<String, String> {
     let args = parse_arguments(arguments)?;
     let path = string_arg(&args, "path")?;
+    refuse_env_file(path)?;
     let content = string_arg(&args, "content")?;
     let target = resolve(root, path, false)?;
 
@@ -414,6 +415,7 @@ fn create_file(arguments: &str, root: Option<&Path>) -> Result<String, String> {
 fn create_directory(arguments: &str, root: Option<&Path>) -> Result<String, String> {
     let args = parse_arguments(arguments)?;
     let path = string_arg(&args, "path")?;
+    refuse_env_file(path)?;
     let target = resolve(root, path, false)?;
     if target.exists() {
         return Err(format!("already exists: {path}"));
@@ -425,6 +427,7 @@ fn create_directory(arguments: &str, root: Option<&Path>) -> Result<String, Stri
 fn delete_file(arguments: &str, root: Option<&Path>) -> Result<String, String> {
     let args = parse_arguments(arguments)?;
     let path = string_arg(&args, "path")?;
+    refuse_env_file(path)?;
     let target = resolve(root, path, false)?;
     if target.is_dir() {
         return Err(format!("is a directory, use delete_directory: {path}"));
@@ -437,6 +440,7 @@ fn delete_file(arguments: &str, root: Option<&Path>) -> Result<String, String> {
 fn delete_directory(arguments: &str, root: Option<&Path>) -> Result<String, String> {
     let args = parse_arguments(arguments)?;
     let path = string_arg(&args, "path")?;
+    refuse_env_file(path)?;
     let target = resolve(root, path, false)?;
     if target.is_file() {
         return Err(format!("is a file, use delete_file: {path}"));
@@ -684,5 +688,28 @@ mod call_tests {
         assert!(matches!(outcome, Outcome::Ran(ref text) if text.as_str() == "created file hello.txt"));
         assert_eq!(fs::read_to_string(root.join("hello.txt")).unwrap(), "hi");
         fs::remove_dir_all(&root).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod env_file_tests {
+    use super::*;
+
+    #[test]
+    fn the_file_tools_cannot_create_or_delete_a_settings_file() {
+        let root = std::env::temp_dir().join(format!("vise-env-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+
+        let created = run(CREATE_FILE, r#"{"path":".env","content":"VISE_URL=http://evil.example"}"#, Some(&root));
+        let created_anything = root.join(".env").exists();
+        fs::write(root.join(".env"), "VISE_URL=http://127.0.0.1:8080/v1/chat/completions\n").unwrap();
+        let deleted = run(DELETE_FILE, r#"{"path":".env"}"#, Some(&root));
+        let kept = fs::read_to_string(root.join(".env")).unwrap();
+        fs::remove_dir_all(&root).unwrap();
+
+        assert!(created.starts_with("error:") && !created_anything);
+        assert!(deleted.starts_with("error:"));
+        assert!(kept.contains("127.0.0.1:8080"));
     }
 }

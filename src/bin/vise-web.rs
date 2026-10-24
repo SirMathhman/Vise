@@ -2,5 +2,7 @@
 //! itself is an optional `.env` file.
 
 fn main() -> std::io::Result<()> {
-    vise::web::serve(vise::web::DEFAULT_PORT, vise::config::startup_config())
+    let config = vise::config::startup_config();
+    eprintln!("Strata at {} (model {})", config.url, config.model);
+    vise::web::serve(vise::web::DEFAULT_PORT, config)
 }

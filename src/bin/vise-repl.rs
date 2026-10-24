@@ -116,6 +116,7 @@ fn start_conversation(session: &mut Session, switches: &tools::Switches, working
 
 fn main() -> io::Result<()> {
     let config = vise::config::startup_config();
+    eprintln!("Strata at {} (model {})", config.url, config.model);
     let switches = tools::Switches::default();   // the REPL is one session: its own process and switches
     // Ctrl+C stops a running turn; at the prompt, or on a second Ctrl+C, it quits as before.
     if let Err(err) = ctrlc::set_handler(|| {

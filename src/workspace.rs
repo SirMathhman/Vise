@@ -58,6 +58,16 @@ pub fn resolve(root: Option<&Path>, path: &str, allow_root: bool) -> Result<Path
     Ok(resolved)
 }
 
+/// Refuses a path that names a `.env` settings file, in any folder. The file sets the Strata endpoint that conversations
+/// are sent to, so the file tools may read it but not create, change or delete it.
+pub fn refuse_env_file(path: &str) -> Result<(), String> {
+    let names_env = Path::new(path).components().any(|part| part.as_os_str().to_string_lossy().starts_with(".env"));
+    if names_env {
+        return Err(format!("{path} is a settings file, and the file tools cannot change it"));
+    }
+    Ok(())
+}
+
 pub fn string_arg<'a>(args: &'a Value, key: &str) -> Result<&'a str, String> {
     args.get(key)
         .and_then(Value::as_str)

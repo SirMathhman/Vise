@@ -31,7 +31,9 @@ pub fn startup_config() -> Config {
 
 /// The config for the settings `value` gives, with the defaults for any it leaves out. A timeout that is not a whole
 /// number of seconds is reported, and the default is used.
-pub fn config_with(working_dir: Option<String>, value: impl Fn(&str) -> Option<String>) -> Config {
+pub fn config_with(working_dir: Option<String>, lookup: impl Fn(&str) -> Option<String>) -> Config {
+    // A blank setting counts as unset, so an empty URL cannot replace the default.
+    let value = |key: &str| lookup(key).filter(|text| !text.trim().is_empty());
     let defaults = Config::default();
     let read_timeout = match value(READ_TIMEOUT_SECS) {
         Some(text) => text.parse::<u64>().map(Duration::from_secs).unwrap_or_else(|_| {
@@ -106,5 +108,12 @@ mod tests {
         assert_eq!(config.url, defaults.url);
         assert_eq!(config.read_timeout, defaults.read_timeout);
         assert_eq!(config.working_dir.as_deref(), Some("C:\\work"));
+    }
+
+    #[test]
+    fn a_blank_url_counts_as_unset() {
+        let config = config_with(None, |key| (key == URL).then(String::new));
+
+        assert_eq!(config.url, Config::default().url);
     }
 }
