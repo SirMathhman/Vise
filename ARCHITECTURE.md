@@ -10,6 +10,7 @@ Written for: developers working on the Vise monorepo.
 - **Agent loop**: the orchestration that repeatedly calls the model, executes any tool calls it emits, appends the results as `tool`-role messages, and repeats until the model produces a final text answer. This is a distinct layer from the HTTP handlers.
 - **Tool**: a named capability (e.g. `list_files`) the model can invoke. Each tool has a declarative JSON schema (sent to the model) and an imperative executor (run by the backend).
 - **Frontend** (`apps/web`): a Vite + TypeScript single-page app that renders the chat form and displays responses.
+- **Design tokens**: the single source of truth for the visual theme — every color, surface, border, shadow, and accent is declared once in a `:root` token block in `styles.css`. The rest of the stylesheet references only tokens (`var(--...)`), never raw color literals. A theme change (darkening, light mode, rebrand) is therefore one token-block edit, not a hunt through scattered values.
 - **API contract** (`packages/api`): the OpenAPI specification (`api.yaml`) that describes the backend's HTTP surface. Client code and server handlers should be derived from or validated against this spec.
 
 ## Invariants
@@ -87,7 +88,7 @@ routes.rs ──▶ agent.rs ──▶ llama.rs ──▶ Strata
 | `main.ts` | Mount the app, wire DOM | 30 |
 | `app.ts` | Chat state (messages, loading, error), render loop | 100 |
 | `api.ts` | Typed `fetch` wrappers matching `api.yaml` | 50 |
-| `styles.css` | All visual styling | — |
+| `styles.css` | All visual styling. A `:root` design-token block is the single source of truth for the theme; every other rule references only tokens, never raw color literals | — |
 
 ## Potential Problems
 
@@ -103,6 +104,7 @@ routes.rs ──▶ agent.rs ──▶ llama.rs ──▶ Strata
 - **No accessibility**: the input has no `<label>`, the response region has no `aria-live`, and there are no visible focus indicators. Screen-reader users cannot follow the conversation.
 - **Nested scroll contexts**: the chat log (`#chat-log`) is the single scroll container for the conversation. Unbounded inner content (e.g. a long tool result) must grow naturally inside it, not carry its own `overflow` + `max-height`. Two stacked scrollbars for the same content are confusing and hard to use; if a region truly needs independent scrolling, it belongs in a sibling panel or modal, not nested inside the log.
 - **No linter or formatter**: neither the Rust nor the TypeScript side has a linter, formatter, or size guard configured. Drift is invisible until it accumulates.
+- **Theme drift**: the stylesheet declares a complete design-token set in `:root` and every other rule references only tokens (`var(--...)`), never raw color literals. A theme change (darkening, light mode, rebrand) is a single token-block edit. If a future change reintroduces raw color literals outside the token block, the theme can drift internally — keep all colors in `:root`.
 
 ## Future Work
 
