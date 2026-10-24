@@ -1690,7 +1690,8 @@ function failReply(reply, err, command) {
             "Stopped. Tool calls shown above may already have run, and their effects remain. This turn was not kept in the conversation.";
     }
     else {
-        if (reply.answerText.textContent === "" && reply.thinkingText.textContent === "") {
+        // Only an empty reply is removed. A reply that ran tools keeps them on screen, as the stopped reply does.
+        if (reply.bubble.textContent === "") {
             reply.bubble.remove();
         }
         addEntry(chat, "error").textContent = errorMessage(err);
