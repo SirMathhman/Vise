@@ -1,4 +1,4 @@
-// The Tools panel: the tools this tab uses, each switched on or off on the server.
+// The Tools panel: the tools of the shown chat, each switched on or off on the server.
 
 interface ToolInfo {
   name: string;
@@ -15,7 +15,7 @@ async function sendTools(change?: { name: string; enabled: boolean }): Promise<T
   const res = await fetch("/api/tools", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ session, ...change }),
+    body: JSON.stringify({ session: currentSession(), ...change }),
   });
   const data = (await res.json().catch(() => ({}))) as { tools?: ToolInfo[]; error?: string };
   if (!res.ok || data.tools === undefined) {

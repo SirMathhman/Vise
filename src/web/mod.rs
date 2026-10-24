@@ -684,3 +684,43 @@ mod tests {
         assert_eq!(parse_session(format!(r#"{{"session":"{}"}}"#, "x".repeat(65)).as_bytes()), None);
     }
 }
+
+#[cfg(test)]
+mod gate_tests {
+    use super::*;
+    use std::io::Read;
+    use std::net::TcpListener;
+
+    /// Sends one raw request through `handle` over a local connection, and returns the response's status line.
+    fn status_of(request: &str) -> String {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let mut client = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        client.write_all(request.as_bytes()).unwrap();
+        let (server, _) = listener.accept().unwrap();
+        handle(server, &Config::default(), &Sessions::default()).unwrap();
+        let mut response = String::new();
+        client.read_to_string(&mut response).unwrap();
+        response.lines().next().unwrap_or_default().to_owned()
+    }
+
+    #[test]
+    fn a_plain_text_post_is_refused_before_any_route() {
+        let request = "POST /api/dirs HTTP/1.1\r\nHost: 127.0.0.1:3000\r\nContent-Type: text/plain\r\nContent-Length: 2\r\n\r\n{}";
+
+        assert!(status_of(request).contains(" 415 "));
+    }
+
+    #[test]
+    fn a_request_naming_another_host_is_refused() {
+        let request = "POST /api/dirs HTTP/1.1\r\nHost: evil.example\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}";
+
+        assert!(status_of(request).contains(" 421 "));
+    }
+
+    #[test]
+    fn a_json_request_from_this_machine_is_served() {
+        let request = "POST /api/dirs HTTP/1.1\r\nHost: 127.0.0.1:3000\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}";
+
+        assert!(status_of(request).contains(" 200 "));
+    }
+}

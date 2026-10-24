@@ -54,23 +54,15 @@ interface Chat {
   defaultAbort: AbortController | null;
   // The edits shown in this chat that are still waiting for an answer. Stop answers them, so the server ends the turn.
   approvals: Set<number>;
+  // The id this chat's requests carry. The server keeps the chat's tool switches and approvals under it, so each chat
+  // has its own. It is kept with the chat list, so a reload keeps them.
+  session: string;
 }
 
-// This tab's session: its switched-off tools live on the server under this id. It survives a reload of the tab and
-// is dropped when the tab closes. Storage can be blocked, in which case the session lasts for this page load.
-const SESSION_KEY = "vise-session";
-function sessionId(): string {
-  try {
-    const stored = sessionStorage.getItem(SESSION_KEY);
-    if (stored) return stored;
-    const fresh = crypto.randomUUID();
-    sessionStorage.setItem(SESSION_KEY, fresh);
-    return fresh;
-  } catch {
-    return crypto.randomUUID();
-  }
+// The session of the shown chat. The Tools panel lists and switches the tools of this session.
+function currentSession(): string {
+  return active?.session ?? "";
 }
-const session = sessionId();
 
 const logHost = document.getElementById("log") as HTMLDivElement;
 const chatTabs = document.getElementById("chat-tabs") as HTMLDivElement;
@@ -86,7 +78,7 @@ let chatCount = 0;
 
 // Creates a chat with its own log and tab, working in `workingDir`. It is not shown until showChat is called. Closing its
 // tab calls onClose.
-function createChat(onClose: (chat: Chat) => void, workingDir: string | null): Chat {
+function createChat(onClose: (chat: Chat) => void, workingDir: string | null, session: string): Chat {
   const log = document.createElement("div");
   log.className = "chat-log";
   log.hidden = true;
@@ -114,6 +106,7 @@ function createChat(onClose: (chat: Chat) => void, workingDir: string | null): C
     defaultProfile: Promise.resolve(),
     defaultAbort: null,
     approvals: new Set(),
+    session,
   };
   chats.push(chat);
   return chat;
@@ -129,8 +122,8 @@ function currentFolder(): string | null {
   return active?.workingDir ?? null;
 }
 
-// The folder the side panels were last refreshed for, so they are refreshed only when the shown chat's folder changes.
-let panelFolder: string | null | undefined;
+// The chat the side panels were last refreshed for. Each chat has its own folder and tools, so they refresh when it changes.
+let panelChat: Chat | undefined;
 
 // Shows one chat in the chat's space: its log and tab are the ones shown, and the form follows its reply. A file that
 // was shown in that space is put away.
@@ -144,8 +137,8 @@ function showChat(chat: Chat): void {
   refreshForm();
   scrollToEnd(chat);
   saveChats();
-  if (panelFolder !== chat.workingDir) {
-    panelFolder = chat.workingDir;
+  if (panelChat !== chat) {
+    panelChat = chat;
     refreshPanels();
   }
 }
@@ -167,6 +160,7 @@ function saveChats(): void {
       JSON.stringify({
         names: chats.map((chat) => chat.autosaveName),
         dirs: chats.map((chat) => chat.workingDir),
+        sessions: chats.map((chat) => chat.session),
         active: chats.indexOf(active),
       }),
     );
@@ -209,7 +203,7 @@ const APPROVAL_CHOICES: [label: string, answer: ApprovalAnswer, result: string][
 // Sends the answer to an edit that waits for one. The turn resumes once the server has it.
 async function answerApproval(chat: Chat, id: number, answer: ApprovalAnswer): Promise<void> {
   chat.approvals.delete(id);
-  await postJson<Record<string, unknown>>("/api/approve", { session, id, answer });
+  await postJson<Record<string, unknown>>("/api/approve", { session: chat.session, id, answer });
 }
 
 // An edit the model made, with the result and buttons to keep it or undo it. Undo takes the edit back on the server.
@@ -256,19 +250,24 @@ function markdownBlock(): HTMLDivElement {
   return block;
 }
 
+// Sends a chat's messages as one turn. The chat's session, folder and told switches go with them.
 async function streamChat(
+  chat: Chat,
   messages: Message[],
-  told: string[],
   onEvent: (event: StreamEvent) => void,
   signal: AbortSignal,
-  workingDir: string | null,
 ): Promise<Done> {
   let res: Response;
   try {
     res = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages, told, session, working_dir: workingDir }),
+      body: JSON.stringify({
+        messages,
+        told: chat.told,
+        session: chat.session,
+        working_dir: chat.workingDir,
+      }),
       signal,
     });
   } catch {

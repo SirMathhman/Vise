@@ -194,8 +194,8 @@ form.addEventListener("submit", async (event) => {
     chat.inFlight = controller;
     refreshForm();
     const done = await streamChat(
+      chat,
       messages,
-      chat.told,
       (streamed) => {
         if (streamed.type === "step") {
           reply = stepReply(chat, reply, streamed.text);
@@ -204,7 +204,6 @@ form.addEventListener("submit", async (event) => {
         }
       },
       controller.signal,
-      chat.workingDir,
     );
     finishReasoning(reply);
     keepReply(chat, done, command);
@@ -220,7 +219,7 @@ stopButton.addEventListener("click", () => abortTurn(active));
 // Opens a new chat in `dir` (the server's startup folder for null), with the default profile, and shows it. The chats
 // already open are kept.
 function newChat(dir: string | null): void {
-  const chat = createChat(closeChat, dir);
+  const chat = createChat(closeChat, dir, crypto.randomUUID());
   showChat(chat);
   void applyDefaultProfile(chat);
 }
@@ -254,7 +253,7 @@ function closeChat(chat: Chat): void {
 // Brings back the chats open at the last visit, with the one that was shown. A chat that was saved comes back from its
 // saved session. A chat that cannot be loaded starts empty, and its name is dropped so a reply cannot overwrite the file.
 function restoreChats(): void {
-  let saved: { names: (string | null)[]; dirs?: (string | null)[]; active: number } | null = null;
+  let saved: { names: (string | null)[]; dirs?: (string | null)[]; sessions?: string[]; active: number } | null = null;
   try {
     saved = JSON.parse(localStorage.getItem(CHATS_KEY) ?? "null");
   } catch {
@@ -265,7 +264,7 @@ function restoreChats(): void {
     return;
   }
   for (const [index, name] of saved.names.entries()) {
-    const chat = createChat(closeChat, saved.dirs?.[index] ?? null);
+    const chat = createChat(closeChat, saved.dirs?.[index] ?? null, saved.sessions?.[index] ?? crypto.randomUUID());
     if (name === null) {
       void applyDefaultProfile(chat);
     } else {

@@ -83,23 +83,10 @@ function describeFailure(error, ran) {
     }
     return `${error} ${ran.length} tool call(s) ran before this, and their effects remain: ${ran.join("; ")}`;
 }
-// This tab's session: its switched-off tools live on the server under this id. It survives a reload of the tab and
-// is dropped when the tab closes. Storage can be blocked, in which case the session lasts for this page load.
-const SESSION_KEY = "vise-session";
-function sessionId() {
-    try {
-        const stored = sessionStorage.getItem(SESSION_KEY);
-        if (stored)
-            return stored;
-        const fresh = crypto.randomUUID();
-        sessionStorage.setItem(SESSION_KEY, fresh);
-        return fresh;
-    }
-    catch {
-        return crypto.randomUUID();
-    }
+// The session of the shown chat. The Tools panel lists and switches the tools of this session.
+function currentSession() {
+    return active?.session ?? "";
 }
-const session = sessionId();
 const logHost = document.getElementById("log");
 const chatTabs = document.getElementById("chat-tabs");
 const form = document.getElementById("form");
@@ -112,7 +99,7 @@ let active;
 let chatCount = 0;
 // Creates a chat with its own log and tab, working in `workingDir`. It is not shown until showChat is called. Closing its
 // tab calls onClose.
-function createChat(onClose, workingDir) {
+function createChat(onClose, workingDir, session) {
     const log = document.createElement("div");
     log.className = "chat-log";
     log.hidden = true;
@@ -133,6 +120,7 @@ function createChat(onClose, workingDir) {
         defaultProfile: Promise.resolve(),
         defaultAbort: null,
         approvals: new Set(),
+        session,
     };
     chats.push(chat);
     return chat;
@@ -145,8 +133,8 @@ function folderName(dir) {
 function currentFolder() {
     return active?.workingDir ?? null;
 }
-// The folder the side panels were last refreshed for, so they are refreshed only when the shown chat's folder changes.
-let panelFolder;
+// The chat the side panels were last refreshed for. Each chat has its own folder and tools, so they refresh when it changes.
+let panelChat;
 // Shows one chat in the chat's space: its log and tab are the ones shown, and the form follows its reply. A file that
 // was shown in that space is put away.
 function showChat(chat) {
@@ -159,8 +147,8 @@ function showChat(chat) {
     refreshForm();
     scrollToEnd(chat);
     saveChats();
-    if (panelFolder !== chat.workingDir) {
-        panelFolder = chat.workingDir;
+    if (panelChat !== chat) {
+        panelChat = chat;
         refreshPanels();
     }
 }
@@ -178,6 +166,7 @@ function saveChats() {
         localStorage.setItem(CHATS_KEY, JSON.stringify({
             names: chats.map((chat) => chat.autosaveName),
             dirs: chats.map((chat) => chat.workingDir),
+            sessions: chats.map((chat) => chat.session),
             active: chats.indexOf(active),
         }));
     }
@@ -213,7 +202,7 @@ const APPROVAL_CHOICES = [
 // Sends the answer to an edit that waits for one. The turn resumes once the server has it.
 async function answerApproval(chat, id, answer) {
     chat.approvals.delete(id);
-    await postJson("/api/approve", { session, id, answer });
+    await postJson("/api/approve", { session: chat.session, id, answer });
 }
 // An edit the model made, with the result and buttons to keep it or undo it. Undo takes the edit back on the server.
 function approvalBlock(chat, request) {
@@ -253,13 +242,19 @@ function markdownBlock() {
     block.className = "markdown";
     return block;
 }
-async function streamChat(messages, told, onEvent, signal, workingDir) {
+// Sends a chat's messages as one turn. The chat's session, folder and told switches go with them.
+async function streamChat(chat, messages, onEvent, signal) {
     let res;
     try {
         res = await fetch("/api/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ messages, told, session, working_dir: workingDir }),
+            body: JSON.stringify({
+                messages,
+                told: chat.told,
+                session: chat.session,
+                working_dir: chat.workingDir,
+            }),
             signal,
         });
     }
@@ -349,7 +344,7 @@ function closeSubagent(sub, failed) {
 }
 
 "use strict";
-// The Tools panel: the tools this tab uses, each switched on or off on the server.
+// The Tools panel: the tools of the shown chat, each switched on or off on the server.
 const toolsList = document.getElementById("tools-list");
 const toolsError = document.getElementById("tools-error");
 // Lists this tab's tools, or switches one of them, on the server. The panel always shows the server's answer, so it
@@ -358,7 +353,7 @@ async function sendTools(change) {
     const res = await fetch("/api/tools", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session, ...change }),
+        body: JSON.stringify({ session: currentSession(), ...change }),
     });
     const data = (await res.json().catch(() => ({})));
     if (!res.ok || data.tools === undefined) {
@@ -417,7 +412,7 @@ function applyDefaultProfile(chat) {
     chat.defaultAbort = controller;
     chat.defaultProfile = (async () => {
         try {
-            const done = await streamChat([{ role: "user", content: "/profile default" }], chat.told, () => { }, controller.signal, chat.workingDir);
+            const done = await streamChat(chat, [{ role: "user", content: "/profile default" }], () => { }, controller.signal);
             if (done.profile != null) {
                 chat.conversation.push({ role: "profile", content: done.profile });
             }
@@ -1733,14 +1728,14 @@ form.addEventListener("submit", async (event) => {
         const controller = new AbortController();
         chat.inFlight = controller;
         refreshForm();
-        const done = await streamChat(messages, chat.told, (streamed) => {
+        const done = await streamChat(chat, messages, (streamed) => {
             if (streamed.type === "step") {
                 reply = stepReply(chat, reply, streamed.text);
             }
             else {
                 showStreamed(reply, streamed);
             }
-        }, controller.signal, chat.workingDir);
+        }, controller.signal);
         finishReasoning(reply);
         keepReply(chat, done, command);
     }
@@ -1755,7 +1750,7 @@ stopButton.addEventListener("click", () => abortTurn(active));
 // Opens a new chat in `dir` (the server's startup folder for null), with the default profile, and shows it. The chats
 // already open are kept.
 function newChat(dir) {
-    const chat = createChat(closeChat, dir);
+    const chat = createChat(closeChat, dir, crypto.randomUUID());
     showChat(chat);
     void applyDefaultProfile(chat);
 }
@@ -1800,7 +1795,7 @@ function restoreChats() {
         return;
     }
     for (const [index, name] of saved.names.entries()) {
-        const chat = createChat(closeChat, saved.dirs?.[index] ?? null);
+        const chat = createChat(closeChat, saved.dirs?.[index] ?? null, saved.sessions?.[index] ?? crypto.randomUUID());
         if (name === null) {
             void applyDefaultProfile(chat);
         }

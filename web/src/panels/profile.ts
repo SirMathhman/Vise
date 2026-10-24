@@ -7,13 +7,7 @@ function applyDefaultProfile(chat: Chat): Promise<void> {
   chat.defaultAbort = controller;
   chat.defaultProfile = (async () => {
     try {
-      const done = await streamChat(
-        [{ role: "user", content: "/profile default" }],
-        chat.told,
-        () => {},
-        controller.signal,
-        chat.workingDir,
-      );
+      const done = await streamChat(chat, [{ role: "user", content: "/profile default" }], () => {}, controller.signal);
       if (done.profile != null) {
         chat.conversation.push({ role: "profile", content: done.profile });
       }
