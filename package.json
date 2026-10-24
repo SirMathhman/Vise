@@ -5,6 +5,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "dev": "concurrently -n web,server -c blue,green \"pnpm --filter web dev\" \"cargo run --manifest-path apps/server/Cargo.toml\"",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -12,6 +13,12 @@
   "license": "ISC",
   "packageManager": "pnpm@10.28.0",
   "devDependencies": {
-    "@openapitools/openapi-generator-cli": "^2.42.0"
+    "@openapitools/openapi-generator-cli": "^2.42.0",
+    "concurrently": "^9.1.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }
