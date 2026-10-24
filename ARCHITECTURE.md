@@ -104,12 +104,13 @@ routes.rs ──▶ agent.rs ──▶ llama.rs ──▶ Strata
 - **No accessibility**: the input has no `<label>`, the response region has no `aria-live`, and there are no visible focus indicators. Screen-reader users cannot follow the conversation.
 - **Nested scroll contexts**: the chat log (`#chat-log`) is the single scroll container for the conversation. Unbounded inner content (e.g. a long tool result) must grow naturally inside it, not carry its own `overflow` + `max-height`. Two stacked scrollbars for the same content are confusing and hard to use; if a region truly needs independent scrolling, it belongs in a sibling panel or modal, not nested inside the log.
 - **No linter or formatter**: neither the Rust nor the TypeScript side has a linter, formatter, or size guard configured. Drift is invisible until it accumulates.
+- **Module line budgets are not enforced**: `llama.rs` is at 111 lines against its documented 100-line budget (the response-parsing block in `chat_completion` is the bulk of the overage). Extract the `choices[0].message` → `AssistantReply` mapping into a small helper so `llama.rs` stays within budget and the parsing is independently testable.
 - **Theme drift**: the stylesheet declares a complete design-token set in `:root` and every other rule references only tokens (`var(--...)`), never raw color literals. A theme change (darkening, light mode, rebrand) is a single token-block edit. If a future change reintroduces raw color literals outside the token block, the theme can drift internally — keep all colors in `:root`.
 
 ## Future Work
 
 - **OpenAPI contract**: define `api.yaml` with the `/health` and `/api/chat` endpoints, request/response schemas, and error model. Use `@openapitools/openapi-generator-cli` (already in devDependencies) to generate the TypeScript client in `apps/web/src/api.ts` and validate the Rust handlers against the spec.
-- **Tool registry**: as more tools are added, replace the `match` in `execute_tool` with a registry (name → schema + executor) so adding a tool is one entry rather than a new branch, and so unknown-tool errors are uniform.
+- **Tool registry**: `tools.rs` registers each tool in a single `Tool` entry (name + JSON schema + executor `fn`) held in a `OnceLock`-backed registry. `tool_schemas()` is a projection of the registry's schemas and `execute_tool()` a lookup by name, so adding a tool is one entry and the schema/executor cannot drift apart. Unknown-tool errors stay uniform.
 - **Streaming**: switch the chat endpoint to stream tokens back as SSE (`text/event-stream`). The frontend renders tokens as they arrive, replacing the "…" placeholder incrementally.
 - **CORS middleware**: add `axum-extra::middleware::cors` (or a manual layer) so the backend works from any origin in production.
 - **Timeouts**: set `reqwest` connect and read timeouts (e.g. 5 s connect, 120 s read for a 27B model). Surface a `Timeout` error to the client.

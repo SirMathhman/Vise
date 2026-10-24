@@ -1,50 +1,79 @@
 use serde_json::{json, Value};
 use std::fs;
 use std::path::Path;
+use std::sync::OnceLock;
 
 use crate::error::AppError;
 
+/// A tool: its OpenAI-style JSON schema plus the executor that runs it.
+struct Tool {
+    name: &'static str,
+    schema: Value,
+    execute: fn(&Value) -> Result<String, AppError>,
+}
+
+/// The tool registry. Adding a tool is one entry here; the schema and
+/// executor live together so they cannot drift apart.
+fn tools() -> &'static [Tool] {
+    static TOOLS: OnceLock<Vec<Tool>> = OnceLock::new();
+    TOOLS.get_or_init(|| {
+        vec![
+            Tool {
+                name: "list_files",
+                schema: json!({
+                    "type": "function",
+                    "function": {
+                        "name": "list_files",
+                        "description": "List the files and directories in a directory, recursively up to the given depth. depth is mandatory: 0 lists only the top level, 1 lists one level down, and so on.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "path": {"type": "string", "description": "The directory to list."},
+                                "depth": {"type": "integer", "description": "Maximum recursion depth (mandatory). 0 = top level only."}
+                            },
+                            "required": ["path", "depth"]
+                        }
+                    }
+                }),
+                execute: list_files,
+            },
+            Tool {
+                name: "read_file",
+                schema: json!({
+                    "type": "function",
+                    "function": {
+                        "name": "read_file",
+                        "description": "Read a text file and return its contents, optionally limited to a line range. Line numbers are 1-based. At most 500 lines are returned.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "path": {"type": "string", "description": "The file to read."},
+                                "start_line": {"type": "integer", "description": "First line to include (1-based). Defaults to 1."},
+                                "end_line": {"type": "integer", "description": "Last line to include (1-based). Defaults to the end of the file."}
+                            },
+                            "required": ["path"]
+                        }
+                    }
+                }),
+                execute: read_file,
+            },
+        ]
+    })
+    .as_slice()
+}
+
 /// OpenAI-style tool schemas sent to Strata.
 pub fn tool_schemas() -> Value {
-    json!([{
-        "type": "function",
-        "function": {
-            "name": "list_files",
-            "description": "List the files and directories in a directory, recursively up to the given depth. depth is mandatory: 0 lists only the top level, 1 lists one level down, and so on.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string", "description": "The directory to list."},
-                    "depth": {"type": "integer", "description": "Maximum recursion depth (mandatory). 0 = top level only."}
-                },
-                "required": ["path", "depth"]
-            }
-        }
-    }, {
-        "type": "function",
-        "function": {
-            "name": "read_file",
-            "description": "Read a text file and return its contents, optionally limited to a line range. Line numbers are 1-based. At most 500 lines are returned.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string", "description": "The file to read."},
-                    "start_line": {"type": "integer", "description": "First line to include (1-based). Defaults to 1."},
-                    "end_line": {"type": "integer", "description": "Last line to include (1-based). Defaults to the end of the file."}
-                },
-                "required": ["path"]
-            }
-        }
-    }])
+    Value::Array(tools().iter().map(|t| t.schema.clone()).collect())
 }
 
 /// Execute a tool by name with parsed JSON arguments; returns the result text.
 pub fn execute_tool(name: &str, args: &Value) -> Result<String, AppError> {
-    match name {
-        "list_files" => list_files(args),
-        "read_file" => read_file(args),
-        _ => Err(AppError::BadRequest(format!("unknown tool: {name}"))),
-    }
+    let tool = tools()
+        .iter()
+        .find(|t| t.name == name)
+        .ok_or_else(|| AppError::BadRequest(format!("unknown tool: {name}")))?;
+    (tool.execute)(args)
 }
 
 fn list_files(args: &Value) -> Result<String, AppError> {

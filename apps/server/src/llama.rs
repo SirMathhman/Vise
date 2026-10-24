@@ -73,6 +73,11 @@ pub async fn chat_completion(
     let value: Value = serde_json::from_str(&text)
         .map_err(|e| AppError::Upstream(e.to_string()))?;
 
+    Ok(parse_reply(&value))
+}
+
+/// Map a Strata chat-completion response body to an `AssistantReply`.
+fn parse_reply(value: &Value) -> AssistantReply {
     let message = value
         .get("choices")
         .and_then(|c| c.get(0))
@@ -107,5 +112,5 @@ pub async fn chat_completion(
                 .collect()
         });
 
-    Ok(AssistantReply { content, tool_calls })
+    AssistantReply { content, tool_calls }
 }
