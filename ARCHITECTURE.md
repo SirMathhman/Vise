@@ -32,7 +32,13 @@ Vise/
 │   │       ├── routes.rs      # route definitions and thin handlers
 │   │       ├── agent.rs       # agentic tool-calling loop (model ↔ tools)
 │   │       ├── llama.rs       # Strata client (reqwest wrapper)
-│   │       ├── tools.rs       # tool schemas + tool executors
+│   │       ├── tools/         # tool registry + one module per tool
+│   │       │   ├── mod.rs     # Tool struct, registry, tool_schemas(), execute_tool()
+│   │       │   ├── list_files.rs
+│   │       │   ├── read_file.rs
+│   │       │   ├── create_file.rs
+│   │       │   ├── create_directory.rs
+│   │       │   └── edit_file.rs
 │   │       └── error.rs       # structured error types
 │   └── web/             # Vite + TypeScript frontend
 │       └── src/
@@ -59,12 +65,12 @@ Within `server`, the layering is:
 ```
 routes.rs ──▶ agent.rs ──▶ llama.rs ──▶ Strata
                 │
-                └──▶ tools.rs (schemas + executors)
+                └──▶ tools/ (registry + one module per tool)
 ```
 
 - `routes.rs` is a thin HTTP layer: it builds the request and delegates to `agent.rs`.
 - `agent.rs` owns the model ↔ tools orchestration and is the only module that drives the loop.
-- `tools.rs` is split into two concerns: **schemas** (declarative JSON sent to the model) and **executors** (imperative code run by the backend). As tools are added, each gets a schema entry and an executor branch.
+- `tools/` is a registry plus one module per tool. Each tool module exposes a single `pub fn tool() -> Tool` that keeps its JSON schema and executor together so they cannot drift apart. `tools/mod.rs` holds the `Tool` struct, the `OnceLock`-backed registry (which just collects each module's `tool()`), and the two public projections `tool_schemas()` and `execute_tool()`. Adding a tool is one new file plus one line in the registry.
 - `web` depends on `server` only via HTTP (and the shared OpenAPI contract).
 - `server` depends on `Strata` only via HTTP.
 - No Rust crate or TS module imports across the `apps/` boundary.
@@ -78,7 +84,8 @@ routes.rs ──▶ agent.rs ──▶ llama.rs ──▶ Strata
 | `routes.rs` | Define routes, extract state, construct the system prompt (working directory), delegate to the agent layer | 100 |
 | `agent.rs` | Run the agentic tool-calling loop: call the model, execute tool calls, append `tool` results, repeat until a final text answer (bounded by a max-turns guard) | 150 |
 | `llama.rs` | Wrap `reqwest` calls to Strata; map responses to typed structs (`AssistantReply`) | 100 |
-| `tools.rs` | Declare tool JSON schemas (sent to the model) and execute tools by name (filesystem, etc.) | 150 |
+| `tools/mod.rs` | `Tool` struct, `OnceLock` registry, `tool_schemas()`, `execute_tool()` | 50 |
+| `tools/<name>.rs` | One tool: its JSON schema + executor, exposed as `pub fn tool() -> Tool` | 100 |
 | `error.rs` | Define `AppError` enum with `IntoResponse` impl | 50 |
 
 ### Frontend module layout
@@ -110,7 +117,7 @@ routes.rs ──▶ agent.rs ──▶ llama.rs ──▶ Strata
 ## Future Work
 
 - **OpenAPI contract**: define `api.yaml` with the `/health` and `/api/chat` endpoints, request/response schemas, and error model. Use `@openapitools/openapi-generator-cli` (already in devDependencies) to generate the TypeScript client in `apps/web/src/api.ts` and validate the Rust handlers against the spec.
-- **Tool registry**: `tools.rs` registers each tool in a single `Tool` entry (name + JSON schema + executor `fn`) held in a `OnceLock`-backed registry. `tool_schemas()` is a projection of the registry's schemas and `execute_tool()` a lookup by name, so adding a tool is one entry and the schema/executor cannot drift apart. Unknown-tool errors stay uniform.
+- **Tool registry**: `tools/mod.rs` holds a `OnceLock`-backed registry of `Tool` entries (name + JSON schema + executor `fn`). `tool_schemas()` is a projection of the registry's schemas and `execute_tool()` a lookup by name, so adding a tool is one entry and the schema/executor cannot drift apart. Unknown-tool errors stay uniform.
 - **Streaming**: switch the chat endpoint to stream tokens back as SSE (`text/event-stream`). The frontend renders tokens as they arrive, replacing the "…" placeholder incrementally.
 - **CORS middleware**: add `axum-extra::middleware::cors` (or a manual layer) so the backend works from any origin in production.
 - **Timeouts**: set `reqwest` connect and read timeouts (e.g. 5 s connect, 120 s read for a 27B model). Surface a `Timeout` error to the client.
