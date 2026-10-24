@@ -2,6 +2,7 @@
 name = "vise"
 version = "0.1.0"
 edition = "2024"
+default-run = "vise-repl"
 
 [dependencies]
 ctrlc = "3.5.2"

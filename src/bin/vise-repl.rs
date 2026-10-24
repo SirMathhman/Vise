@@ -1,27 +1,8 @@
-mod agent;
-mod approval;
-mod chunk;
-mod commands;
-mod compaction;
-mod edits;
-mod file_tree;
-mod grammar;
-mod notes;
-mod saved_sessions;
-mod session;
-mod strata;
-mod subagent;
-mod titles;
-mod tools;
-mod turn;
-mod web;
-mod workflow_runner;
-mod workflows;
-mod workspace;
-
 use std::io::{self, Write};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
+
+use vise::{agent, chunk, commands, compaction, notes, saved_sessions, session, strata, tools, turn};
 
 /// Set while a turn runs, so Ctrl+C stops the turn instead of quitting.
 static TURN_ACTIVE: AtomicBool = AtomicBool::new(false);
@@ -32,24 +13,6 @@ use session::Session;
 use turn::TurnError;
 use chunk::Chunk;
 use strata::Role;
-
-/// Reads the working directory once at startup, for both the REPL and the web server.
-fn startup_config() -> strata::Config {
-    let working_dir = match std::env::current_dir() {
-        Ok(dir) => Some(dir.display().to_string()),
-        Err(err) => {
-            eprintln!("warning: could not read the working directory: {err}");
-            None
-        }
-    };
-    let config = strata::Config {
-        working_dir,
-        ..strata::Config::default()
-    };
-    // Lazy grammars keep prose unconstrained while a tool is off; older Strata builds get the full grammar.
-    let lazy_grammar = strata::supports_lazy_grammar(&config);
-    strata::Config { lazy_grammar, ..config }
-}
 
 #[derive(PartialEq, Clone, Copy)]
 enum Section {
@@ -152,10 +115,7 @@ fn start_conversation(session: &mut Session, switches: &tools::Switches, working
 }
 
 fn main() -> io::Result<()> {
-    let config = startup_config();
-    if std::env::args().nth(1).as_deref() == Some("web") {
-        return web::serve(web::DEFAULT_PORT, config);   // each browser tab has its own switches (web::Sessions)
-    }
+    let config = vise::config::startup_config();
     let switches = tools::Switches::default();   // the REPL is one session: its own process and switches
     // Ctrl+C stops a running turn; at the prompt, or on a second Ctrl+C, it quits as before.
     if let Err(err) = ctrlc::set_handler(|| {

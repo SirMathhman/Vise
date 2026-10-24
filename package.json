@@ -5,8 +5,9 @@
     "build": "tsc -p web && node scripts/bundle-web.mjs",
     "watch:ts": "tsc -p web --watch --preserveWatchOutput",
     "watch:bundle": "node scripts/bundle-web.mjs --watch",
-    "watch:rs": "cargo watch -w src -w web/index.html -w web/app.js -x \"run -- web\"",
-    "dev": "concurrently -n ts,bundle,rs \"npm run watch:ts\" \"npm run watch:bundle\" \"npm run watch:rs\""
+    "watch:rs": "cargo watch -w src -w web/index.html -w web/app.js -x \"run --bin vise-web\"",
+    "dev": "concurrently -n ts,bundle,rs \"npm run watch:ts\" \"npm run watch:bundle\" \"npm run watch:rs\"",
+    "package": "node scripts/package.mjs"
   },
   "devDependencies": {
     "concurrently": "^10.0.6",
