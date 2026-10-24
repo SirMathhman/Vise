@@ -25,11 +25,11 @@ pub fn tool() -> Tool {
                 }
             }
         }),
-        execute: read_file,
+        execute: |args| Box::pin(async { read_file(args) }),
     }
 }
 
-fn read_file(args: &Value) -> Result<String, AppError> {
+fn read_file(args: Value) -> Result<String, AppError> {
     let path = args
         .get("path")
         .and_then(|v| v.as_str())

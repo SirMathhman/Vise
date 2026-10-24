@@ -23,11 +23,11 @@ pub fn tool() -> Tool {
                 }
             }
         }),
-        execute: list_files,
+        execute: |args| Box::pin(async { list_files(args) }),
     }
 }
 
-fn list_files(args: &Value) -> Result<String, AppError> {
+fn list_files(args: Value) -> Result<String, AppError> {
     let path = args
         .get("path")
         .and_then(|v| v.as_str())

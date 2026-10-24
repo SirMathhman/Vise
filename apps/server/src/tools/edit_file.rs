@@ -23,11 +23,11 @@ pub fn tool() -> Tool {
                 }
             }
         }),
-        execute: edit_file,
+        execute: |args| Box::pin(async { edit_file(args) }),
     }
 }
 
-fn edit_file(args: &Value) -> Result<String, AppError> {
+fn edit_file(args: Value) -> Result<String, AppError> {
     let path = args
         .get("path")
         .and_then(|v| v.as_str())

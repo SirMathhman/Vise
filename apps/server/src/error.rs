@@ -6,8 +6,8 @@ use thiserror::Error;
 pub enum AppError {
     #[error("upstream error: {0}")]
     Upstream(String),
-    #[error("timeout contacting upstream")]
-    Timeout,
+    #[error("{0}")]
+    Timeout(String),
     #[error("bad request: {0}")]
     BadRequest(String),
     #[error("internal error: {0}")]
@@ -18,7 +18,7 @@ impl IntoResponse for AppError {
     fn into_response(self) -> axum::http::Response<axum::body::Body> {
         let (status, code, message) = match &self {
             AppError::Upstream(msg) => (StatusCode::BAD_GATEWAY, "upstream", msg.as_str()),
-            AppError::Timeout => (StatusCode::GATEWAY_TIMEOUT, "timeout", "timeout contacting upstream"),
+            AppError::Timeout(msg) => (StatusCode::GATEWAY_TIMEOUT, "timeout", msg.as_str()),
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, "bad_request", msg.as_str()),
             AppError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, "internal", msg.as_str()),
         };

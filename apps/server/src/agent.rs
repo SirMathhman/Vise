@@ -63,7 +63,7 @@ pub async fn run_agent(
         for tc in &tool_calls {
             let args: Value = serde_json::from_str(&tc.function.arguments)
                 .map_err(|e| AppError::BadRequest(format!("bad tool arguments: {e}")))?;
-            let result = execute_tool(&tc.function.name, &args)?;
+            let result = execute_tool(&tc.function.name, args.clone()).await?;
             messages.push(json!({
                 "role": "tool",
                 "tool_call_id": tc.id,

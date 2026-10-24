@@ -23,11 +23,11 @@ pub fn tool() -> Tool {
                 }
             }
         }),
-        execute: create_file,
+        execute: |args| Box::pin(async { create_file(args) }),
     }
 }
 
-fn create_file(args: &Value) -> Result<String, AppError> {
+fn create_file(args: Value) -> Result<String, AppError> {
     let path = args
         .get("path")
         .and_then(|v| v.as_str())

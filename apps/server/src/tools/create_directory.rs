@@ -22,11 +22,11 @@ pub fn tool() -> Tool {
                 }
             }
         }),
-        execute: create_directory,
+        execute: |args| Box::pin(async { create_directory(args) }),
     }
 }
 
-fn create_directory(args: &Value) -> Result<String, AppError> {
+fn create_directory(args: Value) -> Result<String, AppError> {
     let path = args
         .get("path")
         .and_then(|v| v.as_str())
