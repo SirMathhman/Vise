@@ -57,6 +57,63 @@ fn tools() -> &'static [Tool] {
                 }),
                 execute: read_file,
             },
+            Tool {
+                name: "create_file",
+                schema: json!({
+                    "type": "function",
+                    "function": {
+                        "name": "create_file",
+                        "description": "Create a new file with the given content. Fails if the file already exists. Parent directories must already exist.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "path": {"type": "string", "description": "The file to create."},
+                                "content": {"type": "string", "description": "The content to write to the file."}
+                            },
+                            "required": ["path", "content"]
+                        }
+                    }
+                }),
+                execute: create_file,
+            },
+            Tool {
+                name: "create_directory",
+                schema: json!({
+                    "type": "function",
+                    "function": {
+                        "name": "create_directory",
+                        "description": "Create a new directory, including any missing parent directories. Fails if the path already exists as a file.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "path": {"type": "string", "description": "The directory to create."}
+                            },
+                            "required": ["path"]
+                        }
+                    }
+                }),
+                execute: create_directory,
+            },
+            Tool {
+                name: "edit_file",
+                schema: json!({
+                    "type": "function",
+                    "function": {
+                        "name": "edit_file",
+                        "description": "Replace the first occurrence of a previous text string with a new text string in a file. Fails if the previous text is not found exactly once.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "path": {"type": "string", "description": "The file to edit."},
+                                "previous_text": {"type": "string", "description": "The exact text to find and replace."},
+                                "new_text": {"type": "string", "description": "The text to replace it with."}
+                            },
+                            "required": ["path", "previous_text", "new_text"]
+                        }
+                    }
+                }),
+                execute: edit_file,
+            },
         ]
     })
     .as_slice()
@@ -151,6 +208,80 @@ fn read_file(args: &Value) -> Result<String, AppError> {
         out.push_str(&format!("[{} of {} lines shown]", count, total));
     }
     Ok(out)
+}
+
+fn create_file(args: &Value) -> Result<String, AppError> {
+    let path = args
+        .get("path")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| AppError::BadRequest("missing 'path'".into()))?;
+    let content = args
+        .get("content")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| AppError::BadRequest("missing 'content'".into()))?;
+
+    if Path::new(path).exists() {
+        return Err(AppError::BadRequest(format!("file already exists: {path}")));
+    }
+
+    fs::write(path, content)
+        .map_err(|e| AppError::BadRequest(format!("cannot create {path}: {e}")))?;
+
+    Ok(format!("created {path} ({} bytes)", content.len()))
+}
+
+fn create_directory(args: &Value) -> Result<String, AppError> {
+    let path = args
+        .get("path")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| AppError::BadRequest("missing 'path'".into()))?;
+
+    let p = Path::new(path);
+    if p.exists() {
+        if p.is_dir() {
+            return Ok(format!("directory already exists: {path}"));
+        }
+        return Err(AppError::BadRequest(format!("path is a file, not a directory: {path}")));
+    }
+
+    fs::create_dir_all(p)
+        .map_err(|e| AppError::BadRequest(format!("cannot create directory {path}: {e}")))?;
+
+    Ok(format!("created directory {path}"))
+}
+
+fn edit_file(args: &Value) -> Result<String, AppError> {
+    let path = args
+        .get("path")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| AppError::BadRequest("missing 'path'".into()))?;
+    let previous_text = args
+        .get("previous_text")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| AppError::BadRequest("missing 'previous_text'".into()))?;
+    let new_text = args
+        .get("new_text")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| AppError::BadRequest("missing 'new_text'".into()))?;
+
+    let content = fs::read_to_string(path)
+        .map_err(|e| AppError::BadRequest(format!("cannot read {path}: {e}")))?;
+
+    let count = content.matches(previous_text).count();
+    if count == 0 {
+        return Err(AppError::BadRequest("previous_text not found in file".into()));
+    }
+    if count > 1 {
+        return Err(AppError::BadRequest(format!(
+            "previous_text is not unique (found {count} occurrences)"
+        )));
+    }
+
+    let updated = content.replacen(previous_text, new_text, 1);
+    fs::write(path, updated)
+        .map_err(|e| AppError::BadRequest(format!("cannot write {path}: {e}")))?;
+
+    Ok(format!("edited {path} (replaced 1 occurrence)"))
 }
 
 fn walk(dir: &Path, root: &Path, current: i64, max: i64, out: &mut Vec<String>) {
