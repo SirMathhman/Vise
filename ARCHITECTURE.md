@@ -6,7 +6,9 @@ Written for: developers working on the Vise monorepo.
 
 - **Vise**: a local-first chat application that proxies user messages to a local llama.cpp (Strata) inference server and renders the reply in a web UI.
 - **Strata**: the local inference server exposing an OpenAI-compatible `/v1/chat/completions` endpoint. Vise expects it at a configurable base URL (default `http://127.0.0.1:9931`).
-- **Backend** (`apps/server`): a Rust axum HTTP service that receives chat requests from the web UI, forwards them to Strata, and returns the model's reply.
+- **Backend** (`apps/server`): a Rust axum HTTP service that receives chat requests from the web UI, runs an agentic loop against Strata (executing model-requested tools and feeding results back), and returns the model's final reply.
+- **Agent loop**: the orchestration that repeatedly calls the model, executes any tool calls it emits, appends the results as `tool`-role messages, and repeats until the model produces a final text answer. This is a distinct layer from the HTTP handlers.
+- **Tool**: a named capability (e.g. `list_files`) the model can invoke. Each tool has a declarative JSON schema (sent to the model) and an imperative executor (run by the backend).
 - **Frontend** (`apps/web`): a Vite + TypeScript single-page app that renders the chat form and displays responses.
 - **API contract** (`packages/api`): the OpenAPI specification (`api.yaml`) that describes the backend's HTTP surface. Client code and server handlers should be derived from or validated against this spec.
 
@@ -26,8 +28,10 @@ Vise/
 │   │   └── src/
 │   │       ├── main.rs        # entry point, wiring
 │   │       ├── config.rs      # env-var-backed configuration
-│   │       ├── routes.rs      # route definitions and handlers
+│   │       ├── routes.rs      # route definitions and thin handlers
+│   │       ├── agent.rs       # agentic tool-calling loop (model ↔ tools)
 │   │       ├── llama.rs       # Strata client (reqwest wrapper)
+│   │       ├── tools.rs       # tool schemas + tool executors
 │   │       └── error.rs       # structured error types
 │   └── web/             # Vite + TypeScript frontend
 │       └── src/
@@ -49,6 +53,17 @@ web ──HTTP──▶ server ──HTTP──▶ Strata
                 └── api.yaml (shared contract)
 ```
 
+Within `server`, the layering is:
+
+```
+routes.rs ──▶ agent.rs ──▶ llama.rs ──▶ Strata
+                │
+                └──▶ tools.rs (schemas + executors)
+```
+
+- `routes.rs` is a thin HTTP layer: it builds the request and delegates to `agent.rs`.
+- `agent.rs` owns the model ↔ tools orchestration and is the only module that drives the loop.
+- `tools.rs` is split into two concerns: **schemas** (declarative JSON sent to the model) and **executors** (imperative code run by the backend). As tools are added, each gets a schema entry and an executor branch.
 - `web` depends on `server` only via HTTP (and the shared OpenAPI contract).
 - `server` depends on `Strata` only via HTTP.
 - No Rust crate or TS module imports across the `apps/` boundary.
@@ -59,8 +74,10 @@ web ──HTTP──▶ server ──HTTP──▶ Strata
 |--------|----------------|-----------|
 | `main.rs` | Parse config, build router, bind listener, run axum | 50 |
 | `config.rs` | Load and validate env vars into a `Config` struct | 50 |
-| `routes.rs` | Define routes, extract state, call domain logic | 100 |
-| `llama.rs` | Wrap `reqwest` calls to Strata; map responses to typed structs | 100 |
+| `routes.rs` | Define routes, extract state, construct the system prompt (working directory), delegate to the agent layer | 100 |
+| `agent.rs` | Run the agentic tool-calling loop: call the model, execute tool calls, append `tool` results, repeat until a final text answer (bounded by a max-turns guard) | 150 |
+| `llama.rs` | Wrap `reqwest` calls to Strata; map responses to typed structs (`AssistantReply`) | 100 |
+| `tools.rs` | Declare tool JSON schemas (sent to the model) and execute tools by name (filesystem, etc.) | 150 |
 | `error.rs` | Define `AppError` enum with `IntoResponse` impl | 50 |
 
 ### Frontend module layout
@@ -81,6 +98,8 @@ web ──HTTP──▶ server ──HTTP──▶ Strata
 - **No CORS**: the Vite dev proxy masks the absence of CORS headers. In production (or any non-dev origin), the browser will block the request. The backend must set `Access-Control-Allow-Origin` and handle `OPTIONS` preflights.
 - **No streaming**: the entire model response is buffered before being sent. For a chat UI, token-by-token streaming (SSE or chunked transfer) is the expected UX.
 - **No request validation**: `message: String` accepts an empty string, a 10 MB blob, or binary garbage. Validate length and content type at the boundary.
+- **Unbounded tool output**: a tool result (e.g. a deep `list_files` walk) is appended verbatim to the prompt. A large result can blow the context window or make the next model call slow. Tool results should be truncated/capped at the boundary, and the max-turns guard should surface a distinct error so the client can tell the loop stalled.
+- **Tool loop is not observable**: the frontend only sees the final text. Multi-turn tool use (the model calling `list_files` several times) is invisible, and a stalled loop looks like a hang. Surface tool activity (or at least a distinct "tool loop exceeded" error) so the UI can explain what happened.
 - **No health-check depth**: `/health` returns `"ok"` without verifying Strata reachability. A real health endpoint should report upstream status.
 - **Unstyled UI**: the frontend has no CSS. Default browser rendering (Times New Roman headings, monospace `<pre>`, no spacing) is not a design. Layout, typography, contrast, focus states, and responsive behavior all need explicit rules.
 - **No accessibility**: the input has no `<label>`, the response region has no `aria-live`, and there are no visible focus indicators. Screen-reader users cannot follow the conversation.
@@ -88,8 +107,9 @@ web ──HTTP──▶ server ──HTTP──▶ Strata
 
 ## Future Work
 
-- **Configuration**: load `LLAMA_BASE`, `LLAMA_API_KEY`, `LLAMA_MODEL`, and `SERVER_PORT` from environment variables (with sensible defaults for local dev). Fail fast with a clear message if a required variable is missing.
 - **OpenAPI contract**: define `api.yaml` with the `/health` and `/api/chat` endpoints, request/response schemas, and error model. Use `@openapitools/openapi-generator-cli` (already in devDependencies) to generate the TypeScript client in `apps/web/src/api.ts` and validate the Rust handlers against the spec.
+- **Agent layer**: extract the tool-calling loop from `routes.rs` into `agent.rs` so the HTTP handlers stay thin and the model ↔ tools orchestration is isolated and testable. Split `tools.rs` into schema and executor concerns as tools are added.
+- **Tool registry**: as more tools are added, replace the `match` in `execute_tool` with a registry (name → schema + executor) so adding a tool is one entry rather than a new branch, and so unknown-tool errors are uniform.
 - **Structured errors**: define an `AppError` enum (`Upstream`, `Timeout`, `BadRequest`, `Internal`) with a stable `code` string and a human-readable `message`. Implement `IntoResponse` to map each variant to the correct status and JSON body.
 - **Streaming**: switch the chat endpoint to stream tokens back as SSE (`text/event-stream`). The frontend renders tokens as they arrive, replacing the "…" placeholder incrementally.
 - **Conversation state**: maintain a message list in the frontend (and optionally in the backend for multi-turn context). Each turn appends to the list; the UI renders the full history.
