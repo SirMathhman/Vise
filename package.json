@@ -5,6 +5,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "predev": "powershell -Command \"Get-NetTCPConnection -LocalPort 8080,5173 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue }; Start-Sleep -Milliseconds 500\"",
     "dev": "concurrently -n web,server -c blue,green \"pnpm --filter web dev\" \"cd apps/server && cargo-watch -x run\"",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
