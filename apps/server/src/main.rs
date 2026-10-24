@@ -2,7 +2,7 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::net::TcpListener;
 
@@ -16,9 +16,15 @@ struct AppState {
     config: Config,
 }
 
+#[derive(Deserialize, Serialize)]
+struct ChatMessage {
+    role: String,
+    content: String,
+}
+
 #[derive(Deserialize)]
 struct ChatRequest {
-    message: String,
+    messages: Vec<ChatMessage>,
 }
 
 async fn health() -> &'static str {
@@ -32,7 +38,7 @@ async fn chat(
     let cfg = &state.config;
     let body = serde_json::json!({
         "model": cfg.llama_model,
-        "messages": [{ "role": "user", "content": req.message }],
+        "messages": req.messages,
     });
 
     let resp = state
@@ -86,4 +92,3 @@ async fn main() {
     let listener = TcpListener::bind(&addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
-
