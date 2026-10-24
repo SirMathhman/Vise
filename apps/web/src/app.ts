@@ -28,8 +28,8 @@ export class ChatApp {
           block.className = "tool-use";
           block.innerHTML = `
             <div class="tool-use-header">
-              <span class="tool-name">${tool.name}</span>
-              <span class="tool-args">${JSON.stringify(tool.arguments)}</span>
+              <span class="tool-name">${escapeHtml(tool.name)}</span>
+              <span class="tool-args">${escapeHtml(JSON.stringify(tool.arguments))}</span>
             </div>
             <pre class="tool-result">${escapeHtml(tool.result)}</pre>
           `;

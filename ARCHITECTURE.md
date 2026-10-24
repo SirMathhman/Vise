@@ -92,30 +92,25 @@ routes.rs ──▶ agent.rs ──▶ llama.rs ──▶ Strata
 ## Potential Problems
 
 - **Secrets in source**: any API key or model identifier hardcoded in `main.rs` will leak to anyone with repo access. Configuration must come from the environment.
-- **Unstructured errors**: returning `(StatusCode, String)` tuples makes it impossible for the frontend to distinguish "Strata is down" from "bad request" from "timeout." A typed error enum with a stable error code field is required.
 - **No timeout on upstream calls**: a hung Strata process will hold the request open indefinitely. Every outbound HTTP call needs a connect + read timeout.
-- **No conversation history**: the current UI shows only the last exchange. A chat application needs a message list that persists across turns (at minimum in memory; later in a local store).
+- **No conversation persistence**: the UI maintains an in-memory message list across turns, but it is lost on page reload. A chat application needs persistence across sessions (a local store).
 - **No CORS**: the Vite dev proxy masks the absence of CORS headers. In production (or any non-dev origin), the browser will block the request. The backend must set `Access-Control-Allow-Origin` and handle `OPTIONS` preflights.
 - **No streaming**: the entire model response is buffered before being sent. For a chat UI, token-by-token streaming (SSE or chunked transfer) is the expected UX.
 - **No request validation**: `message: String` accepts an empty string, a 10 MB blob, or binary garbage. Validate length and content type at the boundary.
 - **Unbounded tool output**: a tool result (e.g. a deep `list_files` walk) is appended verbatim to the prompt. A large result can blow the context window or make the next model call slow. Tool results should be truncated/capped at the boundary, and the max-turns guard should surface a distinct error so the client can tell the loop stalled.
-- **Tool loop is not observable**: the frontend only sees the final text. Multi-turn tool use (the model calling `list_files` several times) is invisible, and a stalled loop looks like a hang. Surface tool activity (or at least a distinct "tool loop exceeded" error) so the UI can explain what happened.
+- **Tool loop is not observable in real time**: tool calls are now surfaced in the final response, but the user sees nothing while the loop is running. A stalled loop still looks like a hang. Streaming (SSE) is required so the UI can show tool activity as it happens, and a distinct "tool loop exceeded" error so the client can tell the loop stalled.
 - **No health-check depth**: `/health` returns `"ok"` without verifying Strata reachability. A real health endpoint should report upstream status.
-- **Unstyled UI**: the frontend has no CSS. Default browser rendering (Times New Roman headings, monospace `<pre>`, no spacing) is not a design. Layout, typography, contrast, focus states, and responsive behavior all need explicit rules.
 - **No accessibility**: the input has no `<label>`, the response region has no `aria-live`, and there are no visible focus indicators. Screen-reader users cannot follow the conversation.
 - **No linter or formatter**: neither the Rust nor the TypeScript side has a linter, formatter, or size guard configured. Drift is invisible until it accumulates.
 
 ## Future Work
 
 - **OpenAPI contract**: define `api.yaml` with the `/health` and `/api/chat` endpoints, request/response schemas, and error model. Use `@openapitools/openapi-generator-cli` (already in devDependencies) to generate the TypeScript client in `apps/web/src/api.ts` and validate the Rust handlers against the spec.
-- **Agent layer**: extract the tool-calling loop from `routes.rs` into `agent.rs` so the HTTP handlers stay thin and the model ↔ tools orchestration is isolated and testable. Split `tools.rs` into schema and executor concerns as tools are added.
 - **Tool registry**: as more tools are added, replace the `match` in `execute_tool` with a registry (name → schema + executor) so adding a tool is one entry rather than a new branch, and so unknown-tool errors are uniform.
-- **Structured errors**: define an `AppError` enum (`Upstream`, `Timeout`, `BadRequest`, `Internal`) with a stable `code` string and a human-readable `message`. Implement `IntoResponse` to map each variant to the correct status and JSON body.
 - **Streaming**: switch the chat endpoint to stream tokens back as SSE (`text/event-stream`). The frontend renders tokens as they arrive, replacing the "…" placeholder incrementally.
-- **Conversation state**: maintain a message list in the frontend (and optionally in the backend for multi-turn context). Each turn appends to the list; the UI renders the full history.
 - **CORS middleware**: add `axum-extra::middleware::cors` (or a manual layer) so the backend works from any origin in production.
 - **Timeouts**: set `reqwest` connect and read timeouts (e.g. 5 s connect, 120 s read for a 27B model). Surface a `Timeout` error to the client.
-- **Frontend styling**: write `styles.css` with a system font stack, consistent spacing scale, visible focus rings, a message list layout, and responsive breakpoints. Add `aria-live="polite"` to the response region and a `<label>` to the input.
+- **Accessibility**: add `aria-live="polite"` to the response region and a `<label>` to the input.
 - **Linting**: add `clippy` + `rustfmt` for Rust and `eslint` + `prettier` for TypeScript. Wire them into `pnpm dev` or a `pnpm lint` script.
 - **Testing**: add `cargo test` for the backend (config parsing, error mapping, route handlers with a mocked Strata) and Vitest for the frontend (rendering, state transitions).
 
