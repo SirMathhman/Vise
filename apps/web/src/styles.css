@@ -16,15 +16,21 @@ body {
 }
 
 .msg {
+  max-width: 80%;
   margin: 0.4rem 0;
+  padding: 0.4rem 0.6rem;
+  border-radius: 8px;
   white-space: pre-wrap;
 }
 
 .msg.user {
+  margin-left: auto;
+  background: #e8f0fe;
   color: #000;
 }
 
 .msg.assistant {
+  background: #f0f0f0;
   color: #333;
 }
 
