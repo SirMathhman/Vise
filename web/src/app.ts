@@ -16,9 +16,8 @@ interface Reply {
   subagent: Subagent | null;
 }
 
-// Adds the assistant's bubble to the chat's log, with its Thinking block hidden until reasoning arrives.
-function startReply(chat: Chat): Reply {
-  const bubble = addEntry(chat, "assistant");
+// A Thinking block, hidden until reasoning arrives.
+function thinkingBlock(): { thinking: HTMLDetailsElement; thinkingText: HTMLDivElement } {
   const thinking = document.createElement("details");
   thinking.className = "thinking";
   thinking.open = true;
@@ -27,9 +26,28 @@ function startReply(chat: Chat): Reply {
   thinkingSummary.textContent = "Thinking";
   const thinkingText = document.createElement("div");
   thinking.append(thinkingSummary, thinkingText);
+  return { thinking, thinkingText };
+}
+
+// Adds the assistant's bubble to the chat's log, with its Thinking block hidden until reasoning arrives.
+function startReply(chat: Chat): Reply {
+  const bubble = addEntry(chat, "assistant");
+  const { thinking, thinkingText } = thinkingBlock();
   const answerText = markdownBlock();
   bubble.append(thinking, answerText);
   return { chat, bubble, thinking, thinkingText, reasoningDone: false, answerText, answerRaw: "", subagent: null };
+}
+
+// Starts a new round after a tool call or a subagent: its reasoning and its answer go in new blocks, so they appear
+// below what came before them in the stream. Returns the blocks, in order, for the caller to add to the bubble.
+function startRound(reply: Reply): HTMLElement[] {
+  const { thinking, thinkingText } = thinkingBlock();
+  reply.thinking = thinking;
+  reply.thinkingText = thinkingText;
+  reply.reasoningDone = false;
+  reply.answerText = markdownBlock();
+  reply.answerRaw = "";
+  return [thinking, reply.answerText];
 }
 
 // Folds the Thinking block away once the reasoning is over. It can be opened again from its summary.
@@ -69,10 +87,8 @@ function showStreamed(reply: Reply, streamed: StreamEvent): void {
     reply.answerRaw += streamed.text;
     reply.answerText.innerHTML = renderMarkdown(reply.answerRaw);
   } else if (streamed.type === "tool") {
-    // Text after a tool call goes in a new block below it, so the order matches the stream.
-    reply.answerText = markdownBlock();
-    reply.answerRaw = "";
-    reply.bubble.append(toolLine(streamed.text), reply.answerText);
+    // Reasoning and text after a tool call go in new blocks below it, so the order matches the stream.
+    reply.bubble.append(toolLine(streamed.text), ...startRound(reply));
   } else if (streamed.type === "subagent_start") {
     reply.subagent = openSubagent(reply.bubble, streamed);
   } else if (streamed.type === "approval") {
@@ -86,10 +102,8 @@ function showStreamed(reply: Reply, streamed: StreamEvent): void {
       closeSubagent(reply.subagent, streamed.failed);
     }
     reply.subagent = null;
-    // Text after a subagent goes in a new block below it, as text after a tool call does.
-    reply.answerText = markdownBlock();
-    reply.answerRaw = "";
-    reply.bubble.append(reply.answerText);
+    // Reasoning and text after a subagent go in new blocks below it, as they do after a tool call.
+    reply.bubble.append(...startRound(reply));
   }
   scrollToEnd(reply.chat);
 }
