@@ -140,8 +140,6 @@ h1 {
   font-family: ui-monospace, "SF Mono", monospace;
   font-size: 0.78rem;
   color: #fff;
-  max-height: 200px;
-  overflow-y: auto;
 }
 
 /* Form */

@@ -101,6 +101,7 @@ routes.rs ──▶ agent.rs ──▶ llama.rs ──▶ Strata
 - **Tool loop is not observable in real time**: tool calls are now surfaced in the final response, but the user sees nothing while the loop is running. A stalled loop still looks like a hang. Streaming (SSE) is required so the UI can show tool activity as it happens, and a distinct "tool loop exceeded" error so the client can tell the loop stalled.
 - **No health-check depth**: `/health` returns `"ok"` without verifying Strata reachability. A real health endpoint should report upstream status.
 - **No accessibility**: the input has no `<label>`, the response region has no `aria-live`, and there are no visible focus indicators. Screen-reader users cannot follow the conversation.
+- **Nested scroll contexts**: the chat log (`#chat-log`) is the single scroll container for the conversation. Unbounded inner content (e.g. a long tool result) must grow naturally inside it, not carry its own `overflow` + `max-height`. Two stacked scrollbars for the same content are confusing and hard to use; if a region truly needs independent scrolling, it belongs in a sibling panel or modal, not nested inside the log.
 - **No linter or formatter**: neither the Rust nor the TypeScript side has a linter, formatter, or size guard configured. Drift is invisible until it accumulates.
 
 ## Future Work
