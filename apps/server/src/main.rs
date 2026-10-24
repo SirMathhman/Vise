@@ -6,6 +6,7 @@ mod config;
 mod error;
 mod llama;
 mod routes;
+mod tools;
 
 use config::Config;
 use routes::AppState;
