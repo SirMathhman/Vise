@@ -8,20 +8,14 @@ use super::Tool;
 pub fn tool() -> Tool {
     Tool {
         name: "create_file",
-        schema: json!({
-            "type": "function",
-            "function": {
-                "name": "create_file",
-                "description": "Create a new file with the given content. Fails if the file already exists. Parent directories must already exist.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "path": {"type": "string", "description": "The file to create."},
-                        "content": {"type": "string", "description": "The content to write to the file."}
-                    },
-                    "required": ["path", "content"]
-                }
-            }
+        description: "Create a new file with the given content. Fails if the file already exists. Parent directories must already exist.",
+        parameters: json!({
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "The file to create."},
+                "content": {"type": "string", "description": "The content to write to the file."}
+            },
+            "required": ["path", "content"]
         }),
         execute: |args| Box::pin(async { create_file(args) }),
     }

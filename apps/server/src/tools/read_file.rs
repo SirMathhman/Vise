@@ -9,21 +9,15 @@ const MAX_READ_LINES: usize = 500;
 pub fn tool() -> Tool {
     Tool {
         name: "read_file",
-        schema: json!({
-            "type": "function",
-            "function": {
-                "name": "read_file",
-                "description": "Read a text file and return its contents, optionally limited to a line range. Line numbers are 1-based. At most 500 lines are returned.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "path": {"type": "string", "description": "The file to read."},
-                        "start_line": {"type": "integer", "description": "First line to include (1-based). Defaults to 1."},
-                        "end_line": {"type": "integer", "description": "Last line to include (1-based). Defaults to the end of the file."}
-                    },
-                    "required": ["path"]
-                }
-            }
+        description: "Read a text file and return its contents, optionally limited to a line range. Line numbers are 1-based. At most 500 lines are returned.",
+        parameters: json!({
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "The file to read."},
+                "start_line": {"type": "integer", "description": "First line to include (1-based). Defaults to 1."},
+                "end_line": {"type": "integer", "description": "Last line to include (1-based). Defaults to the end of the file."}
+            },
+            "required": ["path"]
         }),
         execute: |args| Box::pin(async { read_file(args) }),
     }

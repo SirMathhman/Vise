@@ -8,7 +8,7 @@ Written for: developers working on the Vise monorepo.
 - **Strata**: the local inference server exposing an OpenAI-compatible `/v1/chat/completions` endpoint. Vise expects it at a configurable base URL (default `http://127.0.0.1:9931`).
 - **Backend** (`apps/server`): a Rust axum HTTP service that receives chat requests from the web UI, runs an agentic loop against Strata (executing model-requested tools and feeding results back), and returns the model's final reply.
 - **Agent loop**: the orchestration that repeatedly calls the model, executes any tool calls it emits, appends the results as `tool`-role messages, and repeats until the model produces a final text answer. This is a distinct layer from the HTTP handlers.
-- **Tool**: a named capability (e.g. `list_files`) the model can invoke. Each tool has a declarative JSON schema (sent to the model) and an imperative executor (run by the backend).
+- **Tool**: a named capability (e.g. `list_files`) the model can invoke. Each tool is defined by a single source of truth — its `name`, `description`, parameter schema, and executor — and every projection (the OpenAI schema sent to the model, the human-readable list shown in the UI, the executor lookup) is derived from that one definition. A tool's identity and description must never be re-parsed out of a serialized schema; they are fields on the tool itself.
 - **Frontend** (`apps/web`): a Vite + TypeScript single-page app that renders the chat form and displays responses.
 - **Design tokens**: the single source of truth for the visual theme — every color, surface, border, shadow, and accent is declared once in a `:root` token block in `styles.css`. The rest of the stylesheet references only tokens (`var(--...)`), never raw color literals. A theme change (darkening, light mode, rebrand) is therefore one token-block edit, not a hunt through scattered values.
 - **API contract** (`packages/api`): the OpenAPI specification (`api.yaml`) that describes the backend's HTTP surface. Client code and server handlers should be derived from or validated against this spec.
@@ -84,7 +84,7 @@ routes.rs ──▶ agent.rs ──▶ llama.rs ──▶ Strata
 | `routes.rs` | Define routes, extract state, construct the system prompt (working directory), delegate to the agent layer | 100 |
 | `agent.rs` | Run the agentic tool-calling loop: call the model, execute tool calls, append `tool` results, repeat until a final text answer (bounded by a max-turns guard) | 150 |
 | `llama.rs` | Wrap `reqwest` calls to Strata; map responses to typed structs (`AssistantReply`) | 100 |
-| `tools/mod.rs` | `Tool` struct, `OnceLock` registry, `tool_schemas()`, `execute_tool()` | 50 |
+| `tools/mod.rs` | `Tool` struct, `OnceLock` registry, `tool_schemas()`, `tool_list()`, `execute_tool()` | 50 |
 | `tools/<name>.rs` | One tool: its JSON schema + executor, exposed as `pub fn tool() -> Tool` | 100 |
 | `error.rs` | Define `AppError` enum with `IntoResponse` impl | 50 |
 
@@ -116,8 +116,8 @@ routes.rs ──▶ agent.rs ──▶ llama.rs ──▶ Strata
 
 ## Future Work
 
-- **OpenAPI contract**: define `api.yaml` with the `/health` and `/api/chat` endpoints, request/response schemas, and error model. Use `@openapitools/openapi-generator-cli` (already in devDependencies) to generate the TypeScript client in `apps/web/src/api.ts` and validate the Rust handlers against the spec.
-- **Tool registry**: `tools/mod.rs` holds a `OnceLock`-backed registry of `Tool` entries (name + JSON schema + executor `fn`). `tool_schemas()` is a projection of the registry's schemas and `execute_tool()` a lookup by name, so adding a tool is one entry and the schema/executor cannot drift apart. Unknown-tool errors stay uniform.
+- **OpenAPI contract**: define `api.yaml` with the `/health`, `/api/tools`, and `/api/chat` endpoints, request/response schemas, and error model. Use `@openapitools/openapi-generator-cli` (already in devDependencies) to generate the TypeScript client in `apps/web/src/api.ts` and validate the Rust handlers against the spec.
+- **Tool registry**: `tools/mod.rs` holds a `OnceLock`-backed registry of `Tool` entries. Each `Tool` carries its `name`, `description`, parameter schema, and executor as first-class fields, and the OpenAI-style schema is *derived* from those fields rather than hand-written in parallel. `tool_schemas()` (sent to the model), `tool_list()` (shown in the UI), and `execute_tool()` (lookup by name) are all projections of the same registry entry, so adding a tool is one entry and no projection can drift from the others. Unknown-tool errors stay uniform.
 - **Streaming**: switch the chat endpoint to stream tokens back as SSE (`text/event-stream`). The frontend renders tokens as they arrive, replacing the "…" placeholder incrementally.
 - **CORS middleware**: add `axum-extra::middleware::cors` (or a manual layer) so the backend works from any origin in production.
 - **Timeouts**: set `reqwest` connect and read timeouts (e.g. 5 s connect, 120 s read for a 27B model). Surface a `Timeout` error to the client.

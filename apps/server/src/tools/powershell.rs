@@ -9,20 +9,14 @@ const MAX_OUTPUT_CHARS: usize = 10_000;
 pub fn tool() -> Tool {
     Tool {
         name: "run_powershell",
-        schema: json!({
-            "type": "function",
-            "function": {
-                "name": "run_powershell",
-                "description": "Run a PowerShell command and return its combined output. A timeout in seconds is mandatory; the process is killed if it exceeds it.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "command": {"type": "string", "description": "The PowerShell command to run."},
-                        "timeout_seconds": {"type": "integer", "description": "Mandatory timeout in seconds. The process is killed if it exceeds this."}
-                    },
-                    "required": ["command", "timeout_seconds"]
-                }
-            }
+        description: "Run a PowerShell command and return its combined output. A timeout in seconds is mandatory; the process is killed if it exceeds it.",
+        parameters: json!({
+            "type": "object",
+            "properties": {
+                "command": {"type": "string", "description": "The PowerShell command to run."},
+                "timeout_seconds": {"type": "integer", "description": "Mandatory timeout in seconds. The process is killed if it exceeds this."}
+            },
+            "required": ["command", "timeout_seconds"]
         }),
         execute: |args| Box::pin(async { run_powershell(args).await }),
     }

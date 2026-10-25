@@ -8,20 +8,14 @@ use super::Tool;
 pub fn tool() -> Tool {
     Tool {
         name: "list_files",
-        schema: json!({
-            "type": "function",
-            "function": {
-                "name": "list_files",
-                "description": "List the files and directories in a directory, recursively up to the given depth. depth is mandatory: 0 lists only the top level, 1 lists one level down, and so on.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "path": {"type": "string", "description": "The directory to list."},
-                        "depth": {"type": "integer", "description": "Maximum recursion depth (mandatory). 0 = top level only."}
-                    },
-                    "required": ["path", "depth"]
-                }
-            }
+        description: "List the files and directories in a directory, recursively up to the given depth. depth is mandatory: 0 lists only the top level, 1 lists one level down, and so on.",
+        parameters: json!({
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "The directory to list."},
+                "depth": {"type": "integer", "description": "Maximum recursion depth (mandatory). 0 = top level only."}
+            },
+            "required": ["path", "depth"]
         }),
         execute: |args| Box::pin(async { list_files(args) }),
     }

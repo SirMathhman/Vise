@@ -8,19 +8,13 @@ use super::Tool;
 pub fn tool() -> Tool {
     Tool {
         name: "create_directory",
-        schema: json!({
-            "type": "function",
-            "function": {
-                "name": "create_directory",
-                "description": "Create a new directory, including any missing parent directories. Fails if the path already exists as a file.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "path": {"type": "string", "description": "The directory to create."}
-                    },
-                    "required": ["path"]
-                }
-            }
+        description: "Create a new directory, including any missing parent directories. Fails if the path already exists as a file.",
+        parameters: json!({
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "The directory to create."}
+            },
+            "required": ["path"]
         }),
         execute: |args| Box::pin(async { create_directory(args) }),
     }
