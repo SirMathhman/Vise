@@ -14,6 +14,11 @@ export interface ChatResponse {
   tool_calls?: ToolUse[];
 }
 
+export interface ToolInfo {
+  name: string;
+  description: string;
+}
+
 export async function sendChat(messages: Message[]): Promise<ChatResponse> {
   const res = await fetch("/api/chat", {
     method: "POST",
@@ -22,4 +27,10 @@ export async function sendChat(messages: Message[]): Promise<ChatResponse> {
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json() as Promise<ChatResponse>;
+}
+
+export async function fetchTools(): Promise<ToolInfo[]> {
+  const res = await fetch("/api/tools");
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json() as Promise<ToolInfo[]>;
 }

@@ -1,4 +1,4 @@
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::OnceLock;
@@ -42,6 +42,24 @@ fn tools() -> &'static [Tool] {
 /// OpenAI-style tool schemas sent to Strata.
 pub fn tool_schemas() -> Value {
     Value::Array(tools().iter().map(|t| t.schema.clone()).collect())
+}
+
+/// A human-readable list of the available tools (name + description).
+pub fn tool_list() -> Value {
+    Value::Array(
+        tools()
+            .iter()
+            .map(|t| {
+                let f = t.schema.get("function");
+                let name = f.and_then(|v| v.get("name")).and_then(|v| v.as_str()).unwrap_or(t.name);
+                let description = f
+                    .and_then(|v| v.get("description"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                json!({ "name": name, "description": description })
+            })
+            .collect(),
+    )
 }
 
 /// Execute a tool by name with parsed JSON arguments; returns the result text.

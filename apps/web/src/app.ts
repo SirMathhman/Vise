@@ -1,4 +1,5 @@
 import { Message, ToolUse, sendChat } from "./api";
+import { escapeHtml } from "./util";
 
 interface AssistantMessage extends Message {
   tool_calls?: ToolUse[];
@@ -70,12 +71,4 @@ export class ChatApp {
       this.render();
     }
   }
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }

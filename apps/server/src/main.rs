@@ -31,6 +31,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/health", get(routes::health))
+        .route("/api/tools", get(routes::tools))
         .route("/api/chat", post(routes::chat))
         .with_state(state);
 

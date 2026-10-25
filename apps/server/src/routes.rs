@@ -17,6 +17,10 @@ pub async fn health() -> &'static str {
     "ok"
 }
 
+pub async fn tools() -> Json<Value> {
+    Json(crate::tools::tool_list())
+}
+
 pub async fn chat(
     State(state): State<AppState>,
     Json(req): Json<ChatRequest>,
