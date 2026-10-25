@@ -41,22 +41,24 @@ fn edit_file(args: Value) -> Result<String, AppError> {
         .and_then(|v| v.as_str())
         .ok_or_else(|| AppError::BadRequest("missing 'new_text'".into()))?;
 
-    let content = fs::read_to_string(path)
-        .map_err(|e| AppError::BadRequest(format!("cannot read {path}: {e}")))?;
+    let content = match fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(e) => return Ok(format!("cannot read {path}: {e}")),
+    };
 
     let count = content.matches(previous_text).count();
     if count == 0 {
-        return Err(AppError::BadRequest("previous_text not found in file".into()));
+        return Ok(format!("previous_text not found in {path}"));
     }
     if count > 1 {
-        return Err(AppError::BadRequest(format!(
-            "previous_text is not unique (found {count} occurrences)"
-        )));
+        return Ok(format!(
+            "previous_text is not unique in {path} (found {count} occurrences)"
+        ));
     }
 
     let updated = content.replacen(previous_text, new_text, 1);
-    fs::write(path, updated)
-        .map_err(|e| AppError::BadRequest(format!("cannot write {path}: {e}")))?;
-
-    Ok(format!("edited {path} (replaced 1 occurrence)"))
+    match fs::write(path, updated) {
+        Ok(_) => Ok(format!("edited {path} (replaced 1 occurrence)")),
+        Err(e) => Ok(format!("cannot write {path}: {e}")),
+    }
 }

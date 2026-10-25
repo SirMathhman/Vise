@@ -37,11 +37,11 @@ fn create_directory(args: Value) -> Result<String, AppError> {
         if p.is_dir() {
             return Ok(format!("directory already exists: {path}"));
         }
-        return Err(AppError::BadRequest(format!("path is a file, not a directory: {path}")));
+        return Ok(format!("path is a file, not a directory: {path}"));
     }
 
-    fs::create_dir_all(p)
-        .map_err(|e| AppError::BadRequest(format!("cannot create directory {path}: {e}")))?;
-
-    Ok(format!("created directory {path}"))
+    match fs::create_dir_all(p) {
+        Ok(_) => Ok(format!("created directory {path}")),
+        Err(e) => Ok(format!("cannot create directory {path}: {e}")),
+    }
 }

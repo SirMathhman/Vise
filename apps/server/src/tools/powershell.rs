@@ -74,18 +74,24 @@ async fn run_powershell(args: Value) -> Result<String, AppError> {
         }
     }
 
-    let mut output = output;
     if output.len() > MAX_OUTPUT_CHARS {
-        output.truncate(MAX_OUTPUT_CHARS);
-        output.push_str("... [truncated]");
+        let mut truncated = String::new();
+        for (i, c) in output.chars().enumerate() {
+            if i == MAX_OUTPUT_CHARS {
+                truncated.push_str("... [truncated]");
+                break;
+            }
+            truncated.push(c);
+        }
+        output = truncated;
     }
 
     if !status.success() {
-        return Err(AppError::Internal(format!(
-            "powershell exited with status {:?}: {}",
+        return Ok(format!(
+            "command exited with status {:?}:\n{}",
             status.code(),
             output
-        )));
+        ));
     }
 
     Ok(output)

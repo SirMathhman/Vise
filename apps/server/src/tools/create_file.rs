@@ -38,11 +38,11 @@ fn create_file(args: Value) -> Result<String, AppError> {
         .ok_or_else(|| AppError::BadRequest("missing 'content'".into()))?;
 
     if Path::new(path).exists() {
-        return Err(AppError::BadRequest(format!("file already exists: {path}")));
+        return Ok(format!("file already exists: {path}"));
     }
 
-    fs::write(path, content)
-        .map_err(|e| AppError::BadRequest(format!("cannot create {path}: {e}")))?;
-
-    Ok(format!("created {path} ({} bytes)", content.len()))
+    match fs::write(path, content) {
+        Ok(_) => Ok(format!("created {path} ({} bytes)", content.len())),
+        Err(e) => Ok(format!("cannot create {path}: {e}")),
+    }
 }

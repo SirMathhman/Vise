@@ -51,8 +51,10 @@ fn read_file(args: Value) -> Result<String, AppError> {
         return Err(AppError::BadRequest("end_line must be >= start_line".into()));
     }
 
-    let content = fs::read_to_string(path)
-        .map_err(|e| AppError::BadRequest(format!("cannot read {path}: {e}")))?;
+    let content = match fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(e) => return Ok(format!("cannot read {path}: {e}")),
+    };
 
     let lines: Vec<&str> = content.lines().collect();
     let total = lines.len() as i64;

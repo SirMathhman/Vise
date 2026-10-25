@@ -42,7 +42,7 @@ fn list_files(args: Value) -> Result<String, AppError> {
 
     let root = Path::new(path);
     if !root.is_dir() {
-        return Err(AppError::BadRequest(format!("not a directory: {path}")));
+        return Ok(format!("not a directory: {path}"));
     }
 
     let mut lines = Vec::new();
