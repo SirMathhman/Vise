@@ -47,3 +47,18 @@ impl Conversation {
         &self.messages
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn first_message_is_system_context_with_cwd() {
+        let env = Environment { cwd: PathBuf::from("C:/work/project") };
+        let conversation = Conversation::new(&env);
+        let first = &conversation.messages()[0];
+        assert_eq!(first.role.as_str(), "system");
+        assert_eq!(first.content, "Current working directory: C:/work/project");
+    }
+}
