@@ -9,10 +9,12 @@ toward. It is a reference, not a changelog.
 - **Turn**: one user line, every tool exchange the model performs while answering it, and the final
   assistant reply (or the failure). A successful turn commits all of its messages to the
   conversation together; a failed turn commits none of them.
-- **Conversation**: the ordered list of messages (`system`, `user`, `assistant`, `tool`) sent to the
-  model on every turn. Owned by the REPL session, never by the transport. An assistant message that
-  requests tools keeps those tool calls, and each tool result is a `tool` message tied to its call
-  id, so a later turn sees everything an earlier turn saw.
+- **Message**: an enum with one variant per role. `System`, `User`, and `Assistant` carry content;
+  `Assistant` also carries the tool calls it requested; `Tool` carries the id of the call it answers.
+  A `Tool` message without a call id cannot be constructed.
+- **Conversation**: the ordered list of messages sent to the model on every turn. Owned by the REPL
+  session, never by the transport. A later turn sees everything an earlier turn saw, including tool
+  results, which remain in history for the rest of the session.
 - **Context message**: the leading `system` message that describes the host environment (today,
   the working directory). It is gathered once at startup, held by `session` as the first entry of
   the conversation, resent on every turn, and never trimmed.
@@ -43,21 +45,22 @@ Target layout (current code is a subset):
 
 ```
 src/
-  main.rs            entry point: load config, build session, run REPL, map errors to exit codes
-  repl.rs            line loop, command parsing ("exit", "quit"), printing
-  session.rs         Conversation state: commit a turn atomically, rollback on failure, trimming
+  main.rs            entry point: load config, pick the provider, build session, run REPL, map errors to exit codes
+  repl.rs            line loop over generic BufRead/Write; command parsing ("exit", "quit"); commits turns
+  session.rs         Message, Turn, Conversation: a Turn is appended whole or not at all; trimming
   config.rs          Config: endpoint URL, model name, timeouts, API key (from env / .env)
   environment.rs     gathers opt-in host facts as plain data (working directory first)
   provider/
-    mod.rs           trait Provider { fn complete(&self, &Conversation) -> Result<Turn, ProviderError> }
-                     Turn holds the messages to append on success
-    llama_cpp.rs     OpenAI-compatible HTTP implementation, its typed wire structs, and the
-                     tool-round loop
+    mod.rs           trait Provider { fn complete(&self, history: &[Message], input: String,
+                     tools: &dyn ToolRunner) -> Result<Turn, ProviderError> }
+    llama_cpp.rs     OpenAI-compatible HTTP implementation, its typed wire structs, serde_json use,
+                     and the tool-round loop
   tools/
-    mod.rs           registry: specs() -> Vec<ToolSpec>; execute(ToolCall) -> Result<String, ToolError>
+    mod.rs           registry: specs() -> &[ToolSpec]; ToolRunner runs a typed Invocation
     list_directory.rs  the list_directory tool and its argument struct
     path.rs          confines a model-supplied path to the working directory
-  error.rs           error enums per layer; Display text answers what/where/why/how-to-fix
+  error.rs           error enums per layer (ProviderError, ToolError, ConfigError, SessionError);
+                     Display text answers what/where/why/how-to-fix
 ```
 
 Dependency direction (arrows mean "may depend on"; no cycles):
@@ -65,9 +68,9 @@ Dependency direction (arrows mean "may depend on"; no cycles):
 ```
 main -> repl -> session -> environment -> (plain data only)
 session -> tools (ToolCall only, plain data; a committed tool exchange records its calls)
-repl -> provider (trait) -> error
+repl -> provider (trait) -> session (Message, Turn), tools (ToolRunner), error
 main -> config, repl, provider::llama_cpp (the only place a concrete provider is chosen)
-provider::llama_cpp -> tools (ToolSpec, ToolCall, execute) -> error
+provider::llama_cpp -> session (Message, Turn), tools (ToolSpec, ToolCall, ToolRunner), error
 config -> (plain data only); repl never reads config
 tools -> (std and plain data only); tools never import provider or session
 ```
@@ -77,17 +80,24 @@ Rules:
   URL, or the JSON form of a tool specification or tool call. It converts `ToolSpec` to JSON and
   wire tool calls to `ToolCall` values.
 - `session` knows nothing about HTTP, stdin, or JSON.
-- `tools` knows nothing about HTTP, the provider, or the conversation. A tool receives a typed
-  argument struct and the working directory, and returns text or a `ToolError`. Adding a tool means
-  one new file under `tools/` and one entry in the registry; `provider` and `session` do not change.
+- `tools` knows nothing about HTTP, the provider, or the conversation. `provider::llama_cpp` decodes
+  a model's JSON arguments into a tool's typed argument struct before calling the tool, so `tools`
+  never parses JSON. A tool receives that typed struct and the working directory, and returns text
+  or a `ToolError`. Adding a tool means one new file under `tools/` and one entry in the registry;
+  `provider` and `session` do not change.
+- The provider never names the working directory. The caller passes a `&dyn ToolRunner` (built from
+  the working directory in `main`), so tool execution is injected rather than looked up by the
+  provider.
 - `main` assembles but does not author prompt text. Environment facts are gathered by
   `environment` (plain data out, `Result` on failure), and `session` formats them into the context
   message. `main` never builds `Message` values directly.
 - `repl` receives a `&dyn Provider` (or generic `P: Provider`) so it can be tested with a fake.
-- Dependencies are confined as follows: `dotenvy` and the API-key read live in `config`; `ureq` lives
-  in `provider::llama_cpp`; `serde_json` lives in `provider::llama_cpp`. `serde` may also be used in
-  `tools`, but only to decode a tool's own argument struct. That is the single exception to serde
-  confinement.
+- Dependencies are confined as follows: `dotenvy` and the API-key read live in `config`; `ureq`,
+  `serde_json`, and `serde` derive macros for wire types live in `provider::llama_cpp`. No module
+  under `tools/` depends on `serde` or `serde_json`.
+- `Turn` is built only by the provider's tool loop and its fields are private. Its constructor takes
+  the user line and the new messages, and checks that they end in an assistant message without tool
+  calls, so `reply()` never has to guess which message is the reply.
 - Tool output is returned to the model as text. The REPL never prints tool output.
 - Modules stay under the project limits: 100 lines per function, 500 code lines per file,
   10 files per directory. Split a directory into subdirectories before it exceeds 10 files.
@@ -100,13 +110,11 @@ Rules:
 - **Unbounded history.** Every turn resends the full conversation. Long sessions will exceed the
   model's context window and fail with a server error. Trimming (oldest turns first, system prompt
   kept) must be enforced in `session` against a token or character budget.
-- **Tool exchanges are discarded.** The current loop keeps tool calls and results only for the turn
-  that produced them. On a later turn the model cannot see what a tool returned, and its reply may
-  refer to output it no longer has. Tool exchanges must be committed with the turn (see Definitions).
 - **Unbounded tool output.** A `list_directory` call at depth 5 can list a dependency or build
-  directory with an enormous number of entries. The whole listing is sent to the model in one
-  message and can exceed the context window. Tool output needs an entry and byte budget, with a
-  visible note to the model when output is truncated.
+  directory with an enormous number of entries. The whole listing is committed to history and resent
+  with every later turn, so one oversized result can make the rest of the session fail, not just the
+  turn that requested it. Tool output needs an entry and byte budget, with a visible note to the
+  model when output is truncated.
 - **Round limit discards work.** When a turn exhausts its tool rounds, all of its work is dropped,
   including the earlier tool results. The error does not say so.
 - **No request timeouts.** A stalled server blocks the REPL indefinitely. Connect, send, and
@@ -115,8 +123,13 @@ Rules:
   pre-formatted `String`s. `ToolError::Failed` flattens I/O causes into text, so callers and tests
   cannot match on the cause. Payloads must be structured (for example `Io { path, source }`), and
   the provider's error type must be named `ProviderError` as in Structure.
-- **Panics in I/O.** Reading stdin uses `expect`, which aborts the process on a read failure
-  instead of reporting it.
+- **Output can panic.** `println!` panics when stdout is closed. The REPL must write through
+  `writeln!` and treat a write failure as a reason to exit with an error code.
+- **The REPL is in `main`.** The line loop, exit words, and reply printing live in `main`, so the
+  turn handling cannot be tested without a terminal. The loop belongs in `repl.rs` (see Structure).
+- **Provider errors are provider-specific.** `ProviderError` lives in `provider::llama_cpp` and its
+  Display text names the llama.cpp URL and `.env`. A second provider would have to share that text,
+  so the error type belongs in `error.rs` and each provider supplies its own help text.
 - **Hard-coded configuration.** Endpoint and model name are constants in source. Changing the
   model requires a rebuild.
 - **Single-shot failure mode.** A failed turn is dropped silently from history; the user is not told
@@ -144,7 +157,8 @@ What untrusted input can reach:
 - Tool calls let model output read the local filesystem. Read access is limited to the working
   directory; no tool writes, deletes, or executes anything today.
 - Tool results go back to the model. File names in them can carry prompt injection, which can steer
-  later tool calls and replies.
+  later tool calls and replies. Because tool exchanges are committed to history, an injected
+  instruction keeps influencing every later turn of the session, not only the one that read it.
 - Error text from the HTTP layer may echo response bodies, which could contain secrets or
   attacker-controlled text.
 
@@ -181,15 +195,20 @@ Required controls and status:
 ## Future Work
 
 - Introduce `Provider` trait and move HTTP code behind it; keep `repl` and `session` free of `ureq`.
+- Extract `repl.rs` from `main` over generic `BufRead`/`Write`, so the turn loop runs in tests with a
+  fake provider.
+- Make `Message` an enum with one variant per role (see Definitions), and make `Turn` construction
+  checked (see Rules).
+- Typed tool invocations: `provider::llama_cpp` decodes arguments into a `tools::Invocation` enum,
+  and `tools` no longer sees `ToolCall` or JSON.
 - Structured error enums per layer (`ProviderError`, `ToolError`, `ConfigError`, `SessionError`)
-  with actionable messages.
-- Tool-exchange commit: a turn returns its messages as a `Turn`, and `session` appends them
-  atomically.
+  in `error.rs`, with actionable messages.
 - Output budget and truncation notice for tool results.
 - Configuration loaded from a file or environment with overrides for endpoint, model, timeouts,
   and history budget.
 - Token-aware history trimming that keeps the context message and the most recent turns.
-- Unit tests with a fake `Provider` for REPL behavior (rollback on failure, exit words, empty lines).
+- Unit tests with a fake `Provider` for REPL behavior (a failed turn leaves history unchanged, exit
+  words, empty lines, tool rounds committed in order).
 - Streaming responses, with the same sanitization applied per chunk.
 - Side-effecting tools only after the confirmation and logging policy above is implemented.
 

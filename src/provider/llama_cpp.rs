@@ -1,9 +1,10 @@
+use crate::provider::Provider;
 use crate::session::{Message, Role, Turn};
 use crate::tools::{self, ParamType, ToolCall, ToolSpec};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt;
-use std::path::Path;
+use std::path::PathBuf;
 
 const URL: &str = "http://127.0.0.1:9931/v1/chat/completions";
 const MODEL: &str = "ayozhee/Qwen3.8-27B-Abliterated-GSQ-Orca-GGUF:MTP";
@@ -180,33 +181,50 @@ impl std::error::Error for ProviderError {
     }
 }
 
-/// Runs one exchange: sends the history and `input`, executes any tool calls the model makes, and
-/// returns the new messages. Nothing is returned on failure, so the caller's history stays unchanged.
-pub fn complete(api_key: &str, history: &[Message], input: String, cwd: &Path) -> Result<Turn, ProviderError> {
-    let tools: Vec<WireTool> = tools::specs().iter().map(WireTool::from).collect();
-    let mut new = vec![Message::new(Role::User, input)];
-    for _ in 0..MAX_TOOL_ROUNDS {
-        let wire: Vec<WireMessage> = history.iter().chain(&new).map(WireMessage::from).collect();
-        let reply = send(api_key, &wire, &tools)?;
-        let content = reply.content.unwrap_or_default();
-        if reply.tool_calls.is_empty() {
-            new.push(Message::new(Role::Assistant, content));
-            return Ok(Turn { messages: new });
-        }
-        let calls: Vec<ToolCall> = reply.tool_calls.into_iter().map(ToolCall::from).collect();
-        let results: Vec<Message> = calls
-            .iter()
-            .map(|call| Message {
-                role: Role::Tool,
-                content: tools::execute(call, cwd).unwrap_or_else(|err| format!("error: {err}")),
-                tool_calls: Vec::new(),
-                tool_call_id: Some(call.id.clone()),
-            })
-            .collect();
-        new.push(Message { role: Role::Assistant, content, tool_calls: calls, tool_call_id: None });
-        new.extend(results);
+pub struct LlamaCpp {
+    api_key: String,
+    cwd: PathBuf,
+}
+
+impl LlamaCpp {
+    pub fn new(api_key: String, cwd: PathBuf) -> Self {
+        Self { api_key, cwd }
     }
-    Err(ProviderError::TooManyToolRounds)
+
+    /// Runs one exchange: sends the history and `input`, executes any tool calls the model makes, and
+    /// returns the new messages. Nothing is returned on failure, so the caller's history stays unchanged.
+    fn run(&self, history: &[Message], input: String) -> Result<Turn, ProviderError> {
+        let tools: Vec<WireTool> = tools::specs().iter().map(WireTool::from).collect();
+        let mut new = vec![Message::new(Role::User, input)];
+        for _ in 0..MAX_TOOL_ROUNDS {
+            let wire: Vec<WireMessage> = history.iter().chain(&new).map(WireMessage::from).collect();
+            let reply = send(&self.api_key, &wire, &tools)?;
+            let content = reply.content.unwrap_or_default();
+            if reply.tool_calls.is_empty() {
+                new.push(Message::new(Role::Assistant, content));
+                return Ok(Turn { messages: new });
+            }
+            let calls: Vec<ToolCall> = reply.tool_calls.into_iter().map(ToolCall::from).collect();
+            let results: Vec<Message> = calls
+                .iter()
+                .map(|call| Message {
+                    role: Role::Tool,
+                    content: tools::execute(call, &self.cwd).unwrap_or_else(|err| format!("error: {err}")),
+                    tool_calls: Vec::new(),
+                    tool_call_id: Some(call.id.clone()),
+                })
+                .collect();
+            new.push(Message { role: Role::Assistant, content, tool_calls: calls, tool_call_id: None });
+            new.extend(results);
+        }
+        Err(ProviderError::TooManyToolRounds)
+    }
+}
+
+impl Provider for LlamaCpp {
+    fn complete(&self, history: &[Message], input: String) -> Result<Turn, Box<dyn std::error::Error>> {
+        Ok(self.run(history, input)?)
+    }
 }
 
 fn send(api_key: &str, wire: &[WireMessage], tools: &[WireTool]) -> Result<ReplyMessage, ProviderError> {

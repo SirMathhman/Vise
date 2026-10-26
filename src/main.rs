@@ -1,10 +1,12 @@
 mod environment;
 mod provider;
+mod repl;
 mod session;
 mod tools;
 
+use provider::llama_cpp::LlamaCpp;
 use session::Conversation;
-use std::io::{self, BufRead};
+use std::io;
 
 fn main() {
     dotenvy::dotenv().ok();
@@ -17,22 +19,13 @@ fn main() {
         eprintln!("error: cannot read current directory: {err}");
         std::process::exit(1);
     });
+    let provider = LlamaCpp::new(api_key, env.cwd.clone());
     let mut conversation = Conversation::new(&env);
 
-    for line in io::stdin().lock().lines() {
-        let Ok(line) = line else {
-            eprintln!("error: failed to read from stdin");
-            break;
-        };
-        if matches!(line.trim(), "exit" | "quit") {
-            break;
-        }
-        match provider::llama_cpp::complete(&api_key, conversation.messages(), line, &env.cwd) {
-            Ok(turn) => {
-                println!("{}", turn.reply());
-                conversation.commit(turn);
-            }
-            Err(err) => eprintln!("error: {err}"),
-        }
+    let stdout = io::stdout();
+    let mut output = stdout.lock();
+    let mut errors = io::stderr();
+    if let Err(err) = repl::run(io::stdin().lock(), &mut output, &mut errors, &provider, &mut conversation) {
+        eprintln!("error: {err}");
     }
 }
