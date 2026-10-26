@@ -12,7 +12,10 @@ fn main() {
 
     let mut history: Vec<Message> = Vec::new();
     for line in io::stdin().lock().lines() {
-        let line = line.expect("failed to read from stdin");
+        let Ok(line) = line else {
+            eprintln!("error: failed to read from stdin");
+            break;
+        };
         if matches!(line.trim(), "exit" | "quit") {
             break;
         }
