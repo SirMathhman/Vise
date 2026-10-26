@@ -1,4 +1,4 @@
-mod chat;
+mod provider;
 mod environment;
 mod session;
 mod tools;
@@ -28,7 +28,7 @@ fn main() {
             break;
         }
         conversation.push(Role::User, line);
-        match chat::complete(&api_key, conversation.messages(), &env.cwd) {
+        match provider::llama_cpp::complete(&api_key, conversation.messages(), &env.cwd) {
             Ok(reply) => {
                 println!("{reply}");
                 conversation.push(Role::Assistant, reply);
