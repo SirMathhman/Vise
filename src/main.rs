@@ -1,6 +1,7 @@
 mod chat;
 mod environment;
 mod session;
+mod tools;
 
 use session::{Conversation, Role};
 use std::io::{self, BufRead};
@@ -27,7 +28,7 @@ fn main() {
             break;
         }
         conversation.push(Role::User, line);
-        match chat::complete(&api_key, conversation.messages()) {
+        match chat::complete(&api_key, conversation.messages(), &env.cwd) {
             Ok(reply) => {
                 println!("{reply}");
                 conversation.push(Role::Assistant, reply);
