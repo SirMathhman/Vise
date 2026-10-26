@@ -1,19 +1,20 @@
+use crate::session::Message;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
 const URL: &str = "http://127.0.0.1:9931/v1/chat/completions";
 const MODEL: &str = "ayozhee/Qwen3.8-27B-Abliterated-GSQ-Orca-GGUF:MTP";
 
-#[derive(Serialize, Deserialize, Clone)]
-pub struct Message {
-    pub role: String,
-    pub content: String,
+#[derive(Serialize)]
+struct WireMessage<'a> {
+    role: &'static str,
+    content: &'a str,
 }
 
 #[derive(Serialize)]
 struct Request<'a> {
     model: &'static str,
-    messages: &'a [Message],
+    messages: Vec<WireMessage<'a>>,
 }
 
 #[derive(Deserialize)]
@@ -23,7 +24,12 @@ struct Response {
 
 #[derive(Deserialize)]
 struct Choice {
-    message: Message,
+    message: ReplyMessage,
+}
+
+#[derive(Deserialize)]
+struct ReplyMessage {
+    content: String,
 }
 
 #[derive(Debug)]
@@ -54,9 +60,16 @@ impl std::error::Error for ChatError {
 }
 
 pub fn complete(api_key: &str, messages: &[Message]) -> Result<String, ChatError> {
+    let wire = Request {
+        model: MODEL,
+        messages: messages
+            .iter()
+            .map(|m| WireMessage { role: m.role.as_str(), content: &m.content })
+            .collect(),
+    };
     let mut response = ureq::post(URL)
         .header("Authorization", &format!("Bearer {api_key}"))
-        .send_json(Request { model: MODEL, messages })
+        .send_json(wire)
         .map_err(ChatError::Request)?;
     let body: Response = response.body_mut().read_json().map_err(ChatError::Request)?;
     let choice = body.choices.into_iter().next().ok_or(ChatError::EmptyResponse)?;

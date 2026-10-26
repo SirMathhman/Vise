@@ -1,6 +1,8 @@
 mod chat;
+mod environment;
+mod session;
 
-use chat::{Message, complete};
+use session::{Conversation, Role};
 use std::io::{self, BufRead};
 
 fn main() {
@@ -10,14 +12,12 @@ fn main() {
         std::process::exit(1);
     });
 
-    let cwd = std::env::current_dir().unwrap_or_else(|err| {
+    let env = environment::gather().unwrap_or_else(|err| {
         eprintln!("error: cannot read current directory: {err}");
         std::process::exit(1);
     });
-    let mut history = vec![Message {
-        role: "system".into(),
-        content: format!("Current working directory: {}", cwd.display()),
-    }];
+    let mut conversation = Conversation::new(&env);
+
     for line in io::stdin().lock().lines() {
         let Ok(line) = line else {
             eprintln!("error: failed to read from stdin");
@@ -26,15 +26,15 @@ fn main() {
         if matches!(line.trim(), "exit" | "quit") {
             break;
         }
-        history.push(Message { role: "user".into(), content: line });
-        match complete(&api_key, &history) {
+        conversation.push(Role::User, line);
+        match chat::complete(&api_key, conversation.messages()) {
             Ok(reply) => {
                 println!("{reply}");
-                history.push(Message { role: "assistant".into(), content: reply });
+                conversation.push(Role::Assistant, reply);
             }
             Err(err) => {
                 eprintln!("error: {err}");
-                history.pop();
+                conversation.pop_last();
             }
         }
     }

@@ -9,6 +9,9 @@ toward. It is a reference, not a changelog.
 - **Turn**: one user line, the request it produces, and the assistant reply (or the failure).
 - **Conversation**: the ordered list of messages (`system`, `user`, `assistant`) sent to the model
   on every turn. Owned by the REPL session, never by the transport.
+- **Context message**: the leading `system` message that describes the host environment (today,
+  the working directory). It is gathered once at startup, held by `session` as the first entry of
+  the conversation, resent on every turn, and never trimmed.
 - **Provider**: a backend that turns a conversation into a reply. llama.cpp is the only provider today.
 - **Wire type**: a struct that matches the JSON shape of a provider request or response. Wire types
   never leak into the REPL or the conversation model.
@@ -47,6 +50,9 @@ Rules:
 - `provider::llama_cpp` is the only module that knows about HTTP, `ureq`, `serde` wire shapes, or
   the endpoint URL.
 - `session` knows nothing about HTTP or stdin.
+- `main` assembles but does not author prompt text. Environment facts are gathered by a small
+  `environment` function (plain data out, `Result` on failure), and `session` formats them into the
+  context message. `main` never builds `Message` values directly.
 - `repl` receives a `&dyn Provider` (or generic `P: Provider`) so it can be tested with a fake.
 - Dependencies (`dotenvy`, `serde`, `serde_json`, `ureq`) are confined to the modules above; no
   other module imports them.
@@ -106,6 +112,10 @@ Required controls and status:
 - **Data exposure**: conversation content is sent only to the configured endpoint. The client never
   writes history to disk unless that is added deliberately with a documented location and
   permissions. *Met today.*
+- **Environment disclosure**: the context message sends the working directory path (which can
+  include the OS user name and project layout) to the configured endpoint on every turn. Controls:
+  only fields the user has opted into are included, the home-directory prefix is shortened, and the
+  context is shown to the user at startup. *Missing; the path is sent unconditionally today.*
 - **Unauthenticated state changes**: none today. Any future persistence or tool execution must
   require the user's own action in the session.
 
@@ -116,7 +126,9 @@ Required controls and status:
   actionable messages.
 - Configuration loaded from a file or environment with overrides for endpoint, model, timeouts,
   and history budget.
-- Token-aware history trimming that keeps the system prompt and the most recent turns.
+- Token-aware history trimming that keeps the context message and the most recent turns.
+- `environment` module that gathers opt-in host facts (working directory first) and returns them as
+  plain data; `session` owns the formatting.
 - Unit tests with a fake `Provider` for REPL behavior (rollback on failure, exit words, empty lines).
 - Streaming responses, with the same sanitization applied per chunk.
 - Optional tool-calling layer with explicit, logged user confirmation.
