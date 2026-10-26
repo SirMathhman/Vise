@@ -1,9 +1,9 @@
-mod provider;
 mod environment;
+mod provider;
 mod session;
 mod tools;
 
-use session::{Conversation, Role};
+use session::Conversation;
 use std::io::{self, BufRead};
 
 fn main() {
@@ -27,16 +27,12 @@ fn main() {
         if matches!(line.trim(), "exit" | "quit") {
             break;
         }
-        conversation.push(Role::User, line);
-        match provider::llama_cpp::complete(&api_key, conversation.messages(), &env.cwd) {
-            Ok(reply) => {
-                println!("{reply}");
-                conversation.push(Role::Assistant, reply);
+        match provider::llama_cpp::complete(&api_key, conversation.messages(), line, &env.cwd) {
+            Ok(turn) => {
+                println!("{}", turn.reply());
+                conversation.commit(turn);
             }
-            Err(err) => {
-                eprintln!("error: {err}");
-                conversation.pop_last();
-            }
+            Err(err) => eprintln!("error: {err}"),
         }
     }
 }

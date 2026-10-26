@@ -1,4 +1,4 @@
-use crate::session::Message;
+use crate::session::{Message, Role, Turn};
 use crate::tools::{self, ParamType, ToolCall, ToolSpec};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -26,7 +26,20 @@ struct WireMessage {
     tool_call_id: Option<String>,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+impl From<&Message> for WireMessage {
+    fn from(message: &Message) -> Self {
+        let tool_calls = (!message.tool_calls.is_empty())
+            .then(|| message.tool_calls.iter().map(WireToolCall::from).collect());
+        WireMessage {
+            role: message.role.as_str(),
+            content: Some(message.content.clone()),
+            tool_calls,
+            tool_call_id: message.tool_call_id.clone(),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
 struct WireToolCall {
     id: String,
     #[serde(rename = "type", default = "function_kind")]
@@ -38,10 +51,26 @@ fn function_kind() -> String {
     "function".into()
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct WireCallFunction {
     name: String,
     arguments: String,
+}
+
+impl From<&ToolCall> for WireToolCall {
+    fn from(call: &ToolCall) -> Self {
+        WireToolCall {
+            id: call.id.clone(),
+            kind: function_kind(),
+            function: WireCallFunction { name: call.name.clone(), arguments: call.arguments.clone() },
+        }
+    }
+}
+
+impl From<WireToolCall> for ToolCall {
+    fn from(call: WireToolCall) -> Self {
+        ToolCall { id: call.id, name: call.function.name, arguments: call.function.arguments }
+    }
 }
 
 #[derive(Serialize)]
@@ -123,13 +152,13 @@ struct ReplyMessage {
 }
 
 #[derive(Debug)]
-pub enum ChatError {
+pub enum ProviderError {
     Request(ureq::Error),
     EmptyResponse,
     TooManyToolRounds,
 }
 
-impl fmt::Display for ChatError {
+impl fmt::Display for ProviderError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::Request(err) => write!(
@@ -142,7 +171,7 @@ impl fmt::Display for ChatError {
     }
 }
 
-impl std::error::Error for ChatError {
+impl std::error::Error for ProviderError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Request(err) => Some(err),
@@ -151,52 +180,41 @@ impl std::error::Error for ChatError {
     }
 }
 
-pub fn complete(api_key: &str, messages: &[Message], cwd: &Path) -> Result<String, ChatError> {
-    let mut wire: Vec<WireMessage> = messages
-        .iter()
-        .map(|m| WireMessage {
-            role: m.role.as_str(),
-            content: Some(m.content.clone()),
-            tool_calls: None,
-            tool_call_id: None,
-        })
-        .collect();
+/// Runs one exchange: sends the history and `input`, executes any tool calls the model makes, and
+/// returns the new messages. Nothing is returned on failure, so the caller's history stays unchanged.
+pub fn complete(api_key: &str, history: &[Message], input: String, cwd: &Path) -> Result<Turn, ProviderError> {
     let tools: Vec<WireTool> = tools::specs().iter().map(WireTool::from).collect();
+    let mut new = vec![Message::new(Role::User, input)];
     for _ in 0..MAX_TOOL_ROUNDS {
+        let wire: Vec<WireMessage> = history.iter().chain(&new).map(WireMessage::from).collect();
         let reply = send(api_key, &wire, &tools)?;
+        let content = reply.content.unwrap_or_default();
         if reply.tool_calls.is_empty() {
-            return Ok(reply.content.unwrap_or_default());
+            new.push(Message::new(Role::Assistant, content));
+            return Ok(Turn { messages: new });
         }
-        wire.push(WireMessage {
-            role: "assistant",
-            content: reply.content,
-            tool_calls: Some(reply.tool_calls.clone()),
-            tool_call_id: None,
-        });
-        for call in &reply.tool_calls {
-            let tool_call = ToolCall {
-                id: call.id.clone(),
-                name: call.function.name.clone(),
-                arguments: call.function.arguments.clone(),
-            };
-            let content = tools::execute(&tool_call, cwd).unwrap_or_else(|err| format!("error: {err}"));
-            wire.push(WireMessage {
-                role: "tool",
-                content: Some(content),
-                tool_calls: None,
+        let calls: Vec<ToolCall> = reply.tool_calls.into_iter().map(ToolCall::from).collect();
+        let results: Vec<Message> = calls
+            .iter()
+            .map(|call| Message {
+                role: Role::Tool,
+                content: tools::execute(call, cwd).unwrap_or_else(|err| format!("error: {err}")),
+                tool_calls: Vec::new(),
                 tool_call_id: Some(call.id.clone()),
-            });
-        }
+            })
+            .collect();
+        new.push(Message { role: Role::Assistant, content, tool_calls: calls, tool_call_id: None });
+        new.extend(results);
     }
-    Err(ChatError::TooManyToolRounds)
+    Err(ProviderError::TooManyToolRounds)
 }
 
-fn send(api_key: &str, wire: &[WireMessage], tools: &[WireTool]) -> Result<ReplyMessage, ChatError> {
+fn send(api_key: &str, wire: &[WireMessage], tools: &[WireTool]) -> Result<ReplyMessage, ProviderError> {
     let request = Request { model: MODEL, messages: wire, tools };
     let mut response = ureq::post(URL)
         .header("Authorization", &format!("Bearer {api_key}"))
         .send_json(request)
-        .map_err(ChatError::Request)?;
-    let body: Response = response.body_mut().read_json().map_err(ChatError::Request)?;
-    Ok(body.choices.into_iter().next().ok_or(ChatError::EmptyResponse)?.message)
+        .map_err(ProviderError::Request)?;
+    let body: Response = response.body_mut().read_json().map_err(ProviderError::Request)?;
+    Ok(body.choices.into_iter().next().ok_or(ProviderError::EmptyResponse)?.message)
 }

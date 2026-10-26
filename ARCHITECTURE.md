@@ -64,6 +64,7 @@ Dependency direction (arrows mean "may depend on"; no cycles):
 
 ```
 main -> repl -> session -> environment -> (plain data only)
+session -> tools (ToolCall only, plain data; a committed tool exchange records its calls)
 repl -> provider (trait) -> error
 main -> config, repl, provider::llama_cpp (the only place a concrete provider is chosen)
 provider::llama_cpp -> tools (ToolSpec, ToolCall, execute) -> error
@@ -110,9 +111,10 @@ Rules:
   including the earlier tool results. The error does not say so.
 - **No request timeouts.** A stalled server blocks the REPL indefinitely. Connect, send, and
   read timeouts must be configured in `provider::llama_cpp` and surfaced as a `Timeout` error.
-- **Stringly errors.** Errors currently flow as `Box<dyn Error>`, ad-hoc strings, and
-  `Result<String, String>` from tools. This hides the cause from callers and from tests. Tools must
-  return a `ToolError` enum.
+- **Stringly error payloads.** `ToolError` and the provider error are enums, but their payloads are
+  pre-formatted `String`s. `ToolError::Failed` flattens I/O causes into text, so callers and tests
+  cannot match on the cause. Payloads must be structured (for example `Io { path, source }`), and
+  the provider's error type must be named `ProviderError` as in Structure.
 - **Panics in I/O.** Reading stdin uses `expect`, which aborts the process on a read failure
   instead of reporting it.
 - **Hard-coded configuration.** Endpoint and model name are constants in source. Changing the
@@ -181,8 +183,6 @@ Required controls and status:
 - Introduce `Provider` trait and move HTTP code behind it; keep `repl` and `session` free of `ureq`.
 - Structured error enums per layer (`ProviderError`, `ToolError`, `ConfigError`, `SessionError`)
   with actionable messages.
-- Typed wire structs in `provider::llama_cpp` in place of untyped JSON values; `ToolSpec` and
-  `ToolCall` as plain data shared with `tools`.
 - Tool-exchange commit: a turn returns its messages as a `Turn`, and `session` appends them
   atomically.
 - Output budget and truncation notice for tool results.

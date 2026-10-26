@@ -1,10 +1,12 @@
 use crate::environment::Environment;
+use crate::tools::ToolCall;
 
 #[derive(Clone, Copy)]
 pub enum Role {
     System,
     User,
     Assistant,
+    Tool,
 }
 
 impl Role {
@@ -13,6 +15,7 @@ impl Role {
             Self::System => "system",
             Self::User => "user",
             Self::Assistant => "assistant",
+            Self::Tool => "tool",
         }
     }
 }
@@ -20,6 +23,25 @@ impl Role {
 pub struct Message {
     pub role: Role,
     pub content: String,
+    pub tool_calls: Vec<ToolCall>,
+    pub tool_call_id: Option<String>,
+}
+
+impl Message {
+    pub fn new(role: Role, content: String) -> Self {
+        Self { role, content, tool_calls: Vec::new(), tool_call_id: None }
+    }
+}
+
+/// The messages one exchange adds to a conversation: the user's input, any tool exchanges, and the reply.
+pub struct Turn {
+    pub messages: Vec<Message>,
+}
+
+impl Turn {
+    pub fn reply(&self) -> &str {
+        self.messages.last().map_or("", |m| m.content.as_str())
+    }
 }
 
 pub struct Conversation {
@@ -28,19 +50,12 @@ pub struct Conversation {
 
 impl Conversation {
     pub fn new(env: &Environment) -> Self {
-        let context = Message {
-            role: Role::System,
-            content: format!("Current working directory: {}", env.cwd.display()),
-        };
+        let context = Message::new(Role::System, format!("Current working directory: {}", env.cwd.display()));
         Self { messages: vec![context] }
     }
 
-    pub fn push(&mut self, role: Role, content: String) {
-        self.messages.push(Message { role, content });
-    }
-
-    pub fn pop_last(&mut self) {
-        self.messages.pop();
+    pub fn commit(&mut self, turn: Turn) {
+        self.messages.extend(turn.messages);
     }
 
     pub fn messages(&self) -> &[Message] {
