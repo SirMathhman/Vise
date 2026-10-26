@@ -10,7 +10,14 @@ fn main() {
         std::process::exit(1);
     });
 
-    let mut history: Vec<Message> = Vec::new();
+    let cwd = std::env::current_dir().unwrap_or_else(|err| {
+        eprintln!("error: cannot read current directory: {err}");
+        std::process::exit(1);
+    });
+    let mut history = vec![Message {
+        role: "system".into(),
+        content: format!("Current working directory: {}", cwd.display()),
+    }];
     for line in io::stdin().lock().lines() {
         let Ok(line) = line else {
             eprintln!("error: failed to read from stdin");
