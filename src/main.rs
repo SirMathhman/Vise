@@ -1,5 +1,6 @@
 mod environment;
 mod error;
+mod profile;
 mod provider;
 mod repl;
 mod session;

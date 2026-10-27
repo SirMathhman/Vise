@@ -1,4 +1,5 @@
 use crate::error::ProviderError;
+use crate::profile;
 use crate::provider::types::Provider;
 use crate::session::{Conversation, Message, Turn};
 use crate::tools::types::ToolRunner;
@@ -11,7 +12,9 @@ const HELP: &str = "\
 /help                 show this list
 /tools                list each tool and whether the model may call it
 /tools enable NAME    let the model call a tool
-/tools disable NAME   stop the model calling a tool";
+/tools disable NAME   stop the model calling a tool
+/profile              list the profiles in the profiles folder
+/profile NAME         use a profile's instructions from the next message on";
 
 enum Command {
     Compact,
@@ -21,12 +24,21 @@ enum Command {
     Tools,
     Enable(String),
     Disable(String),
+    Profiles,
+    Profile(String),
 }
 
 /// Slash commands are handled here and never sent to the model. Any other line, including an unknown
 /// slash command, is sent as a message.
 fn command(line: &str) -> Option<Command> {
     let line = line.trim();
+    if let Some(rest) = line.strip_prefix("/profile").filter(|rest| rest.is_empty() || rest.starts_with(' ')) {
+        return match rest.split_whitespace().collect::<Vec<_>>().as_slice() {
+            [] => Some(Command::Profiles),
+            [name] => Some(Command::Profile(name.to_string())),
+            _ => None,
+        };
+    }
     if let Some(rest) = line.strip_prefix("/tools") {
         return match rest.split_whitespace().collect::<Vec<_>>().as_slice() {
             [] => Some(Command::Tools),
@@ -79,6 +91,8 @@ pub fn run(
     tools: &dyn ToolRunner,
     conversation: &mut Conversation,
 ) -> io::Result<()> {
+    // The instructions of the profile chosen with `/profile NAME`, until a message carries them.
+    let mut profile: Option<String> = None;
     loop {
         let line = match read_line(input) {
             Ok(Some(line)) => line,
@@ -94,6 +108,18 @@ pub fn run(
             Some(Command::Tools) => writeln!(output, "{}", tool_list(tools))?,
             Some(Command::Enable(name)) => toggle(tools, &name, true, output, errors)?,
             Some(Command::Disable(name)) => toggle(tools, &name, false, output, errors)?,
+            Some(Command::Profiles) => match profile::names() {
+                Ok(names) if names.is_empty() => writeln!(output, "no profiles: add .txt files to the profiles folder")?,
+                Ok(names) => writeln!(output, "{}", names.join("\n"))?,
+                Err(err) => writeln!(errors, "error: {err}")?,
+            },
+            Some(Command::Profile(name)) => match profile::load(&name) {
+                Ok(text) => {
+                    profile = Some(format!("[Instructions from profile {name}]\n{text}"));
+                    writeln!(output, "profile {name} selected; its instructions go with your next message")?;
+                }
+                Err(err) => writeln!(errors, "error: {err}")?,
+            },
             Some(Command::Compact) => match compact(provider, conversation) {
                 Ok(Compaction::Summarized) => writeln!(output, "conversation compacted")?,
                 Ok(Compaction::Dropped(removed)) => writeln!(
@@ -113,13 +139,18 @@ pub fn run(
             None => {
                 // Approval prompts read their answers from the same input as the lines themselves.
                 let mut approve = |change: &str| ask(change, &mut *output, &mut *input);
-                match run_turn(provider, conversation, line, tools, &mut approve) {
+                let message = match &profile {
+                    Some(text) => format!("{text}\n\n{line}"),
+                    None => line,
+                };
+                match run_turn(provider, conversation, message, tools, &mut approve) {
                     Ok((turn, compaction)) => {
                         if let Some(Compaction::Dropped(removed)) = compaction {
                             writeln!(output, "the context was full, so the oldest turn was dropped ({removed} messages removed)")?;
                         }
                         writeln!(output, "{}", turn.reply())?;
                         conversation.commit(turn);
+                        profile = None;
                     }
                     Err(err) => writeln!(errors, "error: {err}")?,
                 }
@@ -275,6 +306,13 @@ mod tests {
         fn run(&self, _invocation: &Invocation, _approve: &mut dyn FnMut(&str) -> bool) -> Result<String, ToolError> {
             Err(ToolError::UnknownTool("none".into()))
         }
+    }
+
+    #[test]
+    fn profile_command_must_be_a_whole_word() {
+        assert!(matches!(command("/profile coder"), Some(Command::Profile(name)) if name == "coder"));
+        assert!(matches!(command("/profile"), Some(Command::Profiles)));
+        assert!(command("/profiles").is_none());
     }
 
     fn conversation() -> Conversation {
