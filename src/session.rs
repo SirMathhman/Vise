@@ -170,6 +170,19 @@ impl Conversation {
         end - 1
     }
 
+    /// Everything after the system context: the part a saved session holds.
+    pub fn history(&self) -> &[Message] {
+        &self.messages[1..]
+    }
+
+    /// Replaces the history with `history`, keeping this run's system context. The prompt token count is
+    /// unknown until the next request.
+    pub fn replace_history(&mut self, history: Vec<Message>) {
+        self.messages.truncate(1);
+        self.messages.extend(history);
+        self.prompt_tokens = 0;
+    }
+
     /// The prompt tokens the model reported for the most recent request, or 0 before any turn.
     pub fn prompt_tokens(&self) -> u64 {
         self.prompt_tokens

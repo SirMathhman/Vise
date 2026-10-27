@@ -5,6 +5,7 @@ mod profile;
 mod provider;
 mod render;
 mod repl;
+mod saved_sessions;
 mod session;
 mod tools;
 
