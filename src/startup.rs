@@ -48,7 +48,11 @@ fn run_command(
     };
     // The user wrote this file, so the approval the runner asks for is answered yes here.
     let result = match tools.run(&invocation, &mut |_: &str| true) {
-        Ok(result) => result,
+        Ok(result) => {
+            // The first line of a result is its status, such as the exit code. The output itself goes to the model.
+            writeln!(output, "  {}", result.lines().next().unwrap_or_default())?;
+            result
+        }
         Err(err) => {
             writeln!(errors, "error: startup command failed: {err}")?;
             err.to_string()
@@ -80,11 +84,13 @@ mod tests {
         let cwd = std::env::temp_dir().join(format!("vise-startup-{}", std::process::id()));
         fs::create_dir_all(&cwd).unwrap();
         fs::write(cwd.join(STARTUP_FILE), "first\n\n  second  \n").unwrap();
-        let text = run(&cwd, &Echo, &mut Vec::<u8>::new(), &mut Vec::<u8>::new());
+        let mut shown = Vec::<u8>::new();
+        let text = run(&cwd, &Echo, &mut shown, &mut Vec::<u8>::new());
         fs::remove_dir_all(&cwd).unwrap();
         assert_eq!(
             text.unwrap(),
             Some("Startup command: first\nran first\n\nStartup command: second\nran second".to_string())
         );
+        assert_eq!(String::from_utf8(shown).unwrap(), "startup: first\n  ran first\nstartup: second\n  ran second\n");
     }
 }
