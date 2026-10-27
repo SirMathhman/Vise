@@ -3,8 +3,19 @@ pub mod path;
 pub mod read_file;
 pub mod types;
 
+use std::collections::HashMap;
 use std::path::PathBuf;
-use types::{Arguments, Invocation, ToolError, ToolRunner, ToolSpec};
+use types::{Arguments, Invocation, ToolError, ToolRunner, ToolSpec, Value};
+
+/// Looks up the named tool, checks the argument values against its spec, and returns the typed invocation.
+pub fn call(name: &str, values: HashMap<String, Value>) -> Result<Invocation, ToolError> {
+    let spec = SPECS
+        .iter()
+        .find(|spec| spec.name == name)
+        .ok_or_else(|| ToolError::UnknownTool(name.to_string()))?;
+    let args = Arguments::validated(spec, values)?;
+    bind(name, &args)
+}
 
 /// Maps a validated set of arguments to the typed invocation for the named tool.
 pub fn bind(name: &str, args: &Arguments) -> Result<Invocation, ToolError> {
@@ -53,7 +64,6 @@ pub fn specs() -> &'static [ToolSpec] {
 mod tests {
     use super::*;
     use std::collections::HashMap;
-    use types::Value;
 
     fn values(pairs: Vec<(&str, Value)>) -> HashMap<String, Value> {
         pairs.into_iter().map(|(name, value)| (name.to_string(), value)).collect()

@@ -1,7 +1,7 @@
 use crate::error::{MAX_TOOL_ROUNDS, ProviderError};
 use crate::provider::types::Provider;
 use crate::session::{Message, Role, Turn};
-use crate::tools::types::{Arguments, Invocation, ParamType, ToolCall, ToolError, ToolRunner, ToolSpec, Value};
+use crate::tools::types::{Invocation, ParamType, ToolCall, ToolError, ToolRunner, ToolSpec, Value};
 use crate::tools;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -195,25 +195,20 @@ impl Provider for LlamaCpp {
     }
 }
 
-/// Decodes a model's tool call into a typed invocation. The JSON is checked against the tool's spec
-/// here, so the tools never see raw JSON and this file never names a specific tool.
+/// Decodes a model's JSON tool arguments into plain values and hands them to the tool registry.
+/// This file never names a specific tool.
 fn invocation(call: &ToolCall) -> Result<Invocation, ToolError> {
-    let spec = tools::specs()
-        .iter()
-        .find(|spec| spec.name == call.name)
-        .ok_or_else(|| ToolError::UnknownTool(call.name.clone()))?;
     let json: serde_json::Map<String, serde_json::Value> =
         serde_json::from_str(&call.arguments).map_err(|err| ToolError::InvalidArguments(err.to_string()))?;
-    let values = json.into_iter().filter_map(|(name, value)| to_value(value).map(|value| (name, value))).collect();
-    let args = Arguments::validated(spec, values)?;
-    tools::bind(&call.name, &args)
+    let values = json.into_iter().map(|(name, value)| (name, to_value(value))).collect();
+    tools::call(&call.name, values)
 }
 
-fn to_value(value: serde_json::Value) -> Option<Value> {
+fn to_value(value: serde_json::Value) -> Value {
     match value {
-        serde_json::Value::String(text) => Some(Value::Text(text)),
-        serde_json::Value::Number(number) => number.as_i64().map(Value::Integer),
-        _ => None,
+        serde_json::Value::String(text) => Value::Text(text),
+        serde_json::Value::Number(number) => number.as_i64().map_or(Value::Unsupported, Value::Integer),
+        _ => Value::Unsupported,
     }
 }
 

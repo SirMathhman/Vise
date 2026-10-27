@@ -55,13 +55,15 @@ src/
     types.rs         trait Provider { fn complete(&self, history: &[Message], input: String,
                      tools: &dyn ToolRunner) -> Result<Turn, ProviderError> }
     llama_cpp.rs     OpenAI-compatible HTTP implementation, its typed wire structs, serde_json use,
-                     the tool-round loop, and validation of arguments against each ToolSpec
+                     the tool-round loop, and decoding of JSON argument values into plain `Value`s
   tools/
-    mod.rs           registry: specs() -> &[ToolSpec]; bind(name, &Arguments) -> Result<Invocation, ToolError>;
-                     ToolRunner runs a typed Invocation
+    mod.rs           registry: specs() -> &[ToolSpec]; call(name, values: HashMap<String, Value>)
+                     -> Result<Invocation, ToolError>, which finds the named spec, validates the values
+                     against it, and binds them through one arm per tool in bind(); ToolRunner runs a
+                     typed Invocation
     types.rs         plain data shared by the tools: ToolSpec, Param, Arguments, ToolCall, ToolError, ToolRunner
-    list_directory.rs  the list_directory tool and its argument struct
-    read_file.rs     the read_file tool: a line range with a 500-line / 100 KB output budget, and its argument struct
+    list_directory.rs  the list_directory tool
+    read_file.rs     the read_file tool: a line range with a 500-line / 100 KB output budget
     path.rs          confines a model-supplied path to the working directory
   error.rs           error enums per layer (ProviderError, ToolError, ConfigError, SessionError);
                      Display text answers what/where/why/how-to-fix
@@ -74,7 +76,7 @@ main -> repl -> session -> environment -> (plain data only)
 session -> tools (ToolCall only, plain data; a committed tool exchange records its calls)
 repl -> provider (trait) -> session (Message, Turn), tools (ToolRunner), error
 main -> config, repl, provider::llama_cpp (the only place a concrete provider is chosen)
-provider::llama_cpp -> session (Message, Turn), tools (ToolSpec, ToolCall, ToolRunner), error
+provider::llama_cpp -> session (Message, Turn), tools (call, Value, ToolCall, ToolRunner, ToolSpec), error
 config -> (plain data only); repl never reads config
 tools -> (std and plain data only); tools never import provider or session
 ```
@@ -84,13 +86,17 @@ Rules:
   URL, or the JSON form of a tool specification or tool call. It converts `ToolSpec` to JSON and
   wire tool calls to `ToolCall` values.
 - `session` knows nothing about HTTP, stdin, or JSON.
-- `tools` knows nothing about HTTP, the provider, or the conversation. `provider::llama_cpp` parses
-  a model's JSON arguments and checks each one against the `ParamType`s in the named tool's
-  `ToolSpec`, producing typed `Arguments`, so `tools` never parses JSON. The provider never compares
-  tool names. `tools::bind` (in the registry) maps a name and its `Arguments` to an `Invocation`, or
-  returns `ToolError::InvalidArguments`. A tool receives its `Invocation` fields and the working
-  directory, and returns text or a `ToolError`. Adding a tool means one new file under `tools/`, its
-  `SPEC`, one arm in `bind`, and one `Invocation` variant; `provider` and `session` do not change.
+- `tools` knows nothing about HTTP, the provider, or the conversation, and never parses JSON.
+  `provider::llama_cpp` decodes a model's JSON arguments into plain `Value`s (text, integer, or
+  `Value::Unsupported` for any other JSON type) and passes them with the tool name to `tools::call`.
+  The provider never looks up or compares tool names. `tools::call` (in the registry) finds the named
+  `ToolSpec` (`ToolError::UnknownTool` if none), checks each value against its `ParamType`s, and
+  returns `ToolError::InvalidArguments` naming the field when a value is missing, extra, unsupported,
+  or the wrong type. Only then does it produce an `Invocation`. Because `Arguments` is created and
+  consumed inside `tools`, a call can never be bound with arguments validated against another spec.
+  A tool receives its `Invocation` fields and the working directory, and returns text or a
+  `ToolError`. Adding a tool means one new file under `tools/`, its `SPEC`, one arm in `bind`, and one
+  `Invocation` variant; `provider` and `session` do not change.
 - The provider never names the working directory. The caller passes a `&dyn ToolRunner` (built from
   the working directory in `main`), so tool execution is injected rather than looked up by the
   provider.
@@ -145,10 +151,11 @@ Rules:
 - **Invariants are enforced by convention only.** `Message` has public fields and can be a `Tool`
   message with no call id; `Turn` has public fields, and tests construct it directly instead of
   through the checked constructor. `Message` must become the enum described in Definitions.
-- **Tool dispatch in the provider.** `provider::llama_cpp` holds one decoder struct per tool
-  (`ListArgs`, `ReadArgs`) and compares tool names in `invocation()`, so every new tool edits the
-  provider and breaks the Rule that adding a tool leaves `provider` unchanged. Name-to-`Invocation`
-  mapping belongs to `tools::bind`; the provider keeps only generic argument validation.
+- **Tool lookup in the provider.** `provider::llama_cpp::invocation()` still finds the `ToolSpec` by
+  comparing `spec.name` with the model's tool name, which the Rules forbid. Lookup, validation, and
+  binding must move into `tools::call`. Until then, `to_value` silently drops every JSON value that
+  is not a string or an integer (floats, booleans, nulls, arrays, objects), so a wrongly typed
+  argument is reported as `missing 'x'`, and extra fields are ignored without any error.
 - **Tool errors live outside `error.rs`.** `ToolError` is defined in `tools/types.rs`, not in the
   per-layer `error.rs` that Structure names. Pick one home and move it there.
 - **Provider errors carry raw text.** `ProviderError` lives in `error.rs`, but its `Transport` variant
@@ -222,10 +229,10 @@ Required controls and status:
 
 - Make `Message` an enum with one variant per role (see Definitions), and make `Turn` construction
   checked (see Rules).
-- Name-free tool dispatch: `tools::bind` builds every `Invocation` from typed `Arguments`, and the
-  provider's per-tool argument structs are removed (see Potential Problems).
-- Tool arguments checked against `ParamType` before binding: missing, extra, and wrongly typed
-  fields produce an `InvalidArguments` error that names the field.
+- `tools::call` owns spec lookup, argument validation, and binding in one function, and the provider
+  no longer finds a `ToolSpec` (see Rules and Potential Problems).
+- Argument validation rejects extra fields with an `InvalidArguments` error that names the field,
+  and reports an unsupported JSON type as a wrongly typed field, not a missing one.
 - Structured error enums per layer (`ProviderError`, `ToolError`, `ConfigError`, `SessionError`)
   in `error.rs`, with actionable messages.
 - Output budget and truncation notice for every tool, with the same line and byte limits as

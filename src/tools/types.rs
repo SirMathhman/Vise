@@ -46,6 +46,7 @@ impl std::error::Error for ToolError {}
 pub enum Value {
     Text(String),
     Integer(i64),
+    Unsupported,
 }
 
 /// Named argument values that have been checked against a `ToolSpec`'s parameters.
@@ -67,6 +68,11 @@ impl Arguments {
                     }
                 }
                 _ => return Err(ToolError::InvalidArguments(format!("'{}' has the wrong type", param.name))),
+            }
+        }
+        for name in values.keys() {
+            if !spec.params.iter().any(|param| param.name == name) {
+                return Err(ToolError::InvalidArguments(format!("unknown field '{name}'")));
             }
         }
         Ok(Self { values })
