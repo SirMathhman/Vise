@@ -1,6 +1,7 @@
 mod commands;
 mod environment;
 mod error;
+mod file_commands;
 mod notes;
 mod profile;
 mod provider;
@@ -8,6 +9,7 @@ mod render;
 mod repl;
 mod saved_sessions;
 mod session;
+mod shutdown;
 mod startup;
 mod tools;
 
@@ -57,6 +59,9 @@ fn main() {
         &tools,
         &mut conversation,
     ) {
+        let _ = writeln!(errors, "error: {err}");
+    }
+    if let Err(err) = shutdown::run(&env.cwd, &tools, &mut output, &mut errors) {
         let _ = writeln!(errors, "error: {err}");
     }
 }

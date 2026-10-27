@@ -9,6 +9,8 @@ use std::path::PathBuf;
 
 /// The file in the working directory whose lines run before each session.
 pub const STARTUP_FILE: &str = "startup.txt";
+/// The file in the working directory whose lines run after each session.
+pub const SHUTDOWN_FILE: &str = "shutdown.txt";
 
 pub struct WorkspaceTools {
     cwd: PathBuf,
@@ -33,13 +35,15 @@ impl WorkspaceTools {
         self.allowed_notes.borrow().as_ref().is_none_or(|names| names.iter().any(|allowed| allowed == name))
     }
 
-    /// Whether `path` names the startup file in the working directory, whatever its spelling.
-    fn is_startup_file(&self, path: &str) -> bool {
+    /// Whether `path` names a command file (startup or shutdown) in the working directory, whatever its spelling.
+    fn is_command_file(&self, path: &str) -> bool {
         let (Ok(target), Ok(root)) = (confine_new(&self.cwd, path), self.cwd.canonicalize()) else {
             return false;
         };
         target.parent() == Some(root.as_path())
-            && target.file_name().is_some_and(|name| name.eq_ignore_ascii_case(STARTUP_FILE))
+            && target.file_name().is_some_and(|name| {
+                [STARTUP_FILE, SHUTDOWN_FILE].iter().any(|file| name.eq_ignore_ascii_case(*file))
+            })
     }
 }
 
@@ -83,13 +87,13 @@ impl ToolRunner for WorkspaceTools {
         if let Some(note) = invocation.note_name().filter(|note| !self.note_allowed(note)) {
             return Err(ToolError::Failed(format!("note '{note}' is not allowed by the profile")));
         }
-        // The file tools cannot change the startup commands. Changing them is left to run_powershell, whose approval
-        // text says when a command names the startup file.
+        // The file tools cannot change the startup or shutdown commands. Changing them is left to run_powershell, whose
+        // approval text says when a command names one of these files.
         if let Invocation::CreateFile { path, .. } | Invocation::EditFile { path, .. } = invocation
-            && self.is_startup_file(path)
+            && self.is_command_file(path)
         {
             return Err(ToolError::Failed(format!(
-                "'{STARTUP_FILE}' lists the commands run before each session, so the file tools cannot change it"
+                "'{path}' lists commands that run without a prompt, so the file tools cannot change it"
             )));
         }
         if invocation.writes() && !approve(&describe(invocation)) {
@@ -137,8 +141,9 @@ fn describe(invocation: &Invocation) -> String {
                     "run this PowerShell command, moving it to the background if it runs past {timeout_secs} seconds:\n{command}"
                 )
             };
-            if command.to_ascii_lowercase().contains(STARTUP_FILE) {
-                format!("{text}\nThis may change {STARTUP_FILE}, whose lines run before every session.")
+            let lowered = command.to_ascii_lowercase();
+            if [STARTUP_FILE, SHUTDOWN_FILE].iter().any(|file| lowered.contains(*file)) {
+                format!("{text}\nThis may change a startup or shutdown file, whose lines run without a prompt.")
             } else {
                 text
             }

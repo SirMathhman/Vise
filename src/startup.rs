@@ -1,70 +1,30 @@
 //! Startup commands: each line of `startup.txt` in the working directory is a PowerShell command, run once before the
 //! first prompt. Their output goes into the conversation with the first message the user sends.
 
+use crate::file_commands::run_file;
 use crate::tools::runner::STARTUP_FILE;
-use crate::tools::types::{Invocation, ToolRunner};
-use std::fs;
-use std::io::{self, ErrorKind, Write};
+use crate::tools::types::ToolRunner;
+use std::io::{self, Write};
 use std::path::Path;
 
-/// How long each command may run in the foreground. A command still running after this becomes a background task.
-const TIMEOUT_SECS: u64 = 30;
-
 /// Runs the startup commands in order and returns the text to send with the first message: each command with its
-/// output or error. Returns `None` when there is no startup file or it has no commands.
+/// result. Returns `None` when there is no startup file or it has no commands.
 pub fn run(
     cwd: &Path,
     tools: &dyn ToolRunner,
     output: &mut impl Write,
     errors: &mut impl Write,
 ) -> io::Result<Option<String>> {
-    let text = match fs::read_to_string(cwd.join(STARTUP_FILE)) {
-        Ok(text) => text,
-        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
-        Err(err) => {
-            writeln!(errors, "error: cannot read {STARTUP_FILE}: {err}")?;
-            return Ok(None);
-        }
-    };
-    let mut blocks = Vec::new();
-    for command in text.lines().map(str::trim).filter(|line| !line.is_empty()) {
-        blocks.push(run_command(command, tools, output, errors)?);
-    }
+    let results = run_file(cwd, STARTUP_FILE, "startup", tools, output, errors)?.unwrap_or_default();
+    let blocks: Vec<String> =
+        results.iter().map(|(command, result)| format!("Startup command: {command}\n{result}")).collect();
     Ok((!blocks.is_empty()).then(|| blocks.join("\n\n")))
-}
-
-/// Runs one command and returns its block for the conversation.
-fn run_command(
-    command: &str,
-    tools: &dyn ToolRunner,
-    output: &mut impl Write,
-    errors: &mut impl Write,
-) -> io::Result<String> {
-    writeln!(output, "startup: {command}")?;
-    let invocation = Invocation::RunPowerShell {
-        command: command.to_string(),
-        timeout_secs: TIMEOUT_SECS,
-        background: false,
-    };
-    // The user wrote this file, so the approval the runner asks for is answered yes here.
-    let result = match tools.run(&invocation, &mut |_: &str| true) {
-        Ok(result) => {
-            // The first line of a result is its status, such as the exit code. The output itself goes to the model.
-            writeln!(output, "  {}", result.lines().next().unwrap_or_default())?;
-            result
-        }
-        Err(err) => {
-            writeln!(errors, "error: startup command failed: {err}")?;
-            err.to_string()
-        }
-    };
-    Ok(format!("Startup command: {command}\n{result}"))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tools::types::ToolError;
+    use crate::tools::types::{Invocation, ToolError};
     use std::fs;
 
     /// Answers each command with its own text, so the test can see which commands ran.
