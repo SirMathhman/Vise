@@ -48,3 +48,77 @@ const SPECS: &[ToolSpec] = &[list_directory::SPEC, read_file::SPEC];
 pub fn specs() -> &'static [ToolSpec] {
     SPECS
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use types::Value;
+
+    fn values(pairs: Vec<(&str, Value)>) -> HashMap<String, Value> {
+        pairs.into_iter().map(|(name, value)| (name.to_string(), value)).collect()
+    }
+
+    fn rejection(spec: &ToolSpec, pairs: Vec<(&str, Value)>) -> String {
+        Arguments::validated(spec, values(pairs)).err().expect("expected the arguments to be rejected").to_string()
+    }
+
+    #[test]
+    fn list_directory_rejects_missing_path() {
+        let message = rejection(&list_directory::SPEC, vec![("depth", Value::Integer(1))]);
+        assert!(message.contains("missing 'path'"));
+    }
+
+    #[test]
+    fn list_directory_rejects_text_depth() {
+        let message = rejection(
+            &list_directory::SPEC,
+            vec![("path", Value::Text(".".into())), ("depth", Value::Text("1".into()))],
+        );
+        assert!(message.contains("'depth' has the wrong type"));
+    }
+
+    #[test]
+    fn list_directory_rejects_depth_above_five() {
+        let message = rejection(
+            &list_directory::SPEC,
+            vec![("path", Value::Text(".".into())), ("depth", Value::Integer(6))],
+        );
+        assert!(message.contains("'depth' is out of range"));
+    }
+
+    #[test]
+    fn read_file_rejects_missing_end() {
+        let message = rejection(
+            &read_file::SPEC,
+            vec![("path", Value::Text("a.txt".into())), ("start", Value::Integer(1))],
+        );
+        assert!(message.contains("missing 'end'"));
+    }
+
+    #[test]
+    fn read_file_rejects_text_start() {
+        let message = rejection(
+            &read_file::SPEC,
+            vec![
+                ("path", Value::Text("a.txt".into())),
+                ("start", Value::Text("1".into())),
+                ("end", Value::Integer(3)),
+            ],
+        );
+        assert!(message.contains("'start' has the wrong type"));
+    }
+
+    #[test]
+    fn read_file_rejects_start_below_one() {
+        let message = rejection(
+            &read_file::SPEC,
+            vec![
+                ("path", Value::Text("a.txt".into())),
+                ("start", Value::Integer(0)),
+                ("end", Value::Integer(3)),
+            ],
+        );
+        assert!(message.contains("'start' is out of range"));
+    }
+}
