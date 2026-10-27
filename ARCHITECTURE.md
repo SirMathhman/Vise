@@ -40,13 +40,17 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 - **Background task**: a PowerShell command that keeps running after its turn's tool call returns. It
   gets an id, its output is collected while it runs, and the model reads that output with
   `read_background` and stops it with `kill_background`. Background tasks are stopped when the session ends.
+- **Profile**: a named set of instructions, kept as `profiles/NAME.txt` under the working directory. The
+  user selects one with `/profile NAME`. Its text, under a heading that names it, is prepended to the next
+  user message only. The system prompt never changes.
 - **Wire type**: a struct matching the JSON shape of a provider request or response. Wire types never
   leave `provider::llama_cpp`.
 
 ## Invariants
 
-- A successful turn appends its user line, its tool exchanges, and its reply together. A failed turn
-  leaves the conversation as it was. It does not undo files the turn changed (see Open Problems).
+- A successful turn appends its user message (with any profile text), its tool exchanges, and its reply
+  together. A failed turn leaves the conversation as it was. It does not undo files the turn changed (see
+  Open Problems).
 - `Turn::new` checks the shape of every turn: a user message first; then zero or more rounds, each an
   assistant message with tool calls followed by exactly one `Tool` message per call, in order; then a
   final assistant message with no tool calls.
@@ -87,8 +91,12 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
   only its id. The user approves what will stop, not a number.
 - A write runs only after the user approves a description of it. The default is no: only `y` or `yes`
   approves.
-- Slash commands (`/compact`, `/context`, `/exit`, `/help`, `/tools`) are never sent to the model. Every
-  other line is, including `exit`, `quit`, and unknown slash commands.
+- Slash commands (`/compact`, `/context`, `/exit`, `/help`, `/tools`, `/profile`) are never sent to the
+  model. Every other line is, including `exit`, `quit`, and unknown slash commands.
+- A profile is chosen by name only. The name must be letters, digits, `-` or `_`, so it cannot leave the
+  profiles folder. The selected profile is sent with the next user message whenever the history does not
+  carry it (`profile::carried`), so a failed turn keeps it for the retry. Once committed, its text stays in history until
+  compaction or a dropped turn removes it.
 - Each request has no `tools` field. It carries a grammar built from the enabled tools, which fixes the
   reply to a thinking block followed by plain text or one tool call to an enabled tool. Plain text cannot
   contain the `<tool_call>` marker.
@@ -111,13 +119,15 @@ src/
   main.rs            wiring: reads .env and LLAMA_API_KEY, takes the working directory, builds the
                      provider and tool runner, runs the REPL. Fatal startup errors go to exit_with.
   repl.rs            the input loop over generic BufRead/Write. Parses and runs slash commands
-                     (including `/tools`, `/tools enable NAME`, `/tools disable NAME`),
+                     (including `/tools`, `/tools enable NAME`, `/tools disable NAME`, `/profile`,
+                     `/profile NAME`), holds the selected profile until a turn succeeds,
                      decides when to compact, retries a turn that reports ContextFull once, asks
                      for approval of writes, and writes replies and notices
   session.rs         Message, Turn (checked shape), Conversation (committed history, prompt tokens of
                      the last committed turn, compaction, drop_oldest_turn), over_budget (80%)
   environment.rs     gathers host facts as plain data (working directory)
   error.rs           ProviderError, SessionError, MAX_TOOL_ROUNDS
+  profile.rs         lists the profiles folder's .txt files and loads one by a validated name
   provider/
     mod.rs           declarations only
     types.rs         trait Provider: complete, context_size, summarize
@@ -157,7 +167,8 @@ Dependencies (an arrow means "may depend on"; there are no cycles):
 
 ```
 main -> repl, session, provider::llama_cpp, tools::runner, environment, error
-repl -> provider::types, session, tools::types, error
+repl -> provider::types, session, tools::types, profile, error
+profile -> std only
 provider -> session (Message, Turn, over_budget), tools (registry and types), error
 session -> environment, tools::types (ToolCall only)
 tools -> tools' own types, std (no provider, session, HTTP, or serde)
@@ -202,6 +213,12 @@ Each item is a gap between the design above and the code, or a decision the code
 does not allow.
 
 Turn and history
+- **Profile listing and selection disagree.** `profile::names` lists every `.txt` file, including names
+  `load` rejects (such as `my notes.txt`), so `/profile` shows a name it then refuses.
+- **Profile text is unbounded.** `profile::load` reads the whole file. A large profile is committed and
+  resent on every later turn.
+- **No way to clear a profile.** Once chosen, a profile stays until another is chosen or the process ends.
+  There is no "no profile" form.
 - **Failed turns forget their writes.** A turn that writes and then fails (round limit, transport error,
   `ContextFullAfterChange`) commits none of its messages. The files stay changed, the next turn does not
   know it, and the user sees only the error. A failed turn must record the writes it applied, and its
@@ -329,6 +346,8 @@ Trust boundaries:
   and oversized bodies.
 - **File and directory names** under the working directory are untrusted text. They can contain
   instructions to the model.
+- **Profile files** are untrusted text. They sit in `profiles/` under the working directory, which an
+  approved write can also change, and their text reaches the model verbatim.
 - **The API key** lives in `.env` (git-ignored) and in the environment.
 
 What untrusted input can reach:
@@ -350,7 +369,8 @@ Controls:
 | Terminal sanitization of model replies, approval text, and error text | Missing. |
 | API key never printed, logged, or put in errors | Partly met. Error paths have not been audited. |
 | Plain HTTP refused unless the endpoint is loopback | Missing. The endpoint is a loopback constant. |
-| Size limits on user lines and response bodies | Missing. |
+| Size limits on user lines, profile files, and response bodies | Missing. Profile files are read whole (Open Problems). |
+| Profile names restricted to letters, digits, `-`, `_` | Met. A name cannot leave the profiles folder. A symlink inside the folder is still followed. |
 | Size limits on tool output | `read_file` and background task output. `list_directory` has none. |
 | Limits on commands: time, process tree, output | Partly met. A foreground command waits at most 30 seconds, then becomes a background task. Stopping a task ends every process in its Job Object. Output is capped at 100 KB per task. Background tasks have no count limit. Interrupts and orphaned processes are not covered (Open Problems). |
 | Approval shows what a stop will end | Missing. `kill_background` shows only the id (Open Problems). |
@@ -380,6 +400,7 @@ Controls:
 - A `/jobs` command that lists background tasks with their command, state, and age, and a way to read a
   task's output from the terminal, so the user can see what is running before approving a stop.
 - Deletion and further execution tools, only after logging is implemented.
+- A `/profile` form that clears the selection, and a `/profile` listing that shows the selected profile.
 
 ## Performance
 

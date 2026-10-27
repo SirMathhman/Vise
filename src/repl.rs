@@ -91,7 +91,7 @@ pub fn run(
     tools: &dyn ToolRunner,
     conversation: &mut Conversation,
 ) -> io::Result<()> {
-    // The instructions of the profile chosen with `/profile NAME`, until a message carries them.
+    // The profile chosen with `/profile NAME`. Its text is sent again whenever the history does not carry it.
     let mut profile: Option<String> = None;
     loop {
         let line = match read_line(input) {
@@ -115,7 +115,7 @@ pub fn run(
             },
             Some(Command::Profile(name)) => match profile::load(&name) {
                 Ok(text) => {
-                    profile = Some(format!("[Instructions from profile {name}]\n{text}"));
+                    profile = Some(profile::marked(&name, &text));
                     writeln!(output, "profile {name} selected; its instructions go with your next message")?;
                 }
                 Err(err) => writeln!(errors, "error: {err}")?,
@@ -140,8 +140,8 @@ pub fn run(
                 // Approval prompts read their answers from the same input as the lines themselves.
                 let mut approve = |change: &str| ask(change, &mut *output, &mut *input);
                 let message = match &profile {
-                    Some(text) => format!("{text}\n\n{line}"),
-                    None => line,
+                    Some(text) if !profile::carried(conversation.messages(), text) => format!("{text}\n\n{line}"),
+                    _ => line,
                 };
                 match run_turn(provider, conversation, message, tools, &mut approve) {
                     Ok((turn, compaction)) => {
@@ -150,7 +150,6 @@ pub fn run(
                         }
                         writeln!(output, "{}", turn.reply())?;
                         conversation.commit(turn);
-                        profile = None;
                     }
                     Err(err) => writeln!(errors, "error: {err}")?,
                 }
