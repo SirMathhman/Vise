@@ -196,16 +196,14 @@ struct ErrorInfo {
 const CONTEXT_OVERFLOW: &str = "exceed_context_size_error";
 
 /// Maps the body of a 400 response: only an exact context overflow becomes `ContextFull`. Any other
-/// body becomes a transport error that carries the server's message, or the raw body if it has none.
+/// body is a rejected request, carrying the server's message, or the raw body if it has none.
 fn bad_request(body: &str) -> ProviderError {
     match serde_json::from_str::<ErrorBody>(body) {
         Ok(ErrorBody { error: ErrorInfo { kind: Some(kind), .. } }) if kind == CONTEXT_OVERFLOW => {
             ProviderError::ContextFull
         }
-        Ok(ErrorBody { error: ErrorInfo { message: Some(message), .. } }) => {
-            ProviderError::Transport(message.into())
-        }
-        _ => ProviderError::Transport(body.to_string().into()),
+        Ok(ErrorBody { error: ErrorInfo { message: Some(message), .. } }) => ProviderError::Rejected(message),
+        _ => ProviderError::Rejected(body.to_string()),
     }
 }
 
@@ -385,10 +383,29 @@ mod tests {
     }
 
     #[test]
-    fn other_bad_request_is_a_transport_error_with_the_server_message() {
+    fn other_bad_request_is_rejected_with_the_server_message() {
         let body = r#"{"error":{"code":400,"message":"model name is missing from the request","type":"invalid_request_error"}}"#;
         let error = bad_request(body);
-        assert!(matches!(error, ProviderError::Transport(_)));
+        assert!(matches!(error, ProviderError::Rejected(_)));
         assert!(error.to_string().contains("model name is missing from the request"));
+    }
+
+    #[test]
+    fn non_json_body_mentioning_overflow_is_not_context_full() {
+        let body = "exceed_context_size_error: request too large";
+        let error = bad_request(body);
+        assert!(matches!(error, ProviderError::Rejected(ref text) if text == body));
+    }
+
+    #[test]
+    fn message_without_type_is_rejected_with_the_message() {
+        let body = r#"{"error":{"message":"bad temperature"}}"#;
+        assert!(matches!(bad_request(body), ProviderError::Rejected(ref text) if text == "bad temperature"));
+    }
+
+    #[test]
+    fn bad_request_without_a_message_keeps_the_raw_body() {
+        let body = r#"{"error":{}}"#;
+        assert!(matches!(bad_request(body), ProviderError::Rejected(ref text) if text == body));
     }
 }

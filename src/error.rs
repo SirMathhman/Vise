@@ -24,6 +24,7 @@ impl std::error::Error for SessionError {}
 pub enum ProviderError {
     Transport(Box<dyn std::error::Error>),
     Encode(Box<dyn std::error::Error>),
+    Rejected(String),
     EmptyResponse,
     TooManyToolRounds,
     ModelNotFound,
@@ -37,6 +38,7 @@ impl fmt::Display for ProviderError {
         match self {
             Self::Transport(err) => write!(f, "request to the model failed ({err}); check that the server is running"),
             Self::Encode(err) => write!(f, "could not encode the conversation ({err})"),
+            Self::Rejected(message) => write!(f, "the server rejected the request: {message}; check the request"),
             Self::EmptyResponse => write!(f, "the model returned no choices; try the message again"),
             Self::TooManyToolRounds => write!(f, "the model kept calling tools after {MAX_TOOL_ROUNDS} rounds; try a simpler request"),
             Self::ModelNotFound => write!(f, "the server does not list the configured model"),
@@ -56,7 +58,8 @@ impl std::error::Error for ProviderError {
             | Self::TooManyToolRounds
             | Self::ModelNotFound
             | Self::ContextFull
-            | Self::EmptySummary => None,
+            | Self::EmptySummary
+            | Self::Rejected(_) => None,
         }
     }
 }

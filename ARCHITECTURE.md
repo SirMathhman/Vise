@@ -48,10 +48,12 @@ toward. It is a reference, not a changelog.
     calls. `Turn` rejects any other sequence.
   - A turn performs at most a fixed number of tool rounds. Exceeding the limit fails the turn.
   - A turn fails with `ProviderError::ContextFull` in two cases: the server rejects a request because
-    it exceeds the context, or a tool round's reply reports a prompt at the 80% budget, in which case
-    its tools are not run. Any other rejection is `Transport`. The REPL then compacts the conversation
-    and retries the turn once from the compacted history. The provider never rewrites history, so a
-    retry sends less than the request that failed.
+    it exceeds the context (its error type is exactly `exceed_context_size_error`), or a tool round's
+    reply reports a prompt at the 80% budget, in which case its tools are not run. Any other 400 is
+    `ProviderError::Rejected`, which carries the server's message, or the raw body when no message can
+    be read. `Transport` is reserved for failures to reach the server or read its reply. The REPL then
+    compacts the conversation and retries the turn once from the compacted history. The provider never
+    rewrites history, so a retry sends less than the request that failed.
   - A summary never appears inside a turn. `Turn::new` accepts no plain assistant message before the
     turn's final reply.
   - A compaction leaves exactly the context message, one summary, and the last two turns, in that
@@ -245,12 +247,6 @@ Rules:
   different failures with different fixes; they need distinct variants that name the model.
 - **Plain HTTP.** The default endpoint is `http://127.0.0.1`, so the bearer token crosses the
   network unencrypted if the endpoint is ever pointed at a remote host.
-- **Overflow detection depends on one body shape.** A 400 becomes `ContextFull` only when its body
-  parses as `{error: {message, type}}` with type `exceed_context_size_error`. A body that is not JSON
-  is reported as the JSON parse error, and a body that lacks `type` or `message` fails the same way, so
-  the server's text is lost. A real overflow in either shape is reported as a transport failure and
-  never retried. The mapping must tolerate missing fields and keep the raw body text when it cannot be
-  parsed.
 - **Budget threshold in the provider.** `provider::llama_cpp` imports `over_budget` and decides
   `ContextFull` from it. The threshold belongs to `session`, passed in as a `PromptLimit`.
 - **Summary discarded by its own check.** `summarize_messages` returns `ContextFull` when the summary
@@ -260,9 +256,11 @@ Rules:
   describe only the summary. A drop leaves no summary, so the "one summary" rule does not hold after
   it, and no invariant states that a drop must be reported. The invariant above must be the only
   rule, and every compaction path must return a `Compaction` outcome.
-- **Non-overflow 400 gets a misleading hint.** Every 400 that is not an overflow becomes
+- **Non-overflow 400 gets a misleading hint.** Every 400 that is not an overflow is reported with
   `ProviderError::Transport`, whose text says "check that the server is running". A rejected request
-  is not a dead server, so the message sends the user to the wrong fix. Each 400 needs its own text.
+  is not a dead server, so the message sends the user to the wrong fix. The `Rejected` variant in
+  Definitions and Invariants gives these responses their own text, and `Transport` is no longer used
+  for them.
 - **Repeated compaction.** If the context size is small or the summary is large, the conversation
   can reach 80% on every turn, so each turn pays for a full summary request. The REPL should report
   when a compaction did not free enough space.
@@ -298,8 +296,8 @@ What untrusted input can reach:
   later tool calls and replies. Because tool exchanges are committed to history, an injected
   instruction keeps influencing every later turn of the session, not only the one that read it.
 - Error text from the HTTP layer may echo response bodies, which could contain secrets or
-  attacker-controlled text. A 400 body's `error.message` is echoed into the terminal text of
-  `ProviderError::Transport` and must pass through the same sanitization as model replies.
+  attacker-controlled text. A 400 body's `error.message` (or raw body) is echoed into the terminal text
+  of `ProviderError::Rejected` and must pass through the same sanitization as model replies.
 
 Required controls and status:
 - **Terminal output sanitization**: strip or escape control characters from model replies before
@@ -353,8 +351,8 @@ Required controls and status:
 - `read_file` streams lines through a buffered reader and stops at its budget or the end line.
 - Configuration loaded from a file or environment with overrides for endpoint, model, timeouts,
   and history budget.
-- Status and body classification as the pure function described under Structure, with tests for an
-  overflow body that is not JSON, one that lacks `type`, and a non-overflow 400.
+- Tests for the body classification described under Structure, covering a 400 whose body lacks `type`,
+  a 400 whose body is not JSON (kept as raw text in `Rejected`), and a 400 with an empty message.
 - Token-aware history trimming that keeps the context message and the most recent turns, used as the
   deterministic fallback when a summary request does not fit.
 - Compaction budget set from configuration, and a `/compact` report that shows the user the summary
