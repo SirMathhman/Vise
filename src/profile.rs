@@ -2,6 +2,7 @@
 //! with the next user message, so the system prompt at the start of the history never changes.
 
 use crate::session::Message;
+use crate::tools::specs;
 use std::fs;
 use std::io;
 use std::path::PathBuf;
@@ -42,15 +43,38 @@ pub fn names() -> Result<Vec<String>, String> {
     Ok(names)
 }
 
-/// The text of one profile. Only letters, digits, '-' and '_' are accepted in a name, so a name cannot
-/// reach outside the folder.
-pub fn load(name: &str) -> Result<String, String> {
+/// A profile: its instructions, and the tools it allows if its file names any on a `tools:` line.
+#[derive(Debug)]
+pub struct Profile {
+    pub instructions: String,
+    pub tools: Option<Vec<String>>,
+}
+
+/// Loads one profile. Only letters, digits, '-' and '_' are accepted in a name, so a name cannot reach
+/// outside the folder.
+pub fn load(name: &str) -> Result<Profile, String> {
     let valid = !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
     if !valid {
         return Err(format!("'{name}' is not a profile name; use letters, digits, '-' and '_'"));
     }
-    fs::read_to_string(PathBuf::from(FOLDER).join(format!("{name}.txt")))
-        .map_err(|err| format!("cannot read profile '{name}': {err}"))
+    let text = fs::read_to_string(PathBuf::from(FOLDER).join(format!("{name}.txt")))
+        .map_err(|err| format!("cannot read profile '{name}': {err}"))?;
+    parse(&text)
+}
+
+/// Splits the optional `tools: a, b` first line from the instructions. Every name must be a tool.
+fn parse(text: &str) -> Result<Profile, String> {
+    let (first, rest) = text.split_once('\n').unwrap_or((text, ""));
+    let Some(list) = first.trim().strip_prefix("tools:") else {
+        return Ok(Profile { instructions: text.to_string(), tools: None });
+    };
+    let tools: Vec<String> =
+        list.split(',').map(str::trim).filter(|name| !name.is_empty()).map(str::to_string).collect();
+    let known = |name: &str| specs().iter().any(|spec| spec.name == name);
+    if let Some(unknown) = tools.iter().find(|name| !known(name)) {
+        return Err(format!("unknown tool '{unknown}' in the profile's tools line"));
+    }
+    Ok(Profile { instructions: rest.to_string(), tools: Some(tools) })
 }
 
 #[cfg(test)]
@@ -83,6 +107,26 @@ mod tests {
         }
         conversation.compact("summary".into());
         assert!(!carried(conversation.messages(), &marked_text));
+    }
+
+    #[test]
+    fn tools_line_sets_the_whitelist_and_leaves_the_instructions() {
+        let profile = parse("tools: read_file, list_directory\nbe brief").expect("valid profile");
+        assert_eq!(profile.tools, Some(vec!["read_file".to_string(), "list_directory".to_string()]));
+        assert_eq!(profile.instructions, "be brief");
+    }
+
+    #[test]
+    fn profile_without_tools_line_has_no_whitelist() {
+        let profile = parse("be brief").expect("valid profile");
+        assert!(profile.tools.is_none());
+        assert_eq!(profile.instructions, "be brief");
+    }
+
+    #[test]
+    fn unknown_tool_in_whitelist_is_rejected() {
+        let error = parse("tools: delete_everything\nbe brief").err().expect("expected the whitelist to be rejected");
+        assert!(error.contains("unknown tool 'delete_everything'"));
     }
 
     #[test]

@@ -2,7 +2,8 @@ use crate::error::ProviderError;
 use crate::profile;
 use crate::provider::types::Provider;
 use crate::session::{Conversation, Message, Turn};
-use crate::tools::types::ToolRunner;
+use crate::tools::specs;
+use crate::tools::types::{ToolError, ToolRunner};
 use std::io::{self, BufRead, Write};
 
 const HELP: &str = "\
@@ -69,6 +70,16 @@ fn tool_list(tools: &dyn ToolRunner) -> String {
         .join("\n")
 }
 
+/// Makes the profile's whitelist the enabled set: exactly the listed tools. A profile without a whitelist
+/// enables every tool.
+fn apply_whitelist(tools: &dyn ToolRunner, whitelist: Option<&[String]>) -> Result<(), ToolError> {
+    for spec in specs() {
+        let on = whitelist.is_none_or(|names| names.iter().any(|name| name == spec.name));
+        tools.set_enabled(spec.name, on)?;
+    }
+    Ok(())
+}
+
 /// Enables or disables a tool, reporting the result on `output` or the failure on `errors`.
 fn toggle(
     tools: &dyn ToolRunner,
@@ -114,10 +125,13 @@ pub fn run(
                 Err(err) => writeln!(errors, "error: {err}")?,
             },
             Some(Command::Profile(name)) => match profile::load(&name) {
-                Ok(text) => {
-                    profile = Some(profile::marked(&name, &text));
-                    writeln!(output, "profile {name} selected; its instructions go with your next message")?;
-                }
+                Ok(loaded) => match apply_whitelist(tools, loaded.tools.as_deref()) {
+                    Ok(()) => {
+                        profile = Some(profile::marked(&name, &loaded.instructions));
+                        writeln!(output, "profile {name} selected; its instructions go with your next message")?;
+                    }
+                    Err(err) => writeln!(errors, "error: {err}")?,
+                },
                 Err(err) => writeln!(errors, "error: {err}")?,
             },
             Some(Command::Compact) => match compact(provider, conversation) {
