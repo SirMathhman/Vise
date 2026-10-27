@@ -18,7 +18,7 @@ pub const SPEC: ToolSpec = ToolSpec {
         },
         Param {
             name: "depth",
-            kind: ParamType::Integer { min: 1, max: MAX_DEPTH },
+            kind: ParamType::Integer { min: Some(1), max: Some(MAX_DEPTH as u32) },
             description: "How many levels to list.",
         },
     ],

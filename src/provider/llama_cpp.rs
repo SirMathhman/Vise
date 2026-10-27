@@ -101,9 +101,9 @@ struct WireProperty {
     kind: &'static str,
     description: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
-    minimum: Option<u8>,
+    minimum: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    maximum: Option<u8>,
+    maximum: Option<u32>,
 }
 
 impl From<&ToolSpec> for WireTool {
@@ -114,7 +114,7 @@ impl From<&ToolSpec> for WireTool {
             .map(|param| {
                 let (kind, minimum, maximum) = match param.kind {
                     ParamType::String => ("string", None, None),
-                    ParamType::Integer { min, max } => ("integer", Some(min), Some(max)),
+                    ParamType::Integer { min, max } => ("integer", min, max),
                 };
                 (param.name, WireProperty { kind, description: param.description, minimum, maximum })
             })

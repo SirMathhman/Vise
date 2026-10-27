@@ -8,7 +8,7 @@ pub struct ToolCall {
 
 pub enum ParamType {
     String,
-    Integer { min: u8, max: u8 },
+    Integer { min: Option<u32>, max: Option<u32> },
 }
 
 pub struct Param {

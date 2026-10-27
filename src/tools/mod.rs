@@ -1,5 +1,6 @@
 pub mod list_directory;
 pub mod path;
+pub mod read_file;
 pub mod types;
 
 use std::path::{Path, PathBuf};
@@ -21,7 +22,7 @@ impl ToolRunner for WorkspaceTools {
     }
 }
 
-const SPECS: &[ToolSpec] = &[list_directory::SPEC];
+const SPECS: &[ToolSpec] = &[list_directory::SPEC, read_file::SPEC];
 
 pub fn specs() -> &'static [ToolSpec] {
     SPECS
@@ -30,6 +31,8 @@ pub fn specs() -> &'static [ToolSpec] {
 fn execute(call: &ToolCall, cwd: &Path) -> Result<String, ToolError> {
     if call.name == list_directory::SPEC.name {
         list_directory::run(&call.arguments, cwd)
+    } else if call.name == read_file::SPEC.name {
+        read_file::run(&call.arguments, cwd)
     } else {
         Err(ToolError::UnknownTool(call.name.clone()))
     }
