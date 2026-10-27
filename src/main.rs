@@ -2,6 +2,7 @@ mod environment;
 mod error;
 mod profile;
 mod provider;
+mod render;
 mod repl;
 mod session;
 mod tools;

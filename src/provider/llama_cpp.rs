@@ -358,7 +358,8 @@ fn to_value(value: serde_json::Value) -> Value {
 const SUMMARY_REQUEST: &str = "Summarize your conversation with the user";
 
 /// Sends one streamed request. Returns the whole reply text and the prompt tokens llama.cpp counted (0 if it
-/// reported none). `on_event` receives thinking counts and answer text as they arrive, and a final `Finished`.
+/// reported none). `on_event` receives prompt progress, thinking counts, and answer text as they arrive, and a
+/// final `Finished`.
 /// Tool calls are never reported as answer text, because a reply that starts with `<tool_call>` is a call.
 fn send(
     api_key: &str,

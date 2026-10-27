@@ -1,10 +1,10 @@
 use crate::error::ProviderError;
 use crate::profile;
 use crate::provider::types::{Event, Provider};
+use crate::render::Render;
 use crate::session::{Conversation, Message, Turn};
 use crate::tools::specs;
 use crate::tools::types::{ToolError, ToolRunner};
-use std::cell::{Cell, RefCell};
 use std::io::{self, BufRead, Write};
 
 const HELP: &str = "\
@@ -168,46 +168,20 @@ pub fn run(
                     Some(text) if !profile::carried(conversation.messages(), text) => format!("{text}\n\n{line}"),
                     _ => line,
                 };
-                // The answer and the approval prompts both write to `output`, so they share it.
-                let shown = RefCell::new(&mut *output);
-                // A status line (prompt progress, then thinking) is overwritten in place until text follows it.
-                let status_open = Cell::new(false);
-                let streamed = Cell::new(false);
-                let status = |text: &str| {
-                    let mut out = shown.borrow_mut();
-                    let _ = write!(out, "\r{text:<60}");
-                    let _ = out.flush();
-                    status_open.set(true);
-                };
-                let end_status = || {
-                    if status_open.replace(false) {
-                        let _ = writeln!(shown.borrow_mut());
-                    }
-                };
-                let mut on_event = |event: Event| match event {
-                    Event::Prompt { processed, total } => {
-                        status(&format!("processing prompt: {processed} / {total} tokens"));
-                    }
-                    Event::Thinking(count) => status(&format!("thinking: {count} tokens")),
-                    Event::Answer(text) => {
-                        end_status();
-                        streamed.set(true);
-                        let mut out = shown.borrow_mut();
-                        let _ = write!(out, "{text}");
-                        let _ = out.flush();
-                    }
-                    Event::Finished => end_status(),
-                };
-                // Approval prompts read their answers from the same input as the lines themselves.
-                let mut approve = |change: &str| ask(change, &mut *shown.borrow_mut(), &mut *input);
-                match run_turn(provider, conversation, message, tools, &mut approve, &mut on_event) {
+                // The approval prompts share the output with the live display, and read their answers from the
+                // same input as the lines themselves.
+                let render = Render::new(&mut *output);
+                let mut approve = |change: &str| ask(change, &mut *render.output(), &mut *input);
+                let mut on_event = |event: Event| render.on_event(event);
+                let result = run_turn(provider, conversation, message, tools, &mut approve, &mut on_event);
+                render.end();
+                let streamed = render.streamed();
+                match result {
                     Ok((turn, compaction)) => {
                         if let Some(Compaction::Dropped(removed)) = compaction {
                             writeln!(output, "the context was full, so the oldest turn was dropped ({removed} messages removed)")?;
                         }
-                        if streamed.get() {
-                            writeln!(output)?;
-                        } else {
+                        if !streamed {
                             writeln!(output, "{}", turn.reply())?;
                         }
                         conversation.commit(turn);

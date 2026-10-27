@@ -50,8 +50,9 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
   user message only. The system prompt never changes. A profile may open with a `tools:` line naming the
   tools it allows: selecting it enables exactly those (an empty list enables none), and a profile without
   the line enables every tool. Every name must be a known tool, or the profile is rejected when loaded.
-- **Event**: a progress report from the provider during one request: a running thinking-token count, a piece
-  of answer text, or `Finished`. Events are for display only. They never change the turn or the conversation.
+- **Event**: a progress report from the provider during one request: prompt-processing progress (tokens
+  processed of the prompt's total), a running thinking-token count, a piece of answer text, or `Finished`.
+  Events are for display only. They never change the turn or the conversation.
 - **Wire type**: a struct matching the JSON shape of a provider request or response. Wire types never
   leave `provider::llama_cpp`.
 
@@ -67,6 +68,8 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 - Streamed answer text is shown only after the start of the reply rules out a tool call. A reply that is a
   tool call is never shown as text, whatever its later content.
 - Thinking is shown as a running token count only. Its text is never shown.
+- Prompt progress and thinking share one status line, rewritten in place. Answer text or the end of the
+  request ends the line. A request that fails before either leaves the line open (see Open Problems).
 - Overflow handling:
   - A request the server rejects because it exceeds the context (error type
     `exceed_context_size_error`) is `ContextFull`. So is a tool round whose reply reports a prompt at
@@ -133,9 +136,8 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 src/
   main.rs            wiring: reads .env and LLAMA_API_KEY, takes the working directory, builds the
                      provider and tool runner, runs the REPL. Fatal startup errors go to exit_with.
-  repl.rs            the input loop over generic BufRead/Write. Renders each provider Event as it arrives
-                     (thinking count on one line, answer text, nothing for tool calls), sharing the output
-                     with the approval prompt. Parses and runs slash commands
+  repl.rs            the input loop over generic BufRead/Write. Hands each turn's provider Events to render.
+                     Parses and runs slash commands
                      (including `/tools`, `/tools enable NAME`, `/tools disable NAME`, `/profile`,
                      `/profile NAME`, which also sets the enabled tools from the profile), holds the selected
                      profile until a turn succeeds,
@@ -145,6 +147,9 @@ src/
                      the last committed turn, compaction, drop_oldest_turn), over_budget (80%)
   environment.rs     gathers host facts as plain data (working directory, standing instructions from
                      AGENTS.md in it)
+  render.rs          displays provider Events: one status line (prompt progress, then the thinking count,
+                     rewritten in place), answer text, and the end of each request. Owns the output that
+                     the answer and the approval prompt share.
   error.rs           ProviderError, SessionError, MAX_TOOL_ROUNDS
   profile.rs         lists the profiles folder's .txt files, loads one by a validated name, and splits its
                      optional `tools:` line (checked against the tool catalogue) from its instructions
@@ -189,7 +194,8 @@ Dependencies (an arrow means "may depend on"; there are no cycles):
 
 ```
 main -> repl, session, provider::llama_cpp, tools::runner, environment, error
-repl -> provider::types, session, tools (registry and types), profile, error
+repl -> provider::types, session, tools (registry and types), profile, render, error
+render -> provider::types
 profile -> session (Message), tools (registry: specs), std
 provider -> session (Message, Turn, over_budget), tools (registry and types), error
 session -> environment, tools::types (ToolCall only)
@@ -222,8 +228,9 @@ tools::process -> std and the platform binding (Windows Job Object); nothing out
   `ContextFull`; it does not change history.
 - `/context` prints the context message, then `<prompt tokens> / <context size>`. A failed size lookup is
   reported on the error stream.
-- Tool output goes to the model as text. The REPL prints answer text as it streams, thinking progress,
-  notices, and errors. Approval prompts share its output.
+- Tool output goes to the model as text. `render` prints answer text as it streams, prompt and thinking
+  progress, and the end of each request. `repl` prints notices and errors. Approval prompts share the same
+  output as `render`.
 - Limits per module: 100 lines per function, 500 code lines per file, 10 files per directory.
 - Recursion is allowed only within one module and only when bounded by a parameter (the directory walk
   is bounded by depth).
@@ -270,6 +277,9 @@ Turn and history
   a full summary request, and nothing reports that compaction freed too little space.
 - **Empty summaries are accepted by the REPL path.** An empty or whitespace summary is rejected by the
   provider, but the history it would replace is then dropped without a notice that says why.
+- **A failed request leaves the status line open.** `send` returns on a read or parse error before it
+  reports `Finished`, so the status line from prompt progress or thinking is not ended. The error notice then
+  follows it on the same line. The REPL must end an open status line on every outcome.
 - **Streamed text outlives a failed turn.** Answer text is printed as it arrives, before the turn is
   committed. If the turn then fails (for example a transport error mid-stream), the partial answer stays on
   screen while history does not hold it, and a retry prints it again. The REPL must mark an uncommitted
@@ -328,6 +338,10 @@ Boundaries that the design places elsewhere
   be the only accessor.
 - **Commands are parsed in `repl.rs`.** The design calls for a `commands` module with one table that
   drives both parsing and the `/help` text. Today the help text is written by hand.
+- **The status line is built inside `repl::run`.** `run` is 115 lines, over the 100-line limit, and the
+  status closures (`status`, `end_status`, `on_event`) that the prompt-progress change added sit inside it.
+  Moving them to `render` as a struct that owns the shared output and the status-line state, with an
+  `on_event` method, brings `run` under the limit and gives the status line its own tests.
 - **Configuration is in `main`.** `main` loads `.env` and reads `LLAMA_API_KEY`. There is no `config`
   module. The endpoint and model are constants in `provider::llama_cpp`.
 - **`main` exits 0 when the REPL fails.** A stdin or stdout failure inside the REPL returns normally.
