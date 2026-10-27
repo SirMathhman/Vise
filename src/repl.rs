@@ -239,10 +239,7 @@ fn chat_turn(
     errors: &mut impl Write,
 ) -> io::Result<()> {
     let typed = line.clone();
-    let before = match conversation.before_turn_dir() {
-        Some(dir) => before_turn::run(dir, tools, output, errors)?,
-        None => None,
-    };
+    let before = before_turn::run(conversation.before_turn(), tools, output, errors)?;
     let line = match before {
         Some(text) => format!("{text}\n\n{line}"),
         None => line,
@@ -517,17 +514,36 @@ mod tests {
 
     #[test]
     fn before_turn_output_goes_with_each_turn_message() {
-        let dir = std::env::temp_dir().join(format!("vise-before-turn-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).expect("the test folder is created");
-        std::fs::write(dir.join("before-turn.txt"), "Write-Output x\n").expect("the test file is written");
         let fake = Fake::new(Behavior::Reply);
         let mut conversation = conversation();
-        conversation.enable_before_turn(dir.clone());
+        conversation.set_before_turn(vec!["Write-Output x".into()]);
         let (_, errors) = run_with("hi\n", &fake, &mut conversation);
-        std::fs::remove_dir_all(&dir).expect("the test folder is removed");
         let inputs = fake.inputs.borrow();
         assert!(inputs[0].starts_with("Before-turn command: Write-Output x") && inputs[0].ends_with("hi"));
         assert!(errors.contains("error: before-turn command failed"));
+    }
+
+    #[test]
+    fn before_turn_lines_run_before_every_turn() {
+        let fake = Fake::new(Behavior::Reply);
+        let mut conversation = conversation();
+        conversation.set_before_turn(vec!["Write-Output x".into()]);
+        run_with("first\nsecond\n", &fake, &mut conversation);
+        let inputs = fake.inputs.borrow();
+        assert_eq!(inputs.len(), 2);
+        assert!(inputs.iter().all(|input| input.starts_with("Before-turn command: Write-Output x")));
+    }
+
+    #[test]
+    fn retried_turn_runs_the_before_turn_lines_again() {
+        let fake = Fake::new(Behavior::Fail);
+        let mut conversation = conversation();
+        conversation.set_before_turn(vec!["Write-Output x".into()]);
+        run_with("hi\n", &fake, &mut conversation);
+        run_with("hi\n", &fake, &mut conversation);
+        let inputs = fake.inputs.borrow();
+        assert_eq!(inputs.len(), 2);
+        assert!(inputs.iter().all(|input| input.starts_with("Before-turn command: Write-Output x")));
     }
 
     #[test]

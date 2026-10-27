@@ -238,6 +238,17 @@ mod tests {
     }
 
     #[test]
+    fn file_tools_refuse_to_write_the_before_turn_file() {
+        let cwd = std::env::temp_dir().join(format!("vise-before-turn-guard-{}", std::process::id()));
+        fs::create_dir_all(&cwd).unwrap();
+        let tools = WorkspaceTools::new(cwd.clone());
+        let create = Invocation::CreateFile { path: "before-turn.txt".into(), content: "x".into() };
+        let refused = tools.run(&create, &mut |_: &str| true);
+        fs::remove_dir_all(&cwd).unwrap();
+        assert!(refused.is_err_and(|err| err.to_string().contains("cannot change it")));
+    }
+
+    #[test]
     fn disabled_tool_is_refused_by_the_runner() {
         let tools = WorkspaceTools::new(std::env::temp_dir());
         tools.set_enabled("list_directory", false).unwrap();

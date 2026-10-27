@@ -1,7 +1,7 @@
 use crate::environment::{self, Environment};
 use crate::error::SessionError;
 use crate::tools::types::ToolCall;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// One message in a conversation. Each role carries exactly the fields it needs, so a tool result
@@ -162,7 +162,7 @@ pub struct Conversation {
     prompt_tokens: u64,
     autosave: Option<Autosave>,
     startup: Option<String>,
-    before_turn: Option<PathBuf>,
+    before_turn: Vec<String>,
 }
 
 impl Conversation {
@@ -173,7 +173,7 @@ impl Conversation {
             context.push_str("\n\n");
             context.push_str(&instructions);
         }
-        Self { messages: vec![Message::System(context)], prompt_tokens: 0, autosave: None, startup: None, before_turn: None }
+        Self { messages: vec![Message::System(context)], prompt_tokens: 0, autosave: None, startup: None, before_turn: Vec::new() }
     }
 
     pub fn commit(&mut self, turn: Turn) {
@@ -194,14 +194,14 @@ impl Conversation {
         self.startup = Some(text);
     }
 
-    /// Turns on the before-turn commands: each turn first runs the lines of the before-turn file in `cwd`.
-    pub fn enable_before_turn(&mut self, cwd: PathBuf) {
-        self.before_turn = Some(cwd);
+    /// Sets the before-turn commands, read once at launch. Each turn runs them before its message.
+    pub fn set_before_turn(&mut self, commands: Vec<String>) {
+        self.before_turn = commands;
     }
 
-    /// The working directory whose before-turn file runs before each turn, or `None` when that is off.
-    pub fn before_turn_dir(&self) -> Option<&Path> {
-        self.before_turn.as_deref()
+    /// The before-turn commands, in order. Empty when there are none.
+    pub fn before_turn(&self) -> &[String] {
+        &self.before_turn
     }
 
     /// Replaces the history with the system context, the summary as an assistant message, and the

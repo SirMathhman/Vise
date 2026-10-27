@@ -9,16 +9,9 @@ use std::path::Path;
 /// How long each command may run in the foreground. A command still running after this becomes a background task.
 const TIMEOUT_SECS: u64 = 30;
 
-/// Runs the lines of `file` in `cwd` in order, and returns each command with its result text. Returns `None` when
-/// there is no such file. `label` names the run on screen, such as "startup".
-pub fn run_file(
-    cwd: &Path,
-    file: &str,
-    label: &str,
-    tools: &dyn ToolRunner,
-    output: &mut impl Write,
-    errors: &mut impl Write,
-) -> io::Result<Option<Vec<(String, String)>>> {
+/// The command lines of `file` in `cwd`: trimmed, without blank ones. Returns `None` when there is no such file. A
+/// file that cannot be read is reported on `errors`, and also gives `None`.
+pub fn read_lines(cwd: &Path, file: &str, errors: &mut impl Write) -> io::Result<Option<Vec<String>>> {
     let text = match fs::read_to_string(cwd.join(file)) {
         Ok(text) => text,
         Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
@@ -27,12 +20,39 @@ pub fn run_file(
             return Ok(None);
         }
     };
+    Ok(Some(text.lines().map(str::trim).filter(|line| !line.is_empty()).map(str::to_string).collect()))
+}
+
+/// Runs each command in order and returns each with its result text. `label` names the run on screen, such as
+/// "startup".
+pub fn run_lines(
+    commands: &[String],
+    label: &str,
+    tools: &dyn ToolRunner,
+    output: &mut impl Write,
+    errors: &mut impl Write,
+) -> io::Result<Vec<(String, String)>> {
     let mut results = Vec::new();
-    for command in text.lines().map(str::trim).filter(|line| !line.is_empty()) {
+    for command in commands {
         let result = run_command(command, label, tools, output, errors)?;
-        results.push((command.to_string(), result));
+        results.push((command.clone(), result));
     }
-    Ok(Some(results))
+    Ok(results)
+}
+
+/// Reads the lines of `file` in `cwd` and runs them in order. Returns `None` when there is no such file.
+pub fn run_file(
+    cwd: &Path,
+    file: &str,
+    label: &str,
+    tools: &dyn ToolRunner,
+    output: &mut impl Write,
+    errors: &mut impl Write,
+) -> io::Result<Option<Vec<(String, String)>>> {
+    match read_lines(cwd, file, errors)? {
+        Some(commands) => run_lines(&commands, label, tools, output, errors).map(Some),
+        None => Ok(None),
+    }
 }
 
 /// Runs one command and returns its result text.

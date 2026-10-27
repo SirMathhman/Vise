@@ -40,12 +40,18 @@ fn main() {
     let tools = WorkspaceTools::new(env.cwd.clone());
     let mut conversation = Conversation::new(&env);
     conversation.enable_autosave(std::path::PathBuf::from(saved_sessions::FOLDER));
-    conversation.enable_before_turn(env.cwd.clone());
 
     let stdout = io::stdout();
     let mut output = stdout.lock();
     let mut errors = io::stderr();
     let mut input = io::stdin().lock();
+    match before_turn::load(&env.cwd, &mut errors) {
+        Ok(Some(commands)) => conversation.set_before_turn(commands),
+        Ok(None) => {}
+        Err(err) => {
+            let _ = writeln!(errors, "error: {err}");
+        }
+    }
     match startup::run(&env.cwd, &tools, &mut output, &mut errors) {
         Ok(Some(text)) => conversation.set_startup(text),
         Ok(None) => {}
