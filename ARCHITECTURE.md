@@ -58,7 +58,8 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
   directory is an error, and nothing is read or written.
 - `run_powershell` is not confined. Its command runs in the working directory with the user's full
   permissions, and can read, write, or delete anything the user can. The approval prompt is the only
-  gate, and it shows the command in full.
+  gate, and it shows the command in full. A command past its time limit is stopped together with every
+  process it started, and the reply says it was stopped. Its output is bounded while it is read.
 - A write runs only after the user approves a description of it. The default is no: only `y` or `yes`
   approves.
 - Slash commands (`/compact`, `/context`, `/exit`, `/help`) are never sent to the model. Every other line
@@ -215,6 +216,21 @@ Writes
   the file in place. A failure in between leaves a partial file. Both should write a temporary file and
   rename it.
 
+Commands (`run_powershell`)
+- **A stopped command can leave processes running.** The time limit kills only `powershell.exe`. A process
+  the command started keeps running with the user's permissions after the tool reports the command as
+  stopped. The stop must end the whole process tree; on Windows, a job object that kills its members when
+  it closes.
+- **Output is held in memory before it is capped.** Both pipes are read to the end, and the 100 KB limit is
+  applied afterwards, so a command that writes a large amount within its time limit uses that memory. Reads
+  must stop at the cap and discard the rest.
+- **Commands are not logged.** Every approval, write, and command must be recorded before it runs, with
+  its text, working directory, approval, and exit status. `run_powershell` records nothing. Deletion and
+  further execution tools wait for this.
+- **The command runs only on Windows.** `run_powershell` starts `powershell.exe` with no platform split.
+  The process handling belongs behind one module boundary, with the Windows implementation behind it, so
+  another platform adds an implementation rather than branches.
+
 Security-relevant gaps are listed under Security.
 
 ## Security
@@ -250,9 +266,10 @@ Controls:
 | API key never printed, logged, or put in errors | Partly met. Error paths have not been audited. |
 | Plain HTTP refused unless the endpoint is loopback | Missing. The endpoint is a loopback constant. |
 | Size limits on user lines and response bodies | Missing. |
-| Size limits on tool output | `read_file` only. |
+| Size limits on tool output | `read_file` and `run_powershell` (the latter after reading; see Open Problems). `list_directory` has none. |
+| Limits on commands: time, process tree, output | Partly met. The time limit and output cap exist; the process tree is not stopped (Open Problems). |
 | Tool results and summaries marked as untrusted data | Missing. |
-| Logging of approvals, writes, and commands | Missing. Commands run without a log, which the design previously ruled out. |
+| Logging of approvals, writes, and commands | Missing. Commands are not logged (Open Problems). |
 | Environment disclosure (working directory sent every turn) | Missing. Only opt-in fields would be sent; today the path is always sent. |
 | Data exposure (directory listings sent to the endpoint) | Accepted. History is never written to disk. |
 
@@ -267,8 +284,7 @@ Controls:
 - A `/compact` report that shows the summary and how many turns and tokens it replaced.
 - Token-aware trimming of old turns, as the fallback when a summary does not fit, in place of dropping the
   oldest turn outright.
-- Deletion tools, only after logging is implemented. Execution is already available through
-  `run_powershell`, with approval as its only gate.
+- Deletion and further execution tools, only after logging is implemented.
 
 ## Performance
 
@@ -280,4 +296,5 @@ Obvious concerns only; profile before optimizing.
 - The REPL blocks on each request, and input typed during a long generation waits in the terminal.
 - Replies are read fully before printing. Streaming would reduce latency.
 - A directory listing walks the tree synchronously with no entry cap.
+- A command blocks the REPL for up to its time limit, and its output is buffered before the cap applies.
 - Each request builds a new `ureq` request. One shared agent would reuse connections.

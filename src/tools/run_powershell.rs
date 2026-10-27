@@ -52,6 +52,7 @@ pub fn run(command: &str, cwd: &Path) -> Result<String, ToolError> {
         match child.try_wait().map_err(|err| ToolError::Failed(format!("cannot wait for the command: {err}")))? {
             Some(status) => break status,
             None if started.elapsed() >= TIMEOUT => {
+                stop_tree(child.id());
                 // Killing may fail if the command has just exited; either way it is no longer running.
                 let _ = child.kill();
                 let _ = child.wait();
@@ -82,6 +83,17 @@ pub fn run(command: &str, cwd: &Path) -> Result<String, ToolError> {
         output.push_str("\n[output truncated at 100 KB]");
     }
     Ok(output)
+}
+
+/// Stops a process and every process it started. This is the only platform-specific step: Windows'
+/// `taskkill /T` walks the process tree. A failure is ignored here, since the caller kills the shell
+/// process directly as well.
+fn stop_tree(pid: u32) {
+    let _ = Command::new("taskkill")
+        .args(["/T", "/F", "/PID", &pid.to_string()])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
 }
 
 /// Reads a pipe to its end. A read error keeps whatever was read before it.
