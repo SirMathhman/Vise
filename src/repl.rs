@@ -221,37 +221,65 @@ pub fn run(
                     Err(err) => writeln!(errors, "error: {err}")?,
                 }
             }
-            None => chat_turn(
-                line,
-                profile.as_deref(),
-                provider,
-                tools,
-                conversation,
-                input,
-                output,
-                errors,
-                after_turn::FOLLOW_UPS,
-            )?,
+            None => {
+                let mut streams = Streams { input: &mut *input, output: &mut *output, errors: &mut *errors };
+                chat(line, profile.as_deref(), provider, tools, conversation, &mut streams)?
+            }
         }
     }
     Ok(())
 }
 
-/// Sends a line to the model as a turn: adds the profile and notes index the history does not carry, runs the
-/// turn, commits it, and autosaves the history.
+/// The streams a chat turn writes to, and reads its approvals from.
+struct Streams<'a> {
+    input: &'a mut dyn BufRead,
+    output: &'a mut dyn Write,
+    errors: &'a mut dyn Write,
+}
+
+/// Runs a chat line as a turn. While the after-turn command fails, its failure is sent as the next message, for up to
+/// `after_turn::FOLLOW_UPS` follow-up turns.
+fn chat(
+    line: String,
+    profile: Option<&str>,
+    provider: &dyn Provider,
+    tools: &dyn ToolRunner,
+    conversation: &mut Conversation,
+    streams: &mut Streams,
+) -> io::Result<()> {
+    let mut pending = Some(line);
+    let mut follow_ups = 0;
+    while let Some(text) = pending.take() {
+        pending = chat_turn(text, profile, provider, tools, conversation, streams)?;
+        if pending.is_some() {
+            if follow_ups == after_turn::FOLLOW_UPS {
+                writeln!(
+                    streams.errors,
+                    "error: after-turn command still fails after {} follow-up turns",
+                    after_turn::FOLLOW_UPS
+                )?;
+                pending = None;
+            } else {
+                follow_ups += 1;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Sends a line to the model as one turn: adds the before-turn, startup, profile and notes text the history does not
+/// carry, runs the turn, commits it, and autosaves the history. Returns the failure text of the after-turn commands,
+/// when one fails.
 fn chat_turn(
     line: String,
     profile: Option<&str>,
     provider: &dyn Provider,
     tools: &dyn ToolRunner,
     conversation: &mut Conversation,
-    input: &mut impl BufRead,
-    output: &mut impl Write,
-    errors: &mut impl Write,
-    follow_ups: usize,
-) -> io::Result<()> {
+    streams: &mut Streams,
+) -> io::Result<Option<String>> {
     let typed = line.clone();
-    let before = before_turn::run(conversation.before_turn(), tools, output, errors)?;
+    let before = before_turn::run(conversation.before_turn(), tools, &mut streams.output, &mut streams.errors)?;
     let line = match before {
         Some(text) => format!("{text}\n\n{line}"),
         None => line,
@@ -268,14 +296,14 @@ fn chat_turn(
         Ok(index) if notes::needed(conversation.messages(), &index) => format!("{index}\n\n{message}"),
         Ok(_) => message,
         Err(err) => {
-            writeln!(errors, "error: {err}")?;
+            writeln!(streams.errors, "error: {err}")?;
             message
         }
     };
     // The approval prompts share the output with the live display, and read their answers from the
     // same input as the lines themselves.
-    let render = Render::new(&mut *output);
-    let mut approve = |change: &str| ask(change, &mut *render.output(), &mut *input);
+    let render = Render::new(&mut streams.output);
+    let mut approve = |change: &str| ask(change, &mut *render.output(), &mut streams.input);
     let mut on_event = |event: Event| render.on_event(event);
     let result = run_turn(provider, conversation, message, tools, &mut approve, &mut on_event);
     render.end();
@@ -283,34 +311,26 @@ fn chat_turn(
     match result {
         Ok((turn, compaction)) => {
             if let Some(Compaction::Dropped(removed)) = compaction {
-                writeln!(output, "the context was full, so the oldest turn was dropped ({removed} messages removed)")?;
+                writeln!(
+                    streams.output,
+                    "the context was full, so the oldest turn was dropped ({removed} messages removed)"
+                )?;
             }
             if !streamed {
-                writeln!(output, "{}", turn.reply())?;
+                writeln!(streams.output, "{}", turn.reply())?;
             }
             conversation.commit(turn);
             if let Some((folder, name)) = conversation.autosave_target(&typed) {
                 if let Err(err) = saved_sessions::write(&folder, &name, conversation.history()) {
-                    writeln!(errors, "error: {err}")?;
+                    writeln!(streams.errors, "error: {err}")?;
                 }
             }
-            match after_turn::run(conversation.after_turn(), tools, output, errors)? {
-                Some(failure) if follow_ups > 0 => chat_turn(
-                    failure,
-                    profile,
-                    provider,
-                    tools,
-                    conversation,
-                    input,
-                    output,
-                    errors,
-                    follow_ups - 1,
-                ),
-                Some(_) => writeln!(errors, "error: after-turn command still fails after {} attempts", after_turn::FOLLOW_UPS),
-                None => Ok(()),
-            }
+            after_turn::run(conversation.after_turn(), tools, &mut streams.output, &mut streams.errors)
         }
-        Err(err) => writeln!(errors, "error: {err}"),
+        Err(err) => {
+            writeln!(streams.errors, "error: {err}")?;
+            Ok(None)
+        }
     }
 }
 
@@ -643,7 +663,7 @@ mod tests {
         let inputs = fake.inputs.borrow();
         assert_eq!(inputs.len(), 1 + after_turn::FOLLOW_UPS);
         assert!(inputs[1].starts_with("After-turn command failed: Write-Output x"));
-        assert!(String::from_utf8(errors).unwrap().contains("still fails after 5 attempts"));
+        assert!(String::from_utf8(errors).unwrap().contains("still fails after 5 follow-up turns"));
     }
 
     struct ClosedWriter;
