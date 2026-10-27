@@ -181,6 +181,21 @@ struct Usage {
 }
 
 #[derive(Deserialize)]
+struct ErrorBody {
+    error: ErrorInfo,
+}
+
+#[derive(Deserialize)]
+struct ErrorInfo {
+    message: String,
+    #[serde(rename = "type")]
+    kind: String,
+}
+
+/// llama.cpp's error type for a request that does not fit in the context window.
+const CONTEXT_OVERFLOW: &str = "exceed_context_size_error";
+
+#[derive(Deserialize)]
 struct Models {
     data: Vec<ModelInfo>,
 }
@@ -319,9 +334,27 @@ const SUMMARY_REQUEST: &str = "Summarize your conversation with the user";
 fn send(api_key: &str, wire: &[WireMessage], tools: Option<&[WireTool]>) -> Result<(ReplyMessage, u64), ProviderError> {
     let request = Request { model: MODEL, messages: wire, tools };
     let mut response = ureq::post(URL)
+        .config()
+        .http_status_as_error(false)
+        .build()
         .header("Authorization", &format!("Bearer {api_key}"))
         .send_json(request)
         .map_err(|err| ProviderError::Transport(Box::new(err)))?;
+    let status = response.status().as_u16();
+    if status == 400 {
+        let error: ErrorBody = response
+            .body_mut()
+            .read_json()
+            .map_err(|err| ProviderError::Transport(Box::new(err)))?;
+        return Err(if error.error.kind == CONTEXT_OVERFLOW {
+            ProviderError::ContextFull
+        } else {
+            ProviderError::Transport(error.error.message.into())
+        });
+    }
+    if !(200..300).contains(&status) {
+        return Err(ProviderError::Transport(format!("the server returned status {status}").into()));
+    }
     let body: Response = response
         .body_mut()
         .read_json()
