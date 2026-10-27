@@ -257,6 +257,16 @@ mod tests {
     }
 
     #[test]
+    fn writing_the_same_name_replaces_the_file() {
+        let folder = std::env::temp_dir().join(format!("vise-write-{}", std::process::id()));
+        write(&folder, "same", &[Message::User("first".into())]).expect("first write");
+        write(&folder, "same", &[Message::User("second".into())]).expect("second write");
+        let text = fs::read_to_string(folder.join("same.json")).expect("the session file exists");
+        fs::remove_dir_all(&folder).expect("the test folder is removed");
+        assert!(text.contains("second") && !text.contains("first"));
+    }
+
+    #[test]
     fn load_rejects_names_that_leave_the_folder() {
         let error = load("../secret").err().expect("expected the name to be rejected");
         assert!(matches!(error, SessionFileError::InvalidName(_)));

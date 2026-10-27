@@ -529,6 +529,20 @@ mod tests {
         assert!(files[0].starts_with("first-") && files[0].ends_with(".json"));
     }
 
+    #[test]
+    fn failed_autosave_reports_an_error_and_keeps_the_turn() {
+        let path = std::env::temp_dir().join(format!("vise-autosave-file-{}", std::process::id()));
+        std::fs::write(&path, "not a folder").expect("the test file is written");
+        let fake = Fake::new(Behavior::Reply);
+        let mut conversation = conversation();
+        conversation.enable_autosave(path.clone());
+        let (output, errors) = run_with("first\n", &fake, &mut conversation);
+        std::fs::remove_file(&path).expect("the test file is removed");
+        assert!(errors.contains("error: cannot use the sessions folder"));
+        assert!(output.contains("reply"));
+        assert_eq!(conversation.messages().len(), 3);
+    }
+
     struct ClosedWriter;
 
     impl Write for ClosedWriter {

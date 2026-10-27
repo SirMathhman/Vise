@@ -384,4 +384,30 @@ mod tests {
         assert!(seconds.parse::<u64>().is_ok());
         assert!(autosave_name("  ?? ").starts_with("session-"));
     }
+
+    #[test]
+    fn autosave_name_keeps_at_most_40_slug_characters() {
+        let name = autosave_name(&"word ".repeat(20));
+        let (slug, _) = name.rsplit_once('-').expect("a name with a time");
+        assert!(slug.len() <= 40);
+        assert!(!slug.ends_with('-'));
+    }
+
+    #[test]
+    fn replaced_history_gets_a_new_autosave_name() {
+        let env = Environment { cwd: PathBuf::from("C:/work") };
+        let mut conversation = Conversation::new(&env);
+        conversation.enable_autosave(PathBuf::from("C:/unused"));
+        let (_, before) = conversation.autosave_target("first").expect("autosave is on");
+        conversation.replace_history(Vec::new());
+        let (_, after) = conversation.autosave_target("second").expect("autosave is on");
+        assert!(before.starts_with("first-"));
+        assert!(after.starts_with("second-"));
+    }
+
+    #[test]
+    fn autosave_is_off_by_default() {
+        let env = Environment { cwd: PathBuf::from("C:/work") };
+        assert!(Conversation::new(&env).autosave_target("first").is_none());
+    }
 }
