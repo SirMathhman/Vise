@@ -1,6 +1,6 @@
 use crate::error::{MAX_TOOL_ROUNDS, ProviderError};
 use crate::provider::types::Provider;
-use crate::session::{Message, Role, Turn};
+use crate::session::{Message, Turn};
 use crate::tools::types::{Invocation, ParamType, ToolCall, ToolError, ToolRunner, ToolSpec, Value};
 use crate::tools;
 use serde::{Deserialize, Serialize};
@@ -28,13 +28,13 @@ struct WireMessage {
 
 impl From<&Message> for WireMessage {
     fn from(message: &Message) -> Self {
-        let tool_calls = (!message.tool_calls.is_empty())
-            .then(|| message.tool_calls.iter().map(WireToolCall::from).collect());
+        let tool_calls = (!message.tool_calls().is_empty())
+            .then(|| message.tool_calls().iter().map(WireToolCall::from).collect());
         WireMessage {
-            role: message.role.as_str(),
-            content: Some(message.content.clone()),
+            role: message.role(),
+            content: Some(message.content().to_string()),
             tool_calls,
-            tool_call_id: message.tool_call_id.clone(),
+            tool_call_id: message.tool_call_id().map(str::to_string),
         }
     }
 }
@@ -167,28 +167,26 @@ impl Provider for LlamaCpp {
     /// stays unchanged.
     fn complete(&self, history: &[Message], input: String, runner: &dyn ToolRunner) -> Result<Turn, ProviderError> {
         let wire_tools: Vec<WireTool> = tools::specs().iter().map(WireTool::from).collect();
-        let mut new = vec![Message::new(Role::User, input)];
+        let mut new = vec![Message::User(input)];
         for _ in 0..MAX_TOOL_ROUNDS {
             let wire: Vec<WireMessage> = history.iter().chain(&new).map(WireMessage::from).collect();
             let reply = send(&self.api_key, &wire, &wire_tools)?;
             let content = reply.content.unwrap_or_default();
             if reply.tool_calls.is_empty() {
-                new.push(Message::new(Role::Assistant, content));
-                return Ok(Turn { messages: new });
+                new.push(Message::Assistant { content, tool_calls: Vec::new() });
+                return Turn::new(new).map_err(ProviderError::Session);
             }
             let calls: Vec<ToolCall> = reply.tool_calls.into_iter().map(ToolCall::from).collect();
             let results: Vec<Message> = calls
                 .iter()
-                .map(|call| Message {
-                    role: Role::Tool,
+                .map(|call| Message::Tool {
+                    call_id: call.id.clone(),
                     content: invocation(call)
                         .and_then(|invocation| runner.run(&invocation))
                         .unwrap_or_else(|err| format!("error: {err}")),
-                    tool_calls: Vec::new(),
-                    tool_call_id: Some(call.id.clone()),
                 })
                 .collect();
-            new.push(Message { role: Role::Assistant, content, tool_calls: calls, tool_call_id: None });
+            new.push(Message::Assistant { content, tool_calls: calls });
             new.extend(results);
         }
         Err(ProviderError::TooManyToolRounds)

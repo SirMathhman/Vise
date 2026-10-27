@@ -59,9 +59,10 @@ src/
   tools/
     mod.rs           registry: specs() -> &[ToolSpec]; call(name, values: HashMap<String, Value>)
                      -> Result<Invocation, ToolError>, which finds the named spec, validates the values
-                     against it, and binds them through one arm per tool in bind(); ToolRunner runs a
-                     typed Invocation
-    types.rs         plain data shared by the tools: ToolSpec, Param, Arguments, ToolCall, ToolError, ToolRunner
+                     against it, and binds them through one arm per tool in bind(); WorkspaceTools
+                     implements ToolRunner by running a typed Invocation
+    types.rs         plain data shared by the tools: ToolSpec, Param, ParamType, Value, Arguments,
+                     Invocation, ToolCall, ToolError, ToolRunner
     list_directory.rs  the list_directory tool
     read_file.rs     the read_file tool: a line range with a 500-line / 100 KB output budget
     path.rs          confines a model-supplied path to the working directory
@@ -149,13 +150,15 @@ Rules:
 - **Output can panic.** `println!` panics when stdout is closed. The REPL must write through
   `writeln!` and treat a write failure as a reason to exit with an error code.
 - **Invariants are enforced by convention only.** `Message` has public fields and can be a `Tool`
-  message with no call id; `Turn` has public fields, and tests construct it directly instead of
-  through the checked constructor. `Message` must become the enum described in Definitions.
-- **Tool lookup in the provider.** `provider::llama_cpp::invocation()` still finds the `ToolSpec` by
-  comparing `spec.name` with the model's tool name, which the Rules forbid. Lookup, validation, and
-  binding must move into `tools::call`. Until then, `to_value` silently drops every JSON value that
-  is not a string or an integer (floats, booleans, nulls, arrays, objects), so a wrongly typed
-  argument is reported as `missing 'x'`, and extra fields are ignored without any error.
+  message with no call id. `provider::llama_cpp::complete` builds `Message` values by struct literal,
+  so the provider, not `session`, decides the shape of every message. `Turn` has public fields, and
+  tests construct it directly instead of through a checked constructor. `Message` must become the
+  enum described in Definitions, and the provider must build messages only through its constructors.
+- **Name dispatch repeated in `bind`.** `tools::call` finds the `ToolSpec` once, but `bind` compares
+  the name again, and its final `UnknownTool` arm cannot be reached from `call`. Each tool's
+  invocation should be carried by its spec (or a typed key) so the name is matched exactly once.
+- **Configuration leaks into `main`.** `main` loads `.env` and reads `LLAMA_API_KEY` itself. The
+  Rules place `dotenvy` and the key read in `config`, which does not exist yet.
 - **Tool errors live outside `error.rs`.** `ToolError` is defined in `tools/types.rs`, not in the
   per-layer `error.rs` that Structure names. Pick one home and move it there.
 - **Provider errors carry raw text.** `ProviderError` lives in `error.rs`, but its `Transport` variant
@@ -227,12 +230,10 @@ Required controls and status:
 
 ## Future Work
 
-- Make `Message` an enum with one variant per role (see Definitions), and make `Turn` construction
-  checked (see Rules).
-- `tools::call` owns spec lookup, argument validation, and binding in one function, and the provider
-  no longer finds a `ToolSpec` (see Rules and Potential Problems).
-- Argument validation rejects extra fields with an `InvalidArguments` error that names the field,
-  and reports an unsupported JSON type as a wrongly typed field, not a missing one.
+- Make `Message` an enum with one variant per role (see Definitions), make `Turn` fields private, and
+  make `Turn` construction checked (see Rules).
+- Each `ToolSpec` carries the means to build its `Invocation`, so `bind` no longer matches names
+  (see Potential Problems).
 - Structured error enums per layer (`ProviderError`, `ToolError`, `ConfigError`, `SessionError`)
   in `error.rs`, with actionable messages.
 - Output budget and truncation notice for every tool, with the same line and byte limits as

@@ -38,7 +38,7 @@ mod tests {
     use super::*;
     use crate::environment::Environment;
     use crate::error::ProviderError;
-    use crate::session::{Message, Role, Turn};
+    use crate::session::{Message, Turn};
     use crate::tools::types::{Invocation, ToolCall, ToolError};
     use std::cell::RefCell;
     use std::path::PathBuf;
@@ -65,28 +65,25 @@ mod tests {
             self.inputs.borrow_mut().push(input.clone());
             let messages = match self.behavior {
                 Behavior::Reply => vec![
-                    Message::new(Role::User, input),
-                    Message::new(Role::Assistant, "reply".into()),
+                    Message::User(input),
+                    Message::Assistant { content: "reply".into(), tool_calls: Vec::new() },
                 ],
-                Behavior::ToolRound => {
-                    let mut assistant = Message::new(Role::Assistant, String::new());
-                    assistant.tool_calls.push(ToolCall {
-                        id: "call_1".into(),
-                        name: "list_directory".into(),
-                        arguments: "{}".into(),
-                    });
-                    let mut tool = Message::new(Role::Tool, "a.txt".into());
-                    tool.tool_call_id = Some("call_1".into());
-                    vec![
-                        Message::new(Role::User, input),
-                        assistant,
-                        tool,
-                        Message::new(Role::Assistant, "done".into()),
-                    ]
-                }
+                Behavior::ToolRound => vec![
+                    Message::User(input),
+                    Message::Assistant {
+                        content: String::new(),
+                        tool_calls: vec![ToolCall {
+                            id: "call_1".into(),
+                            name: "list_directory".into(),
+                            arguments: "{}".into(),
+                        }],
+                    },
+                    Message::Tool { call_id: "call_1".into(), content: "a.txt".into() },
+                    Message::Assistant { content: "done".into(), tool_calls: Vec::new() },
+                ],
                 Behavior::Fail => return Err(ProviderError::Transport("boom".into())),
             };
-            Ok(Turn { messages })
+            Turn::new(messages).map_err(ProviderError::Session)
         }
     }
 
@@ -144,9 +141,9 @@ mod tests {
         let (output, _) = run_with("list\n", &fake, &mut conversation);
         let messages = conversation.messages();
         assert_eq!(messages.len(), 5);
-        assert_eq!(messages[2].tool_calls.len(), 1);
-        assert_eq!(messages[3].role.as_str(), "tool");
-        assert_eq!(messages[3].tool_call_id.as_deref(), Some("call_1"));
+        assert_eq!(messages[2].tool_calls().len(), 1);
+        assert_eq!(messages[3].role(), "tool");
+        assert_eq!(messages[3].tool_call_id(), Some("call_1"));
         assert_eq!(output, "done\n");
     }
 }
