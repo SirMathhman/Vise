@@ -3,9 +3,15 @@ use crate::session::{Conversation, Message};
 use crate::tools::types::ToolRunner;
 use std::io::{self, BufRead, Write};
 
+const HELP: &str = "\
+/context  show the working directory and the tokens used out of the context size
+/exit     end the session
+/help     show this list";
+
 enum Command {
     Exit,
     Context,
+    Help,
 }
 
 /// Slash commands are handled here and never sent to the model. Any other line, including an unknown
@@ -14,6 +20,7 @@ fn command(line: &str) -> Option<Command> {
     match line.trim() {
         "/exit" => Some(Command::Exit),
         "/context" => Some(Command::Context),
+        "/help" => Some(Command::Help),
         _ => None,
     }
 }
@@ -36,6 +43,7 @@ pub fn run(
         };
         match command(&line) {
             Some(Command::Exit) => break,
+            Some(Command::Help) => writeln!(output, "{HELP}")?,
             Some(Command::Context) => {
                 let context = conversation.messages().first().map_or("", Message::content);
                 writeln!(output, "{context}")?;
