@@ -417,6 +417,8 @@ mod tests {
         Reply,
         ToolRound,
         Fail,
+        /// Replies to the first request and reports a full context for every later one.
+        ReplyThenFull,
     }
 
     struct Fake {
@@ -459,6 +461,11 @@ mod tests {
                     Message::Assistant { content: "done".into(), tool_calls: Vec::new() },
                 ],
                 Behavior::Fail => return Err(ProviderError::Transport("boom".into())),
+                Behavior::ReplyThenFull if self.inputs.borrow().len() > 1 => return Err(ProviderError::ContextFull),
+                Behavior::ReplyThenFull => vec![
+                    Message::User(input),
+                    Message::Assistant { content: "reply".into(), tool_calls: Vec::new() },
+                ],
             };
             Turn::new(messages).map_err(ProviderError::Session)
         }
@@ -664,6 +671,51 @@ mod tests {
         assert_eq!(inputs.len(), 1 + after_turn::FOLLOW_UPS);
         assert!(inputs[1].starts_with("After-turn command failed: Write-Output x"));
         assert!(String::from_utf8(errors).unwrap().contains("still fails after 5 follow-up turns"));
+    }
+
+    #[test]
+    fn follow_up_that_overflows_ends_the_chain() {
+        let fake = Fake::new(Behavior::ReplyThenFull);
+        let mut conversation = conversation();
+        conversation.set_after_turn(vec!["Write-Output x".into()]);
+        let mut output = Vec::new();
+        let mut errors = Vec::new();
+        run(&mut "hi\n".as_bytes(), &mut output, &mut errors, &fake, &Failing, &mut conversation).unwrap();
+        let output = String::from_utf8(output).unwrap();
+        assert_eq!(output.matches("after-turn: Write-Output x").count(), 1);
+        assert!(String::from_utf8(errors).unwrap().contains("no longer fits"));
+        assert_eq!(fake.inputs.borrow().len(), 3);
+    }
+
+    /// Reports every command as still running in the background.
+    struct Backgrounded;
+
+    impl ToolRunner for Backgrounded {
+        fn run(&self, _invocation: &Invocation, _approve: &mut dyn FnMut(&str) -> bool) -> Result<String, ToolError> {
+            Ok("background task 1 is still running.\n".into())
+        }
+    }
+
+    #[test]
+    fn background_command_does_not_start_a_follow_up() {
+        let fake = Fake::new(Behavior::Reply);
+        let mut conversation = conversation();
+        conversation.set_after_turn(vec!["Write-Output x".into()]);
+        run(&mut "hi\n".as_bytes(), &mut Vec::new(), &mut Vec::new(), &fake, &Backgrounded, &mut conversation).unwrap();
+        assert_eq!(fake.inputs.borrow().len(), 1);
+    }
+
+    #[test]
+    fn follow_ups_autosave_to_the_same_session_as_the_typed_turn() {
+        let folder = std::env::temp_dir().join(format!("vise-follow-up-{}", std::process::id()));
+        let fake = Fake::new(Behavior::Reply);
+        let mut conversation = conversation();
+        conversation.enable_autosave(folder.clone());
+        conversation.set_after_turn(vec!["Write-Output x".into()]);
+        run(&mut "hi\n".as_bytes(), &mut Vec::new(), &mut Vec::new(), &fake, &Failing, &mut conversation).unwrap();
+        let files = std::fs::read_dir(&folder).expect("autosave folder exists").count();
+        std::fs::remove_dir_all(&folder).expect("the test folder is removed");
+        assert_eq!(files, 1);
     }
 
     struct ClosedWriter;
