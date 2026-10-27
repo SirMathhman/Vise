@@ -4,13 +4,16 @@ pub const MAX_TOOL_ROUNDS: usize = 10;
 
 #[derive(Debug)]
 pub enum SessionError {
-    MalformedTurn,
+    MalformedTurn { index: usize },
 }
 
 impl fmt::Display for SessionError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::MalformedTurn => write!(f, "a turn must end with the assistant's reply and no tool calls"),
+            Self::MalformedTurn { index } => write!(
+                f,
+                "message {index} breaks the turn's shape: a user message, then each tool call followed by its result, then a reply with no tool calls"
+            ),
         }
     }
 }

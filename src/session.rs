@@ -44,16 +44,39 @@ impl Message {
 }
 
 /// The messages one exchange adds to a conversation: the user's input, any tool exchanges, and the
-/// reply. Only `Turn::new` builds one, and it checks that the turn ends with a plain reply.
+/// reply. Only `Turn::new` builds one, and it checks the whole shape: a user message, then each
+/// assistant tool call followed by one result per call, then a reply with no tool calls.
 pub struct Turn {
     messages: Vec<Message>,
 }
 
 impl Turn {
     pub fn new(messages: Vec<Message>) -> Result<Self, SessionError> {
-        match messages.last() {
-            Some(Message::Assistant { tool_calls, .. }) if tool_calls.is_empty() => Ok(Self { messages }),
-            _ => Err(SessionError::MalformedTurn),
+        if !matches!(messages.first(), Some(Message::User(_))) {
+            return Err(SessionError::MalformedTurn { index: 0 });
+        }
+        let mut index = 1;
+        loop {
+            match messages.get(index) {
+                Some(Message::Assistant { tool_calls, .. }) if tool_calls.is_empty() => {
+                    return if index + 1 == messages.len() {
+                        Ok(Self { messages })
+                    } else {
+                        Err(SessionError::MalformedTurn { index: index + 1 })
+                    };
+                }
+                Some(Message::Assistant { tool_calls, .. }) => {
+                    for (offset, call) in tool_calls.iter().enumerate() {
+                        let position = index + 1 + offset;
+                        match messages.get(position) {
+                            Some(Message::Tool { call_id, .. }) if *call_id == call.id => {}
+                            _ => return Err(SessionError::MalformedTurn { index: position }),
+                        }
+                    }
+                    index += 1 + tool_calls.len();
+                }
+                _ => return Err(SessionError::MalformedTurn { index }),
+            }
         }
     }
 

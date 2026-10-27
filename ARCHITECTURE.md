@@ -32,6 +32,9 @@ toward. It is a reference, not a changelog.
   - A failed turn leaves the conversation exactly as it was before the failed user line.
   - A successful turn appends its user line, its tool exchanges, and its final reply, in order.
     Nothing is appended partially.
+  - A turn is a user message, then zero or more rounds of an assistant message with tool calls
+    followed by exactly one `Tool` message per call id, then a final assistant message without tool
+    calls. `Turn` rejects any other sequence.
   - A turn performs at most a fixed number of tool rounds. Exceeding the limit fails the turn.
   - A tool that receives a path outside the working directory returns an error to the model and
     reads nothing.
@@ -57,12 +60,12 @@ src/
     llama_cpp.rs     OpenAI-compatible HTTP implementation, its typed wire structs, serde_json use,
                      the tool-round loop, and decoding of JSON argument values into plain `Value`s
   tools/
-    mod.rs           registry: specs() -> &[ToolSpec]; call(name, values: HashMap<String, Value>)
+    mod.rs           registry only: specs() -> &[ToolSpec]; call(name, values: HashMap<String, Value>)
                      -> Result<Invocation, ToolError>, which finds the named spec, validates the values
-                     against it, and binds them through one arm per tool in bind(); WorkspaceTools
-                     implements ToolRunner by running a typed Invocation
+                     against it, and builds the Invocation through the spec
+    runner.rs        WorkspaceTools: implements ToolRunner by running a typed Invocation
     types.rs         plain data shared by the tools: ToolSpec, Param, ParamType, Value, Arguments,
-                     Invocation, ToolCall, ToolError, ToolRunner
+                     Invocation, ToolCall, ToolRunner
     list_directory.rs  the list_directory tool
     read_file.rs     the read_file tool: a line range with a 500-line / 100 KB output budget
     path.rs          confines a model-supplied path to the working directory
@@ -109,8 +112,12 @@ Rules:
   `serde_json`, and `serde` derive macros for wire types live in `provider::llama_cpp`. No module
   under `tools/` depends on `serde` or `serde_json`.
 - `Turn` is built only by the provider's tool loop and its fields are private. Its constructor takes
-  the user line and the new messages, and checks that they end in an assistant message without tool
-  calls, so `reply()` never has to guess which message is the reply.
+  the new messages and checks the full shape listed under Invariants: user first, each `Tool` message
+  answering a call in the assistant message directly before it, and a final assistant reply without
+  tool calls. The provider builds `Message` variants directly; `Turn::new` is where that shape is
+  enforced, so no caller needs a separate constructor per role.
+- `Conversation` holds the only `Vec<Message>` that is ever committed. Nothing outside `session`
+  pushes to it.
 - Tool output is returned to the model as text. The REPL never prints tool output.
 - Modules stay under the project limits: 100 lines per function, 500 code lines per file,
   10 files per directory. Split a directory into subdirectories before it exceeds 10 files.
@@ -149,11 +156,11 @@ Rules:
   the provider's error type must be named `ProviderError` as in Structure.
 - **Output can panic.** `println!` panics when stdout is closed. The REPL must write through
   `writeln!` and treat a write failure as a reason to exit with an error code.
-- **Invariants are enforced by convention only.** `Message` has public fields and can be a `Tool`
-  message with no call id. `provider::llama_cpp::complete` builds `Message` values by struct literal,
-  so the provider, not `session`, decides the shape of every message. `Turn` has public fields, and
-  tests construct it directly instead of through a checked constructor. `Message` must become the
-  enum described in Definitions, and the provider must build messages only through its constructors.
+- **`Turn::new` checks only the last message.** It accepts `[Tool, Assistant]` or
+  `[Assistant { tool_calls: [a] }, Assistant]` (a call with no result), so the invariant that a
+  turn is appended whole and well-formed relies on the provider loop getting the order right. A
+  malformed turn would be sent to the server on the next request. `Turn::new` must check the full
+  shape described in Invariants and return a `SessionError` naming the offending message index.
 - **Name dispatch repeated in `bind`.** `tools::call` finds the `ToolSpec` once, but `bind` compares
   the name again, and its final `UnknownTool` arm cannot be reached from `call`. Each tool's
   invocation should be carried by its spec (or a typed key) so the name is matched exactly once.
@@ -230,8 +237,6 @@ Required controls and status:
 
 ## Future Work
 
-- Make `Message` an enum with one variant per role (see Definitions), make `Turn` fields private, and
-  make `Turn` construction checked (see Rules).
 - Each `ToolSpec` carries the means to build its `Invocation`, so `bind` no longer matches names
   (see Potential Problems).
 - Structured error enums per layer (`ProviderError`, `ToolError`, `ConfigError`, `SessionError`)
