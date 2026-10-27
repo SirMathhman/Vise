@@ -1,3 +1,4 @@
+use crate::after_turn;
 use crate::before_turn;
 use crate::commands::{command, Command, HELP};
 use crate::error::ProviderError;
@@ -220,7 +221,17 @@ pub fn run(
                     Err(err) => writeln!(errors, "error: {err}")?,
                 }
             }
-            None => chat_turn(line, profile.as_deref(), provider, tools, conversation, input, output, errors)?,
+            None => chat_turn(
+                line,
+                profile.as_deref(),
+                provider,
+                tools,
+                conversation,
+                input,
+                output,
+                errors,
+                after_turn::FOLLOW_UPS,
+            )?,
         }
     }
     Ok(())
@@ -237,6 +248,7 @@ fn chat_turn(
     input: &mut impl BufRead,
     output: &mut impl Write,
     errors: &mut impl Write,
+    follow_ups: usize,
 ) -> io::Result<()> {
     let typed = line.clone();
     let before = before_turn::run(conversation.before_turn(), tools, output, errors)?;
@@ -282,7 +294,21 @@ fn chat_turn(
                     writeln!(errors, "error: {err}")?;
                 }
             }
-            Ok(())
+            match after_turn::run(conversation.after_turn(), tools, output, errors)? {
+                Some(failure) if follow_ups > 0 => chat_turn(
+                    failure,
+                    profile,
+                    provider,
+                    tools,
+                    conversation,
+                    input,
+                    output,
+                    errors,
+                    follow_ups - 1,
+                ),
+                Some(_) => writeln!(errors, "error: after-turn command still fails after {} attempts", after_turn::FOLLOW_UPS),
+                None => Ok(()),
+            }
         }
         Err(err) => writeln!(errors, "error: {err}"),
     }
@@ -596,6 +622,28 @@ mod tests {
         assert!(errors.contains("error: cannot use the sessions folder"));
         assert!(output.contains("reply"));
         assert_eq!(conversation.messages().len(), 3);
+    }
+
+    /// Reports every command as failing with exit code 1.
+    struct Failing;
+
+    impl ToolRunner for Failing {
+        fn run(&self, _invocation: &Invocation, _approve: &mut dyn FnMut(&str) -> bool) -> Result<String, ToolError> {
+            Ok("exit code: 1\nboom".into())
+        }
+    }
+
+    #[test]
+    fn failing_after_turn_command_is_sent_to_the_model_up_to_the_limit() {
+        let fake = Fake::new(Behavior::Reply);
+        let mut conversation = conversation();
+        conversation.set_after_turn(vec!["Write-Output x".into()]);
+        let mut errors = Vec::new();
+        run(&mut "hi\n".as_bytes(), &mut Vec::new(), &mut errors, &fake, &Failing, &mut conversation).unwrap();
+        let inputs = fake.inputs.borrow();
+        assert_eq!(inputs.len(), 1 + after_turn::FOLLOW_UPS);
+        assert!(inputs[1].starts_with("After-turn command failed: Write-Output x"));
+        assert!(String::from_utf8(errors).unwrap().contains("still fails after 5 attempts"));
     }
 
     struct ClosedWriter;

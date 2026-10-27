@@ -163,6 +163,7 @@ pub struct Conversation {
     autosave: Option<Autosave>,
     startup: Option<String>,
     before_turn: Vec<String>,
+    after_turn: Vec<String>,
 }
 
 impl Conversation {
@@ -173,7 +174,7 @@ impl Conversation {
             context.push_str("\n\n");
             context.push_str(&instructions);
         }
-        Self { messages: vec![Message::System(context)], prompt_tokens: 0, autosave: None, startup: None, before_turn: Vec::new() }
+        Self { messages: vec![Message::System(context)], prompt_tokens: 0, autosave: None, startup: None, before_turn: Vec::new(), after_turn: Vec::new() }
     }
 
     pub fn commit(&mut self, turn: Turn) {
@@ -202,6 +203,16 @@ impl Conversation {
     /// The before-turn commands, in order. Empty when there are none.
     pub fn before_turn(&self) -> &[String] {
         &self.before_turn
+    }
+
+    /// Sets the after-turn commands, read once at launch. Each committed turn runs them.
+    pub fn set_after_turn(&mut self, commands: Vec<String>) {
+        self.after_turn = commands;
+    }
+
+    /// The after-turn commands, in order. Empty when there are none.
+    pub fn after_turn(&self) -> &[String] {
+        &self.after_turn
     }
 
     /// Replaces the history with the system context, the summary as an assistant message, and the

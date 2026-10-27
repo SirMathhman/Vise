@@ -1,3 +1,4 @@
+mod after_turn;
 mod before_turn;
 mod commands;
 mod environment;
@@ -47,6 +48,13 @@ fn main() {
     let mut input = io::stdin().lock();
     match before_turn::load(&env.cwd, &mut errors) {
         Ok(Some(commands)) => conversation.set_before_turn(commands),
+        Ok(None) => {}
+        Err(err) => {
+            let _ = writeln!(errors, "error: {err}");
+        }
+    }
+    match after_turn::load(&env.cwd, &mut errors) {
+        Ok(Some(commands)) => conversation.set_after_turn(commands),
         Ok(None) => {}
         Err(err) => {
             let _ = writeln!(errors, "error: {err}");

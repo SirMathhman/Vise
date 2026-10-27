@@ -13,8 +13,10 @@ pub const STARTUP_FILE: &str = "startup.txt";
 pub const SHUTDOWN_FILE: &str = "shutdown.txt";
 /// The file in the working directory whose lines run before each turn.
 pub const BEFORE_TURN_FILE: &str = "before-turn.txt";
+/// The file in the working directory whose lines run after each chat turn.
+pub const AFTER_TURN_FILE: &str = "after-turn.txt";
 /// Every file whose lines run without approval. The file tools cannot change any of them.
-const COMMAND_FILES: [&str; 3] = [STARTUP_FILE, SHUTDOWN_FILE, BEFORE_TURN_FILE];
+const COMMAND_FILES: [&str; 4] = [STARTUP_FILE, SHUTDOWN_FILE, BEFORE_TURN_FILE, AFTER_TURN_FILE];
 
 pub struct WorkspaceTools {
     cwd: PathBuf,
@@ -164,7 +166,7 @@ fn describe(invocation: &Invocation) -> String {
             };
             let lowered = command.to_ascii_lowercase();
             if COMMAND_FILES.iter().any(|file| lowered.contains(*file)) {
-                format!("{text}\nThis may change a startup, shutdown or before-turn file, whose lines run without a prompt.")
+                format!("{text}\nThis may change a startup, shutdown, before-turn or after-turn file, whose lines run without a prompt.")
             } else {
                 text
             }
