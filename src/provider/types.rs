@@ -4,6 +4,8 @@ use crate::tools::types::ToolRunner;
 
 /// Progress reported while a reply is generated.
 pub enum Event {
+    /// Prompt processing has reached `processed` of the prompt's `total` tokens.
+    Prompt { processed: u64, total: u64 },
     /// Thinking has produced this many tokens so far. The thinking text itself is not reported.
     Thinking(usize),
     /// The next piece of the answer text.

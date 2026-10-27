@@ -30,6 +30,7 @@ struct Request<'a> {
     grammar: Option<&'a str>,
     stream: bool,
     stream_options: StreamOptions,
+    return_progress: bool,
 }
 
 #[derive(Serialize)]
@@ -130,6 +131,14 @@ struct Chunk {
     #[serde(default)]
     choices: Vec<ChunkChoice>,
     usage: Option<Usage>,
+    prompt_progress: Option<PromptProgress>,
+}
+
+/// Prompt processing progress, sent before the reply while the server reads the prompt.
+#[derive(Deserialize)]
+struct PromptProgress {
+    total: u64,
+    processed: u64,
 }
 
 #[derive(Deserialize)]
@@ -364,6 +373,7 @@ fn send(
         grammar,
         stream: true,
         stream_options: StreamOptions { include_usage: true },
+        return_progress: true,
     };
     let mut response = ureq::post(URL)
         .config()
@@ -393,6 +403,9 @@ fn send(
         }
         let chunk: Chunk = serde_json::from_str(data).map_err(|err| ProviderError::Transport(Box::new(err)))?;
         prompt_tokens += chunk.usage.map_or(0, |usage| usage.prompt_tokens);
+        if let Some(progress) = chunk.prompt_progress {
+            on_event(Event::Prompt { processed: progress.processed, total: progress.total });
+        }
         for choice in chunk.choices {
             if choice.delta.reasoning_content.is_some_and(|text| !text.is_empty()) {
                 stream.thinking_tokens += 1;

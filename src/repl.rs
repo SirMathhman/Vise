@@ -170,28 +170,33 @@ pub fn run(
                 };
                 // The answer and the approval prompts both write to `output`, so they share it.
                 let shown = RefCell::new(&mut *output);
-                let thinking_line = Cell::new(false);
+                // A status line (prompt progress, then thinking) is overwritten in place until text follows it.
+                let status_open = Cell::new(false);
                 let streamed = Cell::new(false);
-                let end_thinking = || {
-                    if thinking_line.replace(false) {
+                let status = |text: &str| {
+                    let mut out = shown.borrow_mut();
+                    let _ = write!(out, "\r{text:<60}");
+                    let _ = out.flush();
+                    status_open.set(true);
+                };
+                let end_status = || {
+                    if status_open.replace(false) {
                         let _ = writeln!(shown.borrow_mut());
                     }
                 };
                 let mut on_event = |event: Event| match event {
-                    Event::Thinking(count) => {
-                        let mut out = shown.borrow_mut();
-                        let _ = write!(out, "\rthinking: {count} tokens");
-                        let _ = out.flush();
-                        thinking_line.set(true);
+                    Event::Prompt { processed, total } => {
+                        status(&format!("processing prompt: {processed} / {total} tokens"));
                     }
+                    Event::Thinking(count) => status(&format!("thinking: {count} tokens")),
                     Event::Answer(text) => {
-                        end_thinking();
+                        end_status();
                         streamed.set(true);
                         let mut out = shown.borrow_mut();
                         let _ = write!(out, "{text}");
                         let _ = out.flush();
                     }
-                    Event::Finished => end_thinking(),
+                    Event::Finished => end_status(),
                 };
                 // Approval prompts read their answers from the same input as the lines themselves.
                 let mut approve = |change: &str| ask(change, &mut *shown.borrow_mut(), &mut *input);

@@ -50,6 +50,8 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
   user message only. The system prompt never changes. A profile may open with a `tools:` line naming the
   tools it allows: selecting it enables exactly those (an empty list enables none), and a profile without
   the line enables every tool. Every name must be a known tool, or the profile is rejected when loaded.
+- **Event**: a progress report from the provider during one request: a running thinking-token count, a piece
+  of answer text, or `Finished`. Events are for display only. They never change the turn or the conversation.
 - **Wire type**: a struct matching the JSON shape of a provider request or response. Wire types never
   leave `provider::llama_cpp`.
 
@@ -62,6 +64,9 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
   assistant message with tool calls followed by exactly one `Tool` message per call, in order; then a
   final assistant message with no tool calls.
 - A turn may make at most `MAX_TOOL_ROUNDS` (10) tool rounds. Exceeding the limit fails the turn.
+- Streamed answer text is shown only after the start of the reply rules out a tool call. A reply that is a
+  tool call is never shown as text, whatever its later content.
+- Thinking is shown as a running token count only. Its text is never shown.
 - Overflow handling:
   - A request the server rejects because it exceeds the context (error type
     `exceed_context_size_error`) is `ContextFull`. So is a tool round whose reply reports a prompt at
@@ -128,7 +133,9 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 src/
   main.rs            wiring: reads .env and LLAMA_API_KEY, takes the working directory, builds the
                      provider and tool runner, runs the REPL. Fatal startup errors go to exit_with.
-  repl.rs            the input loop over generic BufRead/Write. Parses and runs slash commands
+  repl.rs            the input loop over generic BufRead/Write. Renders each provider Event as it arrives
+                     (thinking count on one line, answer text, nothing for tool calls), sharing the output
+                     with the approval prompt. Parses and runs slash commands
                      (including `/tools`, `/tools enable NAME`, `/tools disable NAME`, `/profile`,
                      `/profile NAME`, which also sets the enabled tools from the profile), holds the selected
                      profile until a turn succeeds,
@@ -143,8 +150,10 @@ src/
                      optional `tools:` line (checked against the tool catalogue) from its instructions
   provider/
     mod.rs           declarations only
-    types.rs         trait Provider: complete, context_size, summarize
-    llama_cpp.rs     the HTTP client; wire structs; the tool-round loop; the 400 mapping
+    types.rs         trait Provider: complete, complete_streaming (default: calls complete and reports
+                     nothing), context_size, summarize; enum Event
+    llama_cpp.rs     the HTTP client; wire structs; the streamed (SSE) reader; the Stream that holds back
+                     answer text until reply_kind rules out a tool call; the tool-round loop; the 400 mapping
                      (bad_request); the /v1/models lookup; conversion between JSON arguments and Values;
                      the catalogue joined to the first system message of each request; the tool note
                      prepended when the history does not state the enabled set (checked, not stored)
@@ -213,7 +222,8 @@ tools::process -> std and the platform binding (Windows Job Object); nothing out
   `ContextFull`; it does not change history.
 - `/context` prints the context message, then `<prompt tokens> / <context size>`. A failed size lookup is
   reported on the error stream.
-- Tool output goes to the model as text. The REPL prints only replies, notices, and errors.
+- Tool output goes to the model as text. The REPL prints answer text as it streams, thinking progress,
+  notices, and errors. Approval prompts share its output.
 - Limits per module: 100 lines per function, 500 code lines per file, 10 files per directory.
 - Recursion is allowed only within one module and only when bounded by a parameter (the directory walk
   is bounded by depth).
@@ -260,6 +270,10 @@ Turn and history
   a full summary request, and nothing reports that compaction freed too little space.
 - **Empty summaries are accepted by the REPL path.** An empty or whitespace summary is rejected by the
   provider, but the history it would replace is then dropped without a notice that says why.
+- **Streamed text outlives a failed turn.** Answer text is printed as it arrives, before the turn is
+  committed. If the turn then fails (for example a transport error mid-stream), the partial answer stays on
+  screen while history does not hold it, and a retry prints it again. The REPL must mark an uncommitted
+  answer as such, or hold it until the turn commits.
 - **Rewritten history.** Past tool calls are resent from decoded values. `Unsupported` becomes `null`, and
   invalid JSON becomes `{}`, so the model sees its own calls differently from what it wrote. Keep the
   arguments string verbatim, or show the model the lossy form as an error.
@@ -387,7 +401,7 @@ Controls:
 | --- | --- |
 | Path confinement for reads and writes | Met. A symlink swapped in after approval is not caught (Open Problems). |
 | Write approval, default no | Met. Description is not escaped (Open Problems). |
-| Terminal sanitization of model replies, approval text, and error text | Missing. |
+| Terminal sanitization of streamed model text, approval text, and error text | Missing. Streamed text is printed chunk by chunk, so the filter must work across chunk boundaries. |
 | API key never printed, logged, or put in errors | Partly met. Error paths have not been audited. |
 | Plain HTTP refused unless the endpoint is loopback | Missing. The endpoint is a loopback constant. |
 | Size limits on user lines, profile files, and response bodies | Missing. Profile files are read whole (Open Problems). |
@@ -415,7 +429,7 @@ Controls:
 - Route each tool's arguments through `tools::call` in tests, so the path from raw arguments to
   `Invocation` is tested as one unit.
 - Make `ToolSpec`, `bind`, and each `SPEC` visible only inside `tools`.
-- Streaming responses, with sanitization applied per chunk.
+- Sanitization of streamed text per chunk (see Security and Open Problems).
 - Configuration from a file or environment, with overrides for endpoint, model, timeouts, and the
   history and compaction budgets.
 - A `/compact` report that shows the summary and how many turns and tokens it replaced.
@@ -434,7 +448,8 @@ Obvious concerns only; profile before optimizing.
   history length.
 - Compaction is a full generation over the conversation. It runs only at the budget.
 - The REPL blocks on each request, and input typed during a long generation waits in the terminal.
-- Replies are read fully before printing. Streaming would reduce latency.
+- Thinking runs before any answer text appears, and a long thinking block (up to the 8192-token reply cap)
+  shows only a counter until the answer starts.
 - A directory listing walks the tree synchronously with no entry cap.
 - A foreground command blocks the REPL for up to its 30-second wait. Background tasks have no count limit,
   and each keeps up to 100 KB of output, so many long-running tasks use memory in proportion.
