@@ -10,9 +10,9 @@ use std::collections::HashMap;
 use std::fmt;
 use std::fs;
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-const FOLDER: &str = "sessions";
+pub const FOLDER: &str = "sessions";
 
 #[derive(Serialize, Deserialize)]
 struct File {
@@ -100,15 +100,21 @@ pub fn check_save(name: &str) -> Result<(), SessionFileError> {
     Ok(())
 }
 
-/// Writes the history as a new session. The text goes to a temporary file that is then renamed into place, so an
-/// interrupted save leaves no partial session. Only letters, digits, '-' and '_' are accepted in a name, so a name
-/// cannot reach outside the folder.
+/// Writes the history as a new session in the sessions folder.
 pub fn save(name: &str, history: &[Message]) -> Result<(), SessionFileError> {
     check_save(name)?;
+    write(Path::new(FOLDER), name, history)
+}
+
+/// Writes the history as the session `name` in `folder`, replacing any file with that name. The text goes to a
+/// temporary file that is then renamed into place, so an interrupted write leaves no partial session. Only letters,
+/// digits, '-' and '_' are accepted in a name, so a name cannot reach outside the folder.
+pub fn write(folder: &Path, name: &str, history: &[Message]) -> Result<(), SessionFileError> {
+    check_name(name)?;
     let text = encode(history)?;
-    fs::create_dir_all(FOLDER).map_err(SessionFileError::Folder)?;
-    let target = file(name);
-    let temporary = target.with_extension("json.tmp");
+    fs::create_dir_all(folder).map_err(SessionFileError::Folder)?;
+    let target = folder.join(format!("{name}.json"));
+    let temporary = folder.join(format!("{name}.json.tmp"));
     fs::write(&temporary, text)
         .and_then(|()| fs::rename(&temporary, &target))
         .map_err(|err| SessionFileError::Write { name: name.to_string(), err })

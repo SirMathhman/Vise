@@ -220,6 +220,7 @@ pub fn run(
                 }
             }
             None => {
+                let typed = line.clone();
                 let message = match &profile {
                     Some(text) if !profile::carried(conversation.messages(), text) => format!("{text}\n\n{line}"),
                     _ => line,
@@ -249,6 +250,11 @@ pub fn run(
                             writeln!(output, "{}", turn.reply())?;
                         }
                         conversation.commit(turn);
+                        if let Some((folder, name)) = conversation.autosave_target(&typed) {
+                            if let Err(err) = saved_sessions::write(&folder, &name, conversation.history()) {
+                                writeln!(errors, "error: {err}")?;
+                            }
+                        }
                     }
                     Err(err) => writeln!(errors, "error: {err}")?,
                 }
@@ -490,6 +496,23 @@ mod tests {
         assert!(output.contains("apply this change? [y/N]"));
         assert!(output.contains("session approval-test not saved"));
         assert!(!PathBuf::from("sessions/approval-test.json").exists());
+    }
+
+    #[test]
+    fn completed_turn_is_autosaved_to_a_session_named_from_its_input() {
+        let folder = std::env::temp_dir().join(format!("vise-autosave-{}", std::process::id()));
+        let fake = Fake::new(Behavior::Reply);
+        let mut conversation = conversation();
+        conversation.enable_autosave(folder.clone());
+        run_with("first\n", &fake, &mut conversation);
+        let files: Vec<String> = std::fs::read_dir(&folder)
+            .expect("autosave folder exists")
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .collect();
+        std::fs::remove_dir_all(&folder).expect("the test folder is removed");
+        assert_eq!(files.len(), 1);
+        assert!(files[0].starts_with("first-") && files[0].ends_with(".json"));
     }
 
     struct ClosedWriter;

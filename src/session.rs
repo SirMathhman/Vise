@@ -1,6 +1,8 @@
 use crate::environment::{self, Environment};
 use crate::error::SessionError;
 use crate::tools::types::ToolCall;
+use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// One message in a conversation. Each role carries exactly the fields it needs, so a tool result
 /// always has the call it answers.
@@ -134,9 +136,31 @@ pub fn check_history(history: &[Message]) -> Result<(), SessionError> {
     Ok(())
 }
 
+/// Where automatic saves go, and the session this run writes to. The name is chosen after the run's first turn.
+struct Autosave {
+    folder: PathBuf,
+    name: Option<String>,
+}
+
+/// A session name for an automatic save: the first input's words joined with '-', then the time in seconds, so
+/// each run gets its own name.
+fn autosave_name(first_input: &str) -> String {
+    let words: Vec<String> = first_input
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .map(str::to_ascii_lowercase)
+        .collect();
+    let mut slug = words.join("-");
+    slug.truncate(40);
+    let slug = slug.trim_end_matches('-');
+    let seconds = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |elapsed| elapsed.as_secs());
+    if slug.is_empty() { format!("session-{seconds}") } else { format!("{slug}-{seconds}") }
+}
+
 pub struct Conversation {
     messages: Vec<Message>,
     prompt_tokens: u64,
+    autosave: Option<Autosave>,
 }
 
 impl Conversation {
@@ -147,7 +171,7 @@ impl Conversation {
             context.push_str("\n\n");
             context.push_str(&instructions);
         }
-        Self { messages: vec![Message::System(context)], prompt_tokens: 0 }
+        Self { messages: vec![Message::System(context)], prompt_tokens: 0, autosave: None }
     }
 
     pub fn commit(&mut self, turn: Turn) {
@@ -209,6 +233,23 @@ impl Conversation {
         self.messages.truncate(1);
         self.messages.extend(history);
         self.prompt_tokens = 0;
+        // The loaded history goes to a new autosave file, so the file this run was writing keeps its earlier history.
+        if let Some(autosave) = &mut self.autosave {
+            autosave.name = None;
+        }
+    }
+
+    /// Turns on automatic saves: after each completed turn, the history is written to a session in `folder`.
+    pub fn enable_autosave(&mut self, folder: PathBuf) {
+        self.autosave = Some(Autosave { folder, name: None });
+    }
+
+    /// The folder and session name the history is autosaved to, or None when autosave is off. The name is
+    /// chosen from `first_input` the first time it is asked, and kept until the history is replaced.
+    pub fn autosave_target(&mut self, first_input: &str) -> Option<(PathBuf, String)> {
+        let autosave = self.autosave.as_mut()?;
+        let name = autosave.name.get_or_insert_with(|| autosave_name(first_input)).clone();
+        Some((autosave.folder.clone(), name))
     }
 
     /// The prompt tokens the model reported for the most recent request, or 0 before any turn.
@@ -333,5 +374,14 @@ mod tests {
         assert_eq!(conversation.history().len(), 2);
         assert_eq!(conversation.history()[0].content(), "saved");
         assert_eq!(conversation.prompt_tokens(), 0);
+    }
+
+    #[test]
+    fn autosave_name_starts_with_the_first_input_and_ends_with_a_time() {
+        let name = autosave_name("Hello, World!");
+        let (slug, seconds) = name.rsplit_once('-').expect("a name with a time");
+        assert_eq!(slug, "hello-world");
+        assert!(seconds.parse::<u64>().is_ok());
+        assert!(autosave_name("  ?? ").starts_with("session-"));
     }
 }
