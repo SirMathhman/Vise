@@ -18,8 +18,13 @@ toward. It is a reference, not a changelog.
 - **Context message**: the leading `system` message that describes the host environment (today,
   the working directory). It is gathered once at startup, held by `session` as the first entry of
   the conversation, resent on every turn, and never trimmed.
-- **Provider**: a backend that turns a conversation into the messages of one turn. llama.cpp is the
-  only provider today.
+- **Provider**: a backend that turns a conversation into the messages of one turn, and reports the
+  size of the context it can hold. llama.cpp is the only provider today.
+- **Prompt tokens**: the prompt token count the provider reports for the final request of a turn. It
+  covers the whole conversation as the model saw it, so it is the figure that grows toward the
+  context size. It is `None` when the server reports no usage; it is never coerced to zero.
+- **Context size**: the number of tokens the configured model can hold in one context, as the
+  provider reports it. Resolved once per session, not per command.
 - **Tool**: a local capability the model may request by name with JSON arguments. A tool is described
   by plain data (name, description, parameters) and executed by plain Rust code. Tools never see
   HTTP, wire types, or the conversation.
@@ -54,15 +59,18 @@ src/
   commands.rs        Command enum (Exit, Context) and parse(line) -> Option<Command>; pure, no I/O.
                      Any line that does not parse, including plain "exit", "quit", and unknown slash
                      commands, is not a command
-  session.rs         Message, Turn, Conversation: a Turn is appended whole or not at all; trimming
+  session.rs         Message, Turn, Conversation: a Turn is appended whole or not at all; the
+                     Conversation keeps the prompt tokens of the last committed turn; trimming
   config.rs          Config: endpoint URL, model name, timeouts, API key (from env / .env)
   environment.rs     gathers opt-in host facts as plain data (working directory first)
   provider/
     mod.rs           declares its children and nothing else
     types.rs         trait Provider { fn complete(&self, history: &[Message], input: String,
-                     tools: &dyn ToolRunner) -> Result<Turn, ProviderError> }
+                     runner: &dyn ToolRunner) -> Result<Turn, ProviderError>;
+                     fn context_size(&self) -> Result<u64, ProviderError> }
     llama_cpp.rs     OpenAI-compatible HTTP implementation, its typed wire structs, serde_json use,
-                     the tool-round loop, and decoding of JSON argument values into plain `Value`s
+                     the tool-round loop, the /v1/models lookup for the configured model's n_ctx,
+                     and decoding of JSON argument values into plain `Value`s
   tools/
     mod.rs           registry only: specs() -> &[ToolSpec]; call(name, values: HashMap<String, Value>)
                      -> Result<Invocation, ToolError>, which finds the named spec, validates the values
@@ -132,7 +140,12 @@ Rules:
   tool calls. The provider builds `Message` variants directly; `Turn::new` is where that shape is
   enforced, so no caller needs a separate constructor per role.
 - `Conversation` holds the only `Vec<Message>` that is ever committed. Nothing outside `session`
-  pushes to it.
+  pushes to it. `Conversation::prompt_tokens()` returns the prompt tokens of the last committed
+  turn, and `Conversation::context()` returns the context message; both are the only accessors
+  `repl` uses for those values.
+- `/context` writes the context message, then `<prompt tokens> / <context size>`. The prompt-token
+  figure comes from the conversation and the context size from `Provider::context_size`. A failed
+  size lookup is reported on the error stream and does not hide the context message.
 - Tool output is returned to the model as text. The REPL never prints tool output.
 - Modules stay under the project limits: 100 lines per function, 500 code lines per file,
   10 files per directory. Split a directory into subdirectories before it exceeds 10 files.
@@ -189,6 +202,12 @@ Rules:
   model requires a rebuild.
 - **Single-shot failure mode.** A failed turn is dropped silently from history; the user is not told
   what was retained. Reporting must say which message was discarded.
+- **Silent zero token count.** When the response omits `usage`, the provider stores 0 and `/context`
+  prints `0 / N` as if the conversation were empty. The absence must be carried as `None` and shown
+  as unknown.
+- **Model not found is overloaded.** `ProviderError::ModelNotFound` is returned both when the
+  configured model is absent from `/v1/models` and when it is listed without `meta.n_ctx`. These are
+  different failures with different fixes; they need distinct variants that name the model.
 - **Plain HTTP.** The default endpoint is `http://127.0.0.1`, so the bearer token crosses the
   network unencrypted if the endpoint is ever pointed at a remote host.
 
@@ -284,3 +303,5 @@ Obvious concerns only; profile before optimizing.
   not processed.
 - The current code builds a new `ureq` request per call through the free `ureq::post` function.
   The provider should hold one agent for connection reuse across turns.
+- `/context` issues a `/v1/models` request on every invocation. The context size is fixed for a
+  session, so it is resolved once, and a failure is retried on the next `/context`.
