@@ -118,3 +118,17 @@ pub trait ToolRunner {
     /// it is called only for invocations that write.
     fn run(&self, invocation: &Invocation, approve: &mut dyn FnMut(&str) -> bool) -> Result<String, ToolError>;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_write_variant_writes() {
+        assert!(Invocation::CreateFile { path: "a".into(), content: String::new() }.writes());
+        assert!(Invocation::CreateDirectory { path: "a".into() }.writes());
+        assert!(Invocation::EditFile { path: "a".into(), previous: "x".into(), new: "y".into() }.writes());
+        assert!(!Invocation::ListDirectory { path: ".".into(), depth: 1 }.writes());
+        assert!(!Invocation::ReadFile { path: "a".into(), start: 1, end: 1 }.writes());
+    }
+}

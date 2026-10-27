@@ -36,3 +36,26 @@ fn describe(invocation: &Invocation) -> String {
         Invocation::ListDirectory { .. } | Invocation::ReadFile { .. } => String::new(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn declined_create_file_changes_nothing() {
+        let cwd = std::env::temp_dir().join(format!("vise-declined-{}", std::process::id()));
+        fs::create_dir_all(&cwd).unwrap();
+        let tools = WorkspaceTools::new(cwd.clone());
+        let invocation = Invocation::CreateFile { path: "declined.txt".into(), content: "nope".into() };
+        let mut asked = Vec::new();
+        let result = tools.run(&invocation, &mut |change: &str| {
+            asked.push(change.to_string());
+            false
+        });
+        assert!(result.is_err());
+        assert!(asked[0].contains("declined.txt"));
+        assert!(!cwd.join("declined.txt").exists());
+        fs::remove_dir_all(&cwd).unwrap();
+    }
+}
