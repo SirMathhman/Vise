@@ -29,6 +29,7 @@ pub struct ToolSpec {
 #[derive(Debug)]
 pub enum ToolError {
     UnknownTool(String),
+    Disabled(String),
     InvalidArguments(String),
     Failed(String),
 }
@@ -37,6 +38,7 @@ impl fmt::Display for ToolError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::UnknownTool(name) => write!(f, "unknown tool '{name}'"),
+            Self::Disabled(name) => write!(f, "tool '{name}' is disabled"),
             Self::InvalidArguments(msg) => write!(f, "invalid arguments: {msg}"),
             Self::Failed(msg) => write!(f, "{msg}"),
         }
@@ -117,6 +119,20 @@ pub enum Invocation {
 }
 
 impl Invocation {
+    /// The name of the tool this invocation came from.
+    pub fn tool_name(&self) -> &'static str {
+        match self {
+            Self::ListDirectory { .. } => "list_directory",
+            Self::ReadFile { .. } => "read_file",
+            Self::CreateFile { .. } => "create_file",
+            Self::CreateDirectory { .. } => "create_directory",
+            Self::EditFile { .. } => "edit_file",
+            Self::RunPowerShell { .. } => "run_powershell",
+            Self::ReadBackground { .. } => "read_background",
+            Self::KillBackground { .. } => "kill_background",
+        }
+    }
+
     /// Whether running this changes the filesystem or runs a program, so it needs approval and is never
     /// replayed. Reading a background task's output changes nothing.
     pub fn writes(&self) -> bool {

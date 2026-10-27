@@ -44,6 +44,10 @@ impl ToolRunner for WorkspaceTools {
     }
 
     fn run(&self, invocation: &Invocation, approve: &mut dyn FnMut(&str) -> bool) -> Result<String, ToolError> {
+        let name = invocation.tool_name();
+        if !self.enabled.borrow().contains(name) {
+            return Err(ToolError::Disabled(name.into()));
+        }
         if invocation.writes() && !approve(&describe(invocation)) {
             return Err(ToolError::Failed("the user declined this change".into()));
         }
@@ -108,5 +112,14 @@ mod tests {
         assert!(asked[0].contains("declined.txt"));
         assert!(!cwd.join("declined.txt").exists());
         fs::remove_dir_all(&cwd).unwrap();
+    }
+
+    #[test]
+    fn disabled_tool_is_refused_by_the_runner() {
+        let tools = WorkspaceTools::new(std::env::temp_dir());
+        tools.set_enabled("list_directory", false).unwrap();
+        let invocation = Invocation::ListDirectory { path: ".".into(), depth: 1 };
+        let result = tools.run(&invocation, &mut |_: &str| true);
+        assert!(matches!(result, Err(ToolError::Disabled(name)) if name == "list_directory"));
     }
 }

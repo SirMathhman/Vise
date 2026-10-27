@@ -15,11 +15,15 @@ const MODEL: &str = "ayozhee/Qwen3.8-27B-Abliterated-GSQ-Orca-GGUF:MTP";
 const TOOL_OPEN: &str = "<tool_call>";
 const TOOL_CLOSE: &str = "</tool_call>";
 
+/// Caps one reply, so a reply that never closes its thinking block cannot run on indefinitely.
+const MAX_REPLY_TOKENS: u32 = 8192;
+
 /// No `tools` field is sent: the grammar, built from the enabled tools, is what limits the calls.
 #[derive(Serialize)]
 struct Request<'a> {
     model: &'static str,
     messages: &'a [WireMessage],
+    max_tokens: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     grammar: Option<&'a str>,
 }
@@ -253,7 +257,7 @@ impl Provider for LlamaCpp {
             if over_budget(prompt_tokens, self.context_size()?) {
                 return Err(if wrote { ProviderError::ContextFullAfterChange } else { ProviderError::ContextFull });
             }
-            let result = run_call(&call, &enabled, runner, approve, &mut wrote);
+            let result = run_call(&call, runner, approve, &mut wrote);
             let call_id = call.id.clone();
             new.push(Message::Assistant { content: String::new(), tool_calls: vec![call] });
             new.push(Message::Tool { call_id, content: result.unwrap_or_else(|err| format!("error: {err}")) });
@@ -291,17 +295,13 @@ fn wire_messages<'a>(
     Ok(wire)
 }
 
-/// Runs one call the model made. A tool that is not enabled is refused, even if the grammar let it through.
+/// Runs one call the model made. The runner refuses a tool that is not enabled.
 fn run_call(
     call: &ToolCall,
-    enabled: &[&str],
     runner: &dyn ToolRunner,
     approve: &mut dyn FnMut(&str) -> bool,
     wrote: &mut bool,
 ) -> Result<String, ToolError> {
-    if !enabled.contains(&call.name.as_str()) {
-        return Err(ToolError::Failed(format!("tool '{}' is disabled", call.name)));
-    }
     let invocation = tools::call(&call.name, call.arguments.clone())?;
     *wrote |= invocation.writes();
     runner.run(&invocation, approve)
@@ -321,7 +321,7 @@ fn to_value(value: serde_json::Value) -> Value {
 const SUMMARY_REQUEST: &str = "Summarize your conversation with the user";
 
 fn send(api_key: &str, wire: &[WireMessage], grammar: Option<&str>) -> Result<(ReplyMessage, u64), ProviderError> {
-    let request = Request { model: MODEL, messages: wire, grammar };
+    let request = Request { model: MODEL, messages: wire, max_tokens: MAX_REPLY_TOKENS, grammar };
     let mut response = ureq::post(URL)
         .config()
         .http_status_as_error(false)

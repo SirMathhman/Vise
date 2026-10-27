@@ -25,6 +25,13 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 - **Compaction**: replacing older history with a summary the model wrote. The result keeps the context
   message, one summary (an assistant message with no tool calls), and the last two turns. Compaction
   runs on `/compact`, and before a turn when the last prompt tokens reach 80% of the context size.
+- **Tool catalogue**: the text listing every tool with its arguments. It is joined to the leading system
+  message of each request only, never stored in the conversation, and it lists disabled tools too, so it
+  never changes during a session.
+- **Enabled tools**: the tools the model may call. The runner holds the set, `/tools` changes it, and each
+  request's grammar is built from it. A disabled tool is neither offered nor run.
+- **Tool call form**: a reply consisting of `<tool_call>`, a JSON body with `name` and `arguments`, and
+  `</tool_call>`. It is the only reply form that runs a tool. Any other reply is text.
 - **Write**: a tool call that changes the filesystem or runs or stops a program (`create_file`,
   `create_directory`, `edit_file`, `run_powershell`, `kill_background`). A write runs only after the user
   approves it. A declined write is reported to the model as an error and changes nothing.
@@ -78,8 +85,16 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
   only its id. The user approves what will stop, not a number.
 - A write runs only after the user approves a description of it. The default is no: only `y` or `yes`
   approves.
-- Slash commands (`/compact`, `/context`, `/exit`, `/help`) are never sent to the model. Every other line
-  is, including `exit`, `quit`, and unknown slash commands.
+- Slash commands (`/compact`, `/context`, `/exit`, `/help`, `/tools`) are never sent to the model. Every
+  other line is, including `exit`, `quit`, and unknown slash commands.
+- Each request has no `tools` field. It carries a grammar built from the enabled tools, which fixes the
+  reply to a thinking block followed by plain text or one tool call to an enabled tool. Plain text cannot
+  contain the `<tool_call>` marker.
+- Only a tool call form runs a tool. A plain-text reply that names a tool runs nothing.
+- A disabled tool does not run, even if a reply names it. The grammar stops its generation, and the runner
+  refuses it again before it runs.
+- Enabling or disabling a tool changes no committed message, and enabling a tool does not approve its writes.
+  Each write still needs approval.
 - API keys are never printed, logged, or put in error text.
 - No function panics on bad input or failed I/O; fallible steps return `Result`.
 
@@ -89,7 +104,8 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 src/
   main.rs            wiring: reads .env and LLAMA_API_KEY, takes the working directory, builds the
                      provider and tool runner, runs the REPL. Fatal startup errors go to exit_with.
-  repl.rs            the input loop over generic BufRead/Write. Parses and runs slash commands,
+  repl.rs            the input loop over generic BufRead/Write. Parses and runs slash commands
+                     (including `/tools`, `/tools enable NAME`, `/tools disable NAME`),
                      decides when to compact, retries a turn that reports ContextFull once, asks
                      for approval of writes, and writes replies and notices
   session.rs         Message, Turn (checked shape), Conversation (committed history, prompt tokens of
@@ -100,13 +116,18 @@ src/
     mod.rs           declarations only
     types.rs         trait Provider: complete, context_size, summarize
     llama_cpp.rs     the HTTP client; wire structs; the tool-round loop; the 400 mapping
-                     (bad_request); the /v1/models lookup; conversion between JSON arguments and Values
+                     (bad_request); the /v1/models lookup; conversion between JSON arguments and Values;
+                     the catalogue joined to the first system message of each request
+    grammar.rs       builds the GBNF grammar from the enabled tool names: thinking block, then text that
+                     cannot contain the `<tool_call>` marker, or one call. Sent with each request.
+    prompt.rs        the tool catalogue text, from every ToolSpec, enabled or not
   tools/
     mod.rs           registry: specs(), call(name, values) -> Invocation; declares its children
     types.rs         ToolSpec, Param, ParamType, Value, Arguments, Invocation, ToolCall, ToolError,
-                     ToolRunner
-    runner.rs        WorkspaceTools: runs an Invocation, asks for approval first when it writes, and
-                     owns the background tasks, ending them when it is dropped
+                     ToolRunner (run, enabled, set_enabled)
+    runner.rs        WorkspaceTools: runs an Invocation, refuses a disabled one, asks for approval first
+                     when it writes, holds the enabled set, and owns the background tasks, ending them
+                     when it is dropped
     run_powershell.rs  runs one Windows PowerShell command in the working directory; after its
                      timeout it becomes a background task
     read_background.rs  returns a background task's output after the offset the model passes
@@ -140,11 +161,15 @@ tools::process -> std and the platform binding (Windows Job Object); nothing out
 ## Rules
 
 - `provider::llama_cpp` is the only module that knows HTTP, `ureq`, the endpoint, the wire shapes, or
-  the JSON form of tool specs and calls.
+  the JSON form of tool specs and calls. Only `provider::grammar` knows the call syntax as a grammar, and
+  only `provider::prompt` knows the catalogue's text.
+- The provider sends the grammar built from `ToolRunner::enabled()` on every request, and never a `tools`
+  field. The provider never compares tool names: refusing a disabled tool is the runner's job.
 - `tools` never parses JSON and never imports the provider or the session. The provider decodes a
   model's arguments into plain `Value`s (text, integer, or `Unsupported`) and passes them with the tool
   name to `tools::call`. `call` finds the spec, checks the values against its parameter types, and calls
   the spec's own `bind` function. The provider never compares tool names.
+- `Value` is text, integer, boolean, or `Unsupported`.
 - Adding a tool takes: a file with its `SPEC`, `bind`, and `run`; one `Invocation` variant; one arm in
   `runner.rs`; one arm in `Invocation::writes` (an exhaustive match, no wildcard); and one entry in the
   `SPECS` list. The provider and session do not change.
@@ -204,6 +229,25 @@ Turn and history
   with "line N is longer than 100 KB", and the message does not say that no range can read that line.
 - **Whole-file reads.** `read_file` reads the entire file and splits every line before applying its cap,
   so a range near the end of a large file costs the full file.
+
+Tool protocol
+- **The provider compares tool names.** `run_call` in `provider::llama_cpp` checks `enabled` before calling
+  `tools::call`. That is the wrong layer. `ToolRunner::run` should refuse a disabled invocation with a
+  `ToolError` variant (for example `Disabled`), and the provider should pass every call through unchanged.
+- **Two request formats.** A reply is requested as `<tool_call>` text, but earlier calls are resent as
+  structured `tool_calls` with no `tools` field. The model sees its own calls in a form it is not asked to
+  write. History should use the reply form, or the wire should use one form only.
+- **Prose claims of tools are committed.** The grammar allows a plain reply such as `[Tool: run_powershell]`.
+  Nothing runs, but the reply is committed, so later turns treat an action as done. The grammar cannot
+  forbid this without forbidding ordinary text, so the turn must detect or label such replies.
+- **The grammar does not constrain arguments.** Any JSON object passes the `arguments` rule. Bad arguments
+  are found only in `tools::call`, after the model has chosen the call, and the model gets one error per
+  round.
+- **The grammar assumes a thinking block.** The root rule forces the closing `</think>` on every turn reply.
+  It does not force the opening tag, so the chat template must open the block. A server or template that
+  does not is unhandled.
+- **Toggling is invisible to the model.** The catalogue lists disabled tools as well, so the model may
+  attempt one. The grammar blocks it with no message that says why.
 
 Errors and the provider boundary
 - **Misleading error for invalid JSON.** Invalid arguments decode to no arguments, so the model is told
@@ -309,12 +353,18 @@ Controls:
 | Approval shows what a stop will end | Missing. `kill_background` shows only the id (Open Problems). |
 | The user can see what is running | Missing. No listing of background tasks (Open Problems). |
 | Tool results and summaries marked as untrusted data | Missing. |
+| Tools run only when enabled | Partly met. The grammar and the runner's check enforce it. The provider's name check is the wrong layer (Open Problems). |
+| Plain text cannot run a tool | Met. Only the tool call form runs. A prose claim of a tool is committed without running (Open Problems). |
+| Arguments checked per tool | Met in `tools::call`, after the grammar. The grammar accepts any object (Open Problems). |
+| Enabling a tool | Accepted. `/tools enable` is the user's own action; each write still asks for approval. |
 | Logging of approvals, writes, and commands | Missing. Commands are not logged (Open Problems). |
 | Environment disclosure (working directory sent every turn) | Missing. Only opt-in fields would be sent; today the path is always sent. |
 | Data exposure (directory listings sent to the endpoint) | Accepted. History is never written to disk. |
 
 ## Future Work
 
+- Per-tool argument rules in the grammar, generated from each `ToolSpec`'s parameters, so the server
+  rejects bad arguments before `tools::call` sees them.
 - Route each tool's arguments through `tools::call` in tests, so the path from raw arguments to
   `Invocation` is tested as one unit.
 - Make `ToolSpec`, `bind`, and each `SPEC` visible only inside `tools`.
@@ -341,3 +391,5 @@ Obvious concerns only; profile before optimizing.
 - A foreground command blocks the REPL for up to its 30-second wait. Background tasks have no count limit,
   and each keeps up to 100 KB of output, so many long-running tasks use memory in proportion.
 - Each request builds a new `ureq` request. One shared agent would reuse connections.
+- Grammar-constrained decoding checks each token against the grammar. Measure its cost against an
+  unconstrained request before adding per-tool argument rules.
