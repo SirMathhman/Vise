@@ -1,3 +1,4 @@
+use crate::commands::{command, Command, HELP};
 use crate::error::ProviderError;
 use crate::notes;
 use crate::profile;
@@ -8,105 +9,6 @@ use crate::session::{Conversation, Message, Turn};
 use crate::tools::specs;
 use crate::tools::types::{Invocation, ToolError, ToolRunner};
 use std::io::{self, BufRead, Write};
-
-const HELP: &str = "\
-/compact              summarize the conversation to free up context space
-/context              show the working directory and the tokens used out of the context size
-/exit                 end the session
-/help                 show this list
-/tools                list each tool and whether the model may call it
-/tools enable NAME    let the model call a tool
-/tools disable NAME   stop the model calling a tool
-/profile              list the profiles in the profiles folder
-/profile NAME         use a profile's instructions from the next message on
-/notes [CATEGORY]     list the notes, all or in one category
-/note show NAME       show a note
-/note create NAME CATEGORY   create a note with a placeholder summary
-/note delete NAME     delete a note
-/save NAME            save the conversation as a session in the sessions folder
-/load NAME            replace the conversation with a saved session
-/sessions             list the saved sessions";
-
-enum Command {
-    Compact,
-    Exit,
-    Context,
-    Help,
-    Tools,
-    Enable(String),
-    Disable(String),
-    Profiles,
-    Profile(String),
-    /// Lists the notes in a category; an empty category lists all.
-    ListNotes(String),
-    ShowNote(String),
-    CreateNote(String, String),
-    DeleteNote(String),
-    Save(String),
-    Load(String),
-    Sessions,
-}
-
-/// Slash commands are handled here and never sent to the model. Any other line, including an unknown
-/// slash command, is sent as a message.
-fn command(line: &str) -> Option<Command> {
-    let line = line.trim();
-    if let Some(rest) = whole_word(line, "/notes") {
-        return match rest.split_whitespace().collect::<Vec<_>>().as_slice() {
-            [] => Some(Command::ListNotes(String::new())),
-            [category] => Some(Command::ListNotes(category.to_string())),
-            _ => None,
-        };
-    }
-    if let Some(rest) = whole_word(line, "/save") {
-        return match rest.split_whitespace().collect::<Vec<_>>().as_slice() {
-            [name] => Some(Command::Save(name.to_string())),
-            _ => None,
-        };
-    }
-    if let Some(rest) = whole_word(line, "/load") {
-        return match rest.split_whitespace().collect::<Vec<_>>().as_slice() {
-            [name] => Some(Command::Load(name.to_string())),
-            _ => None,
-        };
-    }
-    if let Some(rest) = whole_word(line, "/note") {
-        return match rest.split_whitespace().collect::<Vec<_>>().as_slice() {
-            ["show", name] => Some(Command::ShowNote(name.to_string())),
-            ["create", name, category] => Some(Command::CreateNote(name.to_string(), category.to_string())),
-            ["delete", name] => Some(Command::DeleteNote(name.to_string())),
-            _ => None,
-        };
-    }
-    if let Some(rest) = line.strip_prefix("/profile").filter(|rest| rest.is_empty() || rest.starts_with(' ')) {
-        return match rest.split_whitespace().collect::<Vec<_>>().as_slice() {
-            [] => Some(Command::Profiles),
-            [name] => Some(Command::Profile(name.to_string())),
-            _ => None,
-        };
-    }
-    if let Some(rest) = line.strip_prefix("/tools") {
-        return match rest.split_whitespace().collect::<Vec<_>>().as_slice() {
-            [] => Some(Command::Tools),
-            ["enable", name] => Some(Command::Enable(name.to_string())),
-            ["disable", name] => Some(Command::Disable(name.to_string())),
-            _ => None,
-        };
-    }
-    match line {
-        "/exit" => Some(Command::Exit),
-        "/context" => Some(Command::Context),
-        "/help" => Some(Command::Help),
-        "/compact" => Some(Command::Compact),
-        "/sessions" => Some(Command::Sessions),
-        _ => None,
-    }
-}
-
-/// The rest of `line` after `command`, when `command` is the line's first word.
-fn whole_word<'a>(line: &'a str, command: &str) -> Option<&'a str> {
-    line.strip_prefix(command).filter(|rest| rest.is_empty() || rest.starts_with(' '))
-}
 
 /// One line per tool in the catalogue, with whether the model may call it.
 fn tool_list(tools: &dyn ToolRunner) -> String {
@@ -170,6 +72,66 @@ fn toggle(
     }
 }
 
+/// The note commands. Writes go through the runner, so the user sees the same approval a write from the model gets.
+fn note_command(
+    command: Command,
+    tools: &dyn ToolRunner,
+    output: &mut impl Write,
+    input: &mut impl BufRead,
+    errors: &mut impl Write,
+) -> io::Result<()> {
+    match command {
+        Command::ListNotes(category) => match notes::list(&category, None) {
+            Ok(listed) if listed.is_empty() => writeln!(output, "no notes"),
+            Ok(listed) => writeln!(output, "{}", notes::describe_list(&listed)),
+            Err(err) => writeln!(errors, "error: {err}"),
+        },
+        Command::ShowNote(name) => match notes::read(&name) {
+            Ok(note) => writeln!(output, "{}", notes::show(&note)),
+            Err(err) => writeln!(errors, "error: {err}"),
+        },
+        Command::CreateNote(name, category) => {
+            let placeholder = Invocation::CreateNote {
+                name,
+                summary: "placeholder".into(),
+                category,
+                content: String::new(),
+            };
+            user_write(tools, &placeholder, output, input, errors)
+        }
+        Command::DeleteNote(name) => user_write(tools, &Invocation::DeleteNote { name }, output, input, errors),
+        _ => Ok(()),
+    }
+}
+
+/// The session commands: listing, saving, and loading the conversation.
+fn session_command(
+    command: Command,
+    conversation: &mut Conversation,
+    output: &mut impl Write,
+    errors: &mut impl Write,
+) -> io::Result<()> {
+    match command {
+        Command::Sessions => match saved_sessions::names() {
+            Ok(names) if names.is_empty() => writeln!(output, "no sessions: /save NAME stores the conversation"),
+            Ok(names) => writeln!(output, "{}", names.join("\n")),
+            Err(err) => writeln!(errors, "error: {err}"),
+        },
+        Command::Save(name) => match saved_sessions::save(&name, conversation.history()) {
+            Ok(()) => writeln!(output, "session {name} saved"),
+            Err(err) => writeln!(errors, "error: {err}"),
+        },
+        Command::Load(name) => match saved_sessions::load(&name) {
+            Ok(history) => {
+                conversation.replace_history(history);
+                writeln!(output, "session {name} loaded")
+            }
+            Err(err) => writeln!(errors, "error: {err}"),
+        },
+        _ => Ok(()),
+    }
+}
+
 pub fn run(
     input: &mut impl BufRead,
     output: &mut impl Write,
@@ -200,43 +162,12 @@ pub fn run(
                 Ok(names) => writeln!(output, "{}", names.join("\n"))?,
                 Err(err) => writeln!(errors, "error: {err}")?,
             },
-            Some(Command::ListNotes(category)) => match notes::list(&category, None) {
-                Ok(listed) if listed.is_empty() => writeln!(output, "no notes")?,
-                Ok(listed) => writeln!(output, "{}", notes::describe_list(&listed))?,
-                Err(err) => writeln!(errors, "error: {err}")?,
-            },
-            Some(Command::ShowNote(name)) => match notes::read(&name) {
-                Ok(note) => writeln!(output, "{}", notes::show(&note))?,
-                Err(err) => writeln!(errors, "error: {err}")?,
-            },
-            Some(Command::CreateNote(name, category)) => {
-                let placeholder = Invocation::CreateNote {
-                    name,
-                    summary: "placeholder".into(),
-                    category,
-                    content: String::new(),
-                };
-                user_write(tools, &placeholder, output, input, errors)?;
+            Some(command @ (Command::ListNotes(_) | Command::ShowNote(_) | Command::CreateNote(..) | Command::DeleteNote(_))) => {
+                note_command(command, tools, output, input, errors)?
             }
-            Some(Command::DeleteNote(name)) => {
-                user_write(tools, &Invocation::DeleteNote { name }, output, input, errors)?;
+            Some(command @ (Command::Sessions | Command::Save(_) | Command::Load(_))) => {
+                session_command(command, conversation, output, errors)?
             }
-            Some(Command::Sessions) => match saved_sessions::names() {
-                Ok(names) if names.is_empty() => writeln!(output, "no sessions: /save NAME stores the conversation")?,
-                Ok(names) => writeln!(output, "{}", names.join("\n"))?,
-                Err(err) => writeln!(errors, "error: {err}")?,
-            },
-            Some(Command::Save(name)) => match saved_sessions::save(&name, conversation.history()) {
-                Ok(()) => writeln!(output, "session {name} saved")?,
-                Err(err) => writeln!(errors, "error: {err}")?,
-            },
-            Some(Command::Load(name)) => match saved_sessions::load(&name) {
-                Ok(history) => {
-                    conversation.replace_history(history);
-                    writeln!(output, "session {name} loaded")?;
-                }
-                Err(err) => writeln!(errors, "error: {err}")?,
-            },
             Some(Command::Profile(name)) => match profile::load(&name) {
                 Ok(loaded) => match apply_whitelist(tools, loaded.tools.as_deref()) {
                     Ok(changes) => {

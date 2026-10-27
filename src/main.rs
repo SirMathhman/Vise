@@ -1,3 +1,4 @@
+mod commands;
 mod environment;
 mod error;
 mod notes;
