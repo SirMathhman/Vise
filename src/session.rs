@@ -45,7 +45,8 @@ impl Message {
 
 /// The messages one exchange adds to a conversation: the user's input, any tool exchanges, and the
 /// reply. Only `Turn::new` builds one, and it checks the whole shape: a user message, then each
-/// assistant tool call followed by one result per call, then a reply with no tool calls.
+/// assistant tool call followed by one result per call, with plain assistant summaries of earlier
+/// rounds allowed, then a reply with no tool calls.
 pub struct Turn {
     messages: Vec<Message>,
     prompt_tokens: u64,
@@ -60,11 +61,11 @@ impl Turn {
         loop {
             match messages.get(index) {
                 Some(Message::Assistant { tool_calls, .. }) if tool_calls.is_empty() => {
-                    return if index + 1 == messages.len() {
-                        Ok(Self { messages, prompt_tokens: 0 })
-                    } else {
-                        Err(SessionError::MalformedTurn { index: index + 1 })
-                    };
+                    if index + 1 == messages.len() {
+                        return Ok(Self { messages, prompt_tokens: 0 });
+                    }
+                    // A plain reply before the end of the turn is a summary of the rounds before it.
+                    index += 1;
                 }
                 Some(Message::Assistant { tool_calls, .. }) => {
                     for (offset, call) in tool_calls.iter().enumerate() {
@@ -111,6 +112,28 @@ impl Conversation {
         let (messages, prompt_tokens) = turn.into_parts();
         self.messages.extend(messages);
         self.prompt_tokens = prompt_tokens;
+    }
+
+    /// Replaces the history with the system context, the summary as an assistant message, and the
+    /// last two turns, which stay verbatim. The prompt token count is unknown until the next request.
+    pub fn compact(&mut self, summary: String) {
+        let turn_starts: Vec<usize> = self
+            .messages
+            .iter()
+            .enumerate()
+            .filter(|(_, message)| matches!(message, Message::User(_)))
+            .map(|(index, _)| index)
+            .collect();
+        let keep_from = match turn_starts.len() {
+            0 => self.messages.len(),
+            1 => turn_starts[0],
+            count => turn_starts[count - 2],
+        };
+        let kept = self.messages.split_off(keep_from);
+        self.messages.truncate(1);
+        self.messages.push(Message::Assistant { content: summary, tool_calls: Vec::new() });
+        self.messages.extend(kept);
+        self.prompt_tokens = 0;
     }
 
     /// The prompt tokens the model reported for the most recent request, or 0 before any turn.
@@ -185,5 +208,30 @@ mod tests {
     fn tool_round_trip_is_accepted() {
         let messages = vec![Message::User("hi".into()), calls_message("c1"), result("c1"), reply()];
         assert!(Turn::new(messages).is_ok());
+    }
+
+    fn plain_turn(input: &str) -> Turn {
+        Turn::new(vec![Message::User(input.into()), reply()]).ok().expect("a plain turn is well formed")
+    }
+
+    #[test]
+    fn summary_may_precede_tool_rounds() {
+        let messages = vec![Message::User("hi".into()), reply(), calls_message("c1"), result("c1"), reply()];
+        assert!(Turn::new(messages).is_ok());
+    }
+
+    #[test]
+    fn compact_keeps_system_summary_and_last_two_turns() {
+        let env = Environment { cwd: PathBuf::from("C:/work") };
+        let mut conversation = Conversation::new(&env);
+        for input in ["a", "b", "c"] {
+            conversation.commit(plain_turn(input));
+        }
+        conversation.compact("summary".into());
+        let messages = conversation.messages();
+        assert_eq!(messages.len(), 6);
+        assert_eq!(messages[1].content(), "summary");
+        assert_eq!(messages[2].content(), "b");
+        assert_eq!(messages[4].content(), "c");
     }
 }

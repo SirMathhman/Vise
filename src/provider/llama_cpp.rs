@@ -3,6 +3,7 @@ use crate::provider::types::Provider;
 use crate::session::{Message, Turn};
 use crate::tools::types::{ParamType, ToolCall, ToolRunner, ToolSpec, Value};
 use crate::tools;
+use std::cell::OnceCell;
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -15,7 +16,8 @@ const MODEL: &str = "ayozhee/Qwen3.8-27B-Abliterated-GSQ-Orca-GGUF:MTP";
 struct Request<'a> {
     model: &'static str,
     messages: &'a [WireMessage],
-    tools: &'a [WireTool],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tools: Option<&'a [WireTool]>,
 }
 
 #[derive(Serialize)]
@@ -208,11 +210,38 @@ struct ReplyMessage {
 
 pub struct LlamaCpp {
     api_key: String,
+    context: OnceCell<u64>,
 }
 
 impl LlamaCpp {
     pub fn new(api_key: String) -> Self {
-        Self { api_key }
+        Self { api_key, context: OnceCell::new() }
+    }
+
+    fn fetch_context_size(&self) -> Result<u64, ProviderError> {
+        let mut response = ureq::get(MODELS_URL)
+            .header("Authorization", &format!("Bearer {}", self.api_key))
+            .call()
+            .map_err(|err| ProviderError::Transport(Box::new(err)))?;
+        let models: Models = response
+            .body_mut()
+            .read_json()
+            .map_err(|err| ProviderError::Transport(Box::new(err)))?;
+        models
+            .data
+            .into_iter()
+            .find(|model| model.id == MODEL)
+            .and_then(|model| model.meta)
+            .map(|meta| meta.n_ctx)
+            .ok_or(ProviderError::ModelNotFound)
+    }
+
+    /// Asks the model to summarize the messages it is given, without offering any tools.
+    fn summarize_messages<'a>(&self, messages: impl Iterator<Item = &'a Message>) -> Result<String, ProviderError> {
+        let mut wire: Vec<WireMessage> = messages.map(WireMessage::try_from).collect::<Result<_, _>>()?;
+        wire.push(WireMessage::try_from(&Message::User(SUMMARY_REQUEST.into()))?);
+        let (reply, _) = send(&self.api_key, &wire, None)?;
+        Ok(reply.content.unwrap_or_default())
     }
 }
 
@@ -223,10 +252,19 @@ impl Provider for LlamaCpp {
     fn complete(&self, history: &[Message], input: String, runner: &dyn ToolRunner) -> Result<Turn, ProviderError> {
         let wire_tools: Vec<WireTool> = tools::specs().iter().map(WireTool::from).collect();
         let mut new = vec![Message::User(input)];
+        let mut prompt_tokens = 0;
         for _ in 0..MAX_TOOL_ROUNDS {
+            if self.over_limit(prompt_tokens)? {
+                // The rounds so far are too big for the context, so replace them with a summary.
+                let summary = self.summarize_messages(history.iter().chain(&new))?;
+                new.truncate(1);
+                new.push(Message::Assistant { content: summary, tool_calls: Vec::new() });
+                prompt_tokens = 0;
+            }
             let wire: Vec<WireMessage> =
                 history.iter().chain(&new).map(WireMessage::try_from).collect::<Result<_, _>>()?;
-            let (reply, prompt_tokens) = send(&self.api_key, &wire, &wire_tools)?;
+            let (reply, sent_tokens) = send(&self.api_key, &wire, Some(wire_tools.as_slice()))?;
+            prompt_tokens = sent_tokens;
             let content = reply.content.unwrap_or_default();
             if reply.tool_calls.is_empty() {
                 new.push(Message::Assistant { content, tool_calls: Vec::new() });
@@ -251,21 +289,16 @@ impl Provider for LlamaCpp {
     }
 
     fn context_size(&self) -> Result<u64, ProviderError> {
-        let mut response = ureq::get(MODELS_URL)
-            .header("Authorization", &format!("Bearer {}", self.api_key))
-            .call()
-            .map_err(|err| ProviderError::Transport(Box::new(err)))?;
-        let models: Models = response
-            .body_mut()
-            .read_json()
-            .map_err(|err| ProviderError::Transport(Box::new(err)))?;
-        models
-            .data
-            .into_iter()
-            .find(|model| model.id == MODEL)
-            .and_then(|model| model.meta)
-            .map(|meta| meta.n_ctx)
-            .ok_or(ProviderError::ModelNotFound)
+        if let Some(size) = self.context.get() {
+            return Ok(*size);
+        }
+        let size = self.fetch_context_size()?;
+        let _ = self.context.set(size);
+        Ok(size)
+    }
+
+    fn summarize(&self, history: &[Message]) -> Result<String, ProviderError> {
+        self.summarize_messages(history.iter())
     }
 }
 
@@ -279,7 +312,9 @@ fn to_value(value: serde_json::Value) -> Value {
 
 /// Sends one request and returns the reply with the prompt tokens llama.cpp counted for it (0 if it
 /// reported none).
-fn send(api_key: &str, wire: &[WireMessage], tools: &[WireTool]) -> Result<(ReplyMessage, u64), ProviderError> {
+const SUMMARY_REQUEST: &str = "Summarize your conversation with the user";
+
+fn send(api_key: &str, wire: &[WireMessage], tools: Option<&[WireTool]>) -> Result<(ReplyMessage, u64), ProviderError> {
     let request = Request { model: MODEL, messages: wire, tools };
     let mut response = ureq::post(URL)
         .header("Authorization", &format!("Bearer {api_key}"))

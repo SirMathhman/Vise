@@ -1,14 +1,17 @@
+use crate::error::ProviderError;
 use crate::provider::types::Provider;
 use crate::session::{Conversation, Message};
 use crate::tools::types::ToolRunner;
 use std::io::{self, BufRead, Write};
 
 const HELP: &str = "\
+/compact  summarize the conversation to free up context space
 /context  show the working directory and the tokens used out of the context size
 /exit     end the session
 /help     show this list";
 
 enum Command {
+    Compact,
     Exit,
     Context,
     Help,
@@ -21,6 +24,7 @@ fn command(line: &str) -> Option<Command> {
         "/exit" => Some(Command::Exit),
         "/context" => Some(Command::Context),
         "/help" => Some(Command::Help),
+        "/compact" => Some(Command::Compact),
         _ => None,
     }
 }
@@ -44,6 +48,10 @@ pub fn run(
         match command(&line) {
             Some(Command::Exit) => break,
             Some(Command::Help) => writeln!(output, "{HELP}")?,
+            Some(Command::Compact) => match compact(provider, conversation) {
+                Ok(()) => writeln!(output, "conversation compacted")?,
+                Err(err) => writeln!(errors, "error: {err}")?,
+            },
             Some(Command::Context) => {
                 let context = conversation.messages().first().map_or("", Message::content);
                 writeln!(output, "{context}")?;
@@ -56,10 +64,28 @@ pub fn run(
                 Ok(turn) => {
                     writeln!(output, "{}", turn.reply())?;
                     conversation.commit(turn);
+                    if let Err(err) = compact_if_full(provider, conversation) {
+                        writeln!(errors, "error: {err}")?;
+                    }
                 }
                 Err(err) => writeln!(errors, "error: {err}")?,
             },
         }
+    }
+    Ok(())
+}
+
+/// Replaces the older history with a summary the model writes of it.
+fn compact(provider: &dyn Provider, conversation: &mut Conversation) -> Result<(), ProviderError> {
+    let summary = provider.summarize(conversation.messages())?;
+    conversation.compact(summary);
+    Ok(())
+}
+
+/// Compacts the conversation when its last prompt has reached the context limit.
+fn compact_if_full(provider: &dyn Provider, conversation: &mut Conversation) -> Result<(), ProviderError> {
+    if provider.over_limit(conversation.prompt_tokens())? {
+        compact(provider, conversation)?;
     }
     Ok(())
 }
@@ -120,6 +146,10 @@ mod tests {
 
         fn context_size(&self) -> Result<u64, ProviderError> {
             Ok(0)
+        }
+
+        fn summarize(&self, _history: &[Message]) -> Result<String, ProviderError> {
+            Ok("summary".into())
         }
     }
 
