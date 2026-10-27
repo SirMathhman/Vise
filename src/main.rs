@@ -7,20 +7,23 @@ mod tools;
 
 use provider::llama_cpp::LlamaCpp;
 use session::Conversation;
-use std::io;
+use std::io::{self, Write};
 use tools::runner::WorkspaceTools;
+
+/// Writes a fatal message to stderr and exits with status 1. If stderr is closed the message is lost,
+/// but the exit status still reports the failure.
+fn exit_with(message: &str) -> ! {
+    let _ = writeln!(io::stderr(), "{message}");
+    std::process::exit(1)
+}
 
 fn main() {
     dotenvy::dotenv().ok();
-    let api_key = std::env::var("LLAMA_API_KEY").unwrap_or_else(|_| {
-        eprintln!("LLAMA_API_KEY is not set; add it to .env");
-        std::process::exit(1);
-    });
+    let api_key = std::env::var("LLAMA_API_KEY")
+        .unwrap_or_else(|_| exit_with("LLAMA_API_KEY is not set; add it to .env"));
 
-    let env = environment::gather().unwrap_or_else(|err| {
-        eprintln!("error: cannot read current directory: {err}");
-        std::process::exit(1);
-    });
+    let env = environment::gather()
+        .unwrap_or_else(|err| exit_with(&format!("error: cannot read current directory: {err}")));
     let provider = LlamaCpp::new(api_key);
     let tools = WorkspaceTools::new(env.cwd.clone());
     let mut conversation = Conversation::new(&env);
@@ -36,6 +39,6 @@ fn main() {
         &tools,
         &mut conversation,
     ) {
-        eprintln!("error: {err}");
+        let _ = writeln!(errors, "error: {err}");
     }
 }

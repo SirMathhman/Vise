@@ -64,8 +64,9 @@ src/
                      -> Result<Invocation, ToolError>, which finds the named spec, validates the values
                      against it, and builds the Invocation through the spec
     runner.rs        WorkspaceTools: implements ToolRunner by running a typed Invocation
-    types.rs         plain data shared by the tools: ToolSpec, Param, ParamType, Value, Arguments,
-                     Invocation, ToolCall, ToolRunner
+    types.rs         plain data shared by the tools: ToolSpec, Param, ParamType, Value, Invocation,
+                     ToolCall, ToolRunner; Arguments, whose only constructor is `validated` and whose
+                     accessors are visible to `tools` alone
     list_directory.rs  the list_directory tool
     read_file.rs     the read_file tool: a line range with a 500-line / 100 KB output budget
     path.rs          confines a model-supplied path to the working directory
@@ -99,12 +100,12 @@ Rules:
   The provider never looks up or compares tool names. `tools::call` (in the registry) finds the named
   `ToolSpec` (`ToolError::UnknownTool` if none), checks each value against its `ParamType`s, and
   returns `ToolError::InvalidArguments` naming the field when a value is missing, extra, unsupported,
-  or the wrong type. Only then does it produce an `Invocation`. Because `Arguments` is created and
-  consumed inside `tools`, a call can never be bound with arguments validated against another spec.
-  A tool receives its `Invocation` fields and the working directory, and returns text or a
-  `ToolError`. Adding a tool means one new file under `tools/`, its `SPEC`, one arm in `bind`, and one
-  `Invocation` variant, one arm in `runner.rs`, and one entry in the registry's spec list; `provider`
-  and `session` do not change.
+  or the wrong type. Only then does it produce an `Invocation`, by calling the `bind` function that
+  the same spec carries. Because `Arguments` is created and consumed inside `tools`, a call can never
+  be bound with arguments validated against another spec. A tool receives its `Invocation` fields and
+  the working directory, and returns text or a `ToolError`. Adding a tool means one new file under
+  `tools/` holding its `SPEC` and its `bind` function, one `Invocation` variant, one arm in
+  `runner.rs`, and one entry in the registry's spec list; `provider` and `session` do not change.
 - The provider never names the working directory. The caller passes a `&dyn ToolRunner` (built from
   the working directory in `main`), so tool execution is injected rather than looked up by the
   provider.
@@ -162,11 +163,6 @@ Rules:
   `main` still uses `eprintln!` for its own messages, which panics when stderr is closed. Every write in `main` must go through a `Result` as well.
 - **`main` exits 0 on REPL failure.** `main` prints a REPL I/O error and returns normally, so a
   failed stdin or stdout exits with status 0. Structure says `main` maps errors to exit codes.
-- **Name dispatch repeated in `bind`.** `tools::call` finds the `ToolSpec` once, but `bind` compares
-  the name again, and its final `UnknownTool` arm cannot be reached from `call`. Each tool's
-  invocation should be carried by its spec (or a typed key) so the name is matched exactly once.
-  `bind` and `Arguments::validated` are also `pub`, so the rule that a call is bound only with
-  arguments validated against its own spec is held by convention, not by visibility.
 - **Misleading error for invalid JSON arguments.** `decode` turns invalid JSON into no arguments, so
   the model sees "missing 'path'" when the real cause is that its arguments were not valid JSON. The
   error must name the cause, for example by carrying a `MalformedArguments` variant from the provider.
@@ -250,9 +246,11 @@ Required controls and status:
 
 ## Future Work
 
-- Each `ToolSpec` carries the means to build its `Invocation`, so `bind` no longer matches names
-  (see Potential Problems). `bind` and `Arguments::validated` become private to `tools/mod.rs`, so
-  arguments validated against one spec can only be bound through that spec.
+- `ToolSpec`, its fields including `bind`, and each tool's `SPEC` become visible only inside `tools`.
+  Outside `tools`, the only reachable items are the registry functions, `ToolRunner`, and the plain
+  data types, so no other module can construct a spec or call a `bind` function directly.
+- Each tool's `bind` is covered by tests that go through `tools::call`, so the path from raw
+  arguments to `Invocation` is tested as one unit rather than through `Arguments::validated` alone.
 - Structured error enums per layer (`ProviderError`, `ToolError`, `ConfigError`, `SessionError`)
   in `error.rs`, with actionable messages.
 - Output budget and truncation notice for every tool, with the same line and byte limits as

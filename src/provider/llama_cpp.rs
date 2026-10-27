@@ -27,16 +27,21 @@ struct WireMessage {
     tool_call_id: Option<String>,
 }
 
-impl From<&Message> for WireMessage {
-    fn from(message: &Message) -> Self {
-        let tool_calls = (!message.tool_calls().is_empty())
-            .then(|| message.tool_calls().iter().map(WireToolCall::from).collect());
-        WireMessage {
+impl TryFrom<&Message> for WireMessage {
+    type Error = ProviderError;
+
+    fn try_from(message: &Message) -> Result<Self, ProviderError> {
+        let tool_calls = if message.tool_calls().is_empty() {
+            None
+        } else {
+            Some(message.tool_calls().iter().map(WireToolCall::try_from).collect::<Result<_, _>>()?)
+        };
+        Ok(WireMessage {
             role: message.role(),
             content: Some(message.content().to_string()),
             tool_calls,
             tool_call_id: message.tool_call_id().map(str::to_string),
-        }
+        })
     }
 }
 
@@ -58,13 +63,15 @@ struct WireCallFunction {
     arguments: String,
 }
 
-impl From<&ToolCall> for WireToolCall {
-    fn from(call: &ToolCall) -> Self {
-        WireToolCall {
+impl TryFrom<&ToolCall> for WireToolCall {
+    type Error = ProviderError;
+
+    fn try_from(call: &ToolCall) -> Result<Self, ProviderError> {
+        Ok(WireToolCall {
             id: call.id.clone(),
             kind: function_kind(),
-            function: WireCallFunction { name: call.name.clone(), arguments: encode(&call.arguments) },
-        }
+            function: WireCallFunction { name: call.name.clone(), arguments: encode(&call.arguments)? },
+        })
     }
 }
 
@@ -84,10 +91,10 @@ fn decode(arguments: &str) -> HashMap<String, Value> {
 
 /// Encodes plain values back into the JSON argument object for a request. `Unsupported` is encoded as
 /// `null`, because the model's original value is not kept.
-fn encode(arguments: &HashMap<String, Value>) -> String {
+fn encode(arguments: &HashMap<String, Value>) -> Result<String, ProviderError> {
     let object: serde_json::Map<String, serde_json::Value> =
         arguments.iter().map(|(name, value)| (name.clone(), to_json(value))).collect();
-    serde_json::to_string(&object).expect("a JSON object of plain values always serializes")
+    serde_json::to_string(&object).map_err(|err| ProviderError::Encode(Box::new(err)))
 }
 
 fn to_json(value: &Value) -> serde_json::Value {
@@ -194,7 +201,8 @@ impl Provider for LlamaCpp {
         let wire_tools: Vec<WireTool> = tools::specs().iter().map(WireTool::from).collect();
         let mut new = vec![Message::User(input)];
         for _ in 0..MAX_TOOL_ROUNDS {
-            let wire: Vec<WireMessage> = history.iter().chain(&new).map(WireMessage::from).collect();
+            let wire: Vec<WireMessage> =
+                history.iter().chain(&new).map(WireMessage::try_from).collect::<Result<_, _>>()?;
             let reply = send(&self.api_key, &wire, &wire_tools)?;
             let content = reply.content.unwrap_or_default();
             if reply.tool_calls.is_empty() {
