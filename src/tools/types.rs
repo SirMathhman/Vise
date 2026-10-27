@@ -106,7 +106,10 @@ pub enum Invocation {
 impl Invocation {
     /// Whether running this changes the filesystem, so it needs approval and is never replayed.
     pub fn writes(&self) -> bool {
-        matches!(self, Self::CreateFile { .. } | Self::CreateDirectory { .. } | Self::EditFile { .. })
+        match self {
+            Self::ListDirectory { .. } | Self::ReadFile { .. } => false,
+            Self::CreateFile { .. } | Self::CreateDirectory { .. } | Self::EditFile { .. } => true,
+        }
     }
 }
 

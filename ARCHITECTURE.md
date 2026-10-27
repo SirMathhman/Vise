@@ -36,11 +36,15 @@ toward. It is a reference, not a changelog.
   HTTP, wire types, or the conversation.
 - **Tool call and tool result**: a request from the model to run a tool, and the text the tool
   returns. A tool result is data. It is never treated as an instruction.
+- **Write**: a tool call that changes the filesystem (`create_file`, `create_directory`, `edit_file`).
+  Each write is shown to the user and runs only if the user approves it. A declined write is reported
+  to the model as an error and changes nothing. A turn that has attempted a write is never replayed.
 - **Wire type**: a struct that matches the JSON shape of a provider request or response. Wire types
   are typed structs, not untyped JSON values, and never leak into the REPL, the tools, or the
   conversation model.
 - **Invariants**
-  - A failed turn leaves the conversation exactly as it was before the failed user line.
+  - A failed turn leaves the conversation exactly as it was before the failed user line. It does not
+    undo files the turn already changed; see Write.
   - A successful turn appends its user line, its tool exchanges, and its final reply, in order.
     Nothing is appended partially.
   - A turn is a user message, then zero or more rounds of an assistant message with tool calls
@@ -55,6 +59,9 @@ toward. It is a reference, not a changelog.
     for failures to reach the server or read its reply. The REPL then
     compacts the conversation and retries the turn once from the compacted history. The provider never
     rewrites history, so a retry sends less than the request that failed.
+  - A turn that has attempted a write is never retried. If the context fills after a write, the turn
+    fails with `ProviderError::ContextFullAfterChange`, and the REPL reports it without replaying the
+    turn. Overflow before any write is `ContextFull` as above.
   - A summary never appears inside a turn. `Turn::new` accepts no plain assistant message before the
     turn's final reply.
   - A compaction leaves exactly the context message, one summary, and the last two turns, in that
@@ -64,7 +71,11 @@ toward. It is a reference, not a changelog.
     reports how many messages it removed. Its result is `Compaction::Dropped(n)`, never `Summarized`, and
     the prompt tokens become unknown (`None`) until the next committed turn reports them.
   - A tool that receives a path outside the working directory returns an error to the model and
-    reads nothing.
+    reads or writes nothing. A write's path is resolved through `path::confine_new`: `..` may not
+    climb above the working directory, and the deepest existing ancestor must canonicalize inside it.
+  - A write runs only after the user approves its description. The description is shown in full with
+    control characters escaped. Approval is deny by default: only an explicit yes accepts it, and a
+    declined write returns an error to the model.
   - Secrets (API keys) are never printed, logged, or included in error text.
   - No function panics on bad input or I/O failure; every fallible step returns a `Result`.
   - The library side (everything except `main`) performs no direct stdin/stdout access.
@@ -77,7 +88,8 @@ Target layout (current code is a subset):
 src/
   main.rs            entry point: load config, pick the provider, build session, run REPL, map errors to exit codes
   repl.rs            line loop over generic BufRead/Write; runs slash commands, sends every other line to
-                     the provider, writes the reply, commits the turn
+                     the provider, writes the reply, commits the turn. It owns the approval prompt for
+                     writes (shows the change, reads y/N from the same input, default no)
   commands.rs        Command enum (Compact, Exit, Context, Help) and parse(line) -> Option<Command>; pure, no I/O.
                      One table holds each command's name, variant, and description; parse and the
                      /help listing both read that table, so the listing cannot drift from the parser.
@@ -102,13 +114,18 @@ src/
     mod.rs           registry only: specs() -> &[ToolSpec]; call(name, values: HashMap<String, Value>)
                      -> Result<Invocation, ToolError>, which finds the named spec, validates the values
                      against it, and builds the Invocation through the spec
-    runner.rs        WorkspaceTools: implements ToolRunner by running a typed Invocation
+    runner.rs        WorkspaceTools: implements ToolRunner by running a typed Invocation, and asking
+                     for approval first when `Invocation::writes()` is true
     types.rs         plain data shared by the tools: ToolSpec, Param, ParamType, Value, Invocation,
                      ToolCall, ToolRunner; Arguments, whose only constructor is `validated` and whose
                      accessors are visible to `tools` alone
     list_directory.rs  the list_directory tool
     read_file.rs     the read_file tool: a line range with a 500-line / 100 KB output budget
-    path.rs          confines a model-supplied path to the working directory
+    path.rs          confines a model-supplied path to the working directory: `confine` for a path
+                     that must exist, `confine_new` for a write's path, which may not exist yet
+    create_file.rs   the create_file tool: a new file, failing if the path already exists
+    create_directory.rs  the create_directory tool: creates missing parents
+    edit_file.rs     the edit_file tool: one exact, unique replacement in an existing file
   error.rs           error enums per layer (ProviderError, ToolError, ConfigError, SessionError);
                      Display text answers what/where/why/how-to-fix
 ```
@@ -145,7 +162,11 @@ Rules:
   be bound with arguments validated against another spec. A tool receives its `Invocation` fields and
   the working directory, and returns text or a `ToolError`. Adding a tool means one new file under
   `tools/` holding its `SPEC` and its `bind` function, one `Invocation` variant, one arm in
-  `runner.rs`, and one entry in the registry's spec list; `provider` and `session` do not change.
+  `runner.rs`, one arm in `Invocation::writes` (an exhaustive match with no wildcard arm), and one
+  entry in the registry's spec list; `provider` and `session` do not change.
+- Approval belongs to the runner, not the provider. The REPL owns the prompt, because it holds stdin
+  and stdout. The runner is built with the approver, so `Provider::complete` takes no approval argument,
+  and a new tool that writes changes no provider signature.
 - Mapping an HTTP status and response body to a `ProviderError` is a pure function, kept apart from the
   `ureq` call, so every status and body shape is tested without a server.
 - The provider never names the working directory. The caller passes a `&dyn ToolRunner` (built from
@@ -275,6 +296,24 @@ Rules:
   plain assistant message only as a final reply. The allowance and its test must be removed.
 - **Compaction and the session boundary.** `repl` reads `conversation.messages().first()` to print
   the context message. Structure says `Conversation::context()` is the only accessor for it.
+- **Failed turns forget their writes.** A turn that writes and then fails (round limit, transport
+  error, `ContextFullAfterChange`) commits none of its messages. The files stay changed, the next turn
+  does not know they changed, and the user sees only the error. A failed turn must still record the
+  writes it applied, and its error must name the changed paths.
+- **The write gate is a `matches!` list.** `Invocation::writes` lists its variants with `matches!` and
+  no exhaustive match. A new write variant that is left out compiles, runs without approval, and is
+  replayed after an overflow. Approval and replay both depend on this one method.
+- **Approval shows model output unescaped.** `describe` prints the path, content, and edit text as
+  received. Control characters or carriage returns can hide or rewrite what the user is approving.
+- **Approval passes through the provider.** `Provider::complete` takes `approve`, so the provider's
+  tool loop and trait carry a user prompt. The Structure rules place approval in the runner.
+- **Writes are not atomic.** `create_file` creates the file before it writes the content, so a failure
+  in between leaves an empty or partial file. `edit_file` rewrites the whole file in place. Both should
+  write a temporary file and rename it over the target.
+- **Approval and confinement are separate steps.** Approval shows the path, and `confine_new` resolves
+  it during the write, so a symlink changed between the two is not shown to the user. `confine_new`
+  also uses `Path::exists`, which follows symlinks, so a dangling symlink is skipped as an ancestor.
+  Safety then depends on the OS refusing to create through it, and no test pins that.
 
 ## Security Concerns
 
@@ -294,7 +333,7 @@ What untrusted input can reach:
 - Model text reaches the terminal. Terminal escape sequences in a reply can rewrite the screen,
   change the title, or hide text.
 - Tool calls let model output read the local filesystem. Read access is limited to the working
-  directory; no tool writes, deletes, or executes anything today.
+  directory. Three tools write, and each write needs approval; none deletes or executes anything today.
 - Tool results go back to the model. File names in them can carry prompt injection, which can steer
   later tool calls and replies. Because tool exchanges are committed to history, an injected
   instruction keeps influencing every later turn of the session, not only the one that read it.
@@ -303,8 +342,8 @@ What untrusted input can reach:
   of `ProviderError::Rejected` and must pass through the same sanitization as model replies.
 
 Required controls and status:
-- **Terminal output sanitization**: strip or escape control characters from model replies before
-  printing. *Missing.*
+- **Terminal output sanitization**: strip or escape control characters from model replies, and from
+  the approval prompt's description of a write, before printing. *Missing.*
 - **Secret handling**: the API key is never printed, never placed in error values, and never
   logged. *Partially met; the key is only read and sent, but error paths have not been audited.*
 - **Transport**: remote endpoints must use HTTPS; a plain-HTTP endpoint must be refused unless it
@@ -313,16 +352,20 @@ Required controls and status:
   maximum tool output size (entries and bytes). *Missing for user lines and response bodies; tool
   output is limited for `read_file` only.*
 - **Path confinement**: every tool path is resolved under the working directory before use, and
-  symlinks are never followed into recursion. *Met for `list_directory` and `read_file`*: paths are
-  canonicalized, rejected if they fall outside the working directory, and symlinked directories are
-  listed but not entered.
+  symlinks are never followed into recursion. *Met for `list_directory`, `read_file`, and the write
+  tools*: paths are canonicalized, rejected if they fall outside the working directory, and symlinked
+  directories are listed but not entered. Writes use `confine_new`, which also refuses a `..` that
+  climbs above the working directory. *Missing: the approved description does not record the resolved
+  path, so a changed symlink is not caught.*
 - **Prompt injection from tool results**: tool output is delivered as clearly labelled tool
   messages, length-limited, and never executed. The model is never given a tool that acts on output
   without confirmation. *Partly met: `read_file` output is length-limited; no output is labelled as
   untrusted data, and `list_directory` is not length-limited.*
-- **Tool authorization**: read-only tools may run without confirmation. Any side-effecting tool
-  requires explicit, logged user confirmation and is deny-by-default. *Not applicable yet, because no
-  side-effecting tool exists; the policy must be implemented before one is added.*
+- **Tool authorization**: read-only tools may run without confirmation. Any tool that writes requires
+  the user's explicit approval for each call, and is deny-by-default. *Approval met; logging missing.*
+  Each approval and each write must be logged. Approval answers are read from the same input stream as
+  user lines, so queued or piped input can answer a prompt. A deletion or execution tool needs the same
+  policy before it is added.
 - **Data exposure**: conversation content and tool results are sent only to the configured endpoint.
   Directory names from the working directory therefore reach that endpoint. The client never writes
   history to disk unless that is added deliberately with a documented location and permissions.
@@ -337,8 +380,10 @@ Required controls and status:
   instruction, and it is never printed as a control sequence. The summary request uses no tools, so
   it cannot cause tool execution. *Partly met: no tools are offered, but the summary is not labelled
   as untrusted and is not shown to the user for review.*
-- **Unauthenticated state changes**: none today. Any future persistence or side-effecting tool
-  execution must require the user's own action in the session.
+- **Unauthenticated state changes**: file writes are the only state change, and each needs the user's
+  approval in the session. *Missing: a record of applied writes that survives a failed turn, since such
+  a turn commits no messages.* Any future persistence or execution must also require the user's own
+  action in the session.
 
 ## Future Work
 
@@ -360,10 +405,11 @@ Required controls and status:
   deterministic fallback when a summary request does not fit.
 - Compaction budget set from configuration, and a `/compact` report that shows the user the summary
   it replaced the history with, with the number of turns and tokens it removed.
-- A turn retry after `ContextFull` is safe only while every tool is read-only. Side-effecting tools
-  need a different policy before they can be retried.
+- A turn that has written is never retried. A later turn should still learn what the failed turn
+  changed, through a record of applied writes that is committed even when the turn fails.
 - Streaming responses, with the same sanitization applied per chunk.
-- Side-effecting tools only after the confirmation and logging policy above is implemented.
+- Deletion and execution tools only after the logging policy above is implemented. Writes already
+  require confirmation; logging is still missing.
 
 ## Performance
 
