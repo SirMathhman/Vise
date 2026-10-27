@@ -25,9 +25,9 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 - **Compaction**: replacing older history with a summary the model wrote. The result keeps the context
   message, one summary (an assistant message with no tool calls), and the last two turns. Compaction
   runs on `/compact`, and before a turn when the last prompt tokens reach 80% of the context size.
-- **Write**: a tool call that changes the filesystem (`create_file`, `create_directory`, `edit_file`).
-  A write runs only after the user approves it. A declined write is reported to the model as an error
-  and changes nothing.
+- **Write**: a tool call that changes the filesystem or runs a program (`create_file`,
+  `create_directory`, `edit_file`, `run_powershell`). A write runs only after the user approves it. A
+  declined write is reported to the model as an error and changes nothing.
 - **Wire type**: a struct matching the JSON shape of a provider request or response. Wire types never
   leave `provider::llama_cpp`.
 
@@ -53,9 +53,12 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 - A drop is the fallback when the summary request itself does not fit. It removes the summary if there
   is one, otherwise the oldest turn, and reports how many messages were removed.
 - Paths: a read resolves its path with `confine` (the path must exist and lie under the working
-  directory). A write resolves its path with `confine_new`, which resolves `..` lexically and requires
-  the deepest existing ancestor to lie under the working directory. A path outside the working
+  directory). A file write resolves its path with `confine_new`, which resolves `..` lexically and
+  requires the deepest existing ancestor to lie under the working directory. A path outside the working
   directory is an error, and nothing is read or written.
+- `run_powershell` is not confined. Its command runs in the working directory with the user's full
+  permissions, and can read, write, or delete anything the user can. The approval prompt is the only
+  gate, and it shows the command in full.
 - A write runs only after the user approves a description of it. The default is no: only `y` or `yes`
   approves.
 - Slash commands (`/compact`, `/context`, `/exit`, `/help`) are never sent to the model. Every other line
@@ -92,6 +95,8 @@ src/
     create_file.rs   a new file; fails if the path exists
     create_directory.rs  creates missing parents; succeeds if the directory exists
     edit_file.rs     one exact, unique replacement in an existing file
+    run_powershell.rs  runs one Windows PowerShell command in the working directory, stopped after
+                     30 seconds, with output capped at 100 KB
 ```
 
 Dependencies (an arrow means "may depend on"; there are no cycles):
@@ -228,7 +233,8 @@ Trust boundaries:
 What untrusted input can reach:
 - Model text reaches the terminal, where escape sequences can rewrite the screen or hide text.
 - Read tools expose files under the working directory to the model. Write tools change them, each after
-  the user's approval. Nothing deletes or executes anything.
+  the user's approval. `run_powershell` executes a command the user approved, with the user's full
+  permissions and no path confinement.
 - Tool results and summaries go back to the model. An injected instruction in a file name or in a summary
   persists through later turns, because committed history is resent.
 - Error text may echo a server's 400 message or raw body, which must pass through the same sanitization as
@@ -246,7 +252,7 @@ Controls:
 | Size limits on user lines and response bodies | Missing. |
 | Size limits on tool output | `read_file` only. |
 | Tool results and summaries marked as untrusted data | Missing. |
-| Logging of approvals and writes | Missing. |
+| Logging of approvals, writes, and commands | Missing. Commands run without a log, which the design previously ruled out. |
 | Environment disclosure (working directory sent every turn) | Missing. Only opt-in fields would be sent; today the path is always sent. |
 | Data exposure (directory listings sent to the endpoint) | Accepted. History is never written to disk. |
 
@@ -261,7 +267,8 @@ Controls:
 - A `/compact` report that shows the summary and how many turns and tokens it replaced.
 - Token-aware trimming of old turns, as the fallback when a summary does not fit, in place of dropping the
   oldest turn outright.
-- Deletion or execution tools, only after logging is implemented.
+- Deletion tools, only after logging is implemented. Execution is already available through
+  `run_powershell`, with approval as its only gate.
 
 ## Performance
 

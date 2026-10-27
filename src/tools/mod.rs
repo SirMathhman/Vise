@@ -4,6 +4,7 @@ pub mod edit_file;
 pub mod list_directory;
 pub mod path;
 pub mod read_file;
+pub mod run_powershell;
 pub mod runner;
 pub mod types;
 
@@ -26,6 +27,7 @@ const SPECS: &[ToolSpec] = &[
     create_file::SPEC,
     create_directory::SPEC,
     edit_file::SPEC,
+    run_powershell::SPEC,
 ];
 
 pub fn specs() -> &'static [ToolSpec] {

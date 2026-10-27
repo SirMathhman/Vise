@@ -1,5 +1,5 @@
 use super::types::{Invocation, ToolError, ToolRunner};
-use super::{create_directory, create_file, edit_file, list_directory, read_file};
+use super::{create_directory, create_file, edit_file, list_directory, read_file, run_powershell};
 use std::path::PathBuf;
 
 pub struct WorkspaceTools {
@@ -23,6 +23,7 @@ impl ToolRunner for WorkspaceTools {
             Invocation::CreateFile { path, content } => create_file::run(path, content, &self.cwd),
             Invocation::CreateDirectory { path } => create_directory::run(path, &self.cwd),
             Invocation::EditFile { path, previous, new } => edit_file::run(path, previous, new, &self.cwd),
+            Invocation::RunPowerShell { command } => run_powershell::run(command, &self.cwd),
         }
     }
 }
@@ -33,6 +34,7 @@ fn describe(invocation: &Invocation) -> String {
         Invocation::CreateFile { path, content } => format!("create file '{path}' with:\n{content}"),
         Invocation::CreateDirectory { path } => format!("create directory '{path}'"),
         Invocation::EditFile { path, previous, new } => format!("edit '{path}':\n- {previous}\n+ {new}"),
+        Invocation::RunPowerShell { command } => format!("run this PowerShell command:\n{command}"),
         Invocation::ListDirectory { .. } | Invocation::ReadFile { .. } => String::new(),
     }
 }

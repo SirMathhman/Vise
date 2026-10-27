@@ -101,6 +101,7 @@ pub enum Invocation {
     CreateFile { path: String, content: String },
     CreateDirectory { path: String },
     EditFile { path: String, previous: String, new: String },
+    RunPowerShell { command: String },
 }
 
 impl Invocation {
@@ -108,7 +109,9 @@ impl Invocation {
     pub fn writes(&self) -> bool {
         match self {
             Self::ListDirectory { .. } | Self::ReadFile { .. } => false,
-            Self::CreateFile { .. } | Self::CreateDirectory { .. } | Self::EditFile { .. } => true,
+            Self::CreateFile { .. } | Self::CreateDirectory { .. } | Self::EditFile { .. } | Self::RunPowerShell { .. } => {
+                true
+            }
         }
     }
 }
