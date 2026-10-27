@@ -25,6 +25,10 @@ toward. It is a reference, not a changelog.
   context size. It is `None` when the server reports no usage; it is never coerced to zero.
 - **Context size**: the number of tokens the configured model can hold in one context, as the
   provider reports it. Resolved once per session, not per command.
+- **Compaction**: replacing the older turns of a conversation with a summary the model wrote of them.
+  The conversation keeps the context message, the summary as one assistant message without tool calls,
+  and the last two turns verbatim. Compaction runs when the user asks (`/compact`) and before a turn
+  whose last committed prompt tokens have reached 80% of the context size. It never runs inside a turn.
 - **Tool**: a local capability the model may request by name with JSON arguments. A tool is described
   by plain data (name, description, parameters) and executed by plain Rust code. Tools never see
   HTTP, wire types, or the conversation.
@@ -41,6 +45,11 @@ toward. It is a reference, not a changelog.
     followed by exactly one `Tool` message per call id, then a final assistant message without tool
     calls. `Turn` rejects any other sequence.
   - A turn performs at most a fixed number of tool rounds. Exceeding the limit fails the turn.
+  - A turn whose request reaches the context limit fails with `ProviderError::ContextFull`. The
+    REPL then compacts the conversation and retries the turn once from the compacted history. The
+    provider never rewrites history, so a retry sends less than the request that failed.
+  - A compaction leaves exactly the context message, one summary, and the last two turns, in that
+    order. A summary that is empty or whitespace-only is an error, and history is left unchanged.
   - A tool that receives a path outside the working directory returns an error to the model and
     reads nothing.
   - Secrets (API keys) are never printed, logged, or included in error text.
@@ -62,14 +71,17 @@ src/
                      Any line that does not parse, including plain "exit", "quit", and unknown slash
                      commands, is not a command
   session.rs         Message, Turn, Conversation: a Turn is appended whole or not at all; the
-                     Conversation keeps the prompt tokens of the last committed turn; trimming
+                     Conversation keeps the prompt tokens of the last committed turn; compaction
+                     (the only code that removes committed messages) and the 80% budget check
+                     `needs_compaction(context_size)`
   config.rs          Config: endpoint URL, model name, timeouts, API key (from env / .env)
   environment.rs     gathers opt-in host facts as plain data (working directory first)
   provider/
     mod.rs           declares its children and nothing else
     types.rs         trait Provider { fn complete(&self, history: &[Message], input: String,
                      runner: &dyn ToolRunner) -> Result<Turn, ProviderError>;
-                     fn context_size(&self) -> Result<u64, ProviderError> }
+                     fn context_size(&self) -> Result<u64, ProviderError>;
+                     fn summarize(&self, history: &[Message]) -> Result<String, ProviderError> }
     llama_cpp.rs     OpenAI-compatible HTTP implementation, its typed wire structs, serde_json use,
                      the tool-round loop, the /v1/models lookup for the configured model's n_ctx,
                      and decoding of JSON argument values into plain `Value`s
@@ -128,6 +140,11 @@ Rules:
   `environment` (plain data out, `Result` on failure), and `session` formats them into the context
   message. `main` never builds `Message` values directly.
 - `repl` receives a `&dyn Provider` (or generic `P: Provider`) so it can be tested with a fake.
+- Compaction is split by responsibility. `session` decides what is kept and checks the 80% budget.
+  `provider` only writes the summary (`summarize`) and reports `ContextFull`; it holds no threshold
+  and changes no history. `repl` decides when to compact (before a turn, after `/compact`) and
+  retries a turn that reports `ContextFull`. The summary request sends the conversation with no
+  tools and a fixed request text that is not committed to history.
 - Slash commands are never sent to the provider. `commands` parses them; `repl` executes them:
   `/exit` ends the loop, `/context` writes `Conversation::context()` to the output, and `/help` writes
   the listing built from the `commands` table. `repl` never indexes into the conversation's message
@@ -213,6 +230,25 @@ Rules:
   different failures with different fixes; they need distinct variants that name the model.
 - **Plain HTTP.** The default endpoint is `http://127.0.0.1`, so the bearer token crosses the
   network unencrypted if the endpoint is ever pointed at a remote host.
+- **Compaction cannot recover from overflow.** The summary request sends the same history that
+  reached the limit, plus one message. If that request overflows, `/compact` fails and every later
+  turn fails too, with no path back. Compaction needs a deterministic fallback that drops the oldest
+  turns in `session` when the summary request itself does not fit.
+- **Compaction that does not shrink the request.** Mid-turn compaction, as the code does it now,
+  replaces only the turn's own tool rounds and sends the full prior history again. This is
+  removed by the `ContextFull` retry above.
+- **Repeated compaction.** If the context size is small or the summary is large, the conversation
+  can reach 80% on every turn, so each turn pays for a full summary request. The REPL should report
+  when a compaction did not free enough space.
+- **Summary dropped silently.** The summary is not shown to the user, and an empty summary is
+  accepted, so a `/compact` with an empty reply discards the history with no error.
+- **Loosened turn shape.** `Turn::new` accepts plain assistant messages at any position. The
+  invariant allows one summary only, directly after the user message, so the validator should
+  enforce that position and count.
+- **Dead token reset.** The provider resets its prompt-token value after compacting a turn, but the
+  value is overwritten before it is read again; the reset does nothing.
+- **Compaction and the session boundary.** `repl` reads `conversation.messages().first()` to print
+  the context message. Structure says `Conversation::context()` is the only accessor for it.
 
 ## Security Concerns
 
@@ -268,6 +304,12 @@ Required controls and status:
   include the OS user name and project layout) to the configured endpoint on every turn. Controls:
   only fields the user has opted into are included, the home-directory prefix is shortened, and the
   context is shown to the user at startup. *Missing; the path is sent unconditionally today.*
+- **Model-written summaries**: a compaction summary is model output that becomes an assistant message
+  in history and is sent on every later turn. Injected text in the summarized history can therefore
+  persist through a compaction, just as tool results persist. The summary is data, never an
+  instruction, and it is never printed as a control sequence. The summary request uses no tools, so
+  it cannot cause tool execution. *Partly met: no tools are offered, but the summary is not labelled
+  as untrusted and is not shown to the user for review.*
 - **Unauthenticated state changes**: none today. Any future persistence or side-effecting tool
   execution must require the user's own action in the session.
 
@@ -285,7 +327,12 @@ Required controls and status:
 - `read_file` streams lines through a buffered reader and stops at its budget or the end line.
 - Configuration loaded from a file or environment with overrides for endpoint, model, timeouts,
   and history budget.
-- Token-aware history trimming that keeps the context message and the most recent turns.
+- Token-aware history trimming that keeps the context message and the most recent turns, used as the
+  deterministic fallback when a summary request does not fit.
+- Compaction budget set from configuration, and a `/compact` report that shows the user the summary
+  it replaced the history with, with the number of turns and tokens it removed.
+- A turn retry after `ContextFull` is safe only while every tool is read-only. Side-effecting tools
+  need a different policy before they can be retried.
 - Streaming responses, with the same sanitization applied per chunk.
 - Side-effecting tools only after the confirmation and logging policy above is implemented.
 
@@ -306,5 +353,7 @@ Obvious concerns only; profile before optimizing.
   not processed.
 - The current code builds a new `ureq` request per call through the free `ureq::post` function.
   The provider should hold one agent for connection reuse across turns.
+- Each compaction is a full generation over the whole conversation, so compacting is as slow as a
+  long turn. Compaction should run only when the budget is reached, never on every turn.
 - `/context` issues a `/v1/models` request on every invocation. The context size is fixed for a
   session, so it is resolved once, and a failure is retried on the next `/context`.
