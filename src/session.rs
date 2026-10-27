@@ -121,4 +121,53 @@ mod tests {
         assert_eq!(first.role(), "system");
         assert_eq!(first.content(), "Current working directory: C:/work/project");
     }
+
+    fn call(id: &str) -> ToolCall {
+        ToolCall { id: id.into(), name: "list_directory".into(), arguments: "{}".into() }
+    }
+
+    fn calls_message(id: &str) -> Message {
+        Message::Assistant { content: String::new(), tool_calls: vec![call(id)] }
+    }
+
+    fn result(id: &str) -> Message {
+        Message::Tool { call_id: id.into(), content: "a.txt".into() }
+    }
+
+    fn reply() -> Message {
+        Message::Assistant { content: "done".into(), tool_calls: Vec::new() }
+    }
+
+    fn rejected_at(messages: Vec<Message>) -> usize {
+        match Turn::new(messages).err() {
+            Some(SessionError::MalformedTurn { index }) => index,
+            None => panic!("expected the turn to be rejected"),
+        }
+    }
+
+    #[test]
+    fn turn_must_start_with_user_message() {
+        assert_eq!(rejected_at(vec![result("c1"), reply()]), 0);
+    }
+
+    #[test]
+    fn tool_result_must_follow_its_call() {
+        assert_eq!(rejected_at(vec![Message::User("hi".into()), result("c1"), reply()]), 1);
+    }
+
+    #[test]
+    fn every_call_needs_a_result() {
+        assert_eq!(rejected_at(vec![Message::User("hi".into()), calls_message("c1"), reply()]), 2);
+    }
+
+    #[test]
+    fn turn_cannot_end_with_a_tool_call() {
+        assert_eq!(rejected_at(vec![Message::User("hi".into()), calls_message("c1"), result("c1")]), 3);
+    }
+
+    #[test]
+    fn tool_round_trip_is_accepted() {
+        let messages = vec![Message::User("hi".into()), calls_message("c1"), result("c1"), reply()];
+        assert!(Turn::new(messages).is_ok());
+    }
 }
