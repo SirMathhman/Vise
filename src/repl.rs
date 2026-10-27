@@ -71,13 +71,22 @@ fn tool_list(tools: &dyn ToolRunner) -> String {
 }
 
 /// Makes the profile's whitelist the enabled set: exactly the listed tools. A profile without a whitelist
-/// enables every tool.
-fn apply_whitelist(tools: &dyn ToolRunner, whitelist: Option<&[String]>) -> Result<(), ToolError> {
+/// enables every tool. Returns one line for each tool whose state changed.
+fn apply_whitelist(tools: &dyn ToolRunner, whitelist: Option<&[String]>) -> Result<Vec<String>, ToolError> {
+    let allowed: Vec<&str> = match whitelist {
+        Some(names) => names.iter().map(String::as_str).collect(),
+        None => specs().iter().map(|spec| spec.name).collect(),
+    };
+    let enabled = tools.enabled();
+    let mut changes = Vec::new();
     for spec in specs() {
-        let on = whitelist.is_none_or(|names| names.iter().any(|name| name == spec.name));
-        tools.set_enabled(spec.name, on)?;
+        let on = allowed.contains(&spec.name);
+        if enabled.contains(&spec.name) != on {
+            tools.set_enabled(spec.name, on)?;
+            changes.push(format!("{}: {}", spec.name, if on { "enabled" } else { "disabled" }));
+        }
     }
-    Ok(())
+    Ok(changes)
 }
 
 /// Enables or disables a tool, reporting the result on `output` or the failure on `errors`.
@@ -126,7 +135,10 @@ pub fn run(
             },
             Some(Command::Profile(name)) => match profile::load(&name) {
                 Ok(loaded) => match apply_whitelist(tools, loaded.tools.as_deref()) {
-                    Ok(()) => {
+                    Ok(changes) => {
+                        for change in changes {
+                            writeln!(output, "{change}")?;
+                        }
                         profile = Some(profile::marked(&name, &loaded.instructions));
                         writeln!(output, "profile {name} selected; its instructions go with your next message")?;
                     }

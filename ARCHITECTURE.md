@@ -28,8 +28,9 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 - **Tool catalogue**: the text listing every tool with its arguments. It is joined to the leading system
   message of each request only, never stored in the conversation, and it lists disabled tools too, so it
   never changes during a session.
-- **Enabled tools**: the tools the model may call. The runner holds the set, `/tools` changes it, and each
-  request's grammar is built from it. A disabled tool is neither offered nor run.
+- **Enabled tools**: the tools the model may call. The runner holds the set, `/tools` and the selected
+  profile's tools line change it, and each request's grammar is built from it. A disabled tool is neither
+  offered nor run.
 - **Tool note**: the line `[Tools enabled: ... Tools disabled: ...]` naming every tool and its state. It is
   how the model is told the enabled set.
 - **Tool call form**: a reply consisting of `<tool_call>`, a JSON body with `name` and `arguments`, and
@@ -42,7 +43,9 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
   `read_background` and stops it with `kill_background`. Background tasks are stopped when the session ends.
 - **Profile**: a named set of instructions, kept as `profiles/NAME.txt` under the working directory. The
   user selects one with `/profile NAME`. Its text, under a heading that names it, is prepended to the next
-  user message only. The system prompt never changes.
+  user message only. The system prompt never changes. A profile may open with a `tools:` line naming the
+  tools it allows: selecting it enables exactly those (an empty list enables none), and a profile without
+  the line enables every tool. Every name must be a known tool, or the profile is rejected when loaded.
 - **Wire type**: a struct matching the JSON shape of a provider request or response. Wire types never
   leave `provider::llama_cpp`.
 
@@ -97,6 +100,9 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
   profiles folder. The selected profile is sent with the next user message whenever the history does not
   carry it (`profile::carried`), so a failed turn keeps it for the retry. Once committed, its text stays in history until
   compaction or a dropped turn removes it.
+- Selecting a profile sets every tool's state: the enabled set becomes exactly the profile's tools line, or
+  all tools when it has none. The change is made when `/profile NAME` runs, not with the next message, and it
+  replaces any earlier `/tools` choices. The tool note then reaches the model with the next user message.
 - Each request has no `tools` field. It carries a grammar built from the enabled tools, which fixes the
   reply to a thinking block followed by plain text or one tool call to an enabled tool. Plain text cannot
   contain the `<tool_call>` marker.
@@ -120,14 +126,16 @@ src/
                      provider and tool runner, runs the REPL. Fatal startup errors go to exit_with.
   repl.rs            the input loop over generic BufRead/Write. Parses and runs slash commands
                      (including `/tools`, `/tools enable NAME`, `/tools disable NAME`, `/profile`,
-                     `/profile NAME`), holds the selected profile until a turn succeeds,
+                     `/profile NAME`, which also sets the enabled tools from the profile), holds the selected
+                     profile until a turn succeeds,
                      decides when to compact, retries a turn that reports ContextFull once, asks
                      for approval of writes, and writes replies and notices
   session.rs         Message, Turn (checked shape), Conversation (committed history, prompt tokens of
                      the last committed turn, compaction, drop_oldest_turn), over_budget (80%)
   environment.rs     gathers host facts as plain data (working directory)
   error.rs           ProviderError, SessionError, MAX_TOOL_ROUNDS
-  profile.rs         lists the profiles folder's .txt files and loads one by a validated name
+  profile.rs         lists the profiles folder's .txt files, loads one by a validated name, and splits its
+                     optional `tools:` line (checked against the tool catalogue) from its instructions
   provider/
     mod.rs           declarations only
     types.rs         trait Provider: complete, context_size, summarize
@@ -167,8 +175,8 @@ Dependencies (an arrow means "may depend on"; there are no cycles):
 
 ```
 main -> repl, session, provider::llama_cpp, tools::runner, environment, error
-repl -> provider::types, session, tools::types, profile, error
-profile -> std only
+repl -> provider::types, session, tools (registry and types), profile, error
+profile -> session (Message), tools (registry: specs), std
 provider -> session (Message, Turn, over_budget), tools (registry and types), error
 session -> environment, tools::types (ToolCall only)
 tools -> tools' own types, std (no provider, session, HTTP, or serde)
@@ -213,6 +221,10 @@ Each item is a gap between the design above and the code, or a decision the code
 does not allow.
 
 Turn and history
+- **Selecting a profile rewrites the enabled set.** A profile's tools line replaces every earlier choice,
+  and a profile without one enables every tool, which undoes a `/tools disable`. `/profile` prints each tool
+  whose state it changes, so the rewrite is no longer silent. Whether a profile without a tools line should
+  leave the set alone instead is open: the user chose enable-all.
 - **Profile listing and selection disagree.** `profile::names` lists every `.txt` file, including names
   `load` rejects (such as `my notes.txt`), so `/profile` shows a name it then refuses.
 - **Profile text is unbounded.** `profile::load` reads the whole file. A large profile is committed and
@@ -380,6 +392,7 @@ Controls:
 | Plain text cannot run a tool | Met. Only the tool call form runs. A prose claim of a tool is committed without running (Open Problems). |
 | Arguments checked per tool | Met in `tools::call`, after the grammar. The grammar accepts any object (Open Problems). |
 | Enabling a tool | Accepted. `/tools enable` is the user's own action; each write still asks for approval. |
+| Profile files setting the enabled set | Partly met. A profile's tools line is checked against the catalogue, and selecting a profile is the user's action. Selection re-enables every tool when the profile has no line, and reports nothing (Open Problems). |
 | Logging of approvals, writes, and commands | Missing. Commands are not logged (Open Problems). |
 | Environment disclosure (working directory sent every turn) | Missing. Only opt-in fields would be sent; today the path is always sent. |
 | Data exposure (directory listings sent to the endpoint) | Accepted. History is never written to disk. |
