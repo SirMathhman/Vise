@@ -56,6 +56,10 @@ toward. It is a reference, not a changelog.
     turn's final reply.
   - A compaction leaves exactly the context message, one summary, and the last two turns, in that
     order. A summary that is empty or whitespace-only is an error, and history is left unchanged.
+  - A drop is the fallback when the summary request does not fit. It removes the summary if there is
+    one, otherwise the oldest turn, leaves the context message and the remaining turns in order, and
+    reports how many messages it removed. Its result is `Compaction::Dropped(n)`, never `Summarized`, and
+    the prompt tokens become unknown (`None`) until the next committed turn reports them.
   - A tool that receives a path outside the working directory returns an error to the model and
     reads nothing.
   - Secrets (API keys) are never printed, logged, or included in error text.
@@ -153,7 +157,9 @@ Rules:
   and `complete` and `summarize` take it as an argument. `provider` only writes the summary and reports
   `ContextFull`; it holds no threshold of its own and changes no history. `repl` decides when to compact (before a turn, after `/compact`) and
   retries a turn that reports `ContextFull`. The summary request sends the conversation with no
-  tools and a fixed request text that is not committed to history.
+  tools and a fixed request text that is not committed to history. `session` owns the `Compaction`
+  outcome (`Summarized` or `Dropped(n)`) that these operations return, and `repl` only reports it, so a
+  notice cannot say "summarized" for a drop.
 - Slash commands are never sent to the provider. `commands` parses them; `repl` executes them:
   `/exit` ends the loop, `/context` writes `Conversation::context()` to the output, and `/help` writes
   the listing built from the `commands` table. `repl` never indexes into the conversation's message
@@ -232,27 +238,31 @@ Rules:
 - **Single-shot failure mode.** A failed turn is dropped silently from history; the user is not told
   what was retained. Reporting must say which message was discarded.
 - **Silent zero token count.** When the response omits `usage`, the provider stores 0 and `/context`
-  prints `0 / N` as if the conversation were empty. The absence must be carried as `None` and shown
-  as unknown.
+  prints `0 / N` as if the conversation were empty. `drop_oldest_turn` also resets the count to 0.
+  The absence must be carried as `None` and shown as unknown, in both places.
 - **Model not found is overloaded.** `ProviderError::ModelNotFound` is returned both when the
   configured model is absent from `/v1/models` and when it is listed without `meta.n_ctx`. These are
   different failures with different fixes; they need distinct variants that name the model.
 - **Plain HTTP.** The default endpoint is `http://127.0.0.1`, so the bearer token crosses the
   network unencrypted if the endpoint is ever pointed at a remote host.
 - **Overflow detection depends on one body shape.** A 400 becomes `ContextFull` only when its body
-  parses as `{error: {message, type}}` with type `exceed_context_size_error`. Any other 400, including
-  one whose body is not JSON or lacks `type`, becomes `Transport` with the "check that the server is
-  running" hint, so a real overflow is reported as a dead server and never retried. The mapping from
-  status and body to `ProviderError` must tolerate missing fields and keep the body text when it cannot
-  be parsed.
+  parses as `{error: {message, type}}` with type `exceed_context_size_error`. A body that is not JSON
+  is reported as the JSON parse error, and a body that lacks `type` or `message` fails the same way, so
+  the server's text is lost. A real overflow in either shape is reported as a transport failure and
+  never retried. The mapping must tolerate missing fields and keep the raw body text when it cannot be
+  parsed.
 - **Budget threshold in the provider.** `provider::llama_cpp` imports `over_budget` and decides
   `ContextFull` from it. The threshold belongs to `session`, passed in as a `PromptLimit`.
 - **Summary discarded by its own check.** `summarize_messages` returns `ContextFull` when the summary
   request's prompt is at 80%, even though the request succeeded and returned a usable summary. The
   caller then drops the oldest turn instead. The success is discarded for a budget, not a failure.
-- **Fallback reported as success.** When the summary request is rejected for overflow (a server 400, or
-  the budget check), `/compact` drops the oldest turn and still prints "conversation compacted". The user
-  is not told a turn was lost. The server path makes this reachable in practice, not only in theory.
+- **Drop outside the model.** The drop fallback removes history, but the Definitions and Invariants
+  describe only the summary. A drop leaves no summary, so the "one summary" rule does not hold after
+  it, and no invariant states that a drop must be reported. The invariant above must be the only
+  rule, and every compaction path must return a `Compaction` outcome.
+- **Non-overflow 400 gets a misleading hint.** Every 400 that is not an overflow becomes
+  `ProviderError::Transport`, whose text says "check that the server is running". A rejected request
+  is not a dead server, so the message sends the user to the wrong fix. Each 400 needs its own text.
 - **Repeated compaction.** If the context size is small or the summary is large, the conversation
   can reach 80% on every turn, so each turn pays for a full summary request. The REPL should report
   when a compaction did not free enough space.

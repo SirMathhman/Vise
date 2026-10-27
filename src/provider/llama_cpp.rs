@@ -187,21 +187,25 @@ struct ErrorBody {
 
 #[derive(Deserialize)]
 struct ErrorInfo {
-    message: String,
+    message: Option<String>,
     #[serde(rename = "type")]
-    kind: String,
+    kind: Option<String>,
 }
 
 /// llama.cpp's error type for a request that does not fit in the context window.
 const CONTEXT_OVERFLOW: &str = "exceed_context_size_error";
 
-/// Maps the body of a 400 response: a context overflow becomes `ContextFull`, and any other error
-/// becomes a transport error that carries the server's message.
+/// Maps the body of a 400 response: only an exact context overflow becomes `ContextFull`. Any other
+/// body becomes a transport error that carries the server's message, or the raw body if it has none.
 fn bad_request(body: &str) -> ProviderError {
     match serde_json::from_str::<ErrorBody>(body) {
-        Ok(error) if error.error.kind == CONTEXT_OVERFLOW => ProviderError::ContextFull,
-        Ok(error) => ProviderError::Transport(error.error.message.into()),
-        Err(err) => ProviderError::Transport(Box::new(err)),
+        Ok(ErrorBody { error: ErrorInfo { kind: Some(kind), .. } }) if kind == CONTEXT_OVERFLOW => {
+            ProviderError::ContextFull
+        }
+        Ok(ErrorBody { error: ErrorInfo { message: Some(message), .. } }) => {
+            ProviderError::Transport(message.into())
+        }
+        _ => ProviderError::Transport(body.to_string().into()),
     }
 }
 

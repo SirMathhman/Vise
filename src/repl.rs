@@ -147,11 +147,12 @@ mod tests {
     struct Fake {
         behavior: Behavior,
         inputs: RefCell<Vec<String>>,
+        summary_full: bool,
     }
 
     impl Fake {
         fn new(behavior: Behavior) -> Self {
-            Self { behavior, inputs: RefCell::new(Vec::new()) }
+            Self { behavior, inputs: RefCell::new(Vec::new()), summary_full: false }
         }
     }
 
@@ -186,6 +187,9 @@ mod tests {
         }
 
         fn summarize(&self, _history: &[Message]) -> Result<String, ProviderError> {
+            if self.summary_full {
+                return Err(ProviderError::ContextFull);
+            }
             Ok("summary".into())
         }
     }
@@ -254,6 +258,16 @@ mod tests {
         assert_eq!(messages[3].role(), "tool");
         assert_eq!(messages[3].tool_call_id(), Some("call_1"));
         assert_eq!(output, "done\n");
+    }
+
+    #[test]
+    fn compact_reports_a_dropped_turn_when_the_summary_does_not_fit() {
+        let fake = Fake { summary_full: true, ..Fake::new(Behavior::Reply) };
+        let mut conversation = conversation();
+        run_with("first\n", &fake, &mut conversation);
+        let (output, _) = run_with("/compact\n", &fake, &mut conversation);
+        assert!(output.contains("the summary did not fit, so the oldest turn was dropped"));
+        assert!(!output.contains("conversation compacted"));
     }
 
     struct ClosedWriter;
