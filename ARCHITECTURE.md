@@ -56,7 +56,9 @@ src/
   main.rs            entry point: load config, pick the provider, build session, run REPL, map errors to exit codes
   repl.rs            line loop over generic BufRead/Write; runs slash commands, sends every other line to
                      the provider, writes the reply, commits the turn
-  commands.rs        Command enum (Exit, Context) and parse(line) -> Option<Command>; pure, no I/O.
+  commands.rs        Command enum (Exit, Context, Help) and parse(line) -> Option<Command>; pure, no I/O.
+                     One table holds each command's name, variant, and description; parse and the
+                     /help listing both read that table, so the listing cannot drift from the parser.
                      Any line that does not parse, including plain "exit", "quit", and unknown slash
                      commands, is not a command
   session.rs         Message, Turn, Conversation: a Turn is appended whole or not at all; the
@@ -127,10 +129,11 @@ Rules:
   message. `main` never builds `Message` values directly.
 - `repl` receives a `&dyn Provider` (or generic `P: Provider`) so it can be tested with a fake.
 - Slash commands are never sent to the provider. `commands` parses them; `repl` executes them:
-  `/exit` ends the loop, and `/context` writes `Conversation::context()` to the output. `repl` never
-  indexes into the conversation's message list; `Conversation::context()` is the only accessor for
-  the leading context message. Adding a command means one `Command` variant, one parse arm, and one
-  match arm in `repl`.
+  `/exit` ends the loop, `/context` writes `Conversation::context()` to the output, and `/help` writes
+  the listing built from the `commands` table. `repl` never indexes into the conversation's message
+  list; `Conversation::context()` is the only accessor for the leading context message. Adding a
+  command means one `Command` variant, one entry in the `commands` table (which supplies its parse
+  and its help line), and one match arm in `repl`. Help text is never written by hand.
 - Dependencies are confined as follows: `dotenvy` and the API-key read live in `config`; `ureq`,
   `serde_json`, and `serde` derive macros for wire types live in `provider::llama_cpp`. No module
   under `tools/` depends on `serde` or `serde_json`.
