@@ -30,3 +30,112 @@ pub fn run(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::environment::Environment;
+    use crate::session::{Message, Role, Turn};
+    use crate::tools::ToolCall;
+    use std::cell::RefCell;
+    use std::path::PathBuf;
+
+    enum Behavior {
+        Reply,
+        ToolRound,
+        Fail,
+    }
+
+    struct Fake {
+        behavior: Behavior,
+        inputs: RefCell<Vec<String>>,
+    }
+
+    impl Fake {
+        fn new(behavior: Behavior) -> Self {
+            Self { behavior, inputs: RefCell::new(Vec::new()) }
+        }
+    }
+
+    impl Provider for Fake {
+        fn complete(&self, _history: &[Message], input: String) -> Result<Turn, Box<dyn std::error::Error>> {
+            self.inputs.borrow_mut().push(input.clone());
+            let messages = match self.behavior {
+                Behavior::Reply => vec![
+                    Message::new(Role::User, input),
+                    Message::new(Role::Assistant, "reply".into()),
+                ],
+                Behavior::ToolRound => {
+                    let mut assistant = Message::new(Role::Assistant, String::new());
+                    assistant.tool_calls.push(ToolCall {
+                        id: "call_1".into(),
+                        name: "list_directory".into(),
+                        arguments: "{}".into(),
+                    });
+                    let mut tool = Message::new(Role::Tool, "a.txt".into());
+                    tool.tool_call_id = Some("call_1".into());
+                    vec![
+                        Message::new(Role::User, input),
+                        assistant,
+                        tool,
+                        Message::new(Role::Assistant, "done".into()),
+                    ]
+                }
+                Behavior::Fail => return Err("boom".into()),
+            };
+            Ok(Turn { messages })
+        }
+    }
+
+    fn conversation() -> Conversation {
+        Conversation::new(&Environment { cwd: PathBuf::from("C:/work") })
+    }
+
+    fn run_with(input: &str, provider: &Fake, conversation: &mut Conversation) -> (String, String) {
+        let mut output = Vec::new();
+        let mut errors = Vec::new();
+        run(input.as_bytes(), &mut output, &mut errors, provider, conversation).unwrap();
+        (String::from_utf8(output).unwrap(), String::from_utf8(errors).unwrap())
+    }
+
+    #[test]
+    fn failed_turn_leaves_history_unchanged() {
+        let fake = Fake::new(Behavior::Fail);
+        let mut conversation = conversation();
+        let (output, errors) = run_with("hi\n", &fake, &mut conversation);
+        assert_eq!(conversation.messages().len(), 1);
+        assert!(errors.contains("error: boom"));
+        assert!(output.is_empty());
+    }
+
+    #[test]
+    fn exit_and_quit_end_the_loop() {
+        let fake = Fake::new(Behavior::Reply);
+        let mut conversation = conversation();
+        run_with("first\nexit\nsecond\n", &fake, &mut conversation);
+        assert_eq!(*fake.inputs.borrow(), vec!["first"]);
+        run_with("quit\nthird\n", &fake, &mut conversation);
+        assert_eq!(*fake.inputs.borrow(), vec!["first"]);
+    }
+
+    #[test]
+    fn empty_lines_are_sent_to_the_provider() {
+        let fake = Fake::new(Behavior::Reply);
+        let mut conversation = conversation();
+        run_with("\n  \n", &fake, &mut conversation);
+        assert_eq!(*fake.inputs.borrow(), vec!["", "  "]);
+    }
+
+    #[test]
+    fn committed_tool_rounds_stay_in_history() {
+        let fake = Fake::new(Behavior::ToolRound);
+        let mut conversation = conversation();
+        let (output, _) = run_with("list\n", &fake, &mut conversation);
+        let messages = conversation.messages();
+        assert_eq!(messages.len(), 5);
+        assert_eq!(messages[2].tool_calls.len(), 1);
+        assert_eq!(messages[3].role.as_str(), "tool");
+        assert_eq!(messages[3].tool_call_id.as_deref(), Some("call_1"));
+        assert_eq!(output, "done\n");
+    }
+}
