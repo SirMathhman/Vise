@@ -15,6 +15,15 @@ pub fn catalogue() -> String {
     })
 }
 
+/// The note that tells the model which tools are enabled and which are not. It is prepended to a user
+/// message whenever the enabled set has changed since the model was last told.
+pub fn tool_note(enabled: &[&str]) -> String {
+    let (on, off): (Vec<&str>, Vec<&str>) =
+        specs().iter().map(|spec| spec.name).partition(|name| enabled.contains(name));
+    let names = |list: &[&str]| if list.is_empty() { "none".to_string() } else { list.join(", ") };
+    format!("[Tools enabled: {}. Tools disabled: {}.]", names(&on), names(&off))
+}
+
 fn describe(spec: &ToolSpec) -> String {
     let params: Vec<String> = spec
         .params
@@ -30,5 +39,16 @@ fn kind(kind: &ParamType) -> String {
         ParamType::Integer { min: Some(min), max: Some(max) } => format!("integer from {min} to {max}"),
         ParamType::Integer { .. } => "integer".into(),
         ParamType::Boolean => "boolean".into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn note_names_enabled_and_disabled_tools() {
+        let note = tool_note(&["read_file"]);
+        assert_eq!(note, "[Tools enabled: read_file. Tools disabled: list_directory, create_file, create_directory, edit_file, run_powershell, read_background, kill_background.]");
     }
 }

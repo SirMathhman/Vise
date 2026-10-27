@@ -6,7 +6,7 @@ use crate::session::{Message, Turn, over_budget};
 use crate::tools::types::{ToolCall, ToolError, ToolRunner, Value};
 use crate::tools;
 use serde::{Deserialize, Serialize};
-use std::cell::OnceCell;
+use std::cell::{OnceCell, RefCell};
 use std::collections::HashMap;
 
 const URL: &str = "http://127.0.0.1:9931/v1/chat/completions";
@@ -182,11 +182,13 @@ struct ReplyMessage {
 pub struct LlamaCpp {
     api_key: String,
     context: OnceCell<u64>,
+    /// The tools the model was last told about, set only after a turn succeeds.
+    announced: RefCell<Option<Vec<&'static str>>>,
 }
 
 impl LlamaCpp {
     pub fn new(api_key: String) -> Self {
-        Self { api_key, context: OnceCell::new() }
+        Self { api_key, context: OnceCell::new(), announced: RefCell::new(None) }
     }
 
     fn fetch_context_size(&self) -> Result<u64, ProviderError> {
@@ -237,6 +239,12 @@ impl Provider for LlamaCpp {
         let enabled = runner.enabled();
         let grammar = grammar::build(&enabled);
         let catalogue = prompt::catalogue();
+        // The note goes in front of the message only when the model has not been told this set of tools.
+        let input = if self.announced.borrow().as_ref() == Some(&enabled) {
+            input
+        } else {
+            format!("{}\n\n{input}", prompt::tool_note(&enabled))
+        };
         let mut new = vec![Message::User(input)];
         // Set once a write is attempted. A turn that has written is never replayed, so overflow is an error.
         let mut wrote = false;
@@ -249,9 +257,11 @@ impl Provider for LlamaCpp {
             let content = reply.content.unwrap_or_default();
             let Some(call) = parse_call(&content, format!("call-{}", new.len())) else {
                 new.push(Message::Assistant { content, tool_calls: Vec::new() });
-                return Turn::new(new)
+                let turn = Turn::new(new)
                     .map(|turn| turn.with_prompt_tokens(prompt_tokens))
-                    .map_err(ProviderError::Session);
+                    .map_err(ProviderError::Session)?;
+                *self.announced.borrow_mut() = Some(enabled);
+                return Ok(turn);
             };
             // Another round would not fit, so stop before running its tool. The caller compacts and retries.
             if over_budget(prompt_tokens, self.context_size()?) {
