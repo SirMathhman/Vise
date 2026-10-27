@@ -60,35 +60,8 @@ pub struct Turn {
 
 impl Turn {
     pub fn new(messages: Vec<Message>) -> Result<Self, SessionError> {
-        if !matches!(messages.first(), Some(Message::User(_))) {
-            return Err(SessionError::MalformedTurn { index: 0 });
-        }
-        let mut index = 1;
-        loop {
-            match messages.get(index) {
-                Some(Message::Assistant { tool_calls, .. }) if tool_calls.is_empty() => {
-                    if index + 1 == messages.len() {
-                        return Ok(Self { messages, prompt_tokens: 0 });
-                    }
-                    // Only a summary may come before the end of a turn, and only directly after the user.
-                    if index != 1 {
-                        return Err(SessionError::MalformedTurn { index });
-                    }
-                    index += 1;
-                }
-                Some(Message::Assistant { tool_calls, .. }) => {
-                    for (offset, call) in tool_calls.iter().enumerate() {
-                        let position = index + 1 + offset;
-                        match messages.get(position) {
-                            Some(Message::Tool { call_id, .. }) if *call_id == call.id => {}
-                            _ => return Err(SessionError::MalformedTurn { index: position }),
-                        }
-                    }
-                    index += 1 + tool_calls.len();
-                }
-                _ => return Err(SessionError::MalformedTurn { index }),
-            }
-        }
+        check_shape(&messages)?;
+        Ok(Self { messages, prompt_tokens: 0 })
     }
 
     /// Records how many prompt tokens the model reported for the request that produced this turn.
@@ -104,6 +77,61 @@ impl Turn {
     fn into_parts(self) -> (Vec<Message>, u64) {
         (self.messages, self.prompt_tokens)
     }
+}
+
+/// Checks the shape `Turn::new` requires of one turn. The error carries the index of the first bad message.
+fn check_shape(messages: &[Message]) -> Result<(), SessionError> {
+    if !matches!(messages.first(), Some(Message::User(_))) {
+        return Err(SessionError::MalformedTurn { index: 0 });
+    }
+    let mut index = 1;
+    loop {
+        match messages.get(index) {
+            Some(Message::Assistant { tool_calls, .. }) if tool_calls.is_empty() => {
+                if index + 1 == messages.len() {
+                    return Ok(());
+                }
+                // Only a summary may come before the end of a turn, and only directly after the user.
+                if index != 1 {
+                    return Err(SessionError::MalformedTurn { index });
+                }
+                index += 1;
+            }
+            Some(Message::Assistant { tool_calls, .. }) => {
+                for (offset, call) in tool_calls.iter().enumerate() {
+                    let position = index + 1 + offset;
+                    match messages.get(position) {
+                        Some(Message::Tool { call_id, .. }) if *call_id == call.id => {}
+                        _ => return Err(SessionError::MalformedTurn { index: position }),
+                    }
+                }
+                index += 1 + tool_calls.len();
+            }
+            _ => return Err(SessionError::MalformedTurn { index }),
+        }
+    }
+}
+
+/// Checks a whole history, as a saved session holds it: an optional summary first, then turns that each pass
+/// `check_shape`. The error carries the index of the first bad message within `history`.
+pub fn check_history(history: &[Message]) -> Result<(), SessionError> {
+    let start = usize::from(matches!(history.first(), Some(Message::Assistant { tool_calls, .. }) if tool_calls.is_empty()));
+    let turn_ends = history
+        .iter()
+        .enumerate()
+        .skip(start + 1)
+        .filter(|(_, message)| matches!(message, Message::User(_)))
+        .map(|(index, _)| index)
+        .chain(std::iter::once(history.len()));
+    let mut from = start;
+    for to in turn_ends {
+        if to > from {
+            check_shape(&history[from..to])
+                .map_err(|SessionError::MalformedTurn { index }| SessionError::MalformedTurn { index: from + index })?;
+        }
+        from = to;
+    }
+    Ok(())
 }
 
 pub struct Conversation {
@@ -292,5 +320,18 @@ mod tests {
         conversation.drop_oldest_turn();
         assert_eq!(conversation.messages().len(), 3);
         assert_eq!(conversation.messages()[1].content(), "b");
+    }
+
+    #[test]
+    fn replace_history_keeps_only_this_runs_system_context() {
+        let env = Environment { cwd: PathBuf::from("C:/work") };
+        let mut conversation = Conversation::new(&env);
+        conversation.commit(plain_turn("old"));
+        conversation.replace_history(vec![Message::User("saved".into()), reply()]);
+        assert_eq!(conversation.messages().len(), 3);
+        assert_eq!(conversation.messages()[0].content(), "Current working directory: C:/work");
+        assert_eq!(conversation.history().len(), 2);
+        assert_eq!(conversation.history()[0].content(), "saved");
+        assert_eq!(conversation.prompt_tokens(), 0);
     }
 }

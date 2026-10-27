@@ -104,11 +104,35 @@ fn note_command(
     }
 }
 
+/// Saves the conversation as a session once the user approves it, the same approval a model write gets. A name
+/// that is taken or invalid is refused before the user is asked.
+fn save_session(
+    name: &str,
+    conversation: &Conversation,
+    output: &mut impl Write,
+    input: &mut impl BufRead,
+    errors: &mut impl Write,
+) -> io::Result<()> {
+    if let Err(err) = saved_sessions::check_save(name) {
+        return writeln!(errors, "error: {err}");
+    }
+    let history = conversation.history();
+    let change = format!("save session {name} ({} messages) to sessions/{name}.json", history.len());
+    if !ask(&change, output, input) {
+        return writeln!(output, "session {name} not saved");
+    }
+    match saved_sessions::save(name, history) {
+        Ok(()) => writeln!(output, "session {name} saved"),
+        Err(err) => writeln!(errors, "error: {err}"),
+    }
+}
+
 /// The session commands: listing, saving, and loading the conversation.
 fn session_command(
     command: Command,
     conversation: &mut Conversation,
     output: &mut impl Write,
+    input: &mut impl BufRead,
     errors: &mut impl Write,
 ) -> io::Result<()> {
     match command {
@@ -117,10 +141,7 @@ fn session_command(
             Ok(names) => writeln!(output, "{}", names.join("\n")),
             Err(err) => writeln!(errors, "error: {err}"),
         },
-        Command::Save(name) => match saved_sessions::save(&name, conversation.history()) {
-            Ok(()) => writeln!(output, "session {name} saved"),
-            Err(err) => writeln!(errors, "error: {err}"),
-        },
+        Command::Save(name) => save_session(&name, conversation, output, input, errors),
         Command::Load(name) => match saved_sessions::load(&name) {
             Ok(history) => {
                 conversation.replace_history(history);
@@ -166,7 +187,7 @@ pub fn run(
                 note_command(command, tools, output, input, errors)?
             }
             Some(command @ (Command::Sessions | Command::Save(_) | Command::Load(_))) => {
-                session_command(command, conversation, output, errors)?
+                session_command(command, conversation, output, input, errors)?
             }
             Some(Command::Profile(name)) => match profile::load(&name) {
                 Ok(loaded) => match apply_whitelist(tools, loaded.tools.as_deref()) {
@@ -459,6 +480,16 @@ mod tests {
         let (output, _) = run_with("/compact\n", &fake, &mut conversation);
         assert!(output.contains("the summary did not fit, so the oldest turn was dropped"));
         assert!(!output.contains("conversation compacted"));
+    }
+
+    #[test]
+    fn save_asks_for_approval_and_writes_nothing_when_declined() {
+        let fake = Fake::new(Behavior::Reply);
+        let mut conversation = conversation();
+        let (output, _) = run_with("/save approval-test\nn\n", &fake, &mut conversation);
+        assert!(output.contains("apply this change? [y/N]"));
+        assert!(output.contains("session approval-test not saved"));
+        assert!(!PathBuf::from("sessions/approval-test.json").exists());
     }
 
     struct ClosedWriter;

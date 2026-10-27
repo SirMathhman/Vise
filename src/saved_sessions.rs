@@ -1,11 +1,13 @@
 //! Saved sessions: a conversation's history kept as a `.json` file in the `sessions` folder. The system context
 //! is not saved, so a loaded session keeps the working directory of the run that loads it.
 
-use crate::session::Message;
+use crate::error::SessionError;
+use crate::session::{self, Message};
 use crate::tools::types::{ToolCall, Value};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as Json;
 use std::collections::HashMap;
+use std::fmt;
 use std::fs;
 use std::io;
 use std::path::PathBuf;
@@ -36,55 +38,111 @@ struct SavedCall {
     arguments: HashMap<String, Json>,
 }
 
-/// The session names, sorted: the `.json` files in the folder without their extension. A folder that does
-/// not exist has no sessions.
-pub fn names() -> Result<Vec<String>, String> {
+/// Why a session could not be listed, saved or loaded.
+#[derive(Debug)]
+pub enum SessionFileError {
+    InvalidName(String),
+    AlreadyExists(String),
+    Folder(io::Error),
+    Read { name: String, err: io::Error },
+    Write { name: String, err: io::Error },
+    Encode(serde_json::Error),
+    Decode(serde_json::Error),
+    Shape(SessionError),
+}
+
+impl fmt::Display for SessionFileError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::InvalidName(name) => write!(f, "'{name}' is not a session name; use letters, digits, '-' and '_'"),
+            Self::AlreadyExists(name) => {
+                write!(f, "session '{name}' already exists; delete sessions/{name}.json to replace it")
+            }
+            Self::Folder(err) => write!(f, "cannot use the sessions folder: {err}"),
+            Self::Read { name, err } => write!(f, "cannot read session '{name}': {err}"),
+            Self::Write { name, err } => write!(f, "cannot save session '{name}': {err}"),
+            Self::Encode(err) => write!(f, "cannot encode the session: {err}"),
+            Self::Decode(err) => write!(f, "cannot read the session file: {err}"),
+            Self::Shape(err) => write!(f, "the session file is not a valid history: {err}"),
+        }
+    }
+}
+
+impl std::error::Error for SessionFileError {}
+
+/// The session names, sorted: the `.json` files in the folder without their extension, leaving out any name
+/// `load` would refuse. A folder that does not exist has no sessions.
+pub fn names() -> Result<Vec<String>, SessionFileError> {
     let entries = match fs::read_dir(FOLDER) {
         Ok(entries) => entries,
         Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(err) => return Err(format!("cannot read the sessions folder: {err}")),
+        Err(err) => return Err(SessionFileError::Folder(err)),
     };
-    let mut names: Vec<String> = entries
-        .filter_map(Result::ok)
-        .filter_map(|entry| entry.file_name().into_string().ok())
-        .filter_map(|file| file.strip_suffix(".json").map(str::to_string))
-        .collect();
-    names.sort();
-    Ok(names)
+    Ok(listed(entries.filter_map(Result::ok).filter_map(|entry| entry.file_name().into_string().ok())))
 }
 
-/// Writes the history to the session's file, replacing any earlier save under the same name. Only letters,
-/// digits, '-' and '_' are accepted in a name, so a name cannot reach outside the folder.
-pub fn save(name: &str, history: &[Message]) -> Result<(), String> {
+fn listed(files: impl Iterator<Item = String>) -> Vec<String> {
+    let mut names: Vec<String> = files
+        .filter_map(|file| file.strip_suffix(".json").map(str::to_string))
+        .filter(|name| check_name(name).is_ok())
+        .collect();
+    names.sort();
+    names
+}
+
+/// Checks that a session can be saved under `name`: the name is valid and no session has it yet. The REPL asks
+/// for approval only after this passes.
+pub fn check_save(name: &str) -> Result<(), SessionFileError> {
     check_name(name)?;
+    if file(name).exists() {
+        return Err(SessionFileError::AlreadyExists(name.to_string()));
+    }
+    Ok(())
+}
+
+/// Writes the history as a new session. The text goes to a temporary file that is then renamed into place, so an
+/// interrupted save leaves no partial session. Only letters, digits, '-' and '_' are accepted in a name, so a name
+/// cannot reach outside the folder.
+pub fn save(name: &str, history: &[Message]) -> Result<(), SessionFileError> {
+    check_save(name)?;
     let text = encode(history)?;
-    fs::create_dir_all(FOLDER).map_err(|err| format!("cannot create the sessions folder: {err}"))?;
-    fs::write(PathBuf::from(FOLDER).join(format!("{name}.json")), text)
-        .map_err(|err| format!("cannot save session '{name}': {err}"))
+    fs::create_dir_all(FOLDER).map_err(SessionFileError::Folder)?;
+    let target = file(name);
+    let temporary = target.with_extension("json.tmp");
+    fs::write(&temporary, text)
+        .and_then(|()| fs::rename(&temporary, &target))
+        .map_err(|err| SessionFileError::Write { name: name.to_string(), err })
 }
 
 /// Reads the history of a saved session.
-pub fn load(name: &str) -> Result<Vec<Message>, String> {
+pub fn load(name: &str) -> Result<Vec<Message>, SessionFileError> {
     check_name(name)?;
-    let text = fs::read_to_string(PathBuf::from(FOLDER).join(format!("{name}.json")))
-        .map_err(|err| format!("cannot read session '{name}': {err}"))?;
+    let text = fs::read_to_string(file(name)).map_err(|err| SessionFileError::Read { name: name.to_string(), err })?;
     decode(&text)
 }
 
-fn check_name(name: &str) -> Result<(), String> {
+fn file(name: &str) -> PathBuf {
+    PathBuf::from(FOLDER).join(format!("{name}.json"))
+}
+
+fn check_name(name: &str) -> Result<(), SessionFileError> {
     let valid = !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
-    if valid { Ok(()) } else { Err(format!("'{name}' is not a session name; use letters, digits, '-' and '_'")) }
+    if valid { Ok(()) } else { Err(SessionFileError::InvalidName(name.to_string())) }
 }
 
 /// The JSON text for a history. The history never holds a system message, so one is skipped if given.
-fn encode(history: &[Message]) -> Result<String, String> {
+fn encode(history: &[Message]) -> Result<String, SessionFileError> {
     let messages = history.iter().filter_map(saved).collect();
-    serde_json::to_string_pretty(&File { messages }).map_err(|err| format!("cannot encode the session: {err}"))
+    serde_json::to_string_pretty(&File { messages }).map_err(SessionFileError::Encode)
 }
 
-fn decode(text: &str) -> Result<Vec<Message>, String> {
-    let file: File = serde_json::from_str(text).map_err(|err| format!("cannot read the session file: {err}"))?;
-    Ok(file.messages.into_iter().map(message).collect())
+/// Parses a session file and checks that its history has a valid shape, so a bad file is refused before it
+/// replaces the conversation.
+fn decode(text: &str) -> Result<Vec<Message>, SessionFileError> {
+    let parsed: File = serde_json::from_str(text).map_err(SessionFileError::Decode)?;
+    let history: Vec<Message> = parsed.messages.into_iter().map(message).collect();
+    session::check_history(&history).map_err(SessionFileError::Shape)?;
+    Ok(history)
 }
 
 fn saved(message: &Message) -> Option<Saved> {
@@ -175,8 +233,26 @@ mod tests {
     }
 
     #[test]
+    fn encode_skips_a_system_message() {
+        let text = encode(&[Message::System("context".into())]).expect("encodes");
+        assert!(decode(&text).expect("decodes").is_empty());
+    }
+
+    #[test]
+    fn decode_rejects_a_tool_result_without_its_call() {
+        let text = r#"{"messages":[{"role":"tool","call_id":"c","content":"x"}]}"#;
+        assert!(matches!(decode(text).err(), Some(SessionFileError::Shape(_))));
+    }
+
+    #[test]
+    fn listing_leaves_out_names_that_load_refuses() {
+        let files = ["a.json", "my notes.json", "b.txt", "c.json.tmp"].map(String::from);
+        assert_eq!(listed(files.into_iter()), vec!["a".to_string()]);
+    }
+
+    #[test]
     fn load_rejects_names_that_leave_the_folder() {
         let error = load("../secret").err().expect("expected the name to be rejected");
-        assert!(error.contains("is not a session name"));
+        assert!(matches!(error, SessionFileError::InvalidName(_)));
     }
 }
