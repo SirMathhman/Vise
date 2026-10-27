@@ -48,6 +48,7 @@ impl Message {
 /// assistant tool call followed by one result per call, then a reply with no tool calls.
 pub struct Turn {
     messages: Vec<Message>,
+    prompt_tokens: u64,
 }
 
 impl Turn {
@@ -60,7 +61,7 @@ impl Turn {
             match messages.get(index) {
                 Some(Message::Assistant { tool_calls, .. }) if tool_calls.is_empty() => {
                     return if index + 1 == messages.len() {
-                        Ok(Self { messages })
+                        Ok(Self { messages, prompt_tokens: 0 })
                     } else {
                         Err(SessionError::MalformedTurn { index: index + 1 })
                     };
@@ -80,27 +81,41 @@ impl Turn {
         }
     }
 
+    /// Records how many prompt tokens the model reported for the request that produced this turn.
+    pub fn with_prompt_tokens(mut self, prompt_tokens: u64) -> Self {
+        self.prompt_tokens = prompt_tokens;
+        self
+    }
+
     pub fn reply(&self) -> &str {
         self.messages.last().map_or("", Message::content)
     }
 
-    fn into_messages(self) -> Vec<Message> {
-        self.messages
+    fn into_parts(self) -> (Vec<Message>, u64) {
+        (self.messages, self.prompt_tokens)
     }
 }
 
 pub struct Conversation {
     messages: Vec<Message>,
+    prompt_tokens: u64,
 }
 
 impl Conversation {
     pub fn new(env: &Environment) -> Self {
         let context = Message::System(format!("Current working directory: {}", env.cwd.display()));
-        Self { messages: vec![context] }
+        Self { messages: vec![context], prompt_tokens: 0 }
     }
 
     pub fn commit(&mut self, turn: Turn) {
-        self.messages.extend(turn.into_messages());
+        let (messages, prompt_tokens) = turn.into_parts();
+        self.messages.extend(messages);
+        self.prompt_tokens = prompt_tokens;
+    }
+
+    /// The prompt tokens the model reported for the most recent request, or 0 before any turn.
+    pub fn prompt_tokens(&self) -> u64 {
+        self.prompt_tokens
     }
 
     pub fn messages(&self) -> &[Message] {

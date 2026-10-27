@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 const URL: &str = "http://127.0.0.1:9931/v1/chat/completions";
+const MODELS_URL: &str = "http://127.0.0.1:9931/v1/models";
 const MODEL: &str = "ayozhee/Qwen3.8-27B-Abliterated-GSQ-Orca-GGUF:MTP";
 
 #[derive(Serialize)]
@@ -169,6 +170,28 @@ impl From<&ToolSpec> for WireTool {
 #[derive(Deserialize)]
 struct Response {
     choices: Vec<Choice>,
+    usage: Option<Usage>,
+}
+
+#[derive(Deserialize)]
+struct Usage {
+    prompt_tokens: u64,
+}
+
+#[derive(Deserialize)]
+struct Models {
+    data: Vec<ModelInfo>,
+}
+
+#[derive(Deserialize)]
+struct ModelInfo {
+    id: String,
+    meta: Option<ModelMeta>,
+}
+
+#[derive(Deserialize)]
+struct ModelMeta {
+    n_ctx: u64,
 }
 
 #[derive(Deserialize)]
@@ -203,11 +226,13 @@ impl Provider for LlamaCpp {
         for _ in 0..MAX_TOOL_ROUNDS {
             let wire: Vec<WireMessage> =
                 history.iter().chain(&new).map(WireMessage::try_from).collect::<Result<_, _>>()?;
-            let reply = send(&self.api_key, &wire, &wire_tools)?;
+            let (reply, prompt_tokens) = send(&self.api_key, &wire, &wire_tools)?;
             let content = reply.content.unwrap_or_default();
             if reply.tool_calls.is_empty() {
                 new.push(Message::Assistant { content, tool_calls: Vec::new() });
-                return Turn::new(new).map_err(ProviderError::Session);
+                return Turn::new(new)
+                    .map(|turn| turn.with_prompt_tokens(prompt_tokens))
+                    .map_err(ProviderError::Session);
             }
             let calls: Vec<ToolCall> = reply.tool_calls.into_iter().map(ToolCall::from).collect();
             let results: Vec<Message> = calls
@@ -224,6 +249,24 @@ impl Provider for LlamaCpp {
         }
         Err(ProviderError::TooManyToolRounds)
     }
+
+    fn context_size(&self) -> Result<u64, ProviderError> {
+        let mut response = ureq::get(MODELS_URL)
+            .header("Authorization", &format!("Bearer {}", self.api_key))
+            .call()
+            .map_err(|err| ProviderError::Transport(Box::new(err)))?;
+        let models: Models = response
+            .body_mut()
+            .read_json()
+            .map_err(|err| ProviderError::Transport(Box::new(err)))?;
+        models
+            .data
+            .into_iter()
+            .find(|model| model.id == MODEL)
+            .and_then(|model| model.meta)
+            .map(|meta| meta.n_ctx)
+            .ok_or(ProviderError::ModelNotFound)
+    }
 }
 
 fn to_value(value: serde_json::Value) -> Value {
@@ -234,7 +277,9 @@ fn to_value(value: serde_json::Value) -> Value {
     }
 }
 
-fn send(api_key: &str, wire: &[WireMessage], tools: &[WireTool]) -> Result<ReplyMessage, ProviderError> {
+/// Sends one request and returns the reply with the prompt tokens llama.cpp counted for it (0 if it
+/// reported none).
+fn send(api_key: &str, wire: &[WireMessage], tools: &[WireTool]) -> Result<(ReplyMessage, u64), ProviderError> {
     let request = Request { model: MODEL, messages: wire, tools };
     let mut response = ureq::post(URL)
         .header("Authorization", &format!("Bearer {api_key}"))
@@ -244,5 +289,7 @@ fn send(api_key: &str, wire: &[WireMessage], tools: &[WireTool]) -> Result<Reply
         .body_mut()
         .read_json()
         .map_err(|err| ProviderError::Transport(Box::new(err)))?;
-    Ok(body.choices.into_iter().next().ok_or(ProviderError::EmptyResponse)?.message)
+    let prompt_tokens = body.usage.map_or(0, |usage| usage.prompt_tokens);
+    let message = body.choices.into_iter().next().ok_or(ProviderError::EmptyResponse)?.message;
+    Ok((message, prompt_tokens))
 }

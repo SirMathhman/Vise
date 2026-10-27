@@ -39,6 +39,10 @@ pub fn run(
             Some(Command::Context) => {
                 let context = conversation.messages().first().map_or("", Message::content);
                 writeln!(output, "{context}")?;
+                match provider.context_size() {
+                    Ok(total) => writeln!(output, "{} / {total}", conversation.prompt_tokens())?,
+                    Err(err) => writeln!(errors, "error: {err}")?,
+                }
             }
             None => match provider.complete(conversation.messages(), line, tools) {
                 Ok(turn) => {
@@ -104,6 +108,10 @@ mod tests {
                 Behavior::Fail => return Err(ProviderError::Transport("boom".into())),
             };
             Turn::new(messages).map_err(ProviderError::Session)
+        }
+
+        fn context_size(&self) -> Result<u64, ProviderError> {
+            Ok(0)
         }
     }
 
