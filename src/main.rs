@@ -8,7 +8,7 @@ mod tools;
 use provider::llama_cpp::LlamaCpp;
 use session::Conversation;
 use std::io;
-use tools::WorkspaceTools;
+use tools::runner::WorkspaceTools;
 
 fn main() {
     dotenvy::dotenv().ok();

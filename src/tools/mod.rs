@@ -1,11 +1,11 @@
 pub mod list_directory;
 pub mod path;
 pub mod read_file;
+pub mod runner;
 pub mod types;
 
 use std::collections::HashMap;
-use std::path::PathBuf;
-use types::{Arguments, Invocation, ToolError, ToolRunner, ToolSpec, Value};
+use types::{Arguments, Invocation, ToolError, ToolSpec, Value};
 
 /// Looks up the named tool, checks the argument values against its spec, and returns the typed invocation.
 pub fn call(name: &str, values: HashMap<String, Value>) -> Result<Invocation, ToolError> {
@@ -32,25 +32,6 @@ pub fn bind(name: &str, args: &Arguments) -> Result<Invocation, ToolError> {
         })
     } else {
         Err(ToolError::UnknownTool(name.to_string()))
-    }
-}
-
-pub struct WorkspaceTools {
-    cwd: PathBuf,
-}
-
-impl WorkspaceTools {
-    pub fn new(cwd: PathBuf) -> Self {
-        Self { cwd }
-    }
-}
-
-impl ToolRunner for WorkspaceTools {
-    fn run(&self, invocation: &Invocation) -> Result<String, ToolError> {
-        match invocation {
-            Invocation::ListDirectory { path, depth } => list_directory::run(path, *depth, &self.cwd),
-            Invocation::ReadFile { path, start, end } => read_file::run(path, *start, *end, &self.cwd),
-        }
     }
 }
 

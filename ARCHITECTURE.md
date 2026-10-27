@@ -154,13 +154,18 @@ Rules:
   pre-formatted `String`s. `ToolError::Failed` flattens I/O causes into text, so callers and tests
   cannot match on the cause. Payloads must be structured (for example `Io { path, source }`), and
   the provider's error type must be named `ProviderError` as in Structure.
-- **Output can panic.** `println!` panics when stdout is closed. The REPL must write through
-  `writeln!` and treat a write failure as a reason to exit with an error code.
-- **`Turn::new` checks only the last message.** It accepts `[Tool, Assistant]` or
-  `[Assistant { tool_calls: [a] }, Assistant]` (a call with no result), so the invariant that a
-  turn is appended whole and well-formed relies on the provider loop getting the order right. A
-  malformed turn would be sent to the server on the next request. `Turn::new` must check the full
-  shape described in Invariants and return a `SessionError` naming the offending message index.
+- **Startup output can panic.** The REPL writes through `writeln!` and returns write failures, but
+  `main` still uses `eprintln!` for its own messages, which panics when stderr is closed. Every write in `main` must go through a `Result` as well.
+- **Raw JSON in the conversation model.** `tools::types::ToolCall.arguments` is a `String` of JSON
+  text, and `session::Message::Assistant` stores it. The JSON form therefore reaches `session` and
+  `tools`, though Rules say `session` knows nothing about JSON and `tools` never parses it. A tool
+  call must hold its arguments as plain `Value`s, and only `provider::llama_cpp` may encode them back
+  to JSON when it builds a request.
+- **`WorkspaceTools` sits in the registry.** `tools/mod.rs` defines `WorkspaceTools` and its
+  `ToolRunner` impl, but Structure assigns that to `tools/runner.rs` and limits `mod.rs` to the
+  registry. Move it so the registry file holds only `specs`, `call`, and `bind`.
+- **`main` exits 0 on REPL failure.** `main` prints a REPL I/O error and returns normally, so a
+  failed stdin or stdout exits with status 0. Structure says `main` maps errors to exit codes.
 - **Name dispatch repeated in `bind`.** `tools::call` finds the `ToolSpec` once, but `bind` compares
   the name again, and its final `UnknownTool` arm cannot be reached from `call`. Each tool's
   invocation should be carried by its spec (or a typed key) so the name is matched exactly once.
