@@ -1,14 +1,27 @@
+use super::jobs::Jobs;
 use super::types::{Invocation, ToolError, ToolRunner};
-use super::{create_directory, create_file, edit_file, list_directory, read_file, run_powershell};
+use super::{
+    create_directory, create_file, edit_file, kill_background, list_directory, read_background, read_file,
+    run_powershell,
+};
+use std::cell::RefCell;
 use std::path::PathBuf;
 
 pub struct WorkspaceTools {
     cwd: PathBuf,
+    jobs: RefCell<Jobs>,
 }
 
 impl WorkspaceTools {
     pub fn new(cwd: PathBuf) -> Self {
-        Self { cwd }
+        Self { cwd, jobs: RefCell::new(Jobs::default()) }
+    }
+}
+
+impl Drop for WorkspaceTools {
+    /// Background tasks do not outlive the session.
+    fn drop(&mut self) {
+        self.jobs.get_mut().stop_all();
     }
 }
 
@@ -23,7 +36,15 @@ impl ToolRunner for WorkspaceTools {
             Invocation::CreateFile { path, content } => create_file::run(path, content, &self.cwd),
             Invocation::CreateDirectory { path } => create_directory::run(path, &self.cwd),
             Invocation::EditFile { path, previous, new } => edit_file::run(path, previous, new, &self.cwd),
-            Invocation::RunPowerShell { command } => run_powershell::run(command, &self.cwd),
+            Invocation::RunPowerShell { command, timeout_secs, background } => run_powershell::run(
+                command,
+                *timeout_secs,
+                *background,
+                &self.cwd,
+                &mut self.jobs.borrow_mut(),
+            ),
+            Invocation::ReadBackground { id } => read_background::run(*id, &mut self.jobs.borrow_mut()),
+            Invocation::KillBackground { id } => kill_background::run(*id, &mut self.jobs.borrow_mut()),
         }
     }
 }
@@ -34,8 +55,19 @@ fn describe(invocation: &Invocation) -> String {
         Invocation::CreateFile { path, content } => format!("create file '{path}' with:\n{content}"),
         Invocation::CreateDirectory { path } => format!("create directory '{path}'"),
         Invocation::EditFile { path, previous, new } => format!("edit '{path}':\n- {previous}\n+ {new}"),
-        Invocation::RunPowerShell { command } => format!("run this PowerShell command:\n{command}"),
-        Invocation::ListDirectory { .. } | Invocation::ReadFile { .. } => String::new(),
+        Invocation::RunPowerShell { command, timeout_secs, background } => {
+            if *background {
+                format!("start this PowerShell command as a background task:\n{command}")
+            } else {
+                format!(
+                    "run this PowerShell command, moving it to the background if it runs past {timeout_secs} seconds:\n{command}"
+                )
+            }
+        }
+        Invocation::KillBackground { id } => format!("stop background task {id}"),
+        Invocation::ListDirectory { .. } | Invocation::ReadFile { .. } | Invocation::ReadBackground { .. } => {
+            String::new()
+        }
     }
 }
 

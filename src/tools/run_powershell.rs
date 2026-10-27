@@ -1,106 +1,69 @@
+use super::jobs::Jobs;
 use super::types::{Arguments, Invocation, Param, ParamType, ToolError, ToolSpec};
-use std::io::Read;
 use std::path::Path;
-use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
-const TIMEOUT: Duration = Duration::from_secs(30);
-const MAX_OUTPUT: usize = 100 * 1024;
-
 pub const SPEC: ToolSpec = ToolSpec {
     name: "run_powershell",
-    description: "Run a Windows PowerShell command in the working directory. The user approves each command before it runs. The command is stopped after 30 seconds. The result has the exit code, then stdout and stderr, capped at 100 KB.",
-    params: &[Param {
-        name: "command",
-        kind: ParamType::String,
-        description: "The PowerShell command to run.",
-    }],
+    description: "Run a Windows PowerShell command in the working directory. The user approves each command before it runs. With background false, the command is waited for up to timeout_seconds (1 to 30), and its output and exit code are returned. If it is still running after that, it becomes a background task and the result gives its id. With background true, it starts as a background task at once. Use read_background and kill_background with the id.",
+    params: &[
+        Param {
+            name: "command",
+            kind: ParamType::String,
+            description: "The PowerShell command to run.",
+        },
+        Param {
+            name: "timeout_seconds",
+            kind: ParamType::Integer { min: Some(1), max: Some(30) },
+            description: "How long to wait for the command to finish before it becomes a background task.",
+        },
+        Param {
+            name: "background",
+            kind: ParamType::Boolean,
+            description: "Start the command as a background task at once instead of waiting for it.",
+        },
+    ],
     bind,
 };
 
 fn bind(args: &Arguments) -> Result<Invocation, ToolError> {
-    Ok(Invocation::RunPowerShell { command: args.text("command")?.to_string() })
+    Ok(Invocation::RunPowerShell {
+        command: args.text("command")?.to_string(),
+        timeout_secs: u64::try_from(args.integer("timeout_seconds")?)
+            .map_err(|_| ToolError::InvalidArguments("'timeout_seconds' is out of range".into()))?,
+        background: args.boolean("background")?,
+    })
 }
 
-pub fn run(command: &str, cwd: &Path) -> Result<String, ToolError> {
+pub fn run(
+    command: &str,
+    timeout_secs: u64,
+    background: bool,
+    cwd: &Path,
+    jobs: &mut Jobs,
+) -> Result<String, ToolError> {
     if command.trim().is_empty() {
         return Err(ToolError::InvalidArguments("'command' must not be empty".into()));
     }
-    let mut child = Command::new("powershell.exe")
-        .args(["-NoProfile", "-NonInteractive", "-Command", command])
-        .current_dir(cwd)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|err| ToolError::Failed(format!("cannot start powershell.exe: {err}")))?;
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| ToolError::Failed("cannot read the command's stdout".into()))?;
-    let stderr = child
-        .stderr
-        .take()
-        .ok_or_else(|| ToolError::Failed("cannot read the command's stderr".into()))?;
-    // Read both pipes on their own threads, so a full pipe cannot stall the child.
-    let stdout_reader = thread::spawn(move || read_pipe(stdout));
-    let stderr_reader = thread::spawn(move || read_pipe(stderr));
-
-    let started = Instant::now();
-    let status = loop {
-        match child.try_wait().map_err(|err| ToolError::Failed(format!("cannot wait for the command: {err}")))? {
-            Some(status) => break status,
-            None if started.elapsed() >= TIMEOUT => {
-                stop_tree(child.id());
-                // Killing may fail if the command has just exited; either way it is no longer running.
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(ToolError::Failed(format!(
-                    "the command ran longer than {} seconds and was stopped",
-                    TIMEOUT.as_secs()
-                )));
-            }
-            None => thread::sleep(Duration::from_millis(50)),
-        }
-    };
-    let stdout = stdout_reader.join().unwrap_or_default();
-    let stderr = stderr_reader.join().unwrap_or_default();
-
-    let code = status.code().map_or_else(|| "none".to_string(), |code| code.to_string());
-    let mut output = format!("exit code: {code}\n{}", String::from_utf8_lossy(&stdout));
-    let stderr = String::from_utf8_lossy(&stderr);
-    if !stderr.is_empty() {
-        output.push_str("\n[stderr]\n");
-        output.push_str(&stderr);
+    let id = jobs.start(command, cwd)?;
+    if background {
+        return Ok(background_message(id, "started"));
     }
-    if output.len() > MAX_OUTPUT {
-        let mut end = MAX_OUTPUT;
-        while !output.is_char_boundary(end) {
-            end -= 1;
+    let deadline = Instant::now() + Duration::from_secs(timeout_secs);
+    while !jobs.has_exited(id)? {
+        if Instant::now() >= deadline {
+            return Ok(background_message(id, &format!("is still running after {timeout_secs} seconds and")));
         }
-        output.truncate(end);
-        output.push_str("\n[output truncated at 100 KB]");
+        thread::sleep(Duration::from_millis(50));
     }
-    Ok(output)
+    jobs.finish(id)
 }
 
-/// Stops a process and every process it started. This is the only platform-specific step: Windows'
-/// `taskkill /T` walks the process tree. A failure is ignored here, since the caller kills the shell
-/// process directly as well.
-fn stop_tree(pid: u32) {
-    let _ = Command::new("taskkill")
-        .args(["/T", "/F", "/PID", &pid.to_string()])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-}
-
-/// Reads a pipe to its end. A read error keeps whatever was read before it.
-fn read_pipe(mut pipe: impl Read) -> Vec<u8> {
-    let mut buf = Vec::new();
-    let _ = pipe.read_to_end(&mut buf);
-    buf
+fn background_message(id: usize, state: &str) -> String {
+    format!(
+        "background task {id} {state}. Use read_background({id}) to see its output and kill_background({id}) to stop it."
+    )
 }
 
 #[cfg(test)]
@@ -109,7 +72,7 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn timeout_stops_child_processes() {
+    fn timeout_turns_the_command_into_a_background_task_that_kill_stops() {
         let cwd = std::env::temp_dir();
         let pid_file = cwd.join(format!("vise-child-{}.txt", std::process::id()));
         let command = format!(
@@ -117,11 +80,19 @@ mod tests {
              Set-Content -LiteralPath '{}' -Value $p.Id; Start-Sleep 300",
             pid_file.display()
         );
-        let result = run(&command, &cwd);
-        assert!(matches!(result, Err(ToolError::Failed(ref message)) if message.contains("stopped")));
+        let mut jobs = Jobs::default();
+        let started = run(&command, 1, false, &cwd, &mut jobs).unwrap();
+        assert!(started.contains("background task 1 is still running"));
+
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while !pid_file.exists() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(100));
+        }
         let pid = fs::read_to_string(&pid_file).unwrap().trim().to_string();
         fs::remove_file(&pid_file).unwrap();
-        let listing = Command::new("tasklist")
+
+        jobs.kill(1).unwrap();
+        let listing = std::process::Command::new("tasklist")
             .args(["/FI", &format!("PID eq {pid}"), "/NH"])
             .output()
             .unwrap();

@@ -104,6 +104,7 @@ fn to_json(value: &Value) -> serde_json::Value {
     match value {
         Value::Text(text) => serde_json::Value::String(text.clone()),
         Value::Integer(n) => serde_json::Value::from(*n),
+        Value::Bool(flag) => serde_json::Value::Bool(*flag),
         Value::Unsupported => serde_json::Value::Null,
     }
 }
@@ -150,6 +151,7 @@ impl From<&ToolSpec> for WireTool {
                 let (kind, minimum, maximum) = match param.kind {
                     ParamType::String => ("string", None, None),
                     ParamType::Integer { min, max } => ("integer", min, max),
+                    ParamType::Boolean => ("boolean", None, None),
                 };
                 (param.name, WireProperty { kind, description: param.description, minimum, maximum })
             })
@@ -351,6 +353,7 @@ fn to_value(value: serde_json::Value) -> Value {
     match value {
         serde_json::Value::String(text) => Value::Text(text),
         serde_json::Value::Number(number) => number.as_i64().map_or(Value::Unsupported, Value::Integer),
+        serde_json::Value::Bool(flag) => Value::Bool(flag),
         _ => Value::Unsupported,
     }
 }

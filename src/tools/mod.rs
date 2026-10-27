@@ -1,8 +1,11 @@
 pub mod create_directory;
 pub mod create_file;
 pub mod edit_file;
+pub mod jobs;
+pub mod kill_background;
 pub mod list_directory;
 pub mod path;
+pub mod read_background;
 pub mod read_file;
 pub mod run_powershell;
 pub mod runner;
@@ -28,6 +31,8 @@ const SPECS: &[ToolSpec] = &[
     create_directory::SPEC,
     edit_file::SPEC,
     run_powershell::SPEC,
+    read_background::SPEC,
+    kill_background::SPEC,
 ];
 
 pub fn specs() -> &'static [ToolSpec] {

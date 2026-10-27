@@ -10,6 +10,7 @@ pub struct ToolCall {
 pub enum ParamType {
     String,
     Integer { min: Option<u32>, max: Option<u32> },
+    Boolean,
 }
 
 pub struct Param {
@@ -48,6 +49,7 @@ impl std::error::Error for ToolError {}
 pub enum Value {
     Text(String),
     Integer(i64),
+    Bool(bool),
     Unsupported,
 }
 
@@ -64,6 +66,7 @@ impl Arguments {
                 .ok_or_else(|| ToolError::InvalidArguments(format!("missing '{}'", param.name)))?;
             match (&param.kind, value) {
                 (ParamType::String, Value::Text(_)) => {}
+                (ParamType::Boolean, Value::Bool(_)) => {}
                 (ParamType::Integer { min, max }, Value::Integer(n)) => {
                     if min.is_some_and(|min| *n < i64::from(min)) || max.is_some_and(|max| *n > i64::from(max)) {
                         return Err(ToolError::InvalidArguments(format!("'{}' is out of range", param.name)));
@@ -93,6 +96,13 @@ impl Arguments {
             _ => Err(ToolError::InvalidArguments(format!("'{name}' must be an integer"))),
         }
     }
+
+    pub(super) fn boolean(&self, name: &str) -> Result<bool, ToolError> {
+        match self.values.get(name) {
+            Some(Value::Bool(flag)) => Ok(*flag),
+            _ => Err(ToolError::InvalidArguments(format!("'{name}' must be true or false"))),
+        }
+    }
 }
 
 pub enum Invocation {
@@ -101,17 +111,22 @@ pub enum Invocation {
     CreateFile { path: String, content: String },
     CreateDirectory { path: String },
     EditFile { path: String, previous: String, new: String },
-    RunPowerShell { command: String },
+    RunPowerShell { command: String, timeout_secs: u64, background: bool },
+    ReadBackground { id: usize },
+    KillBackground { id: usize },
 }
 
 impl Invocation {
-    /// Whether running this changes the filesystem, so it needs approval and is never replayed.
+    /// Whether running this changes the filesystem or runs a program, so it needs approval and is never
+    /// replayed. Reading a background task's output changes nothing.
     pub fn writes(&self) -> bool {
         match self {
-            Self::ListDirectory { .. } | Self::ReadFile { .. } => false,
-            Self::CreateFile { .. } | Self::CreateDirectory { .. } | Self::EditFile { .. } | Self::RunPowerShell { .. } => {
-                true
-            }
+            Self::ListDirectory { .. } | Self::ReadFile { .. } | Self::ReadBackground { .. } => false,
+            Self::CreateFile { .. }
+            | Self::CreateDirectory { .. }
+            | Self::EditFile { .. }
+            | Self::RunPowerShell { .. }
+            | Self::KillBackground { .. } => true,
         }
     }
 }

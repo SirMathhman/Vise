@@ -25,9 +25,12 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 - **Compaction**: replacing older history with a summary the model wrote. The result keeps the context
   message, one summary (an assistant message with no tool calls), and the last two turns. Compaction
   runs on `/compact`, and before a turn when the last prompt tokens reach 80% of the context size.
-- **Write**: a tool call that changes the filesystem or runs a program (`create_file`,
-  `create_directory`, `edit_file`, `run_powershell`). A write runs only after the user approves it. A
-  declined write is reported to the model as an error and changes nothing.
+- **Write**: a tool call that changes the filesystem or runs or stops a program (`create_file`,
+  `create_directory`, `edit_file`, `run_powershell`, `kill_background`). A write runs only after the user
+  approves it. A declined write is reported to the model as an error and changes nothing.
+- **Background task**: a PowerShell command that keeps running after its turn's tool call returns. It
+  gets an id, its output is collected while it runs, and the model reads that output with
+  `read_background` and stops it with `kill_background`. Background tasks are stopped when the session ends.
 - **Wire type**: a struct matching the JSON shape of a provider request or response. Wire types never
   leave `provider::llama_cpp`.
 
@@ -58,8 +61,12 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
   directory is an error, and nothing is read or written.
 - `run_powershell` is not confined. Its command runs in the working directory with the user's full
   permissions, and can read, write, or delete anything the user can. The approval prompt is the only
-  gate, and it shows the command in full. A command past its time limit is stopped together with every
-  process it started, and the reply says it was stopped. Its output is bounded while it is read.
+  gate, and it shows the command in full.
+- `run_powershell` requires a `timeout_seconds` between 1 and 30. A command still running when that wait
+  ends becomes a background task, and the command is not stopped. A command with `background` true starts
+  as a background task at once. Each task keeps at most its last 100 KB of output, and a read returns only
+  the output since the previous read.
+- Stopping a background task (`kill_background`) ends the whole process tree it started.
 - A write runs only after the user approves a description of it. The default is no: only `y` or `yes`
   approves.
 - Slash commands (`/compact`, `/context`, `/exit`, `/help`) are never sent to the model. Every other line
@@ -96,8 +103,12 @@ src/
     create_file.rs   a new file; fails if the path exists
     create_directory.rs  creates missing parents; succeeds if the directory exists
     edit_file.rs     one exact, unique replacement in an existing file
-    run_powershell.rs  runs one Windows PowerShell command in the working directory, stopped after
-                     30 seconds, with output capped at 100 KB
+    run_powershell.rs  runs one Windows PowerShell command in the working directory; after its
+                     timeout it becomes a background task
+    read_background.rs  returns a background task's output since the last read
+    kill_background.rs  stops a background task and its process tree
+    jobs.rs          the background tasks: starts them, collects their output (capped at 100 KB), and
+                     stops them, including every process they started (Windows `taskkill /T`)
 ```
 
 Dependencies (an arrow means "may depend on"; there are no cycles):
@@ -217,13 +228,6 @@ Writes
   rename it.
 
 Commands (`run_powershell`)
-- **A stopped command can leave processes running.** The time limit kills only `powershell.exe`. A process
-  the command started keeps running with the user's permissions after the tool reports the command as
-  stopped. The stop must end the whole process tree; on Windows, a job object that kills its members when
-  it closes.
-- **Output is held in memory before it is capped.** Both pipes are read to the end, and the 100 KB limit is
-  applied afterwards, so a command that writes a large amount within its time limit uses that memory. Reads
-  must stop at the cap and discard the rest.
 - **Commands are not logged.** Every approval, write, and command must be recorded before it runs, with
   its text, working directory, approval, and exit status. `run_powershell` records nothing. Deletion and
   further execution tools wait for this.
@@ -266,8 +270,8 @@ Controls:
 | API key never printed, logged, or put in errors | Partly met. Error paths have not been audited. |
 | Plain HTTP refused unless the endpoint is loopback | Missing. The endpoint is a loopback constant. |
 | Size limits on user lines and response bodies | Missing. |
-| Size limits on tool output | `read_file` and `run_powershell` (the latter after reading; see Open Problems). `list_directory` has none. |
-| Limits on commands: time, process tree, output | Partly met. The time limit and output cap exist; the process tree is not stopped (Open Problems). |
+| Size limits on tool output | `read_file` and background task output. `list_directory` has none. |
+| Limits on commands: time, process tree, output | Partly met. A foreground command waits at most 30 seconds, then becomes a background task. Stopping a task ends its process tree. Output is capped at 100 KB per task. Background tasks have no count limit. |
 | Tool results and summaries marked as untrusted data | Missing. |
 | Logging of approvals, writes, and commands | Missing. Commands are not logged (Open Problems). |
 | Environment disclosure (working directory sent every turn) | Missing. Only opt-in fields would be sent; today the path is always sent. |
@@ -296,5 +300,6 @@ Obvious concerns only; profile before optimizing.
 - The REPL blocks on each request, and input typed during a long generation waits in the terminal.
 - Replies are read fully before printing. Streaming would reduce latency.
 - A directory listing walks the tree synchronously with no entry cap.
-- A command blocks the REPL for up to its time limit, and its output is buffered before the cap applies.
+- A foreground command blocks the REPL for up to its 30-second wait. Background tasks have no count limit,
+  and each keeps up to 100 KB of output, so many long-running tasks use memory in proportion.
 - Each request builds a new `ureq` request. One shared agent would reuse connections.
