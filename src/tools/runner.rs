@@ -1,9 +1,7 @@
+use super::fs::{create_directory, create_file, edit_file, list_directory, read_file};
 use super::jobs::Jobs;
 use super::types::{Invocation, ToolError, ToolRunner};
-use super::{
-    create_directory, create_file, edit_file, kill_background, list_directory, read_background, read_file,
-    run_powershell,
-};
+use super::{kill_background, read_background, run_powershell};
 use std::cell::RefCell;
 use std::path::PathBuf;
 

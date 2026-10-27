@@ -1,16 +1,13 @@
-pub mod create_directory;
-pub mod create_file;
-pub mod edit_file;
+
+pub mod fs;
 pub mod jobs;
 pub mod kill_background;
-pub mod list_directory;
-pub mod path;
 pub mod read_background;
-pub mod read_file;
 pub mod run_powershell;
 pub mod runner;
 pub mod types;
 
+use fs::{create_directory, create_file, edit_file, list_directory, read_file};
 use std::collections::HashMap;
 use types::{Arguments, Invocation, ToolError, ToolSpec, Value};
 

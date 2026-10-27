@@ -1,5 +1,5 @@
 use super::path;
-use super::types::{Arguments, Invocation, Param, ParamType, ToolError, ToolSpec};
+use crate::tools::types::{Arguments, Invocation, Param, ParamType, ToolError, ToolSpec};
 use std::fs;
 use std::io;
 use std::path::Path;

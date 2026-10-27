@@ -64,9 +64,18 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
   gate, and it shows the command in full.
 - `run_powershell` requires a `timeout_seconds` between 1 and 30. A command still running when that wait
   ends becomes a background task, and the command is not stopped. A command with `background` true starts
-  as a background task at once. Each task keeps at most its last 100 KB of output, and a read returns only
-  the output since the previous read.
-- Stopping a background task (`kill_background`) ends the whole process tree it started.
+  as a background task at once. Each task keeps at most its last 100 KB of output.
+- A read of a background task takes the offset the model last received and returns the output after it,
+  with the next offset. The task holds no read position, so a read repeated by a retried or discarded turn
+  returns the same output again. Output is decoded at character boundaries, so no character is split
+  across two reads.
+- Stopping a background task (`kill_background`) ends every process the task started, including those
+  whose parent has already exited. On Windows the task's processes run in a Job Object with
+  kill-on-close, so ending the job, or closing its last handle, ends them all.
+- A background task ends with the session, however the process exits: normal return, error, or
+  interrupt.
+- The approval text for `kill_background` names the task's command and whether it is still running, not
+  only its id. The user approves what will stop, not a number.
 - A write runs only after the user approves a description of it. The default is no: only `y` or `yes`
   approves.
 - Slash commands (`/compact`, `/context`, `/exit`, `/help`) are never sent to the model. Every other line
@@ -93,22 +102,27 @@ src/
     llama_cpp.rs     the HTTP client; wire structs; the tool-round loop; the 400 mapping
                      (bad_request); the /v1/models lookup; conversion between JSON arguments and Values
   tools/
-    mod.rs           registry: specs(), call(name, values) -> Invocation
+    mod.rs           registry: specs(), call(name, values) -> Invocation; declares its children
     types.rs         ToolSpec, Param, ParamType, Value, Arguments, Invocation, ToolCall, ToolError,
                      ToolRunner
-    runner.rs        WorkspaceTools: runs an Invocation, asks for approval first when it writes
-    path.rs          confine (existing paths) and confine_new (paths a write creates)
-    list_directory.rs  recursive listing to a depth of 1 to 5
-    read_file.rs     a 1-based line range, capped at 500 lines or 100 KB
-    create_file.rs   a new file; fails if the path exists
-    create_directory.rs  creates missing parents; succeeds if the directory exists
-    edit_file.rs     one exact, unique replacement in an existing file
+    runner.rs        WorkspaceTools: runs an Invocation, asks for approval first when it writes, and
+                     owns the background tasks, ending them when it is dropped
     run_powershell.rs  runs one Windows PowerShell command in the working directory; after its
                      timeout it becomes a background task
-    read_background.rs  returns a background task's output since the last read
-    kill_background.rs  stops a background task and its process tree
-    jobs.rs          the background tasks: starts them, collects their output (capped at 100 KB), and
-                     stops them, including every process they started (Windows `taskkill /T`)
+    read_background.rs  returns a background task's output after the offset the model passes
+    kill_background.rs  stops a background task and every process it started
+    jobs.rs          the background tasks' bookkeeping: ids, commands, output (capped at 100 KB), and
+                     read offsets. It holds no OS process handling.
+    process/         the one place that starts, stops, and reaps OS processes; Windows only today
+                     (Job Object, kill-on-close). Another platform adds a sibling module here.
+    fs/              the file tools, each one file, with path.rs
+      mod.rs         declares its children
+      path.rs        confine (existing paths) and confine_new (paths a write creates)
+      list_directory.rs  recursive listing to a depth of 1 to 5
+      read_file.rs   a 1-based line range, capped at 500 lines or 100 KB
+      create_file.rs a new file; fails if the path exists
+      create_directory.rs  creates missing parents; succeeds if the directory exists
+      edit_file.rs   one exact, unique replacement in an existing file
 ```
 
 Dependencies (an arrow means "may depend on"; there are no cycles):
@@ -119,6 +133,8 @@ repl -> provider::types, session, tools::types, error
 provider -> session (Message, Turn, over_budget), tools (registry and types), error
 session -> environment, tools::types (ToolCall only)
 tools -> tools' own types, std (no provider, session, HTTP, or serde)
+tools::process -> std and the platform binding (Windows Job Object); nothing outside tools::process
+                  names a platform API
 ```
 
 ## Rules
@@ -157,7 +173,12 @@ Turn and history
 - **Failed turns forget their writes.** A turn that writes and then fails (round limit, transport error,
   `ContextFullAfterChange`) commits none of its messages. The files stay changed, the next turn does not
   know it, and the user sees only the error. A failed turn must record the writes it applied, and its
-  error must name the changed paths.
+  error must name the changed paths. The same holds for background tasks: a task started in a failed turn
+  keeps running, and its id is lost with the turn.
+- **Replayed reads lose output.** `read_background` advances the task's read position when it runs. If the
+  turn is then retried (`ContextFull` before any write) or fails, the output that read returned never
+  reaches the model, and the retry sees only what came after. Reads must take the offset from the
+  conversation (see Invariants).
 - **Turn shape is loosened.** `Turn::new` accepts a plain assistant message directly after the user
   message, and the test `summary_may_precede_tool_rounds` requires it. Nothing produces such a message:
   summaries live in `Conversation::compact`. The allowance and its test must go.
@@ -233,7 +254,20 @@ Commands (`run_powershell`)
   further execution tools wait for this.
 - **The command runs only on Windows.** `run_powershell` starts `powershell.exe` with no platform split.
   The process handling belongs behind one module boundary, with the Windows implementation behind it, so
-  another platform adds an implementation rather than branches.
+  another platform adds an implementation rather than branches. Today `jobs.rs` holds the spawning and
+  the `taskkill` calls; they move to `tools::process`, which uses a Job Object.
+- **Interrupts orphan background tasks.** Ctrl+C ends the process without unwinding, so
+  `WorkspaceTools::drop` does not run and the PowerShell processes keep running. The Job Object's
+  kill-on-close flag is the fix; until it exists the invariant does not hold.
+- **Tree kill misses orphans.** `taskkill /T` finds processes by their parent link at stop time. A process
+  whose parent has already exited is not found, and keeps running after `kill_background` reports it
+  stopped.
+- **Background tasks are invisible to the user.** Tool output goes only to the model, so the user learns of
+  a task only if the model mentions it. Nothing lists tasks, and the user cannot see a task's output.
+- **Kill approval shows only the id.** `describe` prints "stop background task N". The command and state
+  are not shown, so the user approves a number, not the process it stops.
+- **Output is decoded per read.** `Output::since` converts each read's bytes lossily. A character split by
+  a read boundary or by the 100 KB cap becomes replacement characters.
 
 Security-relevant gaps are listed under Security.
 
@@ -271,7 +305,9 @@ Controls:
 | Plain HTTP refused unless the endpoint is loopback | Missing. The endpoint is a loopback constant. |
 | Size limits on user lines and response bodies | Missing. |
 | Size limits on tool output | `read_file` and background task output. `list_directory` has none. |
-| Limits on commands: time, process tree, output | Partly met. A foreground command waits at most 30 seconds, then becomes a background task. Stopping a task ends its process tree. Output is capped at 100 KB per task. Background tasks have no count limit. |
+| Limits on commands: time, process tree, output | Partly met. A foreground command waits at most 30 seconds, then becomes a background task. Stopping a task ends every process in its Job Object. Output is capped at 100 KB per task. Background tasks have no count limit. Interrupts and orphaned processes are not covered (Open Problems). |
+| Approval shows what a stop will end | Missing. `kill_background` shows only the id (Open Problems). |
+| The user can see what is running | Missing. No listing of background tasks (Open Problems). |
 | Tool results and summaries marked as untrusted data | Missing. |
 | Logging of approvals, writes, and commands | Missing. Commands are not logged (Open Problems). |
 | Environment disclosure (working directory sent every turn) | Missing. Only opt-in fields would be sent; today the path is always sent. |
@@ -288,6 +324,8 @@ Controls:
 - A `/compact` report that shows the summary and how many turns and tokens it replaced.
 - Token-aware trimming of old turns, as the fallback when a summary does not fit, in place of dropping the
   oldest turn outright.
+- A `/jobs` command that lists background tasks with their command, state, and age, and a way to read a
+  task's output from the terminal, so the user can see what is running before approving a stop.
 - Deletion and further execution tools, only after logging is implemented.
 
 ## Performance
