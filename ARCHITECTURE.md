@@ -30,6 +30,8 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
   never changes during a session.
 - **Enabled tools**: the tools the model may call. The runner holds the set, `/tools` changes it, and each
   request's grammar is built from it. A disabled tool is neither offered nor run.
+- **Tool note**: the line `[Tools enabled: ... Tools disabled: ...]` naming every tool and its state. It is
+  how the model is told the enabled set.
 - **Tool call form**: a reply consisting of `<tool_call>`, a JSON body with `name` and `arguments`, and
   `</tool_call>`. It is the only reply form that runs a tool. Any other reply is text.
 - **Write**: a tool call that changes the filesystem or runs or stops a program (`create_file`,
@@ -95,6 +97,10 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
   refuses it again before it runs.
 - Enabling or disabling a tool changes no committed message, and enabling a tool does not approve its writes.
   Each write still needs approval.
+- The model always knows the enabled set from the history it is sent. A user message carries the tool note
+  whenever the history does not already state the current set. The note is committed with that message, and
+  compaction or dropping a turn ends the statement it carried, so the next user message repeats it.
+- Each reply is capped at `max_tokens` 8192, so a reply that never closes its thinking block ends.
 - API keys are never printed, logged, or put in error text.
 - No function panics on bad input or failed I/O; fallible steps return `Result`.
 
@@ -117,10 +123,11 @@ src/
     types.rs         trait Provider: complete, context_size, summarize
     llama_cpp.rs     the HTTP client; wire structs; the tool-round loop; the 400 mapping
                      (bad_request); the /v1/models lookup; conversion between JSON arguments and Values;
-                     the catalogue joined to the first system message of each request
+                     the catalogue joined to the first system message of each request; the tool note
+                     prepended when the history does not state the enabled set (checked, not stored)
     grammar.rs       builds the GBNF grammar from the enabled tool names: thinking block, then text that
                      cannot contain the `<tool_call>` marker, or one call. Sent with each request.
-    prompt.rs        the tool catalogue text, from every ToolSpec, enabled or not
+    prompt.rs        the tool catalogue text, from every ToolSpec, enabled or not; the tool note
   tools/
     mod.rs           registry: specs(), call(name, values) -> Invocation; declares its children
     types.rs         ToolSpec, Param, ParamType, Value, Arguments, Invocation, ToolCall, ToolError,
@@ -162,7 +169,7 @@ tools::process -> std and the platform binding (Windows Job Object); nothing out
 
 - `provider::llama_cpp` is the only module that knows HTTP, `ureq`, the endpoint, the wire shapes, or
   the JSON form of tool specs and calls. Only `provider::grammar` knows the call syntax as a grammar, and
-  only `provider::prompt` knows the catalogue's text.
+  only `provider::prompt` knows the catalogue's text and the tool note's text.
 - The provider sends the grammar built from `ToolRunner::enabled()` on every request, and never a `tools`
   field. The provider never compares tool names: refusing a disabled tool is the runner's job.
 - `tools` never parses JSON and never imports the provider or the session. The provider decodes a
@@ -231,9 +238,6 @@ Turn and history
   so a range near the end of a large file costs the full file.
 
 Tool protocol
-- **The provider compares tool names.** `run_call` in `provider::llama_cpp` checks `enabled` before calling
-  `tools::call`. That is the wrong layer. `ToolRunner::run` should refuse a disabled invocation with a
-  `ToolError` variant (for example `Disabled`), and the provider should pass every call through unchanged.
 - **Two request formats.** A reply is requested as `<tool_call>` text, but earlier calls are resent as
   structured `tool_calls` with no `tools` field. The model sees its own calls in a form it is not asked to
   write. History should use the reply form, or the wire should use one form only.
@@ -246,8 +250,7 @@ Tool protocol
 - **The grammar assumes a thinking block.** The root rule forces the closing `</think>` on every turn reply.
   It does not force the opening tag, so the chat template must open the block. A server or template that
   does not is unhandled.
-- **Toggling is invisible to the model.** The catalogue lists disabled tools as well, so the model may
-  attempt one. The grammar blocks it with no message that says why.
+
 
 Errors and the provider boundary
 - **Misleading error for invalid JSON.** Invalid arguments decode to no arguments, so the model is told
@@ -353,7 +356,7 @@ Controls:
 | Approval shows what a stop will end | Missing. `kill_background` shows only the id (Open Problems). |
 | The user can see what is running | Missing. No listing of background tasks (Open Problems). |
 | Tool results and summaries marked as untrusted data | Missing. |
-| Tools run only when enabled | Partly met. The grammar and the runner's check enforce it. The provider's name check is the wrong layer (Open Problems). |
+| Tools run only when enabled | Met. The grammar constrains the reply and the runner refuses a disabled call. |
 | Plain text cannot run a tool | Met. Only the tool call form runs. A prose claim of a tool is committed without running (Open Problems). |
 | Arguments checked per tool | Met in `tools::call`, after the grammar. The grammar accepts any object (Open Problems). |
 | Enabling a tool | Accepted. `/tools enable` is the user's own action; each write still asks for approval. |
