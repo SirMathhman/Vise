@@ -76,7 +76,7 @@ mod tests {
         let cwd = std::env::temp_dir();
         let pid_file = cwd.join(format!("vise-child-{}.txt", std::process::id()));
         let command = format!(
-            "$p = Start-Process powershell -ArgumentList '-NoProfile','-Command','Start-Sleep 300' -PassThru; \
+            "$p = Start-Process powershell -WindowStyle Hidden -ArgumentList '-NoProfile','-Command','Start-Sleep 300' -PassThru; \
              Set-Content -LiteralPath '{}' -Value $p.Id; Start-Sleep 300",
             pid_file.display()
         );
