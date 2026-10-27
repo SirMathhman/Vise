@@ -49,7 +49,11 @@ pub fn run(
             Some(Command::Exit) => break,
             Some(Command::Help) => writeln!(output, "{HELP}")?,
             Some(Command::Compact) => match compact(provider, conversation) {
-                Ok(()) => writeln!(output, "conversation compacted")?,
+                Ok(Compaction::Summarized) => writeln!(output, "conversation compacted")?,
+                Ok(Compaction::Dropped(removed)) => writeln!(
+                    output,
+                    "the summary did not fit, so the oldest turn was dropped ({removed} messages removed)"
+                )?,
                 Err(err) => writeln!(errors, "error: {err}")?,
             },
             Some(Command::Context) => {
@@ -61,7 +65,10 @@ pub fn run(
                 }
             }
             None => match run_turn(provider, conversation, line, tools) {
-                Ok(turn) => {
+                Ok((turn, compaction)) => {
+                    if let Some(Compaction::Dropped(removed)) = compaction {
+                        writeln!(output, "the context was full, so the oldest turn was dropped ({removed} messages removed)")?;
+                    }
                     writeln!(output, "{}", turn.reply())?;
                     conversation.commit(turn);
                 }
@@ -72,40 +79,51 @@ pub fn run(
     Ok(())
 }
 
+/// How the history was shrunk: replaced by a summary, or cut by dropping the oldest turn.
+#[derive(Clone, Copy)]
+enum Compaction {
+    Summarized,
+    Dropped(usize),
+}
+
 /// Replaces the older history with a summary the model writes of it. If the summary request does not
 /// fit in the context, the oldest turn is dropped instead.
-fn compact(provider: &dyn Provider, conversation: &mut Conversation) -> Result<(), ProviderError> {
+fn compact(provider: &dyn Provider, conversation: &mut Conversation) -> Result<Compaction, ProviderError> {
     match provider.summarize(conversation.messages()) {
-        Ok(summary) => conversation.compact(summary),
-        Err(ProviderError::ContextFull) => conversation.drop_oldest_turn(),
-        Err(err) => return Err(err),
+        Ok(summary) => {
+            conversation.compact(summary);
+            Ok(Compaction::Summarized)
+        }
+        Err(ProviderError::ContextFull) => Ok(Compaction::Dropped(conversation.drop_oldest_turn())),
+        Err(err) => Err(err),
     }
-    Ok(())
 }
 
 /// Compacts the conversation before a turn when its last prompt has reached the budget.
-fn compact_if_full(provider: &dyn Provider, conversation: &mut Conversation) -> Result<(), ProviderError> {
+fn compact_if_full(provider: &dyn Provider, conversation: &mut Conversation) -> Result<Option<Compaction>, ProviderError> {
     if conversation.needs_compaction(provider.context_size()?) {
-        compact(provider, conversation)?;
+        Ok(Some(compact(provider, conversation)?))
+    } else {
+        Ok(None)
     }
-    Ok(())
 }
 
 /// Sends a turn. If the context fills up during it, the conversation is compacted and the turn is
-/// sent once more from the compacted history.
+/// sent once more from the compacted history. Returns the turn and the last compaction it needed.
 fn run_turn(
     provider: &dyn Provider,
     conversation: &mut Conversation,
     line: String,
     tools: &dyn ToolRunner,
-) -> Result<Turn, ProviderError> {
-    compact_if_full(provider, conversation)?;
+) -> Result<(Turn, Option<Compaction>), ProviderError> {
+    let mut compaction = compact_if_full(provider, conversation)?;
     match provider.complete(conversation.messages(), line.clone(), tools) {
         Err(ProviderError::ContextFull) => {
-            compact(provider, conversation)?;
-            provider.complete(conversation.messages(), line, tools)
+            compaction = Some(compact(provider, conversation)?);
+            let turn = provider.complete(conversation.messages(), line, tools)?;
+            Ok((turn, compaction))
         }
-        result => result,
+        result => Ok((result?, compaction)),
     }
 }
 
@@ -236,5 +254,33 @@ mod tests {
         assert_eq!(messages[3].role(), "tool");
         assert_eq!(messages[3].tool_call_id(), Some("call_1"));
         assert_eq!(output, "done\n");
+    }
+
+    struct ClosedWriter;
+
+    impl Write for ClosedWriter {
+        fn write(&mut self, _buf: &[u8]) -> io::Result<usize> {
+            Err(io::Error::from(io::ErrorKind::BrokenPipe))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn closed_error_stream_is_returned_as_an_error() {
+        let fake = Fake::new(Behavior::Fail);
+        let mut conversation = conversation();
+        let mut output = Vec::new();
+        let result = run(
+            "hi\n".as_bytes(),
+            &mut output,
+            &mut ClosedWriter,
+            &fake,
+            &NoTools,
+            &mut conversation,
+        );
+        assert!(result.is_err());
     }
 }

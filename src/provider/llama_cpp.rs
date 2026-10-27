@@ -195,6 +195,16 @@ struct ErrorInfo {
 /// llama.cpp's error type for a request that does not fit in the context window.
 const CONTEXT_OVERFLOW: &str = "exceed_context_size_error";
 
+/// Maps the body of a 400 response: a context overflow becomes `ContextFull`, and any other error
+/// becomes a transport error that carries the server's message.
+fn bad_request(body: &str) -> ProviderError {
+    match serde_json::from_str::<ErrorBody>(body) {
+        Ok(error) if error.error.kind == CONTEXT_OVERFLOW => ProviderError::ContextFull,
+        Ok(error) => ProviderError::Transport(error.error.message.into()),
+        Err(err) => ProviderError::Transport(Box::new(err)),
+    }
+}
+
 #[derive(Deserialize)]
 struct Models {
     data: Vec<ModelInfo>,
@@ -342,15 +352,11 @@ fn send(api_key: &str, wire: &[WireMessage], tools: Option<&[WireTool]>) -> Resu
         .map_err(|err| ProviderError::Transport(Box::new(err)))?;
     let status = response.status().as_u16();
     if status == 400 {
-        let error: ErrorBody = response
+        let body = response
             .body_mut()
-            .read_json()
+            .read_to_string()
             .map_err(|err| ProviderError::Transport(Box::new(err)))?;
-        return Err(if error.error.kind == CONTEXT_OVERFLOW {
-            ProviderError::ContextFull
-        } else {
-            ProviderError::Transport(error.error.message.into())
-        });
+        return Err(bad_request(&body));
     }
     if !(200..300).contains(&status) {
         return Err(ProviderError::Transport(format!("the server returned status {status}").into()));
@@ -362,4 +368,23 @@ fn send(api_key: &str, wire: &[WireMessage], tools: Option<&[WireTool]>) -> Resu
     let prompt_tokens = body.usage.map_or(0, |usage| usage.prompt_tokens);
     let message = body.choices.into_iter().next().ok_or(ProviderError::EmptyResponse)?.message;
     Ok((message, prompt_tokens))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recorded_overflow_body_is_context_full() {
+        let body = r#"{"error":{"code":400,"message":"request (400040 tokens) exceeds the available context size (262144 tokens), try increasing it","type":"exceed_context_size_error","n_prompt_tokens":400040,"n_ctx":262144}}"#;
+        assert!(matches!(bad_request(body), ProviderError::ContextFull));
+    }
+
+    #[test]
+    fn other_bad_request_is_a_transport_error_with_the_server_message() {
+        let body = r#"{"error":{"code":400,"message":"model name is missing from the request","type":"invalid_request_error"}}"#;
+        let error = bad_request(body);
+        assert!(matches!(error, ProviderError::Transport(_)));
+        assert!(error.to_string().contains("model name is missing from the request"));
+    }
 }

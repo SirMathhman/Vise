@@ -139,6 +139,8 @@ Rules:
   the working directory, and returns text or a `ToolError`. Adding a tool means one new file under
   `tools/` holding its `SPEC` and its `bind` function, one `Invocation` variant, one arm in
   `runner.rs`, and one entry in the registry's spec list; `provider` and `session` do not change.
+- Mapping an HTTP status and response body to a `ProviderError` is a pure function, kept apart from the
+  `ureq` call, so every status and body shape is tested without a server.
 - The provider never names the working directory. The caller passes a `&dyn ToolRunner` (built from
   the working directory in `main`), so tool execution is injected rather than looked up by the
   provider.
@@ -237,17 +239,20 @@ Rules:
   different failures with different fixes; they need distinct variants that name the model.
 - **Plain HTTP.** The default endpoint is `http://127.0.0.1`, so the bearer token crosses the
   network unencrypted if the endpoint is ever pointed at a remote host.
-- **Overflow is not recognized.** `ContextFull` is produced only when a reply's prompt count reaches
-  the 80% budget. A server rejection for exceeding the context is mapped to `Transport`, which says
-  "check that the server is running", so the retry never happens. A tool round whose results push the
-  next request past the window fails this way. The rejection must be mapped to `ContextFull`.
+- **Overflow detection depends on one body shape.** A 400 becomes `ContextFull` only when its body
+  parses as `{error: {message, type}}` with type `exceed_context_size_error`. Any other 400, including
+  one whose body is not JSON or lacks `type`, becomes `Transport` with the "check that the server is
+  running" hint, so a real overflow is reported as a dead server and never retried. The mapping from
+  status and body to `ProviderError` must tolerate missing fields and keep the body text when it cannot
+  be parsed.
 - **Budget threshold in the provider.** `provider::llama_cpp` imports `over_budget` and decides
   `ContextFull` from it. The threshold belongs to `session`, passed in as a `PromptLimit`.
 - **Summary discarded by its own check.** `summarize_messages` returns `ContextFull` when the summary
   request's prompt is at 80%, even though the request succeeded and returned a usable summary. The
   caller then drops the oldest turn instead. The success is discarded for a budget, not a failure.
-- **Fallback reported as success.** When the summary request is rejected for overflow, `/compact`
-  drops the oldest turn and still prints "conversation compacted". The user is not told a turn was lost.
+- **Fallback reported as success.** When the summary request is rejected for overflow (a server 400, or
+  the budget check), `/compact` drops the oldest turn and still prints "conversation compacted". The user
+  is not told a turn was lost. The server path makes this reachable in practice, not only in theory.
 - **Repeated compaction.** If the context size is small or the summary is large, the conversation
   can reach 80% on every turn, so each turn pays for a full summary request. The REPL should report
   when a compaction did not free enough space.
@@ -283,7 +288,8 @@ What untrusted input can reach:
   later tool calls and replies. Because tool exchanges are committed to history, an injected
   instruction keeps influencing every later turn of the session, not only the one that read it.
 - Error text from the HTTP layer may echo response bodies, which could contain secrets or
-  attacker-controlled text.
+  attacker-controlled text. A 400 body's `error.message` is echoed into the terminal text of
+  `ProviderError::Transport` and must pass through the same sanitization as model replies.
 
 Required controls and status:
 - **Terminal output sanitization**: strip or escape control characters from model replies before
@@ -337,6 +343,8 @@ Required controls and status:
 - `read_file` streams lines through a buffered reader and stops at its budget or the end line.
 - Configuration loaded from a file or environment with overrides for endpoint, model, timeouts,
   and history budget.
+- Status and body classification as the pure function described under Structure, with tests for an
+  overflow body that is not JSON, one that lacks `type`, and a non-overflow 400.
 - Token-aware history trimming that keeps the context message and the most recent turns, used as the
   deterministic fallback when a summary request does not fit.
 - Compaction budget set from configuration, and a `/compact` report that shows the user the summary

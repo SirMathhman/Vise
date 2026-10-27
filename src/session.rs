@@ -151,7 +151,8 @@ impl Conversation {
     }
 
     /// Drops the oldest part of the history: the summary if there is one, otherwise the oldest turn.
-    pub fn drop_oldest_turn(&mut self) {
+    /// Returns how many messages were removed.
+    pub fn drop_oldest_turn(&mut self) -> usize {
         let end = self
             .messages
             .iter()
@@ -161,6 +162,7 @@ impl Conversation {
             .map_or(self.messages.len(), |(index, _)| index);
         self.messages.drain(1..end);
         self.prompt_tokens = 0;
+        end - 1
     }
 
     /// The prompt tokens the model reported for the most recent request, or 0 before any turn.
