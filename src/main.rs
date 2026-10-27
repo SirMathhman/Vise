@@ -25,6 +25,9 @@ fn main() {
 
     let env = environment::gather()
         .unwrap_or_else(|err| exit_with(&format!("error: cannot read current directory: {err}")));
+    if let Err(err) = environment::instructions(&env.cwd) {
+        exit_with(&format!("error: {err}"));
+    }
     let provider = LlamaCpp::new(api_key);
     let tools = WorkspaceTools::new(env.cwd.clone());
     let mut conversation = Conversation::new(&env);

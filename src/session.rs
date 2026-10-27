@@ -114,7 +114,8 @@ pub struct Conversation {
 impl Conversation {
     pub fn new(env: &Environment) -> Self {
         let mut context = format!("Current working directory: {}", env.cwd.display());
-        if let Some(instructions) = environment::instructions(&env.cwd) {
+        // `main` reports an error from reading the file before the session starts, so it is ignored here.
+        if let Some(instructions) = environment::instructions(&env.cwd).ok().flatten() {
             context.push_str("\n\n");
             context.push_str(&instructions);
         }

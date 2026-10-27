@@ -245,13 +245,6 @@ Turn and history
   turn is then retried (`ContextFull` before any write) or fails, the output that read returned never
   reaches the model, and the retry sees only what came after. Reads must take the offset from the
   conversation (see Invariants).
-- **Standing instructions are unbounded.** `environment::instructions` reads the whole file into the context
-  message. Compaction keeps that message, so an oversized file makes every request overflow, and the session
-  cannot recover without restarting after the file is cut down. The file needs a byte limit, and an
-  oversized file must be a structured error that names the path and its size.
-- **Instruction read errors are dropped.** `instructions` returns `None` for every failure, so a permission
-  error or a file that is not UTF-8 starts the session as if no file existed, and the user is not told. Only
-  a missing file may be skipped silently; other causes must be reported at startup.
 - **Turn shape is loosened.** `Turn::new` accepts a plain assistant message directly after the user
   message, and the test `summary_may_precede_tool_rounds` requires it. Nothing produces such a message:
   summaries live in `Conversation::compact`. The allowance and its test must go.
