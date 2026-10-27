@@ -1,5 +1,5 @@
 use super::path;
-use super::{Param, ParamType, ToolError, ToolSpec};
+use super::types::{Param, ParamType, ToolError, ToolSpec};
 use serde::Deserialize;
 use std::fs;
 use std::io;

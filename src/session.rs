@@ -1,5 +1,5 @@
 use crate::environment::Environment;
-use crate::tools::ToolCall;
+use crate::tools::types::ToolCall;
 
 #[derive(Clone, Copy)]
 pub enum Role {

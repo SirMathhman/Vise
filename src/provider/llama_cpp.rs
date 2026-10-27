@@ -1,6 +1,8 @@
-use crate::provider::{MAX_TOOL_ROUNDS, Provider, ProviderError};
+use crate::error::{MAX_TOOL_ROUNDS, ProviderError};
+use crate::provider::types::Provider;
 use crate::session::{Message, Role, Turn};
-use crate::tools::{self, ParamType, ToolCall, ToolRunner, ToolSpec};
+use crate::tools::types::{ParamType, ToolCall, ToolRunner, ToolSpec};
+use crate::tools;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 

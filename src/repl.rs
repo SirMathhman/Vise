@@ -1,6 +1,6 @@
-use crate::provider::Provider;
+use crate::provider::types::Provider;
 use crate::session::Conversation;
-use crate::tools::ToolRunner;
+use crate::tools::types::ToolRunner;
 use std::io::{self, BufRead, Write};
 
 pub fn run(
@@ -37,9 +37,9 @@ pub fn run(
 mod tests {
     use super::*;
     use crate::environment::Environment;
-    use crate::provider::ProviderError;
+    use crate::error::ProviderError;
     use crate::session::{Message, Role, Turn};
-    use crate::tools::{ToolCall, ToolError};
+    use crate::tools::types::{ToolCall, ToolError};
     use std::cell::RefCell;
     use std::path::PathBuf;
 

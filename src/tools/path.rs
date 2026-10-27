@@ -1,4 +1,4 @@
-use super::ToolError;
+use super::types::ToolError;
 use std::path::{Path, PathBuf};
 
 pub fn confine(cwd: &Path, requested: &str) -> Result<PathBuf, ToolError> {
