@@ -1,13 +1,14 @@
 use crate::error::{MAX_TOOL_ROUNDS, ProviderError};
 use crate::provider::grammar;
 use crate::provider::prompt;
-use crate::provider::types::Provider;
+use crate::provider::types::{Event, Provider};
 use crate::session::{Message, Turn, over_budget};
 use crate::tools::types::{ToolCall, ToolError, ToolRunner, Value};
 use crate::tools;
 use serde::{Deserialize, Serialize};
 use std::cell::OnceCell;
 use std::collections::HashMap;
+use std::io::{BufRead, BufReader};
 
 const URL: &str = "http://127.0.0.1:9931/v1/chat/completions";
 const MODELS_URL: &str = "http://127.0.0.1:9931/v1/models";
@@ -18,7 +19,8 @@ const TOOL_CLOSE: &str = "</tool_call>";
 /// Caps one reply, so a reply that never closes its thinking block cannot run on indefinitely.
 const MAX_REPLY_TOKENS: u32 = 8192;
 
-/// No `tools` field is sent: the grammar, built from the enabled tools, is what limits the calls.
+/// No `tools` field is sent: the grammar, built from the enabled tools, is what limits the calls. The reply
+/// is streamed, and the last chunk carries the usage.
 #[derive(Serialize)]
 struct Request<'a> {
     model: &'static str,
@@ -26,6 +28,13 @@ struct Request<'a> {
     max_tokens: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     grammar: Option<&'a str>,
+    stream: bool,
+    stream_options: StreamOptions,
+}
+
+#[derive(Serialize)]
+struct StreamOptions {
+    include_usage: bool,
 }
 
 #[derive(Serialize)]
@@ -115,10 +124,23 @@ fn to_json(value: &Value) -> serde_json::Value {
     }
 }
 
+/// One `data:` line of the streamed reply. The last chunk has no choices and carries the usage.
 #[derive(Deserialize)]
-struct Response {
-    choices: Vec<Choice>,
+struct Chunk {
+    #[serde(default)]
+    choices: Vec<ChunkChoice>,
     usage: Option<Usage>,
+}
+
+#[derive(Deserialize)]
+struct ChunkChoice {
+    delta: Delta,
+}
+
+#[derive(Deserialize)]
+struct Delta {
+    content: Option<String>,
+    reasoning_content: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -169,16 +191,6 @@ struct ModelMeta {
     n_ctx: u64,
 }
 
-#[derive(Deserialize)]
-struct Choice {
-    message: ReplyMessage,
-}
-
-#[derive(Deserialize)]
-struct ReplyMessage {
-    content: Option<String>,
-}
-
 pub struct LlamaCpp {
     api_key: String,
     context: OnceCell<u64>,
@@ -211,11 +223,10 @@ impl LlamaCpp {
     fn summarize_messages<'a>(&self, messages: impl Iterator<Item = &'a Message>) -> Result<String, ProviderError> {
         let mut wire: Vec<WireMessage> = messages.map(WireMessage::try_from).collect::<Result<_, _>>()?;
         wire.push(WireMessage::try_from(&Message::User(SUMMARY_REQUEST.into()))?);
-        let (reply, prompt_tokens) = send(&self.api_key, &wire, None)?;
+        let (summary, prompt_tokens) = send(&self.api_key, &wire, None, &mut |_| {})?;
         if over_budget(prompt_tokens, self.context_size()?) {
             return Err(ProviderError::ContextFull);
         }
-        let summary = reply.content.unwrap_or_default();
         if summary.trim().is_empty() {
             return Err(ProviderError::EmptySummary);
         }
@@ -234,6 +245,18 @@ impl Provider for LlamaCpp {
         runner: &dyn ToolRunner,
         approve: &mut dyn FnMut(&str) -> bool,
     ) -> Result<Turn, ProviderError> {
+        self.complete_streaming(history, input, runner, approve, &mut |_| {})
+    }
+
+    /// The exchange of `complete`, reporting the reply as it streams through `on_event`.
+    fn complete_streaming(
+        &self,
+        history: &[Message],
+        input: String,
+        runner: &dyn ToolRunner,
+        approve: &mut dyn FnMut(&str) -> bool,
+        on_event: &mut dyn FnMut(Event),
+    ) -> Result<Turn, ProviderError> {
         let enabled = runner.enabled();
         let grammar = grammar::build(&enabled);
         let catalogue = prompt::catalogue();
@@ -248,11 +271,10 @@ impl Provider for LlamaCpp {
         let mut wrote = false;
         for _ in 0..MAX_TOOL_ROUNDS {
             let wire = wire_messages(&catalogue, history.iter().chain(&new))?;
-            let (reply, prompt_tokens) = match send(&self.api_key, &wire, Some(&grammar)) {
+            let (content, prompt_tokens) = match send(&self.api_key, &wire, Some(&grammar), &mut *on_event) {
                 Err(ProviderError::ContextFull) if wrote => return Err(ProviderError::ContextFullAfterChange),
                 sent => sent?,
             };
-            let content = reply.content.unwrap_or_default();
             let Some(call) = parse_call(&content, format!("call-{}", new.len())) else {
                 new.push(Message::Assistant { content, tool_calls: Vec::new() });
                 return Turn::new(new)
@@ -326,8 +348,23 @@ fn to_value(value: serde_json::Value) -> Value {
 /// reported none).
 const SUMMARY_REQUEST: &str = "Summarize your conversation with the user";
 
-fn send(api_key: &str, wire: &[WireMessage], grammar: Option<&str>) -> Result<(ReplyMessage, u64), ProviderError> {
-    let request = Request { model: MODEL, messages: wire, max_tokens: MAX_REPLY_TOKENS, grammar };
+/// Sends one streamed request. Returns the whole reply text and the prompt tokens llama.cpp counted (0 if it
+/// reported none). `on_event` receives thinking counts and answer text as they arrive, and a final `Finished`.
+/// Tool calls are never reported as answer text, because a reply that starts with `<tool_call>` is a call.
+fn send(
+    api_key: &str,
+    wire: &[WireMessage],
+    grammar: Option<&str>,
+    on_event: &mut dyn FnMut(Event),
+) -> Result<(String, u64), ProviderError> {
+    let request = Request {
+        model: MODEL,
+        messages: wire,
+        max_tokens: MAX_REPLY_TOKENS,
+        grammar,
+        stream: true,
+        stream_options: StreamOptions { include_usage: true },
+    };
     let mut response = ureq::post(URL)
         .config()
         .http_status_as_error(false)
@@ -346,13 +383,82 @@ fn send(api_key: &str, wire: &[WireMessage], grammar: Option<&str>) -> Result<(R
     if !(200..300).contains(&status) {
         return Err(ProviderError::Transport(format!("the server returned status {status}").into()));
     }
-    let body: Response = response
-        .body_mut()
-        .read_json()
-        .map_err(|err| ProviderError::Transport(Box::new(err)))?;
-    let prompt_tokens = body.usage.map_or(0, |usage| usage.prompt_tokens);
-    let message = body.choices.into_iter().next().ok_or(ProviderError::EmptyResponse)?.message;
-    Ok((message, prompt_tokens))
+    let mut stream = Stream::default();
+    let mut prompt_tokens = 0;
+    for line in BufReader::new(response.body_mut().as_reader()).lines() {
+        let line = line.map_err(|err| ProviderError::Transport(Box::new(err)))?;
+        let Some(data) = line.strip_prefix("data: ") else { continue };
+        if data == "[DONE]" {
+            break;
+        }
+        let chunk: Chunk = serde_json::from_str(data).map_err(|err| ProviderError::Transport(Box::new(err)))?;
+        prompt_tokens += chunk.usage.map_or(0, |usage| usage.prompt_tokens);
+        for choice in chunk.choices {
+            if choice.delta.reasoning_content.is_some_and(|text| !text.is_empty()) {
+                stream.thinking_tokens += 1;
+                on_event(Event::Thinking(stream.thinking_tokens));
+            }
+            if let Some(text) = choice.delta.content {
+                stream.push(&text, on_event);
+            }
+        }
+    }
+    stream.finish(on_event);
+    on_event(Event::Finished);
+    Ok((stream.content, prompt_tokens))
+}
+
+/// The reply as it arrives. Text is held back until it is known not to be a tool call, so a call is never
+/// shown.
+#[derive(Default)]
+struct Stream {
+    content: String,
+    thinking_tokens: usize,
+    /// `None` until the start of the reply decides it, then whether it is a tool call.
+    is_call: Option<bool>,
+    /// Bytes of `content` already reported as answer text.
+    shown: usize,
+}
+
+impl Stream {
+    fn push(&mut self, text: &str, on_event: &mut dyn FnMut(Event)) {
+        self.content.push_str(text);
+        if self.is_call.is_none() {
+            self.is_call = reply_kind(&self.content);
+        }
+        if self.is_call == Some(false) {
+            self.show(on_event);
+        }
+    }
+
+    /// At the end, an undecided reply can only be text, because a call's start decides it.
+    fn finish(&mut self, on_event: &mut dyn FnMut(Event)) {
+        if self.is_call.is_none() {
+            self.is_call = Some(false);
+            self.show(on_event);
+        }
+    }
+
+    fn show(&mut self, on_event: &mut dyn FnMut(Event)) {
+        let text = self.content[self.shown..].to_string();
+        self.shown = self.content.len();
+        if !text.is_empty() {
+            on_event(Event::Answer(text));
+        }
+    }
+}
+
+/// Decides from the start of a reply whether it is a tool call: `Some(true)` for a call, `Some(false)` for
+/// text, and `None` while its start could still become either.
+fn reply_kind(content: &str) -> Option<bool> {
+    let start = content.trim_start();
+    if start.starts_with(TOOL_OPEN) {
+        Some(true)
+    } else if TOOL_OPEN.starts_with(start) {
+        None
+    } else {
+        Some(false)
+    }
 }
 
 #[cfg(test)]

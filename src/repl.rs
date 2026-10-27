@@ -1,9 +1,10 @@
 use crate::error::ProviderError;
 use crate::profile;
-use crate::provider::types::Provider;
+use crate::provider::types::{Event, Provider};
 use crate::session::{Conversation, Message, Turn};
 use crate::tools::specs;
 use crate::tools::types::{ToolError, ToolRunner};
+use std::cell::{Cell, RefCell};
 use std::io::{self, BufRead, Write};
 
 const HELP: &str = "\
@@ -163,18 +164,47 @@ pub fn run(
                 }
             }
             None => {
-                // Approval prompts read their answers from the same input as the lines themselves.
-                let mut approve = |change: &str| ask(change, &mut *output, &mut *input);
                 let message = match &profile {
                     Some(text) if !profile::carried(conversation.messages(), text) => format!("{text}\n\n{line}"),
                     _ => line,
                 };
-                match run_turn(provider, conversation, message, tools, &mut approve) {
+                // The answer and the approval prompts both write to `output`, so they share it.
+                let shown = RefCell::new(&mut *output);
+                let thinking_line = Cell::new(false);
+                let streamed = Cell::new(false);
+                let end_thinking = || {
+                    if thinking_line.replace(false) {
+                        let _ = writeln!(shown.borrow_mut());
+                    }
+                };
+                let mut on_event = |event: Event| match event {
+                    Event::Thinking(count) => {
+                        let mut out = shown.borrow_mut();
+                        let _ = write!(out, "\rthinking: {count} tokens");
+                        let _ = out.flush();
+                        thinking_line.set(true);
+                    }
+                    Event::Answer(text) => {
+                        end_thinking();
+                        streamed.set(true);
+                        let mut out = shown.borrow_mut();
+                        let _ = write!(out, "{text}");
+                        let _ = out.flush();
+                    }
+                    Event::Finished => end_thinking(),
+                };
+                // Approval prompts read their answers from the same input as the lines themselves.
+                let mut approve = |change: &str| ask(change, &mut *shown.borrow_mut(), &mut *input);
+                match run_turn(provider, conversation, message, tools, &mut approve, &mut on_event) {
                     Ok((turn, compaction)) => {
                         if let Some(Compaction::Dropped(removed)) = compaction {
                             writeln!(output, "the context was full, so the oldest turn was dropped ({removed} messages removed)")?;
                         }
-                        writeln!(output, "{}", turn.reply())?;
+                        if streamed.get() {
+                            writeln!(output)?;
+                        } else {
+                            writeln!(output, "{}", turn.reply())?;
+                        }
                         conversation.commit(turn);
                     }
                     Err(err) => writeln!(errors, "error: {err}")?,
@@ -240,12 +270,13 @@ fn run_turn(
     line: String,
     tools: &dyn ToolRunner,
     approve: &mut dyn FnMut(&str) -> bool,
+    on_event: &mut dyn FnMut(Event),
 ) -> Result<(Turn, Option<Compaction>), ProviderError> {
     let mut compaction = compact_if_full(provider, conversation)?;
-    match provider.complete(conversation.messages(), line.clone(), tools, approve) {
+    match provider.complete_streaming(conversation.messages(), line.clone(), tools, approve, on_event) {
         Err(ProviderError::ContextFull) => {
             compaction = Some(compact(provider, conversation)?);
-            let turn = provider.complete(conversation.messages(), line, tools, approve)?;
+            let turn = provider.complete_streaming(conversation.messages(), line, tools, approve, on_event)?;
             Ok((turn, compaction))
         }
         result => Ok((result?, compaction)),
