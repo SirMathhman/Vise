@@ -49,7 +49,11 @@ Target layout (current code is a subset):
 ```
 src/
   main.rs            entry point: load config, pick the provider, build session, run REPL, map errors to exit codes
-  repl.rs            line loop over generic BufRead/Write; command parsing ("exit", "quit"); commits turns
+  repl.rs            line loop over generic BufRead/Write; runs slash commands, sends every other line to
+                     the provider, writes the reply, commits the turn
+  commands.rs        Command enum (Exit, Context) and parse(line) -> Option<Command>; pure, no I/O.
+                     Any line that does not parse, including plain "exit", "quit", and unknown slash
+                     commands, is not a command
   session.rs         Message, Turn, Conversation: a Turn is appended whole or not at all; trimming
   config.rs          Config: endpoint URL, model name, timeouts, API key (from env / .env)
   environment.rs     gathers opt-in host facts as plain data (working directory first)
@@ -78,6 +82,7 @@ Dependency direction (arrows mean "may depend on"; no cycles):
 
 ```
 main -> repl -> session -> environment -> (plain data only)
+repl -> commands -> (plain data only)
 session -> tools (ToolCall only, plain data; a committed tool exchange records its calls)
 repl -> provider (trait) -> session (Message, Turn), tools (ToolRunner), error
 main -> config, repl, provider::llama_cpp (the only place a concrete provider is chosen)
@@ -113,6 +118,11 @@ Rules:
   `environment` (plain data out, `Result` on failure), and `session` formats them into the context
   message. `main` never builds `Message` values directly.
 - `repl` receives a `&dyn Provider` (or generic `P: Provider`) so it can be tested with a fake.
+- Slash commands are never sent to the provider. `commands` parses them; `repl` executes them:
+  `/exit` ends the loop, and `/context` writes `Conversation::context()` to the output. `repl` never
+  indexes into the conversation's message list; `Conversation::context()` is the only accessor for
+  the leading context message. Adding a command means one `Command` variant, one parse arm, and one
+  match arm in `repl`.
 - Dependencies are confined as follows: `dotenvy` and the API-key read live in `config`; `ureq`,
   `serde_json`, and `serde` derive macros for wire types live in `provider::llama_cpp`. No module
   under `tools/` depends on `serde` or `serde_json`.
@@ -159,8 +169,6 @@ Rules:
   pre-formatted `String`s. `ToolError::Failed` flattens I/O causes into text, so callers and tests
   cannot match on the cause. Payloads must be structured (for example `Io { path, source }`), and
   the provider's error type must be named `ProviderError` as in Structure.
-- **Startup output can panic.** The REPL writes through `writeln!` and returns write failures, but
-  `main` still uses `eprintln!` for its own messages, which panics when stderr is closed. Every write in `main` must go through a `Result` as well.
 - **`main` exits 0 on REPL failure.** `main` prints a REPL I/O error and returns normally, so a
   failed stdin or stdout exits with status 0. Structure says `main` maps errors to exit codes.
 - **Misleading error for invalid JSON arguments.** `decode` turns invalid JSON into no arguments, so
@@ -170,9 +178,6 @@ Rules:
   values. `Value::Unsupported` becomes `null` and invalid JSON becomes `{}`, so the model sees its own
   past calls differently from what it wrote. The model's arguments string should be kept verbatim
   alongside the decoded values, or the lossy form should be shown to the model as an error.
-- **Panic in argument encoding.** `llama_cpp::encode` calls `expect`. This breaks the no-panic
-  invariant, even though serialization of a plain object is not expected to fail. It should return a
-  `Result` through `ProviderError`.
 - **Configuration leaks into `main`.** `main` loads `.env` and reads `LLAMA_API_KEY` itself. The
   Rules place `dotenvy` and the key read in `config`, which does not exist yet.
 - **Tool errors live outside `error.rs`.** `ToolError` is defined in `tools/types.rs`, not in the
