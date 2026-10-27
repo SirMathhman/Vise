@@ -125,8 +125,17 @@ Rules:
   the provider's error type must be named `ProviderError` as in Structure.
 - **Output can panic.** `println!` panics when stdout is closed. The REPL must write through
   `writeln!` and treat a write failure as a reason to exit with an error code.
-- **The REPL is in `main`.** The line loop, exit words, and reply printing live in `main`, so the
-  turn handling cannot be tested without a terminal. The loop belongs in `repl.rs` (see Structure).
+- **Provider still owns the working directory.** `LlamaCpp` stores `cwd` and calls `tools::execute`
+  itself, so the provider names the working directory and depends on tool execution, which the Rules
+  forbid. Tool execution must arrive as a `&dyn ToolRunner` argument to `Provider::complete`.
+- **The trait erases the error type.** `Provider::complete` returns `Box<dyn Error>`, so the REPL
+  cannot match on error kinds and the typed `ProviderError` is hidden behind the trait.
+- **Invariants are enforced by convention only.** `Message` has public fields and can be a `Tool`
+  message with no call id; `Turn` has public fields, and tests construct it directly instead of
+  through the checked constructor. `Message` must become the enum described in Definitions.
+- **Tools decode JSON.** `tools::list_directory` calls `serde_json` and derives `serde::Deserialize`,
+  so the Rules (`tools` never parses JSON, no `serde` under `tools/`) are broken. Arguments must be
+  decoded into `tools::Invocation` in `provider::llama_cpp`.
 - **Provider errors are provider-specific.** `ProviderError` lives in `provider::llama_cpp` and its
   Display text names the llama.cpp URL and `.env`. A second provider would have to share that text,
   so the error type belongs in `error.rs` and each provider supplies its own help text.
@@ -194,9 +203,9 @@ Required controls and status:
 
 ## Future Work
 
-- Introduce `Provider` trait and move HTTP code behind it; keep `repl` and `session` free of `ureq`.
-- Extract `repl.rs` from `main` over generic `BufRead`/`Write`, so the turn loop runs in tests with a
-  fake provider.
+- Tool execution behind a `ToolRunner` trait in `tools/mod.rs`, built from the working directory in
+  `main` and passed to `Provider::complete`. `LlamaCpp` holds only the endpoint and the API key.
+- `Provider::complete` returns `Result<Turn, ProviderError>`; `ProviderError` moves to `error.rs`.
 - Make `Message` an enum with one variant per role (see Definitions), and make `Turn` construction
   checked (see Rules).
 - Typed tool invocations: `provider::llama_cpp` decodes arguments into a `tools::Invocation` enum,
@@ -207,8 +216,6 @@ Required controls and status:
 - Configuration loaded from a file or environment with overrides for endpoint, model, timeouts,
   and history budget.
 - Token-aware history trimming that keeps the context message and the most recent turns.
-- Unit tests with a fake `Provider` for REPL behavior (a failed turn leaves history unchanged, exit
-  words, empty lines, tool rounds committed in order).
 - Streaming responses, with the same sanitization applied per chunk.
 - Side-effecting tools only after the confirmation and logging policy above is implemented.
 

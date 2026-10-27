@@ -7,6 +7,7 @@ mod tools;
 use provider::llama_cpp::LlamaCpp;
 use session::Conversation;
 use std::io;
+use tools::WorkspaceTools;
 
 fn main() {
     dotenvy::dotenv().ok();
@@ -19,13 +20,21 @@ fn main() {
         eprintln!("error: cannot read current directory: {err}");
         std::process::exit(1);
     });
-    let provider = LlamaCpp::new(api_key, env.cwd.clone());
+    let provider = LlamaCpp::new(api_key);
+    let tools = WorkspaceTools::new(env.cwd.clone());
     let mut conversation = Conversation::new(&env);
 
     let stdout = io::stdout();
     let mut output = stdout.lock();
     let mut errors = io::stderr();
-    if let Err(err) = repl::run(io::stdin().lock(), &mut output, &mut errors, &provider, &mut conversation) {
+    if let Err(err) = repl::run(
+        io::stdin().lock(),
+        &mut output,
+        &mut errors,
+        &provider,
+        &tools,
+        &mut conversation,
+    ) {
         eprintln!("error: {err}");
     }
 }

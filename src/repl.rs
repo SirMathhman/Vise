@@ -1,5 +1,6 @@
 use crate::provider::Provider;
 use crate::session::Conversation;
+use crate::tools::ToolRunner;
 use std::io::{self, BufRead, Write};
 
 pub fn run(
@@ -7,6 +8,7 @@ pub fn run(
     output: &mut impl Write,
     errors: &mut impl Write,
     provider: &dyn Provider,
+    tools: &dyn ToolRunner,
     conversation: &mut Conversation,
 ) -> io::Result<()> {
     for line in input.lines() {
@@ -20,7 +22,7 @@ pub fn run(
         if matches!(line.trim(), "exit" | "quit") {
             break;
         }
-        match provider.complete(conversation.messages(), line) {
+        match provider.complete(conversation.messages(), line, tools) {
             Ok(turn) => {
                 writeln!(output, "{}", turn.reply())?;
                 conversation.commit(turn);
@@ -35,8 +37,9 @@ pub fn run(
 mod tests {
     use super::*;
     use crate::environment::Environment;
+    use crate::provider::ProviderError;
     use crate::session::{Message, Role, Turn};
-    use crate::tools::ToolCall;
+    use crate::tools::{ToolCall, ToolError};
     use std::cell::RefCell;
     use std::path::PathBuf;
 
@@ -58,7 +61,7 @@ mod tests {
     }
 
     impl Provider for Fake {
-        fn complete(&self, _history: &[Message], input: String) -> Result<Turn, Box<dyn std::error::Error>> {
+        fn complete(&self, _history: &[Message], input: String, _runner: &dyn ToolRunner) -> Result<Turn, ProviderError> {
             self.inputs.borrow_mut().push(input.clone());
             let messages = match self.behavior {
                 Behavior::Reply => vec![
@@ -81,9 +84,17 @@ mod tests {
                         Message::new(Role::Assistant, "done".into()),
                     ]
                 }
-                Behavior::Fail => return Err("boom".into()),
+                Behavior::Fail => return Err(ProviderError::Transport("boom".into())),
             };
             Ok(Turn { messages })
+        }
+    }
+
+    struct NoTools;
+
+    impl ToolRunner for NoTools {
+        fn run(&self, call: &ToolCall) -> Result<String, ToolError> {
+            Err(ToolError::UnknownTool(call.name.clone()))
         }
     }
 
@@ -94,7 +105,7 @@ mod tests {
     fn run_with(input: &str, provider: &Fake, conversation: &mut Conversation) -> (String, String) {
         let mut output = Vec::new();
         let mut errors = Vec::new();
-        run(input.as_bytes(), &mut output, &mut errors, provider, conversation).unwrap();
+        run(input.as_bytes(), &mut output, &mut errors, provider, &NoTools, conversation).unwrap();
         (String::from_utf8(output).unwrap(), String::from_utf8(errors).unwrap())
     }
 
@@ -104,7 +115,7 @@ mod tests {
         let mut conversation = conversation();
         let (output, errors) = run_with("hi\n", &fake, &mut conversation);
         assert_eq!(conversation.messages().len(), 1);
-        assert!(errors.contains("error: boom"));
+        assert!(errors.contains("error: request to the model failed (boom)"));
         assert!(output.is_empty());
     }
 
