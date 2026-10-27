@@ -102,3 +102,29 @@ fn read_pipe(mut pipe: impl Read) -> Vec<u8> {
     let _ = pipe.read_to_end(&mut buf);
     buf
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn timeout_stops_child_processes() {
+        let cwd = std::env::temp_dir();
+        let pid_file = cwd.join(format!("vise-child-{}.txt", std::process::id()));
+        let command = format!(
+            "$p = Start-Process powershell -ArgumentList '-NoProfile','-Command','Start-Sleep 300' -PassThru; \
+             Set-Content -LiteralPath '{}' -Value $p.Id; Start-Sleep 300",
+            pid_file.display()
+        );
+        let result = run(&command, &cwd);
+        assert!(matches!(result, Err(ToolError::Failed(ref message)) if message.contains("stopped")));
+        let pid = fs::read_to_string(&pid_file).unwrap().trim().to_string();
+        fs::remove_file(&pid_file).unwrap();
+        let listing = Command::new("tasklist")
+            .args(["/FI", &format!("PID eq {pid}"), "/NH"])
+            .output()
+            .unwrap();
+        assert!(!String::from_utf8_lossy(&listing.stdout).contains(&pid));
+    }
+}
