@@ -1,5 +1,5 @@
 use super::path;
-use super::types::{Param, ParamType, ToolError, ToolSpec};
+use super::types::{Arguments, Invocation, Param, ParamType, ToolError, ToolSpec};
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -21,7 +21,16 @@ pub const SPEC: ToolSpec = ToolSpec {
             description: "How many levels to list.",
         },
     ],
+    bind,
 };
+
+fn bind(args: &Arguments) -> Result<Invocation, ToolError> {
+    Ok(Invocation::ListDirectory {
+        path: args.text("path")?.to_string(),
+        depth: u8::try_from(args.integer("depth")?)
+            .map_err(|_| ToolError::InvalidArguments("'depth' is out of range".into()))?,
+    })
+}
 
 pub fn run(requested: &str, depth: u8, cwd: &Path) -> Result<String, ToolError> {
     if !(1..=MAX_DEPTH).contains(&depth) {

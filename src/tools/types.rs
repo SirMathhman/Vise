@@ -22,6 +22,7 @@ pub struct ToolSpec {
     pub name: &'static str,
     pub description: &'static str,
     pub params: &'static [Param],
+    pub bind: fn(&Arguments) -> Result<Invocation, ToolError>,
 }
 
 #[derive(Debug)]
@@ -56,7 +57,7 @@ pub struct Arguments {
 }
 
 impl Arguments {
-    pub fn validated(spec: &ToolSpec, values: HashMap<String, Value>) -> Result<Self, ToolError> {
+    pub(super) fn validated(spec: &ToolSpec, values: HashMap<String, Value>) -> Result<Self, ToolError> {
         for param in spec.params {
             let value = values
                 .get(param.name)
@@ -79,14 +80,14 @@ impl Arguments {
         Ok(Self { values })
     }
 
-    pub fn text(&self, name: &str) -> Result<&str, ToolError> {
+    pub(super) fn text(&self, name: &str) -> Result<&str, ToolError> {
         match self.values.get(name) {
             Some(Value::Text(text)) => Ok(text),
             _ => Err(ToolError::InvalidArguments(format!("'{name}' must be text"))),
         }
     }
 
-    pub fn integer(&self, name: &str) -> Result<i64, ToolError> {
+    pub(super) fn integer(&self, name: &str) -> Result<i64, ToolError> {
         match self.values.get(name) {
             Some(Value::Integer(n)) => Ok(*n),
             _ => Err(ToolError::InvalidArguments(format!("'{name}' must be an integer"))),

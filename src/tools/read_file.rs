@@ -1,5 +1,5 @@
 use super::path;
-use super::types::{Param, ParamType, ToolError, ToolSpec};
+use super::types::{Arguments, Invocation, Param, ParamType, ToolError, ToolSpec};
 use std::fs;
 use std::path::Path;
 
@@ -26,7 +26,18 @@ pub const SPEC: ToolSpec = ToolSpec {
             description: "Last line to read, 1-based and inclusive.",
         },
     ],
+    bind,
 };
+
+fn bind(args: &Arguments) -> Result<Invocation, ToolError> {
+    Ok(Invocation::ReadFile {
+        path: args.text("path")?.to_string(),
+        start: usize::try_from(args.integer("start")?)
+            .map_err(|_| ToolError::InvalidArguments("'start' is out of range".into()))?,
+        end: usize::try_from(args.integer("end")?)
+            .map_err(|_| ToolError::InvalidArguments("'end' is out of range".into()))?,
+    })
+}
 
 pub fn run(requested: &str, start: usize, end: usize, cwd: &Path) -> Result<String, ToolError> {
     if start == 0 {

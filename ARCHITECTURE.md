@@ -103,7 +103,8 @@ Rules:
   consumed inside `tools`, a call can never be bound with arguments validated against another spec.
   A tool receives its `Invocation` fields and the working directory, and returns text or a
   `ToolError`. Adding a tool means one new file under `tools/`, its `SPEC`, one arm in `bind`, and one
-  `Invocation` variant; `provider` and `session` do not change.
+  `Invocation` variant, one arm in `runner.rs`, and one entry in the registry's spec list; `provider`
+  and `session` do not change.
 - The provider never names the working directory. The caller passes a `&dyn ToolRunner` (built from
   the working directory in `main`), so tool execution is injected rather than looked up by the
   provider.
@@ -164,6 +165,18 @@ Rules:
 - **Name dispatch repeated in `bind`.** `tools::call` finds the `ToolSpec` once, but `bind` compares
   the name again, and its final `UnknownTool` arm cannot be reached from `call`. Each tool's
   invocation should be carried by its spec (or a typed key) so the name is matched exactly once.
+  `bind` and `Arguments::validated` are also `pub`, so the rule that a call is bound only with
+  arguments validated against its own spec is held by convention, not by visibility.
+- **Misleading error for invalid JSON arguments.** `decode` turns invalid JSON into no arguments, so
+  the model sees "missing 'path'" when the real cause is that its arguments were not valid JSON. The
+  error must name the cause, for example by carrying a `MalformedArguments` variant from the provider.
+- **Rewritten history.** The conversation is resent with each call's arguments re-encoded from plain
+  values. `Value::Unsupported` becomes `null` and invalid JSON becomes `{}`, so the model sees its own
+  past calls differently from what it wrote. The model's arguments string should be kept verbatim
+  alongside the decoded values, or the lossy form should be shown to the model as an error.
+- **Panic in argument encoding.** `llama_cpp::encode` calls `expect`. This breaks the no-panic
+  invariant, even though serialization of a plain object is not expected to fail. It should return a
+  `Result` through `ProviderError`.
 - **Configuration leaks into `main`.** `main` loads `.env` and reads `LLAMA_API_KEY` itself. The
   Rules place `dotenvy` and the key read in `config`, which does not exist yet.
 - **Tool errors live outside `error.rs`.** `ToolError` is defined in `tools/types.rs`, not in the
@@ -238,7 +251,8 @@ Required controls and status:
 ## Future Work
 
 - Each `ToolSpec` carries the means to build its `Invocation`, so `bind` no longer matches names
-  (see Potential Problems).
+  (see Potential Problems). `bind` and `Arguments::validated` become private to `tools/mod.rs`, so
+  arguments validated against one spec can only be bound through that spec.
 - Structured error enums per layer (`ProviderError`, `ToolError`, `ConfigError`, `SessionError`)
   in `error.rs`, with actionable messages.
 - Output budget and truncation notice for every tool, with the same line and byte limits as
