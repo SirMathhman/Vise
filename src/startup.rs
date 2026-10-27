@@ -1,12 +1,12 @@
 //! Startup commands: each line of `startup.txt` in the working directory is a PowerShell command, run once before the
 //! first prompt. Their output goes into the conversation with the first message the user sends.
 
+use crate::tools::runner::STARTUP_FILE;
 use crate::tools::types::{Invocation, ToolRunner};
 use std::fs;
 use std::io::{self, ErrorKind, Write};
 use std::path::Path;
 
-const FILE: &str = "startup.txt";
 /// How long each command may run in the foreground. A command still running after this becomes a background task.
 const TIMEOUT_SECS: u64 = 30;
 
@@ -18,11 +18,11 @@ pub fn run(
     output: &mut impl Write,
     errors: &mut impl Write,
 ) -> io::Result<Option<String>> {
-    let text = match fs::read_to_string(cwd.join(FILE)) {
+    let text = match fs::read_to_string(cwd.join(STARTUP_FILE)) {
         Ok(text) => text,
         Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
         Err(err) => {
-            writeln!(errors, "error: cannot read {FILE}: {err}")?;
+            writeln!(errors, "error: cannot read {STARTUP_FILE}: {err}")?;
             return Ok(None);
         }
     };
@@ -79,7 +79,7 @@ mod tests {
     fn each_line_runs_in_order_and_blank_lines_are_skipped() {
         let cwd = std::env::temp_dir().join(format!("vise-startup-{}", std::process::id()));
         fs::create_dir_all(&cwd).unwrap();
-        fs::write(cwd.join(FILE), "first\n\n  second  \n").unwrap();
+        fs::write(cwd.join(STARTUP_FILE), "first\n\n  second  \n").unwrap();
         let text = run(&cwd, &Echo, &mut Vec::<u8>::new(), &mut Vec::<u8>::new());
         fs::remove_dir_all(&cwd).unwrap();
         assert_eq!(

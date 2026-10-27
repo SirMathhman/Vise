@@ -1,3 +1,4 @@
+use super::fs::path::confine_new;
 use super::fs::{create_directory, create_file, edit_file, list_directory, read_file};
 use super::jobs::Jobs;
 use super::types::{Invocation, ToolError, ToolRunner};
@@ -5,6 +6,9 @@ use super::{kill_background, notes, read_background, run_powershell, specs};
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::path::PathBuf;
+
+/// The file in the working directory whose lines run before each session.
+pub const STARTUP_FILE: &str = "startup.txt";
 
 pub struct WorkspaceTools {
     cwd: PathBuf,
@@ -27,6 +31,15 @@ impl WorkspaceTools {
     /// Whether the model may use the note `name`.
     fn note_allowed(&self, name: &str) -> bool {
         self.allowed_notes.borrow().as_ref().is_none_or(|names| names.iter().any(|allowed| allowed == name))
+    }
+
+    /// Whether `path` names the startup file in the working directory, whatever its spelling.
+    fn is_startup_file(&self, path: &str) -> bool {
+        let (Ok(target), Ok(root)) = (confine_new(&self.cwd, path), self.cwd.canonicalize()) else {
+            return false;
+        };
+        target.parent() == Some(root.as_path())
+            && target.file_name().is_some_and(|name| name.eq_ignore_ascii_case(STARTUP_FILE))
     }
 }
 
@@ -70,6 +83,15 @@ impl ToolRunner for WorkspaceTools {
         if let Some(note) = invocation.note_name().filter(|note| !self.note_allowed(note)) {
             return Err(ToolError::Failed(format!("note '{note}' is not allowed by the profile")));
         }
+        // The file tools cannot change the startup commands. Changing them is left to run_powershell, whose approval
+        // text says when a command names the startup file.
+        if let Invocation::CreateFile { path, .. } | Invocation::EditFile { path, .. } = invocation
+            && self.is_startup_file(path)
+        {
+            return Err(ToolError::Failed(format!(
+                "'{STARTUP_FILE}' lists the commands run before each session, so the file tools cannot change it"
+            )));
+        }
         if invocation.writes() && !approve(&describe(invocation)) {
             return Err(ToolError::Failed("the user declined this change".into()));
         }
@@ -108,12 +130,17 @@ fn describe(invocation: &Invocation) -> String {
         Invocation::CreateDirectory { path } => format!("create directory '{path}'"),
         Invocation::EditFile { path, previous, new } => format!("edit '{path}':\n- {previous}\n+ {new}"),
         Invocation::RunPowerShell { command, timeout_secs, background } => {
-            if *background {
+            let text = if *background {
                 format!("start this PowerShell command as a background task:\n{command}")
             } else {
                 format!(
                     "run this PowerShell command, moving it to the background if it runs past {timeout_secs} seconds:\n{command}"
                 )
+            };
+            if command.to_ascii_lowercase().contains(STARTUP_FILE) {
+                format!("{text}\nThis may change {STARTUP_FILE}, whose lines run before every session.")
+            } else {
+                text
             }
         }
         Invocation::KillBackground { id } => format!("stop background task {id}"),
