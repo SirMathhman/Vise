@@ -42,6 +42,11 @@ impl fmt::Display for ToolError {
 
 impl std::error::Error for ToolError {}
 
+pub enum Invocation {
+    ListDirectory { path: String, depth: u8 },
+    ReadFile { path: String, start: usize, end: usize },
+}
+
 pub trait ToolRunner {
-    fn run(&self, call: &ToolCall) -> Result<String, ToolError>;
+    fn run(&self, invocation: &Invocation) -> Result<String, ToolError>;
 }

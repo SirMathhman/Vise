@@ -1,6 +1,5 @@
 use super::path;
 use super::types::{Param, ParamType, ToolError, ToolSpec};
-use serde::Deserialize;
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -24,22 +23,14 @@ pub const SPEC: ToolSpec = ToolSpec {
     ],
 };
 
-#[derive(Deserialize)]
-struct Args {
-    path: String,
-    depth: u8,
-}
-
-pub fn run(arguments: &str, cwd: &Path) -> Result<String, ToolError> {
-    let args: Args =
-        serde_json::from_str(arguments).map_err(|err| ToolError::InvalidArguments(err.to_string()))?;
-    if !(1..=MAX_DEPTH).contains(&args.depth) {
+pub fn run(requested: &str, depth: u8, cwd: &Path) -> Result<String, ToolError> {
+    if !(1..=MAX_DEPTH).contains(&depth) {
         return Err(ToolError::InvalidArguments(format!("depth must be between 1 and {MAX_DEPTH}")));
     }
-    let target = path::confine(cwd, &args.path)?;
+    let target = path::confine(cwd, requested)?;
     let mut entries = Vec::new();
-    walk(&target, "", args.depth, &mut entries)
-        .map_err(|err| ToolError::Failed(format!("cannot list '{}': {err}", args.path)))?;
+    walk(&target, "", depth, &mut entries)
+        .map_err(|err| ToolError::Failed(format!("cannot list '{requested}': {err}")))?;
     Ok(entries.join("\n"))
 }
 

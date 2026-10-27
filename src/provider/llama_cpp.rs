@@ -1,7 +1,7 @@
 use crate::error::{MAX_TOOL_ROUNDS, ProviderError};
 use crate::provider::types::Provider;
 use crate::session::{Message, Role, Turn};
-use crate::tools::types::{ParamType, ToolCall, ToolRunner, ToolSpec};
+use crate::tools::types::{Invocation, ParamType, ToolCall, ToolError, ToolRunner, ToolSpec};
 use crate::tools;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -181,7 +181,9 @@ impl Provider for LlamaCpp {
                 .iter()
                 .map(|call| Message {
                     role: Role::Tool,
-                    content: runner.run(call).unwrap_or_else(|err| format!("error: {err}")),
+                    content: invocation(call)
+                        .and_then(|invocation| runner.run(&invocation))
+                        .unwrap_or_else(|err| format!("error: {err}")),
                     tool_calls: Vec::new(),
                     tool_call_id: Some(call.id.clone()),
                 })
@@ -190,6 +192,33 @@ impl Provider for LlamaCpp {
             new.extend(results);
         }
         Err(ProviderError::TooManyToolRounds)
+    }
+}
+
+#[derive(Deserialize)]
+struct ListArgs {
+    path: String,
+    depth: u8,
+}
+
+#[derive(Deserialize)]
+struct ReadArgs {
+    path: String,
+    start: usize,
+    end: usize,
+}
+
+/// Decodes a model's tool call into a typed invocation, so the tools never see raw JSON.
+fn invocation(call: &ToolCall) -> Result<Invocation, ToolError> {
+    let invalid = |err: serde_json::Error| ToolError::InvalidArguments(err.to_string());
+    if call.name == tools::list_directory::SPEC.name {
+        let args: ListArgs = serde_json::from_str(&call.arguments).map_err(invalid)?;
+        Ok(Invocation::ListDirectory { path: args.path, depth: args.depth })
+    } else if call.name == tools::read_file::SPEC.name {
+        let args: ReadArgs = serde_json::from_str(&call.arguments).map_err(invalid)?;
+        Ok(Invocation::ReadFile { path: args.path, start: args.start, end: args.end })
+    } else {
+        Err(ToolError::UnknownTool(call.name.clone()))
     }
 }
 

@@ -39,7 +39,7 @@ mod tests {
     use crate::environment::Environment;
     use crate::error::ProviderError;
     use crate::session::{Message, Role, Turn};
-    use crate::tools::types::{ToolCall, ToolError};
+    use crate::tools::types::{Invocation, ToolCall, ToolError};
     use std::cell::RefCell;
     use std::path::PathBuf;
 
@@ -93,8 +93,8 @@ mod tests {
     struct NoTools;
 
     impl ToolRunner for NoTools {
-        fn run(&self, call: &ToolCall) -> Result<String, ToolError> {
-            Err(ToolError::UnknownTool(call.name.clone()))
+        fn run(&self, _invocation: &Invocation) -> Result<String, ToolError> {
+            Err(ToolError::UnknownTool("none".into()))
         }
     }
 

@@ -59,6 +59,7 @@ src/
     mod.rs           registry: specs() -> &[ToolSpec]; ToolRunner runs a typed Invocation
     types.rs         plain data shared by the tools: ToolSpec, Param, ToolCall, ToolError, ToolRunner
     list_directory.rs  the list_directory tool and its argument struct
+    read_file.rs     the read_file tool: a line range with a 500-line / 100 KB output budget, and its argument struct
     path.rs          confines a model-supplied path to the working directory
   error.rs           error enums per layer (ProviderError, ToolError, ConfigError, SessionError);
                      Display text answers what/where/why/how-to-fix
@@ -117,8 +118,16 @@ Rules:
 - **Unbounded tool output.** A `list_directory` call at depth 5 can list a dependency or build
   directory with an enormous number of entries. The whole listing is committed to history and resent
   with every later turn, so one oversized result can make the rest of the session fail, not just the
-  turn that requested it. Tool output needs an entry and byte budget, with a visible note to the
-  model when output is truncated.
+  turn that requested it. `list_directory` needs an entry and byte budget, like `read_file`'s, with a
+  visible note to the model when output is truncated.
+- **Whole-file reads.** `read_file` calls `fs::read` and splits the entire file into lines before
+  applying its budget. Memory and time grow with file size, not with the size of the output, so a
+  large file read near its end still costs its full size. Reads must stop at the end line through a
+  buffered reader.
+- **Unrecoverable long lines.** A line over 100 KB makes every range that starts on it fail with
+  "line N is longer than 100 KB". The message does not say that the model cannot read that line in
+  any range, so the model has no way to make the error go away. The error must say so and name what
+  the model can do instead.
 - **Round limit discards work.** When a turn exhausts its tool rounds, all of its work is dropped,
   including the earlier tool results. The error does not say so.
 - **No request timeouts.** A stalled server blocks the REPL indefinitely. Connect, send, and
@@ -129,20 +138,16 @@ Rules:
   the provider's error type must be named `ProviderError` as in Structure.
 - **Output can panic.** `println!` panics when stdout is closed. The REPL must write through
   `writeln!` and treat a write failure as a reason to exit with an error code.
-- **File-level cycles.** `provider/mod.rs` and `provider/llama_cpp.rs` import each other, and
-  `tools/mod.rs` and `tools/list_directory.rs` do too (`list_directory` imports `ToolSpec` from its
-  parent, and the parent declares it). Rust accepts this, but the Rules forbid cycles, and a split into
-  separate crates or test doubles would fail. Shared types must move to leaf modules (see Rules).
 - **Invariants are enforced by convention only.** `Message` has public fields and can be a `Tool`
   message with no call id; `Turn` has public fields, and tests construct it directly instead of
   through the checked constructor. `Message` must become the enum described in Definitions.
-- **Tools decode JSON.** `tools::list_directory` calls `serde_json` and derives `serde::Deserialize`,
-  so the Rules (`tools` never parses JSON, no `serde` under `tools/`) are broken. Arguments must be
-  decoded into `tools::Invocation` in `provider::llama_cpp`.
-- **Provider errors are provider-specific.** `ProviderError` lives in `provider/mod.rs`, beside the
-  trait, and its `Transport` variant boxes an arbitrary error. The Display text of that error can echo
-  a ureq message that includes a response body. The error type belongs in `error.rs`, and each provider
-  supplies its own help text.
+- **Tools decode JSON.** `tools::list_directory` and `tools::read_file` each call `serde_json` and
+  derive `serde::Deserialize`, so the Rules (`tools` never parses JSON, no `serde` under `tools/`) are
+  broken in two places, and every new tool repeats it. Arguments must be decoded into
+  `tools::Invocation` in `provider::llama_cpp`.
+- **Provider errors carry raw text.** `ProviderError` lives in `error.rs`, but its `Transport` variant
+  boxes an arbitrary error. The Display text of that error can echo a ureq message that includes a
+  response body. Each provider should supply its own help text rather than the shared wording.
 - **Hard-coded configuration.** Endpoint and model name are constants in source. Changing the
   model requires a rebuild.
 - **Single-shot failure mode.** A failed turn is dropped silently from history; the user is not told
@@ -183,14 +188,16 @@ Required controls and status:
 - **Transport**: remote endpoints must use HTTPS; a plain-HTTP endpoint must be refused unless it
   resolves to loopback. *Missing.*
 - **Input and response size limits**: maximum user line length, maximum response body size, and
-  maximum tool output size (entries and bytes). *Missing for all three.*
+  maximum tool output size (entries and bytes). *Missing for user lines and response bodies; tool
+  output is limited for `read_file` only.*
 - **Path confinement**: every tool path is resolved under the working directory before use, and
-  symlinks are never followed into recursion. *Met for `list_directory`*: paths are canonicalized,
-  rejected if they fall outside the working directory, and symlinked directories are listed but not
-  entered.
+  symlinks are never followed into recursion. *Met for `list_directory` and `read_file`*: paths are
+  canonicalized, rejected if they fall outside the working directory, and symlinked directories are
+  listed but not entered.
 - **Prompt injection from tool results**: tool output is delivered as clearly labelled tool
   messages, length-limited, and never executed. The model is never given a tool that acts on output
-  without confirmation. *Missing: output is not length-limited or labelled as untrusted data.*
+  without confirmation. *Partly met: `read_file` output is length-limited; no output is labelled as
+  untrusted data, and `list_directory` is not length-limited.*
 - **Tool authorization**: read-only tools may run without confirmation. Any side-effecting tool
   requires explicit, logged user confirmation and is deny-by-default. *Not applicable yet, because no
   side-effecting tool exists; the policy must be implemented before one is added.*
@@ -207,17 +214,15 @@ Required controls and status:
 
 ## Future Work
 
-- Break the file-level cycles: `ProviderError` and `MAX_TOOL_ROUNDS` move to `error.rs`, and
-  `ToolSpec`, `Param`, `ParamType`, `ToolCall`, `ToolError`, and `ToolRunner` move to `tools/types.rs`.
-  Parents (`provider/mod.rs`, `tools/mod.rs`) then only declare children and hold the registry.
-- `ProviderError` moves to `error.rs`.
 - Make `Message` an enum with one variant per role (see Definitions), and make `Turn` construction
   checked (see Rules).
 - Typed tool invocations: `provider::llama_cpp` decodes arguments into a `tools::Invocation` enum,
   and `tools` no longer sees `ToolCall` or JSON.
 - Structured error enums per layer (`ProviderError`, `ToolError`, `ConfigError`, `SessionError`)
   in `error.rs`, with actionable messages.
-- Output budget and truncation notice for tool results.
+- Output budget and truncation notice for every tool, with the same line and byte limits as
+  `read_file`, and a labelled, untrusted-data wrapper around all tool results.
+- `read_file` streams lines through a buffered reader and stops at its budget or the end line.
 - Configuration loaded from a file or environment with overrides for endpoint, model, timeouts,
   and history budget.
 - Token-aware history trimming that keeps the context message and the most recent turns.
@@ -234,6 +239,8 @@ Obvious concerns only; profile before optimizing.
   turn without tools.
 - A directory listing walks the tree synchronously on the REPL thread. Depth 5 over a large tree is
   unbounded in entries and time; a walk needs an entry cap.
+- `read_file` reads the whole file into memory and splits every line before its budget applies. A
+  buffered reader that stops at the end line bounds both memory and time by the requested range.
 - Responses are read fully into memory before printing. Streaming would reduce perceived latency.
 - The REPL blocks on each request; input typed during a long generation is queued by the terminal,
   not processed.

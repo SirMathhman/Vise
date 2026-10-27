@@ -1,6 +1,5 @@
 use super::path;
 use super::types::{Param, ParamType, ToolError, ToolSpec};
-use serde::Deserialize;
 use std::fs;
 use std::path::Path;
 
@@ -29,40 +28,29 @@ pub const SPEC: ToolSpec = ToolSpec {
     ],
 };
 
-#[derive(Deserialize)]
-struct Args {
-    path: String,
-    start: usize,
-    end: usize,
-}
-
-pub fn run(arguments: &str, cwd: &Path) -> Result<String, ToolError> {
-    let args: Args =
-        serde_json::from_str(arguments).map_err(|err| ToolError::InvalidArguments(err.to_string()))?;
-    if args.start == 0 {
+pub fn run(requested: &str, start: usize, end: usize, cwd: &Path) -> Result<String, ToolError> {
+    if start == 0 {
         return Err(ToolError::InvalidArguments("start must be at least 1".into()));
     }
-    if args.end < args.start {
+    if end < start {
         return Err(ToolError::InvalidArguments("end must be at least start".into()));
     }
-    let target = path::confine(cwd, &args.path)?;
-    let bytes = fs::read(&target).map_err(|err| ToolError::Failed(format!("cannot read '{}': {err}", args.path)))?;
+    let target = path::confine(cwd, requested)?;
+    let bytes = fs::read(&target).map_err(|err| ToolError::Failed(format!("cannot read '{requested}': {err}")))?;
     let text = String::from_utf8(bytes)
-        .map_err(|_| ToolError::Failed(format!("'{}' is not a UTF-8 text file", args.path)))?;
+        .map_err(|_| ToolError::Failed(format!("'{requested}' is not a UTF-8 text file")))?;
 
     let lines: Vec<&str> = text.lines().collect();
-    if args.start > lines.len() {
+    if start > lines.len() {
         return Err(ToolError::InvalidArguments(format!(
-            "start {} is past the end of '{}', which has {} lines",
-            args.start,
-            args.path,
+            "start {start} is past the end of '{requested}', which has {} lines",
             lines.len()
         )));
     }
-    let wanted_end = args.end.min(lines.len());
+    let wanted_end = end.min(lines.len());
     let mut output = String::new();
-    let mut last = args.start - 1;
-    for line in lines.iter().skip(args.start - 1).take(wanted_end - args.start + 1).take(MAX_LINES) {
+    let mut last = start - 1;
+    for line in lines.iter().skip(start - 1).take(wanted_end - start + 1).take(MAX_LINES) {
         if output.len() + line.len() + 1 > MAX_BYTES {
             break;
         }
@@ -70,8 +58,8 @@ pub fn run(arguments: &str, cwd: &Path) -> Result<String, ToolError> {
         output.push('\n');
         last += 1;
     }
-    if last == args.start - 1 {
-        return Err(ToolError::Failed(format!("line {} is longer than 100 KB", args.start)));
+    if last == start - 1 {
+        return Err(ToolError::Failed(format!("line {start} is longer than 100 KB")));
     }
     if last < wanted_end {
         output.push_str(&format!("[stopped after line {last}; read again with start {}]\n", last + 1));
