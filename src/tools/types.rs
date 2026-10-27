@@ -143,6 +143,17 @@ impl Invocation {
         }
     }
 
+    /// The note this invocation names, if it names one.
+    pub fn note_name(&self) -> Option<&str> {
+        match self {
+            Self::ReadNote { name }
+            | Self::CreateNote { name, .. }
+            | Self::UpdateNote { name, .. }
+            | Self::DeleteNote { name } => Some(name),
+            _ => None,
+        }
+    }
+
     /// Whether running this changes the filesystem or runs a program, so it needs approval and is never
     /// replayed. Reading a background task's output or a note changes nothing.
     pub fn writes(&self) -> bool {
@@ -178,6 +189,14 @@ pub trait ToolRunner {
     fn set_enabled(&self, _name: &str, _on: bool) -> Result<(), ToolError> {
         Err(ToolError::Failed("tools cannot be changed here".into()))
     }
+
+    /// The notes the model may use, or `None` for all of them.
+    fn allowed_notes(&self) -> Option<Vec<String>> {
+        None
+    }
+
+    /// Sets the notes the model may use, or `None` for all of them. A runner without that state ignores it.
+    fn set_allowed_notes(&self, _names: Option<Vec<String>>) {}
 }
 
 #[cfg(test)]

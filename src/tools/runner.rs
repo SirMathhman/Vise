@@ -10,12 +10,23 @@ pub struct WorkspaceTools {
     cwd: PathBuf,
     jobs: RefCell<Jobs>,
     enabled: RefCell<HashSet<&'static str>>,
+    allowed_notes: RefCell<Option<Vec<String>>>,
 }
 
 impl WorkspaceTools {
     pub fn new(cwd: PathBuf) -> Self {
         let enabled = specs().iter().map(|spec| spec.name).collect();
-        Self { cwd, jobs: RefCell::new(Jobs::default()), enabled: RefCell::new(enabled) }
+        Self {
+            cwd,
+            jobs: RefCell::new(Jobs::default()),
+            enabled: RefCell::new(enabled),
+            allowed_notes: RefCell::new(None),
+        }
+    }
+
+    /// Whether the model may use the note `name`.
+    fn note_allowed(&self, name: &str) -> bool {
+        self.allowed_notes.borrow().as_ref().is_none_or(|names| names.iter().any(|allowed| allowed == name))
     }
 }
 
@@ -30,6 +41,14 @@ impl ToolRunner for WorkspaceTools {
     fn enabled(&self) -> Vec<&'static str> {
         let enabled = self.enabled.borrow();
         specs().iter().map(|spec| spec.name).filter(|name| enabled.contains(name)).collect()
+    }
+
+    fn allowed_notes(&self) -> Option<Vec<String>> {
+        self.allowed_notes.borrow().clone()
+    }
+
+    fn set_allowed_notes(&self, names: Option<Vec<String>>) {
+        *self.allowed_notes.borrow_mut() = names;
     }
 
     fn set_enabled(&self, name: &str, on: bool) -> Result<(), ToolError> {
@@ -47,6 +66,9 @@ impl ToolRunner for WorkspaceTools {
         let name = invocation.tool_name();
         if !self.enabled.borrow().contains(name) {
             return Err(ToolError::Disabled(name.into()));
+        }
+        if let Some(note) = invocation.note_name().filter(|note| !self.note_allowed(note)) {
+            return Err(ToolError::Failed(format!("note '{note}' is not allowed by the profile")));
         }
         if invocation.writes() && !approve(&describe(invocation)) {
             return Err(ToolError::Failed("the user declined this change".into()));
@@ -66,7 +88,7 @@ impl ToolRunner for WorkspaceTools {
             ),
             Invocation::ReadBackground { id } => read_background::run(*id, &mut self.jobs.borrow_mut()),
             Invocation::KillBackground { id } => kill_background::run(*id, &mut self.jobs.borrow_mut()),
-            Invocation::ListNotes { category } => notes::run_list(category),
+            Invocation::ListNotes { category } => notes::run_list(category, self.allowed_notes.borrow().as_deref()),
             Invocation::ReadNote { name } => notes::run_read(name),
             Invocation::CreateNote { name, summary, category, content } => {
                 notes::run_create(name, summary, category, content)

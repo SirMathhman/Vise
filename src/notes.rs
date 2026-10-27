@@ -17,11 +17,14 @@ pub struct Note {
     pub content: String,
 }
 
-/// The file for a note. Only letters, digits, '-' and '_' are accepted in a name, so a name cannot reach
-/// outside the folder.
+/// Whether `name` may be a note name: letters, digits, '-' and '_' only, so it cannot reach outside the folder.
+pub fn valid_name(name: &str) -> bool {
+    !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+/// The file for a note.
 fn path(name: &str) -> Result<PathBuf, String> {
-    let valid = !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
-    if !valid {
+    if !valid_name(name) {
         return Err(format!("'{name}' is not a note name; use letters, digits, '-' and '_'"));
     }
     Ok(PathBuf::from(FOLDER).join(format!("{name}.md")))
@@ -97,9 +100,10 @@ pub fn delete(name: &str) -> Result<(), String> {
     fs::remove_file(&file).map_err(|err| format!("cannot delete note '{name}': {err}"))
 }
 
-/// The notes in one category, sorted by name. An empty category matches every note. A file whose name is not
-/// a valid note name is not a note, so it is skipped.
-pub fn list(category: &str) -> Result<Vec<(String, Note)>, String> {
+/// The notes in one category, sorted by name. An empty category matches every note, and `allowed` (when
+/// given) limits the result to the named notes. A file whose name is not a valid note name is not a note, so
+/// it is skipped.
+pub fn list(category: &str, allowed: Option<&[String]>) -> Result<Vec<(String, Note)>, String> {
     let entries = match fs::read_dir(FOLDER) {
         Ok(entries) => entries,
         Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
@@ -114,6 +118,9 @@ pub fn list(category: &str) -> Result<Vec<(String, Note)>, String> {
     names.sort();
     let mut notes = Vec::new();
     for name in names {
+        if allowed.is_some_and(|allowed| !allowed.contains(&name)) {
+            continue;
+        }
         let note = read(&name)?;
         if category.is_empty() || note.category == category {
             notes.push((name, note));
@@ -136,9 +143,9 @@ pub fn show(note: &Note) -> String {
     format!("summary: {}\ncategory: {}\n\n{}", note.summary, note.category, note.content)
 }
 
-/// The notes list the model is told about: every note's name, category and summary, or `NONE`.
-pub fn index() -> Result<String, String> {
-    let notes = list("")?;
+/// The notes list the model is told about: the allowed notes' names, categories and summaries, or `NONE`.
+pub fn index(allowed: Option<&[String]>) -> Result<String, String> {
+    let notes = list("", allowed)?;
     if notes.is_empty() {
         return Ok(NONE.to_string());
     }

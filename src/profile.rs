@@ -1,6 +1,7 @@
 //! Profiles: named instructions kept as `.txt` files in the `profiles` folder. A profile's text is sent
 //! with the next user message, so the system prompt at the start of the history never changes.
 
+use crate::notes;
 use crate::session::Message;
 use crate::tools::specs;
 use std::fs;
@@ -43,11 +44,13 @@ pub fn names() -> Result<Vec<String>, String> {
     Ok(names)
 }
 
-/// A profile: its instructions, and the tools it allows if its file names any on a `tools:` line.
+/// A profile: its instructions, the tools it allows if its file has a `tools:` line, and the notes it allows if
+/// it has a `notes:` line.
 #[derive(Debug)]
 pub struct Profile {
     pub instructions: String,
     pub tools: Option<Vec<String>>,
+    pub notes: Option<Vec<String>>,
 }
 
 /// Loads one profile. Only letters, digits, '-' and '_' are accepted in a name, so a name cannot reach
@@ -62,19 +65,38 @@ pub fn load(name: &str) -> Result<Profile, String> {
     parse(&text)
 }
 
-/// Splits the optional `tools: a, b` first line from the instructions. Every name must be a tool.
+/// Splits the header lines (`tools: a, b` and `notes: a, b`, in any order) from the instructions. Every tool
+/// name must be a tool, and every note name must be a valid note name.
 fn parse(text: &str) -> Result<Profile, String> {
-    let (first, rest) = text.split_once('\n').unwrap_or((text, ""));
-    let Some(list) = first.trim().strip_prefix("tools:") else {
-        return Ok(Profile { instructions: text.to_string(), tools: None });
-    };
-    let tools: Vec<String> =
-        list.split(',').map(str::trim).filter(|name| !name.is_empty()).map(str::to_string).collect();
-    let known = |name: &str| specs().iter().any(|spec| spec.name == name);
-    if let Some(unknown) = tools.iter().find(|name| !known(name)) {
-        return Err(format!("unknown tool '{unknown}' in the profile's tools line"));
+    let (mut tools, mut notes) = (None, None);
+    let mut instructions = text;
+    loop {
+        let (first, rest) = instructions.split_once('\n').unwrap_or((instructions, ""));
+        let header = first.trim();
+        if let Some(list) = header.strip_prefix("tools:") {
+            let listed = header_names(list);
+            let known = |name: &str| specs().iter().any(|spec| spec.name == name);
+            if let Some(unknown) = listed.iter().find(|name| !known(name)) {
+                return Err(format!("unknown tool '{unknown}' in the profile's tools line"));
+            }
+            tools = Some(listed);
+        } else if let Some(list) = header.strip_prefix("notes:") {
+            let listed = header_names(list);
+            if let Some(invalid) = listed.iter().find(|name| !notes::valid_name(name)) {
+                return Err(format!("'{invalid}' is not a note name in the profile's notes line"));
+            }
+            notes = Some(listed);
+        } else {
+            break;
+        }
+        instructions = rest;
     }
-    Ok(Profile { instructions: rest.to_string(), tools: Some(tools) })
+    Ok(Profile { instructions: instructions.to_string(), tools, notes })
+}
+
+/// The comma-separated names on a header line.
+fn header_names(list: &str) -> Vec<String> {
+    list.split(',').map(str::trim).filter(|name| !name.is_empty()).map(str::to_string).collect()
 }
 
 #[cfg(test)]
@@ -113,6 +135,14 @@ mod tests {
     fn tools_line_sets_the_whitelist_and_leaves_the_instructions() {
         let profile = parse("tools: read_file, list_directory\nbe brief").expect("valid profile");
         assert_eq!(profile.tools, Some(vec!["read_file".to_string(), "list_directory".to_string()]));
+        assert_eq!(profile.instructions, "be brief");
+    }
+
+    #[test]
+    fn notes_line_is_read_with_the_tools_line() {
+        let profile = parse("notes: greeting, plan\ntools: read_file\nbe brief").expect("valid profile");
+        assert_eq!(profile.notes, Some(vec!["greeting".to_string(), "plan".to_string()]));
+        assert_eq!(profile.tools, Some(vec!["read_file".to_string()]));
         assert_eq!(profile.instructions, "be brief");
     }
 

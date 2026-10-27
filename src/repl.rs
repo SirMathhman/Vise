@@ -180,7 +180,7 @@ pub fn run(
                 Ok(names) => writeln!(output, "{}", names.join("\n"))?,
                 Err(err) => writeln!(errors, "error: {err}")?,
             },
-            Some(Command::ListNotes(category)) => match notes::list(&category) {
+            Some(Command::ListNotes(category)) => match notes::list(&category, None) {
                 Ok(listed) if listed.is_empty() => writeln!(output, "no notes")?,
                 Ok(listed) => writeln!(output, "{}", notes::describe_list(&listed))?,
                 Err(err) => writeln!(errors, "error: {err}")?,
@@ -207,6 +207,7 @@ pub fn run(
                         for change in changes {
                             writeln!(output, "{change}")?;
                         }
+                        tools.set_allowed_notes(loaded.notes);
                         profile = Some(profile::marked(&name, &loaded.instructions));
                         writeln!(output, "profile {name} selected; its instructions go with your next message")?;
                     }
@@ -235,7 +236,7 @@ pub fn run(
                     Some(text) if !profile::carried(conversation.messages(), text) => format!("{text}\n\n{line}"),
                     _ => line,
                 };
-                let message = match notes::index() {
+                let message = match notes::index(tools.allowed_notes().as_deref()) {
                     Ok(index) if notes::needed(conversation.messages(), &index) => format!("{index}\n\n{message}"),
                     Ok(_) => message,
                     Err(err) => {

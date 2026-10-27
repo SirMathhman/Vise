@@ -86,8 +86,8 @@ fn bind_delete(args: &Arguments) -> Result<Invocation, ToolError> {
     Ok(Invocation::DeleteNote { name: args.text("name")?.to_string() })
 }
 
-pub fn run_list(category: &str) -> Result<String, ToolError> {
-    let listed = notes::list(category).map_err(ToolError::Failed)?;
+pub fn run_list(category: &str, allowed: Option<&[String]>) -> Result<String, ToolError> {
+    let listed = notes::list(category, allowed).map_err(ToolError::Failed)?;
     Ok(if listed.is_empty() { "no notes".to_string() } else { notes::describe_list(&listed) })
 }
 
