@@ -29,6 +29,7 @@ pub enum ProviderError {
     TooManyToolRounds,
     ModelNotFound,
     ContextFull,
+    ContextFullAfterChange,
     EmptySummary,
     Session(SessionError),
 }
@@ -43,6 +44,10 @@ impl fmt::Display for ProviderError {
             Self::TooManyToolRounds => write!(f, "the model kept calling tools after {MAX_TOOL_ROUNDS} rounds; try a simpler request"),
             Self::ModelNotFound => write!(f, "the server does not list the configured model"),
             Self::ContextFull => write!(f, "the conversation no longer fits the model's context"),
+            Self::ContextFullAfterChange => write!(
+                f,
+                "the context filled up after a change was made, so the turn was stopped rather than repeated; check the files that changed"
+            ),
             Self::EmptySummary => write!(f, "the model returned an empty summary"),
             Self::Session(err) => write!(f, "{err}"),
         }
@@ -58,6 +63,7 @@ impl std::error::Error for ProviderError {
             | Self::TooManyToolRounds
             | Self::ModelNotFound
             | Self::ContextFull
+            | Self::ContextFullAfterChange
             | Self::EmptySummary
             | Self::Rejected(_) => None,
         }

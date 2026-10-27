@@ -98,8 +98,20 @@ impl Arguments {
 pub enum Invocation {
     ListDirectory { path: String, depth: u8 },
     ReadFile { path: String, start: usize, end: usize },
+    CreateFile { path: String, content: String },
+    CreateDirectory { path: String },
+    EditFile { path: String, previous: String, new: String },
+}
+
+impl Invocation {
+    /// Whether running this changes the filesystem, so it needs approval and is never replayed.
+    pub fn writes(&self) -> bool {
+        matches!(self, Self::CreateFile { .. } | Self::CreateDirectory { .. } | Self::EditFile { .. })
+    }
 }
 
 pub trait ToolRunner {
-    fn run(&self, invocation: &Invocation) -> Result<String, ToolError>;
+    /// Runs an invocation. `approve` shows a proposed change and returns whether the user accepted it;
+    /// it is called only for invocations that write.
+    fn run(&self, invocation: &Invocation, approve: &mut dyn FnMut(&str) -> bool) -> Result<String, ToolError>;
 }

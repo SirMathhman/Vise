@@ -1,3 +1,6 @@
+pub mod create_directory;
+pub mod create_file;
+pub mod edit_file;
 pub mod list_directory;
 pub mod path;
 pub mod read_file;
@@ -17,7 +20,13 @@ pub fn call(name: &str, values: HashMap<String, Value>) -> Result<Invocation, To
     (spec.bind)(&args)
 }
 
-const SPECS: &[ToolSpec] = &[list_directory::SPEC, read_file::SPEC];
+const SPECS: &[ToolSpec] = &[
+    list_directory::SPEC,
+    read_file::SPEC,
+    create_file::SPEC,
+    create_directory::SPEC,
+    edit_file::SPEC,
+];
 
 pub fn specs() -> &'static [ToolSpec] {
     SPECS

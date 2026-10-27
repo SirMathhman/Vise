@@ -31,8 +31,9 @@ fn main() {
     let stdout = io::stdout();
     let mut output = stdout.lock();
     let mut errors = io::stderr();
+    let mut input = io::stdin().lock();
     if let Err(err) = repl::run(
-        io::stdin().lock(),
+        &mut input,
         &mut output,
         &mut errors,
         &provider,

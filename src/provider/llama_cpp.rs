@@ -283,13 +283,24 @@ impl Provider for LlamaCpp {
     /// Runs one exchange: sends the history and `input`, executes any tool calls the model makes through
     /// `runner`, and returns the new messages. Nothing is returned on failure, so the caller's history
     /// stays unchanged.
-    fn complete(&self, history: &[Message], input: String, runner: &dyn ToolRunner) -> Result<Turn, ProviderError> {
+    fn complete(
+        &self,
+        history: &[Message],
+        input: String,
+        runner: &dyn ToolRunner,
+        approve: &mut dyn FnMut(&str) -> bool,
+    ) -> Result<Turn, ProviderError> {
         let wire_tools: Vec<WireTool> = tools::specs().iter().map(WireTool::from).collect();
         let mut new = vec![Message::User(input)];
+        // Set once a write is attempted. A turn that has written is never replayed, so overflow is an error.
+        let mut wrote = false;
         for _ in 0..MAX_TOOL_ROUNDS {
             let wire: Vec<WireMessage> =
                 history.iter().chain(&new).map(WireMessage::try_from).collect::<Result<_, _>>()?;
-            let (reply, prompt_tokens) = send(&self.api_key, &wire, Some(wire_tools.as_slice()))?;
+            let (reply, prompt_tokens) = match send(&self.api_key, &wire, Some(wire_tools.as_slice())) {
+                Err(ProviderError::ContextFull) if wrote => return Err(ProviderError::ContextFullAfterChange),
+                sent => sent?,
+            };
             let content = reply.content.unwrap_or_default();
             if reply.tool_calls.is_empty() {
                 new.push(Message::Assistant { content, tool_calls: Vec::new() });
@@ -299,18 +310,23 @@ impl Provider for LlamaCpp {
             }
             // Another round would not fit, so stop before running its tools. The caller compacts and retries.
             if over_budget(prompt_tokens, self.context_size()?) {
-                return Err(ProviderError::ContextFull);
+                return Err(if wrote { ProviderError::ContextFullAfterChange } else { ProviderError::ContextFull });
             }
             let calls: Vec<ToolCall> = reply.tool_calls.into_iter().map(ToolCall::from).collect();
-            let results: Vec<Message> = calls
-                .iter()
-                .map(|call| Message::Tool {
+            let mut results = Vec::with_capacity(calls.len());
+            for call in &calls {
+                let result = match tools::call(&call.name, call.arguments.clone()) {
+                    Ok(invocation) => {
+                        wrote |= invocation.writes();
+                        runner.run(&invocation, approve)
+                    }
+                    Err(err) => Err(err),
+                };
+                results.push(Message::Tool {
                     call_id: call.id.clone(),
-                    content: tools::call(&call.name, call.arguments.clone())
-                        .and_then(|invocation| runner.run(&invocation))
-                        .unwrap_or_else(|err| format!("error: {err}")),
-                })
-                .collect();
+                    content: result.unwrap_or_else(|err| format!("error: {err}")),
+                });
+            }
             new.push(Message::Assistant { content, tool_calls: calls });
             new.extend(results);
         }

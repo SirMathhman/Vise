@@ -30,16 +30,17 @@ fn command(line: &str) -> Option<Command> {
 }
 
 pub fn run(
-    input: impl BufRead,
+    input: &mut impl BufRead,
     output: &mut impl Write,
     errors: &mut impl Write,
     provider: &dyn Provider,
     tools: &dyn ToolRunner,
     conversation: &mut Conversation,
 ) -> io::Result<()> {
-    for line in input.lines() {
-        let line = match line {
-            Ok(line) => line,
+    loop {
+        let line = match read_line(input) {
+            Ok(Some(line)) => line,
+            Ok(None) => break,
             Err(err) => {
                 writeln!(errors, "error: failed to read from stdin: {err}")?;
                 break;
@@ -64,19 +65,41 @@ pub fn run(
                     Err(err) => writeln!(errors, "error: {err}")?,
                 }
             }
-            None => match run_turn(provider, conversation, line, tools) {
-                Ok((turn, compaction)) => {
-                    if let Some(Compaction::Dropped(removed)) = compaction {
-                        writeln!(output, "the context was full, so the oldest turn was dropped ({removed} messages removed)")?;
+            None => {
+                // Approval prompts read their answers from the same input as the lines themselves.
+                let mut approve = |change: &str| ask(change, &mut *output, &mut *input);
+                match run_turn(provider, conversation, line, tools, &mut approve) {
+                    Ok((turn, compaction)) => {
+                        if let Some(Compaction::Dropped(removed)) = compaction {
+                            writeln!(output, "the context was full, so the oldest turn was dropped ({removed} messages removed)")?;
+                        }
+                        writeln!(output, "{}", turn.reply())?;
+                        conversation.commit(turn);
                     }
-                    writeln!(output, "{}", turn.reply())?;
-                    conversation.commit(turn);
+                    Err(err) => writeln!(errors, "error: {err}")?,
                 }
-                Err(err) => writeln!(errors, "error: {err}")?,
-            },
+            }
         }
     }
     Ok(())
+}
+
+/// Reads one line without its line ending. Returns `None` at the end of input.
+fn read_line(input: &mut impl BufRead) -> io::Result<Option<String>> {
+    let mut line = String::new();
+    if input.read_line(&mut line)? == 0 {
+        return Ok(None);
+    }
+    Ok(Some(line.trim_end_matches(['\n', '\r']).to_string()))
+}
+
+/// Shows a proposed change and reads the answer. Only "y" or "yes" accepts it. A failure to read or
+/// write declines it.
+fn ask(change: &str, output: &mut impl Write, input: &mut impl BufRead) -> bool {
+    if writeln!(output, "{change}\napply this change? [y/N]").and_then(|()| output.flush()).is_err() {
+        return false;
+    }
+    matches!(read_line(input), Ok(Some(answer)) if matches!(answer.trim().to_lowercase().as_str(), "y" | "yes"))
 }
 
 /// How the history was shrunk: replaced by a summary, or cut by dropping the oldest turn.
@@ -115,12 +138,13 @@ fn run_turn(
     conversation: &mut Conversation,
     line: String,
     tools: &dyn ToolRunner,
+    approve: &mut dyn FnMut(&str) -> bool,
 ) -> Result<(Turn, Option<Compaction>), ProviderError> {
     let mut compaction = compact_if_full(provider, conversation)?;
-    match provider.complete(conversation.messages(), line.clone(), tools) {
+    match provider.complete(conversation.messages(), line.clone(), tools, approve) {
         Err(ProviderError::ContextFull) => {
             compaction = Some(compact(provider, conversation)?);
-            let turn = provider.complete(conversation.messages(), line, tools)?;
+            let turn = provider.complete(conversation.messages(), line, tools, approve)?;
             Ok((turn, compaction))
         }
         result => Ok((result?, compaction)),
@@ -157,7 +181,13 @@ mod tests {
     }
 
     impl Provider for Fake {
-        fn complete(&self, _history: &[Message], input: String, _runner: &dyn ToolRunner) -> Result<Turn, ProviderError> {
+        fn complete(
+            &self,
+            _history: &[Message],
+            input: String,
+            _runner: &dyn ToolRunner,
+            _approve: &mut dyn FnMut(&str) -> bool,
+        ) -> Result<Turn, ProviderError> {
             self.inputs.borrow_mut().push(input.clone());
             let messages = match self.behavior {
                 Behavior::Reply => vec![
@@ -197,7 +227,7 @@ mod tests {
     struct NoTools;
 
     impl ToolRunner for NoTools {
-        fn run(&self, _invocation: &Invocation) -> Result<String, ToolError> {
+        fn run(&self, _invocation: &Invocation, _approve: &mut dyn FnMut(&str) -> bool) -> Result<String, ToolError> {
             Err(ToolError::UnknownTool("none".into()))
         }
     }
@@ -209,7 +239,7 @@ mod tests {
     fn run_with(input: &str, provider: &Fake, conversation: &mut Conversation) -> (String, String) {
         let mut output = Vec::new();
         let mut errors = Vec::new();
-        run(input.as_bytes(), &mut output, &mut errors, provider, &NoTools, conversation).unwrap();
+        run(&mut input.as_bytes(), &mut output, &mut errors, provider, &NoTools, conversation).unwrap();
         (String::from_utf8(output).unwrap(), String::from_utf8(errors).unwrap())
     }
 
@@ -288,7 +318,7 @@ mod tests {
         let mut conversation = conversation();
         let mut output = Vec::new();
         let result = run(
-            "hi\n".as_bytes(),
+            &mut "hi\n".as_bytes(),
             &mut output,
             &mut ClosedWriter,
             &fake,
