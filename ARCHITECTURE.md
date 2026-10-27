@@ -51,7 +51,8 @@ toward. It is a reference, not a changelog.
     it exceeds the context (its error type is exactly `exceed_context_size_error`), or a tool round's
     reply reports a prompt at the 80% budget, in which case its tools are not run. Any other 400 is
     `ProviderError::Rejected`, which carries the server's message, or the raw body when no message can
-    be read. `Transport` is reserved for failures to reach the server or read its reply. The REPL then
+    be read. A non-2xx status other than 400 is `ProviderError::Status { status }`. `Transport` is reserved
+    for failures to reach the server or read its reply. The REPL then
     compacts the conversation and retries the turn once from the compacted history. The provider never
     rewrites history, so a retry sends less than the request that failed.
   - A summary never appears inside a turn. `Turn::new` accepts no plain assistant message before the
@@ -256,11 +257,13 @@ Rules:
   describe only the summary. A drop leaves no summary, so the "one summary" rule does not hold after
   it, and no invariant states that a drop must be reported. The invariant above must be the only
   rule, and every compaction path must return a `Compaction` outcome.
-- **Non-overflow 400 gets a misleading hint.** Every 400 that is not an overflow is reported with
-  `ProviderError::Transport`, whose text says "check that the server is running". A rejected request
-  is not a dead server, so the message sends the user to the wrong fix. The `Rejected` variant in
-  Definitions and Invariants gives these responses their own text, and `Transport` is no longer used
-  for them.
+- **Non-400 error statuses get the connection hint.** A 5xx or other non-2xx reply is reported as
+  `ProviderError::Transport`, whose text says "check that the server is running". The server answered,
+  so the hint is wrong for it, and `Transport` is reserved for failures to reach the server or read its
+  reply. The `Status` variant in Invariants carries these replies instead.
+- **Empty server message.** `bad_request` treats `{"error":{"message":""}}` as a message, so `Rejected`
+  carries an empty string and the user sees "the server rejected the request: ;". An empty or
+  whitespace-only message must fall back to the raw body, as a missing message does.
 - **Repeated compaction.** If the context size is small or the summary is large, the conversation
   can reach 80% on every turn, so each turn pays for a full summary request. The REPL should report
   when a compaction did not free enough space.
@@ -351,8 +354,8 @@ Required controls and status:
 - `read_file` streams lines through a buffered reader and stops at its budget or the end line.
 - Configuration loaded from a file or environment with overrides for endpoint, model, timeouts,
   and history budget.
-- Tests for the body classification described under Structure, covering a 400 whose body lacks `type`,
-  a 400 whose body is not JSON (kept as raw text in `Rejected`), and a 400 with an empty message.
+- Tests for the body classification described under Invariants, covering a 400 whose message is empty or
+  whitespace-only (the raw body is kept in `Rejected`), and a non-400 error status mapped to `Status`.
 - Token-aware history trimming that keeps the context message and the most recent turns, used as the
   deterministic fallback when a summary request does not fit.
 - Compaction budget set from configuration, and a `/compact` report that shows the user the summary
