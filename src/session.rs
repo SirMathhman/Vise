@@ -1,4 +1,4 @@
-use crate::environment::Environment;
+use crate::environment::{self, Environment};
 use crate::error::SessionError;
 use crate::tools::types::ToolCall;
 
@@ -113,8 +113,12 @@ pub struct Conversation {
 
 impl Conversation {
     pub fn new(env: &Environment) -> Self {
-        let context = Message::System(format!("Current working directory: {}", env.cwd.display()));
-        Self { messages: vec![context], prompt_tokens: 0 }
+        let mut context = format!("Current working directory: {}", env.cwd.display());
+        if let Some(instructions) = environment::instructions(&env.cwd) {
+            context.push_str("\n\n");
+            context.push_str(&instructions);
+        }
+        Self { messages: vec![Message::System(context)], prompt_tokens: 0 }
     }
 
     pub fn commit(&mut self, turn: Turn) {
