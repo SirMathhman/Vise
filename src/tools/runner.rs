@@ -1,18 +1,21 @@
 use super::fs::{create_directory, create_file, edit_file, list_directory, read_file};
 use super::jobs::Jobs;
 use super::types::{Invocation, ToolError, ToolRunner};
-use super::{kill_background, read_background, run_powershell};
+use super::{kill_background, read_background, run_powershell, specs};
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::path::PathBuf;
 
 pub struct WorkspaceTools {
     cwd: PathBuf,
     jobs: RefCell<Jobs>,
+    enabled: RefCell<HashSet<&'static str>>,
 }
 
 impl WorkspaceTools {
     pub fn new(cwd: PathBuf) -> Self {
-        Self { cwd, jobs: RefCell::new(Jobs::default()) }
+        let enabled = specs().iter().map(|spec| spec.name).collect();
+        Self { cwd, jobs: RefCell::new(Jobs::default()), enabled: RefCell::new(enabled) }
     }
 }
 
@@ -24,6 +27,22 @@ impl Drop for WorkspaceTools {
 }
 
 impl ToolRunner for WorkspaceTools {
+    fn enabled(&self) -> Vec<&'static str> {
+        let enabled = self.enabled.borrow();
+        specs().iter().map(|spec| spec.name).filter(|name| enabled.contains(name)).collect()
+    }
+
+    fn set_enabled(&self, name: &str, on: bool) -> Result<(), ToolError> {
+        let spec = specs().iter().find(|spec| spec.name == name).ok_or_else(|| ToolError::UnknownTool(name.into()))?;
+        let mut enabled = self.enabled.borrow_mut();
+        if on {
+            enabled.insert(spec.name);
+        } else {
+            enabled.remove(spec.name);
+        }
+        Ok(())
+    }
+
     fn run(&self, invocation: &Invocation, approve: &mut dyn FnMut(&str) -> bool) -> Result<String, ToolError> {
         if invocation.writes() && !approve(&describe(invocation)) {
             return Err(ToolError::Failed("the user declined this change".into()));

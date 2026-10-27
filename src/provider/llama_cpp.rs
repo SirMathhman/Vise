@@ -1,23 +1,27 @@
 use crate::error::{MAX_TOOL_ROUNDS, ProviderError};
+use crate::provider::grammar;
+use crate::provider::prompt;
 use crate::provider::types::Provider;
 use crate::session::{Message, Turn, over_budget};
-use crate::tools::types::{ParamType, ToolCall, ToolRunner, ToolSpec, Value};
+use crate::tools::types::{ToolCall, ToolError, ToolRunner, Value};
 use crate::tools;
+use serde::{Deserialize, Serialize};
 use std::cell::OnceCell;
 use std::collections::HashMap;
-use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 
 const URL: &str = "http://127.0.0.1:9931/v1/chat/completions";
 const MODELS_URL: &str = "http://127.0.0.1:9931/v1/models";
 const MODEL: &str = "ayozhee/Qwen3.8-27B-Abliterated-GSQ-Orca-GGUF:MTP";
+const TOOL_OPEN: &str = "<tool_call>";
+const TOOL_CLOSE: &str = "</tool_call>";
 
+/// No `tools` field is sent: the grammar, built from the enabled tools, is what limits the calls.
 #[derive(Serialize)]
 struct Request<'a> {
     model: &'static str,
     messages: &'a [WireMessage],
     #[serde(skip_serializing_if = "Option::is_none")]
-    tools: Option<&'a [WireTool]>,
+    grammar: Option<&'a str>,
 }
 
 #[derive(Serialize)]
@@ -48,19 +52,15 @@ impl TryFrom<&Message> for WireMessage {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize)]
 struct WireToolCall {
     id: String,
-    #[serde(rename = "type", default = "function_kind")]
-    kind: String,
+    #[serde(rename = "type")]
+    kind: &'static str,
     function: WireCallFunction,
 }
 
-fn function_kind() -> String {
-    "function".into()
-}
-
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize)]
 struct WireCallFunction {
     name: String,
     arguments: String,
@@ -72,24 +72,26 @@ impl TryFrom<&ToolCall> for WireToolCall {
     fn try_from(call: &ToolCall) -> Result<Self, ProviderError> {
         Ok(WireToolCall {
             id: call.id.clone(),
-            kind: function_kind(),
+            kind: "function",
             function: WireCallFunction { name: call.name.clone(), arguments: encode(&call.arguments)? },
         })
     }
 }
 
-impl From<WireToolCall> for ToolCall {
-    fn from(call: WireToolCall) -> Self {
-        ToolCall { id: call.id, name: call.function.name, arguments: decode(&call.function.arguments) }
-    }
+/// The body of a tool call as the model writes it: `{"name": ..., "arguments": {...}}`.
+#[derive(Deserialize)]
+struct CallBody {
+    name: String,
+    arguments: serde_json::Map<String, serde_json::Value>,
 }
 
-/// Decodes the model's JSON argument object into plain values. Invalid JSON gives no arguments, so the
-/// tool reports the missing fields. A value that is not a string or an integer becomes `Unsupported`.
-fn decode(arguments: &str) -> HashMap<String, Value> {
-    serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(arguments)
-        .map(|map| map.into_iter().map(|(name, value)| (name, to_value(value))).collect())
-        .unwrap_or_default()
+/// Reads the reply as a tool call, or returns `None` if it is plain text. The grammar guarantees the
+/// shape of a call, so a body that does not parse is treated as text too.
+fn parse_call(content: &str, id: String) -> Option<ToolCall> {
+    let body = content.trim().strip_prefix(TOOL_OPEN)?.strip_suffix(TOOL_CLOSE)?;
+    let call: CallBody = serde_json::from_str(body.trim()).ok()?;
+    let arguments = call.arguments.into_iter().map(|(name, value)| (name, to_value(value))).collect();
+    Some(ToolCall { id, name: call.name, arguments })
 }
 
 /// Encodes plain values back into the JSON argument object for a request. `Unsupported` is encoded as
@@ -106,68 +108,6 @@ fn to_json(value: &Value) -> serde_json::Value {
         Value::Integer(n) => serde_json::Value::from(*n),
         Value::Bool(flag) => serde_json::Value::Bool(*flag),
         Value::Unsupported => serde_json::Value::Null,
-    }
-}
-
-#[derive(Serialize)]
-struct WireTool {
-    #[serde(rename = "type")]
-    kind: &'static str,
-    function: WireFunction,
-}
-
-#[derive(Serialize)]
-struct WireFunction {
-    name: &'static str,
-    description: &'static str,
-    parameters: WireParameters,
-}
-
-#[derive(Serialize)]
-struct WireParameters {
-    #[serde(rename = "type")]
-    kind: &'static str,
-    properties: BTreeMap<&'static str, WireProperty>,
-    required: Vec<&'static str>,
-}
-
-#[derive(Serialize)]
-struct WireProperty {
-    #[serde(rename = "type")]
-    kind: &'static str,
-    description: &'static str,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    minimum: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    maximum: Option<u32>,
-}
-
-impl From<&ToolSpec> for WireTool {
-    fn from(spec: &ToolSpec) -> Self {
-        let properties = spec
-            .params
-            .iter()
-            .map(|param| {
-                let (kind, minimum, maximum) = match param.kind {
-                    ParamType::String => ("string", None, None),
-                    ParamType::Integer { min, max } => ("integer", min, max),
-                    ParamType::Boolean => ("boolean", None, None),
-                };
-                (param.name, WireProperty { kind, description: param.description, minimum, maximum })
-            })
-            .collect();
-        WireTool {
-            kind: "function",
-            function: WireFunction {
-                name: spec.name,
-                description: spec.description,
-                parameters: WireParameters {
-                    kind: "object",
-                    properties,
-                    required: spec.params.iter().map(|param| param.name).collect(),
-                },
-            },
-        }
     }
 }
 
@@ -233,8 +173,6 @@ struct Choice {
 #[derive(Deserialize)]
 struct ReplyMessage {
     content: Option<String>,
-    #[serde(default)]
-    tool_calls: Vec<WireToolCall>,
 }
 
 pub struct LlamaCpp {
@@ -292,45 +230,33 @@ impl Provider for LlamaCpp {
         runner: &dyn ToolRunner,
         approve: &mut dyn FnMut(&str) -> bool,
     ) -> Result<Turn, ProviderError> {
-        let wire_tools: Vec<WireTool> = tools::specs().iter().map(WireTool::from).collect();
+        let enabled = runner.enabled();
+        let grammar = grammar::build(&enabled);
+        let catalogue = prompt::catalogue();
         let mut new = vec![Message::User(input)];
         // Set once a write is attempted. A turn that has written is never replayed, so overflow is an error.
         let mut wrote = false;
         for _ in 0..MAX_TOOL_ROUNDS {
-            let wire: Vec<WireMessage> =
-                history.iter().chain(&new).map(WireMessage::try_from).collect::<Result<_, _>>()?;
-            let (reply, prompt_tokens) = match send(&self.api_key, &wire, Some(wire_tools.as_slice())) {
+            let wire = wire_messages(&catalogue, history.iter().chain(&new))?;
+            let (reply, prompt_tokens) = match send(&self.api_key, &wire, Some(&grammar)) {
                 Err(ProviderError::ContextFull) if wrote => return Err(ProviderError::ContextFullAfterChange),
                 sent => sent?,
             };
             let content = reply.content.unwrap_or_default();
-            if reply.tool_calls.is_empty() {
+            let Some(call) = parse_call(&content, format!("call-{}", new.len())) else {
                 new.push(Message::Assistant { content, tool_calls: Vec::new() });
                 return Turn::new(new)
                     .map(|turn| turn.with_prompt_tokens(prompt_tokens))
                     .map_err(ProviderError::Session);
-            }
-            // Another round would not fit, so stop before running its tools. The caller compacts and retries.
+            };
+            // Another round would not fit, so stop before running its tool. The caller compacts and retries.
             if over_budget(prompt_tokens, self.context_size()?) {
                 return Err(if wrote { ProviderError::ContextFullAfterChange } else { ProviderError::ContextFull });
             }
-            let calls: Vec<ToolCall> = reply.tool_calls.into_iter().map(ToolCall::from).collect();
-            let mut results = Vec::with_capacity(calls.len());
-            for call in &calls {
-                let result = match tools::call(&call.name, call.arguments.clone()) {
-                    Ok(invocation) => {
-                        wrote |= invocation.writes();
-                        runner.run(&invocation, approve)
-                    }
-                    Err(err) => Err(err),
-                };
-                results.push(Message::Tool {
-                    call_id: call.id.clone(),
-                    content: result.unwrap_or_else(|err| format!("error: {err}")),
-                });
-            }
-            new.push(Message::Assistant { content, tool_calls: calls });
-            new.extend(results);
+            let result = run_call(&call, &enabled, runner, approve, &mut wrote);
+            let call_id = call.id.clone();
+            new.push(Message::Assistant { content: String::new(), tool_calls: vec![call] });
+            new.push(Message::Tool { call_id, content: result.unwrap_or_else(|err| format!("error: {err}")) });
         }
         Err(ProviderError::TooManyToolRounds)
     }
@@ -349,6 +275,38 @@ impl Provider for LlamaCpp {
     }
 }
 
+/// Converts the messages for a request. The chat template accepts only one system message, at the start, so
+/// the catalogue is joined to the first one. The conversation itself is not changed.
+fn wire_messages<'a>(
+    catalogue: &str,
+    messages: impl Iterator<Item = &'a Message>,
+) -> Result<Vec<WireMessage>, ProviderError> {
+    let mut wire: Vec<WireMessage> = messages.map(WireMessage::try_from).collect::<Result<_, _>>()?;
+    if let Some(first) = wire.first_mut().filter(|first| first.role == "system") {
+        let context = first.content.take().unwrap_or_default();
+        first.content = Some(format!("{catalogue}\n\n{context}"));
+    } else {
+        wire.insert(0, WireMessage::try_from(&Message::System(catalogue.to_string()))?);
+    }
+    Ok(wire)
+}
+
+/// Runs one call the model made. A tool that is not enabled is refused, even if the grammar let it through.
+fn run_call(
+    call: &ToolCall,
+    enabled: &[&str],
+    runner: &dyn ToolRunner,
+    approve: &mut dyn FnMut(&str) -> bool,
+    wrote: &mut bool,
+) -> Result<String, ToolError> {
+    if !enabled.contains(&call.name.as_str()) {
+        return Err(ToolError::Failed(format!("tool '{}' is disabled", call.name)));
+    }
+    let invocation = tools::call(&call.name, call.arguments.clone())?;
+    *wrote |= invocation.writes();
+    runner.run(&invocation, approve)
+}
+
 fn to_value(value: serde_json::Value) -> Value {
     match value {
         serde_json::Value::String(text) => Value::Text(text),
@@ -362,8 +320,8 @@ fn to_value(value: serde_json::Value) -> Value {
 /// reported none).
 const SUMMARY_REQUEST: &str = "Summarize your conversation with the user";
 
-fn send(api_key: &str, wire: &[WireMessage], tools: Option<&[WireTool]>) -> Result<(ReplyMessage, u64), ProviderError> {
-    let request = Request { model: MODEL, messages: wire, tools };
+fn send(api_key: &str, wire: &[WireMessage], grammar: Option<&str>) -> Result<(ReplyMessage, u64), ProviderError> {
+    let request = Request { model: MODEL, messages: wire, grammar };
     let mut response = ureq::post(URL)
         .config()
         .http_status_as_error(false)
@@ -394,6 +352,19 @@ fn send(api_key: &str, wire: &[WireMessage], tools: Option<&[WireTool]>) -> Resu
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reply_that_is_a_call_is_parsed() {
+        let content = "<tool_call>\n{\"name\": \"read_file\", \"arguments\": {\"path\": \"a.txt\", \"start\": 1}}\n</tool_call>";
+        let call = parse_call(content, "call-1".into()).expect("expected a tool call");
+        assert_eq!(call.name, "read_file");
+        assert!(matches!(call.arguments.get("start"), Some(Value::Integer(1))));
+    }
+
+    #[test]
+    fn plain_text_is_not_a_call() {
+        assert!(parse_call("just an answer", "call-1".into()).is_none());
+    }
 
     #[test]
     fn recorded_overflow_body_is_context_full() {

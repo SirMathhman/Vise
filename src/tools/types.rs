@@ -135,6 +135,16 @@ pub trait ToolRunner {
     /// Runs an invocation. `approve` shows a proposed change and returns whether the user accepted it;
     /// it is called only for invocations that write.
     fn run(&self, invocation: &Invocation, approve: &mut dyn FnMut(&str) -> bool) -> Result<String, ToolError>;
+
+    /// The names of the tools the model may call. Every tool is enabled unless the runner says otherwise.
+    fn enabled(&self) -> Vec<&'static str> {
+        super::specs().iter().map(|spec| spec.name).collect()
+    }
+
+    /// Enables or disables one tool. A runner without tool state refuses the change.
+    fn set_enabled(&self, _name: &str, _on: bool) -> Result<(), ToolError> {
+        Err(ToolError::Failed("tools cannot be changed here".into()))
+    }
 }
 
 #[cfg(test)]

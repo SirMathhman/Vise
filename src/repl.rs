@@ -5,27 +5,69 @@ use crate::tools::types::ToolRunner;
 use std::io::{self, BufRead, Write};
 
 const HELP: &str = "\
-/compact  summarize the conversation to free up context space
-/context  show the working directory and the tokens used out of the context size
-/exit     end the session
-/help     show this list";
+/compact              summarize the conversation to free up context space
+/context              show the working directory and the tokens used out of the context size
+/exit                 end the session
+/help                 show this list
+/tools                list each tool and whether the model may call it
+/tools enable NAME    let the model call a tool
+/tools disable NAME   stop the model calling a tool";
 
 enum Command {
     Compact,
     Exit,
     Context,
     Help,
+    Tools,
+    Enable(String),
+    Disable(String),
 }
 
 /// Slash commands are handled here and never sent to the model. Any other line, including an unknown
 /// slash command, is sent as a message.
 fn command(line: &str) -> Option<Command> {
-    match line.trim() {
+    let line = line.trim();
+    if let Some(rest) = line.strip_prefix("/tools") {
+        return match rest.split_whitespace().collect::<Vec<_>>().as_slice() {
+            [] => Some(Command::Tools),
+            ["enable", name] => Some(Command::Enable(name.to_string())),
+            ["disable", name] => Some(Command::Disable(name.to_string())),
+            _ => None,
+        };
+    }
+    match line {
         "/exit" => Some(Command::Exit),
         "/context" => Some(Command::Context),
         "/help" => Some(Command::Help),
         "/compact" => Some(Command::Compact),
         _ => None,
+    }
+}
+
+/// One line per tool in the catalogue, with whether the model may call it.
+fn tool_list(tools: &dyn ToolRunner) -> String {
+    let enabled = tools.enabled();
+    crate::tools::specs()
+        .iter()
+        .map(|spec| {
+            let state = if enabled.contains(&spec.name) { "enabled" } else { "disabled" };
+            format!("{}: {state}", spec.name)
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Enables or disables a tool, reporting the result on `output` or the failure on `errors`.
+fn toggle(
+    tools: &dyn ToolRunner,
+    name: &str,
+    on: bool,
+    output: &mut impl Write,
+    errors: &mut impl Write,
+) -> io::Result<()> {
+    match tools.set_enabled(name, on) {
+        Ok(()) => writeln!(output, "{name}: {}", if on { "enabled" } else { "disabled" }),
+        Err(err) => writeln!(errors, "error: {err}"),
     }
 }
 
@@ -49,6 +91,9 @@ pub fn run(
         match command(&line) {
             Some(Command::Exit) => break,
             Some(Command::Help) => writeln!(output, "{HELP}")?,
+            Some(Command::Tools) => writeln!(output, "{}", tool_list(tools))?,
+            Some(Command::Enable(name)) => toggle(tools, &name, true, output, errors)?,
+            Some(Command::Disable(name)) => toggle(tools, &name, false, output, errors)?,
             Some(Command::Compact) => match compact(provider, conversation) {
                 Ok(Compaction::Summarized) => writeln!(output, "conversation compacted")?,
                 Ok(Compaction::Dropped(removed)) => writeln!(
