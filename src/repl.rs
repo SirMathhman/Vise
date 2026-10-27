@@ -1,4 +1,5 @@
 use crate::error::ProviderError;
+use crate::notes::{self, Note};
 use crate::profile;
 use crate::provider::types::{Event, Provider};
 use crate::render::Render;
@@ -16,7 +17,11 @@ const HELP: &str = "\
 /tools enable NAME    let the model call a tool
 /tools disable NAME   stop the model calling a tool
 /profile              list the profiles in the profiles folder
-/profile NAME         use a profile's instructions from the next message on";
+/profile NAME         use a profile's instructions from the next message on
+/notes [CATEGORY]     list the notes, all or in one category
+/note show NAME       show a note
+/note create NAME CATEGORY   create a note with a placeholder summary
+/note delete NAME     delete a note";
 
 enum Command {
     Compact,
@@ -28,12 +33,32 @@ enum Command {
     Disable(String),
     Profiles,
     Profile(String),
+    /// Lists the notes in a category; an empty category lists all.
+    ListNotes(String),
+    ShowNote(String),
+    CreateNote(String, String),
+    DeleteNote(String),
 }
 
 /// Slash commands are handled here and never sent to the model. Any other line, including an unknown
 /// slash command, is sent as a message.
 fn command(line: &str) -> Option<Command> {
     let line = line.trim();
+    if let Some(rest) = whole_word(line, "/notes") {
+        return match rest.split_whitespace().collect::<Vec<_>>().as_slice() {
+            [] => Some(Command::ListNotes(String::new())),
+            [category] => Some(Command::ListNotes(category.to_string())),
+            _ => None,
+        };
+    }
+    if let Some(rest) = whole_word(line, "/note") {
+        return match rest.split_whitespace().collect::<Vec<_>>().as_slice() {
+            ["show", name] => Some(Command::ShowNote(name.to_string())),
+            ["create", name, category] => Some(Command::CreateNote(name.to_string(), category.to_string())),
+            ["delete", name] => Some(Command::DeleteNote(name.to_string())),
+            _ => None,
+        };
+    }
     if let Some(rest) = line.strip_prefix("/profile").filter(|rest| rest.is_empty() || rest.starts_with(' ')) {
         return match rest.split_whitespace().collect::<Vec<_>>().as_slice() {
             [] => Some(Command::Profiles),
@@ -56,6 +81,11 @@ fn command(line: &str) -> Option<Command> {
         "/compact" => Some(Command::Compact),
         _ => None,
     }
+}
+
+/// The rest of `line` after `command`, when `command` is the line's first word.
+fn whole_word<'a>(line: &'a str, command: &str) -> Option<&'a str> {
+    line.strip_prefix(command).filter(|rest| rest.is_empty() || rest.starts_with(' '))
 }
 
 /// One line per tool in the catalogue, with whether the model may call it.
@@ -134,6 +164,26 @@ pub fn run(
                 Ok(names) => writeln!(output, "{}", names.join("\n"))?,
                 Err(err) => writeln!(errors, "error: {err}")?,
             },
+            Some(Command::ListNotes(category)) => match notes::list(&category) {
+                Ok(listed) if listed.is_empty() => writeln!(output, "no notes")?,
+                Ok(listed) => writeln!(output, "{}", notes::describe_list(&listed))?,
+                Err(err) => writeln!(errors, "error: {err}")?,
+            },
+            Some(Command::ShowNote(name)) => match notes::read(&name) {
+                Ok(note) => writeln!(output, "{}", notes::show(&note))?,
+                Err(err) => writeln!(errors, "error: {err}")?,
+            },
+            Some(Command::CreateNote(name, category)) => {
+                let placeholder = Note { summary: "placeholder".into(), category, content: String::new() };
+                match notes::create(&name, &placeholder) {
+                    Ok(()) => writeln!(output, "created note {name}")?,
+                    Err(err) => writeln!(errors, "error: {err}")?,
+                }
+            }
+            Some(Command::DeleteNote(name)) => match notes::delete(&name) {
+                Ok(()) => writeln!(output, "deleted note {name}")?,
+                Err(err) => writeln!(errors, "error: {err}")?,
+            },
             Some(Command::Profile(name)) => match profile::load(&name) {
                 Ok(loaded) => match apply_whitelist(tools, loaded.tools.as_deref()) {
                     Ok(changes) => {
@@ -167,6 +217,14 @@ pub fn run(
                 let message = match &profile {
                     Some(text) if !profile::carried(conversation.messages(), text) => format!("{text}\n\n{line}"),
                     _ => line,
+                };
+                let message = match notes::index() {
+                    Ok(index) if notes::needed(conversation.messages(), &index) => format!("{index}\n\n{message}"),
+                    Ok(_) => message,
+                    Err(err) => {
+                        writeln!(errors, "error: {err}")?;
+                        message
+                    }
                 };
                 // The approval prompts share the output with the live display, and read their answers from the
                 // same input as the lines themselves.

@@ -2,6 +2,7 @@
 pub mod fs;
 pub mod jobs;
 pub mod kill_background;
+pub mod notes;
 pub mod read_background;
 pub mod run_powershell;
 pub mod runner;
@@ -30,6 +31,11 @@ const SPECS: &[ToolSpec] = &[
     run_powershell::SPEC,
     read_background::SPEC,
     kill_background::SPEC,
+    notes::LIST,
+    notes::READ,
+    notes::CREATE,
+    notes::UPDATE,
+    notes::DELETE,
 ];
 
 pub fn specs() -> &'static [ToolSpec] {

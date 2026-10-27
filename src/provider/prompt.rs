@@ -64,7 +64,7 @@ mod tests {
     #[test]
     fn note_names_enabled_and_disabled_tools() {
         let note = tool_note(&["read_file"]);
-        assert_eq!(note, "[Tools enabled: read_file. Tools disabled: list_directory, create_file, create_directory, edit_file, run_powershell, read_background, kill_background.]");
+        assert_eq!(note, "[Tools enabled: read_file. Tools disabled: list_directory, create_file, create_directory, edit_file, run_powershell, read_background, kill_background, list_notes, read_note, create_note, update_note, delete_note.]");
     }
 
     #[test]

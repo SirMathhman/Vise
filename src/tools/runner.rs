@@ -1,7 +1,7 @@
 use super::fs::{create_directory, create_file, edit_file, list_directory, read_file};
 use super::jobs::Jobs;
 use super::types::{Invocation, ToolError, ToolRunner};
-use super::{kill_background, read_background, run_powershell, specs};
+use super::{kill_background, notes, read_background, run_powershell, specs};
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -66,6 +66,15 @@ impl ToolRunner for WorkspaceTools {
             ),
             Invocation::ReadBackground { id } => read_background::run(*id, &mut self.jobs.borrow_mut()),
             Invocation::KillBackground { id } => kill_background::run(*id, &mut self.jobs.borrow_mut()),
+            Invocation::ListNotes { category } => notes::run_list(category),
+            Invocation::ReadNote { name } => notes::run_read(name),
+            Invocation::CreateNote { name, summary, category, content } => {
+                notes::run_create(name, summary, category, content)
+            }
+            Invocation::UpdateNote { name, summary, category, content } => {
+                notes::run_update(name, summary, category, content)
+            }
+            Invocation::DeleteNote { name } => notes::run_delete(name),
         }
     }
 }
@@ -86,9 +95,18 @@ fn describe(invocation: &Invocation) -> String {
             }
         }
         Invocation::KillBackground { id } => format!("stop background task {id}"),
-        Invocation::ListDirectory { .. } | Invocation::ReadFile { .. } | Invocation::ReadBackground { .. } => {
-            String::new()
+        Invocation::CreateNote { name, summary, category, content } => {
+            format!("create note '{name}' [{category}]: {summary}\n{content}")
         }
+        Invocation::UpdateNote { name, summary, category, content } => {
+            format!("replace note '{name}' with [{category}]: {summary}\n{content}")
+        }
+        Invocation::DeleteNote { name } => format!("delete note '{name}'"),
+        Invocation::ListDirectory { .. }
+        | Invocation::ReadFile { .. }
+        | Invocation::ReadBackground { .. }
+        | Invocation::ListNotes { .. }
+        | Invocation::ReadNote { .. } => String::new(),
     }
 }
 

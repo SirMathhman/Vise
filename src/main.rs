@@ -1,5 +1,6 @@
 mod environment;
 mod error;
+mod notes;
 mod profile;
 mod provider;
 mod render;

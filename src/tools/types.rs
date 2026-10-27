@@ -116,6 +116,11 @@ pub enum Invocation {
     RunPowerShell { command: String, timeout_secs: u64, background: bool },
     ReadBackground { id: usize },
     KillBackground { id: usize },
+    ListNotes { category: String },
+    ReadNote { name: String },
+    CreateNote { name: String, summary: String, category: String, content: String },
+    UpdateNote { name: String, summary: String, category: String, content: String },
+    DeleteNote { name: String },
 }
 
 impl Invocation {
@@ -130,19 +135,31 @@ impl Invocation {
             Self::RunPowerShell { .. } => "run_powershell",
             Self::ReadBackground { .. } => "read_background",
             Self::KillBackground { .. } => "kill_background",
+            Self::ListNotes { .. } => "list_notes",
+            Self::ReadNote { .. } => "read_note",
+            Self::CreateNote { .. } => "create_note",
+            Self::UpdateNote { .. } => "update_note",
+            Self::DeleteNote { .. } => "delete_note",
         }
     }
 
     /// Whether running this changes the filesystem or runs a program, so it needs approval and is never
-    /// replayed. Reading a background task's output changes nothing.
+    /// replayed. Reading a background task's output or a note changes nothing.
     pub fn writes(&self) -> bool {
         match self {
-            Self::ListDirectory { .. } | Self::ReadFile { .. } | Self::ReadBackground { .. } => false,
+            Self::ListDirectory { .. }
+            | Self::ReadFile { .. }
+            | Self::ReadBackground { .. }
+            | Self::ListNotes { .. }
+            | Self::ReadNote { .. } => false,
             Self::CreateFile { .. }
             | Self::CreateDirectory { .. }
             | Self::EditFile { .. }
             | Self::RunPowerShell { .. }
-            | Self::KillBackground { .. } => true,
+            | Self::KillBackground { .. }
+            | Self::CreateNote { .. }
+            | Self::UpdateNote { .. }
+            | Self::DeleteNote { .. } => true,
         }
     }
 }
