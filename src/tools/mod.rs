@@ -131,4 +131,32 @@ mod tests {
         );
         assert!(message.contains("'start' is out of range"));
     }
+
+    #[test]
+    fn unknown_tool_name_is_rejected() {
+        let error = call("delete_everything", HashMap::new()).err().expect("expected an unknown tool error");
+        assert!(matches!(error, ToolError::UnknownTool(name) if name == "delete_everything"));
+    }
+
+    #[test]
+    fn extra_field_is_rejected_by_name() {
+        let message = rejection(
+            &list_directory::SPEC,
+            vec![
+                ("path", Value::Text(".".into())),
+                ("depth", Value::Integer(1)),
+                ("recursive", Value::Integer(1)),
+            ],
+        );
+        assert!(message.contains("unknown field 'recursive'"));
+    }
+
+    #[test]
+    fn unsupported_json_type_is_wrong_type_not_missing() {
+        let message = rejection(
+            &list_directory::SPEC,
+            vec![("path", Value::Text(".".into())), ("depth", Value::Unsupported)],
+        );
+        assert!(message.contains("'depth' has the wrong type"));
+    }
 }
