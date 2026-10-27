@@ -1,11 +1,11 @@
 use crate::error::ProviderError;
-use crate::notes::{self, Note};
+use crate::notes;
 use crate::profile;
 use crate::provider::types::{Event, Provider};
 use crate::render::Render;
 use crate::session::{Conversation, Message, Turn};
 use crate::tools::specs;
-use crate::tools::types::{ToolError, ToolRunner};
+use crate::tools::types::{Invocation, ToolError, ToolRunner};
 use std::io::{self, BufRead, Write};
 
 const HELP: &str = "\
@@ -120,6 +120,22 @@ fn apply_whitelist(tools: &dyn ToolRunner, whitelist: Option<&[String]>) -> Resu
     Ok(changes)
 }
 
+/// Runs a write the user asked for. It goes through the runner, so the user sees the same description and
+/// approval a write from the model gets.
+fn user_write(
+    tools: &dyn ToolRunner,
+    invocation: &Invocation,
+    output: &mut impl Write,
+    input: &mut impl BufRead,
+    errors: &mut impl Write,
+) -> io::Result<()> {
+    let mut approve = |change: &str| ask(change, &mut *output, &mut *input);
+    match tools.run(invocation, &mut approve) {
+        Ok(message) => writeln!(output, "{message}"),
+        Err(err) => writeln!(errors, "error: {err}"),
+    }
+}
+
 /// Enables or disables a tool, reporting the result on `output` or the failure on `errors`.
 fn toggle(
     tools: &dyn ToolRunner,
@@ -174,16 +190,17 @@ pub fn run(
                 Err(err) => writeln!(errors, "error: {err}")?,
             },
             Some(Command::CreateNote(name, category)) => {
-                let placeholder = Note { summary: "placeholder".into(), category, content: String::new() };
-                match notes::create(&name, &placeholder) {
-                    Ok(()) => writeln!(output, "created note {name}")?,
-                    Err(err) => writeln!(errors, "error: {err}")?,
-                }
+                let placeholder = Invocation::CreateNote {
+                    name,
+                    summary: "placeholder".into(),
+                    category,
+                    content: String::new(),
+                };
+                user_write(tools, &placeholder, output, input, errors)?;
             }
-            Some(Command::DeleteNote(name)) => match notes::delete(&name) {
-                Ok(()) => writeln!(output, "deleted note {name}")?,
-                Err(err) => writeln!(errors, "error: {err}")?,
-            },
+            Some(Command::DeleteNote(name)) => {
+                user_write(tools, &Invocation::DeleteNote { name }, output, input, errors)?;
+            }
             Some(Command::Profile(name)) => match profile::load(&name) {
                 Ok(loaded) => match apply_whitelist(tools, loaded.tools.as_deref()) {
                     Ok(changes) => {

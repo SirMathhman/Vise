@@ -39,9 +39,17 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
   how the model is told the enabled set.
 - **Tool call form**: a reply consisting of `<tool_call>`, a JSON body with `name` and `arguments`, and
   `</tool_call>`. It is the only reply form that runs a tool. Any other reply is text.
-- **Write**: a tool call that changes the filesystem or runs or stops a program (`create_file`,
-  `create_directory`, `edit_file`, `run_powershell`, `kill_background`). A write runs only after the user
-  approves it. A declined write is reported to the model as an error and changes nothing.
+- **Write**: a call that changes the filesystem or runs or stops a program: a tool call (`create_file`,
+  `create_directory`, `edit_file`, `run_powershell`, `kill_background`, `create_note`, `update_note`,
+  `delete_note`), or a user's slash command that does the same (`/note create`, `/note delete`). A write
+  runs only after the user approves it, whoever asked. A declined write is reported to the model as an
+  error, or to the user, and changes nothing.
+- **Note**: a named file, `notes/NAME.md` under the working directory. The name is letters, digits, `-`
+  and `_`. The file starts with a `---` header holding one `summary:` line and one `category:` line, then
+  the content. Notes persist across sessions.
+- **Notes index**: the list of every note's name, category, and summary, or `[Notes]` followed by `(none)`.
+  It reaches the model as a prefix of a user message whenever the latest index in history is not the
+  current one.
 - **Background task**: a PowerShell command that keeps running after its turn's tool call returns. It
   gets an id, its output is collected while it runs, and the model reads that output with
   `read_background` and stops it with `kill_background`. Background tasks are stopped when the session ends.
@@ -105,7 +113,11 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 - The approval text for `kill_background` names the task's command and whether it is still running, not
   only its id. The user approves what will stop, not a number.
 - A write runs only after the user approves a description of it. The default is no: only `y` or `yes`
-  approves.
+  approves. This holds for the user's own note commands as for model calls.
+- A note name is validated like a profile name, so it cannot leave the notes folder. `create` fails if the
+  note exists; `update` and `delete` fail if it does not. A summary or category is one non-empty line.
+- The notes index is sent in the user message that carries it, and only when the latest index in history
+  differs. Compaction or a dropped turn that removes it causes it to be sent again.
 - Slash commands (`/compact`, `/context`, `/exit`, `/help`, `/tools`, `/profile`) are never sent to the
   model. Every other line is, including `exit`, `quit`, and unknown slash commands.
 - A profile is chosen by name only. The name must be letters, digits, `-` or `_`, so it cannot leave the
@@ -139,7 +151,8 @@ src/
   repl.rs            the input loop over generic BufRead/Write. Hands each turn's provider Events to render.
                      Parses and runs slash commands
                      (including `/tools`, `/tools enable NAME`, `/tools disable NAME`, `/profile`,
-                     `/profile NAME`, which also sets the enabled tools from the profile), holds the selected
+                     `/profile NAME`, which also sets the enabled tools from the profile, `/notes`, `/note show`,
+                     `/note create`, `/note delete`), holds the selected
                      profile until a turn succeeds,
                      decides when to compact, retries a turn that reports ContextFull once, asks
                      for approval of writes, and writes replies and notices
@@ -153,6 +166,8 @@ src/
   error.rs           ProviderError, SessionError, MAX_TOOL_ROUNDS
   profile.rs         lists the profiles folder's .txt files, loads one by a validated name, and splits its
                      optional `tools:` line (checked against the tool catalogue) from its instructions
+  notes.rs           the notes folder: one file per note. Reads, creates, updates, deletes, and lists notes,
+                     and builds the index text. Plain text only; it depends on std alone.
   provider/
     mod.rs           declarations only
     types.rs         trait Provider: complete, complete_streaming (default: calls complete and reports
@@ -164,7 +179,8 @@ src/
                      prepended when the history does not state the enabled set (checked, not stored)
     grammar.rs       builds the GBNF grammar from the enabled tool names: thinking block, then text that
                      cannot contain the `<tool_call>` marker, or one call. Sent with each request.
-    prompt.rs        the tool catalogue text, from every ToolSpec, enabled or not; the tool note
+    prompt.rs        the tool catalogue text, from every ToolSpec, enabled or not; the tool note; the notes
+                     index message and the check for whether it is needed
   tools/
     mod.rs           registry: specs(), call(name, values) -> Invocation; declares its children
     types.rs         ToolSpec, Param, ParamType, Value, Arguments, Invocation, ToolCall, ToolError,
@@ -176,6 +192,8 @@ src/
                      timeout it becomes a background task
     read_background.rs  returns a background task's output after the offset the model passes
     kill_background.rs  stops a background task and every process it started
+    notes.rs         the five note tools (list, read, create, update, delete): each binds its arguments to an
+                     Invocation; the run_* functions call notes.rs and map its errors to ToolError::Failed
     jobs.rs          the background tasks' bookkeeping: ids, commands, output (capped at 100 KB), and
                      read offsets. It holds no OS process handling.
     process/         the one place that starts, stops, and reaps OS processes; Windows only today
@@ -194,12 +212,13 @@ Dependencies (an arrow means "may depend on"; there are no cycles):
 
 ```
 main -> repl, session, provider::llama_cpp, tools::runner, environment, error
-repl -> provider::types, session, tools (registry and types), profile, render, error
+repl -> provider::types, session, tools (registry and types), profile, notes, render, error
 render -> provider::types
 profile -> session (Message), tools (registry: specs), std
-provider -> session (Message, Turn, over_budget), tools (registry and types), error
+provider -> session (Message, Turn, over_budget), tools (registry and types), notes, error
 session -> environment, tools::types (ToolCall only)
-tools -> tools' own types, std (no provider, session, HTTP, or serde)
+notes -> std only (it neither sees messages nor the provider)
+tools -> tools' own types, notes, std (no provider, session, HTTP, or serde)
 tools::process -> std and the platform binding (Windows Job Object); nothing outside tools::process
                   names a platform API
 ```
@@ -216,6 +235,9 @@ tools::process -> std and the platform binding (Windows Job Object); nothing out
   name to `tools::call`. `call` finds the spec, checks the values against its parameter types, and calls
   the spec's own `bind` function. The provider never compares tool names.
 - `Value` is text, integer, boolean, or `Unsupported`.
+- `notes` takes and returns plain text and knows no message type. The check for whether the index must be
+  sent belongs to `provider::prompt`, beside the tool note's check. Note writes from the model go through
+  `WorkspaceTools` like every other write.
 - Adding a tool takes: a file with its `SPEC`, `bind`, and `run`; one `Invocation` variant; one arm in
   `runner.rs`; one arm in `Invocation::writes` (an exhaustive match, no wildcard); and one entry in the
   `SPECS` list. The provider and session do not change.
@@ -295,6 +317,27 @@ Turn and history
 - **Whole-file reads.** `read_file` reads the entire file and splits every line before applying its cap,
   so a range near the end of a large file costs the full file.
 
+Notes
+- **The notes layer reaches the session.** `notes::needed` takes `&[Message]`, so `notes` imports `session`,
+  and `tools::notes` reaches the session through it, which the Rules forbid. The check belongs in
+  `provider::prompt`, and `notes` takes plain text.
+- **Note commands write outside the runner.** `/note create` and `/note delete` call the storage functions
+  from `repl`, so they skip the approval step every model write passes. `/note create` also writes a
+  placeholder summary and empty content. Both must go through `WorkspaceTools`, which shows the description
+  and asks first.
+- **One bad note hides every note.** `notes::list` returns the first parse error for the whole folder, so
+  `/notes`, `list_notes`, and the index all fail. The index error prints each turn, and the model is sent
+  no index and is not told notes exist. A bad file should be reported by name, and the rest still listed.
+  The parser also requires `---` followed by `\n`, so a note saved with CRLF line endings fails to parse.
+- **The index reads every note in full.** `index` reads each note file to produce one summary line, every
+  time it is built. The header alone is enough.
+- **The model can delete notes before logging exists.** `delete_note` is a deletion the model can request.
+  The Commands section says deletion tools wait for logging. The approval prompt is the only gate.
+- **Note paths skip confinement.** `notes::path` checks the name but not the folder: a symlink named `notes`
+  leads writes outside the working directory. `confine_new` should resolve the folder.
+- **Note content is unbounded.** `create_note` and `update_note` accept any length, and `read_note` returns
+  the whole note into the conversation.
+
 Tool protocol
 - **Two request formats.** A reply is requested as `<tool_call>` text, but earlier calls are resent as
   structured `tool_calls` with no `tools` field. The model sees its own calls in a form it is not asked to
@@ -337,8 +380,8 @@ Boundaries that the design places elsewhere
 - **`repl` indexes the history.** `/context` reads `messages().first()`. `Conversation::context()` should
   be the only accessor.
 - **Commands are parsed in `repl.rs`.** The design calls for a `commands` module with one table that
-  drives both parsing and the `/help` text. Today the help text is written by hand.
-- **The status line is built inside `repl::run`.** `run` is 115 lines, over the 100-line limit, and the
+  drives both parsing and the `/help` text. Today the help text is written by hand, and the `/notes` and `/note` commands are parsed there too.
+- **The status line is built inside `repl::run`.** `run` is 117 lines, over the 100-line limit, and the
   status closures (`status`, `end_status`, `on_event`) that the prompt-progress change added sit inside it.
   Moving them to `render` as a struct that owns the shared output and the status-line state, with an
   `on_event` method, brings `run` under the limit and gives the status line its own tests.
@@ -347,7 +390,8 @@ Boundaries that the design places elsewhere
 - **`main` exits 0 when the REPL fails.** A stdin or stdout failure inside the REPL returns normally.
 
 Writes
-- **The approval text is unescaped.** `describe` prints the path, content, and edit text as received.
+- **The approval text is unescaped.** `describe` prints the path, content, and edit text as received. Note
+  names, summaries, categories, and content are printed the same way.
   Control characters and carriage returns can hide or rewrite what the user approves.
 - **Approval and confinement are separate steps.** The description shows the path, and `confine_new`
   resolves it when the write happens, so a symlink changed in between goes unseen. `confine_new` checks
@@ -397,6 +441,9 @@ Trust boundaries:
   for injected instructions.
 - **Profile files** are untrusted text. They sit in `profiles/` under the working directory, which an
   approved write can also change, and their text reaches the model verbatim.
+- **Notes** are text the model writes (after approval) or the user writes. The index and `read_note` results
+  put their text before the model in later sessions, so a note is a persistence path for injected
+  instructions, like `AGENTS.md`.
 - **The API key** lives in `.env` (git-ignored) and in the environment.
 
 What untrusted input can reach:
@@ -431,8 +478,12 @@ Controls:
 | Enabling a tool | Accepted. `/tools enable` is the user's own action; each write still asks for approval. |
 | Profile files setting the enabled set | Partly met. A profile's tools line is checked against the catalogue, and selecting a profile is the user's action. Selection re-enables every tool when the profile has no line, and reports nothing (Open Problems). |
 | Logging of approvals, writes, and commands | Missing. Commands are not logged (Open Problems). |
-| Environment disclosure (working directory and standing instructions sent every turn) | Missing. Only opt-in fields would be sent; today the path and the whole `AGENTS.md` are always sent. |
+| Environment disclosure (working directory and standing instructions sent every turn) | Missing. Only opt-in fields would be sent; today the path and the whole `AGENTS.md` are always sent. The notes index is sent with it. |
 | Size limit on standing instructions | Missing (Open Problems). |
+| Size limit on note content | Missing (Open Problems). |
+| Note names restricted to letters, digits, `-`, `_` | Met. A name cannot leave the notes folder. A symlink named `notes` is still followed (Open Problems). |
+| Notes index and note text marked as untrusted data | Missing. |
+| Note writes approved like other writes, including the user's own note commands | Missing for `/note create` and `/note delete` (Open Problems). |
 | Writes to `AGENTS.md` shown as such | Missing. The approval text reads like any other write, and no warning says the file shapes later sessions. |
 | Data exposure (directory listings sent to the endpoint) | Accepted. History is never written to disk. |
 
@@ -452,6 +503,8 @@ Controls:
 - A `/jobs` command that lists background tasks with their command, state, and age, and a way to read a
   task's output from the terminal, so the user can see what is running before approving a stop.
 - Deletion and further execution tools, only after logging is implemented.
+- A `/note edit NAME` form that changes a note's content through the runner's approval, so the user can
+  correct what the model wrote.
 - A `/profile` form that clears the selection, and a `/profile` listing that shows the selected profile.
 
 ## Performance
@@ -470,5 +523,7 @@ Obvious concerns only; profile before optimizing.
 - Each request builds a new `ureq` request. One shared agent would reuse connections.
 - The standing instructions are resent with every request, so a large `AGENTS.md` adds prompt tokens to every
   turn and to every tool round.
+- The notes index is resent whenever notes change, one line per note. Building it reads every note in full
+  (Open Problems), on each user message that checks it.
 - Grammar-constrained decoding checks each token against the grammar. Measure its cost against an
   unconstrained request before adding per-tool argument rules.
