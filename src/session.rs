@@ -161,6 +161,7 @@ pub struct Conversation {
     messages: Vec<Message>,
     prompt_tokens: u64,
     autosave: Option<Autosave>,
+    startup: Option<String>,
 }
 
 impl Conversation {
@@ -171,13 +172,25 @@ impl Conversation {
             context.push_str("\n\n");
             context.push_str(&instructions);
         }
-        Self { messages: vec![Message::System(context)], prompt_tokens: 0, autosave: None }
+        Self { messages: vec![Message::System(context)], prompt_tokens: 0, autosave: None, startup: None }
     }
 
     pub fn commit(&mut self, turn: Turn) {
         let (messages, prompt_tokens) = turn.into_parts();
         self.messages.extend(messages);
         self.prompt_tokens = prompt_tokens;
+        // The first message carrying the startup output is now in the history.
+        self.startup = None;
+    }
+
+    /// Text to send ahead of the next message, such as the output of the startup commands. It is kept until a turn
+    /// is committed, so a failed turn carries it into the retry.
+    pub fn startup(&self) -> Option<&str> {
+        self.startup.as_deref()
+    }
+
+    pub fn set_startup(&mut self, text: String) {
+        self.startup = Some(text);
     }
 
     /// Replaces the history with the system context, the summary as an assistant message, and the

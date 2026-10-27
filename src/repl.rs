@@ -238,6 +238,10 @@ fn chat_turn(
     errors: &mut impl Write,
 ) -> io::Result<()> {
     let typed = line.clone();
+    let line = match conversation.startup() {
+        Some(text) => format!("{text}\n\n{line}"),
+        None => line,
+    };
     let message = match profile {
         Some(text) if !profile::carried(conversation.messages(), text) => format!("{text}\n\n{line}"),
         _ => line,
@@ -500,6 +504,17 @@ mod tests {
         let (output, _) = run_with("/compact\n", &fake, &mut conversation);
         assert!(output.contains("the summary did not fit, so the oldest turn was dropped"));
         assert!(!output.contains("conversation compacted"));
+    }
+
+    #[test]
+    fn startup_output_goes_with_the_first_message_only() {
+        let fake = Fake::new(Behavior::Reply);
+        let mut conversation = conversation();
+        conversation.set_startup("Startup command: x\nout".into());
+        run_with("hi\nagain\n", &fake, &mut conversation);
+        let inputs = fake.inputs.borrow();
+        assert!(inputs[0].starts_with("Startup command: x") && inputs[0].ends_with("hi"));
+        assert_eq!(inputs[1], "again");
     }
 
     #[test]

@@ -8,6 +8,7 @@ mod render;
 mod repl;
 mod saved_sessions;
 mod session;
+mod startup;
 mod tools;
 
 use provider::llama_cpp::LlamaCpp;
@@ -41,6 +42,13 @@ fn main() {
     let mut output = stdout.lock();
     let mut errors = io::stderr();
     let mut input = io::stdin().lock();
+    match startup::run(&env.cwd, &tools, &mut output, &mut errors) {
+        Ok(Some(text)) => conversation.set_startup(text),
+        Ok(None) => {}
+        Err(err) => {
+            let _ = writeln!(errors, "error: {err}");
+        }
+    }
     if let Err(err) = repl::run(
         &mut input,
         &mut output,
