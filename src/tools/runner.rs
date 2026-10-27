@@ -42,7 +42,11 @@ impl WorkspaceTools {
         };
         target.parent() == Some(root.as_path())
             && target.file_name().is_some_and(|name| {
-                [STARTUP_FILE, SHUTDOWN_FILE].iter().any(|file| name.eq_ignore_ascii_case(*file))
+                // Windows ignores trailing dots and spaces in a name, and `name:stream` writes to the same file's
+                // alternate stream, so the base name is compared without them.
+                let name = name.to_string_lossy();
+                let base = name.split(':').next().unwrap_or_default().trim_end_matches(['.', ' ']);
+                [STARTUP_FILE, SHUTDOWN_FILE].iter().any(|file| base.eq_ignore_ascii_case(file))
             })
     }
 }
@@ -125,6 +129,19 @@ impl ToolRunner for WorkspaceTools {
             Invocation::DeleteNote { name } => notes::run_delete(name),
         }
     }
+
+    fn run_command_file_line(&self, invocation: &Invocation) -> Result<String, ToolError> {
+        match invocation {
+            Invocation::RunPowerShell { command, timeout_secs, background } => run_powershell::run(
+                command,
+                *timeout_secs,
+                *background,
+                &self.cwd,
+                &mut self.jobs.borrow_mut(),
+            ),
+            _ => Err(ToolError::Failed("a command file holds only PowerShell commands".into())),
+        }
+    }
 }
 
 /// Describes a write so the user can decide whether to allow it.
@@ -198,6 +215,22 @@ mod tests {
         fs::remove_dir_all(&cwd).unwrap();
         assert!(created.is_err_and(|err| err.to_string().contains("cannot change it")));
         assert!(edited.is_err_and(|err| err.to_string().contains("cannot change it")));
+    }
+
+    #[test]
+    fn file_tools_refuse_command_file_names_with_trailing_dots_or_streams() {
+        let cwd = std::env::temp_dir().join(format!("vise-command-names-{}", std::process::id()));
+        fs::create_dir_all(&cwd).unwrap();
+        let tools = WorkspaceTools::new(cwd.clone());
+        let mut refused = Vec::new();
+        for path in ["shutdown.txt.", "startup.txt ", "startup.txt:stream"] {
+            let create = Invocation::CreateFile { path: path.into(), content: "x".into() };
+            let edit = Invocation::EditFile { path: path.into(), previous: "a".into(), new: "b".into() };
+            refused.push(tools.run(&create, &mut |_: &str| true).is_err_and(|err| err.to_string().contains("cannot change it")));
+            refused.push(tools.run(&edit, &mut |_: &str| true).is_err_and(|err| err.to_string().contains("cannot change it")));
+        }
+        fs::remove_dir_all(&cwd).unwrap();
+        assert!(refused.iter().all(|&refused| refused));
     }
 
     #[test]

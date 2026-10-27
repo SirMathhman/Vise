@@ -180,6 +180,12 @@ pub trait ToolRunner {
     /// it is called only for invocations that write.
     fn run(&self, invocation: &Invocation, approve: &mut dyn FnMut(&str) -> bool) -> Result<String, ToolError>;
 
+    /// Runs one line of a command file (startup or shutdown). The user wrote the file, so the line runs whatever
+    /// tools the model may call. A runner without tool state runs it through `run`.
+    fn run_command_file_line(&self, invocation: &Invocation) -> Result<String, ToolError> {
+        self.run(invocation, &mut |_: &str| true)
+    }
+
     /// The names of the tools the model may call. Every tool is enabled unless the runner says otherwise.
     fn enabled(&self) -> Vec<&'static str> {
         super::specs().iter().map(|spec| spec.name).collect()

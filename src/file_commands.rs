@@ -49,8 +49,7 @@ fn run_command(
         timeout_secs: TIMEOUT_SECS,
         background: false,
     };
-    // The user wrote the file, so the approval the runner asks for is answered yes here.
-    match tools.run(&invocation, &mut |_: &str| true) {
+    match tools.run_command_file_line(&invocation) {
         Ok(result) => {
             // The first line of a result is its status, such as the exit code. The output itself goes to the model.
             writeln!(output, "  {}", result.lines().next().unwrap_or_default())?;
@@ -60,5 +59,24 @@ fn run_command(
             writeln!(errors, "error: {label} command failed: {err}")?;
             Ok(err.to_string())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tools::runner::WorkspaceTools;
+    use std::fs;
+
+    #[test]
+    fn unreadable_command_file_is_reported_and_yields_none() {
+        let cwd = std::env::temp_dir().join(format!("vise-file-commands-{}", std::process::id()));
+        fs::create_dir_all(cwd.join("shutdown.txt")).unwrap();
+        let tools = WorkspaceTools::new(cwd.clone());
+        let mut errors = Vec::<u8>::new();
+        let result = run_file(&cwd, "shutdown.txt", "shutdown", &tools, &mut Vec::<u8>::new(), &mut errors);
+        fs::remove_dir_all(&cwd).unwrap();
+        assert!(matches!(result, Ok(None)));
+        assert!(String::from_utf8(errors).unwrap().contains("error: cannot read shutdown.txt"));
     }
 }
