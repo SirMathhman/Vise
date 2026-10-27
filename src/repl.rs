@@ -1,7 +1,22 @@
 use crate::provider::types::Provider;
-use crate::session::Conversation;
+use crate::session::{Conversation, Message};
 use crate::tools::types::ToolRunner;
 use std::io::{self, BufRead, Write};
+
+enum Command {
+    Exit,
+    Context,
+}
+
+/// Slash commands are handled here and never sent to the model. Any other line, including an unknown
+/// slash command, is sent as a message.
+fn command(line: &str) -> Option<Command> {
+    match line.trim() {
+        "/exit" => Some(Command::Exit),
+        "/context" => Some(Command::Context),
+        _ => None,
+    }
+}
 
 pub fn run(
     input: impl BufRead,
@@ -19,15 +34,19 @@ pub fn run(
                 break;
             }
         };
-        if matches!(line.trim(), "exit" | "quit") {
-            break;
-        }
-        match provider.complete(conversation.messages(), line, tools) {
-            Ok(turn) => {
-                writeln!(output, "{}", turn.reply())?;
-                conversation.commit(turn);
+        match command(&line) {
+            Some(Command::Exit) => break,
+            Some(Command::Context) => {
+                let context = conversation.messages().first().map_or("", Message::content);
+                writeln!(output, "{context}")?;
             }
-            Err(err) => writeln!(errors, "error: {err}")?,
+            None => match provider.complete(conversation.messages(), line, tools) {
+                Ok(turn) => {
+                    writeln!(output, "{}", turn.reply())?;
+                    conversation.commit(turn);
+                }
+                Err(err) => writeln!(errors, "error: {err}")?,
+            },
         }
     }
     Ok(())
@@ -118,13 +137,19 @@ mod tests {
     }
 
     #[test]
-    fn exit_and_quit_end_the_loop() {
+    fn slash_exit_ends_the_loop() {
         let fake = Fake::new(Behavior::Reply);
         let mut conversation = conversation();
-        run_with("first\nexit\nsecond\n", &fake, &mut conversation);
+        run_with("first\n/exit\nsecond\n", &fake, &mut conversation);
         assert_eq!(*fake.inputs.borrow(), vec!["first"]);
-        run_with("quit\nthird\n", &fake, &mut conversation);
-        assert_eq!(*fake.inputs.borrow(), vec!["first"]);
+    }
+
+    #[test]
+    fn plain_exit_and_quit_are_sent_to_the_model() {
+        let fake = Fake::new(Behavior::Reply);
+        let mut conversation = conversation();
+        run_with("exit\nquit\n", &fake, &mut conversation);
+        assert_eq!(*fake.inputs.borrow(), vec!["exit", "quit"]);
     }
 
     #[test]
