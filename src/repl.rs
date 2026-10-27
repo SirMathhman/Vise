@@ -219,49 +219,63 @@ pub fn run(
                     Err(err) => writeln!(errors, "error: {err}")?,
                 }
             }
-            None => {
-                let typed = line.clone();
-                let message = match &profile {
-                    Some(text) if !profile::carried(conversation.messages(), text) => format!("{text}\n\n{line}"),
-                    _ => line,
-                };
-                let message = match notes::index(tools.allowed_notes().as_deref()) {
-                    Ok(index) if notes::needed(conversation.messages(), &index) => format!("{index}\n\n{message}"),
-                    Ok(_) => message,
-                    Err(err) => {
-                        writeln!(errors, "error: {err}")?;
-                        message
-                    }
-                };
-                // The approval prompts share the output with the live display, and read their answers from the
-                // same input as the lines themselves.
-                let render = Render::new(&mut *output);
-                let mut approve = |change: &str| ask(change, &mut *render.output(), &mut *input);
-                let mut on_event = |event: Event| render.on_event(event);
-                let result = run_turn(provider, conversation, message, tools, &mut approve, &mut on_event);
-                render.end();
-                let streamed = render.streamed();
-                match result {
-                    Ok((turn, compaction)) => {
-                        if let Some(Compaction::Dropped(removed)) = compaction {
-                            writeln!(output, "the context was full, so the oldest turn was dropped ({removed} messages removed)")?;
-                        }
-                        if !streamed {
-                            writeln!(output, "{}", turn.reply())?;
-                        }
-                        conversation.commit(turn);
-                        if let Some((folder, name)) = conversation.autosave_target(&typed) {
-                            if let Err(err) = saved_sessions::write(&folder, &name, conversation.history()) {
-                                writeln!(errors, "error: {err}")?;
-                            }
-                        }
-                    }
-                    Err(err) => writeln!(errors, "error: {err}")?,
-                }
-            }
+            None => chat_turn(line, profile.as_deref(), provider, tools, conversation, input, output, errors)?,
         }
     }
     Ok(())
+}
+
+/// Sends a line to the model as a turn: adds the profile and notes index the history does not carry, runs the
+/// turn, commits it, and autosaves the history.
+fn chat_turn(
+    line: String,
+    profile: Option<&str>,
+    provider: &dyn Provider,
+    tools: &dyn ToolRunner,
+    conversation: &mut Conversation,
+    input: &mut impl BufRead,
+    output: &mut impl Write,
+    errors: &mut impl Write,
+) -> io::Result<()> {
+    let typed = line.clone();
+    let message = match profile {
+        Some(text) if !profile::carried(conversation.messages(), text) => format!("{text}\n\n{line}"),
+        _ => line,
+    };
+    let message = match notes::index(tools.allowed_notes().as_deref()) {
+        Ok(index) if notes::needed(conversation.messages(), &index) => format!("{index}\n\n{message}"),
+        Ok(_) => message,
+        Err(err) => {
+            writeln!(errors, "error: {err}")?;
+            message
+        }
+    };
+    // The approval prompts share the output with the live display, and read their answers from the
+    // same input as the lines themselves.
+    let render = Render::new(&mut *output);
+    let mut approve = |change: &str| ask(change, &mut *render.output(), &mut *input);
+    let mut on_event = |event: Event| render.on_event(event);
+    let result = run_turn(provider, conversation, message, tools, &mut approve, &mut on_event);
+    render.end();
+    let streamed = render.streamed();
+    match result {
+        Ok((turn, compaction)) => {
+            if let Some(Compaction::Dropped(removed)) = compaction {
+                writeln!(output, "the context was full, so the oldest turn was dropped ({removed} messages removed)")?;
+            }
+            if !streamed {
+                writeln!(output, "{}", turn.reply())?;
+            }
+            conversation.commit(turn);
+            if let Some((folder, name)) = conversation.autosave_target(&typed) {
+                if let Err(err) = saved_sessions::write(&folder, &name, conversation.history()) {
+                    writeln!(errors, "error: {err}")?;
+                }
+            }
+            Ok(())
+        }
+        Err(err) => writeln!(errors, "error: {err}"),
+    }
 }
 
 /// Reads one line without its line ending. Returns `None` at the end of input.
