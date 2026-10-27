@@ -1,6 +1,7 @@
 use super::types::ToolError;
 use std::collections::BTreeMap;
 use std::io::Read;
+use std::os::windows::process::CommandExt;
 use std::path::Path;
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -10,6 +11,9 @@ use std::time::{Duration, Instant};
 
 /// The most output one background task keeps. The oldest output is dropped first.
 const MAX_OUTPUT: usize = 100 * 1024;
+
+/// Windows flag: start a console program without creating a console window, so no window takes focus.
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 /// Background PowerShell commands, keyed by the id the model uses to refer to them.
 #[derive(Default)]
@@ -68,6 +72,7 @@ impl Jobs {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
+            .creation_flags(CREATE_NO_WINDOW)
             .spawn()
             .map_err(|err| ToolError::Failed(format!("cannot start powershell.exe: {err}")))?;
 
@@ -171,6 +176,7 @@ fn stop_tree(pid: u32) {
         .args(["/T", "/F", "/PID", &pid.to_string()])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
+        .creation_flags(CREATE_NO_WINDOW)
         .status();
 }
 

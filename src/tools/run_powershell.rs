@@ -92,8 +92,10 @@ mod tests {
         fs::remove_file(&pid_file).unwrap();
 
         jobs.kill(1).unwrap();
+        use std::os::windows::process::CommandExt;
         let listing = std::process::Command::new("tasklist")
             .args(["/FI", &format!("PID eq {pid}"), "/NH"])
+            .creation_flags(0x0800_0000)
             .output()
             .unwrap();
         assert!(!String::from_utf8_lossy(&listing.stdout).contains(&pid));

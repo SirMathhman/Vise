@@ -15,8 +15,12 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
   calls it requested), and `Tool` (content and the id of the call it answers). A `Tool` message always
   has a call id.
 - **Conversation**: the committed history sent to the model on every turn. Only `session` changes it.
-- **Context message**: the leading `system` message describing the host environment (today, the working
-  directory). It is gathered at startup, sent on every turn, and removed only by compaction's own rules.
+- **Context message**: the leading `system` message describing the host environment: the working directory,
+  then the standing instructions when the working directory holds an `AGENTS.md`. It is gathered at startup,
+  sent on every turn, and kept by compaction, which never removes it.
+- **Standing instructions**: the text of `AGENTS.md` in the working directory, read once at session start.
+  Its text is part of the context message and reaches the model verbatim. A change to the file takes
+  effect only in a new session.
 - **Provider**: a backend that turns a conversation into one turn, reports the context size, and writes
   summaries. llama.cpp is the only provider.
 - **Prompt tokens**: the prompt token count the server reports for the last request of a turn. It is
@@ -132,7 +136,8 @@ src/
                      for approval of writes, and writes replies and notices
   session.rs         Message, Turn (checked shape), Conversation (committed history, prompt tokens of
                      the last committed turn, compaction, drop_oldest_turn), over_budget (80%)
-  environment.rs     gathers host facts as plain data (working directory)
+  environment.rs     gathers host facts as plain data (working directory, standing instructions from
+                     AGENTS.md in it)
   error.rs           ProviderError, SessionError, MAX_TOOL_ROUNDS
   profile.rs         lists the profiles folder's .txt files, loads one by a validated name, and splits its
                      optional `tools:` line (checked against the tool catalogue) from its instructions
@@ -240,6 +245,13 @@ Turn and history
   turn is then retried (`ContextFull` before any write) or fails, the output that read returned never
   reaches the model, and the retry sees only what came after. Reads must take the offset from the
   conversation (see Invariants).
+- **Standing instructions are unbounded.** `environment::instructions` reads the whole file into the context
+  message. Compaction keeps that message, so an oversized file makes every request overflow, and the session
+  cannot recover without restarting after the file is cut down. The file needs a byte limit, and an
+  oversized file must be a structured error that names the path and its size.
+- **Instruction read errors are dropped.** `instructions` returns `None` for every failure, so a permission
+  error or a file that is not UTF-8 starts the session as if no file existed, and the user is not told. Only
+  a missing file may be skipped silently; other causes must be reported at startup.
 - **Turn shape is loosened.** `Turn::new` accepts a plain assistant message directly after the user
   message, and the test `summary_may_precede_tool_rounds` requires it. Nothing produces such a message:
   summaries live in `Conversation::compact`. The allowance and its test must go.
@@ -358,6 +370,10 @@ Trust boundaries:
   and oversized bodies.
 - **File and directory names** under the working directory are untrusted text. They can contain
   instructions to the model.
+- **Standing instructions (`AGENTS.md`)** are untrusted text that the user may not have written. An approved
+  write can change the file, and the new text then shapes the model's behaviour in every later session, since
+  the file is read at each session start and sent with every request. A write to it is a persistence path
+  for injected instructions.
 - **Profile files** are untrusted text. They sit in `profiles/` under the working directory, which an
   approved write can also change, and their text reaches the model verbatim.
 - **The API key** lives in `.env` (git-ignored) and in the environment.
@@ -394,7 +410,9 @@ Controls:
 | Enabling a tool | Accepted. `/tools enable` is the user's own action; each write still asks for approval. |
 | Profile files setting the enabled set | Partly met. A profile's tools line is checked against the catalogue, and selecting a profile is the user's action. Selection re-enables every tool when the profile has no line, and reports nothing (Open Problems). |
 | Logging of approvals, writes, and commands | Missing. Commands are not logged (Open Problems). |
-| Environment disclosure (working directory sent every turn) | Missing. Only opt-in fields would be sent; today the path is always sent. |
+| Environment disclosure (working directory and standing instructions sent every turn) | Missing. Only opt-in fields would be sent; today the path and the whole `AGENTS.md` are always sent. |
+| Size limit on standing instructions | Missing (Open Problems). |
+| Writes to `AGENTS.md` shown as such | Missing. The approval text reads like any other write, and no warning says the file shapes later sessions. |
 | Data exposure (directory listings sent to the endpoint) | Accepted. History is never written to disk. |
 
 ## Future Work
@@ -428,5 +446,7 @@ Obvious concerns only; profile before optimizing.
 - A foreground command blocks the REPL for up to its 30-second wait. Background tasks have no count limit,
   and each keeps up to 100 KB of output, so many long-running tasks use memory in proportion.
 - Each request builds a new `ureq` request. One shared agent would reuse connections.
+- The standing instructions are resent with every request, so a large `AGENTS.md` adds prompt tokens to every
+  turn and to every tool round.
 - Grammar-constrained decoding checks each token against the grammar. Measure its cost against an
   unconstrained request before adding per-tool argument rules.
