@@ -1,6 +1,6 @@
 use crate::error::{MAX_TOOL_ROUNDS, ProviderError};
 use crate::provider::types::Provider;
-use crate::session::{Message, Turn};
+use crate::session::{Message, Turn, over_budget};
 use crate::tools::types::{ParamType, ToolCall, ToolRunner, ToolSpec, Value};
 use crate::tools;
 use std::cell::OnceCell;
@@ -240,8 +240,15 @@ impl LlamaCpp {
     fn summarize_messages<'a>(&self, messages: impl Iterator<Item = &'a Message>) -> Result<String, ProviderError> {
         let mut wire: Vec<WireMessage> = messages.map(WireMessage::try_from).collect::<Result<_, _>>()?;
         wire.push(WireMessage::try_from(&Message::User(SUMMARY_REQUEST.into()))?);
-        let (reply, _) = send(&self.api_key, &wire, None)?;
-        Ok(reply.content.unwrap_or_default())
+        let (reply, prompt_tokens) = send(&self.api_key, &wire, None)?;
+        if over_budget(prompt_tokens, self.context_size()?) {
+            return Err(ProviderError::ContextFull);
+        }
+        let summary = reply.content.unwrap_or_default();
+        if summary.trim().is_empty() {
+            return Err(ProviderError::EmptySummary);
+        }
+        Ok(summary)
     }
 }
 
@@ -252,25 +259,20 @@ impl Provider for LlamaCpp {
     fn complete(&self, history: &[Message], input: String, runner: &dyn ToolRunner) -> Result<Turn, ProviderError> {
         let wire_tools: Vec<WireTool> = tools::specs().iter().map(WireTool::from).collect();
         let mut new = vec![Message::User(input)];
-        let mut prompt_tokens = 0;
         for _ in 0..MAX_TOOL_ROUNDS {
-            if self.over_limit(prompt_tokens)? {
-                // The rounds so far are too big for the context, so replace them with a summary.
-                let summary = self.summarize_messages(history.iter().chain(&new))?;
-                new.truncate(1);
-                new.push(Message::Assistant { content: summary, tool_calls: Vec::new() });
-                prompt_tokens = 0;
-            }
             let wire: Vec<WireMessage> =
                 history.iter().chain(&new).map(WireMessage::try_from).collect::<Result<_, _>>()?;
-            let (reply, sent_tokens) = send(&self.api_key, &wire, Some(wire_tools.as_slice()))?;
-            prompt_tokens = sent_tokens;
+            let (reply, prompt_tokens) = send(&self.api_key, &wire, Some(wire_tools.as_slice()))?;
             let content = reply.content.unwrap_or_default();
             if reply.tool_calls.is_empty() {
                 new.push(Message::Assistant { content, tool_calls: Vec::new() });
                 return Turn::new(new)
                     .map(|turn| turn.with_prompt_tokens(prompt_tokens))
                     .map_err(ProviderError::Session);
+            }
+            // Another round would not fit, so stop before running its tools. The caller compacts and retries.
+            if over_budget(prompt_tokens, self.context_size()?) {
+                return Err(ProviderError::ContextFull);
             }
             let calls: Vec<ToolCall> = reply.tool_calls.into_iter().map(ToolCall::from).collect();
             let results: Vec<Message> = calls

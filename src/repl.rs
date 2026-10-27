@@ -1,6 +1,6 @@
 use crate::error::ProviderError;
 use crate::provider::types::Provider;
-use crate::session::{Conversation, Message};
+use crate::session::{Conversation, Message, Turn};
 use crate::tools::types::ToolRunner;
 use std::io::{self, BufRead, Write};
 
@@ -60,13 +60,10 @@ pub fn run(
                     Err(err) => writeln!(errors, "error: {err}")?,
                 }
             }
-            None => match provider.complete(conversation.messages(), line, tools) {
+            None => match run_turn(provider, conversation, line, tools) {
                 Ok(turn) => {
                     writeln!(output, "{}", turn.reply())?;
                     conversation.commit(turn);
-                    if let Err(err) = compact_if_full(provider, conversation) {
-                        writeln!(errors, "error: {err}")?;
-                    }
                 }
                 Err(err) => writeln!(errors, "error: {err}")?,
             },
@@ -75,19 +72,41 @@ pub fn run(
     Ok(())
 }
 
-/// Replaces the older history with a summary the model writes of it.
+/// Replaces the older history with a summary the model writes of it. If the summary request does not
+/// fit in the context, the oldest turn is dropped instead.
 fn compact(provider: &dyn Provider, conversation: &mut Conversation) -> Result<(), ProviderError> {
-    let summary = provider.summarize(conversation.messages())?;
-    conversation.compact(summary);
+    match provider.summarize(conversation.messages()) {
+        Ok(summary) => conversation.compact(summary),
+        Err(ProviderError::ContextFull) => conversation.drop_oldest_turn(),
+        Err(err) => return Err(err),
+    }
     Ok(())
 }
 
-/// Compacts the conversation when its last prompt has reached the context limit.
+/// Compacts the conversation before a turn when its last prompt has reached the budget.
 fn compact_if_full(provider: &dyn Provider, conversation: &mut Conversation) -> Result<(), ProviderError> {
-    if provider.over_limit(conversation.prompt_tokens())? {
+    if conversation.needs_compaction(provider.context_size()?) {
         compact(provider, conversation)?;
     }
     Ok(())
+}
+
+/// Sends a turn. If the context fills up during it, the conversation is compacted and the turn is
+/// sent once more from the compacted history.
+fn run_turn(
+    provider: &dyn Provider,
+    conversation: &mut Conversation,
+    line: String,
+    tools: &dyn ToolRunner,
+) -> Result<Turn, ProviderError> {
+    compact_if_full(provider, conversation)?;
+    match provider.complete(conversation.messages(), line.clone(), tools) {
+        Err(ProviderError::ContextFull) => {
+            compact(provider, conversation)?;
+            provider.complete(conversation.messages(), line, tools)
+        }
+        result => result,
+    }
 }
 
 #[cfg(test)]

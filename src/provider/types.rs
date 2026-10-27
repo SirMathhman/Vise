@@ -10,10 +10,4 @@ pub trait Provider {
 
     /// Asks the model to summarize `history`, returning the summary text.
     fn summarize(&self, history: &[Message]) -> Result<String, ProviderError>;
-
-    /// Whether a prompt of `prompt_tokens` has reached 80% of the context size. A prompt count of 0
-    /// means no request has been made yet, so it is never full.
-    fn over_limit(&self, prompt_tokens: u64) -> Result<bool, ProviderError> {
-        Ok(prompt_tokens > 0 && prompt_tokens * 10 >= self.context_size()? * 8)
-    }
 }

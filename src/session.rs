@@ -44,9 +44,15 @@ impl Message {
 }
 
 /// The messages one exchange adds to a conversation: the user's input, any tool exchanges, and the
-/// reply. Only `Turn::new` builds one, and it checks the whole shape: a user message, then each
-/// assistant tool call followed by one result per call, with plain assistant summaries of earlier
-/// rounds allowed, then a reply with no tool calls.
+/// reply. Only `Turn::new` builds one, and it checks the whole shape: a user message, then an optional
+/// summary of earlier rounds, then each assistant tool call followed by one result per call, then a
+/// reply with no tool calls.
+/// Whether a prompt of `prompt_tokens` has reached 80% of a `context_size` window. A prompt count of 0
+/// means no request has been made yet, so it is never full.
+pub fn over_budget(prompt_tokens: u64, context_size: u64) -> bool {
+    prompt_tokens > 0 && prompt_tokens * 10 >= context_size * 8
+}
+
 pub struct Turn {
     messages: Vec<Message>,
     prompt_tokens: u64,
@@ -64,7 +70,10 @@ impl Turn {
                     if index + 1 == messages.len() {
                         return Ok(Self { messages, prompt_tokens: 0 });
                     }
-                    // A plain reply before the end of the turn is a summary of the rounds before it.
+                    // Only a summary may come before the end of a turn, and only directly after the user.
+                    if index != 1 {
+                        return Err(SessionError::MalformedTurn { index });
+                    }
                     index += 1;
                 }
                 Some(Message::Assistant { tool_calls, .. }) => {
@@ -133,6 +142,24 @@ impl Conversation {
         self.messages.truncate(1);
         self.messages.push(Message::Assistant { content: summary, tool_calls: Vec::new() });
         self.messages.extend(kept);
+        self.prompt_tokens = 0;
+    }
+
+    /// Whether the last prompt has reached the compaction budget for a context of `context_size`.
+    pub fn needs_compaction(&self, context_size: u64) -> bool {
+        over_budget(self.prompt_tokens, context_size)
+    }
+
+    /// Drops the oldest part of the history: the summary if there is one, otherwise the oldest turn.
+    pub fn drop_oldest_turn(&mut self) {
+        let end = self
+            .messages
+            .iter()
+            .enumerate()
+            .skip(2)
+            .find(|(_, message)| matches!(message, Message::User(_)))
+            .map_or(self.messages.len(), |(index, _)| index);
+        self.messages.drain(1..end);
         self.prompt_tokens = 0;
     }
 
@@ -233,5 +260,17 @@ mod tests {
         assert_eq!(messages[1].content(), "summary");
         assert_eq!(messages[2].content(), "b");
         assert_eq!(messages[4].content(), "c");
+    }
+
+    #[test]
+    fn drop_oldest_turn_removes_the_summary_then_the_oldest_turn() {
+        let env = Environment { cwd: PathBuf::from("C:/work") };
+        let mut conversation = Conversation::new(&env);
+        for input in ["a", "b"] {
+            conversation.commit(plain_turn(input));
+        }
+        conversation.drop_oldest_turn();
+        assert_eq!(conversation.messages().len(), 3);
+        assert_eq!(conversation.messages()[1].content(), "b");
     }
 }
