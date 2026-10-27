@@ -1,8 +1,9 @@
 use crate::error::{MAX_TOOL_ROUNDS, ProviderError};
 use crate::provider::types::Provider;
 use crate::session::{Message, Turn};
-use crate::tools::types::{Invocation, ParamType, ToolCall, ToolError, ToolRunner, ToolSpec, Value};
+use crate::tools::types::{ParamType, ToolCall, ToolRunner, ToolSpec, Value};
 use crate::tools;
+use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -62,14 +63,38 @@ impl From<&ToolCall> for WireToolCall {
         WireToolCall {
             id: call.id.clone(),
             kind: function_kind(),
-            function: WireCallFunction { name: call.name.clone(), arguments: call.arguments.clone() },
+            function: WireCallFunction { name: call.name.clone(), arguments: encode(&call.arguments) },
         }
     }
 }
 
 impl From<WireToolCall> for ToolCall {
     fn from(call: WireToolCall) -> Self {
-        ToolCall { id: call.id, name: call.function.name, arguments: call.function.arguments }
+        ToolCall { id: call.id, name: call.function.name, arguments: decode(&call.function.arguments) }
+    }
+}
+
+/// Decodes the model's JSON argument object into plain values. Invalid JSON gives no arguments, so the
+/// tool reports the missing fields. A value that is not a string or an integer becomes `Unsupported`.
+fn decode(arguments: &str) -> HashMap<String, Value> {
+    serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(arguments)
+        .map(|map| map.into_iter().map(|(name, value)| (name, to_value(value))).collect())
+        .unwrap_or_default()
+}
+
+/// Encodes plain values back into the JSON argument object for a request. `Unsupported` is encoded as
+/// `null`, because the model's original value is not kept.
+fn encode(arguments: &HashMap<String, Value>) -> String {
+    let object: serde_json::Map<String, serde_json::Value> =
+        arguments.iter().map(|(name, value)| (name.clone(), to_json(value))).collect();
+    serde_json::to_string(&object).expect("a JSON object of plain values always serializes")
+}
+
+fn to_json(value: &Value) -> serde_json::Value {
+    match value {
+        Value::Text(text) => serde_json::Value::String(text.clone()),
+        Value::Integer(n) => serde_json::Value::from(*n),
+        Value::Unsupported => serde_json::Value::Null,
     }
 }
 
@@ -181,7 +206,7 @@ impl Provider for LlamaCpp {
                 .iter()
                 .map(|call| Message::Tool {
                     call_id: call.id.clone(),
-                    content: invocation(call)
+                    content: tools::call(&call.name, call.arguments.clone())
                         .and_then(|invocation| runner.run(&invocation))
                         .unwrap_or_else(|err| format!("error: {err}")),
                 })
@@ -191,15 +216,6 @@ impl Provider for LlamaCpp {
         }
         Err(ProviderError::TooManyToolRounds)
     }
-}
-
-/// Decodes a model's JSON tool arguments into plain values and hands them to the tool registry.
-/// This file never names a specific tool.
-fn invocation(call: &ToolCall) -> Result<Invocation, ToolError> {
-    let json: serde_json::Map<String, serde_json::Value> =
-        serde_json::from_str(&call.arguments).map_err(|err| ToolError::InvalidArguments(err.to_string()))?;
-    let values = json.into_iter().map(|(name, value)| (name, to_value(value))).collect();
-    tools::call(&call.name, values)
 }
 
 fn to_value(value: serde_json::Value) -> Value {

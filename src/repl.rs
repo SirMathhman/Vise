@@ -41,6 +41,7 @@ mod tests {
     use crate::session::{Message, Turn};
     use crate::tools::types::{Invocation, ToolCall, ToolError};
     use std::cell::RefCell;
+    use std::collections::HashMap;
     use std::path::PathBuf;
 
     enum Behavior {
@@ -75,7 +76,7 @@ mod tests {
                         tool_calls: vec![ToolCall {
                             id: "call_1".into(),
                             name: "list_directory".into(),
-                            arguments: "{}".into(),
+                            arguments: HashMap::new(),
                         }],
                     },
                     Message::Tool { call_id: "call_1".into(), content: "a.txt".into() },

@@ -93,6 +93,9 @@ Rules:
 - `tools` knows nothing about HTTP, the provider, or the conversation, and never parses JSON.
   `provider::llama_cpp` decodes a model's JSON arguments into plain `Value`s (text, integer, or
   `Value::Unsupported` for any other JSON type) and passes them with the tool name to `tools::call`.
+  A tool call's arguments are stored as these plain `Value`s. When the provider encodes a call back
+  to JSON for a request, `Value::Unsupported` becomes `null`, since the original value is not kept,
+  and invalid JSON decodes to no arguments, so the tool reports the missing fields.
   The provider never looks up or compares tool names. `tools::call` (in the registry) finds the named
   `ToolSpec` (`ToolError::UnknownTool` if none), checks each value against its `ParamType`s, and
   returns `ToolError::InvalidArguments` naming the field when a value is missing, extra, unsupported,
@@ -156,14 +159,6 @@ Rules:
   the provider's error type must be named `ProviderError` as in Structure.
 - **Startup output can panic.** The REPL writes through `writeln!` and returns write failures, but
   `main` still uses `eprintln!` for its own messages, which panics when stderr is closed. Every write in `main` must go through a `Result` as well.
-- **Raw JSON in the conversation model.** `tools::types::ToolCall.arguments` is a `String` of JSON
-  text, and `session::Message::Assistant` stores it. The JSON form therefore reaches `session` and
-  `tools`, though Rules say `session` knows nothing about JSON and `tools` never parses it. A tool
-  call must hold its arguments as plain `Value`s, and only `provider::llama_cpp` may encode them back
-  to JSON when it builds a request.
-- **`WorkspaceTools` sits in the registry.** `tools/mod.rs` defines `WorkspaceTools` and its
-  `ToolRunner` impl, but Structure assigns that to `tools/runner.rs` and limits `mod.rs` to the
-  registry. Move it so the registry file holds only `specs`, `call`, and `bind`.
 - **`main` exits 0 on REPL failure.** `main` prints a REPL I/O error and returns normally, so a
   failed stdin or stdout exits with status 0. Structure says `main` maps errors to exit codes.
 - **Name dispatch repeated in `bind`.** `tools::call` finds the `ToolSpec` once, but `bind` compares

@@ -4,7 +4,7 @@ use std::fmt;
 pub struct ToolCall {
     pub id: String,
     pub name: String,
-    pub arguments: String,
+    pub arguments: HashMap<String, Value>,
 }
 
 pub enum ParamType {
@@ -43,6 +43,7 @@ impl fmt::Display for ToolError {
 
 impl std::error::Error for ToolError {}
 
+#[derive(Clone)]
 pub enum Value {
     Text(String),
     Integer(i64),

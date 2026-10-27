@@ -111,6 +111,7 @@ impl Conversation {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
     use std::path::PathBuf;
 
     #[test]
@@ -123,7 +124,7 @@ mod tests {
     }
 
     fn call(id: &str) -> ToolCall {
-        ToolCall { id: id.into(), name: "list_directory".into(), arguments: "{}".into() }
+        ToolCall { id: id.into(), name: "list_directory".into(), arguments: HashMap::new() }
     }
 
     fn calls_message(id: &str) -> Message {
