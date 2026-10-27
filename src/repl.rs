@@ -1,3 +1,4 @@
+use crate::before_turn;
 use crate::commands::{command, Command, HELP};
 use crate::error::ProviderError;
 use crate::notes;
@@ -238,6 +239,14 @@ fn chat_turn(
     errors: &mut impl Write,
 ) -> io::Result<()> {
     let typed = line.clone();
+    let before = match conversation.before_turn_dir() {
+        Some(dir) => before_turn::run(dir, tools, output, errors)?,
+        None => None,
+    };
+    let line = match before {
+        Some(text) => format!("{text}\n\n{line}"),
+        None => line,
+    };
     let line = match conversation.startup() {
         Some(text) => format!("{text}\n\n{line}"),
         None => line,
@@ -504,6 +513,21 @@ mod tests {
         let (output, _) = run_with("/compact\n", &fake, &mut conversation);
         assert!(output.contains("the summary did not fit, so the oldest turn was dropped"));
         assert!(!output.contains("conversation compacted"));
+    }
+
+    #[test]
+    fn before_turn_output_goes_with_each_turn_message() {
+        let dir = std::env::temp_dir().join(format!("vise-before-turn-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("the test folder is created");
+        std::fs::write(dir.join("before-turn.txt"), "Write-Output x\n").expect("the test file is written");
+        let fake = Fake::new(Behavior::Reply);
+        let mut conversation = conversation();
+        conversation.enable_before_turn(dir.clone());
+        let (_, errors) = run_with("hi\n", &fake, &mut conversation);
+        std::fs::remove_dir_all(&dir).expect("the test folder is removed");
+        let inputs = fake.inputs.borrow();
+        assert!(inputs[0].starts_with("Before-turn command: Write-Output x") && inputs[0].ends_with("hi"));
+        assert!(errors.contains("error: before-turn command failed"));
     }
 
     #[test]

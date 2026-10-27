@@ -1,3 +1,4 @@
+mod before_turn;
 mod commands;
 mod environment;
 mod error;
@@ -39,6 +40,7 @@ fn main() {
     let tools = WorkspaceTools::new(env.cwd.clone());
     let mut conversation = Conversation::new(&env);
     conversation.enable_autosave(std::path::PathBuf::from(saved_sessions::FOLDER));
+    conversation.enable_before_turn(env.cwd.clone());
 
     let stdout = io::stdout();
     let mut output = stdout.lock();

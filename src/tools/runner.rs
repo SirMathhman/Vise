@@ -11,6 +11,10 @@ use std::path::PathBuf;
 pub const STARTUP_FILE: &str = "startup.txt";
 /// The file in the working directory whose lines run after each session.
 pub const SHUTDOWN_FILE: &str = "shutdown.txt";
+/// The file in the working directory whose lines run before each turn.
+pub const BEFORE_TURN_FILE: &str = "before-turn.txt";
+/// Every file whose lines run without approval. The file tools cannot change any of them.
+const COMMAND_FILES: [&str; 3] = [STARTUP_FILE, SHUTDOWN_FILE, BEFORE_TURN_FILE];
 
 pub struct WorkspaceTools {
     cwd: PathBuf,
@@ -46,7 +50,7 @@ impl WorkspaceTools {
                 // alternate stream, so the base name is compared without them.
                 let name = name.to_string_lossy();
                 let base = name.split(':').next().unwrap_or_default().trim_end_matches(['.', ' ']);
-                [STARTUP_FILE, SHUTDOWN_FILE].iter().any(|file| base.eq_ignore_ascii_case(file))
+                COMMAND_FILES.iter().any(|file| base.eq_ignore_ascii_case(file))
             })
     }
 }
@@ -159,8 +163,8 @@ fn describe(invocation: &Invocation) -> String {
                 )
             };
             let lowered = command.to_ascii_lowercase();
-            if [STARTUP_FILE, SHUTDOWN_FILE].iter().any(|file| lowered.contains(*file)) {
-                format!("{text}\nThis may change a startup or shutdown file, whose lines run without a prompt.")
+            if COMMAND_FILES.iter().any(|file| lowered.contains(*file)) {
+                format!("{text}\nThis may change a startup, shutdown or before-turn file, whose lines run without a prompt.")
             } else {
                 text
             }
