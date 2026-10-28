@@ -6,8 +6,9 @@ use crate::notes;
 use crate::profile;
 use crate::provider::types::{Event, Provider};
 use crate::render::Render;
+use crate::file_commands::run_lines;
 use crate::saved_sessions;
-use crate::session::{Conversation, Message, Turn};
+use crate::session::{Conversation, HookLines, Message, Turn};
 use crate::tools::specs;
 use crate::tools::types::{Invocation, ToolError, ToolRunner};
 use std::io::{self, BufRead, Write};
@@ -199,6 +200,7 @@ pub fn run(
                         }
                         tools.set_allowed_notes(loaded.notes);
                         profile = Some(profile::marked(&name, &loaded.instructions));
+                        select_hooks(loaded.hooks, conversation, tools, output, errors)?;
                         writeln!(output, "profile {name} selected; its instructions go with your next message")?;
                     }
                     Err(err) => writeln!(errors, "error: {err}")?,
@@ -228,6 +230,30 @@ pub fn run(
         }
     }
     Ok(())
+}
+
+/// Makes a profile's hooks the active ones. Its startup-type lines run now, and their output goes to the model with
+/// the next message.
+fn select_hooks(
+    hooks: HookLines,
+    conversation: &mut Conversation,
+    tools: &dyn ToolRunner,
+    output: &mut impl Write,
+    errors: &mut impl Write,
+) -> io::Result<()> {
+    let results = run_lines(&hooks.startup, "profile startup", tools, output, errors)?;
+    let blocks: Vec<String> =
+        results.iter().map(|(command, result)| format!("Startup command: {command}\n{result}")).collect();
+    conversation.set_profile_hooks(hooks);
+    if !blocks.is_empty() {
+        conversation.append_startup(blocks.join("\n\n"));
+    }
+    Ok(())
+}
+
+/// The global lines of a hook type, followed by the selected profile's lines of that type.
+fn hook_lines(global: &[String], profile: &[String]) -> Vec<String> {
+    global.iter().chain(profile).cloned().collect()
 }
 
 /// The streams a chat turn writes to, and reads its approvals from.
@@ -279,7 +305,8 @@ fn chat_turn(
     streams: &mut Streams,
 ) -> io::Result<Option<String>> {
     let typed = line.clone();
-    let before = before_turn::run(conversation.before_turn(), tools, &mut streams.output, &mut streams.errors)?;
+    let before_lines = hook_lines(conversation.before_turn(), &conversation.profile_hooks().before_turn);
+    let before = before_turn::run(&before_lines, tools, &mut streams.output, &mut streams.errors)?;
     let line = match before {
         Some(text) => format!("{text}\n\n{line}"),
         None => line,
@@ -325,7 +352,8 @@ fn chat_turn(
                     writeln!(streams.errors, "error: {err}")?;
                 }
             }
-            after_turn::run(conversation.after_turn(), tools, &mut streams.output, &mut streams.errors)
+            let after_lines = hook_lines(conversation.after_turn(), &conversation.profile_hooks().after_turn);
+            after_turn::run(&after_lines, tools, &mut streams.output, &mut streams.errors)
         }
         Err(err) => {
             writeln!(streams.errors, "error: {err}")?;
@@ -716,6 +744,20 @@ mod tests {
         let files = std::fs::read_dir(&folder).expect("autosave folder exists").count();
         std::fs::remove_dir_all(&folder).expect("the test folder is removed");
         assert_eq!(files, 1);
+    }
+
+    #[test]
+    fn profile_before_turn_hook_runs_after_the_global_lines() {
+        let fake = Fake::new(Behavior::Reply);
+        let mut conversation = conversation();
+        conversation.set_before_turn(vec!["Write-Output global".into()]);
+        conversation.set_profile_hooks(HookLines { before_turn: vec!["Write-Output profile".into()], ..HookLines::default() });
+        run_with("hi\n", &fake, &mut conversation);
+        let inputs = fake.inputs.borrow();
+        let text = &inputs[0];
+        let global = text.find("Before-turn command: Write-Output global").expect("the global line ran");
+        let profile = text.find("Before-turn command: Write-Output profile").expect("the profile line ran");
+        assert!(global < profile);
     }
 
     struct ClosedWriter;

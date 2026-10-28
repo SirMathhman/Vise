@@ -157,6 +157,15 @@ fn autosave_name(first_input: &str) -> String {
     if slug.is_empty() { format!("session-{seconds}") } else { format!("{slug}-{seconds}") }
 }
 
+/// The command lines a profile binds, by the hook they belong to. They are configuration, not history.
+#[derive(Debug, Default)]
+pub struct HookLines {
+    pub startup: Vec<String>,
+    pub shutdown: Vec<String>,
+    pub before_turn: Vec<String>,
+    pub after_turn: Vec<String>,
+}
+
 pub struct Conversation {
     messages: Vec<Message>,
     prompt_tokens: u64,
@@ -164,6 +173,7 @@ pub struct Conversation {
     startup: Option<String>,
     before_turn: Vec<String>,
     after_turn: Vec<String>,
+    profile_hooks: HookLines,
 }
 
 impl Conversation {
@@ -174,7 +184,7 @@ impl Conversation {
             context.push_str("\n\n");
             context.push_str(&instructions);
         }
-        Self { messages: vec![Message::System(context)], prompt_tokens: 0, autosave: None, startup: None, before_turn: Vec::new(), after_turn: Vec::new() }
+        Self { messages: vec![Message::System(context)], prompt_tokens: 0, autosave: None, startup: None, before_turn: Vec::new(), after_turn: Vec::new(), profile_hooks: HookLines::default() }
     }
 
     pub fn commit(&mut self, turn: Turn) {
@@ -193,6 +203,24 @@ impl Conversation {
 
     pub fn set_startup(&mut self, text: String) {
         self.startup = Some(text);
+    }
+
+    /// Adds text to the startup text sent with the next message, after any already held.
+    pub fn append_startup(&mut self, text: String) {
+        self.startup = Some(match self.startup.take() {
+            Some(held) => format!("{held}\n\n{text}"),
+            None => text,
+        });
+    }
+
+    /// Makes a profile's hooks the active ones. Selecting another profile replaces them.
+    pub fn set_profile_hooks(&mut self, hooks: HookLines) {
+        self.profile_hooks = hooks;
+    }
+
+    /// The hooks of the selected profile. Empty when no profile binds any.
+    pub fn profile_hooks(&self) -> &HookLines {
+        &self.profile_hooks
     }
 
     /// Sets the before-turn commands, read once at launch. Each turn runs them before its message.

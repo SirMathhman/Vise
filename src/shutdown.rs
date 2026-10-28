@@ -2,15 +2,29 @@
 //! session ends, at `/exit` or the end of input. They run without approval, like the startup commands. Nothing is sent
 //! to the model, since the session has ended.
 
-use crate::file_commands::run_file;
+use crate::file_commands::{run_file, run_lines};
 use crate::tools::runner::SHUTDOWN_FILE;
 use crate::tools::types::ToolRunner;
 use std::io::{self, Write};
 use std::path::Path;
 
-pub fn run(cwd: &Path, tools: &dyn ToolRunner, output: &mut impl Write, errors: &mut impl Write) -> io::Result<()> {
+/// Runs the shutdown file, then the shutdown lines of the selected profile, which are `profile`.
+pub fn run_with_profile(
+    cwd: &Path,
+    profile: &[String],
+    tools: &dyn ToolRunner,
+    output: &mut impl Write,
+    errors: &mut impl Write,
+) -> io::Result<()> {
     run_file(cwd, SHUTDOWN_FILE, "shutdown", tools, output, errors)?;
+    run_lines(profile, "shutdown", tools, output, errors)?;
     Ok(())
+}
+
+/// The shutdown file alone, with no profile.
+#[cfg(test)]
+pub fn run(cwd: &Path, tools: &dyn ToolRunner, output: &mut impl Write, errors: &mut impl Write) -> io::Result<()> {
+    run_with_profile(cwd, &[], tools, output, errors)
 }
 
 #[cfg(test)]

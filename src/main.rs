@@ -77,7 +77,8 @@ fn main() {
     ) {
         let _ = writeln!(errors, "error: {err}");
     }
-    if let Err(err) = shutdown::run(&env.cwd, &tools, &mut output, &mut errors) {
+    let profile_shutdown = conversation.profile_hooks().shutdown.clone();
+    if let Err(err) = shutdown::run_with_profile(&env.cwd, &profile_shutdown, &tools, &mut output, &mut errors) {
         let _ = writeln!(errors, "error: {err}");
     }
 }
