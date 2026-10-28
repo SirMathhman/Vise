@@ -15,6 +15,8 @@ pub const SHUTDOWN_FILE: &str = "shutdown.txt";
 pub const BEFORE_TURN_FILE: &str = "before-turn.txt";
 /// The file in the working directory whose lines run after each chat turn.
 pub const AFTER_TURN_FILE: &str = "after-turn.txt";
+/// The folder whose profile files may hold `hook` lines, which run without approval.
+pub const PROFILES_FOLDER: &str = "profiles";
 /// Every file whose lines run without approval. The file tools cannot change any of them.
 const COMMAND_FILES: [&str; 4] = [STARTUP_FILE, SHUTDOWN_FILE, BEFORE_TURN_FILE, AFTER_TURN_FILE];
 
@@ -39,6 +41,18 @@ impl WorkspaceTools {
     /// Whether the model may use the note `name`.
     fn note_allowed(&self, name: &str) -> bool {
         self.allowed_notes.borrow().as_ref().is_none_or(|names| names.iter().any(|allowed| allowed == name))
+    }
+
+    /// Whether `path` names a file directly in the profiles folder, whatever its spelling.
+    fn is_profile_file(&self, path: &str) -> bool {
+        let (Ok(target), Ok(root)) = (confine_new(&self.cwd, path), self.cwd.canonicalize()) else {
+            return false;
+        };
+        let Some(folder) = target.parent() else {
+            return false;
+        };
+        folder.parent() == Some(root.as_path())
+            && folder.file_name().is_some_and(|name| name.eq_ignore_ascii_case(PROFILES_FOLDER))
     }
 
     /// Whether `path` names a command file (startup or shutdown) in the working directory, whatever its spelling.
@@ -100,7 +114,7 @@ impl ToolRunner for WorkspaceTools {
         // The file tools cannot change the startup or shutdown commands. Changing them is left to run_powershell, whose
         // approval text says when a command names one of these files.
         if let Invocation::CreateFile { path, .. } | Invocation::EditFile { path, .. } = invocation
-            && self.is_command_file(path)
+            && (self.is_command_file(path) || self.is_profile_file(path))
         {
             return Err(ToolError::Failed(format!(
                 "'{path}' lists commands that run without a prompt, so the file tools cannot change it"
@@ -167,6 +181,8 @@ fn describe(invocation: &Invocation) -> String {
             let lowered = command.to_ascii_lowercase();
             if COMMAND_FILES.iter().any(|file| lowered.contains(*file)) {
                 format!("{text}\nThis may change a startup, shutdown, before-turn or after-turn file, whose lines run without a prompt.")
+            } else if lowered.contains(PROFILES_FOLDER) {
+                format!("{text}\nThis may change a profile, whose hook lines run without a prompt.")
             } else {
                 text
             }

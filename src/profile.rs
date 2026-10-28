@@ -8,7 +8,7 @@ use std::fs;
 use std::io;
 use std::path::PathBuf;
 
-const FOLDER: &str = "profiles";
+const FOLDER: &str = crate::tools::runner::PROFILES_FOLDER;
 const MARK: &str = "[Instructions from profile ";
 
 /// The text a profile adds to a user message: its name and its instructions.
