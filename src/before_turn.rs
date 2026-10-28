@@ -30,19 +30,7 @@ pub fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tools::types::{Invocation, ToolError};
-
-    /// Answers each command with its own text, so the test can see which commands ran.
-    struct Echo;
-
-    impl ToolRunner for Echo {
-        fn run(&self, invocation: &Invocation, _approve: &mut dyn FnMut(&str) -> bool) -> Result<String, ToolError> {
-            match invocation {
-                Invocation::RunPowerShell { command, .. } => Ok(format!("ran {command}")),
-                _ => Err(ToolError::UnknownTool("none".into())),
-            }
-        }
-    }
+    use crate::file_commands::test_support::Echo;
 
     #[test]
     fn output_of_each_line_is_returned_in_order() {

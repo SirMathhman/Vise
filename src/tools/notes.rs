@@ -64,22 +64,19 @@ fn bind_read(args: &Arguments) -> Result<Invocation, ToolError> {
     Ok(Invocation::ReadNote { name: args.text("name")?.to_string() })
 }
 
+/// The four text fields a note create or update takes: name, summary, category, and content.
+fn note_fields(args: &Arguments) -> Result<[String; 4], ToolError> {
+    Ok([args.text("name")?, args.text("summary")?, args.text("category")?, args.text("content")?].map(str::to_string))
+}
+
 fn bind_create(args: &Arguments) -> Result<Invocation, ToolError> {
-    Ok(Invocation::CreateNote {
-        name: args.text("name")?.to_string(),
-        summary: args.text("summary")?.to_string(),
-        category: args.text("category")?.to_string(),
-        content: args.text("content")?.to_string(),
-    })
+    let [name, summary, category, content] = note_fields(args)?;
+    Ok(Invocation::CreateNote { name, summary, category, content })
 }
 
 fn bind_update(args: &Arguments) -> Result<Invocation, ToolError> {
-    Ok(Invocation::UpdateNote {
-        name: args.text("name")?.to_string(),
-        summary: args.text("summary")?.to_string(),
-        category: args.text("category")?.to_string(),
-        content: args.text("content")?.to_string(),
-    })
+    let [name, summary, category, content] = note_fields(args)?;
+    Ok(Invocation::UpdateNote { name, summary, category, content })
 }
 
 fn bind_delete(args: &Arguments) -> Result<Invocation, ToolError> {

@@ -1,14 +1,17 @@
 use super::jobs::Jobs;
 use super::types::{Arguments, Invocation, Param, ParamType, ToolError, ToolSpec};
 
+/// The `id` parameter every background-task tool takes.
+pub const TASK_ID_PARAM: Param = Param {
+    name: "id",
+    kind: ParamType::Integer { min: Some(1), max: None },
+    description: "The background task's id.",
+};
+
 pub const SPEC: ToolSpec = ToolSpec {
     name: "read_background",
     description: "Return the output a background task printed since the last read, and whether it is still running. A task that has finished is removed after its final output is returned.",
-    params: &[Param {
-        name: "id",
-        kind: ParamType::Integer { min: Some(1), max: None },
-        description: "The background task's id.",
-    }],
+    params: &[TASK_ID_PARAM],
     bind,
 };
 

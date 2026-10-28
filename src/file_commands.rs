@@ -82,6 +82,24 @@ fn run_command(
     }
 }
 
+/// Test helpers shared by the command-file modules.
+#[cfg(test)]
+pub mod test_support {
+    use crate::tools::types::{Invocation, ToolError, ToolRunner};
+
+    /// Answers each shell command with its own text, so a test can see which commands ran.
+    pub struct Echo;
+
+    impl ToolRunner for Echo {
+        fn run(&self, invocation: &Invocation, _approve: &mut dyn FnMut(&str) -> bool) -> Result<String, ToolError> {
+            match invocation {
+                Invocation::RunPowerShell { command, .. } => Ok(format!("ran {command}")),
+                _ => Err(ToolError::UnknownTool("none".into())),
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

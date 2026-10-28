@@ -255,26 +255,25 @@ mod tests {
         assert!(refused.iter().all(|&refused| refused));
     }
 
-    #[test]
-    fn file_tools_refuse_to_write_the_before_turn_file() {
-        let cwd = std::env::temp_dir().join(format!("vise-before-turn-guard-{}", std::process::id()));
+    /// Whether create_file aimed at `path`, in a fresh working directory named after `folder`, is refused by the guard.
+    fn create_is_refused(folder: &str, path: &str) -> bool {
+        let cwd = std::env::temp_dir().join(format!("vise-{folder}-{}", std::process::id()));
         fs::create_dir_all(&cwd).unwrap();
         let tools = WorkspaceTools::new(cwd.clone());
-        let create = Invocation::CreateFile { path: "before-turn.txt".into(), content: "x".into() };
+        let create = Invocation::CreateFile { path: path.into(), content: "x".into() };
         let refused = tools.run(&create, &mut |_: &str| true);
         fs::remove_dir_all(&cwd).unwrap();
-        assert!(refused.is_err_and(|err| err.to_string().contains("cannot change it")));
+        refused.is_err_and(|err| err.to_string().contains("cannot change it"))
+    }
+
+    #[test]
+    fn file_tools_refuse_to_write_the_before_turn_file() {
+        assert!(create_is_refused("before-turn-guard", "before-turn.txt"));
     }
 
     #[test]
     fn file_tools_refuse_to_write_into_the_profiles_folder() {
-        let cwd = std::env::temp_dir().join(format!("vise-profile-guard-{}", std::process::id()));
-        fs::create_dir_all(&cwd).unwrap();
-        let tools = WorkspaceTools::new(cwd.clone());
-        let create = Invocation::CreateFile { path: "profiles/x.txt".into(), content: "x".into() };
-        let refused = tools.run(&create, &mut |_: &str| true);
-        fs::remove_dir_all(&cwd).unwrap();
-        assert!(refused.is_err_and(|err| err.to_string().contains("cannot change it")));
+        assert!(create_is_refused("profile-guard", "profiles/x.txt"));
     }
 
     #[test]
