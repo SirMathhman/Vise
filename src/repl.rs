@@ -760,6 +760,15 @@ mod tests {
         assert!(global < profile);
     }
 
+    #[test]
+    fn selecting_hooks_runs_the_startup_hook_into_the_next_message() {
+        let mut conversation = conversation();
+        let hooks = HookLines { startup: vec!["Write-Output x".into()], ..HookLines::default() };
+        select_hooks(hooks, &mut conversation, &NoTools, &mut Vec::new(), &mut Vec::new()).unwrap();
+        let startup = conversation.startup().expect("the startup output is held");
+        assert!(startup.starts_with("Startup command: Write-Output x"));
+    }
+
     struct ClosedWriter;
 
     impl Write for ClosedWriter {

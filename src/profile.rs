@@ -192,6 +192,12 @@ mod tests {
     }
 
     #[test]
+    fn hook_lines_without_a_command_or_a_colon_are_rejected() {
+        assert!(parse("hook startup:\nbe brief").is_err());
+        assert!(parse("hook shutdown\nbe brief").is_err());
+    }
+
+    #[test]
     fn unknown_hook_kind_is_rejected() {
         let error = parse("hook middle: Write-Output a\nbe brief").err().expect("expected the hook to be rejected");
         assert!(error.contains("unknown hook kind 'middle'"));

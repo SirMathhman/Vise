@@ -51,6 +51,23 @@ mod tests {
     }
 
     #[test]
+    fn profile_shutdown_lines_run_after_the_shutdown_file() {
+        let cwd = std::env::temp_dir().join(format!("vise-shutdown-profile-{}", std::process::id()));
+        fs::create_dir_all(&cwd).unwrap();
+        fs::write(cwd.join(SHUTDOWN_FILE), "Write-Output global\n").unwrap();
+        let tools = WorkspaceTools::new(cwd.clone());
+        let mut shown = Vec::<u8>::new();
+        let profile = ["Write-Output profile".to_string()];
+        let result = run_with_profile(&cwd, &profile, &tools, &mut shown, &mut Vec::<u8>::new());
+        fs::remove_dir_all(&cwd).unwrap();
+        assert!(result.is_ok());
+        let shown = String::from_utf8(shown).unwrap();
+        let global = shown.find("shutdown: Write-Output global").expect("the global line ran");
+        let profile = shown.find("shutdown: Write-Output profile").expect("the profile line ran");
+        assert!(global < profile);
+    }
+
+    #[test]
     fn missing_shutdown_file_is_not_an_error() {
         let cwd = std::env::temp_dir().join(format!("vise-shutdown-missing-{}", std::process::id()));
         fs::create_dir_all(&cwd).unwrap();

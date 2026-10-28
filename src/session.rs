@@ -473,4 +473,13 @@ mod tests {
         let env = Environment { cwd: PathBuf::from("C:/work") };
         assert!(Conversation::new(&env).autosave_target("first").is_none());
     }
+
+    #[test]
+    fn selecting_another_profile_drops_the_first_profiles_shutdown_lines() {
+        let env = Environment { cwd: PathBuf::from("C:/work") };
+        let mut conversation = Conversation::new(&env);
+        conversation.set_profile_hooks(HookLines { shutdown: vec!["first".into()], ..HookLines::default() });
+        conversation.set_profile_hooks(HookLines::default());
+        assert!(conversation.profile_hooks().shutdown.is_empty());
+    }
 }
