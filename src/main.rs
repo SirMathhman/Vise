@@ -15,6 +15,7 @@ mod subagent;
 mod shutdown;
 mod startup;
 mod tools;
+mod turn;
 
 use provider::llama_cpp::LlamaCpp;
 use session::Conversation;

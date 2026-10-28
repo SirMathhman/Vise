@@ -1,17 +1,14 @@
 use crate::after_turn;
-use crate::before_turn;
 use crate::commands::{command, Command, HELP};
-use crate::error::ProviderError;
 use crate::notes;
 use crate::profile;
-use crate::provider::types::{Event, Provider, SubagentRunner};
+use crate::provider::types::{Event, Provider};
 use crate::render::Render;
-use crate::file_commands::run_lines;
 use crate::subagent;
+use crate::turn::{apply_whitelist, compact, hook_lines, prepare_message, run_turn, select_hooks, Compaction};
 use crate::saved_sessions;
-use crate::session::{Conversation, HookLines, Message, Turn};
-use crate::tools::specs;
-use crate::tools::types::{Invocation, ToolError, ToolRunner};
+use crate::session::{Conversation, Message};
+use crate::tools::types::{Invocation, ToolRunner};
 use std::io::{self, BufRead, Write};
 
 /// One line per tool in the catalogue, with whether the model may call it.
@@ -25,25 +22,6 @@ fn tool_list(tools: &dyn ToolRunner) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
-}
-
-/// Makes the profile's whitelist the enabled set: exactly the listed tools. A profile without a whitelist
-/// enables every tool. Returns one line for each tool whose state changed.
-pub fn apply_whitelist(tools: &dyn ToolRunner, whitelist: Option<&[String]>) -> Result<Vec<String>, ToolError> {
-    let allowed: Vec<&str> = match whitelist {
-        Some(names) => names.iter().map(String::as_str).collect(),
-        None => specs().iter().map(|spec| spec.name).collect(),
-    };
-    let enabled = tools.enabled();
-    let mut changes = Vec::new();
-    for spec in specs() {
-        let on = allowed.contains(&spec.name);
-        if enabled.contains(&spec.name) != on {
-            tools.set_enabled(spec.name, on)?;
-            changes.push(format!("{}: {}", spec.name, if on { "enabled" } else { "disabled" }));
-        }
-    }
-    Ok(changes)
 }
 
 /// Runs a write the user asked for. It goes through the runner, so the user sees the same description and
@@ -233,30 +211,6 @@ pub fn run(
     Ok(())
 }
 
-/// Makes a profile's hooks the active ones. Its startup-type lines run now, and their output goes to the model with
-/// the next message.
-pub fn select_hooks(
-    hooks: HookLines,
-    conversation: &mut Conversation,
-    tools: &dyn ToolRunner,
-    output: &mut impl Write,
-    errors: &mut impl Write,
-) -> io::Result<()> {
-    let results = run_lines(&hooks.startup, "profile startup", tools, output, errors)?;
-    let blocks: Vec<String> =
-        results.iter().map(|(command, result)| format!("Startup command: {command}\n{result}")).collect();
-    conversation.set_profile_hooks(hooks);
-    if !blocks.is_empty() {
-        conversation.append_startup(blocks.join("\n\n"));
-    }
-    Ok(())
-}
-
-/// The global lines of a hook type, followed by the selected profile's lines of that type.
-pub fn hook_lines(global: &[String], profile: &[String]) -> Vec<String> {
-    global.iter().chain(profile).cloned().collect()
-}
-
 /// The streams a chat turn writes to, and reads its approvals from.
 struct Streams<'a> {
     input: &'a mut dyn BufRead,
@@ -292,40 +246,6 @@ fn chat(
         }
     }
     Ok(())
-}
-
-/// The message a turn sends: the before-turn output, the startup text, the profile text, and the notes index, each
-/// added where the history does not already carry it. Errors are reported on `errors`.
-pub fn prepare_message(
-    line: String,
-    profile: Option<&str>,
-    conversation: &Conversation,
-    tools: &dyn ToolRunner,
-    output: &mut impl Write,
-    errors: &mut impl Write,
-) -> io::Result<String> {
-    let before_lines = hook_lines(conversation.before_turn(), &conversation.profile_hooks().before_turn);
-    let before = before_turn::run(&before_lines, tools, output, errors)?;
-    let line = match before {
-        Some(text) => format!("{text}\n\n{line}"),
-        None => line,
-    };
-    let line = match conversation.startup() {
-        Some(text) => format!("{text}\n\n{line}"),
-        None => line,
-    };
-    let message = match profile {
-        Some(text) if !profile::carried(conversation.messages(), text) => format!("{text}\n\n{line}"),
-        _ => line,
-    };
-    Ok(match notes::index(tools.allowed_notes().as_deref()) {
-        Ok(index) if notes::needed(conversation.messages(), &index) => format!("{index}\n\n{message}"),
-        Ok(_) => message,
-        Err(err) => {
-            writeln!(errors, "error: {err}")?;
-            message
-        }
-    })
 }
 
 /// Sends a line to the model as one turn: adds the before-turn, startup, profile and notes text the history does not
@@ -399,60 +319,11 @@ fn ask(change: &str, output: &mut impl Write, input: &mut impl BufRead) -> bool 
     matches!(read_line(input), Ok(Some(answer)) if matches!(answer.trim().to_lowercase().as_str(), "y" | "yes"))
 }
 
-/// How the history was shrunk: replaced by a summary, or cut by dropping the oldest turn.
-#[derive(Clone, Copy)]
-pub enum Compaction {
-    Summarized,
-    Dropped(usize),
-}
-
-/// Replaces the older history with a summary the model writes of it. If the summary request does not
-/// fit in the context, the oldest turn is dropped instead.
-fn compact(provider: &dyn Provider, conversation: &mut Conversation) -> Result<Compaction, ProviderError> {
-    match provider.summarize(conversation.messages()) {
-        Ok(summary) => {
-            conversation.compact(summary);
-            Ok(Compaction::Summarized)
-        }
-        Err(ProviderError::ContextFull) => Ok(Compaction::Dropped(conversation.drop_oldest_turn())),
-        Err(err) => Err(err),
-    }
-}
-
-/// Compacts the conversation before a turn when its last prompt has reached the budget.
-fn compact_if_full(provider: &dyn Provider, conversation: &mut Conversation) -> Result<Option<Compaction>, ProviderError> {
-    if conversation.needs_compaction(provider.context_size()?) {
-        Ok(Some(compact(provider, conversation)?))
-    } else {
-        Ok(None)
-    }
-}
-
-/// Sends a turn. If the context fills up during it, the conversation is compacted and the turn is
-/// sent once more from the compacted history. Returns the turn and the last compaction it needed.
-pub fn run_turn(
-    provider: &dyn Provider,
-    conversation: &mut Conversation,
-    line: String,
-    tools: &dyn ToolRunner,
-    approve: &mut dyn FnMut(&str) -> bool,
-    subagent: &mut SubagentRunner,
-    on_event: &mut dyn FnMut(Event),
-) -> Result<(Turn, Option<Compaction>), ProviderError> {
-    let mut compaction = compact_if_full(provider, conversation)?;
-    match provider.complete_streaming(conversation.messages(), line.clone(), tools, approve, subagent, on_event) {
-        Err(ProviderError::ContextFull) => {
-            compaction = Some(compact(provider, conversation)?);
-            let turn = provider.complete_streaming(conversation.messages(), line, tools, approve, subagent, on_event)?;
-            Ok((turn, compaction))
-        }
-        result => Ok((result?, compaction)),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::provider::types::SubagentRunner;
+    use crate::session::HookLines;
     use crate::environment::Environment;
     use crate::error::ProviderError;
     use crate::session::{Message, Turn};

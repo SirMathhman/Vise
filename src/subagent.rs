@@ -5,7 +5,7 @@ use crate::after_turn;
 use crate::environment;
 use crate::profile::{self, Profile};
 use crate::provider::types::Provider;
-use crate::repl;
+use crate::turn;
 use crate::session::Conversation;
 use crate::tools::specs;
 use crate::tools::types::{ToolError, ToolRunner};
@@ -47,7 +47,7 @@ fn session(
     global: (&[String], &[String]),
     approve: &mut dyn FnMut(&str) -> bool,
 ) -> Result<String, ToolError> {
-    repl::apply_whitelist(tools, loaded.tools.as_deref())?;
+    turn::apply_whitelist(tools, loaded.tools.as_deref())?;
     // A subagent cannot start another one.
     tools.set_enabled("run_subagent", false)?;
     tools.set_allowed_notes(loaded.notes);
@@ -57,7 +57,7 @@ fn session(
     conversation.set_after_turn(global.1.to_vec());
     let marked = profile::marked(profile_name, &loaded.instructions);
     let (mut out, mut err) = (Vec::new(), Vec::new());
-    repl::select_hooks(loaded.hooks, &mut conversation, tools, &mut out, &mut err).map_err(io_error)?;
+    turn::select_hooks(loaded.hooks, &mut conversation, tools, &mut out, &mut err).map_err(io_error)?;
 
     let mut no_subagent = |_: &str, _: &str, _: &mut dyn FnMut(&str) -> bool| -> Result<String, ToolError> {
         Err(ToolError::Failed("a subagent cannot start a subagent".into()))
@@ -66,13 +66,13 @@ fn session(
     let mut follow_ups = 0;
     let mut reply = String::new();
     while let Some(text) = pending.take() {
-        let message = repl::prepare_message(text, Some(&marked), &conversation, tools, &mut out, &mut err)
+        let message = turn::prepare_message(text, Some(&marked), &conversation, tools, &mut out, &mut err)
             .map_err(io_error)?;
-        let (turn, _) = repl::run_turn(provider, &mut conversation, message, tools, approve, &mut no_subagent, &mut |_| {})
+        let (turn, _) = turn::run_turn(provider, &mut conversation, message, tools, approve, &mut no_subagent, &mut |_| {})
             .map_err(|err| ToolError::Failed(err.to_string()))?;
         reply = turn.reply().to_string();
         conversation.commit(turn);
-        let after = repl::hook_lines(conversation.after_turn(), &conversation.profile_hooks().after_turn);
+        let after = turn::hook_lines(conversation.after_turn(), &conversation.profile_hooks().after_turn);
         pending = after_turn::run(&after, tools, &mut out, &mut err).map_err(io_error)?;
         if pending.is_some() {
             if follow_ups == after_turn::FOLLOW_UPS {
