@@ -200,6 +200,19 @@ struct ModelMeta {
     n_ctx: u64,
 }
 
+/// The context size of the configured model, from the server's list. A missing model and a model with no context
+/// size are different errors, and each names what the user can check.
+fn context_size_of(models: Models) -> Result<u64, ProviderError> {
+    let offered: Vec<String> = models.data.iter().map(|model| model.id.clone()).collect();
+    match models.data.into_iter().find(|model| model.id == MODEL) {
+        None => Err(ProviderError::ModelMissing { expected: MODEL.to_string(), offered }),
+        Some(model) => model
+            .meta
+            .map(|meta| meta.n_ctx)
+            .ok_or_else(|| ProviderError::ContextSizeUnknown { expected: MODEL.to_string() }),
+    }
+}
+
 pub struct LlamaCpp {
     api_key: String,
     context: OnceCell<u64>,
@@ -219,14 +232,7 @@ impl LlamaCpp {
             .body_mut()
             .read_json()
             .map_err(|err| ProviderError::Transport(Box::new(err)))?;
-        let offered: Vec<String> = models.data.iter().map(|model| model.id.clone()).collect();
-        models
-            .data
-            .into_iter()
-            .find(|model| model.id == MODEL)
-            .and_then(|model| model.meta)
-            .map(|meta| meta.n_ctx)
-            .ok_or(ProviderError::ModelNotFound { expected: MODEL.to_string(), offered })
+        context_size_of(models)
     }
 
     /// Asks the model to summarize the messages it is given, without offering any tools.
@@ -585,5 +591,28 @@ mod tests {
         assert!(matches!(result, Err(ToolError::Disabled(ref name)) if name == "run_subagent"));
         assert!(!started.get());
     }
-}
 
+    #[test]
+    fn server_list_without_the_model_is_model_missing() {
+        let models = Models { data: vec![ModelInfo { id: "other".into(), meta: None }] };
+        match context_size_of(models) {
+            Err(ProviderError::ModelMissing { expected, offered }) => {
+                assert_eq!(expected, MODEL);
+                assert_eq!(offered, vec!["other".to_string()]);
+            }
+            other => panic!("expected ModelMissing, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn listed_model_without_metadata_is_context_size_unknown() {
+        let models = Models { data: vec![ModelInfo { id: MODEL.into(), meta: None }] };
+        assert!(matches!(context_size_of(models), Err(ProviderError::ContextSizeUnknown { .. })));
+    }
+
+    #[test]
+    fn listed_model_with_metadata_gives_its_context_size() {
+        let models = Models { data: vec![ModelInfo { id: MODEL.into(), meta: Some(ModelMeta { n_ctx: 4096 }) }] };
+        assert_eq!(context_size_of(models).unwrap(), 4096);
+    }
+}
