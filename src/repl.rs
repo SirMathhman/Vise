@@ -200,7 +200,7 @@ pub fn run(
             Some(Command::UseModel(name)) => match provider.set_model(&name) {
                 Ok(()) => match default_model::save(&name) {
                     Ok(()) => writeln!(output, "model set to {name}, and kept as the default")?,
-                    Err(err) => writeln!(errors, "error: cannot save the default model: {err}")?,
+                    Err(err) => writeln!(errors, "error: the model is now {name}, but it could not be saved as the default: {err}")?,
                 },
                 Err(err) => writeln!(errors, "error: {err}")?,
             },
@@ -677,6 +677,61 @@ mod tests {
         select_hooks(hooks, &mut conversation, &NoTools, &mut Vec::new(), &mut Vec::new()).unwrap();
         let startup = conversation.startup().expect("the startup output is held");
         assert!(startup.starts_with("Startup command: Write-Output x"));
+    }
+
+    /// Accepts every model switch, so a test can reach the save of the default.
+    struct Switching;
+
+    impl Provider for Switching {
+        fn complete(
+            &self,
+            _history: &[Message],
+            _input: String,
+            _runner: &dyn ToolRunner,
+            _approve: &mut dyn FnMut(&str) -> bool,
+            _subagent: &mut SubagentRunner,
+        ) -> Result<Turn, ProviderError> {
+            Err(ProviderError::EmptyResponse)
+        }
+
+        fn context_size(&self) -> Result<u64, ProviderError> {
+            Ok(0)
+        }
+
+        fn summarize(&self, _history: &[Message]) -> Result<String, ProviderError> {
+            Err(ProviderError::EmptyResponse)
+        }
+
+        fn set_model(&self, _name: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn refused_switch_writes_nothing_to_the_default_file() {
+        let before = std::fs::read_to_string("model.txt").ok();
+        let fake = Fake::new(Behavior::Reply);
+        let mut conversation = conversation();
+        let (_, errors) = run_with("/model not-listed\n", &fake, &mut conversation);
+        assert!(errors.contains("error: this provider cannot change the model"));
+        assert_eq!(std::fs::read_to_string("model.txt").ok(), before);
+    }
+
+    #[test]
+    fn failed_save_after_a_switch_says_the_switch_holds() {
+        std::fs::create_dir("model.txt").expect("a directory stands where the default file goes");
+        let mut conversation = conversation();
+        let mut errors = Vec::new();
+        run(&mut "/model new\n".as_bytes(), &mut Vec::new(), &mut errors, &Switching, &NoTools, &mut conversation)
+            .unwrap();
+        std::fs::remove_dir("model.txt").expect("the directory is removed");
+        assert!(String::from_utf8(errors).unwrap().contains("the model is now new, but it could not be saved"));
+    }
+
+    #[test]
+    fn providers_without_a_model_choice_report_it_as_unsupported() {
+        let fake = Fake::new(Behavior::Reply);
+        assert!(matches!(fake.models(), Err(ProviderError::Unsupported(_))));
     }
 
     struct ClosedWriter;

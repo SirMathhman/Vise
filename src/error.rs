@@ -26,6 +26,8 @@ pub enum ProviderError {
     Encode(Box<dyn std::error::Error>),
     Rejected(String),
     EmptyResponse,
+    /// The provider has no way to do this, such as listing models. `0` names the action.
+    Unsupported(String),
     TooManyToolRounds,
     /// The configured model is not among the models the server lists. `offered` holds the ids the server lists.
     ModelMissing { expected: String, offered: Vec<String> },
@@ -62,6 +64,7 @@ impl fmt::Display for ProviderError {
                 "the context filled up after a change was made, so the turn was stopped rather than repeated; check the files that changed"
             ),
             Self::EmptySummary => write!(f, "the model returned an empty summary"),
+            Self::Unsupported(action) => write!(f, "this provider cannot {action}"),
             Self::Session(err) => write!(f, "{err}"),
         }
     }
@@ -79,6 +82,7 @@ impl std::error::Error for ProviderError {
             | Self::ContextFull
             | Self::ContextFullAfterChange
             | Self::EmptySummary
+            | Self::Unsupported(_)
             | Self::Rejected(_) => None,
         }
     }

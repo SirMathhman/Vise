@@ -230,6 +230,14 @@ pub struct LlamaCpp {
 }
 
 impl LlamaCpp {
+    /// Switches to `name` as the server lists it in `listed`. A refused switch changes neither the name nor the size.
+    fn switch_to(&self, listed: Models, name: &str) -> Result<(), ProviderError> {
+        let context = context_size_of(listed, name)?;
+        *self.model.borrow_mut() = name.to_string();
+        *self.context.borrow_mut() = Some(context);
+        Ok(())
+    }
+
     pub fn new(api_key: String) -> Self {
         Self { api_key, model: RefCell::new(MODEL.to_string()), context: RefCell::new(None) }
     }
@@ -338,10 +346,7 @@ impl Provider for LlamaCpp {
     /// Makes `name` the model the requests name. Its context size comes from the same list that shows it is listed, so
     /// a model without one is refused, and a refused switch changes neither the name nor the cached size.
     fn set_model(&self, name: &str) -> Result<(), ProviderError> {
-        let context = context_size_of(fetch_models(&self.api_key)?, name)?;
-        *self.model.borrow_mut() = name.to_string();
-        *self.context.borrow_mut() = Some(context);
-        Ok(())
+        self.switch_to(fetch_models(&self.api_key)?, name)
     }
 }
 
@@ -635,5 +640,35 @@ mod tests {
     fn listed_model_with_metadata_gives_its_context_size() {
         let models = Models { data: vec![ModelInfo { id: MODEL.into(), meta: Some(ModelMeta { n_ctx: 4096 }) }] };
         assert_eq!(context_size_of(models, MODEL).unwrap(), 4096);
+    }
+
+    #[test]
+    fn switch_to_a_listed_model_without_a_size_is_refused_and_keeps_the_old_model_and_size() {
+        let provider = LlamaCpp::new("key".into());
+        *provider.context.borrow_mut() = Some(1000);
+        let listed = Models { data: vec![ModelInfo { id: "new".into(), meta: None }] };
+        assert!(matches!(provider.switch_to(listed, "new"), Err(ProviderError::ContextSizeUnknown { .. })));
+        assert_eq!(provider.model(), MODEL);
+        assert_eq!(*provider.context.borrow(), Some(1000));
+    }
+
+    #[test]
+    fn switch_to_a_name_the_server_does_not_list_keeps_the_old_model_and_size() {
+        let provider = LlamaCpp::new("key".into());
+        *provider.context.borrow_mut() = Some(1000);
+        let listed = Models { data: vec![ModelInfo { id: "other".into(), meta: Some(ModelMeta { n_ctx: 8 }) }] };
+        assert!(matches!(provider.switch_to(listed, "new"), Err(ProviderError::ModelMissing { .. })));
+        assert_eq!(provider.model(), MODEL);
+        assert_eq!(*provider.context.borrow(), Some(1000));
+    }
+
+    #[test]
+    fn a_successful_switch_replaces_the_name_and_the_cached_size() {
+        let provider = LlamaCpp::new("key".into());
+        *provider.context.borrow_mut() = Some(1000);
+        let listed = Models { data: vec![ModelInfo { id: "new".into(), meta: Some(ModelMeta { n_ctx: 4096 }) }] };
+        provider.switch_to(listed, "new").unwrap();
+        assert_eq!(provider.model(), "new");
+        assert_eq!(*provider.context.borrow(), Some(4096));
     }
 }

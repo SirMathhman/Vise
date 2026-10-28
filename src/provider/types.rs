@@ -57,11 +57,11 @@ pub trait Provider {
 
     /// The ids of the models the server lists.
     fn models(&self) -> Result<Vec<String>, ProviderError> {
-        Err(ProviderError::Rejected("this provider cannot list models".into()))
+        Err(ProviderError::Unsupported("list models".into()))
     }
 
     /// Makes `name` the model the requests name, if the server lists it.
     fn set_model(&self, _name: &str) -> Result<(), ProviderError> {
-        Err(ProviderError::Rejected("this provider cannot change the model".into()))
+        Err(ProviderError::Unsupported("change the model".into()))
     }
 }
