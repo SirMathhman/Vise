@@ -535,4 +535,54 @@ mod tests {
         let body = r#"{"error":{}}"#;
         assert!(matches!(bad_request(body), ProviderError::Rejected(ref text) if text == body));
     }
+
+    /// A run_subagent call with a profile and a task.
+    fn subagent_call() -> ToolCall {
+        ToolCall {
+            id: "call-1".into(),
+            name: "run_subagent".into(),
+            arguments: HashMap::from([
+                ("profile".to_string(), Value::Text("coder".into())),
+                ("task".to_string(), Value::Text("look".into())),
+            ]),
+        }
+    }
+
+    #[test]
+    fn run_subagent_call_marks_the_turn_as_written() {
+        let tools = crate::tools::runner::WorkspaceTools::new(std::env::temp_dir());
+        let mut wrote = false;
+        let result = run_call(
+            &subagent_call(),
+            &tools,
+            &mut |_: &str| true,
+            &mut |profile: &str, task: &str, _: &mut dyn FnMut(&str) -> bool| -> Result<String, ToolError> {
+                Ok(format!("{profile} {task}"))
+            },
+            &mut wrote,
+        );
+        assert_eq!(result.unwrap(), "coder look");
+        assert!(wrote);
+    }
+
+    #[test]
+    fn disabled_run_subagent_call_is_refused_before_the_subagent_runs() {
+        let tools = crate::tools::runner::WorkspaceTools::new(std::env::temp_dir());
+        tools.set_enabled("run_subagent", false).unwrap();
+        let started = std::cell::Cell::new(false);
+        let mut wrote = false;
+        let result = run_call(
+            &subagent_call(),
+            &tools,
+            &mut |_: &str| true,
+            &mut |_: &str, _: &str, _: &mut dyn FnMut(&str) -> bool| -> Result<String, ToolError> {
+                started.set(true);
+                Ok(String::new())
+            },
+            &mut wrote,
+        );
+        assert!(matches!(result, Err(ToolError::Disabled(ref name)) if name == "run_subagent"));
+        assert!(!started.get());
+    }
 }
+

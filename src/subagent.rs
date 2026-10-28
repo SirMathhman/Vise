@@ -96,6 +96,8 @@ mod tests {
     use crate::provider::types::SubagentRunner;
     use crate::session::{Message, Turn};
     use crate::tools::runner::WorkspaceTools;
+    use std::cell::RefCell;
+    use std::fs;
 
     /// A provider that must never be asked for a reply, since the profile is refused first.
     struct Unused;
@@ -127,4 +129,89 @@ mod tests {
         let result = run("no-such-profile-xyz", "task", &Unused, &tools, &[], &[], &mut |_: &str| true);
         assert!(result.is_err_and(|err| err.to_string().contains("cannot read profile")));
     }
+
+    /// A provider that records what each request carries, and fails when `fail` is set.
+    struct Recorder {
+        fail: bool,
+        inputs: RefCell<Vec<String>>,
+        enabled: RefCell<Vec<&'static str>>,
+    }
+
+    impl Recorder {
+        fn new(fail: bool) -> Self {
+            Self { fail, inputs: RefCell::new(Vec::new()), enabled: RefCell::new(Vec::new()) }
+        }
+    }
+
+    impl Provider for Recorder {
+        fn complete(
+            &self,
+            _history: &[Message],
+            input: String,
+            runner: &dyn ToolRunner,
+            _approve: &mut dyn FnMut(&str) -> bool,
+            _subagent: &mut SubagentRunner,
+        ) -> Result<Turn, ProviderError> {
+            *self.enabled.borrow_mut() = runner.enabled();
+            self.inputs.borrow_mut().push(input.clone());
+            if self.fail {
+                return Err(ProviderError::EmptyResponse);
+            }
+            Turn::new(vec![
+                Message::User(input),
+                Message::Assistant { content: "done".into(), tool_calls: Vec::new() },
+            ])
+            .map_err(ProviderError::Session)
+        }
+
+        fn context_size(&self) -> Result<u64, ProviderError> {
+            Ok(0)
+        }
+
+        fn summarize(&self, _history: &[Message]) -> Result<String, ProviderError> {
+            Err(ProviderError::EmptyResponse)
+        }
+    }
+
+    /// Runs `test` with a profile file of the given name and text in the profiles folder, removing the file after.
+    fn with_profile<T>(name: &str, text: &str, test: impl FnOnce() -> T) -> T {
+        let folder = std::path::Path::new("profiles");
+        fs::create_dir_all(folder).unwrap();
+        let file = folder.join(format!("{name}.txt"));
+        fs::write(&file, text).unwrap();
+        let result = test();
+        fs::remove_file(&file).unwrap();
+        result
+    }
+
+    #[test]
+    fn failing_subagent_restores_the_parent_tools_and_notes() {
+        with_profile("vise-subagent-fail", "tools: read_file
+be brief", || {
+            let tools = WorkspaceTools::new(std::env::temp_dir());
+            let result = run("vise-subagent-fail", "task", &Recorder::new(true), &tools, &[], &[], &mut |_: &str| true);
+            assert!(result.is_err());
+            assert!(tools.enabled().contains(&"list_directory"));
+            assert!(tools.enabled().contains(&"run_subagent"));
+        });
+    }
+
+    #[test]
+    fn subagent_runs_its_hooks_and_cannot_start_another_subagent() {
+        with_profile("vise-subagent-hooks", "hook before-turn: Write-Output profile-hook
+be brief", || {
+            let tools = WorkspaceTools::new(std::env::temp_dir());
+            let provider = Recorder::new(false);
+            let global = vec!["Write-Output global-hook".to_string()];
+            let result = run("vise-subagent-hooks", "task", &provider, &tools, &global, &[], &mut |_: &str| true);
+            assert_eq!(result.unwrap(), "done");
+            let input = provider.inputs.borrow()[0].clone();
+            let global_at = input.find("Before-turn command: Write-Output global-hook").expect("the global hook ran");
+            let profile_at = input.find("Before-turn command: Write-Output profile-hook").expect("the profile hook ran");
+            assert!(global_at < profile_at);
+            assert!(!provider.enabled.borrow().contains(&"run_subagent"));
+            assert!(tools.enabled().contains(&"run_subagent"));
+        });
+    }
 }
+
