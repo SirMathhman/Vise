@@ -11,6 +11,7 @@ mod render;
 mod repl;
 mod saved_sessions;
 mod session;
+mod subagent;
 mod shutdown;
 mod startup;
 mod tools;

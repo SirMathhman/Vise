@@ -5,6 +5,7 @@ pub mod kill_background;
 pub mod notes;
 pub mod read_background;
 pub mod run_powershell;
+pub mod run_subagent;
 pub mod runner;
 pub mod types;
 
@@ -31,6 +32,7 @@ const SPECS: &[ToolSpec] = &[
     run_powershell::SPEC,
     read_background::SPEC,
     kill_background::SPEC,
+    run_subagent::SPEC,
     notes::LIST,
     notes::READ,
     notes::CREATE,

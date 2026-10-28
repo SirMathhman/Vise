@@ -121,6 +121,8 @@ pub enum Invocation {
     CreateNote { name: String, summary: String, category: String, content: String },
     UpdateNote { name: String, summary: String, category: String, content: String },
     DeleteNote { name: String },
+    /// Starts a subagent. The provider runs it, because the subagent needs the session's turn logic.
+    RunSubagent { profile: String, task: String },
 }
 
 impl Invocation {
@@ -140,6 +142,7 @@ impl Invocation {
             Self::CreateNote { .. } => "create_note",
             Self::UpdateNote { .. } => "update_note",
             Self::DeleteNote { .. } => "delete_note",
+            Self::RunSubagent { .. } => "run_subagent",
         }
     }
 
@@ -162,7 +165,9 @@ impl Invocation {
             | Self::ReadFile { .. }
             | Self::ReadBackground { .. }
             | Self::ListNotes { .. }
-            | Self::ReadNote { .. } => false,
+            | Self::ReadNote { .. }
+            // Starting a subagent is not itself a write: each write the subagent makes is approved on its own.
+            | Self::RunSubagent { .. } => false,
             Self::CreateFile { .. }
             | Self::CreateDirectory { .. }
             | Self::EditFile { .. }

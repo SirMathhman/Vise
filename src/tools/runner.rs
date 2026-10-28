@@ -147,6 +147,7 @@ impl ToolRunner for WorkspaceTools {
                 notes::run_update(name, summary, category, content)
             }
             Invocation::DeleteNote { name } => notes::run_delete(name),
+            Invocation::RunSubagent { .. } => Err(ToolError::Failed("a subagent is started from a turn".into())),
         }
     }
 
@@ -199,7 +200,8 @@ fn describe(invocation: &Invocation) -> String {
         | Invocation::ReadFile { .. }
         | Invocation::ReadBackground { .. }
         | Invocation::ListNotes { .. }
-        | Invocation::ReadNote { .. } => String::new(),
+        | Invocation::ReadNote { .. }
+        | Invocation::RunSubagent { .. } => String::new(),
     }
 }
 

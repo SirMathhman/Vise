@@ -1,9 +1,9 @@
 use crate::error::{MAX_TOOL_ROUNDS, ProviderError};
 use crate::provider::grammar;
 use crate::provider::prompt;
-use crate::provider::types::{Event, Provider};
+use crate::provider::types::{Event, Provider, SubagentRunner};
 use crate::session::{Message, Turn, over_budget};
-use crate::tools::types::{ToolCall, ToolError, ToolRunner, Value};
+use crate::tools::types::{Invocation, ToolCall, ToolError, ToolRunner, Value};
 use crate::tools;
 use serde::{Deserialize, Serialize};
 use std::cell::OnceCell;
@@ -253,8 +253,9 @@ impl Provider for LlamaCpp {
         input: String,
         runner: &dyn ToolRunner,
         approve: &mut dyn FnMut(&str) -> bool,
+        subagent: &mut SubagentRunner,
     ) -> Result<Turn, ProviderError> {
-        self.complete_streaming(history, input, runner, approve, &mut |_| {})
+        self.complete_streaming(history, input, runner, approve, subagent, &mut |_| {})
     }
 
     /// The exchange of `complete`, reporting the reply as it streams through `on_event`.
@@ -264,6 +265,7 @@ impl Provider for LlamaCpp {
         input: String,
         runner: &dyn ToolRunner,
         approve: &mut dyn FnMut(&str) -> bool,
+        subagent: &mut SubagentRunner,
         on_event: &mut dyn FnMut(Event),
     ) -> Result<Turn, ProviderError> {
         let enabled = runner.enabled();
@@ -294,7 +296,7 @@ impl Provider for LlamaCpp {
             if over_budget(prompt_tokens, self.context_size()?) {
                 return Err(if wrote { ProviderError::ContextFullAfterChange } else { ProviderError::ContextFull });
             }
-            let result = run_call(&call, runner, approve, &mut wrote);
+            let result = run_call(&call, runner, approve, subagent, &mut wrote);
             let call_id = call.id.clone();
             new.push(Message::Assistant { content: String::new(), tool_calls: vec![call] });
             new.push(Message::Tool { call_id, content: result.unwrap_or_else(|err| format!("error: {err}")) });
@@ -332,14 +334,23 @@ fn wire_messages<'a>(
     Ok(wire)
 }
 
-/// Runs one call the model made. The runner refuses a tool that is not enabled.
+/// Runs one call the model made. The runner refuses a tool that is not enabled. A subagent is run by `subagent`
+/// rather than the runner, and it counts as a write, since it may make writes of its own.
 fn run_call(
     call: &ToolCall,
     runner: &dyn ToolRunner,
     approve: &mut dyn FnMut(&str) -> bool,
+    subagent: &mut SubagentRunner,
     wrote: &mut bool,
 ) -> Result<String, ToolError> {
     let invocation = tools::call(&call.name, call.arguments.clone())?;
+    if let Invocation::RunSubagent { profile, task } = &invocation {
+        if !runner.enabled().contains(&"run_subagent") {
+            return Err(ToolError::Disabled("run_subagent".into()));
+        }
+        *wrote = true;
+        return subagent(profile, task, approve);
+    }
     *wrote |= invocation.writes();
     runner.run(&invocation, approve)
 }

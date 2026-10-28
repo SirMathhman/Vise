@@ -4,9 +4,10 @@ use crate::commands::{command, Command, HELP};
 use crate::error::ProviderError;
 use crate::notes;
 use crate::profile;
-use crate::provider::types::{Event, Provider};
+use crate::provider::types::{Event, Provider, SubagentRunner};
 use crate::render::Render;
 use crate::file_commands::run_lines;
+use crate::subagent;
 use crate::saved_sessions;
 use crate::session::{Conversation, HookLines, Message, Turn};
 use crate::tools::specs;
@@ -28,7 +29,7 @@ fn tool_list(tools: &dyn ToolRunner) -> String {
 
 /// Makes the profile's whitelist the enabled set: exactly the listed tools. A profile without a whitelist
 /// enables every tool. Returns one line for each tool whose state changed.
-fn apply_whitelist(tools: &dyn ToolRunner, whitelist: Option<&[String]>) -> Result<Vec<String>, ToolError> {
+pub fn apply_whitelist(tools: &dyn ToolRunner, whitelist: Option<&[String]>) -> Result<Vec<String>, ToolError> {
     let allowed: Vec<&str> = match whitelist {
         Some(names) => names.iter().map(String::as_str).collect(),
         None => specs().iter().map(|spec| spec.name).collect(),
@@ -234,7 +235,7 @@ pub fn run(
 
 /// Makes a profile's hooks the active ones. Its startup-type lines run now, and their output goes to the model with
 /// the next message.
-fn select_hooks(
+pub fn select_hooks(
     hooks: HookLines,
     conversation: &mut Conversation,
     tools: &dyn ToolRunner,
@@ -252,7 +253,7 @@ fn select_hooks(
 }
 
 /// The global lines of a hook type, followed by the selected profile's lines of that type.
-fn hook_lines(global: &[String], profile: &[String]) -> Vec<String> {
+pub fn hook_lines(global: &[String], profile: &[String]) -> Vec<String> {
     global.iter().chain(profile).cloned().collect()
 }
 
@@ -293,20 +294,18 @@ fn chat(
     Ok(())
 }
 
-/// Sends a line to the model as one turn: adds the before-turn, startup, profile and notes text the history does not
-/// carry, runs the turn, commits it, and autosaves the history. Returns the failure text of the after-turn commands,
-/// when one fails.
-fn chat_turn(
+/// The message a turn sends: the before-turn output, the startup text, the profile text, and the notes index, each
+/// added where the history does not already carry it. Errors are reported on `errors`.
+pub fn prepare_message(
     line: String,
     profile: Option<&str>,
-    provider: &dyn Provider,
+    conversation: &Conversation,
     tools: &dyn ToolRunner,
-    conversation: &mut Conversation,
-    streams: &mut Streams,
-) -> io::Result<Option<String>> {
-    let typed = line.clone();
+    output: &mut impl Write,
+    errors: &mut impl Write,
+) -> io::Result<String> {
     let before_lines = hook_lines(conversation.before_turn(), &conversation.profile_hooks().before_turn);
-    let before = before_turn::run(&before_lines, tools, &mut streams.output, &mut streams.errors)?;
+    let before = before_turn::run(&before_lines, tools, output, errors)?;
     let line = match before {
         Some(text) => format!("{text}\n\n{line}"),
         None => line,
@@ -319,20 +318,40 @@ fn chat_turn(
         Some(text) if !profile::carried(conversation.messages(), text) => format!("{text}\n\n{line}"),
         _ => line,
     };
-    let message = match notes::index(tools.allowed_notes().as_deref()) {
+    Ok(match notes::index(tools.allowed_notes().as_deref()) {
         Ok(index) if notes::needed(conversation.messages(), &index) => format!("{index}\n\n{message}"),
         Ok(_) => message,
         Err(err) => {
-            writeln!(streams.errors, "error: {err}")?;
+            writeln!(errors, "error: {err}")?;
             message
         }
-    };
+    })
+}
+
+/// Sends a line to the model as one turn: adds the before-turn, startup, profile and notes text the history does not
+/// carry, runs the turn, commits it, and autosaves the history. Returns the failure text of the after-turn commands,
+/// when one fails.
+fn chat_turn(
+    line: String,
+    profile: Option<&str>,
+    provider: &dyn Provider,
+    tools: &dyn ToolRunner,
+    conversation: &mut Conversation,
+    streams: &mut Streams,
+) -> io::Result<Option<String>> {
+    let typed = line.clone();
+    let message = prepare_message(line, profile, conversation, tools, &mut streams.output, &mut streams.errors)?;
     // The approval prompts share the output with the live display, and read their answers from the
     // same input as the lines themselves.
     let render = Render::new(&mut streams.output);
     let mut approve = |change: &str| ask(change, &mut *render.output(), &mut streams.input);
     let mut on_event = |event: Event| render.on_event(event);
-    let result = run_turn(provider, conversation, message, tools, &mut approve, &mut on_event);
+    // A subagent runs with this turn's approvals and the global hook lines, which its own profile's lines follow.
+    let (global_before, global_after) = (conversation.before_turn().to_vec(), conversation.after_turn().to_vec());
+    let mut subagent = |name: &str, task: &str, approve: &mut dyn FnMut(&str) -> bool| {
+        subagent::run(name, task, provider, tools, &global_before, &global_after, approve)
+    };
+    let result = run_turn(provider, conversation, message, tools, &mut approve, &mut subagent, &mut on_event);
     render.end();
     let streamed = render.streamed();
     match result {
@@ -382,7 +401,7 @@ fn ask(change: &str, output: &mut impl Write, input: &mut impl BufRead) -> bool 
 
 /// How the history was shrunk: replaced by a summary, or cut by dropping the oldest turn.
 #[derive(Clone, Copy)]
-enum Compaction {
+pub enum Compaction {
     Summarized,
     Dropped(usize),
 }
@@ -411,19 +430,20 @@ fn compact_if_full(provider: &dyn Provider, conversation: &mut Conversation) -> 
 
 /// Sends a turn. If the context fills up during it, the conversation is compacted and the turn is
 /// sent once more from the compacted history. Returns the turn and the last compaction it needed.
-fn run_turn(
+pub fn run_turn(
     provider: &dyn Provider,
     conversation: &mut Conversation,
     line: String,
     tools: &dyn ToolRunner,
     approve: &mut dyn FnMut(&str) -> bool,
+    subagent: &mut SubagentRunner,
     on_event: &mut dyn FnMut(Event),
 ) -> Result<(Turn, Option<Compaction>), ProviderError> {
     let mut compaction = compact_if_full(provider, conversation)?;
-    match provider.complete_streaming(conversation.messages(), line.clone(), tools, approve, on_event) {
+    match provider.complete_streaming(conversation.messages(), line.clone(), tools, approve, subagent, on_event) {
         Err(ProviderError::ContextFull) => {
             compaction = Some(compact(provider, conversation)?);
-            let turn = provider.complete_streaming(conversation.messages(), line, tools, approve, on_event)?;
+            let turn = provider.complete_streaming(conversation.messages(), line, tools, approve, subagent, on_event)?;
             Ok((turn, compaction))
         }
         result => Ok((result?, compaction)),
@@ -468,6 +488,7 @@ mod tests {
             input: String,
             _runner: &dyn ToolRunner,
             _approve: &mut dyn FnMut(&str) -> bool,
+            _subagent: &mut SubagentRunner,
         ) -> Result<Turn, ProviderError> {
             self.inputs.borrow_mut().push(input.clone());
             let messages = match self.behavior {
