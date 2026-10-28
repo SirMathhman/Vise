@@ -335,14 +335,12 @@ impl Provider for LlamaCpp {
         Ok(fetch_models(&self.api_key)?.data.into_iter().map(|model| model.id).collect())
     }
 
-    /// Makes `name` the model the requests name, if the server lists it. The context size is read again for it.
+    /// Makes `name` the model the requests name. Its context size comes from the same list that shows it is listed, so
+    /// a model without one is refused, and a refused switch changes neither the name nor the cached size.
     fn set_model(&self, name: &str) -> Result<(), ProviderError> {
-        let offered = self.models()?;
-        if !offered.iter().any(|id| id == name) {
-            return Err(ProviderError::ModelMissing { expected: name.to_string(), offered });
-        }
+        let context = context_size_of(fetch_models(&self.api_key)?, name)?;
         *self.model.borrow_mut() = name.to_string();
-        *self.context.borrow_mut() = None;
+        *self.context.borrow_mut() = Some(context);
         Ok(())
     }
 }
