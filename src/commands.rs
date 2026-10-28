@@ -8,6 +8,8 @@ pub const HELP: &str = "\
 /tools disable NAME   stop the model calling a tool
 /profile              list the profiles in the profiles folder
 /profile NAME         use a profile's instructions from the next message on
+/model               list the models the server offers, and the one in use
+/model NAME          use a model the server offers, and keep it as the default
 /notes [CATEGORY]     list the notes, all or in one category
 /note show NAME       show a note
 /note create NAME CATEGORY   create a note with a placeholder summary
@@ -34,6 +36,10 @@ pub enum Command {
     Save(String),
     Load(String),
     Sessions,
+    /// Lists the models the server offers, marking the one in use.
+    Models,
+    /// Makes the named model the one in use, if the server offers it.
+    UseModel(String),
 }
 
 /// Slash commands are handled here and never sent to the model. Any other line, including an unknown
@@ -67,6 +73,13 @@ pub fn command(line: &str) -> Option<Command> {
             _ => None,
         };
     }
+    if let Some(rest) = whole_word(line, "/model") {
+        return match rest.split_whitespace().collect::<Vec<_>>().as_slice() {
+            [] => Some(Command::Models),
+            [name] => Some(Command::UseModel(name.to_string())),
+            _ => None,
+        };
+    }
     if let Some(rest) = line.strip_prefix("/profile").filter(|rest| rest.is_empty() || rest.starts_with(' ')) {
         return match rest.split_whitespace().collect::<Vec<_>>().as_slice() {
             [] => Some(Command::Profiles),
@@ -95,4 +108,16 @@ pub fn command(line: &str) -> Option<Command> {
 /// The rest of `line` after `command`, when `command` is the line's first word.
 fn whole_word<'a>(line: &'a str, command: &str) -> Option<&'a str> {
     line.strip_prefix(command).filter(|rest| rest.is_empty() || rest.starts_with(' '))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn model_command_takes_an_optional_name() {
+        assert!(matches!(command("/model"), Some(Command::Models)));
+        assert!(matches!(command("/model a/b"), Some(Command::UseModel(name)) if name == "a/b"));
+        assert!(command("/models").is_none());
+    }
 }

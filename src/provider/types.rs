@@ -49,4 +49,19 @@ pub trait Provider {
 
     /// Asks the model to summarize `history`, returning the summary text.
     fn summarize(&self, history: &[Message]) -> Result<String, ProviderError>;
+
+    /// The model the requests name. A provider with no model choice names none.
+    fn model(&self) -> String {
+        String::new()
+    }
+
+    /// The ids of the models the server lists.
+    fn models(&self) -> Result<Vec<String>, ProviderError> {
+        Err(ProviderError::Rejected("this provider cannot list models".into()))
+    }
+
+    /// Makes `name` the model the requests name, if the server lists it.
+    fn set_model(&self, _name: &str) -> Result<(), ProviderError> {
+        Err(ProviderError::Rejected("this provider cannot change the model".into()))
+    }
 }

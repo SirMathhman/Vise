@@ -1,6 +1,7 @@
 mod after_turn;
 mod before_turn;
 mod commands;
+mod default_model;
 mod environment;
 mod error;
 mod file_commands;
@@ -18,6 +19,7 @@ mod tools;
 mod turn;
 
 use provider::llama_cpp::LlamaCpp;
+use provider::types::Provider;
 use session::Conversation;
 use std::io::{self, Write};
 use tools::runner::WorkspaceTools;
@@ -48,6 +50,17 @@ fn main() {
     let mut output = stdout.lock();
     let mut errors = io::stderr();
     let mut input = io::stdin().lock();
+    match default_model::load() {
+        Ok(Some(name)) => {
+            if let Err(err) = provider.set_model(&name) {
+                let _ = writeln!(errors, "error: the saved default model is not used: {err}");
+            }
+        }
+        Ok(None) => {}
+        Err(err) => {
+            let _ = writeln!(errors, "error: cannot read model.txt: {err}");
+        }
+    }
     match before_turn::load(&env.cwd, &mut errors) {
         Ok(Some(commands)) => conversation.set_before_turn(commands),
         Ok(None) => {}

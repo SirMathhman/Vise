@@ -49,7 +49,7 @@ impl fmt::Display for ProviderError {
                 let offered = if offered.is_empty() { "none".to_string() } else { offered.join(", ") };
                 write!(
                     f,
-                    "the server does not list the configured model '{expected}'; it offers: {offered}. Load that model on the server, or change MODEL in src/provider/llama_cpp.rs"
+                    "the server does not list the model '{expected}'; it offers: {offered}. Load the model on the server, or choose one it offers with /model"
                 )
             }
             Self::ContextSizeUnknown { expected } => write!(
@@ -99,6 +99,6 @@ mod tests {
     #[test]
     fn model_missing_names_the_expected_model_and_what_the_server_offers() {
         let err = ProviderError::ModelMissing { expected: "a/b".into(), offered: vec!["x".into(), "y".into()] };
-        assert!(err.to_string().starts_with("the server does not list the configured model 'a/b'; it offers: x, y."));
+        assert!(err.to_string().starts_with("the server does not list the model 'a/b'; it offers: x, y."));
     }
 }

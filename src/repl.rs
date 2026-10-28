@@ -1,5 +1,6 @@
 use crate::after_turn;
 use crate::commands::{command, Command, HELP};
+use crate::default_model;
 use crate::notes;
 use crate::profile;
 use crate::provider::types::{Event, Provider};
@@ -183,6 +184,23 @@ pub fn run(
                         writeln!(output, "profile {name} selected; its instructions go with your next message")?;
                     }
                     Err(err) => writeln!(errors, "error: {err}")?,
+                },
+                Err(err) => writeln!(errors, "error: {err}")?,
+            },
+            Some(Command::Models) => match provider.models() {
+                Ok(ids) => {
+                    let current = provider.model();
+                    for id in ids {
+                        let mark = if id == current { "* " } else { "  " };
+                        writeln!(output, "{mark}{id}")?;
+                    }
+                }
+                Err(err) => writeln!(errors, "error: {err}")?,
+            },
+            Some(Command::UseModel(name)) => match provider.set_model(&name) {
+                Ok(()) => match default_model::save(&name) {
+                    Ok(()) => writeln!(output, "model set to {name}, and kept as the default")?,
+                    Err(err) => writeln!(errors, "error: cannot save the default model: {err}")?,
                 },
                 Err(err) => writeln!(errors, "error: {err}")?,
             },

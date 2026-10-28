@@ -6,7 +6,7 @@ use crate::session::{Message, Turn, over_budget};
 use crate::tools::types::{Invocation, ToolCall, ToolError, ToolRunner, Value};
 use crate::tools;
 use serde::{Deserialize, Serialize};
-use std::cell::OnceCell;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 
@@ -23,7 +23,7 @@ const MAX_REPLY_TOKENS: u32 = 8192;
 /// is streamed, and the last chunk carries the usage.
 #[derive(Serialize)]
 struct Request<'a> {
-    model: &'static str,
+    model: &'a str,
     messages: &'a [WireMessage],
     max_tokens: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -200,46 +200,49 @@ struct ModelMeta {
     n_ctx: u64,
 }
 
+/// The server's model list.
+fn fetch_models(api_key: &str) -> Result<Models, ProviderError> {
+    let mut response = ureq::get(MODELS_URL)
+        .header("Authorization", &format!("Bearer {api_key}"))
+        .call()
+        .map_err(|err| ProviderError::Transport(Box::new(err)))?;
+    response.body_mut().read_json().map_err(|err| ProviderError::Transport(Box::new(err)))
+}
+
 /// The context size of the configured model, from the server's list. A missing model and a model with no context
 /// size are different errors, and each names what the user can check.
-fn context_size_of(models: Models) -> Result<u64, ProviderError> {
+fn context_size_of(models: Models, expected: &str) -> Result<u64, ProviderError> {
     let offered: Vec<String> = models.data.iter().map(|model| model.id.clone()).collect();
-    match models.data.into_iter().find(|model| model.id == MODEL) {
-        None => Err(ProviderError::ModelMissing { expected: MODEL.to_string(), offered }),
+    match models.data.into_iter().find(|model| model.id == expected) {
+        None => Err(ProviderError::ModelMissing { expected: expected.to_string(), offered }),
         Some(model) => model
             .meta
             .map(|meta| meta.n_ctx)
-            .ok_or_else(|| ProviderError::ContextSizeUnknown { expected: MODEL.to_string() }),
+            .ok_or_else(|| ProviderError::ContextSizeUnknown { expected: expected.to_string() }),
     }
 }
 
 pub struct LlamaCpp {
     api_key: String,
-    context: OnceCell<u64>,
+    /// The model the requests name. It starts as `MODEL` and changes with `set_model`.
+    model: RefCell<String>,
+    context: RefCell<Option<u64>>,
 }
 
 impl LlamaCpp {
     pub fn new(api_key: String) -> Self {
-        Self { api_key, context: OnceCell::new() }
+        Self { api_key, model: RefCell::new(MODEL.to_string()), context: RefCell::new(None) }
     }
 
     fn fetch_context_size(&self) -> Result<u64, ProviderError> {
-        let mut response = ureq::get(MODELS_URL)
-            .header("Authorization", &format!("Bearer {}", self.api_key))
-            .call()
-            .map_err(|err| ProviderError::Transport(Box::new(err)))?;
-        let models: Models = response
-            .body_mut()
-            .read_json()
-            .map_err(|err| ProviderError::Transport(Box::new(err)))?;
-        context_size_of(models)
+        context_size_of(fetch_models(&self.api_key)?, &self.model.borrow())
     }
 
     /// Asks the model to summarize the messages it is given, without offering any tools.
     fn summarize_messages<'a>(&self, messages: impl Iterator<Item = &'a Message>) -> Result<String, ProviderError> {
         let mut wire: Vec<WireMessage> = messages.map(WireMessage::try_from).collect::<Result<_, _>>()?;
         wire.push(WireMessage::try_from(&Message::User(SUMMARY_REQUEST.into()))?);
-        let (summary, prompt_tokens) = send(&self.api_key, &wire, None, &mut |_| {})?;
+        let (summary, prompt_tokens) = send(&self.api_key, &self.model.borrow(), &wire, None, &mut |_| {})?;
         if over_budget(prompt_tokens, self.context_size()?) {
             return Err(ProviderError::ContextFull);
         }
@@ -289,7 +292,7 @@ impl Provider for LlamaCpp {
         let mut wrote = false;
         for _ in 0..MAX_TOOL_ROUNDS {
             let wire = wire_messages(&catalogue, history.iter().chain(&new))?;
-            let (content, prompt_tokens) = match send(&self.api_key, &wire, Some(&grammar), &mut *on_event) {
+            let (content, prompt_tokens) = match send(&self.api_key, &self.model.borrow(), &wire, Some(&grammar), &mut *on_event) {
                 Err(ProviderError::ContextFull) if wrote => return Err(ProviderError::ContextFullAfterChange),
                 sent => sent?,
             };
@@ -312,16 +315,35 @@ impl Provider for LlamaCpp {
     }
 
     fn context_size(&self) -> Result<u64, ProviderError> {
-        if let Some(size) = self.context.get() {
-            return Ok(*size);
+        if let Some(size) = *self.context.borrow() {
+            return Ok(size);
         }
         let size = self.fetch_context_size()?;
-        let _ = self.context.set(size);
+        *self.context.borrow_mut() = Some(size);
         Ok(size)
     }
 
     fn summarize(&self, history: &[Message]) -> Result<String, ProviderError> {
         self.summarize_messages(history.iter())
+    }
+
+    fn model(&self) -> String {
+        self.model.borrow().clone()
+    }
+
+    fn models(&self) -> Result<Vec<String>, ProviderError> {
+        Ok(fetch_models(&self.api_key)?.data.into_iter().map(|model| model.id).collect())
+    }
+
+    /// Makes `name` the model the requests name, if the server lists it. The context size is read again for it.
+    fn set_model(&self, name: &str) -> Result<(), ProviderError> {
+        let offered = self.models()?;
+        if !offered.iter().any(|id| id == name) {
+            return Err(ProviderError::ModelMissing { expected: name.to_string(), offered });
+        }
+        *self.model.borrow_mut() = name.to_string();
+        *self.context.borrow_mut() = None;
+        Ok(())
     }
 }
 
@@ -381,12 +403,13 @@ const SUMMARY_REQUEST: &str = "Summarize your conversation with the user";
 /// Tool calls are never reported as answer text, because a reply that starts with `<tool_call>` is a call.
 fn send(
     api_key: &str,
+    model: &str,
     wire: &[WireMessage],
     grammar: Option<&str>,
     on_event: &mut dyn FnMut(Event),
 ) -> Result<(String, u64), ProviderError> {
     let request = Request {
-        model: MODEL,
+        model,
         messages: wire,
         max_tokens: MAX_REPLY_TOKENS,
         grammar,
@@ -595,7 +618,7 @@ mod tests {
     #[test]
     fn server_list_without_the_model_is_model_missing() {
         let models = Models { data: vec![ModelInfo { id: "other".into(), meta: None }] };
-        match context_size_of(models) {
+        match context_size_of(models, MODEL) {
             Err(ProviderError::ModelMissing { expected, offered }) => {
                 assert_eq!(expected, MODEL);
                 assert_eq!(offered, vec!["other".to_string()]);
@@ -607,12 +630,12 @@ mod tests {
     #[test]
     fn listed_model_without_metadata_is_context_size_unknown() {
         let models = Models { data: vec![ModelInfo { id: MODEL.into(), meta: None }] };
-        assert!(matches!(context_size_of(models), Err(ProviderError::ContextSizeUnknown { .. })));
+        assert!(matches!(context_size_of(models, MODEL), Err(ProviderError::ContextSizeUnknown { .. })));
     }
 
     #[test]
     fn listed_model_with_metadata_gives_its_context_size() {
         let models = Models { data: vec![ModelInfo { id: MODEL.into(), meta: Some(ModelMeta { n_ctx: 4096 }) }] };
-        assert_eq!(context_size_of(models).unwrap(), 4096);
+        assert_eq!(context_size_of(models, MODEL).unwrap(), 4096);
     }
 }
