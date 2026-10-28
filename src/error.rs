@@ -27,7 +27,8 @@ pub enum ProviderError {
     Rejected(String),
     EmptyResponse,
     TooManyToolRounds,
-    ModelNotFound,
+    /// The configured model is not among the models the server lists. `offered` holds the ids the server lists.
+    ModelNotFound { expected: String, offered: Vec<String> },
     ContextFull,
     ContextFullAfterChange,
     EmptySummary,
@@ -42,7 +43,10 @@ impl fmt::Display for ProviderError {
             Self::Rejected(message) => write!(f, "the server rejected the request: {message}; check the request"),
             Self::EmptyResponse => write!(f, "the model returned no choices; try the message again"),
             Self::TooManyToolRounds => write!(f, "the model kept calling tools after {MAX_TOOL_ROUNDS} rounds; try a simpler request"),
-            Self::ModelNotFound => write!(f, "the server does not list the configured model"),
+            Self::ModelNotFound { expected, offered } => {
+                let offered = if offered.is_empty() { "none".to_string() } else { offered.join(", ") };
+                write!(f, "the server does not list the configured model '{expected}'; it offers: {offered}")
+            }
             Self::ContextFull => write!(f, "the conversation no longer fits the model's context"),
             Self::ContextFullAfterChange => write!(
                 f,
@@ -61,11 +65,22 @@ impl std::error::Error for ProviderError {
             Self::Session(err) => Some(err),
             Self::EmptyResponse
             | Self::TooManyToolRounds
-            | Self::ModelNotFound
+            | Self::ModelNotFound { .. }
             | Self::ContextFull
             | Self::ContextFullAfterChange
             | Self::EmptySummary
             | Self::Rejected(_) => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn model_not_found_names_the_expected_model_and_what_the_server_offers() {
+        let err = ProviderError::ModelNotFound { expected: "a/b".into(), offered: vec!["x".into(), "y".into()] };
+        assert_eq!(err.to_string(), "the server does not list the configured model 'a/b'; it offers: x, y");
     }
 }

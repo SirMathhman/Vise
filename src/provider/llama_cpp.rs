@@ -219,13 +219,14 @@ impl LlamaCpp {
             .body_mut()
             .read_json()
             .map_err(|err| ProviderError::Transport(Box::new(err)))?;
+        let offered: Vec<String> = models.data.iter().map(|model| model.id.clone()).collect();
         models
             .data
             .into_iter()
             .find(|model| model.id == MODEL)
             .and_then(|model| model.meta)
             .map(|meta| meta.n_ctx)
-            .ok_or(ProviderError::ModelNotFound)
+            .ok_or(ProviderError::ModelNotFound { expected: MODEL.to_string(), offered })
     }
 
     /// Asks the model to summarize the messages it is given, without offering any tools.
