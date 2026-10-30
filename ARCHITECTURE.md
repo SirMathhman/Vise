@@ -43,7 +43,7 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
   `</tool_call>`. It is the only reply form that runs a tool.
 - **Write**: a call that changes the filesystem, or starts or stops a program. These are the tool calls
   `create_file`, `create_directory`, `edit_file`, `run_powershell`, `kill_background`, `create_note`,
-  `update_note`, `delete_note`, and `run_subagent`, and the user's commands `/note create`, `/note delete`,
+  `update_note`, `delete_note`, and `run_subagent`, and the user's commands `/note create CATEGORY NAME`, `/note delete NAME`,
   `/save`, and `/model NAME`. A write runs only after the user approves it, whoever asked. Exceptions are
   autosave (see Session), and the command lines (see Command files and hooks). A declined write is reported
   to the model as an error and changes nothing.
