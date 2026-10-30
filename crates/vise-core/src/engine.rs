@@ -7,7 +7,7 @@ use crate::before_turn;
 use crate::command::Command;
 use crate::default_model;
 use crate::error::ProviderError;
-use crate::frontend::{Frontend, UiEvent};
+use crate::frontend::{Change, DropCause, Frontend, UiEvent};
 use serde::{Deserialize, Serialize};
 use crate::profile;
 use crate::provider::types::{Event, Provider};
@@ -164,20 +164,23 @@ impl<'a> Engine<'a> {
             },
             Command::UseModel(name) => match self.provider.set_model(&name) {
                 Ok(()) => match default_model::save(&name) {
-                    Ok(()) => ui.notice(format!("model set to {name}, and kept as the default")),
-                    Err(err) => ui.error(format!("the model is now {name}, but it could not be saved as the default: {err}")),
+                    Ok(()) => ui.emit(UiEvent::Changed(Change::ModelSet { name, default_saved: true })),
+                    Err(err) => {
+                        ui.emit(UiEvent::Changed(Change::ModelSet { name: name.clone(), default_saved: false }));
+                        ui.error(format!("the model is now {name}, but it could not be saved as the default: {err}"));
+                    }
                 },
                 Err(err) => ui.error(err.to_string()),
             },
             Command::New => {
                 self.conversation.replace_history(Vec::new());
-                ui.notice("started a new conversation".to_string());
+                ui.emit(UiEvent::Changed(Change::Reset));
             }
             Command::Compact => match compact(self.provider, self.conversation) {
-                Ok(Compaction::Summarized) => ui.notice("conversation compacted".to_string()),
-                Ok(Compaction::Dropped(removed)) => ui.notice(format!(
-                    "the summary did not fit, so the oldest turn was dropped ({removed} messages removed)"
-                )),
+                Ok(Compaction::Summarized) => ui.emit(UiEvent::Changed(Change::Compacted)),
+                Ok(Compaction::Dropped(removed)) => {
+                    ui.emit(UiEvent::Changed(Change::OldestTurnDropped { removed, cause: DropCause::SummaryDidNotFit }))
+                }
                 Err(err) => ui.error(err.to_string()),
             },
             Command::Context => {
@@ -216,25 +219,18 @@ impl<'a> Engine<'a> {
             Ok(loaded) => loaded,
             Err(err) => return ui.error(err),
         };
-        let changes = match apply_whitelist(self.tools, loaded.tools.as_deref()) {
+        let tool_changes = match apply_whitelist(self.tools, loaded.tools.as_deref()) {
             Ok(changes) => changes,
             Err(err) => return ui.error(err.to_string()),
         };
-        for change in changes {
-            ui.notice(change);
-        }
         self.tools.set_allowed_notes(loaded.notes);
         let hooks = loaded.hooks.fingerprint();
-        if !self.tools.hooks_confirmed(&name, &hooks) {
-            ui.notice(format!("profile {name}: these hook lines are new or changed since the run started, and run without a prompt:"));
-            for line in &hooks {
-                ui.notice(format!("  {line}"));
-            }
-        }
+        let new_hooks = if self.tools.hooks_confirmed(&name, &hooks) { Vec::new() } else { hooks.clone() };
+        ui.emit(UiEvent::Changed(Change::ProfileApplied { name: name.clone(), tool_changes, new_hooks }));
         self.tools.confirm_hooks(&name, &hooks);
         self.profile = Some(profile::marked(&name, &loaded.instructions));
         select_hooks(loaded.hooks, self.conversation, self.tools, ui);
-        ui.notice(format!("profile {name} selected; its instructions go with your next message"));
+        ui.emit(UiEvent::Changed(Change::ProfileSelected { name }));
     }
 
     /// Runs a chat line as a turn. While the after-turn command fails, its failure is sent as the next message, for up to
@@ -307,7 +303,7 @@ impl<'a> Engine<'a> {
         match result {
             Ok((turn, compaction)) => {
                 if let Some(Compaction::Dropped(removed)) = compaction {
-                    ui.notice(format!("the context was full, so the oldest turn was dropped ({removed} messages removed)"));
+                    ui.emit(UiEvent::Changed(Change::OldestTurnDropped { removed, cause: DropCause::ContextFull }));
                 }
                 if !streamed.get() {
                     ui.emit(UiEvent::Reply(turn.reply().to_string()));
@@ -476,7 +472,7 @@ mod tests {
         let mut engine = Engine::new(&provider, &NoTools, &mut conversation, &sessions, Stop::new());
         let mut ui = TextUi::new();
         assert_eq!(engine.handle(Request::Command(Command::New), &mut ui), Flow::Continue);
-        assert_eq!(ui.output, "started a new conversation\n");
+        assert_eq!(ui.events, vec![UiEvent::Changed(Change::Reset)]);
         assert_eq!(engine.handle(Request::Command(Command::Exit), &mut ui), Flow::Exit);
     }
 

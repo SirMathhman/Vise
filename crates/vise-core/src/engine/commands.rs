@@ -2,7 +2,7 @@
 //! through the frontend. The typed writes go through the runner without a prompt.
 
 use crate::command::Command;
-use crate::frontend::{Frontend, NoteLine, ToolState, UiEvent};
+use crate::frontend::{Change, Frontend, NoteLine, ToolState, UiEvent};
 use crate::notes;
 use crate::saved_sessions;
 use crate::session::Conversation;
@@ -20,9 +20,9 @@ pub(super) fn tool_states(tools: &dyn ToolRunner) -> Vec<ToolState> {
 
 /// Runs a write the user typed. The typed command is the approval, so no prompt is shown. Writes the model asks for still
 /// wait for approval in the runner.
-fn typed_write(tools: &dyn ToolRunner, invocation: &Invocation, ui: &mut dyn Frontend) {
+fn typed_write(tools: &dyn ToolRunner, invocation: &Invocation, done: Change, ui: &mut dyn Frontend) {
     match tools.run(invocation, &mut |_: &str| true) {
-        Ok(message) => ui.notice(message),
+        Ok(_) => ui.emit(UiEvent::Changed(done)),
         Err(err) => ui.error(err.to_string()),
     }
 }
@@ -30,7 +30,7 @@ fn typed_write(tools: &dyn ToolRunner, invocation: &Invocation, ui: &mut dyn Fro
 /// Enables or disables a tool, reporting the result or the failure through `ui`.
 pub(super) fn toggle(tools: &dyn ToolRunner, name: &str, on: bool, ui: &mut dyn Frontend) {
     match tools.set_enabled(name, on) {
-        Ok(()) => ui.notice(format!("{name}: {}", if on { "enabled" } else { "disabled" })),
+        Ok(()) => ui.emit(UiEvent::Changed(Change::ToolToggled { name: name.to_string(), enabled: on })),
         Err(err) => ui.error(err.to_string()),
     }
 }
@@ -53,19 +53,23 @@ pub(super) fn note_command(command: Command, tools: &dyn ToolRunner, ui: &mut dy
             Err(err) => ui.error(err),
         },
         Command::ShowNote(name) => match notes::read(&tools.notes_folder(), &name) {
-            Ok(note) => ui.notice(notes::show(&note)),
+            Ok(note) => ui.emit(UiEvent::Note { name, summary: note.summary, category: note.category, content: note.content }),
             Err(err) => ui.error(err),
         },
         Command::CreateNote(name, category) => {
+            let done = Change::NoteCreated { name: name.clone() };
             let placeholder = Invocation::CreateNote {
                 name,
                 summary: "placeholder".into(),
                 category,
                 content: String::new(),
             };
-            typed_write(tools, &placeholder, ui)
+            typed_write(tools, &placeholder, done, ui)
         }
-        Command::DeleteNote(name) => typed_write(tools, &Invocation::DeleteNote { name }, ui),
+        Command::DeleteNote(name) => {
+            let done = Change::NoteDeleted { name: name.clone() };
+            typed_write(tools, &Invocation::DeleteNote { name }, done, ui)
+        }
         _ => {}
     }
 }
@@ -74,7 +78,7 @@ pub(super) fn note_command(command: Command, tools: &dyn ToolRunner, ui: &mut dy
 /// is refused by the save.
 pub(super) fn save_session(name: &str, conversation: &Conversation, sessions: &Path, ui: &mut dyn Frontend) {
     match saved_sessions::save(sessions, name, conversation.history(), conversation.requests()) {
-        Ok(()) => ui.notice(format!("session {name} saved")),
+        Ok(()) => ui.emit(UiEvent::Changed(Change::SessionSaved { name: name.to_string() })),
         Err(err) => ui.error(err.to_string()),
     }
 }
@@ -90,7 +94,7 @@ pub(super) fn session_command(command: Command, conversation: &mut Conversation,
         Command::Load(name) => match saved_sessions::load(sessions, &name) {
             Ok(history) => {
                 conversation.replace_history(history);
-                ui.notice(format!("session {name} loaded"));
+                ui.emit(UiEvent::Changed(Change::SessionLoaded { name }));
             }
             Err(err) => ui.error(err.to_string()),
         },
@@ -118,7 +122,7 @@ mod tests {
         // A declined prompt would answer "no", so a create that still succeeds was not asked.
         let mut ui = TextUi::new();
         note_command(Command::CreateNote("b".into(), "profile".into()), &Approving, &mut ui);
-        assert_eq!(ui.output, "created note\n");
+        assert_eq!(ui.events, vec![UiEvent::Changed(Change::NoteCreated { name: "b".into() })]);
         assert!(ui.errors.is_empty());
         assert!(ui.asked.is_empty(), "the user is not asked about their own command");
     }

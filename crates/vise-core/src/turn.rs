@@ -4,7 +4,7 @@
 use crate::before_turn;
 use crate::error::ProviderError;
 use crate::file_commands::run_lines;
-use crate::frontend::Frontend;
+use crate::frontend::{Frontend, ToolState};
 use crate::notes;
 use crate::profile;
 use crate::provider::types::{Event, Provider, SubagentRunner};
@@ -14,8 +14,8 @@ use crate::tools::specs;
 use crate::tools::types::{ToolError, ToolRunner};
 
 /// Makes the profile's whitelist the enabled set: exactly the listed tools. A profile without a whitelist
-/// enables every tool. Returns one line for each tool whose state changed.
-pub fn apply_whitelist(tools: &dyn ToolRunner, whitelist: Option<&[String]>) -> Result<Vec<String>, ToolError> {
+/// enables every tool. Returns each tool whose state changed, with its new state.
+pub fn apply_whitelist(tools: &dyn ToolRunner, whitelist: Option<&[String]>) -> Result<Vec<ToolState>, ToolError> {
     let allowed: Vec<&str> = match whitelist {
         Some(names) => names.iter().map(String::as_str).collect(),
         None => specs().iter().map(|spec| spec.name).collect(),
@@ -26,7 +26,7 @@ pub fn apply_whitelist(tools: &dyn ToolRunner, whitelist: Option<&[String]>) -> 
         let on = allowed.contains(&spec.name);
         if enabled.contains(&spec.name) != on {
             tools.set_enabled(spec.name, on)?;
-            changes.push(format!("{}: {}", spec.name, if on { "enabled" } else { "disabled" }));
+            changes.push(ToolState { name: spec.name.to_string(), enabled: on });
         }
     }
     Ok(changes)

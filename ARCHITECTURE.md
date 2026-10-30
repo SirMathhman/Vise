@@ -318,9 +318,9 @@ crates/vise-core/src/    the backend library `vise-core`: no stdin, stdout or st
                      `stop_handle`. It holds the selected profile and runs a chat line as a turn: prepare, run, commit,
                      autosave, the after-turn follow-ups, and a stopped turn. Everything the user should see goes to the frontend.
   engine/commands.rs  the commands that act on tools, notes and saved sessions (`/tools`, `/note`, `/save`, `/load`)
-  frontend.rs        `Frontend` (`emit(UiEvent)`, `approve(&str) -> bool`), `UiEvent` (notices, errors, streamed progress, and the
-                     typed query results `Tools`, `Profiles`, `Models`, `Sessions`, `Notes`, `Context`; all `serde`), `ToolState`,
-                     `NoteLine`, `Sink` (a frontend nobody looks at), and the test-only `TextUi`, which records events and
+  frontend.rs        `Frontend` (`emit(UiEvent)`, `approve(&str) -> bool`), `UiEvent` (notices, errors, streamed progress, the
+                     typed query results `Tools`, `Profiles`, `Models`, `Sessions`, `Notes`, `Note`, `Context`, and `Changed(Change)`;
+                     all `serde`), `Change`, `DropCause`, `ToolState`, `NoteLine`, `Sink` (a frontend nobody looks at), and the test-only `TextUi`, which records events and
                      renders the notices as the terminal's text
   command.rs         `Command`, what a frontend can ask for besides a chat line. Typing it is the frontend's business.
   stop.rs            `Stop`: the shared stop switch. `request` asks the running work to stop, `work`/`tracked` mark work a
@@ -398,7 +398,7 @@ crates/vise-cli/src/     the terminal frontend, package `Vise` (the executable k
                      to the engine, and ends the run on `/exit`, the end of input, or a write that failed
   repl/tests.rs      the loop's tests, run over a scripted provider and `Vec<u8>` streams
   terminal.rs        `TerminalFrontend`: shows `UiEvent`s on stdout and stderr (`error: ` prefix, `Reply` in green), words the
-                     query results and their empty-list hints, draws
+                     query results, the changes and their empty-list hints, draws
                      the live reply through `Render`, and asks for approvals by reading `y` or `yes` from the input it also
                      reads lines from
   commands.rs        the help text, and the parser from a slash command to `Command` (no I/O)
@@ -640,9 +640,17 @@ Each item is a gap between the design above and the code. Items are grouped by a
 ### The frontend boundary
 
 The goal is that a second frontend (a GUI, a web page, a test harness) needs nothing from the core except `Engine`, `Request`,
-`Frontend`, `UiEvent` and `Stop`. Query results are already typed (`Tools`, `Profiles`, `Models`, `Sessions`, `Notes`, `Context`), with
-the wording and the empty-list hints left to the frontend, and `UiEvent`, `Request`, `Command`, `Flow` and the provider's `Event`
+`Frontend`, `UiEvent` and `Stop`. Query results (`Tools`, `Profiles`, `Models`, `Sessions`, `Notes`, `Note`, `Context`) and state changes (`Changed`) are typed,
+with the wording and the empty-list hints left to the frontend, and `UiEvent`, `Request`, `Command`, `Flow` and the provider's `Event`
 derive `serde`. Today a frontend would still reach around the abstraction in these places:
+
+- **A few notices are still prose.** State changes are typed: `Changed(Change)` carries `ToolToggled`, `ProfileApplied` (the tools it
+  changed and the hook lines that are new or changed), `ProfileSelected`, `SessionSaved`, `SessionLoaded`, `ModelSet`, `Compacted`,
+  `OldestTurnDropped`, `Reset`, `NoteCreated` and `NoteDeleted`, and one note is `UiEvent::Note`. What is left as text:
+  `resumed session NAME` and `imported N session files` (a `Status`), the startup and hook-line output (`startup: CMD`), `the turn
+  was stopped before it finished`, and every `Error(String)`. `Error` should carry a kind and a subject so a GUI can attach it to
+  the field that caused it, and the `skipped` note lines should not be errors of the command that listed them. The terminal words
+  every list's empty case, including `no models`.
 
 - **Approvals are a bare string.** `approve(&str) -> bool` carries no id, no kind (write, kill, profile file), no path, and no
   origin, so a GUI cannot show a diff or a dialog, and a subagent's request looks like the parent's. It needs an `Approval { id,

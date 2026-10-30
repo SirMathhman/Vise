@@ -12,6 +12,37 @@ pub struct ToolState {
     pub enabled: bool,
 }
 
+/// Why the oldest turn was dropped from the history.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DropCause {
+    /// A summary of the history did not fit in the context, so `/compact` dropped a turn instead.
+    SummaryDidNotFit,
+    /// The context filled up during a turn.
+    ContextFull,
+}
+
+/// Something the engine changed, as a fact. The frontend words it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum Change {
+    ToolToggled { name: String, enabled: bool },
+    /// A profile's tools and notes now apply. `new_hooks` lists its hook lines (`KIND: COMMAND`) when they are new or changed
+    /// since the run started, and run without a prompt.
+    ProfileApplied { name: String, tool_changes: Vec<ToolState>, new_hooks: Vec<String> },
+    /// The profile is selected, and its instructions go with the next message.
+    ProfileSelected { name: String },
+    SessionSaved { name: String },
+    SessionLoaded { name: String },
+    /// The model in use is `name`. `default_saved` is whether it was also kept as the default for the next launch.
+    ModelSet { name: String, default_saved: bool },
+    /// The history was replaced by a summary.
+    Compacted,
+    OldestTurnDropped { removed: usize, cause: DropCause },
+    /// The conversation was emptied.
+    Reset,
+    NoteCreated { name: String },
+    NoteDeleted { name: String },
+}
+
 /// A note as the notes index shows it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NoteLine {
@@ -31,8 +62,10 @@ pub enum UiEvent {
     Error(String),
     /// The whole answer, sent when it was not already shown piece by piece as `Stream` answer events.
     Reply(String),
-    /// The result of a query, as data. How to word it, and what to say when it is empty, is the frontend's business.
-    /// Every tool, and whether the model may call it.
+    /// Something the engine changed. How to word it is the frontend's business.
+    Changed(Change),
+    /// The results of the query commands, as data. How to word them, and what to say when one is empty, is the frontend's
+    /// business. Every tool, and whether the model may call it:
     Tools(Vec<ToolState>),
     /// The profile names, the built-in `default` included.
     Profiles(Vec<String>),
@@ -42,6 +75,8 @@ pub enum UiEvent {
     Sessions(Vec<String>),
     /// The notes the command asked for.
     Notes(Vec<NoteLine>),
+    /// One note in full.
+    Note { name: String, summary: String, category: String, content: String },
     /// The standing context message, the tokens the last request used, and the context size when the server reports it.
     Context { text: String, prompt_tokens: u64, size: Option<u64> },
     /// Progress of a model request: prompt processing, thinking, answer text, and the tool calls the reply makes.
@@ -117,7 +152,9 @@ pub mod test_support {
                 UiEvent::Error(text) => self.errors.push_str(&format!("error: {text}\n")),
                 UiEvent::Stream { .. } | UiEvent::TurnEnded => {}
                 // Data, not text: a test reads the event.
-                UiEvent::Tools(_)
+                UiEvent::Changed(_)
+                | UiEvent::Note { .. }
+                | UiEvent::Tools(_)
                 | UiEvent::Profiles(_)
                 | UiEvent::Models { .. }
                 | UiEvent::Sessions(_)
@@ -148,6 +185,13 @@ mod tests {
             UiEvent::Tools(vec![ToolState { name: "read_file".into(), enabled: true }]),
             UiEvent::Stream { event: Event::Tool { name: "read_file".into(), target: Some("a.txt".into()) }, nested: true },
             UiEvent::Context { text: "context".into(), prompt_tokens: 3, size: None },
+            UiEvent::Changed(Change::ProfileApplied {
+                name: "explore".into(),
+                tool_changes: vec![ToolState { name: "create_file".into(), enabled: false }],
+                new_hooks: vec!["before-turn: Get-Date".into()],
+            }),
+            UiEvent::Changed(Change::OldestTurnDropped { removed: 2, cause: DropCause::ContextFull }),
+            UiEvent::Note { name: "plan".into(), summary: "s".into(), category: "memory".into(), content: "text".into() },
             UiEvent::TurnEnded,
         ];
         for event in events {
