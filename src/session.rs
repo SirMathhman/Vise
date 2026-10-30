@@ -1,11 +1,31 @@
 use crate::environment::{self, Environment};
-use crate::error::SessionError;
 use crate::tools::types::ToolCall;
+use std::fmt;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// Why a message list is not a well-formed turn or history.
+#[derive(Debug)]
+pub enum SessionError {
+    MalformedTurn { index: usize },
+}
+
+impl fmt::Display for SessionError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::MalformedTurn { index } => write!(
+                f,
+                "message {index} breaks the turn's shape: a user message, then each tool call followed by its result, then a reply with no tool calls"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for SessionError {}
+
 /// One message in a conversation. Each role carries exactly the fields it needs, so a tool result
 /// always has the call it answers.
+#[derive(Debug)]
 pub enum Message {
     System(String),
     User(String),
@@ -45,16 +65,41 @@ impl Message {
     }
 }
 
-/// The messages one exchange adds to a conversation: the user's input, any tool exchanges, and the
-/// reply. Only `Turn::new` builds one, and it checks the whole shape: a user message, then an optional
-/// summary of earlier rounds, then each assistant tool call followed by one result per call, then a
-/// reply with no tool calls.
 /// Whether a prompt of `prompt_tokens` has reached 80% of a `context_size` window. A prompt count of 0
 /// means no request has been made yet, so it is never full.
 pub fn over_budget(prompt_tokens: u64, context_size: u64) -> bool {
     prompt_tokens > 0 && prompt_tokens * 10 >= context_size * 8
 }
 
+/// A turn that a Ctrl+C stopped before it finished, as far as it got. It holds whole messages, so it is stored the
+/// way any other turn is: the prepared user message first, then the tool rounds that finished in order, then the
+/// reply's text up to the press, which may be empty. A round whose tool never reported back is left out.
+#[derive(Debug, Default)]
+pub struct PartialTurn {
+    messages: Vec<Message>,
+    pub reply: String,
+}
+
+impl PartialTurn {
+    pub fn new(messages: Vec<Message>, reply: String) -> Self {
+        Self { messages, reply }
+    }
+
+    /// The messages a stopped turn adds to the history. `mark` labels the reply, so a later reader knows it did not
+    /// finish. The shape is the same one `Turn::new` requires, so a half-recorded round is refused rather than saved.
+    pub fn into_messages(self, mark: &str) -> Result<Vec<Message>, SessionError> {
+        let reply = if self.reply.is_empty() { mark.to_string() } else { format!("{}\n\n{mark}", self.reply) };
+        let mut messages = self.messages;
+        messages.push(Message::Assistant { content: reply, tool_calls: Vec::new() });
+        check_shape(&messages)?;
+        Ok(messages)
+    }
+}
+
+/// The messages one exchange adds to a conversation: the user's input, any tool exchanges, and the
+/// reply. Only `Turn::new` builds one, and it checks the whole shape: a user message, then an optional
+/// summary of earlier rounds, then each assistant tool call followed by one result per call, then a
+/// reply with no tool calls.
 pub struct Turn {
     messages: Vec<Message>,
     prompt_tokens: u64,

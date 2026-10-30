@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fmt;
 
+#[derive(Debug)]
 pub struct ToolCall {
     pub id: String,
     pub name: String,
@@ -47,7 +48,7 @@ impl fmt::Display for ToolError {
 
 impl std::error::Error for ToolError {}
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Value {
     Text(String),
     Integer(i64),

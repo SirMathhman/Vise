@@ -1,26 +1,8 @@
 use crate::interrupt::Interrupted;
-use crate::session::Message;
+use crate::session::{PartialTurn, SessionError};
 use std::fmt;
 
 pub const MAX_TOOL_ROUNDS: usize = 10;
-
-#[derive(Debug)]
-pub enum SessionError {
-    MalformedTurn { index: usize },
-}
-
-impl fmt::Display for SessionError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::MalformedTurn { index } => write!(
-                f,
-                "message {index} breaks the turn's shape: a user message, then each tool call followed by its result, then a reply with no tool calls"
-            ),
-        }
-    }
-}
-
-impl std::error::Error for SessionError {}
 
 #[derive(Debug)]
 pub enum ProviderError {
@@ -39,29 +21,8 @@ pub enum ProviderError {
     ContextFullAfterChange,
     EmptySummary,
     Session(SessionError),
-    /// The user pressed Ctrl+C. `reached` holds the turn as far as it got, so the callers can record it: the tool rounds
-    /// that finished and the reply's text up to the press.
-    Interrupted { reached: Reached },
-}
-
-/// A stopped turn as far as it got: the tool rounds that finished, in order, and the reply's text so far. The typed
-/// message is not part of it, because the caller already holds it. It is a named type so the error can be debugged
-/// without the payload's own `Debug`, which a `Message` does not have.
-pub struct Reached {
-    pub rounds: Vec<Message>,
-    pub reply: String,
-}
-
-impl Reached {
-    pub fn new(rounds: Vec<Message>, reply: String) -> Self {
-        Self { rounds, reply }
-    }
-}
-
-impl fmt::Debug for Reached {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} round(s) and {} reply byte(s) reached", self.rounds.len(), self.reply.len())
-    }
+    /// The user pressed Ctrl+C. `stopped` holds the turn as far as it got, so the callers can record it.
+    Interrupted { stopped: PartialTurn },
 }
 
 impl fmt::Display for ProviderError {

@@ -2,13 +2,13 @@
 //! subagent applies. The chat loop in `repl` and the subagents in `subagent` both use it.
 
 use crate::before_turn;
-use crate::error::{ProviderError, Reached};
+use crate::error::ProviderError;
 use crate::file_commands::run_lines;
 use crate::interrupt;
 use crate::notes;
 use crate::profile;
 use crate::provider::types::{Event, Provider, SubagentRunner};
-use crate::session::{Conversation, HookLines, Turn};
+use crate::session::{Conversation, HookLines, PartialTurn, Turn};
 use crate::tools::specs;
 use crate::tools::types::{ToolError, ToolRunner};
 use std::io::{self, Write};
@@ -148,8 +148,8 @@ pub fn run_turn(
     Ok((result?, compaction))
 }
 
-/// Sends one request as work that Ctrl+C stops. A stopped request reads as `Interrupted`, whether the provider noticed
-/// the press or not.
+/// Sends one request as work that Ctrl+C stops. The provider reports a press itself, with the turn as it stood, so its
+/// result is the one read: a press that lands after the whole reply keeps the complete turn instead of a bare stop.
 fn request(
     provider: &dyn Provider,
     conversation: &Conversation,
@@ -159,24 +159,13 @@ fn request(
     subagent: &mut SubagentRunner,
     on_event: &mut dyn FnMut(Event),
 ) -> Result<Turn, ProviderError> {
-    // The stop is reported twice: once as the request's own result, which carries the turn as it stood, and once by
-    // the work that a press ends. The first is kept, so what the turn reached is not lost.
-    let reported = std::cell::Cell::new(None);
-    let pressed = interrupt::work(|| {
-        reported.set(Some(provider.complete_streaming(conversation.messages(), line, tools, approve, subagent, on_event)))
-    });
-    match reported.take() {
-        Some(Err(stopped_at)) => Err(stopped_at),
-        Some(_) if pressed.is_err() => Err(stopped()),
-        Some(result) => result,
-        None => Err(stopped()),
-    }
+    interrupt::tracked(|| provider.complete_streaming(conversation.messages(), line, tools, approve, subagent, on_event))
 }
 
-/// A stop that came with no reply text, such as a press between a turn's rounds. The message is empty, so the
-/// interrupted turn records only its user message and a short marker.
+/// A stop with nothing to record, such as a press while the conversation was being compacted. The provider did not
+/// report this one, so the turn reached nothing and the callers record only the marker.
 fn stopped() -> ProviderError {
-    ProviderError::Interrupted { reached: Reached::new(Vec::new(), String::new()) }
+    ProviderError::Interrupted { stopped: PartialTurn::default() }
 }
 
 #[cfg(test)]

@@ -6,7 +6,7 @@ mod legacy;
 mod messages;
 mod store;
 
-use crate::error::SessionError;
+use crate::session::SessionError;
 use std::fmt;
 use std::path::PathBuf;
 

@@ -1,9 +1,9 @@
-use crate::error::{MAX_TOOL_ROUNDS, ProviderError, Reached};
+use crate::error::{MAX_TOOL_ROUNDS, ProviderError};
 use crate::interrupt;
 use crate::provider::grammar;
 use crate::provider::prompt;
 use crate::provider::types::{Event, Provider, SubagentRunner};
-use crate::session::{Message, Turn, over_budget};
+use crate::session::{Message, PartialTurn, Turn, over_budget};
 use crate::tools::types::{Invocation, ToolCall, ToolError, ToolRunner, Value};
 use crate::tools;
 use serde::{Deserialize, Serialize};
@@ -303,11 +303,10 @@ impl Provider for LlamaCpp {
             let wire = wire_messages(&catalogue, history.iter().chain(&new))?;
             let (content, prompt_tokens) = match send(&self.api_key, &self.model.borrow(), &wire, Some(&grammar), &mut *on_event) {
                 Err(ProviderError::ContextFull) if wrote => return Err(ProviderError::ContextFullAfterChange),
-                // The rounds that finished precede the stopped reply, so the turn as it stood is what went back.
-                Err(ProviderError::Interrupted { reached }) => {
-                    return Err(ProviderError::Interrupted {
-                        reached: Reached::new(new.split_off(1), reached.reply),
-                    });
+                // The prepared message and the finished rounds are the turn as it stood; the stopped request adds only
+                // the reply's text.
+                Err(ProviderError::Interrupted { stopped }) => {
+                    return Err(ProviderError::Interrupted { stopped: PartialTurn::new(new, stopped.reply) });
                 }
                 sent => sent?,
             };
@@ -321,20 +320,17 @@ impl Provider for LlamaCpp {
             if over_budget(prompt_tokens, self.context_size()?) {
                 return Err(if wrote { ProviderError::ContextFullAfterChange } else { ProviderError::ContextFull });
             }
-            // A press during the tool's run stops the turn after the tool finishes, before another request.
-            let result = interrupt::work(|| run_call(&call, runner, approve, subagent, &mut wrote));
+            // A press during the tool's run stops the turn after the tool finishes, before another request. The round
+            // is kept either way: the tool ran, so its result belongs in the history.
+            let mut result = None;
+            let pressed = interrupt::work(|| result = Some(run_call(&call, runner, approve, subagent, &mut wrote)));
             let call_id = call.id.clone();
             new.push(Message::Assistant { content: String::new(), tool_calls: vec![call] });
-            match result {
-                Ok(result) => new.push(Message::Tool {
-                    call_id,
-                    content: result.unwrap_or_else(|err| format!("error: {err}")),
-                }),
-                // The round that ran is kept, without its result: the turn stopped before one was recorded.
-                Err(_) => {
-                    new.pop();
-                    return Err(ProviderError::Interrupted { reached: Reached::new(new.split_off(1), String::new()) });
-                }
+            if let Some(result) = result {
+                new.push(Message::Tool { call_id, content: result.unwrap_or_else(|err| format!("error: {err}")) });
+            }
+            if pressed.is_err() {
+                return Err(ProviderError::Interrupted { stopped: PartialTurn::new(new, String::new()) });
             }
         }
         Err(ProviderError::TooManyToolRounds)
@@ -461,7 +457,7 @@ fn send(
     for line in BufReader::new(response.body_mut().as_reader()).lines() {
         // A press stops the read; the reply so far goes back with the error, so it is not lost.
         if interrupt::asked() {
-            return Err(ProviderError::Interrupted { reached: Reached::new(Vec::new(), stream.content) });
+            return Err(ProviderError::Interrupted { stopped: PartialTurn::new(Vec::new(), stream.content) });
         }
         let line = line.map_err(|err| ProviderError::Transport(Box::new(err)))?;
         let Some(data) = line.strip_prefix("data: ") else { continue };

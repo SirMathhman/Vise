@@ -50,12 +50,29 @@ fn running() -> bool {
 
 /// Runs `body` as work that a Ctrl+C stops, and returns `Interrupted` if a stop was asked for, whether `body` noticed
 /// it or not. `body` can call `asked` as it goes, to stop early. Work nests: a tool inside a turn keeps the turn
-/// stoppable.
+/// stoppable. A panic in `body` still ends the work, so a crash cannot leave the count too high to ever quit.
 pub fn work<T>(body: impl FnOnce() -> T) -> Result<T, Interrupted> {
+    let value = tracked(body);
+    if asked() { Err(Interrupted) } else { Ok(value) }
+}
+
+/// Runs `body` as work a Ctrl+C can stop, keeping its value: the caller decides what the press means. Used where a
+/// press must not throw the work away, such as a request whose own error carries the turn as it stood.
+pub fn tracked<T>(body: impl FnOnce() -> T) -> T {
+    /// Ends one piece of work even when `body` panics.
+    struct Running;
+
+    impl Drop for Running {
+        fn drop(&mut self) {
+            WORKING.fetch_sub(1, Ordering::SeqCst);
+        }
+    }
+
     WORKING.fetch_add(1, Ordering::SeqCst);
-    let result = body();
-    WORKING.fetch_sub(1, Ordering::SeqCst);
-    if ASKED.load(Ordering::SeqCst) { Err(Interrupted) } else { Ok(result) }
+    let running = Running;
+    let value = body();
+    drop(running);
+    value
 }
 
 /// Whether a stop was asked for. A request reads this between the chunks of a reply.

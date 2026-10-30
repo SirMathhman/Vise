@@ -105,12 +105,12 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 - Ctrl+C never ends the process while a turn, a request, a tool round, or the startup lines are running. The first press
   asks that work to stop; the work ends at its next check, whether after a reply's chunk, between tool rounds, or when the
   tool returns. Nothing in progress is killed, so a command that is running finishes first.
-- A stopped turn is committed with the text the reply had reached, followed by a `[the turn was interrupted]` line, and
-  autosaved like any other turn. Its after-turn lines do not run, and no follow-up turn follows it. The line is not resent.
+- A stopped turn is committed with the prepared user message, the tool rounds that finished, and the text the reply had
+  reached, followed by a `[the turn was interrupted]` line. It is autosaved like any other turn. Its after-turn lines do
+  not run, and no follow-up turn follows it. The line is not resent.
 - Every other Ctrl+C quits: at the prompt, after a stop is already asked for, and during the shutdown lines. The exit status
   is 130.
 - The request itself checks the flag between chunks, so a long reply stops within a chunk rather than at the end.
-  Compaction or a dropped turn that removes it causes it to be sent again.
 - A profile's text is sent with the next user message whenever the history does not carry it, so a failed turn keeps it
   for the retry. Once committed, its text stays in history until compaction or a dropped turn removes it.
 
@@ -266,9 +266,10 @@ src/
                      It takes the approval and subagent callbacks as parameters.
   subagent.rs        runs one subagent: a fresh conversation under a profile, its turns and follow-ups, and the restore of
                      the parent's enabled tools and notes on every exit.
-  session.rs         Message, Turn (checked shape), Conversation (committed history, prompt tokens of the last committed
-                     turn, compaction, drop_oldest_turn, the autosave folder and name, startup text, the before-turn and
-                     after-turn lines, and the selected profile's hook lines as `HookLines`), over_budget (80%)
+  session.rs         Message, Turn (checked shape), PartialTurn (a stopped turn as far as it got), SessionError,
+                     Conversation (committed history, prompt tokens of the last committed turn, compaction,
+                     drop_oldest_turn, the autosave folder and name, startup text, the before-turn and after-turn lines,
+                     and the selected profile's hook lines as `HookLines`), over_budget (80%)
   saved_sessions/    the sessions database, `sessions/sessions.db`, and its error
     mod.rs           declarations, `FOLDER`, `DATABASE`, and `SessionStoreError`. The error lives here, not in `error.rs`,
                      because the database driver's error appears in its variants
@@ -290,10 +291,11 @@ src/
   render.rs          displays provider Events: one status line, answer text, and the end of each request. Owns the output
                      the answer and the approval prompt share.
   environment.rs     gathers host facts as plain data: the working directory, and the standing instructions from `AGENTS.md`
-  interrupt.rs       Ctrl+C: the installed handler, and `work`, which marks a request, a tool round, or the startup lines
-                     as stoppable and reports `Interrupted` once a press is recorded
-  error.rs           ProviderError (including Interrupted, which carries the reply text reached), SessionError,
-                       MAX_TOOL_ROUNDS; it holds no interrupt state of its own
+  interrupt.rs       Ctrl+C: the installed handler, `work`, which marks a request, a tool round, or the startup lines
+                     as stoppable and reports `Interrupted` once a press is recorded, and `tracked`, the same marking
+                     without the report, for work whose own result must not be thrown away
+  error.rs           ProviderError (including Interrupted, which carries the stopped turn as a `PartialTurn`), and
+                     MAX_TOOL_ROUNDS; it holds no interrupt state of its own
   provider/
     mod.rs           declarations only
     types.rs         trait Provider: complete, complete_streaming (default: calls complete and reports nothing),
@@ -339,14 +341,15 @@ startup, before_turn, after_turn, shutdown -> file_commands, tools::runner, tool
 file_commands -> tools::runner, tools::types
 profile -> session (HookLines), notes (valid_name), environment, tools::runner, tools::specs
 saved_sessions -> session, tools::types, error (and rusqlite for the sessions database; only store.rs opens a connection)
-session -> environment, tools::types, error
+session -> environment, tools::types (no `error`, `interrupt`, or provider; its errors live with it)
 provider::llama_cpp -> provider::types, provider::grammar, provider::prompt, session, tools, error, interrupt
 provider::prompt -> session, tools
 provider::types -> session, tools::types, error
 render -> provider::types
 notes -> session (the check whether the index is needed, see Open Problems)
 default_model -> std only, a leaf: it knows neither the provider nor the session
-commands, environment, error -> std only
+commands, environment -> std only
+error -> session (PartialTurn, SessionError), interrupt (Interrupted), std; it holds no logic of its own
 tools -> notes; no provider, session, HTTP, or serde
 ```
 
@@ -367,14 +370,15 @@ tools -> notes; no provider, session, HTTP, or serde
   `Invocation::writes` (an exhaustive match, no wildcard); and one entry in the `SPECS` list. The provider and session do not change.
 - `run_subagent` is the one tool the runner does not run. Only the session's callback starts a subagent, and only `subagent`
   builds a subagent's conversation.
-- `Turn` is built only in the provider's tool loop, and its shape is enforced by `Turn::new`.
+- `Turn` is built only in the provider's tool loop, and its shape is enforced by `Turn::new`. A stopped turn is a
+  `PartialTurn` until `repl` records it, which applies the same check before committing.
 - `Conversation` is the only holder of committed messages. `repl` reads them through `messages()`, `prompt_tokens()`, and
   `context_size` on the provider.
 - Tool output goes to the model as text. `render` prints answer text as it streams, prompt and thinking progress, and the end of
   each request. `repl` prints notices and errors. Approval prompts share the same output as `render`.
 - `interrupt` owns the Ctrl+C handler and the flag it sets. Nothing else installs a handler or calls `exit` for an interrupt;
-  `repl`, `turn`, the provider's request loop, and `main`'s startup only run their work inside `interrupt::work` and check
-  `asked` where they can stop.
+  `repl`, `turn`, the provider's request loop, and `main`'s startup only run their work inside `interrupt::work` (or
+  `tracked`, where the work's own result carries what a press must not throw away) and check `asked` where they can stop.
 - Limits: 100 lines per function, 500 code lines per file, and 10 files per directory.
 - Recursion is allowed only within one module, and only when bounded by a parameter (the directory walk is bounded by depth).
   A chain of turns is a loop, not recursion.
@@ -461,6 +465,7 @@ Each item is a gap between the design above and the code. Items are grouped by a
   `profile` return `String` errors for the same reason. `saved_sessions` returns `SessionStoreError`, an enum, but its variants
   carry the database driver's error, so its text comes from SQLite.
 - **Error homes.** `ToolError` lives in `tools/types.rs`, not `error.rs`. `MAX_TOOL_ROUNDS` lives in `error.rs` but belongs to the provider.
+  `SessionError` and `PartialTurn` live in `session.rs`, so `error` depends on `session` and never the other way.
 - **No timeouts, one request at a time.** A stalled server blocks the REPL. Connect, send, and read timeouts are not configured.
 
 ### Layering and configuration
