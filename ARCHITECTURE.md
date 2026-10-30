@@ -129,7 +129,8 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 ### Requests, replies, and the tool loop
 
 - Each request has no `tools` field. It carries a grammar built from the enabled tools. The grammar fixes the reply to a
-  thinking block followed by plain text, or one tool call to an enabled tool. Plain text cannot contain `<tool_call>`.
+  thinking block followed by plain text, or one tool call to an enabled tool. Plain text cannot contain `<tool_call>`. A call
+  names every parameter of its tool, in the order the tool's spec lists them; the values are any JSON value.
 - Only a tool call form runs a tool. A plain-text reply that names a tool runs nothing.
 - A disabled tool does not run, even if a reply names it: the grammar stops its generation, and the runner refuses it.
 - The model always knows the enabled set from the history it is sent. A user message carries the tool note whenever the
@@ -368,7 +369,8 @@ src/
                      reply's kind is known; the tool-round loop; the 400 mapping; the `/v1/models` lookup, shared by the
                      context size, `models`, and `set_model`; the model name, in a cell, copied out before each request;
                      conversion between JSON arguments and Values
-    grammar.rs       builds the GBNF grammar from the enabled tool names
+    grammar.rs       builds the GBNF grammar from the enabled tools: a call rule and an arguments rule per tool, which
+                     requires each parameter name from the tool's spec, in order
     prompt.rs        the tool catalogue text, from every ToolSpec; the tool note; the notes index message and the check
                      for whether it is needed
   tools/
@@ -408,6 +410,7 @@ profile -> session (HookLines), notes (valid_name), environment, tools::runner, 
 saved_sessions -> session, tools::types, error (and rusqlite for the sessions database; only store.rs opens a connection)
 session -> environment, tools::types (no `error`, `interrupt`, or provider; its errors live with it)
 provider::llama_cpp -> provider::types, provider::grammar, provider::prompt, session, tools, error, interrupt
+provider::grammar -> tools (it reads each enabled tool's parameter names from its spec)
 provider::prompt -> session, tools
 provider::types -> session, tools::types, error
 render -> provider::types, style
@@ -528,7 +531,8 @@ Each item is a gap between the design above and the code. Items are grouped by a
   `tools` field. History should use the reply form, or the wire should use one form only.
 - **Prose claims of tools are committed.** The grammar allows a plain reply such as `[Tool: run_powershell]`. Nothing runs, but the
   reply is committed, so later turns treat an action as done.
-- **The grammar does not constrain arguments.** Any JSON object passes the `arguments` rule. Bad arguments are found only in
+- **The grammar constrains argument names, not values.** A call must name every parameter, in spec order, so a missing argument
+  cannot be generated. Any JSON value passes for a parameter, so a wrong type or a value out of range is found only in
   `tools::call`, after the model has chosen the call.
 - **The grammar assumes a thinking block.** The root rule forces the closing `</think>` on every turn reply, but not the opening tag.
 - **Misleading error for invalid JSON.** Invalid arguments decode to no arguments, so the model is told "missing 'path'" when its JSON
@@ -805,7 +809,7 @@ Controls:
 | Tool results, summaries, notes, and hook output marked as untrusted data | Missing. |
 | Tools run only when enabled | Met. The grammar constrains the reply and the runner refuses a disabled call. |
 | Plain text cannot run a tool | Met. Only the tool call form runs. A prose claim of a tool is committed without running (Open Problems). |
-| Arguments checked per tool | Met in `tools::call`, after the grammar. The grammar accepts any object (Open Problems). |
+| Arguments checked per tool | Met. The grammar requires each parameter name; `tools::call` checks types and ranges after it (Open Problems). |
 | Enabling a tool | Accepted. `/tools enable` is the user's own action; each write still asks for approval. |
 | Profile files limit the notes the model may use | Partly met. The runner refuses a disallowed note before approval, and the index omits it. Earlier index messages and note results stay in history (Open Problems). |
 | Profile files set the enabled set | Partly met. A profile's tools line is checked against the catalogue, and selecting a profile is the user's action. Its hook lines run whatever the enabled set is (Open Problems). |
@@ -841,8 +845,8 @@ Controls:
 
 ## Future Work
 
-- Per-tool argument rules in the grammar, generated from each `ToolSpec`'s parameters, so the server rejects bad arguments before
-  `tools::call` sees them.
+- Value rules in the grammar, generated from each `ToolSpec`'s parameter types and ranges, so the server rejects a wrong type or a
+  value out of range before `tools::call` sees it.
 - Route each tool's arguments through `tools::call` in tests, so the path from raw arguments to `Invocation` is tested as one unit.
 - Make `ToolSpec`, `bind`, and each `SPEC` visible only inside `tools`.
 - Sanitization of streamed text per chunk (see Security).
@@ -896,5 +900,5 @@ Obvious concerns only; profile before optimizing.
   that checks it.
 - Each subagent gathers its environment (reading `AGENTS.md`) and sends its own context, so each start costs a full first request before any tool
   work. Its turns repeat the parent's before-turn and after-turn waits.
-- Grammar-constrained decoding checks each token against the grammar. Measure its cost against an unconstrained request before adding per-tool
-  argument rules.
+- Grammar-constrained decoding checks each token against the grammar. Measure its cost against an unconstrained request before adding
+  value rules to the per-tool argument rules.
