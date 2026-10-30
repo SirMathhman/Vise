@@ -12,7 +12,7 @@ pub const HELP: &str = "\
 /model NAME          use a model the server offers, and keep it as the default
 /notes [CATEGORY]     list the notes, all or in one category
 /note show NAME       show a note
-/note create NAME CATEGORY   create a note with a placeholder summary
+/note create CATEGORY NAME   create a note with a placeholder summary
 /note delete NAME     delete a note
 /save NAME            save the conversation as a session in the sessions folder
 /load NAME            replace the conversation with a saved session
@@ -71,7 +71,7 @@ pub fn command(line: &str) -> Option<Command> {
     if let Some(rest) = whole_word(line, "/note") {
         return match rest.split_whitespace().collect::<Vec<_>>().as_slice() {
             ["show", name] => Some(Command::ShowNote(name.to_string())),
-            ["create", name, category] => Some(Command::CreateNote(name.to_string(), category.to_string())),
+            ["create", category, name] => Some(Command::CreateNote(name.to_string(), category.to_string())),
             ["delete", name] => Some(Command::DeleteNote(name.to_string())),
             _ => None,
         };
@@ -117,6 +117,14 @@ fn whole_word<'a>(line: &'a str, command: &str) -> Option<&'a str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn create_note_takes_the_category_before_the_name() {
+        assert!(matches!(
+            command("/note create profile a"),
+            Some(Command::CreateNote(name, category)) if name == "a" && category == "profile"
+        ));
+    }
 
     #[test]
     fn new_command_takes_no_arguments() {
