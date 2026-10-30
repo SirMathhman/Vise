@@ -208,6 +208,8 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
   Its name follows the profile name rule, so it is plain text in a column, never a path. `/save` refuses a name that
   already has a session. Like the other typed commands, it does not prompt. `/load` replaces the history, keeps the current run's context
   message, resets the prompt token count, and starts an empty request log.
+- Autosave writes into the sessions folder that `main` passes to `repl::run`, and `Conversation` holds only whether autosave is on
+  and the session name. No conversation or store value carries its own folder, so one run cannot autosave to a second folder.
 - A write of a session removes its old messages and inserts the new ones in one transaction, so an interrupted write
   leaves the earlier history. Each message row holds the role, the content, and either the call a tool result answers or
   the reply's tool calls as JSON text.
@@ -307,7 +309,8 @@ src/
                      the latest session, loads the command files, runs the REPL with that folder, then shutdown.
                      Fatal startup errors go to exit_with.
   repl.rs            the input loop over generic BufRead and Write. Runs slash commands, hands each chat line to `turn`,
-                     runs the follow-up turns, asks for approval of writes, and writes replies and notices.
+                     runs the follow-up turns, asks for approval of writes, autosaves each turn (completed or stopped) to the
+                     sessions folder it is given, and writes replies and notices.
   repl/commands.rs   the slash commands that act on tools, notes and saved sessions (`/tools`, `/note`, `/save`, `/load`).
   repl/tests.rs      the loop's tests.
   commands.rs        parses a slash command into `Command`, and holds the help text (no I/O)
@@ -334,7 +337,8 @@ src/
   profile.rs         lists the profiles folder's `.txt` files, loads one by a validated name, and parses its header lines
                      (`tools:`, `notes:`, and `hook KIND: COMMAND`) from its instructions
   notes.rs           the notes folder: one file per note. Reads, creates, updates, deletes, and lists notes, and builds the
-                     index text. Listing takes an optional allowed set of names.
+                     index text. Each takes the folder, which the runner gets from the working directory (`notes_folder`).
+                     Listing takes an optional allowed set of names.
   default_model.rs   the default model's name in `model.txt`: loads and saves it as plain text
   startup.rs         runs `startup.txt` before the first prompt, and returns its blocks as one text (or None)
   before_turn.rs     runs `before-turn.txt` before each chat turn, and returns the block the turn's message carries
@@ -569,9 +573,6 @@ Each item is a gap between the design above and the code. Items are grouped by a
 - **Commands are not one table.** `commands.rs` parses the slash commands, but the help text is written by hand beside them.
 - **Two sources for one setting.** The endpoint is a constant in `provider::llama_cpp`. The model starts as that module's constant, and
   `default_model` reads a second source, `model.txt`. There is no `config` module.
-- **One sessions folder.** `main` passes the sessions folder to `repl::run`, and every session command (`/save`, `/load`,
-  `/sessions`), autosave, `resume`, and the import at launch use it. `Conversation` holds only whether autosave is on and the
-  session name, so no second folder can disagree with the first.
 - **`Conversation` holds run configuration.** The before-turn and after-turn lines, the startup text, the autosave switch, and the
   selected profile's hooks are set on it by `main` or the REPL. None of them is history. They should be one value that `main` passes
   to `repl::run`.
@@ -840,8 +841,8 @@ Controls:
 - One output cap and one background-task count limit, shared by all command files and hooks.
 - One settings file for the endpoint, the default model, and the budgets, read once by `main` and passed down, so `default_model` is not
   a separate source.
-- A `SessionStore` value built by `main` and passed to `repl`, so the sessions folder is a parameter rather than a constant, the schema
-  runs once per run rather than per open, and the store's tests are hermetic.
+- A `SessionStore` value built by `main` and passed to `repl` in place of the folder path, so the schema runs once per run rather
+  than per open, and the store's tests are hermetic.
 - Configuration from a file or environment, with overrides for endpoint, timeouts, and the history and compaction budgets.
 - A `/compact` report that shows the summary and how many turns and tokens it replaced.
 - Token-aware trimming of old turns, as the fallback when a summary does not fit, in place of dropping the oldest turn outright.

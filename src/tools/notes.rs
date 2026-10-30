@@ -3,6 +3,7 @@
 
 use super::types::{Arguments, Invocation, Param, ParamType, ToolError, ToolSpec};
 use crate::notes::{self, Note};
+use std::path::Path;
 
 const NAME: Param = Param {
     name: "name",
@@ -83,27 +84,27 @@ fn bind_delete(args: &Arguments) -> Result<Invocation, ToolError> {
     Ok(Invocation::DeleteNote { name: args.text("name")?.to_string() })
 }
 
-pub fn run_list(category: &str, allowed: Option<&[String]>) -> Result<String, ToolError> {
-    let listed = notes::list(category, allowed).map_err(ToolError::Failed)?;
+pub fn run_list(folder: &Path, category: &str, allowed: Option<&[String]>) -> Result<String, ToolError> {
+    let listed = notes::list(folder, category, allowed).map_err(ToolError::Failed)?;
     Ok(if listed.is_empty() { "no notes".to_string() } else { notes::describe_list(&listed) })
 }
 
-pub fn run_read(name: &str) -> Result<String, ToolError> {
-    notes::read(name).map(|note| notes::show(&note)).map_err(ToolError::Failed)
+pub fn run_read(folder: &Path, name: &str) -> Result<String, ToolError> {
+    notes::read(folder, name).map(|note| notes::show(&note)).map_err(ToolError::Failed)
 }
 
-pub fn run_create(name: &str, summary: &str, category: &str, content: &str) -> Result<String, ToolError> {
-    notes::create(name, &note(summary, category, content)).map_err(ToolError::Failed)?;
+pub fn run_create(folder: &Path, name: &str, summary: &str, category: &str, content: &str) -> Result<String, ToolError> {
+    notes::create(folder, name, &note(summary, category, content)).map_err(ToolError::Failed)?;
     Ok(format!("created note '{name}'"))
 }
 
-pub fn run_update(name: &str, summary: &str, category: &str, content: &str) -> Result<String, ToolError> {
-    notes::update(name, &note(summary, category, content)).map_err(ToolError::Failed)?;
+pub fn run_update(folder: &Path, name: &str, summary: &str, category: &str, content: &str) -> Result<String, ToolError> {
+    notes::update(folder, name, &note(summary, category, content)).map_err(ToolError::Failed)?;
     Ok(format!("updated note '{name}'"))
 }
 
-pub fn run_delete(name: &str) -> Result<String, ToolError> {
-    notes::delete(name).map_err(ToolError::Failed)?;
+pub fn run_delete(folder: &Path, name: &str) -> Result<String, ToolError> {
+    notes::delete(folder, name).map_err(ToolError::Failed)?;
     Ok(format!("deleted note '{name}'"))
 }
 

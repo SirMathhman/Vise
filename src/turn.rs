@@ -80,7 +80,7 @@ pub fn prepare_message(
         Some(text) if !profile::carried(conversation.messages(), text) => format!("{text}\n\n{line}"),
         _ => line,
     };
-    Ok(match notes::index(tools.allowed_notes().as_deref()) {
+    Ok(match notes::index(&tools.notes_folder(), tools.allowed_notes().as_deref()) {
         Ok(index) if notes::needed(conversation.messages(), &index) => format!("{index}\n\n{message}"),
         Ok(_) => message,
         Err(err) => {

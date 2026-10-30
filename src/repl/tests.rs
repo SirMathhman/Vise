@@ -98,6 +98,10 @@ impl Provider for Fake {
 struct NoTools;
 
 impl ToolRunner for NoTools {
+    fn notes_folder(&self) -> PathBuf {
+        std::env::temp_dir().join("vise-no-notes")
+    }
+
     fn run(&self, _invocation: &Invocation, _approve: &mut dyn FnMut(&str) -> bool) -> Result<String, ToolError> {
         Err(ToolError::UnknownTool("none".into()))
     }
@@ -393,6 +397,10 @@ fn failed_autosave_reports_an_error_and_keeps_the_turn() {
 struct Failing;
 
 impl ToolRunner for Failing {
+    fn notes_folder(&self) -> PathBuf {
+        std::env::temp_dir().join("vise-no-notes")
+    }
+
     fn run(&self, _invocation: &Invocation, _approve: &mut dyn FnMut(&str) -> bool) -> Result<String, ToolError> {
         Ok("exit code: 1\nboom".into())
     }
@@ -429,6 +437,10 @@ fn follow_up_that_overflows_ends_the_chain() {
 struct Backgrounded;
 
 impl ToolRunner for Backgrounded {
+    fn notes_folder(&self) -> PathBuf {
+        std::env::temp_dir().join("vise-no-notes")
+    }
+
     fn run(&self, _invocation: &Invocation, _approve: &mut dyn FnMut(&str) -> bool) -> Result<String, ToolError> {
         Ok("background task 1 is still running.\n".into())
     }

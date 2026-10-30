@@ -5,9 +5,10 @@
 use crate::session::Message;
 use std::fs;
 use std::io::{self, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-const FOLDER: &str = "notes";
+/// The folder of the notes, inside the working directory.
+pub const FOLDER: &str = "notes";
 const MARK: &str = "[Notes]";
 const NONE: &str = "[Notes]\n(none)";
 
@@ -22,12 +23,12 @@ pub fn valid_name(name: &str) -> bool {
     !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
-/// The file for a note.
-fn path(name: &str) -> Result<PathBuf, String> {
+/// The file for a note in `folder`.
+fn path(folder: &Path, name: &str) -> Result<PathBuf, String> {
     if !valid_name(name) {
         return Err(format!("'{name}' is not a note name; use letters, digits, '-' and '_'"));
     }
-    Ok(PathBuf::from(FOLDER).join(format!("{name}.md")))
+    Ok(folder.join(format!("{name}.md")))
 }
 
 /// The summary and category are one line each, and neither may be empty.
@@ -62,16 +63,16 @@ fn parse(text: &str) -> Result<Note, String> {
     })
 }
 
-pub fn read(name: &str) -> Result<Note, String> {
-    let file = path(name)?;
+pub fn read(folder: &Path, name: &str) -> Result<Note, String> {
+    let file = path(folder, name)?;
     let text = fs::read_to_string(&file).map_err(|err| format!("cannot read note '{name}': {err}"))?;
     parse(&text)
 }
 
-pub fn create(name: &str, note: &Note) -> Result<(), String> {
+pub fn create(folder: &Path, name: &str, note: &Note) -> Result<(), String> {
     check(note)?;
-    let file = path(name)?;
-    fs::create_dir_all(FOLDER).map_err(|err| format!("cannot create the notes folder: {err}"))?;
+    let file = path(folder, name)?;
+    fs::create_dir_all(folder).map_err(|err| format!("cannot create the notes folder: {err}"))?;
     let written = fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -86,25 +87,25 @@ pub fn create(name: &str, note: &Note) -> Result<(), String> {
     })
 }
 
-pub fn update(name: &str, note: &Note) -> Result<(), String> {
+pub fn update(folder: &Path, name: &str, note: &Note) -> Result<(), String> {
     check(note)?;
-    let file = path(name)?;
+    let file = path(folder, name)?;
     if !file.exists() {
         return Err(format!("note '{name}' does not exist"));
     }
     fs::write(&file, format(note)).map_err(|err| format!("cannot update note '{name}': {err}"))
 }
 
-pub fn delete(name: &str) -> Result<(), String> {
-    let file = path(name)?;
+pub fn delete(folder: &Path, name: &str) -> Result<(), String> {
+    let file = path(folder, name)?;
     fs::remove_file(&file).map_err(|err| format!("cannot delete note '{name}': {err}"))
 }
 
 /// The notes in one category, sorted by name. An empty category matches every note, and `allowed` (when
 /// given) limits the result to the named notes. A file whose name is not a valid note name is not a note, so
 /// it is skipped.
-pub fn list(category: &str, allowed: Option<&[String]>) -> Result<Vec<(String, Note)>, String> {
-    let entries = match fs::read_dir(FOLDER) {
+pub fn list(folder: &Path, category: &str, allowed: Option<&[String]>) -> Result<Vec<(String, Note)>, String> {
+    let entries = match fs::read_dir(folder) {
         Ok(entries) => entries,
         Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
         Err(err) => return Err(format!("cannot read the notes folder: {err}")),
@@ -113,7 +114,7 @@ pub fn list(category: &str, allowed: Option<&[String]>) -> Result<Vec<(String, N
         .filter_map(Result::ok)
         .filter_map(|entry| entry.file_name().into_string().ok())
         .filter_map(|file| file.strip_suffix(".md").map(str::to_string))
-        .filter(|name| path(name).is_ok())
+        .filter(|name| path(folder, name).is_ok())
         .collect();
     names.sort();
     let mut notes = Vec::new();
@@ -121,7 +122,7 @@ pub fn list(category: &str, allowed: Option<&[String]>) -> Result<Vec<(String, N
         if allowed.is_some_and(|allowed| !allowed.contains(&name)) {
             continue;
         }
-        let note = read(&name)?;
+        let note = read(folder, &name)?;
         if category.is_empty() || note.category == category {
             notes.push((name, note));
         }
@@ -144,8 +145,8 @@ pub fn show(note: &Note) -> String {
 }
 
 /// The notes list the model is told about: the allowed notes' names, categories and summaries, or `NONE`.
-pub fn index(allowed: Option<&[String]>) -> Result<String, String> {
-    let notes = list("", allowed)?;
+pub fn index(folder: &Path, allowed: Option<&[String]>) -> Result<String, String> {
+    let notes = list(folder, "", allowed)?;
     if notes.is_empty() {
         return Ok(NONE.to_string());
     }

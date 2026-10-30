@@ -53,12 +53,12 @@ pub(super) fn note_command(
     errors: &mut impl Write,
 ) -> io::Result<()> {
     match command {
-        Command::ListNotes(category) => match notes::list(&category, None) {
+        Command::ListNotes(category) => match notes::list(&tools.notes_folder(), &category, None) {
             Ok(listed) if listed.is_empty() => writeln!(output, "no notes"),
             Ok(listed) => writeln!(output, "{}", notes::describe_list(&listed)),
             Err(err) => writeln!(errors, "error: {err}"),
         },
-        Command::ShowNote(name) => match notes::read(&name) {
+        Command::ShowNote(name) => match notes::read(&tools.notes_folder(), &name) {
             Ok(note) => writeln!(output, "{}", notes::show(&note)),
             Err(err) => writeln!(errors, "error: {err}"),
         },

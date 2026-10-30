@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fmt;
+use std::path::PathBuf;
 
 /// The first line of `text`, trimmed, so a multi-line command reads as one line in the display, with a note of how many
 /// lines the rest holds. An empty command gives `None`, so the call reads as its name alone rather than as a trailing
@@ -232,6 +233,11 @@ pub trait ToolRunner {
     /// Enables or disables one tool. A runner without tool state refuses the change.
     fn set_enabled(&self, _name: &str, _on: bool) -> Result<(), ToolError> {
         Err(ToolError::Failed("tools cannot be changed here".into()))
+    }
+
+    /// The folder the notes are kept in. A runner with no working directory uses the notes folder of the process.
+    fn notes_folder(&self) -> PathBuf {
+        PathBuf::from(crate::notes::FOLDER)
     }
 
     /// The notes the model may use, or `None` for all of them.

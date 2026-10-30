@@ -122,6 +122,10 @@ impl Drop for WorkspaceTools {
 }
 
 impl ToolRunner for WorkspaceTools {
+    fn notes_folder(&self) -> PathBuf {
+        self.cwd.join(crate::notes::FOLDER)
+    }
+
     fn enabled(&self) -> Vec<&'static str> {
         let enabled = self.enabled.borrow();
         specs().iter().map(|spec| spec.name).filter(|name| enabled.contains(name)).collect()
@@ -196,15 +200,17 @@ impl ToolRunner for WorkspaceTools {
             ),
             Invocation::ReadBackground { id } => read_background::run(*id, &mut self.jobs.borrow_mut()),
             Invocation::KillBackground { id } => kill_background::run(*id, &mut self.jobs.borrow_mut()),
-            Invocation::ListNotes { category } => notes::run_list(category, self.allowed_notes.borrow().as_deref()),
-            Invocation::ReadNote { name } => notes::run_read(name),
+            Invocation::ListNotes { category } => {
+                notes::run_list(&self.notes_folder(), category, self.allowed_notes.borrow().as_deref())
+            }
+            Invocation::ReadNote { name } => notes::run_read(&self.notes_folder(), name),
             Invocation::CreateNote { name, summary, category, content } => {
-                notes::run_create(name, summary, category, content)
+                notes::run_create(&self.notes_folder(), name, summary, category, content)
             }
             Invocation::UpdateNote { name, summary, category, content } => {
-                notes::run_update(name, summary, category, content)
+                notes::run_update(&self.notes_folder(), name, summary, category, content)
             }
-            Invocation::DeleteNote { name } => notes::run_delete(name),
+            Invocation::DeleteNote { name } => notes::run_delete(&self.notes_folder(), name),
             Invocation::RunSubagent { .. } => Err(ToolError::Failed("a subagent is started from a turn".into())),
         }
     }
