@@ -30,6 +30,12 @@ impl<'a> TerminalFrontend<'a> {
         self.failure.take()
     }
 
+    /// Shows a plain line on the output.
+    fn text(&mut self, text: String) {
+        let result = self.render.notice(&text);
+        self.keep(result);
+    }
+
     fn keep(&mut self, result: io::Result<()>) {
         if let Err(err) = result {
             self.failure.get_or_insert(err);
@@ -55,6 +61,42 @@ impl Frontend for TerminalFrontend<'_> {
             UiEvent::Error(text) => {
                 let result = writeln!(self.errors, "error: {text}");
                 self.keep(result);
+            }
+            UiEvent::Tools(tools) => {
+                let lines: Vec<String> = tools
+                    .iter()
+                    .map(|tool| format!("{}: {}", tool.name, if tool.enabled { "enabled" } else { "disabled" }))
+                    .collect();
+                self.text(lines.join("\n"));
+            }
+            UiEvent::Profiles(names) if names.is_empty() => {
+                self.text("no profiles: a profile is a note with the category profile".to_string());
+            }
+            UiEvent::Profiles(names) => self.text(names.join("\n")),
+            UiEvent::Models { current, ids } => {
+                let lines: Vec<String> =
+                    ids.iter().map(|id| format!("{}{id}", if *id == current { "* " } else { "  " })).collect();
+                if !lines.is_empty() {
+                    self.text(lines.join("\n"));
+                }
+            }
+            UiEvent::Sessions(names) if names.is_empty() => {
+                self.text("no sessions: /save NAME stores the conversation".to_string());
+            }
+            UiEvent::Sessions(names) => self.text(names.join("\n")),
+            UiEvent::Notes(notes) if notes.is_empty() => self.text("no notes".to_string()),
+            UiEvent::Notes(notes) => {
+                let lines: Vec<String> = notes
+                    .iter()
+                    .map(|note| format!("{} [{}]: {}", note.name, note.category, note.summary))
+                    .collect();
+                self.text(lines.join("\n"));
+            }
+            UiEvent::Context { text, prompt_tokens, size } => {
+                self.text(text);
+                if let Some(size) = size {
+                    self.text(format!("{prompt_tokens} / {size}"));
+                }
             }
             UiEvent::Stream { event, nested: false } => self.render.on_event(event),
             UiEvent::Stream { event, nested: true } => self.render.on_subagent_event(event),
@@ -84,4 +126,40 @@ fn ask(change: &str, output: &mut impl Write, input: &mut impl BufRead) -> bool 
         return false;
     }
     matches!(read_line(input), Ok(Some(answer)) if matches!(answer.trim().to_lowercase().as_str(), "y" | "yes"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use vise_core::frontend::{NoteLine, ToolState};
+
+    /// What the terminal prints on its output for these events.
+    fn shown(events: Vec<UiEvent>) -> String {
+        let (mut output, mut errors, mut input) = (Vec::new(), Vec::new(), "".as_bytes());
+        {
+            let mut ui = TerminalFrontend::new(&mut input, &mut output, &mut errors);
+            for event in events {
+                ui.emit(event);
+            }
+        }
+        String::from_utf8(output).unwrap()
+    }
+
+    #[test]
+    fn query_results_are_worded_by_the_terminal() {
+        let text = shown(vec![
+            UiEvent::Tools(vec![ToolState { name: "read_file".into(), enabled: false }]),
+            UiEvent::Models { current: "b".into(), ids: vec!["a".into(), "b".into()] },
+            UiEvent::Notes(vec![NoteLine { name: "plan".into(), category: "memory".into(), summary: "s".into() }]),
+            UiEvent::Context { text: "context".into(), prompt_tokens: 3, size: Some(10) },
+        ]);
+        let expected = ["read_file: disabled", "  a", "* b", "plan [memory]: s", "context", "3 / 10", ""].join("\n");
+        assert_eq!(text, expected);
+    }
+
+    #[test]
+    fn nothing_to_list_is_said_in_the_terminals_words() {
+        let text = shown(vec![UiEvent::Sessions(Vec::new()), UiEvent::Notes(Vec::new())]);
+        assert_eq!(text, "no sessions: /save NAME stores the conversation\nno notes\n");
+    }
 }

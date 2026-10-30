@@ -8,6 +8,7 @@ use crate::command::Command;
 use crate::default_model;
 use crate::error::ProviderError;
 use crate::frontend::{Frontend, UiEvent};
+use serde::{Deserialize, Serialize};
 use crate::profile;
 use crate::provider::types::{Event, Provider};
 use crate::saved_sessions;
@@ -22,9 +23,10 @@ use std::cell::{Cell, RefCell};
 use std::path::Path;
 
 mod commands;
-use commands::{note_command, session_command, toggle, tool_list};
+use commands::{note_command, session_command, toggle, tool_states};
 
 /// What a frontend asks the engine to do.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Request {
     /// A line for the model.
     Chat(String),
@@ -33,7 +35,7 @@ pub enum Request {
 }
 
 /// Whether the run goes on after a request.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Flow {
     Continue,
     Exit,
@@ -145,7 +147,7 @@ impl<'a> Engine<'a> {
         match command {
             Command::Exit => return Flow::Exit,
             Command::Help => {}
-            Command::Tools => ui.notice(tool_list(self.tools)),
+            Command::Tools => ui.emit(UiEvent::Tools(tool_states(self.tools))),
             Command::Enable(name) => toggle(self.tools, &name, true, ui),
             Command::Disable(name) => toggle(self.tools, &name, false, ui),
             Command::Profiles => self.list_profiles(ui),
@@ -157,13 +159,7 @@ impl<'a> Engine<'a> {
                 session_command(command, self.conversation, self.sessions, ui)
             }
             Command::Models => match self.provider.models() {
-                Ok(ids) => {
-                    let current = self.provider.model();
-                    for id in ids {
-                        let mark = if id == current { "* " } else { "  " };
-                        ui.notice(format!("{mark}{id}"));
-                    }
-                }
+                Ok(ids) => ui.emit(UiEvent::Models { current: self.provider.model(), ids }),
                 Err(err) => ui.error(err.to_string()),
             },
             Command::UseModel(name) => match self.provider.set_model(&name) {
@@ -185,12 +181,16 @@ impl<'a> Engine<'a> {
                 Err(err) => ui.error(err.to_string()),
             },
             Command::Context => {
-                let context = self.conversation.messages().first().map_or("", Message::content).to_string();
-                ui.notice(context);
-                match self.provider.context_size() {
-                    Ok(total) => ui.notice(format!("{} / {total}", self.conversation.prompt_tokens())),
-                    Err(err) => ui.error(err.to_string()),
-                }
+                let text = self.conversation.messages().first().map_or("", Message::content).to_string();
+                let prompt_tokens = self.conversation.prompt_tokens();
+                let size = match self.provider.context_size() {
+                    Ok(size) => Some(size),
+                    Err(err) => {
+                        ui.error(err.to_string());
+                        None
+                    }
+                };
+                ui.emit(UiEvent::Context { text, prompt_tokens, size });
             }
         }
         Flow::Continue
@@ -203,11 +203,7 @@ impl<'a> Engine<'a> {
                 for line in skipped {
                     ui.error(line);
                 }
-                if names.is_empty() {
-                    ui.notice("no profiles: a profile is a note with the category profile".to_string());
-                } else {
-                    ui.notice(names.join("\n"));
-                }
+                ui.emit(UiEvent::Profiles(names));
             }
             Err(err) => ui.error(err),
         }
@@ -491,5 +487,26 @@ mod tests {
         let engine = Engine::new(&provider, &NoTools, &mut conversation, &sessions, stop.clone());
         let reached = engine.stop_handle().work(|| stop.request());
         assert!(reached.is_err(), "a request on the given switch reached work run on the engine's handle");
+    }
+
+    #[test]
+    fn a_query_command_sends_data_not_text() {
+        let (provider, mut conversation, sessions) = (Scripted { stream: false, asks: false }, conversation(), PathBuf::from("unused"));
+        let mut engine = Engine::new(&provider, &NoTools, &mut conversation, &sessions, Stop::new());
+        let mut ui = TextUi::new();
+        engine.handle(Request::Command(Command::Tools), &mut ui);
+        engine.handle(Request::Command(Command::Context), &mut ui);
+        let tools = ui.events.iter().find_map(|event| match event {
+            UiEvent::Tools(tools) => Some(tools),
+            _ => None,
+        });
+        let tools = tools.expect("the tools arrive as data");
+        assert!(tools.iter().any(|tool| tool.name == "read_file" && tool.enabled));
+        assert!(
+            ui.events.iter().any(|event| matches!(event, UiEvent::Context { size: Some(0), prompt_tokens: 0, .. })),
+            "{:?}",
+            ui.events
+        );
+        assert!(ui.output.is_empty(), "no prose came with the data: {:?}", ui.output);
     }
 }

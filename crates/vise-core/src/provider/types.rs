@@ -1,9 +1,10 @@
 use crate::error::ProviderError;
 use crate::session::{Message, RequestRecord, Turn};
 use crate::tools::types::{ToolError, ToolRunner};
+use serde::{Deserialize, Serialize};
 
 /// Progress reported while a reply is generated.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Event {
     /// Prompt processing has reached `processed` of the prompt's `total` tokens.
     Prompt { processed: u64, total: u64 },

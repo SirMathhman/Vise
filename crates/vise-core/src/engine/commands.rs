@@ -2,24 +2,20 @@
 //! through the frontend. The typed writes go through the runner without a prompt.
 
 use crate::command::Command;
-use crate::frontend::Frontend;
+use crate::frontend::{Frontend, NoteLine, ToolState, UiEvent};
 use crate::notes;
 use crate::saved_sessions;
 use crate::session::Conversation;
 use crate::tools::types::{Invocation, ToolRunner};
 use std::path::Path;
 
-/// One line per tool in the catalogue, with whether the model may call it.
-pub(super) fn tool_list(tools: &dyn ToolRunner) -> String {
+/// Every tool in the catalogue, with whether the model may call it.
+pub(super) fn tool_states(tools: &dyn ToolRunner) -> Vec<ToolState> {
     let enabled = tools.enabled();
     crate::tools::specs()
         .iter()
-        .map(|spec| {
-            let state = if enabled.contains(&spec.name) { "enabled" } else { "disabled" };
-            format!("{}: {state}", spec.name)
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
+        .map(|spec| ToolState { name: spec.name.to_string(), enabled: enabled.contains(&spec.name) })
+        .collect()
 }
 
 /// Runs a write the user typed. The typed command is the approval, so no prompt is shown. Writes the model asks for still
@@ -47,11 +43,12 @@ pub(super) fn note_command(command: Command, tools: &dyn ToolRunner, ui: &mut dy
                 for line in listing.skipped {
                     ui.error(line);
                 }
-                if listing.notes.is_empty() {
-                    ui.notice("no notes".to_string());
-                } else {
-                    ui.notice(notes::describe_list(&listing.notes));
-                }
+                let lines = listing
+                    .notes
+                    .into_iter()
+                    .map(|(name, note)| NoteLine { name, category: note.category, summary: note.summary })
+                    .collect();
+                ui.emit(UiEvent::Notes(lines));
             }
             Err(err) => ui.error(err),
         },
@@ -86,8 +83,7 @@ pub(super) fn save_session(name: &str, conversation: &Conversation, sessions: &P
 pub(super) fn session_command(command: Command, conversation: &mut Conversation, sessions: &Path, ui: &mut dyn Frontend) {
     match command {
         Command::Sessions => match saved_sessions::names(sessions) {
-            Ok(names) if names.is_empty() => ui.notice("no sessions: /save NAME stores the conversation".to_string()),
-            Ok(names) => ui.notice(names.join("\n")),
+            Ok(names) => ui.emit(UiEvent::Sessions(names)),
             Err(err) => ui.error(err.to_string()),
         },
         Command::Save(name) => save_session(&name, conversation, sessions, ui),

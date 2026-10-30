@@ -212,7 +212,7 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
   Its name follows the profile name rule, so it is plain text in a column, never a path. `/save` refuses a name that
   already has a session. Like the other typed commands, it does not prompt. `/load` replaces the history, keeps the current run's context
   message, resets the prompt token count, and starts an empty request log.
-- Autosave writes into the sessions folder that `main` passes to `repl::run`, and `Conversation` holds only whether autosave is on
+- Autosave writes into the sessions folder that `main` passes to `Engine::new`, and `Conversation` holds only whether autosave is on
   and the session name. No conversation or store value carries its own folder, so one run cannot autosave to a second folder.
 - A write of a session removes its old messages and inserts the new ones in one transaction, so an interrupted write
   leaves the earlier history. Each message row holds the role, the content, and either the call a tool result answers or
@@ -261,7 +261,7 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 - Each command line is printed on screen before it runs, with its status line after it.
 - A command still running after 30 seconds becomes a background task, as for `run_powershell`. Shutdown does not wait for it.
 - After-turn lines run once per committed chat turn, after the commit and the autosave, never before. A follow-up turn runs under
-  every invariant of this section. Follow-up turns form a loop in `repl`, not recursion. At most `FOLLOW_UPS` (5) follow-ups
+  every invariant of this section. Follow-up turns form a loop in `engine`, not recursion. At most `FOLLOW_UPS` (5) follow-ups
   follow one typed line. A follow-up that fails (including a `ContextFull` that compaction does not cure) ends the chain and is
   reported.
 - Selecting a profile replaces the hook lines held from the one selected before, in the same step that changes its instructions.
@@ -453,7 +453,7 @@ vise-core (no `ctrlc`, no terminal I/O):
 - `provider::llama_cpp` is the only module that knows HTTP, `ureq`, the endpoint, the wire shapes, or the JSON form of tool
   specs and calls. Only `provider::grammar` knows the call syntax as a grammar, and only `provider::prompt` knows the
   catalogue's text and the tool note's text.
-- The model name is held by `provider::llama_cpp` alone. `default_model` and `repl` pass a name in through `Provider::set_model`,
+- The model name is held by `provider::llama_cpp` alone. `default_model` and the engine pass a name in through `Provider::set_model`,
   and the provider never reads or writes `model.txt`. The name is copied out of its cell before a request starts.
 - The provider sends the grammar built from `ToolRunner::enabled()` on every request, and never a `tools` field. The provider
   never compares tool names: refusing a disabled tool is the runner's job (see Open Problems for the one exception).
@@ -467,8 +467,8 @@ vise-core (no `ctrlc`, no terminal I/O):
 - `run_subagent` is the one tool the runner does not run. Only the session's callback starts a subagent, and only `subagent`
   builds a subagent's conversation.
 - `Turn` is built only in the provider's tool loop, and its shape is enforced by `Turn::new`. A stopped turn is a
-  `PartialTurn` until `repl` records it, which applies the same check before committing.
-- `Conversation` is the only holder of committed messages. `repl` reads them through `messages()`, `prompt_tokens()`, and
+  `PartialTurn` until the engine records it, which applies the same check before committing.
+- `Conversation` is the only holder of committed messages. the engine reads them through `messages()`, `prompt_tokens()`, and
   `context_size` on the provider.
 - Tool output goes to the model as text. The backend never writes to a terminal: it emits `UiEvent`s to the `Frontend` it is
   given, and asks it for each approval. The terminal frontend draws them: `render` prints answer text as it streams, prompt
@@ -506,7 +506,7 @@ Each item is a gap between the design above and the code. Items are grouped by a
 - **A note named `default` is shadowed.** `profile::load` returns the built-in default before it reads the notes, and `names` lists
   `default` once, so a user's `notes/default.md` (instructions, a `tools:` line, hooks) is ignored with no message. A built-in
   with an empty body is also sent as a bare `[Instructions from profile default]` heading on selection and in every subagent
-  run; an empty profile should add no text. Callers (`repl`, `subagent`) rely on `load` alone, so the fix belongs in `profile`.
+  run; an empty profile should add no text. Callers (`engine`, `subagent`) rely on `load` alone, so the fix belongs in `profile`.
 - **Profile text is unbounded.** `profile::load` reads the whole note. A large profile is committed and resent on every later turn.
 - **No way to clear a profile.** Once chosen, a profile stays until another is chosen or the process ends, and its hook lines
   stay active.
@@ -612,26 +612,61 @@ Each item is a gap between the design above and the code. Items are grouped by a
   call and report the write.
 - **The budget threshold lives in the provider.** `provider::llama_cpp` imports `over_budget` and decides `ContextFull` from it. The
   session should pass a prompt limit in.
-- **`repl` indexes the history.** `/context` reads `messages().first()`. `Conversation::context()` should be the only accessor.
+- **`engine` indexes the history.** `Command::Context` reads `messages().first()`. `Conversation::context()` should be the only accessor.
 - **Commands are not one table.** `commands.rs` parses the slash commands, but the help text is written by hand beside them.
 - **Two sources for one setting.** The endpoint is a constant in `provider::llama_cpp`. The model starts as that module's constant, and
   `default_model` reads a second source, `model.txt`. There is no `config` module.
 - **`Conversation` holds run configuration.** The before-turn and after-turn lines, the startup text, the autosave switch, and the
-  selected profile's hooks are set on it by `main` or the REPL. None of them is history. They should be one value that `main` passes
-  to `repl::run`.
+  selected profile's hooks are set on it by `main` or the engine. None of them is history. They should be one `RunConfig` that
+  the engine owns beside the history (the profile text it already holds is the start of it).
 - **Hook lines are held in the session module.** `HookLines` lives in `session.rs`, and the selected profile's lines are held by
   `Conversation`. They belong with the REPL's selection state, not the history.
-- **The source tree exceeds the Modularity limits.** `src/` holds 19 files (the limit is 10). `saved_sessions/store.rs` (535 code
-  lines) and `provider/llama_cpp.rs` (650) are over the 500-code-line limit, and `session.rs` (486) is close. `repl.rs` (246) is
-  under it now that its tests live in `repl/tests.rs`. `cargo clippy --all-targets` reports no errors. Its warnings are the known
-  ones, plus `store::tests::stored_requests`, whose return type is a six-field tuple (`very complex type`), and a method chain
+- **The source tree exceeds the Modularity limits.** `vise-core/src/` holds 22 entries (the limit is 10), and `tools/` holds 10.
+  `saved_sessions/store.rs`, `provider/llama_cpp.rs` and `session.rs` (615, 789 and 640 lines with tests) are at or over the
+  500-line limit; `engine.rs` (495) is at it. The core wants sub-folders by concern: `commandfiles/` (startup, before_turn,
+  after_turn, shutdown, file_commands), `conversation/` (session, turn, subagent), and `config/` (default_model, environment).
+  `cargo clippy --all-targets` reports no errors. Its warnings are the known ones, plus `store::tests::stored_requests`, whose return type is a six-field tuple (`very complex type`), and a method chain
   in `main`'s resume (`then`, `unwrap_or`, `and_then`) that a `match` would state more plainly. The row type belongs in a named struct.
 - **One message-like value is threaded through four signatures.** A request's timing travels as `Timings`, then as
   `RequestRecord`, through `send`'s `Sent`, the provider's per-round vector, `Turn`/`PartialTurn`, `Conversation`, `compact`,
   and `Provider::summarize`'s return type, which now carries both a summary and an audit row. Every layer forwards a value only
   the store consumes. The provider should report its requests to one sink the caller supplies, and `summarize` should return the
   summary alone.
-- **`main` exits 0 when the REPL fails.** A stdin or stdout failure inside the REPL returns normally.
+- **`main` exits 0 when the REPL fails.** A stdin or stdout failure inside the REPL is printed and the process returns normally.
+
+### The frontend boundary
+
+The goal is that a second frontend (a GUI, a web page, a test harness) needs nothing from the core except `Engine`, `Request`,
+`Frontend`, `UiEvent` and `Stop`. Today it would still reach around them in these places:
+
+- **Results are prose.** Every answer to a query command is `UiEvent::Notice(String)`: the tool list, the profile list, the model list
+  (with a `* ` mark), the session list, `/context`, and the changes a profile makes. A GUI would have to parse text to fill a list or
+  mark the current model. Query results must be typed events (`Tools(Vec<ToolState>)`, `Profiles`, `Models { current, ids }`,
+  `Sessions`, `Context { text, prompt_tokens, size }`), and the terminal formats them.
+- **The engine speaks the terminal's syntax.** `no sessions: /save NAME stores the conversation`, `no profiles: a profile is a note
+  with the category profile` and the `started a new conversation` family embed slash commands and English. Events carry facts
+  (`Empty(Sessions)`), and the frontend words the hint in its own idiom.
+- **Approvals are a bare string.** `approve(&str) -> bool` carries no id, no kind (write, kill, profile file), no path, and no
+  origin, so a GUI cannot show a diff or a dialog, and a subagent's request looks like the parent's. It needs an `Approval { id,
+  kind, summary, detail, origin }` value, with `origin` naming the subagent and profile. The call blocks the engine thread, which a
+  web frontend cannot do: the ideal is `Pending(Approval)` as an event and `Request::Answer { id, accepted }` as the reply.
+- **Nothing is serializable.** `UiEvent` holds provider `Event`, and `Request`, `Command` and `Flow` derive nothing. A remote
+  frontend needs `serde` on all four, with `Event` a plain data type in a leaf module rather than in `provider::types`.
+- **`Engine<'a>` borrows everything.** A GUI cannot keep a borrowing engine in application state. The engine should own its provider
+  (`Box<dyn Provider>`), tools and `Conversation`, take a `Paths` value (cwd, sessions folder, notes folder) instead of `&Path`
+  arguments to `start` and `shutdown`, and be `Send`, so a frontend can run it on a worker thread.
+- **`Command::Help` and `Command::Exit` belong to the frontend.** The engine's enum carries two variants it does not act on
+  (`Help` is a no-op arm; `Exit` only returns `Flow::Exit`). `Exit` is an input-loop concern and `Help` is the frontend's text
+  (`HELP` lists slash syntax). Both leave `Command`, and `Flow` goes with `Exit`.
+- **Startup is a call sequence.** `start` takes `resume: bool` and `cwd`, and the shutdown lines must run on a separate call after the
+  loop. `StartOptions { resume: Resume::Last | Fresh | Named }` returned with a `Started` report, and a `Drop`-safe `shutdown`,
+  remove the ordering that `main` has to remember. The terminal also calls `Engine::start` before its first prompt with a
+  `TerminalFrontend` of its own, so a GUI has no event for "starting" to show.
+- **Global files.** `default_model::load` and `save` read and write `model.txt` against the process folder, and `saved_sessions::FOLDER`
+  is a bare relative name, so two engines in one process (a server hosting sessions) would collide. Both take the `Paths` value.
+- **Interrupts are asked for and observed apart.** `Stop` is the right switch, but `Engine::stop_handle` is unused (marked
+  `dead_code`) because the terminal installs its handler first. A frontend must get the handle from the engine, and `start` must
+  be stoppable through it.
 
 ### Writes and sessions
 
@@ -721,7 +756,7 @@ Each item is a gap between the design above and the code. Items are grouped by a
   write, so that a profile the model wrote in an earlier session is not trusted silently.
 - **Hook lines bypass the profile's tools line.** A profile with `tools: read_file` still runs PowerShell through a hook. This is intended
   for command files, but a profile that narrows the tools is not narrowing what its hooks can do. The user should confirm this decision.
-- **Selection can split on an I/O error.** In the `Profile` arm of `repl`, the instructions and tool state change before `select_hooks`
+- **Selection can split on an I/O error.** In `Engine::select_profile`, the instructions and tool state change before `select_hooks`
   runs. If that call returns an I/O error, the new profile is selected while the previous profile's hook lines stay active. Hooks and
   instructions should change in one step.
 - **Profile errors name no file.** A rejected header line reports only its text, not the profile's name or the line number.
@@ -729,8 +764,9 @@ Each item is a gap between the design above and the code. Items are grouped by a
 
 ### Subagents
 
-- **Subagents are mostly invisible.** Their tool lines reach the parent's display, but their output and status lines go to
-  buffers that are discarded, and their approval prompts name no subagent or profile. Follow-up failures at the limit are not
+- **Subagents are mostly invisible.** Their tool lines reach the frontend as `Stream { nested: true }`, but their output and status
+  lines go to a `Sink`, and their approvals reach `Frontend::approve` as the same bare string as the parent's, naming no subagent
+  or profile. Follow-up failures at the limit are not
   shown either.
 - **Subagent work is unbounded.** A parent turn may start up to `MAX_TOOL_ROUNDS` subagents. Each may run up to `MAX_TOOL_ROUNDS` rounds in
   up to `FOLLOW_UPS` + 1 turns. No total is counted or reported.
@@ -885,6 +921,9 @@ Controls:
 - One output cap and one background-task count limit, shared by all command files and hooks.
 - One settings file for the endpoint, the default model, and the budgets, read once by `main` and passed down, so `default_model` is not
   a separate source.
+- A second frontend (a GUI or a local web page) driven by the same `Engine` on a worker thread: serializable `Request` and
+  `UiEvent`, typed query results, approvals as pending events with an id and an origin, and an engine that owns its parts (see The
+  frontend boundary). A conformance test that drives a scripted `Frontend` through every `Request` would keep the two honest.
 - A `SessionStore` value built by `main` and passed to `repl` in place of the folder path, so the schema runs once per run rather
   than per open, and the store's tests are hermetic.
 - Configuration from a file or environment, with overrides for endpoint, timeouts, and the history and compaction budgets.

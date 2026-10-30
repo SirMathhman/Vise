@@ -1,7 +1,10 @@
 //! The commands a frontend can send the engine. How they are typed is the frontend's business: the terminal parses
 //! slash commands into these, and another frontend can build them from buttons or menus.
 
+use serde::{Deserialize, Serialize};
+
 /// `Exit` ends the run and `Help` is the frontend's own to answer; the engine does nothing for `Help`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Command {
     Compact,
     Exit,

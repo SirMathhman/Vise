@@ -3,9 +3,25 @@
 //! another one later) implements `Frontend` and decides how to show events and ask.
 
 use crate::provider::types::Event;
+use serde::{Deserialize, Serialize};
+
+/// A tool and whether the model may call it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolState {
+    pub name: String,
+    pub enabled: bool,
+}
+
+/// A note as the notes index shows it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NoteLine {
+    pub name: String,
+    pub category: String,
+    pub summary: String,
+}
 
 /// One thing the backend tells the user. It is plain data, so a frontend can draw it, log it, or send it elsewhere.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum UiEvent {
     /// A line for the user, shown as it is.
     Notice(String),
@@ -15,6 +31,19 @@ pub enum UiEvent {
     Error(String),
     /// The whole answer, sent when it was not already shown piece by piece as `Stream` answer events.
     Reply(String),
+    /// The result of a query, as data. How to word it, and what to say when it is empty, is the frontend's business.
+    /// Every tool, and whether the model may call it.
+    Tools(Vec<ToolState>),
+    /// The profile names, the built-in `default` included.
+    Profiles(Vec<String>),
+    /// The model ids the server lists, and the one in use.
+    Models { current: String, ids: Vec<String> },
+    /// The saved sessions' names.
+    Sessions(Vec<String>),
+    /// The notes the command asked for.
+    Notes(Vec<NoteLine>),
+    /// The standing context message, the tokens the last request used, and the context size when the server reports it.
+    Context { text: String, prompt_tokens: u64, size: Option<u64> },
     /// Progress of a model request: prompt processing, thinking, answer text, and the tool calls the reply makes.
     /// `nested` marks the events of a subagent, which a frontend can indent or group under the call that started it.
     Stream { event: Event, nested: bool },
@@ -87,6 +116,13 @@ pub mod test_support {
                 UiEvent::Status(text) => self.errors.push_str(&format!("{text}\n")),
                 UiEvent::Error(text) => self.errors.push_str(&format!("error: {text}\n")),
                 UiEvent::Stream { .. } | UiEvent::TurnEnded => {}
+                // Data, not text: a test reads the event.
+                UiEvent::Tools(_)
+                | UiEvent::Profiles(_)
+                | UiEvent::Models { .. }
+                | UiEvent::Sessions(_)
+                | UiEvent::Notes(_)
+                | UiEvent::Context { .. } => {}
             }
             self.events.push(event);
         }
@@ -95,5 +131,31 @@ pub mod test_support {
             self.asked.push(change.to_string());
             self.answers.pop_front().unwrap_or(false)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn events_and_requests_survive_a_round_trip_through_json() {
+        use crate::command::Command;
+        use crate::engine::Request;
+        let events = vec![
+            UiEvent::Notice("hi".into()),
+            UiEvent::Models { current: "a".into(), ids: vec!["a".into(), "b".into()] },
+            UiEvent::Tools(vec![ToolState { name: "read_file".into(), enabled: true }]),
+            UiEvent::Stream { event: Event::Tool { name: "read_file".into(), target: Some("a.txt".into()) }, nested: true },
+            UiEvent::Context { text: "context".into(), prompt_tokens: 3, size: None },
+            UiEvent::TurnEnded,
+        ];
+        for event in events {
+            let json = serde_json::to_string(&event).expect("encodes");
+            assert_eq!(serde_json::from_str::<UiEvent>(&json).expect("decodes"), event, "{json}");
+        }
+        let request = Request::Command(Command::Save("work".into()));
+        let json = serde_json::to_string(&request).expect("encodes");
+        assert_eq!(serde_json::from_str::<Request>(&json).expect("decodes"), request, "{json}");
     }
 }
