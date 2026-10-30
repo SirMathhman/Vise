@@ -177,13 +177,17 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
   and the name is chosen once per run, when its first turn completes.
 - A `sessions/NAME.json` file in the format sessions were once saved as is imported as the session `NAME` at launch,
   unless that name is already stored. The files are left in place, so an import can be repeated.
+- Nothing but `saved_sessions` opens the database, and `store.rs` is the only file there that does. A name is a column value,
+  never a path. The sessions table is upserted rather than replaced, because a replaced row would cascade a delete over the
+  messages just written.
 - A profile is chosen by name only. The name must be letters, digits, `-` or `_`, so it cannot leave the profiles folder.
 - Selecting a profile sets every tool's state: the enabled set becomes exactly the profile's tools line, or all tools when it
   has none. It replaces the note whitelist with the profile's notes line, or all notes when it has none. The change is made
   when `/profile NAME` runs, and it replaces any earlier `/tools` choices.
 - A profile's header is checked before anything changes. A failed selection (an unknown name, a bad header line, or an unknown
   tool or note) leaves the instructions, tools, notes, and hooks as they were.
-- Notes, sessions, and profiles are plain files. Only the names in the Definitions say what they may contain.
+- Notes and profiles are plain files; sessions are rows of one database. Only the names in the Definitions say what they may
+  contain.
 
 ### Command files and profile hooks
 
@@ -253,9 +257,14 @@ src/
   session.rs         Message, Turn (checked shape), Conversation (committed history, prompt tokens of the last committed
                      turn, compaction, drop_oldest_turn, the autosave folder and name, startup text, the before-turn and
                      after-turn lines, and the selected profile's hook lines as `HookLines`), over_budget (80%)
-  saved_sessions.rs  the sessions database, `sessions/sessions.db`: saves a history as a session row plus one messages
-                     row per message, lists and loads sessions by a validated name, and imports old `NAME.json` files.
-                     A reply's tool calls are stored as JSON text in its row; the context message is not stored.
+  saved_sessions/    the sessions database, `sessions/sessions.db`, and its error
+    mod.rs           declarations, `FOLDER`, `DATABASE`, and `SessionStoreError`. The error lives here, not in `error.rs`,
+                     because the database driver's error appears in its variants
+    store.rs         the schema, the one place a connection is opened, the transactional write of one session, the reads
+                     behind `names`, `list`, `check_save`, `save`, `exists`, `write`, and `load`, and the `NAME.json` import
+    messages.rs      one message as the table holds it: the role, the content, the answered call, and a reply's tool calls
+                     as JSON text. A system message contributes no row
+    legacy.rs        the frozen `NAME.json` format the import reads
   profile.rs         lists the profiles folder's `.txt` files, loads one by a validated name, and parses its header lines
                      (`tools:`, `notes:`, and `hook KIND: COMMAND`) from its instructions
   notes.rs           the notes folder: one file per note. Reads, creates, updates, deletes, and lists notes, and builds the
@@ -313,7 +322,7 @@ subagent -> turn, session, profile, environment, provider::types, tools, after_t
 startup, before_turn, after_turn, shutdown -> file_commands, tools::runner, tools::types
 file_commands -> tools::runner, tools::types
 profile -> session (HookLines), notes (valid_name), environment, tools::runner, tools::specs
-saved_sessions -> session, tools::types, error (and rusqlite for the sessions database)
+saved_sessions -> session, tools::types, error (and rusqlite for the sessions database; only store.rs opens a connection)
 session -> environment, tools::types, error
 provider::llama_cpp -> provider::types, provider::grammar, provider::prompt, session, tools, error
 provider::prompt -> session, tools
@@ -429,8 +438,9 @@ Each item is a gap between the design above and the code. Items are grouped by a
 - **Empty server message.** `{"error":{"message":""}}` produces `Rejected("")`, and the user sees "the server rejected the request: ;".
   An empty or whitespace message must fall back to the raw body.
 - **Stringly payloads.** `ToolError::Failed` and `ProviderError::Rejected` hold formatted text, and I/O causes are flattened, so callers
-  and tests cannot match on the cause. `Transport` boxes an arbitrary error whose text can echo a response body. `notes`, `profile`,
-  and `saved_sessions` return `String` errors for the same reason.
+  and tests cannot match on the cause. `Transport` boxes an arbitrary error whose text can echo a response body. `notes` and
+  `profile` return `String` errors for the same reason. `saved_sessions` returns `SessionStoreError`, an enum, but its variants
+  carry the database driver's error, so its text comes from SQLite.
 - **Error homes.** `ToolError` lives in `tools/types.rs`, not `error.rs`. `MAX_TOOL_ROUNDS` lives in `error.rs` but belongs to the provider.
 - **No timeouts, one request at a time.** A stalled server blocks the REPL. Connect, send, and read timeouts are not configured.
 
@@ -476,7 +486,16 @@ Each item is a gap between the design above and the code. Items are grouped by a
 - **Autosave keeps only the latest history.** Each completed turn rewrites the session's messages with the whole history, so compaction
   and a dropped turn remove earlier turns from disk too. The session is a snapshot, not a log.
 - **An imported session file stays on disk**, so the folder holds the old history beside the database, and a file whose name matches a
-  stored session is skipped without a report. Nothing says a file was skipped or unreadable.
+  stored session is skipped without a report. Nothing says a file was skipped or unreadable, and `import` returns only a count.
+- **No schema version or lock policy.** `open` re-runs `CREATE TABLE IF NOT EXISTS` on every connection and sets no `user_version`, no
+  `busy_timeout`, and no WAL mode. The schema should carry a version checked at open, and two runs in one working directory should wait
+  for each other rather than fail with `SQLITE_BUSY`.
+- **A missing session reads as a driver error.** `load` reports "cannot read session 'x': Query returned no rows", which names no remedy.
+  It needs a `Missing { name }` variant that points at `/sessions`.
+- **A saved session cannot be replaced.** `/save` refuses a taken name and no command overwrites one, so replacing a session means editing
+  the database by hand.
+- **The import is not one transaction.** Each imported file is written separately, and the schema-only database file is left behind even when
+  every file was refused.
 - **A failed autosave is reported once per turn and nothing else.** The turn stays committed, and the next completed turn writes the
   whole history again.
 
@@ -661,6 +680,8 @@ Controls:
 - One output cap and one background-task count limit, shared by all command files and hooks.
 - One settings file for the endpoint, the default model, and the budgets, read once by `main` and passed down, so `default_model` is not
   a separate source.
+- A `SessionStore` value built by `main` and passed to `repl`, so the sessions folder is a parameter rather than a constant, the schema
+  runs once per run rather than per open, and the store's tests are hermetic.
 - Configuration from a file or environment, with overrides for endpoint, timeouts, and the history and compaction budgets.
 - A `/compact` report that shows the summary and how many turns and tokens it replaced.
 - Token-aware trimming of old turns, as the fallback when a summary does not fit, in place of dropping the oldest turn outright.
@@ -686,7 +707,8 @@ Obvious concerns only; profile before optimizing.
   output, so many long-running tasks use memory in proportion.
 - Each request builds a new `ureq` request. One shared agent would reuse connections.
 - `/save` and `/load` read and write the whole history one row per message to `sessions/sessions.db`, and `/load` reads all of it before
-  the turn check. Each command opens and closes its own connection, and the schema is re-run per open.
+  the turn check. Each command opens and closes its own connection, and the schema is re-run per open. `/save` opens three: `check_save`
+  and `save` each look the name up, then `write` opens the connection it writes on.
 - Before-turn lines run before every chat turn, so each turn waits for their sum before its request, and their output is resent with every later
   request. A selected profile's before-turn and after-turn hooks add to these waits.
 - After-turn lines run after every chat turn, and a failing line can cause up to `FOLLOW_UPS` more turns, each with its own before-turn run and request.
