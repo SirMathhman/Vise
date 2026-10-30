@@ -64,6 +64,19 @@ fn main() {
             let _ = writeln!(errors, "error: cannot import the session files: {err}");
         }
     }
+    match saved_sessions::latest(&sessions).and_then(|name| match name {
+        Some(name) => saved_sessions::resume(&sessions, &name).map(|(history, requests)| Some((name, history, requests))),
+        None => Ok(None),
+    }) {
+        Ok(Some((name, history, requests))) => {
+            conversation.resume(name.clone(), history, requests);
+            let _ = writeln!(errors, "resumed session {name}");
+        }
+        Ok(None) => {}
+        Err(err) => {
+            let _ = writeln!(errors, "error: the last session is not resumed: {err}");
+        }
+    }
     let mut input = io::stdin().lock();
     match default_model::load() {
         Ok(Some(name)) => {

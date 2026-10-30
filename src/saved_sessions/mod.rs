@@ -10,7 +10,7 @@ use crate::session::SessionError;
 use std::fmt;
 use std::path::PathBuf;
 
-pub use store::{check_save, import, load, names, save, write};
+pub use store::{check_save, import, latest, load, names, resume, save, write};
 #[cfg(test)]
 pub use store::{exists, list};
 

@@ -412,6 +412,16 @@ impl Conversation {
         }
     }
 
+    /// Continues a stored session: its history and request log replace this run's, and autosaves go on writing to
+    /// `name` instead of starting a new session.
+    pub fn resume(&mut self, name: String, history: Vec<Message>, requests: Vec<RequestRecord>) {
+        self.replace_history(history);
+        self.requests = requests;
+        if let Some(autosave) = &mut self.autosave {
+            autosave.name = Some(name);
+        }
+    }
+
     /// Turns on automatic saves: after each completed turn, the history is written to a session in `folder`.
     pub fn enable_autosave(&mut self, folder: PathBuf) {
         self.autosave = Some(Autosave { folder, name: None });

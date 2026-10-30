@@ -4,7 +4,7 @@
 use super::legacy;
 use super::messages::{self, Saved};
 use super::{SessionStoreError, DATABASE, FOLDER};
-use crate::session::{self, Message, RequestRecord};
+use crate::session::{self, Message, RequestRecord, Timings};
 use rusqlite::{params, Connection, OptionalExtension};
 use std::fs;
 use std::io;
@@ -122,6 +122,68 @@ pub fn load(name: &str) -> Result<Vec<Message>, SessionStoreError> {
     }
     let connection = open(&path)?;
     read(&connection, name).transpose()?.ok_or_else(missing)
+}
+
+/// The most recently saved session in `folder` that holds messages, or None when there is none. Names the store would
+/// refuse are skipped, as they are in `list`.
+pub fn latest(folder: &Path) -> Result<Option<String>, SessionStoreError> {
+    let path = database(folder);
+    if !path.exists() {
+        return Ok(None);
+    }
+    let connection = open(&path)?;
+    let mut statement = connection
+        .prepare(
+            "SELECT name FROM sessions WHERE EXISTS (SELECT 1 FROM messages WHERE session = name)
+             ORDER BY saved_at DESC, rowid DESC",
+        )
+        .map_err(|err| SessionStoreError::Read { name: DATABASE.to_string(), err })?;
+    let names = statement
+        .query_map([], |row| row.get::<_, String>(0))
+        .and_then(|rows| rows.collect::<Result<Vec<String>, _>>())
+        .map_err(|err| SessionStoreError::Read { name: DATABASE.to_string(), err })?;
+    Ok(names.into_iter().find(|name| check_name(name).is_ok()))
+}
+
+/// Reads a stored session's history and its request log, so a run can go on writing to the same session: the log is
+/// append-only, and a write that holds fewer requests than are stored is refused.
+pub fn resume(folder: &Path, name: &str) -> Result<(Vec<Message>, Vec<RequestRecord>), SessionStoreError> {
+    check_name(name)?;
+    let path = database(folder);
+    let fail = |err| SessionStoreError::Read { name: name.to_string(), err };
+    let connection = open(&path)?;
+    let history = read(&connection, name).transpose()?.ok_or_else(|| fail(rusqlite::Error::QueryReturnedNoRows))?;
+    let mut statement = connection
+        .prepare(
+            "SELECT round, kind, prompt_tokens, cache_n, prompt_n, prompt_ms, prompt_per_second, predicted_n,
+                    predicted_ms, predicted_per_second, draft_n, draft_n_accepted
+             FROM requests WHERE session = ?1 ORDER BY position",
+        )
+        .map_err(fail)?;
+    let count = |row: &rusqlite::Row, index: usize| row.get::<_, Option<i64>>(index).map(|n| n.map(|n| n as u64));
+    let requests = statement
+        .query_map([name], |row| {
+            let kind: String = row.get(1)?;
+            Ok(RequestRecord {
+                round: row.get::<_, i64>(0)? as u64,
+                kind: if kind == "summary" { "summary" } else { "turn" },
+                prompt_tokens: row.get::<_, i64>(2)? as u64,
+                timings: Timings {
+                    cache_n: count(row, 3)?,
+                    prompt_n: count(row, 4)?,
+                    prompt_ms: row.get(5)?,
+                    prompt_per_second: row.get(6)?,
+                    predicted_n: count(row, 7)?,
+                    predicted_ms: row.get(8)?,
+                    predicted_per_second: row.get(9)?,
+                    draft_n: count(row, 10)?,
+                    draft_n_accepted: count(row, 11)?,
+                },
+            })
+        })
+        .and_then(|rows| rows.collect::<Result<Vec<RequestRecord>, _>>())
+        .map_err(|err| SessionStoreError::Read { name: name.to_string(), err })?;
+    Ok((history, requests))
 }
 
 /// Turns importable session files in `folder` into stored sessions: each `NAME.json` in the format sessions were
@@ -286,7 +348,6 @@ fn read(connection: &Connection, name: &str) -> Option<Result<Vec<Message>, Sess
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::session::Timings;
     use crate::tools::types::{ToolCall, Value};
     use std::collections::HashMap;
 
@@ -352,6 +413,32 @@ mod tests {
             prompt_tokens,
             timings: Timings { prompt_n: Some(prompt_n), prompt_ms: Some(prompt_ms), ..Timings::default() },
         }
+    }
+
+    #[test]
+    fn the_latest_session_resumes_with_its_log_and_can_be_written_again() {
+        let folder = temp_folder("resume");
+        assert_eq!(latest(&folder).expect("no database"), None);
+        write(&folder, "old", &reply("a"), &[]).expect("writes");
+        let mut unreported = request(1, 41, 4, 163.5);
+        unreported.timings.prompt_ms = None;
+        write(&folder, "new", &reply("b"), &[unreported.clone()]).expect("writes");
+        open(&database(&folder)).expect("opens").execute("UPDATE sessions SET saved_at = 5 WHERE name = 'old'", []).expect("updates");
+        assert_eq!(latest(&folder).expect("reads").as_deref(), Some("new"));
+        let (history, requests) = resume(&folder, "new").expect("resumes");
+        assert_eq!(requests, vec![unreported.clone()]);
+        write(&folder, "new", &history, &requests).expect("the resumed log is not refused");
+        fs::remove_dir_all(&folder).expect("the test folder is removed");
+    }
+
+    #[test]
+    fn a_session_with_no_messages_is_not_the_latest() {
+        let folder = temp_folder("latest-empty");
+        write(&folder, "full", &reply("a"), &[]).expect("writes");
+        write(&folder, "empty", &[], &[]).expect("writes");
+        let found = latest(&folder).expect("reads");
+        fs::remove_dir_all(&folder).expect("the test folder is removed");
+        assert_eq!(found.as_deref(), Some("full"));
     }
 
     #[test]
