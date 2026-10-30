@@ -272,9 +272,9 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
   run without a prompt, lists them, and shows the whole file. `update_note` keeps a note's extra header lines, so only an approved
   file-tool write can change a profile's hooks. An
   approved `run_powershell` can still change any of them, and its approval text says so when the command names one.
-- A profile written by the model is never trusted more than the approval that wrote it. The ideal is that a hook line in a
-  profile the model wrote or edited does not run until the user has confirmed those lines (see Security), so the approval of a
-  write is not the only gate between model output and a command that runs unprompted.
+- A subagent runs a profile's hook lines only when they are the ones the user confirmed: those of the profiles present at
+  launch, and those of a profile the user selected with `/profile`. The comparison is on the hook lines in the note as it is when
+  the subagent starts, so how or by which tool the note was written does not matter. A profile with no hook lines needs none.
 
 ### Subagents
 
@@ -513,8 +513,9 @@ Each item is a gap between the design above and the code. Items are grouped by a
 - **The notes layer reaches the session.** `notes::needed` takes `&[Message]`, so `notes` imports `session`. The check belongs in
   `provider::prompt`, and `notes` should take plain text.
 - **One bad note hides every note.** `notes::list` returns the first parse error for the whole folder, so `/notes`, `list_notes`,
-  and the index all fail. A bad file should be reported by name, and the rest still listed. The parser also requires `---` followed
-  by `\n`, so a note saved with CRLF line endings fails to parse.
+  `/profiles`, and the index all fail. A model's `edit_file` can break a note's header, so the model can cause this. `list` should
+  return the good notes and a list of `(name, error)` for the rest, and callers should print the bad names. `/profile NAME` and
+  `read_note` read one file and are unaffected.
 - **The index reads every note in full.** It reads each note file to produce one summary line, every time it is built. The header
   alone is enough.
 - **Note paths skip confinement.** `notes::path` checks the name but not the folder: a symlink named `notes` leads writes outside the
@@ -569,7 +570,7 @@ Each item is a gap between the design above and the code. Items are grouped by a
 - **Folders are not all anchored to the working directory.** `ToolRunner::notes_folder` has a default of the relative `notes`,
   which resolves against the process folder for any runner that does not override it. `main` opens the sessions folder as the
   bare `saved_sessions::FOLDER`, while the notes folder comes from the runner's working directory. `profile.rs` and the
-  profile-approval check in `tools::runner` still use the bare `profiles` name. The default should be removed so every runner
+  profile-approval check in `tools::runner` take the notes folder. The default of `notes_folder` should be removed so every runner
   must state its folder, and `main` should join the sessions folder to the working directory like the notes folder.
 - **The command-file names live in the tool runner.** `startup.rs`, `before_turn.rs`, `after_turn.rs`, and `shutdown.rs` import
   their file names from `tools::runner`, and the runner's guard and approval text use them. The names belong in a leaf module
@@ -679,10 +680,12 @@ Each item is a gap between the design above and the code. Items are grouped by a
 
 ### Profile hooks
 
-- **An approved command can still write a profile's hook lines.** `create_file` and `edit_file` show the whole resulting profile with
-  its hook lines listed first, and a subagent runs a profile the model wrote without its hooks until the user selects it with
-  `/profile`. `run_powershell` can still write a profile note, and its approval text only adds a warning line when the command names
-  the notes folder. A shell command is not parsed, so a profile can be changed by one that does not name `notes`.
+- **`/profile` runs hook lines the user may not have read.** The hook gate compares content: a subagent runs a profile's hook lines
+  only when they equal the ones confirmed at launch (`profile::confirm_existing`) or by `/profile NAME`. `/profile` itself runs
+  the hooks it loads and, when they are new or changed since launch, lists them first, but it does not stop. A model that wrote a
+  note with a `hook` line under another category and later made it a profile through `update_note` is therefore caught in a
+  subagent and shown at `/profile`, not blocked there. `confirm_existing` also trusts every profile present at launch, including
+  one the model wrote in an earlier session.
 - **Hook lines bypass the profile's tools line.** A profile with `tools: read_file` still runs PowerShell through a hook. This is intended
   for command files, but a profile that narrows the tools is not narrowing what its hooks can do. The user should confirm this decision.
 - **Selection can split on an I/O error.** In the `Profile` arm of `repl`, the instructions and tool state change before `select_hooks`
@@ -764,7 +767,7 @@ Trust boundaries:
   left for import is read at launch, so the model can write a session the user later loads. `/load` commits its messages as history, so a
   stored session is a persistence path for injected instructions and forged tool results.
 - **Profile notes** are untrusted text, and they are command files too. They sit in `notes/` with the category `profile`, which the file tools and an approved command may write after approval, so the
-  model can author them; a subagent runs a profile the model wrote without its hooks until the user selects it. Their text reaches the model verbatim, and their `notes:` line decides which notes the
+  model can author them; a subagent runs a profile whose hook lines the user has not confirmed without them. Their text reaches the model verbatim, and their `notes:` line decides which notes the
   model sees. Their `hook` lines run with the user's full permissions and no prompt, and their output goes to the model (except shutdown's).
 - **Command files** (`startup.txt`, `before-turn.txt`, `after-turn.txt`, `shutdown.txt`) are untrusted text in the same way as `AGENTS.md`.
   Their lines run with the user's full permissions at every launch, exit, and chat turn, with no prompt. Startup and before-turn output reach
@@ -810,7 +813,7 @@ Controls:
 | Profile files limit the notes the model may use | Partly met. The runner refuses a disallowed note before approval, and the index omits it. Earlier index messages and note results stay in history (Open Problems). |
 | Profile files set the enabled set | Partly met. A profile's tools line is checked against the catalogue, and selecting a profile is the user's action. Its hook lines run whatever the enabled set is (Open Problems). |
 | Profile hook lines run only while their profile is selected | Met. Selecting another profile replaces them at once, and shutdown reads the current ones. A failed selection keeps the old ones. The I/O-error split is open (Open Problems). |
-| Profile hook lines run only from a note the user has seen and confirmed | Partly met. A model write that leaves a profile in `notes/` needs approval whose text names the hooks and shows the whole file, and a subagent runs it without hooks until the user selects it. An approved command can still write one (Open Problems). |
+| Profile hook lines run only from a note the user has seen and confirmed | Partly met. A subagent runs a profile's hooks only when they equal those present at launch or selected with `/profile`; the file-tool approval names the hooks and shows the whole file. `/profile` lists new or changed hooks but runs them (Open Problems). |
 | Command-file lines run without approval only from a file the model cannot write | Partly met. The file tools refuse the command files by name, ignoring trailing dots, spaces, and `:` streams. An approved command can still write any of them (Open Problems). |
 | Command-file and hook lines are not gated by the enabled tool set | Met. They run through `run_command_file_line`, which skips the enabled-set check and keeps the file guard. |
 | Command-file, hook, and before-turn and after-turn lines bounded in time, count, and output | Missing (Open Problems). |

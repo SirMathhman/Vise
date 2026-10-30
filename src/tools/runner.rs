@@ -4,7 +4,7 @@ use super::jobs::Jobs;
 use super::types::{Invocation, ToolError, ToolRunner};
 use super::{kill_background, notes, read_background, run_powershell, specs};
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 /// The file in the working directory whose lines run before each session.
@@ -23,8 +23,9 @@ pub struct WorkspaceTools {
     jobs: RefCell<Jobs>,
     enabled: RefCell<HashSet<&'static str>>,
     allowed_notes: RefCell<Option<Vec<String>>>,
-    /// Profiles the model wrote through the file tools since the user last selected them.
-    written_profiles: RefCell<HashSet<String>>,
+    /// The hook lines of each profile the user has seen, by profile name: those at launch, and those of a profile selected
+    /// since. A subagent runs a profile's hooks only when they match.
+    confirmed_hooks: RefCell<HashMap<String, Vec<String>>>,
 }
 
 impl WorkspaceTools {
@@ -35,7 +36,7 @@ impl WorkspaceTools {
             jobs: RefCell::new(Jobs::default()),
             enabled: RefCell::new(enabled),
             allowed_notes: RefCell::new(None),
-            written_profiles: RefCell::new(HashSet::new()),
+            confirmed_hooks: RefCell::new(HashMap::new()),
         }
     }
 
@@ -56,9 +57,10 @@ impl WorkspaceTools {
             && folder.file_name().is_some_and(|name| name.eq_ignore_ascii_case(crate::notes::FOLDER))
     }
 
-    /// The profile a create or edit would leave in the notes folder, as its name, its hook lines and the whole file after
-    /// the change. None when the call does not write a note, or the note it leaves is not a profile.
-    fn profile_left_by(&self, invocation: &Invocation) -> Option<(String, Vec<String>, String)> {
+    /// The profile a create or edit would leave in the notes folder, as its hook lines and the whole file after the
+    /// change. None when the call does not write a note, or the note it leaves is not a profile. This only shapes the
+    /// approval text: whether hooks run is decided by `hooks_confirmed`, from the note's content.
+    fn profile_left_by(&self, invocation: &Invocation) -> Option<(Vec<String>, String)> {
         let (Invocation::CreateFile { path, .. } | Invocation::EditFile { path, .. }) = invocation else {
             return None;
         };
@@ -77,10 +79,8 @@ impl WorkspaceTools {
         if note.category != "profile" {
             return None;
         }
-        let file = std::path::Path::new(path).file_name()?.to_string_lossy().into_owned();
-        let name = file.strip_suffix(".md").unwrap_or(&file).to_string();
         let hooks = note.extra.into_iter().filter(|line| line.starts_with("hook ")).collect();
-        Some((name, hooks, after))
+        Some((hooks, after))
     }
 
     /// What the user is asked to approve. A write that leaves a profile in the notes folder opens with the warning that
@@ -88,7 +88,7 @@ impl WorkspaceTools {
     /// it would be after the write, because the file tools may write there only with that approval.
     fn approval_text(&self, invocation: &Invocation) -> String {
         let text = describe(invocation);
-        let Some((_, hooks, after)) = self.profile_left_by(invocation) else {
+        let Some((hooks, after)) = self.profile_left_by(invocation) else {
             return text;
         };
         let hooks = if hooks.is_empty() { "none".to_string() } else { hooks.join("\n") };
@@ -138,12 +138,12 @@ impl ToolRunner for WorkspaceTools {
         *self.allowed_notes.borrow_mut() = names;
     }
 
-    fn profile_written(&self, name: &str) -> bool {
-        self.written_profiles.borrow().contains(name)
+    fn hooks_confirmed(&self, name: &str, hooks: &[String]) -> bool {
+        hooks.is_empty() || self.confirmed_hooks.borrow().get(name).is_some_and(|confirmed| confirmed == hooks)
     }
 
-    fn confirm_profile(&self, name: &str) {
-        self.written_profiles.borrow_mut().remove(name);
+    fn confirm_hooks(&self, name: &str, hooks: &[String]) {
+        self.confirmed_hooks.borrow_mut().insert(name.to_string(), hooks.to_vec());
     }
 
     fn set_enabled(&self, name: &str, on: bool) -> Result<(), ToolError> {
@@ -176,10 +176,6 @@ impl ToolRunner for WorkspaceTools {
         }
         if invocation.writes() && !approve(&self.approval_text(invocation)) {
             return Err(ToolError::Failed("the user declined this change".into()));
-        }
-        if let Some((name, _, _)) = self.profile_left_by(invocation) {
-            // Recorded before the write, so a write that fails partway still leaves the profile unconfirmed.
-            self.written_profiles.borrow_mut().insert(name);
         }
         match invocation {
             Invocation::ListDirectory { path, depth } => list_directory::run(path, *depth, &self.cwd),
@@ -352,9 +348,12 @@ mod tests {
         assert!(approved.is_ok() && written);
         assert!(asked.contains("hook lines run without a prompt"));
         assert!(asked.contains("Hook lines after this change:\nhook before-turn: Get-Date"));
-        assert!(tools.profile_written("x"), "a subagent runs it without hooks until the user selects it");
-        tools.confirm_profile("x");
-        assert!(!tools.profile_written("x"));
+        let hooks = vec!["before-turn: Get-Date".to_string()];
+        assert!(!tools.hooks_confirmed("x", &hooks), "a subagent does not run hooks the user has not confirmed");
+        tools.confirm_hooks("x", &hooks);
+        assert!(tools.hooks_confirmed("x", &hooks));
+        assert!(!tools.hooks_confirmed("x", &["before-turn: Other".to_string()]), "changed hooks are not confirmed");
+        assert!(tools.hooks_confirmed("x", &[]), "a profile with no hooks needs no confirmation");
     }
 
     #[test]
@@ -372,7 +371,6 @@ mod tests {
         fs::remove_dir_all(&cwd).unwrap();
         assert!(created.is_ok());
         assert!(!asked.contains("hook lines"), "{asked}");
-        assert!(!tools.profile_written("plan"));
     }
 
     #[test]

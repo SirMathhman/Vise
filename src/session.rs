@@ -262,6 +262,20 @@ pub struct HookLines {
     pub after_turn: Vec<String>,
 }
 
+impl HookLines {
+    /// Every line as `KIND: COMMAND`, in a fixed order: what the user is shown, and what is compared to see whether a
+    /// profile's hooks are the ones they confirmed.
+    pub fn fingerprint(&self) -> Vec<String> {
+        let kinds = [
+            ("startup", &self.startup),
+            ("shutdown", &self.shutdown),
+            ("before-turn", &self.before_turn),
+            ("after-turn", &self.after_turn),
+        ];
+        kinds.iter().flat_map(|(kind, lines)| lines.iter().map(move |line| format!("{kind}: {line}"))).collect()
+    }
+}
+
 pub struct Conversation {
     messages: Vec<Message>,
     prompt_tokens: u64,

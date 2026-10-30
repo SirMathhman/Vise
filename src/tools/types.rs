@@ -248,14 +248,15 @@ pub trait ToolRunner {
     /// Sets the notes the model may use, or `None` for all of them. A runner without that state ignores it.
     fn set_allowed_notes(&self, _names: Option<Vec<String>>) {}
 
-    /// Whether the model wrote the profile `name` through the file tools, and the user has not selected it since. A
-    /// subagent runs such a profile without its hook lines, which would otherwise run with no prompt.
-    fn profile_written(&self, _name: &str) -> bool {
-        false
+    /// Whether the profile `name` may run `hooks` (as `KIND: COMMAND` lines): there are none, or they are the ones the user
+    /// had at launch or confirmed by selecting the profile. A subagent runs other hook lines never, since they would
+    /// otherwise run with no prompt. A runner that remembers nothing trusts every hook.
+    fn hooks_confirmed(&self, _name: &str, _hooks: &[String]) -> bool {
+        true
     }
 
-    /// Records that the user selected the profile `name`, so its hook lines may run again.
-    fn confirm_profile(&self, _name: &str) {}
+    /// Records that the user has seen the profile `name` with these hook lines, so a subagent may run them.
+    fn confirm_hooks(&self, _name: &str, _hooks: &[String]) {}
 }
 
 #[cfg(test)]

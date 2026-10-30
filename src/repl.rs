@@ -64,7 +64,14 @@ pub fn run(
                             writeln!(output, "{change}")?;
                         }
                         tools.set_allowed_notes(loaded.notes);
-                        tools.confirm_profile(&name);
+                        let hooks = loaded.hooks.fingerprint();
+                        if !tools.hooks_confirmed(&name, &hooks) {
+                            writeln!(output, "profile {name}: these hook lines are new or changed since the run started, and run without a prompt:")?;
+                            for line in &hooks {
+                                writeln!(output, "  {line}")?;
+                            }
+                        }
+                        tools.confirm_hooks(&name, &hooks);
                         profile = Some(profile::marked(&name, &loaded.instructions));
                         select_hooks(loaded.hooks, conversation, tools, output, errors)?;
                         writeln!(output, "profile {name} selected; its instructions go with your next message")?;

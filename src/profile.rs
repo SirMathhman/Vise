@@ -6,6 +6,7 @@
 use crate::notes::{self, Note};
 use crate::session::{HookLines, Message};
 use crate::tools::specs;
+use crate::tools::types::ToolRunner;
 use std::path::Path;
 
 /// The profile every run has without a note: no instructions, every tool and note allowed, and no hooks.
@@ -38,6 +39,17 @@ pub fn names(folder: &Path) -> Result<Vec<String>, String> {
     }
     names.sort();
     Ok(names)
+}
+
+/// Tells `tools` that the user has seen the hook lines of every profile that exists now. `main` calls it at launch, before
+/// the model can write anything, so a subagent runs these profiles' hooks and not those of a profile written later.
+pub fn confirm_existing(tools: &dyn ToolRunner) {
+    let folder = tools.notes_folder();
+    for name in names(&folder).unwrap_or_default() {
+        if let Ok(profile) = load(&folder, &name) {
+            tools.confirm_hooks(&name, &profile.hooks.fingerprint());
+        }
+    }
 }
 
 /// A profile: its instructions, the tools it allows if it has a `tools:` line, the notes it allows if

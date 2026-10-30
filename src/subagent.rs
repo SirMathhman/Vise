@@ -35,8 +35,9 @@ pub fn run(
     parent: Parent<'_>,
 ) -> Result<String, ToolError> {
     let mut loaded = profile::load(&tools.notes_folder(), profile_name).map_err(ToolError::Failed)?;
-    // A profile the model wrote has not been seen by the user as a profile, so its hook lines do not run.
-    if tools.profile_written(profile_name) {
+    // Hook lines the user has not seen, because the profile is new or changed since the run started and was not selected
+    // with `/profile`, do not run: they would run with no prompt.
+    if !tools.hooks_confirmed(profile_name, &loaded.hooks.fingerprint()) {
         loaded.hooks = HookLines::default();
     }
     let saved_enabled = tools.enabled();
@@ -252,6 +253,8 @@ category: profile
     fn subagent_runs_its_hooks_and_cannot_start_another_subagent() {
         with_profile("vise-subagent-hooks", "hook before-turn: Write-Output profile-hook", "be brief", |cwd| {
             let tools = WorkspaceTools::new(cwd.to_path_buf());
+            // The profile exists at launch, as it would when the user wrote it.
+            crate::profile::confirm_existing(&tools);
             let provider = Recorder::new(false);
             let global = vec!["Write-Output global-hook".to_string()];
             let result = run(
@@ -270,5 +273,22 @@ category: profile
             assert!(tools.enabled().contains(&"run_subagent"));
         });
     }
-}
 
+    #[test]
+    fn a_profile_written_after_launch_runs_without_its_hooks() {
+        with_profile("vise-subagent-late", "hook before-turn: Write-Output late-hook", "be brief", |cwd| {
+            // Nothing is confirmed, as when the profile appeared after the run started.
+            let tools = WorkspaceTools::new(cwd.to_path_buf());
+            let provider = Recorder::new(false);
+            let result = run(
+                "vise-subagent-late",
+                "task",
+                &provider,
+                &tools,
+                Parent { hooks: (&[], &[]), approve: &mut |_: &str| true, on_event: &mut |_| {} },
+            );
+            assert_eq!(result.unwrap(), "done");
+            assert!(!provider.inputs.borrow()[0].contains("late-hook"));
+        });
+    }
+}
