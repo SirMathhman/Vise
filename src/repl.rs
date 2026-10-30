@@ -100,7 +100,7 @@ fn save_session(
         return writeln!(errors, "error: {err}");
     }
     let history = conversation.history();
-    let change = format!("save session {name} ({} messages) to sessions/{name}.json", history.len());
+    let change = format!("save session {name} ({} messages) to sessions/{}", history.len(), saved_sessions::DATABASE);
     if !ask(&change, output, input) {
         return writeln!(output, "session {name} not saved");
     }
@@ -553,9 +553,10 @@ mod tests {
         let fake = Fake::new(Behavior::Reply);
         let mut conversation = conversation();
         let (output, _) = run_with("/save approval-test\nn\n", &fake, &mut conversation);
+        let stored = saved_sessions::exists(std::path::Path::new(saved_sessions::FOLDER), "approval-test");
         assert!(output.contains("apply this change? [y/N]"));
         assert!(output.contains("session approval-test not saved"));
-        assert!(!PathBuf::from("sessions/approval-test.json").exists());
+        assert!(!stored.unwrap_or(false));
     }
 
     #[test]
@@ -570,9 +571,11 @@ mod tests {
             .filter_map(Result::ok)
             .map(|entry| entry.file_name().to_string_lossy().into_owned())
             .collect();
+        let names = saved_sessions::list(&folder).expect("the sessions are listed");
         std::fs::remove_dir_all(&folder).expect("the test folder is removed");
-        assert_eq!(files.len(), 1);
-        assert!(files[0].starts_with("first-") && files[0].ends_with(".json"));
+        assert_eq!(files, vec![saved_sessions::DATABASE.to_string()]);
+        assert_eq!(names.len(), 1, "the run's first turn is the only saved session");
+        assert!(names[0].starts_with("first-"));
     }
 
     #[test]

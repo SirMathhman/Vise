@@ -44,11 +44,21 @@ fn main() {
     let provider = LlamaCpp::new(api_key);
     let tools = WorkspaceTools::new(env.cwd.clone());
     let mut conversation = Conversation::new(&env);
-    conversation.enable_autosave(std::path::PathBuf::from(saved_sessions::FOLDER));
+    let sessions = std::path::PathBuf::from(saved_sessions::FOLDER);
+    conversation.enable_autosave(sessions.clone());
 
     let stdout = io::stdout();
     let mut output = stdout.lock();
     let mut errors = io::stderr();
+    match saved_sessions::import(&sessions) {
+        Ok(0) => {}
+        Ok(imported) => {
+            let _ = writeln!(errors, "imported {imported} session files into {}", sessions.join(saved_sessions::DATABASE).display());
+        }
+        Err(err) => {
+            let _ = writeln!(errors, "error: cannot import the session files: {err}");
+        }
+    }
     let mut input = io::stdin().lock();
     match default_model::load() {
         Ok(Some(name)) => {

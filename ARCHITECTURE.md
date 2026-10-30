@@ -50,9 +50,9 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 - **Note**: a named file, `notes/NAME.md`, starting with a `---` header of one `summary:` line and one `category:`
   line, then the content. Notes persist across sessions.
 - **Notes index**: the list of every allowed note's name, category, and summary, or `[Notes]` followed by `(none)`.
-- **Session**: the history after the system context, saved as `sessions/NAME.json` by `/save` and replaced by
-  `/load`. Autosave writes the history after each completed turn to a session named from the run's first input
-  and the time, so each run has its own file.
+- **Session**: the history after the system context, saved by `/save` as a row in `sessions/sessions.db` and replaced
+  by `/load`. Autosave writes the history after each completed turn to a session named from the run's first input
+  and the time, so each run has its own session.
 - **Profile**: a named set of instructions in `profiles/NAME.txt`, selected with `/profile NAME`. Its text, under a
   heading that names it, is prepended to the next user message only. Its optional header lines, in any order, are
   `tools:` (the tools it allows), `notes:` (the notes the model may use), and `hook KIND: COMMAND` (see Profile hooks).
@@ -166,11 +166,17 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 
 ### Sessions, notes, profiles
 
-- A session is saved as `sessions/NAME.json`, and its name follows the profile name rule, so it cannot leave the folder.
-  `/save` refuses a name that already has a session, and asks for approval first. `/load` replaces the history, keeps the
-  current run's context message, and resets the prompt token count.
-- Autosave is the one write without approval. It writes only `sessions/NAME.json`, after each completed turn, and the name
-  is chosen once per run, when its first turn completes.
+- A session is a row in the `sessions` table of `sessions/sessions.db`, with one `messages` row per message in order.
+  Its name follows the profile name rule, so it is plain text in a column, never a path. `/save` refuses a name that
+  already has a session, and asks for approval first. `/load` replaces the history, keeps the current run's context
+  message, and resets the prompt token count.
+- A write of a session removes its old messages and inserts the new ones in one transaction, so an interrupted write
+  leaves the earlier history. Each message row holds the role, the content, and either the call a tool result answers or
+  the reply's tool calls as JSON text.
+- Autosave is the one write without approval. It writes only a row of `sessions/sessions.db`, after each completed turn,
+  and the name is chosen once per run, when its first turn completes.
+- A `sessions/NAME.json` file in the format sessions were once saved as is imported as the session `NAME` at launch,
+  unless that name is already stored. The files are left in place, so an import can be repeated.
 - A profile is chosen by name only. The name must be letters, digits, `-` or `_`, so it cannot leave the profiles folder.
 - Selecting a profile sets every tool's state: the enabled set becomes exactly the profile's tools line, or all tools when it
   has none. It replaces the note whitelist with the profile's notes line, or all notes when it has none. The change is made
@@ -247,8 +253,9 @@ src/
   session.rs         Message, Turn (checked shape), Conversation (committed history, prompt tokens of the last committed
                      turn, compaction, drop_oldest_turn, the autosave folder and name, startup text, the before-turn and
                      after-turn lines, and the selected profile's hook lines as `HookLines`), over_budget (80%)
-  saved_sessions.rs  the sessions folder: saves a history as JSON, and lists and loads sessions by a validated name.
-                     Tool call arguments are stored as JSON values; the context message is not stored.
+  saved_sessions.rs  the sessions database, `sessions/sessions.db`: saves a history as a session row plus one messages
+                     row per message, lists and loads sessions by a validated name, and imports old `NAME.json` files.
+                     A reply's tool calls are stored as JSON text in its row; the context message is not stored.
   profile.rs         lists the profiles folder's `.txt` files, loads one by a validated name, and parses its header lines
                      (`tools:`, `notes:`, and `hook KIND: COMMAND`) from its instructions
   notes.rs           the notes folder: one file per note. Reads, creates, updates, deletes, and lists notes, and builds the
@@ -306,7 +313,7 @@ subagent -> turn, session, profile, environment, provider::types, tools, after_t
 startup, before_turn, after_turn, shutdown -> file_commands, tools::runner, tools::types
 file_commands -> tools::runner, tools::types
 profile -> session (HookLines), notes (valid_name), environment, tools::runner, tools::specs
-saved_sessions -> session, tools::types, error
+saved_sessions -> session, tools::types, error (and rusqlite for the sessions database)
 session -> environment, tools::types, error
 provider::llama_cpp -> provider::types, provider::grammar, provider::prompt, session, tools, error
 provider::prompt -> session, tools
@@ -461,13 +468,15 @@ Each item is a gap between the design above and the code. Items are grouped by a
   so a symlink changed in between goes unseen. `confine_new` checks ancestors with `Path::exists`, which follows symlinks, so a
   dangling symlink is skipped.
 - **Writes are not atomic.** `create_file` creates the file before writing it, and `edit_file` rewrites the file in place. A failure in
-  between leaves a partial file. Both should write a temporary file and rename it. `/save` and autosave already do.
-- **Session files are not shown as untrusted.** `/load` commits a file's messages as history with no mark that the file came from disk.
-- **Autosave files accumulate.** Each run that completes a turn leaves a session file, and nothing removes them.
-- **Autosave replaces its own file without checking.** Two runs that start with the same input in the same second overwrite each
+  between leaves a partial file. Both should write a temporary file and rename it. A session write already does one transaction.
+- **Stored sessions are not shown as untrusted.** `/load` commits a session's messages as history with no mark that they came from disk.
+- **Autosave sessions accumulate.** Each run that completes a turn leaves a session, and nothing removes them.
+- **Autosave replaces its own session without checking.** Two runs that start with the same input in the same second overwrite each
   other silently. `/save` refuses a taken name; autosave does not check.
-- **Autosave keeps only the latest history.** Each completed turn rewrites the file with the whole history, so compaction and a dropped
-  turn remove earlier turns from disk too. The file is a snapshot, not a log.
+- **Autosave keeps only the latest history.** Each completed turn rewrites the session's messages with the whole history, so compaction
+  and a dropped turn remove earlier turns from disk too. The session is a snapshot, not a log.
+- **An imported session file stays on disk**, so the folder holds the old history beside the database, and a file whose name matches a
+  stored session is skipped without a report. Nothing says a file was skipped or unreadable.
 - **A failed autosave is reported once per turn and nothing else.** The turn stays committed, and the next completed turn writes the
   whole history again.
 
@@ -568,9 +577,9 @@ Trust boundaries:
   model's behaviour in every later session, since the file is read at each session start and sent with every request.
 - **Notes** are text the model writes (after approval) or the user writes. The index and `read_note` results put their text before the model
   in later sessions, so a note is a persistence path for injected instructions.
-- **Session files** are JSON histories under `sessions/`. An approved write can create or change one, so the model can write a session the user
-  later loads. `/load` commits its messages as history, so a session file is a persistence path for injected instructions and forged tool
-  results.
+- **Stored sessions** are rows of `sessions/sessions.db`. An approved write can change the database file, and a `sessions/NAME.json` file
+  left for import is read at launch, so the model can write a session the user later loads. `/load` commits its messages as history, so a
+  stored session is a persistence path for injected instructions and forged tool results.
 - **Profile files** are untrusted text, and they are command files too. They sit in `profiles/`, which the file tools guard only for direct
   writes, so an approved command can change them. Their text reaches the model verbatim, and their `notes:` line decides which notes the
   model sees. Their `hook` lines run with the user's full permissions and no prompt, and their output goes to the model (except shutdown's).
@@ -632,11 +641,11 @@ Controls:
 | Note names restricted to letters, digits, `-`, `_` | Met. A name cannot leave the notes folder. A symlink named `notes` is still followed (Open Problems). |
 | Note writes approved like other writes, including the user's own note commands | Met. `/note create` and `/note delete` go through the runner. |
 | Session writes approved like other writes | Met. `/save` asks for approval, and refuses a name that is taken. It does not go through `WorkspaceTools`. |
-| Session files checked before they are loaded | Met. `/load` checks each turn before it replaces the history. |
-| Session names restricted to letters, digits, `-`, `_` | Met. A name cannot leave the sessions folder. |
+| Stored sessions checked before they are loaded | Met. `/load` checks each turn before it replaces the history. |
+| Session names restricted to letters, digits, `-`, `_` | Met. A name is a column value, never a path, and names `load` refuses are not listed. |
 | Writes to `AGENTS.md` shown as such | Missing. The approval text reads like any other write, and no warning says the file shapes later sessions. |
 | Data exposure (directory listings sent to the endpoint) | Accepted. History reaches disk unredacted through `/save` and autosave, including tool results and command output. |
-| Autosave writes without approval | Accepted by design, as the one exception to Write. It writes only `sessions/NAME.json`, and does not check for an existing file of that name (Open Problems). |
+| Autosave writes without approval | Accepted by design, as the one exception to Write. It writes only a row of `sessions/sessions.db`, under a name chosen from the first input and the time (Open Problems). |
 | Default model changed only by a successful switch | Partly met. The save follows a successful switch, and the switch itself asks no approval (Open Problems). |
 | Default model file protected from model writes | Missing. The file tools do not guard `model.txt` (Open Problems). |
 | Model switch checked against the server's list and context size | Met. A name is accepted only when the server lists it with a context size, and the two change together. |
@@ -676,7 +685,8 @@ Obvious concerns only; profile before optimizing.
 - A foreground command blocks the REPL for up to its 30-second wait. Background tasks have no count limit, and each keeps up to 100 KB of
   output, so many long-running tasks use memory in proportion.
 - Each request builds a new `ureq` request. One shared agent would reuse connections.
-- `/save` and `/load` encode and decode the whole history as pretty-printed JSON in one string, and `/load` reads all of it before the turn check.
+- `/save` and `/load` read and write the whole history one row per message to `sessions/sessions.db`, and `/load` reads all of it before
+  the turn check. Each command opens and closes its own connection, and the schema is re-run per open.
 - Before-turn lines run before every chat turn, so each turn waits for their sum before its request, and their output is resent with every later
   request. A selected profile's before-turn and after-turn hooks add to these waits.
 - After-turn lines run after every chat turn, and a failing line can cause up to `FOLLOW_UPS` more turns, each with its own before-turn run and request.

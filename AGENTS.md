@@ -32,6 +32,7 @@ Things that are not obvious from a single file:
 - **The chat template accepts one system message, at the start.** `provider/prompt.rs` builds the tool catalogue (every tool, enabled or not). `wire_messages` joins it into the first system message in each request only, so the history never changes when tools are toggled.
 - **Changes that must reach the model travel in user messages.** The tool note (`[Tools enabled: ...]`) and a selected profile's text are prepended to the next user message when history does not already carry them. `prompt::is_announced` and `profile::carried` check the history, so compaction that removes them causes them to be sent again. Neither is stored in state.
 - **Profiles** are `profiles/NAME.txt` under the working directory. An optional first line `tools: a, b` sets the enabled tools when the profile is selected; without it every tool is enabled. Names are validated against letters, digits, `-` and `_`.
+- **Sessions** live in `sessions/sessions.db` (SQLite, via `rusqlite`): a `sessions` row per session and a `messages` row per message, ordered by `position`. `saved_sessions.rs` owns every read and write. `sessions/NAME.json` files from the old format are imported at launch by `saved_sessions::import` and left in place.
 - **Reply cap.** Every request sets `max_tokens` (8192). Without it a reply whose thinking never closes runs indefinitely.
 - **Commits** end with the `Co-Authored-By: Claude Haiku 5.5 <noreply@anthropic.com>` line.
 
