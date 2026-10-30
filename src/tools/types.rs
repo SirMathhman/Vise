@@ -1,6 +1,11 @@
 use std::collections::HashMap;
 use std::fmt;
 
+/// The first line of `text`, trimmed, so a multi-line command reads as one line in the display.
+fn first_line(text: &str) -> String {
+    text.lines().next().unwrap_or_default().trim().to_string()
+}
+
 #[derive(Debug)]
 pub struct ToolCall {
     pub id: String,
@@ -155,6 +160,26 @@ impl Invocation {
             | Self::UpdateNote { name, .. }
             | Self::DeleteNote { name } => Some(name),
             _ => None,
+        }
+    }
+
+    /// What this invocation acts on, as one short line: the path, the command's first line, or the note's name. `None`
+    /// when the arguments name nothing the user would recognize, such as listing notes of every category.
+    pub fn target(&self) -> Option<String> {
+        match self {
+            Self::ListDirectory { path, .. }
+            | Self::ReadFile { path, .. }
+            | Self::CreateFile { path, .. }
+            | Self::CreateDirectory { path }
+            | Self::EditFile { path, .. } => Some(path.clone()),
+            Self::RunPowerShell { command, .. } => Some(first_line(command)),
+            Self::ReadBackground { id } | Self::KillBackground { id } => Some(format!("task {id}")),
+            Self::ListNotes { category } => Some(category.clone()).filter(|name| !name.is_empty()),
+            Self::ReadNote { name }
+            | Self::CreateNote { name, .. }
+            | Self::UpdateNote { name, .. }
+            | Self::DeleteNote { name } => Some(name.clone()),
+            Self::RunSubagent { profile, .. } => Some(profile.clone()),
         }
     }
 

@@ -10,6 +10,8 @@ pub enum Event {
     Thinking(usize),
     /// The next piece of the answer text.
     Answer(String),
+    /// The reply asked for a tool run: its name, and what it acts on, when the arguments name one.
+    Tool { name: String, target: Option<String> },
     /// The reply has been fully received.
     Finished,
 }

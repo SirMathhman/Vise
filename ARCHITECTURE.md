@@ -77,7 +77,7 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 - **Background task**: a PowerShell command that keeps running after its tool call returns. It gets an id, its output
   is collected while it runs, and the model reads it with `read_background` and stops it with `kill_background`.
 - **Event**: a progress report from the provider during one request: prompt-processing progress, a running
-  thinking-token count, a piece of answer text, or `Finished`. Events are for display only.
+  thinking-token count, a piece of answer text, a tool call about to run, or `Finished`. Events are for display only.
 - **Wire type**: a struct matching the JSON shape of a provider request or response. Wire types never leave
   `provider::llama_cpp`.
 
@@ -126,6 +126,12 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
   never shown as text.
 - Thinking is shown as a running token count only. Its text is never shown.
 - Prompt progress and thinking share one status line, rewritten in place. Answer text or the end of the request ends it.
+- A tool call is shown as a line of its own, before it runs: `tool: NAME ARGUMENT`, where the argument is what the call
+  acts on (`Invocation::target`), omitted when the arguments name nothing the user would recognize. The line is permanent,
+  so the transcript shows which tools ran. The result is not shown.
+- The call line is drawn before the approval prompt, so a write's prompt follows the line that explains it. The provider
+  reports the call, because the tool loop is the only place a call is decoded; `tools::call` gives the argument its
+  `target`. A call whose arguments do not bind reports the name alone, and the runner then refuses it.
 - Overflow handling:
   - A request the server rejects because it exceeds the context (`exceed_context_size_error`) is `ContextFull`. So is a
     tool round whose reply reports a prompt at 80% of the context size; that round's tools are not run.
@@ -288,8 +294,8 @@ src/
   after_turn.rs      runs `after-turn.txt` after each committed chat turn, and returns the failing ones as the next message
   shutdown.rs        runs `shutdown.txt`, then the selected profile's shutdown hooks, after the REPL ends
   file_commands.rs   runs the lines of one command file in order through the tool runner, printing each line and its status
-  render.rs          displays provider Events: one status line, answer text, and the end of each request. Owns the output
-                     the answer and the approval prompt share.
+  render.rs          displays provider Events: one status line, answer text, a `tool:` line per call, and the end of each
+                     request. Owns the output the answer and the approval prompt share.
   environment.rs     gathers host facts as plain data: the working directory, and the standing instructions from `AGENTS.md`
   interrupt.rs       Ctrl+C: the installed handler, `work`, which marks a request, a tool round, or the startup lines
                      as stoppable and reports `Interrupted` once a press is recorded, and `tracked`, the same marking
@@ -374,8 +380,9 @@ tools -> notes; no provider, session, HTTP, or serde
   `PartialTurn` until `repl` records it, which applies the same check before committing.
 - `Conversation` is the only holder of committed messages. `repl` reads them through `messages()`, `prompt_tokens()`, and
   `context_size` on the provider.
-- Tool output goes to the model as text. `render` prints answer text as it streams, prompt and thinking progress, and the end of
-  each request. `repl` prints notices and errors. Approval prompts share the same output as `render`.
+- Tool output goes to the model as text. `render` prints answer text as it streams, prompt and thinking progress, one
+  `tool:` line per call, and the end of each request. `repl` prints notices and errors. Approval prompts share the same
+  output as `render`.
 - `interrupt` owns the Ctrl+C handler and the flag it sets. Nothing else installs a handler or calls `exit` for an interrupt;
   `repl`, `turn`, the provider's request loop, and `main`'s startup only run their work inside `interrupt::work` (or
   `tracked`, where the work's own result carries what a press must not throw away) and check `asked` where they can stop.

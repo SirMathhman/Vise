@@ -323,7 +323,10 @@ impl Provider for LlamaCpp {
             // A press during the tool's run stops the turn after the tool finishes, before another request. The round
             // is kept either way: the tool ran, so its result belongs in the history.
             let mut result = None;
-            let pressed = interrupt::work(|| result = Some(run_call(&call, runner, approve, subagent, &mut wrote)));
+            let pressed = interrupt::work(|| {
+                report_call(&call, on_event);
+                result = Some(run_call(&call, runner, approve, subagent, &mut wrote));
+            });
             let call_id = call.id.clone();
             new.push(Message::Assistant { content: String::new(), tool_calls: vec![call] });
             if let Some(result) = result {
@@ -378,6 +381,14 @@ fn wire_messages<'a>(
         wire.insert(0, WireMessage::try_from(&Message::System(catalogue.to_string()))?);
     }
     Ok(wire)
+}
+
+/// Reports a call the model made, so the user can see which tool ran and on what. The arguments are decoded through
+/// `tools::call`, the same way the runner decodes them; a call that does not bind reports its name alone. Approving a
+/// write is the runner's job, and this happens before it, so the line is drawn before any approval prompt.
+fn report_call(call: &ToolCall, on_event: &mut dyn FnMut(Event)) {
+    let target = tools::call(&call.name, call.arguments.clone()).ok().and_then(|invocation| invocation.target());
+    on_event(Event::Tool { name: call.name.clone(), target });
 }
 
 /// Runs one call the model made. The runner refuses a tool that is not enabled. A subagent is run by `subagent`

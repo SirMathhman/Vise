@@ -26,6 +26,14 @@ impl<'a, W: Write> Render<'a, W> {
                 self.streamed.set(true);
                 self.put(&text);
             }
+            // A call is kept as a line of its own, so the transcript shows which tools ran after the turn ends.
+            Event::Tool { name, target } => {
+                self.end_status();
+                self.line(&match target {
+                    Some(target) => format!("tool: {name} {target}"),
+                    None => format!("tool: {name}"),
+                });
+            }
             Event::Finished => self.end_status(),
         }
     }
@@ -58,6 +66,16 @@ impl<'a, W: Write> Render<'a, W> {
         }
     }
 
+    /// Writes one complete line that stays in the transcript, on a line of its own.
+    fn line(&self, text: &str) {
+        self.end_status();
+        if self.line_open.get() {
+            self.newline();
+        }
+        self.put(text);
+        self.newline();
+    }
+
     fn put(&self, text: &str) {
         let mut out = self.out.borrow_mut();
         let _ = write!(out, "{text}");
@@ -83,6 +101,22 @@ mod tests {
         render.on_event(Event::Answer("hi".into()));
         drop(render);
         assert!(String::from_utf8(buffer).unwrap().ends_with("\nhi"));
+    }
+
+    #[test]
+    fn a_tool_call_keeps_a_line_of_its_own() {
+        let mut buffer = Vec::new();
+        let render = Render::new(&mut buffer);
+        render.on_event(Event::Prompt { processed: 1, total: 2 });
+        render.on_event(Event::Tool { name: "read_file".into(), target: Some("src/repl.rs".into()) });
+        render.on_event(Event::Thinking(3));
+        render.on_event(Event::Tool { name: "list_notes".into(), target: None });
+        render.on_event(Event::Answer("done".into()));
+        drop(render);
+        let text = String::from_utf8(buffer).unwrap();
+        assert!(text.contains("\ntool: read_file src/repl.rs\n"), "{text:?}");
+        assert!(text.contains("\ntool: list_notes\n"), "{text:?}");
+        assert!(text.ends_with("\ndone"), "{text:?}");
     }
 
     #[test]
