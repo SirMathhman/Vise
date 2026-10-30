@@ -51,8 +51,9 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
   line, then the content. Notes persist across sessions.
 - **Notes index**: the list of every allowed note's name, category, and summary, or `[Notes]` followed by `(none)`.
 - **Session**: the history after the system context, saved by `/save` as a row in `sessions/sessions.db` and replaced
-  by `/load`. Autosave writes the history after each completed turn to a session named from the run's first input
-  and the time, so each run has its own session.
+  by `/load`. At launch the run resumes the session with the latest `saved_at` that holds messages (history and request log
+  read back) and autosave goes on writing to it. `/new` and a `--new` flag start an empty session instead; autosave then
+  names it from the run's first input and the time. After `/load` the loaded history gets a new autosave session.
 - **Request log**: the `requests` rows of one session, one per request the session's turns made, kept for auditing what a
   prompt cost. It is not part of the history: it outlives the turns it was made for, and it is never rewritten. It belongs
   to the session that was writing when each request was sent.
@@ -572,11 +573,13 @@ Each item is a gap between the design above and the code. Items are grouped by a
   other silently. `/save` refuses a taken name; autosave does not check.
 - **Autosave keeps only the latest history.** Each completed turn rewrites the session's messages with the whole history, so compaction
   and a dropped turn remove earlier turns from disk too. The session is a snapshot, not a log.
-- **A session's request log can be filled with another session's requests.** `replace_history` keeps `Conversation::requests`, and
-  `store::replace` decides what is unrecorded by counting the rows already stored and skipping that many from the front of the
-  slice it is given. After `/load`, the next autosave writes the previous history's requests into the loaded session, starting
-  from a count of rows that says nothing about which requests are in the slice. The store must be told the session the rows
-  belong to, and the conversation must start a new log whenever it takes on another history.
+- **Resuming is the default and cannot be declined.** Every launch continues the latest session; there is no `/new` or `--new`, so
+  starting clean means moving `sessions.db`. A resumed history that already fills the context fails the first request.
+- **Two runs can resume the same session.** Both append to one name and autosave replaces the whole history, so the later write wins
+  silently; only the append-only request-log check can refuse it, and only when the other run has logged fewer requests. A run
+  must claim its session (a lock row with the process id, or a compare-and-swap on a stored revision) and fall back to a new
+  session when it is claimed.
+- **"Latest" is `saved_at`, not use.** `/save NAME` of an old name, or an import, can move which session the next launch resumes.
 - **The summary request shares round 1 with the turn's first round.** `summarize` records `round: 1` with `kind: "summary"`, so a
   turn that compacted before its request has two rows at round 1, and a reader summing a turn's prefill counts both. A summary
   is not a round of a turn: it needs numbering of its own, or none.

@@ -16,6 +16,7 @@ pub const HELP: &str = "\
 /note delete NAME     delete a note
 /save NAME            save the conversation as a session in the sessions folder
 /load NAME            replace the conversation with a saved session
+/new                  start an empty conversation, saved as a new session
 /sessions             list the saved sessions";
 
 pub enum Command {
@@ -36,6 +37,8 @@ pub enum Command {
     Save(String),
     Load(String),
     Sessions,
+    /// Empties the conversation; the next turn starts a new session.
+    New,
     /// Lists the models the server offers, marking the one in use.
     Models,
     /// Makes the named model the one in use, if the server offers it.
@@ -101,6 +104,7 @@ pub fn command(line: &str) -> Option<Command> {
         "/help" => Some(Command::Help),
         "/compact" => Some(Command::Compact),
         "/sessions" => Some(Command::Sessions),
+        "/new" => Some(Command::New),
         _ => None,
     }
 }
@@ -113,6 +117,12 @@ fn whole_word<'a>(line: &'a str, command: &str) -> Option<&'a str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn new_command_takes_no_arguments() {
+        assert!(matches!(command("/new"), Some(Command::New)));
+        assert!(command("/new x").is_none());
+    }
 
     #[test]
     fn model_command_takes_an_optional_name() {

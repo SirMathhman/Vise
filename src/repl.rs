@@ -206,6 +206,10 @@ pub fn run(
                 },
                 Err(err) => writeln!(errors, "error: {err}")?,
             },
+            Some(Command::New) => {
+                conversation.replace_history(Vec::new());
+                writeln!(output, "started a new conversation")?;
+            }
             Some(Command::Compact) => match compact(provider, conversation) {
                 Ok(Compaction::Summarized) => writeln!(output, "conversation compacted")?,
                 Ok(Compaction::Dropped(removed)) => writeln!(

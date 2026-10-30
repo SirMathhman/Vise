@@ -64,7 +64,9 @@ fn main() {
             let _ = writeln!(errors, "error: cannot import the session files: {err}");
         }
     }
-    match saved_sessions::latest(&sessions).and_then(|name| match name {
+    // `--new` starts an empty conversation instead of resuming the last session.
+    let resuming = !std::env::args().skip(1).any(|arg| arg == "--new");
+    match resuming.then(|| saved_sessions::latest(&sessions)).unwrap_or(Ok(None)).and_then(|name| match name {
         Some(name) => saved_sessions::resume(&sessions, &name).map(|(history, requests)| Some((name, history, requests))),
         None => Ok(None),
     }) {
