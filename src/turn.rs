@@ -4,6 +4,7 @@
 use crate::before_turn;
 use crate::error::ProviderError;
 use crate::file_commands::run_lines;
+use crate::frontend::Frontend;
 use crate::interrupt;
 use crate::notes;
 use crate::profile;
@@ -11,7 +12,6 @@ use crate::provider::types::{Event, Provider, SubagentRunner};
 use crate::session::{Conversation, HookLines, Message, PartialTurn, Turn};
 use crate::tools::specs;
 use crate::tools::types::{ToolError, ToolRunner};
-use std::io::{self, Write};
 
 /// Makes the profile's whitelist the enabled set: exactly the listed tools. A profile without a whitelist
 /// enables every tool. Returns one line for each tool whose state changed.
@@ -34,21 +34,14 @@ pub fn apply_whitelist(tools: &dyn ToolRunner, whitelist: Option<&[String]>) -> 
 
 /// Makes a profile's hooks the active ones. Its startup-type lines run now, and their output goes to the model with
 /// the next message.
-pub fn select_hooks(
-    hooks: HookLines,
-    conversation: &mut Conversation,
-    tools: &dyn ToolRunner,
-    output: &mut impl Write,
-    errors: &mut impl Write,
-) -> io::Result<()> {
-    let results = run_lines(&hooks.startup, "profile startup", tools, output, errors)?;
+pub fn select_hooks(hooks: HookLines, conversation: &mut Conversation, tools: &dyn ToolRunner, ui: &mut dyn Frontend) {
+    let results = run_lines(&hooks.startup, "profile startup", tools, ui);
     let blocks: Vec<String> =
         results.iter().map(|(command, result)| format!("Startup command: {command}\n{result}")).collect();
     conversation.set_profile_hooks(hooks);
     if !blocks.is_empty() {
         conversation.append_startup(blocks.join("\n\n"));
     }
-    Ok(())
 }
 
 /// The global lines of a hook type, followed by the selected profile's lines of that type.
@@ -57,17 +50,16 @@ pub fn hook_lines(global: &[String], profile: &[String]) -> Vec<String> {
 }
 
 /// The message a turn sends: the before-turn output, the startup text, the profile text, and the notes index, each
-/// added where the history does not already carry it. Errors are reported on `errors`.
+/// added where the history does not already carry it. Errors are reported through `ui`.
 pub fn prepare_message(
     line: String,
     profile: Option<&str>,
     conversation: &Conversation,
     tools: &dyn ToolRunner,
-    output: &mut impl Write,
-    errors: &mut impl Write,
-) -> io::Result<String> {
+    ui: &mut dyn Frontend,
+) -> String {
     let before_lines = hook_lines(conversation.before_turn(), &conversation.profile_hooks().before_turn);
-    let before = before_turn::run(&before_lines, tools, output, errors)?;
+    let before = before_turn::run(&before_lines, tools, ui);
     let line = match before {
         Some(text) => format!("{text}\n\n{line}"),
         None => line,
@@ -80,18 +72,18 @@ pub fn prepare_message(
         Some(text) if !profile::carried(conversation.messages(), text) => format!("{text}\n\n{line}"),
         _ => line,
     };
-    Ok(match notes::index(&tools.notes_folder(), tools.allowed_notes().as_deref()) {
+    match notes::index(&tools.notes_folder(), tools.allowed_notes().as_deref()) {
         Ok((index, skipped)) => {
             for line in skipped {
-                writeln!(errors, "error: {line}")?;
+                ui.error(line);
             }
             if notes::needed(conversation.messages(), &index) { format!("{index}\n\n{message}") } else { message }
         }
         Err(err) => {
-            writeln!(errors, "error: {err}")?;
+            ui.error(err);
             message
         }
-    })
+    }
 }
 
 /// How the history was shrunk: replaced by a summary, or cut by dropping the oldest turn.

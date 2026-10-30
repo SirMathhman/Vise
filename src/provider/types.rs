@@ -3,6 +3,7 @@ use crate::session::{Message, RequestRecord, Turn};
 use crate::tools::types::{ToolError, ToolRunner};
 
 /// Progress reported while a reply is generated.
+#[derive(Debug, Clone, PartialEq)]
 pub enum Event {
     /// Prompt processing has reached `processed` of the prompt's `total` tokens.
     Prompt { processed: u64, total: u64 },

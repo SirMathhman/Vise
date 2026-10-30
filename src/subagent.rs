@@ -4,13 +4,13 @@
 use crate::after_turn;
 use crate::environment;
 use crate::error::ProviderError;
+use crate::frontend::Sink;
 use crate::profile::{self, Profile};
 use crate::provider::types::{Event, Provider};
 use crate::turn;
 use crate::session::{Conversation, HookLines};
 use crate::tools::specs;
 use crate::tools::types::{ToolError, ToolRunner};
-use std::io;
 
 /// What a subagent's turns need from its parent: the session's before-turn and after-turn lines, the approval function
 /// for its writes, and where its tool lines are reported.
@@ -71,8 +71,8 @@ fn session(
     conversation.set_before_turn(parent.hooks.0.to_vec());
     conversation.set_after_turn(parent.hooks.1.to_vec());
     let marked = profile::marked(profile_name, &loaded.instructions);
-    let (mut out, mut err) = (Vec::new(), Vec::new());
-    turn::select_hooks(loaded.hooks, &mut conversation, tools, &mut out, &mut err).map_err(io_error)?;
+    // The messages of the subagent's own setup are not shown: only its tool lines reach the parent's display.
+    turn::select_hooks(loaded.hooks, &mut conversation, tools, &mut Sink);
 
     let mut no_subagent = |_: &str, _: &str, _: &mut dyn FnMut(&str) -> bool| -> Result<String, ToolError> {
         Err(ToolError::Failed("a subagent cannot start a subagent".into()))
@@ -81,8 +81,7 @@ fn session(
     let mut follow_ups = 0;
     let mut reply = String::new();
     while let Some(text) = pending.take() {
-        let message = turn::prepare_message(text, Some(&marked), &conversation, tools, &mut out, &mut err)
-            .map_err(io_error)?;
+        let message = turn::prepare_message(text, Some(&marked), &conversation, tools, &mut Sink);
         let (turn, _) = turn::run_turn(
             provider,
             &mut conversation,
@@ -105,7 +104,7 @@ fn session(
         reply = turn.reply().to_string();
         conversation.commit(turn);
         let after = turn::hook_lines(conversation.after_turn(), &conversation.profile_hooks().after_turn);
-        pending = after_turn::run(&after, tools, &mut out, &mut err).map_err(io_error)?;
+        pending = after_turn::run(&after, tools, &mut Sink);
         if pending.is_some() {
             if follow_ups == after_turn::FOLLOW_UPS {
                 pending = None;
@@ -119,10 +118,6 @@ fn session(
 
 /// What a stopped subagent reports to its parent. The parent's turn is stopped too, so the text only has to be true.
 const YIELD: &str = "the subagent was interrupted";
-
-fn io_error(err: io::Error) -> ToolError {
-    ToolError::Failed(format!("cannot write the subagent's output: {err}"))
-}
 
 #[cfg(test)]
 mod tests {
@@ -254,7 +249,7 @@ category: profile
         with_profile("vise-subagent-hooks", "hook before-turn: Write-Output profile-hook", "be brief", |cwd| {
             let tools = WorkspaceTools::new(cwd.to_path_buf());
             // The profile exists at launch, as it would when the user wrote it.
-            crate::profile::confirm_existing(&tools, &mut std::io::sink());
+            crate::profile::confirm_existing(&tools, &mut Sink);
             let provider = Recorder::new(false);
             let global = vec!["Write-Output global-hook".to_string()];
             let result = run(

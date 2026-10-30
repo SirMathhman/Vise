@@ -3,34 +3,29 @@
 //! result is sent to the model as the next message, up to `FOLLOW_UPS` times.
 
 use crate::file_commands::{read_lines, run_lines};
+use crate::frontend::Frontend;
 use crate::tools::runner::AFTER_TURN_FILE;
 use crate::tools::types::ToolRunner;
-use std::io::{self, Write};
 use std::path::Path;
 
 /// How many follow-up turns a failing after-turn command may cause in a row.
 pub const FOLLOW_UPS: usize = 5;
 
 /// Reads the after-turn lines at launch. Returns `None` when there is no after-turn file.
-pub fn load(cwd: &Path, errors: &mut impl Write) -> io::Result<Option<Vec<String>>> {
-    read_lines(cwd, AFTER_TURN_FILE, errors)
+pub fn load(cwd: &Path, ui: &mut dyn Frontend) -> Option<Vec<String>> {
+    read_lines(cwd, AFTER_TURN_FILE, ui)
 }
 
 /// Runs the after-turn lines in order. Returns the text of the failing ones, to send to the model, or `None` when
 /// every line exits with code 0.
-pub fn run(
-    commands: &[String],
-    tools: &dyn ToolRunner,
-    output: &mut impl Write,
-    errors: &mut impl Write,
-) -> io::Result<Option<String>> {
-    let results = run_lines(commands, "after-turn", tools, output, errors)?;
+pub fn run(commands: &[String], tools: &dyn ToolRunner, ui: &mut dyn Frontend) -> Option<String> {
+    let results = run_lines(commands, "after-turn", tools, ui);
     let failures: Vec<String> = results
         .iter()
         .filter(|(_, result)| failed(result))
         .map(|(command, result)| format!("After-turn command failed: {command}\n{result}"))
         .collect();
-    Ok((!failures.is_empty()).then(|| failures.join("\n\n")))
+    (!failures.is_empty()).then(|| failures.join("\n\n"))
 }
 
 /// Whether a result reports a non-zero exit code. The first line of a result is its status. A command still running

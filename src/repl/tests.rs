@@ -1,6 +1,12 @@
 use super::*;
+use crate::after_turn;
+use crate::engine::Engine;
+use crate::frontend::Sink;
 use crate::provider::types::SubagentRunner;
+use crate::saved_sessions;
 use crate::session::HookLines;
+use crate::terminal::TerminalFrontend;
+use crate::turn::select_hooks;
 use crate::environment::Environment;
 use crate::error::ProviderError;
 use crate::session::{Message, PartialTurn, Turn};
@@ -188,8 +194,11 @@ fn interrupted_turn(stopped: PartialTurn) -> Vec<Message> {
     let mut input = "".as_bytes();
     let mut output = Vec::new();
     let mut errors = Vec::new();
-    let mut streams = Streams { input: &mut input, output: &mut output, errors: &mut errors };
-    interrupted("hi".into(), stopped, &mut conversation, &sessions_folder(), &mut streams).expect("the turn is recorded");
+    let (fake, folder) = (Fake::new(Behavior::Reply), sessions_folder());
+    {
+        let mut ui = TerminalFrontend::new(&mut input, &mut output, &mut errors);
+        Engine::new(&fake, &NoTools, &mut conversation, &folder).interrupted("hi".into(), stopped, &mut ui);
+    }
     let messages = conversation.messages();
     assert_eq!(messages[0].role(), "system");
     assert_eq!(messages[1].content(), "hi", "the prepared line is the turn's first message");
@@ -486,7 +495,7 @@ fn profile_before_turn_hook_runs_after_the_global_lines() {
 fn selecting_hooks_runs_the_startup_hook_into_the_next_message() {
     let mut conversation = conversation();
     let hooks = HookLines { startup: vec!["Write-Output x".into()], ..HookLines::default() };
-    select_hooks(hooks, &mut conversation, &NoTools, &mut Vec::new(), &mut Vec::new()).unwrap();
+    select_hooks(hooks, &mut conversation, &NoTools, &mut Sink);
     let startup = conversation.startup().expect("the startup output is held");
     assert!(startup.starts_with("Startup command: Write-Output x"));
 }

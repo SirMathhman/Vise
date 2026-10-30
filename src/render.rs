@@ -4,18 +4,19 @@
 use crate::provider::types::Event;
 use crate::style::{self, Color};
 use std::cell::{Cell, RefCell, RefMut};
-use std::io::Write;
+use std::io::{self, Write};
 
-pub struct Render<'a, W: Write> {
-    out: RefCell<&'a mut W>,
+/// Draws the events of a reply on `W`. It owns the writer, so a frontend can keep one for the whole run; `W` can be a
+/// borrowed writer, since `&mut` of a writer is a writer.
+pub struct Render<W: Write> {
+    out: RefCell<W>,
     status_open: Cell<bool>,
     line_open: Cell<bool>,
-    streamed: Cell<bool>,
 }
 
-impl<'a, W: Write> Render<'a, W> {
-    pub fn new(output: &'a mut W) -> Self {
-        Self { out: RefCell::new(output), status_open: Cell::new(false), line_open: Cell::new(false), streamed: Cell::new(false) }
+impl<W: Write> Render<W> {
+    pub fn new(output: W) -> Self {
+        Self { out: RefCell::new(output), status_open: Cell::new(false), line_open: Cell::new(false) }
     }
 
     pub fn on_event(&self, event: Event) {
@@ -24,7 +25,6 @@ impl<'a, W: Write> Render<'a, W> {
             Event::Thinking(count) => self.status(&format!("thinking: {count} tokens")),
             Event::Answer(text) => {
                 self.end_status();
-                self.streamed.set(true);
                 self.put(&style::paint(Color::Green, &text));
             }
             // A call is kept as a line of its own, so the transcript shows which tools ran after the turn ends.
@@ -54,13 +54,20 @@ impl<'a, W: Write> Render<'a, W> {
         }
     }
 
-    /// Whether answer text was drawn, so the reply need not be printed again.
-    pub fn streamed(&self) -> bool {
-        self.streamed.get()
+    /// Writes a plain line for the user, after closing whatever line or status is open. Unlike a tool line, the text is
+    /// shown as it is.
+    pub fn notice(&self, text: &str) -> io::Result<()> {
+        self.end_status();
+        if self.line_open.get() {
+            self.newline();
+        }
+        let mut out = self.out.borrow_mut();
+        writeln!(out, "{text}")?;
+        out.flush()
     }
 
     /// The shared output, for the approval prompts.
-    pub fn output(&self) -> RefMut<'_, &'a mut W> {
+    pub fn output(&self) -> RefMut<'_, W> {
         self.out.borrow_mut()
     }
 

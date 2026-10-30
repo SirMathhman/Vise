@@ -2,9 +2,11 @@ mod after_turn;
 mod before_turn;
 mod commands;
 mod default_model;
+mod engine;
 mod environment;
 mod error;
 mod file_commands;
+mod frontend;
 mod interrupt;
 mod notes;
 mod profile;
@@ -17,13 +19,15 @@ mod subagent;
 mod shutdown;
 mod startup;
 mod style;
+mod terminal;
 mod tools;
 mod turn;
 
+use engine::Engine;
 use provider::llama_cpp::LlamaCpp;
-use provider::types::Provider;
 use session::Conversation;
 use std::io::{self, IsTerminal, Write};
+use terminal::TerminalFrontend;
 use tools::runner::WorkspaceTools;
 
 /// Writes a fatal message to stderr and exits with status 1. If stderr is closed the message is lost,
@@ -57,83 +61,17 @@ fn main() {
     let stdout = io::stdout();
     let mut output = stdout.lock();
     let mut errors = style::Errors::new(io::stderr(), style::allowed(io::stderr().is_terminal()));
-    // The profiles that exist now are the user's: a subagent may run their hook lines, and not those of a profile written
-    // after this point unless the user selects it.
-    profile::confirm_existing(&tools, &mut errors);
-    match saved_sessions::import(&sessions) {
-        Ok(0) => {}
-        Ok(imported) => {
-            let _ = writeln!(errors, "imported {imported} session files into {}", sessions.join(saved_sessions::DATABASE).display());
-        }
-        Err(err) => {
-            let _ = writeln!(errors, "error: cannot import the session files: {err}");
-        }
-    }
-    // `--new` starts an empty conversation instead of resuming the last session.
-    let resuming = !std::env::args().skip(1).any(|arg| arg == "--new");
-    match resuming.then(|| saved_sessions::latest(&sessions)).unwrap_or(Ok(None)).and_then(|name| match name {
-        Some(name) => saved_sessions::resume(&sessions, &name).map(|(history, requests)| Some((name, history, requests))),
-        None => Ok(None),
-    }) {
-        Ok(Some((name, history, requests))) => {
-            conversation.resume(name.clone(), history, requests);
-            let _ = writeln!(errors, "resumed session {name}");
-        }
-        Ok(None) => {}
-        Err(err) => {
-            let _ = writeln!(errors, "error: the last session is not resumed: {err}");
-        }
-    }
     let mut input = io::stdin().lock();
-    match default_model::load() {
-        Ok(Some(name)) => {
-            if let Err(err) = provider.set_model(&name) {
-                let _ = writeln!(errors, "error: the saved default model is not used: {err}");
-            }
-        }
-        Ok(None) => {}
-        Err(err) => {
-            let _ = writeln!(errors, "error: cannot read model.txt: {err}");
-        }
+    // `--new` starts an empty conversation instead of resuming the last session.
+    let resume = !std::env::args().skip(1).any(|arg| arg == "--new");
+    let mut engine = Engine::new(&provider, &tools, &mut conversation, &sessions);
+    {
+        let mut ui = TerminalFrontend::new(&mut input, &mut output, &mut errors);
+        engine.start(&env.cwd, resume, &mut ui);
     }
-    match before_turn::load(&env.cwd, &mut errors) {
-        Ok(Some(commands)) => conversation.set_before_turn(commands),
-        Ok(None) => {}
-        Err(err) => {
-            let _ = writeln!(errors, "error: {err}");
-        }
-    }
-    match after_turn::load(&env.cwd, &mut errors) {
-        Ok(Some(commands)) => conversation.set_after_turn(commands),
-        Ok(None) => {}
-        Err(err) => {
-            let _ = writeln!(errors, "error: {err}");
-        }
-    }
-    match interrupt::work(|| startup::run(&env.cwd, &tools, &mut output, &mut errors)) {
-        Ok(Ok(Some(text))) => conversation.set_startup(text),
-        Ok(Ok(None)) => {}
-        Ok(Err(err)) => {
-            let _ = writeln!(errors, "error: {err}");
-        }
-        Err(_) => {
-            let _ = writeln!(errors, "the startup commands were stopped");
-        }
-    }
-    if let Err(err) = repl::run(
-        &mut input,
-        &mut output,
-        &mut errors,
-        &provider,
-        &tools,
-        &mut conversation,
-        &sessions,
-    ) {
+    if let Err(err) = repl::run_engine(&mut engine, &mut input, &mut output, &mut errors) {
         let _ = writeln!(errors, "error: {err}");
     }
-    let profile_shutdown = conversation.profile_hooks().shutdown.clone();
-    // The shutdown lines run outside `work`, so a Ctrl+C during them quits at once rather than waiting them out.
-    if let Err(err) = shutdown::run_with_profile(&env.cwd, &profile_shutdown, &tools, &mut output, &mut errors) {
-        let _ = writeln!(errors, "error: {err}");
-    }
+    let mut ui = TerminalFrontend::new(&mut input, &mut output, &mut errors);
+    engine.shutdown(&env.cwd, &mut ui);
 }
