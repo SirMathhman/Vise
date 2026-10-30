@@ -648,7 +648,13 @@ derive `serde`. Today a frontend would still reach around the abstraction in the
   changed and the hook lines that are new or changed), `ProfileSelected`, `SessionSaved`, `SessionLoaded`, `ModelSet`, `Compacted`,
   `OldestTurnDropped`, `Reset`, `NoteCreated` and `NoteDeleted`, and one note is `UiEvent::Note`. What is left as text:
   `resumed session NAME` and `imported N session files` (a `Status`), the startup and hook-line output (`startup: CMD`), `the turn
-  was stopped before it finished`, and every `Error(String)`. `Error` should carry a kind and a subject so a GUI can attach it to
+  was stopped before it finished` (a `Notice`, though it is a state change), and every `Error(String)`. `Change` should be closed
+  over every transition of engine state: a resumed session is `SessionLoaded` with a `resumed` flag, a launch-time default model is
+  `ModelSet`, a stopped turn is `TurnStopped`, and an import is `SessionsImported { count }`. `ModelSet { default_saved: bool }`
+  with a separate `Error` that restates the model name is two events for one fact, and the terminal prints nothing for the `false`
+  case, so a frontend that ignores `Error` loses the failure. The fact should carry the outcome, `default: DefaultSaved::Saved |
+  NotSaved { reason }`, with no second `Error`. A `Change` is emitted only after the state changed (`ProfileApplied` is emitted
+  before the hooks are selected, which can still fail). `Error` should carry a kind and a subject so a GUI can attach it to
   the field that caused it, and the `skipped` note lines should not be errors of the command that listed them. The terminal words
   every list's empty case, including `no models`.
 
