@@ -1,0 +1,9 @@
+[package]
+name = "Vise"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ctrlc = "3.5.2"
+dotenvy = "0.15.7"
+vise-core = { path = "../vise-core" }

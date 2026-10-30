@@ -1,7 +1,7 @@
 //! The live display of a reply. Prompt progress and thinking share one status line, which is overwritten
 //! in place until answer text follows it. The output is shared with the approval prompts, so it is held here.
 
-use crate::provider::types::Event;
+use vise_core::provider::types::Event;
 use crate::style::{self, Color};
 use std::cell::{Cell, RefCell, RefMut};
 use std::io::{self, Write};

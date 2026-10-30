@@ -1,36 +1,19 @@
-mod after_turn;
-mod before_turn;
 mod commands;
-mod default_model;
-mod engine;
-mod environment;
-mod error;
-mod file_commands;
-mod frontend;
 mod interrupt;
-mod notes;
-mod profile;
-mod provider;
 mod render;
 mod repl;
-mod saved_sessions;
-mod session;
-mod subagent;
-mod shutdown;
-mod startup;
-mod stop;
 mod style;
 mod terminal;
-mod tools;
-mod turn;
 
-use engine::Engine;
-use provider::llama_cpp::LlamaCpp;
-use session::Conversation;
-use stop::Stop;
 use std::io::{self, IsTerminal, Write};
 use terminal::TerminalFrontend;
-use tools::runner::WorkspaceTools;
+use vise_core::engine::Engine;
+use vise_core::environment;
+use vise_core::provider::llama_cpp::LlamaCpp;
+use vise_core::saved_sessions;
+use vise_core::session::Conversation;
+use vise_core::stop::Stop;
+use vise_core::tools::runner::WorkspaceTools;
 
 /// Writes a fatal message to stderr and exits with status 1. If stderr is closed the message is lost,
 /// but the exit status still reports the failure.

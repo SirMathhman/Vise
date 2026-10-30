@@ -1,7 +1,7 @@
 //! The terminal frontend: it shows the engine's events on stdout and stderr, draws the live reply with `Render`, and asks
 //! for approvals by reading `y` or `yes` from the same input the lines come from.
 
-use crate::frontend::{Frontend, UiEvent};
+use vise_core::frontend::{Frontend, UiEvent};
 use crate::render::Render;
 use crate::style::{self, Color};
 use std::io::{self, BufRead, Write};

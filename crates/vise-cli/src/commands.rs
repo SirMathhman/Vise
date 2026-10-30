@@ -1,3 +1,7 @@
+//! The terminal's slash commands: the help text, and the parser that turns a typed line into a `Command` for the engine.
+
+use vise_core::command::Command;
+
 pub const HELP: &str = "\
 /compact              summarize the conversation to free up context space
 /context              show the working directory and the tokens used out of the context size
@@ -18,32 +22,6 @@ pub const HELP: &str = "\
 /load NAME            replace the conversation with a saved session
 /new                  start an empty conversation, saved as a new session
 /sessions             list the saved sessions";
-
-pub enum Command {
-    Compact,
-    Exit,
-    Context,
-    Help,
-    Tools,
-    Enable(String),
-    Disable(String),
-    Profiles,
-    Profile(String),
-    /// Lists the notes in a category; an empty category lists all.
-    ListNotes(String),
-    ShowNote(String),
-    CreateNote(String, String),
-    DeleteNote(String),
-    Save(String),
-    Load(String),
-    Sessions,
-    /// Empties the conversation; the next turn starts a new session.
-    New,
-    /// Lists the models the server offers, marking the one in use.
-    Models,
-    /// Makes the named model the one in use, if the server offers it.
-    UseModel(String),
-}
 
 /// Slash commands are handled here and never sent to the model. Any other line, including an unknown
 /// slash command, is sent as a message.

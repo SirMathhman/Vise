@@ -310,20 +310,22 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 ## Structure
 
 ```
-src/
-  main.rs            wiring: reads .env and LLAMA_API_KEY, takes the working directory, builds the provider and the
-                     tool runner, applies the saved default model, opens the sessions folder (`cwd.join(saved_sessions::FOLDER)`), resumes
-                     the latest session, loads the command files, runs the REPL with that folder, then shutdown.
-                     Fatal startup errors go to exit_with.
-  repl.rs            the input loop over generic BufRead and Write. Runs slash commands, hands each chat line to `turn`,
-                     runs the follow-up turns, asks for approval of writes, autosaves each turn (completed or stopped) to the
-                     sessions folder it is given, and writes replies and notices.
-  repl/commands.rs   the slash commands that act on tools, notes and saved sessions (`/tools`, `/note`, `/save`, `/load`).
-  repl/tests.rs      the loop's tests.
-  commands.rs        parses a slash command into `Command`, and holds the help text (no I/O)
+crates/vise-core/src/    the backend library `vise-core`: no stdin, stdout or stderr, no colors, no Ctrl+C handler
+  lib.rs             declares the modules. A frontend uses `engine`, `frontend`, `command`, `stop`, and the types they name.
+  engine.rs          `Engine`: borrows the provider, the tools, the conversation and the sessions folder, and a frontend
+                     drives it. `start` (trust the existing profiles, import and resume sessions, apply the default model, read
+                     the command files, run the startup lines), `handle(Request, &mut dyn Frontend) -> Flow`, `shutdown`, and
+                     `stop_handle`. It holds the selected profile and runs a chat line as a turn: prepare, run, commit,
+                     autosave, the after-turn follow-ups, and a stopped turn. Everything the user should see goes to the frontend.
+  engine/commands.rs  the commands that act on tools, notes and saved sessions (`/tools`, `/note`, `/save`, `/load`)
+  frontend.rs        `Frontend` (`emit(UiEvent)`, `approve(&str) -> bool`), `UiEvent`, `Sink` (a frontend nobody looks at),
+                     and the test-only `TextUi`, which records events and renders them as the terminal's text
+  command.rs         `Command`, what a frontend can ask for besides a chat line. Typing it is the frontend's business.
+  stop.rs            `Stop`: the shared stop switch. `request` asks the running work to stop, `work`/`tracked` mark work a
+                     request reaches, `asked`/`clear` read and reset it. `Interrupted` is its error.
   turn.rs            runs one turn: `run_turn` (compaction, and the one retry on ContextFull), `prepare_message`
                      (before-turn, startup, profile, and notes index), `apply_whitelist`, `select_hooks`, and `hook_lines`.
-                     It takes the approval and subagent callbacks as parameters.
+                     It takes the stop switch and the approval and subagent callbacks as parameters.
   subagent.rs        runs one subagent: a fresh conversation under a profile, its turns and follow-ups, the restore of
                      the parent's enabled tools and notes on every exit, and the pass-through of its tool lines to the
                      parent's display (`Parent`).
@@ -353,17 +355,9 @@ src/
   after_turn.rs      runs `after-turn.txt` after each committed chat turn, and returns the failing ones as the next message
   shutdown.rs        runs `shutdown.txt`, then the selected profile's shutdown hooks, after the REPL ends
   file_commands.rs   runs the lines of one command file in order through the tool runner, printing each line and its status
-  render.rs          displays provider Events: one status line, answer text, a `tool:` line per call, and the end of each
-                     request. Subagent tool lines come in through `on_subagent_event`, indented under the parent's. Owns
-                     the output the answer and the approval prompt share.
-  style.rs           terminal colors: `Color`, `enable_stdout` (called once, from `main`), `allowed`, `paint`, and `Errors`,
-                     the stderr wrapper that paints each `error:` line red and writes whole lines
   environment.rs     gathers host facts as plain data: the working directory, and the standing instructions from `AGENTS.md`
-  interrupt.rs       Ctrl+C: the installed handler, `work`, which marks a request, a tool round, or the startup lines
-                     as stoppable and reports `Interrupted` once a press is recorded, and `tracked`, the same marking
-                     without the report, for work whose own result must not be thrown away
   error.rs           ProviderError (including Interrupted, which carries the stopped turn as a `PartialTurn`), and
-                     MAX_TOOL_ROUNDS; it holds no interrupt state of its own
+                     MAX_TOOL_ROUNDS; it holds no stop state of its own
   provider/
     mod.rs           declarations only
     types.rs         trait Provider: complete, complete_streaming (default: calls complete and reports nothing),
@@ -392,6 +386,26 @@ src/
     notes.rs           the five note tools: each binds its arguments to an Invocation; the run functions call notes.rs
     jobs.rs            the background tasks' bookkeeping: ids, commands, output (capped at 100 KB), and read offsets
     fs/                the file tools, one file each, and path.rs (confine and confine_new)
+
+crates/vise-cli/src/     the terminal frontend, package `Vise` (the executable keeps its name)
+  main.rs            wiring: reads .env and LLAMA_API_KEY, takes the working directory, creates the `Stop`, installs Ctrl+C,
+                     builds the provider and the tool runner, opens the sessions folder (`saved_sessions::FOLDER`), and builds
+                     the `Engine`; then `start`, the REPL loop, and `shutdown`. `--new` skips the resume. Fatal startup errors
+                     go to exit_with.
+  repl.rs            the input loop: reads a line, turns it into a `Request` (`commands::command`, or a chat line), sends it
+                     to the engine, and ends the run on `/exit`, the end of input, or a write that failed
+  repl/tests.rs      the loop's tests, run over a scripted provider and `Vec<u8>` streams
+  terminal.rs        `TerminalFrontend`: shows `UiEvent`s on stdout and stderr (`error: ` prefix, `Reply` in green), draws
+                     the live reply through `Render`, and asks for approvals by reading `y` or `yes` from the input it also
+                     reads lines from
+  commands.rs        the help text, and the parser from a slash command to `Command` (no I/O)
+  render.rs          draws provider Events: one status line, answer text, a `tool:` line per call, and the end of each
+                     request. Subagent tool lines come in through `on_subagent_event`, indented under the parent's. Owns
+                     the output the answer and the approval prompt share.
+  style.rs           terminal colors: `Color`, `enable_stdout` (called once, from `main`), `allowed`, `paint`, and `Errors`,
+                     the stderr wrapper that paints each `error:` line red and writes whole lines
+  interrupt.rs       Ctrl+C: installs the handler. A press asks the running work to stop through the `Stop` switch; a press
+                     the switch refuses, because no work runs or a stop is already pending, quits with status 130.
 ```
 
 Planned, not yet created: `tools/process/`, the one place that starts, stops, and reaps OS processes (Windows only, with
@@ -402,28 +416,36 @@ a Job Object). Today `jobs.rs` holds that code.
 An arrow means "may depend on". Dependencies only point one way; there are no cycles.
 
 ```
-main -> the wiring of every top-level module
-interrupt -> std and `ctrlc`; a leaf that knows no other module
-repl -> turn, subagent, commands, session, provider::types, tools, profile, notes, saved_sessions, default_model,
-        after_turn, render, environment, error, interrupt, style
-turn -> session, provider::types, tools, profile, notes, before_turn, after_turn, file_commands, error, interrupt
-subagent -> turn, session, profile, environment, provider::types, tools, after_turn, error (not repl)
-startup, before_turn, after_turn, shutdown -> file_commands, tools::runner, tools::types
-file_commands -> tools::runner, tools::types
-profile -> session (HookLines), notes (valid_name), environment, tools::runner, tools::specs
-saved_sessions -> session, tools::types, error (and rusqlite for the sessions database; only store.rs opens a connection)
-session -> environment, tools::types (no `error`, `interrupt`, or provider; its errors live with it)
-provider::llama_cpp -> provider::types, provider::grammar, provider::prompt, session, tools, error, interrupt
-provider::grammar -> tools (it reads each enabled tool's parameter names from its spec)
-provider::prompt -> session, tools
-provider::types -> session, tools::types, error
-render -> provider::types, style
-style -> std only, a leaf: it knows no other module
-notes -> session (the check whether the index is needed, see Open Problems)
-default_model -> std only, a leaf: it knows neither the provider nor the session
-commands, environment -> std only
-error -> session (PartialTurn, SessionError), interrupt (Interrupted), std; it holds no logic of its own
-tools -> notes; no provider, session, HTTP, or serde
+vise-cli -> vise-core (its public modules only); the core never imports the terminal crate
+  main -> the wiring of the terminal modules and of vise_core::{engine, environment, provider::llama_cpp, saved_sessions,
+          session, stop, tools::runner}
+  interrupt -> vise_core::stop, `ctrlc`
+  repl -> commands, terminal, vise_core::{engine, command, frontend}
+  terminal -> render, style, vise_core::frontend
+  render -> style, vise_core::provider::types (Event)
+  commands -> vise_core::command
+  style -> std only, a leaf: it knows no other module
+vise-core (no `ctrlc`, no terminal I/O):
+  engine -> command, frontend, stop, turn, subagent, session, provider::types, tools, profile, saved_sessions,
+            default_model, startup, shutdown, before_turn, after_turn, error
+  frontend -> provider::types (Event)
+  command, stop -> std only
+  turn -> session, provider::types, tools, profile, notes, before_turn, after_turn, file_commands, frontend, stop, error
+  subagent -> turn, session, profile, environment, provider::types, tools, after_turn, frontend, stop, error (not engine)
+  startup, before_turn, after_turn, shutdown -> file_commands, frontend, tools::runner, tools::types
+  file_commands -> frontend, tools::runner, tools::types
+  profile -> frontend, session (HookLines), notes, environment, tools::runner, tools::specs
+  saved_sessions -> session, tools::types, error (and rusqlite for the sessions database; only store.rs opens a connection)
+  session -> environment, tools::types (no `error`, `stop`, or provider; its errors live with it)
+  provider::llama_cpp -> provider::types, provider::grammar, provider::prompt, session, tools, error, stop
+  provider::grammar -> tools (it reads each enabled tool's parameter names from its spec)
+  provider::prompt -> session, tools
+  provider::types -> session, tools::types, error
+  notes -> session (the check whether the index is needed, see Open Problems)
+  default_model -> std only, a leaf: it knows neither the provider nor the session
+  environment -> std only
+  error -> session (PartialTurn, SessionError), stop (Interrupted), std; it holds no logic of its own
+  tools -> notes; no provider, session, HTTP, or serde
 ```
 
 ## Rules
@@ -448,13 +470,15 @@ tools -> notes; no provider, session, HTTP, or serde
   `PartialTurn` until `repl` records it, which applies the same check before committing.
 - `Conversation` is the only holder of committed messages. `repl` reads them through `messages()`, `prompt_tokens()`, and
   `context_size` on the provider.
-- Tool output goes to the model as text. `render` prints answer text as it streams, prompt and thinking progress, one
-  `tool:` line per call, and the end of each request. `repl` prints notices and errors. Approval prompts share the same
-  output as `render`.
+- Tool output goes to the model as text. The backend never writes to a terminal: it emits `UiEvent`s to the `Frontend` it is
+  given, and asks it for each approval. The terminal frontend draws them: `render` prints answer text as it streams, prompt
+  and thinking progress, one `tool:` line per call, and the end of each request; notices and errors go to stdout and stderr.
+  Approval prompts share the same output as `render`.
 - Color is decided once at startup by `style`, per output stream, from whether that stream is a terminal and whether
   `NO_COLOR` is set. Escape codes are written only by `style::paint` and `Errors`, so a redirected stream never receives them.
-- `interrupt` owns the Ctrl+C handler and the flag it sets. Nothing else installs a handler or calls `exit` for an interrupt;
-  `repl`, `turn`, the provider's request loop, and `main`'s startup only run their work inside `interrupt::work` (or
+- `stop::Stop` owns the stop flag and the work counter, and every clone is the same switch. `interrupt` (terminal crate) owns
+  the Ctrl+C handler and the policy for a refused press. Nothing else installs a handler or calls `exit` for an interrupt;
+  the engine, `turn`, the provider's request loop, and the startup lines only run their work inside `Stop::work` (or
   `tracked`, where the work's own result carries what a press must not throw away) and check `asked` where they can stop.
 - Limits: 100 lines per function, 500 code lines per file, and 10 files per directory.
 - Recursion is allowed only within one module, and only when bounded by a parameter (the directory walk is bounded by depth).

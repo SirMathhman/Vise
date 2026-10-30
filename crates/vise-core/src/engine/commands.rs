@@ -1,7 +1,7 @@
 //! The commands that act on the tools, the notes and the saved sessions. Each one reports its result, or its failure,
 //! through the frontend. The typed writes go through the runner without a prompt.
 
-use crate::commands::Command;
+use crate::command::Command;
 use crate::frontend::Frontend;
 use crate::notes;
 use crate::saved_sessions;

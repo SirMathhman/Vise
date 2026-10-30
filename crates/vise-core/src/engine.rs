@@ -4,7 +4,7 @@
 
 use crate::after_turn;
 use crate::before_turn;
-use crate::commands::Command;
+use crate::command::Command;
 use crate::default_model;
 use crate::error::ProviderError;
 use crate::frontend::{Frontend, UiEvent};
@@ -347,8 +347,9 @@ impl<'a> Engine<'a> {
     /// reply's text, goes into the history so the user and the model can see how far it got, and the history is autosaved
     /// as after any other turn. The after-turn lines do not run, because the turn did not finish, and nothing follows it:
     /// a stopped turn is never resent on its own. The messages are checked the way every turn is, so an interrupted round
-    /// that left a tool result out is refused rather than stored.
-    pub(crate) fn interrupted(&mut self, typed: String, stopped: PartialTurn, ui: &mut dyn Frontend) {
+    /// that left a tool result out is refused rather than stored. `handle` calls it; it is public so a frontend's tests
+    /// can check what a stop leaves behind.
+    pub fn interrupted(&mut self, typed: String, stopped: PartialTurn, ui: &mut dyn Frontend) {
         let requests = stopped.requests().to_vec();
         match stopped.into_messages(MARK).and_then(Turn::new) {
             Ok(turn) => self.conversation.commit(turn.with_requests(requests)),

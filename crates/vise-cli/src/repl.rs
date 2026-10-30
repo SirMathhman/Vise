@@ -1,35 +1,15 @@
 //! The terminal's input loop: it reads a line, turns it into a request for the engine, and ends the run on `/exit` or the
 //! end of input. What the engine reports is shown by `TerminalFrontend`.
 
-use crate::commands::{command, Command, HELP};
-use crate::engine::{Engine, Flow, Request};
-use crate::frontend::Frontend;
-use crate::provider::types::Provider;
-use crate::session::Conversation;
-use crate::stop::Stop;
+use crate::commands::{command, HELP};
+use vise_core::command::Command;
+use vise_core::engine::{Engine, Flow, Request};
+use vise_core::frontend::Frontend;
 use crate::terminal::TerminalFrontend;
-use crate::tools::types::ToolRunner;
 use std::io::{self, BufRead, Write};
-use std::path::Path;
 
 #[cfg(test)]
 mod tests;
-
-/// Runs the loop over a new engine on these parts. The caller keeps ownership, so it can read the conversation after.
-/// The program itself builds its engine to start and stop it too, so only the tests use this one.
-#[cfg(test)]
-pub fn run(
-    input: &mut impl BufRead,
-    output: &mut impl Write,
-    errors: &mut impl Write,
-    provider: &dyn Provider,
-    tools: &dyn ToolRunner,
-    conversation: &mut Conversation,
-    sessions: &Path,
-) -> io::Result<()> {
-    let mut engine = Engine::new(provider, tools, conversation, sessions, Stop::new());
-    run_engine(&mut engine, input, output, errors)
-}
 
 /// Reads lines until `/exit` or the end of input, and sends each to the engine. A write that fails ends the run with its
 /// error.

@@ -10,9 +10,7 @@ use crate::session::SessionError;
 use std::fmt;
 use std::path::PathBuf;
 
-pub use store::{import, latest, load, names, resume, save, write};
-#[cfg(test)]
-pub use store::{exists, list};
+pub use store::{exists, import, latest, list, load, names, resume, save, write};
 
 pub const FOLDER: &str = "sessions";
 

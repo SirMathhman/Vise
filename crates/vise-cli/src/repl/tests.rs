@@ -1,20 +1,40 @@
 use super::*;
-use crate::after_turn;
-use crate::engine::Engine;
-use crate::frontend::Sink;
-use crate::provider::types::SubagentRunner;
-use crate::saved_sessions;
-use crate::stop::Stop;
-use crate::session::HookLines;
+use vise_core::after_turn;
+use vise_core::engine::Engine;
+use vise_core::frontend::Sink;
+use vise_core::provider::types::SubagentRunner;
+use vise_core::saved_sessions;
+use vise_core::stop::Stop;
+use vise_core::session::HookLines;
 use crate::terminal::TerminalFrontend;
-use crate::turn::select_hooks;
-use crate::environment::Environment;
-use crate::error::ProviderError;
-use crate::session::{Message, PartialTurn, Turn};
-use crate::tools::types::{Invocation, ToolCall, ToolError};
+use vise_core::turn::select_hooks;
+use vise_core::environment::Environment;
+use vise_core::error::ProviderError;
+use vise_core::session::{Message, PartialTurn, Turn};
+use vise_core::tools::types::{Invocation, ToolCall, ToolError};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
+
+use std::io::{BufRead, Write};
+use std::path::Path;
+use vise_core::provider::types::Provider;
+use vise_core::session::Conversation;
+use vise_core::tools::types::ToolRunner;
+
+/// Runs the loop over a new engine on these parts. The caller keeps ownership, so it can read the conversation after.
+fn run(
+    input: &mut impl BufRead,
+    output: &mut impl Write,
+    errors: &mut impl Write,
+    provider: &dyn Provider,
+    tools: &dyn ToolRunner,
+    conversation: &mut Conversation,
+    sessions: &Path,
+) -> std::io::Result<()> {
+    let mut engine = Engine::new(provider, tools, conversation, sessions, Stop::new());
+    run_engine(&mut engine, input, output, errors)
+}
 
 enum Behavior {
     Reply,
@@ -69,8 +89,8 @@ impl Provider for Fake {
             Behavior::Fail => return Err(ProviderError::Transport("boom".into())),
             Behavior::Interrupted => {
                 // The request was sent, so it carries a timing the audit log should keep.
-                let timings = crate::session::Timings { prompt_ms: Some(12.5), prompt_n: Some(7), ..Default::default() };
-                let request = crate::session::RequestRecord {
+                let timings = vise_core::session::Timings { prompt_ms: Some(12.5), prompt_n: Some(7), ..Default::default() };
+                let request = vise_core::session::RequestRecord {
                     round: 1,
                     kind: "turn",
                     prompt_tokens: 41,
@@ -94,11 +114,11 @@ impl Provider for Fake {
         Ok(0)
     }
 
-    fn summarize(&self, _history: &[Message]) -> Result<(String, crate::session::RequestRecord), ProviderError> {
+    fn summarize(&self, _history: &[Message]) -> Result<(String, vise_core::session::RequestRecord), ProviderError> {
         if self.summary_full {
             return Err(ProviderError::ContextFull);
         }
-        Ok(("summary".into(), crate::session::RequestRecord::default()))
+        Ok(("summary".into(), vise_core::session::RequestRecord::default()))
     }
 }
 
@@ -520,7 +540,7 @@ impl Provider for Switching {
         Ok(0)
     }
 
-    fn summarize(&self, _history: &[Message]) -> Result<(String, crate::session::RequestRecord), ProviderError> {
+    fn summarize(&self, _history: &[Message]) -> Result<(String, vise_core::session::RequestRecord), ProviderError> {
         Err(ProviderError::EmptyResponse)
     }
 
