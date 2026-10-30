@@ -148,7 +148,7 @@ mod tests {
             Ok(0)
         }
 
-        fn summarize(&self, _history: &[Message]) -> Result<String, ProviderError> {
+        fn summarize(&self, _history: &[Message]) -> Result<(String, crate::session::RequestRecord), ProviderError> {
             Err(ProviderError::EmptyResponse)
         }
     }
@@ -204,7 +204,7 @@ mod tests {
             Ok(0)
         }
 
-        fn summarize(&self, _history: &[Message]) -> Result<String, ProviderError> {
+        fn summarize(&self, _history: &[Message]) -> Result<(String, crate::session::RequestRecord), ProviderError> {
             Err(ProviderError::EmptyResponse)
         }
     }

@@ -101,8 +101,9 @@ pub enum Compaction {
 /// fit in the context, the oldest turn is dropped instead.
 pub fn compact(provider: &dyn Provider, conversation: &mut Conversation) -> Result<Compaction, ProviderError> {
     match provider.summarize(conversation.messages()) {
-        Ok(summary) => {
-            conversation.compact(summary);
+        Ok((summary, request)) => {
+            // The summary request can prefill the whole history, so its timing matters more than any turn's.
+            conversation.compact(summary, request);
             Ok(Compaction::Summarized)
         }
         Err(ProviderError::ContextFull) => Ok(Compaction::Dropped(conversation.drop_oldest_turn())),
@@ -192,7 +193,7 @@ mod tests {
             Err(ProviderError::ContextSizeUnknown { expected: "model".into() })
         }
 
-        fn summarize(&self, _history: &[crate::session::Message]) -> Result<String, ProviderError> {
+        fn summarize(&self, _history: &[crate::session::Message]) -> Result<(String, crate::session::RequestRecord), ProviderError> {
             unreachable!()
         }
     }

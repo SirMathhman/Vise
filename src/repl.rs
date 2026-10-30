@@ -106,7 +106,7 @@ fn save_session(
     if !ask(&change, output, input) {
         return writeln!(output, "session {name} not saved");
     }
-    match saved_sessions::save(name, history) {
+    match saved_sessions::save(name, history, conversation.requests()) {
         Ok(()) => writeln!(output, "session {name} saved"),
         Err(err) => writeln!(errors, "error: {err}"),
     }
@@ -324,7 +324,9 @@ fn chat_turn(
             }
             conversation.commit(turn);
             if let Some((folder, name)) = conversation.autosave_target(&typed) {
-                if let Err(err) = saved_sessions::write(&folder, &name, conversation.history()) {
+                if let Err(err) =
+                    saved_sessions::write(&folder, &name, conversation.history(), conversation.requests())
+                {
                     writeln!(streams.errors, "error: {err}")?;
                 }
             }
@@ -353,12 +355,13 @@ fn interrupted(
     conversation: &mut Conversation,
     streams: &mut Streams,
 ) -> io::Result<Option<String>> {
+    let requests = stopped.requests().to_vec();
     match stopped.into_messages(MARK).and_then(Turn::new) {
-        Ok(turn) => conversation.commit(turn),
+        Ok(turn) => conversation.commit(turn.with_requests(requests)),
         Err(err) => writeln!(streams.errors, "error: {err}")?,
     }
     if let Some((folder, name)) = conversation.autosave_target(&typed) {
-        if let Err(err) = saved_sessions::write(&folder, &name, conversation.history()) {
+        if let Err(err) = saved_sessions::write(&folder, &name, conversation.history(), conversation.requests()) {
             writeln!(streams.errors, "error: {err}")?;
         }
     }
@@ -449,8 +452,17 @@ mod tests {
                 ],
                 Behavior::Fail => return Err(ProviderError::Transport("boom".into())),
                 Behavior::Interrupted => {
+                    // The request was sent, so it carries a timing the audit log should keep.
+                    let timings = crate::session::Timings { prompt_ms: Some(12.5), prompt_n: Some(7), ..Default::default() };
+                    let request = crate::session::RequestRecord {
+                        round: 1,
+                        kind: "turn",
+                        prompt_tokens: 41,
+                        timings,
+                    };
                     return Err(ProviderError::Interrupted {
-                        stopped: PartialTurn::new(vec![Message::User(input)], "half a rep".into()),
+                        stopped: PartialTurn::new(vec![Message::User(input)], "half a rep".into())
+                            .with_requests(vec![request]),
                     });
                 }
                 Behavior::ReplyThenFull if self.inputs.borrow().len() > 1 => return Err(ProviderError::ContextFull),
@@ -466,11 +478,11 @@ mod tests {
             Ok(0)
         }
 
-        fn summarize(&self, _history: &[Message]) -> Result<String, ProviderError> {
+        fn summarize(&self, _history: &[Message]) -> Result<(String, crate::session::RequestRecord), ProviderError> {
             if self.summary_full {
                 return Err(ProviderError::ContextFull);
             }
-            Ok("summary".into())
+            Ok(("summary".into(), crate::session::RequestRecord::default()))
         }
     }
 
@@ -605,6 +617,17 @@ mod tests {
         let names = saved_sessions::list(&folder).expect("the sessions are listed");
         std::fs::remove_dir_all(&folder).expect("the test folder is removed");
         assert_eq!(names.len(), 1, "the partial turn is on disk");
+    }
+
+    #[test]
+    fn a_stopped_turn_keeps_the_timings_of_the_rounds_that_finished() {
+        let fake = Fake::new(Behavior::Interrupted);
+        let mut conversation = conversation();
+        run_with("hi\n", &fake, &mut conversation);
+        let requests = conversation.requests();
+        assert_eq!(requests.len(), 1, "the request that was sent is in the log");
+        assert_eq!(requests[0].timings.prompt_ms, Some(12.5));
+        assert_eq!(requests[0].prompt_tokens, 41);
     }
 
     #[test]
@@ -852,7 +875,7 @@ mod tests {
             Ok(0)
         }
 
-        fn summarize(&self, _history: &[Message]) -> Result<String, ProviderError> {
+        fn summarize(&self, _history: &[Message]) -> Result<(String, crate::session::RequestRecord), ProviderError> {
             Err(ProviderError::EmptyResponse)
         }
 

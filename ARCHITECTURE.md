@@ -181,6 +181,8 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
   and leaves history unchanged.
 - A drop is the fallback when the summary request itself does not fit. It removes the summary if there is one, otherwise the
   oldest turn, and reports how many messages were removed.
+- The summary request is recorded in the request log before the history changes, so the cost of the prefill it did is kept
+  even though the turns it summarized are gone.
 - A context size can be unknown: the server lists the model but reports no size, because the model is not loaded until its
   first request. Unknown is a value of the lookup, not an error. Before a turn it means there is nothing to compact against, so
   the request is sent; after a reply it is read again, since the request has loaded the model. `/compact` does not need the size.
@@ -196,7 +198,15 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 - A write of a session removes its old messages and inserts the new ones in one transaction, so an interrupted write
   leaves the earlier history. Each message row holds the role, the content, and either the call a tool result answers or
   the reply's tool calls as JSON text.
-- Autosave is the one write without approval. It writes only a row of `sessions/sessions.db`, after each completed turn,
+- Every request a turn makes is recorded in the `requests` table, one row per request, for auditing performance later. A
+  turn makes one request per tool round, so each round's prefill has its own row. A row holds the round, whether it was a
+  turn or a summary request, the prompt token count, and the timings llama.cpp reported: `cache_n`, `prompt_n`,
+  `prompt_ms`, `prompt_per_second`, `predicted_n`, `predicted_ms`, `predicted_per_second`, `draft_n`, and
+  `draft_n_accepted`. A number the server did not report is stored as NULL, not 0, so a reader can tell them apart.
+- The `requests` log is append-only and is not a child of `messages`. Compaction replaces turns but not the record of the
+  requests that made them, and a rewrite inserts only the requests not yet stored, so no request is lost or counted
+  twice. A stopped turn keeps the timings of the rounds that finished before the press.
+- Autosave is the one write without approval. It writes only rows of `sessions/sessions.db`, after each completed turn,
   and the name is chosen once per run, when its first turn completes.
 - A `sessions/NAME.json` file in the format sessions were once saved as is imported as the session `NAME` at launch,
   unless that name is already stored. The files are left in place, so an import can be repeated.
@@ -278,15 +288,17 @@ src/
   subagent.rs        runs one subagent: a fresh conversation under a profile, its turns and follow-ups, the restore of
                      the parent's enabled tools and notes on every exit, and the pass-through of its tool lines to the
                      parent's display (`Parent`).
-  session.rs         Message, Turn (checked shape), PartialTurn (a stopped turn as far as it got), SessionError,
-                     Conversation (committed history, prompt tokens of the last committed turn, compaction,
-                     drop_oldest_turn, the autosave folder and name, startup text, the before-turn and after-turn lines,
-                     and the selected profile's hook lines as `HookLines`), over_budget (80%)
+  session.rs         Message, Turn (checked shape), PartialTurn (a stopped turn as far as it got), SessionError, Timings
+                     and RequestRecord (one request's audit row), Conversation (committed history, prompt tokens of the
+                     last committed turn, the append-only request log, compaction, drop_oldest_turn, the autosave folder
+                     and name, startup text, the before-turn and after-turn lines, and the selected profile's hook lines
+                     as `HookLines`), over_budget (80%)
   saved_sessions/    the sessions database, `sessions/sessions.db`, and its error
     mod.rs           declarations, `FOLDER`, `DATABASE`, and `SessionStoreError`. The error lives here, not in `error.rs`,
                      because the database driver's error appears in its variants
-    store.rs         the schema, the one place a connection is opened, the transactional write of one session, the reads
-                     behind `names`, `list`, `check_save`, `save`, `exists`, `write`, and `load`, and the `NAME.json` import
+    store.rs         the schema, the one place a connection is opened, the transactional write of one session and the
+                     append of its request log, the reads behind `names`, `list`, `check_save`, `save`, `exists`,
+                     `write`, and `load`, and the `NAME.json` import
     messages.rs      one message as the table holds it: the role, the content, the answered call, and a reply's tool calls
                      as JSON text. A system message contributes no row
     legacy.rs        the frozen `NAME.json` format the import reads
@@ -311,7 +323,8 @@ src/
   provider/
     mod.rs           declarations only
     types.rs         trait Provider: complete, complete_streaming (default: calls complete and reports nothing),
-                     context_size, summarize, model, models, set_model (the last three refuse by default); enum Event
+                         context_size, summarize (returns the summary with the timing of the request that wrote it), model,
+                         models, set_model (the last three refuse by default); enum Event
     llama_cpp.rs     the HTTP client; wire structs; the streamed reader; the Stream that holds back answer text until the
                      reply's kind is known; the tool-round loop; the 400 mapping; the `/v1/models` lookup, shared by the
                      context size, `models`, and `set_model`; the model name, in a cell, copied out before each request;
@@ -707,7 +720,8 @@ Controls:
 | Session names restricted to letters, digits, `-`, `_` | Met. A name is a column value, never a path, and names `load` refuses are not listed. |
 | Writes to `AGENTS.md` shown as such | Missing. The approval text reads like any other write, and no warning says the file shapes later sessions. |
 | Data exposure (directory listings sent to the endpoint) | Accepted. History reaches disk unredacted through `/save` and autosave, including tool results and command output. |
-| Autosave writes without approval | Accepted by design, as the one exception to Write. It writes only a row of `sessions/sessions.db`, under a name chosen from the first input and the time (Open Problems). |
+| Autosave writes without approval | Accepted by design, as the one exception to Write. It writes only rows of `sessions/sessions.db`, under a name chosen from the first input and the time (Open Problems). |
+| Request timings are recorded without approval | Accepted for the same reason: the `requests` row is written with the session it belongs to, and holds only counts the server reported. A timing is not user content, so the log cannot expose a note or a file. |
 | Default model changed only by a successful switch | Partly met. The save follows a successful switch, and the switch itself asks no approval (Open Problems). |
 | Default model file protected from model writes | Missing. The file tools do not guard `model.txt` (Open Problems). |
 | Model switch checked against the server's list and context size | Met. A name is accepted only when the server lists it with a context size, and the two change together. |

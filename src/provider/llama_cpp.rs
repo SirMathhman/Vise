@@ -3,7 +3,7 @@ use crate::interrupt;
 use crate::provider::grammar;
 use crate::provider::prompt;
 use crate::provider::types::{Event, Provider, SubagentRunner};
-use crate::session::{Message, PartialTurn, Turn, over_budget};
+use crate::session::{Message, PartialTurn, RequestRecord, Timings, Turn, over_budget};
 use crate::tools::types::{Invocation, ToolCall, ToolError, ToolRunner, Value};
 use crate::tools;
 use serde::{Deserialize, Serialize};
@@ -133,6 +133,7 @@ struct Chunk {
     choices: Vec<ChunkChoice>,
     usage: Option<Usage>,
     prompt_progress: Option<PromptProgress>,
+    timings: Option<WireTimings>,
 }
 
 /// Prompt processing progress, sent before the reply while the server reads the prompt.
@@ -156,6 +157,37 @@ struct Delta {
 #[derive(Deserialize)]
 struct Usage {
     prompt_tokens: u64,
+}
+
+/// The timings llama.cpp reports on a request's final chunk. Every field is optional: a server that does not report
+/// timings leaves the whole object out, and a build that reports fewer fields leaves those out.
+#[derive(Deserialize, Default)]
+struct WireTimings {
+    cache_n: Option<u64>,
+    prompt_n: Option<u64>,
+    prompt_ms: Option<f64>,
+    prompt_per_second: Option<f64>,
+    predicted_n: Option<u64>,
+    predicted_ms: Option<f64>,
+    predicted_per_second: Option<f64>,
+    draft_n: Option<u64>,
+    draft_n_accepted: Option<u64>,
+}
+
+impl From<WireTimings> for Timings {
+    fn from(timings: WireTimings) -> Self {
+        Self {
+            cache_n: timings.cache_n,
+            prompt_n: timings.prompt_n,
+            prompt_ms: timings.prompt_ms,
+            prompt_per_second: timings.prompt_per_second,
+            predicted_n: timings.predicted_n,
+            predicted_ms: timings.predicted_ms,
+            predicted_per_second: timings.predicted_per_second,
+            draft_n: timings.draft_n,
+            draft_n_accepted: timings.draft_n_accepted,
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -248,17 +280,21 @@ impl LlamaCpp {
     }
 
     /// Asks the model to summarize the messages it is given, without offering any tools.
-    fn summarize_messages<'a>(&self, messages: impl Iterator<Item = &'a Message>) -> Result<String, ProviderError> {
+    fn summarize_messages<'a>(
+        &self,
+        messages: impl Iterator<Item = &'a Message>,
+    ) -> Result<(String, RequestRecord), ProviderError> {
         let mut wire: Vec<WireMessage> = messages.map(WireMessage::try_from).collect::<Result<_, _>>()?;
         wire.push(WireMessage::try_from(&Message::User(SUMMARY_REQUEST.into()))?);
-        let (summary, prompt_tokens) = send(&self.api_key, &self.model.borrow(), &wire, None, &mut |_| {})?;
+        let Sent { content: summary, prompt_tokens, timings } =
+            send(&self.api_key, &self.model.borrow(), &wire, None, &mut |_| {})?;
         if over_budget(prompt_tokens, self.context_size()?) {
             return Err(ProviderError::ContextFull);
         }
         if summary.trim().is_empty() {
             return Err(ProviderError::EmptySummary);
         }
-        Ok(summary)
+        Ok((summary, RequestRecord { round: 1, kind: "summary", prompt_tokens, timings }))
     }
 }
 
@@ -297,23 +333,23 @@ impl Provider for LlamaCpp {
             format!("{}\n\n{input}", prompt::tool_note(&enabled))
         };
         let mut new = vec![Message::User(input)];
+        let mut requests = Vec::new();
         // Set once a write is attempted. A turn that has written is never replayed, so overflow is an error.
         let mut wrote = false;
         for _ in 0..MAX_TOOL_ROUNDS {
             let wire = wire_messages(&catalogue, history.iter().chain(&new))?;
-            let (content, prompt_tokens) = match send(&self.api_key, &self.model.borrow(), &wire, Some(&grammar), &mut *on_event) {
-                Err(ProviderError::ContextFull) if wrote => return Err(ProviderError::ContextFullAfterChange),
-                // The prepared message and the finished rounds are the turn as it stood; the stopped request adds only
-                // the reply's text.
-                Err(ProviderError::Interrupted { stopped }) => {
-                    return Err(ProviderError::Interrupted { stopped: PartialTurn::new(new, stopped.reply) });
-                }
-                sent => sent?,
-            };
+            let sent = send(&self.api_key, &self.model.borrow(), &wire, Some(&grammar), &mut *on_event)?;
+            let Sent { content, prompt_tokens, timings } = sent;
+            requests.push(RequestRecord {
+                round: requests.len() as u64 + 1,
+                kind: "turn",
+                prompt_tokens,
+                timings,
+            });
             let Some(call) = parse_call(&content, format!("call-{}", new.len())) else {
                 new.push(Message::Assistant { content, tool_calls: Vec::new() });
                 return Turn::new(new)
-                    .map(|turn| turn.with_prompt_tokens(prompt_tokens))
+                    .map(|turn| turn.with_prompt_tokens(prompt_tokens).with_requests(requests))
                     .map_err(ProviderError::Session);
             };
             // Another round would not fit, so stop before running its tool. The caller compacts and retries.
@@ -337,7 +373,10 @@ impl Provider for LlamaCpp {
                 new.push(Message::Tool { call_id, content: result.unwrap_or_else(|err| format!("error: {err}")) });
             }
             if pressed.is_err() {
-                return Err(ProviderError::Interrupted { stopped: PartialTurn::new(new, String::new()) });
+                // The round's request did happen, so its timing belongs in the log even though the turn stopped.
+                return Err(ProviderError::Interrupted {
+                    stopped: PartialTurn::new(new, String::new()).with_requests(requests),
+                });
             }
         }
         Err(ProviderError::TooManyToolRounds)
@@ -352,7 +391,7 @@ impl Provider for LlamaCpp {
         Ok(size)
     }
 
-    fn summarize(&self, history: &[Message]) -> Result<String, ProviderError> {
+    fn summarize(&self, history: &[Message]) -> Result<(String, RequestRecord), ProviderError> {
         self.summarize_messages(history.iter())
     }
 
@@ -445,9 +484,17 @@ fn to_value(value: serde_json::Value) -> Value {
 /// reported none).
 const SUMMARY_REQUEST: &str = "Summarize your conversation with the user";
 
-/// Sends one streamed request. Returns the whole reply text and the prompt tokens llama.cpp counted (0 if it
-/// reported none). `on_event` receives prompt progress, thinking counts, and answer text as they arrive, and a
-/// final `Finished`.
+/// One request's reply: the text, the prompt tokens llama.cpp counted (0 if it reported none), and the timings it
+/// reported (default when it reported none).
+struct Sent {
+    content: String,
+    prompt_tokens: u64,
+    timings: Timings,
+}
+
+/// Sends one streamed request. Returns the reply with the prompt tokens llama.cpp counted and the timings it reported
+/// (default for either when it reported none). `on_event` receives prompt progress, thinking counts, and answer text as
+/// they arrive, and a final `Finished`.
 /// Tool calls are never reported as answer text, because a reply that starts with `<tool_call>` is a call.
 fn send(
     api_key: &str,
@@ -455,7 +502,7 @@ fn send(
     wire: &[WireMessage],
     grammar: Option<&str>,
     on_event: &mut dyn FnMut(Event),
-) -> Result<(String, u64), ProviderError> {
+) -> Result<Sent, ProviderError> {
     let request = Request {
         model,
         messages: wire,
@@ -485,6 +532,7 @@ fn send(
     }
     let mut stream = Stream::default();
     let mut prompt_tokens = 0;
+    let mut timings = Timings::default();
     for line in BufReader::new(response.body_mut().as_reader()).lines() {
         // A press stops the read; the reply so far goes back with the error, so it is not lost.
         if interrupt::asked() {
@@ -497,6 +545,10 @@ fn send(
         }
         let chunk: Chunk = serde_json::from_str(data).map_err(|err| ProviderError::Transport(Box::new(err)))?;
         prompt_tokens += chunk.usage.map_or(0, |usage| usage.prompt_tokens);
+        // The timings arrive on the final chunk, with the usage. A later chunk wins, so the last set is kept.
+        if let Some(reported) = chunk.timings {
+            timings = reported.into();
+        }
         if let Some(progress) = chunk.prompt_progress {
             on_event(Event::Prompt { processed: progress.processed, total: progress.total });
         }
@@ -512,7 +564,7 @@ fn send(
     }
     stream.finish(on_event);
     on_event(Event::Finished);
-    Ok((stream.content, prompt_tokens))
+    Ok(Sent { content: stream.content, prompt_tokens, timings })
 }
 
 /// The reply as it arrives. Text is held back until it is known not to be a tool call, so a call is never

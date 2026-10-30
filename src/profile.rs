@@ -151,7 +151,7 @@ mod tests {
             .expect("a valid turn");
             conversation.commit(plain);
         }
-        conversation.compact("summary".into());
+        conversation.compact("summary".into(), Default::default());
         assert!(!carried(conversation.messages(), &marked_text));
     }
 

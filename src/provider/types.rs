@@ -1,5 +1,5 @@
 use crate::error::ProviderError;
-use crate::session::{Message, Turn};
+use crate::session::{Message, RequestRecord, Turn};
 use crate::tools::types::{ToolError, ToolRunner};
 
 /// Progress reported while a reply is generated.
@@ -52,9 +52,8 @@ pub trait Provider {
     /// The number of tokens the model can hold in one context.
     fn context_size(&self) -> Result<u64, ProviderError>;
 
-    /// Asks the model to summarize `history`, returning the summary text.
-    fn summarize(&self, history: &[Message]) -> Result<String, ProviderError>;
-
+    /// Asks the model to summarize `history`, returning the summary text and the timing of the request it made.
+    fn summarize(&self, history: &[Message]) -> Result<(String, RequestRecord), ProviderError>;
     /// The model the requests name. A provider with no model choice names none.
     fn model(&self) -> String {
         String::new()
