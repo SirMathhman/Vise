@@ -343,6 +343,8 @@ src/
   render.rs          displays provider Events: one status line, answer text, a `tool:` line per call, and the end of each
                      request. Subagent tool lines come in through `on_subagent_event`, indented under the parent's. Owns
                      the output the answer and the approval prompt share.
+  style.rs           terminal colors: `Color`, `enable_stdout` (called once, from `main`), `allowed`, `paint`, and `Errors`,
+                     the stderr wrapper that paints each `error:` line red and writes whole lines
   environment.rs     gathers host facts as plain data: the working directory, and the standing instructions from `AGENTS.md`
   interrupt.rs       Ctrl+C: the installed handler, `work`, which marks a request, a tool round, or the startup lines
                      as stoppable and reports `Interrupted` once a press is recorded, and `tracked`, the same marking
@@ -389,7 +391,7 @@ An arrow means "may depend on". Dependencies only point one way; there are no cy
 main -> the wiring of every top-level module
 interrupt -> std and `ctrlc`; a leaf that knows no other module
 repl -> turn, subagent, commands, session, provider::types, tools, profile, notes, saved_sessions, default_model,
-        after_turn, render, environment, error, interrupt
+        after_turn, render, environment, error, interrupt, style
 turn -> session, provider::types, tools, profile, notes, before_turn, after_turn, file_commands, error, interrupt
 subagent -> turn, session, profile, environment, provider::types, tools, after_turn, error (not repl)
 startup, before_turn, after_turn, shutdown -> file_commands, tools::runner, tools::types
@@ -400,7 +402,8 @@ session -> environment, tools::types (no `error`, `interrupt`, or provider; its 
 provider::llama_cpp -> provider::types, provider::grammar, provider::prompt, session, tools, error, interrupt
 provider::prompt -> session, tools
 provider::types -> session, tools::types, error
-render -> provider::types
+render -> provider::types, style
+style -> std only, a leaf: it knows no other module
 notes -> session (the check whether the index is needed, see Open Problems)
 default_model -> std only, a leaf: it knows neither the provider nor the session
 commands, environment -> std only
@@ -433,6 +436,8 @@ tools -> notes; no provider, session, HTTP, or serde
 - Tool output goes to the model as text. `render` prints answer text as it streams, prompt and thinking progress, one
   `tool:` line per call, and the end of each request. `repl` prints notices and errors. Approval prompts share the same
   output as `render`.
+- Color is decided once at startup by `style`, per output stream, from whether that stream is a terminal and whether
+  `NO_COLOR` is set. Escape codes are written only by `style::paint` and `Errors`, so a redirected stream never receives them.
 - `interrupt` owns the Ctrl+C handler and the flag it sets. Nothing else installs a handler or calls `exit` for an interrupt;
   `repl`, `turn`, the provider's request loop, and `main`'s startup only run their work inside `interrupt::work` (or
   `tracked`, where the work's own result carries what a press must not throw away) and check `asked` where they can stop.
@@ -530,6 +535,18 @@ Each item is a gap between the design above and the code. Items are grouped by a
 - **Error homes.** `ToolError` lives in `tools/types.rs`, not `error.rs`. `MAX_TOOL_ROUNDS` lives in `error.rs` but belongs to the provider.
   `SessionError` and `PartialTurn` live in `session.rs`, so `error` depends on `session` and never the other way.
 - **No timeouts, one request at a time.** A stalled server blocks the REPL. Connect, send, and read timeouts are not configured.
+
+### Display
+
+- **Windows console VT mode is not enabled.** `style` writes ANSI sequences, but nothing sets `ENABLE_VIRTUAL_TERMINAL_PROCESSING`
+  and the project has no Windows API dependency. A host that does not already enable it shows the raw codes. This is unverified
+  on each host; the fix belongs in a platform module, not in `style`.
+- **Colors are process-global.** `style` keeps one `AtomicBool`, set at startup, so `paint` reads a hidden flag rather than the
+  `Render` or `Errors` that writes. Colored output cannot be tested without touching that flag. The ideal is a `Style` value that
+  `main` builds and passes to `Render` and `Errors`.
+- **Partial stderr lines wait for a newline.** `Errors` holds text until a `\n`, and `Drop` writes what is left. Text written
+  without a newline is invisible until one arrives, and is lost if the process exits without dropping `Errors`. `interrupt.rs`
+  also writes with `eprintln!`, which bypasses `Errors`.
 
 ### Layering and configuration
 

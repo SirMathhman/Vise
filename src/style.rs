@@ -1,7 +1,7 @@
-//! Terminal colors. They are written only after `enable_if_terminal` finds a terminal and no `NO_COLOR`, so piped output
+//! Terminal colors. They are written only to a terminal stream and only when `NO_COLOR` is not set, so piped output
 //! and tests never see escape codes.
 
-use std::io::{self, IsTerminal, Write};
+use std::io::{self, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 static ENABLED: AtomicBool = AtomicBool::new(false);
@@ -25,30 +25,41 @@ impl Color {
     }
 }
 
-/// Turns colors on when stdout is a terminal and `NO_COLOR` is not set. Called once at startup.
-pub fn enable_if_terminal() {
-    let on = io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();
-    ENABLED.store(on, Ordering::Relaxed);
+/// Whether a stream whose terminal check gave `terminal` gets colors: only a terminal, and only when `NO_COLOR` is not set.
+pub fn allowed(terminal: bool) -> bool {
+    terminal && std::env::var_os("NO_COLOR").is_none()
+}
+
+/// Turns colors on for stdout, as `allowed` decides. Called once at startup.
+pub fn enable_stdout(terminal: bool) {
+    ENABLED.store(allowed(terminal), Ordering::Relaxed);
 }
 
 /// The text wrapped in `color`, or the text itself when colors are off.
 pub fn paint(color: Color, text: &str) -> String {
-    if ENABLED.load(Ordering::Relaxed) && !text.is_empty() {
-        format!("\x1b[{}m{text}\x1b[0m", color.code())
+    paint_if(ENABLED.load(Ordering::Relaxed), color, text)
+}
+
+/// The text wrapped in `color` when `on`, or the text itself.
+fn paint_if(on: bool, color: Color, text: &str) -> String {
+    if on && !text.is_empty() {
+        format!("[{}m{text}[0m", color.code())
     } else {
         text.to_string()
     }
 }
 
-/// The error stream. A line that starts with `error:` is written in red, and any other line is written as it is.
+/// The error stream. When `colored`, a line that starts with `error:` is written in red, and any other line is written as
+/// it is.
 pub struct Errors<W: Write> {
     inner: W,
+    colored: bool,
     pending: Vec<u8>,
 }
 
 impl<W: Write> Errors<W> {
-    pub fn new(inner: W) -> Self {
-        Self { inner, pending: Vec::new() }
+    pub fn new(inner: W, colored: bool) -> Self {
+        Self { inner, colored, pending: Vec::new() }
     }
 
     /// Writes one line, with its line ending, which is kept outside the color.
@@ -58,7 +69,7 @@ impl<W: Write> Errors<W> {
             Some(body) => (body, "\n"),
             None => (text.as_ref(), ""),
         };
-        let painted = if body.starts_with("error:") { paint(Color::Red, body) } else { body.to_string() };
+        let painted = if body.starts_with("error:") { paint_if(self.colored, Color::Red, body) } else { body.to_string() };
         self.inner.write_all(format!("{painted}{ending}").as_bytes())
     }
 }
@@ -97,9 +108,21 @@ mod tests {
     fn errors_pass_through_unchanged_when_colors_are_off() {
         let mut buffer = Vec::new();
         {
-            let mut errors = Errors::new(&mut buffer);
+            let mut errors = Errors::new(&mut buffer, false);
             write!(errors, "error: first\nsecond").unwrap();
         }
         assert_eq!(String::from_utf8(buffer).unwrap(), "error: first\nsecond");
+    }
+
+    #[test]
+    fn colored_errors_paint_only_the_error_line() {
+        let mut buffer = Vec::new();
+        {
+            let mut errors = Errors::new(&mut buffer, true);
+            write!(errors, "error: first
+second").unwrap();
+        }
+        assert_eq!(String::from_utf8(buffer).unwrap(), "[31merror: first[0m
+second");
     }
 }

@@ -23,7 +23,7 @@ mod turn;
 use provider::llama_cpp::LlamaCpp;
 use provider::types::Provider;
 use session::Conversation;
-use std::io::{self, Write};
+use std::io::{self, IsTerminal, Write};
 use tools::runner::WorkspaceTools;
 
 /// Writes a fatal message to stderr and exits with status 1. If stderr is closed the message is lost,
@@ -35,7 +35,7 @@ fn exit_with(message: &str) -> ! {
 
 fn main() {
     dotenvy::dotenv().ok();
-    style::enable_if_terminal();
+    style::enable_stdout(io::stdout().is_terminal());
     // Installed first, so Ctrl+C during a slow start stops the process as it always did.
     if let Err(err) = interrupt::install() {
         exit_with(&format!("error: cannot handle Ctrl+C: {err}"));
@@ -56,7 +56,7 @@ fn main() {
 
     let stdout = io::stdout();
     let mut output = stdout.lock();
-    let mut errors = style::Errors::new(io::stderr());
+    let mut errors = style::Errors::new(io::stderr(), style::allowed(io::stderr().is_terminal()));
     match saved_sessions::import(&sessions) {
         Ok(0) => {}
         Ok(imported) => {
