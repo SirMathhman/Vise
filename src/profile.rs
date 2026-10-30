@@ -9,6 +9,8 @@ use std::io;
 use std::path::PathBuf;
 
 const FOLDER: &str = crate::tools::runner::PROFILES_FOLDER;
+/// The profile every run has without a file: no instructions, every tool and note allowed, and no hooks.
+pub const DEFAULT: &str = "default";
 const MARK: &str = "[Instructions from profile ";
 
 /// The text a profile adds to a user message: its name and its instructions.
@@ -27,12 +29,12 @@ pub fn carried(history: &[Message], marked_text: &str) -> bool {
         .is_some_and(|text| text.starts_with(marked_text))
 }
 
-/// The profile names, sorted: the `.txt` files in the folder without their extension. A folder that does
-/// not exist has no profiles.
+/// The profile names, sorted: the built-in default and the `.txt` files in the folder without their extension. A
+/// folder that does not exist has only the default.
 pub fn names() -> Result<Vec<String>, String> {
     let entries = match fs::read_dir(FOLDER) {
         Ok(entries) => entries,
-        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(vec![DEFAULT.to_string()]),
         Err(err) => return Err(format!("cannot read the profiles folder: {err}")),
     };
     let mut names: Vec<String> = entries
@@ -40,6 +42,9 @@ pub fn names() -> Result<Vec<String>, String> {
         .filter_map(|entry| entry.file_name().into_string().ok())
         .filter_map(|file| file.strip_suffix(".txt").map(str::to_string))
         .collect();
+    if !names.iter().any(|name| name == DEFAULT) {
+        names.push(DEFAULT.to_string());
+    }
     names.sort();
     Ok(names)
 }
@@ -60,6 +65,9 @@ pub fn load(name: &str) -> Result<Profile, String> {
     let valid = !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
     if !valid {
         return Err(format!("'{name}' is not a profile name; use letters, digits, '-' and '_'"));
+    }
+    if name == DEFAULT {
+        return Ok(Profile { instructions: String::new(), tools: None, notes: None, hooks: HookLines::default() });
     }
     let text = fs::read_to_string(PathBuf::from(FOLDER).join(format!("{name}.txt")))
         .map_err(|err| format!("cannot read profile '{name}': {err}"))?;
@@ -201,6 +209,13 @@ mod tests {
     fn unknown_hook_kind_is_rejected() {
         let error = parse("hook middle: Write-Output a\nbe brief").err().expect("expected the hook to be rejected");
         assert!(error.contains("unknown hook kind 'middle'"));
+    }
+
+    #[test]
+    fn default_profile_is_built_in() {
+        let loaded = load(DEFAULT).expect("default needs no file");
+        assert!(loaded.instructions.is_empty() && loaded.tools.is_none() && loaded.notes.is_none());
+        assert!(names().expect("names").contains(&DEFAULT.to_string()));
     }
 
     #[test]

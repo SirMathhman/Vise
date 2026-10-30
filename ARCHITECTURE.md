@@ -111,6 +111,11 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 - A stopped turn is committed with the prepared user message, the tool rounds that finished, and the text the reply had
   reached, followed by a `[the turn was interrupted]` line. It is autosaved like any other turn. Its after-turn lines do
   not run, and no follow-up turn follows it. The line is not resent.
+- A press can land before the turn is sent, while the history is being compacted. That stop keeps the user message too, so
+  no stopped turn is lost from the history or the database. Whoever stops a turn owns assembling its `PartialTurn`: the
+  request layer reports only the reply it reached, and the layer that holds the turn's messages and request records
+  (the provider's round loop, or `turn` before the send) adds them. The assembly should be one function with a test that
+  needs no server, not repeated at each stop site.
 - Every other Ctrl+C quits: at the prompt, after a stop is already asked for, and during the shutdown lines. The exit status
   is 130.
 - The request itself checks the flag between chunks, so a long reply stops within a chunk rather than at the end.
