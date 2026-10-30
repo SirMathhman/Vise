@@ -50,9 +50,6 @@ fn main() {
     }
     let provider = LlamaCpp::new(api_key);
     let tools = WorkspaceTools::new(env.cwd.clone());
-    // The profiles that exist now are the user's: a subagent may run their hook lines, and not those of a profile written
-    // after this point unless the user selects it.
-    profile::confirm_existing(&tools);
     let mut conversation = Conversation::new(&env);
     let sessions = std::path::PathBuf::from(saved_sessions::FOLDER);
     conversation.enable_autosave();
@@ -60,6 +57,9 @@ fn main() {
     let stdout = io::stdout();
     let mut output = stdout.lock();
     let mut errors = style::Errors::new(io::stderr(), style::allowed(io::stderr().is_terminal()));
+    // The profiles that exist now are the user's: a subagent may run their hook lines, and not those of a profile written
+    // after this point unless the user selects it.
+    profile::confirm_existing(&tools, &mut errors);
     match saved_sessions::import(&sessions) {
         Ok(0) => {}
         Ok(imported) => {

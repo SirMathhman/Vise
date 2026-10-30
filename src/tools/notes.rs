@@ -85,8 +85,13 @@ fn bind_delete(args: &Arguments) -> Result<Invocation, ToolError> {
 }
 
 pub fn run_list(folder: &Path, category: &str, allowed: Option<&[String]>) -> Result<String, ToolError> {
-    let listed = notes::list(folder, category, allowed).map_err(ToolError::Failed)?;
-    Ok(if listed.is_empty() { "no notes".to_string() } else { notes::describe_list(&listed) })
+    let listing = notes::list(folder, category, allowed).map_err(ToolError::Failed)?;
+    let mut text = if listing.notes.is_empty() { "no notes".to_string() } else { notes::describe_list(&listing.notes) };
+    for line in &listing.skipped {
+        text.push('\n');
+        text.push_str(line);
+    }
+    Ok(text)
 }
 
 pub fn run_read(folder: &Path, name: &str) -> Result<String, ToolError> {

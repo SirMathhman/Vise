@@ -54,8 +54,16 @@ pub(super) fn note_command(
 ) -> io::Result<()> {
     match command {
         Command::ListNotes(category) => match notes::list(&tools.notes_folder(), &category, None) {
-            Ok(listed) if listed.is_empty() => writeln!(output, "no notes"),
-            Ok(listed) => writeln!(output, "{}", notes::describe_list(&listed)),
+            Ok(listing) => {
+                for line in &listing.skipped {
+                    writeln!(errors, "error: {line}")?;
+                }
+                if listing.notes.is_empty() {
+                    writeln!(output, "no notes")
+                } else {
+                    writeln!(output, "{}", notes::describe_list(&listing.notes))
+                }
+            }
             Err(err) => writeln!(errors, "error: {err}"),
         },
         Command::ShowNote(name) => match notes::read(&tools.notes_folder(), &name) {

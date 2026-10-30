@@ -7,6 +7,7 @@ use crate::notes::{self, Note};
 use crate::session::{HookLines, Message};
 use crate::tools::specs;
 use crate::tools::types::ToolRunner;
+use std::io::Write;
 use std::path::Path;
 
 /// The profile every run has without a note: no instructions, every tool and note allowed, and no hooks.
@@ -31,23 +32,41 @@ pub fn carried(history: &[Message], marked_text: &str) -> bool {
         .is_some_and(|text| text.starts_with(marked_text))
 }
 
-/// The profile names, sorted: the built-in default and the notes in `folder` whose category is `profile`.
-pub fn names(folder: &Path) -> Result<Vec<String>, String> {
-    let mut names: Vec<String> = notes::list(folder, CATEGORY, None)?.into_iter().map(|(name, _)| name).collect();
+/// The profile names, sorted: the built-in default and the notes in `folder` whose category is `profile`. A message
+/// comes with them for each note that could not be read, since such a note might be a profile.
+pub fn names(folder: &Path) -> Result<(Vec<String>, Vec<String>), String> {
+    let listing = notes::list(folder, CATEGORY, None)?;
+    let mut names: Vec<String> = listing.notes.into_iter().map(|(name, _)| name).collect();
     if !names.iter().any(|name| name == DEFAULT) {
         names.push(DEFAULT.to_string());
     }
     names.sort();
-    Ok(names)
+    Ok((names, listing.skipped))
 }
 
 /// Tells `tools` that the user has seen the hook lines of every profile that exists now. `main` calls it at launch, before
 /// the model can write anything, so a subagent runs these profiles' hooks and not those of a profile written later.
-pub fn confirm_existing(tools: &dyn ToolRunner) {
+/// What it could not read, it reports on `errors`: such a profile's hook lines stay unconfirmed.
+pub fn confirm_existing(tools: &dyn ToolRunner, errors: &mut impl Write) {
     let folder = tools.notes_folder();
-    for name in names(&folder).unwrap_or_default() {
-        if let Ok(profile) = load(&folder, &name) {
-            tools.confirm_hooks(&name, &profile.hooks.fingerprint());
+    let names = match names(&folder) {
+        Ok((names, skipped)) => {
+            for line in skipped {
+                let _ = writeln!(errors, "error: {line}");
+            }
+            names
+        }
+        Err(err) => {
+            let _ = writeln!(errors, "error: {err}");
+            return;
+        }
+    };
+    for name in names {
+        match load(&folder, &name) {
+            Ok(profile) => tools.confirm_hooks(&name, &profile.hooks.fingerprint()),
+            Err(err) => {
+                let _ = writeln!(errors, "error: profile {name} is not confirmed: {err}");
+            }
         }
     }
 }
@@ -262,7 +281,7 @@ mod tests {
         let folder = notes_with("default", &[]);
         let loaded = load(&folder, DEFAULT).expect("default needs no note");
         assert!(loaded.instructions.is_empty() && loaded.tools.is_none() && loaded.notes.is_none());
-        let listed = names(&folder).expect("names");
+        let (listed, _) = names(&folder).expect("names");
         std::fs::remove_dir_all(&folder).expect("the test folder is removed");
         assert!(listed.contains(&DEFAULT.to_string()));
     }
@@ -312,8 +331,47 @@ mod tests {
                 ("plan", "---\nsummary: s\ncategory: memory\n---\ntext"),
             ],
         );
-        let listed = names(&folder).expect("names");
+        let (listed, _) = names(&folder).expect("names");
         std::fs::remove_dir_all(&folder).expect("the test folder is removed");
         assert_eq!(listed, vec!["default".to_string(), "explore".to_string()]);
+    }
+
+    #[test]
+    fn a_broken_note_is_reported_and_the_other_profiles_are_still_confirmed() {
+        struct Remembering {
+            folder: std::path::PathBuf,
+            confirmed: std::cell::RefCell<Vec<String>>,
+        }
+        impl ToolRunner for Remembering {
+            fn run(
+                &self,
+                _invocation: &crate::tools::types::Invocation,
+                _approve: &mut dyn FnMut(&str) -> bool,
+            ) -> Result<String, crate::tools::types::ToolError> {
+                Ok(String::new())
+            }
+
+            fn notes_folder(&self) -> std::path::PathBuf {
+                self.folder.clone()
+            }
+
+            fn confirm_hooks(&self, name: &str, _hooks: &[String]) {
+                self.confirmed.borrow_mut().push(name.to_string());
+            }
+        }
+        let folder = notes_with(
+            "broken",
+            &[("good", "---\nsummary: s\ncategory: profile\n---\ntext"), ("bad", "no header at all")],
+        );
+        let tools = Remembering { folder: folder.clone(), confirmed: Default::default() };
+        let mut errors = Vec::new();
+        confirm_existing(&tools, &mut errors);
+        let (listed, skipped) = names(&folder).expect("names");
+        std::fs::remove_dir_all(&folder).expect("the test folder is removed");
+        let errors = String::from_utf8(errors).unwrap();
+        assert!(errors.contains("note 'bad' is skipped"), "{errors}");
+        assert_eq!(*tools.confirmed.borrow(), vec!["default".to_string(), "good".to_string()]);
+        assert_eq!(listed, vec!["default".to_string(), "good".to_string()]);
+        assert_eq!(skipped.len(), 1);
     }
 }

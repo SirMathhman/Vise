@@ -254,7 +254,7 @@ category: profile
         with_profile("vise-subagent-hooks", "hook before-turn: Write-Output profile-hook", "be brief", |cwd| {
             let tools = WorkspaceTools::new(cwd.to_path_buf());
             // The profile exists at launch, as it would when the user wrote it.
-            crate::profile::confirm_existing(&tools);
+            crate::profile::confirm_existing(&tools, &mut std::io::sink());
             let provider = Recorder::new(false);
             let global = vec!["Write-Output global-hook".to_string()];
             let result = run(

@@ -279,7 +279,8 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 ### Subagents
 
 - A subagent runs in a fresh `Conversation` built from its own environment gathering, never the parent's. Its profile is
-  applied before its first turn: tools, then note whitelist, then hooks, whose startup lines run then. `run_subagent` is
+  applied before its first turn: tools, then note whitelist, then hooks (only those the user has confirmed, see Command files and
+  profile hooks), whose startup lines run then. `run_subagent` is
   disabled for it.
 - When it ends, on success or failure, the parent's enabled set and note whitelist are restored exactly.
 - A subagent's turns obey every turn rule in this section. Its reply is the text of its last turn.
@@ -344,7 +345,8 @@ src/
                      (`tools:`, `notes:`, and `hook KIND: COMMAND`) and its content as the instructions
   notes.rs           the notes folder: one file per note. Reads, creates, updates, deletes, and lists notes, and builds the
                      index text. Each takes the folder, which the runner gets from the working directory (`notes_folder`).
-                     Listing takes an optional allowed set of names.
+                     Listing takes an optional allowed set of names, and returns the readable notes with a message for each
+                     note it had to skip, so one bad file does not hide the others; callers print those messages.
   default_model.rs   the default model's name in `model.txt`: loads and saves it as plain text
   startup.rs         runs `startup.txt` before the first prompt, and returns its blocks as one text (or None)
   before_turn.rs     runs `before-turn.txt` before each chat turn, and returns the block the turn's message carries
@@ -512,10 +514,6 @@ Each item is a gap between the design above and the code. Items are grouped by a
 
 - **The notes layer reaches the session.** `notes::needed` takes `&[Message]`, so `notes` imports `session`. The check belongs in
   `provider::prompt`, and `notes` should take plain text.
-- **One bad note hides every note.** `notes::list` returns the first parse error for the whole folder, so `/notes`, `list_notes`,
-  `/profiles`, and the index all fail. A model's `edit_file` can break a note's header, so the model can cause this. `list` should
-  return the good notes and a list of `(name, error)` for the rest, and callers should print the bad names. `/profile NAME` and
-  `read_note` read one file and are unaffected.
 - **The index reads every note in full.** It reads each note file to produce one summary line, every time it is built. The header
   alone is enough.
 - **Note paths skip confinement.** `notes::path` checks the name but not the folder: a symlink named `notes` leads writes outside the
@@ -686,6 +684,9 @@ Each item is a gap between the design above and the code. Items are grouped by a
   note with a `hook` line under another category and later made it a profile through `update_note` is therefore caught in a
   subagent and shown at `/profile`, not blocked there. `confirm_existing` also trusts every profile present at launch, including
   one the model wrote in an earlier session.
+- **`confirm_existing` confirms without showing.** The hook lines of the profiles present at launch are trusted without being
+  displayed. The launch should list each profile's hook lines once, or the confirmed set should be kept in a file the model cannot
+  write, so that a profile the model wrote in an earlier session is not trusted silently.
 - **Hook lines bypass the profile's tools line.** A profile with `tools: read_file` still runs PowerShell through a hook. This is intended
   for command files, but a profile that narrows the tools is not narrowing what its hooks can do. The user should confirm this decision.
 - **Selection can split on an I/O error.** In the `Profile` arm of `repl`, the instructions and tool state change before `select_hooks`
@@ -823,7 +824,7 @@ Controls:
 | Subagent writes approved with the subagent and profile named | Missing (Open Problems). |
 | Bounds on subagents per parent turn, and on their turns | Missing (Open Problems). |
 | Subagent output and failures shown to the user | Partly met. Its tool lines and their failures are shown, indented under the parent's `tool:` line. Its answer, its status, and its follow-up failures are not (Open Problems). |
-| Subagent profile limits (tools, notes) | Met. They come from the profile and are restored afterwards. Its hooks run without a prompt, as for any profile. |
+| Subagent profile limits (tools, notes) | Met. They come from the profile and are restored afterwards. Its hooks run without a prompt, but only when they are the confirmed ones. |
 | Environment disclosure (working directory and standing instructions sent every turn) | Missing. The path and the whole `AGENTS.md` are always sent. The notes index is sent with them. |
 | Note names restricted to letters, digits, `-`, `_` | Met. A name cannot leave the notes folder. A symlink named `notes` is still followed (Open Problems). |
 | Note writes approved like other writes | Met for model writes. The user's typed `/note create` and `/note delete` do not prompt, by design. `/note create` writes a placeholder summary (Open Problems). |

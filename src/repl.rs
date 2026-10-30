@@ -47,8 +47,16 @@ pub fn run(
             Some(Command::Enable(name)) => toggle(tools, &name, true, output, errors)?,
             Some(Command::Disable(name)) => toggle(tools, &name, false, output, errors)?,
             Some(Command::Profiles) => match profile::names(&tools.notes_folder()) {
-                Ok(names) if names.is_empty() => writeln!(output, "no profiles: a profile is a note with the category profile")?,
-                Ok(names) => writeln!(output, "{}", names.join("\n"))?,
+                Ok((names, skipped)) => {
+                    for line in &skipped {
+                        writeln!(errors, "error: {line}")?;
+                    }
+                    if names.is_empty() {
+                        writeln!(output, "no profiles: a profile is a note with the category profile")?;
+                    } else {
+                        writeln!(output, "{}", names.join("\n"))?;
+                    }
+                }
                 Err(err) => writeln!(errors, "error: {err}")?,
             },
             Some(command @ (Command::ListNotes(_) | Command::ShowNote(_) | Command::CreateNote(..) | Command::DeleteNote(_))) => {

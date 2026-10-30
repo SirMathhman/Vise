@@ -81,8 +81,12 @@ pub fn prepare_message(
         _ => line,
     };
     Ok(match notes::index(&tools.notes_folder(), tools.allowed_notes().as_deref()) {
-        Ok(index) if notes::needed(conversation.messages(), &index) => format!("{index}\n\n{message}"),
-        Ok(_) => message,
+        Ok((index, skipped)) => {
+            for line in skipped {
+                writeln!(errors, "error: {line}")?;
+            }
+            if notes::needed(conversation.messages(), &index) { format!("{index}\n\n{message}") } else { message }
+        }
         Err(err) => {
             writeln!(errors, "error: {err}")?;
             message

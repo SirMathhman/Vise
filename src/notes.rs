@@ -120,13 +120,20 @@ pub fn delete(folder: &Path, name: &str) -> Result<(), String> {
     fs::remove_file(&file).map_err(|err| format!("cannot delete note '{name}': {err}"))
 }
 
+/// The notes `list` found, and a message for each file it had to leave out because it could not be read as a note.
+pub struct Listing {
+    pub notes: Vec<(String, Note)>,
+    pub skipped: Vec<String>,
+}
+
 /// The notes in one category, sorted by name. An empty category matches every note, and `allowed` (when
 /// given) limits the result to the named notes. A file whose name is not a valid note name is not a note, so
-/// it is skipped.
-pub fn list(folder: &Path, category: &str, allowed: Option<&[String]>) -> Result<Vec<(String, Note)>, String> {
+/// it is skipped without a word. A note that cannot be read is left out and reported in `skipped`, so one bad file does
+/// not hide the others.
+pub fn list(folder: &Path, category: &str, allowed: Option<&[String]>) -> Result<Listing, String> {
     let entries = match fs::read_dir(folder) {
         Ok(entries) => entries,
-        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(Listing { notes: Vec::new(), skipped: Vec::new() }),
         Err(err) => return Err(format!("cannot read the notes folder: {err}")),
     };
     let mut names: Vec<String> = entries
@@ -136,17 +143,18 @@ pub fn list(folder: &Path, category: &str, allowed: Option<&[String]>) -> Result
         .filter(|name| path(folder, name).is_ok())
         .collect();
     names.sort();
-    let mut notes = Vec::new();
+    let mut listing = Listing { notes: Vec::new(), skipped: Vec::new() };
     for name in names {
         if allowed.is_some_and(|allowed| !allowed.contains(&name)) {
             continue;
         }
-        let note = read(folder, &name)?;
-        if category.is_empty() || note.category == category {
-            notes.push((name, note));
+        match read(folder, &name) {
+            Ok(note) if category.is_empty() || note.category == category => listing.notes.push((name, note)),
+            Ok(_) => {}
+            Err(err) => listing.skipped.push(format!("note '{name}' is skipped: {err}")),
         }
     }
-    Ok(notes)
+    Ok(listing)
 }
 
 /// One line per note: its name, category and summary. Empty when there are no notes.
@@ -163,13 +171,14 @@ pub fn show(note: &Note) -> String {
     format!("summary: {}\ncategory: {}\n\n{}", note.summary, note.category, note.content)
 }
 
-/// The notes list the model is told about: the allowed notes' names, categories and summaries, or `NONE`.
-pub fn index(folder: &Path, allowed: Option<&[String]>) -> Result<String, String> {
-    let notes = list(folder, "", allowed)?;
+/// The notes list the model is told about: the allowed notes' names, categories and summaries, or `NONE`. It comes with a
+/// message for each note that could not be read, which is left out of the list.
+pub fn index(folder: &Path, allowed: Option<&[String]>) -> Result<(String, Vec<String>), String> {
+    let Listing { notes, skipped } = list(folder, "", allowed)?;
     if notes.is_empty() {
-        return Ok(NONE.to_string());
+        return Ok((NONE.to_string(), skipped));
     }
-    Ok(format!("{MARK}\n{}", describe_list(&notes)))
+    Ok((format!("{MARK}\n{}", describe_list(&notes)), skipped))
 }
 
 /// Whether the model must be told the notes again: the latest list in `history` is not `index`. With no
@@ -239,5 +248,23 @@ mod tests {
         fs::remove_dir_all(&folder).expect("the test folder is removed");
         assert_eq!(read_back.extra, vec!["hook before-turn: Get-Date".to_string()]);
         assert_eq!(read_back.content, "new text");
+    }
+
+    #[test]
+    fn one_unreadable_note_does_not_hide_the_others() {
+        let folder = std::env::temp_dir().join(format!("vise-note-skip-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(&folder).expect("the test folder is made");
+        fs::write(folder.join("good.md"), "---\nsummary: s\ncategory: memory\n---\ntext").expect("written");
+        fs::write(folder.join("bad.md"), "no header at all").expect("written");
+        let listing = list(&folder, "", None).expect("the folder is listed");
+        let (text, skipped) = index(&folder, None).expect("the index is built");
+        fs::remove_dir_all(&folder).expect("the test folder is removed");
+        assert_eq!(listing.notes.len(), 1);
+        assert_eq!(listing.notes[0].0, "good");
+        assert_eq!(listing.skipped.len(), 1);
+        assert!(listing.skipped[0].contains("note 'bad' is skipped"), "{:?}", listing.skipped);
+        assert!(text.contains("good [memory]: s") && !text.contains("bad"));
+        assert_eq!(skipped, listing.skipped);
     }
 }
