@@ -43,8 +43,8 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
   `</tool_call>`. It is the only reply form that runs a tool.
 - **Write**: a call that changes the filesystem, or starts or stops a program. These are the tool calls
   `create_file`, `create_directory`, `edit_file`, `run_powershell`, `kill_background`, `create_note`,
-  `update_note`, `delete_note`, and `run_subagent`, and the user's commands `/note create CATEGORY NAME`, `/note delete NAME`,
-  `/save`, and `/model NAME`. A write runs only after the user approves it, whoever asked. Exceptions are
+  `update_note`, `delete_note`, and `run_subagent`, and the user's commands `/note delete NAME`, `/save`, and `/model NAME`. A write the model asks for runs only after the
+  user approves it. The user's own `/note create CATEGORY NAME` is not asked for approval: typing it is the approval. Exceptions are
   autosave (see Session), and the command lines (see Command files and hooks). A declined write is reported
   to the model as an error and changes nothing.
 - **Note**: a named file, `notes/NAME.md`, starting with a `---` header of one `summary:` line and one `category:`
@@ -808,7 +808,7 @@ Controls:
 | Subagent profile limits (tools, notes) | Met. They come from the profile and are restored afterwards. Its hooks run without a prompt, as for any profile. |
 | Environment disclosure (working directory and standing instructions sent every turn) | Missing. The path and the whole `AGENTS.md` are always sent. The notes index is sent with them. |
 | Note names restricted to letters, digits, `-`, `_` | Met. A name cannot leave the notes folder. A symlink named `notes` is still followed (Open Problems). |
-| Note writes approved like other writes, including the user's own note commands | Met. `/note create` and `/note delete` go through the runner. |
+| Note writes approved like other writes, including the user's own note commands | Met. `/note delete` goes through the runner and is approved. `/note create` runs without a prompt, because the user typed it. |
 | Session writes approved like other writes | Met. `/save` asks for approval, and refuses a name that is taken. It does not go through `WorkspaceTools`. |
 | Stored sessions checked before they are loaded | Met. `/load` checks each turn before it replaces the history. |
 | Session names restricted to letters, digits, `-`, `_` | Met. A name is a column value, never a path, and names `load` refuses are not listed. |

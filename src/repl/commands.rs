@@ -77,7 +77,11 @@ pub(super) fn note_command(
                 category,
                 content: String::new(),
             };
-            user_write(tools, &placeholder, output, input, errors)
+            // The user's own command is the approval, so no prompt is shown. Writes the model asks for still wait.
+            match tools.run(&placeholder, &mut |_: &str| true) {
+                Ok(message) => writeln!(output, "{message}"),
+                Err(err) => writeln!(errors, "error: {err}"),
+            }
         }
         Command::DeleteNote(name) => user_write(tools, &Invocation::DeleteNote { name }, output, input, errors),
         _ => Ok(()),
@@ -130,5 +134,34 @@ pub(super) fn session_command(
             Err(err) => writeln!(errors, "error: {err}"),
         },
         _ => Ok(()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tools::types::{ToolError, ToolRunner};
+
+    /// Creates a note only if the approval it is given accepts the change, as the runner does for a write.
+    struct Approving;
+
+    impl ToolRunner for Approving {
+        fn run(&self, _invocation: &Invocation, approve: &mut dyn FnMut(&str) -> bool) -> Result<String, ToolError> {
+            if approve("create note") { Ok("created note".into()) } else { Err(ToolError::Failed("declined".into())) }
+        }
+    }
+
+    #[test]
+    fn the_users_own_create_is_not_asked_for_approval() {
+        // A declined prompt would answer "n", so a create that still succeeds was not asked.
+        let mut output = Vec::new();
+        let mut errors = Vec::new();
+        let mut input: &[u8] = b"n
+";
+        note_command(Command::CreateNote("b".into(), "profile".into()), &Approving, &mut output, &mut input, &mut errors)
+            .unwrap();
+        assert_eq!(String::from_utf8(output).unwrap(), "created note
+");
+        assert!(errors.is_empty());
     }
 }
