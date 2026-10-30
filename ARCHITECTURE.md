@@ -147,8 +147,9 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
   so the line and the tool that runs come from one decode. A call whose arguments do not bind reports its name alone.
 - The line's text is model-controlled: control characters are replaced and it is cut to 100 characters, so a `\r` cannot
   overwrite the `tool:` prefix and a long command cannot flood the terminal.
-- A subagent's tool lines reach the parent's display, so a `run_subagent` call is followed by what the subagent ran. Its
-  answer text and status lines do not, because only the parent's reply is shown.
+- A subagent's tool lines reach the parent's display, so a `run_subagent` call is followed by what the subagent ran. Each
+  is indented two spaces under the parent's `tool:` line, and its `did not run:` line four, so the transcript shows which
+  calls belong to the subagent. Its answer text and status lines do not, because only the parent's reply is shown.
 - Overflow handling:
   - A request the server rejects because it exceeds the context (`exceed_context_size_error`) is `ContextFull`. So is a
     tool round whose reply reports a prompt at 80% of the context size; that round's tools are not run.
@@ -304,8 +305,10 @@ src/
   main.rs            wiring: reads .env and LLAMA_API_KEY, takes the working directory, builds the provider and the
                      tool runner, applies the saved default model, loads the command files, runs the REPL, then shutdown.
                      Fatal startup errors go to exit_with.
-  repl.rs            the input loop over generic BufRead and Write. Parses and runs slash commands, hands each chat
-                     line to `turn`, runs the follow-up turns, asks for approval of writes, and writes replies and notices.
+  repl.rs            the input loop over generic BufRead and Write. Runs slash commands, hands each chat line to `turn`,
+                     runs the follow-up turns, asks for approval of writes, and writes replies and notices.
+  repl/commands.rs   the slash commands that act on tools, notes and saved sessions (`/tools`, `/note`, `/save`, `/load`).
+  repl/tests.rs      the loop's tests.
   commands.rs        parses a slash command into `Command`, and holds the help text (no I/O)
   turn.rs            runs one turn: `run_turn` (compaction, and the one retry on ContextFull), `prepare_message`
                      (before-turn, startup, profile, and notes index), `apply_whitelist`, `select_hooks`, and `hook_lines`.
@@ -338,7 +341,8 @@ src/
   shutdown.rs        runs `shutdown.txt`, then the selected profile's shutdown hooks, after the REPL ends
   file_commands.rs   runs the lines of one command file in order through the tool runner, printing each line and its status
   render.rs          displays provider Events: one status line, answer text, a `tool:` line per call, and the end of each
-                     request. Owns the output the answer and the approval prompt share.
+                     request. Subagent tool lines come in through `on_subagent_event`, indented under the parent's. Owns
+                     the output the answer and the approval prompt share.
   environment.rs     gathers host facts as plain data: the working directory, and the standing instructions from `AGENTS.md`
   interrupt.rs       Ctrl+C: the installed handler, `work`, which marks a request, a tool round, or the startup lines
                      as stoppable and reports `Interrupted` once a press is recorded, and `tracked`, the same marking
@@ -783,7 +787,7 @@ Controls:
 | Subagent started only when `run_subagent` is enabled, and never by a subagent | Met. The provider checks the enabled set, the runner refuses a direct call, and `run_subagent` is disabled inside a subagent. The name check in the provider is open (Open Problems). |
 | Subagent writes approved with the subagent and profile named | Missing (Open Problems). |
 | Bounds on subagents per parent turn, and on their turns | Missing (Open Problems). |
-| Subagent output and failures shown to the user | Missing (Open Problems). |
+| Subagent output and failures shown to the user | Partly met. Its tool lines and their failures are shown, indented under the parent's `tool:` line. Its answer, its status, and its follow-up failures are not (Open Problems). |
 | Subagent profile limits (tools, notes) | Met. They come from the profile and are restored afterwards. Its hooks run without a prompt, as for any profile. |
 | Environment disclosure (working directory and standing instructions sent every turn) | Missing. The path and the whole `AGENTS.md` are always sent. The notes index is sent with them. |
 | Note names restricted to letters, digits, `-`, `_` | Met. A name cannot leave the notes folder. A symlink named `notes` is still followed (Open Problems). |
