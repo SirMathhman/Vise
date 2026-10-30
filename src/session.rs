@@ -133,10 +133,10 @@ pub struct Timings {
 /// count out of the context window.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct RequestRecord {
-    /// Which request of the turn this was, from 1. A turn makes one per tool round.
+    /// Which round of a turn this request was, from 1, or 0 for a summary request, which belongs to none. A turn makes
+    /// one request per tool round, so summing by round never counts a summary with a turn's first round.
     pub round: u64,
-    /// The role of the message this request was answering, so a reader can tell a reply from a summary:
-    /// `"turn"` or `"summary"`.
+    /// What the request was for: `"turn"` or `"summary"`.
     pub kind: &'static str,
     pub prompt_tokens: u64,
     pub timings: Timings,
@@ -399,11 +399,13 @@ impl Conversation {
     }
 
     /// Replaces the history with `history`, keeping this run's system context. The prompt token count is
-    /// unknown until the next request.
+    /// unknown until the next request, and the request log starts again: it describes the sessions this run wrote, and
+    /// the requests that produced the loaded history belong to the session it came from.
     pub fn replace_history(&mut self, history: Vec<Message>) {
         self.messages.truncate(1);
         self.messages.extend(history);
         self.prompt_tokens = 0;
+        self.requests.clear();
         // The loaded history goes to a new autosave file, so the file this run was writing keeps its earlier history.
         if let Some(autosave) = &mut self.autosave {
             autosave.name = None;
@@ -520,6 +522,17 @@ mod tests {
         assert_eq!(messages[1].content(), "summary");
         assert_eq!(messages[2].content(), "b");
         assert_eq!(messages[4].content(), "c");
+    }
+
+    #[test]
+    fn a_loaded_history_starts_an_empty_request_log() {
+        let env = Environment { cwd: PathBuf::from("C:/work") };
+        let mut conversation = Conversation::new(&env);
+        let sent = RequestRecord { round: 1, kind: "turn", prompt_tokens: 10, timings: Timings::default() };
+        conversation.commit(plain_turn("a").with_requests(vec![sent]));
+        assert_eq!(conversation.requests().len(), 1);
+        conversation.replace_history(vec![Message::User("loaded".into()), reply()]);
+        assert!(conversation.requests().is_empty(), "the loaded history's requests are not this run's");
     }
 
     #[test]

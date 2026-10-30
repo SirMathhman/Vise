@@ -53,6 +53,9 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 - **Session**: the history after the system context, saved by `/save` as a row in `sessions/sessions.db` and replaced
   by `/load`. Autosave writes the history after each completed turn to a session named from the run's first input
   and the time, so each run has its own session.
+- **Request log**: the `requests` rows of one session, one per request the session's turns made, kept for auditing what a
+  prompt cost. It is not part of the history: it outlives the turns it was made for, and it is never rewritten. It belongs
+  to the session that was writing when each request was sent.
 - **Profile**: a named set of instructions in `profiles/NAME.txt`, selected with `/profile NAME`. Its text, under a
   heading that names it, is prepended to the next user message only. Its optional header lines, in any order, are
   `tools:` (the tools it allows), `notes:` (the notes the model may use), and `hook KIND: COMMAND` (see Profile hooks).
@@ -194,7 +197,7 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 - A session is a row in the `sessions` table of `sessions/sessions.db`, with one `messages` row per message in order.
   Its name follows the profile name rule, so it is plain text in a column, never a path. `/save` refuses a name that
   already has a session, and asks for approval first. `/load` replaces the history, keeps the current run's context
-  message, and resets the prompt token count.
+  message, resets the prompt token count, and starts an empty request log.
 - A write of a session removes its old messages and inserts the new ones in one transaction, so an interrupted write
   leaves the earlier history. Each message row holds the role, the content, and either the call a tool result answers or
   the reply's tool calls as JSON text.
@@ -205,7 +208,16 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
   `draft_n_accepted`. A number the server did not report is stored as NULL, not 0, so a reader can tell them apart.
 - The `requests` log is append-only and is not a child of `messages`. Compaction replaces turns but not the record of the
   requests that made them, and a rewrite inserts only the requests not yet stored, so no request is lost or counted
-  twice. A stopped turn keeps the timings of the rounds that finished before the press.
+  twice. A stopped turn keeps the timings of the rounds that finished before the press. A summary request is recorded
+  with round 0, because it belongs to no turn's round, so summing by round never counts it with one.
+- A write whose request slice is shorter than the log already stored is refused, not silently skipped: that means the
+  caller is writing a different session's rows. `/load` starts an empty log, because the requests that produced the
+  loaded history belong to the session it came from.
+- The log belongs to the session whose history the conversation holds. Taking on another session's history, by `/load` or
+  by a `/save`, takes on that session's request rows and none of the run's own, because each request was sent while a
+  different history was current. The store is told the name the rows belong to; it does not infer it from a count.
+- A request row's prompt count is NULL when the server reported no usage, as its timings are, so a reader can tell "not
+  reported" from "zero".
 - Autosave is the one write without approval. It writes only rows of `sessions/sessions.db`, after each completed turn,
   and the name is chosen once per run, when its first turn completes.
 - A `sessions/NAME.json` file in the format sessions were once saved as is imported as the session `NAME` at launch,
@@ -440,7 +452,9 @@ Each item is a gap between the design above and the code. Items are grouped by a
   even though the request succeeded. The caller then drops the oldest turn.
 - **A drop is not a summary.** `Compaction::Dropped` removes history without a summary, so the one-summary rule does not hold after it.
 - **Missing usage is zero.** When the server omits `usage`, the prompt count is stored as 0, and `/context` prints `0 / N` as if the
-  conversation were empty. The absence must be unknown, not zero.
+  conversation were empty. The absence must be unknown, not zero. The request log inherits the flaw: its `prompt_tokens` column is
+  `NOT NULL` and `Sent` fills it with 0, so a row reads as "the server counted no prompt tokens" when it means "the server said
+  nothing". It is the same value the whole run budgets against, so it is fixed once, in `Sent`.
 - **Repeated compaction is silent.** If the context is small or the summary large, every turn can trigger a full summary request,
   and nothing reports that compaction freed too little space.
 - **A failed request leaves the status line open.** `send` returns on a read or parse error before it reports `Finished`, so the
@@ -516,9 +530,16 @@ Each item is a gap between the design above and the code. Items are grouped by a
   to `repl::run`.
 - **Hook lines are held in the session module.** `HookLines` lives in `session.rs`, and the selected profile's lines are held by
   `Conversation`. They belong with the REPL's selection state, not the history.
-- **The source tree exceeds the Modularity limits.** `src/` holds 18 files (the limit is 10). `repl.rs` and `provider/llama_cpp.rs`
-  are over the 500-code-line limit. `cargo clippy --all-targets` reports warnings beyond the known one, including `chat_turn`'s
-  arguments, and `subagent::run` and `subagent::session`, which take 7 parameters each.
+- **The source tree exceeds the Modularity limits.** `src/` holds 18 files (the limit is 10). `repl.rs` (834 code lines) and
+  `provider/llama_cpp.rs` (642) are over the 500-code-line limit, and `session.rs` (468) and `saved_sessions/store.rs` (439) are
+  close. `cargo clippy --all-targets` reports warnings beyond the bin's three, including `chat_turn`'s arguments,
+  `subagent::run` and `subagent::session`, which take 7 parameters each, and `store::tests::stored_requests`, whose return type
+  is a six-field tuple. A test-only type warning is still a warning: the row type belongs in a named struct.
+- **One message-like value is threaded through four signatures.** A request's timing travels as `Timings`, then as
+  `RequestRecord`, through `send`'s `Sent`, the provider's per-round vector, `Turn`/`PartialTurn`, `Conversation`, `compact`,
+  and `Provider::summarize`'s return type, which now carries both a summary and an audit row. Every layer forwards a value only
+  the store consumes. The provider should report its requests to one sink the caller supplies, and `summarize` should return the
+  summary alone.
 - **`main` exits 0 when the REPL fails.** A stdin or stdout failure inside the REPL returns normally.
 
 ### Writes and sessions
@@ -532,10 +553,37 @@ Each item is a gap between the design above and the code. Items are grouped by a
   between leaves a partial file. Both should write a temporary file and rename it. A session write already does one transaction.
 - **Stored sessions are not shown as untrusted.** `/load` commits a session's messages as history with no mark that they came from disk.
 - **Autosave sessions accumulate.** Each run that completes a turn leaves a session, and nothing removes them.
+- **The request log cannot be read from the app.** The timings are stored, but no command reports them, so auditing means
+  opening `sessions/sessions.db` with a SQLite client. A `/timings` command should print the current session's rows with
+  per-turn prefill totals.
 - **Autosave replaces its own session without checking.** Two runs that start with the same input in the same second overwrite each
   other silently. `/save` refuses a taken name; autosave does not check.
 - **Autosave keeps only the latest history.** Each completed turn rewrites the session's messages with the whole history, so compaction
   and a dropped turn remove earlier turns from disk too. The session is a snapshot, not a log.
+- **A session's request log can be filled with another session's requests.** `replace_history` keeps `Conversation::requests`, and
+  `store::replace` decides what is unrecorded by counting the rows already stored and skipping that many from the front of the
+  slice it is given. After `/load`, the next autosave writes the previous history's requests into the loaded session, starting
+  from a count of rows that says nothing about which requests are in the slice. The store must be told the session the rows
+  belong to, and the conversation must start a new log whenever it takes on another history.
+- **The summary request shares round 1 with the turn's first round.** `summarize` records `round: 1` with `kind: "summary"`, so a
+  turn that compacted before its request has two rows at round 1, and a reader summing a turn's prefill counts both. A summary
+  is not a round of a turn: it needs numbering of its own, or none.
+- **The request log cannot be read without a SQLite client.** Rows are written on every autosave and nothing in the REPL shows
+  them, so the audit the log exists for needs an external tool. A `/timings` command should print the current session's rows, or
+  a summary of them, through the same store that wrote them.
+- **Timings duplicate the rate the server also sends.** `prompt_ms` and `prompt_per_second` are two f64s for one quantity, and so
+  are `predicted_ms` and `predicted_per_second`: the rate follows from the count and the time. Storing both lets a row hold a rate
+  and a duration that disagree, with nothing to arbitrate.
+- **A request's `kind` is a `&'static str`.** The column is free text and the field is a string constant, so a third kind is a new
+  literal at its producer that nothing checks; the `CHECK` that pins the message roles does not cover this column. A small enum
+  with a stored text form keeps the set closed and the column readable.
+- **A session's request log is deleted with the session.** The cascade on `session` removes the audit rows when a session goes,
+  although the log records what requests cost rather than what the history holds. Whether an audit log may be deleted is a
+  decision to make explicit.
+- **The request rows are a child table after all.** The log was declared append-only and not a child of `messages`, yet it hangs off
+  `sessions` with a cascade, and its rows are keyed on position within the session like the message rows. A log that outlives its
+  subject belongs in a store that no session delete reaches, keyed on the session name and the time, or the cascade is a promise
+  the invariants do not keep.
 - **An imported session file stays on disk**, so the folder holds the old history beside the database, and a file whose name matches a
   stored session is skipped without a report. Nothing says a file was skipped or unreadable, and `import` returns only a count.
 - **No schema version or lock policy.** `open` re-runs `CREATE TABLE IF NOT EXISTS` on every connection and sets no `user_version`, no
@@ -722,6 +770,9 @@ Controls:
 | Data exposure (directory listings sent to the endpoint) | Accepted. History reaches disk unredacted through `/save` and autosave, including tool results and command output. |
 | Autosave writes without approval | Accepted by design, as the one exception to Write. It writes only rows of `sessions/sessions.db`, under a name chosen from the first input and the time (Open Problems). |
 | Request timings are recorded without approval | Accepted for the same reason: the `requests` row is written with the session it belongs to, and holds only counts the server reported. A timing is not user content, so the log cannot expose a note or a file. |
+| A request row names the session it was sent under | Met. `/load` starts an empty log, and a write whose slice is shorter than the log already stored is refused rather than skipped. |
+| Request timings can be read from the app | Missing. The log is write-only without an external SQLite client; no command reports it (Open Problems). |
+| Recorded timings are shown only to the user who reads the database | Accepted. Nothing in the REPL prints a request row, and the rows reach no endpoint. |
 | Default model changed only by a successful switch | Partly met. The save follows a successful switch, and the switch itself asks no approval (Open Problems). |
 | Default model file protected from model writes | Missing. The file tools do not guard `model.txt` (Open Problems). |
 | Model switch checked against the server's list and context size | Met. A name is accepted only when the server lists it with a context size, and the two change together. |
@@ -743,6 +794,10 @@ Controls:
 - A `/compact` report that shows the summary and how many turns and tokens it replaced.
 - Token-aware trimming of old turns, as the fallback when a summary does not fit, in place of dropping the oldest turn outright.
 - A `/jobs` command that lists background tasks with their command, state, and age, and a way to read a task's output from the terminal.
+- A `/timings` command that reads the current session's request rows back through the store and prints them as a table, with a
+  per-turn total of prompt and generated time, so the audit does not need an external SQLite client.
+- One audit log for the working directory rather than one per session: request rows, approvals, write commands with their text and
+  exit status, all keyed on the session name and the time, so removing a session does not remove the record of what it cost.
 - Deletion and further execution tools, only after logging is implemented.
 - A `/note edit NAME` form that changes a note's content through the runner's approval.
 - A `/profile` form that clears the selection, and a listing that shows the selected profile. Clearing stops its hook lines too.
@@ -766,6 +821,10 @@ Obvious concerns only; profile before optimizing.
 - `/save` and `/load` read and write the whole history one row per message to `sessions/sessions.db`, and `/load` reads all of it before
   the turn check. Each command opens and closes its own connection, and the schema is re-run per open. `/save` opens three: `check_save`
   and `save` each look the name up, then `write` opens the connection it writes on.
+- Every autosave appends whatever part of the request log it has not yet stored, and finds that part by counting the rows already
+  written for the session, so the comparison repeats on every turn. The log is one row per request, which is one row per tool round.
+  The count belongs on the `sessions` row, where an append reads one integer instead of counting a table, and the same integer answers
+  "which session did these rows belong to?".
 - Before-turn lines run before every chat turn, so each turn waits for their sum before its request, and their output is resent with every later
   request. A selected profile's before-turn and after-turn hooks add to these waits.
 - After-turn lines run after every chat turn, and a failing line can cause up to `FOLLOW_UPS` more turns, each with its own before-turn run and request.

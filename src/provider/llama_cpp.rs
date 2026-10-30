@@ -294,7 +294,7 @@ impl LlamaCpp {
         if summary.trim().is_empty() {
             return Err(ProviderError::EmptySummary);
         }
-        Ok((summary, RequestRecord { round: 1, kind: "summary", prompt_tokens, timings }))
+        Ok((summary, RequestRecord { round: 0, kind: "summary", prompt_tokens, timings }))
     }
 }
 

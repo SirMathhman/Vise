@@ -215,8 +215,10 @@ fn replace(
     transaction.commit()
 }
 
-/// Adds the requests not yet stored for `name`, continuing after the highest position already there. The log is
-/// append-only, so a request recorded by an earlier write is never rewritten or removed.
+/// Adds the requests not yet stored for `name`, continuing after the rows already there. The log is append-only, so a
+/// request recorded by an earlier write is never rewritten or removed. `stored` is how many rows the log already holds;
+/// a write whose slice is shorter than that belongs to a different session and is refused rather than silently
+/// skipping rows, because an audit log that diverges without saying so is worse than one that fails.
 fn append_requests(
     transaction: &rusqlite::Transaction<'_>,
     name: &str,
@@ -228,6 +230,12 @@ fn append_requests(
         |row| row.get(0),
     )?;
     let listed = stored as usize;
+    if requests.len() < listed {
+        return Err(rusqlite::Error::InvalidParameterName(format!(
+            "the log of session '{name}' holds {listed} requests but only {} were given",
+            requests.len()
+        )));
+    }
     let mut insert = transaction.prepare(
         "INSERT INTO requests (
             session, position, round, kind, prompt_tokens, cache_n, prompt_n, prompt_ms, prompt_per_second,
@@ -378,6 +386,19 @@ mod tests {
         fs::remove_dir_all(&folder).expect("the test folder is removed");
         assert_eq!(rows.len(), 2, "the first request is not written twice");
         assert_eq!(rows[1], (1, 1, "turn".to_string(), 20, Some(2), Some(2.0)));
+    }
+
+    #[test]
+    fn a_write_that_lost_requests_is_refused_rather_than_skipping_rows() {
+        let folder = temp_folder("log-behind");
+        write(&folder, "s", &reply("first"), &[request(1, 10, 10, 1.0), request(2, 20, 2, 2.0)])
+            .expect("the first write");
+        // A slice shorter than the stored log means the caller is writing a different session's requests.
+        let refused = write(&folder, "s", &reply("second"), &[request(1, 10, 10, 1.0)]).is_err();
+        let rows = stored_requests(&folder, "s");
+        fs::remove_dir_all(&folder).expect("the test folder is removed");
+        assert!(refused, "the write is refused instead of skipping a row");
+        assert_eq!(rows.len(), 2, "the log is unchanged");
     }
 
     #[test]
