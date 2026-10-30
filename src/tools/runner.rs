@@ -55,6 +55,19 @@ impl WorkspaceTools {
             && folder.file_name().is_some_and(|name| name.eq_ignore_ascii_case(PROFILES_FOLDER))
     }
 
+    /// What the user is asked to approve. A write to a profile file says its hook lines run without a prompt, because the
+    /// file tools may write there only with that approval.
+    fn approval_text(&self, invocation: &Invocation) -> String {
+        let text = describe(invocation);
+        match invocation {
+            Invocation::CreateFile { path, .. } | Invocation::EditFile { path, .. } if self.is_profile_file(path) => {
+                format!("{text}
+This changes a profile, whose hook lines run without a prompt.")
+            }
+            _ => text,
+        }
+    }
+
     /// Whether `path` names a command file (startup or shutdown) in the working directory, whatever its spelling.
     fn is_command_file(&self, path: &str) -> bool {
         let (Ok(target), Ok(root)) = (confine_new(&self.cwd, path), self.cwd.canonicalize()) else {
@@ -111,16 +124,16 @@ impl ToolRunner for WorkspaceTools {
         if let Some(note) = invocation.note_name().filter(|note| !self.note_allowed(note)) {
             return Err(ToolError::Failed(format!("note '{note}' is not allowed by the profile")));
         }
-        // The file tools cannot change the startup or shutdown commands. Changing them is left to run_powershell, whose
+        // The file tools cannot change the command files. Changing them is left to run_powershell, whose
         // approval text says when a command names one of these files.
         if let Invocation::CreateFile { path, .. } | Invocation::EditFile { path, .. } = invocation
-            && (self.is_command_file(path) || self.is_profile_file(path))
+            && self.is_command_file(path)
         {
             return Err(ToolError::Failed(format!(
                 "'{path}' lists commands that run without a prompt, so the file tools cannot change it"
             )));
         }
-        if invocation.writes() && !approve(&describe(invocation)) {
+        if invocation.writes() && !approve(&self.approval_text(invocation)) {
             return Err(ToolError::Failed("the user declined this change".into()));
         }
         match invocation {
@@ -274,8 +287,22 @@ mod tests {
     }
 
     #[test]
-    fn file_tools_refuse_to_write_into_the_profiles_folder() {
-        assert!(create_is_refused("profile-guard", "profiles/x.txt"));
+    fn file_tools_write_into_the_profiles_folder_only_with_approval_that_names_the_hooks() {
+        let cwd = std::env::temp_dir().join(format!("vise-profile-write-{}", std::process::id()));
+        fs::create_dir_all(cwd.join("profiles")).unwrap();
+        let tools = WorkspaceTools::new(cwd.clone());
+        let create = Invocation::CreateFile { path: "profiles/x.txt".into(), content: "x".into() };
+        let declined = tools.run(&create, &mut |_: &str| false);
+        let mut asked = String::new();
+        let approved = tools.run(&create, &mut |change: &str| {
+            asked = change.to_string();
+            true
+        });
+        let written = cwd.join("profiles/x.txt").exists();
+        fs::remove_dir_all(&cwd).unwrap();
+        assert!(declined.is_err());
+        assert!(approved.is_ok() && written);
+        assert!(asked.contains("hook lines run without a prompt"));
     }
 
     #[test]
