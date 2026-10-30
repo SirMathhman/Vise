@@ -6,6 +6,7 @@ use crate::engine::{Engine, Flow, Request};
 use crate::frontend::Frontend;
 use crate::provider::types::Provider;
 use crate::session::Conversation;
+use crate::stop::Stop;
 use crate::terminal::TerminalFrontend;
 use crate::tools::types::ToolRunner;
 use std::io::{self, BufRead, Write};
@@ -26,7 +27,7 @@ pub fn run(
     conversation: &mut Conversation,
     sessions: &Path,
 ) -> io::Result<()> {
-    let mut engine = Engine::new(provider, tools, conversation, sessions);
+    let mut engine = Engine::new(provider, tools, conversation, sessions, Stop::new());
     run_engine(&mut engine, input, output, errors)
 }
 

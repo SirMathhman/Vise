@@ -8,12 +8,12 @@ use crate::commands::Command;
 use crate::default_model;
 use crate::error::ProviderError;
 use crate::frontend::{Frontend, UiEvent};
-use crate::interrupt;
 use crate::profile;
 use crate::provider::types::{Event, Provider};
 use crate::saved_sessions;
 use crate::session::{Conversation, Message, PartialTurn, Turn};
 use crate::startup;
+use crate::stop::Stop;
 use crate::subagent;
 use crate::shutdown;
 use crate::tools::types::ToolRunner;
@@ -47,6 +47,8 @@ pub struct Engine<'a> {
     sessions: &'a Path,
     /// The text of the profile chosen with `/profile NAME`. It is sent again whenever the history does not carry it.
     profile: Option<String>,
+    /// The switch a frontend flips to stop the work that is running. Every clone is the same switch.
+    stop: Stop,
 }
 
 impl<'a> Engine<'a> {
@@ -55,8 +57,16 @@ impl<'a> Engine<'a> {
         tools: &'a dyn ToolRunner,
         conversation: &'a mut Conversation,
         sessions: &'a Path,
+        stop: Stop,
     ) -> Self {
-        Self { provider, tools, conversation, sessions, profile: None }
+        Self { provider, tools, conversation, sessions, profile: None, stop }
+    }
+
+    /// The switch that stops the running work. A frontend keeps a clone, for its own Ctrl+C or stop button, and flips it
+    /// from any thread. The terminal installs its handler before the engine exists, so it does not use this one.
+    #[allow(dead_code)]
+    pub fn stop_handle(&self) -> Stop {
+        self.stop.clone()
     }
 
     /// Prepares the run: trusts the profiles that exist now, imports old session files, resumes the last session unless
@@ -90,7 +100,7 @@ impl<'a> Engine<'a> {
         if let Some(commands) = after_turn::load(cwd, ui) {
             self.conversation.set_after_turn(commands);
         }
-        match interrupt::work(|| startup::run(cwd, self.tools, ui)) {
+        match self.stop.work(|| startup::run(cwd, self.tools, ui)) {
             Ok(Some(text)) => self.conversation.set_startup(text),
             Ok(None) => {}
             Err(_) => ui.status("the startup commands were stopped".to_string()),
@@ -258,7 +268,7 @@ impl<'a> Engine<'a> {
     fn chat_turn(&mut self, line: String, ui: &mut dyn Frontend) -> Option<String> {
         let typed = line.clone();
         let message = prepare_message(line, self.profile.as_deref(), self.conversation, self.tools, ui);
-        let (provider, tools) = (self.provider, self.tools);
+        let (provider, tools, stop) = (self.provider, self.tools, &self.stop);
         // A subagent runs with this turn's approvals and the global hook lines, which its own profile's lines follow. Only
         // its tool lines reach this turn's display: its answer text is discarded, so the parent's reply is the only answer.
         let (global_before, global_after) = (self.conversation.before_turn().to_vec(), self.conversation.after_turn().to_vec());
@@ -287,16 +297,17 @@ impl<'a> Engine<'a> {
                     tools,
                     subagent::Parent {
                         hooks: (&global_before, &global_after),
+                        stop,
                         approve,
                         on_event: &mut tools_only,
                     },
                 )
             };
-            run_turn(provider, self.conversation, message, tools, &mut approve, &mut subagent, &mut on_event)
+            run_turn(provider, self.conversation, message, tools, stop, &mut approve, &mut subagent, &mut on_event)
         };
         ui.emit(UiEvent::TurnEnded);
         // The press has been handled, so the next turn runs until it is stopped again.
-        interrupt::clear();
+        self.stop.clear();
         match result {
             Ok((turn, compaction)) => {
                 if let Some(Compaction::Dropped(removed)) = compaction {
@@ -431,7 +442,7 @@ mod tests {
     #[test]
     fn a_streamed_answer_reaches_the_frontend_as_events_and_is_not_repeated_as_a_reply() {
         let (provider, mut conversation, sessions) = (Scripted { stream: true, asks: false }, conversation(), PathBuf::from("unused"));
-        let mut engine = Engine::new(&provider, &NoTools, &mut conversation, &sessions);
+        let mut engine = Engine::new(&provider, &NoTools, &mut conversation, &sessions, Stop::new());
         let mut ui = TextUi::new();
         let flow = engine.handle(Request::Chat("hi".into()), &mut ui);
         drop(engine);
@@ -446,7 +457,7 @@ mod tests {
     #[test]
     fn an_answer_that_was_not_streamed_arrives_whole_as_a_reply() {
         let (provider, mut conversation, sessions) = (Scripted { stream: false, asks: false }, conversation(), PathBuf::from("unused"));
-        let mut engine = Engine::new(&provider, &NoTools, &mut conversation, &sessions);
+        let mut engine = Engine::new(&provider, &NoTools, &mut conversation, &sessions, Stop::new());
         let mut ui = TextUi::new();
         engine.handle(Request::Chat("hi".into()), &mut ui);
         assert!(ui.events.contains(&UiEvent::Reply("hello".into())), "{:?}", ui.events);
@@ -455,7 +466,7 @@ mod tests {
     #[test]
     fn the_frontend_answers_the_questions_a_turn_asks() {
         let (provider, mut conversation, sessions) = (Scripted { stream: false, asks: true }, conversation(), PathBuf::from("unused"));
-        let mut engine = Engine::new(&provider, &NoTools, &mut conversation, &sessions);
+        let mut engine = Engine::new(&provider, &NoTools, &mut conversation, &sessions, Stop::new());
         let mut ui = TextUi::new();
         ui.answers.push_back(true);
         engine.handle(Request::Chat("hi".into()), &mut ui);
@@ -465,10 +476,19 @@ mod tests {
     #[test]
     fn a_command_reports_through_the_frontend_and_exit_ends_the_run() {
         let (provider, mut conversation, sessions) = (Scripted { stream: false, asks: false }, conversation(), PathBuf::from("unused"));
-        let mut engine = Engine::new(&provider, &NoTools, &mut conversation, &sessions);
+        let mut engine = Engine::new(&provider, &NoTools, &mut conversation, &sessions, Stop::new());
         let mut ui = TextUi::new();
         assert_eq!(engine.handle(Request::Command(Command::New), &mut ui), Flow::Continue);
         assert_eq!(ui.output, "started a new conversation\n");
         assert_eq!(engine.handle(Request::Command(Command::Exit), &mut ui), Flow::Exit);
+    }
+
+    #[test]
+    fn the_engines_stop_handle_is_the_switch_it_was_given() {
+        let stop = Stop::new();
+        let (provider, mut conversation, sessions) = (Scripted { stream: false, asks: false }, conversation(), PathBuf::from("unused"));
+        let engine = Engine::new(&provider, &NoTools, &mut conversation, &sessions, stop.clone());
+        let reached = engine.stop_handle().work(|| stop.request());
+        assert!(reached.is_err(), "a request on the given switch reached work run on the engine's handle");
     }
 }

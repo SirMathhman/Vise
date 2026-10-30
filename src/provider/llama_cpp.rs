@@ -1,9 +1,9 @@
 use crate::error::{MAX_TOOL_ROUNDS, ProviderError};
-use crate::interrupt;
 use crate::provider::grammar;
 use crate::provider::prompt;
 use crate::provider::types::{Event, Provider, SubagentRunner};
 use crate::session::{Message, PartialTurn, RequestRecord, Timings, Turn, over_budget};
+use crate::stop::Stop;
 use crate::tools::types::{Invocation, ToolCall, ToolError, ToolRunner, Value};
 use crate::tools;
 use serde::{Deserialize, Serialize};
@@ -257,6 +257,8 @@ fn context_size_of(models: Models, expected: &str) -> Result<u64, ProviderError>
 
 pub struct LlamaCpp {
     api_key: String,
+    /// The switch a stop request sets. A press during a reply or a tool's run ends the turn at the next check.
+    stop: Stop,
     /// The model the requests name. It starts as `MODEL` and changes with `set_model`.
     model: RefCell<String>,
     context: RefCell<Option<u64>>,
@@ -271,8 +273,8 @@ impl LlamaCpp {
         Ok(())
     }
 
-    pub fn new(api_key: String) -> Self {
-        Self { api_key, model: RefCell::new(MODEL.to_string()), context: RefCell::new(None) }
+    pub fn new(api_key: String, stop: Stop) -> Self {
+        Self { api_key, stop, model: RefCell::new(MODEL.to_string()), context: RefCell::new(None) }
     }
 
     fn fetch_context_size(&self) -> Result<u64, ProviderError> {
@@ -287,7 +289,7 @@ impl LlamaCpp {
         let mut wire: Vec<WireMessage> = messages.map(WireMessage::try_from).collect::<Result<_, _>>()?;
         wire.push(WireMessage::try_from(&Message::User(SUMMARY_REQUEST.into()))?);
         let Sent { content: summary, prompt_tokens, timings } =
-            send(&self.api_key, &self.model.borrow(), &wire, None, &mut |_| {})?;
+            send(&self.api_key, &self.stop, &self.model.borrow(), &wire, None, &mut |_| {})?;
         if over_budget(prompt_tokens, self.context_size()?) {
             return Err(ProviderError::ContextFull);
         }
@@ -338,7 +340,7 @@ impl Provider for LlamaCpp {
         let mut wrote = false;
         for _ in 0..MAX_TOOL_ROUNDS {
             let wire = wire_messages(&catalogue, history.iter().chain(&new))?;
-            let sent = match send(&self.api_key, &self.model.borrow(), &wire, Some(&grammar), &mut *on_event) {
+            let sent = match send(&self.api_key, &self.stop, &self.model.borrow(), &wire, Some(&grammar), &mut *on_event) {
                 Ok(sent) => sent,
                 // `send` knows only the reply it reached. The user message and finished rounds are this turn's.
                 Err(ProviderError::Interrupted { stopped }) => {
@@ -369,7 +371,7 @@ impl Provider for LlamaCpp {
             // is kept either way: the tool ran, so its result belongs in the history. The call is decoded once, so the
             // line the user sees and the tool that runs come from the same invocation.
             let mut result = None;
-            let pressed = interrupt::work(|| {
+            let pressed = self.stop.work(|| {
                 result = Some(report_and_run(&call, runner, approve, subagent, &mut wrote, on_event));
             });
             let call_id = call.id.clone();
@@ -507,6 +509,7 @@ struct Sent {
 /// Tool calls are never reported as answer text, because a reply that starts with `<tool_call>` is a call.
 fn send(
     api_key: &str,
+    stop: &Stop,
     model: &str,
     wire: &[WireMessage],
     grammar: Option<&str>,
@@ -544,7 +547,7 @@ fn send(
     let mut timings = Timings::default();
     for line in BufReader::new(response.body_mut().as_reader()).lines() {
         // A press stops the read; the reply so far goes back with the error, so it is not lost.
-        if interrupt::asked() {
+        if stop.asked() {
             return Err(ProviderError::Interrupted { stopped: PartialTurn::new(Vec::new(), stream.content) });
         }
         let line = line.map_err(|err| ProviderError::Transport(Box::new(err)))?;
@@ -756,7 +759,7 @@ mod tests {
 
     #[test]
     fn switch_to_a_listed_model_without_a_size_is_refused_and_keeps_the_old_model_and_size() {
-        let provider = LlamaCpp::new("key".into());
+        let provider = LlamaCpp::new("key".into(), Stop::new());
         *provider.context.borrow_mut() = Some(1000);
         let listed = Models { data: vec![ModelInfo { id: "new".into(), meta: None }] };
         assert!(matches!(provider.switch_to(listed, "new"), Err(ProviderError::ContextSizeUnknown { .. })));
@@ -766,7 +769,7 @@ mod tests {
 
     #[test]
     fn switch_to_a_name_the_server_does_not_list_keeps_the_old_model_and_size() {
-        let provider = LlamaCpp::new("key".into());
+        let provider = LlamaCpp::new("key".into(), Stop::new());
         *provider.context.borrow_mut() = Some(1000);
         let listed = Models { data: vec![ModelInfo { id: "other".into(), meta: Some(ModelMeta { n_ctx: 8 }) }] };
         assert!(matches!(provider.switch_to(listed, "new"), Err(ProviderError::ModelMissing { .. })));
@@ -776,7 +779,7 @@ mod tests {
 
     #[test]
     fn a_successful_switch_replaces_the_name_and_the_cached_size() {
-        let provider = LlamaCpp::new("key".into());
+        let provider = LlamaCpp::new("key".into(), Stop::new());
         *provider.context.borrow_mut() = Some(1000);
         let listed = Models { data: vec![ModelInfo { id: "new".into(), meta: Some(ModelMeta { n_ctx: 4096 }) }] };
         provider.switch_to(listed, "new").unwrap();

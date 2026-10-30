@@ -5,11 +5,11 @@ use crate::before_turn;
 use crate::error::ProviderError;
 use crate::file_commands::run_lines;
 use crate::frontend::Frontend;
-use crate::interrupt;
 use crate::notes;
 use crate::profile;
 use crate::provider::types::{Event, Provider, SubagentRunner};
 use crate::session::{Conversation, HookLines, Message, PartialTurn, Turn};
+use crate::stop::Stop;
 use crate::tools::specs;
 use crate::tools::types::{ToolError, ToolRunner};
 
@@ -129,16 +129,17 @@ pub fn run_turn(
     conversation: &mut Conversation,
     line: String,
     tools: &dyn ToolRunner,
+    stop: &Stop,
     approve: &mut dyn FnMut(&str) -> bool,
     subagent: &mut SubagentRunner,
     on_event: &mut dyn FnMut(Event),
 ) -> Result<(Turn, Option<Compaction>), ProviderError> {
-    let mut compaction = interrupt::work(|| compact_if_full(provider, conversation)).unwrap_or_else(|_| Err(stopped(&line)))?;
-    let result = match request(provider, conversation, line.clone(), tools, approve, subagent, on_event) {
+    let mut compaction = stop.work(|| compact_if_full(provider, conversation)).unwrap_or_else(|_| Err(stopped(&line)))?;
+    let result = match request(provider, conversation, line.clone(), tools, stop, approve, subagent, on_event) {
         Err(ProviderError::ContextFull) => {
-            let compacted = interrupt::work(|| compact(provider, conversation)).unwrap_or_else(|_| Err(stopped(&line)))?;
+            let compacted = stop.work(|| compact(provider, conversation)).unwrap_or_else(|_| Err(stopped(&line)))?;
             compaction = Some(compacted);
-            request(provider, conversation, line, tools, approve, subagent, on_event)
+            request(provider, conversation, line, tools, stop, approve, subagent, on_event)
         }
         result => result,
     };
@@ -152,11 +153,12 @@ fn request(
     conversation: &Conversation,
     line: String,
     tools: &dyn ToolRunner,
+    stop: &Stop,
     approve: &mut dyn FnMut(&str) -> bool,
     subagent: &mut SubagentRunner,
     on_event: &mut dyn FnMut(Event),
 ) -> Result<Turn, ProviderError> {
-    interrupt::tracked(|| provider.complete_streaming(conversation.messages(), line, tools, approve, subagent, on_event))
+    stop.tracked(|| provider.complete_streaming(conversation.messages(), line, tools, approve, subagent, on_event))
 }
 
 /// A stop before the turn was sent, such as a press while the conversation was being compacted. The provider did not

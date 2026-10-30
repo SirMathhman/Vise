@@ -4,6 +4,7 @@ use crate::engine::Engine;
 use crate::frontend::Sink;
 use crate::provider::types::SubagentRunner;
 use crate::saved_sessions;
+use crate::stop::Stop;
 use crate::session::HookLines;
 use crate::terminal::TerminalFrontend;
 use crate::turn::select_hooks;
@@ -197,7 +198,7 @@ fn interrupted_turn(stopped: PartialTurn) -> Vec<Message> {
     let (fake, folder) = (Fake::new(Behavior::Reply), sessions_folder());
     {
         let mut ui = TerminalFrontend::new(&mut input, &mut output, &mut errors);
-        Engine::new(&fake, &NoTools, &mut conversation, &folder).interrupted("hi".into(), stopped, &mut ui);
+        Engine::new(&fake, &NoTools, &mut conversation, &folder, Stop::new()).interrupted("hi".into(), stopped, &mut ui);
     }
     let messages = conversation.messages();
     assert_eq!(messages[0].role(), "system");

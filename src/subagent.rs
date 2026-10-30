@@ -9,6 +9,7 @@ use crate::profile::{self, Profile};
 use crate::provider::types::{Event, Provider};
 use crate::turn;
 use crate::session::{Conversation, HookLines};
+use crate::stop::Stop;
 use crate::tools::specs;
 use crate::tools::types::{ToolError, ToolRunner};
 
@@ -16,6 +17,8 @@ use crate::tools::types::{ToolError, ToolRunner};
 /// for its writes, and where its tool lines are reported.
 pub struct Parent<'a> {
     pub hooks: Hooks<'a>,
+    /// The stop switch of the run, so a stop reaches the subagent's requests too.
+    pub stop: &'a Stop,
     pub approve: &'a mut dyn FnMut(&str) -> bool,
     pub on_event: &'a mut dyn FnMut(Event),
 }
@@ -87,6 +90,7 @@ fn session(
             &mut conversation,
             message,
             tools,
+            parent.stop,
             parent.approve,
             &mut no_subagent,
             &mut |event| {
@@ -161,7 +165,7 @@ mod tests {
             "task",
             &Unused,
             &tools,
-            Parent { hooks: (&[], &[]), approve: &mut |_: &str| true, on_event: &mut |_| {} },
+            Parent { hooks: (&[], &[]), stop: &Stop::new(), approve: &mut |_: &str| true, on_event: &mut |_| {} },
         );
         assert!(result.is_err_and(|err| err.to_string().contains("cannot read profile")));
     }
@@ -236,7 +240,7 @@ category: profile
                 "task",
                 &Recorder::new(true),
                 &tools,
-                Parent { hooks: (&[], &[]), approve: &mut |_: &str| true, on_event: &mut |_| {} },
+                Parent { hooks: (&[], &[]), stop: &Stop::new(), approve: &mut |_: &str| true, on_event: &mut |_| {} },
             );
             assert!(result.is_err());
             assert!(tools.enabled().contains(&"list_directory"));
@@ -257,7 +261,7 @@ category: profile
                 "task",
                 &provider,
                 &tools,
-                Parent { hooks: (&global, &[]), approve: &mut |_: &str| true, on_event: &mut |_| {} },
+                Parent { hooks: (&global, &[]), stop: &Stop::new(), approve: &mut |_: &str| true, on_event: &mut |_| {} },
             );
             assert_eq!(result.unwrap(), "done");
             let input = provider.inputs.borrow()[0].clone();
@@ -280,7 +284,7 @@ category: profile
                 "task",
                 &provider,
                 &tools,
-                Parent { hooks: (&[], &[]), approve: &mut |_: &str| true, on_event: &mut |_| {} },
+                Parent { hooks: (&[], &[]), stop: &Stop::new(), approve: &mut |_: &str| true, on_event: &mut |_| {} },
             );
             assert_eq!(result.unwrap(), "done");
             assert!(!provider.inputs.borrow()[0].contains("late-hook"));

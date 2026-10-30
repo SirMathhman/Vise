@@ -18,6 +18,7 @@ mod session;
 mod subagent;
 mod shutdown;
 mod startup;
+mod stop;
 mod style;
 mod terminal;
 mod tools;
@@ -26,6 +27,7 @@ mod turn;
 use engine::Engine;
 use provider::llama_cpp::LlamaCpp;
 use session::Conversation;
+use stop::Stop;
 use std::io::{self, IsTerminal, Write};
 use terminal::TerminalFrontend;
 use tools::runner::WorkspaceTools;
@@ -41,7 +43,8 @@ fn main() {
     dotenvy::dotenv().ok();
     style::enable_stdout(io::stdout().is_terminal());
     // Installed first, so Ctrl+C during a slow start stops the process as it always did.
-    if let Err(err) = interrupt::install() {
+    let stop = Stop::new();
+    if let Err(err) = interrupt::install(stop.clone()) {
         exit_with(&format!("error: cannot handle Ctrl+C: {err}"));
     }
     let api_key = std::env::var("LLAMA_API_KEY")
@@ -52,7 +55,7 @@ fn main() {
     if let Err(err) = environment::instructions(&env.cwd) {
         exit_with(&format!("error: {err}"));
     }
-    let provider = LlamaCpp::new(api_key);
+    let provider = LlamaCpp::new(api_key, stop.clone());
     let tools = WorkspaceTools::new(env.cwd.clone());
     let mut conversation = Conversation::new(&env);
     let sessions = std::path::PathBuf::from(saved_sessions::FOLDER);
@@ -64,7 +67,7 @@ fn main() {
     let mut input = io::stdin().lock();
     // `--new` starts an empty conversation instead of resuming the last session.
     let resume = !std::env::args().skip(1).any(|arg| arg == "--new");
-    let mut engine = Engine::new(&provider, &tools, &mut conversation, &sessions);
+    let mut engine = Engine::new(&provider, &tools, &mut conversation, &sessions, stop);
     {
         let mut ui = TerminalFrontend::new(&mut input, &mut output, &mut errors);
         engine.start(&env.cwd, resume, &mut ui);

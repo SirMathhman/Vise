@@ -1,4 +1,4 @@
-use crate::interrupt::Interrupted;
+use crate::stop::Interrupted;
 use crate::session::{PartialTurn, SessionError};
 use std::fmt;
 
