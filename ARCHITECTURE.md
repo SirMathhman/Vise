@@ -158,6 +158,9 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
   and leaves history unchanged.
 - A drop is the fallback when the summary request itself does not fit. It removes the summary if there is one, otherwise the
   oldest turn, and reports how many messages were removed.
+- A context size can be unknown: the server lists the model but reports no size, because the model is not loaded until its
+  first request. Unknown is a value of the lookup, not an error. Before a turn it means there is nothing to compact against, so
+  the request is sent; after a reply it is read again, since the request has loaded the model. `/compact` does not need the size.
 - `/context` prints the context message, then `<prompt tokens> / <context size>`. A failed size lookup is reported on the
   error stream.
 
@@ -537,6 +540,12 @@ Each item is a gap between the design above and the code. Items are grouped by a
 
 ### Model
 
+- **Unknown context size is an error variant that callers must remember to handle.** `Provider::context_size` returns
+  `ContextSizeUnknown` as an `Err`, and only `turn::compact_if_full` turns it into "skip". The budget checks inside
+  `complete_streaming` and `summarize_messages` still propagate it with `?`, so a server that unloads an idle model between the
+  request and the check fails a turn that already succeeded, and `/context` reports a lookup failure for a normal state. The lookup
+  should return `Result<Option<u64>, _>`, and each caller states its own policy for `None` (compaction skips, the in-turn check
+  assumes room, `/context` prints the count alone).
 - **`/model NAME` writes without a prompt on the switch itself.** The switch is checked against the server's list and context size, and
   the save follows it, but neither asks the user first, although `/save` does.
 - **`model.txt` is not protected from model writes.** The file tools guard the command files and the profiles folder, not `model.txt`. An
