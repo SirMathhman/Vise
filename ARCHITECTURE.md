@@ -204,6 +204,9 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 
 ### Sessions, notes, profiles
 
+- Every folder the program reads or writes (profiles, notes, sessions) is a path under the working directory, taken once at
+  startup and passed down. No module resolves a bare relative folder name against the process folder, and a runner has no
+  default folder: each one states its own, so a new runner cannot silently point at the process folder.
 - A session is a row in the `sessions` table of `sessions/sessions.db`, with one `messages` row per message in order.
   Its name follows the profile name rule, so it is plain text in a column, never a path. `/save` refuses a name that
   already has a session. Like the other typed commands, it does not prompt. `/load` replaces the history, keeps the current run's context
@@ -305,7 +308,7 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 ```
 src/
   main.rs            wiring: reads .env and LLAMA_API_KEY, takes the working directory, builds the provider and the
-                     tool runner, applies the saved default model, opens the sessions folder (`saved_sessions::FOLDER`), resumes
+                     tool runner, applies the saved default model, opens the sessions folder (`cwd.join(saved_sessions::FOLDER)`), resumes
                      the latest session, loads the command files, runs the REPL with that folder, then shutdown.
                      Fatal startup errors go to exit_with.
   repl.rs            the input loop over generic BufRead and Write. Runs slash commands, hands each chat line to `turn`,
@@ -559,6 +562,11 @@ Each item is a gap between the design above and the code. Items are grouped by a
 
 ### Layering and configuration
 
+- **Folders are not all anchored to the working directory.** `ToolRunner::notes_folder` has a default of the relative `notes`,
+  which resolves against the process folder for any runner that does not override it. `main` opens the sessions folder as the
+  bare `saved_sessions::FOLDER`, while the notes folder comes from the runner's working directory. `profile.rs` and the
+  profile-approval check in `tools::runner` still use the bare `profiles` name. The default should be removed so every runner
+  must state its folder, and `main` should join the sessions folder to the working directory like the notes folder.
 - **The command-file names live in the tool runner.** `startup.rs`, `before_turn.rs`, `after_turn.rs`, and `shutdown.rs` import
   their file names from `tools::runner`, and the runner's guard and approval text use them. The names belong in a leaf module
   that both can use, without the runner.
