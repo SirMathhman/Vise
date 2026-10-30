@@ -318,8 +318,10 @@ crates/vise-core/src/    the backend library `vise-core`: no stdin, stdout or st
                      `stop_handle`. It holds the selected profile and runs a chat line as a turn: prepare, run, commit,
                      autosave, the after-turn follow-ups, and a stopped turn. Everything the user should see goes to the frontend.
   engine/commands.rs  the commands that act on tools, notes and saved sessions (`/tools`, `/note`, `/save`, `/load`)
-  frontend.rs        `Frontend` (`emit(UiEvent)`, `approve(&str) -> bool`), `UiEvent`, `Sink` (a frontend nobody looks at),
-                     and the test-only `TextUi`, which records events and renders them as the terminal's text
+  frontend.rs        `Frontend` (`emit(UiEvent)`, `approve(&str) -> bool`), `UiEvent` (notices, errors, streamed progress, and the
+                     typed query results `Tools`, `Profiles`, `Models`, `Sessions`, `Notes`, `Context`; all `serde`), `ToolState`,
+                     `NoteLine`, `Sink` (a frontend nobody looks at), and the test-only `TextUi`, which records events and
+                     renders the notices as the terminal's text
   command.rs         `Command`, what a frontend can ask for besides a chat line. Typing it is the frontend's business.
   stop.rs            `Stop`: the shared stop switch. `request` asks the running work to stop, `work`/`tracked` mark work a
                      request reaches, `asked`/`clear` read and reset it. `Interrupted` is its error.
@@ -395,7 +397,8 @@ crates/vise-cli/src/     the terminal frontend, package `Vise` (the executable k
   repl.rs            the input loop: reads a line, turns it into a `Request` (`commands::command`, or a chat line), sends it
                      to the engine, and ends the run on `/exit`, the end of input, or a write that failed
   repl/tests.rs      the loop's tests, run over a scripted provider and `Vec<u8>` streams
-  terminal.rs        `TerminalFrontend`: shows `UiEvent`s on stdout and stderr (`error: ` prefix, `Reply` in green), draws
+  terminal.rs        `TerminalFrontend`: shows `UiEvent`s on stdout and stderr (`error: ` prefix, `Reply` in green), words the
+                     query results and their empty-list hints, draws
                      the live reply through `Render`, and asks for approvals by reading `y` or `yes` from the input it also
                      reads lines from
   commands.rs        the help text, and the parser from a slash command to `Command` (no I/O)
@@ -637,21 +640,14 @@ Each item is a gap between the design above and the code. Items are grouped by a
 ### The frontend boundary
 
 The goal is that a second frontend (a GUI, a web page, a test harness) needs nothing from the core except `Engine`, `Request`,
-`Frontend`, `UiEvent` and `Stop`. Today it would still reach around them in these places:
+`Frontend`, `UiEvent` and `Stop`. Query results are already typed (`Tools`, `Profiles`, `Models`, `Sessions`, `Notes`, `Context`), with
+the wording and the empty-list hints left to the frontend, and `UiEvent`, `Request`, `Command`, `Flow` and the provider's `Event`
+derive `serde`. Today a frontend would still reach around the abstraction in these places:
 
-- **Results are prose.** Every answer to a query command is `UiEvent::Notice(String)`: the tool list, the profile list, the model list
-  (with a `* ` mark), the session list, `/context`, and the changes a profile makes. A GUI would have to parse text to fill a list or
-  mark the current model. Query results must be typed events (`Tools(Vec<ToolState>)`, `Profiles`, `Models { current, ids }`,
-  `Sessions`, `Context { text, prompt_tokens, size }`), and the terminal formats them.
-- **The engine speaks the terminal's syntax.** `no sessions: /save NAME stores the conversation`, `no profiles: a profile is a note
-  with the category profile` and the `started a new conversation` family embed slash commands and English. Events carry facts
-  (`Empty(Sessions)`), and the frontend words the hint in its own idiom.
 - **Approvals are a bare string.** `approve(&str) -> bool` carries no id, no kind (write, kill, profile file), no path, and no
   origin, so a GUI cannot show a diff or a dialog, and a subagent's request looks like the parent's. It needs an `Approval { id,
   kind, summary, detail, origin }` value, with `origin` naming the subagent and profile. The call blocks the engine thread, which a
   web frontend cannot do: the ideal is `Pending(Approval)` as an event and `Request::Answer { id, accepted }` as the reply.
-- **Nothing is serializable.** `UiEvent` holds provider `Event`, and `Request`, `Command` and `Flow` derive nothing. A remote
-  frontend needs `serde` on all four, with `Event` a plain data type in a leaf module rather than in `provider::types`.
 - **`Engine<'a>` borrows everything.** A GUI cannot keep a borrowing engine in application state. The engine should own its provider
   (`Box<dyn Provider>`), tools and `Conversation`, take a `Paths` value (cwd, sessions folder, notes folder) instead of `&Path`
   arguments to `start` and `shutdown`, and be `Send`, so a frontend can run it on a worker thread.
