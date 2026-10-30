@@ -332,14 +332,19 @@ fn startup_output_goes_with_the_first_message_only() {
 }
 
 #[test]
-fn save_asks_for_approval_and_writes_nothing_when_declined() {
+fn save_is_written_without_a_prompt() {
+    let folder = std::env::temp_dir().join(format!("vise-save-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&folder);
     let fake = Fake::new(Behavior::Reply);
     let mut conversation = conversation();
-    let (output, _) = run_with("/save approval-test\nn\n", &fake, &mut conversation);
-    let stored = saved_sessions::exists(std::path::Path::new(saved_sessions::FOLDER), "approval-test");
-    assert!(output.contains("apply this change? [y/N]"));
-    assert!(output.contains("session approval-test not saved"));
-    assert!(!stored.unwrap_or(false));
+    conversation.enable_autosave(folder.clone());
+    let (output, _) = run_with("/save no-prompt
+", &fake, &mut conversation);
+    let stored = saved_sessions::exists(&folder, "no-prompt");
+    std::fs::remove_dir_all(&folder).expect("the test folder is removed");
+    assert!(!output.contains("apply this change"), "{output:?}");
+    assert!(output.contains("session no-prompt saved"), "{output:?}");
+    assert!(stored.unwrap_or(false));
 }
 
 #[test]

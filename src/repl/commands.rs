@@ -1,13 +1,13 @@
 //! The slash commands that act on the tools, the notes and the saved sessions. Each one writes its result to the
 //! output, or its failure to the errors, and the writes it asks for go through the runner's approval.
 
-use super::ask;
 use crate::commands::Command;
 use crate::notes;
 use crate::saved_sessions;
 use crate::session::Conversation;
 use crate::tools::types::{Invocation, ToolRunner};
-use std::io::{self, BufRead, Write};
+use std::io::{self, Write};
+use std::path::PathBuf;
 
 /// One line per tool in the catalogue, with whether the model may call it.
 pub(super) fn tool_list(tools: &dyn ToolRunner) -> String {
@@ -22,17 +22,10 @@ pub(super) fn tool_list(tools: &dyn ToolRunner) -> String {
         .join("\n")
 }
 
-/// Runs a write the user asked for. It goes through the runner, so the user sees the same description and
-/// approval a write from the model gets.
-pub(super) fn user_write(
-    tools: &dyn ToolRunner,
-    invocation: &Invocation,
-    output: &mut impl Write,
-    input: &mut impl BufRead,
-    errors: &mut impl Write,
-) -> io::Result<()> {
-    let mut approve = |change: &str| ask(change, &mut *output, &mut *input);
-    match tools.run(invocation, &mut approve) {
+/// Runs a write the user typed. The typed command is the approval, so no prompt is shown. Writes the model asks for still
+/// wait for approval in the runner.
+fn typed_write(tools: &dyn ToolRunner, invocation: &Invocation, output: &mut impl Write, errors: &mut impl Write) -> io::Result<()> {
+    match tools.run(invocation, &mut |_: &str| true) {
         Ok(message) => writeln!(output, "{message}"),
         Err(err) => writeln!(errors, "error: {err}"),
     }
@@ -57,7 +50,6 @@ pub(super) fn note_command(
     command: Command,
     tools: &dyn ToolRunner,
     output: &mut impl Write,
-    input: &mut impl BufRead,
     errors: &mut impl Write,
 ) -> io::Result<()> {
     match command {
@@ -77,13 +69,9 @@ pub(super) fn note_command(
                 category,
                 content: String::new(),
             };
-            // The user's own command is the approval, so no prompt is shown. Writes the model asks for still wait.
-            match tools.run(&placeholder, &mut |_: &str| true) {
-                Ok(message) => writeln!(output, "{message}"),
-                Err(err) => writeln!(errors, "error: {err}"),
-            }
+            typed_write(tools, &placeholder, output, errors)
         }
-        Command::DeleteNote(name) => user_write(tools, &Invocation::DeleteNote { name }, output, input, errors),
+        Command::DeleteNote(name) => typed_write(tools, &Invocation::DeleteNote { name }, output, errors),
         _ => Ok(()),
     }
 }
@@ -94,18 +82,15 @@ pub(super) fn save_session(
     name: &str,
     conversation: &Conversation,
     output: &mut impl Write,
-    input: &mut impl BufRead,
     errors: &mut impl Write,
 ) -> io::Result<()> {
-    if let Err(err) = saved_sessions::check_save(name) {
+    // The folder the conversation autosaves to, so a test can keep /save away from the real sessions database.
+    let folder = conversation.autosave_folder().unwrap_or_else(|| PathBuf::from(saved_sessions::FOLDER));
+    if let Err(err) = saved_sessions::check_save(&folder, name) {
         return writeln!(errors, "error: {err}");
     }
     let history = conversation.history();
-    let change = format!("save session {name} ({} messages) to sessions/{}", history.len(), saved_sessions::DATABASE);
-    if !ask(&change, output, input) {
-        return writeln!(output, "session {name} not saved");
-    }
-    match saved_sessions::save(name, history, conversation.requests()) {
+    match saved_sessions::save(&folder, name, history, conversation.requests()) {
         Ok(()) => writeln!(output, "session {name} saved"),
         Err(err) => writeln!(errors, "error: {err}"),
     }
@@ -116,7 +101,6 @@ pub(super) fn session_command(
     command: Command,
     conversation: &mut Conversation,
     output: &mut impl Write,
-    input: &mut impl BufRead,
     errors: &mut impl Write,
 ) -> io::Result<()> {
     match command {
@@ -125,7 +109,7 @@ pub(super) fn session_command(
             Ok(names) => writeln!(output, "{}", names.join("\n")),
             Err(err) => writeln!(errors, "error: {err}"),
         },
-        Command::Save(name) => save_session(&name, conversation, output, input, errors),
+        Command::Save(name) => save_session(&name, conversation, output, errors),
         Command::Load(name) => match saved_sessions::load(&name) {
             Ok(history) => {
                 conversation.replace_history(history);
@@ -156,10 +140,7 @@ mod tests {
         // A declined prompt would answer "n", so a create that still succeeds was not asked.
         let mut output = Vec::new();
         let mut errors = Vec::new();
-        let mut input: &[u8] = b"n
-";
-        note_command(Command::CreateNote("b".into(), "profile".into()), &Approving, &mut output, &mut input, &mut errors)
-            .unwrap();
+        note_command(Command::CreateNote("b".into(), "profile".into()), &Approving, &mut output, &mut errors).unwrap();
         assert_eq!(String::from_utf8(output).unwrap(), "created note
 ");
         assert!(errors.is_empty());

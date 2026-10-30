@@ -70,18 +70,18 @@ pub fn list(folder: &Path) -> Result<Vec<String>, SessionStoreError> {
 
 /// Checks that a session can be saved under `name`: the name is valid and no session has it yet. The REPL asks
 /// for approval only after this passes.
-pub fn check_save(name: &str) -> Result<(), SessionStoreError> {
+pub fn check_save(folder: &Path, name: &str) -> Result<(), SessionStoreError> {
     check_name(name)?;
-    if exists(Path::new(FOLDER), name)? {
+    if exists(folder, name)? {
         return Err(SessionStoreError::AlreadyExists(name.to_string()));
     }
     Ok(())
 }
 
 /// Writes the history as a new session in the sessions folder.
-pub fn save(name: &str, history: &[Message], requests: &[RequestRecord]) -> Result<(), SessionStoreError> {
-    check_save(name)?;
-    write(Path::new(FOLDER), name, history, requests)
+pub fn save(folder: &Path, name: &str, history: &[Message], requests: &[RequestRecord]) -> Result<(), SessionStoreError> {
+    check_save(folder, name)?;
+    write(folder, name, history, requests)
 }
 
 /// Whether the session `name` is stored in `folder`.

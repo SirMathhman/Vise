@@ -50,10 +50,10 @@ pub fn run(
                 Err(err) => writeln!(errors, "error: {err}")?,
             },
             Some(command @ (Command::ListNotes(_) | Command::ShowNote(_) | Command::CreateNote(..) | Command::DeleteNote(_))) => {
-                note_command(command, tools, output, input, errors)?
+                note_command(command, tools, output, errors)?
             }
             Some(command @ (Command::Sessions | Command::Save(_) | Command::Load(_))) => {
-                session_command(command, conversation, output, input, errors)?
+                session_command(command, conversation, output, errors)?
             }
             Some(Command::Profile(name)) => match profile::load(&name) {
                 Ok(loaded) => match apply_whitelist(tools, loaded.tools.as_deref()) {

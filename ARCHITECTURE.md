@@ -43,10 +43,10 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
   `</tool_call>`. It is the only reply form that runs a tool.
 - **Write**: a call that changes the filesystem, or starts or stops a program. These are the tool calls
   `create_file`, `create_directory`, `edit_file`, `run_powershell`, `kill_background`, `create_note`,
-  `update_note`, `delete_note`, and `run_subagent`, and the user's commands `/note delete NAME`, `/save`, and `/model NAME`. A write the model asks for runs only after the
-  user approves it. The user's own `/note create CATEGORY NAME` is not asked for approval: typing it is the approval. Exceptions are
-  autosave (see Session), and the command lines (see Command files and hooks). A declined write is reported
-  to the model as an error and changes nothing.
+  `update_note`, `delete_note`, and `run_subagent`. A write the model asks for runs only after the user approves it. The
+  user's typed commands `/note create CATEGORY NAME`, `/note delete NAME`, `/save`, and `/model NAME` do not prompt, because
+  typing the command is the consent. Exceptions are autosave (see Session), and the command lines (see Command files and
+  hooks). A declined write is reported to the model as an error and changes nothing.
 - **Note**: a named file, `notes/NAME.md`, starting with a `---` header of one `summary:` line and one `category:`
   line, then the content. Notes persist across sessions.
 - **Notes index**: the list of every allowed note's name, category, and summary, or `[Notes]` followed by `(none)`.
@@ -170,8 +170,8 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 
 ### Tools and approval
 
-- A write runs only after the user approves a description of it. The default is no: only `y` or `yes` approves. This holds
-  for the user's note commands, `/save`, and `/model NAME`, as for model calls.
+- A write the model asks for runs only after the user approves a description of it. The default is no: only `y` or `yes`
+  approves. The user's typed commands (`/note create`, `/note delete`, `/save`, `/model NAME`) do not prompt.
 - The approval text for `kill_background` names the task's command and whether it is still running, not only its id.
 - Enabling or disabling a tool changes no committed message, and enabling a tool does not approve its writes.
 - The note whitelist is checked before approval. A note tool naming a note outside it is refused, so the user is never asked
@@ -509,6 +509,10 @@ Each item is a gap between the design above and the code. Items are grouped by a
 - **Note paths skip confinement.** `notes::path` checks the name but not the folder: a symlink named `notes` leads writes outside the
   working directory.
 - **Note content is unbounded.** `create_note` and `update_note` accept any length, and `read_note` returns the whole note.
+- **`/note create` writes a placeholder.** The create writes the fixed summary `placeholder` and empty content into the note
+  header, and the model sees that summary in the index. Nothing lets the user set a summary or content. The test
+  `the_users_own_create_is_not_asked_for_approval` uses a stub runner, so it does not cover the real runner's guards or the
+  note it writes.
 
 ### Tool protocol
 
@@ -723,8 +727,8 @@ Each item is a gap between the design above and the code. Items are grouped by a
   request and the check fails a turn that already succeeded, and `/context` reports a lookup failure for a normal state. The lookup
   should return `Result<Option<u64>, _>`, and each caller states its own policy for `None` (compaction skips, the in-turn check
   assumes room, `/context` prints the count alone).
-- **`/model NAME` writes without a prompt on the switch itself.** The switch is checked against the server's list and context size, and
-  the save follows it, but neither asks the user first, although `/save` does.
+- **`/model NAME` is checked, not confirmed.** The switch is checked against the server's list and context size, and the save
+  follows it. Typed commands do not prompt by design, so this is not an approval gap.
 - **`model.txt` is not protected from model writes.** The file tools guard the command files, not `model.txt`. An
   approved `edit_file` changes the default for the next launch, and the approval text does not say so.
 - **The default file is written in place.** `default_model::save` truncates the file before writing. A crash leaves an empty file, which
@@ -808,8 +812,8 @@ Controls:
 | Subagent profile limits (tools, notes) | Met. They come from the profile and are restored afterwards. Its hooks run without a prompt, as for any profile. |
 | Environment disclosure (working directory and standing instructions sent every turn) | Missing. The path and the whole `AGENTS.md` are always sent. The notes index is sent with them. |
 | Note names restricted to letters, digits, `-`, `_` | Met. A name cannot leave the notes folder. A symlink named `notes` is still followed (Open Problems). |
-| Note writes approved like other writes, including the user's own note commands | Met. `/note delete` goes through the runner and is approved. `/note create` runs without a prompt, because the user typed it. |
-| Session writes approved like other writes | Met. `/save` asks for approval, and refuses a name that is taken. It does not go through `WorkspaceTools`. |
+| Note writes approved like other writes | Met for model writes. The user's typed `/note create` and `/note delete` do not prompt, by design. `/note create` writes a placeholder summary (Open Problems). |
+| Session writes approved like other writes | Met for model writes, which cannot write sessions. `/save` is a typed command and does not prompt, by design; it refuses a name that is taken, and does not go through `WorkspaceTools`. |
 | Stored sessions checked before they are loaded | Met. `/load` checks each turn before it replaces the history. |
 | Session names restricted to letters, digits, `-`, `_` | Met. A name is a column value, never a path, and names `load` refuses are not listed. |
 | Writes to `AGENTS.md` shown as such | Missing. The approval text reads like any other write, and no warning says the file shapes later sessions. |
