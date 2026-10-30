@@ -120,9 +120,14 @@ fn sessions_folder() -> PathBuf {
 }
 
 fn run_with(input: &str, provider: &Fake, conversation: &mut Conversation) -> (String, String) {
+    run_in(input, provider, conversation, &sessions_folder())
+}
+
+/// Runs `input` with `sessions` as the sessions folder, for a test that reads what the run saved there.
+fn run_in(input: &str, provider: &Fake, conversation: &mut Conversation, sessions: &Path) -> (String, String) {
     let mut output = Vec::new();
     let mut errors = Vec::new();
-    run(&mut input.as_bytes(), &mut output, &mut errors, provider, &NoTools, conversation, &sessions_folder()).unwrap();
+    run(&mut input.as_bytes(), &mut output, &mut errors, provider, &NoTools, conversation, sessions).unwrap();
     (String::from_utf8(output).unwrap(), String::from_utf8(errors).unwrap())
 }
 
@@ -180,7 +185,7 @@ fn interrupted_turn(stopped: PartialTurn) -> Vec<Message> {
     let mut output = Vec::new();
     let mut errors = Vec::new();
     let mut streams = Streams { input: &mut input, output: &mut output, errors: &mut errors };
-    interrupted("hi".into(), stopped, &mut conversation, &mut streams).expect("the turn is recorded");
+    interrupted("hi".into(), stopped, &mut conversation, &sessions_folder(), &mut streams).expect("the turn is recorded");
     let messages = conversation.messages();
     assert_eq!(messages[0].role(), "system");
     assert_eq!(messages[1].content(), "hi", "the prepared line is the turn's first message");
@@ -226,8 +231,8 @@ fn a_stopped_turn_is_autosaved() {
     let folder = std::env::temp_dir().join(format!("vise-interrupted-{}", std::process::id()));
     let fake = Fake::new(Behavior::Interrupted);
     let mut conversation = conversation();
-    conversation.enable_autosave(folder.clone());
-    run_with("hi\n", &fake, &mut conversation);
+    conversation.enable_autosave();
+    run_in("hi\n", &fake, &mut conversation, &folder);
     let names = saved_sessions::list(&folder).expect("the sessions are listed");
     std::fs::remove_dir_all(&folder).expect("the test folder is removed");
     assert_eq!(names.len(), 1, "the partial turn is on disk");
@@ -356,8 +361,8 @@ fn completed_turn_is_autosaved_to_a_session_named_from_its_input() {
     let folder = std::env::temp_dir().join(format!("vise-autosave-{}", std::process::id()));
     let fake = Fake::new(Behavior::Reply);
     let mut conversation = conversation();
-    conversation.enable_autosave(folder.clone());
-    run_with("first\n", &fake, &mut conversation);
+    conversation.enable_autosave();
+    run_in("first\n", &fake, &mut conversation, &folder);
     let files: Vec<String> = std::fs::read_dir(&folder)
         .expect("autosave folder exists")
         .filter_map(Result::ok)
@@ -376,8 +381,8 @@ fn failed_autosave_reports_an_error_and_keeps_the_turn() {
     std::fs::write(&path, "not a folder").expect("the test file is written");
     let fake = Fake::new(Behavior::Reply);
     let mut conversation = conversation();
-    conversation.enable_autosave(path.clone());
-    let (output, errors) = run_with("first\n", &fake, &mut conversation);
+    conversation.enable_autosave();
+    let (output, errors) = run_in("first\n", &fake, &mut conversation, &path);
     std::fs::remove_file(&path).expect("the test file is removed");
     assert!(errors.contains("error: cannot use the sessions folder"));
     assert!(output.contains("reply"));
@@ -443,9 +448,9 @@ fn follow_ups_autosave_to_the_same_session_as_the_typed_turn() {
     let folder = std::env::temp_dir().join(format!("vise-follow-up-{}", std::process::id()));
     let fake = Fake::new(Behavior::Reply);
     let mut conversation = conversation();
-    conversation.enable_autosave(folder.clone());
+    conversation.enable_autosave();
     conversation.set_after_turn(vec!["Write-Output x".into()]);
-    run(&mut "hi\n".as_bytes(), &mut Vec::new(), &mut Vec::new(), &fake, &Failing, &mut conversation, &sessions_folder()).unwrap();
+    run(&mut "hi\n".as_bytes(), &mut Vec::new(), &mut Vec::new(), &fake, &Failing, &mut conversation, &folder).unwrap();
     let files = std::fs::read_dir(&folder).expect("autosave folder exists").count();
     std::fs::remove_dir_all(&folder).expect("the test folder is removed");
     assert_eq!(files, 1);

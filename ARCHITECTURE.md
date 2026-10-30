@@ -50,8 +50,8 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 - **Note**: a named file, `notes/NAME.md`, starting with a `---` header of one `summary:` line and one `category:`
   line, then the content. Notes persist across sessions.
 - **Notes index**: the list of every allowed note's name, category, and summary, or `[Notes]` followed by `(none)`.
-- **Session**: the history after the system context, saved by `/save` as a row in `sessions/sessions.db` and replaced
-  by `/load`. At launch the run resumes the session with the latest `saved_at` that holds messages (history and request log
+- **Session**: the history after the system context, saved by `/save` as a row in the sessions folder's database
+  (`sessions/sessions.db`) and loaded into the run by `/load`, which leaves the stored row unchanged. At launch the run resumes the session with the latest `saved_at` that holds messages (history and request log
   read back) and autosave goes on writing to it. `/new` and a `--new` flag start an empty session instead; autosave then
   names it from the run's first input and the time. After `/load` the loaded history gets a new autosave session.
 - **Request log**: the `requests` rows of one session, one per request the session's turns made, kept for auditing what a
@@ -303,7 +303,8 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 ```
 src/
   main.rs            wiring: reads .env and LLAMA_API_KEY, takes the working directory, builds the provider and the
-                     tool runner, applies the saved default model, loads the command files, runs the REPL, then shutdown.
+                     tool runner, applies the saved default model, opens the sessions folder (`saved_sessions::FOLDER`), resumes
+                     the latest session, loads the command files, runs the REPL with that folder, then shutdown.
                      Fatal startup errors go to exit_with.
   repl.rs            the input loop over generic BufRead and Write. Runs slash commands, hands each chat line to `turn`,
                      runs the follow-up turns, asks for approval of writes, and writes replies and notices.
@@ -318,8 +319,8 @@ src/
                      parent's display (`Parent`).
   session.rs         Message, Turn (checked shape), PartialTurn (a stopped turn as far as it got), SessionError, Timings
                      and RequestRecord (one request's audit row), Conversation (committed history, prompt tokens of the
-                     last committed turn, the append-only request log, compaction, drop_oldest_turn, the autosave folder
-                     and name, startup text, the before-turn and after-turn lines, and the selected profile's hook lines
+                     last committed turn, the append-only request log, compaction, drop_oldest_turn, the autosave name,
+                     startup text, the before-turn and after-turn lines, and the selected profile's hook lines
                      as `HookLines`), over_budget (80%)
   saved_sessions/    the sessions database, `sessions/sessions.db`, and its error
     mod.rs           declarations, `FOLDER`, `DATABASE`, and `SessionStoreError`. The error lives here, not in `error.rs`,
@@ -568,17 +569,19 @@ Each item is a gap between the design above and the code. Items are grouped by a
 - **Commands are not one table.** `commands.rs` parses the slash commands, but the help text is written by hand beside them.
 - **Two sources for one setting.** The endpoint is a constant in `provider::llama_cpp`. The model starts as that module's constant, and
   `default_model` reads a second source, `model.txt`. There is no `config` module.
-- **`Conversation` holds run configuration.** The before-turn and after-turn lines, the startup text, the autosave folder, and the
+- **One sessions folder.** `main` passes the sessions folder to `repl::run`, and every session command (`/save`, `/load`,
+  `/sessions`), autosave, `resume`, and the import at launch use it. `Conversation` holds only whether autosave is on and the
+  session name, so no second folder can disagree with the first.
+- **`Conversation` holds run configuration.** The before-turn and after-turn lines, the startup text, the autosave switch, and the
   selected profile's hooks are set on it by `main` or the REPL. None of them is history. They should be one value that `main` passes
-  to `repl::run`. The session folder is passed to `repl::run` by `main`, and every session command (`/save`, `/load`, `/sessions`)
-  uses it, as do `resume` and the import at launch. The autosave folder is still set separately on `Conversation`.
+  to `repl::run`.
 - **Hook lines are held in the session module.** `HookLines` lives in `session.rs`, and the selected profile's lines are held by
   `Conversation`. They belong with the REPL's selection state, not the history.
-- **The source tree exceeds the Modularity limits.** `src/` holds 18 files (the limit is 10). `repl.rs` (834 code lines) and
-  `provider/llama_cpp.rs` (642) are over the 500-code-line limit, and `session.rs` (468) and `saved_sessions/store.rs` (439) are
-  close. `cargo clippy --all-targets` reports warnings beyond the bin's three, including `chat_turn`'s arguments,
-  `subagent::run` and `subagent::session`, which take 7 parameters each, and `store::tests::stored_requests`, whose return type
-  is a six-field tuple. A test-only type warning is still a warning: the row type belongs in a named struct.
+- **The source tree exceeds the Modularity limits.** `src/` holds 19 files (the limit is 10). `saved_sessions/store.rs` (535 code
+  lines) and `provider/llama_cpp.rs` (650) are over the 500-code-line limit, and `session.rs` (486) is close. `repl.rs` (246) is
+  under it now that its tests live in `repl/tests.rs`. `cargo clippy --all-targets` reports no errors. Its warnings are the known
+  ones, plus `store::tests::stored_requests`, whose return type is a six-field tuple (`very complex type`), and a method chain
+  in `main`'s resume (`then`, `unwrap_or`, `and_then`) that a `match` would state more plainly. The row type belongs in a named struct.
 - **One message-like value is threaded through four signatures.** A request's timing travels as `Timings`, then as
   `RequestRecord`, through `send`'s `Sent`, the provider's per-round vector, `Turn`/`PartialTurn`, `Conversation`, `compact`,
   and `Provider::summarize`'s return type, which now carries both a summary and an audit row. Every layer forwards a value only
@@ -604,8 +607,6 @@ Each item is a gap between the design above and the code. Items are grouped by a
   other silently. `/save` refuses a taken name; autosave does not check.
 - **Autosave keeps only the latest history.** Each completed turn rewrites the session's messages with the whole history, so compaction
   and a dropped turn remove earlier turns from disk too. The session is a snapshot, not a log.
-- **Resuming is the default and cannot be declined.** Every launch continues the latest session; there is no `/new` or `--new`, so
-  starting clean means moving `sessions.db`. A resumed history that already fills the context fails the first request.
 - **Two runs can resume the same session.** Both append to one name and autosave replaces the whole history, so the later write wins
   silently; only the append-only request-log check can refuse it, and only when the other run has logged fewer requests. A run
   must claim its session (a lock row with the process id, or a compare-and-swap on a stored revision) and fall back to a new

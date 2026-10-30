@@ -1,7 +1,6 @@
 use crate::environment::{self, Environment};
 use crate::tools::types::ToolCall;
 use std::fmt;
-use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Why a message list is not a well-formed turn or history.
@@ -234,9 +233,8 @@ pub fn check_history(history: &[Message]) -> Result<(), SessionError> {
     Ok(())
 }
 
-/// Where automatic saves go, and the session this run writes to. The name is chosen after the run's first turn.
+/// Whether automatic saves are on, and the session this run writes to. The name is chosen after the run's first turn.
 struct Autosave {
-    folder: PathBuf,
     name: Option<String>,
 }
 
@@ -422,17 +420,16 @@ impl Conversation {
         }
     }
 
-    /// Turns on automatic saves: after each completed turn, the history is written to a session in `folder`.
-    pub fn enable_autosave(&mut self, folder: PathBuf) {
-        self.autosave = Some(Autosave { folder, name: None });
+    /// Turns on automatic saves: after each completed turn, the history is written to a session in the sessions folder.
+    pub fn enable_autosave(&mut self) {
+        self.autosave = Some(Autosave { name: None });
     }
 
-    /// The folder and session name the history is autosaved to, or None when autosave is off. The name is
-    /// chosen from `first_input` the first time it is asked, and kept until the history is replaced.
-    pub fn autosave_target(&mut self, first_input: &str) -> Option<(PathBuf, String)> {
+    /// The session name the history is autosaved to, or None when autosave is off. The name is chosen from `first_input`
+    /// the first time it is asked, and kept until the history is replaced.
+    pub fn autosave_target(&mut self, first_input: &str) -> Option<String> {
         let autosave = self.autosave.as_mut()?;
-        let name = autosave.name.get_or_insert_with(|| autosave_name(first_input)).clone();
-        Some((autosave.folder.clone(), name))
+        Some(autosave.name.get_or_insert_with(|| autosave_name(first_input)).clone())
     }
 
     /// The prompt tokens the model reported for the most recent request, or 0 before any turn.
@@ -604,10 +601,10 @@ mod tests {
     fn replaced_history_gets_a_new_autosave_name() {
         let env = Environment { cwd: PathBuf::from("C:/work") };
         let mut conversation = Conversation::new(&env);
-        conversation.enable_autosave(PathBuf::from("C:/unused"));
-        let (_, before) = conversation.autosave_target("first").expect("autosave is on");
+        conversation.enable_autosave();
+        let before = conversation.autosave_target("first").expect("autosave is on");
         conversation.replace_history(Vec::new());
-        let (_, after) = conversation.autosave_target("second").expect("autosave is on");
+        let after = conversation.autosave_target("second").expect("autosave is on");
         assert!(before.starts_with("first-"));
         assert!(after.starts_with("second-"));
     }

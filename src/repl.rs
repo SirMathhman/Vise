@@ -112,7 +112,7 @@ pub fn run(
             }
             None => {
                 let mut streams = Streams { input: &mut *input, output: &mut *output, errors: &mut *errors };
-                chat(line, profile.as_deref(), provider, tools, conversation, &mut streams)?
+                chat(line, profile.as_deref(), provider, tools, conversation, sessions, &mut streams)?
             }
         }
     }
@@ -134,12 +134,13 @@ fn chat(
     provider: &dyn Provider,
     tools: &dyn ToolRunner,
     conversation: &mut Conversation,
+    sessions: &Path,
     streams: &mut Streams,
 ) -> io::Result<()> {
     let mut pending = Some(line);
     let mut follow_ups = 0;
     while let Some(text) = pending.take() {
-        pending = chat_turn(text, profile, provider, tools, conversation, streams)?;
+        pending = chat_turn(text, profile, provider, tools, conversation, sessions, streams)?;
         if pending.is_some() {
             if follow_ups == after_turn::FOLLOW_UPS {
                 writeln!(
@@ -165,6 +166,7 @@ fn chat_turn(
     provider: &dyn Provider,
     tools: &dyn ToolRunner,
     conversation: &mut Conversation,
+    sessions: &Path,
     streams: &mut Streams,
 ) -> io::Result<Option<String>> {
     let typed = line.clone();
@@ -211,17 +213,15 @@ fn chat_turn(
                 writeln!(streams.output, "{}", style::paint(style::Color::Green, turn.reply()))?;
             }
             conversation.commit(turn);
-            if let Some((folder, name)) = conversation.autosave_target(&typed) {
-                if let Err(err) =
-                    saved_sessions::write(&folder, &name, conversation.history(), conversation.requests())
-                {
+            if let Some(name) = conversation.autosave_target(&typed) {
+                if let Err(err) = saved_sessions::write(sessions, &name, conversation.history(), conversation.requests()) {
                     writeln!(streams.errors, "error: {err}")?;
                 }
             }
             let after_lines = hook_lines(conversation.after_turn(), &conversation.profile_hooks().after_turn);
             after_turn::run(&after_lines, tools, &mut streams.output, &mut streams.errors)
         }
-        Err(ProviderError::Interrupted { stopped }) => interrupted(typed, stopped, conversation, streams),
+        Err(ProviderError::Interrupted { stopped }) => interrupted(typed, stopped, conversation, sessions, streams),
         Err(err) => {
             writeln!(streams.errors, "error: {err}")?;
             Ok(None)
@@ -241,6 +241,7 @@ fn interrupted(
     typed: String,
     stopped: PartialTurn,
     conversation: &mut Conversation,
+    sessions: &Path,
     streams: &mut Streams,
 ) -> io::Result<Option<String>> {
     let requests = stopped.requests().to_vec();
@@ -248,8 +249,8 @@ fn interrupted(
         Ok(turn) => conversation.commit(turn.with_requests(requests)),
         Err(err) => writeln!(streams.errors, "error: {err}")?,
     }
-    if let Some((folder, name)) = conversation.autosave_target(&typed) {
-        if let Err(err) = saved_sessions::write(&folder, &name, conversation.history(), conversation.requests()) {
+    if let Some(name) = conversation.autosave_target(&typed) {
+        if let Err(err) = saved_sessions::write(sessions, &name, conversation.history(), conversation.requests()) {
             writeln!(streams.errors, "error: {err}")?;
         }
     }

@@ -52,7 +52,7 @@ fn main() {
     let tools = WorkspaceTools::new(env.cwd.clone());
     let mut conversation = Conversation::new(&env);
     let sessions = std::path::PathBuf::from(saved_sessions::FOLDER);
-    conversation.enable_autosave(sessions.clone());
+    conversation.enable_autosave();
 
     let stdout = io::stdout();
     let mut output = stdout.lock();
