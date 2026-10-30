@@ -16,6 +16,7 @@ mod session;
 mod subagent;
 mod shutdown;
 mod startup;
+mod style;
 mod tools;
 mod turn;
 
@@ -34,6 +35,7 @@ fn exit_with(message: &str) -> ! {
 
 fn main() {
     dotenvy::dotenv().ok();
+    style::enable_if_terminal();
     // Installed first, so Ctrl+C during a slow start stops the process as it always did.
     if let Err(err) = interrupt::install() {
         exit_with(&format!("error: cannot handle Ctrl+C: {err}"));
@@ -54,7 +56,7 @@ fn main() {
 
     let stdout = io::stdout();
     let mut output = stdout.lock();
-    let mut errors = io::stderr();
+    let mut errors = style::Errors::new(io::stderr());
     match saved_sessions::import(&sessions) {
         Ok(0) => {}
         Ok(imported) => {

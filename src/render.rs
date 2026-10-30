@@ -2,6 +2,7 @@
 //! in place until answer text follows it. The output is shared with the approval prompts, so it is held here.
 
 use crate::provider::types::Event;
+use crate::style::{self, Color};
 use std::cell::{Cell, RefCell, RefMut};
 use std::io::Write;
 
@@ -24,12 +25,12 @@ impl<'a, W: Write> Render<'a, W> {
             Event::Answer(text) => {
                 self.end_status();
                 self.streamed.set(true);
-                self.put(&text);
+                self.put(&style::paint(Color::Green, &text));
             }
             // A call is kept as a line of its own, so the transcript shows which tools ran after the turn ends.
-            Event::Tool { name, target } => self.line(&tool_text(&name, target.as_deref())),
+            Event::Tool { name, target } => self.line(Color::Cyan, &tool_text(&name, target.as_deref())),
             // The call above did not run, so the transcript says so rather than claiming it did.
-            Event::ToolFailed(reason) => self.line(&format!("  did not run: {reason}")),
+            Event::ToolFailed(reason) => self.line(Color::Red, &format!("  did not run: {reason}")),
             Event::Finished => self.end_status(),
         }
     }
@@ -38,8 +39,10 @@ impl<'a, W: Write> Render<'a, W> {
     /// event is ignored.
     pub fn on_subagent_event(&self, event: Event) {
         match event {
-            Event::Tool { name, target } => self.line(&format!("{SUBAGENT_INDENT}{}", tool_text(&name, target.as_deref()))),
-            Event::ToolFailed(reason) => self.line(&format!("{SUBAGENT_INDENT}  did not run: {reason}")),
+            Event::Tool { name, target } => {
+                self.line(Color::Cyan, &format!("{SUBAGENT_INDENT}{}", tool_text(&name, target.as_deref())))
+            }
+            Event::ToolFailed(reason) => self.line(Color::Red, &format!("{SUBAGENT_INDENT}  did not run: {reason}")),
             _ => {}
         }
     }
@@ -62,7 +65,7 @@ impl<'a, W: Write> Render<'a, W> {
     }
 
     fn status(&self, text: &str) {
-        self.put(&format!("\r{text:<60}"));
+        self.put(&style::paint(Color::Dim, &format!("\r{text:<60}")));
         self.status_open.set(true);
     }
 
@@ -75,12 +78,12 @@ impl<'a, W: Write> Render<'a, W> {
     /// Writes one complete line that stays in the transcript, on a line of its own. The text comes from the model, so
     /// control characters are replaced and it is cut short: a `\r` would overwrite the prefix, and a long command would
     /// flood the terminal.
-    fn line(&self, text: &str) {
+    fn line(&self, color: Color, text: &str) {
         self.end_status();
         if self.line_open.get() {
             self.newline();
         }
-        self.put(&clean(text));
+        self.put(&style::paint(color, &clean(text)));
         self.newline();
     }
 

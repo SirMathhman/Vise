@@ -6,6 +6,7 @@ use crate::interrupt;
 use crate::profile;
 use crate::provider::types::{Event, Provider};
 use crate::render::Render;
+use crate::style;
 use crate::subagent;
 use crate::turn::{apply_whitelist, compact, hook_lines, prepare_message, run_turn, select_hooks, Compaction};
 use crate::saved_sessions;
@@ -205,7 +206,7 @@ fn chat_turn(
                 )?;
             }
             if !streamed {
-                writeln!(streams.output, "{}", turn.reply())?;
+                writeln!(streams.output, "{}", style::paint(style::Color::Green, turn.reply()))?;
             }
             conversation.commit(turn);
             if let Some((folder, name)) = conversation.autosave_target(&typed) {
