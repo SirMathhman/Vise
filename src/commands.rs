@@ -6,7 +6,7 @@ pub const HELP: &str = "\
 /tools                list each tool and whether the model may call it
 /tools enable NAME    let the model call a tool
 /tools disable NAME   stop the model calling a tool
-/profile              list the profiles in the profiles folder
+/profile              list the profiles: notes with the category profile
 /profile NAME         use a profile's instructions from the next message on
 /model               list the models the server offers, and the one in use
 /model NAME          use a model the server offers, and keep it as the default

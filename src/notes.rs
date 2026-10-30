@@ -15,6 +15,8 @@ const NONE: &str = "[Notes]\n(none)";
 pub struct Note {
     pub summary: String,
     pub category: String,
+    /// The other header lines, such as a profile's `tools:` and `hook ...:` lines, kept as they were written.
+    pub extra: Vec<String>,
     pub content: String,
 }
 
@@ -42,23 +44,31 @@ fn check(note: &Note) -> Result<(), String> {
 }
 
 fn format(note: &Note) -> String {
-    format!("---\nsummary: {}\ncategory: {}\n---\n{}", note.summary, note.category, note.content)
+    let extra: String = note.extra.iter().map(|line| format!("{line}\n")).collect();
+    format!("---\nsummary: {}\ncategory: {}\n{extra}---\n{}", note.summary, note.category, note.content)
 }
 
-fn parse(text: &str) -> Result<Note, String> {
+/// Reads a note from its file text. Windows line endings are accepted. Header lines other than `summary:` and
+/// `category:` go to `extra`.
+pub fn parse(text: &str) -> Result<Note, String> {
+    let text = text.replace("\r\n", "\n");
     let rest = text.strip_prefix("---\n").ok_or_else(|| "the note has no header".to_string())?;
     let (header, content) = rest.split_once("\n---\n").ok_or_else(|| "the note's header is not closed".to_string())?;
     let (mut summary, mut category) = (None, None);
+    let mut extra = Vec::new();
     for line in header.lines() {
         if let Some(value) = line.strip_prefix("summary: ") {
             summary = Some(value.to_string());
         } else if let Some(value) = line.strip_prefix("category: ") {
             category = Some(value.to_string());
+        } else if !line.trim().is_empty() {
+            extra.push(line.trim().to_string());
         }
     }
     Ok(Note {
         summary: summary.ok_or_else(|| "the note has no summary line".to_string())?,
         category: category.ok_or_else(|| "the note has no category line".to_string())?,
+        extra,
         content: content.to_string(),
     })
 }
@@ -93,7 +103,16 @@ pub fn update(folder: &Path, name: &str, note: &Note) -> Result<(), String> {
     if !file.exists() {
         return Err(format!("note '{name}' does not exist"));
     }
-    fs::write(&file, format(note)).map_err(|err| format!("cannot update note '{name}': {err}"))
+    // The header lines beyond the summary and category stay as they are: a profile's hook lines run without a prompt,
+    // so an update from the model may change the text but not them.
+    let kept = read(folder, name)?.extra;
+    let updated = Note {
+        summary: note.summary.clone(),
+        category: note.category.clone(),
+        extra: kept,
+        content: note.content.clone(),
+    };
+    fs::write(&file, format(&updated)).map_err(|err| format!("cannot update note '{name}': {err}"))
 }
 
 pub fn delete(folder: &Path, name: &str) -> Result<(), String> {
@@ -169,7 +188,12 @@ mod tests {
 
     #[test]
     fn note_round_trips_through_its_file_format() {
-        let note = Note { summary: "a summary".into(), category: "memory".into(), content: "line one\n---\nline two".into() };
+        let note = Note {
+            summary: "a summary".into(),
+            category: "memory".into(),
+            extra: Vec::new(),
+            content: "line one\n---\nline two".into(),
+        };
         let parsed = parse(&format(&note)).expect("a formatted note parses");
         assert_eq!(parsed.summary, "a summary");
         assert_eq!(parsed.category, "memory");
@@ -178,7 +202,42 @@ mod tests {
 
     #[test]
     fn multi_line_summary_is_rejected() {
-        let note = Note { summary: "two\nlines".into(), category: "memory".into(), content: String::new() };
+        let note = Note { summary: "two\nlines".into(), category: "memory".into(), extra: Vec::new(), content: String::new() };
         assert!(check(&note).is_err());
+    }
+
+    #[test]
+    fn extra_header_lines_round_trip_in_order() {
+        let note = Note {
+            summary: "s".into(),
+            category: "profile".into(),
+            extra: vec!["tools: read_file".into(), "hook before-turn: Get-Date".into()],
+            content: "be brief".into(),
+        };
+        let parsed = parse(&format(&note)).expect("a formatted note parses");
+        assert_eq!(parsed.extra, vec!["tools: read_file".to_string(), "hook before-turn: Get-Date".to_string()]);
+        assert_eq!(parsed.content, "be brief");
+    }
+
+    #[test]
+    fn windows_line_endings_are_accepted() {
+        let parsed = parse("---\r\nsummary: s\r\ncategory: profile\r\ntools: read_file\r\n---\r\nbe brief").expect("parses");
+        assert_eq!(parsed.category, "profile");
+        assert_eq!(parsed.extra, vec!["tools: read_file".to_string()]);
+        assert_eq!(parsed.content, "be brief");
+    }
+
+    #[test]
+    fn update_keeps_the_extra_header_lines() {
+        let folder = std::env::temp_dir().join(format!("vise-note-update-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(&folder).expect("the test folder is made");
+        fs::write(folder.join("p.md"), "---\nsummary: s\ncategory: profile\nhook before-turn: Get-Date\n---\nold").expect("written");
+        let replacement = Note { summary: "new".into(), category: "profile".into(), extra: Vec::new(), content: "new text".into() };
+        update(&folder, "p", &replacement).expect("updates");
+        let read_back = read(&folder, "p").expect("reads");
+        fs::remove_dir_all(&folder).expect("the test folder is removed");
+        assert_eq!(read_back.extra, vec!["hook before-turn: Get-Date".to_string()]);
+        assert_eq!(read_back.content, "new text");
     }
 }

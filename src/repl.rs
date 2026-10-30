@@ -46,8 +46,8 @@ pub fn run(
             Some(Command::Tools) => writeln!(output, "{}", tool_list(tools))?,
             Some(Command::Enable(name)) => toggle(tools, &name, true, output, errors)?,
             Some(Command::Disable(name)) => toggle(tools, &name, false, output, errors)?,
-            Some(Command::Profiles) => match profile::names() {
-                Ok(names) if names.is_empty() => writeln!(output, "no profiles: add .txt files to the profiles folder")?,
+            Some(Command::Profiles) => match profile::names(&tools.notes_folder()) {
+                Ok(names) if names.is_empty() => writeln!(output, "no profiles: a profile is a note with the category profile")?,
                 Ok(names) => writeln!(output, "{}", names.join("\n"))?,
                 Err(err) => writeln!(errors, "error: {err}")?,
             },
@@ -57,7 +57,7 @@ pub fn run(
             Some(command @ (Command::Sessions | Command::Save(_) | Command::Load(_))) => {
                 session_command(command, conversation, sessions, output, errors)?
             }
-            Some(Command::Profile(name)) => match profile::load(&name) {
+            Some(Command::Profile(name)) => match profile::load(&tools.notes_folder(), &name) {
                 Ok(loaded) => match apply_whitelist(tools, loaded.tools.as_deref()) {
                     Ok(changes) => {
                         for change in changes {

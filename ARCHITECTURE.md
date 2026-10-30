@@ -48,7 +48,7 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
   typing the command is the consent. Exceptions are autosave (see Session), and the command lines (see Command files and
   hooks). A declined write is reported to the model as an error and changes nothing.
 - **Note**: a named file, `notes/NAME.md`, starting with a `---` header of one `summary:` line and one `category:`
-  line, then the content. Notes persist across sessions.
+  line (and any other header lines, which a profile uses: see Profile), then the content. Notes persist across sessions.
 - **Notes index**: the list of every allowed note's name, category, and summary, or `[Notes]` followed by `(none)`.
 - **Session**: the history after the system context, saved by `/save` as a row in the sessions folder's database
   (`sessions/sessions.db`) and loaded into the run by `/load`, which leaves the stored row unchanged. At launch the run resumes the session with the latest `saved_at` that holds messages (history and request log
@@ -57,12 +57,12 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 - **Request log**: the `requests` rows of one session, one per request the session's turns made, kept for auditing what a
   prompt cost. It is not part of the history: it outlives the turns it was made for, and it is never rewritten. It belongs
   to the session that was writing when each request was sent.
-- **Profile**: a named set of instructions in `profiles/NAME.txt`, selected with `/profile NAME`. Its text, under a
-  heading that names it, is prepended to the next user message only. Its optional header lines, in any order, are
-  `tools:` (the tools it allows), `notes:` (the notes the model may use), and `hook KIND: COMMAND` (see Profile hooks).
-  The profile `default` is built in: it needs no file, has no instructions, no header lines (so every tool and note is allowed),
-  and no hooks. It is always listed, and selecting it is the way to return to an unrestricted state. A `default.txt` file in the
-  folder must not be silently ignored: either it overrides the built-in or the name is refused as reserved (see Potential Problems).
+- **Profile**: a note with the category `profile` (`notes/NAME.md`), selected with `/profile NAME`. The note's content, under a
+  heading that names it, is prepended to the next user message only. Its optional extra header lines, in any order, are
+  `tools:` (the tools it allows), `notes:` (the notes the model may use), and `hook KIND: COMMAND` (see Profile hooks); any
+  other extra line makes the profile fail to load. The profile `default` is built in: it needs no note, has no instructions, no
+  header lines (so every tool and note is allowed), and no hooks. It is always listed, and selecting it is the way to return to
+  an unrestricted state. A note named `default` is shadowed by it (see Potential Problems).
 - **Note whitelist**: the note names the model may use, set by the selected profile's `notes:` line, or all notes.
   It limits the notes index, `list_notes`, and the four note tools. It does not limit the user's `/notes` and `/note`.
 - **Command file**: a file of PowerShell command lines in the working directory, run without a prompt:
@@ -241,7 +241,7 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 - Nothing but `saved_sessions` opens the database, and `store.rs` is the only file there that does. A name is a column value,
   never a path. The sessions table is upserted rather than replaced, because a replaced row would cascade a delete over the
   messages just written.
-- A profile is chosen by name only. The name must be letters, digits, `-` or `_`, so it cannot leave the profiles folder.
+- A profile is chosen by name only. The name must be letters, digits, `-` or `_`, so it cannot leave the notes folder.
 - Selecting a profile sets every tool's state: the enabled set becomes exactly the profile's tools line, or all tools when it
   has none. It replaces the note whitelist with the profile's notes line, or all notes when it has none. The change is made
   when `/profile NAME` runs, and it replaces any earlier `/tools` choices.
@@ -267,8 +267,10 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 - Selecting a profile replaces the hook lines held from the one selected before, in the same step that changes its instructions.
   The lines of the previously selected profile never run after another profile is selected. The selected profile's `startup`
   hooks run at once, and their output reaches the model with the next message.
-- The file tools refuse any change to a command file, whatever the spelling of its name. They may write a file directly in the
-  profiles folder only after the ordinary approval, whose text adds that the profile's hook lines run without a prompt. An
+- The file tools refuse any change to a command file, whatever the spelling of its name. They may write a note that is a profile
+  (in the notes folder, with the category `profile`) only after the ordinary approval, whose text adds that the profile's hook lines
+  run without a prompt, lists them, and shows the whole file. `update_note` keeps a note's extra header lines, so only an approved
+  file-tool write can change a profile's hooks. An
   approved `run_powershell` can still change any of them, and its approval text says so when the command names one.
 - A profile written by the model is never trusted more than the approval that wrote it. The ideal is that a hook line in a
   profile the model wrote or edited does not run until the user has confirmed those lines (see Security), so the approval of a
@@ -338,8 +340,8 @@ src/
     messages.rs      one message as the table holds it: the role, the content, the answered call, and a reply's tool calls
                      as JSON text. A system message contributes no row
     legacy.rs        the frozen `NAME.json` format the import reads
-  profile.rs         lists the profiles folder's `.txt` files, loads one by a validated name, and parses its header lines
-                     (`tools:`, `notes:`, and `hook KIND: COMMAND`) from its instructions
+  profile.rs         lists the notes with the category `profile`, loads one by a validated name, and reads its extra header lines
+                     (`tools:`, `notes:`, and `hook KIND: COMMAND`) and its content as the instructions
   notes.rs           the notes folder: one file per note. Reads, creates, updates, deletes, and lists notes, and builds the
                      index text. Each takes the folder, which the runner gets from the working directory (`notes_folder`).
                      Listing takes an optional allowed set of names.
@@ -475,13 +477,11 @@ Each item is a gap between the design above and the code. Items are grouped by a
   open: the user chose enable-all.
 - **Narrowing the whitelist leaves disallowed notes in history.** Index messages and `read_note` results are committed. After a
   profile narrows the whitelist, the notes it no longer allows stay in the conversation until compaction removes them.
-- **A `default.txt` file is shadowed.** `profile::load` returns the built-in default before it reads the folder, and `names` lists
-  `default` once, so a user's `profiles/default.txt` (instructions, a `tools:` line, hooks) is ignored with no message. A built-in
+- **A note named `default` is shadowed.** `profile::load` returns the built-in default before it reads the notes, and `names` lists
+  `default` once, so a user's `notes/default.md` (instructions, a `tools:` line, hooks) is ignored with no message. A built-in
   with an empty body is also sent as a bare `[Instructions from profile default]` heading on selection and in every subagent
   run; an empty profile should add no text. Callers (`repl`, `subagent`) rely on `load` alone, so the fix belongs in `profile`.
-- **Profile listing and selection disagree.** `profile::names` lists every `.txt` file, including names `load` rejects (such as
-  `my notes.txt`), so `/profile` shows a name it then refuses.
-- **Profile text is unbounded.** `profile::load` reads the whole file. A large profile is committed and resent on every later turn.
+- **Profile text is unbounded.** `profile::load` reads the whole note. A large profile is committed and resent on every later turn.
 - **No way to clear a profile.** Once chosen, a profile stays until another is chosen or the process ends, and its hook lines
   stay active.
 - **Turn shape is loosened.** `Turn::new` accepts a plain assistant message directly after the user message, and the test
@@ -679,14 +679,10 @@ Each item is a gap between the design above and the code. Items are grouped by a
 
 ### Profile hooks
 
-- **The model can write a profile, hooks included, behind one approval.** `create_file` and `edit_file` may write into `profiles/`, and
-  `run_powershell` can too. The approval text names the hooks, but it is a single prompt, and the hook lines then run with no further
-  prompt at selection, every turn, and exit. Three weaknesses: (1) an `edit_file` prompt shows only the replaced fragment, so hook lines
-  elsewhere in the file are not shown, and a hook added by a small edit looks like a small edit; (2) the warning is appended after the
-  content, which may be long; (3) `run_subagent` takes a profile name from the model, so a profile the model just wrote can have its
-  hooks run in a subagent with no `/profile` from the user. The user's `/profile` is therefore not a second gate. The fix is that a
-  profile carries no live hooks until the user selects it with `/profile` after the write (a subagent runs only profiles that existed
-  before the session or were confirmed), and the prompt for a profile write shows the whole resulting file, its hook lines listed first.
+- **An approved command can still write a profile's hook lines.** `create_file` and `edit_file` show the whole resulting profile with
+  its hook lines listed first, and a subagent runs a profile the model wrote without its hooks until the user selects it with
+  `/profile`. `run_powershell` can still write a profile note, and its approval text only adds a warning line when the command names
+  the notes folder. A shell command is not parsed, so a profile can be changed by one that does not name `notes`.
 - **Hook lines bypass the profile's tools line.** A profile with `tools: read_file` still runs PowerShell through a hook. This is intended
   for command files, but a profile that narrows the tools is not narrowing what its hooks can do. The user should confirm this decision.
 - **Selection can split on an I/O error.** In the `Profile` arm of `repl`, the instructions and tool state change before `select_hooks`
@@ -767,8 +763,8 @@ Trust boundaries:
 - **Stored sessions** are rows of `sessions/sessions.db`. An approved write can change the database file, and a `sessions/NAME.json` file
   left for import is read at launch, so the model can write a session the user later loads. `/load` commits its messages as history, so a
   stored session is a persistence path for injected instructions and forged tool results.
-- **Profile files** are untrusted text, and they are command files too. They sit in `profiles/`, which the file tools and an approved command may write after approval, so the
-  model can author them; the approval is the only gate, and `run_subagent` can run a profile the model has just written. Their text reaches the model verbatim, and their `notes:` line decides which notes the
+- **Profile notes** are untrusted text, and they are command files too. They sit in `notes/` with the category `profile`, which the file tools and an approved command may write after approval, so the
+  model can author them; a subagent runs a profile the model wrote without its hooks until the user selects it. Their text reaches the model verbatim, and their `notes:` line decides which notes the
   model sees. Their `hook` lines run with the user's full permissions and no prompt, and their output goes to the model (except shutdown's).
 - **Command files** (`startup.txt`, `before-turn.txt`, `after-turn.txt`, `shutdown.txt`) are untrusted text in the same way as `AGENTS.md`.
   Their lines run with the user's full permissions at every launch, exit, and chat turn, with no prompt. Startup and before-turn output reach
@@ -814,7 +810,7 @@ Controls:
 | Profile files limit the notes the model may use | Partly met. The runner refuses a disallowed note before approval, and the index omits it. Earlier index messages and note results stay in history (Open Problems). |
 | Profile files set the enabled set | Partly met. A profile's tools line is checked against the catalogue, and selecting a profile is the user's action. Its hook lines run whatever the enabled set is (Open Problems). |
 | Profile hook lines run only while their profile is selected | Met. Selecting another profile replaces them at once, and shutdown reads the current ones. A failed selection keeps the old ones. The I/O-error split is open (Open Problems). |
-| Profile hook lines run only from a file the user has seen and confirmed | Partly met. A model write to `profiles/` needs approval whose text names the hooks, but an edit prompt shows only the fragment, the warning trails the content, and `run_subagent` can run the new profile without a `/profile` (Open Problems). |
+| Profile hook lines run only from a note the user has seen and confirmed | Partly met. A model write that leaves a profile in `notes/` needs approval whose text names the hooks and shows the whole file, and a subagent runs it without hooks until the user selects it. An approved command can still write one (Open Problems). |
 | Command-file lines run without approval only from a file the model cannot write | Partly met. The file tools refuse the command files by name, ignoring trailing dots, spaces, and `:` streams. An approved command can still write any of them (Open Problems). |
 | Command-file and hook lines are not gated by the enabled tool set | Met. They run through `run_command_file_line`, which skips the enabled-set check and keeps the file guard. |
 | Command-file, hook, and before-turn and after-turn lines bounded in time, count, and output | Missing (Open Problems). |

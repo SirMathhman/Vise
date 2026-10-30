@@ -34,7 +34,7 @@ pub fn run(
     tools: &dyn ToolRunner,
     parent: Parent<'_>,
 ) -> Result<String, ToolError> {
-    let mut loaded = profile::load(profile_name).map_err(ToolError::Failed)?;
+    let mut loaded = profile::load(&tools.notes_folder(), profile_name).map_err(ToolError::Failed)?;
     // A profile the model wrote has not been seen by the user as a profile, so its hook lines do not run.
     if tools.profile_written(profile_name) {
         loaded.hooks = HookLines::default();
@@ -213,22 +213,28 @@ mod tests {
         }
     }
 
-    /// Runs `test` with a profile file of the given name and text in the profiles folder, removing the file after.
-    fn with_profile<T>(name: &str, text: &str, test: impl FnOnce() -> T) -> T {
-        let folder = std::path::Path::new("profiles");
-        fs::create_dir_all(folder).unwrap();
-        let file = folder.join(format!("{name}.txt"));
-        fs::write(&file, text).unwrap();
-        let result = test();
-        fs::remove_file(&file).unwrap();
+    /// Runs `test` in a working directory whose notes folder holds a profile note of the given name, with `header` as its
+    /// extra header lines and `instructions` as its text. The directory is removed after.
+    fn with_profile<T>(name: &str, header: &str, instructions: &str, test: impl FnOnce(&std::path::Path) -> T) -> T {
+        let cwd = std::env::temp_dir().join(format!("{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&cwd);
+        fs::create_dir_all(cwd.join("notes")).unwrap();
+        let note = format!("---
+summary: test
+category: profile
+{header}
+---
+{instructions}");
+        fs::write(cwd.join("notes").join(format!("{name}.md")), note).unwrap();
+        let result = test(&cwd);
+        fs::remove_dir_all(&cwd).unwrap();
         result
     }
 
     #[test]
     fn failing_subagent_restores_the_parent_tools_and_notes() {
-        with_profile("vise-subagent-fail", "tools: read_file
-be brief", || {
-            let tools = WorkspaceTools::new(std::env::temp_dir());
+        with_profile("vise-subagent-fail", "tools: read_file", "be brief", |cwd| {
+            let tools = WorkspaceTools::new(cwd.to_path_buf());
             let result = run(
                 "vise-subagent-fail",
                 "task",
@@ -244,9 +250,8 @@ be brief", || {
 
     #[test]
     fn subagent_runs_its_hooks_and_cannot_start_another_subagent() {
-        with_profile("vise-subagent-hooks", "hook before-turn: Write-Output profile-hook
-be brief", || {
-            let tools = WorkspaceTools::new(std::env::temp_dir());
+        with_profile("vise-subagent-hooks", "hook before-turn: Write-Output profile-hook", "be brief", |cwd| {
+            let tools = WorkspaceTools::new(cwd.to_path_buf());
             let provider = Recorder::new(false);
             let global = vec!["Write-Output global-hook".to_string()];
             let result = run(

@@ -109,5 +109,5 @@ pub fn run_delete(folder: &Path, name: &str) -> Result<String, ToolError> {
 }
 
 fn note(summary: &str, category: &str, content: &str) -> Note {
-    Note { summary: summary.to_string(), category: category.to_string(), content: content.to_string() }
+    Note { summary: summary.to_string(), category: category.to_string(), extra: Vec::new(), content: content.to_string() }
 }

@@ -2,7 +2,7 @@ use super::types::{Arguments, Invocation, Param, ParamType, ToolError, ToolSpec}
 
 pub const SPEC: ToolSpec = ToolSpec {
     name: "run_subagent",
-    description: "Start a subagent to do a task in a fresh conversation, and get its final reply. The profile must exist, and it sets the subagent's instructions, tools, notes and hooks. A subagent cannot start another subagent.",
+    description: "Start a subagent to do a task in a fresh conversation, and get its final reply. The profile is a note with the category profile, or default, and it sets the subagent's instructions, tools, notes and hooks. A subagent cannot start another subagent.",
     params: &[
         Param {
             name: "profile",

@@ -15,8 +15,6 @@ pub const SHUTDOWN_FILE: &str = "shutdown.txt";
 pub const BEFORE_TURN_FILE: &str = "before-turn.txt";
 /// The file in the working directory whose lines run after each chat turn.
 pub const AFTER_TURN_FILE: &str = "after-turn.txt";
-/// The folder whose profile files may hold `hook` lines, which run without approval.
-pub const PROFILES_FOLDER: &str = "profiles";
 /// Every file whose lines run without approval. The file tools cannot change any of them.
 const COMMAND_FILES: [&str; 4] = [STARTUP_FILE, SHUTDOWN_FILE, BEFORE_TURN_FILE, AFTER_TURN_FILE];
 
@@ -46,8 +44,8 @@ impl WorkspaceTools {
         self.allowed_notes.borrow().as_ref().is_none_or(|names| names.iter().any(|allowed| allowed == name))
     }
 
-    /// Whether `path` names a file directly in the profiles folder, whatever its spelling.
-    fn is_profile_file(&self, path: &str) -> bool {
+    /// Whether `path` names a file directly in the notes folder, whatever its spelling.
+    fn is_notes_file(&self, path: &str) -> bool {
         let (Ok(target), Ok(root)) = (confine_new(&self.cwd, path), self.cwd.canonicalize()) else {
             return false;
         };
@@ -55,47 +53,48 @@ impl WorkspaceTools {
             return false;
         };
         folder.parent() == Some(root.as_path())
-            && folder.file_name().is_some_and(|name| name.eq_ignore_ascii_case(PROFILES_FOLDER))
+            && folder.file_name().is_some_and(|name| name.eq_ignore_ascii_case(crate::notes::FOLDER))
     }
 
-    /// What the user is asked to approve. A write to a profile file opens with the warning that its hook lines run
-    /// without a prompt, then lists the hook lines the file would have and shows the whole file as it would be after the
-    /// write, because the file tools may write there only with that approval.
-    fn approval_text(&self, invocation: &Invocation) -> String {
-        let text = describe(invocation);
+    /// The profile a create or edit would leave in the notes folder, as its name, its hook lines and the whole file after
+    /// the change. None when the call does not write a note, or the note it leaves is not a profile.
+    fn profile_left_by(&self, invocation: &Invocation) -> Option<(String, Vec<String>, String)> {
         let (Invocation::CreateFile { path, .. } | Invocation::EditFile { path, .. }) = invocation else {
-            return text;
+            return None;
         };
-        if !self.is_profile_file(path) {
-            return text;
+        if !self.is_notes_file(path) {
+            return None;
         }
         let after = match invocation {
             Invocation::CreateFile { content, .. } => content.clone(),
-            Invocation::EditFile { previous, new, .. } => confine_new(&self.cwd, path)
-                .ok()
-                .and_then(|target| std::fs::read_to_string(target).ok())
-                .map_or_else(String::new, |current| current.replacen(previous.as_str(), new, 1)),
-            _ => String::new(),
+            Invocation::EditFile { previous, new, .. } => {
+                let current = std::fs::read_to_string(confine_new(&self.cwd, path).ok()?).ok()?;
+                current.replacen(previous.as_str(), new, 1)
+            }
+            _ => return None,
         };
-        let hooks: Vec<&str> = after.lines().filter(|line| line.trim_start().starts_with("hook ")).collect();
-        let hooks = if hooks.is_empty() { "none".to_string() } else { hooks.join("
-") };
-        format!(
-            "This changes a profile, whose hook lines run without a prompt.
-Hook lines after this change:
-{hooks}
-
-{text}
-
-The whole file after this change:
-{after}"
-        )
+        let note = crate::notes::parse(&after).ok()?;
+        if note.category != "profile" {
+            return None;
+        }
+        let file = std::path::Path::new(path).file_name()?.to_string_lossy().into_owned();
+        let name = file.strip_suffix(".md").unwrap_or(&file).to_string();
+        let hooks = note.extra.into_iter().filter(|line| line.starts_with("hook ")).collect();
+        Some((name, hooks, after))
     }
 
-    /// The profile name a file-tool path names: its file name without `.txt`.
-    fn profile_name(path: &str) -> Option<String> {
-        let file = std::path::Path::new(path).file_name()?.to_string_lossy().into_owned();
-        Some(file.strip_suffix(".txt").unwrap_or(&file).to_string())
+    /// What the user is asked to approve. A write that leaves a profile in the notes folder opens with the warning that
+    /// its hook lines run without a prompt, then lists the hook lines the profile would have and shows the whole file as
+    /// it would be after the write, because the file tools may write there only with that approval.
+    fn approval_text(&self, invocation: &Invocation) -> String {
+        let text = describe(invocation);
+        let Some((_, hooks, after)) = self.profile_left_by(invocation) else {
+            return text;
+        };
+        let hooks = if hooks.is_empty() { "none".to_string() } else { hooks.join("\n") };
+        format!(
+            "This changes a profile, whose hook lines run without a prompt.\nHook lines after this change:\n{hooks}\n\n{text}\n\nThe whole file after this change:\n{after}"
+        )
     }
 
     /// Whether `path` names a command file (startup or shutdown) in the working directory, whatever its spelling.
@@ -178,10 +177,7 @@ impl ToolRunner for WorkspaceTools {
         if invocation.writes() && !approve(&self.approval_text(invocation)) {
             return Err(ToolError::Failed("the user declined this change".into()));
         }
-        if let Invocation::CreateFile { path, .. } | Invocation::EditFile { path, .. } = invocation
-            && self.is_profile_file(path)
-            && let Some(name) = Self::profile_name(path)
-        {
+        if let Some((name, _, _)) = self.profile_left_by(invocation) {
             // Recorded before the write, so a write that fails partway still leaves the profile unconfirmed.
             self.written_profiles.borrow_mut().insert(name);
         }
@@ -246,8 +242,8 @@ fn describe(invocation: &Invocation) -> String {
             let lowered = command.to_ascii_lowercase();
             if COMMAND_FILES.iter().any(|file| lowered.contains(*file)) {
                 format!("{text}\nThis may change a startup, shutdown, before-turn or after-turn file, whose lines run without a prompt.")
-            } else if lowered.contains(PROFILES_FOLDER) {
-                format!("{text}\nThis may change a profile, whose hook lines run without a prompt.")
+            } else if lowered.contains(crate::notes::FOLDER) {
+                format!("{text}\nThis may change a note that is a profile, whose hook lines run without a prompt.")
             } else {
                 text
             }
@@ -338,25 +334,45 @@ mod tests {
     }
 
     #[test]
-    fn file_tools_write_into_the_profiles_folder_only_with_approval_that_names_the_hooks() {
+    fn file_tools_write_a_profile_note_only_with_approval_that_names_the_hooks() {
         let cwd = std::env::temp_dir().join(format!("vise-profile-write-{}", std::process::id()));
-        fs::create_dir_all(cwd.join("profiles")).unwrap();
+        fs::create_dir_all(cwd.join("notes")).unwrap();
         let tools = WorkspaceTools::new(cwd.clone());
-        let create = Invocation::CreateFile { path: "profiles/x.txt".into(), content: "x".into() };
+        let profile = "---\nsummary: s\ncategory: profile\nhook before-turn: Get-Date\n---\nbe brief".to_string();
+        let create = Invocation::CreateFile { path: "notes/x.md".into(), content: profile };
         let declined = tools.run(&create, &mut |_: &str| false);
         let mut asked = String::new();
         let approved = tools.run(&create, &mut |change: &str| {
             asked = change.to_string();
             true
         });
-        let written = cwd.join("profiles/x.txt").exists();
+        let written = cwd.join("notes/x.md").exists();
         fs::remove_dir_all(&cwd).unwrap();
         assert!(declined.is_err());
         assert!(approved.is_ok() && written);
         assert!(asked.contains("hook lines run without a prompt"));
+        assert!(asked.contains("Hook lines after this change:\nhook before-turn: Get-Date"));
         assert!(tools.profile_written("x"), "a subagent runs it without hooks until the user selects it");
         tools.confirm_profile("x");
         assert!(!tools.profile_written("x"));
+    }
+
+    #[test]
+    fn a_write_to_an_ordinary_note_is_not_treated_as_a_profile() {
+        let cwd = std::env::temp_dir().join(format!("vise-note-write-{}", std::process::id()));
+        fs::create_dir_all(cwd.join("notes")).unwrap();
+        let tools = WorkspaceTools::new(cwd.clone());
+        let note = "---\nsummary: s\ncategory: memory\n---\ntext".to_string();
+        let create = Invocation::CreateFile { path: "notes/plan.md".into(), content: note };
+        let mut asked = String::new();
+        let created = tools.run(&create, &mut |change: &str| {
+            asked = change.to_string();
+            true
+        });
+        fs::remove_dir_all(&cwd).unwrap();
+        assert!(created.is_ok());
+        assert!(!asked.contains("hook lines"), "{asked}");
+        assert!(!tools.profile_written("plan"));
     }
 
     #[test]
