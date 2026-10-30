@@ -59,6 +59,9 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 - **Profile**: a named set of instructions in `profiles/NAME.txt`, selected with `/profile NAME`. Its text, under a
   heading that names it, is prepended to the next user message only. Its optional header lines, in any order, are
   `tools:` (the tools it allows), `notes:` (the notes the model may use), and `hook KIND: COMMAND` (see Profile hooks).
+  The profile `default` is built in: it needs no file, has no instructions, no header lines (so every tool and note is allowed),
+  and no hooks. It is always listed, and selecting it is the way to return to an unrestricted state. A `default.txt` file in the
+  folder must not be silently ignored: either it overrides the built-in or the name is refused as reserved (see Potential Problems).
 - **Note whitelist**: the note names the model may use, set by the selected profile's `notes:` line, or all notes.
   It limits the notes index, `list_notes`, and the four note tools. It does not limit the user's `/notes` and `/note`.
 - **Command file**: a file of PowerShell command lines in the working directory, run without a prompt:
@@ -446,6 +449,10 @@ Each item is a gap between the design above and the code. Items are grouped by a
   open: the user chose enable-all.
 - **Narrowing the whitelist leaves disallowed notes in history.** Index messages and `read_note` results are committed. After a
   profile narrows the whitelist, the notes it no longer allows stay in the conversation until compaction removes them.
+- **A `default.txt` file is shadowed.** `profile::load` returns the built-in default before it reads the folder, and `names` lists
+  `default` once, so a user's `profiles/default.txt` (instructions, a `tools:` line, hooks) is ignored with no message. A built-in
+  with an empty body is also sent as a bare `[Instructions from profile default]` heading on selection and in every subagent
+  run; an empty profile should add no text. Callers (`repl`, `subagent`) rely on `load` alone, so the fix belongs in `profile`.
 - **Profile listing and selection disagree.** `profile::names` lists every `.txt` file, including names `load` rejects (such as
   `my notes.txt`), so `/profile` shows a name it then refuses.
 - **Profile text is unbounded.** `profile::load` reads the whole file. A large profile is committed and resent on every later turn.
