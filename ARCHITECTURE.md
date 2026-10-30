@@ -701,6 +701,23 @@ derive `serde`. Today a frontend would still reach around the abstraction in the
   `TerminalFrontend` of its own, so a GUI has no event for "starting" to show.
 - **Global files.** `default_model::load` and `save` read and write `model.txt` against the process folder, and `saved_sessions::FOLDER`
   is a bare relative name, so two engines in one process (a server hosting sessions) would collide. Both take the `Paths` value.
+- **The worker thread has no failure path of its own.** `Worker` reports a dead thread as `Poll::Gone`, but the panic payload is lost
+  to stderr (a window has none), and the shutdown step and the last autosave never run, so a crash costs everything since the
+  previous save. The thread body should run under `catch_unwind`, send the payload as an `Error`, and still attempt `shutdown`.
+  Closing the window joins the thread on the UI thread, so a tool that ignores `Stop` freezes the exit; the join needs a deadline
+  after which the process ends anyway.
+- **A blocked approval does not observe `Stop`.** `ChannelFrontend::approve` waits on a plain `recv`. The window's modal hides the
+  Stop button, so today only closing the window (which drops the answer channel and counts as No) can end the wait, but any
+  frontend that can press Stop while a question is open leaves the engine blocked with the stop flag set. `approve` should wait on
+  the answer or the stop, and a stop is a No. Answers are bare `bool`s with no id, so a late answer to an earlier question would be
+  taken for the next one; with `Approval { id }` the worker discards answers whose id is not the open question's.
+- **`Parts` hard-wires the concrete provider into the core.** `Parts::for_directory` builds `LlamaCpp` and `WorkspaceTools`, so the
+  core's composition root depends on its own leaf implementations and a test double needs a hand-built `Parts` literal (the worker
+  tests do this). Composition belongs in a thin layer the frontends share, with `Parts` reduced to the data and a builder taking the
+  provider and tools as arguments.
+- **No test drives the window against the worker.** The worker, the transcript and one frame are tested apart; a streamed answer
+  that raises an approval and is answered through the modal is not. A harness that feeds `egui_kittest` input to `ViseApp` over a
+  scripted worker would cover the flow that a person cannot script.
 - **Interrupts are asked for and observed apart.** `Stop` is the right switch, but `Engine::stop_handle` is unused (marked
   `dead_code`) because the terminal installs its handler first. A frontend must get the handle from the engine, and `start` must
   be stoppable through it.
