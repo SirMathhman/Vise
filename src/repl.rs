@@ -1,6 +1,8 @@
 use crate::after_turn;
 use crate::commands::{command, Command, HELP};
 use crate::default_model;
+use crate::error::{ProviderError, Reached};
+use crate::interrupt;
 use crate::notes;
 use crate::profile;
 use crate::provider::types::{Event, Provider};
@@ -8,7 +10,7 @@ use crate::render::Render;
 use crate::subagent;
 use crate::turn::{apply_whitelist, compact, hook_lines, prepare_message, run_turn, select_hooks, Compaction};
 use crate::saved_sessions;
-use crate::session::{Conversation, Message};
+use crate::session::{Conversation, Message, Turn};
 use crate::tools::types::{Invocation, ToolRunner};
 use std::io::{self, BufRead, Write};
 
@@ -292,6 +294,8 @@ fn chat_turn(
     let result = run_turn(provider, conversation, message, tools, &mut approve, &mut subagent, &mut on_event);
     render.end();
     let streamed = render.streamed();
+    // The press has been handled, so the next turn runs until it is stopped again.
+    interrupt::clear();
     match result {
         Ok((turn, compaction)) => {
             if let Some(Compaction::Dropped(removed)) = compaction {
@@ -312,11 +316,41 @@ fn chat_turn(
             let after_lines = hook_lines(conversation.after_turn(), &conversation.profile_hooks().after_turn);
             after_turn::run(&after_lines, tools, &mut streams.output, &mut streams.errors)
         }
+        Err(ProviderError::Interrupted { reached }) => interrupted(typed, reached, conversation, streams),
         Err(err) => {
             writeln!(streams.errors, "error: {err}")?;
             Ok(None)
         }
     }
+}
+
+/// The line that marks a stopped turn in the history, so a later reader knows the turn did not finish.
+const MARK: &str = "[the turn was interrupted]";
+
+/// Records a stopped turn: what it reached, which is the reply's text and any finished tool rounds, goes into the
+/// history so the user and the model can see how far it got, and the history is autosaved as after any other turn. The
+/// after-turn lines do not run, because the turn did not finish, and nothing follows it: a stopped turn is never resent
+/// on its own. The message is checked the way every turn is, so an interrupted round that left a tool result out is
+/// refused rather than stored.
+fn interrupted(
+    typed: String,
+    reached: Reached,
+    conversation: &mut Conversation,
+    streams: &mut Streams,
+) -> io::Result<Option<String>> {
+    let mut messages = vec![Message::User(typed.clone())];
+    messages.extend(reached.rounds);
+    // A turn ends with a reply, which carries the marker so a later reader knows it did not finish.
+    messages.push(Message::Assistant { content: format!("{}\n\n{MARK}", reached.reply), tool_calls: Vec::new() });
+    let turn = Turn::new(messages).map_err(|err| io::Error::other(err.to_string()))?;
+    conversation.commit(turn);
+    if let Some((folder, name)) = conversation.autosave_target(&typed) {
+        if let Err(err) = saved_sessions::write(&folder, &name, conversation.history()) {
+            writeln!(streams.errors, "error: {err}")?;
+        }
+    }
+    writeln!(streams.output, "the turn was stopped before it finished")?;
+    Ok(None)
 }
 
 /// Reads one line without its line ending. Returns `None` at the end of input.
@@ -343,7 +377,7 @@ mod tests {
     use crate::provider::types::SubagentRunner;
     use crate::session::HookLines;
     use crate::environment::Environment;
-    use crate::error::ProviderError;
+    use crate::error::{ProviderError, Reached};
     use crate::session::{Message, Turn};
     use crate::tools::types::{Invocation, ToolCall, ToolError};
     use std::cell::RefCell;
@@ -356,6 +390,8 @@ mod tests {
         Fail,
         /// Replies to the first request and reports a full context for every later one.
         ReplyThenFull,
+        /// Presses Ctrl+C in place of replying, the way a stopped request reports.
+        Interrupted,
     }
 
     struct Fake {
@@ -399,6 +435,11 @@ mod tests {
                     Message::Assistant { content: "done".into(), tool_calls: Vec::new() },
                 ],
                 Behavior::Fail => return Err(ProviderError::Transport("boom".into())),
+                Behavior::Interrupted => {
+                    return Err(ProviderError::Interrupted {
+                        reached: Reached::new(Vec::new(), "half a rep".into()),
+                    });
+                }
                 Behavior::ReplyThenFull if self.inputs.borrow().len() > 1 => return Err(ProviderError::ContextFull),
                 Behavior::ReplyThenFull => vec![
                     Message::User(input),
@@ -454,6 +495,102 @@ mod tests {
         assert_eq!(conversation.messages().len(), 1);
         assert!(errors.contains("error: request to the model failed (boom)"));
         assert!(output.is_empty());
+    }
+
+    #[test]
+    fn a_stopped_turn_commits_the_text_it_reached() {
+        let fake = Fake::new(Behavior::Interrupted);
+        let mut conversation = conversation();
+        let (output, errors) = run_with("hi\n", &fake, &mut conversation);
+        let history = conversation.messages();
+        assert_eq!(history.len(), 3, "the message and the partial reply are kept");
+        assert!(history[2].content().starts_with("half a rep"));
+        assert!(history[2].content().contains("[the turn was interrupted]"));
+        assert!(output.contains("the turn was stopped before it finished"));
+        assert!(!errors.contains("error:"));
+    }
+
+    #[test]
+    fn a_stopped_turn_keeps_the_tool_rounds_that_finished() {
+        let rounds = vec![
+            Message::Assistant {
+                content: String::new(),
+                tool_calls: vec![ToolCall { id: "call_1".into(), name: "list_directory".into(), arguments: HashMap::new() }],
+            },
+            Message::Tool { call_id: "call_1".into(), content: "a.txt".into() },
+        ];
+        let messages = interrupted_turn(Reached::new(rounds, String::new()));
+        assert_eq!(messages.len(), 3, "the call, its result, and the marker");
+        assert_eq!(messages[0].tool_calls().len(), 1, "the call is kept with its arguments");
+        assert_eq!(messages[1].tool_call_id(), Some("call_1"));
+        assert!(messages[2].content().contains("[the turn was interrupted]"));
+    }
+
+    #[test]
+    fn a_stopped_turn_with_no_reply_text_still_ends_with_an_assistant_message() {
+        let messages = interrupted_turn(Reached::new(Vec::new(), String::new()));
+        assert_eq!(messages.len(), 1);
+        assert!(messages[0].content().contains("[the turn was interrupted]"));
+    }
+
+    /// The history a stopped turn adds, read back through the checks the recorder applies.
+    fn interrupted_turn(reached: Reached) -> Vec<Message> {
+        let mut conversation = conversation();
+        let mut input = "".as_bytes();
+        let mut output = Vec::new();
+        let mut errors = Vec::new();
+        let mut streams = Streams { input: &mut input, output: &mut output, errors: &mut errors };
+        interrupted("hi".into(), reached, &mut conversation, &mut streams).expect("the turn is recorded");
+        let messages = conversation.messages();
+        assert_eq!(messages[0].role(), "system");
+        assert_eq!(messages[1].content(), "hi", "the typed line is the turn's first message");
+        messages[2..].iter().map(reduced).collect()
+    }
+
+    /// A message as the tests can hold it: the roles, the content, the call ids, and the calls' ids.
+    fn reduced(message: &Message) -> Message {
+        let calls: Vec<ToolCall> = message
+            .tool_calls()
+            .iter()
+            .map(|call| ToolCall { id: call.id.clone(), name: call.name.clone(), arguments: HashMap::new() })
+            .collect();
+        match message.role() {
+            "user" => Message::User(message.content().to_string()),
+            "tool" => Message::Tool {
+                call_id: message.tool_call_id().unwrap_or_default().to_string(),
+                content: message.content().to_string(),
+            },
+            _ => Message::Assistant { content: message.content().to_string(), tool_calls: calls },
+        }
+    }
+
+    #[test]
+    fn a_stopped_turn_does_not_end_the_run() {
+        let fake = Fake::new(Behavior::Interrupted);
+        let mut conversation = conversation();
+        run_with("hi\nnext\n/exit\nafter\n", &fake, &mut conversation);
+        assert_eq!(*fake.inputs.borrow(), vec!["hi", "next"], "the run goes on with the next line");
+    }
+
+    #[test]
+    fn a_stopped_turn_runs_no_after_turn_lines() {
+        let fake = Fake::new(Behavior::Interrupted);
+        let mut conversation = conversation();
+        conversation.set_after_turn(vec!["Write-Output x".into()]);
+        run_with("hi\n", &fake, &mut conversation);
+        assert_eq!(fake.inputs.borrow().len(), 1, "a stopped turn starts no follow-up");
+    }
+
+    #[test]
+    fn a_stopped_turn_is_autosaved() {
+        let folder = std::env::temp_dir().join(format!("vise-interrupted-{}", std::process::id()));
+        let fake = Fake::new(Behavior::Interrupted);
+        let mut conversation = conversation();
+        conversation.enable_autosave(folder.clone());
+        run_with("hi\n", &fake, &mut conversation);
+        let names = saved_sessions::list(&folder).expect("the sessions are listed");
+        std::fs::remove_dir_all(&folder).expect("the test folder is removed");
+        assert_eq!(names.len(), 1, "the partial turn is on disk");
     }
 
     #[test]

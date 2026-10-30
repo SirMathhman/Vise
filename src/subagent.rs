@@ -3,6 +3,7 @@
 
 use crate::after_turn;
 use crate::environment;
+use crate::error::ProviderError;
 use crate::profile::{self, Profile};
 use crate::provider::types::Provider;
 use crate::turn;
@@ -69,7 +70,11 @@ fn session(
         let message = turn::prepare_message(text, Some(&marked), &conversation, tools, &mut out, &mut err)
             .map_err(io_error)?;
         let (turn, _) = turn::run_turn(provider, &mut conversation, message, tools, approve, &mut no_subagent, &mut |_| {})
-            .map_err(|err| ToolError::Failed(err.to_string()))?;
+            .map_err(|err| match err {
+                // A stopped subagent returns to its parent at once, with no after-turn lines and no follow-ups.
+                ProviderError::Interrupted { .. } => ToolError::Failed(YIELD.into()),
+                err => ToolError::Failed(err.to_string()),
+            })?;
         reply = turn.reply().to_string();
         conversation.commit(turn);
         let after = turn::hook_lines(conversation.after_turn(), &conversation.profile_hooks().after_turn);
@@ -84,6 +89,9 @@ fn session(
     }
     Ok(reply)
 }
+
+/// What a stopped subagent reports to its parent. The parent's turn is stopped too, so the text only has to be true.
+const YIELD: &str = "the subagent was interrupted";
 
 fn io_error(err: io::Error) -> ToolError {
     ToolError::Failed(format!("cannot write the subagent's output: {err}"))

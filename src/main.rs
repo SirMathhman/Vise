@@ -5,6 +5,7 @@ mod default_model;
 mod environment;
 mod error;
 mod file_commands;
+mod interrupt;
 mod notes;
 mod profile;
 mod provider;
@@ -33,6 +34,10 @@ fn exit_with(message: &str) -> ! {
 
 fn main() {
     dotenvy::dotenv().ok();
+    // Installed first, so Ctrl+C during a slow start stops the process as it always did.
+    if let Err(err) = interrupt::install() {
+        exit_with(&format!("error: cannot handle Ctrl+C: {err}"));
+    }
     let api_key = std::env::var("LLAMA_API_KEY")
         .unwrap_or_else(|_| exit_with("LLAMA_API_KEY is not set; add it to .env"));
 
@@ -85,11 +90,14 @@ fn main() {
             let _ = writeln!(errors, "error: {err}");
         }
     }
-    match startup::run(&env.cwd, &tools, &mut output, &mut errors) {
-        Ok(Some(text)) => conversation.set_startup(text),
-        Ok(None) => {}
-        Err(err) => {
+    match interrupt::work(|| startup::run(&env.cwd, &tools, &mut output, &mut errors)) {
+        Ok(Ok(Some(text))) => conversation.set_startup(text),
+        Ok(Ok(None)) => {}
+        Ok(Err(err)) => {
             let _ = writeln!(errors, "error: {err}");
+        }
+        Err(_) => {
+            let _ = writeln!(errors, "the startup commands were stopped");
         }
     }
     if let Err(err) = repl::run(
@@ -103,6 +111,7 @@ fn main() {
         let _ = writeln!(errors, "error: {err}");
     }
     let profile_shutdown = conversation.profile_hooks().shutdown.clone();
+    // The shutdown lines run outside `work`, so a Ctrl+C during them quits at once rather than waiting them out.
     if let Err(err) = shutdown::run_with_profile(&env.cwd, &profile_shutdown, &tools, &mut output, &mut errors) {
         let _ = writeln!(errors, "error: {err}");
     }

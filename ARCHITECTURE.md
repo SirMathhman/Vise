@@ -86,7 +86,8 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 ### Turns and history
 
 - A successful turn appends its user message, its tool exchanges, and its reply together. A failed turn leaves the
-  conversation as it was. It does not undo the files the turn changed (see Open Problems).
+  conversation as it was, except a stopped one, which is committed as it reached (see Interrupts). Neither undoes the files
+  the turn changed (see Open Problems).
 - The user message is built in this order: notes index, profile text, startup text, before-turn block, then the typed
   line. The index and profile are added only when the history does not carry them. The startup text is added to every
   message until a turn commits, so a failed turn carries it into the retry.
@@ -98,6 +99,17 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 - A loaded session is checked turn by turn with the rules `Turn::new` applies, and a file that fails the check is refused
   with the history unchanged.
 - The notes index is sent in the user message that carries it, and again whenever the latest index in history differs.
+
+### Interrupts
+
+- Ctrl+C never ends the process while a turn, a request, a tool round, or the startup lines are running. The first press
+  asks that work to stop; the work ends at its next check, whether after a reply's chunk, between tool rounds, or when the
+  tool returns. Nothing in progress is killed, so a command that is running finishes first.
+- A stopped turn is committed with the text the reply had reached, followed by a `[the turn was interrupted]` line, and
+  autosaved like any other turn. Its after-turn lines do not run, and no follow-up turn follows it. The line is not resent.
+- Every other Ctrl+C quits: at the prompt, after a stop is already asked for, and during the shutdown lines. The exit status
+  is 130.
+- The request itself checks the flag between chunks, so a long reply stops within a chunk rather than at the end.
   Compaction or a dropped turn that removes it causes it to be sent again.
 - A profile's text is sent with the next user message whenever the history does not carry it, so a failed turn keeps it
   for the retry. Once committed, its text stays in history until compaction or a dropped turn removes it.
@@ -278,7 +290,10 @@ src/
   render.rs          displays provider Events: one status line, answer text, and the end of each request. Owns the output
                      the answer and the approval prompt share.
   environment.rs     gathers host facts as plain data: the working directory, and the standing instructions from `AGENTS.md`
-  error.rs           ProviderError, SessionError, MAX_TOOL_ROUNDS
+  interrupt.rs       Ctrl+C: the installed handler, and `work`, which marks a request, a tool round, or the startup lines
+                     as stoppable and reports `Interrupted` once a press is recorded
+  error.rs           ProviderError (including Interrupted, which carries the reply text reached), SessionError,
+                       MAX_TOOL_ROUNDS; it holds no interrupt state of its own
   provider/
     mod.rs           declarations only
     types.rs         trait Provider: complete, complete_streaming (default: calls complete and reports nothing),
@@ -315,16 +330,17 @@ An arrow means "may depend on". Dependencies only point one way; there are no cy
 
 ```
 main -> the wiring of every top-level module
+interrupt -> std and `ctrlc`; a leaf that knows no other module
 repl -> turn, subagent, commands, session, provider::types, tools, profile, notes, saved_sessions, default_model,
-        after_turn, render, environment, error
-turn -> session, provider::types, tools, profile, notes, before_turn, after_turn, file_commands, error
+        after_turn, render, environment, error, interrupt
+turn -> session, provider::types, tools, profile, notes, before_turn, after_turn, file_commands, error, interrupt
 subagent -> turn, session, profile, environment, provider::types, tools, after_turn, error (not repl)
 startup, before_turn, after_turn, shutdown -> file_commands, tools::runner, tools::types
 file_commands -> tools::runner, tools::types
 profile -> session (HookLines), notes (valid_name), environment, tools::runner, tools::specs
 saved_sessions -> session, tools::types, error (and rusqlite for the sessions database; only store.rs opens a connection)
 session -> environment, tools::types, error
-provider::llama_cpp -> provider::types, provider::grammar, provider::prompt, session, tools, error
+provider::llama_cpp -> provider::types, provider::grammar, provider::prompt, session, tools, error, interrupt
 provider::prompt -> session, tools
 provider::types -> session, tools::types, error
 render -> provider::types
@@ -356,6 +372,9 @@ tools -> notes; no provider, session, HTTP, or serde
   `context_size` on the provider.
 - Tool output goes to the model as text. `render` prints answer text as it streams, prompt and thinking progress, and the end of
   each request. `repl` prints notices and errors. Approval prompts share the same output as `render`.
+- `interrupt` owns the Ctrl+C handler and the flag it sets. Nothing else installs a handler or calls `exit` for an interrupt;
+  `repl`, `turn`, the provider's request loop, and `main`'s startup only run their work inside `interrupt::work` and check
+  `asked` where they can stop.
 - Limits: 100 lines per function, 500 code lines per file, and 10 files per directory.
 - Recursion is allowed only within one module, and only when bounded by a parameter (the directory walk is bounded by depth).
   A chain of turns is a loop, not recursion.
@@ -505,8 +524,11 @@ Each item is a gap between the design above and the code. Items are grouped by a
   approval, and exit status. `run_powershell` records nothing. Deletion and further execution tools wait for this.
 - **The command runs only on Windows.** `run_powershell` starts `powershell.exe` with no platform split. The process handling should move
   behind `tools::process`, with the Windows implementation behind it.
-- **Interrupts orphan background tasks.** Ctrl+C ends the process without unwinding, so `WorkspaceTools::drop` does not run and the
-  PowerShell processes keep running. The Job Object's kill-on-close flag is the fix; until it is in place the invariant does not hold.
+- **A second Ctrl+C orphans background tasks.** It exits the process without unwinding, so `WorkspaceTools::drop` does not run and
+  the PowerShell processes keep running. The Job Object's kill-on-close flag is the fix; until it is in place the invariant does not
+  hold. The first press no longer has this effect, since it stops the turn instead of exiting.
+- **A stop is only checked between chunks and rounds.** A press during prompt processing, or during a tool that ignores it, takes
+  effect when that step returns. The tool itself is never killed, by design.
 - **Tree kill misses orphans.** `taskkill /T` finds processes by their parent link at stop time. A process whose parent has already
   exited is not found.
 - **Background tasks are invisible to the user.** Tool output goes only to the model. Nothing lists tasks, and the user cannot see a
@@ -634,7 +656,7 @@ Controls:
 | Plain HTTP refused unless the endpoint is loopback | Missing. The endpoint is a loopback constant. |
 | Size limits on user lines, profile files, standing instructions, note content, and response bodies | Missing (Open Problems). |
 | Size limits on tool output | `read_file` and background task output only. `list_directory` has none. |
-| Limits on commands: time, process tree, output | Partly met. A foreground command waits at most 30 seconds, then becomes a background task. Stopping a task ends every process in its Job Object. Output is capped at 100 KB per task. Background tasks have no count limit. Interrupts are not covered (Open Problems). |
+| Limits on commands: time, process tree, output | Partly met. A foreground command waits at most 30 seconds, then becomes a background task. Stopping a task ends every process in its Job Object. Output is capped at 100 KB per task. Background tasks have no count limit. A first Ctrl+C only stops the turn and never kills a running command; a second press quits and leaves tasks running (Open Problems). |
 | Approval shows what a stop will end | Missing. `kill_background` shows only the id (Open Problems). |
 | The user can see what is running | Missing. No listing of background tasks (Open Problems). |
 | Tool results, summaries, notes, and hook output marked as untrusted data | Missing. |

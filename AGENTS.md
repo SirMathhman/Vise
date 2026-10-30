@@ -34,6 +34,7 @@ Things that are not obvious from a single file:
 - **Profiles** are `profiles/NAME.txt` under the working directory. An optional first line `tools: a, b` sets the enabled tools when the profile is selected; without it every tool is enabled. Names are validated against letters, digits, `-` and `_`.
 - **Sessions** live in `sessions/sessions.db` (SQLite, via `rusqlite`): a `sessions` row per session and a `messages` row per message, ordered by `position`. The `saved_sessions/` folder owns every read and write: `store.rs` is the only file that opens a connection, `messages.rs` is the row codec, and `legacy.rs` is the old `NAME.json` format, imported at launch by `import` and left in place.
 - **Reply cap.** Every request sets `max_tokens` (8192). Without it a reply whose thinking never closes runs indefinitely.
+- **Ctrl+C two-step.** `interrupt.rs` installs one handler that only sets a flag (never exits) while `interrupt::work` is running. Every request, tool round, and the startup lines run inside `work`; a stopped request reports `ProviderError::Interrupted { reply }`, and `repl` commits that partial reply with a `[the turn was interrupted]` marker and autosaves it, without after-turn lines or follow-ups. Any other press exits 130. `repl` calls `interrupt::clear()` after each turn.
 - **Commits** end with the `Co-Authored-By: Claude Haiku 5.5 <noreply@anthropic.com>` line.
 
 ## Platform

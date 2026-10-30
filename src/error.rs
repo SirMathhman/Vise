@@ -1,3 +1,5 @@
+use crate::interrupt::Interrupted;
+use crate::session::Message;
 use std::fmt;
 
 pub const MAX_TOOL_ROUNDS: usize = 10;
@@ -37,6 +39,29 @@ pub enum ProviderError {
     ContextFullAfterChange,
     EmptySummary,
     Session(SessionError),
+    /// The user pressed Ctrl+C. `reached` holds the turn as far as it got, so the callers can record it: the tool rounds
+    /// that finished and the reply's text up to the press.
+    Interrupted { reached: Reached },
+}
+
+/// A stopped turn as far as it got: the tool rounds that finished, in order, and the reply's text so far. The typed
+/// message is not part of it, because the caller already holds it. It is a named type so the error can be debugged
+/// without the payload's own `Debug`, which a `Message` does not have.
+pub struct Reached {
+    pub rounds: Vec<Message>,
+    pub reply: String,
+}
+
+impl Reached {
+    pub fn new(rounds: Vec<Message>, reply: String) -> Self {
+        Self { rounds, reply }
+    }
+}
+
+impl fmt::Debug for Reached {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} round(s) and {} reply byte(s) reached", self.rounds.len(), self.reply.len())
+    }
 }
 
 impl fmt::Display for ProviderError {
@@ -66,6 +91,7 @@ impl fmt::Display for ProviderError {
             Self::EmptySummary => write!(f, "the model returned an empty summary"),
             Self::Unsupported(action) => write!(f, "this provider cannot {action}"),
             Self::Session(err) => write!(f, "{err}"),
+            Self::Interrupted { .. } => write!(f, "{Interrupted}"),
         }
     }
 }
@@ -83,7 +109,8 @@ impl std::error::Error for ProviderError {
             | Self::ContextFullAfterChange
             | Self::EmptySummary
             | Self::Unsupported(_)
-            | Self::Rejected(_) => None,
+            | Self::Rejected(_)
+            | Self::Interrupted { .. } => None,
         }
     }
 }

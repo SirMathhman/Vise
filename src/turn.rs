@@ -2,8 +2,9 @@
 //! subagent applies. The chat loop in `repl` and the subagents in `subagent` both use it.
 
 use crate::before_turn;
-use crate::error::ProviderError;
+use crate::error::{ProviderError, Reached};
 use crate::file_commands::run_lines;
+use crate::interrupt;
 use crate::notes;
 use crate::profile;
 use crate::provider::types::{Event, Provider, SubagentRunner};
@@ -124,7 +125,8 @@ pub fn compact_if_full(provider: &dyn Provider, conversation: &mut Conversation)
 }
 
 /// Sends a turn. If the context fills up during it, the conversation is compacted and the turn is
-/// sent once more from the compacted history. Returns the turn and the last compaction it needed.
+/// sent once more from the compacted history. Returns the turn and the last compaction it needed. A stopped turn
+/// is not retried: its partial text comes back in `ProviderError::Interrupted`.
 pub fn run_turn(
     provider: &dyn Provider,
     conversation: &mut Conversation,
@@ -134,15 +136,47 @@ pub fn run_turn(
     subagent: &mut SubagentRunner,
     on_event: &mut dyn FnMut(Event),
 ) -> Result<(Turn, Option<Compaction>), ProviderError> {
-    let mut compaction = compact_if_full(provider, conversation)?;
-    match provider.complete_streaming(conversation.messages(), line.clone(), tools, approve, subagent, on_event) {
+    let mut compaction = interrupt::work(|| compact_if_full(provider, conversation)).unwrap_or_else(|_| Err(stopped()))?;
+    let result = match request(provider, conversation, line.clone(), tools, approve, subagent, on_event) {
         Err(ProviderError::ContextFull) => {
-            compaction = Some(compact(provider, conversation)?);
-            let turn = provider.complete_streaming(conversation.messages(), line, tools, approve, subagent, on_event)?;
-            Ok((turn, compaction))
+            let compacted = interrupt::work(|| compact(provider, conversation)).unwrap_or_else(|_| Err(stopped()))?;
+            compaction = Some(compacted);
+            request(provider, conversation, line, tools, approve, subagent, on_event)
         }
-        result => Ok((result?, compaction)),
+        result => result,
+    };
+    Ok((result?, compaction))
+}
+
+/// Sends one request as work that Ctrl+C stops. A stopped request reads as `Interrupted`, whether the provider noticed
+/// the press or not.
+fn request(
+    provider: &dyn Provider,
+    conversation: &Conversation,
+    line: String,
+    tools: &dyn ToolRunner,
+    approve: &mut dyn FnMut(&str) -> bool,
+    subagent: &mut SubagentRunner,
+    on_event: &mut dyn FnMut(Event),
+) -> Result<Turn, ProviderError> {
+    // The stop is reported twice: once as the request's own result, which carries the turn as it stood, and once by
+    // the work that a press ends. The first is kept, so what the turn reached is not lost.
+    let reported = std::cell::Cell::new(None);
+    let pressed = interrupt::work(|| {
+        reported.set(Some(provider.complete_streaming(conversation.messages(), line, tools, approve, subagent, on_event)))
+    });
+    match reported.take() {
+        Some(Err(stopped_at)) => Err(stopped_at),
+        Some(_) if pressed.is_err() => Err(stopped()),
+        Some(result) => result,
+        None => Err(stopped()),
     }
+}
+
+/// A stop that came with no reply text, such as a press between a turn's rounds. The message is empty, so the
+/// interrupted turn records only its user message and a short marker.
+fn stopped() -> ProviderError {
+    ProviderError::Interrupted { reached: Reached::new(Vec::new(), String::new()) }
 }
 
 #[cfg(test)]
