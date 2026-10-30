@@ -296,7 +296,7 @@ fn chat_turn(
     let (global_before, global_after) = (conversation.before_turn().to_vec(), conversation.after_turn().to_vec());
     let mut subagent = |name: &str, task: &str, approve: &mut dyn FnMut(&str) -> bool| {
         let mut tools_only = |event: Event| match event {
-            Event::Tool { .. } | Event::ToolFailed(_) => render.on_event(event),
+            Event::Tool { .. } | Event::ToolFailed(_) => render.on_subagent_event(event),
             _ => {}
         };
         subagent::run(

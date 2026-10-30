@@ -27,13 +27,20 @@ impl<'a, W: Write> Render<'a, W> {
                 self.put(&text);
             }
             // A call is kept as a line of its own, so the transcript shows which tools ran after the turn ends.
-            Event::Tool { name, target } => self.line(&match target {
-                Some(target) => format!("tool: {name} {target}"),
-                None => format!("tool: {name}"),
-            }),
+            Event::Tool { name, target } => self.line(&tool_text(&name, target.as_deref())),
             // The call above did not run, so the transcript says so rather than claiming it did.
             Event::ToolFailed(reason) => self.line(&format!("  did not run: {reason}")),
             Event::Finished => self.end_status(),
+        }
+    }
+
+    /// A tool line of a subagent, indented under the parent's tool lines. Only its tool lines are shown, so any other
+    /// event is ignored.
+    pub fn on_subagent_event(&self, event: Event) {
+        match event {
+            Event::Tool { name, target } => self.line(&format!("{SUBAGENT_INDENT}{}", tool_text(&name, target.as_deref()))),
+            Event::ToolFailed(reason) => self.line(&format!("{SUBAGENT_INDENT}  did not run: {reason}")),
+            _ => {}
         }
     }
 
@@ -87,6 +94,17 @@ impl<'a, W: Write> Render<'a, W> {
     fn newline(&self) {
         let _ = writeln!(self.out.borrow_mut());
         self.line_open.set(false);
+    }
+}
+
+/// The indent of a subagent's tool lines, under the parent's `tool:` line that started it.
+const SUBAGENT_INDENT: &str = "  ";
+
+/// A tool call's line text: its name, then its target when there is one.
+fn tool_text(name: &str, target: Option<&str>) -> String {
+    match target {
+        Some(target) => format!("tool: {name} {target}"),
+        None => format!("tool: {name}"),
     }
 }
 
@@ -147,6 +165,23 @@ mod tests {
         let long = text.lines().find(|line| line.starts_with("tool: run_powershell")).expect("the long line");
         assert!(long.ends_with('…'), "{long:?}");
         assert!(long.chars().count() <= 100, "{long:?}");
+    }
+
+    #[test]
+    fn a_subagent_tool_line_is_indented_under_the_parents() {
+        let mut buffer = Vec::new();
+        let render = Render::new(&mut buffer);
+        render.on_event(Event::Tool { name: "run_subagent".into(), target: Some("default".into()) });
+        render.on_subagent_event(Event::Tool { name: "read_file".into(), target: Some("a.txt".into()) });
+        render.on_subagent_event(Event::ToolFailed("missing".into()));
+        drop(render);
+        let text = String::from_utf8(buffer).unwrap();
+        assert!(text.starts_with("tool: run_subagent default
+  tool: read_file a.txt
+"), "{text:?}");
+        assert!(text.ends_with("
+    did not run: missing
+"), "{text:?}");
     }
 
     #[test]
