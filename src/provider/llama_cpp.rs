@@ -321,15 +321,19 @@ impl Provider for LlamaCpp {
                 return Err(if wrote { ProviderError::ContextFullAfterChange } else { ProviderError::ContextFull });
             }
             // A press during the tool's run stops the turn after the tool finishes, before another request. The round
-            // is kept either way: the tool ran, so its result belongs in the history.
+            // is kept either way: the tool ran, so its result belongs in the history. The call is decoded once, so the
+            // line the user sees and the tool that runs come from the same invocation.
             let mut result = None;
             let pressed = interrupt::work(|| {
-                report_call(&call, on_event);
-                result = Some(run_call(&call, runner, approve, subagent, &mut wrote));
+                result = Some(report_and_run(&call, runner, approve, subagent, &mut wrote, on_event));
             });
             let call_id = call.id.clone();
             new.push(Message::Assistant { content: String::new(), tool_calls: vec![call] });
             if let Some(result) = result {
+                // A call that did not run must not read like one that did: the transcript records the refusal.
+                if let Err(err) = &result {
+                    on_event(Event::ToolFailed(err.to_string()));
+                }
                 new.push(Message::Tool { call_id, content: result.unwrap_or_else(|err| format!("error: {err}")) });
             }
             if pressed.is_err() {
@@ -383,25 +387,41 @@ fn wire_messages<'a>(
     Ok(wire)
 }
 
-/// Reports a call the model made, so the user can see which tool ran and on what. The arguments are decoded through
-/// `tools::call`, the same way the runner decodes them; a call that does not bind reports its name alone. Approving a
-/// write is the runner's job, and this happens before it, so the line is drawn before any approval prompt.
-fn report_call(call: &ToolCall, on_event: &mut dyn FnMut(Event)) {
-    let target = tools::call(&call.name, call.arguments.clone()).ok().and_then(|invocation| invocation.target());
-    on_event(Event::Tool { name: call.name.clone(), target });
-}
-
-/// Runs one call the model made. The runner refuses a tool that is not enabled. A subagent is run by `subagent`
-/// rather than the runner, and it counts as a write, since it may make writes of its own.
-fn run_call(
+/// Decodes one call the model made, reports it so the user can see which tool ran and on what, then runs it. The call
+/// is decoded once, so the line drawn and the tool that runs cannot disagree, and a large argument is not cloned twice.
+/// Approving a write is the runner's job, and it happens here, after the line, so the prompt follows the line that
+/// explains it. A call that does not bind reports its name alone, and the failure goes back to the model as any other
+/// tool failure does.
+fn report_and_run(
     call: &ToolCall,
     runner: &dyn ToolRunner,
     approve: &mut dyn FnMut(&str) -> bool,
     subagent: &mut SubagentRunner,
     wrote: &mut bool,
+    on_event: &mut dyn FnMut(Event),
 ) -> Result<String, ToolError> {
-    let invocation = tools::call(&call.name, call.arguments.clone())?;
-    if let Invocation::RunSubagent { profile, task } = &invocation {
+    let invocation = match tools::call(&call.name, call.arguments.clone()) {
+        Ok(invocation) => invocation,
+        // The name is the only true thing to say about a call whose arguments do not bind.
+        Err(err) => {
+            on_event(Event::Tool { name: call.name.clone(), target: None });
+            return Err(err);
+        }
+    };
+    on_event(Event::Tool { name: invocation.tool_name().to_string(), target: invocation.target() });
+    run_call(&invocation, runner, approve, subagent, wrote)
+}
+
+/// Runs one decoded call. The runner refuses a tool that is not enabled. A subagent is run by `subagent` rather than
+/// the runner, and it counts as a write, since it may make writes of its own.
+fn run_call(
+    invocation: &Invocation,
+    runner: &dyn ToolRunner,
+    approve: &mut dyn FnMut(&str) -> bool,
+    subagent: &mut SubagentRunner,
+    wrote: &mut bool,
+) -> Result<String, ToolError> {
+    if let Invocation::RunSubagent { profile, task } = invocation {
         if !runner.enabled().contains(&"run_subagent") {
             return Err(ToolError::Disabled("run_subagent".into()));
         }
@@ -409,7 +429,7 @@ fn run_call(
         return subagent(profile, task, approve);
     }
     *wrote |= invocation.writes();
-    runner.run(&invocation, approve)
+    runner.run(invocation, approve)
 }
 
 fn to_value(value: serde_json::Value) -> Value {
@@ -614,8 +634,9 @@ mod tests {
     fn run_subagent_call_marks_the_turn_as_written() {
         let tools = crate::tools::runner::WorkspaceTools::new(std::env::temp_dir());
         let mut wrote = false;
+        let invocation = tools::call("run_subagent", subagent_call().arguments).expect("the call binds");
         let result = run_call(
-            &subagent_call(),
+            &invocation,
             &tools,
             &mut |_: &str| true,
             &mut |profile: &str, task: &str, _: &mut dyn FnMut(&str) -> bool| -> Result<String, ToolError> {
@@ -633,8 +654,9 @@ mod tests {
         tools.set_enabled("run_subagent", false).unwrap();
         let started = std::cell::Cell::new(false);
         let mut wrote = false;
+        let invocation = tools::call("run_subagent", subagent_call().arguments).expect("the call binds");
         let result = run_call(
-            &subagent_call(),
+            &invocation,
             &tools,
             &mut |_: &str| true,
             &mut |_: &str, _: &str, _: &mut dyn FnMut(&str) -> bool| -> Result<String, ToolError> {

@@ -128,10 +128,15 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 - Prompt progress and thinking share one status line, rewritten in place. Answer text or the end of the request ends it.
 - A tool call is shown as a line of its own, before it runs: `tool: NAME ARGUMENT`, where the argument is what the call
   acts on (`Invocation::target`), omitted when the arguments name nothing the user would recognize. The line is permanent,
-  so the transcript shows which tools ran. The result is not shown.
+  so the transcript shows which tools ran. The result is not shown. A call that does not run is followed by
+  `  did not run: REASON`, so the transcript does not record an action that never happened.
 - The call line is drawn before the approval prompt, so a write's prompt follows the line that explains it. The provider
-  reports the call, because the tool loop is the only place a call is decoded; `tools::call` gives the argument its
-  `target`. A call whose arguments do not bind reports the name alone, and the runner then refuses it.
+  reports the call, because the tool loop is the only place a call is decoded: `run_call` takes the decoded `Invocation`,
+  so the line and the tool that runs come from one decode. A call whose arguments do not bind reports its name alone.
+- The line's text is model-controlled: control characters are replaced and it is cut to 100 characters, so a `\r` cannot
+  overwrite the `tool:` prefix and a long command cannot flood the terminal.
+- A subagent's tool lines reach the parent's display, so a `run_subagent` call is followed by what the subagent ran. Its
+  answer text and status lines do not, because only the parent's reply is shown.
 - Overflow handling:
   - A request the server rejects because it exceeds the context (`exceed_context_size_error`) is `ContextFull`. So is a
     tool round whose reply reports a prompt at 80% of the context size; that round's tools are not run.
@@ -270,8 +275,9 @@ src/
   turn.rs            runs one turn: `run_turn` (compaction, and the one retry on ContextFull), `prepare_message`
                      (before-turn, startup, profile, and notes index), `apply_whitelist`, `select_hooks`, and `hook_lines`.
                      It takes the approval and subagent callbacks as parameters.
-  subagent.rs        runs one subagent: a fresh conversation under a profile, its turns and follow-ups, and the restore of
-                     the parent's enabled tools and notes on every exit.
+  subagent.rs        runs one subagent: a fresh conversation under a profile, its turns and follow-ups, the restore of
+                     the parent's enabled tools and notes on every exit, and the pass-through of its tool lines to the
+                     parent's display (`Parent`).
   session.rs         Message, Turn (checked shape), PartialTurn (a stopped turn as far as it got), SessionError,
                      Conversation (committed history, prompt tokens of the last committed turn, compaction,
                      drop_oldest_turn, the autosave folder and name, startup text, the before-turn and after-turn lines,
@@ -373,7 +379,8 @@ tools -> notes; no provider, session, HTTP, or serde
   values against the spec and calls its `bind`.
 - `notes` takes and returns plain text. Note writes from the model go through `WorkspaceTools` like every other write.
 - Adding a tool takes: a file with its `SPEC`, `bind`, and `run`; one `Invocation` variant; one arm in `runner.rs`; one arm in
-  `Invocation::writes` (an exhaustive match, no wildcard); and one entry in the `SPECS` list. The provider and session do not change.
+  `Invocation::writes` (an exhaustive match, no wildcard); one arm in `Invocation::target` for the line the user sees; and
+  one entry in the `SPECS` list. The provider and session do not change.
 - `run_subagent` is the one tool the runner does not run. Only the session's callback starts a subagent, and only `subagent`
   builds a subagent's conversation.
 - `Turn` is built only in the provider's tool loop, and its shape is enforced by `Turn::new`. A stopped turn is a
@@ -564,8 +571,9 @@ Each item is a gap between the design above and the code. Items are grouped by a
 
 ### Subagents
 
-- **Subagents are invisible.** Their output and status lines go to buffers that are discarded. The user sees only approval prompts, which
-  name no subagent or profile. Follow-up failures at the limit are not shown either.
+- **Subagents are mostly invisible.** Their tool lines reach the parent's display, but their output and status lines go to
+  buffers that are discarded, and their approval prompts name no subagent or profile. Follow-up failures at the limit are not
+  shown either.
 - **Subagent work is unbounded.** A parent turn may start up to `MAX_TOOL_ROUNDS` subagents. Each may run up to `MAX_TOOL_ROUNDS` rounds in
   up to `FOLLOW_UPS` + 1 turns. No total is counted or reported.
 - **A failed subagent forgets its writes.** Its conversation is discarded on error, and the parent sees `error: ...` with no changed paths.
@@ -664,6 +672,7 @@ Controls:
 | Path confinement for reads and writes | Met. A symlink swapped in after approval is not caught (Open Problems). |
 | Write approval, default no | Met. The description is not escaped (Open Problems). |
 | Terminal sanitization of streamed model text, approval text, and error text | Missing. Streamed text is printed chunk by chunk, so the filter must work across chunk boundaries. |
+| Terminal sanitization of the `tool:` line | Present, unlike the rows above: control characters are replaced and the line is cut to 100 characters, but the text still passes through unchanged otherwise. |
 | API key never printed, logged, or put in errors | Partly met. Error paths have not been audited. |
 | Plain HTTP refused unless the endpoint is loopback | Missing. The endpoint is a loopback constant. |
 | Size limits on user lines, profile files, standing instructions, note content, and response bodies | Missing (Open Problems). |

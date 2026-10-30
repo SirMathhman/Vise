@@ -5,30 +5,39 @@ use crate::after_turn;
 use crate::environment;
 use crate::error::ProviderError;
 use crate::profile::{self, Profile};
-use crate::provider::types::Provider;
+use crate::provider::types::{Event, Provider};
 use crate::turn;
 use crate::session::Conversation;
 use crate::tools::specs;
 use crate::tools::types::{ToolError, ToolRunner};
 use std::io;
 
-/// Runs `task` as a subagent under the profile `profile_name`, and returns its final reply. `global` holds the
-/// before-turn and after-turn lines of the main session, which run around each of the subagent's turns. The parent's
-/// enabled tools and notes are restored afterwards.
+/// What a subagent's turns need from its parent: the session's before-turn and after-turn lines, the approval function
+/// for its writes, and where its tool lines are reported.
+pub struct Parent<'a> {
+    pub hooks: Hooks<'a>,
+    pub approve: &'a mut dyn FnMut(&str) -> bool,
+    pub on_event: &'a mut dyn FnMut(Event),
+}
+
+/// The main session's before-turn and after-turn lines, which run around each of a subagent's turns.
+pub type Hooks<'a> = (&'a [String], &'a [String]);
+
+/// Runs `task` as a subagent under the profile `profile_name`, and returns its final reply. `parent` holds the
+/// before-turn and after-turn lines of the main session, which run around each of the subagent's turns, the approval
+/// function for its writes, and the display its tool lines go to. The parent's enabled tools and notes are restored
+/// afterwards.
 pub fn run(
     profile_name: &str,
     task: &str,
     provider: &dyn Provider,
     tools: &dyn ToolRunner,
-    global_before: &[String],
-    global_after: &[String],
-    approve: &mut dyn FnMut(&str) -> bool,
+    parent: Parent<'_>,
 ) -> Result<String, ToolError> {
     let loaded = profile::load(profile_name).map_err(ToolError::Failed)?;
     let saved_enabled = tools.enabled();
     let saved_notes = tools.allowed_notes();
-    let global = (global_before, global_after);
-    let result = session(profile_name, loaded, task, provider, tools, global, approve);
+    let result = session(profile_name, loaded, task, provider, tools, parent);
     for spec in specs() {
         // Every name here is a known tool, so set_enabled cannot fail.
         let _ = tools.set_enabled(spec.name, saved_enabled.contains(&spec.name));
@@ -38,15 +47,15 @@ pub fn run(
 }
 
 /// The subagent's turns: its profile sets the tools and notes, its startup hook runs first, and each turn runs as the
-/// main session's turns do, with follow-ups for a failing after-turn command.
+/// main session's turns do, with follow-ups for a failing after-turn command. Only tool lines are passed on: its answer
+/// text is not streamed, so the parent's reply is the only answer shown.
 fn session(
     profile_name: &str,
     loaded: Profile,
     task: &str,
     provider: &dyn Provider,
     tools: &dyn ToolRunner,
-    global: (&[String], &[String]),
-    approve: &mut dyn FnMut(&str) -> bool,
+    parent: Parent<'_>,
 ) -> Result<String, ToolError> {
     turn::apply_whitelist(tools, loaded.tools.as_deref())?;
     // A subagent cannot start another one.
@@ -54,8 +63,8 @@ fn session(
     tools.set_allowed_notes(loaded.notes);
     let environment = environment::gather().map_err(|err| ToolError::Failed(format!("cannot read the directory: {err}")))?;
     let mut conversation = Conversation::new(&environment);
-    conversation.set_before_turn(global.0.to_vec());
-    conversation.set_after_turn(global.1.to_vec());
+    conversation.set_before_turn(parent.hooks.0.to_vec());
+    conversation.set_after_turn(parent.hooks.1.to_vec());
     let marked = profile::marked(profile_name, &loaded.instructions);
     let (mut out, mut err) = (Vec::new(), Vec::new());
     turn::select_hooks(loaded.hooks, &mut conversation, tools, &mut out, &mut err).map_err(io_error)?;
@@ -69,12 +78,25 @@ fn session(
     while let Some(text) = pending.take() {
         let message = turn::prepare_message(text, Some(&marked), &conversation, tools, &mut out, &mut err)
             .map_err(io_error)?;
-        let (turn, _) = turn::run_turn(provider, &mut conversation, message, tools, approve, &mut no_subagent, &mut |_| {})
-            .map_err(|err| match err {
-                // A stopped subagent returns to its parent at once, with no after-turn lines and no follow-ups.
-                ProviderError::Interrupted { .. } => ToolError::Failed(YIELD.into()),
-                err => ToolError::Failed(err.to_string()),
-            })?;
+        let (turn, _) = turn::run_turn(
+            provider,
+            &mut conversation,
+            message,
+            tools,
+            parent.approve,
+            &mut no_subagent,
+            &mut |event| {
+                // A subagent's answer text is discarded, so only its tool lines are worth showing.
+                if matches!(event, Event::Tool { .. } | Event::ToolFailed(_)) {
+                    (parent.on_event)(event);
+                }
+            },
+        )
+        .map_err(|err| match err {
+            // A stopped subagent returns to its parent at once, with no after-turn lines and no follow-ups.
+            ProviderError::Interrupted { .. } => ToolError::Failed(YIELD.into()),
+            err => ToolError::Failed(err.to_string()),
+        })?;
         reply = turn.reply().to_string();
         conversation.commit(turn);
         let after = turn::hook_lines(conversation.after_turn(), &conversation.profile_hooks().after_turn);
@@ -134,7 +156,13 @@ mod tests {
     #[test]
     fn unknown_profile_is_refused_before_the_model_is_called() {
         let tools = WorkspaceTools::new(std::env::temp_dir());
-        let result = run("no-such-profile-xyz", "task", &Unused, &tools, &[], &[], &mut |_: &str| true);
+        let result = run(
+            "no-such-profile-xyz",
+            "task",
+            &Unused,
+            &tools,
+            Parent { hooks: (&[], &[]), approve: &mut |_: &str| true, on_event: &mut |_| {} },
+        );
         assert!(result.is_err_and(|err| err.to_string().contains("cannot read profile")));
     }
 
@@ -197,7 +225,13 @@ mod tests {
         with_profile("vise-subagent-fail", "tools: read_file
 be brief", || {
             let tools = WorkspaceTools::new(std::env::temp_dir());
-            let result = run("vise-subagent-fail", "task", &Recorder::new(true), &tools, &[], &[], &mut |_: &str| true);
+            let result = run(
+                "vise-subagent-fail",
+                "task",
+                &Recorder::new(true),
+                &tools,
+                Parent { hooks: (&[], &[]), approve: &mut |_: &str| true, on_event: &mut |_| {} },
+            );
             assert!(result.is_err());
             assert!(tools.enabled().contains(&"list_directory"));
             assert!(tools.enabled().contains(&"run_subagent"));
@@ -211,7 +245,13 @@ be brief", || {
             let tools = WorkspaceTools::new(std::env::temp_dir());
             let provider = Recorder::new(false);
             let global = vec!["Write-Output global-hook".to_string()];
-            let result = run("vise-subagent-hooks", "task", &provider, &tools, &global, &[], &mut |_: &str| true);
+            let result = run(
+                "vise-subagent-hooks",
+                "task",
+                &provider,
+                &tools,
+                Parent { hooks: (&global, &[]), approve: &mut |_: &str| true, on_event: &mut |_| {} },
+            );
             assert_eq!(result.unwrap(), "done");
             let input = provider.inputs.borrow()[0].clone();
             let global_at = input.find("Before-turn command: Write-Output global-hook").expect("the global hook ran");

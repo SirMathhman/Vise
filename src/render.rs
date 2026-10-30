@@ -27,13 +27,12 @@ impl<'a, W: Write> Render<'a, W> {
                 self.put(&text);
             }
             // A call is kept as a line of its own, so the transcript shows which tools ran after the turn ends.
-            Event::Tool { name, target } => {
-                self.end_status();
-                self.line(&match target {
-                    Some(target) => format!("tool: {name} {target}"),
-                    None => format!("tool: {name}"),
-                });
-            }
+            Event::Tool { name, target } => self.line(&match target {
+                Some(target) => format!("tool: {name} {target}"),
+                None => format!("tool: {name}"),
+            }),
+            // The call above did not run, so the transcript says so rather than claiming it did.
+            Event::ToolFailed(reason) => self.line(&format!("  did not run: {reason}")),
             Event::Finished => self.end_status(),
         }
     }
@@ -66,13 +65,15 @@ impl<'a, W: Write> Render<'a, W> {
         }
     }
 
-    /// Writes one complete line that stays in the transcript, on a line of its own.
+    /// Writes one complete line that stays in the transcript, on a line of its own. The text comes from the model, so
+    /// control characters are replaced and it is cut short: a `\r` would overwrite the prefix, and a long command would
+    /// flood the terminal.
     fn line(&self, text: &str) {
         self.end_status();
         if self.line_open.get() {
             self.newline();
         }
-        self.put(text);
+        self.put(&clean(text));
         self.newline();
     }
 
@@ -87,6 +88,21 @@ impl<'a, W: Write> Render<'a, W> {
         let _ = writeln!(self.out.borrow_mut());
         self.line_open.set(false);
     }
+}
+
+/// The longest line the display writes whole. A path or a command longer than this is cut, so one call cannot fill the
+/// screen.
+const WIDEST: usize = 100;
+
+/// A tool line's text as it can safely be shown: control characters replaced by spaces, and cut to `WIDEST` with an
+/// ellipsis. The text is model-controlled, and a `\r` would overwrite the `tool:` prefix that explains it.
+fn clean(text: &str) -> String {
+    let flattened: String = text.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
+    if flattened.chars().count() <= WIDEST {
+        return flattened;
+    }
+    let head: String = flattened.chars().take(WIDEST - 1).collect();
+    format!("{}…", head.trim_end())
 }
 
 #[cfg(test)]
@@ -117,6 +133,20 @@ mod tests {
         assert!(text.contains("\ntool: read_file src/repl.rs\n"), "{text:?}");
         assert!(text.contains("\ntool: list_notes\n"), "{text:?}");
         assert!(text.ends_with("\ndone"), "{text:?}");
+    }
+
+    #[test]
+    fn a_tool_line_replaces_control_characters_and_is_cut_short() {
+        let mut buffer = Vec::new();
+        let render = Render::new(&mut buffer);
+        render.on_event(Event::Tool { name: "read_file".into(), target: Some("a\rb".into()) });
+        render.on_event(Event::Tool { name: "run_powershell".into(), target: Some("x".repeat(300)) });
+        drop(render);
+        let text = String::from_utf8(buffer).unwrap();
+        assert!(text.contains("tool: read_file a b\n"), "{text:?}");
+        let long = text.lines().find(|line| line.starts_with("tool: run_powershell")).expect("the long line");
+        assert!(long.ends_with('…'), "{long:?}");
+        assert!(long.chars().count() <= 100, "{long:?}");
     }
 
     #[test]

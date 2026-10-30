@@ -12,6 +12,9 @@ pub enum Event {
     Answer(String),
     /// The reply asked for a tool run: its name, and what it acts on, when the arguments name one.
     Tool { name: String, target: Option<String> },
+    /// The tool call just reported could not run, with why. Shown so a call that did not happen does not read like one
+    /// that did.
+    ToolFailed(String),
     /// The reply has been fully received.
     Finished,
 }

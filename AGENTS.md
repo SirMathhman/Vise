@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Run: `cargo run` (reads commands from stdin, so `printf '...' | cargo run` works for scripted checks)
 - Test all: `cargo test` (47 tests, no server needed)
 - Test one: `cargo test <module path or substring>`, e.g. `cargo test grammar` or `cargo test profile::tests::load_rejects_names_that_leave_the_folder`
-- Lint: `cargo clippy --all-targets`. One warning is known (`ok().expect()` in test code in `src/session.rs`).
+- Lint: `cargo clippy --all-targets`. Warnings are known and left alone: `EmptyResponse` is never constructed, two collapsible `if`s in `repl.rs`, two redundant closures in `interrupt.rs`, four `err().expect()`/`ok().expect()` calls in tests, and `drop()` on a non-`Drop` type in `render.rs` tests.
 
 Running needs `LLAMA_API_KEY` in `.env` in the working directory (loaded by dotenvy) and a llama.cpp server at `http://127.0.0.1:9931`. The model name and URL are constants in `src/provider/llama_cpp.rs`. Tests never contact the server, so live checks are manual.
 
@@ -35,7 +35,7 @@ Things that are not obvious from a single file:
 - **Sessions** live in `sessions/sessions.db` (SQLite, via `rusqlite`): a `sessions` row per session and a `messages` row per message, ordered by `position`. The `saved_sessions/` folder owns every read and write: `store.rs` is the only file that opens a connection, `messages.rs` is the row codec, and `legacy.rs` is the old `NAME.json` format, imported at launch by `import` and left in place.
 - **Reply cap.** Every request sets `max_tokens` (8192). Without it a reply whose thinking never closes runs indefinitely.
 - **Ctrl+C two-step.** `interrupt.rs` installs one handler that only sets a flag (never exits) while `interrupt::work` is running. Every request, tool round, and the startup lines run inside `work`; a stopped request reports `ProviderError::Interrupted { reply }`, and `repl` commits that partial reply with a `[the turn was interrupted]` marker and autosaves it, without after-turn lines or follow-ups. Any other press exits 130. `repl` calls `interrupt::clear()` after each turn.
-- **Tool calls are visible.** The provider reports `Event::Tool { name, target }` before each call runs; `render` prints it as a permanent `tool: NAME ARGUMENT` line, breaking the status line first. `target` comes from `Invocation::target()` (path, command's first line, note name, `task N`, profile) and is omitted when nothing would be recognizable. The line is drawn before any approval prompt. The result is not shown.
+- **Tool calls are visible.** The provider decodes each call once, reports `Event::Tool { name, target }`, then runs the same `Invocation`. `render` prints it as a permanent `tool: NAME ARGUMENT` line, breaking the status line first, and prints `  did not run: REASON` when the call fails. `target` comes from `Invocation::target()` (path, command's first line with `(+N more lines)`, note name, `task N`, profile) and is omitted when nothing would be recognizable. The line is drawn before any approval prompt, and its model-controlled text is stripped of control characters and cut to 100 characters. A subagent's tool lines go through `Parent::on_event` to the parent's display; its answer text does not. The result is not shown.
 - **Commits** end with the `Co-Authored-By: Claude Haiku 5.5 <noreply@anthropic.com>` line.
 
 ## Platform

@@ -1,9 +1,16 @@
 use std::collections::HashMap;
 use std::fmt;
 
-/// The first line of `text`, trimmed, so a multi-line command reads as one line in the display.
-fn first_line(text: &str) -> String {
-    text.lines().next().unwrap_or_default().trim().to_string()
+/// The first line of `text`, trimmed, so a multi-line command reads as one line in the display, with a note of how many
+/// lines the rest holds. An empty command gives `None`, so the call reads as its name alone rather than as a trailing
+/// space.
+fn first_line(text: &str) -> Option<String> {
+    let first = text.lines().next().unwrap_or_default().trim();
+    if first.is_empty() {
+        return None;
+    }
+    let rest = text.lines().count().saturating_sub(1);
+    Some(if rest > 0 { format!("{first} (+{rest} more lines)") } else { first.to_string() })
 }
 
 #[derive(Debug)]
@@ -172,7 +179,7 @@ impl Invocation {
             | Self::CreateFile { path, .. }
             | Self::CreateDirectory { path }
             | Self::EditFile { path, .. } => Some(path.clone()),
-            Self::RunPowerShell { command, .. } => Some(first_line(command)),
+            Self::RunPowerShell { command, .. } => first_line(command),
             Self::ReadBackground { id } | Self::KillBackground { id } => Some(format!("task {id}")),
             Self::ListNotes { category } => Some(category.clone()).filter(|name| !name.is_empty()),
             Self::ReadNote { name }
@@ -247,5 +254,47 @@ mod tests {
         assert!(Invocation::EditFile { path: "a".into(), previous: "x".into(), new: "y".into() }.writes());
         assert!(!Invocation::ListDirectory { path: ".".into(), depth: 1 }.writes());
         assert!(!Invocation::ReadFile { path: "a".into(), start: 1, end: 1 }.writes());
+    }
+
+    #[test]
+    fn target_names_what_each_call_acts_on() {
+        let cases = [
+            (Invocation::ListDirectory { path: "src".into(), depth: 1 }, Some("src")),
+            (Invocation::ReadFile { path: "a.rs".into(), start: 1, end: 2 }, Some("a.rs")),
+            (Invocation::CreateFile { path: "b.rs".into(), content: "x".into() }, Some("b.rs")),
+            (Invocation::CreateDirectory { path: "c".into() }, Some("c")),
+            (Invocation::EditFile { path: "d.rs".into(), previous: "x".into(), new: "y".into() }, Some("d.rs")),
+            (Invocation::ReadBackground { id: 3 }, Some("task 3")),
+            (Invocation::KillBackground { id: 4 }, Some("task 4")),
+            (Invocation::ListNotes { category: "work".into() }, Some("work")),
+            (Invocation::ListNotes { category: String::new() }, None),
+            (Invocation::ReadNote { name: "n".into() }, Some("n")),
+            (Invocation::DeleteNote { name: "m".into() }, Some("m")),
+            (Invocation::RunSubagent { profile: "p".into(), task: "t".into() }, Some("p")),
+            (
+                Invocation::RunPowerShell { command: "Get-ChildItem".into(), timeout_secs: 5, background: false },
+                Some("Get-ChildItem"),
+            ),
+        ];
+        for (invocation, expected) in cases {
+            assert_eq!(invocation.target().as_deref(), expected, "for {}", invocation.tool_name());
+        }
+    }
+
+    #[test]
+    fn a_command_reports_its_first_line_and_how_many_more() {
+        let invocation = Invocation::RunPowerShell {
+            command: "cd C:\\repo\nRemove-Item -Recurse .".into(),
+            timeout_secs: 5,
+            background: false,
+        };
+        assert_eq!(invocation.target().as_deref(), Some("cd C:\\repo (+1 more lines)"));
+    }
+
+    #[test]
+    fn an_empty_command_names_nothing() {
+        let invocation =
+            Invocation::RunPowerShell { command: "   \n  ".into(), timeout_secs: 5, background: false };
+        assert_eq!(invocation.target(), None, "the line reads as the tool's name alone");
     }
 }

@@ -286,10 +286,25 @@ fn chat_turn(
     let render = Render::new(&mut streams.output);
     let mut approve = |change: &str| ask(change, &mut *render.output(), &mut streams.input);
     let mut on_event = |event: Event| render.on_event(event);
-    // A subagent runs with this turn's approvals and the global hook lines, which its own profile's lines follow.
+    // A subagent runs with this turn's approvals and the global hook lines, which its own profile's lines follow. Only
+    // its tool lines reach this turn's display: its answer text is discarded, so the parent's reply is the only answer.
     let (global_before, global_after) = (conversation.before_turn().to_vec(), conversation.after_turn().to_vec());
     let mut subagent = |name: &str, task: &str, approve: &mut dyn FnMut(&str) -> bool| {
-        subagent::run(name, task, provider, tools, &global_before, &global_after, approve)
+        let mut tools_only = |event: Event| match event {
+            Event::Tool { .. } | Event::ToolFailed(_) => render.on_event(event),
+            _ => {}
+        };
+        subagent::run(
+            name,
+            task,
+            provider,
+            tools,
+            subagent::Parent {
+                hooks: (&global_before, &global_after),
+                approve,
+                on_event: &mut tools_only,
+            },
+        )
     };
     let result = run_turn(provider, conversation, message, tools, &mut approve, &mut subagent, &mut on_event);
     render.end();
