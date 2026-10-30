@@ -6,7 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - Build: `cargo build`
 - Run: `cargo run` (reads commands from stdin, so `printf '...' | cargo run` works for scripted checks)
-- Test all: `cargo test` (runs both crates, no server needed). Each crate's tests run with that crate's folder as the working directory.
+- Run the window: `cargo run -p vise-gui` (egui on wgpu; `--resume` continues the last session, `WGPU_POWER_PREF=high` picks the big GPU). It needs a display, so it cannot be scripted; its tests drive the worker, the transcript and one frame of the interface without a GPU.
+- Test all: `cargo test` (runs every crate, no server needed). Each crate's tests run with that crate's folder as the working directory.
 - Test one: `cargo test <module path or substring>`, e.g. `cargo test grammar` or `cargo test profile::tests::load_rejects_names_that_leave_the_folder`
 - Lint: `cargo clippy --all-targets`. Warnings are known and left alone: `EmptyResponse` is never constructed, four `err().expect()`/`ok().expect()` calls in tests, and `drop()` on a non-`Drop` type in `render.rs` tests.
 
@@ -18,11 +19,11 @@ Live checks run the binary from a scratch directory with `notes/` in it (profile
 
 `ARCHITECTURE.md` is the canonical design document. It holds the invariants, the structure, and the Open Problems. Keep it current when behaviour changes. It is partly aspirational: check the Structure section against the files before relying on it, because it names a `tools/process/` module that does not exist yet.
 
-The code is a Cargo workspace of two crates. `crates/vise-core` is the backend library: it never reads or writes a terminal, and a frontend drives its `Engine` with `Request`s and receives `UiEvent`s through the `Frontend` trait it passes in. `crates/vise-cli` is the terminal frontend (package `Vise`, so the executable is still `Vise.exe`): the input loop, the slash-command text, drawing, colors and Ctrl+C. A second frontend would be another crate that implements `Frontend`.
+The code is a Cargo workspace of three crates. `crates/vise-core` is the backend library: it never reads or writes a terminal, and a frontend drives its `Engine` with `Request`s and receives `UiEvent`s through the `Frontend` trait it passes in. `crates/vise-cli` is the terminal frontend (package `Vise`, so the executable is still `Vise.exe`): the input loop, the slash-command text, drawing, colors and Ctrl+C. `crates/vise-gui` is the window frontend (package `vise-gui`): egui drawn on wgpu through `eframe`. The engine runs on a worker thread it owns, because the provider and the tool runner are not `Sync`, and the window talks to it over channels. Both frontends share `vise-core`'s `Parts` (the wiring) and `slash` (the slash syntax).
 
 Layers, from the input side:
 
-- `vise-cli`: `repl.rs` reads lines and turns each into a `Request` (a slash command parsed by `commands.rs`, or a chat line); unknown slash commands go to the model. `terminal.rs` is the `TerminalFrontend`: it shows `UiEvent`s through `render.rs` and asks the approval prompt (`y`/`yes` read from the same stdin).
+- `vise-cli`: `repl.rs` reads lines and turns each into a `Request` (a slash command parsed by `vise-core`'s `slash.rs`, or a chat line); unknown slash commands go to the model. `terminal.rs` is the `TerminalFrontend`: it shows `UiEvent`s through `render.rs` and asks the approval prompt (`y`/`yes` read from the same stdin).
 - `vise-core`: `engine.rs` is the `Engine`. It handles every command (`/compact`, `/profile`, `/save`...), runs a chat line as a turn including the retry after a full context and the after-turn follow-ups, and autosaves. `frontend.rs` holds `Frontend` and `UiEvent`; `stop.rs` holds the shared `Stop` switch.
 - `session.rs` holds the history: `Message` (System, User, Assistant with tool calls, Tool), `Turn` (checked by `Turn::new`), and `Conversation` (commit, compact, drop oldest turn). The first message is the system context with the working directory.
 - `provider/` sends history to llama.cpp. `Provider` is the trait; `llama_cpp.rs` is the only implementation. It runs the tool loop, parses replies, and maps the 400 overflow error to `ContextFull`.

@@ -323,6 +323,10 @@ crates/vise-core/src/    the backend library `vise-core`: no stdin, stdout or st
                      all `serde`), `Change`, `DropCause`, `ToolState`, `NoteLine`, `Sink` (a frontend nobody looks at), and the test-only `TextUi`, which records events and
                      renders the notices as the terminal's text
   command.rs         `Command`, what a frontend can ask for besides a chat line. Typing it is the frontend's business.
+  slash.rs           the slash syntax of a text frontend: `HELP` and `command(line)`, which parses `/save work` into a `Command`.
+                     The terminal and the window both use it; a frontend that is not text builds `Command`s directly.
+  parts.rs           `Parts`: owns the provider, the tool runner, the conversation and the sessions folder an `Engine` borrows,
+                     built together (`for_directory`) on the thread that will run the engine; `engine(stop)` borrows them.
   stop.rs            `Stop`: the shared stop switch. `request` asks the running work to stop, `work`/`tracked` mark work a
                      request reaches, `asked`/`clear` read and reset it. `Interrupted` is its error.
   turn.rs            runs one turn: `run_turn` (compaction, and the one retry on ContextFull), `prepare_message`
@@ -391,17 +395,15 @@ crates/vise-core/src/    the backend library `vise-core`: no stdin, stdout or st
 
 crates/vise-cli/src/     the terminal frontend, package `Vise` (the executable keeps its name)
   main.rs            wiring: reads .env and LLAMA_API_KEY, takes the working directory, creates the `Stop`, installs Ctrl+C,
-                     builds the provider and the tool runner, opens the sessions folder (`saved_sessions::FOLDER`), and builds
-                     the `Engine`; then `start`, the REPL loop, and `shutdown`. `--new` skips the resume. Fatal startup errors
+                     builds `Parts` (the provider, the tool runner, the conversation and the sessions folder), and its `Engine`; then `start`, the REPL loop, and `shutdown`. `--new` skips the resume. Fatal startup errors
                      go to exit_with.
-  repl.rs            the input loop: reads a line, turns it into a `Request` (`commands::command`, or a chat line), sends it
+  repl.rs            the input loop: reads a line, turns it into a `Request` (`slash::command`, or a chat line), sends it
                      to the engine, and ends the run on `/exit`, the end of input, or a write that failed
   repl/tests.rs      the loop's tests, run over a scripted provider and `Vec<u8>` streams
   terminal.rs        `TerminalFrontend`: shows `UiEvent`s on stdout and stderr (`error: ` prefix, `Reply` in green), words the
                      query results, the changes and their empty-list hints, draws
                      the live reply through `Render`, and asks for approvals by reading `y` or `yes` from the input it also
                      reads lines from
-  commands.rs        the help text, and the parser from a slash command to `Command` (no I/O)
   render.rs          draws provider Events: one status line, answer text, a `tool:` line per call, and the end of each
                      request. Subagent tool lines come in through `on_subagent_event`, indented under the parent's. Owns
                      the output the answer and the approval prompt share.
@@ -409,6 +411,19 @@ crates/vise-cli/src/     the terminal frontend, package `Vise` (the executable k
                      the stderr wrapper that paints each `error:` line red and writes whole lines
   interrupt.rs       Ctrl+C: installs the handler. A press asks the running work to stop through the `Stop` switch; a press
                      the switch refuses, because no work runs or a stop is already pending, quits with status 130.
+
+crates/vise-gui/src/     the window frontend, package `vise-gui`: egui drawn on wgpu through `eframe`
+  main.rs            wiring: reads .env and LLAMA_API_KEY, takes the working directory, creates the `Stop`, chooses the low-power
+                     wgpu adapter (`WGPU_POWER_PREF` overrides it), and opens the window. `--resume` continues the last session;
+                     the default is a fresh one, because the window cannot show the history of a resumed session.
+  worker.rs          the thread that owns the engine, built there because the provider and the tool runner are not `Sync`:
+                     `Worker` (the window's handle: `send`, `answer`, `poll`, `close`, `join`), `Message` (`Event`, `Approval`,
+                     `Handled`, `Exited`), and `ChannelFrontend`, whose `approve` sends the question and blocks until answered
+  transcript.rs      `Transcript`: turns `UiEvent`s into display items (user, streamed answer, tool lines with a nested flag,
+                     notices, errors) and a progress value for the status strip. No egui types.
+  words.rs           the English wording of the typed query results and changes, the same as the terminal's
+  app.rs             `ViseApp`: the status strip, the scrolling transcript, the input box with Send and Stop, and the approval dialog;
+                     it sends `Request`s to the worker and draws what the worker reports
 ```
 
 Planned, not yet created: `tools/process/`, the one place that starts, stops, and reaps OS processes (Windows only, with
@@ -420,15 +435,21 @@ An arrow means "may depend on". Dependencies only point one way; there are no cy
 
 ```
 vise-cli -> vise-core (its public modules only); the core never imports the terminal crate
-  main -> the wiring of the terminal modules and of vise_core::{engine, environment, provider::llama_cpp, saved_sessions,
-          session, stop, tools::runner}
+  main -> the wiring of the terminal modules and of vise_core::{environment, parts, stop}
   interrupt -> vise_core::stop, `ctrlc`
-  repl -> commands, terminal, vise_core::{engine, command, frontend}
+  repl -> terminal, vise_core::{engine, command, frontend, slash}
   terminal -> render, style, vise_core::frontend
   render -> style, vise_core::provider::types (Event)
-  commands -> vise_core::command
   style -> std only, a leaf: it knows no other module
-vise-core (no `ctrlc`, no terminal I/O):
+vise-gui -> vise-core (its public modules only), eframe (egui, egui-wgpu, egui-winit, wgpu, winit)
+  main -> app, worker, vise_core::{environment, parts, stop}
+  app -> transcript, worker, vise_core::{engine, command, slash, stop, frontend}
+  worker -> vise_core::{engine, frontend, parts, stop}
+  transcript -> words, vise_core::{frontend, provider::types}
+  words -> vise_core::frontend
+vise-core (no `ctrlc`, no terminal or window I/O):
+  parts -> engine, environment, provider::llama_cpp, saved_sessions, session, stop, tools::runner
+  slash -> command
   engine -> command, frontend, stop, turn, subagent, session, provider::types, tools, profile, saved_sessions,
             default_model, startup, shutdown, before_turn, after_turn, error
   frontend -> provider::types (Event)
@@ -616,7 +637,7 @@ Each item is a gap between the design above and the code. Items are grouped by a
 - **The budget threshold lives in the provider.** `provider::llama_cpp` imports `over_budget` and decides `ContextFull` from it. The
   session should pass a prompt limit in.
 - **`engine` indexes the history.** `Command::Context` reads `messages().first()`. `Conversation::context()` should be the only accessor.
-- **Commands are not one table.** `commands.rs` parses the slash commands, but the help text is written by hand beside them.
+- **Commands are not one table.** `slash.rs` parses the slash commands, but the help text is written by hand beside them.
 - **Two sources for one setting.** The endpoint is a constant in `provider::llama_cpp`. The model starts as that module's constant, and
   `default_model` reads a second source, `model.txt`. There is no `config` module.
 - **`Conversation` holds run configuration.** The before-turn and after-turn lines, the startup text, the autosave switch, and the
@@ -658,6 +679,12 @@ derive `serde`. Today a frontend would still reach around the abstraction in the
   the field that caused it, and the `skipped` note lines should not be errors of the command that listed them. The terminal words
   every list's empty case, including `no models`.
 
+- **The wording exists twice.** `vise-cli/src/terminal.rs` and `vise-gui/src/words.rs` each turn the typed query results and
+  changes into English. A change to a sentence must be made in both. The shared home could be a text-formatting module in
+  `vise-core` that a text frontend opts into, with each frontend's own hint syntax passed in.
+- **The window cannot show a resumed session.** The engine sends no event for the messages already in the history, so `--resume`
+  starts with an empty transcript while the model has the whole context; the window therefore starts fresh by default. A
+  `History` event (or a read-only `Engine::history`) would fix it.
 - **Approvals are a bare string.** `approve(&str) -> bool` carries no id, no kind (write, kill, profile file), no path, and no
   origin, so a GUI cannot show a diff or a dialog, and a subagent's request looks like the parent's. It needs an `Approval { id,
   kind, summary, detail, origin }` value, with `origin` naming the subagent and profile. The call blocks the engine thread, which a
