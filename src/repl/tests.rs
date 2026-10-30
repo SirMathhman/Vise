@@ -114,10 +114,15 @@ fn conversation() -> Conversation {
     Conversation::new(&Environment { cwd: PathBuf::from("C:/work") })
 }
 
+/// The folder `/save` writes to in these tests: a temp folder, so the real sessions database is never touched.
+fn sessions_folder() -> PathBuf {
+    std::env::temp_dir().join(format!("vise-repl-sessions-{}", std::process::id()))
+}
+
 fn run_with(input: &str, provider: &Fake, conversation: &mut Conversation) -> (String, String) {
     let mut output = Vec::new();
     let mut errors = Vec::new();
-    run(&mut input.as_bytes(), &mut output, &mut errors, provider, &NoTools, conversation).unwrap();
+    run(&mut input.as_bytes(), &mut output, &mut errors, provider, &NoTools, conversation, &sessions_folder()).unwrap();
     (String::from_utf8(output).unwrap(), String::from_utf8(errors).unwrap())
 }
 
@@ -333,11 +338,10 @@ fn startup_output_goes_with_the_first_message_only() {
 
 #[test]
 fn save_is_written_without_a_prompt() {
-    let folder = std::env::temp_dir().join(format!("vise-save-{}", std::process::id()));
+    let folder = sessions_folder();
     let _ = std::fs::remove_dir_all(&folder);
     let fake = Fake::new(Behavior::Reply);
     let mut conversation = conversation();
-    conversation.enable_autosave(folder.clone());
     let (output, _) = run_with("/save no-prompt
 ", &fake, &mut conversation);
     let stored = saved_sessions::exists(&folder, "no-prompt");
@@ -395,7 +399,7 @@ fn failing_after_turn_command_is_sent_to_the_model_up_to_the_limit() {
     let mut conversation = conversation();
     conversation.set_after_turn(vec!["Write-Output x".into()]);
     let mut errors = Vec::new();
-    run(&mut "hi\n".as_bytes(), &mut Vec::new(), &mut errors, &fake, &Failing, &mut conversation).unwrap();
+    run(&mut "hi\n".as_bytes(), &mut Vec::new(), &mut errors, &fake, &Failing, &mut conversation, &sessions_folder()).unwrap();
     let inputs = fake.inputs.borrow();
     assert_eq!(inputs.len(), 1 + after_turn::FOLLOW_UPS);
     assert!(inputs[1].starts_with("After-turn command failed: Write-Output x"));
@@ -409,7 +413,7 @@ fn follow_up_that_overflows_ends_the_chain() {
     conversation.set_after_turn(vec!["Write-Output x".into()]);
     let mut output = Vec::new();
     let mut errors = Vec::new();
-    run(&mut "hi\n".as_bytes(), &mut output, &mut errors, &fake, &Failing, &mut conversation).unwrap();
+    run(&mut "hi\n".as_bytes(), &mut output, &mut errors, &fake, &Failing, &mut conversation, &sessions_folder()).unwrap();
     let output = String::from_utf8(output).unwrap();
     assert_eq!(output.matches("after-turn: Write-Output x").count(), 1);
     assert!(String::from_utf8(errors).unwrap().contains("no longer fits"));
@@ -430,7 +434,7 @@ fn background_command_does_not_start_a_follow_up() {
     let fake = Fake::new(Behavior::Reply);
     let mut conversation = conversation();
     conversation.set_after_turn(vec!["Write-Output x".into()]);
-    run(&mut "hi\n".as_bytes(), &mut Vec::new(), &mut Vec::new(), &fake, &Backgrounded, &mut conversation).unwrap();
+    run(&mut "hi\n".as_bytes(), &mut Vec::new(), &mut Vec::new(), &fake, &Backgrounded, &mut conversation, &sessions_folder()).unwrap();
     assert_eq!(fake.inputs.borrow().len(), 1);
 }
 
@@ -441,7 +445,7 @@ fn follow_ups_autosave_to_the_same_session_as_the_typed_turn() {
     let mut conversation = conversation();
     conversation.enable_autosave(folder.clone());
     conversation.set_after_turn(vec!["Write-Output x".into()]);
-    run(&mut "hi\n".as_bytes(), &mut Vec::new(), &mut Vec::new(), &fake, &Failing, &mut conversation).unwrap();
+    run(&mut "hi\n".as_bytes(), &mut Vec::new(), &mut Vec::new(), &fake, &Failing, &mut conversation, &sessions_folder()).unwrap();
     let files = std::fs::read_dir(&folder).expect("autosave folder exists").count();
     std::fs::remove_dir_all(&folder).expect("the test folder is removed");
     assert_eq!(files, 1);
@@ -513,7 +517,7 @@ fn failed_save_after_a_switch_says_the_switch_holds() {
     std::fs::create_dir("model.txt").expect("a directory stands where the default file goes");
     let mut conversation = conversation();
     let mut errors = Vec::new();
-    run(&mut "/model new\n".as_bytes(), &mut Vec::new(), &mut errors, &Switching, &NoTools, &mut conversation)
+    run(&mut "/model new\n".as_bytes(), &mut Vec::new(), &mut errors, &Switching, &NoTools, &mut conversation, &sessions_folder())
         .unwrap();
     std::fs::remove_dir("model.txt").expect("the directory is removed");
     assert!(String::from_utf8(errors).unwrap().contains("the model is now new, but it could not be saved"));
@@ -549,6 +553,7 @@ fn closed_error_stream_is_returned_as_an_error() {
         &fake,
         &NoTools,
         &mut conversation,
+        &sessions_folder(),
     );
     assert!(result.is_err());
 }

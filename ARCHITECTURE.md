@@ -206,7 +206,7 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 
 - A session is a row in the `sessions` table of `sessions/sessions.db`, with one `messages` row per message in order.
   Its name follows the profile name rule, so it is plain text in a column, never a path. `/save` refuses a name that
-  already has a session, and asks for approval first. `/load` replaces the history, keeps the current run's context
+  already has a session. Like the other typed commands, it does not prompt. `/load` replaces the history, keeps the current run's context
   message, resets the prompt token count, and starts an empty request log.
 - A write of a session removes its old messages and inserts the new ones in one transaction, so an interrupted write
   leaves the earlier history. Each message row holds the role, the content, and either the call a tool result answers or
@@ -570,7 +570,8 @@ Each item is a gap between the design above and the code. Items are grouped by a
   `default_model` reads a second source, `model.txt`. There is no `config` module.
 - **`Conversation` holds run configuration.** The before-turn and after-turn lines, the startup text, the autosave folder, and the
   selected profile's hooks are set on it by `main` or the REPL. None of them is history. They should be one value that `main` passes
-  to `repl::run`.
+  to `repl::run`. The session folder is passed to `repl::run` by `main`, and every session command (`/save`, `/load`, `/sessions`)
+  uses it, as do `resume` and the import at launch. The autosave folder is still set separately on `Conversation`.
 - **Hook lines are held in the session module.** `HookLines` lives in `session.rs`, and the selected profile's lines are held by
   `Conversation`. They belong with the REPL's selection state, not the history.
 - **The source tree exceeds the Modularity limits.** `src/` holds 18 files (the limit is 10). `repl.rs` (834 code lines) and
@@ -869,8 +870,8 @@ Obvious concerns only; profile before optimizing.
   output, so many long-running tasks use memory in proportion.
 - Each request builds a new `ureq` request. One shared agent would reuse connections.
 - `/save` and `/load` read and write the whole history one row per message to `sessions/sessions.db`, and `/load` reads all of it before
-  the turn check. Each command opens and closes its own connection, and the schema is re-run per open. `/save` opens three: `check_save`
-  and `save` each look the name up, then `write` opens the connection it writes on.
+  the turn check. Each command opens and closes its own connection, and the schema is re-run per open. `/save` opens two: `save`
+  looks the name up through `check_save`, then `write` opens the connection it writes on.
 - Every autosave appends whatever part of the request log it has not yet stored, and finds that part by counting the rows already
   written for the session, so the comparison repeats on every turn. The log is one row per request, which is one row per tool round.
   The count belongs on the `sessions` row, where an append reads one integer instead of counting a table, and the same integer answers

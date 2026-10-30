@@ -422,11 +422,6 @@ impl Conversation {
         }
     }
 
-    /// The folder automatic saves write to, or None when autosave is off.
-    pub fn autosave_folder(&self) -> Option<PathBuf> {
-        self.autosave.as_ref().map(|autosave| autosave.folder.clone())
-    }
-
     /// Turns on automatic saves: after each completed turn, the history is written to a session in `folder`.
     pub fn enable_autosave(&mut self, folder: PathBuf) {
         self.autosave = Some(Autosave { folder, name: None });

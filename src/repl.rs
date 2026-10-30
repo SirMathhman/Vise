@@ -13,6 +13,7 @@ use crate::saved_sessions;
 use crate::session::{Conversation, Message, PartialTurn, Turn};
 use crate::tools::types::ToolRunner;
 use std::io::{self, BufRead, Write};
+use std::path::Path;
 
 mod commands;
 use commands::{note_command, session_command, toggle, tool_list};
@@ -26,6 +27,7 @@ pub fn run(
     provider: &dyn Provider,
     tools: &dyn ToolRunner,
     conversation: &mut Conversation,
+    sessions: &Path,
 ) -> io::Result<()> {
     // The profile chosen with `/profile NAME`. Its text is sent again whenever the history does not carry it.
     let mut profile: Option<String> = None;
@@ -53,7 +55,7 @@ pub fn run(
                 note_command(command, tools, output, errors)?
             }
             Some(command @ (Command::Sessions | Command::Save(_) | Command::Load(_))) => {
-                session_command(command, conversation, output, errors)?
+                session_command(command, conversation, sessions, output, errors)?
             }
             Some(Command::Profile(name)) => match profile::load(&name) {
                 Ok(loaded) => match apply_whitelist(tools, loaded.tools.as_deref()) {

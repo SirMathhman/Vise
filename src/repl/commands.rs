@@ -1,5 +1,5 @@
 //! The slash commands that act on the tools, the notes and the saved sessions. Each one writes its result to the
-//! output, or its failure to the errors, and the writes it asks for go through the runner's approval.
+//! output, or its failure to the errors. The typed writes go through the runner without a prompt.
 
 use crate::commands::Command;
 use crate::notes;
@@ -7,7 +7,7 @@ use crate::saved_sessions;
 use crate::session::Conversation;
 use crate::tools::types::{Invocation, ToolRunner};
 use std::io::{self, Write};
-use std::path::PathBuf;
+use std::path::Path;
 
 /// One line per tool in the catalogue, with whether the model may call it.
 pub(super) fn tool_list(tools: &dyn ToolRunner) -> String {
@@ -45,7 +45,7 @@ pub(super) fn toggle(
     }
 }
 
-/// The note commands. Writes go through the runner, so the user sees the same approval a write from the model gets.
+/// The note commands. Writes go through the runner, which still checks the note whitelist and the other guards.
 pub(super) fn note_command(
     command: Command,
     tools: &dyn ToolRunner,
@@ -76,21 +76,16 @@ pub(super) fn note_command(
     }
 }
 
-/// Saves the conversation as a session once the user approves it, the same approval a model write gets. A name
-/// that is taken or invalid is refused before the user is asked.
+/// Saves the conversation as a session in `sessions`. A typed command does not prompt; a name that is taken or invalid
+/// is refused by the save.
 pub(super) fn save_session(
     name: &str,
     conversation: &Conversation,
+    sessions: &Path,
     output: &mut impl Write,
     errors: &mut impl Write,
 ) -> io::Result<()> {
-    // The folder the conversation autosaves to, so a test can keep /save away from the real sessions database.
-    let folder = conversation.autosave_folder().unwrap_or_else(|| PathBuf::from(saved_sessions::FOLDER));
-    if let Err(err) = saved_sessions::check_save(&folder, name) {
-        return writeln!(errors, "error: {err}");
-    }
-    let history = conversation.history();
-    match saved_sessions::save(&folder, name, history, conversation.requests()) {
+    match saved_sessions::save(sessions, name, conversation.history(), conversation.requests()) {
         Ok(()) => writeln!(output, "session {name} saved"),
         Err(err) => writeln!(errors, "error: {err}"),
     }
@@ -100,17 +95,18 @@ pub(super) fn save_session(
 pub(super) fn session_command(
     command: Command,
     conversation: &mut Conversation,
+    sessions: &Path,
     output: &mut impl Write,
     errors: &mut impl Write,
 ) -> io::Result<()> {
     match command {
-        Command::Sessions => match saved_sessions::names() {
+        Command::Sessions => match saved_sessions::names(sessions) {
             Ok(names) if names.is_empty() => writeln!(output, "no sessions: /save NAME stores the conversation"),
             Ok(names) => writeln!(output, "{}", names.join("\n")),
             Err(err) => writeln!(errors, "error: {err}"),
         },
-        Command::Save(name) => save_session(&name, conversation, output, errors),
-        Command::Load(name) => match saved_sessions::load(&name) {
+        Command::Save(name) => save_session(&name, conversation, sessions, output, errors),
+        Command::Load(name) => match saved_sessions::load(sessions, &name) {
             Ok(history) => {
                 conversation.replace_history(history);
                 writeln!(output, "session {name} loaded")

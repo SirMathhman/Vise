@@ -124,6 +124,7 @@ fn main() {
         &provider,
         &tools,
         &mut conversation,
+        &sessions,
     ) {
         let _ = writeln!(errors, "error: {err}");
     }

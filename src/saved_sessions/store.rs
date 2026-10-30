@@ -3,7 +3,7 @@
 
 use super::legacy;
 use super::messages::{self, Saved};
-use super::{SessionStoreError, DATABASE, FOLDER};
+use super::{SessionStoreError, DATABASE};
 use crate::session::{self, Message, RequestRecord, Timings};
 use rusqlite::{params, Connection, OptionalExtension};
 use std::fs;
@@ -47,8 +47,8 @@ CREATE TABLE IF NOT EXISTS requests (
 ";
 
 /// The session names in the sessions folder, sorted.
-pub fn names() -> Result<Vec<String>, SessionStoreError> {
-    list(Path::new(FOLDER))
+pub fn names(folder: &Path) -> Result<Vec<String>, SessionStoreError> {
+    list(folder)
 }
 
 /// The session names stored in `folder`, sorted. A folder or database that does not exist has no sessions.
@@ -68,8 +68,7 @@ pub fn list(folder: &Path) -> Result<Vec<String>, SessionStoreError> {
     Ok(stored.into_iter().filter(|name| check_name(name).is_ok()).collect())
 }
 
-/// Checks that a session can be saved under `name`: the name is valid and no session has it yet. The REPL asks
-/// for approval only after this passes.
+/// Checks that a session can be saved under `name` in `folder`: the name is valid and no session has it yet.
 pub fn check_save(folder: &Path, name: &str) -> Result<(), SessionStoreError> {
     check_name(name)?;
     if exists(folder, name)? {
@@ -113,9 +112,9 @@ pub fn write(folder: &Path, name: &str, history: &[Message], requests: &[Request
 }
 
 /// Reads the history of a saved session.
-pub fn load(name: &str) -> Result<Vec<Message>, SessionStoreError> {
+pub fn load(folder: &Path, name: &str) -> Result<Vec<Message>, SessionStoreError> {
     check_name(name)?;
-    let path = database(Path::new(FOLDER));
+    let path = database(folder);
     let missing = || SessionStoreError::Read { name: name.to_string(), err: rusqlite::Error::QueryReturnedNoRows };
     if !path.exists() {
         return Err(missing());
@@ -610,7 +609,7 @@ mod tests {
 
     #[test]
     fn load_rejects_names_that_leave_the_folder() {
-        let error = load("../secret").err().expect("expected the name to be rejected");
+        let error = load(&temp_folder("load-rejects"), "../secret").err().expect("expected the name to be rejected");
         assert!(matches!(error, SessionStoreError::InvalidName(_)));
     }
 }
