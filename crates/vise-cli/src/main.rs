@@ -1,4 +1,3 @@
-mod commands;
 mod interrupt;
 mod render;
 mod repl;
@@ -7,13 +6,9 @@ mod terminal;
 
 use std::io::{self, IsTerminal, Write};
 use terminal::TerminalFrontend;
-use vise_core::engine::Engine;
 use vise_core::environment;
-use vise_core::provider::llama_cpp::LlamaCpp;
-use vise_core::saved_sessions;
-use vise_core::session::Conversation;
+use vise_core::parts::Parts;
 use vise_core::stop::Stop;
-use vise_core::tools::runner::WorkspaceTools;
 
 /// Writes a fatal message to stderr and exits with status 1. If stderr is closed the message is lost,
 /// but the exit status still reports the failure.
@@ -35,14 +30,7 @@ fn main() {
 
     let env = environment::gather()
         .unwrap_or_else(|err| exit_with(&format!("error: cannot read current directory: {err}")));
-    if let Err(err) = environment::instructions(&env.cwd) {
-        exit_with(&format!("error: {err}"));
-    }
-    let provider = LlamaCpp::new(api_key, stop.clone());
-    let tools = WorkspaceTools::new(env.cwd.clone());
-    let mut conversation = Conversation::new(&env);
-    let sessions = std::path::PathBuf::from(saved_sessions::FOLDER);
-    conversation.enable_autosave();
+    let mut parts = Parts::for_directory(api_key, &env, stop.clone()).unwrap_or_else(|err| exit_with(&format!("error: {err}")));
 
     let stdout = io::stdout();
     let mut output = stdout.lock();
@@ -50,7 +38,7 @@ fn main() {
     let mut input = io::stdin().lock();
     // `--new` starts an empty conversation instead of resuming the last session.
     let resume = !std::env::args().skip(1).any(|arg| arg == "--new");
-    let mut engine = Engine::new(&provider, &tools, &mut conversation, &sessions, stop);
+    let mut engine = parts.engine(stop);
     {
         let mut ui = TerminalFrontend::new(&mut input, &mut output, &mut errors);
         engine.start(&env.cwd, resume, &mut ui);

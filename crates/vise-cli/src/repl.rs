@@ -1,7 +1,7 @@
 //! The terminal's input loop: it reads a line, turns it into a request for the engine, and ends the run on `/exit` or the
 //! end of input. What the engine reports is shown by `TerminalFrontend`.
 
-use crate::commands::{command, HELP};
+use vise_core::slash::{command, HELP};
 use vise_core::command::Command;
 use vise_core::engine::{Engine, Flow, Request};
 use vise_core::frontend::Frontend;

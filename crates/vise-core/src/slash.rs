@@ -1,6 +1,7 @@
-//! The terminal's slash commands: the help text, and the parser that turns a typed line into a `Command` for the engine.
+//! The slash syntax of a text frontend: the help text, and the parser that turns a typed line such as `/save work` into a
+//! `Command` for the engine. A frontend that is not text-based builds `Command`s without it.
 
-use vise_core::command::Command;
+use crate::command::Command;
 
 pub const HELP: &str = "\
 /compact              summarize the conversation to free up context space
