@@ -518,6 +518,14 @@ Each item is a gap between the design above and the code. Items are grouped by a
   alone is enough.
 - **Note paths skip confinement.** `notes::path` checks the name but not the folder: a symlink named `notes` leads writes outside the
   working directory.
+- **Skipped notes are strings, and the model cannot act on them.** `notes::Listing.skipped` holds finished sentences, so each caller can
+  only print them. `list_notes` appends them to its result (the model sees `note 'x' is skipped: cannot read note 'x': ...`, with the
+  name twice and the raw OS error text), and `prepare_message` repeats them on stderr before every turn until the file is fixed.
+  A skipped note is also a dead end for the model: `read_note` and `update_note` fail on it (`update` reads the note first to keep its
+  header lines), `create_note` fails because the file exists, and only `delete_note` works. The listing should carry a typed entry
+  (name, cause), say once what can be done (fix the header by hand, or delete the note), print each cause once per change, and give
+  the model only the name and the kind of cause, never OS error text. A skipped note is never confirmed as a profile
+  (`confirm_existing`), which is the right default and must stay.
 - **Note content is unbounded.** `create_note` and `update_note` accept any length, and `read_note` returns the whole note.
 - **`/note create` writes a placeholder.** The create writes the fixed summary `placeholder` and empty content into the note
   header, and the model sees that summary in the index. Nothing lets the user set a summary or content. The test
