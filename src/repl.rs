@@ -181,6 +181,7 @@ pub fn run(
                             writeln!(output, "{change}")?;
                         }
                         tools.set_allowed_notes(loaded.notes);
+                        tools.confirm_profile(&name);
                         profile = Some(profile::marked(&name, &loaded.instructions));
                         select_hooks(loaded.hooks, conversation, tools, output, errors)?;
                         writeln!(output, "profile {name} selected; its instructions go with your next message")?;

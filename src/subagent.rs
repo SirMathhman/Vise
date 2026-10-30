@@ -7,7 +7,7 @@ use crate::error::ProviderError;
 use crate::profile::{self, Profile};
 use crate::provider::types::{Event, Provider};
 use crate::turn;
-use crate::session::Conversation;
+use crate::session::{Conversation, HookLines};
 use crate::tools::specs;
 use crate::tools::types::{ToolError, ToolRunner};
 use std::io;
@@ -34,7 +34,11 @@ pub fn run(
     tools: &dyn ToolRunner,
     parent: Parent<'_>,
 ) -> Result<String, ToolError> {
-    let loaded = profile::load(profile_name).map_err(ToolError::Failed)?;
+    let mut loaded = profile::load(profile_name).map_err(ToolError::Failed)?;
+    // A profile the model wrote has not been seen by the user as a profile, so its hook lines do not run.
+    if tools.profile_written(profile_name) {
+        loaded.hooks = HookLines::default();
+    }
     let saved_enabled = tools.enabled();
     let saved_notes = tools.allowed_notes();
     let result = session(profile_name, loaded, task, provider, tools, parent);

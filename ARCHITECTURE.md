@@ -260,8 +260,12 @@ Problems). It is a reference, not a changelog: finished work is removed, not ann
 - Selecting a profile replaces the hook lines held from the one selected before, in the same step that changes its instructions.
   The lines of the previously selected profile never run after another profile is selected. The selected profile's `startup`
   hooks run at once, and their output reaches the model with the next message.
-- The file tools refuse any change to a command file or to a file directly in the profiles folder, whatever the spelling of its
-  name. An approved `run_powershell` can still change them, and its approval text says so when the command names one.
+- The file tools refuse any change to a command file, whatever the spelling of its name. They may write a file directly in the
+  profiles folder only after the ordinary approval, whose text adds that the profile's hook lines run without a prompt. An
+  approved `run_powershell` can still change any of them, and its approval text says so when the command names one.
+- A profile written by the model is never trusted more than the approval that wrote it. The ideal is that a hook line in a
+  profile the model wrote or edited does not run until the user has confirmed those lines (see Security), so the approval of a
+  write is not the only gate between model output and a command that runs unprompted.
 
 ### Subagents
 
@@ -357,7 +361,8 @@ src/
     mod.rs           registry: specs(), call(name, values) -> Invocation; declares its children
     types.rs         ToolSpec, Param, ParamType, Value, Arguments, Invocation, ToolCall, ToolError, ToolRunner
     runner.rs        WorkspaceTools: runs an Invocation. It refuses a disabled tool, a note outside the whitelist, and a
-                     file-tool write to a command file or the profiles folder; asks for approval first when it writes;
+                     file-tool write to a command file; asks for approval first when it writes, and says so when the
+                     write is to a profile whose hook lines run unprompted;
                      holds the enabled set and the note whitelist; owns the background tasks, ending them when dropped
     run_powershell.rs  runs one Windows PowerShell command in the working directory; after its timeout it becomes a background task
     read_background.rs  returns a background task's output after the offset the model passes
@@ -634,9 +639,14 @@ Each item is a gap between the design above and the code. Items are grouped by a
 
 ### Profile hooks
 
-- **Profile files can still be changed by approved shell commands.** An approved `run_powershell` that names `profiles` says a profile may
-  change, and can still write a profile file. The model could then add a `hook` line that runs at the next selection, turn, or exit. This
-  is the same residual gap as for the command files.
+- **The model can write a profile, hooks included, behind one approval.** `create_file` and `edit_file` may write into `profiles/`, and
+  `run_powershell` can too. The approval text names the hooks, but it is a single prompt, and the hook lines then run with no further
+  prompt at selection, every turn, and exit. Three weaknesses: (1) an `edit_file` prompt shows only the replaced fragment, so hook lines
+  elsewhere in the file are not shown, and a hook added by a small edit looks like a small edit; (2) the warning is appended after the
+  content, which may be long; (3) `run_subagent` takes a profile name from the model, so a profile the model just wrote can have its
+  hooks run in a subagent with no `/profile` from the user. The user's `/profile` is therefore not a second gate. The fix is that a
+  profile carries no live hooks until the user selects it with `/profile` after the write (a subagent runs only profiles that existed
+  before the session or were confirmed), and the prompt for a profile write shows the whole resulting file, its hook lines listed first.
 - **Hook lines bypass the profile's tools line.** A profile with `tools: read_file` still runs PowerShell through a hook. This is intended
   for command files, but a profile that narrows the tools is not narrowing what its hooks can do. The user should confirm this decision.
 - **Selection can split on an I/O error.** In the `Profile` arm of `repl`, the instructions and tool state change before `select_hooks`
@@ -694,7 +704,7 @@ Each item is a gap between the design above and the code. Items are grouped by a
   assumes room, `/context` prints the count alone).
 - **`/model NAME` writes without a prompt on the switch itself.** The switch is checked against the server's list and context size, and
   the save follows it, but neither asks the user first, although `/save` does.
-- **`model.txt` is not protected from model writes.** The file tools guard the command files and the profiles folder, not `model.txt`. An
+- **`model.txt` is not protected from model writes.** The file tools guard the command files, not `model.txt`. An
   approved `edit_file` changes the default for the next launch, and the approval text does not say so.
 - **The default file is written in place.** `default_model::save` truncates the file before writing. A crash leaves an empty file, which
   `load` reads as no default, so the launch silently uses the built-in model. The save must write a temporary file and rename it.
@@ -717,8 +727,8 @@ Trust boundaries:
 - **Stored sessions** are rows of `sessions/sessions.db`. An approved write can change the database file, and a `sessions/NAME.json` file
   left for import is read at launch, so the model can write a session the user later loads. `/load` commits its messages as history, so a
   stored session is a persistence path for injected instructions and forged tool results.
-- **Profile files** are untrusted text, and they are command files too. They sit in `profiles/`, which the file tools guard only for direct
-  writes, so an approved command can change them. Their text reaches the model verbatim, and their `notes:` line decides which notes the
+- **Profile files** are untrusted text, and they are command files too. They sit in `profiles/`, which the file tools and an approved command may write after approval, so the
+  model can author them; the approval is the only gate, and `run_subagent` can run a profile the model has just written. Their text reaches the model verbatim, and their `notes:` line decides which notes the
   model sees. Their `hook` lines run with the user's full permissions and no prompt, and their output goes to the model (except shutdown's).
 - **Command files** (`startup.txt`, `before-turn.txt`, `after-turn.txt`, `shutdown.txt`) are untrusted text in the same way as `AGENTS.md`.
   Their lines run with the user's full permissions at every launch, exit, and chat turn, with no prompt. Startup and before-turn output reach
@@ -764,8 +774,8 @@ Controls:
 | Profile files limit the notes the model may use | Partly met. The runner refuses a disallowed note before approval, and the index omits it. Earlier index messages and note results stay in history (Open Problems). |
 | Profile files set the enabled set | Partly met. A profile's tools line is checked against the catalogue, and selecting a profile is the user's action. Its hook lines run whatever the enabled set is (Open Problems). |
 | Profile hook lines run only while their profile is selected | Met. Selecting another profile replaces them at once, and shutdown reads the current ones. A failed selection keeps the old ones. The I/O-error split is open (Open Problems). |
-| Profile hook lines run only from a file the model cannot write | Partly met. The file tools refuse the profiles folder, and an approved command that names it says a profile may change. An approved command can still write a profile file (Open Problems). |
-| Command-file lines run without approval only from a file the model cannot write | Partly met. The file tools refuse the command files by name, ignoring trailing dots, spaces, and `:` streams, and the profiles folder. An approved command can still write any of them (Open Problems). |
+| Profile hook lines run only from a file the user has seen and confirmed | Partly met. A model write to `profiles/` needs approval whose text names the hooks, but an edit prompt shows only the fragment, the warning trails the content, and `run_subagent` can run the new profile without a `/profile` (Open Problems). |
+| Command-file lines run without approval only from a file the model cannot write | Partly met. The file tools refuse the command files by name, ignoring trailing dots, spaces, and `:` streams. An approved command can still write any of them (Open Problems). |
 | Command-file and hook lines are not gated by the enabled tool set | Met. They run through `run_command_file_line`, which skips the enabled-set check and keeps the file guard. |
 | Command-file, hook, and before-turn and after-turn lines bounded in time, count, and output | Missing (Open Problems). |
 | Before-turn lines not run again by a retry | Missing (Open Problems). |

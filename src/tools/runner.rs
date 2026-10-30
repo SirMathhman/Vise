@@ -25,6 +25,8 @@ pub struct WorkspaceTools {
     jobs: RefCell<Jobs>,
     enabled: RefCell<HashSet<&'static str>>,
     allowed_notes: RefCell<Option<Vec<String>>>,
+    /// Profiles the model wrote through the file tools since the user last selected them.
+    written_profiles: RefCell<HashSet<String>>,
 }
 
 impl WorkspaceTools {
@@ -35,6 +37,7 @@ impl WorkspaceTools {
             jobs: RefCell::new(Jobs::default()),
             enabled: RefCell::new(enabled),
             allowed_notes: RefCell::new(None),
+            written_profiles: RefCell::new(HashSet::new()),
         }
     }
 
@@ -55,17 +58,44 @@ impl WorkspaceTools {
             && folder.file_name().is_some_and(|name| name.eq_ignore_ascii_case(PROFILES_FOLDER))
     }
 
-    /// What the user is asked to approve. A write to a profile file says its hook lines run without a prompt, because the
-    /// file tools may write there only with that approval.
+    /// What the user is asked to approve. A write to a profile file opens with the warning that its hook lines run
+    /// without a prompt, then lists the hook lines the file would have and shows the whole file as it would be after the
+    /// write, because the file tools may write there only with that approval.
     fn approval_text(&self, invocation: &Invocation) -> String {
         let text = describe(invocation);
-        match invocation {
-            Invocation::CreateFile { path, .. } | Invocation::EditFile { path, .. } if self.is_profile_file(path) => {
-                format!("{text}
-This changes a profile, whose hook lines run without a prompt.")
-            }
-            _ => text,
+        let (Invocation::CreateFile { path, .. } | Invocation::EditFile { path, .. }) = invocation else {
+            return text;
+        };
+        if !self.is_profile_file(path) {
+            return text;
         }
+        let after = match invocation {
+            Invocation::CreateFile { content, .. } => content.clone(),
+            Invocation::EditFile { previous, new, .. } => confine_new(&self.cwd, path)
+                .ok()
+                .and_then(|target| std::fs::read_to_string(target).ok())
+                .map_or_else(String::new, |current| current.replacen(previous.as_str(), new, 1)),
+            _ => String::new(),
+        };
+        let hooks: Vec<&str> = after.lines().filter(|line| line.trim_start().starts_with("hook ")).collect();
+        let hooks = if hooks.is_empty() { "none".to_string() } else { hooks.join("
+") };
+        format!(
+            "This changes a profile, whose hook lines run without a prompt.
+Hook lines after this change:
+{hooks}
+
+{text}
+
+The whole file after this change:
+{after}"
+        )
+    }
+
+    /// The profile name a file-tool path names: its file name without `.txt`.
+    fn profile_name(path: &str) -> Option<String> {
+        let file = std::path::Path::new(path).file_name()?.to_string_lossy().into_owned();
+        Some(file.strip_suffix(".txt").unwrap_or(&file).to_string())
     }
 
     /// Whether `path` names a command file (startup or shutdown) in the working directory, whatever its spelling.
@@ -105,6 +135,14 @@ impl ToolRunner for WorkspaceTools {
         *self.allowed_notes.borrow_mut() = names;
     }
 
+    fn profile_written(&self, name: &str) -> bool {
+        self.written_profiles.borrow().contains(name)
+    }
+
+    fn confirm_profile(&self, name: &str) {
+        self.written_profiles.borrow_mut().remove(name);
+    }
+
     fn set_enabled(&self, name: &str, on: bool) -> Result<(), ToolError> {
         let spec = specs().iter().find(|spec| spec.name == name).ok_or_else(|| ToolError::UnknownTool(name.into()))?;
         let mut enabled = self.enabled.borrow_mut();
@@ -135,6 +173,13 @@ impl ToolRunner for WorkspaceTools {
         }
         if invocation.writes() && !approve(&self.approval_text(invocation)) {
             return Err(ToolError::Failed("the user declined this change".into()));
+        }
+        if let Invocation::CreateFile { path, .. } | Invocation::EditFile { path, .. } = invocation
+            && self.is_profile_file(path)
+            && let Some(name) = Self::profile_name(path)
+        {
+            // Recorded before the write, so a write that fails partway still leaves the profile unconfirmed.
+            self.written_profiles.borrow_mut().insert(name);
         }
         match invocation {
             Invocation::ListDirectory { path, depth } => list_directory::run(path, *depth, &self.cwd),
@@ -303,6 +348,9 @@ mod tests {
         assert!(declined.is_err());
         assert!(approved.is_ok() && written);
         assert!(asked.contains("hook lines run without a prompt"));
+        assert!(tools.profile_written("x"), "a subagent runs it without hooks until the user selects it");
+        tools.confirm_profile("x");
+        assert!(!tools.profile_written("x"));
     }
 
     #[test]
