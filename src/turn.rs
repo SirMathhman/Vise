@@ -8,7 +8,7 @@ use crate::interrupt;
 use crate::notes;
 use crate::profile;
 use crate::provider::types::{Event, Provider, SubagentRunner};
-use crate::session::{Conversation, HookLines, PartialTurn, Turn};
+use crate::session::{Conversation, HookLines, Message, PartialTurn, Turn};
 use crate::tools::specs;
 use crate::tools::types::{ToolError, ToolRunner};
 use std::io::{self, Write};
@@ -137,10 +137,10 @@ pub fn run_turn(
     subagent: &mut SubagentRunner,
     on_event: &mut dyn FnMut(Event),
 ) -> Result<(Turn, Option<Compaction>), ProviderError> {
-    let mut compaction = interrupt::work(|| compact_if_full(provider, conversation)).unwrap_or_else(|_| Err(stopped()))?;
+    let mut compaction = interrupt::work(|| compact_if_full(provider, conversation)).unwrap_or_else(|_| Err(stopped(&line)))?;
     let result = match request(provider, conversation, line.clone(), tools, approve, subagent, on_event) {
         Err(ProviderError::ContextFull) => {
-            let compacted = interrupt::work(|| compact(provider, conversation)).unwrap_or_else(|_| Err(stopped()))?;
+            let compacted = interrupt::work(|| compact(provider, conversation)).unwrap_or_else(|_| Err(stopped(&line)))?;
             compaction = Some(compacted);
             request(provider, conversation, line, tools, approve, subagent, on_event)
         }
@@ -163,10 +163,10 @@ fn request(
     interrupt::tracked(|| provider.complete_streaming(conversation.messages(), line, tools, approve, subagent, on_event))
 }
 
-/// A stop with nothing to record, such as a press while the conversation was being compacted. The provider did not
-/// report this one, so the turn reached nothing and the callers record only the marker.
-fn stopped() -> ProviderError {
-    ProviderError::Interrupted { stopped: PartialTurn::default() }
+/// A stop before the turn was sent, such as a press while the conversation was being compacted. The provider did not
+/// report this one, so the turn reached nothing but the user's message, which is kept with the marker.
+fn stopped(line: &str) -> ProviderError {
+    ProviderError::Interrupted { stopped: PartialTurn::new(vec![Message::User(line.to_string())], String::new()) }
 }
 
 #[cfg(test)]

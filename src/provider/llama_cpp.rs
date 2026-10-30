@@ -338,7 +338,16 @@ impl Provider for LlamaCpp {
         let mut wrote = false;
         for _ in 0..MAX_TOOL_ROUNDS {
             let wire = wire_messages(&catalogue, history.iter().chain(&new))?;
-            let sent = send(&self.api_key, &self.model.borrow(), &wire, Some(&grammar), &mut *on_event)?;
+            let sent = match send(&self.api_key, &self.model.borrow(), &wire, Some(&grammar), &mut *on_event) {
+                Ok(sent) => sent,
+                // `send` knows only the reply it reached. The user message and finished rounds are this turn's.
+                Err(ProviderError::Interrupted { stopped }) => {
+                    return Err(ProviderError::Interrupted {
+                        stopped: PartialTurn::new(new, stopped.reply).with_requests(requests),
+                    });
+                }
+                Err(err) => return Err(err),
+            };
             let Sent { content, prompt_tokens, timings } = sent;
             requests.push(RequestRecord {
                 round: requests.len() as u64 + 1,
