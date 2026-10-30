@@ -109,9 +109,14 @@ pub fn compact(provider: &dyn Provider, conversation: &mut Conversation) -> Resu
     }
 }
 
-/// Compacts the conversation before a turn when its last prompt has reached the budget.
+/// Compacts the conversation before a turn when its last prompt has reached the budget. A listed model with no
+/// context size is not loaded yet: the turn's request loads it, so there is nothing to compact against until then.
 pub fn compact_if_full(provider: &dyn Provider, conversation: &mut Conversation) -> Result<Option<Compaction>, ProviderError> {
-    if conversation.needs_compaction(provider.context_size()?) {
+    let size = match provider.context_size() {
+        Err(ProviderError::ContextSizeUnknown { .. }) => return Ok(None),
+        size => size?,
+    };
+    if conversation.needs_compaction(size) {
         Ok(Some(compact(provider, conversation)?))
     } else {
         Ok(None)
@@ -137,5 +142,41 @@ pub fn run_turn(
             Ok((turn, compaction))
         }
         result => Ok((result?, compaction)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::environment::Environment;
+    use std::path::PathBuf;
+
+    struct Unloaded;
+
+    impl Provider for Unloaded {
+        fn complete(
+            &self,
+            _history: &[crate::session::Message],
+            _input: String,
+            _runner: &dyn ToolRunner,
+            _approve: &mut dyn FnMut(&str) -> bool,
+            _subagent: &mut SubagentRunner,
+        ) -> Result<Turn, ProviderError> {
+            unreachable!()
+        }
+
+        fn context_size(&self) -> Result<u64, ProviderError> {
+            Err(ProviderError::ContextSizeUnknown { expected: "model".into() })
+        }
+
+        fn summarize(&self, _history: &[crate::session::Message]) -> Result<String, ProviderError> {
+            unreachable!()
+        }
+    }
+
+    #[test]
+    fn an_unloaded_model_does_not_stop_the_turn_before_it_is_sent() {
+        let mut conversation = Conversation::new(&Environment { cwd: PathBuf::from("C:/work") });
+        assert!(matches!(compact_if_full(&Unloaded, &mut conversation), Ok(None)));
     }
 }
