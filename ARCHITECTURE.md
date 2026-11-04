@@ -6,11 +6,11 @@ Vise is a Bun + TypeScript command-line application. The target shape is a small
 
 ## Definitions
 
-- **Core**: the pure logic that turns an input line into a result (an echo, and later commands). Core code takes data in and returns data out. It never reads stdin, writes stdout, reads the environment, or touches the clock or filesystem without being passed the capability.
+- **Core**: the pure logic that turns an input line into a result (line classification and command output, and later the command state). Core code takes data in and returns data out. It never reads stdin, writes stdout, reads the environment, or touches the clock or filesystem without being passed the capability.
 - **Frontend**: code that connects the core to a medium. The terminal frontend is the only one today. It owns readline, prompts, and stream handling.
 - **Composition root**: the single entry point that wires a frontend to the core and reads the process environment. It is the only place that touches `process`.
 - **Session**: one run of the REPL, from start until `/exit` or end of input.
-- **Command**: a line whose trimmed text starts with `/`. Commands are interpreted by the core and never sent to the model. The set is `/exit` and `/context` today; an unknown `/` line is reported by the core as an unknown command.
+- **Command**: a line whose trimmed text starts with `/`. Commands are interpreted by the core and never sent to the model. The set is `/exit` and `/context` today; the core classifies any other `/` line as `unknown-command`, and the frontend reports it as an error.
 - **Exit command**: a line whose trimmed text is `/exit`. The core's line classifier recognises it; after it, the session accepts no further lines, even if they arrived in the same chunk of input. Bare words such as `exit` or `quit` are ordinary lines.
 - **Context command**: a line whose trimmed text is `/context`. It reports the prompt tokens the provider counted for the most recent request that reported usage, out of the model's context window. Both numbers come from the provider, not from an estimate. Before any request has reported usage it reports that no request has been sent.
 - **Line**: one unit of input without its terminator. Lines are processed in order and each is handled at most once.
@@ -46,6 +46,8 @@ index.ts  ->  src/openrouter.ts  ->  src/core
 
 Each source file has one responsibility. Entry points contain wiring only: they read the environment, construct the functions, and call exported functions. Test files live next to what they test, not inside the entry point.
 
+The composition root supplies the reply function and the context-window lookup explicitly. The frontend has no default model, so a session that forgets to pass one fails instead of silently echoing.
+
 Size and style limits, to be enforced by the linter once one is added:
 
 - at most 100 lines per function,
@@ -56,15 +58,14 @@ Recursion is avoided in core. When a function would need to call a function that
 
 ## Potential Problems
 
-- **Stream-level behaviour is easy to get wrong.** Readline delivers every line in a chunk synchronously, so calling `close()` from inside a `line` handler does not stop the remaining lines of that chunk. Tests must cover lines arriving together in one chunk, not only one chunk per line.
+- **Stream-level behaviour is easy to get wrong.** Readline delivers every line in a chunk at once, so lines already buffered after `/exit` are still yielded by the loop unless the loop stops at the exit line. Tests must cover lines arriving together in one chunk, not only one chunk per line.
+- **The frontend has default model stand-ins.** `runRepl` defaults its reply function to an echo and its context-window lookup to `undefined`, so a caller that omits them gets fake model behaviour without an error. The composition root should pass both explicitly.
 - **Unhandled stream errors.** If the input stream emits an error, the session promise never settles and the process waits. The frontend must listen for `error` and settle with a failure.
 - **No write-error handling.** A closed or broken output stream (for example, a pipe closed by the reader) is not reported.
 - **Partial replies stay on screen.** When a model stream fails (an `{"error": ...}` event, or the connection ending before `data: [DONE]`), `streamChat` throws and `runRepl` drops the user line from the history, so no truncated answer is recorded. The text already printed is not marked as incomplete, and nothing tells the user it was discarded.
 - **Retired exit words reach the model.** `exit` and `quit` are no longer commands, so a user who types them from habit sends them to OpenRouter as a message, spends a request, and gets a reply. The session stays open until `/exit` or end of input. The frontend should say which command ends the session when it starts.
 - **Command state lives in the frontend.** The last prompt-token count and the context-window lookup are kept in `runRepl`'s closure, beside the readline loop. The classifier and the context line are in `src/core/commands.ts`, but the state they act on is not yet in the core (see Future Work).
-- **`/context` fails as a whole.** The context window is fetched from the model listing on every `/context`, with no cache. If that lookup fails, the user sees only `error: ...`, even though the used count is known, and the message does not say that `/context` was the failing command.
 - **`/context` numbers may not match the last line.** The count is from the last request that reported usage. A later request that failed is removed from the history but leaves the earlier count in place, and the output does not say which request it belongs to.
-- **A usage event can be misread.** A usage event without `prompt_tokens` sets the count to `undefined`, so `/context` reports "no request sent yet" after requests have been sent. A usage event that also carries a text delta loses the delta, because `parseEventLine` returns the usage first.
 - **A malformed SSE line surfaces as a bare `JSON Parse error`.** It does not say which line or which request failed, which breaks the error rule in the Errors section.
 - **No timeout and no cancellation.** A request that never completes leaves the prompt blocked with no way to abort it. `streamChat` should accept an `AbortSignal`, and the REPL should pass one that Ctrl+C triggers.
 - **History grows without bound.** Every line and reply is appended and resent in full, so each request grows with the session, eventually exceeding the model's context window and raising cost. No `max_tokens` is set, so a single reply is also unbounded.
@@ -75,9 +76,10 @@ Recursion is avoided in core. When a function would need to call a function that
 
 ## Security Concerns
 
-Trust boundaries: everything read from stdin is untrusted text, and every line is sent to OpenRouter, a third party. The model's reply is also untrusted text. Vise has no file writes and no process spawning. The API key comes from `.env` and must never be echoed or logged. Only the echo path outputs were reviewed before the model was added; the terminal-injection and length controls below still apply to model replies.
+Trust boundaries: everything read from stdin is untrusted text, and every line is sent to OpenRouter, a third party. The model's reply is also untrusted text. Vise has no file writes and no process spawning. The API key comes from `.env` and must never be echoed or logged.
 
-- **Terminal escape injection.** Input is echoed back verbatim. A line containing ANSI or other control sequences can change the terminal's state (title, colours, cursor, clipboard on some terminals). The ideal control is to strip or escape control characters other than tab before echoing. This control is **missing**.
+- **Terminal escape injection.** In a terminal, readline echoes what the user types, and model replies are written verbatim. A line or reply containing ANSI or other control sequences can change the terminal's state (title, colours, cursor, clipboard on some terminals). The ideal control is to strip or escape control characters other than tab (and newline in replies) before they reach the output. This control is **missing**.
+- **Prompt injection.** Model replies and earlier replies resent in history can contain instructions that the model then follows, and text from a pasted file or web page can carry them too. Today the model has no tools, so an injected instruction can only change the text shown. This is the risk to design for before any tool exists: any action taken from model output must be confirmed by the user, and must not be reachable from text the model produced alone. This control is **missing**.
 - **Unbounded input.** A very long line or an unending stream is read into memory without a limit. The ideal control is a maximum line length, with a defined response when it is exceeded. This control is **missing**.
 - **Model output is untrusted.** Model replies are written to the terminal as they stream, so they can carry the same escape sequences as input. The same control applies: strip or escape control characters other than tab and newline before writing. This control is **missing**.
 - **Server error text is untrusted.** Error bodies from OpenRouter are printed verbatim in `error:` lines, with the same escape-sequence risk. They should be truncated and sanitized the same way. This control is **missing**.
@@ -90,8 +92,8 @@ Trust boundaries: everything read from stdin is untrusted text, and every line i
 
 - Move command interpretation into `src/core` as pure functions over `(state, line) -> (state, output)`, so the REPL is a thin driver. The line classifier is done (`src/core/commands.ts`); the REPL acts on its result. Next is moving the command state into the core.
 - Move the context state into the core as well: the core keeps the last reported prompt tokens, receives usage through the same state transition as text, and formats the context line from `(used, total)`. The context window becomes a value the core asks for through a port, cached for the session, so `/context` can print the used count when the lookup fails.
-- Put the ports (`Reply`, `ContextWindow`) and the `Usage` type in `src/core`, so the frontend and the model adapter both depend on the core and not on each other.
-- Add a linter that enforces the size and naming limits, and a formatter. Both are part of the first change that adds more than one command.
+- Put the ports (`Reply`, `ContextWindow`) in `src/core`, beside `Usage`, which already lives in `src/core/messages.ts`. The frontend and the model adapter then both depend on the core and not on each other, and the `echoReply` default leaves the frontend.
+- Add a linter that enforces the size and naming limits, and a formatter. The project already has more than one command, so this is the next change, not a later one.
 - Make the session a function of its inputs: the readline interface is created by the frontend and passed where needed, so tests can drive a session without touching real streams.
 - Introduce a structured result type for command outcomes (success, usage error, unknown command) instead of ad-hoc strings, with errors that say what failed, where, why, and what the user can do.
 - Give the model adapter a structured error type (`ModelError` with kinds such as `http`, `stream`, `parse`, `truncated`) so each failure says what failed, where, why, and what to do.
@@ -104,7 +106,7 @@ Trust boundaries: everything read from stdin is untrusted text, and every line i
 
 These are the obvious concerns only. Measure with a profiler before optimizing.
 
-- Each echoed line is written with a separate `write` call. Fine at interactive speed; large piped inputs would benefit from buffering output per chunk.
-- Long lines are held whole in memory before they are echoed. This is bounded only by the line-length limit once it exists.
+- Each streamed text delta is written with a separate `write` call. Fine at interactive speed; large replies would benefit from buffering output per chunk.
+- Long lines are held whole in memory and in the history. This is bounded only by the line-length limit once it exists.
 - `/context` fetches the full model listing on every call, which is a large response for one number. Cache the context window for the session.
 - Startup cost of `bun run` is dominated by the runtime, not by this code.
