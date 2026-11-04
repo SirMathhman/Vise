@@ -10,7 +10,7 @@ Vise is a Bun + TypeScript command-line application. The target shape is a small
 - **Frontend**: code that connects the core to a medium. The terminal frontend is the only one today. It owns readline, prompts, and stream handling.
 - **Composition root**: the single entry point that wires a frontend to the core and reads the process environment. It is the only place that touches `process`.
 - **Session**: one run of the REPL, from start until `/exit` or end of input.
-- **Exit word**: a line whose trimmed text is `/exit`. After an exit word, the session accepts no further lines, even if they arrived in the same chunk of input.
+- **Exit command**: a line whose trimmed text is `/exit`. The core's line classifier recognises it; after it, the session accepts no further lines, even if they arrived in the same chunk of input. Bare words such as `exit` or `quit` are ordinary lines. Lines beginning with `/` are reserved for commands.
 - **Line**: one unit of input without its terminator. Lines are processed in order and each is handled at most once.
 
 Invariants:
@@ -27,20 +27,21 @@ Target layout:
 ```
 index.ts            composition root: wires process.stdin/stdout and OPENROUTER_API_KEY to the REPL and the model (entry point, keeps `bun run index.ts`)
 src/openrouter.ts   model adapter: streams a chat completion from OpenRouter over HTTPS (performs network I/O, passed to the REPL as a function)
-src/core/           pure command interpretation (no node: imports except types)
+src/core/           pure line classification and command interpretation (no node: imports except types)
 src/repl/           terminal frontend: readline, prompt, session lifecycle
-tests/              tests that exercise the public functions of core and repl
+*.test.ts           beside the module each one tests (no separate tests/ folder)
 ```
 
 Dependency direction is one way only:
 
 ```
 index.ts  ->  src/repl  ->  src/core
+index.ts  ->  src/openrouter.ts  ->  src/core
 ```
 
-`src/core` imports nothing from `src/repl` or `index.ts`. `src/repl` may import `src/core`, never the reverse. Tests may import any module. There are no circular imports.
+`src/core` imports nothing from `src/repl`, `src/openrouter.ts`, or `index.ts`. `src/repl` and `src/openrouter.ts` may import `src/core`, never the reverse. Tests may import any module. There are no circular imports.
 
-Each source file has one responsibility. Entry points never contain logic; they only call exported functions. Test files live next to what they test or in `tests/`, not inside the entry point.
+Each source file has one responsibility. Entry points contain wiring only: they read the environment, construct the functions, and call exported functions. Test files live next to what they test, not inside the entry point.
 
 Size and style limits, to be enforced by the linter once one is added:
 
@@ -55,11 +56,11 @@ Recursion is avoided in core. When a function would need to call a function that
 - **Stream-level behaviour is easy to get wrong.** Readline delivers every line in a chunk synchronously, so calling `close()` from inside a `line` handler does not stop the remaining lines of that chunk. Tests must cover lines arriving together in one chunk, not only one chunk per line.
 - **Unhandled stream errors.** If the input stream emits an error, the session promise never settles and the process waits. The frontend must listen for `error` and settle with a failure.
 - **No write-error handling.** A closed or broken output stream (for example, a pipe closed by the reader) is not reported.
-- **Partial replies stay on screen.** When a model stream fails (an `{"error": ...}` event, or the connection ending before `data: [DONE]`), `streamChat` throws and `runRepl` drops the line from the history, so no truncated answer is recorded. The text already printed is not marked as incomplete.
+- **Partial replies stay on screen.** When a model stream fails (an `{"error": ...}` event, or the connection ending before `data: [DONE]`), `streamChat` throws and `runRepl` drops the user line from the history, so no truncated answer is recorded. The text already printed is not marked as incomplete, and nothing tells the user it was discarded.
+- **Retired exit words reach the model.** `exit` and `quit` are no longer commands, so a user who types them from habit sends them to OpenRouter as a message, spends a request, and gets a reply. The session stays open until `/exit` or end of input. The frontend should say which command ends the session when it starts, and unknown `/` commands should be reported by the core rather than sent.
 - **A malformed SSE line surfaces as a bare `JSON Parse error`.** It does not say which line or which request failed, which breaks the error rule in the Errors section.
 - **No timeout and no cancellation.** A request that never completes leaves the prompt blocked with no way to abort it. `streamChat` should accept an `AbortSignal`, and the REPL should pass one that Ctrl+C triggers.
 - **History grows without bound.** Every line and reply is appended and resent in full, so each request grows with the session, eventually exceeding the model's context window and raising cost. No `max_tokens` is set, so a single reply is also unbounded.
-- **Mid-stream failure leaves a partial reply on screen only.** When a reply throws, `runRepl` removes the user line from history, which keeps history consistent with what the model saw. The partial text stays visible on the terminal but is not in history, and nothing tells the user the partial text was discarded.
 - **Write errors are not handled inside `runRepl`.** An error thrown by `output.write` inside the `try` is caught and reported by writing to the same broken stream, which can throw again out of `runRepl`.
 - **No linter or formatter configured.** Style and size rules above are not enforced, so they will drift.
 - **Unpinned development dependency.** `@types/bun` is set to `latest`, so type checks can change without a code change.
@@ -80,7 +81,7 @@ Trust boundaries: everything read from stdin is untrusted text, and every line i
 
 ## Future Work
 
-- Move command interpretation into `src/core` as pure functions over `(state, line) -> (state, output)`, so the REPL is a thin driver.
+- Move command interpretation into `src/core` as pure functions over `(state, line) -> (state, output)`, so the REPL is a thin driver. The first step is a pure line classifier in `src/core` that returns `{ kind: "exit" }` for the exit command and `{ kind: "message", text }` otherwise; the REPL acts on that result and no longer compares strings itself.
 - Add a linter that enforces the size and naming limits, and a formatter. Both are part of the first change that adds more than one command.
 - Make the session a function of its inputs: the readline interface is created by the frontend and passed where needed, so tests can drive a session without touching real streams.
 - Introduce a structured result type for command outcomes (success, usage error, unknown command) instead of ad-hoc strings, with errors that say what failed, where, why, and what the user can do.
