@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { Usage } from "./core/messages.ts";
+import type { ToolCall, Usage } from "./core/messages.ts";
 import { err, ok, type Result } from "./core/result.ts";
 import { modelContextWindow, streamChat } from "./openrouter.ts";
 
@@ -88,6 +88,29 @@ test("reports the prompt tokens from the usage event", async () => {
   }
   expect(parts).toEqual([ok("Hi")]);
   expect(usages).toEqual([{ promptTokens: 13 }]);
+});
+
+test("assembles a tool call from its streamed pieces", async () => {
+  const frame = (delta: object) => `data: ${JSON.stringify({ choices: [{ delta }] })}\n\n`;
+  const body = [
+    frame({ tool_calls: [{ index: 0, id: "call_1", function: { name: "list_files", arguments: '{"path":' } }] }),
+    frame({ tool_calls: [{ index: 0, function: { arguments: '"."}' } }] }),
+    "data: [DONE]\n\n",
+  ].join("");
+  const fakeFetch = async () => new Response(body, { status: 200 });
+  const calls: ToolCall[] = [];
+  const parts: Result<string>[] = [];
+  for await (const part of streamChat({
+    apiKey: "key",
+    model: "anthropic/claude-haiku-5.5",
+    messages: [{ role: "user", content: "hi" }],
+    fetch: fakeFetch,
+    onToolCall: (call) => calls.push(call),
+  })) {
+    parts.push(part);
+  }
+  expect(parts).toEqual([]);
+  expect(calls).toEqual([{ id: "call_1", name: "list_files", arguments: '{"path":"."}' }]);
 });
 
 test("marks only the last message as a prompt-cache breakpoint", async () => {

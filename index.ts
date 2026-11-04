@@ -1,5 +1,6 @@
 import { modelContextWindow, streamChat } from "./src/openrouter.ts";
 import { runRepl } from "./src/repl/repl.ts";
+import { runTool } from "./src/tools/run-tool.ts";
 
 const MODEL = "anthropic/claude-haiku-5.5";
 
@@ -12,8 +13,9 @@ if (import.meta.main) {
   const result = await runRepl(
     process.stdin,
     process.stdout,
-    (messages, onUsage) => streamChat({ apiKey, model: MODEL, messages, onUsage }),
+    (messages, onUsage, onToolCall) => streamChat({ apiKey, model: MODEL, messages, onUsage, onToolCall }),
     () => modelContextWindow({ model: MODEL }),
+    runTool(process.cwd()),
   );
   if (!result.ok) {
     console.error(`error: ${result.error.message}`);

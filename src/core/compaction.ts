@@ -25,14 +25,17 @@ export function compactionRequest(history: ChatMessage[]): ChatMessage[] {
   return [...history, { role: "user", content: COMPACT_REQUEST }];
 }
 
-// The new history: the summary, then the most recent messages. If the first kept
-// message is also a user message, it is merged with the summary so roles alternate.
+// The new history: the summary, then the most recent messages from the first user message
+// on, so the kept messages never begin with a tool result. If that first user message is
+// kept, the summary is merged into it so roles alternate.
 export function compactedHistory(summary: string, history: ChatMessage[]): ChatMessage[] {
-  const [first, ...rest] = history.slice(-KEEP_RECENT);
+  const recent = history.slice(-KEEP_RECENT);
+  const start = recent.findIndex((message) => message.role === "user");
+  const [first, ...rest] = start < 0 ? [] : recent.slice(start);
   if (first?.role === "user") {
     return [{ role: "user", content: `${summary}\n\n${first.content}` }, ...rest];
   }
-  return [{ role: "user", content: summary }, ...history.slice(-KEEP_RECENT)];
+  return [{ role: "user", content: summary }];
 }
 
 // True when the last prompt used most of the model's context window.
@@ -46,7 +49,7 @@ export async function compact(conversation: Conversation, reply: Reply): Promise
   if (conversation.history.length === 0) return err(new Error("nothing to compact"));
   let summary = "";
   try {
-    for await (const chunk of reply(compactionRequest(conversation.history), () => {})) {
+    for await (const chunk of reply(compactionRequest(conversation.history), () => {}, () => {})) {
       if (!chunk.ok) return chunk;
       summary += chunk.value;
     }

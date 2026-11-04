@@ -187,6 +187,29 @@ test("ends on /exit even while the input stream stays open", async () => {
   expect(result.ok).toBe(true);
 });
 
+test("runs a tool the model asks for and sends its result back", async () => {
+  const seen: string[] = [];
+  const reply: Reply = async function* (messages, _onUsage, onToolCall) {
+    const last = messages.at(-1);
+    seen.push(messages.map((message) => `${message.role}:${message.content}`).join(" | "));
+    if (last?.role === "user") {
+      onToolCall({ id: "c1", name: "list_files", arguments: '{"path":"."}' });
+      return;
+    }
+    yield ok("done");
+  };
+  let written = "";
+  const output = new Writable({
+    write(chunk, _encoding, done) {
+      written += chunk.toString();
+      done();
+    },
+  });
+  await runRepl(Readable.from(["list\n"]), output, reply, undefined, async () => "a.txt");
+  expect(written).toContain("tool: list_files . depth 2");
+  expect(seen.at(-1)).toBe("user:list | assistant: | tool:a.txt");
+});
+
 test("ends with an error when the output stream fails", async () => {
   const output = new Writable({
     write(_chunk, _encoding, done) {
