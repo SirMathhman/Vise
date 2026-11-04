@@ -9,7 +9,7 @@ import {
   type Step,
 } from "../core/compaction.ts";
 import type { ChatMessage, ContextWindow, Reply, ToolCall, Usage } from "../core/messages.ts";
-import { describeToolCall, type ToolRunner } from "../core/tools.ts";
+import { describeToolCall, editPreview, needsApproval, type ToolRunner } from "../core/tools.ts";
 import { err, ok, type Result } from "../core/result.ts";
 
 export type { ContextWindow, Reply } from "../core/messages.ts";
@@ -30,6 +30,15 @@ async function showContext(
     else output.write(`error: /context could not read the model's window: ${result.error.message}\n`);
   }
   output.write(`${contextLine(conversation.promptTokens, total, conversation.compacted)}\n`);
+}
+
+// Writes a question and resolves with the next line of input, or "" if input ends first.
+// It reads from the same lines the session reads, so a line typed while the model was
+// answering is taken as the answer.
+async function askLine(lines: AsyncIterator<string>, output: Writable, question: string): Promise<string> {
+  output.write(question);
+  const next = await lines.next();
+  return next.done ? "" : next.value;
 }
 
 // What one request to the model produced: its text, the calls it asked for, and its usage.
@@ -90,9 +99,10 @@ export async function runRepl(
     if (step.notice) output.write(`${step.notice}\n`);
   };
   try {
+    const lines = rl[Symbol.asyncIterator]();
     rl.prompt();
-    for await (const line of rl) {
-      const input = classifyLine(line);
+    for (let next = await lines.next(); !next.done; next = await lines.next()) {
+      const input = classifyLine(next.value);
       if (input.kind === "exit") break;
       if (input.kind === "context") {
         await showContext(output, contextWindow, conversation);
@@ -133,6 +143,15 @@ export async function runRepl(
         }
         for (const call of round.calls) {
           output.write(`\n${describeToolCall(call)}\n`);
+          // An edit is written only when the user answers y.
+          const preview = needsApproval(call) ? editPreview(call) : undefined;
+          if (preview !== undefined) {
+            const answer = await askLine(lines, output, `${preview}\napply? (y/n) `);
+            if (!/^y(es)?$/i.test(answer.trim())) {
+              conversation.history.push({ role: "tool", toolCallId: call.id, content: "the user declined this edit" });
+              continue;
+            }
+          }
           conversation.history.push({ role: "tool", toolCallId: call.id, content: await tools(call) });
         }
       }

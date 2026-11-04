@@ -3,6 +3,7 @@ import { err, ok, type Result } from "./result.ts";
 
 export const LIST_FILES = "list_files";
 export const READ_FILE = "read_file";
+export const EDIT_FILE = "edit_file";
 const DEFAULT_DEPTH = 2;
 const MAX_DEPTH = 5;
 export const MAX_LINES = 500;
@@ -51,6 +52,24 @@ export const readFileSpec = {
   },
 };
 
+export const editFileSpec = {
+  type: "function",
+  function: {
+    name: EDIT_FILE,
+    description:
+      "Replace the first occurrence of `previous` in an existing file inside the working directory with `replacement`. The match is exact, including line endings and spacing. The user must approve each edit before it is written. Files cannot be created.",
+    parameters: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "File to edit, relative to the working directory." },
+        previous: { type: "string", description: "Exact text to replace. Must not be empty." },
+        replacement: { type: "string", description: "Text to put in its place." },
+      },
+      required: ["path", "previous", "replacement"],
+    },
+  },
+};
+
 export interface ListFilesArgs {
   path: string;
   depth: number;
@@ -60,6 +79,12 @@ export interface ReadFileArgs {
   path: string;
   start: number;
   end: number;
+}
+
+export interface EditFileArgs {
+  path: string;
+  previous: string;
+  replacement: string;
 }
 
 // Runs a tool call and returns the text to send back to the model. Failures come back
@@ -72,6 +97,8 @@ interface RawArgs {
   depth?: unknown;
   start?: unknown;
   end?: unknown;
+  previous?: unknown;
+  replacement?: unknown;
 }
 
 function readArgs(raw: string): Result<RawArgs> {
@@ -108,8 +135,33 @@ export function parseReadFileArgs(raw: string): Result<ReadFileArgs> {
   return ok({ path, start, end });
 }
 
+// Reads the arguments the model wrote. An empty `previous` is refused, so the tool cannot create files.
+export function parseEditFileArgs(raw: string): Result<EditFileArgs> {
+  const args = readArgs(raw);
+  if (!args.ok) return args;
+  const { path, previous, replacement } = args.value;
+  if (typeof path !== "string") return err(new Error("path must be a string"));
+  if (typeof previous !== "string" || previous === "") return err(new Error("previous must be a non-empty string"));
+  if (typeof replacement !== "string") return err(new Error("replacement must be a string"));
+  return ok({ path, previous, replacement });
+}
+
 function isLine(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 1;
+}
+
+// Edits are written only after the user approves them.
+export function needsApproval(call: ToolCall): boolean {
+  return call.name === EDIT_FILE;
+}
+
+// The change shown to the user before they approve it. Undefined when the arguments are
+// invalid, in which case the tool reports that without writing anything.
+export function editPreview(call: ToolCall): string | undefined {
+  if (call.name !== EDIT_FILE) return undefined;
+  const args = parseEditFileArgs(call.arguments);
+  if (!args.ok) return undefined;
+  return `edit ${args.value.path}\n--- previous\n${args.value.previous}\n+++ replacement\n${args.value.replacement}`;
 }
 
 // The line shown to the user when the model makes a call.
@@ -123,6 +175,11 @@ export function describeToolCall(call: ToolCall): string {
     const args = parseReadFileArgs(call.arguments);
     if (!args.ok) return `tool: ${READ_FILE} (invalid arguments)`;
     return `tool: ${READ_FILE} ${args.value.path} lines ${args.value.start}-${args.value.end}`;
+  }
+  if (call.name === EDIT_FILE) {
+    const args = parseEditFileArgs(call.arguments);
+    if (!args.ok) return `tool: ${EDIT_FILE} (invalid arguments)`;
+    return `tool: ${EDIT_FILE} ${args.value.path}`;
   }
   return `tool: ${call.name} (unknown tool)`;
 }

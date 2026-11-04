@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { ChatMessage, ToolCall, Usage } from "./core/messages.ts";
 import { err, ok, type Result } from "./core/result.ts";
-import { listFilesSpec, readFileSpec } from "./core/tools.ts";
+import { editFileSpec, listFilesSpec, readFileSpec } from "./core/tools.ts";
 
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 const MODELS_ENDPOINT = "https://openrouter.ai/api/v1/models";
@@ -137,7 +137,7 @@ async function postChat(options: StreamOptions): Promise<Result<ReadableStream<U
       body: JSON.stringify({
         model: options.model,
         messages: wireMessages(options.messages),
-        tools: [listFilesSpec, readFileSpec],
+        tools: [listFilesSpec, readFileSpec, editFileSpec],
         stream: true,
       }),
     });

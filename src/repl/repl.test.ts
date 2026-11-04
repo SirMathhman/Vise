@@ -210,6 +210,33 @@ test("runs a tool the model asks for and sends its result back", async () => {
   expect(seen.at(-1)).toBe("user:list | assistant: | tool:a.txt");
 });
 
+test("an edit is run only when the user answers y", async () => {
+  const reply: Reply = async function* (messages, _onUsage, onToolCall) {
+    if (messages.at(-1)?.role === "user") {
+      onToolCall({ id: "e1", name: "edit_file", arguments: '{"path":"f.txt","previous":"a","replacement":"b"}' });
+      return;
+    }
+    yield ok("done");
+  };
+  const ran: string[] = [];
+  const output = new Writable({
+    write(_chunk, _encoding, done) {
+      done();
+    },
+  });
+  await runRepl(Readable.from(["go\n", "n\n"]), output, reply, undefined, async (call) => {
+    ran.push(call.name);
+    return "edited f.txt";
+  });
+  expect(ran).toEqual([]);
+  const approved: string[] = [];
+  await runRepl(Readable.from(["go\n", "y\n"]), output, reply, undefined, async (call) => {
+    approved.push(call.name);
+    return "edited f.txt";
+  });
+  expect(approved).toEqual(["edit_file"]);
+});
+
 test("ends with an error when the output stream fails", async () => {
   const output = new Writable({
     write(_chunk, _encoding, done) {
