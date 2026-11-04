@@ -23,6 +23,7 @@ Invariants:
 4. Behaviour depends only on the input stream and the arguments passed in, so the same input always gives the same output. The model adapter and the context-window lookup are the exceptions: their replies come from the network, so the adapter must make every reply it returns either complete or an error, never a silently truncated success, and the lookup must do the same.
 5. Commands never reach the model. A `/` line is consumed by the core whether or not it is known.
 6. A session releases its streams before it returns. On every exit path (end of input, `/exit`, a stream error, or a reply that throws), the readline interface is closed and the frontend's error listeners are removed, so the process can end without waiting for more input.
+7. A stream error that arrives after a session has returned is reported by the composition root with a readable message and exit code 1. It is never an uncaught exception with a stack trace.
 
 ## Structure
 
@@ -75,7 +76,8 @@ Recursion is avoided in core. When a function would need to call a function that
 - **Response schemas can drift from OpenRouter.** The zod schemas in `src/openrouter.ts` are hand-written, and the tests use fixtures written from the same assumptions, so a change on OpenRouter's side passes the tests and fails only at run time. Specific risks: `choices` and `usage` are `optional`, not nullable, so a `null` there fails the whole stream; `ModelListingSchema` requires every entry of `data` to match, so one model with a `null` `context_length` makes `/context` fail for every model; and the error text from zod is printed verbatim, which is the escape-sequence risk under Security Concerns. The schemas and the hand-declared types (`StreamEvent`, `Usage`) are two sources of truth for the same shapes. The error also does not say which request failed.
 - **No timeout and no cancellation.** A request that never completes leaves the prompt blocked with no way to abort it. `streamChat` should accept an `AbortSignal`, and the REPL should pass one that Ctrl+C triggers.
 - **History grows without bound.** Every line and reply is appended and resent in full, so each request grows with the session, eventually exceeding the model's context window and raising cost. No `max_tokens` is set, so a single reply is also unbounded.
-- **A reply that throws is caught at the reply boundary.** `runRepl` turns a thrown reply error into a failure for that turn, the same as an `err` value. The adapters return `err` values and do not throw, so this path is a safety net, not the normal route.
+- **A reply that throws is caught at the reply boundary.** `runRepl` turns a thrown reply error into a failure for that turn, the same as an `err` value. The adapters return `err` values and do not throw, so this path is a safety net, not the normal route. The catch assumes the thrown value is an `Error`: a thrown string prints `error: undefined` (verified). A thrown value must be normalised to an `Error` before it becomes a failure. The `ContextWindow` call in `showContext` sits outside that boundary, so a throwing context lookup would reject `runRepl` instead of returning an error for `/context`.
+- **A stream error after the session has returned is uncaught.** The `finally` removes the frontend's error listeners on input and output, so an `error` emitted on either stream after `runRepl` returns has no listener. Bun then exits with status 1 and prints a stack trace (verified with a stream that errors after `/exit`, and with output that errors after `/exit`). The process does end, and the failure is not lost, but it is not reported as a session failure and no message is shaped for the user. Invariant 7 is the target.
 - **No formatter configured.** The linter enforces size and correctness rules, but not formatting, so style can still drift between files.
 - **Unpinned development dependency.** `@types/bun` is set to `latest`, so type checks can change without a code change.
 - **`typescript` is only a peer dependency.** A fresh install does not provide the compiler the project's checks need unless the user has it installed.
@@ -109,6 +111,8 @@ Trust boundaries: everything read from stdin is untrusted text, and every line i
 - Add a maximum line length and control-character handling before echo, applied to input and to model output.
 - Bound the history sent per request, and set `max_tokens`.
 - Pin dev dependencies to specific versions, and declare `typescript` as a dev dependency so checks run on a clean install.
+- Handle late stream errors: `runRepl` accepts an `onLateError` callback from the composition root, and the frontend keeps a listener on input and output after the session ends that forwards to it. `index.ts` prints the error and exits 1. This meets Invariant 7 without leaving the streams unobserved.
+- Normalise thrown values at the reply boundary (`error instanceof Error ? error : new Error(String(error))`), and bring the context-window lookup inside the same boundary.
 
 ## Performance
 
