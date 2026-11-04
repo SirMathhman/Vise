@@ -9,17 +9,20 @@ export interface Inside {
   rel: string;
 }
 
-// Resolves `path` under `root` and checks that it stays inside `root`. The check is done
-// on the real paths, so a link inside the working directory cannot lead outside it.
+// Resolves `path` under `root` and checks that it stays inside `root` and names no hidden
+// entry. Both checks are done on the typed path and on the real paths, so a link inside
+// the working directory can neither lead outside it nor reach a hidden entry.
 export async function resolveInside(root: string, path: string): Promise<Result<Inside>> {
   const target = resolve(root, path);
   const rel = relative(root, target);
   if (outside(rel)) return err(new Error("path is outside the working directory"));
-  if (rel.split(sep).some((part) => part.startsWith("."))) return err(new Error("hidden paths are refused"));
+  if (hidden(rel)) return err(new Error("hidden paths are refused"));
   try {
     const realRoot = await realpath(root);
     const realTarget = await realpath(target);
-    if (outside(relative(realRoot, realTarget))) return err(new Error("path is outside the working directory"));
+    const realRel = relative(realRoot, realTarget);
+    if (outside(realRel)) return err(new Error("path is outside the working directory"));
+    if (hidden(realRel)) return err(new Error("hidden paths are refused"));
     return ok({ realTarget, rel });
   } catch (error) {
     return err(error instanceof Error ? error : new Error(String(error)));
@@ -28,4 +31,8 @@ export async function resolveInside(root: string, path: string): Promise<Result<
 
 function outside(rel: string): boolean {
   return rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel);
+}
+
+function hidden(rel: string): boolean {
+  return rel.split(sep).some((part) => part.startsWith("."));
 }

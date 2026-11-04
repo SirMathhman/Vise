@@ -32,3 +32,12 @@ test("refuses a link inside the root that points outside it", async () => {
   const result = await listFiles(root, "link", 1);
   expect(result.ok).toBe(false);
 });
+
+test("refuses a link inside the root that points at a hidden folder", async () => {
+  const root = await fixture();
+  await mkdir(join(root, ".hid"));
+  await writeFile(join(root, ".hid", "s.txt"), "");
+  await symlink(join(root, ".hid"), join(root, "visible"), "junction");
+  const result = await listFiles(root, "visible", 1);
+  expect(result.ok).toBe(false);
+});

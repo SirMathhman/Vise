@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readFileLines } from "./read-file.ts";
@@ -23,4 +23,13 @@ test("cuts a range longer than 500 lines and says where to continue", async () =
     expect(shown.length).toBe(501);
     expect(shown.at(-1)).toBe("[truncated at 500 lines; continue with start=501]");
   }
+});
+
+test("refuses a file reached through a link to a hidden folder", async () => {
+  const root = await mkdtemp(join(tmpdir(), "vise-read-"));
+  await mkdir(join(root, ".hid"));
+  await writeFile(join(root, ".hid", "s.txt"), "hidden secret\n");
+  await symlink(join(root, ".hid"), join(root, "visible"), "junction");
+  const result = await readFileLines(root, join("visible", "s.txt"), 1, 1);
+  expect(result.ok).toBe(false);
 });
