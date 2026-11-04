@@ -1,9 +1,7 @@
 import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
+import { classifyLine, contextLine } from "../core/commands.ts";
 import type { ChatMessage, Usage } from "../core/messages.ts";
-
-const EXIT_COMMAND = "/exit";
-const CONTEXT_COMMAND = "/context";
 
 export type Reply = (
   messages: ChatMessage[],
@@ -13,11 +11,6 @@ export type ContextWindow = () => Promise<number | undefined>;
 
 export async function* echoReply(messages: ChatMessage[]): AsyncGenerator<string> {
   yield `echo: ${messages.at(-1)?.content ?? ""}`;
-}
-
-function contextLine(used: number | undefined, total: number | undefined): string {
-  if (used === undefined) return "context: no request sent yet";
-  return `context: ${used} / ${total ?? "unknown"} tokens`;
 }
 
 export async function runRepl(
@@ -39,13 +32,14 @@ export async function runRepl(
   };
   rl.prompt();
   for await (const line of rl) {
-    if (line.trim() === EXIT_COMMAND) break;
-    if (line.trim() === CONTEXT_COMMAND) {
+    const input = classifyLine(line);
+    if (input.kind === "exit") break;
+    if (input.kind === "context") {
       await showContext();
       rl.prompt();
       continue;
     }
-    history.push({ role: "user", content: line });
+    history.push({ role: "user", content: input.text });
     try {
       let answer = "";
       const onUsage = (usage: Usage) => {

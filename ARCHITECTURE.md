@@ -10,7 +10,9 @@ Vise is a Bun + TypeScript command-line application. The target shape is a small
 - **Frontend**: code that connects the core to a medium. The terminal frontend is the only one today. It owns readline, prompts, and stream handling.
 - **Composition root**: the single entry point that wires a frontend to the core and reads the process environment. It is the only place that touches `process`.
 - **Session**: one run of the REPL, from start until `/exit` or end of input.
-- **Exit command**: a line whose trimmed text is `/exit`. The core's line classifier recognises it; after it, the session accepts no further lines, even if they arrived in the same chunk of input. Bare words such as `exit` or `quit` are ordinary lines. Lines beginning with `/` are reserved for commands.
+- **Command**: a line whose trimmed text starts with `/`. Commands are interpreted by the core and never sent to the model. The set is `/exit` and `/context` today; an unknown `/` line is reported by the core as an unknown command.
+- **Exit command**: a line whose trimmed text is `/exit`. The core's line classifier recognises it; after it, the session accepts no further lines, even if they arrived in the same chunk of input. Bare words such as `exit` or `quit` are ordinary lines.
+- **Context command**: a line whose trimmed text is `/context`. It reports the prompt tokens the provider counted for the most recent request that reported usage, out of the model's context window. Both numbers come from the provider, not from an estimate. Before any request has reported usage it reports that no request has been sent.
 - **Line**: one unit of input without its terminator. Lines are processed in order and each is handled at most once.
 
 Invariants:
@@ -18,7 +20,8 @@ Invariants:
 1. Once a session has ended, no line after the exit word produces output or side effects.
 2. The core never performs I/O. A frontend is the only code that reads or writes streams.
 3. Every line the frontend accepts produces exactly one response, or none when the session has ended.
-4. Behaviour depends only on the input stream and the arguments passed in, so the same input always gives the same output. The model adapter is the one exception: its replies come from the network, so the adapter must make every reply it returns either complete or an error, never a silently truncated success.
+4. Behaviour depends only on the input stream and the arguments passed in, so the same input always gives the same output. The model adapter and the context-window lookup are the exceptions: their replies come from the network, so the adapter must make every reply it returns either complete or an error, never a silently truncated success, and the lookup must do the same.
+5. Commands never reach the model. A `/` line is consumed by the core whether or not it is known.
 
 ## Structure
 
@@ -58,6 +61,10 @@ Recursion is avoided in core. When a function would need to call a function that
 - **No write-error handling.** A closed or broken output stream (for example, a pipe closed by the reader) is not reported.
 - **Partial replies stay on screen.** When a model stream fails (an `{"error": ...}` event, or the connection ending before `data: [DONE]`), `streamChat` throws and `runRepl` drops the user line from the history, so no truncated answer is recorded. The text already printed is not marked as incomplete, and nothing tells the user it was discarded.
 - **Retired exit words reach the model.** `exit` and `quit` are no longer commands, so a user who types them from habit sends them to OpenRouter as a message, spends a request, and gets a reply. The session stays open until `/exit` or end of input. The frontend should say which command ends the session when it starts, and unknown `/` commands should be reported by the core rather than sent.
+- **`/context` is interpreted in the frontend.** The `/context` comparison and the context line's wording live in `src/repl/repl.ts`, beside the readline loop. Each new command adds another string comparison to the driver. Until the classifier moves to the core (see Future Work), the command set is spread across the frontend.
+- **`/context` fails as a whole.** The context window is fetched from the model listing on every `/context`, with no cache. If that lookup fails, the user sees only `error: ...`, even though the used count is known, and the message does not say that `/context` was the failing command.
+- **`/context` numbers may not match the last line.** The count is from the last request that reported usage. A later request that failed is removed from the history but leaves the earlier count in place, and the output does not say which request it belongs to.
+- **A usage event can be misread.** A usage event without `prompt_tokens` sets the count to `undefined`, so `/context` reports "no request sent yet" after requests have been sent. A usage event that also carries a text delta loses the delta, because `parseEventLine` returns the usage first.
 - **A malformed SSE line surfaces as a bare `JSON Parse error`.** It does not say which line or which request failed, which breaks the error rule in the Errors section.
 - **No timeout and no cancellation.** A request that never completes leaves the prompt blocked with no way to abort it. `streamChat` should accept an `AbortSignal`, and the REPL should pass one that Ctrl+C triggers.
 - **History grows without bound.** Every line and reply is appended and resent in full, so each request grows with the session, eventually exceeding the model's context window and raising cost. No `max_tokens` is set, so a single reply is also unbounded.
@@ -81,7 +88,9 @@ Trust boundaries: everything read from stdin is untrusted text, and every line i
 
 ## Future Work
 
-- Move command interpretation into `src/core` as pure functions over `(state, line) -> (state, output)`, so the REPL is a thin driver. The first step is a pure line classifier in `src/core` that returns `{ kind: "exit" }` for the exit command and `{ kind: "message", text }` otherwise; the REPL acts on that result and no longer compares strings itself.
+- Move command interpretation into `src/core` as pure functions over `(state, line) -> (state, output)`, so the REPL is a thin driver. The first step is a pure line classifier in `src/core` that returns `{ kind: "exit" }`, `{ kind: "context" }`, `{ kind: "unknown-command", name }`, or `{ kind: "message", text }`; the REPL acts on that result and no longer compares strings itself.
+- Move the context state into the core as well: the core keeps the last reported prompt tokens, receives usage through the same state transition as text, and formats the context line from `(used, total)`. The context window becomes a value the core asks for through a port, cached for the session, so `/context` can print the used count when the lookup fails.
+- Put the ports (`Reply`, `ContextWindow`) and the `Usage` type in `src/core`, so the frontend and the model adapter both depend on the core and not on each other.
 - Add a linter that enforces the size and naming limits, and a formatter. Both are part of the first change that adds more than one command.
 - Make the session a function of its inputs: the readline interface is created by the frontend and passed where needed, so tests can drive a session without touching real streams.
 - Introduce a structured result type for command outcomes (success, usage error, unknown command) instead of ad-hoc strings, with errors that say what failed, where, why, and what the user can do.
@@ -97,4 +106,5 @@ These are the obvious concerns only. Measure with a profiler before optimizing.
 
 - Each echoed line is written with a separate `write` call. Fine at interactive speed; large piped inputs would benefit from buffering output per chunk.
 - Long lines are held whole in memory before they are echoed. This is bounded only by the line-length limit once it exists.
+- `/context` fetches the full model listing on every call, which is a large response for one number. Cache the context window for the session.
 - Startup cost of `bun run` is dominated by the runtime, not by this code.
