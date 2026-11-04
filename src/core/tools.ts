@@ -5,6 +5,7 @@ export const LIST_FILES = "list_files";
 export const READ_FILE = "read_file";
 export const EDIT_FILE = "edit_file";
 export const CREATE_FILE = "create_file";
+export const RUN_POWERSHELL = "run_powershell";
 const DEFAULT_DEPTH = 2;
 const MAX_DEPTH = 5;
 export const MAX_LINES = 500;
@@ -88,6 +89,21 @@ export const createFileSpec = {
   },
 };
 
+export const runPowershellSpec = {
+  type: "function",
+  function: {
+    name: RUN_POWERSHELL,
+    description: `Run a PowerShell command in the working directory. The user must approve each command before it runs. The command is stopped after 30 seconds, and at most ${MAX_LINES} lines of output are returned.`,
+    parameters: {
+      type: "object",
+      properties: {
+        command: { type: "string", description: "The PowerShell command to run, as one string." },
+      },
+      required: ["command"],
+    },
+  },
+};
+
 export interface ListFilesArgs {
   path: string;
   depth: number;
@@ -110,12 +126,16 @@ export interface CreateFileArgs {
   content: string;
 }
 
-// Asks the user to approve a change. The preview is what will be written. Resolves true only
+export interface RunPowershellArgs {
+  command: string;
+}
+
+// Asks the user to approve a change. The preview is what will be written or run. Resolves true only
 // when the user says yes.
 export type Approve = (preview: string) => Promise<boolean>;
 
-// Runs a tool call and returns the text to send back to the model. Changes are written only
-// when `approve` resolves true. Failures come back as text too, so the model can read them and answer.
+// Runs a tool call and returns the text to send back to the model. Changes and commands run
+// only when `approve` resolves true. Failures come back as text too, so the model can read them and answer.
 export type ToolRunner = (call: ToolCall, approve: Approve) => Promise<string>;
 
 // The arguments as the model wrote them, before they are checked.
@@ -127,6 +147,7 @@ interface RawArgs {
   previous?: unknown;
   replacement?: unknown;
   content?: unknown;
+  command?: unknown;
 }
 
 function readArgs(raw: string): Result<RawArgs> {
@@ -184,17 +205,26 @@ export function parseCreateFileArgs(raw: string): Result<CreateFileArgs> {
   return ok({ path, content });
 }
 
+// Reads the arguments the model wrote. The command must not be empty.
+export function parseRunPowershellArgs(raw: string): Result<RunPowershellArgs> {
+  const args = readArgs(raw);
+  if (!args.ok) return args;
+  const { command } = args.value;
+  if (typeof command !== "string" || command.trim() === "") return err(new Error("command must be a non-empty string"));
+  return ok({ command });
+}
+
 function isLine(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 1;
 }
 
-// Edits and new files are written only after the user approves them.
+// Edits, new files, and commands are run or written only after the user approves them.
 export function needsApproval(call: ToolCall): boolean {
-  return call.name === EDIT_FILE || call.name === CREATE_FILE;
+  return call.name === EDIT_FILE || call.name === CREATE_FILE || call.name === RUN_POWERSHELL;
 }
 
-// The change shown to the user before they approve it. Undefined when the arguments are
-// invalid, in which case the tool reports that without writing anything.
+// The change or command shown to the user before they approve it. Undefined when the arguments are
+// invalid, in which case the tool reports that without writing or running anything.
 export function approvalPreview(call: ToolCall): string | undefined {
   if (call.name === EDIT_FILE) {
     const args = parseEditFileArgs(call.arguments);
@@ -205,6 +235,11 @@ export function approvalPreview(call: ToolCall): string | undefined {
     const args = parseCreateFileArgs(call.arguments);
     if (!args.ok) return undefined;
     return `create ${args.value.path}\n+++ content\n${args.value.content}`;
+  }
+  if (call.name === RUN_POWERSHELL) {
+    const args = parseRunPowershellArgs(call.arguments);
+    if (!args.ok) return undefined;
+    return `run in the working directory\n$ ${args.value.command}`;
   }
   return undefined;
 }
@@ -240,6 +275,11 @@ export function describeToolCall(call: ToolCall): string {
     const args = parseCreateFileArgs(call.arguments);
     if (!args.ok) return `tool: ${CREATE_FILE} (invalid arguments)`;
     return `tool: ${CREATE_FILE} ${args.value.path}`;
+  }
+  if (call.name === RUN_POWERSHELL) {
+    const args = parseRunPowershellArgs(call.arguments);
+    if (!args.ok) return `tool: ${RUN_POWERSHELL} (invalid arguments)`;
+    return `tool: ${RUN_POWERSHELL} ${args.value.command.split("\n")[0]}`;
   }
   return `tool: ${call.name} (unknown tool)`;
 }

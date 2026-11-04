@@ -4,12 +4,14 @@ import {
   EDIT_FILE,
   LIST_FILES,
   READ_FILE,
+  RUN_POWERSHELL,
   approvalPreview,
   needsApproval,
   parseCreateFileArgs,
   parseEditFileArgs,
   parseListFilesArgs,
   parseReadFileArgs,
+  parseRunPowershellArgs,
   type Approve,
   type ToolRunner,
 } from "../core/tools.ts";
@@ -18,9 +20,10 @@ import { createFile } from "./files/create-file.ts";
 import { editFile } from "./files/edit-file.ts";
 import { listFiles } from "./files/list-files.ts";
 import { readFileLines } from "./files/read-file.ts";
+import { runPowershell } from "./run-powershell.ts";
 
-// The tool runner for a working directory. A change is checked and previewed, and it is
-// written only if `approve` says yes. Errors come back as text for the model to read.
+// The tool runner for a working directory. A change or command is checked and previewed, and it
+// runs only if `approve` says yes. Errors come back as text for the model to read.
 export function runTool(root: string): ToolRunner {
   return async (call: ToolCall, approve: Approve) => {
     if (needsApproval(call)) {
@@ -33,15 +36,21 @@ export function runTool(root: string): ToolRunner {
   };
 }
 
-// Refuses a change whose path is outside the working directory or hidden, before anyone is asked.
+// Refuses a file change whose path is outside the working directory or hidden, before anyone is asked.
 async function checkTarget(root: string, call: ToolCall): Promise<string | undefined> {
-  const path = call.name === EDIT_FILE ? parseEditFileArgs(call.arguments) : parseCreateFileArgs(call.arguments);
-  if (!path.ok) return undefined;
-  const place =
-    call.name === EDIT_FILE
-      ? await resolveInside(root, path.value.path)
-      : await resolveNewInside(root, path.value.path);
-  return place.ok ? undefined : place.error.message;
+  if (call.name === EDIT_FILE) {
+    const args = parseEditFileArgs(call.arguments);
+    if (!args.ok) return undefined;
+    const place = await resolveInside(root, args.value.path);
+    return place.ok ? undefined : place.error.message;
+  }
+  if (call.name === CREATE_FILE) {
+    const args = parseCreateFileArgs(call.arguments);
+    if (!args.ok) return undefined;
+    const place = await resolveNewInside(root, args.value.path);
+    return place.ok ? undefined : place.error.message;
+  }
+  return undefined;
 }
 
 async function dispatch(root: string, call: ToolCall): Promise<string> {
@@ -70,6 +79,12 @@ async function dispatch(root: string, call: ToolCall): Promise<string> {
     if (!args.ok) return `invalid arguments: ${args.error.message}`;
     const created = await createFile(root, args.value.path, args.value.content);
     return created.ok ? created.value : `error: ${created.error.message}`;
+  }
+  if (call.name === RUN_POWERSHELL) {
+    const args = parseRunPowershellArgs(call.arguments);
+    if (!args.ok) return `invalid arguments: ${args.error.message}`;
+    const result = await runPowershell(root, args.value.command);
+    return result.ok ? result.value : `error: ${result.error.message}`;
   }
   return `unknown tool: ${call.name}`;
 }
