@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
-import { err, ok, type Result } from "../core/result.ts";
-import { MAX_LINES } from "../core/tools.ts";
+import { err, ok, type Result } from "../../core/result.ts";
+import { MAX_LINES } from "../../core/tools.ts";
 import { resolveInside } from "./contain.ts";
 
 // Reads lines `start` to `end` (1-based, inclusive) of a file under `root`. At most

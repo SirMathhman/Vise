@@ -1,5 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
-import { err, ok, type Result } from "../core/result.ts";
+import { err, ok, type Result } from "../../core/result.ts";
 import { resolveInside } from "./contain.ts";
 
 // Replaces the first occurrence of `previous` in an existing file under `root`. The match

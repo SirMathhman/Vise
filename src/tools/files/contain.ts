@@ -1,6 +1,6 @@
 import { realpath, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { err, ok, type Result } from "../core/result.ts";
+import { err, ok, type Result } from "../../core/result.ts";
 
 export interface Inside {
   // The real location to read, with links followed.

@@ -13,11 +13,11 @@ import {
   type Approve,
   type ToolRunner,
 } from "../core/tools.ts";
-import { resolveInside, resolveNewInside } from "./contain.ts";
-import { createFile } from "./create-file.ts";
-import { editFile } from "./edit-file.ts";
-import { listFiles } from "./list-files.ts";
-import { readFileLines } from "./read-file.ts";
+import { resolveInside, resolveNewInside } from "./files/contain.ts";
+import { createFile } from "./files/create-file.ts";
+import { editFile } from "./files/edit-file.ts";
+import { listFiles } from "./files/list-files.ts";
+import { readFileLines } from "./files/read-file.ts";
 
 // The tool runner for a working directory. A change is checked and previewed, and it is
 // written only if `approve` says yes. Errors come back as text for the model to read.

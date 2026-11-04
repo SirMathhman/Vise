@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { err, ok, type Result } from "../core/result.ts";
+import { err, ok, type Result } from "../../core/result.ts";
 import { resolveNewInside } from "./contain.ts";
 
 // Creates a new file under `root` with `content`, creating the folders above it that do not
