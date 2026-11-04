@@ -2,6 +2,15 @@ import { err, ok, type Result } from "../core/result.ts";
 import { MAX_LINES } from "../core/tools.ts";
 
 export const MAX_JOBS = 5;
+// A line longer than this is cut, so one line cannot grow memory without limit.
+const MAX_LINE_CHARS = 8192;
+// How many times session end tries to stop a job whose stop failed.
+const STOP_ATTEMPTS = 3;
+
+// A line longer than MAX_LINE_CHARS is cut and marked.
+function capLine(line: string): string {
+  return line.length > MAX_LINE_CHARS ? `${line.slice(0, MAX_LINE_CHARS)} [line cut]` : line;
+}
 
 type Process = Bun.Subprocess<"ignore", "pipe", "pipe">;
 
@@ -10,18 +19,34 @@ class Tail {
   private lines: string[] = [];
   private partial = "";
   private dropped = false;
+  // True while the rest of an overlong line is being discarded.
+  private skipping = false;
   private decoder = new TextDecoder();
 
   feed(chunk: Uint8Array): void {
-    const pieces = (this.partial + this.decoder.decode(chunk, { stream: true })).split("\n");
-    this.partial = pieces.pop() ?? "";
-    for (const line of pieces) this.add(line);
+    let text = this.decoder.decode(chunk, { stream: true });
+    for (;;) {
+      const newline = text.indexOf("\n");
+      if (newline < 0) {
+        if (!this.skipping) this.partial += text;
+        break;
+      }
+      if (!this.skipping) this.partial += text.slice(0, newline);
+      this.add(capLine(this.partial));
+      this.partial = "";
+      this.skipping = false;
+      text = text.slice(newline + 1);
+    }
+    if (!this.skipping && this.partial.length > MAX_LINE_CHARS) {
+      this.partial = `${this.partial.slice(0, MAX_LINE_CHARS)} [line cut]`;
+      this.skipping = true;
+    }
   }
 
   finish(): void {
-    const rest = this.partial + this.decoder.decode();
+    if (!this.skipping) this.partial += this.decoder.decode();
+    if (this.partial) this.add(this.partial);
     this.partial = "";
-    if (rest) this.add(rest);
   }
 
   text(): string {
@@ -102,35 +127,44 @@ export function runningJobs(): number {
   return [...jobs.values()].filter((job) => job.status === "running").length;
 }
 
-// The status and output of a job, for the model to read.
+// The status and output of a job, for the model to read. A job that has ended is removed
+// once its output has been read.
 export function readJob(id: number): Result<string> {
   const job = jobs.get(id);
   if (!job) return err(new Error(`no job ${id}`));
   const state = job.status === "running" ? "running" : job.status === "killed" ? "killed" : `exited with code ${job.exitCode}`;
-  return ok([`job ${id}: ${state}`, outputText(job) || "(no output yet)"].join("\n"));
+  const text = [`job ${id}: ${state}`, outputText(job) || "(no output yet)"].join("\n");
+  if (job.status !== "running") jobs.delete(id);
+  return ok(text);
 }
 
-// Stops a running job and every process it started. Errors are ignored because the process may already be gone.
+// Stops a running job and every process it started. The job counts as stopped only when
+// taskkill succeeds; otherwise it stays running, so session end tries again.
 export async function killJob(id: number): Promise<Result<string>> {
   const job = jobs.get(id);
   if (!job) return err(new Error(`no job ${id}`));
   if (job.status !== "running") return err(new Error(`job ${id} is not running`));
-  job.status = "killed";
-  await stopTree(job.pid);
+  if (!(await stopTree(job.pid))) return err(new Error(`could not stop job ${id}; it may still be running`));
+  if (job.status === "running") job.status = "killed";
   return ok(`job ${id} stopped`);
 }
 
-// Stops every running job. Called when the session ends, so no process is left behind.
+// Stops every running job, retrying those that failed to stop. Called when the session ends,
+// so no process is left behind. The registry is emptied afterwards.
 export async function killAllJobs(): Promise<void> {
-  const running = [...jobs.values()].filter((job) => job.status === "running");
-  await Promise.all(running.map((job) => killJob(job.id)));
+  for (let attempt = 0; attempt < STOP_ATTEMPTS; attempt++) {
+    const running = [...jobs.values()].filter((job) => job.status === "running");
+    if (running.length === 0) break;
+    await Promise.all(running.map((job) => killJob(job.id)));
+  }
+  jobs.clear();
 }
 
-// Stops a process and every process it started. Windows only.
-async function stopTree(pid: number): Promise<void> {
+// Stops a process and every process it started. Returns whether taskkill succeeded. Windows only.
+async function stopTree(pid: number): Promise<boolean> {
   try {
-    await Bun.spawn(["taskkill", "/PID", String(pid), "/T", "/F"], { stdout: "ignore", stderr: "ignore" }).exited;
+    return (await Bun.spawn(["taskkill", "/PID", String(pid), "/T", "/F"], { stdout: "ignore", stderr: "ignore" }).exited) === 0;
   } catch {
-    // nothing to stop
+    return false;
   }
 }

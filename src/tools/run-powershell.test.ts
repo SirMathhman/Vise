@@ -57,3 +57,10 @@ test("returns at the timeout even when a child process keeps the output open", a
   expect(result.ok && result.value.includes("still running after 1 seconds as job")).toBe(true);
   expect(Date.now() - started).toBeLessThan(10_000);
 });
+
+test("cuts one overlong line so memory stays bounded", async () => {
+  const root = await mkdtemp(join(tmpdir(), "vise-ps-"));
+  const result = await runPowershell(root, "'x' * 50000");
+  expect(result.ok && result.value.includes("[line cut]")).toBe(true);
+  expect(result.ok && result.value.length < 10_000).toBe(true);
+});

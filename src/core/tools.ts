@@ -95,7 +95,7 @@ export const runPowershellSpec = {
   type: "function",
   function: {
     name: RUN_POWERSHELL,
-    description: `Run a PowerShell command in the working directory. The user must approve each command before it runs. The command is stopped after 30 seconds, and at most ${MAX_LINES} lines of output are returned.`,
+    description: `Run a PowerShell command in the working directory. The user must approve each command before it runs. A command still running after 30 seconds keeps running as a background job; use read_command or kill_command with its job number. At most ${MAX_LINES} lines of output are returned.`,
     parameters: {
       type: "object",
       properties: {
