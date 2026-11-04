@@ -1,12 +1,15 @@
 import {
+  CREATE_FILE,
   EDIT_FILE,
   LIST_FILES,
   READ_FILE,
+  parseCreateFileArgs,
   parseEditFileArgs,
   parseListFilesArgs,
   parseReadFileArgs,
   type ToolRunner,
 } from "../core/tools.ts";
+import { createFile } from "./create-file.ts";
 import { editFile } from "./edit-file.ts";
 import { listFiles } from "./list-files.ts";
 import { readFileLines } from "./read-file.ts";
@@ -33,6 +36,12 @@ export function runTool(root: string): ToolRunner {
       if (!args.ok) return `invalid arguments: ${args.error.message}`;
       const edit = await editFile(root, args.value.path, args.value.previous, args.value.replacement);
       return edit.ok ? edit.value : `error: ${edit.error.message}`;
+    }
+    if (call.name === CREATE_FILE) {
+      const args = parseCreateFileArgs(call.arguments);
+      if (!args.ok) return `invalid arguments: ${args.error.message}`;
+      const created = await createFile(root, args.value.path, args.value.content);
+      return created.ok ? created.value : `error: ${created.error.message}`;
     }
     return `unknown tool: ${call.name}`;
   };

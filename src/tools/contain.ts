@@ -1,5 +1,5 @@
-import { realpath } from "node:fs/promises";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { realpath, stat } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { err, ok, type Result } from "../core/result.ts";
 
 export interface Inside {
@@ -26,6 +26,37 @@ export async function resolveInside(root: string, path: string): Promise<Result<
     return ok({ realTarget, rel });
   } catch (error) {
     return err(error instanceof Error ? error : new Error(String(error)));
+  }
+}
+
+// Like resolveInside, for a path that may not exist yet. The part that exists is checked
+// through its real location; the part that does not exist yet is checked as typed. The
+// returned realTarget is where the new file goes.
+export async function resolveNewInside(root: string, path: string): Promise<Result<Inside>> {
+  const target = resolve(root, path);
+  const rel = relative(root, target);
+  if (outside(rel)) return err(new Error("path is outside the working directory"));
+  if (hidden(rel)) return err(new Error("hidden paths are refused"));
+  try {
+    const realRoot = await realpath(root);
+    let existing = target;
+    while (!(await exists(existing))) existing = dirname(existing);
+    const realExisting = await realpath(existing);
+    const realRel = relative(realRoot, realExisting);
+    if (outside(realRel)) return err(new Error("path is outside the working directory"));
+    if (hidden(realRel)) return err(new Error("hidden paths are refused"));
+    return ok({ realTarget: join(realExisting, relative(existing, target)), rel });
+  } catch (error) {
+    return err(error instanceof Error ? error : new Error(String(error)));
+  }
+}
+
+async function exists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
   }
 }
 

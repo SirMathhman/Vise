@@ -4,6 +4,7 @@ import { err, ok, type Result } from "./result.ts";
 export const LIST_FILES = "list_files";
 export const READ_FILE = "read_file";
 export const EDIT_FILE = "edit_file";
+export const CREATE_FILE = "create_file";
 const DEFAULT_DEPTH = 2;
 const MAX_DEPTH = 5;
 export const MAX_LINES = 500;
@@ -70,6 +71,23 @@ export const editFileSpec = {
   },
 };
 
+export const createFileSpec = {
+  type: "function",
+  function: {
+    name: CREATE_FILE,
+    description:
+      "Create a new file inside the working directory with the given content. Folders above it are created if missing. An existing file is never overwritten. The user must approve each new file before it is written.",
+    parameters: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "File to create, relative to the working directory." },
+        content: { type: "string", description: "Full text of the new file. May be empty." },
+      },
+      required: ["path", "content"],
+    },
+  },
+};
+
 export interface ListFilesArgs {
   path: string;
   depth: number;
@@ -87,6 +105,11 @@ export interface EditFileArgs {
   replacement: string;
 }
 
+export interface CreateFileArgs {
+  path: string;
+  content: string;
+}
+
 // Runs a tool call and returns the text to send back to the model. Failures come back
 // as text too, so the model can read them and answer.
 export type ToolRunner = (call: ToolCall) => Promise<string>;
@@ -99,6 +122,7 @@ interface RawArgs {
   end?: unknown;
   previous?: unknown;
   replacement?: unknown;
+  content?: unknown;
 }
 
 function readArgs(raw: string): Result<RawArgs> {
@@ -135,7 +159,7 @@ export function parseReadFileArgs(raw: string): Result<ReadFileArgs> {
   return ok({ path, start, end });
 }
 
-// Reads the arguments the model wrote. An empty `previous` is refused, so the tool cannot create files.
+// Reads the arguments the model wrote. An empty `previous` is refused, so edits cannot create files.
 export function parseEditFileArgs(raw: string): Result<EditFileArgs> {
   const args = readArgs(raw);
   if (!args.ok) return args;
@@ -146,22 +170,39 @@ export function parseEditFileArgs(raw: string): Result<EditFileArgs> {
   return ok({ path, previous, replacement });
 }
 
+// Reads the arguments the model wrote. Content may be empty.
+export function parseCreateFileArgs(raw: string): Result<CreateFileArgs> {
+  const args = readArgs(raw);
+  if (!args.ok) return args;
+  const { path, content } = args.value;
+  if (typeof path !== "string") return err(new Error("path must be a string"));
+  if (typeof content !== "string") return err(new Error("content must be a string"));
+  return ok({ path, content });
+}
+
 function isLine(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 1;
 }
 
-// Edits are written only after the user approves them.
+// Edits and new files are written only after the user approves them.
 export function needsApproval(call: ToolCall): boolean {
-  return call.name === EDIT_FILE;
+  return call.name === EDIT_FILE || call.name === CREATE_FILE;
 }
 
 // The change shown to the user before they approve it. Undefined when the arguments are
 // invalid, in which case the tool reports that without writing anything.
-export function editPreview(call: ToolCall): string | undefined {
-  if (call.name !== EDIT_FILE) return undefined;
-  const args = parseEditFileArgs(call.arguments);
-  if (!args.ok) return undefined;
-  return `edit ${args.value.path}\n--- previous\n${args.value.previous}\n+++ replacement\n${args.value.replacement}`;
+export function approvalPreview(call: ToolCall): string | undefined {
+  if (call.name === EDIT_FILE) {
+    const args = parseEditFileArgs(call.arguments);
+    if (!args.ok) return undefined;
+    return `edit ${args.value.path}\n--- previous\n${args.value.previous}\n+++ replacement\n${args.value.replacement}`;
+  }
+  if (call.name === CREATE_FILE) {
+    const args = parseCreateFileArgs(call.arguments);
+    if (!args.ok) return undefined;
+    return `create ${args.value.path}\n+++ content\n${args.value.content}`;
+  }
+  return undefined;
 }
 
 // The line shown to the user when the model makes a call.
@@ -180,6 +221,11 @@ export function describeToolCall(call: ToolCall): string {
     const args = parseEditFileArgs(call.arguments);
     if (!args.ok) return `tool: ${EDIT_FILE} (invalid arguments)`;
     return `tool: ${EDIT_FILE} ${args.value.path}`;
+  }
+  if (call.name === CREATE_FILE) {
+    const args = parseCreateFileArgs(call.arguments);
+    if (!args.ok) return `tool: ${CREATE_FILE} (invalid arguments)`;
+    return `tool: ${CREATE_FILE} ${args.value.path}`;
   }
   return `tool: ${call.name} (unknown tool)`;
 }

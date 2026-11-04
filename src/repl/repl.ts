@@ -9,7 +9,7 @@ import {
   type Step,
 } from "../core/compaction.ts";
 import type { ChatMessage, ContextWindow, Reply, ToolCall, Usage } from "../core/messages.ts";
-import { describeToolCall, editPreview, needsApproval, type ToolRunner } from "../core/tools.ts";
+import { approvalPreview, describeToolCall, needsApproval, type ToolRunner } from "../core/tools.ts";
 import { err, ok, type Result } from "../core/result.ts";
 
 export type { ContextWindow, Reply } from "../core/messages.ts";
@@ -144,11 +144,11 @@ export async function runRepl(
         for (const call of round.calls) {
           output.write(`\n${describeToolCall(call)}\n`);
           // An edit is written only when the user answers y.
-          const preview = needsApproval(call) ? editPreview(call) : undefined;
+          const preview = needsApproval(call) ? approvalPreview(call) : undefined;
           if (preview !== undefined) {
             const answer = await askLine(lines, output, `${preview}\napply? (y/n) `);
             if (!/^y(es)?$/i.test(answer.trim())) {
-              conversation.history.push({ role: "tool", toolCallId: call.id, content: "the user declined this edit" });
+              conversation.history.push({ role: "tool", toolCallId: call.id, content: "the user declined this change" });
               continue;
             }
           }
