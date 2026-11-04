@@ -1,3 +1,0 @@
-[workspace]
-members = ["crates/vise-core", "crates/vise-cli", "crates/vise-gui"]
-resolver = "3"
