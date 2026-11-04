@@ -2,22 +2,23 @@ import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
 import { classifyLine, contextLine } from "../core/commands.ts";
 import type { ChatMessage, Usage } from "../core/messages.ts";
+import { err, ok, type Result } from "../core/result.ts";
 
 export type Reply = (
   messages: ChatMessage[],
   onUsage: (usage: Usage) => void,
-) => AsyncIterable<string>;
-export type ContextWindow = () => Promise<number | undefined>;
+) => AsyncIterable<Result<string>>;
+export type ContextWindow = () => Promise<Result<number>>;
 
-export async function* echoReply(messages: ChatMessage[]): AsyncGenerator<string> {
-  yield `echo: ${messages.at(-1)?.content ?? ""}`;
+export async function* echoReply(messages: ChatMessage[]): AsyncGenerator<Result<string>> {
+  yield ok(`echo: ${messages.at(-1)?.content ?? ""}`);
 }
 
 export async function runRepl(
   input: Readable,
   output: Writable,
   reply: Reply = echoReply,
-  contextWindow: ContextWindow = async () => undefined,
+  contextWindow: ContextWindow = async () => err(new Error("no context window is configured")),
 ): Promise<void> {
   const rl = createInterface({ input, output, prompt: "> " });
   const history: ChatMessage[] = [];
@@ -25,11 +26,9 @@ export async function runRepl(
   const showContext = async () => {
     let total: number | undefined;
     if (promptTokens !== undefined) {
-      try {
-        total = await contextWindow();
-      } catch (error) {
-        output.write(`error: /context could not read the model's window: ${(error as Error).message}\n`);
-      }
+      const result = await contextWindow();
+      if (result.ok) total = result.value;
+      else output.write(`error: /context could not read the model's window: ${result.error.message}\n`);
     }
     output.write(`${contextLine(promptTokens, total)}\n`);
   };
@@ -50,15 +49,25 @@ export async function runRepl(
     history.push({ role: "user", content: input.text });
     try {
       let answer = "";
+      let failure: Error | undefined;
       const onUsage = (usage: Usage) => {
         promptTokens = usage.promptTokens;
       };
       for await (const chunk of reply(history, onUsage)) {
-        answer += chunk;
-        output.write(chunk);
+        if (!chunk.ok) {
+          failure = chunk.error;
+          break;
+        }
+        answer += chunk.value;
+        output.write(chunk.value);
       }
-      history.push({ role: "assistant", content: answer });
-      output.write("\n");
+      if (failure) {
+        history.pop();
+        output.write(`\nerror: ${failure.message}\n`);
+      } else {
+        history.push({ role: "assistant", content: answer });
+        output.write("\n");
+      }
     } catch (error) {
       history.pop();
       output.write(`\nerror: ${(error as Error).message}\n`);

@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
 import { Readable, Writable } from "node:stream";
-import { runRepl, type Reply } from "./repl.ts";
 import type { ChatMessage } from "../core/messages.ts";
+import { ok } from "../core/result.ts";
+import { runRepl, type Reply } from "./repl.ts";
 
 test("echoes each line until exit", async () => {
   let written = "";
@@ -34,7 +35,7 @@ test("sends earlier lines and replies with each new line", async () => {
   const seen: ChatMessage[][] = [];
   const reply = async function* (messages: ChatMessage[]) {
     seen.push(messages.map((message) => ({ ...message })));
-    yield `answer ${seen.length}`;
+    yield ok(`answer ${seen.length}`);
   };
   const output = new Writable({
     write(_chunk, _encoding, done) {
@@ -52,7 +53,7 @@ test("sends earlier lines and replies with each new line", async () => {
 test("/context shows the prompt tokens of the last request out of the model's window", async () => {
   const reply: Reply = async function* (_messages, onUsage) {
     onUsage({ promptTokens: 42 });
-    yield "hi";
+    yield ok("hi");
   };
   let written = "";
   const output = new Writable({
@@ -61,7 +62,7 @@ test("/context shows the prompt tokens of the last request out of the model's wi
       done();
     },
   });
-  await runRepl(Readable.from(["hello\n", "/context\n"]), output, reply, async () => 1000);
+  await runRepl(Readable.from(["hello\n", "/context\n"]), output, reply, async () => ok(1000));
   expect(written).toContain("context: 42 / 1000 tokens");
 });
 
@@ -69,7 +70,7 @@ test("rejects an unknown command without sending it to the model", async () => {
   const seen: string[] = [];
   const reply: Reply = async function* (messages) {
     seen.push(messages.at(-1)?.content ?? "");
-    yield "ok";
+    yield ok("ok");
   };
   let written = "";
   const output = new Writable({

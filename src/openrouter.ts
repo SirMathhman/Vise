@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ChatMessage, Usage } from "./core/messages.ts";
+import { err, ok, type Result } from "./core/result.ts";
 
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 const MODELS_ENDPOINT = "https://openrouter.ai/api/v1/models";
@@ -21,18 +22,20 @@ const ModelListingSchema = z.object({
 
 // Parses `text` as JSON and checks it against `schema`. `what` names the payload
 // in the error, so a bad response says where it came from.
-function decode<T>(schema: z.ZodType<T>, text: string, what: string): T {
+function decode<T>(schema: z.ZodType<T>, text: string, what: string): Result<T> {
   let value: unknown;
   try {
     value = JSON.parse(text);
   } catch {
-    throw new Error(`OpenRouter sent ${what} that is not JSON`);
+    return err(new Error(`OpenRouter sent ${what} that is not JSON`));
   }
   const result = schema.safeParse(value);
   if (!result.success) {
-    throw new Error(`OpenRouter sent ${what} that does not match the expected shape: ${result.error.message}`);
+    return err(
+      new Error(`OpenRouter sent ${what} that does not match the expected shape: ${result.error.message}`),
+    );
   }
-  return result.data;
+  return ok(result.data);
 }
 
 interface StreamOptions {
@@ -43,46 +46,74 @@ interface StreamOptions {
   onUsage?: (usage: Usage) => void;
 }
 
-// Yields text deltas. The request's usage goes to onUsage when the server reports it.
-export async function* streamChat(options: StreamOptions): AsyncGenerator<string> {
-  const send = options.fetch ?? fetch;
-  const response = await send(ENDPOINT, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${options.apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: options.model,
-      messages: options.messages,
-      stream: true,
-    }),
-  });
-  if (!response.ok) {
-    throw new Error(`OpenRouter returned ${response.status}: ${await response.text()}`);
+// Yields each text delta as ok. A failure is yielded once as err, and nothing follows it.
+export async function* streamChat(options: StreamOptions): AsyncGenerator<Result<string>> {
+  const body = await postChat(options);
+  if (!body.ok) {
+    yield err(body.error);
+    return;
   }
-  if (!response.body) throw new Error("OpenRouter returned no body");
+  for await (const line of lines(body.value)) {
+    if (!line.ok) {
+      yield err(line.error);
+      return;
+    }
+    const event = parseEventLine(line.value);
+    if (!event.ok) {
+      yield err(event.error);
+      return;
+    }
+    if (event.value === DONE) return;
+    if (event.value?.usage) options.onUsage?.(event.value.usage);
+    if (event.value?.text) yield ok(event.value.text);
+  }
+  yield err(new Error("OpenRouter stream ended before it finished"));
+}
 
+async function postChat(options: StreamOptions): Promise<Result<ReadableStream<Uint8Array>>> {
+  const send = options.fetch ?? fetch;
+  try {
+    const response = await send(ENDPOINT, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${options.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: options.model,
+        messages: options.messages,
+        stream: true,
+      }),
+    });
+    if (!response.ok) {
+      return err(new Error(`OpenRouter returned ${response.status}: ${await response.text()}`));
+    }
+    if (!response.body) return err(new Error("OpenRouter returned no body"));
+    return ok(response.body);
+  } catch (error) {
+    return err(new Error(`OpenRouter request failed: ${(error as Error).message}`));
+  }
+}
+
+// Splits the body into lines. The last item is whatever followed the final newline.
+async function* lines(body: ReadableStream<Uint8Array>): AsyncGenerator<Result<string>> {
   const decoder = new TextDecoder();
   let buffer = "";
-  for await (const chunk of response.body) {
-    buffer += decoder.decode(chunk, { stream: true });
-    let newline = buffer.indexOf("\n");
-    while (newline >= 0) {
-      const line = buffer.slice(0, newline);
-      buffer = buffer.slice(newline + 1);
-      const event = parseEventLine(line);
-      if (event === DONE) return;
-      if (event?.usage) options.onUsage?.(event.usage);
-      if (event?.text) yield event.text;
-      newline = buffer.indexOf("\n");
+  try {
+    for await (const chunk of body) {
+      buffer += decoder.decode(chunk, { stream: true });
+      let newline = buffer.indexOf("\n");
+      while (newline >= 0) {
+        yield ok(buffer.slice(0, newline));
+        buffer = buffer.slice(newline + 1);
+        newline = buffer.indexOf("\n");
+      }
     }
+  } catch (error) {
+    yield err(new Error(`OpenRouter stream failed: ${(error as Error).message}`));
+    return;
   }
-  const last = parseEventLine(buffer);
-  if (last === DONE) return;
-  if (last?.usage) options.onUsage?.(last.usage);
-  if (last?.text) yield last.text;
-  throw new Error("OpenRouter stream ended before it finished");
+  yield ok(buffer);
 }
 
 // What one `data:` line carries. A single event can have both.
@@ -93,18 +124,20 @@ interface StreamEvent {
 
 // Returns the event in a `data:` line, DONE at the end marker, or undefined for
 // every other line (blank lines and comments such as `: OPENROUTER PROCESSING`).
-function parseEventLine(line: string): StreamEvent | typeof DONE | undefined {
+function parseEventLine(line: string): Result<StreamEvent | typeof DONE | undefined> {
   const trimmed = line.trim();
-  if (!trimmed.startsWith("data:")) return undefined;
+  if (!trimmed.startsWith("data:")) return ok(undefined);
   const payload = trimmed.slice("data:".length).trim();
-  if (payload === "[DONE]") return DONE;
-  const event = decode(StreamEventSchema, payload, "a stream event");
-  if (event.error) throw new Error(`OpenRouter error: ${event.error.message ?? "unknown error"}`);
+  if (payload === "[DONE]") return ok(DONE);
+  const decoded = decode(StreamEventSchema, payload, "a stream event");
+  if (!decoded.ok) return err(decoded.error);
+  const event = decoded.value;
+  if (event.error) return err(new Error(`OpenRouter error: ${event.error.message ?? "unknown error"}`));
   const promptTokens = event.usage?.prompt_tokens;
-  return {
+  return ok({
     text: event.choices?.[0]?.delta?.content ?? undefined,
     usage: typeof promptTokens === "number" ? { promptTokens } : undefined,
-  };
+  });
 }
 
 interface ModelContextOptions {
@@ -113,14 +146,19 @@ interface ModelContextOptions {
 }
 
 // The model's context window in tokens, from OpenRouter's model listing.
-export async function modelContextWindow(options: ModelContextOptions): Promise<number> {
+export async function modelContextWindow(options: ModelContextOptions): Promise<Result<number>> {
   const send = options.fetch ?? fetch;
-  const response = await send(MODELS_ENDPOINT, { method: "GET" });
-  if (!response.ok) {
-    throw new Error(`OpenRouter returned ${response.status} for the model list`);
+  let text: string;
+  try {
+    const response = await send(MODELS_ENDPOINT, { method: "GET" });
+    if (!response.ok) return err(new Error(`OpenRouter returned ${response.status} for the model list`));
+    text = await response.text();
+  } catch (error) {
+    return err(new Error(`OpenRouter model list request failed: ${(error as Error).message}`));
   }
-  const listing = decode(ModelListingSchema, await response.text(), "a model listing");
-  const model = listing.data.find((entry) => entry.id === options.model);
-  if (!model) throw new Error(`OpenRouter does not list ${options.model}`);
-  return model.context_length;
+  const listing = decode(ModelListingSchema, text, "a model listing");
+  if (!listing.ok) return err(listing.error);
+  const model = listing.value.data.find((entry) => entry.id === options.model);
+  if (!model) return err(new Error(`OpenRouter does not list ${options.model}`));
+  return ok(model.context_length);
 }

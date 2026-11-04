@@ -9,6 +9,7 @@ export default tseslint.config(js.configs.recommended, ...tseslint.configs.recom
     "no-restricted-syntax": [
       "error",
       { selector: "TSTypeLiteral", message: "Use a named interface instead of an object type literal." },
+      { selector: "ThrowStatement", message: "Return a Result (src/core/result.ts) instead of throwing." },
     ],
   },
 });

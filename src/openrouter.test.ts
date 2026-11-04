@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Usage } from "./core/messages.ts";
+import { err, ok, type Result } from "./core/result.ts";
 import { modelContextWindow, streamChat } from "./openrouter.ts";
 
 test("streams text deltas from server-sent events and stops at [DONE]", async () => {
@@ -16,7 +17,7 @@ test("streams text deltas from server-sent events and stops at [DONE]", async ()
     return new Response(body, { status: 200 });
   };
 
-  const parts: string[] = [];
+  const parts: Result<string>[] = [];
   for await (const part of streamChat({
     apiKey: "key",
     model: "anthropic/claude-haiku-5.5",
@@ -26,13 +27,13 @@ test("streams text deltas from server-sent events and stops at [DONE]", async ()
     parts.push(part);
   }
 
-  expect(parts).toEqual(["Hel", "lo"]);
+  expect(parts).toEqual([ok("Hel"), ok("lo")]);
   expect(JSON.parse(sentBody).stream).toBe(true);
 });
 
-async function collect(body: string): Promise<string[]> {
+async function collect(body: string): Promise<Result<string>[]> {
   const fakeFetch = async () => new Response(body, { status: 200 });
-  const parts: string[] = [];
+  const parts: Result<string>[] = [];
   for await (const part of streamChat({
     apiKey: "key",
     model: "anthropic/claude-haiku-5.5",
@@ -44,23 +45,27 @@ async function collect(body: string): Promise<string[]> {
   return parts;
 }
 
-test("throws when an error event arrives in the stream", async () => {
+test("reports an error event in the stream and stops there", async () => {
   const body = [
     'data: {"choices":[{"delta":{"content":"Hel"}}]}\n\n',
     'data: {"error":{"message":"provider failed"}}\n\n',
     "data: [DONE]\n\n",
   ].join("");
-  await expect(collect(body)).rejects.toThrow("OpenRouter error: provider failed");
+  expect(await collect(body)).toEqual([ok("Hel"), err(new Error("OpenRouter error: provider failed"))]);
 });
 
-test("throws when the stream ends before [DONE]", async () => {
+test("reports when the stream ends before [DONE]", async () => {
   const body = 'data: {"choices":[{"delta":{"content":"Hel"}}]}\n\n';
-  await expect(collect(body)).rejects.toThrow("ended before it finished");
+  expect(await collect(body)).toEqual([ok("Hel"), err(new Error("OpenRouter stream ended before it finished"))]);
 });
 
-test("throws a clear error when an event does not match the expected shape", async () => {
+test("reports a clear error when an event does not match the expected shape", async () => {
   const body = 'data: {"choices":"not a list"}\n\n';
-  await expect(collect(body)).rejects.toThrow("OpenRouter sent a stream event that does not match");
+  const [failure] = await collect(body);
+  expect(failure?.ok).toBe(false);
+  if (failure?.ok === false) {
+    expect(failure.error.message).toContain("OpenRouter sent a stream event that does not match");
+  }
 });
 
 test("reports the prompt tokens from the usage event", async () => {
@@ -71,7 +76,7 @@ test("reports the prompt tokens from the usage event", async () => {
   ].join("");
   const fakeFetch = async () => new Response(body, { status: 200 });
   const usages: Usage[] = [];
-  const parts: string[] = [];
+  const parts: Result<string>[] = [];
   for await (const part of streamChat({
     apiKey: "key",
     model: "anthropic/claude-haiku-5.5",
@@ -81,7 +86,7 @@ test("reports the prompt tokens from the usage event", async () => {
   })) {
     parts.push(part);
   }
-  expect(parts).toEqual(["Hi"]);
+  expect(parts).toEqual([ok("Hi")]);
   expect(usages).toEqual([{ promptTokens: 13 }]);
 });
 
@@ -97,7 +102,7 @@ test("reads the model's context window from the model listing", async () => {
     model: "anthropic/claude-haiku-5.5",
     fetch: fakeFetch,
   });
-  expect(window).toBe(1000000);
+  expect(window).toEqual(ok(1000000));
 });
 
 test("keeps the text and the usage when one event carries both", async () => {
@@ -107,7 +112,7 @@ test("keeps the text and the usage when one event carries both", async () => {
   ].join("");
   const fakeFetch = async () => new Response(body, { status: 200 });
   const usages: Usage[] = [];
-  const parts: string[] = [];
+  const parts: Result<string>[] = [];
   for await (const part of streamChat({
     apiKey: "key",
     model: "anthropic/claude-haiku-5.5",
@@ -117,6 +122,6 @@ test("keeps the text and the usage when one event carries both", async () => {
   })) {
     parts.push(part);
   }
-  expect(parts).toEqual(["Hi"]);
+  expect(parts).toEqual([ok("Hi")]);
   expect(usages).toEqual([{ promptTokens: 7 }]);
 });

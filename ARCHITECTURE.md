@@ -32,6 +32,9 @@ index.ts            composition root: wires process.stdin/stdout and OPENROUTER_
 src/openrouter.ts   model adapter: streams a chat completion from OpenRouter over HTTPS (performs network I/O, passed to the REPL as a function)
 src/core/           pure line classification and command interpretation (no node: imports except types)
 src/repl/           terminal frontend: readline, prompt, session lifecycle
+src/core/messages.ts  shared data types (ChatMessage, Usage)
+src/core/result.ts    Result type (ok / err) for failures that are returned, not thrown
+scripts/            build checks run by `bun run lint` (file count per directory)
 *.test.ts           beside the module each one tests (no separate tests/ folder)
 ```
 
@@ -54,22 +57,22 @@ Size and style limits, enforced by `bun run lint` as errors (ESLint for the line
 - at most 500 code lines per file (`max-lines`),
 - at most 10 files per directory,
 - no object type literals written inline as `{ ... }` (`no-restricted-syntax` on `TSTypeLiteral`); declare a named interface instead.
+- no `throw` statements (`no-restricted-syntax` on `ThrowStatement`); failures are returned as a `Result` from `src/core/result.ts`.
 
 Recursion is avoided in core. When a function would need to call a function that calls it back, pass the callback as a parameter instead of importing across files.
 
 ## Potential Problems
 
 - **Stream-level behaviour is easy to get wrong.** Readline delivers every line in a chunk at once, so lines already buffered after `/exit` are still yielded by the loop unless the loop stops at the exit line. A regression test must keep covering lines that arrive together in one chunk, not only one chunk per line.
-- **Lint limits can be weakened silently.** The size rules are set to `warn` in `eslint.config.js`, so `eslint .` exits 0 with a violation present. The limits are only binding once they are errors.
 - **The file-count check ignores untracked files.** `scripts/check-files-per-dir.ts` reads `git ls-files`, so a new file counts only after it is staged. A directory can exceed the limit until someone runs `git add`.
 - **The frontend has default model stand-ins.** `runRepl` defaults its reply function to an echo and its context-window lookup to `undefined`, so a caller that omits them gets fake model behaviour without an error. The composition root should pass both explicitly.
 - **Unhandled stream errors.** If the input stream emits an error, the session promise never settles and the process waits. The frontend must listen for `error` and settle with a failure.
 - **No write-error handling.** A closed or broken output stream (for example, a pipe closed by the reader) is not reported.
-- **Partial replies stay on screen.** When a model stream fails (an `{"error": ...}` event, or the connection ending before `data: [DONE]`), `streamChat` throws and `runRepl` drops the user line from the history, so no truncated answer is recorded. The text already printed is not marked as incomplete, and nothing tells the user it was discarded.
+- **Partial replies stay on screen.** When a model stream fails (an `{"error": ...}` event, or the connection ending before `data: [DONE]`), `streamChat` yields an `err` result and `runRepl` drops the user line from the history, so no truncated answer is recorded. The text already printed is not marked as incomplete, and nothing tells the user it was discarded.
 - **Retired exit words reach the model.** `exit` and `quit` are no longer commands, so a user who types them from habit sends them to OpenRouter as a message, spends a request, and gets a reply. The session stays open until `/exit` or end of input. The frontend should say which command ends the session when it starts.
 - **Command state lives in the frontend.** The last prompt-token count and the context-window lookup are kept in `runRepl`'s closure, beside the readline loop. The classifier and the context line are in `src/core/commands.ts`, but the state they act on is not yet in the core (see Future Work).
 - **`/context` numbers may not match the last line.** The count is from the last request that reported usage. A later request that failed is removed from the history but leaves the earlier count in place, and the output does not say which request it belongs to.
-- **Model responses are checked with zod.** `src/openrouter.ts` validates stream events and the model listing against schemas. A payload that is not JSON or does not match is reported as `OpenRouter sent a stream event that ...`. The error does not yet say which request failed.
+- **Response schemas can drift from OpenRouter.** The zod schemas in `src/openrouter.ts` are hand-written, and the tests use fixtures written from the same assumptions, so a change on OpenRouter's side passes the tests and fails only at run time. Specific risks: `choices` and `usage` are `optional`, not nullable, so a `null` there fails the whole stream; `ModelListingSchema` requires every entry of `data` to match, so one model with a `null` `context_length` makes `/context` fail for every model; and the error text from zod is printed verbatim, which is the escape-sequence risk under Security Concerns. The schemas and the hand-declared types (`StreamEvent`, `Usage`) are two sources of truth for the same shapes. The error also does not say which request failed.
 - **No timeout and no cancellation.** A request that never completes leaves the prompt blocked with no way to abort it. `streamChat` should accept an `AbortSignal`, and the REPL should pass one that Ctrl+C triggers.
 - **History grows without bound.** Every line and reply is appended and resent in full, so each request grows with the session, eventually exceeding the model's context window and raising cost. No `max_tokens` is set, so a single reply is also unbounded.
 - **Write errors are not handled inside `runRepl`.** An error thrown by `output.write` inside the `try` is caught and reported by writing to the same broken stream, which can throw again out of `runRepl`.
@@ -96,7 +99,7 @@ Trust boundaries: everything read from stdin is untrusted text, and every line i
 - Move command interpretation into `src/core` as pure functions over `(state, line) -> (state, output)`, so the REPL is a thin driver. The line classifier is done (`src/core/commands.ts`); the REPL acts on its result. Next is moving the command state into the core.
 - Move the context state into the core as well: the core keeps the last reported prompt tokens, receives usage through the same state transition as text, and formats the context line from `(used, total)`. The context window becomes a value the core asks for through a port, cached for the session, so `/context` can print the used count when the lookup fails.
 - Put the ports (`Reply`, `ContextWindow`) in `src/core`, beside `Usage`, which already lives in `src/core/messages.ts`. The frontend and the model adapter then both depend on the core and not on each other, and the `echoReply` default leaves the frontend.
-- Set the size rules in `eslint.config.js` to `error`, so a violation fails `bun run lint`.
+- Parse the model listing per entry and keep only the entries that match, so one malformed model cannot fail `/context`. Derive `StreamEvent` and `Usage` from the schemas with `z.infer`, and record real OpenRouter responses as test fixtures so the schemas are checked against the service, not against the tests' own assumptions.
 - Make `scripts/check-files-per-dir.ts` count untracked files too (for example, from a directory walk that skips `node_modules` and `.git`).
 - Add a formatter, and naming rules to the linter.
 - Make the session a function of its inputs: the readline interface is created by the frontend and passed where needed, so tests can drive a session without touching real streams.
