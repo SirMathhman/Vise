@@ -1,7 +1,13 @@
 import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
 import { classifyLine, contextLine } from "../core/commands.ts";
-import { compact, needsCompaction, type Conversation } from "../core/compaction.ts";
+import {
+  compactIfNeeded,
+  compactNow,
+  recordUsage,
+  type Conversation,
+  type Step,
+} from "../core/compaction.ts";
 import type { ChatMessage, ContextWindow, Reply, Usage } from "../core/messages.ts";
 import { err, ok, type Result } from "../core/result.ts";
 
@@ -47,23 +53,9 @@ export async function runRepl(
   const rl = createInterface({ input, output, prompt: "> ", signal: controller.signal });
   // Readline re-emits input errors on the interface, and throws if nothing listens.
   rl.on("error", fail);
-  const runCompact = async () => {
-    const result = await compact(conversation, reply);
-    if (result.ok) {
-      conversation = result.value;
-      output.write("history compacted\n");
-    } else {
-      output.write(`error: compaction failed: ${result.error.message}\n`);
-    }
-  };
-  const compactIfFull = async () => {
-    if (conversation.promptTokens === undefined) return;
-    const result = await contextWindow();
-    if (!result.ok) {
-      output.write(`error: could not check the context window: ${result.error.message}\n`);
-      return;
-    }
-    if (needsCompaction(conversation.promptTokens, result.value)) await runCompact();
+  const apply = (step: Step) => {
+    conversation = step.conversation;
+    if (step.notice) output.write(`${step.notice}\n`);
   };
   try {
     rl.prompt();
@@ -76,7 +68,7 @@ export async function runRepl(
         continue;
       }
       if (input.kind === "compact") {
-        await runCompact();
+        apply(await compactNow(conversation, reply));
         rl.prompt();
         continue;
       }
@@ -85,7 +77,7 @@ export async function runRepl(
         rl.prompt();
         continue;
       }
-      await compactIfFull();
+      apply(await compactIfNeeded(conversation, reply, contextWindow));
       conversation.history.push({ role: "user", content: input.text });
       let answer = "";
       let failure: Error | undefined;
@@ -110,10 +102,7 @@ export async function runRepl(
       } else {
         conversation.history.push({ role: "assistant", content: answer });
         // Only a completed request reports its size; a failed one leaves the stored size alone.
-        if (usage) {
-          conversation.promptTokens = usage.promptTokens;
-          conversation.compacted = false;
-        }
+        if (usage) conversation = recordUsage(conversation, usage);
         output.write("\n");
       }
       rl.prompt();
