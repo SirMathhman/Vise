@@ -9,10 +9,14 @@ if (import.meta.main) {
     console.error("Set OPENROUTER_API_KEY in .env");
     process.exit(1);
   }
-  await runRepl(
+  const result = await runRepl(
     process.stdin,
     process.stdout,
     (messages, onUsage) => streamChat({ apiKey, model: MODEL, messages, onUsage }),
     () => modelContextWindow({ model: MODEL }),
   );
+  if (!result.ok) {
+    console.error(`error: ${result.error.message}`);
+    process.exit(1);
+  }
 }

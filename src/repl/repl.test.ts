@@ -83,3 +83,30 @@ test("rejects an unknown command without sending it to the model", async () => {
   expect(seen).toEqual([]);
   expect(written).toContain("error: unknown command /foo");
 });
+
+test("ends with an error when the output stream fails", async () => {
+  const output = new Writable({
+    write(_chunk, _encoding, done) {
+      done(new Error("pipe closed"));
+    },
+  });
+  const result = await runRepl(Readable.from(["hello\n"]), output);
+  expect(result.ok).toBe(false);
+  if (!result.ok) expect(result.error.message).toBe("pipe closed");
+});
+
+test("ends with an error when the input stream fails", async () => {
+  const input = new Readable({
+    read() {
+      this.destroy(new Error("input broke"));
+    },
+  });
+  const output = new Writable({
+    write(_chunk, _encoding, done) {
+      done();
+    },
+  });
+  const result = await runRepl(input, output);
+  expect(result.ok).toBe(false);
+  if (!result.ok) expect(result.error.message).toBe("input broke");
+});
