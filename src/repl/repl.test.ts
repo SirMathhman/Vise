@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { PassThrough, Readable, Writable } from "node:stream";
 import type { ChatMessage } from "../core/messages.ts";
-import { ok } from "../core/result.ts";
+import { err, ok } from "../core/result.ts";
 import { runRepl, type Reply } from "./repl.ts";
 
 test("echoes each line until exit", async () => {
@@ -98,7 +98,7 @@ test("/compact replaces the history with a summary and the last six messages", a
   });
   const lines = ["1", "2", "3", "4", "5", "6", "7", "/compact", "next"];
   await runRepl(Readable.from(lines.map((line) => `${line}\n`)), output, reply);
-  expect(seen.at(-1)).toEqual(["SUM", "5", "r:5", "6", "r:6", "7", "r:7", "next"]);
+  expect(seen.at(-1)).toEqual(["SUM\n\n5", "r:5", "6", "r:6", "7", "r:7", "next"]);
 });
 
 test("compacts before a message once the last prompt fills 80% of the window", async () => {
@@ -119,7 +119,43 @@ test("compacts before a message once the last prompt fills 80% of the window", a
     },
   });
   await runRepl(Readable.from(["a\n", "b\n"]), output, reply, async () => ok(100));
-  expect(seen.at(-1)).toEqual(["SUM", "a", "r:a", "b"]);
+  expect(seen.at(-1)).toEqual(["SUM\n\na", "r:a", "b"]);
+});
+
+test("a failed reply does not record its prompt size", async () => {
+  const seen: string[] = [];
+  const reply: Reply = async function* (messages, onUsage) {
+    const last = messages.at(-1)?.content ?? "";
+    seen.push(last);
+    if (last === "a") {
+      onUsage({ promptTokens: 90 });
+      yield err(new Error("cut off"));
+      return;
+    }
+    yield ok("fine");
+  };
+  const output = new Writable({
+    write(_chunk, _encoding, done) {
+      done();
+    },
+  });
+  await runRepl(Readable.from(["a\n", "b\n"]), output, reply, async () => ok(100));
+  expect(seen).toEqual(["a", "b"]);
+});
+
+test("/context after a compaction says the size is unknown", async () => {
+  const reply: Reply = async function* (messages) {
+    yield ok(messages.at(-1)?.content === "Summarize this convo" ? "SUM" : "ok");
+  };
+  let written = "";
+  const output = new Writable({
+    write(chunk, _encoding, done) {
+      written += chunk.toString();
+      done();
+    },
+  });
+  await runRepl(Readable.from(["a\n", "/compact\n", "/context\n"]), output, reply, async () => ok(100));
+  expect(written).toContain("context: size unknown since the last compaction");
 });
 
 test("reports a reply that throws as an error and keeps the session going", async () => {

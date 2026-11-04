@@ -38,6 +38,16 @@ function decode<T>(schema: z.ZodType<T>, text: string, what: string): Result<T> 
   return ok(result.data);
 }
 
+// Marks the last message as a prompt-cache breakpoint. The next request starts with the
+// same messages, so the provider can reuse the cached prefix. The stored history is unchanged.
+function withCacheBreakpoint(messages: ChatMessage[]): unknown[] {
+  return messages.map((message, index) =>
+    index === messages.length - 1
+      ? { role: message.role, content: [{ type: "text", text: message.content, cache_control: { type: "ephemeral" } }] }
+      : message,
+  );
+}
+
 interface StreamOptions {
   apiKey: string;
   model: string;
@@ -81,7 +91,7 @@ async function postChat(options: StreamOptions): Promise<Result<ReadableStream<U
       },
       body: JSON.stringify({
         model: options.model,
-        messages: options.messages,
+        messages: withCacheBreakpoint(options.messages),
         stream: true,
       }),
     });

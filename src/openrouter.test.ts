@@ -90,6 +90,30 @@ test("reports the prompt tokens from the usage event", async () => {
   expect(usages).toEqual([{ promptTokens: 13 }]);
 });
 
+test("marks only the last message as a prompt-cache breakpoint", async () => {
+  let sentBody = "";
+  const fakeFetch = async (_url: string, init: RequestInit) => {
+    sentBody = String(init.body);
+    return new Response("data: [DONE]\n\n", { status: 200 });
+  };
+  await streamChat({
+    apiKey: "key",
+    model: "anthropic/claude-haiku-5.5",
+    messages: [
+      { role: "user", content: "first" },
+      { role: "assistant", content: "reply" },
+      { role: "user", content: "second" },
+    ],
+    fetch: fakeFetch,
+  }).next();
+  const sent = JSON.parse(sentBody).messages;
+  expect(sent[0]).toEqual({ role: "user", content: "first" });
+  expect(sent[2]).toEqual({
+    role: "user",
+    content: [{ type: "text", text: "second", cache_control: { type: "ephemeral" } }],
+  });
+});
+
 test("reads the model's context window from the model listing", async () => {
   const listing = {
     data: [

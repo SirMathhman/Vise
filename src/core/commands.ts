@@ -34,7 +34,13 @@ export function classifyLine(line: string): Line {
   return { kind: "message", text: line };
 }
 
-export function contextLine(used: number | undefined, total: number | undefined): string {
-  if (used === undefined) return "context: no request sent yet";
+export function contextLine(
+  used: number | undefined,
+  total: number | undefined,
+  compacted: boolean,
+): string {
+  if (used === undefined) {
+    return compacted ? "context: size unknown since the last compaction" : "context: no request sent yet";
+  }
   return `context: ${used} / ${total ?? "unknown"} tokens`;
 }
