@@ -6,14 +6,16 @@ const DONE = Symbol("done");
 
 type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 
-// Yields text deltas. The request's usage goes to onUsage when the server reports it.
-export async function* streamChat(options: {
+interface StreamOptions {
   apiKey: string;
   model: string;
   messages: ChatMessage[];
   fetch?: FetchLike;
   onUsage?: (usage: Usage) => void;
-}): AsyncGenerator<string> {
+}
+
+// Yields text deltas. The request's usage goes to onUsage when the server reports it.
+export async function* streamChat(options: StreamOptions): AsyncGenerator<string> {
   const send = options.fetch ?? fetch;
   const response = await send(ENDPOINT, {
     method: "POST",
@@ -55,7 +57,10 @@ export async function* streamChat(options: {
 }
 
 // What one `data:` line carries. A single event can have both.
-type StreamEvent = { text?: string; usage?: Usage };
+interface StreamEvent {
+  text?: string;
+  usage?: Usage;
+}
 
 // Returns the event in a `data:` line, DONE at the end marker, or undefined for
 // every other line (blank lines and comments such as `: OPENROUTER PROCESSING`).
@@ -73,17 +78,28 @@ function parseEventLine(line: string): StreamEvent | typeof DONE | undefined {
   };
 }
 
-// The model's context window in tokens, from OpenRouter's model listing.
-export async function modelContextWindow(options: {
+interface ModelContextOptions {
   model: string;
   fetch?: FetchLike;
-}): Promise<number> {
+}
+
+interface ModelEntry {
+  id: string;
+  context_length: number;
+}
+
+interface ModelListing {
+  data: ModelEntry[];
+}
+
+// The model's context window in tokens, from OpenRouter's model listing.
+export async function modelContextWindow(options: ModelContextOptions): Promise<number> {
   const send = options.fetch ?? fetch;
   const response = await send(MODELS_ENDPOINT, { method: "GET" });
   if (!response.ok) {
     throw new Error(`OpenRouter returned ${response.status} for the model list`);
   }
-  const listing = (await response.json()) as { data: { id: string; context_length: number }[] };
+  const listing = (await response.json()) as ModelListing;
   const model = listing.data.find((entry) => entry.id === options.model);
   if (!model) throw new Error(`OpenRouter does not list ${options.model}`);
   return model.context_length;

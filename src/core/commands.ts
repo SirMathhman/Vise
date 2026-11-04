@@ -1,8 +1,22 @@
-export type Line =
-  | { kind: "exit" }
-  | { kind: "context" }
-  | { kind: "unknown-command"; command: string }
-  | { kind: "message"; text: string };
+export interface ExitLine {
+  kind: "exit";
+}
+
+export interface ContextLine {
+  kind: "context";
+}
+
+export interface UnknownCommandLine {
+  kind: "unknown-command";
+  command: string;
+}
+
+export interface MessageLine {
+  kind: "message";
+  text: string;
+}
+
+export type Line = ExitLine | ContextLine | UnknownCommandLine | MessageLine;
 
 // Decides what a line means. Commands are matched on the trimmed line. Other
 // lines starting with "/" are rejected, and everything else is a message for

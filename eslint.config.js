@@ -6,5 +6,9 @@ export default tseslint.config(js.configs.recommended, ...tseslint.configs.recom
   rules: {
     "max-lines": ["warn", { max: 500, skipBlankLines: true, skipComments: true }],
     "max-lines-per-function": ["warn", { max: 100, skipBlankLines: true, skipComments: true }],
+    "no-restricted-syntax": [
+      "error",
+      { selector: "TSTypeLiteral", message: "Use a named interface instead of an object type literal." },
+    ],
   },
 });
