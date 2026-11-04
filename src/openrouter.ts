@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { ChatMessage, Usage } from "./core/messages.ts";
 
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
@@ -5,6 +6,34 @@ const MODELS_ENDPOINT = "https://openrouter.ai/api/v1/models";
 const DONE = Symbol("done");
 
 type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
+
+const StreamEventSchema = z.object({
+  error: z.object({ message: z.string().optional() }).nullish(),
+  choices: z
+    .array(z.object({ delta: z.object({ content: z.string().nullish() }).nullish() }))
+    .optional(),
+  usage: z.object({ prompt_tokens: z.number().optional() }).nullish(),
+});
+
+const ModelListingSchema = z.object({
+  data: z.array(z.object({ id: z.string(), context_length: z.number() })),
+});
+
+// Parses `text` as JSON and checks it against `schema`. `what` names the payload
+// in the error, so a bad response says where it came from.
+function decode<T>(schema: z.ZodType<T>, text: string, what: string): T {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    throw new Error(`OpenRouter sent ${what} that is not JSON`);
+  }
+  const result = schema.safeParse(value);
+  if (!result.success) {
+    throw new Error(`OpenRouter sent ${what} that does not match the expected shape: ${result.error.message}`);
+  }
+  return result.data;
+}
 
 interface StreamOptions {
   apiKey: string;
@@ -69,7 +98,7 @@ function parseEventLine(line: string): StreamEvent | typeof DONE | undefined {
   if (!trimmed.startsWith("data:")) return undefined;
   const payload = trimmed.slice("data:".length).trim();
   if (payload === "[DONE]") return DONE;
-  const event = JSON.parse(payload);
+  const event = decode(StreamEventSchema, payload, "a stream event");
   if (event.error) throw new Error(`OpenRouter error: ${event.error.message ?? "unknown error"}`);
   const promptTokens = event.usage?.prompt_tokens;
   return {
@@ -83,15 +112,6 @@ interface ModelContextOptions {
   fetch?: FetchLike;
 }
 
-interface ModelEntry {
-  id: string;
-  context_length: number;
-}
-
-interface ModelListing {
-  data: ModelEntry[];
-}
-
 // The model's context window in tokens, from OpenRouter's model listing.
 export async function modelContextWindow(options: ModelContextOptions): Promise<number> {
   const send = options.fetch ?? fetch;
@@ -99,7 +119,7 @@ export async function modelContextWindow(options: ModelContextOptions): Promise<
   if (!response.ok) {
     throw new Error(`OpenRouter returned ${response.status} for the model list`);
   }
-  const listing = (await response.json()) as ModelListing;
+  const listing = decode(ModelListingSchema, await response.text(), "a model listing");
   const model = listing.data.find((entry) => entry.id === options.model);
   if (!model) throw new Error(`OpenRouter does not list ${options.model}`);
   return model.context_length;

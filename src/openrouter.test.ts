@@ -58,6 +58,11 @@ test("throws when the stream ends before [DONE]", async () => {
   await expect(collect(body)).rejects.toThrow("ended before it finished");
 });
 
+test("throws a clear error when an event does not match the expected shape", async () => {
+  const body = 'data: {"choices":"not a list"}\n\n';
+  await expect(collect(body)).rejects.toThrow("OpenRouter sent a stream event that does not match");
+});
+
 test("reports the prompt tokens from the usage event", async () => {
   const body = [
     'data: {"choices":[{"delta":{"content":"Hi"}}]}\n\n',
