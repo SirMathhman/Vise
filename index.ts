@@ -5,24 +5,38 @@ import { runTool } from "./src/tools/run-tool.ts";
 
 const MODEL = "anthropic/claude-haiku-5.5";
 
+// Stops every background job, and warns about each one that could not be stopped.
+async function stopJobs(): Promise<void> {
+  for (const job of await killAllJobs()) {
+    console.error(`warning: background job ${job.id} (pid ${job.pid}) could not be stopped and may still be running: ${job.command}`);
+  }
+}
+
 if (import.meta.main) {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     console.error("Set OPENROUTER_API_KEY in .env");
     process.exit(1);
   }
-  const result = await runRepl(
-    process.stdin,
-    process.stdout,
-    (messages, onUsage, onToolCall) => streamChat({ apiKey, model: MODEL, messages, onUsage, onToolCall }),
-    () => modelContextWindow({ model: MODEL }),
-    runTool(process.cwd()),
-  );
-  for (const job of await killAllJobs()) {
-    console.error(`warning: background job ${job.id} (pid ${job.pid}) could not be stopped and may still be running: ${job.command}`);
+  // Ctrl+C stops the jobs and then exits, instead of leaving them running.
+  process.once("SIGINT", () => {
+    void stopJobs().then(() => process.exit(130));
+  });
+  let failed = false;
+  try {
+    const result = await runRepl(
+      process.stdin,
+      process.stdout,
+      (messages, onUsage, onToolCall) => streamChat({ apiKey, model: MODEL, messages, onUsage, onToolCall }),
+      () => modelContextWindow({ model: MODEL }),
+      runTool(process.cwd()),
+    );
+    if (!result.ok) {
+      console.error(`error: ${result.error.message}`);
+      failed = true;
+    }
+  } finally {
+    await stopJobs();
   }
-  if (!result.ok) {
-    console.error(`error: ${result.error.message}`);
-    process.exit(1);
-  }
+  if (failed) process.exit(1);
 }

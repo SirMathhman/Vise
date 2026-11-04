@@ -71,7 +71,10 @@ test("reports a job whose stop keeps failing, so it can be warned about", async 
   const match = result.ok ? /as job (\d+)/.exec(result.value) : null;
   expect(match).not.toBeNull();
   const unstopped = await killAllJobs(async () => false);
-  expect(unstopped.map((job) => job.id)).toEqual([Number(match?.[1])]);
-  // The real process is still running; stop it directly so the test leaves nothing behind.
-  await Bun.spawn(["taskkill", "/PID", String(unstopped[0]?.pid), "/T", "/F"], { stdout: "ignore", stderr: "ignore" }).exited;
+  try {
+    expect(unstopped.map((job) => job.id)).toEqual([Number(match?.[1])]);
+  } finally {
+    // The real process is still running; stop it directly so the test leaves nothing behind, even when an assertion fails.
+    await Bun.spawn(["taskkill", "/PID", String(unstopped[0]?.pid), "/T", "/F"], { stdout: "ignore", stderr: "ignore" }).exited;
+  }
 });
