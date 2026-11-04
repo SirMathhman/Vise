@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { listFiles } from "./list-files.ts";
@@ -22,4 +22,13 @@ test("lists files to the given depth, skipping hidden entries, and refuses paths
   expect(deeper).toEqual({ ok: true, value: ["a.txt", join("sub", "b.txt")].join("\n") });
   const outside = await listFiles(root, "..", 1);
   expect(outside.ok).toBe(false);
+});
+
+test("refuses a link inside the root that points outside it", async () => {
+  const root = await fixture();
+  const elsewhere = await mkdtemp(join(tmpdir(), "vise-outside-"));
+  await writeFile(join(elsewhere, "leak.txt"), "");
+  await symlink(elsewhere, join(root, "link"), "junction");
+  const result = await listFiles(root, "link", 1);
+  expect(result.ok).toBe(false);
 });
