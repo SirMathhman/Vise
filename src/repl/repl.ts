@@ -15,7 +15,8 @@ export async function* echoReply(messages: ChatMessage[]): AsyncGenerator<Result
 }
 
 // Runs the session until /exit or end of input. A failure of the input or output
-// stream ends it early, and that failure is the result.
+// stream ends it early, and that failure is the result. Whatever happens, the
+// interface is closed and the listeners are removed before this returns.
 export async function runRepl(
   input: Readable,
   output: Writable,
@@ -45,42 +46,52 @@ export async function runRepl(
     }
     output.write(`${contextLine(promptTokens, total)}\n`);
   };
-  rl.prompt();
-  for await (const line of rl) {
-    const input = classifyLine(line);
-    if (input.kind === "exit") break;
-    if (input.kind === "context") {
-      await showContext();
-      rl.prompt();
-      continue;
-    }
-    if (input.kind === "unknown-command") {
-      output.write(`error: unknown command ${input.command}\n`);
-      rl.prompt();
-      continue;
-    }
-    history.push({ role: "user", content: input.text });
-    let answer = "";
-    let failure: Error | undefined;
-    const onUsage = (usage: Usage) => {
-      promptTokens = usage.promptTokens;
-    };
-    for await (const chunk of reply(history, onUsage)) {
-      if (!chunk.ok) {
-        failure = chunk.error;
-        break;
-      }
-      answer += chunk.value;
-      output.write(chunk.value);
-    }
-    if (failure) {
-      history.pop();
-      output.write(`\nerror: ${failure.message}\n`);
-    } else {
-      history.push({ role: "assistant", content: answer });
-      output.write("\n");
-    }
+  try {
     rl.prompt();
+    for await (const line of rl) {
+      const input = classifyLine(line);
+      if (input.kind === "exit") break;
+      if (input.kind === "context") {
+        await showContext();
+        rl.prompt();
+        continue;
+      }
+      if (input.kind === "unknown-command") {
+        output.write(`error: unknown command ${input.command}\n`);
+        rl.prompt();
+        continue;
+      }
+      history.push({ role: "user", content: input.text });
+      let answer = "";
+      let failure: Error | undefined;
+      const onUsage = (usage: Usage) => {
+        promptTokens = usage.promptTokens;
+      };
+      try {
+        for await (const chunk of reply(history, onUsage)) {
+          if (!chunk.ok) {
+            failure = chunk.error;
+            break;
+          }
+          answer += chunk.value;
+          output.write(chunk.value);
+        }
+      } catch (error) {
+        failure = error as Error;
+      }
+      if (failure) {
+        history.pop();
+        output.write(`\nerror: ${failure.message}\n`);
+      } else {
+        history.push({ role: "assistant", content: answer });
+        output.write("\n");
+      }
+      rl.prompt();
+    }
+  } finally {
+    input.off("error", fail);
+    output.off("error", fail);
+    rl.close();
   }
   return streamError ? err(streamError) : ok(undefined);
 }

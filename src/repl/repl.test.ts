@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { Readable, Writable } from "node:stream";
+import { PassThrough, Readable, Writable } from "node:stream";
 import type { ChatMessage } from "../core/messages.ts";
 import { ok } from "../core/result.ts";
 import { runRepl, type Reply } from "./repl.ts";
@@ -82,6 +82,35 @@ test("rejects an unknown command without sending it to the model", async () => {
   await runRepl(Readable.from(["/foo\n"]), output, reply);
   expect(seen).toEqual([]);
   expect(written).toContain("error: unknown command /foo");
+});
+
+test("reports a reply that throws as an error and keeps the session going", async () => {
+  const reply: Reply = async function* () {
+    await Promise.reject(new Error("boom"));
+    yield ok("never");
+  };
+  let written = "";
+  const output = new Writable({
+    write(chunk, _encoding, done) {
+      written += chunk.toString();
+      done();
+    },
+  });
+  const result = await runRepl(Readable.from(["hello\n"]), output, reply);
+  expect(written).toContain("error: boom");
+  expect(result.ok).toBe(true);
+});
+
+test("ends on /exit even while the input stream stays open", async () => {
+  const input = new PassThrough();
+  input.write("/exit\n");
+  const output = new Writable({
+    write(_chunk, _encoding, done) {
+      done();
+    },
+  });
+  const result = await runRepl(input, output);
+  expect(result.ok).toBe(true);
 });
 
 test("ends with an error when the output stream fails", async () => {
