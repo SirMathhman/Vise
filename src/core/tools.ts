@@ -6,6 +6,8 @@ export const READ_FILE = "read_file";
 export const EDIT_FILE = "edit_file";
 export const CREATE_FILE = "create_file";
 export const RUN_POWERSHELL = "run_powershell";
+export const READ_COMMAND = "read_command";
+export const KILL_COMMAND = "kill_command";
 const DEFAULT_DEPTH = 2;
 const MAX_DEPTH = 5;
 export const MAX_LINES = 500;
@@ -104,6 +106,38 @@ export const runPowershellSpec = {
   },
 };
 
+export const readCommandSpec = {
+  type: "function",
+  function: {
+    name: READ_COMMAND,
+    description:
+      "Read the status and latest output of a command that is running in the background, or has finished. Use the job number that run_powershell reported.",
+    parameters: {
+      type: "object",
+      properties: {
+        job: { type: "integer", minimum: 1, description: "The job number that run_powershell reported." },
+      },
+      required: ["job"],
+    },
+  },
+};
+
+export const killCommandSpec = {
+  type: "function",
+  function: {
+    name: KILL_COMMAND,
+    description:
+      "Stop a command that is running in the background, along with the processes it started. The user must approve it before it is stopped. Use the job number that run_powershell reported.",
+    parameters: {
+      type: "object",
+      properties: {
+        job: { type: "integer", minimum: 1, description: "The job number that run_powershell reported." },
+      },
+      required: ["job"],
+    },
+  },
+};
+
 export interface ListFilesArgs {
   path: string;
   depth: number;
@@ -130,6 +164,10 @@ export interface RunPowershellArgs {
   command: string;
 }
 
+export interface JobArgs {
+  job: number;
+}
+
 // Asks the user to approve a change. The preview is what will be written or run. Resolves true only
 // when the user says yes.
 export type Approve = (preview: string) => Promise<boolean>;
@@ -148,6 +186,7 @@ interface RawArgs {
   replacement?: unknown;
   content?: unknown;
   command?: unknown;
+  job?: unknown;
 }
 
 function readArgs(raw: string): Result<RawArgs> {
@@ -214,13 +253,22 @@ export function parseRunPowershellArgs(raw: string): Result<RunPowershellArgs> {
   return ok({ command });
 }
 
+// Reads the job number the model wrote. It must be a whole number of at least 1.
+export function parseJobArgs(raw: string): Result<JobArgs> {
+  const args = readArgs(raw);
+  if (!args.ok) return args;
+  const { job } = args.value;
+  if (!isLine(job)) return err(new Error("job must be a job number of at least 1"));
+  return ok({ job });
+}
+
 function isLine(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 1;
 }
 
 // Edits, new files, and commands are run or written only after the user approves them.
 export function needsApproval(call: ToolCall): boolean {
-  return call.name === EDIT_FILE || call.name === CREATE_FILE || call.name === RUN_POWERSHELL;
+  return call.name === EDIT_FILE || call.name === CREATE_FILE || call.name === RUN_POWERSHELL || call.name === KILL_COMMAND;
 }
 
 // The change or command shown to the user before they approve it. Undefined when the arguments are
@@ -240,6 +288,11 @@ export function approvalPreview(call: ToolCall): string | undefined {
     const args = parseRunPowershellArgs(call.arguments);
     if (!args.ok) return undefined;
     return `run in the working directory\n$ ${args.value.command}`;
+  }
+  if (call.name === KILL_COMMAND) {
+    const args = parseJobArgs(call.arguments);
+    if (!args.ok) return undefined;
+    return `stop background job ${args.value.job}`;
   }
   return undefined;
 }
@@ -280,6 +333,11 @@ export function describeToolCall(call: ToolCall): string {
     const args = parseRunPowershellArgs(call.arguments);
     if (!args.ok) return `tool: ${RUN_POWERSHELL} (invalid arguments)`;
     return `tool: ${RUN_POWERSHELL} ${args.value.command.split("\n")[0]}`;
+  }
+  if (call.name === READ_COMMAND || call.name === KILL_COMMAND) {
+    const args = parseJobArgs(call.arguments);
+    if (!args.ok) return `tool: ${call.name} (invalid arguments)`;
+    return `tool: ${call.name} job ${args.value.job}`;
   }
   return `tool: ${call.name} (unknown tool)`;
 }

@@ -2,13 +2,16 @@ import type { ToolCall } from "../core/messages.ts";
 import {
   CREATE_FILE,
   EDIT_FILE,
+  KILL_COMMAND,
   LIST_FILES,
+  READ_COMMAND,
   READ_FILE,
   RUN_POWERSHELL,
   approvalPreview,
   needsApproval,
   parseCreateFileArgs,
   parseEditFileArgs,
+  parseJobArgs,
   parseListFilesArgs,
   parseReadFileArgs,
   parseRunPowershellArgs,
@@ -20,12 +23,16 @@ import { createFile } from "./files/create-file.ts";
 import { editFile } from "./files/edit-file.ts";
 import { listFiles } from "./files/list-files.ts";
 import { readFileLines } from "./files/read-file.ts";
+import { MAX_JOBS, killJob, readJob, runningJobs } from "./jobs.ts";
 import { runPowershell } from "./run-powershell.ts";
 
 // The tool runner for a working directory. A change or command is checked and previewed, and it
 // runs only if `approve` says yes. Errors come back as text for the model to read.
 export function runTool(root: string): ToolRunner {
   return async (call: ToolCall, approve: Approve) => {
+    if (call.name === RUN_POWERSHELL && runningJobs() >= MAX_JOBS) {
+      return `error: ${MAX_JOBS} commands are already running in the background`;
+    }
     if (needsApproval(call)) {
       const problem = await checkTarget(root, call);
       if (problem) return `error: ${problem}`;
@@ -85,6 +92,18 @@ async function dispatch(root: string, call: ToolCall): Promise<string> {
     if (!args.ok) return `invalid arguments: ${args.error.message}`;
     const result = await runPowershell(root, args.value.command);
     return result.ok ? result.value : `error: ${result.error.message}`;
+  }
+  if (call.name === READ_COMMAND) {
+    const args = parseJobArgs(call.arguments);
+    if (!args.ok) return `invalid arguments: ${args.error.message}`;
+    const job = readJob(args.value.job);
+    return job.ok ? job.value : `error: ${job.error.message}`;
+  }
+  if (call.name === KILL_COMMAND) {
+    const args = parseJobArgs(call.arguments);
+    if (!args.ok) return `invalid arguments: ${args.error.message}`;
+    const stopped = await killJob(args.value.job);
+    return stopped.ok ? stopped.value : `error: ${stopped.error.message}`;
   }
   return `unknown tool: ${call.name}`;
 }
