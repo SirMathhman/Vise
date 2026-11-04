@@ -9,8 +9,8 @@ Vise is a Bun + TypeScript command-line application. The target shape is a small
 - **Core**: the pure logic that turns an input line into a result (an echo, and later commands). Core code takes data in and returns data out. It never reads stdin, writes stdout, reads the environment, or touches the clock or filesystem without being passed the capability.
 - **Frontend**: code that connects the core to a medium. The terminal frontend is the only one today. It owns readline, prompts, and stream handling.
 - **Composition root**: the single entry point that wires a frontend to the core and reads the process environment. It is the only place that touches `process`.
-- **Session**: one run of the REPL, from start until `exit`, `quit`, or end of input.
-- **Exit word**: a line whose trimmed text is `exit` or `quit`. After an exit word, the session accepts no further lines, even if they arrived in the same chunk of input.
+- **Session**: one run of the REPL, from start until `/exit` or end of input.
+- **Exit word**: a line whose trimmed text is `/exit`. After an exit word, the session accepts no further lines, even if they arrived in the same chunk of input.
 - **Line**: one unit of input without its terminator. Lines are processed in order and each is handled at most once.
 
 Invariants:

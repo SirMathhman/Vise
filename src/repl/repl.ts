@@ -2,7 +2,7 @@ import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
 import type { ChatMessage } from "../core/messages.ts";
 
-const EXIT_WORDS = new Set(["exit", "quit"]);
+const EXIT_COMMAND = "/exit";
 
 export type Reply = (messages: ChatMessage[]) => AsyncIterable<string>;
 
@@ -19,7 +19,7 @@ export async function runRepl(
   const history: ChatMessage[] = [];
   rl.prompt();
   for await (const line of rl) {
-    if (EXIT_WORDS.has(line.trim())) break;
+    if (line.trim() === EXIT_COMMAND) break;
     history.push({ role: "user", content: line });
     try {
       let answer = "";

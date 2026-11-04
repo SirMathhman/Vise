@@ -11,7 +11,7 @@ test("echoes each line until exit", async () => {
       done();
     },
   });
-  await runRepl(Readable.from(["hello\n", "world\n", "exit\n", "ignored\n"]), output);
+  await runRepl(Readable.from(["hello\n", "world\n", "/exit\n", "ignored\n"]), output);
   expect(written).toContain("echo: hello\n");
   expect(written).toContain("echo: world\n");
   expect(written).not.toContain("echo: ignored");
@@ -25,7 +25,7 @@ test("stops at exit even when later lines arrive in the same chunk", async () =>
       done();
     },
   });
-  await runRepl(Readable.from(["hello\nexit\nignored\n"]), output);
+  await runRepl(Readable.from(["hello\n/exit\nignored\n"]), output);
   expect(written).toContain("echo: hello\n");
   expect(written).not.toContain("echo: ignored");
 });
