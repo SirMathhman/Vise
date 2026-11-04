@@ -48,7 +48,7 @@ Each source file has one responsibility. Entry points contain wiring only: they 
 
 The composition root supplies the reply function and the context-window lookup explicitly. The frontend has no default model, so a session that forgets to pass one fails instead of silently echoing.
 
-Size and style limits, to be enforced by the linter once one is added:
+Size and style limits, enforced by `bun run lint` (ESLint for the line and function limits, `scripts/check-files-per-dir.ts` for the file count):
 
 - at most 100 lines per function,
 - at most 500 code lines per file,
@@ -70,7 +70,7 @@ Recursion is avoided in core. When a function would need to call a function that
 - **No timeout and no cancellation.** A request that never completes leaves the prompt blocked with no way to abort it. `streamChat` should accept an `AbortSignal`, and the REPL should pass one that Ctrl+C triggers.
 - **History grows without bound.** Every line and reply is appended and resent in full, so each request grows with the session, eventually exceeding the model's context window and raising cost. No `max_tokens` is set, so a single reply is also unbounded.
 - **Write errors are not handled inside `runRepl`.** An error thrown by `output.write` inside the `try` is caught and reported by writing to the same broken stream, which can throw again out of `runRepl`.
-- **No linter or formatter configured.** Style and size rules above are not enforced, so they will drift.
+- **No formatter configured.** The linter enforces size and correctness rules, but not formatting, so style can still drift between files.
 - **Unpinned development dependency.** `@types/bun` is set to `latest`, so type checks can change without a code change.
 - **`typescript` is only a peer dependency.** A fresh install does not provide the compiler the project's checks need unless the user has it installed.
 
@@ -93,7 +93,7 @@ Trust boundaries: everything read from stdin is untrusted text, and every line i
 - Move command interpretation into `src/core` as pure functions over `(state, line) -> (state, output)`, so the REPL is a thin driver. The line classifier is done (`src/core/commands.ts`); the REPL acts on its result. Next is moving the command state into the core.
 - Move the context state into the core as well: the core keeps the last reported prompt tokens, receives usage through the same state transition as text, and formats the context line from `(used, total)`. The context window becomes a value the core asks for through a port, cached for the session, so `/context` can print the used count when the lookup fails.
 - Put the ports (`Reply`, `ContextWindow`) in `src/core`, beside `Usage`, which already lives in `src/core/messages.ts`. The frontend and the model adapter then both depend on the core and not on each other, and the `echoReply` default leaves the frontend.
-- Add a linter that enforces the size and naming limits, and a formatter. The project already has more than one command, so this is the next change, not a later one.
+- Add a formatter, and naming rules to the linter.
 - Make the session a function of its inputs: the readline interface is created by the frontend and passed where needed, so tests can drive a session without touching real streams.
 - Introduce a structured result type for command outcomes (success, usage error, unknown command) instead of ad-hoc strings, with errors that say what failed, where, why, and what the user can do.
 - Give the model adapter a structured error type (`ModelError` with kinds such as `http`, `stream`, `parse`, `truncated`) so each failure says what failed, where, why, and what to do.
