@@ -64,3 +64,21 @@ test("/context shows the prompt tokens of the last request out of the model's wi
   await runRepl(Readable.from(["hello\n", "/context\n"]), output, reply, async () => 1000);
   expect(written).toContain("context: 42 / 1000 tokens");
 });
+
+test("rejects an unknown command without sending it to the model", async () => {
+  const seen: string[] = [];
+  const reply: Reply = async function* (messages) {
+    seen.push(messages.at(-1)?.content ?? "");
+    yield "ok";
+  };
+  let written = "";
+  const output = new Writable({
+    write(chunk, _encoding, done) {
+      written += chunk.toString();
+      done();
+    },
+  });
+  await runRepl(Readable.from(["/foo\n"]), output, reply);
+  expect(seen).toEqual([]);
+  expect(written).toContain("error: unknown command /foo");
+});

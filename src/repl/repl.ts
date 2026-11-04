@@ -23,12 +23,15 @@ export async function runRepl(
   const history: ChatMessage[] = [];
   let promptTokens: number | undefined;
   const showContext = async () => {
-    try {
-      const total = promptTokens === undefined ? undefined : await contextWindow();
-      output.write(`${contextLine(promptTokens, total)}\n`);
-    } catch (error) {
-      output.write(`error: ${(error as Error).message}\n`);
+    let total: number | undefined;
+    if (promptTokens !== undefined) {
+      try {
+        total = await contextWindow();
+      } catch (error) {
+        output.write(`error: /context could not read the model's window: ${(error as Error).message}\n`);
+      }
     }
+    output.write(`${contextLine(promptTokens, total)}\n`);
   };
   rl.prompt();
   for await (const line of rl) {
@@ -36,6 +39,11 @@ export async function runRepl(
     if (input.kind === "exit") break;
     if (input.kind === "context") {
       await showContext();
+      rl.prompt();
+      continue;
+    }
+    if (input.kind === "unknown-command") {
+      output.write(`error: unknown command ${input.command}\n`);
       rl.prompt();
       continue;
     }

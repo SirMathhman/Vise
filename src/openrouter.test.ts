@@ -94,3 +94,24 @@ test("reads the model's context window from the model listing", async () => {
   });
   expect(window).toBe(1000000);
 });
+
+test("keeps the text and the usage when one event carries both", async () => {
+  const body = [
+    'data: {"choices":[{"delta":{"content":"Hi"}}],"usage":{"prompt_tokens":7}}\n\n',
+    "data: [DONE]\n\n",
+  ].join("");
+  const fakeFetch = async () => new Response(body, { status: 200 });
+  const usages: Usage[] = [];
+  const parts: string[] = [];
+  for await (const part of streamChat({
+    apiKey: "key",
+    model: "anthropic/claude-haiku-5.5",
+    messages: [{ role: "user", content: "hi" }],
+    fetch: fakeFetch,
+    onUsage: (usage) => usages.push(usage),
+  })) {
+    parts.push(part);
+  }
+  expect(parts).toEqual(["Hi"]);
+  expect(usages).toEqual([{ promptTokens: 7 }]);
+});

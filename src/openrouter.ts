@@ -40,32 +40,37 @@ export async function* streamChat(options: {
     while (newline >= 0) {
       const line = buffer.slice(0, newline);
       buffer = buffer.slice(newline + 1);
-      const delta = parseEventLine(line);
-      if (delta === DONE) return;
-      if (typeof delta === "object") options.onUsage?.(delta);
-      else if (delta) yield delta;
+      const event = parseEventLine(line);
+      if (event === DONE) return;
+      if (event?.usage) options.onUsage?.(event.usage);
+      if (event?.text) yield event.text;
       newline = buffer.indexOf("\n");
     }
   }
   const last = parseEventLine(buffer);
   if (last === DONE) return;
-  if (typeof last === "object") options.onUsage?.(last);
-  else if (last) yield last;
+  if (last?.usage) options.onUsage?.(last.usage);
+  if (last?.text) yield last.text;
   throw new Error("OpenRouter stream ended before it finished");
 }
 
-// Returns the text delta or usage in a `data:` line, DONE at the end marker, or
-// undefined for every other line (blank lines and comments such as
-// `: OPENROUTER PROCESSING`).
-function parseEventLine(line: string): string | Usage | typeof DONE | undefined {
+// What one `data:` line carries. A single event can have both.
+type StreamEvent = { text?: string; usage?: Usage };
+
+// Returns the event in a `data:` line, DONE at the end marker, or undefined for
+// every other line (blank lines and comments such as `: OPENROUTER PROCESSING`).
+function parseEventLine(line: string): StreamEvent | typeof DONE | undefined {
   const trimmed = line.trim();
   if (!trimmed.startsWith("data:")) return undefined;
   const payload = trimmed.slice("data:".length).trim();
   if (payload === "[DONE]") return DONE;
   const event = JSON.parse(payload);
   if (event.error) throw new Error(`OpenRouter error: ${event.error.message ?? "unknown error"}`);
-  if (event.usage) return { promptTokens: event.usage.prompt_tokens };
-  return event.choices?.[0]?.delta?.content ?? undefined;
+  const promptTokens = event.usage?.prompt_tokens;
+  return {
+    text: event.choices?.[0]?.delta?.content ?? undefined,
+    usage: typeof promptTokens === "number" ? { promptTokens } : undefined,
+  };
 }
 
 // The model's context window in tokens, from OpenRouter's model listing.
