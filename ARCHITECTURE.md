@@ -25,7 +25,8 @@ Invariants:
 Target layout:
 
 ```
-index.ts            composition root: wires process.stdin/stdout to the REPL (entry point, keeps `bun run index.ts`)
+index.ts            composition root: wires process.stdin/stdout and OPENROUTER_API_KEY to the REPL and the model (entry point, keeps `bun run index.ts`)
+src/openrouter.ts   model adapter: streams a chat completion from OpenRouter over HTTPS (performs network I/O, passed to the REPL as a function)
 src/core/           pure command interpretation (no node: imports except types)
 src/repl/           terminal frontend: readline, prompt, session lifecycle
 tests/              tests that exercise the public functions of core and repl
@@ -61,7 +62,7 @@ Recursion is avoided in core. When a function would need to call a function that
 
 ## Security Concerns
 
-Trust boundaries: everything read from stdin is untrusted text. Vise currently has no network access, no file writes, and no process spawning, so the only risks are in what the echo path outputs.
+Trust boundaries: everything read from stdin is untrusted text, and every line is sent to OpenRouter, a third party. The model's reply is also untrusted text. Vise has no file writes and no process spawning. The API key comes from `.env` and must never be echoed or logged. Only the echo path outputs were reviewed before the model was added; the terminal-injection and length controls below still apply to model replies.
 
 - **Terminal escape injection.** Input is echoed back verbatim. A line containing ANSI or other control sequences can change the terminal's state (title, colours, cursor, clipboard on some terminals). The ideal control is to strip or escape control characters other than tab before echoing. This control is **missing**.
 - **Unbounded input.** A very long line or an unending stream is read into memory without a limit. The ideal control is a maximum line length, with a defined response when it is exceeded. This control is **missing**.
