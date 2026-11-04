@@ -11,12 +11,16 @@ export interface UnknownCommandLine {
   command: string;
 }
 
+export interface CompactLine {
+  kind: "compact";
+}
+
 export interface MessageLine {
   kind: "message";
   text: string;
 }
 
-export type Line = ExitLine | ContextLine | UnknownCommandLine | MessageLine;
+export type Line = ExitLine | ContextLine | CompactLine | UnknownCommandLine | MessageLine;
 
 // Decides what a line means. Commands are matched on the trimmed line. Other
 // lines starting with "/" are rejected, and everything else is a message for
@@ -25,6 +29,7 @@ export function classifyLine(line: string): Line {
   const command = line.trim();
   if (command === "/exit") return { kind: "exit" };
   if (command === "/context") return { kind: "context" };
+  if (command === "/compact") return { kind: "compact" };
   if (command.startsWith("/")) return { kind: "unknown-command", command };
   return { kind: "message", text: line };
 }

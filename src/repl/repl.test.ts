@@ -84,6 +84,44 @@ test("rejects an unknown command without sending it to the model", async () => {
   expect(written).toContain("error: unknown command /foo");
 });
 
+test("/compact replaces the history with a summary and the last six messages", async () => {
+  const seen: string[][] = [];
+  const reply: Reply = async function* (messages) {
+    seen.push(messages.map((message) => message.content));
+    const last = messages.at(-1)?.content ?? "";
+    yield ok(last === "Summarize this convo" ? "SUM" : `r:${last}`);
+  };
+  const output = new Writable({
+    write(_chunk, _encoding, done) {
+      done();
+    },
+  });
+  const lines = ["1", "2", "3", "4", "5", "6", "7", "/compact", "next"];
+  await runRepl(Readable.from(lines.map((line) => `${line}\n`)), output, reply);
+  expect(seen.at(-1)).toEqual(["SUM", "5", "r:5", "6", "r:6", "7", "r:7", "next"]);
+});
+
+test("compacts before a message once the last prompt fills 80% of the window", async () => {
+  const seen: string[][] = [];
+  const reply: Reply = async function* (messages, onUsage) {
+    seen.push(messages.map((message) => message.content));
+    const last = messages.at(-1)?.content ?? "";
+    if (last === "Summarize this convo") {
+      yield ok("SUM");
+      return;
+    }
+    onUsage({ promptTokens: 90 });
+    yield ok(`r:${last}`);
+  };
+  const output = new Writable({
+    write(_chunk, _encoding, done) {
+      done();
+    },
+  });
+  await runRepl(Readable.from(["a\n", "b\n"]), output, reply, async () => ok(100));
+  expect(seen.at(-1)).toEqual(["SUM", "a", "r:a", "b"]);
+});
+
 test("reports a reply that throws as an error and keeps the session going", async () => {
   const reply: Reply = async function* () {
     await Promise.reject(new Error("boom"));
