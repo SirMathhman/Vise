@@ -48,17 +48,20 @@ Each source file has one responsibility. Entry points contain wiring only: they 
 
 The composition root supplies the reply function and the context-window lookup explicitly. The frontend has no default model, so a session that forgets to pass one fails instead of silently echoing.
 
-Size and style limits, enforced by `bun run lint` (ESLint for the line and function limits, `scripts/check-files-per-dir.ts` for the file count):
+Size and style limits, enforced by `bun run lint` as errors (ESLint for the line, function, and type-literal rules, `scripts/check-files-per-dir.ts` for the file count):
 
-- at most 100 lines per function,
-- at most 500 code lines per file,
-- at most 10 files per directory.
+- at most 100 lines per function (`max-lines-per-function`),
+- at most 500 code lines per file (`max-lines`),
+- at most 10 files per directory,
+- no object type literals written inline as `{ ... }` (`no-restricted-syntax` on `TSTypeLiteral`); declare a named interface instead.
 
 Recursion is avoided in core. When a function would need to call a function that calls it back, pass the callback as a parameter instead of importing across files.
 
 ## Potential Problems
 
-- **Stream-level behaviour is easy to get wrong.** Readline delivers every line in a chunk at once, so lines already buffered after `/exit` are still yielded by the loop unless the loop stops at the exit line. Tests must cover lines arriving together in one chunk, not only one chunk per line.
+- **Stream-level behaviour is easy to get wrong.** Readline delivers every line in a chunk at once, so lines already buffered after `/exit` are still yielded by the loop unless the loop stops at the exit line. A regression test must keep covering lines that arrive together in one chunk, not only one chunk per line.
+- **Lint limits can be weakened silently.** The size rules are set to `warn` in `eslint.config.js`, so `eslint .` exits 0 with a violation present. The limits are only binding once they are errors.
+- **The file-count check ignores untracked files.** `scripts/check-files-per-dir.ts` reads `git ls-files`, so a new file counts only after it is staged. A directory can exceed the limit until someone runs `git add`.
 - **The frontend has default model stand-ins.** `runRepl` defaults its reply function to an echo and its context-window lookup to `undefined`, so a caller that omits them gets fake model behaviour without an error. The composition root should pass both explicitly.
 - **Unhandled stream errors.** If the input stream emits an error, the session promise never settles and the process waits. The frontend must listen for `error` and settle with a failure.
 - **No write-error handling.** A closed or broken output stream (for example, a pipe closed by the reader) is not reported.
@@ -93,6 +96,8 @@ Trust boundaries: everything read from stdin is untrusted text, and every line i
 - Move command interpretation into `src/core` as pure functions over `(state, line) -> (state, output)`, so the REPL is a thin driver. The line classifier is done (`src/core/commands.ts`); the REPL acts on its result. Next is moving the command state into the core.
 - Move the context state into the core as well: the core keeps the last reported prompt tokens, receives usage through the same state transition as text, and formats the context line from `(used, total)`. The context window becomes a value the core asks for through a port, cached for the session, so `/context` can print the used count when the lookup fails.
 - Put the ports (`Reply`, `ContextWindow`) in `src/core`, beside `Usage`, which already lives in `src/core/messages.ts`. The frontend and the model adapter then both depend on the core and not on each other, and the `echoReply` default leaves the frontend.
+- Set the size rules in `eslint.config.js` to `error`, so a violation fails `bun run lint`.
+- Make `scripts/check-files-per-dir.ts` count untracked files too (for example, from a directory walk that skips `node_modules` and `.git`).
 - Add a formatter, and naming rules to the linter.
 - Make the session a function of its inputs: the readline interface is created by the frontend and passed where needed, so tests can drive a session without touching real streams.
 - Introduce a structured result type for command outcomes (success, usage error, unknown command) instead of ad-hoc strings, with errors that say what failed, where, why, and what the user can do.
