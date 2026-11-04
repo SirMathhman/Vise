@@ -6,8 +6,11 @@ const EXIT_WORDS = new Set(["exit", "quit"]);
 export function runRepl(input: Readable, output: Writable): Promise<void> {
   return new Promise((resolve) => {
     const rl = createInterface({ input, output, prompt: "> " });
+    let closed = false;
     rl.on("line", (line) => {
+      if (closed) return;
       if (EXIT_WORDS.has(line.trim())) {
+        closed = true;
         rl.close();
         return;
       }
