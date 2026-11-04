@@ -110,9 +110,13 @@ export interface CreateFileArgs {
   content: string;
 }
 
-// Runs a tool call and returns the text to send back to the model. Failures come back
-// as text too, so the model can read them and answer.
-export type ToolRunner = (call: ToolCall) => Promise<string>;
+// Asks the user to approve a change. The preview is what will be written. Resolves true only
+// when the user says yes.
+export type Approve = (preview: string) => Promise<boolean>;
+
+// Runs a tool call and returns the text to send back to the model. Changes are written only
+// when `approve` resolves true. Failures come back as text too, so the model can read them and answer.
+export type ToolRunner = (call: ToolCall, approve: Approve) => Promise<string>;
 
 // The arguments as the model wrote them, before they are checked.
 interface RawArgs {
@@ -203,6 +207,16 @@ export function approvalPreview(call: ToolCall): string | undefined {
     return `create ${args.value.path}\n+++ content\n${args.value.content}`;
   }
   return undefined;
+}
+
+// Replaces control characters, except tab and newline, so model text cannot move or
+// overwrite the terminal's output when it is shown.
+export function sanitize(text: string): string {
+  return Array.from(text, (char) => {
+    const code = char.codePointAt(0) ?? 0;
+    const control = (code < 32 && code !== 9 && code !== 10) || code === 127;
+    return control ? "?" : char;
+  }).join("");
 }
 
 // The line shown to the user when the model makes a call.

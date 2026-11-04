@@ -224,17 +224,41 @@ test("an edit is run only when the user answers y", async () => {
       done();
     },
   });
-  await runRepl(Readable.from(["go\n", "n\n"]), output, reply, undefined, async (call) => {
+  await runRepl(Readable.from(["go\n", "n\n"]), output, reply, undefined, async (call, approve) => {
+    if (!(await approve("edit f.txt"))) return "the user declined this change";
     ran.push(call.name);
     return "edited f.txt";
   });
   expect(ran).toEqual([]);
   const approved: string[] = [];
-  await runRepl(Readable.from(["go\n", "y\n"]), output, reply, undefined, async (call) => {
+  await runRepl(Readable.from(["go\n", "y\n"]), output, reply, undefined, async (call, approve) => {
+    if (!(await approve("edit f.txt"))) return "the user declined this change";
     approved.push(call.name);
     return "edited f.txt";
   });
   expect(approved).toEqual(["edit_file"]);
+});
+
+test("/exit at an approval ends the session without another model request", async () => {
+  let requests = 0;
+  const reply: Reply = async function* (messages, _onUsage, onToolCall) {
+    requests += 1;
+    if (messages.at(-1)?.role === "user") {
+      onToolCall({ id: "e1", name: "edit_file", arguments: '{"path":"f.txt","previous":"a","replacement":"b"}' });
+      return;
+    }
+    yield ok("done");
+  };
+  const output = new Writable({
+    write(_chunk, _encoding, done) {
+      done();
+    },
+  });
+  await runRepl(Readable.from(["go\n", "/exit\n", "hello\n"]), output, reply, undefined, async (call, approve) => {
+    if (!(await approve("edit f.txt"))) return "the user declined this change";
+    return "edited f.txt";
+  });
+  expect(requests).toBe(1);
 });
 
 test("ends with an error when the output stream fails", async () => {

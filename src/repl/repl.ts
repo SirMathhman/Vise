@@ -9,7 +9,7 @@ import {
   type Step,
 } from "../core/compaction.ts";
 import type { ChatMessage, ContextWindow, Reply, ToolCall, Usage } from "../core/messages.ts";
-import { approvalPreview, describeToolCall, needsApproval, type ToolRunner } from "../core/tools.ts";
+import { describeToolCall, sanitize, type Approve, type ToolRunner } from "../core/tools.ts";
 import { err, ok, type Result } from "../core/result.ts";
 
 export type { ContextWindow, Reply } from "../core/messages.ts";
@@ -30,15 +30,6 @@ async function showContext(
     else output.write(`error: /context could not read the model's window: ${result.error.message}\n`);
   }
   output.write(`${contextLine(conversation.promptTokens, total, conversation.compacted)}\n`);
-}
-
-// Writes a question and resolves with the next line of input, or "" if input ends first.
-// It reads from the same lines the session reads, so a line typed while the model was
-// answering is taken as the answer.
-async function askLine(lines: AsyncIterator<string>, output: Writable, question: string): Promise<string> {
-  output.write(question);
-  const next = await lines.next();
-  return next.done ? "" : next.value;
 }
 
 // What one request to the model produced: its text, the calls it asked for, and its usage.
@@ -83,6 +74,8 @@ export async function runRepl(
 ): Promise<Result<void>> {
   let conversation: Conversation = { history: [], compacted: false };
   let streamError: Error | undefined;
+  // Set when the session must end: input closed, or /exit was typed at an approval.
+  let closing = false;
   // Aborting closes the readline interface, which ends the loop below.
   const controller = new AbortController();
   const fail = (error: Error) => {
@@ -94,14 +87,26 @@ export async function runRepl(
   const rl = createInterface({ input, output, prompt: "> ", signal: controller.signal });
   // Readline re-emits input errors on the interface, and throws if nothing listens.
   rl.on("error", fail);
+  // One iterator reads every line, so an approval answer and a chat line come from the same queue.
+  const lines = rl[Symbol.asyncIterator]();
+  // A change is written only when the user answers y. Ending input, /exit, or any other
+  // answer refuses it, and /exit or ending input also ends the session.
+  const approve: Approve = async (preview) => {
+    output.write(`${sanitize(preview)}\napply? (y/n) `);
+    const next = await lines.next();
+    if (next.done || next.value.trim() === "/exit") {
+      closing = true;
+      return false;
+    }
+    return /^y(es)?$/i.test(next.value.trim());
+  };
   const apply = (step: Step) => {
     conversation = step.conversation;
     if (step.notice) output.write(`${step.notice}\n`);
   };
   try {
-    const lines = rl[Symbol.asyncIterator]();
     rl.prompt();
-    for (let next = await lines.next(); !next.done; next = await lines.next()) {
+    for (let next = await lines.next(); !next.done && !closing; next = await lines.next()) {
       const input = classifyLine(next.value);
       if (input.kind === "exit") break;
       if (input.kind === "context") {
@@ -142,19 +147,13 @@ export async function runRepl(
           break;
         }
         for (const call of round.calls) {
-          output.write(`\n${describeToolCall(call)}\n`);
-          // An edit is written only when the user answers y.
-          const preview = needsApproval(call) ? approvalPreview(call) : undefined;
-          if (preview !== undefined) {
-            const answer = await askLine(lines, output, `${preview}\napply? (y/n) `);
-            if (!/^y(es)?$/i.test(answer.trim())) {
-              conversation.history.push({ role: "tool", toolCallId: call.id, content: "the user declined this change" });
-              continue;
-            }
-          }
-          conversation.history.push({ role: "tool", toolCallId: call.id, content: await tools(call) });
+          if (closing) break;
+          output.write(`\n${sanitize(describeToolCall(call))}\n`);
+          conversation.history.push({ role: "tool", toolCallId: call.id, content: await tools(call, approve) });
         }
+        if (closing) break;
       }
+      if (closing) break;
       rl.prompt();
     }
   } finally {
