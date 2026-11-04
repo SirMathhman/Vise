@@ -218,25 +218,29 @@ test("an edit is run only when the user answers y", async () => {
     }
     yield ok("done");
   };
-  const ran: string[] = [];
   const output = new Writable({
     write(_chunk, _encoding, done) {
       done();
     },
   });
-  await runRepl(Readable.from(["go\n", "n\n"]), output, reply, undefined, async (call, approve) => {
-    if (!(await approve("edit f.txt"))) return "the user declined this change";
-    ran.push(call.name);
-    return "edited f.txt";
-  });
-  expect(ran).toEqual([]);
-  const approved: string[] = [];
-  await runRepl(Readable.from(["go\n", "y\n"]), output, reply, undefined, async (call, approve) => {
-    if (!(await approve("edit f.txt"))) return "the user declined this change";
-    approved.push(call.name);
-    return "edited f.txt";
-  });
-  expect(approved).toEqual(["edit_file"]);
+  // The answer is typed after the preview is shown, as a user would type it.
+  const answerAfterPreview = async (answer: string): Promise<string[]> => {
+    const input = new PassThrough();
+    input.write("go\n");
+    const ran: string[] = [];
+    await runRepl(input, output, reply, undefined, async (call, approve) => {
+      const pending = approve("edit f.txt");
+      input.write(`${answer}\n`);
+      const yes = await pending;
+      input.end();
+      if (!yes) return "the user declined this change";
+      ran.push(call.name);
+      return "edited f.txt";
+    });
+    return ran;
+  };
+  expect(await answerAfterPreview("n")).toEqual([]);
+  expect(await answerAfterPreview("y")).toEqual(["edit_file"]);
 });
 
 test("/exit at an approval ends the session without another model request", async () => {
@@ -275,6 +279,43 @@ test("sends no request after a tool call when the input has ended", async () => 
   });
   await runRepl(Readable.from(["go\n"]), output, reply, undefined, async () => "a.txt");
   expect(requests).toBe(1);
+});
+
+test("does not run a tool when the input has ended", async () => {
+  const reply: Reply = async function* (_messages, _onUsage, onToolCall) {
+    onToolCall({ id: "l1", name: "list_files", arguments: '{"path":"."}' });
+    yield ok("");
+  };
+  const output = new Writable({
+    write(_chunk, _encoding, done) {
+      done();
+    },
+  });
+  let ran = 0;
+  await runRepl(Readable.from(["go\n"]), output, reply, undefined, async () => {
+    ran += 1;
+    return "a.txt";
+  });
+  expect(ran).toBe(0);
+});
+
+test("stops at a stream failure even when more input is queued", async () => {
+  const input = new PassThrough();
+  input.write("a\nb\n");
+  const output = new Writable({
+    write(_chunk, _encoding, done) {
+      done();
+    },
+  });
+  let requests = 0;
+  const reply: Reply = async function* () {
+    requests += 1;
+    input.emit("error", new Error("input broke"));
+    yield ok("x");
+  };
+  const result = await runRepl(input, output, reply);
+  expect(requests).toBe(1);
+  expect(result.ok).toBe(false);
 });
 
 test("ends with an error when the output stream fails", async () => {

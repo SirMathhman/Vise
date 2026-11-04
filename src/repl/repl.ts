@@ -58,6 +58,11 @@ class InputLines {
     }
   }
 
+  // Drops lines typed before this point, so an answer must come after the question.
+  discard(): void {
+    this.queue = [];
+  }
+
   get more(): boolean {
     return this.queue.length > 0 || !this.ended;
   }
@@ -131,10 +136,16 @@ export async function runRepl(
   rl.on("error", fail);
   rl.on("line", (line) => lines.push(line));
   rl.once("close", () => lines.end());
-  // A change is written only when the user answers y. Ending input, /exit, or any other
-  // answer refuses it; /exit also ends the session.
+  // Once the session has ended for good, nothing else runs: no tool, no request, no approval.
+  // Queued lines do not count, because a stream failure or /exit ends the session even with
+  // lines waiting, and input that has ended with nothing queued cannot answer anything.
+  const finished = () => exitRequested || streamError !== undefined || !lines.more;
+  // A change is written only when the user answers y. The answer must come after the preview,
+  // so lines typed before it are dropped. Ending input, /exit, or any other answer refuses it;
+  // /exit also ends the session.
   const approve: Approve = async (preview) => {
-    if (exitRequested) return false;
+    if (exitRequested || streamError !== undefined) return false;
+    lines.discard();
     output.write(`${sanitize(preview)}\napply? (y/n) `);
     const line = await lines.next();
     if (line === undefined) return false;
@@ -150,7 +161,7 @@ export async function runRepl(
   };
   try {
     rl.prompt();
-    for (let line = await lines.next(); line !== undefined && !exitRequested; line = await lines.next()) {
+    for (let line = await lines.next(); line !== undefined && !exitRequested && streamError === undefined; line = await lines.next()) {
       const input = classifyLine(line);
       if (input.kind === "exit") break;
       if (input.kind === "context") {
@@ -171,8 +182,8 @@ export async function runRepl(
       apply(await compactIfNeeded(conversation, reply, contextWindow));
       const turnStart = conversation.history.length;
       conversation.history.push({ role: "user", content: input.text });
-      // Each round asks the model; a round that asked for tools is followed by another, unless
-      // the session is ending: no input can follow, or /exit was typed at an approval.
+      // Each round asks the model. The first round answers the line just received; a round that
+      // asked for tools is followed by another only while the session has not ended.
       for (;;) {
         const round = await streamRound(conversation.history, reply, output);
         if (round.failure) {
@@ -192,12 +203,13 @@ export async function runRepl(
           break;
         }
         for (const call of round.calls) {
+          if (finished()) break;
           output.write(`\n${sanitize(describeToolCall(call))}\n`);
           conversation.history.push({ role: "tool", toolCallId: call.id, content: await tools(call, approve) });
         }
-        if (exitRequested || !lines.more) break;
+        if (finished()) break;
       }
-      if (exitRequested) break;
+      if (exitRequested || streamError !== undefined) break;
       rl.prompt();
     }
   } finally {
