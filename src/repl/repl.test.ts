@@ -205,7 +205,7 @@ test("runs a tool the model asks for and sends its result back", async () => {
       done();
     },
   });
-  await runRepl(Readable.from(["list\n"]), output, reply, undefined, async () => "a.txt");
+  await runRepl(Readable.from(["list\n", "/exit\n"]), output, reply, undefined, async () => "a.txt");
   expect(written).toContain("tool: list_files . depth 2");
   expect(seen.at(-1)).toBe("user:list | assistant: | tool:a.txt");
 });
@@ -258,6 +258,22 @@ test("/exit at an approval ends the session without another model request", asyn
     if (!(await approve("edit f.txt"))) return "the user declined this change";
     return "edited f.txt";
   });
+  expect(requests).toBe(1);
+});
+
+test("sends no request after a tool call when the input has ended", async () => {
+  let requests = 0;
+  const reply: Reply = async function* (_messages, _onUsage, onToolCall) {
+    requests += 1;
+    onToolCall({ id: "l1", name: "list_files", arguments: '{"path":"."}' });
+    yield ok("");
+  };
+  const output = new Writable({
+    write(_chunk, _encoding, done) {
+      done();
+    },
+  });
+  await runRepl(Readable.from(["go\n"]), output, reply, undefined, async () => "a.txt");
   expect(requests).toBe(1);
 });
 

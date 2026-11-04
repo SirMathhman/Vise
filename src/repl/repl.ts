@@ -32,6 +32,47 @@ async function showContext(
   output.write(`${contextLine(conversation.promptTokens, total, conversation.compacted)}\n`);
 }
 
+// The input lines, in order, held until they are read. `more` says whether another line
+// can still arrive: false only once the input has ended and every line has been taken.
+class InputLines {
+  private queue: string[] = [];
+  private ended = false;
+  private waiting: ((line: string | undefined) => void) | undefined;
+
+  push(line: string): void {
+    if (this.waiting) {
+      const resolve = this.waiting;
+      this.waiting = undefined;
+      resolve(line);
+    } else {
+      this.queue.push(line);
+    }
+  }
+
+  end(): void {
+    this.ended = true;
+    if (this.waiting) {
+      const resolve = this.waiting;
+      this.waiting = undefined;
+      resolve(undefined);
+    }
+  }
+
+  get more(): boolean {
+    return this.queue.length > 0 || !this.ended;
+  }
+
+  // Resolves with the next line, or undefined once the input has ended.
+  next(): Promise<string | undefined> {
+    const line = this.queue.shift();
+    if (line !== undefined) return Promise.resolve(line);
+    if (this.ended) return Promise.resolve(undefined);
+    return new Promise((resolve) => {
+      this.waiting = resolve;
+    });
+  }
+}
+
 // What one request to the model produced: its text, the calls it asked for, and its usage.
 interface Round {
   answer: string;
@@ -74,8 +115,9 @@ export async function runRepl(
 ): Promise<Result<void>> {
   let conversation: Conversation = { history: [], compacted: false };
   let streamError: Error | undefined;
-  // Set when the session must end: input closed, or /exit was typed at an approval.
-  let closing = false;
+  // Set when /exit is typed at an approval: the session ends and no further request is sent.
+  let exitRequested = false;
+  const lines = new InputLines();
   // Aborting closes the readline interface, which ends the loop below.
   const controller = new AbortController();
   const fail = (error: Error) => {
@@ -87,18 +129,20 @@ export async function runRepl(
   const rl = createInterface({ input, output, prompt: "> ", signal: controller.signal });
   // Readline re-emits input errors on the interface, and throws if nothing listens.
   rl.on("error", fail);
-  // One iterator reads every line, so an approval answer and a chat line come from the same queue.
-  const lines = rl[Symbol.asyncIterator]();
+  rl.on("line", (line) => lines.push(line));
+  rl.once("close", () => lines.end());
   // A change is written only when the user answers y. Ending input, /exit, or any other
-  // answer refuses it, and /exit or ending input also ends the session.
+  // answer refuses it; /exit also ends the session.
   const approve: Approve = async (preview) => {
+    if (exitRequested) return false;
     output.write(`${sanitize(preview)}\napply? (y/n) `);
-    const next = await lines.next();
-    if (next.done || next.value.trim() === "/exit") {
-      closing = true;
+    const line = await lines.next();
+    if (line === undefined) return false;
+    if (line.trim() === "/exit") {
+      exitRequested = true;
       return false;
     }
-    return /^y(es)?$/i.test(next.value.trim());
+    return /^y(es)?$/i.test(line.trim());
   };
   const apply = (step: Step) => {
     conversation = step.conversation;
@@ -106,8 +150,8 @@ export async function runRepl(
   };
   try {
     rl.prompt();
-    for (let next = await lines.next(); !next.done && !closing; next = await lines.next()) {
-      const input = classifyLine(next.value);
+    for (let line = await lines.next(); line !== undefined && !exitRequested; line = await lines.next()) {
+      const input = classifyLine(line);
       if (input.kind === "exit") break;
       if (input.kind === "context") {
         await showContext(output, contextWindow, conversation);
@@ -127,7 +171,8 @@ export async function runRepl(
       apply(await compactIfNeeded(conversation, reply, contextWindow));
       const turnStart = conversation.history.length;
       conversation.history.push({ role: "user", content: input.text });
-      // Each round asks the model; a round that asked for tools is followed by another.
+      // Each round asks the model; a round that asked for tools is followed by another, unless
+      // the session is ending: no input can follow, or /exit was typed at an approval.
       for (;;) {
         const round = await streamRound(conversation.history, reply, output);
         if (round.failure) {
@@ -147,13 +192,12 @@ export async function runRepl(
           break;
         }
         for (const call of round.calls) {
-          if (closing) break;
           output.write(`\n${sanitize(describeToolCall(call))}\n`);
           conversation.history.push({ role: "tool", toolCallId: call.id, content: await tools(call, approve) });
         }
-        if (closing) break;
+        if (exitRequested || !lines.more) break;
       }
-      if (closing) break;
+      if (exitRequested) break;
       rl.prompt();
     }
   } finally {
