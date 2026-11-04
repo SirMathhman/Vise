@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { Readable, Writable } from "node:stream";
-import { runRepl } from "./index.ts";
-import type { ChatMessage } from "./src/openrouter.ts";
+import { runRepl } from "./repl.ts";
+import type { ChatMessage } from "../core/messages.ts";
 
 test("echoes each line until exit", async () => {
   let written = "";

@@ -1,4 +1,4 @@
-export type ChatMessage = { role: "user" | "assistant"; content: string };
+import type { ChatMessage } from "./core/messages.ts";
 
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 const DONE = Symbol("done");
