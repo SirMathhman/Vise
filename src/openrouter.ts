@@ -44,7 +44,9 @@ export async function* streamChat(options: {
     }
   }
   const last = parseEventLine(buffer);
-  if (last !== DONE && last) yield last;
+  if (last === DONE) return;
+  if (last) yield last;
+  throw new Error("OpenRouter stream ended before it finished");
 }
 
 // Returns the text delta in a `data:` line, DONE at the end marker, or
@@ -56,5 +58,6 @@ function parseEventLine(line: string): string | typeof DONE | undefined {
   const payload = trimmed.slice("data:".length).trim();
   if (payload === "[DONE]") return DONE;
   const event = JSON.parse(payload);
+  if (event.error) throw new Error(`OpenRouter error: ${event.error.message ?? "unknown error"}`);
   return event.choices?.[0]?.delta?.content ?? undefined;
 }
