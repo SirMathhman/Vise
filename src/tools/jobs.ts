@@ -7,12 +7,21 @@ const MAX_LINE_CHARS = 8192;
 // How many times session end tries to stop a job whose stop failed.
 const STOP_ATTEMPTS = 3;
 
+type Process = Bun.Subprocess<"ignore", "pipe", "pipe">;
+// Stops a process tree and reports whether it succeeded.
+export type StopTree = (pid: number) => Promise<boolean>;
+
+// A job that could not be stopped, reported when the session ends.
+export interface UnstoppedJob {
+  id: number;
+  pid: number;
+  command: string;
+}
+
 // A line longer than MAX_LINE_CHARS is cut and marked.
 function capLine(line: string): string {
   return line.length > MAX_LINE_CHARS ? `${line.slice(0, MAX_LINE_CHARS)} [line cut]` : line;
 }
-
-type Process = Bun.Subprocess<"ignore", "pipe", "pipe">;
 
 // The last MAX_LINES lines of one output stream. Older lines are dropped and the text says so.
 class Tail {
@@ -45,7 +54,7 @@ class Tail {
 
   finish(): void {
     if (!this.skipping) this.partial += this.decoder.decode();
-    if (this.partial) this.add(this.partial);
+    if (this.partial) this.add(capLine(this.partial));
     this.partial = "";
   }
 
@@ -139,25 +148,29 @@ export function readJob(id: number): Result<string> {
 }
 
 // Stops a running job and every process it started. The job counts as stopped only when
-// taskkill succeeds; otherwise it stays running, so session end tries again.
-export async function killJob(id: number): Promise<Result<string>> {
+// the stop succeeds; otherwise it stays running, so session end tries again.
+export async function killJob(id: number, stop: StopTree = stopTree): Promise<Result<string>> {
   const job = jobs.get(id);
   if (!job) return err(new Error(`no job ${id}`));
   if (job.status !== "running") return err(new Error(`job ${id} is not running`));
-  if (!(await stopTree(job.pid))) return err(new Error(`could not stop job ${id}; it may still be running`));
+  if (!(await stop(job.pid))) return err(new Error(`could not stop job ${id}; it may still be running`));
   if (job.status === "running") job.status = "killed";
   return ok(`job ${id} stopped`);
 }
 
-// Stops every running job, retrying those that failed to stop. Called when the session ends,
-// so no process is left behind. The registry is emptied afterwards.
-export async function killAllJobs(): Promise<void> {
+// Stops every running job, retrying those that failed to stop. Returns the jobs that could not
+// be stopped, so the caller can report them. The registry is emptied afterwards.
+export async function killAllJobs(stop: StopTree = stopTree): Promise<UnstoppedJob[]> {
   for (let attempt = 0; attempt < STOP_ATTEMPTS; attempt++) {
     const running = [...jobs.values()].filter((job) => job.status === "running");
     if (running.length === 0) break;
-    await Promise.all(running.map((job) => killJob(job.id)));
+    await Promise.all(running.map((job) => killJob(job.id, stop)));
   }
+  const unstopped = [...jobs.values()]
+    .filter((job) => job.status === "running")
+    .map((job) => ({ id: job.id, pid: job.pid, command: job.command }));
   jobs.clear();
+  return unstopped;
 }
 
 // Stops a process and every process it started. Returns whether taskkill succeeded. Windows only.

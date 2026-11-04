@@ -18,7 +18,9 @@ if (import.meta.main) {
     () => modelContextWindow({ model: MODEL }),
     runTool(process.cwd()),
   );
-  await killAllJobs();
+  for (const job of await killAllJobs()) {
+    console.error(`warning: background job ${job.id} (pid ${job.pid}) could not be stopped and may still be running: ${job.command}`);
+  }
   if (!result.ok) {
     console.error(`error: ${result.error.message}`);
     process.exit(1);
