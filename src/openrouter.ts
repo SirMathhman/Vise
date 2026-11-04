@@ -1,15 +1,18 @@
-import type { ChatMessage } from "./core/messages.ts";
+import type { ChatMessage, Usage } from "./core/messages.ts";
 
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
+const MODELS_ENDPOINT = "https://openrouter.ai/api/v1/models";
 const DONE = Symbol("done");
 
 type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 
+// Yields text deltas. The request's usage goes to onUsage when the server reports it.
 export async function* streamChat(options: {
   apiKey: string;
   model: string;
   messages: ChatMessage[];
   fetch?: FetchLike;
+  onUsage?: (usage: Usage) => void;
 }): AsyncGenerator<string> {
   const send = options.fetch ?? fetch;
   const response = await send(ENDPOINT, {
@@ -39,25 +42,44 @@ export async function* streamChat(options: {
       buffer = buffer.slice(newline + 1);
       const delta = parseEventLine(line);
       if (delta === DONE) return;
-      if (delta) yield delta;
+      if (typeof delta === "object") options.onUsage?.(delta);
+      else if (delta) yield delta;
       newline = buffer.indexOf("\n");
     }
   }
   const last = parseEventLine(buffer);
   if (last === DONE) return;
-  if (last) yield last;
+  if (typeof last === "object") options.onUsage?.(last);
+  else if (last) yield last;
   throw new Error("OpenRouter stream ended before it finished");
 }
 
-// Returns the text delta in a `data:` line, DONE at the end marker, or
+// Returns the text delta or usage in a `data:` line, DONE at the end marker, or
 // undefined for every other line (blank lines and comments such as
 // `: OPENROUTER PROCESSING`).
-function parseEventLine(line: string): string | typeof DONE | undefined {
+function parseEventLine(line: string): string | Usage | typeof DONE | undefined {
   const trimmed = line.trim();
   if (!trimmed.startsWith("data:")) return undefined;
   const payload = trimmed.slice("data:".length).trim();
   if (payload === "[DONE]") return DONE;
   const event = JSON.parse(payload);
   if (event.error) throw new Error(`OpenRouter error: ${event.error.message ?? "unknown error"}`);
+  if (event.usage) return { promptTokens: event.usage.prompt_tokens };
   return event.choices?.[0]?.delta?.content ?? undefined;
+}
+
+// The model's context window in tokens, from OpenRouter's model listing.
+export async function modelContextWindow(options: {
+  model: string;
+  fetch?: FetchLike;
+}): Promise<number> {
+  const send = options.fetch ?? fetch;
+  const response = await send(MODELS_ENDPOINT, { method: "GET" });
+  if (!response.ok) {
+    throw new Error(`OpenRouter returned ${response.status} for the model list`);
+  }
+  const listing = (await response.json()) as { data: { id: string; context_length: number }[] };
+  const model = listing.data.find((entry) => entry.id === options.model);
+  if (!model) throw new Error(`OpenRouter does not list ${options.model}`);
+  return model.context_length;
 }

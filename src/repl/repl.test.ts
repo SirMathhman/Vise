@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { Readable, Writable } from "node:stream";
-import { runRepl } from "./repl.ts";
+import { runRepl, type Reply } from "./repl.ts";
 import type { ChatMessage } from "../core/messages.ts";
 
 test("echoes each line until exit", async () => {
@@ -47,4 +47,20 @@ test("sends earlier lines and replies with each new line", async () => {
     { role: "assistant", content: "answer 1" },
     { role: "user", content: "second" },
   ]);
+});
+
+test("/context shows the prompt tokens of the last request out of the model's window", async () => {
+  const reply: Reply = async function* (_messages, onUsage) {
+    onUsage({ promptTokens: 42 });
+    yield "hi";
+  };
+  let written = "";
+  const output = new Writable({
+    write(chunk, _encoding, done) {
+      written += chunk.toString();
+      done();
+    },
+  });
+  await runRepl(Readable.from(["hello\n", "/context\n"]), output, reply, async () => 1000);
+  expect(written).toContain("context: 42 / 1000 tokens");
 });
