@@ -50,6 +50,26 @@ test("sends earlier lines and replies with each new line", async () => {
   ]);
 });
 
+test("puts the instructions in front of the first message only", async () => {
+  const seen: ChatMessage[][] = [];
+  const reply = async function* (messages: ChatMessage[]) {
+    seen.push(messages.map((message) => ({ ...message })));
+    yield ok(`answer ${seen.length}`);
+  };
+  const output = new Writable({
+    write(_chunk, _encoding, done) {
+      done();
+    },
+  });
+  await runRepl(Readable.from(["first\nsecond\n"]), output, reply, undefined, undefined, "RULES");
+  expect(seen[0]).toEqual([{ role: "user", content: "RULES\n\nfirst" }]);
+  expect(seen[1]).toEqual([
+    { role: "user", content: "RULES\n\nfirst" },
+    { role: "assistant", content: "answer 1" },
+    { role: "user", content: "second" },
+  ]);
+});
+
 test("/context shows the prompt tokens of the last request out of the model's window", async () => {
   const reply: Reply = async function* (_messages, onUsage) {
     onUsage({ promptTokens: 42 });

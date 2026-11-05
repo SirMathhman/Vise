@@ -1,3 +1,4 @@
+import { readInstructions } from "./src/instructions.ts";
 import { modelContextWindow, streamChat } from "./src/openrouter.ts";
 import { runRepl } from "./src/repl/repl.ts";
 import { killAllJobs } from "./src/tools/jobs.ts";
@@ -22,6 +23,8 @@ if (import.meta.main) {
   process.once("SIGINT", () => {
     void stopJobs().then(() => process.exit(130));
   });
+  // Read once, here, so the session sends the same instructions for its whole length.
+  const instructions = await readInstructions(process.cwd());
   let failed = false;
   try {
     const result = await runRepl(
@@ -30,6 +33,7 @@ if (import.meta.main) {
       (messages, onUsage, onToolCall) => streamChat({ apiKey, model: MODEL, messages, onUsage, onToolCall }),
       () => modelContextWindow({ model: MODEL }),
       runTool(process.cwd()),
+      instructions,
     );
     if (!result.ok) {
       console.error(`error: ${result.error.message}`);

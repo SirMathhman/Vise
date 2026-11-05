@@ -117,6 +117,8 @@ export async function runRepl(
   reply: Reply = echoReply,
   contextWindow: ContextWindow = async () => err(new Error("no context window is configured")),
   tools: ToolRunner = async () => "no tools are available",
+  // Text sent ahead of the first message of the session (the AGENTS.md file), if any.
+  instructions?: string,
 ): Promise<Result<void>> {
   let conversation: Conversation = { history: [], compacted: false };
   let streamError: Error | undefined;
@@ -181,7 +183,10 @@ export async function runRepl(
       }
       apply(await compactIfNeeded(conversation, reply, contextWindow));
       const turnStart = conversation.history.length;
-      conversation.history.push({ role: "user", content: input.text });
+      // The instructions go in front of the first user message, so roles still alternate
+      // and compaction drops them with the rest of the old history.
+      const first = conversation.history.length === 0 && instructions !== undefined;
+      conversation.history.push({ role: "user", content: first ? `${instructions}\n\n${input.text}` : input.text });
       // Each round asks the model. The first round answers the line just received; a round that
       // asked for tools is followed by another only while the session has not ended.
       for (;;) {

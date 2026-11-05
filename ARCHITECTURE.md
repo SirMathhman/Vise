@@ -20,6 +20,7 @@ Requirements in the sections below are split into two classes. **Functional** re
 - **Approval**: the user's yes before a tool that writes or runs a command. The question shows the change or command, and the answer is a line the user types after that preview has been printed. Any other answer is a refusal, and so are end of input and a stream error. A refusal is returned to the model as the tool's result, and the turn goes on. End of input, a stream error, or `/exit` during a question ends the session and sends no further request to the model.
 - **Tool round**: one request to the model and the tool calls it asked for. A message runs rounds until the model answers without a tool call. Each call is shown as a line, run, and its result appended to the history as a tool message before the next round. The loop has no round limit by the user's choice, so a model that keeps calling tools keeps the session busy.
 - **Line**: one unit of input without its terminator. Lines are processed in order and each is handled at most once.
+- **Instructions**: the text of `AGENTS.md` in the working directory, read once when the session starts. It is put in front of the first user message of the session, so it is the first thing the model sees and it is sent in every request until compaction removes it. A missing or blank file gives no instructions and no message. The file is read in `src/instructions.ts` by the composition root, and the frontend only receives the text.
 
 ## Invariants
 
@@ -50,6 +51,7 @@ Target layout:
 
 ```
 index.ts            composition root: wires process.stdin/stdout and OPENROUTER_API_KEY to the REPL and the model (entry point, keeps `bun run index.ts`)
+src/instructions.ts  reads AGENTS.md from the working directory (the one file read at startup, see Instructions)
 src/openrouter.ts   model adapter: streams a chat completion from OpenRouter over HTTPS (performs network I/O, passed to the REPL as a function)
 src/core/           pure line classification and command interpretation (no node: imports except types)
 src/repl/           terminal frontend: readline, prompt, session lifecycle
