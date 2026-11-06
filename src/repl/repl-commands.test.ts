@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { Readable, Writable } from "node:stream";
-import type { ChatMessage } from "../core/messages.ts";
+import type { ChatMessage, Reply, ReplyRequest } from "../core/messages.ts";
 import { err, ok } from "../core/result.ts";
-import { echoReply, runRepl, type Reply, type ReplPorts } from "./repl.ts";
+import { echoReply, runRepl, type ReplPorts } from "./repl.ts";
 
 // The ports a test session uses. Each test overrides only the ports it needs.
 function ports(overrides: Partial<ReplPorts> = {}): ReplPorts {
@@ -25,7 +25,7 @@ function ports(overrides: Partial<ReplPorts> = {}): ReplPorts {
 
 test("a switched profile is sent once, with the next message, and history already sent is kept", async () => {
   const seen: ChatMessage[][] = [];
-  const reply = async function* (messages: ChatMessage[]) {
+  const reply = async function* ({ messages }: ReplyRequest) {
     seen.push(messages.map((message) => ({ ...message })));
     yield ok(`answer ${seen.length}`);
   };
@@ -53,7 +53,7 @@ test("a switched profile is sent once, with the next message, and history alread
 
 test("a compaction sends the active profile again with the next message", async () => {
   const seen: string[][] = [];
-  const reply: Reply = async function* (messages) {
+  const reply: Reply = async function* ({ messages }) {
     seen.push(messages.map((message) => message.content));
     yield ok(messages.at(-1)?.content === "Summarize this convo" ? "SUM" : "ok");
   };
@@ -72,7 +72,7 @@ test("a compaction sends the active profile again with the next message", async 
 
 test("/profile default clears the pending profile before the next message", async () => {
   const seen: string[] = [];
-  const reply: Reply = async function* (messages) {
+  const reply: Reply = async function* ({ messages }) {
     seen.push(messages.at(-1)?.content ?? "");
     yield ok("ok");
   };
@@ -92,7 +92,7 @@ test("/profile default clears the pending profile before the next message", asyn
 test("a failed turn keeps the pending profile for the next attempt", async () => {
   const seen: string[] = [];
   let calls = 0;
-  const reply: Reply = async function* (messages) {
+  const reply: Reply = async function* ({ messages }) {
     calls += 1;
     seen.push(messages.at(-1)?.content ?? "");
     if (calls === 1) {
@@ -117,7 +117,7 @@ test("a failed turn keeps the pending profile for the next attempt", async () =>
 test("a switched-off tool is left out of the request and out of the tools the runner is given", async () => {
   const offered: string[][] = [];
   const runnerGiven: string[][] = [];
-  const reply: Reply = async function* (messages, _onUsage, onToolCall, tools) {
+  const reply: Reply = async function* ({ messages, onToolCall, tools }) {
     offered.push(tools);
     if (messages.at(-1)?.role === "user") {
       onToolCall({ id: "e1", name: "edit_file", arguments: '{"path":"f.txt","previous":"a","replacement":"b"}' });
@@ -190,7 +190,7 @@ test("/save writes the conversation, and /load in a new session brings it back f
   };
   await runRepl(Readable.from(["hello\n", "/save work\n"]), output, ports({ reply: first, sessions }));
   const seen: string[][] = [];
-  const reply: Reply = async function* (messages) {
+  const reply: Reply = async function* ({ messages }) {
     seen.push(messages.map((message) => message.content));
     yield ok("ok");
   };
@@ -199,7 +199,7 @@ test("/save writes the conversation, and /load in a new session brings it back f
 });
 
 test("a call skipped because /exit ended the session is reported as not run", async () => {
-  const reply: Reply = async function* (messages, _onUsage, onToolCall) {
+  const reply: Reply = async function* ({ messages, onToolCall }) {
     if (messages.at(-1)?.role === "user") {
       onToolCall({ id: "e1", name: "edit_file", arguments: '{"path":"f.txt","previous":"a","replacement":"b"}' });
       onToolCall({ id: "l1", name: "list_files", arguments: '{"path":"."}' });
@@ -230,7 +230,7 @@ test("a call skipped because /exit ended the session is reported as not run", as
 
 test("a profile's whitelist limits the tools offered to the model from the next request", async () => {
   const offered: string[][] = [];
-  const reply: Reply = async function* (messages, _onUsage, _onToolCall, tools) {
+  const reply: Reply = async function* ({ messages, tools }) {
     offered.push(tools);
     if (messages.length > 0) yield ok("ok");
   };
@@ -253,7 +253,7 @@ test("a profile's whitelist limits the tools offered to the model from the next 
 
 test("a turn-start hook's output goes in front of the message, and a failing one stops the turn", async () => {
   const seen: string[] = [];
-  const reply: Reply = async function* (messages) {
+  const reply: Reply = async function* ({ messages }) {
     seen.push(messages.at(-1)?.content ?? "");
     yield ok("ok");
   };
@@ -341,7 +341,7 @@ test("the active profile's hooks are passed to the hook runner at their point", 
 
 test("/thinking sets the effort for later requests, and the thinking count is shown", async () => {
   const seen: (string | undefined)[] = [];
-  const reply: Reply = async function* (_messages, _onUsage, _onToolCall, _tools, reasoning, onThinking) {
+  const reply: Reply = async function* ({ reasoning, onThinking }) {
     seen.push(reasoning);
     onThinking(5);
     yield ok("answer");

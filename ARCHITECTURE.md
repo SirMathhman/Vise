@@ -104,6 +104,7 @@ scripts/            build checks run by `bun run lint` (file count per directory
 - Size and style limits, enforced by `bun run lint` as errors (ESLint for the line, function, and type-literal rules, `scripts/check-files-per-dir.ts` for the file count):
 
   - at most 100 lines per function (`max-lines-per-function`),
+  - at most 4 parameters per function (`max-params`); a function that needs more takes one parameter object, declared as an interface,
   - at most 500 code lines per file (`max-lines`),
   - at most 10 files per directory,
   - no object type literals written inline as `{ ... }` (`no-restricted-syntax` on `TSTypeLiteral`); declare a named interface instead.

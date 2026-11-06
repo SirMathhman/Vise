@@ -113,15 +113,16 @@ export async function compact(conversation: Conversation, reply: Reply): Promise
   if (conversation.history.length === 0) return err(new Error("nothing to compact"));
   let summary = "";
   try {
-    for await (const chunk of reply(
-      compactionRequest(conversation.history),
-      () => {},
-      () => {},
-      enabledTools(conversation),
-      conversation.thinking,
-      () => {},
-      () => {},
-    )) {
+    const request = {
+      messages: compactionRequest(conversation.history),
+      onUsage: () => {},
+      onToolCall: () => {},
+      tools: enabledTools(conversation),
+      reasoning: conversation.thinking,
+      onThinking: () => {},
+      onReasoning: () => {},
+    };
+    for await (const chunk of reply(request)) {
       if (!chunk.ok) return chunk;
       summary += chunk.value;
     }

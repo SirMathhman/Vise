@@ -56,18 +56,7 @@ if (import.meta.main) {
   try {
     const result = await runRepl(process.stdin, process.stdout, {
       hooks: hookRunner(process.cwd(), hookConfig.value),
-      reply: (messages, onUsage, onToolCall, tools, reasoning, onThinking, onReasoning) =>
-        streamChat({
-          apiKey,
-          model: selection.model,
-          messages,
-          onUsage,
-          onToolCall,
-          tools,
-          reasoning,
-          onThinking,
-          onReasoning,
-        }),
+      reply: (request) => streamChat({ apiKey, model: selection.model, ...request }),
       contextWindow: () => modelContextWindow({ model: selection.model }),
       models: {
         current: () => selection.model,

@@ -13,7 +13,7 @@ interface ScriptedRound {
 // A reply that answers each request with the next scripted round, and records the tools offered.
 function scripted(rounds: ScriptedRound[], offered: string[][]): Reply {
   let next = 0;
-  return async function* (_messages, _onUsage, onToolCall, tools) {
+  return async function* ({ onToolCall, tools }) {
     offered.push(tools);
     const round = rounds[next] ?? { text: "" };
     next += 1;
@@ -87,7 +87,7 @@ test("approvals asked together are answered one after another, in the order aske
 
 test("two subagents asked for in one reply both run, and each result reaches the main model", async () => {
   const seenByMain: string[][] = [];
-  const reply: Reply = async function* (messages, _onUsage, onToolCall) {
+  const reply: Reply = async function* ({ messages, onToolCall }) {
     const first = messages[0]?.content ?? "";
     if (first.startsWith("Be careful.")) {
       const task = messages.at(-1)?.content ?? "";

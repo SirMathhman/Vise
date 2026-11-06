@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { PassThrough, Readable, Writable } from "node:stream";
-import type { ChatMessage } from "../core/messages.ts";
+import type { ChatMessage, Reply, ReplyRequest } from "../core/messages.ts";
 import { err, ok } from "../core/result.ts";
-import { echoReply, runRepl, type Reply, type ReplPorts } from "./repl.ts";
+import { echoReply, runRepl, type ReplPorts } from "./repl.ts";
 
 // The ports a test session uses. Each test overrides only the ports it needs.
 function ports(overrides: Partial<ReplPorts> = {}): ReplPorts {
@@ -52,7 +52,7 @@ test("stops at exit even when later lines arrive in the same chunk", async () =>
 
 test("sends earlier lines and replies with each new line", async () => {
   const seen: ChatMessage[][] = [];
-  const reply = async function* (messages: ChatMessage[]) {
+  const reply = async function* ({ messages }: ReplyRequest) {
     seen.push(messages.map((message) => ({ ...message })));
     yield ok(`answer ${seen.length}`);
   };
@@ -71,7 +71,7 @@ test("sends earlier lines and replies with each new line", async () => {
 
 test("puts the instructions in front of the first message only", async () => {
   const seen: ChatMessage[][] = [];
-  const reply = async function* (messages: ChatMessage[]) {
+  const reply = async function* ({ messages }: ReplyRequest) {
     seen.push(messages.map((message) => ({ ...message })));
     yield ok(`answer ${seen.length}`);
   };
@@ -92,7 +92,7 @@ test("puts the instructions in front of the first message only", async () => {
 test("sends a /note line to the note runner, prints its result, and keeps it out of the model", async () => {
   const seen: string[][] = [];
   const modelSaw: string[] = [];
-  const reply: Reply = async function* (messages) {
+  const reply: Reply = async function* ({ messages }) {
     modelSaw.push(messages.at(-1)?.content ?? "");
     yield ok("ok");
   };
@@ -114,7 +114,7 @@ test("sends a /note line to the note runner, prints its result, and keeps it out
 });
 
 test("/context shows the prompt tokens of the last request out of the model's window", async () => {
-  const reply: Reply = async function* (_messages, onUsage) {
+  const reply: Reply = async function* ({ onUsage }) {
     onUsage({ promptTokens: 42 });
     yield ok("hi");
   };
@@ -135,7 +135,7 @@ test("/context shows the prompt tokens of the last request out of the model's wi
 
 test("rejects an unknown command without sending it to the model", async () => {
   const seen: string[] = [];
-  const reply: Reply = async function* (messages) {
+  const reply: Reply = async function* ({ messages }) {
     seen.push(messages.at(-1)?.content ?? "");
     yield ok("ok");
   };
@@ -153,7 +153,7 @@ test("rejects an unknown command without sending it to the model", async () => {
 
 test("/compact replaces the history with a summary and the last six messages", async () => {
   const seen: string[][] = [];
-  const reply: Reply = async function* (messages) {
+  const reply: Reply = async function* ({ messages }) {
     seen.push(messages.map((message) => message.content));
     const last = messages.at(-1)?.content ?? "";
     yield ok(last === "Summarize this convo" ? "SUM" : `r:${last}`);
@@ -170,7 +170,7 @@ test("/compact replaces the history with a summary and the last six messages", a
 
 test("compacts before a message once the last prompt fills 80% of the window", async () => {
   const seen: string[][] = [];
-  const reply: Reply = async function* (messages, onUsage) {
+  const reply: Reply = async function* ({ messages, onUsage }) {
     seen.push(messages.map((message) => message.content));
     const last = messages.at(-1)?.content ?? "";
     if (last === "Summarize this convo") {
@@ -191,7 +191,7 @@ test("compacts before a message once the last prompt fills 80% of the window", a
 
 test("a failed reply does not record its prompt size", async () => {
   const seen: string[] = [];
-  const reply: Reply = async function* (messages, onUsage) {
+  const reply: Reply = async function* ({ messages, onUsage }) {
     const last = messages.at(-1)?.content ?? "";
     seen.push(last);
     if (last === "a") {
@@ -211,7 +211,7 @@ test("a failed reply does not record its prompt size", async () => {
 });
 
 test("/context after a compaction says the size is unknown", async () => {
-  const reply: Reply = async function* (messages) {
+  const reply: Reply = async function* ({ messages }) {
     yield ok(messages.at(-1)?.content === "Summarize this convo" ? "SUM" : "ok");
   };
   let written = "";
@@ -260,7 +260,7 @@ test("ends on /exit even while the input stream stays open", async () => {
 
 test("runs a tool the model asks for and sends its result back", async () => {
   const seen: string[] = [];
-  const reply: Reply = async function* (messages, _onUsage, onToolCall) {
+  const reply: Reply = async function* ({ messages, onToolCall }) {
     const last = messages.at(-1);
     seen.push(messages.map((message) => `${message.role}:${message.content}`).join(" | "));
     if (last?.role === "user") {
@@ -286,7 +286,7 @@ test("runs a tool the model asks for and sends its result back", async () => {
 });
 
 test("an edit is run only when the user answers y", async () => {
-  const reply: Reply = async function* (messages, _onUsage, onToolCall) {
+  const reply: Reply = async function* ({ messages, onToolCall }) {
     if (messages.at(-1)?.role === "user") {
       onToolCall({ id: "e1", name: "edit_file", arguments: '{"path":"f.txt","previous":"a","replacement":"b"}' });
       return;
@@ -327,7 +327,7 @@ test("an edit is run only when the user answers y", async () => {
 
 test("/exit at an approval ends the session without another model request", async () => {
   let requests = 0;
-  const reply: Reply = async function* (messages, _onUsage, onToolCall) {
+  const reply: Reply = async function* ({ messages, onToolCall }) {
     requests += 1;
     if (messages.at(-1)?.role === "user") {
       onToolCall({ id: "e1", name: "edit_file", arguments: '{"path":"f.txt","previous":"a","replacement":"b"}' });
@@ -356,7 +356,7 @@ test("/exit at an approval ends the session without another model request", asyn
 
 test("sends no request after a tool call when the input has ended", async () => {
   let requests = 0;
-  const reply: Reply = async function* (_messages, _onUsage, onToolCall) {
+  const reply: Reply = async function* ({ onToolCall }) {
     requests += 1;
     onToolCall({ id: "l1", name: "list_files", arguments: '{"path":"."}' });
     yield ok("");
@@ -371,7 +371,7 @@ test("sends no request after a tool call when the input has ended", async () => 
 });
 
 test("does not run a tool when the input has ended", async () => {
-  const reply: Reply = async function* (_messages, _onUsage, onToolCall) {
+  const reply: Reply = async function* ({ onToolCall }) {
     onToolCall({ id: "l1", name: "list_files", arguments: '{"path":"."}' });
     yield ok("");
   };

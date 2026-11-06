@@ -39,19 +39,22 @@ export interface Usage {
 // How hard the model thinks before it answers. Absent means reasoning is off.
 export type ReasoningEffort = "low" | "medium" | "high";
 
-// Sends the messages to a model. Text arrives as ok values; a failure is one err value, and nothing follows it.
-// Usage and tool calls are reported through the callbacks, tool calls once the reply ends. `tools`
-// names the tools the model is offered in this request. `reasoning` turns thinking on at that effort.
-// `onThinking` reports an approximate count of the thinking tokens so far, while the model thinks.
-export type Reply = (
-  messages: ChatMessage[],
-  onUsage: (usage: Usage) => void,
-  onToolCall: (call: ToolCall) => void,
-  tools: string[],
-  reasoning: ReasoningEffort | undefined,
-  onThinking: (approximateTokens: number) => void,
-  onReasoning: (items: unknown[]) => void,
-) => AsyncIterable<Result<string>>;
+// What one request to the model needs. Usage and tool calls are reported through the callbacks, tool
+// calls once the reply ends. `tools` names the tools the model is offered in this request. `reasoning`
+// turns thinking on at that effort. `onThinking` reports an approximate count of the thinking tokens so
+// far, while the model thinks. `onReasoning` receives the reasoning items once the reply ends.
+export interface ReplyRequest {
+  messages: ChatMessage[];
+  onUsage: (usage: Usage) => void;
+  onToolCall: (call: ToolCall) => void;
+  tools: string[];
+  reasoning: ReasoningEffort | undefined;
+  onThinking: (approximateTokens: number) => void;
+  onReasoning: (items: unknown[]) => void;
+}
+
+// Sends one request to a model. Text arrives as ok values; a failure is one err value, and nothing follows it.
+export type Reply = (request: ReplyRequest) => AsyncIterable<Result<string>>;
 
 export type ContextWindow = () => Promise<Result<number>>;
 

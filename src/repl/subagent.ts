@@ -54,17 +54,18 @@ interface SubRound {
 async function collectRound(reply: Reply, history: ChatMessage[], offered: string[]): Promise<SubRound> {
   const round: SubRound = { answer: "", calls: [] };
   try {
-    for await (const chunk of reply(
-      history,
-      () => {},
-      (call) => {
+    const request = {
+      messages: history,
+      onUsage: () => {},
+      onToolCall: (call: ToolCall) => {
         round.calls.push(call);
       },
-      offered,
-      undefined,
-      () => {},
-      () => {},
-    )) {
+      tools: offered,
+      reasoning: undefined,
+      onThinking: () => {},
+      onReasoning: () => {},
+    };
+    for await (const chunk of reply(request)) {
       if (!chunk.ok) return { ...round, failure: chunk.error };
       round.answer += chunk.value;
     }

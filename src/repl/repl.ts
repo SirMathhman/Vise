@@ -10,7 +10,7 @@ import {
   type Conversation,
   type Step,
 } from "../core/compaction.ts";
-import type { ChatMessage, ReasoningEffort, Reply, ToolCall, Usage } from "../core/messages.ts";
+import type { ChatMessage, ReasoningEffort, Reply, ReplyRequest, ToolCall, Usage } from "../core/messages.ts";
 import {
   RUN_SUBAGENT,
   describeToolCall,
@@ -27,7 +27,7 @@ import { runCommand, type ReplPorts } from "./commands.ts";
 export type { ContextWindow, Reply } from "../core/messages.ts";
 export type { ReplPorts } from "./commands.ts";
 
-export async function* echoReply(messages: ChatMessage[]): AsyncGenerator<Result<string>> {
+export async function* echoReply({ messages }: ReplyRequest): AsyncGenerator<Result<string>> {
   yield ok(`echo: ${messages.at(-1)?.content ?? ""}`);
 }
 
@@ -104,13 +104,18 @@ function finishThinking(output: Writable, view: ThinkingView, exact: number | un
   view.open = false;
 }
 
-async function streamRound(
-  history: ChatMessage[],
-  reply: Reply,
-  output: Writable,
-  offered: string[],
-  reasoning: ReasoningEffort | undefined,
-): Promise<Round> {
+// What one request of a turn needs: the history it sends, where the text goes, and the tools and
+// thinking setting it uses.
+interface RoundInput {
+  history: ChatMessage[];
+  reply: Reply;
+  output: Writable;
+  offered: string[];
+  reasoning: ReasoningEffort | undefined;
+}
+
+async function streamRound(input: RoundInput): Promise<Round> {
+  const { history, reply, output, offered, reasoning } = input;
   const round: Round = { answer: "", calls: [] };
   const view: ThinkingView = { shown: false, open: false, approximate: 0, width: 0 };
   const onThinking = (approximate: number) => {
@@ -124,21 +129,22 @@ async function streamRound(
     output.write(`\r${text.padEnd(view.width)}`);
   };
   try {
-    for await (const chunk of reply(
-      history,
-      (usage) => {
+    const request = {
+      messages: history,
+      onUsage: (usage: Usage) => {
         round.usage = usage;
       },
-      (call) => {
+      onToolCall: (call: ToolCall) => {
         round.calls.push(call);
       },
-      offered,
+      tools: offered,
       reasoning,
       onThinking,
-      (items) => {
+      onReasoning: (items: unknown[]) => {
         round.reasoning = items;
       },
-    )) {
+    };
+    for await (const chunk of reply(request)) {
       if (!chunk.ok) {
         finishThinking(output, view, round.usage?.reasoningTokens);
         return { ...round, failure: chunk.error };
@@ -261,7 +267,13 @@ async function runMessageTurn(text: string, conversation: Conversation, context:
   // Each round asks the model. The first round answers the message just received; a round that
   // asked for tools is followed by another only while the session has not ended.
   for (;;) {
-    const round = await streamRound(current.history, reply, output, enabledTools(current), current.thinking);
+    const round = await streamRound({
+      history: current.history,
+      reply,
+      output,
+      offered: enabledTools(current),
+      reasoning: current.thinking,
+    });
     if (round.failure) {
       current.history.splice(turnStart);
       current = { ...current, pendingProfile: profile, pendingOutput: pending };
