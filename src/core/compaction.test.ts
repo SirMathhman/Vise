@@ -78,3 +78,8 @@ test("a profile's whitelist and the /tools switches both limit the tools offered
   expect(enabledTools(conversation)).toEqual(["list_files", "read_file"]);
   expect(enabledTools({ ...conversation, profile: undefined })).toContain("edit_file");
 });
+
+test("queued hook output is kept by a saved session", () => {
+  const conversation: Conversation = { history: [], compacted: false, pendingOutput: "[hook]\ntext" };
+  expect(decodeSession(encodeSession(conversation))).toEqual({ ok: true, value: conversation });
+});

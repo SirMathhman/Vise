@@ -29,6 +29,7 @@ const SessionSchema = z
     compacted: z.boolean(),
     profile: z.object({ name: z.string(), text: z.string(), tools: z.array(z.string()).optional() }).optional(),
     pendingProfile: z.string().optional(),
+    pendingOutput: z.string().optional(),
     disabledTools: z.array(z.string()).optional(),
   })
   .refine((session) => (session.disabledTools ?? []).every((name) => toolNames.includes(name)), {
@@ -83,6 +84,7 @@ export function encodeSession(conversation: Conversation): string {
     compacted: conversation.compacted,
     profile: conversation.profile,
     pendingProfile: conversation.pendingProfile,
+    pendingOutput: conversation.pendingOutput,
     disabledTools: conversation.disabledTools,
   };
   return `${JSON.stringify(saved, null, 2)}\n`;
@@ -128,6 +130,7 @@ export function decodeSession(text: string): Result<Conversation> {
     compacted: session.compacted,
     profile: session.profile,
     pendingProfile: session.pendingProfile,
+    pendingOutput: session.pendingOutput,
     disabledTools: session.disabledTools,
   });
 }

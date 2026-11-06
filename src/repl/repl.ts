@@ -299,6 +299,16 @@ async function runCalls(step: CallsStep): Promise<ChatMessage[]> {
   return results;
 }
 
+// Hook output longer than this is cut short on the terminal. The whole output still goes to the model.
+const HOOK_SHOWN_LIMIT = 4000;
+
+// Shows a hook's output on the terminal, sanitized and cut short when it is long.
+function showHookOutput(output: Writable, text: string): void {
+  if (text === "") return;
+  const shown = sanitize(text).slice(0, HOOK_SHOWN_LIMIT);
+  output.write(`${shown}${text.length > HOOK_SHOWN_LIMIT ? "\n[output cut short]" : ""}\n`);
+}
+
 // What one turn needs from the session.
 export interface TurnContext {
   ports: ReplPorts;
@@ -324,6 +334,7 @@ async function runMessageTurn(text: string, conversation: Conversation, context:
     output.write(`error: turn-start hook failed: ${started.error.message}\n`);
     return { conversation, stop: false };
   }
+  showHookOutput(output, started.value);
   const compacted = await compactIfNeeded(queueHookOutput(conversation, started.value), reply, contextWindow);
   if (compacted.notice) output.write(`${compacted.notice}\n`);
   let current = compacted.conversation;
@@ -374,6 +385,7 @@ async function runMessageTurn(text: string, conversation: Conversation, context:
     output.write(`error: turn-end hook failed: ${ended.error.message}\n`);
     return { conversation: current, stop: true };
   }
+  showHookOutput(output, ended.value);
   return { conversation: queueHookOutput(current, ended.value), stop: false };
 }
 
@@ -428,6 +440,7 @@ export async function runRepl(input: Readable, output: Writable, ports: ReplPort
     const started = await ports.hooks("sessionStart");
     if (!started.ok) return err(started.error);
     conversation = queueHookOutput(conversation, started.value);
+    showHookOutput(output, started.value);
     for (let line = await lines.next(); line !== undefined && !exitRequested && streamError === undefined; line = await lines.next()) {
       const input = classifyLine(line);
       if (input.kind === "exit") break;
@@ -444,7 +457,8 @@ export async function runRepl(input: Readable, output: Writable, ports: ReplPort
       rl.prompt();
     }
     const ended = await ports.hooks("sessionEnd");
-    if (!ended.ok) output.write(`error: session-end hook failed: ${ended.error.message}\n`);
+    if (ended.ok) showHookOutput(output, ended.value);
+    else output.write(`error: session-end hook failed: ${ended.error.message}\n`);
   } finally {
     input.off("error", fail);
     output.off("error", fail);

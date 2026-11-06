@@ -299,3 +299,19 @@ test("a session-start hook that fails refuses the session", async () => {
   );
   expect(result.ok).toBe(false);
 });
+
+test("a turn-start hook's output is shown on the terminal as well as sent", async () => {
+  let written = "";
+  const output = new Writable({
+    write(chunk, _encoding, done) {
+      written += chunk.toString();
+      done();
+    },
+  });
+  await runRepl(
+    Readable.from(["hello\n"]),
+    output,
+    ports({ hooks: async (point) => (point === "turnStart" ? ok("HOOK LINE") : ok("")) }),
+  );
+  expect(written).toContain("HOOK LINE");
+});
