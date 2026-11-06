@@ -1,6 +1,6 @@
 import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
-import { classifyLine, contextLine } from "../core/commands.ts";
+import { classifyLine, contextLine, type ExitLine, type Line, type MessageLine } from "../core/commands.ts";
 import {
   compactIfNeeded,
   compactNow,
@@ -31,6 +31,42 @@ async function showContext(
     else output.write(`error: /context could not read the model's window: ${result.error.message}\n`);
   }
   output.write(`${contextLine(conversation.promptTokens, total, conversation.compacted)}\n`);
+}
+
+// Every port the session uses. All are required; a caller that omits one fails to compile.
+export interface ReplPorts {
+  reply: Reply;
+  contextWindow: ContextWindow;
+  tools: ToolRunner;
+  notes: NoteRunner;
+  // Text sent ahead of the first message of the session (the AGENTS.md file), if any.
+  instructions?: string;
+}
+
+// The lines that are commands, other than /exit (which ends the loop) and messages.
+type CommandLine = Exclude<Line, ExitLine | MessageLine>;
+
+// Runs one command line and writes what it prints. Returns the step to apply when the command
+// changes the conversation (compaction), otherwise undefined.
+async function runCommand(
+  input: CommandLine,
+  ports: ReplPorts,
+  output: Writable,
+  conversation: Conversation,
+): Promise<Step | undefined> {
+  switch (input.kind) {
+    case "context":
+      await showContext(output, ports.contextWindow, conversation);
+      return undefined;
+    case "compact":
+      return compactNow(conversation, ports.reply);
+    case "note":
+      output.write(`${await ports.notes(input.words)}\n`);
+      return undefined;
+    case "unknown-command":
+      output.write(`error: unknown command ${input.command}\n`);
+      return undefined;
+  }
 }
 
 // The input lines, in order, held until they are read. `more` says whether another line
@@ -112,16 +148,8 @@ async function streamRound(history: ChatMessage[], reply: Reply, output: Writabl
 // Runs the session until /exit or end of input. A failure of the input or output
 // stream ends it early, and that failure is the result. Whatever happens, the
 // interface is closed and the listeners are removed before this returns.
-export async function runRepl(
-  input: Readable,
-  output: Writable,
-  reply: Reply = echoReply,
-  contextWindow: ContextWindow = async () => err(new Error("no context window is configured")),
-  tools: ToolRunner = async () => "no tools are available",
-  // Text sent ahead of the first message of the session (the AGENTS.md file), if any.
-  instructions?: string,
-  notes: NoteRunner = async () => "notes are not available",
-): Promise<Result<void>> {
+export async function runRepl(input: Readable, output: Writable, ports: ReplPorts): Promise<Result<void>> {
+  const { reply, contextWindow, tools, instructions } = ports;
   let conversation: Conversation = { history: [], compacted: false };
   let streamError: Error | undefined;
   // Set when /exit is typed at an approval: the session ends and no further request is sent.
@@ -168,20 +196,9 @@ export async function runRepl(
     for (let line = await lines.next(); line !== undefined && !exitRequested && streamError === undefined; line = await lines.next()) {
       const input = classifyLine(line);
       if (input.kind === "exit") break;
-      if (input.kind === "context") {
-        await showContext(output, contextWindow, conversation);
-        rl.prompt();
-        continue;
-      }
-      if (input.kind === "compact") {
-        apply(await compactNow(conversation, reply));
-        rl.prompt();
-        continue;
-      }
-      // A line that only prints text: a /note line, or an unknown command.
-      if (input.kind === "unknown-command" || input.kind === "note") {
-        const text = input.kind === "note" ? await notes(input.words) : `error: unknown command ${input.command}`;
-        output.write(`${text}\n`);
+      if (input.kind !== "message") {
+        const step = await runCommand(input, ports, output, conversation);
+        if (step) apply(step);
         rl.prompt();
         continue;
       }

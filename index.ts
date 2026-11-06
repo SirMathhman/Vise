@@ -28,15 +28,13 @@ if (import.meta.main) {
   const instructions = await readInstructions(process.cwd());
   let failed = false;
   try {
-    const result = await runRepl(
-      process.stdin,
-      process.stdout,
-      (messages, onUsage, onToolCall) => streamChat({ apiKey, model: MODEL, messages, onUsage, onToolCall }),
-      () => modelContextWindow({ model: MODEL }),
-      runTool(process.cwd()),
+    const result = await runRepl(process.stdin, process.stdout, {
+      reply: (messages, onUsage, onToolCall) => streamChat({ apiKey, model: MODEL, messages, onUsage, onToolCall }),
+      contextWindow: () => modelContextWindow({ model: MODEL }),
+      tools: runTool(process.cwd()),
+      notes: runNoteCommand(process.cwd()),
       instructions,
-      runNoteCommand(process.cwd()),
-    );
+    });
     if (!result.ok) {
       console.error(`error: ${result.error.message}`);
       failed = true;
