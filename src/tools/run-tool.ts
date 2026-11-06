@@ -1,4 +1,5 @@
 import type { ToolCall } from "../core/messages.ts";
+import { toolNames } from "../core/tools.ts";
 import { notePath } from "../core/notes.ts";
 import {
   CREATE_FILE,
@@ -33,7 +34,11 @@ import { runPowershell } from "./run-powershell.ts";
 // The tool runner for a working directory. A change or command is checked and previewed, and it
 // runs only if `approve` says yes. Errors come back as text for the model to read.
 export function runTool(root: string): ToolRunner {
-  return async (call: ToolCall, approve: Approve) => {
+  return async (call: ToolCall, approve: Approve, offered: string[]) => {
+    // A tool switched off is refused here, so no caller of the runner can run it.
+    if (toolNames.includes(call.name) && !offered.includes(call.name)) {
+      return `error: tool ${call.name} is switched off`;
+    }
     if (call.name === RUN_POWERSHELL && runningJobs() >= MAX_JOBS) {
       return `error: ${MAX_JOBS} commands are already running in the background`;
     }

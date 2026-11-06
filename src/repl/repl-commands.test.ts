@@ -109,10 +109,9 @@ test("a failed turn keeps the pending profile for the next attempt", async () =>
   expect(seen).toEqual(["BE TERSE\n\na", "BE TERSE\n\nb"]);
 });
 
-test("a switched-off tool is not offered, and a call to it is refused without approval", async () => {
+test("a switched-off tool is left out of the request and out of the tools the runner is given", async () => {
   const offered: string[][] = [];
-  let ran = 0;
-  let asked = 0;
+  const runnerGiven: string[][] = [];
   const reply: Reply = async function* (messages, _onUsage, onToolCall, tools) {
     offered.push(tools);
     if (messages.at(-1)?.role === "user") {
@@ -127,21 +126,20 @@ test("a switched-off tool is not offered, and a call to it is refused without ap
     },
   });
   await runRepl(
-    Readable.from(["/tools disable edit_file\n", "go\n"]),
+    // /exit is queued after the message, so the tool call still runs: a call is skipped once the input has ended.
+    Readable.from(["/tools disable edit_file\n", "go\n", "/exit\n"]),
     output,
     ports({
       reply,
-      tools: async (_call, approve) => {
-        ran += 1;
-        asked += (await approve("edit")) ? 0 : 1;
-        return "edited";
+      tools: async (_call, _approve, enabled) => {
+        runnerGiven.push(enabled);
+        return "not run by this fake";
       },
     }),
   );
   expect(offered[0]).not.toContain("edit_file");
   expect(offered[0]).toContain("list_files");
-  expect(ran).toBe(0);
-  expect(asked).toBe(0);
+  expect(runnerGiven[0]).not.toContain("edit_file");
 });
 
 test("/tools disable saves the switched-off tools", async () => {

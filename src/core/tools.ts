@@ -241,9 +241,11 @@ export interface JobArgs {
 // when the user says yes.
 export type Approve = (preview: string) => Promise<boolean>;
 
-// Runs a tool call and returns the text to send back to the model. Changes and commands run
-// only when `approve` resolves true. Failures come back as text too, so the model can read them and answer.
-export type ToolRunner = (call: ToolCall, approve: Approve) => Promise<string>;
+// Runs a tool call and returns the text to send back to the model. `offered` names the tools
+// that are switched on; a call to any other tool is refused here, before anything is asked.
+// Changes and commands run only when `approve` resolves true. Failures come back as text too,
+// so the model can read them and answer.
+export type ToolRunner = (call: ToolCall, approve: Approve, offered: string[]) => Promise<string>;
 
 // The arguments as the model wrote them, before they are checked.
 interface RawArgs {

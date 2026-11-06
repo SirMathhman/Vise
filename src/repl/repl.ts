@@ -306,10 +306,11 @@ export async function runRepl(input: Readable, output: Writable, ports: ReplPort
         for (const call of round.calls) {
           if (finished()) break;
           output.write(`\n${sanitize(describeToolCall(call))}\n`);
-          // A tool switched off is not offered, so a call to it is refused without asking for approval.
-          const off = conversation.disabledTools?.includes(call.name) ?? false;
-          const content = off ? `error: tool ${call.name} is switched off` : await tools(call, approve);
-          conversation.history.push({ role: "tool", toolCallId: call.id, content });
+          conversation.history.push({
+            role: "tool",
+            toolCallId: call.id,
+            content: await tools(call, approve, enabledTools(conversation)),
+          });
         }
         if (finished()) break;
       }
