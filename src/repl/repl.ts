@@ -2,9 +2,11 @@ import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
 import { classifyLine, contextLine, type ExitLine, type Line, type MessageLine } from "../core/commands.ts";
 import {
+  clearProfile,
   compactIfNeeded,
   compactNow,
   recordUsage,
+  useProfile,
   type Conversation,
   type Step,
 } from "../core/compaction.ts";
@@ -89,16 +91,13 @@ async function runProfileCommand(
     output.write(`profile: ${conversation.profile?.name ?? "default"}\n`);
     return undefined;
   }
-  if (command.value.kind === "clear") {
-    return { conversation: { ...conversation, profile: undefined, pendingProfile: undefined }, notice: "profile: default" };
-  }
+  if (command.value.kind === "clear") return clearProfile(conversation);
   const loaded = await ports.profile(command.value.name);
   if (!loaded.ok) {
     output.write(`error: ${loaded.error.message}\n`);
     return undefined;
   }
-  const profile = { name: command.value.name, text: loaded.value };
-  return { conversation: { ...conversation, profile, pendingProfile: profile.text }, notice: `profile: ${profile.name}` };
+  return useProfile(conversation, { name: command.value.name, text: loaded.value });
 }
 
 // The input lines, in order, held until they are read. `more` says whether another line

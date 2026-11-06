@@ -80,6 +80,22 @@ export function recordUsage(conversation: Conversation, usage: Usage): Conversat
   return { ...conversation, promptTokens: usage.promptTokens, compacted: false };
 }
 
+// Makes a profile the active one. Its text is pending until the next message carries it.
+export function useProfile(conversation: Conversation, profile: ActiveProfile): Step {
+  return {
+    conversation: { ...conversation, profile, pendingProfile: profile.text },
+    notice: `profile: ${profile.name}`,
+  };
+}
+
+// Turns profiles off. Text already in the history stays there.
+export function clearProfile(conversation: Conversation): Step {
+  return {
+    conversation: { ...conversation, profile: undefined, pendingProfile: undefined },
+    notice: "profile: default",
+  };
+}
+
 // Compacts because the user asked for it (/compact).
 export async function compactNow(conversation: Conversation, reply: Reply): Promise<Step> {
   const result = await compact(conversation, reply);
