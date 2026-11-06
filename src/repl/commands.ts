@@ -14,18 +14,18 @@ import {
   setThinking,
   useProfile,
   type Conversation,
-  type HookRunner,
   type Step,
 } from "../core/compaction.ts";
 import type {
   ContextWindow,
   ModelPorts,
-  Reply,
+  ReplyRequest,
+  ToolCall,
 } from "../core/messages.ts";
-import { parseProfileCommand, type NoteRunner, type ProfileHook, type ProfileLoader } from "../core/notes.ts";
+import { parseProfileCommand, type HookPoint, type ProfileHook } from "../core/notes.ts";
 import type { Result } from "../core/result.ts";
 import { decodeSession, encodeSession, parseSessionCommand, type SessionStore } from "../core/sessions.ts";
-import { parseToolsCommand, sanitize, toolStates, type SaveDisabledTools, type ToolRunner } from "../core/tools.ts";
+import { parseToolsCommand, sanitize, toolStates, type Approve } from "../core/tools.ts";
 
 async function showContext(
   output: Writable,
@@ -43,20 +43,20 @@ async function showContext(
 
 // Every port the session uses. All are required; a caller that omits one fails to compile.
 export interface ReplPorts {
-  reply: Reply;
-  contextWindow: ContextWindow;
-  tools: ToolRunner;
-  notes: NoteRunner;
-  profile: ProfileLoader;
+  reply(request: ReplyRequest): AsyncIterable<Result<string>>;
+  contextWindow(): Promise<Result<number>>;
+  tools(call: ToolCall, approve: Approve, offered: string[]): Promise<string>;
+  notes(words: string[]): Promise<string>;
+  profile(name: string): Promise<Result<string>>;
   // The tools a profile allows, undefined when it has no whitelist.
-  profileTools: (name: string) => Promise<Result<string[] | undefined>>;
+  profileTools(name: string): Promise<Result<string[] | undefined>>;
   // The hooks a profile adds at its points.
-  profileHooks: (name: string) => Promise<Result<ProfileHook[]>>;
+  profileHooks(name: string): Promise<Result<ProfileHook[]>>;
   // Runs the hooks of one point. Their output goes to the next message.
-  hooks: HookRunner;
+  hooks(point: HookPoint, profile?: string[]): Promise<Result<string>>;
   // The tools switched off when the session starts, and the writer for the settings file.
   disabledTools: string[];
-  saveDisabledTools: SaveDisabledTools;
+  saveDisabledTools(names: string[]): Promise<Result<void>>;
   // Where /save and /load keep sessions.
   sessions: SessionStore;
   // The model in use, and the models /model may switch to.

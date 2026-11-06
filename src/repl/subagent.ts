@@ -1,25 +1,25 @@
 import type { Writable } from "node:stream";
-import { enabledTools, profileCommands, type Conversation, type HookRunner } from "../core/compaction.ts";
-import type { ChatMessage, Reply, ToolCall } from "../core/messages.ts";
-import type { ProfileHook, ProfileLoader } from "../core/notes.ts";
+import { enabledTools, profileCommands, type Conversation } from "../core/compaction.ts";
+import type { ChatMessage, Reply, ReplyRequest, ToolCall } from "../core/messages.ts";
+import type { HookPoint, ProfileHook } from "../core/notes.ts";
 import type { Result } from "../core/result.ts";
-import { RUN_SUBAGENT, type Approve, type SubagentArgs, type ToolRunner } from "../core/tools.ts";
+import { RUN_SUBAGENT, type Approve, type SubagentArgs } from "../core/tools.ts";
 
 // What a subagent needs from the session. The session's ports satisfy it.
 export interface SubagentPorts {
-  reply: Reply;
-  tools: ToolRunner;
-  hooks: HookRunner;
-  profile: ProfileLoader;
-  profileTools: (name: string) => Promise<Result<string[] | undefined>>;
-  profileHooks: (name: string) => Promise<Result<ProfileHook[]>>;
+  reply(request: ReplyRequest): AsyncIterable<Result<string>>;
+  tools(call: ToolCall, approve: Approve, offered: string[]): Promise<string>;
+  hooks(point: HookPoint, profile?: string[]): Promise<Result<string>>;
+  profile(name: string): Promise<Result<string>>;
+  profileTools(name: string): Promise<Result<string[] | undefined>>;
+  profileHooks(name: string): Promise<Result<ProfileHook[]>>;
 }
 
 export interface SubagentContext {
   ports: SubagentPorts;
   // Already queued, so subagents and the main conversation ask one question at a time.
-  approve: Approve;
-  finished: () => boolean;
+  approve(preview: string): Promise<boolean>;
+  finished(): boolean;
   output: Writable;
   // The tools switched off with /tools. A subagent is offered none of them.
   disabledTools: string[];

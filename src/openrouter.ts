@@ -7,8 +7,6 @@ const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 const MODELS_ENDPOINT = "https://openrouter.ai/api/v1/models";
 const DONE = Symbol("done");
 
-type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
-
 const StreamEventSchema = z.object({
   error: z.object({ message: z.string().optional() }).nullish(),
   choices: z
@@ -98,17 +96,17 @@ interface StreamOptions {
   apiKey: string;
   model: string;
   messages: ChatMessage[];
-  fetch?: FetchLike;
-  onUsage?: (usage: Usage) => void;
-  onToolCall?: (call: ToolCall) => void;
+  fetch?(url: string, init: RequestInit): Promise<Response>;
+  onUsage?(usage: Usage): void;
+  onToolCall?(call: ToolCall): void;
   // The tools to offer, by name. Every tool when omitted, and none when empty.
   tools?: string[];
   // Turns thinking on at this effort. Off when omitted.
   reasoning?: ReasoningEffort;
   // Called with the approximate thinking tokens so far, as thinking text arrives.
-  onThinking?: (approximateTokens: number) => void;
+  onThinking?(approximateTokens: number): void;
   // Called once with the reasoning items of the reply, kept exactly as the stream sent them, when it ends.
-  onReasoning?: (items: unknown[]) => void;
+  onReasoning?(items: unknown[]): void;
 }
 
 // Reasoning text is about four characters to a token. The count is an estimate until the exact one arrives.
@@ -282,7 +280,7 @@ function emitToolCalls(calls: Map<number, ToolCall>, onToolCall: ((call: ToolCal
 
 interface ModelContextOptions {
   model: string;
-  fetch?: FetchLike;
+  fetch?(url: string, init: RequestInit): Promise<Response>;
 }
 
 // The model's context window in tokens, from OpenRouter's model listing.
@@ -295,7 +293,7 @@ export async function modelContextWindow(options: ModelContextOptions): Promise<
 }
 
 interface ModelListOptions {
-  fetch?: FetchLike;
+  fetch?(url: string, init: RequestInit): Promise<Response>;
 }
 
 // Every model OpenRouter lists, with its context window.

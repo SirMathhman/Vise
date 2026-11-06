@@ -6,11 +6,11 @@ export interface SelectModelOptions {
   // The working directory the choice is saved in.
   root: string;
   // The models OpenRouter lists right now.
-  list: () => Promise<Result<ModelInfo[]>>;
+  list(): Promise<Result<ModelInfo[]>>;
   // The name the user asked for.
   name: string;
   // Switches the model used from the next request.
-  setModel: (model: string) => void;
+  setModel(model: string): void;
 }
 
 // Switches to a model that is listed. The name must be listed, and the choice is saved before the switch,

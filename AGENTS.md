@@ -19,6 +19,7 @@ ESLint is configured in `eslint.config.js`. These are errors, not warnings:
 
 - No `throw` statements. Failures are returned as `Result` (`src/core/result.ts`, `ok` and `err`). The only `try`/`catch` is around calls that throw by themselves.
 - No inline object types written as `{ ... }`. Declare an `interface`.
+- No function-typed fields in an interface. Declare a method instead, such as `reply(request: ReplyRequest): ...`, not `reply: (request: ReplyRequest) => ...`.
 - At most 500 code lines per file and 100 per function (blank lines and comments do not count).
 - At most 10 tracked files per directory, checked by `scripts/check-files-per-dir.ts` with `git ls-files`. New files count only once staged.
 

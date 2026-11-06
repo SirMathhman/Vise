@@ -45,12 +45,12 @@ export type ReasoningEffort = "low" | "medium" | "high";
 // far, while the model thinks. `onReasoning` receives the reasoning items once the reply ends.
 export interface ReplyRequest {
   messages: ChatMessage[];
-  onUsage: (usage: Usage) => void;
-  onToolCall: (call: ToolCall) => void;
+  onUsage(usage: Usage): void;
+  onToolCall(call: ToolCall): void;
   tools: string[];
   reasoning: ReasoningEffort | undefined;
-  onThinking: (approximateTokens: number) => void;
-  onReasoning: (items: unknown[]) => void;
+  onThinking(approximateTokens: number): void;
+  onReasoning(items: unknown[]): void;
 }
 
 // Sends one request to a model. Text arrives as ok values; a failure is one err value, and nothing follows it.

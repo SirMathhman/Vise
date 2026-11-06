@@ -11,6 +11,8 @@ export default tseslint.config(js.configs.recommended, ...tseslint.configs.recom
     "no-restricted-syntax": [
       "error",
       { selector: "TSTypeLiteral", message: "Use a named interface instead of an object type literal." },
+      { selector: "TSInterfaceBody > TSPropertySignature > TSTypeAnnotation > TSFunctionType", message: "Declare a method in the interface instead of a function-typed field." },
+      { selector: "TSInterfaceBody > TSPropertySignature > TSTypeAnnotation > TSUnionType > TSFunctionType", message: "Declare a method in the interface instead of a function-typed field." },
       { selector: "ThrowStatement", message: "Return a Result (src/core/result.ts) instead of throwing." },
     ],
   },

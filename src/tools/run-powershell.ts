@@ -41,7 +41,7 @@ export async function runPowershell(root: string, command: string, timeoutMs = T
 // A timer that can be cancelled. `done` resolves to "timeout" when it fires.
 interface Timer {
   done: Promise<"timeout">;
-  cancel: () => void;
+  cancel(): void;
 }
 
 function timer(ms: number): Timer {

@@ -10,14 +10,13 @@ import {
   type Conversation,
   type Step,
 } from "../core/compaction.ts";
-import type { ChatMessage, ReasoningEffort, Reply, ReplyRequest, ToolCall, Usage } from "../core/messages.ts";
+import type { ChatMessage, ReasoningEffort, ReplyRequest, ToolCall, Usage } from "../core/messages.ts";
 import {
   RUN_SUBAGENT,
   describeToolCall,
   parseSubagentArgs,
   sanitize,
   type Approve,
-  type ToolRunner,
 } from "../core/tools.ts";
 import { queueApprovals, runSubagent, type SubagentPorts } from "./subagent.ts";
 import type { Result } from "../core/result.ts";
@@ -108,7 +107,7 @@ function finishThinking(output: Writable, view: ThinkingView, exact: number | un
 // thinking setting it uses.
 interface RoundInput {
   history: ChatMessage[];
-  reply: Reply;
+  reply(request: ReplyRequest): AsyncIterable<Result<string>>;
   output: Writable;
   offered: string[];
   reasoning: ReasoningEffort | undefined;
@@ -167,9 +166,9 @@ async function streamRound(input: RoundInput): Promise<Round> {
 // What running a round's tool calls needs from the session.
 export interface CallsStep {
   calls: ToolCall[];
-  tools: ToolRunner;
-  approve: Approve;
-  finished: () => boolean;
+  tools(call: ToolCall, approve: Approve, offered: string[]): Promise<string>;
+  approve(preview: string): Promise<boolean>;
+  finished(): boolean;
   // The tools offered in this request. A call to another tool is refused by the runner.
   offered: string[];
   output: Writable;
@@ -229,8 +228,8 @@ function showHookOutput(output: Writable, text: string): void {
 export interface TurnContext {
   ports: ReplPorts;
   output: Writable;
-  finished: () => boolean;
-  approve: Approve;
+  finished(): boolean;
+  approve(preview: string): Promise<boolean>;
 }
 
 // What a turn leaves behind: the conversation to keep, and whether the session must stop.

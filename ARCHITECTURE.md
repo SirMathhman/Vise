@@ -108,6 +108,7 @@ scripts/            build checks run by `bun run lint` (file count per directory
   - at most 500 code lines per file (`max-lines`),
   - at most 10 files per directory,
   - no object type literals written inline as `{ ... }` (`no-restricted-syntax` on `TSTypeLiteral`); declare a named interface instead.
+  - no function-typed fields in an interface (`no-restricted-syntax` on `TSPropertySignature` whose type is a function type); declare a method signature instead, such as `reply(request: ReplyRequest): ...`. Callers keep the same `obj.name(...)` syntax. A field typed by a function alias (`approve: Approve`) is not caught by the lint rule, so the rule is kept by convention there.
   - no `throw` statements (`no-restricted-syntax` on `ThrowStatement`); failures are returned as a `Result` from `src/core/result.ts`.
 - Recursion is avoided in core. When a function would need to call a function that calls it back, pass the callback as a parameter instead of importing across files.
 
