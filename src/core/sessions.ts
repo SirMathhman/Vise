@@ -27,12 +27,15 @@ const SessionSchema = z
     ),
     promptTokens: z.number().optional(),
     compacted: z.boolean(),
-    profile: z.object({ name: z.string(), text: z.string() }).optional(),
+    profile: z.object({ name: z.string(), text: z.string(), tools: z.array(z.string()).optional() }).optional(),
     pendingProfile: z.string().optional(),
     disabledTools: z.array(z.string()).optional(),
   })
   .refine((session) => (session.disabledTools ?? []).every((name) => toolNames.includes(name)), {
     message: "a switched-off tool does not exist",
+  })
+  .refine((session) => (session.profile?.tools ?? []).every((name) => toolNames.includes(name)), {
+    message: "a profile allows a tool that does not exist",
   });
 
 // Where saved sessions are read and written. The composition root supplies it.

@@ -67,3 +67,14 @@ test("refuses a session whose tool calls and results do not pair", () => {
   expect(decodeSession(orphanResult).ok).toBe(false);
   expect(decodeSession(unanswered).ok).toBe(false);
 });
+
+test("a profile's whitelist and the /tools switches both limit the tools offered", () => {
+  const conversation: Conversation = {
+    history: [],
+    compacted: false,
+    disabledTools: ["kill_command"],
+    profile: { name: "reader", text: "Read only.", tools: ["list_files", "read_file", "kill_command"] },
+  };
+  expect(enabledTools(conversation)).toEqual(["list_files", "read_file"]);
+  expect(enabledTools({ ...conversation, profile: undefined })).toContain("edit_file");
+});

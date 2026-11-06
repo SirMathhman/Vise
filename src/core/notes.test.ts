@@ -47,3 +47,13 @@ test("the body is the text below the header, and /profile reads show, default, o
   expect(parseProfileCommand(["a", "b"]).ok).toBe(false);
   expect(parseProfileCommand(["a/b"]).ok).toBe(false);
 });
+
+test("a tools line lists the tools a profile allows, and is absent when there is none", () => {
+  const withList = parseHeader("---\nname: plan\ncategory: profile\nsummary:\ntools: list_files, read_file\n---\nbody");
+  expect(withList).toEqual({
+    ok: true,
+    value: { name: "plan", category: "profile", summary: "", tools: ["list_files", "read_file"] },
+  });
+  const without = parseHeader("---\nname: plan\ncategory: profile\nsummary:\n---\nbody");
+  expect(without.ok && without.value.tools).toBeUndefined();
+});

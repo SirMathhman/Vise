@@ -13,6 +13,8 @@ export interface NoteHeader {
   name: string;
   category: string;
   summary: string;
+  // The tools a profile allows, from its `tools:` line. Absent when the line is absent.
+  tools?: string[];
 }
 
 export interface NewNoteCommand {
@@ -89,7 +91,10 @@ export function parseHeader(text: string): Result<NoteHeader> {
   const name = values.get("name");
   const category = values.get("category");
   if (!name || !category) return err(new Error("the note header needs a name and a category"));
-  return ok({ name, category, summary: values.get("summary") ?? "" });
+  const tools = values.get("tools");
+  const header: NoteHeader = { name, category, summary: values.get("summary") ?? "" };
+  if (tools !== undefined) header.tools = tools.split(",").map((tool) => tool.trim()).filter((tool) => tool !== "");
+  return ok(header);
 }
 
 // The text below the header, trimmed. Empty when the note has no closed header.

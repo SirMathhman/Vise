@@ -53,6 +53,8 @@ export interface ReplPorts {
   tools: ToolRunner;
   notes: NoteRunner;
   profile: ProfileLoader;
+  // The tools a profile allows, undefined when it has no whitelist.
+  profileTools: (name: string) => Promise<Result<string[] | undefined>>;
   // The tools switched off when the session starts, and the writer for the settings file.
   disabledTools: string[];
   saveDisabledTools: SaveDisabledTools;
@@ -117,7 +119,12 @@ async function runProfileCommand(
     output.write(`error: ${loaded.error.message}\n`);
     return undefined;
   }
-  return useProfile(conversation, { name: command.value.name, text: loaded.value });
+  const allowed = await ports.profileTools(command.value.name);
+  if (!allowed.ok) {
+    output.write(`error: ${allowed.error.message}\n`);
+    return undefined;
+  }
+  return useProfile(conversation, { name: command.value.name, text: loaded.value, tools: allowed.value });
 }
 
 // Runs /tools: lists the tools and whether each is on, or switches one on or off. The change applies

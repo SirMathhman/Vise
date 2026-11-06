@@ -20,10 +20,12 @@ export interface Conversation {
   disabledTools?: string[];
 }
 
-// The tools offered to the model: every tool that is not switched off.
+// The tools offered to the model: every tool that is switched on, and, when the active profile has
+// a whitelist, that is on the whitelist too. Both must allow a tool.
 export function enabledTools(conversation: Conversation): string[] {
   const disabled = conversation.disabledTools ?? [];
-  return toolNames.filter((name) => !disabled.includes(name));
+  const allowed = conversation.profile?.tools;
+  return toolNames.filter((name) => !disabled.includes(name) && (allowed === undefined || allowed.includes(name)));
 }
 
 // Switches one tool on or off. The change applies from the next request.
@@ -39,6 +41,8 @@ export function setToolEnabled(conversation: Conversation, name: string, enabled
 export interface ActiveProfile {
   name: string;
   text: string;
+  // The tools the profile allows. Absent when it has no whitelist.
+  tools?: string[];
 }
 
 // A transition's result: the conversation to keep, and a line to show the user, if any.

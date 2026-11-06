@@ -12,6 +12,7 @@ function ports(overrides: Partial<ReplPorts> = {}): ReplPorts {
     tools: async () => "no tools are available",
     notes: async () => "notes are not available",
     profile: async () => err(new Error("no profiles are available")),
+    profileTools: async () => ok(undefined),
     disabledTools: [],
     saveDisabledTools: async () => ok(undefined),
     sessions: { save: async () => ok(undefined), load: async () => err(new Error("none")), list: async () => ok([]) },
@@ -222,4 +223,27 @@ test("a call skipped because /exit ended the session is reported as not run", as
     }),
   );
   expect(written).toContain("tool: list_files . depth 2 did not run: the session ended");
+});
+
+test("a profile's whitelist limits the tools offered to the model from the next request", async () => {
+  const offered: string[][] = [];
+  const reply: Reply = async function* (messages, _onUsage, _onToolCall, tools) {
+    offered.push(tools);
+    if (messages.length > 0) yield ok("ok");
+  };
+  const output = new Writable({
+    write(_chunk, _encoding, done) {
+      done();
+    },
+  });
+  await runRepl(
+    Readable.from(["/profile reader\n", "go\n"]),
+    output,
+    ports({
+      reply,
+      profile: async () => ok("Read only."),
+      profileTools: async () => ok(["list_files"]),
+    }),
+  );
+  expect(offered[0]).toEqual(["list_files"]);
 });
