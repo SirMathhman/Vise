@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { checkName, notePath, parseHeader, parseNoteCommand, scaffold } from "./notes.ts";
+import { bodyOf, checkName, notePath, parseHeader, parseNoteCommand, parseProfileCommand, scaffold } from "./notes.ts";
 
 test("accepts names of letters, digits, - and _ only", () => {
   expect(checkName("meeting-2026_notes", "name").ok).toBe(true);
@@ -36,4 +36,14 @@ test("parses /note new and /note list, and refuses any other use", () => {
   expect(parseNoteCommand(["new", "work", "a/b"]).ok).toBe(false);
   expect(parseNoteCommand(["list", "a", "b"]).ok).toBe(false);
   expect(parseNoteCommand([]).ok).toBe(false);
+});
+
+test("the body is the text below the header, and /profile reads show, default, or a name", () => {
+  expect(bodyOf("---\nname: t\ncategory: profile\nsummary:\n---\n\n# t\n\nBe brief.\n")).toBe("# t\n\nBe brief.");
+  expect(bodyOf("no header")).toBe("");
+  expect(parseProfileCommand([])).toEqual({ ok: true, value: { kind: "show" } });
+  expect(parseProfileCommand(["default"])).toEqual({ ok: true, value: { kind: "clear" } });
+  expect(parseProfileCommand(["terse"])).toEqual({ ok: true, value: { kind: "use", name: "terse" } });
+  expect(parseProfileCommand(["a", "b"]).ok).toBe(false);
+  expect(parseProfileCommand(["a/b"]).ok).toBe(false);
 });

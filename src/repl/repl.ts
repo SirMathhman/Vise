@@ -9,7 +9,7 @@ import {
   type Step,
 } from "../core/compaction.ts";
 import type { ChatMessage, ContextWindow, Reply, ToolCall, Usage } from "../core/messages.ts";
-import type { NoteRunner } from "../core/notes.ts";
+import { parseProfileCommand, type NoteRunner, type ProfileLoader } from "../core/notes.ts";
 import { describeToolCall, sanitize, type Approve, type ToolRunner } from "../core/tools.ts";
 import { err, ok, type Result } from "../core/result.ts";
 
@@ -39,6 +39,7 @@ export interface ReplPorts {
   contextWindow: ContextWindow;
   tools: ToolRunner;
   notes: NoteRunner;
+  profile: ProfileLoader;
   // Text sent ahead of the first message of the session (the AGENTS.md file), if any.
   instructions?: string;
 }
@@ -63,10 +64,41 @@ async function runCommand(
     case "note":
       output.write(`${await ports.notes(input.words)}\n`);
       return undefined;
+    case "profile":
+      return runProfileCommand(input.words, ports, output, conversation);
     case "unknown-command":
       output.write(`error: unknown command ${input.command}\n`);
       return undefined;
   }
+}
+
+// Runs /profile: shows the active profile, turns profiles off, or switches to one. A switch only
+// records the text, which the next message carries, so the history already sent is not rewritten.
+async function runProfileCommand(
+  words: string[],
+  ports: ReplPorts,
+  output: Writable,
+  conversation: Conversation,
+): Promise<Step | undefined> {
+  const command = parseProfileCommand(words);
+  if (!command.ok) {
+    output.write(`error: ${command.error.message}\n`);
+    return undefined;
+  }
+  if (command.value.kind === "show") {
+    output.write(`profile: ${conversation.profile?.name ?? "default"}\n`);
+    return undefined;
+  }
+  if (command.value.kind === "clear") {
+    return { conversation: { ...conversation, profile: undefined, pendingProfile: undefined }, notice: "profile: default" };
+  }
+  const loaded = await ports.profile(command.value.name);
+  if (!loaded.ok) {
+    output.write(`error: ${loaded.error.message}\n`);
+    return undefined;
+  }
+  const profile = { name: command.value.name, text: loaded.value };
+  return { conversation: { ...conversation, profile, pendingProfile: profile.text }, notice: `profile: ${profile.name}` };
 }
 
 // The input lines, in order, held until they are read. `more` says whether another line
@@ -205,15 +237,20 @@ export async function runRepl(input: Readable, output: Writable, ports: ReplPort
       apply(await compactIfNeeded(conversation, reply, contextWindow));
       const turnStart = conversation.history.length;
       // The instructions go in front of the first user message, so roles still alternate
-      // and compaction drops them with the rest of the old history.
-      const first = conversation.history.length === 0 && instructions !== undefined;
-      conversation.history.push({ role: "user", content: first ? `${instructions}\n\n${input.text}` : input.text });
+      // and compaction drops them with the rest of the old history. A pending profile goes in
+      // front of the message after its switch, and is kept until a turn succeeds.
+      const first = conversation.history.length === 0 ? instructions : undefined;
+      const profile = conversation.pendingProfile;
+      const parts = [first, profile, input.text].filter((part): part is string => part !== undefined);
+      conversation.history.push({ role: "user", content: parts.join("\n\n") });
+      conversation = { ...conversation, pendingProfile: undefined };
       // Each round asks the model. The first round answers the line just received; a round that
       // asked for tools is followed by another only while the session has not ended.
       for (;;) {
         const round = await streamRound(conversation.history, reply, output);
         if (round.failure) {
           conversation.history.splice(turnStart);
+          conversation = { ...conversation, pendingProfile: profile };
           output.write(`\nerror: ${round.failure.message}\n`);
           break;
         }

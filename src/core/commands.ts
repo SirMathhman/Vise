@@ -21,12 +21,25 @@ export interface NoteLine {
   words: string[];
 }
 
+// A /profile command. words are the words after /profile, split on whitespace.
+export interface ProfileLine {
+  kind: "profile";
+  words: string[];
+}
+
 export interface MessageLine {
   kind: "message";
   text: string;
 }
 
-export type Line = ExitLine | ContextLine | CompactLine | NoteLine | UnknownCommandLine | MessageLine;
+export type Line =
+  | ExitLine
+  | ContextLine
+  | CompactLine
+  | NoteLine
+  | ProfileLine
+  | UnknownCommandLine
+  | MessageLine;
 
 // Decides what a line means. Commands are matched on the trimmed line. Other
 // lines starting with "/" are rejected, and everything else is a message for
@@ -38,6 +51,9 @@ export function classifyLine(line: string): Line {
   if (command === "/compact") return { kind: "compact" };
   if (command === "/note" || command.startsWith("/note ")) {
     return { kind: "note", words: command.split(/\s+/).slice(1) };
+  }
+  if (command === "/profile" || command.startsWith("/profile ")) {
+    return { kind: "profile", words: command.split(/\s+/).slice(1) };
   }
   if (command.startsWith("/")) return { kind: "unknown-command", command };
   return { kind: "message", text: line };

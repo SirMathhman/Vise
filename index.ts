@@ -2,6 +2,7 @@ import { readInstructions } from "./src/instructions.ts";
 import { modelContextWindow, streamChat } from "./src/openrouter.ts";
 import { runRepl } from "./src/repl/repl.ts";
 import { killAllJobs } from "./src/tools/jobs.ts";
+import { loadProfile } from "./src/tools/notes/load-profile.ts";
 import { runNoteCommand } from "./src/tools/notes/run-note-command.ts";
 import { runTool } from "./src/tools/run-tool.ts";
 
@@ -33,6 +34,7 @@ if (import.meta.main) {
       contextWindow: () => modelContextWindow({ model: MODEL }),
       tools: runTool(process.cwd()),
       notes: runNoteCommand(process.cwd()),
+      profile: loadProfile(process.cwd()),
       instructions,
     });
     if (!result.ok) {

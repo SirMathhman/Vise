@@ -12,6 +12,14 @@ export interface Conversation {
   history: ChatMessage[];
   promptTokens?: number;
   compacted: boolean;
+  // The profile in use, if any. Its text is sent once, with the next message.
+  profile?: ActiveProfile;
+  pendingProfile?: string;
+}
+
+export interface ActiveProfile {
+  name: string;
+  text: string;
 }
 
 // A transition's result: the conversation to keep, and a line to show the user, if any.
@@ -56,7 +64,15 @@ export async function compact(conversation: Conversation, reply: Reply): Promise
   } catch (error) {
     return err(error instanceof Error ? error : new Error(String(error)));
   }
-  return ok({ history: compactedHistory(summary, conversation.history), compacted: true });
+  // The compacted history no longer holds the profile text, so the active profile is sent again
+  // with the next message.
+  return ok({
+    ...conversation,
+    history: compactedHistory(summary, conversation.history),
+    promptTokens: undefined,
+    compacted: true,
+    pendingProfile: conversation.profile?.text,
+  });
 }
 
 // Keeps the size of a completed request. A compaction is not needed to read it.

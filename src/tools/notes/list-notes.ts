@@ -1,10 +1,10 @@
 import type { Dirent } from "node:fs";
-import { readdir, readFile } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { NOTES_FOLDER, parseHeader } from "../../core/notes.ts";
 import { err, ok, type Result } from "../../core/result.ts";
 import { sanitize } from "../../core/tools.ts";
-import { resolveInside } from "../files/contain.ts";
+import { readNote } from "./read-note.ts";
 
 interface ListedNote {
   category: string;
@@ -53,15 +53,4 @@ async function describe(root: string, category: string, file: string): Promise<L
   const header = parseHeader(text.value);
   if (!header.ok) return { category, name, summary: `(${header.error.message})` };
   return { category, name, summary: header.value.summary };
-}
-
-// Reads a note through the containment check, so a link out of the working directory is not followed.
-async function readNote(root: string, rel: string): Promise<Result<string>> {
-  const place = await resolveInside(root, rel);
-  if (!place.ok) return place;
-  try {
-    return ok(await readFile(place.value.realTarget, "utf8"));
-  } catch (error) {
-    return err(error instanceof Error ? error : new Error(String(error)));
-  }
 }
