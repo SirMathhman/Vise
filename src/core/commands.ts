@@ -124,8 +124,13 @@ export function parseThinkingCommand(words: string[]): Result<ThinkingCommand> {
   return err(new Error("usage: /thinking [off | low | medium | high]"));
 }
 
-export interface ListModelsCommand {
-  kind: "list";
+export interface ShowModelCommand {
+  kind: "show";
+}
+
+export interface SearchModelsCommand {
+  kind: "search";
+  snippet: string;
 }
 
 export interface SelectModelCommand {
@@ -133,14 +138,21 @@ export interface SelectModelCommand {
   name: string;
 }
 
-export type ModelCommand = ListModelsCommand | SelectModelCommand;
+export type ModelCommand = ShowModelCommand | SearchModelsCommand | SelectModelCommand;
 
-// Reads the words after /model: nothing lists the models, and a name chooses one.
+const MODEL_USAGE = "usage: /model | /model search <text> | /model <name>";
+
+// Reads the words after /model: nothing shows the model in use, `search` followed by text lists the
+// models whose id contains it, and a single name chooses a model.
 export function parseModelCommand(words: string[]): Result<ModelCommand> {
-  if (words.length === 0) return ok({ kind: "list" });
-  const [name] = words;
-  if (words.length === 1 && name !== undefined) return ok({ kind: "select", name });
-  return err(new Error("usage: /model | /model <name>"));
+  const [first] = words;
+  if (words.length === 0) return ok({ kind: "show" });
+  if (first === "search") {
+    if (words.length < 2) return err(new Error(MODEL_USAGE));
+    return ok({ kind: "search", snippet: words.slice(1).join(" ") });
+  }
+  if (words.length === 1 && first !== undefined) return ok({ kind: "select", name: first });
+  return err(new Error(MODEL_USAGE));
 }
 
 export function contextLine(

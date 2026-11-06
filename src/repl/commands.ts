@@ -179,13 +179,26 @@ async function runModelCommand(words: string[], models: ModelPorts, output: Writ
     output.write(chosen.ok ? `model: ${sanitize(chosen.value)}\n` : `error: ${chosen.error.message}\n`);
     return;
   }
+  if (command.value.kind === "show") {
+    output.write(`model: ${sanitize(models.current())}\nusage: /model search <text> | /model <name>\n`);
+    return;
+  }
   const listed = await models.list();
   if (!listed.ok) {
     output.write(`error: ${listed.error.message}\n`);
     return;
   }
+  // Models whose id contains the text, ignoring letter case, in alphabetical order.
+  const snippet = command.value.snippet.toLowerCase();
+  const matches = listed.value
+    .filter((model) => model.id.toLowerCase().includes(snippet))
+    .sort((a, b) => a.id.localeCompare(b.id));
+  if (matches.length === 0) {
+    output.write(`no model matches ${sanitize(command.value.snippet)}\n`);
+    return;
+  }
   const current = models.current();
-  for (const model of listed.value) {
+  for (const model of matches) {
     const mark = model.id === current ? "* " : "  ";
     output.write(`${mark}${sanitize(model.id)}  ${model.contextLength} tokens\n`);
   }

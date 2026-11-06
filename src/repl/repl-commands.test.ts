@@ -369,12 +369,22 @@ test("/model lists the models, marking the one in use, and /model <name> switche
   });
   const models = {
     current: () => "a/one",
-    list: async () => ok([{ id: "a/one", contextLength: 1000 }, { id: "b/two", contextLength: 2000 }]),
+    list: async () =>
+      ok([
+        { id: "b/two", contextLength: 2000 },
+        { id: "a/one", contextLength: 1000 },
+        { id: "a/three", contextLength: 3000 },
+      ]),
     select: async (name: string) => (name === "b/two" ? ok(name) : err(new Error("no such model"))),
   };
-  await runRepl(Readable.from(["/model\n", "/model b/two\n", "/model zzz\n"]), output, ports({ models }));
-  expect(written).toContain("* a/one  1000 tokens");
-  expect(written).toContain("  b/two  2000 tokens");
+  await runRepl(
+    Readable.from(["/model\n", "/model search A/\n", "/model b/two\n", "/model zzz\n"]),
+    output,
+    ports({ models }),
+  );
+  expect(written).toContain("model: a/one\nusage:");
+  expect(written).toContain("* a/one  1000 tokens\n  a/three  3000 tokens\n");
+  expect(written).not.toContain("b/two  2000 tokens");
   expect(written).toContain("model: b/two");
   expect(written).toContain("error: no such model");
 });

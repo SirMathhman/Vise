@@ -48,8 +48,10 @@ test("reads /thinking: nothing shows, and off, low, medium, or high sets it", ()
   expect(parseThinkingCommand(["max"]).ok).toBe(false);
 });
 
-test("reads /model: nothing lists the models, and a name selects one", () => {
-  expect(parseModelCommand([])).toEqual({ ok: true, value: { kind: "list" } });
+test("reads /model: nothing shows the model in use, search lists matches, and a name selects one", () => {
+  expect(parseModelCommand([])).toEqual({ ok: true, value: { kind: "show" } });
+  expect(parseModelCommand(["search", "claude"])).toEqual({ ok: true, value: { kind: "search", snippet: "claude" } });
+  expect(parseModelCommand(["search"]).ok).toBe(false);
   expect(parseModelCommand(["openai/gpt-x"])).toEqual({ ok: true, value: { kind: "select", name: "openai/gpt-x" } });
   expect(parseModelCommand(["a", "b"]).ok).toBe(false);
 });
