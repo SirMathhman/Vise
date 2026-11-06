@@ -59,6 +59,7 @@ src/instructions.ts  reads AGENTS.md from the working directory (the one file re
 src/openrouter.ts   model adapter: streams a chat completion from OpenRouter over HTTPS (performs network I/O, passed to the REPL as a function)
 src/core/           pure line classification and command interpretation (no node: imports except types)
 src/repl/           terminal frontend: readline, prompt, session lifecycle
+src/repl/subagent.ts  subagents: runSubagent runs one subagent in its own conversation (its profile's text and the task, then its rounds, with its profile's tools and hooks), and queueApprovals puts every approval in one queue so questions never overlap
 src/core/messages.ts  shared data types and the model ports (ChatMessage, ToolCall, Usage, Reply, ContextWindow); the tool port (Approve, ToolRunner) sits in tools.ts and the note port (NoteRunner) and the profile port (ProfileLoader) in notes.ts, each beside the module that defines it
 src/core/tools.ts     tool definitions shared with the model adapter (listFilesSpec, readFileSpec, editFileSpec, createFileSpec, createNoteSpec, runPowershellSpec, readCommandSpec, killCommandSpec, and toolSpecs, the full list, which the adapter filters by the names it is given), argument parsing, the /tools command words, the approval rule (needsApproval, approvalPreview), the Approve port, and the call line
 src/core/notes.ts     note rules shared by the REPL and the create_note tool: name checks, the note path and scaffold, the header parser, the profile category, the /note and /profile command words, and the body of a note
@@ -164,6 +165,8 @@ Each item below is a known defect or gap. Items are grouped by class.
 - **Background jobs are not confined.** A command still running after 30 seconds keeps running as a job. Its output is kept as the last 500 lines per stream. `read_command` reads it, and `kill_command` (approved by the user) stops its process tree. `killAllJobs` stops every job when Vise exits and returns the jobs it could not stop, which `index.ts` reports (see the next bullet for the paths it misses). A job's child processes that outlive their parent are not stopped by `kill_command`, for the same reason as gap (b) above.
 
 ## Security Concerns
+
+- **Subagents act with the user's permissions, and each write asks the user in turn.** A subagent is offered only the tools its profile lists, and it cannot start another subagent. Its writes and commands go through the same approval queue as the main conversation, so a question is shown and answered one at a time. A subagent's profile can list commands in its hooks, which run without approval as described under Hooks, so a subagent run by a profile from a cloned repository inherits that trust.
 
 - **Hooks run commands without approval.** `.vise/hooks.json` is trusted: any command in it runs on the user's machine at the four hook points, with the user's permissions. A repository that ships this file runs its commands when a user starts Vise there. The user chose this rule, but it is a standing approval given by a file, not by a command. `.vise` is not git-ignored, so such a file can arrive in a clone.
 - **Hook output reaches the model.** A hook's output is sent to the model with the next user message, so a hook that prints file contents or secrets sends them to OpenRouter. The output is not size-capped.
