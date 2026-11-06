@@ -10,6 +10,7 @@ export const RUN_POWERSHELL = "run_powershell";
 export const READ_COMMAND = "read_command";
 export const KILL_COMMAND = "kill_command";
 export const CREATE_NOTE = "create_note";
+export const RUN_SUBAGENT = "run_subagent";
 const DEFAULT_DEPTH = 2;
 const MAX_DEPTH = 5;
 export const MAX_LINES = 500;
@@ -157,6 +158,26 @@ export const killCommandSpec = {
   },
 };
 
+// Starts a subagent: a separate conversation, with its profile and its own tool-call limit. Several
+// subagents asked for in one reply run together. A subagent is never offered this tool itself.
+export const runSubagentSpec = {
+  type: "function",
+  function: {
+    name: RUN_SUBAGENT,
+    description:
+      "Run a subagent on a task in its own conversation. The profile gives the subagent its instructions, and it may use only the tools that profile lists. It makes at most max_tool_calls tool calls, then answers with what it has. Its writes and commands ask the user for approval one at a time. It returns its final answer, and its conversation is not added to yours.",
+    parameters: {
+      type: "object",
+      properties: {
+        profile: { type: "string", description: "Name of the profile that gives the subagent its instructions and tools." },
+        task: { type: "string", description: "The task for the subagent. Must not be empty." },
+        max_tool_calls: { type: "integer", minimum: 1, description: "The most tool calls the subagent may make." },
+      },
+      required: ["profile", "task", "max_tool_calls"],
+    },
+  },
+};
+
 // Every tool the model can be offered, in the order they are sent. A tool that is switched off is
 // left out of the request, and the request is the only place the list is used.
 export const toolSpecs = [
@@ -168,6 +189,7 @@ export const toolSpecs = [
   runPowershellSpec,
   readCommandSpec,
   killCommandSpec,
+  runSubagentSpec,
 ];
 export const toolNames: string[] = toolSpecs.map((spec) => spec.function.name);
 
@@ -260,6 +282,29 @@ interface RawArgs {
   job?: unknown;
   category?: unknown;
   name?: unknown;
+  profile?: unknown;
+  task?: unknown;
+  max_tool_calls?: unknown;
+}
+
+export interface SubagentArgs {
+  profile: string;
+  task: string;
+  maxToolCalls: number;
+}
+
+// Reads the arguments the model wrote for run_subagent. The profile must be a valid note name, the
+// task must not be empty, and the limit must be a whole number of at least 1.
+export function parseSubagentArgs(raw: string): Result<SubagentArgs> {
+  const args = readArgs(raw);
+  if (!args.ok) return args;
+  const { profile, task, max_tool_calls } = args.value;
+  if (typeof profile !== "string") return err(new Error("profile must be a string"));
+  const checkedProfile = checkName(profile, "profile");
+  if (!checkedProfile.ok) return checkedProfile;
+  if (typeof task !== "string" || task.trim() === "") return err(new Error("task must be a non-empty string"));
+  if (!isLine(max_tool_calls)) return err(new Error("max_tool_calls must be a whole number of at least 1"));
+  return ok({ profile, task, maxToolCalls: max_tool_calls });
 }
 
 function readArgs(raw: string): Result<RawArgs> {
@@ -442,6 +487,11 @@ export function describeToolCall(call: ToolCall): string {
     const args = parseJobArgs(call.arguments);
     if (!args.ok) return `tool: ${call.name} (invalid arguments)`;
     return `tool: ${call.name} job ${args.value.job}`;
+  }
+  if (call.name === RUN_SUBAGENT) {
+    const args = parseSubagentArgs(call.arguments);
+    if (!args.ok) return `tool: ${RUN_SUBAGENT} (invalid arguments)`;
+    return `tool: ${RUN_SUBAGENT} ${args.value.profile} up to ${args.value.maxToolCalls} tool calls`;
   }
   return `tool: ${call.name} (unknown tool)`;
 }

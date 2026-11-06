@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { classifyLine } from "./commands.ts";
-import { parseToolsCommand, toolStates } from "./tools.ts";
+import { parseSubagentArgs, parseToolsCommand, toolStates } from "./tools.ts";
 
 test("recognises /exit and /context after trimming and keeps other lines as messages", () => {
   expect(classifyLine("  /exit  ")).toEqual({ kind: "exit" });
@@ -28,4 +28,14 @@ test("reads /tools: nothing lists, enable and disable take a tool name that exis
   expect(parseToolsCommand(["disable"]).ok).toBe(false);
   expect(toolStates(["edit_file"])).toContain("edit_file: off");
   expect(toolStates([])).toContain("kill_command: on");
+});
+
+test("reads run_subagent arguments: a profile name, a task, and a whole-number limit of at least 1", () => {
+  expect(parseSubagentArgs('{"profile":"reader","task":"look","max_tool_calls":2}')).toEqual({
+    ok: true,
+    value: { profile: "reader", task: "look", maxToolCalls: 2 },
+  });
+  expect(parseSubagentArgs('{"profile":"reader","task":"look","max_tool_calls":0}').ok).toBe(false);
+  expect(parseSubagentArgs('{"profile":"reader","task":" ","max_tool_calls":2}').ok).toBe(false);
+  expect(parseSubagentArgs('{"profile":"a/b","task":"look","max_tool_calls":2}').ok).toBe(false);
 });

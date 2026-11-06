@@ -18,7 +18,9 @@ import {
 import type { ChatMessage, ContextWindow, Reply, ToolCall, Usage } from "../core/messages.ts";
 import { parseProfileCommand, type NoteRunner, type ProfileHook, type ProfileLoader } from "../core/notes.ts";
 import {
+  RUN_SUBAGENT,
   describeToolCall,
+  parseSubagentArgs,
   parseToolsCommand,
   sanitize,
   toolStates,
@@ -26,6 +28,7 @@ import {
   type SaveDisabledTools,
   type ToolRunner,
 } from "../core/tools.ts";
+import { queueApprovals, runSubagent, type SubagentPorts } from "./subagent.ts";
 import { err, ok, type Result } from "../core/result.ts";
 import { decodeSession, encodeSession, parseSessionCommand, type SessionStore } from "../core/sessions.ts";
 
@@ -290,26 +293,38 @@ export interface CallsStep {
   // The tools offered in this request. A call to another tool is refused by the runner.
   offered: string[];
   output: Writable;
+  // What a subagent call needs from the session.
+  subagents: SubagentPorts;
 }
 
-// Runs the calls of one round in order and returns their results, one tool message per call. A call
-// that is skipped because the session ended still gets a result, so every call in the history has one.
+function toolMessage(toolCallId: string, content: string): ChatMessage {
+  return { role: "tool", toolCallId, content };
+}
+
+// Runs the calls of one round and returns their results, one tool message per call, in call order. A
+// subagent call starts at once and runs alongside the others, and every approval goes through one
+// queue. A call that is skipped because the session ended still gets a result.
 async function runCalls(step: CallsStep): Promise<ChatMessage[]> {
-  const results: ChatMessage[] = [];
+  const approve = queueApprovals(step.approve);
+  const results: Promise<ChatMessage>[] = [];
   for (const call of step.calls) {
     if (step.finished()) {
       step.output.write(`\n${sanitize(describeToolCall(call))} did not run: the session ended\n`);
-      results.push({
-        role: "tool",
-        toolCallId: call.id,
-        content: "error: the call did not run because the session ended",
-      });
+      results.push(Promise.resolve(toolMessage(call.id, "error: the call did not run because the session ended")));
       continue;
     }
     step.output.write(`\n${sanitize(describeToolCall(call))}\n`);
-    results.push({ role: "tool", toolCallId: call.id, content: await step.tools(call, step.approve, step.offered) });
+    if (call.name === RUN_SUBAGENT) {
+      const args = parseSubagentArgs(call.arguments);
+      const text = args.ok
+        ? runSubagent(args.value, { ports: step.subagents, approve, finished: step.finished, output: step.output })
+        : Promise.resolve(`error: ${args.error.message}`);
+      results.push(text.then((content) => toolMessage(call.id, content)));
+      continue;
+    }
+    results.push(Promise.resolve(toolMessage(call.id, await step.tools(call, approve, step.offered))));
   }
-  return results;
+  return Promise.all(results);
 }
 
 // Hook output longer than this is cut short on the terminal. The whole output still goes to the model.
@@ -389,6 +404,7 @@ async function runMessageTurn(text: string, conversation: Conversation, context:
       finished,
       offered: enabledTools(current),
       output,
+      subagents: ports,
     });
     current.history.push(...results);
     if (finished()) break;
