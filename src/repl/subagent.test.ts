@@ -40,7 +40,7 @@ const silent = new Writable({
 });
 
 function context(ports: SubagentPorts): SubagentContext {
-  return { ports, approve: async () => true, finished: () => false, output: silent };
+  return { ports, approve: async () => true, finished: () => false, output: silent, disabledTools: [] };
 }
 
 test("a subagent runs its tool calls, is not offered the subagent tool, and returns its final answer", async () => {
@@ -122,4 +122,14 @@ test("two subagents asked for in one reply both run, and each result reaches the
   };
   await runRepl(Readable.from(["go\n", "/exit\n"]), output, ports);
   expect(seenByMain.at(-1)).toEqual(["answer for a", "answer for b"]);
+});
+
+test("a subagent is not offered a tool that the user switched off", async () => {
+  const offered: string[][] = [];
+  const reply = scripted([{ text: "done" }], offered);
+  await runSubagent(
+    { profile: "reader", task: "look", maxToolCalls: 3 },
+    { ...context(subPorts(reply)), disabledTools: ["list_files"] },
+  );
+  expect(offered[0]).toEqual([]);
 });

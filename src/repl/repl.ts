@@ -295,6 +295,8 @@ export interface CallsStep {
   output: Writable;
   // What a subagent call needs from the session.
   subagents: SubagentPorts;
+  // The tools switched off with /tools, which a subagent is not offered either.
+  disabledTools: string[];
 }
 
 function toolMessage(toolCallId: string, content: string): ChatMessage {
@@ -317,7 +319,13 @@ async function runCalls(step: CallsStep): Promise<ChatMessage[]> {
     if (call.name === RUN_SUBAGENT) {
       const args = parseSubagentArgs(call.arguments);
       const text = args.ok
-        ? runSubagent(args.value, { ports: step.subagents, approve, finished: step.finished, output: step.output })
+        ? runSubagent(args.value, {
+            ports: step.subagents,
+            approve,
+            finished: step.finished,
+            output: step.output,
+            disabledTools: step.disabledTools,
+          })
         : Promise.resolve(`error: ${args.error.message}`);
       results.push(text.then((content) => toolMessage(call.id, content)));
       continue;
@@ -405,6 +413,7 @@ async function runMessageTurn(text: string, conversation: Conversation, context:
       offered: enabledTools(current),
       output,
       subagents: ports,
+      disabledTools: current.disabledTools ?? [],
     });
     current.history.push(...results);
     if (finished()) break;

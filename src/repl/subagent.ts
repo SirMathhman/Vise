@@ -21,6 +21,8 @@ export interface SubagentContext {
   approve: Approve;
   finished: () => boolean;
   output: Writable;
+  // The tools switched off with /tools. A subagent is offered none of them.
+  disabledTools: string[];
 }
 
 // Approvals go one at a time, in the order they are asked, so two questions never overlap at the
@@ -73,7 +75,7 @@ async function collectRound(reply: Reply, history: ChatMessage[], offered: strin
 // make at most `maxToolCalls` tool calls. When it reaches the limit, it is asked once more with no
 // tools, and its answer is marked as cut short. The result is the text the main model receives.
 export async function runSubagent(args: SubagentArgs, context: SubagentContext): Promise<string> {
-  const { ports, approve, finished, output } = context;
+  const { ports, approve, finished, output, disabledTools } = context;
   const fail = (message: string) => {
     output.write(`subagent ${args.profile}: failed\n`);
     return `error: ${message}`;
@@ -89,6 +91,7 @@ export async function runSubagent(args: SubagentArgs, context: SubagentContext):
     history: [],
     compacted: false,
     profile: { name: args.profile, text: text.value, tools: allowed.value, hooks: hooks.value },
+    disabledTools,
   };
   // A subagent is never offered the subagent tool, so it cannot start another one.
   const offered = enabledTools(conversation).filter((name) => name !== RUN_SUBAGENT);
