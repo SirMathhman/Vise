@@ -2,6 +2,7 @@ import { readInstructions } from "./src/instructions.ts";
 import { modelContextWindow, streamChat } from "./src/openrouter.ts";
 import { runRepl } from "./src/repl/repl.ts";
 import { killAllJobs } from "./src/tools/jobs.ts";
+import { runNoteCommand } from "./src/tools/notes/run-note-command.ts";
 import { runTool } from "./src/tools/run-tool.ts";
 
 const MODEL = "anthropic/claude-haiku-5.5";
@@ -34,6 +35,7 @@ if (import.meta.main) {
       () => modelContextWindow({ model: MODEL }),
       runTool(process.cwd()),
       instructions,
+      runNoteCommand(process.cwd()),
     );
     if (!result.ok) {
       console.error(`error: ${result.error.message}`);

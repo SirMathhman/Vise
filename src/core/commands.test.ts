@@ -8,3 +8,9 @@ test("recognises /exit and /context after trimming and keeps other lines as mess
   expect(classifyLine("exit")).toEqual({ kind: "message", text: "exit" });
   expect(classifyLine("quit")).toEqual({ kind: "message", text: "quit" });
 });
+
+test("reads /note and its words, but not a word that only starts with note", () => {
+  expect(classifyLine("  /note new work plan ")).toEqual({ kind: "note", words: ["new", "work", "plan"] });
+  expect(classifyLine("/note")).toEqual({ kind: "note", words: [] });
+  expect(classifyLine("/notes")).toEqual({ kind: "unknown-command", command: "/notes" });
+});

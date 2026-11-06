@@ -1,5 +1,6 @@
 import type { ToolCall } from "./messages.ts";
 import { err, ok, type Result } from "./result.ts";
+import { checkName, notePath, scaffold } from "./notes.ts";
 
 export const LIST_FILES = "list_files";
 export const READ_FILE = "read_file";
@@ -8,6 +9,7 @@ export const CREATE_FILE = "create_file";
 export const RUN_POWERSHELL = "run_powershell";
 export const READ_COMMAND = "read_command";
 export const KILL_COMMAND = "kill_command";
+export const CREATE_NOTE = "create_note";
 const DEFAULT_DEPTH = 2;
 const MAX_DEPTH = 5;
 export const MAX_LINES = 500;
@@ -91,6 +93,23 @@ export const createFileSpec = {
   },
 };
 
+export const createNoteSpec = {
+  type: "function",
+  function: {
+    name: CREATE_NOTE,
+    description:
+      "Create a note at notes/<category>/<name>.md in the working directory, with a header and an empty body. Use this rather than create_file for notes, so the location follows the notes convention. The category and name may contain only letters, digits, - and _. The user must approve each note before it is written. An existing note is never overwritten; edit it with edit_file afterwards.",
+    parameters: {
+      type: "object",
+      properties: {
+        category: { type: "string", description: "Category of the note. Letters, digits, - and _ only." },
+        name: { type: "string", description: "Name of the note. Letters, digits, - and _ only." },
+      },
+      required: ["category", "name"],
+    },
+  },
+};
+
 export const runPowershellSpec = {
   type: "function",
   function: {
@@ -160,6 +179,11 @@ export interface CreateFileArgs {
   content: string;
 }
 
+export interface CreateNoteArgs {
+  category: string;
+  name: string;
+}
+
 export interface RunPowershellArgs {
   command: string;
 }
@@ -187,6 +211,8 @@ interface RawArgs {
   content?: unknown;
   command?: unknown;
   job?: unknown;
+  category?: unknown;
+  name?: unknown;
 }
 
 function readArgs(raw: string): Result<RawArgs> {
@@ -244,6 +270,20 @@ export function parseCreateFileArgs(raw: string): Result<CreateFileArgs> {
   return ok({ path, content });
 }
 
+// Reads the arguments the model wrote. The category and name must pass the note name rules.
+export function parseCreateNoteArgs(raw: string): Result<CreateNoteArgs> {
+  const args = readArgs(raw);
+  if (!args.ok) return args;
+  const { category, name } = args.value;
+  if (typeof category !== "string") return err(new Error("category must be a string"));
+  if (typeof name !== "string") return err(new Error("name must be a string"));
+  const checkedCategory = checkName(category, "category");
+  if (!checkedCategory.ok) return checkedCategory;
+  const checkedName = checkName(name, "name");
+  if (!checkedName.ok) return checkedName;
+  return ok({ category, name });
+}
+
 // Reads the arguments the model wrote. The command must not be empty.
 export function parseRunPowershellArgs(raw: string): Result<RunPowershellArgs> {
   const args = readArgs(raw);
@@ -268,7 +308,13 @@ function isLine(value: unknown): value is number {
 
 // Edits, new files, and commands are run or written only after the user approves them.
 export function needsApproval(call: ToolCall): boolean {
-  return call.name === EDIT_FILE || call.name === CREATE_FILE || call.name === RUN_POWERSHELL || call.name === KILL_COMMAND;
+  return (
+    call.name === EDIT_FILE ||
+    call.name === CREATE_FILE ||
+    call.name === CREATE_NOTE ||
+    call.name === RUN_POWERSHELL ||
+    call.name === KILL_COMMAND
+  );
 }
 
 // The change or command shown to the user before they approve it. Undefined when the arguments are
@@ -283,6 +329,12 @@ export function approvalPreview(call: ToolCall): string | undefined {
     const args = parseCreateFileArgs(call.arguments);
     if (!args.ok) return undefined;
     return `create ${args.value.path}\n+++ content\n${args.value.content}`;
+  }
+  if (call.name === CREATE_NOTE) {
+    const args = parseCreateNoteArgs(call.arguments);
+    if (!args.ok) return undefined;
+    const { category, name } = args.value;
+    return `create ${notePath(category, name)}\n+++ content\n${scaffold(category, name)}`;
   }
   if (call.name === RUN_POWERSHELL) {
     const args = parseRunPowershellArgs(call.arguments);
@@ -328,6 +380,11 @@ export function describeToolCall(call: ToolCall): string {
     const args = parseCreateFileArgs(call.arguments);
     if (!args.ok) return `tool: ${CREATE_FILE} (invalid arguments)`;
     return `tool: ${CREATE_FILE} ${args.value.path}`;
+  }
+  if (call.name === CREATE_NOTE) {
+    const args = parseCreateNoteArgs(call.arguments);
+    if (!args.ok) return `tool: ${CREATE_NOTE} (invalid arguments)`;
+    return `tool: ${CREATE_NOTE} ${notePath(args.value.category, args.value.name)}`;
   }
   if (call.name === RUN_POWERSHELL) {
     const args = parseRunPowershellArgs(call.arguments);

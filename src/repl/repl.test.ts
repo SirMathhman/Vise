@@ -70,6 +70,30 @@ test("puts the instructions in front of the first message only", async () => {
   ]);
 });
 
+test("sends a /note line to the note runner, prints its result, and keeps it out of the model", async () => {
+  const seen: string[][] = [];
+  const modelSaw: string[] = [];
+  const reply: Reply = async function* (messages) {
+    modelSaw.push(messages.at(-1)?.content ?? "");
+    yield ok("ok");
+  };
+  let written = "";
+  const output = new Writable({
+    write(chunk, _encoding, done) {
+      written += chunk.toString();
+      done();
+    },
+  });
+  const notes = async (words: string[]) => {
+    seen.push(words);
+    return "work/plan";
+  };
+  await runRepl(Readable.from(["/note list work\n"]), output, reply, undefined, undefined, undefined, notes);
+  expect(seen).toEqual([["list", "work"]]);
+  expect(written).toContain("work/plan\n");
+  expect(modelSaw).toEqual([]);
+});
+
 test("/context shows the prompt tokens of the last request out of the model's window", async () => {
   const reply: Reply = async function* (_messages, onUsage) {
     onUsage({ promptTokens: 42 });

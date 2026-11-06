@@ -3,6 +3,7 @@ import type { ChatMessage, ToolCall, Usage } from "./core/messages.ts";
 import { err, ok, type Result } from "./core/result.ts";
 import {
   createFileSpec,
+  createNoteSpec,
   editFileSpec,
   killCommandSpec,
   listFilesSpec,
@@ -145,7 +146,16 @@ async function postChat(options: StreamOptions): Promise<Result<ReadableStream<U
       body: JSON.stringify({
         model: options.model,
         messages: wireMessages(options.messages),
-        tools: [listFilesSpec, readFileSpec, editFileSpec, createFileSpec, runPowershellSpec, readCommandSpec, killCommandSpec],
+        tools: [
+          listFilesSpec,
+          readFileSpec,
+          editFileSpec,
+          createFileSpec,
+          createNoteSpec,
+          runPowershellSpec,
+          readCommandSpec,
+          killCommandSpec,
+        ],
         stream: true,
       }),
     });

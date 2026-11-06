@@ -9,6 +9,7 @@ import {
   type Step,
 } from "../core/compaction.ts";
 import type { ChatMessage, ContextWindow, Reply, ToolCall, Usage } from "../core/messages.ts";
+import type { NoteRunner } from "../core/notes.ts";
 import { describeToolCall, sanitize, type Approve, type ToolRunner } from "../core/tools.ts";
 import { err, ok, type Result } from "../core/result.ts";
 
@@ -119,6 +120,7 @@ export async function runRepl(
   tools: ToolRunner = async () => "no tools are available",
   // Text sent ahead of the first message of the session (the AGENTS.md file), if any.
   instructions?: string,
+  notes: NoteRunner = async () => "notes are not available",
 ): Promise<Result<void>> {
   let conversation: Conversation = { history: [], compacted: false };
   let streamError: Error | undefined;
@@ -176,8 +178,10 @@ export async function runRepl(
         rl.prompt();
         continue;
       }
-      if (input.kind === "unknown-command") {
-        output.write(`error: unknown command ${input.command}\n`);
+      // A line that only prints text: a /note line, or an unknown command.
+      if (input.kind === "unknown-command" || input.kind === "note") {
+        const text = input.kind === "note" ? await notes(input.words) : `error: unknown command ${input.command}`;
+        output.write(`${text}\n`);
         rl.prompt();
         continue;
       }

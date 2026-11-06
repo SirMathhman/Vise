@@ -1,6 +1,8 @@
 import type { ToolCall } from "../core/messages.ts";
+import { notePath } from "../core/notes.ts";
 import {
   CREATE_FILE,
+  CREATE_NOTE,
   EDIT_FILE,
   KILL_COMMAND,
   LIST_FILES,
@@ -10,6 +12,7 @@ import {
   approvalPreview,
   needsApproval,
   parseCreateFileArgs,
+  parseCreateNoteArgs,
   parseEditFileArgs,
   parseJobArgs,
   parseListFilesArgs,
@@ -23,6 +26,7 @@ import { createFile } from "./files/create-file.ts";
 import { editFile } from "./files/edit-file.ts";
 import { listFiles } from "./files/list-files.ts";
 import { readFileLines } from "./files/read-file.ts";
+import { createNote } from "./notes/create-note.ts";
 import { MAX_JOBS, killJob, readJob, runningJobs } from "./jobs.ts";
 import { runPowershell } from "./run-powershell.ts";
 
@@ -57,6 +61,12 @@ async function checkTarget(root: string, call: ToolCall): Promise<string | undef
     const place = await resolveNewInside(root, args.value.path);
     return place.ok ? undefined : place.error.message;
   }
+  if (call.name === CREATE_NOTE) {
+    const args = parseCreateNoteArgs(call.arguments);
+    if (!args.ok) return undefined;
+    const place = await resolveNewInside(root, notePath(args.value.category, args.value.name));
+    return place.ok ? undefined : place.error.message;
+  }
   return undefined;
 }
 
@@ -85,6 +95,12 @@ async function dispatch(root: string, call: ToolCall): Promise<string> {
     const args = parseCreateFileArgs(call.arguments);
     if (!args.ok) return `invalid arguments: ${args.error.message}`;
     const created = await createFile(root, args.value.path, args.value.content);
+    return created.ok ? created.value : `error: ${created.error.message}`;
+  }
+  if (call.name === CREATE_NOTE) {
+    const args = parseCreateNoteArgs(call.arguments);
+    if (!args.ok) return `invalid arguments: ${args.error.message}`;
+    const created = await createNote(root, args.value.category, args.value.name);
     return created.ok ? created.value : `error: ${created.error.message}`;
   }
   if (call.name === RUN_POWERSHELL) {
