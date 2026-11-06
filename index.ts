@@ -1,5 +1,4 @@
 import { readInstructions } from "./src/instructions.ts";
-import { err, ok } from "./src/core/result.ts";
 import { listModels, modelContextWindow, streamChat } from "./src/openrouter.ts";
 import { runRepl } from "./src/repl/repl.ts";
 import { killAllJobs } from "./src/tools/jobs.ts";
@@ -9,7 +8,8 @@ import { runTool } from "./src/tools/run-tool.ts";
 import { hookRunner, readHooks } from "./src/tools/hooks/hooks.ts";
 import { sessionStore } from "./src/tools/session-store.ts";
 import { readToolSettings, saveToolSettings } from "./src/tools/tool-settings.ts";
-import { readModelSetting, saveModelSetting } from "./src/tools/models/model-settings.ts";
+import { readModelSetting } from "./src/tools/models/model-settings.ts";
+import { selectModel } from "./src/tools/models/select-model.ts";
 
 const DEFAULT_MODEL = "anthropic/claude-haiku-5.5";
 
@@ -72,17 +72,15 @@ if (import.meta.main) {
       models: {
         current: () => selection.model,
         list: () => listModels({}),
-        select: async (name: string) => {
-          const listed = await listModels({});
-          if (!listed.ok) return listed;
-          if (!listed.value.some((model) => model.id === name)) {
-            return err(new Error(`OpenRouter does not list ${name}`));
-          }
-          const written = await saveModelSetting(process.cwd(), name);
-          if (!written.ok) return written;
-          selection.model = name;
-          return ok(name);
-        },
+        select: (name: string) =>
+          selectModel({
+            root: process.cwd(),
+            list: () => listModels({}),
+            name,
+            setModel: (model) => {
+              selection.model = model;
+            },
+          }),
       },
       tools: runTool(process.cwd()),
       notes: runNoteCommand(process.cwd()),
