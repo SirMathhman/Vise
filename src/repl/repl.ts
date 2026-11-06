@@ -264,6 +264,37 @@ async function streamRound(history: ChatMessage[], reply: Reply, output: Writabl
   return round;
 }
 
+// What running a round's tool calls needs from the session.
+export interface CallsStep {
+  calls: ToolCall[];
+  tools: ToolRunner;
+  approve: Approve;
+  finished: () => boolean;
+  // The tools offered in this request. A call to another tool is refused by the runner.
+  offered: string[];
+  output: Writable;
+}
+
+// Runs the calls of one round in order and returns their results, one tool message per call. A call
+// that is skipped because the session ended still gets a result, so every call in the history has one.
+async function runCalls(step: CallsStep): Promise<ChatMessage[]> {
+  const results: ChatMessage[] = [];
+  for (const call of step.calls) {
+    if (step.finished()) {
+      step.output.write(`\n${sanitize(describeToolCall(call))} did not run: the session ended\n`);
+      results.push({
+        role: "tool",
+        toolCallId: call.id,
+        content: "error: the call did not run because the session ended",
+      });
+      continue;
+    }
+    step.output.write(`\n${sanitize(describeToolCall(call))}\n`);
+    results.push({ role: "tool", toolCallId: call.id, content: await step.tools(call, step.approve, step.offered) });
+  }
+  return results;
+}
+
 // Runs the session until /exit or end of input. A failure of the input or output
 // stream ends it early, and that failure is the result. Whatever happens, the
 // interface is closed and the listeners are removed before this returns.
@@ -352,24 +383,15 @@ export async function runRepl(input: Readable, output: Writable, ports: ReplPort
           output.write("\n");
           break;
         }
-        for (const call of round.calls) {
-          // A call that is skipped still gets a result, so every call in the history has one.
-          if (finished()) {
-            output.write(`\n${sanitize(describeToolCall(call))} did not run: the session ended\n`);
-            conversation.history.push({
-              role: "tool",
-              toolCallId: call.id,
-              content: "error: the call did not run because the session ended",
-            });
-            continue;
-          }
-          output.write(`\n${sanitize(describeToolCall(call))}\n`);
-          conversation.history.push({
-            role: "tool",
-            toolCallId: call.id,
-            content: await tools(call, approve, enabledTools(conversation)),
-          });
-        }
+        const results = await runCalls({
+          calls: round.calls,
+          tools,
+          approve,
+          finished,
+          offered: enabledTools(conversation),
+          output,
+        });
+        conversation.history.push(...results);
         if (finished()) break;
       }
       if (exitRequested || streamError !== undefined) break;
