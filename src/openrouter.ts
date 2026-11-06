@@ -1,16 +1,7 @@
 import { z } from "zod";
 import type { ChatMessage, ToolCall, Usage } from "./core/messages.ts";
 import { err, ok, type Result } from "./core/result.ts";
-import {
-  createFileSpec,
-  createNoteSpec,
-  editFileSpec,
-  killCommandSpec,
-  listFilesSpec,
-  readCommandSpec,
-  readFileSpec,
-  runPowershellSpec,
-} from "./core/tools.ts";
+import { toolNames, toolSpecs } from "./core/tools.ts";
 
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 const MODELS_ENDPOINT = "https://openrouter.ai/api/v1/models";
@@ -101,6 +92,8 @@ interface StreamOptions {
   fetch?: FetchLike;
   onUsage?: (usage: Usage) => void;
   onToolCall?: (call: ToolCall) => void;
+  // The tools to offer, by name. Every tool when omitted, and none when empty.
+  tools?: string[];
 }
 
 // Yields each text delta as ok. The request's usage goes to onUsage when the server reports it,
@@ -137,6 +130,7 @@ export async function* streamChat(options: StreamOptions): AsyncGenerator<Result
 async function postChat(options: StreamOptions): Promise<Result<ReadableStream<Uint8Array>>> {
   const send = options.fetch ?? fetch;
   try {
+    const offered = toolSpecs.filter((spec) => (options.tools ?? toolNames).includes(spec.function.name));
     const response = await send(ENDPOINT, {
       method: "POST",
       headers: {
@@ -146,16 +140,7 @@ async function postChat(options: StreamOptions): Promise<Result<ReadableStream<U
       body: JSON.stringify({
         model: options.model,
         messages: wireMessages(options.messages),
-        tools: [
-          listFilesSpec,
-          readFileSpec,
-          editFileSpec,
-          createFileSpec,
-          createNoteSpec,
-          runPowershellSpec,
-          readCommandSpec,
-          killCommandSpec,
-        ],
+        ...(offered.length > 0 ? { tools: offered } : {}),
         stream: true,
       }),
     });

@@ -32,11 +32,13 @@ export interface Usage {
 }
 
 // Sends the messages to a model. Text arrives as ok values; a failure is one err value, and nothing follows it.
-// Usage and tool calls are reported through the callbacks, tool calls once the reply ends.
+// Usage and tool calls are reported through the callbacks, tool calls once the reply ends. `tools`
+// names the tools the model is offered in this request.
 export type Reply = (
   messages: ChatMessage[],
   onUsage: (usage: Usage) => void,
   onToolCall: (call: ToolCall) => void,
+  tools: string[],
 ) => AsyncIterable<Result<string>>;
 
 export type ContextWindow = () => Promise<Result<number>>;

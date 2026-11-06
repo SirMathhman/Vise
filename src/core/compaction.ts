@@ -1,5 +1,6 @@
 import type { ChatMessage, ContextWindow, Reply, Usage } from "./messages.ts";
 import { err, ok, type Result } from "./result.ts";
+import { toolNames } from "./tools.ts";
 
 const KEEP_RECENT = 6;
 const COMPACT_REQUEST = "Summarize this convo";
@@ -15,6 +16,24 @@ export interface Conversation {
   // The profile in use, if any. Its text is sent once, with the next message.
   profile?: ActiveProfile;
   pendingProfile?: string;
+  // Tools switched off by the user. Every other tool is offered to the model.
+  disabledTools?: string[];
+}
+
+// The tools offered to the model: every tool that is not switched off.
+export function enabledTools(conversation: Conversation): string[] {
+  const disabled = conversation.disabledTools ?? [];
+  return toolNames.filter((name) => !disabled.includes(name));
+}
+
+// Switches one tool on or off. The change applies from the next request.
+export function setToolEnabled(conversation: Conversation, name: string, enabled: boolean): Step {
+  const others = (conversation.disabledTools ?? []).filter((tool) => tool !== name);
+  const disabledTools = enabled ? others : [...others, name];
+  return {
+    conversation: { ...conversation, disabledTools },
+    notice: `tool ${name} ${enabled ? "on" : "off"}`,
+  };
 }
 
 export interface ActiveProfile {
@@ -57,7 +76,7 @@ export async function compact(conversation: Conversation, reply: Reply): Promise
   if (conversation.history.length === 0) return err(new Error("nothing to compact"));
   let summary = "";
   try {
-    for await (const chunk of reply(compactionRequest(conversation.history), () => {}, () => {})) {
+    for await (const chunk of reply(compactionRequest(conversation.history), () => {}, () => {}, enabledTools(conversation))) {
       if (!chunk.ok) return chunk;
       summary += chunk.value;
     }

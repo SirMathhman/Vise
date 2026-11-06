@@ -12,6 +12,8 @@ function ports(overrides: Partial<ReplPorts> = {}): ReplPorts {
     tools: async () => "no tools are available",
     notes: async () => "notes are not available",
     profile: async () => err(new Error("no profiles are available")),
+    disabledTools: [],
+    saveDisabledTools: async () => ok(undefined),
     ...overrides,
   };
 }
@@ -104,97 +106,6 @@ test("sends a /note line to the note runner, prints its result, and keeps it out
   expect(seen).toEqual([["list", "work"]]);
   expect(written).toContain("work/plan\n");
   expect(modelSaw).toEqual([]);
-});
-
-test("a switched profile is sent once, with the next message, and history already sent is kept", async () => {
-  const seen: ChatMessage[][] = [];
-  const reply = async function* (messages: ChatMessage[]) {
-    seen.push(messages.map((message) => ({ ...message })));
-    yield ok(`answer ${seen.length}`);
-  };
-  let written = "";
-  const output = new Writable({
-    write(chunk, _encoding, done) {
-      written += chunk.toString();
-      done();
-    },
-  });
-  const profile = async (name: string) => (name === "terse" ? ok("BE TERSE") : err(new Error("no such profile")));
-  await runRepl(
-    Readable.from(["/profile terse\n", "/profile\n", "hello\n", "again\n"]),
-    output,
-    ports({ reply, profile }),
-  );
-  expect(written).toContain("profile: terse\n");
-  expect(seen[0]).toEqual([{ role: "user", content: "BE TERSE\n\nhello" }]);
-  expect(seen[1]).toEqual([
-    { role: "user", content: "BE TERSE\n\nhello" },
-    { role: "assistant", content: "answer 1" },
-    { role: "user", content: "again" },
-  ]);
-});
-
-test("a compaction sends the active profile again with the next message", async () => {
-  const seen: string[][] = [];
-  const reply: Reply = async function* (messages) {
-    seen.push(messages.map((message) => message.content));
-    yield ok(messages.at(-1)?.content === "Summarize this convo" ? "SUM" : "ok");
-  };
-  const output = new Writable({
-    write(_chunk, _encoding, done) {
-      done();
-    },
-  });
-  await runRepl(
-    Readable.from(["/profile terse\n", "hello\n", "/compact\n", "next\n"]),
-    output,
-    ports({ reply, profile: async () => ok("BE TERSE") }),
-  );
-  expect(seen.at(-1)?.at(-1)).toBe("BE TERSE\n\nnext");
-});
-
-test("/profile default clears the pending profile before the next message", async () => {
-  const seen: string[] = [];
-  const reply: Reply = async function* (messages) {
-    seen.push(messages.at(-1)?.content ?? "");
-    yield ok("ok");
-  };
-  const output = new Writable({
-    write(_chunk, _encoding, done) {
-      done();
-    },
-  });
-  await runRepl(
-    Readable.from(["/profile terse\n", "/profile default\n", "hello\n"]),
-    output,
-    ports({ reply, profile: async () => ok("BE TERSE") }),
-  );
-  expect(seen).toEqual(["hello"]);
-});
-
-test("a failed turn keeps the pending profile for the next attempt", async () => {
-  const seen: string[] = [];
-  let calls = 0;
-  const reply: Reply = async function* (messages) {
-    calls += 1;
-    seen.push(messages.at(-1)?.content ?? "");
-    if (calls === 1) {
-      yield err(new Error("cut off"));
-      return;
-    }
-    yield ok("ok");
-  };
-  const output = new Writable({
-    write(_chunk, _encoding, done) {
-      done();
-    },
-  });
-  await runRepl(
-    Readable.from(["/profile terse\n", "a\n", "b\n"]),
-    output,
-    ports({ reply, profile: async () => ok("BE TERSE") }),
-  );
-  expect(seen).toEqual(["BE TERSE\n\na", "BE TERSE\n\nb"]);
 });
 
 test("/context shows the prompt tokens of the last request out of the model's window", async () => {

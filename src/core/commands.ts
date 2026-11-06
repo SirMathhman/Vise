@@ -27,6 +27,12 @@ export interface ProfileLine {
   words: string[];
 }
 
+// A /tools command. words are the words after /tools, split on whitespace.
+export interface ToolsLine {
+  kind: "tools";
+  words: string[];
+}
+
 export interface MessageLine {
   kind: "message";
   text: string;
@@ -38,6 +44,7 @@ export type Line =
   | CompactLine
   | NoteLine
   | ProfileLine
+  | ToolsLine
   | UnknownCommandLine
   | MessageLine;
 
@@ -51,6 +58,9 @@ export function classifyLine(line: string): Line {
   if (command === "/compact") return { kind: "compact" };
   if (command === "/note" || command.startsWith("/note ")) {
     return { kind: "note", words: command.split(/\s+/).slice(1) };
+  }
+  if (command === "/tools" || command.startsWith("/tools ")) {
+    return { kind: "tools", words: command.split(/\s+/).slice(1) };
   }
   if (command === "/profile" || command.startsWith("/profile ")) {
     return { kind: "profile", words: command.split(/\s+/).slice(1) };

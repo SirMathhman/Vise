@@ -5,14 +5,24 @@ import {
   clearProfile,
   compactIfNeeded,
   compactNow,
+  enabledTools,
   recordUsage,
+  setToolEnabled,
   useProfile,
   type Conversation,
   type Step,
 } from "../core/compaction.ts";
 import type { ChatMessage, ContextWindow, Reply, ToolCall, Usage } from "../core/messages.ts";
 import { parseProfileCommand, type NoteRunner, type ProfileLoader } from "../core/notes.ts";
-import { describeToolCall, sanitize, type Approve, type ToolRunner } from "../core/tools.ts";
+import {
+  describeToolCall,
+  parseToolsCommand,
+  sanitize,
+  toolStates,
+  type Approve,
+  type SaveDisabledTools,
+  type ToolRunner,
+} from "../core/tools.ts";
 import { err, ok, type Result } from "../core/result.ts";
 
 export type { ContextWindow, Reply } from "../core/messages.ts";
@@ -42,6 +52,9 @@ export interface ReplPorts {
   tools: ToolRunner;
   notes: NoteRunner;
   profile: ProfileLoader;
+  // The tools switched off when the session starts, and the writer for the settings file.
+  disabledTools: string[];
+  saveDisabledTools: SaveDisabledTools;
   // Text sent ahead of the first message of the session (the AGENTS.md file), if any.
   instructions?: string;
 }
@@ -68,6 +81,8 @@ async function runCommand(
       return undefined;
     case "profile":
       return runProfileCommand(input.words, ports, output, conversation);
+    case "tools":
+      return runToolsCommand(input.words, ports, output, conversation);
     case "unknown-command":
       output.write(`error: unknown command ${input.command}\n`);
       return undefined;
@@ -98,6 +113,29 @@ async function runProfileCommand(
     return undefined;
   }
   return useProfile(conversation, { name: command.value.name, text: loaded.value });
+}
+
+// Runs /tools: lists the tools and whether each is on, or switches one on or off. The change applies
+// from the next request and is saved to the settings file, which the next session reads.
+async function runToolsCommand(
+  words: string[],
+  ports: ReplPorts,
+  output: Writable,
+  conversation: Conversation,
+): Promise<Step | undefined> {
+  const command = parseToolsCommand(words);
+  if (!command.ok) {
+    output.write(`error: ${command.error.message}\n`);
+    return undefined;
+  }
+  if (command.value.kind === "list") {
+    output.write(`${toolStates(conversation.disabledTools ?? [])}\n`);
+    return undefined;
+  }
+  const step = setToolEnabled(conversation, command.value.name, command.value.kind === "enable");
+  const saved = await ports.saveDisabledTools(step.conversation.disabledTools ?? []);
+  if (!saved.ok) output.write(`error: could not save tool settings: ${saved.error.message}\n`);
+  return step;
 }
 
 // The input lines, in order, held until they are read. `more` says whether another line
@@ -154,7 +192,7 @@ interface Round {
   failure?: Error;
 }
 
-async function streamRound(history: ChatMessage[], reply: Reply, output: Writable): Promise<Round> {
+async function streamRound(history: ChatMessage[], reply: Reply, output: Writable, offered: string[]): Promise<Round> {
   const round: Round = { answer: "", calls: [] };
   try {
     for await (const chunk of reply(
@@ -165,6 +203,7 @@ async function streamRound(history: ChatMessage[], reply: Reply, output: Writabl
       (call) => {
         round.calls.push(call);
       },
+      offered,
     )) {
       if (!chunk.ok) return { ...round, failure: chunk.error };
       round.answer += chunk.value;
@@ -181,7 +220,7 @@ async function streamRound(history: ChatMessage[], reply: Reply, output: Writabl
 // interface is closed and the listeners are removed before this returns.
 export async function runRepl(input: Readable, output: Writable, ports: ReplPorts): Promise<Result<void>> {
   const { reply, contextWindow, tools, instructions } = ports;
-  let conversation: Conversation = { history: [], compacted: false };
+  let conversation: Conversation = { history: [], compacted: false, disabledTools: ports.disabledTools };
   let streamError: Error | undefined;
   // Set when /exit is typed at an approval: the session ends and no further request is sent.
   let exitRequested = false;
@@ -246,7 +285,7 @@ export async function runRepl(input: Readable, output: Writable, ports: ReplPort
       // Each round asks the model. The first round answers the line just received; a round that
       // asked for tools is followed by another only while the session has not ended.
       for (;;) {
-        const round = await streamRound(conversation.history, reply, output);
+        const round = await streamRound(conversation.history, reply, output, enabledTools(conversation));
         if (round.failure) {
           conversation.history.splice(turnStart);
           conversation = { ...conversation, pendingProfile: profile };
@@ -267,7 +306,10 @@ export async function runRepl(input: Readable, output: Writable, ports: ReplPort
         for (const call of round.calls) {
           if (finished()) break;
           output.write(`\n${sanitize(describeToolCall(call))}\n`);
-          conversation.history.push({ role: "tool", toolCallId: call.id, content: await tools(call, approve) });
+          // A tool switched off is not offered, so a call to it is refused without asking for approval.
+          const off = conversation.disabledTools?.includes(call.name) ?? false;
+          const content = off ? `error: tool ${call.name} is switched off` : await tools(call, approve);
+          conversation.history.push({ role: "tool", toolCallId: call.id, content });
         }
         if (finished()) break;
       }

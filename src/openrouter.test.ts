@@ -31,6 +31,39 @@ test("streams text deltas from server-sent events and stops at [DONE]", async ()
   expect(JSON.parse(sentBody).stream).toBe(true);
 });
 
+interface SentFunction {
+  name: string;
+}
+
+interface SentTool {
+  function: SentFunction;
+}
+
+// Reads a stream to its end. Only the request it sends matters to these tests.
+async function drain(stream: AsyncIterable<unknown>): Promise<void> {
+  const parts: unknown[] = [];
+  for await (const part of stream) parts.push(part);
+}
+
+test("offers only the named tools, and sends no tools when none are named", async () => {
+  const sent: string[] = [];
+  const fakeFetch = async (_url: string, init: RequestInit) => {
+    sent.push(String(init.body));
+    return new Response("data: [DONE]\n\n", { status: 200 });
+  };
+  const base = {
+    apiKey: "key",
+    model: "anthropic/claude-haiku-5.5",
+    messages: [{ role: "user" as const, content: "hi" }],
+    fetch: fakeFetch,
+  };
+  await drain(streamChat({ ...base, tools: ["list_files", "kill_command"] }));
+  await drain(streamChat({ ...base, tools: [] }));
+  const offered = (JSON.parse(sent[0] ?? "{}").tools as SentTool[]).map((tool) => tool.function.name);
+  expect(offered).toEqual(["list_files", "kill_command"]);
+  expect(JSON.parse(sent[1] ?? "{}").tools).toBeUndefined();
+});
+
 async function collect(body: string): Promise<Result<string>[]> {
   const fakeFetch = async () => new Response(body, { status: 200 });
   const parts: Result<string>[] = [];

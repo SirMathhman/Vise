@@ -157,6 +157,51 @@ export const killCommandSpec = {
   },
 };
 
+// Every tool the model can be offered, in the order they are sent. A tool that is switched off is
+// left out of the request, and the request is the only place the list is used.
+export const toolSpecs = [
+  listFilesSpec,
+  readFileSpec,
+  editFileSpec,
+  createFileSpec,
+  createNoteSpec,
+  runPowershellSpec,
+  readCommandSpec,
+  killCommandSpec,
+];
+export const toolNames: string[] = toolSpecs.map((spec) => spec.function.name);
+
+// Writes the disabled tool names to the settings file. The composition root supplies it.
+export type SaveDisabledTools = (names: string[]) => Promise<Result<void>>;
+
+export interface ToolsListCommand {
+  kind: "list";
+}
+
+export interface ToolSwitchCommand {
+  kind: "enable" | "disable";
+  name: string;
+}
+
+export type ToolsCommand = ToolsListCommand | ToolSwitchCommand;
+
+// Reads the words after /tools: nothing lists the tools, and `enable` or `disable` followed by a
+// tool name switches that tool.
+export function parseToolsCommand(words: string[]): Result<ToolsCommand> {
+  const [action, name] = words;
+  if (words.length === 0) return ok({ kind: "list" });
+  if ((action === "enable" || action === "disable") && words.length === 2 && name !== undefined) {
+    if (!toolNames.includes(name)) return err(new Error("no tool has that name; /tools lists them"));
+    return ok({ kind: action, name });
+  }
+  return err(new Error("usage: /tools | /tools enable <tool> | /tools disable <tool>"));
+}
+
+// One line per tool, as name: on or off.
+export function toolStates(disabled: string[]): string {
+  return toolNames.map((name) => `${name}: ${disabled.includes(name) ? "off" : "on"}`).join("\n");
+}
+
 export interface ListFilesArgs {
   path: string;
   depth: number;

@@ -5,6 +5,7 @@ import { killAllJobs } from "./src/tools/jobs.ts";
 import { loadProfile } from "./src/tools/notes/load-profile.ts";
 import { runNoteCommand } from "./src/tools/notes/run-note-command.ts";
 import { runTool } from "./src/tools/run-tool.ts";
+import { readToolSettings, saveToolSettings } from "./src/tools/tool-settings.ts";
 
 const MODEL = "anthropic/claude-haiku-5.5";
 
@@ -27,14 +28,23 @@ if (import.meta.main) {
   });
   // Read once, here, so the session sends the same instructions for its whole length.
   const instructions = await readInstructions(process.cwd());
+  // Read once, here: the tools switched off in the settings file at startup.
+  const disabled = await readToolSettings(process.cwd());
+  if (!disabled.ok) {
+    console.error(`error: ${disabled.error.message}`);
+    process.exit(1);
+  }
   let failed = false;
   try {
     const result = await runRepl(process.stdin, process.stdout, {
-      reply: (messages, onUsage, onToolCall) => streamChat({ apiKey, model: MODEL, messages, onUsage, onToolCall }),
+      reply: (messages, onUsage, onToolCall, tools) =>
+        streamChat({ apiKey, model: MODEL, messages, onUsage, onToolCall, tools }),
       contextWindow: () => modelContextWindow({ model: MODEL }),
       tools: runTool(process.cwd()),
       notes: runNoteCommand(process.cwd()),
       profile: loadProfile(process.cwd()),
+      disabledTools: disabled.value,
+      saveDisabledTools: (names) => saveToolSettings(process.cwd(), names),
       instructions,
     });
     if (!result.ok) {
