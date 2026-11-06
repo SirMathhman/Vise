@@ -63,6 +63,7 @@ async function collectRound(reply: Reply, history: ChatMessage[], offered: strin
       offered,
       undefined,
       () => {},
+      () => {},
     )) {
       if (!chunk.ok) return { ...round, failure: chunk.error };
       round.answer += chunk.value;

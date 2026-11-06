@@ -283,6 +283,8 @@ interface Round {
   calls: ToolCall[];
   usage?: Usage;
   failure?: Error;
+  // The reasoning items of the reply, kept to send back with its tool calls.
+  reasoning?: unknown[];
 }
 
 // The thinking line of one request: rewritten in place while the model thinks, then replaced by the
@@ -333,6 +335,9 @@ async function streamRound(
       offered,
       reasoning,
       onThinking,
+      (items) => {
+        round.reasoning = items;
+      },
     )) {
       if (!chunk.ok) {
         finishThinking(output, view, round.usage?.reasoningTokens);
@@ -467,6 +472,7 @@ async function runMessageTurn(text: string, conversation: Conversation, context:
       role: "assistant",
       content: round.answer,
       toolCalls: round.calls.length > 0 ? round.calls : undefined,
+      reasoning: round.calls.length > 0 ? round.reasoning : undefined,
     });
     // Only a completed request reports its size; a failed one leaves the stored size alone.
     if (round.usage) current = recordUsage(current, round.usage);

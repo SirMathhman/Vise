@@ -16,6 +16,9 @@ export interface AssistantMessage {
   role: "assistant";
   content: string;
   toolCalls?: ToolCall[];
+  // The reasoning items the provider sent with the tool calls, kept exactly as they came. They go back
+  // with the next request, because the provider may need them to continue after a tool call.
+  reasoning?: unknown[];
 }
 
 export interface ToolMessage {
@@ -47,6 +50,7 @@ export type Reply = (
   tools: string[],
   reasoning: ReasoningEffort | undefined,
   onThinking: (approximateTokens: number) => void,
+  onReasoning: (items: unknown[]) => void,
 ) => AsyncIterable<Result<string>>;
 
 export type ContextWindow = () => Promise<Result<number>>;

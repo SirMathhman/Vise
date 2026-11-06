@@ -235,3 +235,37 @@ test("sends the reasoning effort, reports thinking as it streams, and reports th
   expect(thinking).toEqual([2, 3]);
   expect(usage.at(-1)?.reasoningTokens).toBe(7);
 });
+
+test("keeps the reasoning of a tool-calling reply and sends it back with the next request", async () => {
+  const items = [{ type: "reasoning.text", text: "plan" }];
+  const body = `data: {"choices":[{"delta":{"reasoning_details":${JSON.stringify(items)}}}]}\n\ndata: [DONE]\n\n`;
+  const sent: string[] = [];
+  const fakeFetch = async (_url: string, init: RequestInit) => {
+    sent.push(String(init.body));
+    return new Response(body, { status: 200 });
+  };
+  const received: unknown[][] = [];
+  await drain(
+    streamChat({
+      apiKey: "key",
+      model: "anthropic/claude-haiku-5.5",
+      messages: [{ role: "user", content: "hi" }],
+      fetch: fakeFetch,
+      onReasoning: (reasoning) => received.push(reasoning),
+    }),
+  );
+  expect(received).toEqual([items]);
+  await drain(
+    streamChat({
+      apiKey: "key",
+      model: "anthropic/claude-haiku-5.5",
+      messages: [
+        { role: "user", content: "hi" },
+        { role: "assistant", content: "", toolCalls: [{ id: "c1", name: "list_files", arguments: "{}" }], reasoning: items },
+        { role: "tool", toolCallId: "c1", content: "a.txt" },
+      ],
+      fetch: fakeFetch,
+    }),
+  );
+  expect(JSON.parse(sent[1] ?? "{}").messages[1].reasoning_details).toEqual(items);
+});

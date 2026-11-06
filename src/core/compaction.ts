@@ -120,6 +120,7 @@ export async function compact(conversation: Conversation, reply: Reply): Promise
       enabledTools(conversation),
       conversation.thinking,
       () => {},
+      () => {},
     )) {
       if (!chunk.ok) return chunk;
       summary += chunk.value;

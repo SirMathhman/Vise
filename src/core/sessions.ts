@@ -21,6 +21,7 @@ const SessionSchema = z
           toolCalls: z
             .array(z.object({ id: z.string(), name: z.string(), arguments: z.string() }))
             .optional(),
+          reasoning: z.array(z.unknown()).optional(),
         }),
         z.object({ role: z.literal("tool"), toolCallId: z.string(), content: z.string() }),
       ]),

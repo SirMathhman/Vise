@@ -79,6 +79,7 @@ function toWire(message: ChatMessage, last: boolean): unknown {
     return {
       role: "assistant",
       content: message.content || null,
+      ...(message.reasoning ? { reasoning_details: message.reasoning } : {}),
       tool_calls: message.toolCalls.map((call) => ({
         id: call.id,
         type: "function",
@@ -106,6 +107,8 @@ interface StreamOptions {
   reasoning?: ReasoningEffort;
   // Called with the approximate thinking tokens so far, as thinking text arrives.
   onThinking?: (approximateTokens: number) => void;
+  // Called once with the reasoning items of the reply, kept exactly as the stream sent them, when it ends.
+  onReasoning?: (items: unknown[]) => void;
 }
 
 // Reasoning text is about four characters to a token. The count is an estimate until the exact one arrives.
@@ -133,6 +136,7 @@ export async function* streamChat(options: StreamOptions): AsyncGenerator<Result
     return;
   }
   const calls = new Map<number, ToolCall>();
+  const reasoningItems: unknown[] = [];
   let thinkingChars = 0;
   for await (const line of lines(body.value)) {
     if (!line.ok) {
@@ -146,8 +150,10 @@ export async function* streamChat(options: StreamOptions): AsyncGenerator<Result
     }
     if (event.value === DONE) {
       emitToolCalls(calls, options.onToolCall);
+      if (reasoningItems.length > 0) options.onReasoning?.(reasoningItems);
       return;
     }
+    reasoningItems.push(...(event.value?.reasoningItems ?? []));
     if (event.value?.reasoningText) {
       thinkingChars += event.value.reasoningText.length;
       options.onThinking?.(Math.ceil(thinkingChars / CHARS_PER_TOKEN));
@@ -220,6 +226,8 @@ interface ToolCallDelta {
 interface StreamEvent {
   text?: string;
   reasoningText?: string;
+  // The reasoning items of this chunk, as the stream sent them.
+  reasoningItems?: unknown[];
   usage?: Usage;
   toolCalls?: ToolCallDelta[];
 }
@@ -242,6 +250,7 @@ function parseEventLine(line: string): Result<StreamEvent | typeof DONE | undefi
   return ok({
     text: delta?.content ?? undefined,
     reasoningText: reasoningText === "" ? undefined : reasoningText,
+    reasoningItems: delta?.reasoning_details ?? undefined,
     usage:
       typeof promptTokens === "number"
         ? { promptTokens, reasoningTokens: reasoningTokens ?? undefined }
