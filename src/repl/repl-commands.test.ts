@@ -193,3 +193,33 @@ test("/save writes the conversation, and /load in a new session brings it back f
   await runRepl(Readable.from(["/load work\n", "again\n"]), output, ports({ reply, sessions }));
   expect(seen[0]).toEqual(["hello", "ok", "again"]);
 });
+
+test("a call skipped because /exit ended the session is reported as not run", async () => {
+  const reply: Reply = async function* (messages, _onUsage, onToolCall) {
+    if (messages.at(-1)?.role === "user") {
+      onToolCall({ id: "e1", name: "edit_file", arguments: '{"path":"f.txt","previous":"a","replacement":"b"}' });
+      onToolCall({ id: "l1", name: "list_files", arguments: '{"path":"."}' });
+      return;
+    }
+    yield ok("done");
+  };
+  let written = "";
+  const output = new Writable({
+    write(chunk, _encoding, done) {
+      written += chunk.toString();
+      done();
+    },
+  });
+  await runRepl(
+    Readable.from(["go\n", "/exit\n"]),
+    output,
+    ports({
+      reply,
+      tools: async (_call, approve) => {
+        if (!(await approve("edit f.txt"))) return "the user declined this change";
+        return "edited f.txt";
+      },
+    }),
+  );
+  expect(written).toContain("tool: list_files . depth 2 did not run: the session ended");
+});

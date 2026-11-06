@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { Conversation } from "./compaction.ts";
+import type { ChatMessage } from "./messages.ts";
 import { checkName } from "./notes.ts";
 import { err, ok, type Result } from "./result.ts";
 import { toolNames } from "./tools.ts";
@@ -84,8 +85,28 @@ export function encodeSession(conversation: Conversation): string {
   return `${JSON.stringify(saved, null, 2)}\n`;
 }
 
-// Reads a session file back into a conversation. A file that is not JSON, or does not match the
-// format, is refused and nothing is loaded.
+// Every tool call must be answered by a tool message with its id, and every tool message must answer
+// a call made just before it. Returns the first message that breaks this, or ok.
+export function checkPairing(history: ChatMessage[]): Result<void> {
+  let pending = new Set<string>();
+  for (const [index, message] of history.entries()) {
+    if (message.role === "tool") {
+      if (!pending.delete(message.toolCallId)) {
+        return err(new Error(`message ${index + 1} is a tool result with no call before it`));
+      }
+      continue;
+    }
+    if (pending.size > 0) {
+      return err(new Error(`message ${index + 1} comes before the results of the calls before it`));
+    }
+    pending = new Set(message.role === "assistant" ? (message.toolCalls ?? []).map((call) => call.id) : []);
+  }
+  if (pending.size > 0) return err(new Error("the last tool calls have no results"));
+  return ok(undefined);
+}
+
+// Reads a session file back into a conversation. A file that is not JSON, does not match the
+// format, or has a tool call and result that do not pair, is refused and nothing is loaded.
 export function decodeSession(text: string): Result<Conversation> {
   let value: unknown;
   try {
@@ -96,6 +117,8 @@ export function decodeSession(text: string): Result<Conversation> {
   const parsed = SessionSchema.safeParse(value);
   if (!parsed.success) return err(new Error("the session file does not match the session format"));
   const session = parsed.data;
+  const paired = checkPairing(session.history);
+  if (!paired.ok) return err(paired.error);
   return ok({
     history: session.history,
     promptTokens: session.promptTokens,

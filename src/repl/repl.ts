@@ -346,7 +346,16 @@ export async function runRepl(input: Readable, output: Writable, ports: ReplPort
           break;
         }
         for (const call of round.calls) {
-          if (finished()) break;
+          // A call that is skipped still gets a result, so every call in the history has one.
+          if (finished()) {
+            output.write(`\n${sanitize(describeToolCall(call))} did not run: the session ended\n`);
+            conversation.history.push({
+              role: "tool",
+              toolCallId: call.id,
+              content: "error: the call did not run because the session ended",
+            });
+            continue;
+          }
           output.write(`\n${sanitize(describeToolCall(call))}\n`);
           conversation.history.push({
             role: "tool",

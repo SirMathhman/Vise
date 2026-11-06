@@ -56,3 +56,14 @@ test("reads /save, /load, and /sessions, and refuses a bad name or use", () => {
   expect(parseSessionCommand(["save", "a/b"]).ok).toBe(false);
   expect(parseSessionCommand(["save"]).ok).toBe(false);
 });
+
+test("refuses a session whose tool calls and results do not pair", () => {
+  const call = { id: "c1", name: "list_files", arguments: "{}" };
+  const orphanResult = '{"version":1,"history":[{"role":"tool","toolCallId":"c1","content":"x"}],"compacted":false}';
+  const unanswered =
+    '{"version":1,"history":[{"role":"user","content":"hi"},{"role":"assistant","content":"","toolCalls":[' +
+    JSON.stringify(call) +
+    "]}],\"compacted\":false}";
+  expect(decodeSession(orphanResult).ok).toBe(false);
+  expect(decodeSession(unanswered).ok).toBe(false);
+});
