@@ -15,6 +15,7 @@ function ports(overrides: Partial<ReplPorts> = {}): ReplPorts {
     profileTools: async () => ok(undefined),
     profileHooks: async () => ok([]),
     hooks: async () => ok(""),
+    models: { current: () => "m", list: async () => ok([]), select: async (name: string) => ok(name) },
     disabledTools: [],
     saveDisabledTools: async () => ok(undefined),
     sessions: { save: async () => ok(undefined), load: async () => err(new Error("none")), list: async () => ok([]) },

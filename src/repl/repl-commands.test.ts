@@ -15,6 +15,7 @@ function ports(overrides: Partial<ReplPorts> = {}): ReplPorts {
     profileTools: async () => ok(undefined),
     profileHooks: async () => ok([]),
     hooks: async () => ok(""),
+    models: { current: () => "m", list: async () => ok([]), select: async (name: string) => ok(name) },
     disabledTools: [],
     saveDisabledTools: async () => ok(undefined),
     sessions: { save: async () => ok(undefined), load: async () => err(new Error("none")), list: async () => ok([]) },
@@ -356,4 +357,24 @@ test("/thinking sets the effort for later requests, and the thinking count is sh
   expect(seen).toEqual(["low"]);
   expect(written).toContain("thinking: low");
   expect(written).toContain("thinking: ~5 tokens");
+});
+
+test("/model lists the models, marking the one in use, and /model <name> switches to a listed one", async () => {
+  let written = "";
+  const output = new Writable({
+    write(chunk, _encoding, done) {
+      written += chunk.toString();
+      done();
+    },
+  });
+  const models = {
+    current: () => "a/one",
+    list: async () => ok([{ id: "a/one", contextLength: 1000 }, { id: "b/two", contextLength: 2000 }]),
+    select: async (name: string) => (name === "b/two" ? ok(name) : err(new Error("no such model"))),
+  };
+  await runRepl(Readable.from(["/model\n", "/model b/two\n", "/model zzz\n"]), output, ports({ models }));
+  expect(written).toContain("* a/one  1000 tokens");
+  expect(written).toContain("  b/two  2000 tokens");
+  expect(written).toContain("model: b/two");
+  expect(written).toContain("error: no such model");
 });

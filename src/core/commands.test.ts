@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { classifyLine } from "./commands.ts";
 import { parseSubagentArgs, parseToolsCommand, toolStates } from "./tools.ts";
-import { parseThinkingCommand } from "./commands.ts";
+import { parseModelCommand, parseThinkingCommand } from "./commands.ts";
 
 test("recognises /exit and /context after trimming and keeps other lines as messages", () => {
   expect(classifyLine("  /exit  ")).toEqual({ kind: "exit" });
@@ -46,4 +46,10 @@ test("reads /thinking: nothing shows, and off, low, medium, or high sets it", ()
   expect(parseThinkingCommand(["low"])).toEqual({ ok: true, value: { kind: "set", effort: "low" } });
   expect(parseThinkingCommand(["off"])).toEqual({ ok: true, value: { kind: "set", effort: undefined } });
   expect(parseThinkingCommand(["max"]).ok).toBe(false);
+});
+
+test("reads /model: nothing lists the models, and a name selects one", () => {
+  expect(parseModelCommand([])).toEqual({ ok: true, value: { kind: "list" } });
+  expect(parseModelCommand(["openai/gpt-x"])).toEqual({ ok: true, value: { kind: "select", name: "openai/gpt-x" } });
+  expect(parseModelCommand(["a", "b"]).ok).toBe(false);
 });

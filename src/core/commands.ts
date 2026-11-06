@@ -53,7 +53,14 @@ export interface ThinkingLine {
   words: string[];
 }
 
+// A /model command. words are the words after /model, split on whitespace.
+export interface ModelLine {
+  kind: "model";
+  words: string[];
+}
+
 export type Line =
+  | ModelLine
   | ThinkingLine
   | ExitLine
   | ContextLine
@@ -88,6 +95,9 @@ export function classifyLine(line: string): Line {
   if (command === "/thinking" || command.startsWith("/thinking ")) {
     return { kind: "thinking", words: command.split(/\s+/).slice(1) };
   }
+  if (command === "/model" || command.startsWith("/model ")) {
+    return { kind: "model", words: command.split(/\s+/).slice(1) };
+  }
   if (command.startsWith("/")) return { kind: "unknown-command", command };
   return { kind: "message", text: line };
 }
@@ -112,6 +122,25 @@ export function parseThinkingCommand(words: string[]): Result<ThinkingCommand> {
   if (level === "off") return ok({ kind: "set", effort: undefined });
   if (level === "low" || level === "medium" || level === "high") return ok({ kind: "set", effort: level });
   return err(new Error("usage: /thinking [off | low | medium | high]"));
+}
+
+export interface ListModelsCommand {
+  kind: "list";
+}
+
+export interface SelectModelCommand {
+  kind: "select";
+  name: string;
+}
+
+export type ModelCommand = ListModelsCommand | SelectModelCommand;
+
+// Reads the words after /model: nothing lists the models, and a name chooses one.
+export function parseModelCommand(words: string[]): Result<ModelCommand> {
+  if (words.length === 0) return ok({ kind: "list" });
+  const [name] = words;
+  if (words.length === 1 && name !== undefined) return ok({ kind: "select", name });
+  return err(new Error("usage: /model | /model <name>"));
 }
 
 export function contextLine(

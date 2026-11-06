@@ -54,3 +54,17 @@ export type Reply = (
 ) => AsyncIterable<Result<string>>;
 
 export type ContextWindow = () => Promise<Result<number>>;
+
+// A model OpenRouter lists: its id, and its context window in tokens.
+export interface ModelInfo {
+  id: string;
+  contextLength: number;
+}
+
+// The model the session uses, and the models it may switch to. `select` refuses a name that is not
+// listed, and resolves with the name it chose.
+export interface ModelPorts {
+  current(): string;
+  list(): Promise<Result<ModelInfo[]>>;
+  select(name: string): Promise<Result<string>>;
+}

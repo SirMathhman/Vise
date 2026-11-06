@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ChatMessage, ReasoningEffort, ToolCall, Usage } from "./core/messages.ts";
+import type { ChatMessage, ModelInfo, ReasoningEffort, ToolCall, Usage } from "./core/messages.ts";
 import { err, ok, type Result } from "./core/result.ts";
 import { toolNames, toolSpecs } from "./core/tools.ts";
 
@@ -287,6 +287,19 @@ interface ModelContextOptions {
 
 // The model's context window in tokens, from OpenRouter's model listing.
 export async function modelContextWindow(options: ModelContextOptions): Promise<Result<number>> {
+  const models = await listModels({ fetch: options.fetch });
+  if (!models.ok) return models;
+  const model = models.value.find((entry) => entry.id === options.model);
+  if (!model) return err(new Error(`OpenRouter does not list ${options.model}`));
+  return ok(model.contextLength);
+}
+
+interface ModelListOptions {
+  fetch?: FetchLike;
+}
+
+// Every model OpenRouter lists, with its context window.
+export async function listModels(options: ModelListOptions): Promise<Result<ModelInfo[]>> {
   const send = options.fetch ?? fetch;
   let text: string;
   try {
@@ -298,7 +311,5 @@ export async function modelContextWindow(options: ModelContextOptions): Promise<
   }
   const listing = decode(ModelListingSchema, text, "a model listing");
   if (!listing.ok) return err(listing.error);
-  const model = listing.value.data.find((entry) => entry.id === options.model);
-  if (!model) return err(new Error(`OpenRouter does not list ${options.model}`));
-  return ok(model.context_length);
+  return ok(listing.value.data.map((entry) => ({ id: entry.id, contextLength: entry.context_length })));
 }

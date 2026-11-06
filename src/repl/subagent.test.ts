@@ -119,6 +119,7 @@ test("two subagents asked for in one reply both run, and each result reaches the
     saveDisabledTools: async () => ok(undefined),
     sessions: { save: async () => ok(undefined), load: async () => err(new Error("none")), list: async () => ok([]) },
     hooks: async () => ok(""),
+    models: { current: () => "m", list: async () => ok([]), select: async (name: string) => ok(name) },
   };
   await runRepl(Readable.from(["go\n", "/exit\n"]), output, ports);
   expect(seenByMain.at(-1)).toEqual(["answer for a", "answer for b"]);
