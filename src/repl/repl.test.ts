@@ -153,6 +153,50 @@ test("a compaction sends the active profile again with the next message", async 
   expect(seen.at(-1)?.at(-1)).toBe("BE TERSE\n\nnext");
 });
 
+test("/profile default clears the pending profile before the next message", async () => {
+  const seen: string[] = [];
+  const reply: Reply = async function* (messages) {
+    seen.push(messages.at(-1)?.content ?? "");
+    yield ok("ok");
+  };
+  const output = new Writable({
+    write(_chunk, _encoding, done) {
+      done();
+    },
+  });
+  await runRepl(
+    Readable.from(["/profile terse\n", "/profile default\n", "hello\n"]),
+    output,
+    ports({ reply, profile: async () => ok("BE TERSE") }),
+  );
+  expect(seen).toEqual(["hello"]);
+});
+
+test("a failed turn keeps the pending profile for the next attempt", async () => {
+  const seen: string[] = [];
+  let calls = 0;
+  const reply: Reply = async function* (messages) {
+    calls += 1;
+    seen.push(messages.at(-1)?.content ?? "");
+    if (calls === 1) {
+      yield err(new Error("cut off"));
+      return;
+    }
+    yield ok("ok");
+  };
+  const output = new Writable({
+    write(_chunk, _encoding, done) {
+      done();
+    },
+  });
+  await runRepl(
+    Readable.from(["/profile terse\n", "a\n", "b\n"]),
+    output,
+    ports({ reply, profile: async () => ok("BE TERSE") }),
+  );
+  expect(seen).toEqual(["BE TERSE\n\na", "BE TERSE\n\nb"]);
+});
+
 test("/context shows the prompt tokens of the last request out of the model's window", async () => {
   const reply: Reply = async function* (_messages, onUsage) {
     onUsage({ promptTokens: 42 });
