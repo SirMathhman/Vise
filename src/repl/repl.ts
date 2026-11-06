@@ -6,6 +6,7 @@ import {
   compactIfNeeded,
   compactNow,
   enabledTools,
+  profileCommands,
   queueHookOutput,
   recordUsage,
   setToolEnabled,
@@ -15,7 +16,7 @@ import {
   type Step,
 } from "../core/compaction.ts";
 import type { ChatMessage, ContextWindow, Reply, ToolCall, Usage } from "../core/messages.ts";
-import { parseProfileCommand, type NoteRunner, type ProfileLoader } from "../core/notes.ts";
+import { parseProfileCommand, type NoteRunner, type ProfileHook, type ProfileLoader } from "../core/notes.ts";
 import {
   describeToolCall,
   parseToolsCommand,
@@ -57,6 +58,8 @@ export interface ReplPorts {
   profile: ProfileLoader;
   // The tools a profile allows, undefined when it has no whitelist.
   profileTools: (name: string) => Promise<Result<string[] | undefined>>;
+  // The hooks a profile adds at its points.
+  profileHooks: (name: string) => Promise<Result<ProfileHook[]>>;
   // Runs the hooks of one point. Their output goes to the next message.
   hooks: HookRunner;
   // The tools switched off when the session starts, and the writer for the settings file.
@@ -128,7 +131,17 @@ async function runProfileCommand(
     output.write(`error: ${allowed.error.message}\n`);
     return undefined;
   }
-  return useProfile(conversation, { name: command.value.name, text: loaded.value, tools: allowed.value });
+  const hooks = await ports.profileHooks(command.value.name);
+  if (!hooks.ok) {
+    output.write(`error: ${hooks.error.message}\n`);
+    return undefined;
+  }
+  return useProfile(conversation, {
+    name: command.value.name,
+    text: loaded.value,
+    tools: allowed.value,
+    hooks: hooks.value,
+  });
 }
 
 // Runs /tools: lists the tools and whether each is on, or switches one on or off. The change applies
@@ -329,7 +342,7 @@ export interface TurnResult {
 async function runMessageTurn(text: string, conversation: Conversation, context: TurnContext): Promise<TurnResult> {
   const { ports, output, finished, approve } = context;
   const { reply, contextWindow, tools, instructions } = ports;
-  const started = await ports.hooks("turnStart");
+  const started = await ports.hooks("turnStart", profileCommands(conversation, "turnStart"));
   if (!started.ok) {
     output.write(`error: turn-start hook failed: ${started.error.message}\n`);
     return { conversation, stop: false };
@@ -380,7 +393,7 @@ async function runMessageTurn(text: string, conversation: Conversation, context:
     current.history.push(...results);
     if (finished()) break;
   }
-  const ended = await ports.hooks("turnEnd");
+  const ended = await ports.hooks("turnEnd", profileCommands(current, "turnEnd"));
   if (!ended.ok) {
     output.write(`error: turn-end hook failed: ${ended.error.message}\n`);
     return { conversation: current, stop: true };
@@ -437,7 +450,7 @@ export async function runRepl(input: Readable, output: Writable, ports: ReplPort
   try {
     rl.prompt();
     // A session-start hook that fails stops the session. Its prompt has already been written.
-    const started = await ports.hooks("sessionStart");
+    const started = await ports.hooks("sessionStart", profileCommands(conversation, "sessionStart"));
     if (!started.ok) return err(started.error);
     conversation = queueHookOutput(conversation, started.value);
     showHookOutput(output, started.value);
@@ -456,7 +469,7 @@ export async function runRepl(input: Readable, output: Writable, ports: ReplPort
       if (exitRequested || streamError !== undefined) break;
       rl.prompt();
     }
-    const ended = await ports.hooks("sessionEnd");
+    const ended = await ports.hooks("sessionEnd", profileCommands(conversation, "sessionEnd"));
     if (ended.ok) showHookOutput(output, ended.value);
     else output.write(`error: session-end hook failed: ${ended.error.message}\n`);
   } finally {

@@ -57,3 +57,13 @@ test("a tools line lists the tools a profile allows, and is absent when there is
   const without = parseHeader("---\nname: plan\ncategory: profile\nsummary:\n---\nbody");
   expect(without.ok && without.value.tools).toBeUndefined();
 });
+
+test("a header's point lines are the profile's hooks, and other lines are not", () => {
+  const withHooks = parseHeader("---\nname: p\ncategory: profile\nsummary:\nturnEnd: npm test\nturnEnd: npm run lint\nnope: x\n---\nbody");
+  expect(withHooks.ok && withHooks.value.hooks).toEqual([
+    { point: "turnEnd", command: "npm test" },
+    { point: "turnEnd", command: "npm run lint" },
+  ]);
+  const without = parseHeader("---\nname: p\ncategory: profile\nsummary:\n---\nbody");
+  expect(without.ok && without.value.hooks).toBeUndefined();
+});

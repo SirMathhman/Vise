@@ -60,9 +60,9 @@ function exitCodeOf(text: string): number | undefined {
 // Runs the commands of one point in order. The output of each is kept, and the first command that
 // fails, exits non-zero, or is still running after the timeout stops the rest and is returned as an error.
 export function hookRunner(root: string, config: HookConfig): HookRunner {
-  return async (point: HookPoint): Promise<Result<string>> => {
+  return async (point: HookPoint, profile: string[] = []): Promise<Result<string>> => {
     let output = "";
-    for (const command of config[point]) {
+    for (const command of [...config[point], ...profile]) {
       const result = await runPowershell(root, command);
       if (!result.ok) return err(new Error(`hook ${command} could not run: ${result.error.message}`));
       const exitCode = exitCodeOf(result.value);

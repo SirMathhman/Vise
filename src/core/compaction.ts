@@ -1,6 +1,9 @@
 import type { ChatMessage, ContextWindow, Reply, Usage } from "./messages.ts";
 import { err, ok, type Result } from "./result.ts";
 import { toolNames } from "./tools.ts";
+import type { HookPoint, ProfileHook } from "./notes.ts";
+
+export type { HookPoint } from "./notes.ts";
 
 const KEEP_RECENT = 6;
 const COMPACT_REQUEST = "Summarize this convo";
@@ -22,11 +25,14 @@ export interface Conversation {
   pendingOutput?: string;
 }
 
-// The points at which a hook runs: before and after a session, and before and after a turn.
-export type HookPoint = "sessionStart" | "sessionEnd" | "turnStart" | "turnEnd";
+// Runs the hooks of one point and returns their output. The global hooks of that point run first,
+// then `profile`, the commands the active profile adds at that point. A failure is an error.
+export type HookRunner = (point: HookPoint, profile?: string[]) => Promise<Result<string>>;
 
-// Runs the hooks of one point and returns their output. A failure is an error.
-export type HookRunner = (point: HookPoint) => Promise<Result<string>>;
+// The commands the active profile adds at one point, in the order of its header.
+export function profileCommands(conversation: Conversation, point: HookPoint): string[] {
+  return (conversation.profile?.hooks ?? []).filter((hook) => hook.point === point).map((hook) => hook.command);
+}
 
 // Adds hook output to the output waiting for the next message. Empty output changes nothing.
 export function queueHookOutput(conversation: Conversation, output: string): Conversation {
@@ -56,6 +62,8 @@ export function setToolEnabled(conversation: Conversation, name: string, enabled
 export interface ActiveProfile {
   name: string;
   text: string;
+  // The hooks the profile adds. Absent when it has none.
+  hooks?: ProfileHook[];
   // The tools the profile allows. Absent when it has no whitelist.
   tools?: string[];
 }

@@ -1,4 +1,11 @@
-import { PROFILE_CATEGORY, bodyOf, notePath, parseHeader, type ProfileLoader } from "../../core/notes.ts";
+import {
+  PROFILE_CATEGORY,
+  bodyOf,
+  notePath,
+  parseHeader,
+  type ProfileHook,
+  type ProfileLoader,
+} from "../../core/notes.ts";
 import { err, ok, type Result } from "../../core/result.ts";
 import { toolNames } from "../../core/tools.ts";
 import { readNote } from "./read-note.ts";
@@ -6,6 +13,7 @@ import { readNote } from "./read-note.ts";
 interface ProfileNote {
   text: string;
   tools?: string[];
+  hooks?: ProfileHook[];
 }
 
 // Reads the profile's note: its text and its header. A profile that cannot be read, or has no text
@@ -17,7 +25,7 @@ async function readProfile(root: string, name: string): Promise<Result<ProfileNo
   if (!header.ok) return err(new Error(`profile ${name} is not a note: ${header.error.message}`));
   const body = bodyOf(text.value);
   if (body === "") return err(new Error(`profile ${name} is empty`));
-  return ok({ text: body, tools: header.value.tools });
+  return ok({ text: body, tools: header.value.tools, hooks: header.value.hooks });
 }
 
 // The loader for a working directory: the text below a profile's header.
@@ -38,5 +46,14 @@ export function loadProfileTools(root: string): (name: string) => Promise<Result
     const unknown = (profile.value.tools ?? []).find((tool) => !toolNames.includes(tool));
     if (unknown !== undefined) return err(new Error(`profile ${name} allows a tool that does not exist`));
     return ok(profile.value.tools);
+  };
+}
+
+// The hooks a profile adds, from its `<point>: <command>` lines. Empty when it adds none.
+export function loadProfileHooks(root: string): (name: string) => Promise<Result<ProfileHook[]>> {
+  return async (name) => {
+    const profile = await readProfile(root, name);
+    if (!profile.ok) return profile;
+    return ok(profile.value.hooks ?? []);
   };
 }

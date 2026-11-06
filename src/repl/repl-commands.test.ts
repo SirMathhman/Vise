@@ -13,6 +13,7 @@ function ports(overrides: Partial<ReplPorts> = {}): ReplPorts {
     notes: async () => "notes are not available",
     profile: async () => err(new Error("no profiles are available")),
     profileTools: async () => ok(undefined),
+    profileHooks: async () => ok([]),
     hooks: async () => ok(""),
     disabledTools: [],
     saveDisabledTools: async () => ok(undefined),
@@ -314,4 +315,25 @@ test("a turn-start hook's output is shown on the terminal as well as sent", asyn
     ports({ hooks: async (point) => (point === "turnStart" ? ok("HOOK LINE") : ok("")) }),
   );
   expect(written).toContain("HOOK LINE");
+});
+
+test("the active profile's hooks are passed to the hook runner at their point", async () => {
+  const seen: string[][] = [];
+  await runRepl(
+    Readable.from(["/profile tester\n", "hi\n", "/exit\n"]),
+    new Writable({
+      write(_chunk, _encoding, done) {
+        done();
+      },
+    }),
+    ports({
+      profile: async () => ok("Body."),
+      profileHooks: async () => ok([{ point: "turnEnd", command: "npm test" }]),
+      hooks: async (point, profile) => {
+        if (point === "turnEnd") seen.push(profile ?? []);
+        return ok("");
+      },
+    }),
+  );
+  expect(seen).toEqual([["npm test"]]);
 });

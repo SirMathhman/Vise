@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Conversation } from "./compaction.ts";
 import type { ChatMessage } from "./messages.ts";
-import { checkName } from "./notes.ts";
+import { HOOK_POINTS, checkName } from "./notes.ts";
 import { err, ok, type Result } from "./result.ts";
 import { toolNames } from "./tools.ts";
 
@@ -27,7 +27,14 @@ const SessionSchema = z
     ),
     promptTokens: z.number().optional(),
     compacted: z.boolean(),
-    profile: z.object({ name: z.string(), text: z.string(), tools: z.array(z.string()).optional() }).optional(),
+    profile: z
+      .object({
+        name: z.string(),
+        text: z.string(),
+        tools: z.array(z.string()).optional(),
+        hooks: z.array(z.object({ point: z.enum(HOOK_POINTS), command: z.string() })).optional(),
+      })
+      .optional(),
     pendingProfile: z.string().optional(),
     pendingOutput: z.string().optional(),
     disabledTools: z.array(z.string()).optional(),

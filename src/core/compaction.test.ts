@@ -83,3 +83,12 @@ test("queued hook output is kept by a saved session", () => {
   const conversation: Conversation = { history: [], compacted: false, pendingOutput: "[hook]\ntext" };
   expect(decodeSession(encodeSession(conversation))).toEqual({ ok: true, value: conversation });
 });
+
+test("a saved session keeps the hooks its profile adds", () => {
+  const conversation: Conversation = {
+    history: [],
+    compacted: false,
+    profile: { name: "tester", text: "Body.", hooks: [{ point: "turnEnd", command: "npm test" }] },
+  };
+  expect(decodeSession(encodeSession(conversation))).toEqual({ ok: true, value: conversation });
+});

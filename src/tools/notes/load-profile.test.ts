@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadProfile, loadProfileTools } from "./load-profile.ts";
+import { loadProfile, loadProfileHooks, loadProfileTools } from "./load-profile.ts";
 
 test("loads the text below a profile's header, and refuses a missing or empty profile", async () => {
   const root = await mkdtemp(join(tmpdir(), "vise-profile-"));
@@ -23,4 +23,14 @@ test("reads a profile's tools line, and refuses one that names a tool that does 
   const tools = loadProfileTools(root);
   expect(await tools("reader")).toEqual({ ok: true, value: ["list_files"] });
   expect((await tools("typo")).ok).toBe(false);
+});
+
+test("reads a profile's point lines as its hooks", async () => {
+  const root = await mkdtemp(join(tmpdir(), "vise-profile-hooks-"));
+  await mkdir(join(root, "notes", "profile"), { recursive: true });
+  await writeFile(join(root, "notes", "profile", "tester.md"), "---\nname: tester\ncategory: profile\nsummary:\nturnEnd: npm test\n---\nBody.\n");
+  expect(await loadProfileHooks(root)("tester")).toEqual({
+    ok: true,
+    value: [{ point: "turnEnd", command: "npm test" }],
+  });
 });

@@ -2,7 +2,7 @@ import { readInstructions } from "./src/instructions.ts";
 import { modelContextWindow, streamChat } from "./src/openrouter.ts";
 import { runRepl } from "./src/repl/repl.ts";
 import { killAllJobs } from "./src/tools/jobs.ts";
-import { loadProfile, loadProfileTools } from "./src/tools/notes/load-profile.ts";
+import { loadProfile, loadProfileHooks, loadProfileTools } from "./src/tools/notes/load-profile.ts";
 import { runNoteCommand } from "./src/tools/notes/run-note-command.ts";
 import { runTool } from "./src/tools/run-tool.ts";
 import { hookRunner, readHooks } from "./src/tools/hooks/hooks.ts";
@@ -53,6 +53,7 @@ if (import.meta.main) {
       notes: runNoteCommand(process.cwd()),
       profile: loadProfile(process.cwd()),
       profileTools: loadProfileTools(process.cwd()),
+      profileHooks: loadProfileHooks(process.cwd()),
       disabledTools: disabled.value,
       saveDisabledTools: (names) => saveToolSettings(process.cwd(), names),
       sessions: sessionStore(process.cwd()),

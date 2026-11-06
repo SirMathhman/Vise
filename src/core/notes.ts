@@ -9,12 +9,28 @@ const NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
 const USAGE = "usage: /note new <category> <name> | /note list [category]";
 const PROFILE_USAGE = "usage: /profile [name | default]";
 
+// The points at which a hook runs: before and after a session, and before and after a turn.
+export const HOOK_POINTS = ["sessionStart", "sessionEnd", "turnStart", "turnEnd"] as const;
+export type HookPoint = (typeof HOOK_POINTS)[number];
+
+// A command a profile runs at one point, from a `<point>: <command>` line of its header.
+export interface ProfileHook {
+  point: HookPoint;
+  command: string;
+}
+
 export interface NoteHeader {
   name: string;
   category: string;
   summary: string;
   // The tools a profile allows, from its `tools:` line. Absent when the line is absent.
   tools?: string[];
+  // The hooks a profile adds, one per `<point>: <command>` line. Absent when there are none.
+  hooks?: ProfileHook[];
+}
+
+function isHookPoint(key: string): key is HookPoint {
+  return (HOOK_POINTS as readonly string[]).includes(key);
 }
 
 export interface NewNoteCommand {
@@ -84,9 +100,14 @@ export function parseHeader(text: string): Result<NoteHeader> {
   const end = headerEnd(lines);
   if (end < 0) return err(new Error("the note header is not closed"));
   const values = new Map<string, string>();
+  const hooks: ProfileHook[] = [];
   for (const line of lines.slice(1, end)) {
     const colon = line.indexOf(":");
-    if (colon > 0) values.set(line.slice(0, colon).trim(), line.slice(colon + 1).trim());
+    if (colon <= 0) continue;
+    const key = line.slice(0, colon).trim();
+    const value = line.slice(colon + 1).trim();
+    values.set(key, value);
+    if (isHookPoint(key) && value !== "") hooks.push({ point: key, command: value });
   }
   const name = values.get("name");
   const category = values.get("category");
@@ -94,6 +115,7 @@ export function parseHeader(text: string): Result<NoteHeader> {
   const tools = values.get("tools");
   const header: NoteHeader = { name, category, summary: values.get("summary") ?? "" };
   if (tools !== undefined) header.tools = tools.split(",").map((tool) => tool.trim()).filter((tool) => tool !== "");
+  if (hooks.length > 0) header.hooks = hooks;
   return ok(header);
 }
 
