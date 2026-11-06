@@ -18,6 +18,21 @@ export interface Conversation {
   pendingProfile?: string;
   // Tools switched off by the user. Every other tool is offered to the model.
   disabledTools?: string[];
+  // Output of hooks that has not been sent yet. It goes in front of the next user message.
+  pendingOutput?: string;
+}
+
+// The points at which a hook runs: before and after a session, and before and after a turn.
+export type HookPoint = "sessionStart" | "sessionEnd" | "turnStart" | "turnEnd";
+
+// Runs the hooks of one point and returns their output. A failure is an error.
+export type HookRunner = (point: HookPoint) => Promise<Result<string>>;
+
+// Adds hook output to the output waiting for the next message. Empty output changes nothing.
+export function queueHookOutput(conversation: Conversation, output: string): Conversation {
+  if (output === "") return conversation;
+  const pendingOutput = conversation.pendingOutput === undefined ? output : `${conversation.pendingOutput}\n\n${output}`;
+  return { ...conversation, pendingOutput };
 }
 
 // The tools offered to the model: every tool that is switched on, and, when the active profile has

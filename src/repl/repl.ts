@@ -6,10 +6,12 @@ import {
   compactIfNeeded,
   compactNow,
   enabledTools,
+  queueHookOutput,
   recordUsage,
   setToolEnabled,
   useProfile,
   type Conversation,
+  type HookRunner,
   type Step,
 } from "../core/compaction.ts";
 import type { ChatMessage, ContextWindow, Reply, ToolCall, Usage } from "../core/messages.ts";
@@ -55,6 +57,8 @@ export interface ReplPorts {
   profile: ProfileLoader;
   // The tools a profile allows, undefined when it has no whitelist.
   profileTools: (name: string) => Promise<Result<string[] | undefined>>;
+  // Runs the hooks of one point. Their output goes to the next message.
+  hooks: HookRunner;
   // The tools switched off when the session starts, and the writer for the settings file.
   disabledTools: string[];
   saveDisabledTools: SaveDisabledTools;
@@ -295,11 +299,88 @@ async function runCalls(step: CallsStep): Promise<ChatMessage[]> {
   return results;
 }
 
+// What one turn needs from the session.
+export interface TurnContext {
+  ports: ReplPorts;
+  output: Writable;
+  finished: () => boolean;
+  approve: Approve;
+}
+
+// What a turn leaves behind: the conversation to keep, and whether the session must stop.
+export interface TurnResult {
+  conversation: Conversation;
+  stop: boolean;
+}
+
+// Runs one message as a turn. The turn-start hooks run first, and their output waits for the message;
+// a failure of one stops this turn before it begins. The turn-end hooks run after the turn, whatever
+// its outcome, and a failure of one stops the session.
+async function runMessageTurn(text: string, conversation: Conversation, context: TurnContext): Promise<TurnResult> {
+  const { ports, output, finished, approve } = context;
+  const { reply, contextWindow, tools, instructions } = ports;
+  const started = await ports.hooks("turnStart");
+  if (!started.ok) {
+    output.write(`error: turn-start hook failed: ${started.error.message}\n`);
+    return { conversation, stop: false };
+  }
+  const compacted = await compactIfNeeded(queueHookOutput(conversation, started.value), reply, contextWindow);
+  if (compacted.notice) output.write(`${compacted.notice}\n`);
+  let current = compacted.conversation;
+  const turnStart = current.history.length;
+  // The instructions go in front of the first user message, so roles still alternate and compaction
+  // drops them with the rest of the old history. A pending profile and pending hook output go in
+  // front of the message after them, and are kept until a turn succeeds.
+  const first = current.history.length === 0 ? instructions : undefined;
+  const profile = current.pendingProfile;
+  const pending = current.pendingOutput;
+  const parts = [first, profile, pending, text].filter((part): part is string => part !== undefined);
+  current.history.push({ role: "user", content: parts.join("\n\n") });
+  current = { ...current, pendingProfile: undefined, pendingOutput: undefined };
+  // Each round asks the model. The first round answers the message just received; a round that
+  // asked for tools is followed by another only while the session has not ended.
+  for (;;) {
+    const round = await streamRound(current.history, reply, output, enabledTools(current));
+    if (round.failure) {
+      current.history.splice(turnStart);
+      current = { ...current, pendingProfile: profile, pendingOutput: pending };
+      output.write(`\nerror: ${round.failure.message}\n`);
+      break;
+    }
+    current.history.push({
+      role: "assistant",
+      content: round.answer,
+      toolCalls: round.calls.length > 0 ? round.calls : undefined,
+    });
+    // Only a completed request reports its size; a failed one leaves the stored size alone.
+    if (round.usage) current = recordUsage(current, round.usage);
+    if (round.calls.length === 0) {
+      output.write("\n");
+      break;
+    }
+    const results = await runCalls({
+      calls: round.calls,
+      tools,
+      approve,
+      finished,
+      offered: enabledTools(current),
+      output,
+    });
+    current.history.push(...results);
+    if (finished()) break;
+  }
+  const ended = await ports.hooks("turnEnd");
+  if (!ended.ok) {
+    output.write(`error: turn-end hook failed: ${ended.error.message}\n`);
+    return { conversation: current, stop: true };
+  }
+  return { conversation: queueHookOutput(current, ended.value), stop: false };
+}
+
 // Runs the session until /exit or end of input. A failure of the input or output
 // stream ends it early, and that failure is the result. Whatever happens, the
 // interface is closed and the listeners are removed before this returns.
 export async function runRepl(input: Readable, output: Writable, ports: ReplPorts): Promise<Result<void>> {
-  const { reply, contextWindow, tools, instructions } = ports;
   let conversation: Conversation = { history: [], compacted: false, disabledTools: ports.disabledTools };
   let streamError: Error | undefined;
   // Set when /exit is typed at an approval: the session ends and no further request is sent.
@@ -343,6 +424,10 @@ export async function runRepl(input: Readable, output: Writable, ports: ReplPort
   };
   try {
     rl.prompt();
+    // A session-start hook that fails stops the session. Its prompt has already been written.
+    const started = await ports.hooks("sessionStart");
+    if (!started.ok) return err(started.error);
+    conversation = queueHookOutput(conversation, started.value);
     for (let line = await lines.next(); line !== undefined && !exitRequested && streamError === undefined; line = await lines.next()) {
       const input = classifyLine(line);
       if (input.kind === "exit") break;
@@ -352,51 +437,14 @@ export async function runRepl(input: Readable, output: Writable, ports: ReplPort
         rl.prompt();
         continue;
       }
-      apply(await compactIfNeeded(conversation, reply, contextWindow));
-      const turnStart = conversation.history.length;
-      // The instructions go in front of the first user message, so roles still alternate
-      // and compaction drops them with the rest of the old history. A pending profile goes in
-      // front of the message after its switch, and is kept until a turn succeeds.
-      const first = conversation.history.length === 0 ? instructions : undefined;
-      const profile = conversation.pendingProfile;
-      const parts = [first, profile, input.text].filter((part): part is string => part !== undefined);
-      conversation.history.push({ role: "user", content: parts.join("\n\n") });
-      conversation = { ...conversation, pendingProfile: undefined };
-      // Each round asks the model. The first round answers the line just received; a round that
-      // asked for tools is followed by another only while the session has not ended.
-      for (;;) {
-        const round = await streamRound(conversation.history, reply, output, enabledTools(conversation));
-        if (round.failure) {
-          conversation.history.splice(turnStart);
-          conversation = { ...conversation, pendingProfile: profile };
-          output.write(`\nerror: ${round.failure.message}\n`);
-          break;
-        }
-        conversation.history.push({
-          role: "assistant",
-          content: round.answer,
-          toolCalls: round.calls.length > 0 ? round.calls : undefined,
-        });
-        // Only a completed request reports its size; a failed one leaves the stored size alone.
-        if (round.usage) conversation = recordUsage(conversation, round.usage);
-        if (round.calls.length === 0) {
-          output.write("\n");
-          break;
-        }
-        const results = await runCalls({
-          calls: round.calls,
-          tools,
-          approve,
-          finished,
-          offered: enabledTools(conversation),
-          output,
-        });
-        conversation.history.push(...results);
-        if (finished()) break;
-      }
+      const turn = await runMessageTurn(input.text, conversation, { ports, output, finished, approve });
+      conversation = turn.conversation;
+      if (turn.stop) break;
       if (exitRequested || streamError !== undefined) break;
       rl.prompt();
     }
+    const ended = await ports.hooks("sessionEnd");
+    if (!ended.ok) output.write(`error: session-end hook failed: ${ended.error.message}\n`);
   } finally {
     input.off("error", fail);
     output.off("error", fail);

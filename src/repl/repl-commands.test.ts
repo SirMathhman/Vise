@@ -13,6 +13,7 @@ function ports(overrides: Partial<ReplPorts> = {}): ReplPorts {
     notes: async () => "notes are not available",
     profile: async () => err(new Error("no profiles are available")),
     profileTools: async () => ok(undefined),
+    hooks: async () => ok(""),
     disabledTools: [],
     saveDisabledTools: async () => ok(undefined),
     sessions: { save: async () => ok(undefined), load: async () => err(new Error("none")), list: async () => ok([]) },
@@ -246,4 +247,55 @@ test("a profile's whitelist limits the tools offered to the model from the next 
     }),
   );
   expect(offered[0]).toEqual(["list_files"]);
+});
+
+test("a turn-start hook's output goes in front of the message, and a failing one stops the turn", async () => {
+  const seen: string[] = [];
+  const reply: Reply = async function* (messages) {
+    seen.push(messages.at(-1)?.content ?? "");
+    yield ok("ok");
+  };
+  const output = new Writable({
+    write(_chunk, _encoding, done) {
+      done();
+    },
+  });
+  await runRepl(
+    Readable.from(["hello\n"]),
+    output,
+    ports({
+      reply,
+      hooks: async (point) => (point === "turnStart" ? ok("HOOK") : ok("")),
+    }),
+  );
+  expect(seen).toEqual(["HOOK\n\nhello"]);
+  seen.length = 0;
+  let refused = "";
+  const errorOutput = new Writable({
+    write(chunk, _encoding, done) {
+      refused += chunk.toString();
+      done();
+    },
+  });
+  await runRepl(
+    Readable.from(["hello\n"]),
+    errorOutput,
+    ports({ reply, hooks: async (point) => (point === "turnStart" ? err(new Error("boom")) : ok("")) }),
+  );
+  expect(seen).toEqual([]);
+  expect(refused).toContain("error: turn-start hook failed: boom");
+});
+
+test("a session-start hook that fails refuses the session", async () => {
+  const output = new Writable({
+    write(_chunk, _encoding, done) {
+      done();
+    },
+  });
+  const result = await runRepl(
+    Readable.from(["hello\n"]),
+    output,
+    ports({ hooks: async (point) => (point === "sessionStart" ? err(new Error("no start")) : ok("")) }),
+  );
+  expect(result.ok).toBe(false);
 });

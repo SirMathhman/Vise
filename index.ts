@@ -5,6 +5,7 @@ import { killAllJobs } from "./src/tools/jobs.ts";
 import { loadProfile, loadProfileTools } from "./src/tools/notes/load-profile.ts";
 import { runNoteCommand } from "./src/tools/notes/run-note-command.ts";
 import { runTool } from "./src/tools/run-tool.ts";
+import { hookRunner, readHooks } from "./src/tools/hooks/hooks.ts";
 import { sessionStore } from "./src/tools/session-store.ts";
 import { readToolSettings, saveToolSettings } from "./src/tools/tool-settings.ts";
 
@@ -35,9 +36,16 @@ if (import.meta.main) {
     console.error(`error: ${disabled.error.message}`);
     process.exit(1);
   }
+  // Read once, here: the hooks in the hooks file. A file that is not valid stops startup.
+  const hookConfig = await readHooks(process.cwd());
+  if (!hookConfig.ok) {
+    console.error(`error: ${hookConfig.error.message}`);
+    process.exit(1);
+  }
   let failed = false;
   try {
     const result = await runRepl(process.stdin, process.stdout, {
+      hooks: hookRunner(process.cwd(), hookConfig.value),
       reply: (messages, onUsage, onToolCall, tools) =>
         streamChat({ apiKey, model: MODEL, messages, onUsage, onToolCall, tools }),
       contextWindow: () => modelContextWindow({ model: MODEL }),
