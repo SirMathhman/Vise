@@ -14,6 +14,7 @@ function ports(overrides: Partial<ReplPorts> = {}): ReplPorts {
     profile: async () => err(new Error("no profiles are available")),
     disabledTools: [],
     saveDisabledTools: async () => ok(undefined),
+    sessions: { save: async () => ok(undefined), load: async () => err(new Error("none")), list: async () => ok([]) },
     ...overrides,
   };
 }
@@ -160,4 +161,35 @@ test("/tools disable saves the switched-off tools", async () => {
     }),
   );
   expect(saved).toEqual([["kill_command"], [], ["run_powershell"]]);
+});
+
+test("/save writes the conversation, and /load in a new session brings it back for the next request", async () => {
+  const files = new Map<string, string>();
+  const sessions = {
+    save: async (name: string, text: string) => {
+      files.set(name, text);
+      return ok(undefined);
+    },
+    load: async (name: string) => {
+      const text = files.get(name);
+      return text === undefined ? err(new Error("no saved session")) : ok(text);
+    },
+    list: async () => ok([...files.keys()]),
+  };
+  const output = new Writable({
+    write(_chunk, _encoding, done) {
+      done();
+    },
+  });
+  const first: Reply = async function* () {
+    yield ok("ok");
+  };
+  await runRepl(Readable.from(["hello\n", "/save work\n"]), output, ports({ reply: first, sessions }));
+  const seen: string[][] = [];
+  const reply: Reply = async function* (messages) {
+    seen.push(messages.map((message) => message.content));
+    yield ok("ok");
+  };
+  await runRepl(Readable.from(["/load work\n", "again\n"]), output, ports({ reply, sessions }));
+  expect(seen[0]).toEqual(["hello", "ok", "again"]);
 });

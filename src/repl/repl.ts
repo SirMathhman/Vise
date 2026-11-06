@@ -24,6 +24,7 @@ import {
   type ToolRunner,
 } from "../core/tools.ts";
 import { err, ok, type Result } from "../core/result.ts";
+import { decodeSession, encodeSession, parseSessionCommand, type SessionStore } from "../core/sessions.ts";
 
 export type { ContextWindow, Reply } from "../core/messages.ts";
 
@@ -55,6 +56,8 @@ export interface ReplPorts {
   // The tools switched off when the session starts, and the writer for the settings file.
   disabledTools: string[];
   saveDisabledTools: SaveDisabledTools;
+  // Where /save and /load keep sessions.
+  sessions: SessionStore;
   // Text sent ahead of the first message of the session (the AGENTS.md file), if any.
   instructions?: string;
 }
@@ -83,6 +86,8 @@ async function runCommand(
       return runProfileCommand(input.words, ports, output, conversation);
     case "tools":
       return runToolsCommand(input.words, ports, output, conversation);
+    case "session":
+      return runSessionCommand(input.words, ports, output, conversation);
     case "unknown-command":
       output.write(`error: unknown command ${input.command}\n`);
       return undefined;
@@ -136,6 +141,43 @@ async function runToolsCommand(
   const saved = await ports.saveDisabledTools(step.conversation.disabledTools ?? []);
   if (!saved.ok) output.write(`error: could not save tool settings: ${saved.error.message}\n`);
   return step;
+}
+
+// Runs /save, /load, and /sessions. A save writes the conversation as it is now. A load replaces the
+// conversation with the saved one, and only a file that passes the session format is loaded.
+async function runSessionCommand(
+  words: string[],
+  ports: ReplPorts,
+  output: Writable,
+  conversation: Conversation,
+): Promise<Step | undefined> {
+  const command = parseSessionCommand(words);
+  if (!command.ok) {
+    output.write(`error: ${command.error.message}\n`);
+    return undefined;
+  }
+  if (command.value.kind === "list") {
+    const names = await ports.sessions.list();
+    if (!names.ok) output.write(`error: ${names.error.message}\n`);
+    else output.write(`${names.value.length === 0 ? "(no saved sessions)" : names.value.join("\n")}\n`);
+    return undefined;
+  }
+  if (command.value.kind === "save") {
+    const saved = await ports.sessions.save(command.value.name, encodeSession(conversation));
+    output.write(saved.ok ? `saved ${command.value.name}\n` : `error: ${saved.error.message}\n`);
+    return undefined;
+  }
+  const text = await ports.sessions.load(command.value.name);
+  if (!text.ok) {
+    output.write(`error: ${text.error.message}\n`);
+    return undefined;
+  }
+  const loaded = decodeSession(text.value);
+  if (!loaded.ok) {
+    output.write(`error: ${loaded.error.message}\n`);
+    return undefined;
+  }
+  return { conversation: loaded.value, notice: `loaded ${command.value.name}` };
 }
 
 // The input lines, in order, held until they are read. `more` says whether another line

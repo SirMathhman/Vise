@@ -14,6 +14,7 @@ function ports(overrides: Partial<ReplPorts> = {}): ReplPorts {
     profile: async () => err(new Error("no profiles are available")),
     disabledTools: [],
     saveDisabledTools: async () => ok(undefined),
+    sessions: { save: async () => ok(undefined), load: async () => err(new Error("none")), list: async () => ok([]) },
     ...overrides,
   };
 }

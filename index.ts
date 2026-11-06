@@ -5,6 +5,7 @@ import { killAllJobs } from "./src/tools/jobs.ts";
 import { loadProfile } from "./src/tools/notes/load-profile.ts";
 import { runNoteCommand } from "./src/tools/notes/run-note-command.ts";
 import { runTool } from "./src/tools/run-tool.ts";
+import { sessionStore } from "./src/tools/session-store.ts";
 import { readToolSettings, saveToolSettings } from "./src/tools/tool-settings.ts";
 
 const MODEL = "anthropic/claude-haiku-5.5";
@@ -45,6 +46,7 @@ if (import.meta.main) {
       profile: loadProfile(process.cwd()),
       disabledTools: disabled.value,
       saveDisabledTools: (names) => saveToolSettings(process.cwd(), names),
+      sessions: sessionStore(process.cwd()),
       instructions,
     });
     if (!result.ok) {

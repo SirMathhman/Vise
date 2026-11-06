@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { clearProfile, enabledTools, needsCompaction, setToolEnabled, useProfile, type Conversation } from "./compaction.ts";
+import { decodeSession, encodeSession, parseSessionCommand } from "./sessions.ts";
 
 test("compacts once the last prompt reaches 80% of the context window", () => {
   expect(needsCompaction(79, 100)).toBe(false);
@@ -28,4 +29,30 @@ test("using a profile makes it pending and clearing turns it off, keeping the hi
   expect(off.conversation.profile).toBeUndefined();
   expect(off.conversation.pendingProfile).toBeUndefined();
   expect(off.conversation.history).toEqual(start.history);
+});
+
+test("a session file reads back to the conversation it was saved from, and a bad one is refused", () => {
+  const conversation: Conversation = {
+    history: [
+      { role: "user", content: "hi" },
+      { role: "assistant", content: "", toolCalls: [{ id: "c1", name: "list_files", arguments: "{}" }] },
+      { role: "tool", toolCallId: "c1", content: "a.txt" },
+    ],
+    promptTokens: 42,
+    compacted: false,
+    profile: { name: "terse", text: "Be brief." },
+    disabledTools: ["kill_command"],
+  };
+  expect(decodeSession(encodeSession(conversation))).toEqual({ ok: true, value: conversation });
+  expect(decodeSession("not json").ok).toBe(false);
+  expect(decodeSession('{"version":1,"history":[],"compacted":false,"disabledTools":["nope"]}').ok).toBe(false);
+  expect(decodeSession('{"version":1,"history":[{"role":"robot"}],"compacted":false}').ok).toBe(false);
+});
+
+test("reads /save, /load, and /sessions, and refuses a bad name or use", () => {
+  expect(parseSessionCommand(["save", "work"])).toEqual({ ok: true, value: { kind: "save", name: "work" } });
+  expect(parseSessionCommand(["load", "work"])).toEqual({ ok: true, value: { kind: "load", name: "work" } });
+  expect(parseSessionCommand(["sessions"])).toEqual({ ok: true, value: { kind: "list" } });
+  expect(parseSessionCommand(["save", "a/b"]).ok).toBe(false);
+  expect(parseSessionCommand(["save"]).ok).toBe(false);
 });

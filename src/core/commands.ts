@@ -33,6 +33,12 @@ export interface ToolsLine {
   words: string[];
 }
 
+// A session command: /save, /load, or /sessions. words are the words after the slash, split on whitespace.
+export interface SessionLine {
+  kind: "session";
+  words: string[];
+}
+
 export interface MessageLine {
   kind: "message";
   text: string;
@@ -45,6 +51,7 @@ export type Line =
   | NoteLine
   | ProfileLine
   | ToolsLine
+  | SessionLine
   | UnknownCommandLine
   | MessageLine;
 
@@ -61,6 +68,9 @@ export function classifyLine(line: string): Line {
   }
   if (command === "/tools" || command.startsWith("/tools ")) {
     return { kind: "tools", words: command.split(/\s+/).slice(1) };
+  }
+  if (/^\/(save|load|sessions)(\s|$)/.test(command)) {
+    return { kind: "session", words: command.slice(1).split(/\s+/) };
   }
   if (command === "/profile" || command.startsWith("/profile ")) {
     return { kind: "profile", words: command.split(/\s+/).slice(1) };
