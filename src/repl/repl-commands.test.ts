@@ -337,3 +337,23 @@ test("the active profile's hooks are passed to the hook runner at their point", 
   );
   expect(seen).toEqual([["npm test"]]);
 });
+
+test("/thinking sets the effort for later requests, and the thinking count is shown", async () => {
+  const seen: (string | undefined)[] = [];
+  const reply: Reply = async function* (_messages, _onUsage, _onToolCall, _tools, reasoning, onThinking) {
+    seen.push(reasoning);
+    onThinking(5);
+    yield ok("answer");
+  };
+  let written = "";
+  const output = new Writable({
+    write(chunk, _encoding, done) {
+      written += chunk.toString();
+      done();
+    },
+  });
+  await runRepl(Readable.from(["/thinking low\n", "/thinking\n", "hi\n"]), output, ports({ reply }));
+  expect(seen).toEqual(["low"]);
+  expect(written).toContain("thinking: low");
+  expect(written).toContain("thinking: ~5 tokens");
+});

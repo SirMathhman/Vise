@@ -205,3 +205,33 @@ test("keeps the text and the usage when one event carries both", async () => {
   expect(parts).toEqual([ok("Hi")]);
   expect(usages).toEqual([{ promptTokens: 7 }]);
 });
+
+test("sends the reasoning effort, reports thinking as it streams, and reports the exact thinking count at the end", async () => {
+  const body = [
+    'data: {"choices":[{"delta":{"reasoning_details":[{"text":"abcdefgh"}]}}]}\n\n',
+    'data: {"choices":[{"delta":{"reasoning":"ijkl"}}]}\n\n',
+    'data: {"choices":[{"delta":{"content":"hi"}}],"usage":{"prompt_tokens":5,"completion_tokens_details":{"reasoning_tokens":7}}}\n\n',
+    "data: [DONE]\n\n",
+  ].join("");
+  let sentBody = "";
+  const fakeFetch = async (_url: string, init: RequestInit) => {
+    sentBody = String(init.body);
+    return new Response(body, { status: 200 });
+  };
+  const thinking: number[] = [];
+  const usage: Usage[] = [];
+  await drain(
+    streamChat({
+      apiKey: "key",
+      model: "anthropic/claude-haiku-5.5",
+      messages: [{ role: "user", content: "hi" }],
+      fetch: fakeFetch,
+      reasoning: "low",
+      onThinking: (tokens) => thinking.push(tokens),
+      onUsage: (report) => usage.push(report),
+    }),
+  );
+  expect(JSON.parse(sentBody).reasoning).toEqual({ effort: "low" });
+  expect(thinking).toEqual([2, 3]);
+  expect(usage.at(-1)?.reasoningTokens).toBe(7);
+});

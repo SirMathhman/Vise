@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ChatMessage, ToolCall, Usage } from "./core/messages.ts";
+import type { ChatMessage, ReasoningEffort, ToolCall, Usage } from "./core/messages.ts";
 import { err, ok, type Result } from "./core/result.ts";
 import { toolNames, toolSpecs } from "./core/tools.ts";
 
@@ -17,6 +17,9 @@ const StreamEventSchema = z.object({
         delta: z
           .object({
             content: z.string().nullish(),
+            reasoning: z.string().nullish(),
+            // Each item is checked where it is read, since reasoning can also arrive in shapes that carry no text.
+            reasoning_details: z.array(z.unknown()).nullish(),
             tool_calls: z
               .array(
                 z.object({
@@ -31,7 +34,12 @@ const StreamEventSchema = z.object({
       }),
     )
     .optional(),
-  usage: z.object({ prompt_tokens: z.number().optional() }).nullish(),
+  usage: z
+    .object({
+      prompt_tokens: z.number().optional(),
+      completion_tokens_details: z.object({ reasoning_tokens: z.number().optional() }).nullish(),
+    })
+    .nullish(),
 });
 
 const ModelListingSchema = z.object({
@@ -94,6 +102,25 @@ interface StreamOptions {
   onToolCall?: (call: ToolCall) => void;
   // The tools to offer, by name. Every tool when omitted, and none when empty.
   tools?: string[];
+  // Turns thinking on at this effort. Off when omitted.
+  reasoning?: ReasoningEffort;
+  // Called with the approximate thinking tokens so far, as thinking text arrives.
+  onThinking?: (approximateTokens: number) => void;
+}
+
+// Reasoning text is about four characters to a token. The count is an estimate until the exact one arrives.
+const CHARS_PER_TOKEN = 4;
+
+// The text of one reasoning item, when it has any. Items that carry none (for example, encrypted
+// ones) add nothing to the count.
+interface ReasoningItem {
+  text?: unknown;
+}
+
+function reasoningTextOf(item: unknown): string {
+  if (typeof item !== "object" || item === null) return "";
+  const text = (item as ReasoningItem).text;
+  return typeof text === "string" ? text : "";
 }
 
 // Yields each text delta as ok. The request's usage goes to onUsage when the server reports it,
@@ -106,6 +133,7 @@ export async function* streamChat(options: StreamOptions): AsyncGenerator<Result
     return;
   }
   const calls = new Map<number, ToolCall>();
+  let thinkingChars = 0;
   for await (const line of lines(body.value)) {
     if (!line.ok) {
       yield err(line.error);
@@ -119,6 +147,10 @@ export async function* streamChat(options: StreamOptions): AsyncGenerator<Result
     if (event.value === DONE) {
       emitToolCalls(calls, options.onToolCall);
       return;
+    }
+    if (event.value?.reasoningText) {
+      thinkingChars += event.value.reasoningText.length;
+      options.onThinking?.(Math.ceil(thinkingChars / CHARS_PER_TOKEN));
     }
     if (event.value?.usage) options.onUsage?.(event.value.usage);
     if (event.value?.text) yield ok(event.value.text);
@@ -141,6 +173,7 @@ async function postChat(options: StreamOptions): Promise<Result<ReadableStream<U
         model: options.model,
         messages: wireMessages(options.messages),
         ...(offered.length > 0 ? { tools: offered } : {}),
+        ...(options.reasoning ? { reasoning: { effort: options.reasoning } } : {}),
         stream: true,
       }),
     });
@@ -186,6 +219,7 @@ interface ToolCallDelta {
 // What one `data:` line carries. A single event can have several of these.
 interface StreamEvent {
   text?: string;
+  reasoningText?: string;
   usage?: Usage;
   toolCalls?: ToolCallDelta[];
 }
@@ -202,10 +236,16 @@ function parseEventLine(line: string): Result<StreamEvent | typeof DONE | undefi
   const event = decoded.value;
   if (event.error) return err(new Error(`OpenRouter error: ${event.error.message ?? "unknown error"}`));
   const promptTokens = event.usage?.prompt_tokens;
+  const reasoningTokens = event.usage?.completion_tokens_details?.reasoning_tokens;
   const delta = event.choices?.[0]?.delta;
+  const reasoningText = `${delta?.reasoning ?? ""}${(delta?.reasoning_details ?? []).map(reasoningTextOf).join("")}`;
   return ok({
     text: delta?.content ?? undefined,
-    usage: typeof promptTokens === "number" ? { promptTokens } : undefined,
+    reasoningText: reasoningText === "" ? undefined : reasoningText,
+    usage:
+      typeof promptTokens === "number"
+        ? { promptTokens, reasoningTokens: reasoningTokens ?? undefined }
+        : undefined,
     toolCalls: delta?.tool_calls?.map((call) => ({
       index: call.index,
       id: call.id ?? undefined,

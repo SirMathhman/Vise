@@ -1,4 +1,4 @@
-import type { ChatMessage, ContextWindow, Reply, Usage } from "./messages.ts";
+import type { ChatMessage, ContextWindow, ReasoningEffort, Reply, Usage } from "./messages.ts";
 import { err, ok, type Result } from "./result.ts";
 import { toolNames } from "./tools.ts";
 import type { HookPoint, ProfileHook } from "./notes.ts";
@@ -23,6 +23,16 @@ export interface Conversation {
   disabledTools?: string[];
   // Output of hooks that has not been sent yet. It goes in front of the next user message.
   pendingOutput?: string;
+  // How hard the model thinks. Absent when thinking is off.
+  thinking?: ReasoningEffort;
+}
+
+// Sets how hard the model thinks from the next request. Undefined turns thinking off.
+export function setThinking(conversation: Conversation, effort: ReasoningEffort | undefined): Step {
+  return {
+    conversation: { ...conversation, thinking: effort },
+    notice: `thinking: ${effort ?? "off"}`,
+  };
 }
 
 // Runs the hooks of one point and returns their output. The global hooks of that point run first,
@@ -103,7 +113,14 @@ export async function compact(conversation: Conversation, reply: Reply): Promise
   if (conversation.history.length === 0) return err(new Error("nothing to compact"));
   let summary = "";
   try {
-    for await (const chunk of reply(compactionRequest(conversation.history), () => {}, () => {}, enabledTools(conversation))) {
+    for await (const chunk of reply(
+      compactionRequest(conversation.history),
+      () => {},
+      () => {},
+      enabledTools(conversation),
+      conversation.thinking,
+      () => {},
+    )) {
       if (!chunk.ok) return chunk;
       summary += chunk.value;
     }

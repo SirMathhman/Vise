@@ -1,6 +1,13 @@
 import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
-import { classifyLine, contextLine, type ExitLine, type Line, type MessageLine } from "../core/commands.ts";
+import {
+  classifyLine,
+  contextLine,
+  parseThinkingCommand,
+  type ExitLine,
+  type Line,
+  type MessageLine,
+} from "../core/commands.ts";
 import {
   clearProfile,
   compactIfNeeded,
@@ -8,6 +15,7 @@ import {
   enabledTools,
   profileCommands,
   queueHookOutput,
+  setThinking,
   recordUsage,
   setToolEnabled,
   useProfile,
@@ -15,7 +23,7 @@ import {
   type HookRunner,
   type Step,
 } from "../core/compaction.ts";
-import type { ChatMessage, ContextWindow, Reply, ToolCall, Usage } from "../core/messages.ts";
+import type { ChatMessage, ContextWindow, ReasoningEffort, Reply, ToolCall, Usage } from "../core/messages.ts";
 import { parseProfileCommand, type NoteRunner, type ProfileHook, type ProfileLoader } from "../core/notes.ts";
 import {
   RUN_SUBAGENT,
@@ -100,6 +108,8 @@ async function runCommand(
       return runToolsCommand(input.words, ports, output, conversation);
     case "session":
       return runSessionCommand(input.words, ports, output, conversation);
+    case "thinking":
+      return runThinkingCommand(input.words, output, conversation);
     case "unknown-command":
       output.write(`error: unknown command ${input.command}\n`);
       return undefined;
@@ -168,6 +178,20 @@ async function runToolsCommand(
   const saved = await ports.saveDisabledTools(step.conversation.disabledTools ?? []);
   if (!saved.ok) output.write(`error: could not save tool settings: ${saved.error.message}\n`);
   return step;
+}
+
+// Runs /thinking: shows how hard the model thinks, or sets it for the following requests.
+async function runThinkingCommand(words: string[], output: Writable, conversation: Conversation): Promise<Step | undefined> {
+  const command = parseThinkingCommand(words);
+  if (!command.ok) {
+    output.write(`error: ${command.error.message}\n`);
+    return undefined;
+  }
+  if (command.value.kind === "show") {
+    output.write(`thinking: ${conversation.thinking ?? "off"}\n`);
+    return undefined;
+  }
+  return setThinking(conversation, command.value.effort);
 }
 
 // Runs /save, /load, and /sessions. A save writes the conversation as it is now. A load replaces the
@@ -261,8 +285,42 @@ interface Round {
   failure?: Error;
 }
 
-async function streamRound(history: ChatMessage[], reply: Reply, output: Writable, offered: string[]): Promise<Round> {
+// The thinking line of one request: rewritten in place while the model thinks, then replaced by the
+// count. `width` is the length of the longest text written, so a shorter one clears the rest.
+interface ThinkingView {
+  shown: boolean;
+  open: boolean;
+  approximate: number;
+  width: number;
+}
+
+// Ends the thinking line with the exact count when the provider reported one, or the estimate otherwise.
+function finishThinking(output: Writable, view: ThinkingView, exact: number | undefined): void {
+  if (!view.shown) return;
+  const text = exact === undefined ? `thinking: ~${view.approximate} tokens` : `thinking: ${exact} tokens`;
+  output.write(`${view.open ? "\r" : ""}${text.padEnd(view.width)}\n`);
+  view.open = false;
+}
+
+async function streamRound(
+  history: ChatMessage[],
+  reply: Reply,
+  output: Writable,
+  offered: string[],
+  reasoning: ReasoningEffort | undefined,
+): Promise<Round> {
   const round: Round = { answer: "", calls: [] };
+  const view: ThinkingView = { shown: false, open: false, approximate: 0, width: 0 };
+  const onThinking = (approximate: number) => {
+    // Thinking that comes after the answer has started is not shown; the model thinks first.
+    if (round.answer !== "") return;
+    const text = `thinking: ~${approximate} tokens`;
+    view.shown = true;
+    view.open = true;
+    view.approximate = approximate;
+    view.width = Math.max(view.width, text.length);
+    output.write(`\r${text.padEnd(view.width)}`);
+  };
   try {
     for await (const chunk of reply(
       history,
@@ -273,14 +331,25 @@ async function streamRound(history: ChatMessage[], reply: Reply, output: Writabl
         round.calls.push(call);
       },
       offered,
+      reasoning,
+      onThinking,
     )) {
-      if (!chunk.ok) return { ...round, failure: chunk.error };
+      if (!chunk.ok) {
+        finishThinking(output, view, round.usage?.reasoningTokens);
+        return { ...round, failure: chunk.error };
+      }
+      if (chunk.value !== "" && view.open) {
+        output.write("\n");
+        view.open = false;
+      }
       round.answer += chunk.value;
       output.write(chunk.value);
     }
   } catch (error) {
+    finishThinking(output, view, round.usage?.reasoningTokens);
     return { ...round, failure: error instanceof Error ? error : new Error(String(error)) };
   }
+  finishThinking(output, view, round.usage?.reasoningTokens);
   return round;
 }
 
@@ -387,7 +456,7 @@ async function runMessageTurn(text: string, conversation: Conversation, context:
   // Each round asks the model. The first round answers the message just received; a round that
   // asked for tools is followed by another only while the session has not ended.
   for (;;) {
-    const round = await streamRound(current.history, reply, output, enabledTools(current));
+    const round = await streamRound(current.history, reply, output, enabledTools(current), current.thinking);
     if (round.failure) {
       current.history.splice(turnStart);
       current = { ...current, pendingProfile: profile, pendingOutput: pending };

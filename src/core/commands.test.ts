@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { classifyLine } from "./commands.ts";
 import { parseSubagentArgs, parseToolsCommand, toolStates } from "./tools.ts";
+import { parseThinkingCommand } from "./commands.ts";
 
 test("recognises /exit and /context after trimming and keeps other lines as messages", () => {
   expect(classifyLine("  /exit  ")).toEqual({ kind: "exit" });
@@ -38,4 +39,11 @@ test("reads run_subagent arguments: a profile name, a task, and a whole-number l
   expect(parseSubagentArgs('{"profile":"reader","task":"look","max_tool_calls":0}').ok).toBe(false);
   expect(parseSubagentArgs('{"profile":"reader","task":" ","max_tool_calls":2}').ok).toBe(false);
   expect(parseSubagentArgs('{"profile":"a/b","task":"look","max_tool_calls":2}').ok).toBe(false);
+});
+
+test("reads /thinking: nothing shows, and off, low, medium, or high sets it", () => {
+  expect(parseThinkingCommand([])).toEqual({ ok: true, value: { kind: "show" } });
+  expect(parseThinkingCommand(["low"])).toEqual({ ok: true, value: { kind: "set", effort: "low" } });
+  expect(parseThinkingCommand(["off"])).toEqual({ ok: true, value: { kind: "set", effort: undefined } });
+  expect(parseThinkingCommand(["max"]).ok).toBe(false);
 });

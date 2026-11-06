@@ -1,3 +1,6 @@
+import type { ReasoningEffort } from "./messages.ts";
+import { err, ok, type Result } from "./result.ts";
+
 export interface ExitLine {
   kind: "exit";
 }
@@ -44,7 +47,14 @@ export interface MessageLine {
   text: string;
 }
 
+// A /thinking command. words are the words after /thinking, split on whitespace.
+export interface ThinkingLine {
+  kind: "thinking";
+  words: string[];
+}
+
 export type Line =
+  | ThinkingLine
   | ExitLine
   | ContextLine
   | CompactLine
@@ -75,8 +85,33 @@ export function classifyLine(line: string): Line {
   if (command === "/profile" || command.startsWith("/profile ")) {
     return { kind: "profile", words: command.split(/\s+/).slice(1) };
   }
+  if (command === "/thinking" || command.startsWith("/thinking ")) {
+    return { kind: "thinking", words: command.split(/\s+/).slice(1) };
+  }
   if (command.startsWith("/")) return { kind: "unknown-command", command };
   return { kind: "message", text: line };
+}
+
+export interface ShowThinkingCommand {
+  kind: "show";
+}
+
+// Sets the effort: `undefined` turns thinking off.
+export interface SetThinkingCommand {
+  kind: "set";
+  effort: ReasoningEffort | undefined;
+}
+
+export type ThinkingCommand = ShowThinkingCommand | SetThinkingCommand;
+
+// Reads the words after /thinking: nothing shows the setting, and off, low, medium, or high sets it.
+export function parseThinkingCommand(words: string[]): Result<ThinkingCommand> {
+  const [level] = words;
+  if (words.length === 0) return ok({ kind: "show" });
+  if (words.length !== 1) return err(new Error("usage: /thinking [off | low | medium | high]"));
+  if (level === "off") return ok({ kind: "set", effort: undefined });
+  if (level === "low" || level === "medium" || level === "high") return ok({ kind: "set", effort: level });
+  return err(new Error("usage: /thinking [off | low | medium | high]"));
 }
 
 export function contextLine(
