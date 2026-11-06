@@ -19,7 +19,10 @@ test("lists files to the given depth, skipping hidden entries, and refuses paths
   const shallow = await listFiles(root, ".", 1);
   const deeper = await listFiles(root, ".", 2);
   expect(shallow).toEqual({ ok: true, value: "a.txt" });
-  expect(deeper).toEqual({ ok: true, value: ["a.txt", join("sub", "b.txt")].join("\n") });
+  expect(deeper).toEqual({
+    ok: true,
+    value: ["a.txt", join("sub", "b.txt")].join("\n"),
+  });
   const outside = await listFiles(root, "..", 1);
   expect(outside.ok).toBe(false);
 });

@@ -15,7 +15,9 @@ export interface SelectModelOptions {
 
 // Switches to a model that is listed. The name must be listed, and the choice is saved before the switch,
 // so a choice that cannot be saved does not take effect. Resolves with the name chosen.
-export async function selectModel(options: SelectModelOptions): Promise<Result<string>> {
+export async function selectModel(
+  options: SelectModelOptions,
+): Promise<Result<string>> {
   const listed = await options.list();
   if (!listed.ok) return listed;
   if (!listed.value.some((model) => model.id === options.name)) {

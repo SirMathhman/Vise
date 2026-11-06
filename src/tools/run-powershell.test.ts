@@ -30,14 +30,21 @@ test("cuts output longer than 500 lines, keeping the last 500", async () => {
 
 test("keeps stderr when stdout is long", async () => {
   const root = await mkdtemp(join(tmpdir(), "vise-ps-"));
-  const result = await runPowershell(root, "1..600; [Console]::Error.WriteLine('boom-stderr')");
+  const result = await runPowershell(
+    root,
+    "1..600; [Console]::Error.WriteLine('boom-stderr')",
+  );
   expect(result.ok && result.value.includes("boom-stderr")).toBe(true);
 });
 
 test("a command still running at the timeout becomes a background job that can be killed", async () => {
   const root = await mkdtemp(join(tmpdir(), "vise-ps-"));
   const started = Date.now();
-  const result = await runPowershell(root, "Write-Output started; Start-Sleep 20; 'late'", 1000);
+  const result = await runPowershell(
+    root,
+    "Write-Output started; Start-Sleep 20; 'late'",
+    1000,
+  );
   expect(Date.now() - started).toBeLessThan(10_000);
   const match = result.ok ? /as job (\d+)/.exec(result.value) : null;
   expect(match).not.toBeNull();
@@ -53,8 +60,14 @@ test("a command still running at the timeout becomes a background job that can b
 test("returns at the timeout even when a child process keeps the output open", async () => {
   const root = await mkdtemp(join(tmpdir(), "vise-ps-"));
   const started = Date.now();
-  const result = await runPowershell(root, "& cmd /c 'ping -n 60 127.0.0.1 > nul'", 1000);
-  expect(result.ok && result.value.includes("still running after 1 seconds as job")).toBe(true);
+  const result = await runPowershell(
+    root,
+    "& cmd /c 'ping -n 60 127.0.0.1 > nul'",
+    1000,
+  );
+  expect(
+    result.ok && result.value.includes("still running after 1 seconds as job"),
+  ).toBe(true);
   expect(Date.now() - started).toBeLessThan(10_000);
 });
 
@@ -75,6 +88,9 @@ test("reports a job whose stop keeps failing, so it can be warned about", async 
     expect(unstopped.map((job) => job.id)).toEqual([Number(match?.[1])]);
   } finally {
     // The real process is still running; stop it directly so the test leaves nothing behind, even when an assertion fails.
-    await Bun.spawn(["taskkill", "/PID", String(unstopped[0]?.pid), "/T", "/F"], { stdout: "ignore", stderr: "ignore" }).exited;
+    await Bun.spawn(
+      ["taskkill", "/PID", String(unstopped[0]?.pid), "/T", "/F"],
+      { stdout: "ignore", stderr: "ignore" },
+    ).exited;
   }
 });

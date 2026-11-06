@@ -28,7 +28,8 @@ export const listFilesSpec = {
       properties: {
         path: {
           type: "string",
-          description: "Directory to list, relative to the working directory. Use . for the working directory itself.",
+          description:
+            "Directory to list, relative to the working directory. Use . for the working directory itself.",
         },
         depth: {
           type: "integer",
@@ -50,9 +51,20 @@ export const readFileSpec = {
     parameters: {
       type: "object",
       properties: {
-        path: { type: "string", description: "File to read, relative to the working directory." },
-        start: { type: "integer", minimum: 1, description: "First line to read, numbered from 1." },
-        end: { type: "integer", minimum: 1, description: "Last line to read, inclusive." },
+        path: {
+          type: "string",
+          description: "File to read, relative to the working directory.",
+        },
+        start: {
+          type: "integer",
+          minimum: 1,
+          description: "First line to read, numbered from 1.",
+        },
+        end: {
+          type: "integer",
+          minimum: 1,
+          description: "Last line to read, inclusive.",
+        },
       },
       required: ["path", "start", "end"],
     },
@@ -68,9 +80,18 @@ export const editFileSpec = {
     parameters: {
       type: "object",
       properties: {
-        path: { type: "string", description: "File to edit, relative to the working directory." },
-        previous: { type: "string", description: "Exact text to replace. Must not be empty." },
-        replacement: { type: "string", description: "Text to put in its place." },
+        path: {
+          type: "string",
+          description: "File to edit, relative to the working directory.",
+        },
+        previous: {
+          type: "string",
+          description: "Exact text to replace. Must not be empty.",
+        },
+        replacement: {
+          type: "string",
+          description: "Text to put in its place.",
+        },
       },
       required: ["path", "previous", "replacement"],
     },
@@ -86,8 +107,14 @@ export const createFileSpec = {
     parameters: {
       type: "object",
       properties: {
-        path: { type: "string", description: "File to create, relative to the working directory." },
-        content: { type: "string", description: "Full text of the new file. May be empty." },
+        path: {
+          type: "string",
+          description: "File to create, relative to the working directory.",
+        },
+        content: {
+          type: "string",
+          description: "Full text of the new file. May be empty.",
+        },
       },
       required: ["path", "content"],
     },
@@ -103,8 +130,14 @@ export const createNoteSpec = {
     parameters: {
       type: "object",
       properties: {
-        category: { type: "string", description: "Category of the note. Letters, digits, - and _ only." },
-        name: { type: "string", description: "Name of the note. Letters, digits, - and _ only." },
+        category: {
+          type: "string",
+          description: "Category of the note. Letters, digits, - and _ only.",
+        },
+        name: {
+          type: "string",
+          description: "Name of the note. Letters, digits, - and _ only.",
+        },
       },
       required: ["category", "name"],
     },
@@ -119,7 +152,10 @@ export const runPowershellSpec = {
     parameters: {
       type: "object",
       properties: {
-        command: { type: "string", description: "The PowerShell command to run, as one string." },
+        command: {
+          type: "string",
+          description: "The PowerShell command to run, as one string.",
+        },
       },
       required: ["command"],
     },
@@ -135,7 +171,11 @@ export const readCommandSpec = {
     parameters: {
       type: "object",
       properties: {
-        job: { type: "integer", minimum: 1, description: "The job number that run_powershell reported." },
+        job: {
+          type: "integer",
+          minimum: 1,
+          description: "The job number that run_powershell reported.",
+        },
       },
       required: ["job"],
     },
@@ -151,7 +191,11 @@ export const killCommandSpec = {
     parameters: {
       type: "object",
       properties: {
-        job: { type: "integer", minimum: 1, description: "The job number that run_powershell reported." },
+        job: {
+          type: "integer",
+          minimum: 1,
+          description: "The job number that run_powershell reported.",
+        },
       },
       required: ["job"],
     },
@@ -169,9 +213,20 @@ export const runSubagentSpec = {
     parameters: {
       type: "object",
       properties: {
-        profile: { type: "string", description: "Name of the profile that gives the subagent its instructions and tools." },
-        task: { type: "string", description: "The task for the subagent. Must not be empty." },
-        max_tool_calls: { type: "integer", minimum: 1, description: "The most tool calls the subagent may make." },
+        profile: {
+          type: "string",
+          description:
+            "Name of the profile that gives the subagent its instructions and tools.",
+        },
+        task: {
+          type: "string",
+          description: "The task for the subagent. Must not be empty.",
+        },
+        max_tool_calls: {
+          type: "integer",
+          minimum: 1,
+          description: "The most tool calls the subagent may make.",
+        },
       },
       required: ["profile", "task", "max_tool_calls"],
     },
@@ -212,16 +267,25 @@ export type ToolsCommand = ToolsListCommand | ToolSwitchCommand;
 export function parseToolsCommand(words: string[]): Result<ToolsCommand> {
   const [action, name] = words;
   if (words.length === 0) return ok({ kind: "list" });
-  if ((action === "enable" || action === "disable") && words.length === 2 && name !== undefined) {
-    if (!toolNames.includes(name)) return err(new Error("no tool has that name; /tools lists them"));
+  if (
+    (action === "enable" || action === "disable") &&
+    words.length === 2 &&
+    name !== undefined
+  ) {
+    if (!toolNames.includes(name))
+      return err(new Error("no tool has that name; /tools lists them"));
     return ok({ kind: action, name });
   }
-  return err(new Error("usage: /tools | /tools enable <tool> | /tools disable <tool>"));
+  return err(
+    new Error("usage: /tools | /tools enable <tool> | /tools disable <tool>"),
+  );
 }
 
 // One line per tool, as name: on or off.
 export function toolStates(disabled: string[]): string {
-  return toolNames.map((name) => `${name}: ${disabled.includes(name) ? "off" : "on"}`).join("\n");
+  return toolNames
+    .map((name) => `${name}: ${disabled.includes(name) ? "off" : "on"}`)
+    .join("\n");
 }
 
 export interface ListFilesArgs {
@@ -267,7 +331,11 @@ export type Approve = (preview: string) => Promise<boolean>;
 // that are switched on; a call to any other tool is refused here, before anything is asked.
 // Changes and commands run only when `approve` resolves true. Failures come back as text too,
 // so the model can read them and answer.
-export type ToolRunner = (call: ToolCall, approve: Approve, offered: string[]) => Promise<string>;
+export type ToolRunner = (
+  call: ToolCall,
+  approve: Approve,
+  offered: string[],
+) => Promise<string>;
 
 // The arguments as the model wrote them, before they are checked.
 interface RawArgs {
@@ -299,11 +367,16 @@ export function parseSubagentArgs(raw: string): Result<SubagentArgs> {
   const args = readArgs(raw);
   if (!args.ok) return args;
   const { profile, task, max_tool_calls } = args.value;
-  if (typeof profile !== "string") return err(new Error("profile must be a string"));
+  if (typeof profile !== "string")
+    return err(new Error("profile must be a string"));
   const checkedProfile = checkName(profile, "profile");
   if (!checkedProfile.ok) return checkedProfile;
-  if (typeof task !== "string" || task.trim() === "") return err(new Error("task must be a non-empty string"));
-  if (!isLine(max_tool_calls)) return err(new Error("max_tool_calls must be a whole number of at least 1"));
+  if (typeof task !== "string" || task.trim() === "")
+    return err(new Error("task must be a non-empty string"));
+  if (!isLine(max_tool_calls))
+    return err(
+      new Error("max_tool_calls must be a whole number of at least 1"),
+    );
   return ok({ profile, task, maxToolCalls: max_tool_calls });
 }
 
@@ -314,7 +387,8 @@ function readArgs(raw: string): Result<RawArgs> {
   } catch {
     return err(new Error("arguments are not JSON"));
   }
-  if (typeof value !== "object" || value === null) return err(new Error("arguments must be an object"));
+  if (typeof value !== "object" || value === null)
+    return err(new Error("arguments must be an object"));
   return ok(value as RawArgs);
 }
 
@@ -324,7 +398,10 @@ export function parseListFilesArgs(raw: string): Result<ListFilesArgs> {
   if (!args.ok) return args;
   const { path, depth } = args.value;
   if (typeof path !== "string") return err(new Error("path must be a string"));
-  const clamped = typeof depth === "number" ? Math.min(Math.max(Math.trunc(depth), 1), MAX_DEPTH) : DEFAULT_DEPTH;
+  const clamped =
+    typeof depth === "number"
+      ? Math.min(Math.max(Math.trunc(depth), 1), MAX_DEPTH)
+      : DEFAULT_DEPTH;
   return ok({ path, depth: clamped });
 }
 
@@ -335,8 +412,10 @@ export function parseReadFileArgs(raw: string): Result<ReadFileArgs> {
   if (!args.ok) return args;
   const { path, start, end } = args.value;
   if (typeof path !== "string") return err(new Error("path must be a string"));
-  if (!isLine(start)) return err(new Error("start must be a line number of at least 1"));
-  if (!isLine(end)) return err(new Error("end must be a line number of at least 1"));
+  if (!isLine(start))
+    return err(new Error("start must be a line number of at least 1"));
+  if (!isLine(end))
+    return err(new Error("end must be a line number of at least 1"));
   if (end < start) return err(new Error("end must not be before start"));
   return ok({ path, start, end });
 }
@@ -347,8 +426,10 @@ export function parseEditFileArgs(raw: string): Result<EditFileArgs> {
   if (!args.ok) return args;
   const { path, previous, replacement } = args.value;
   if (typeof path !== "string") return err(new Error("path must be a string"));
-  if (typeof previous !== "string" || previous === "") return err(new Error("previous must be a non-empty string"));
-  if (typeof replacement !== "string") return err(new Error("replacement must be a string"));
+  if (typeof previous !== "string" || previous === "")
+    return err(new Error("previous must be a non-empty string"));
+  if (typeof replacement !== "string")
+    return err(new Error("replacement must be a string"));
   return ok({ path, previous, replacement });
 }
 
@@ -358,7 +439,8 @@ export function parseCreateFileArgs(raw: string): Result<CreateFileArgs> {
   if (!args.ok) return args;
   const { path, content } = args.value;
   if (typeof path !== "string") return err(new Error("path must be a string"));
-  if (typeof content !== "string") return err(new Error("content must be a string"));
+  if (typeof content !== "string")
+    return err(new Error("content must be a string"));
   return ok({ path, content });
 }
 
@@ -367,7 +449,8 @@ export function parseCreateNoteArgs(raw: string): Result<CreateNoteArgs> {
   const args = readArgs(raw);
   if (!args.ok) return args;
   const { category, name } = args.value;
-  if (typeof category !== "string") return err(new Error("category must be a string"));
+  if (typeof category !== "string")
+    return err(new Error("category must be a string"));
   if (typeof name !== "string") return err(new Error("name must be a string"));
   const checkedCategory = checkName(category, "category");
   if (!checkedCategory.ok) return checkedCategory;
@@ -381,7 +464,8 @@ export function parseRunPowershellArgs(raw: string): Result<RunPowershellArgs> {
   const args = readArgs(raw);
   if (!args.ok) return args;
   const { command } = args.value;
-  if (typeof command !== "string" || command.trim() === "") return err(new Error("command must be a non-empty string"));
+  if (typeof command !== "string" || command.trim() === "")
+    return err(new Error("command must be a non-empty string"));
   return ok({ command });
 }
 
@@ -390,7 +474,8 @@ export function parseJobArgs(raw: string): Result<JobArgs> {
   const args = readArgs(raw);
   if (!args.ok) return args;
   const { job } = args.value;
-  if (!isLine(job)) return err(new Error("job must be a job number of at least 1"));
+  if (!isLine(job))
+    return err(new Error("job must be a job number of at least 1"));
   return ok({ job });
 }
 

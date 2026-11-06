@@ -20,7 +20,9 @@ export interface UnstoppedJob {
 
 // A line longer than MAX_LINE_CHARS is cut and marked.
 function capLine(line: string): string {
-  return line.length > MAX_LINE_CHARS ? `${line.slice(0, MAX_LINE_CHARS)} [line cut]` : line;
+  return line.length > MAX_LINE_CHARS
+    ? `${line.slice(0, MAX_LINE_CHARS)} [line cut]`
+    : line;
 }
 
 // The last MAX_LINES lines of one output stream. Older lines are dropped and the text says so.
@@ -60,7 +62,9 @@ class Tail {
 
   text(): string {
     const all = this.partial ? [...this.lines, this.partial] : this.lines;
-    const shown = this.dropped ? [`[earlier output cut; last ${MAX_LINES} lines shown]`, ...all] : all;
+    const shown = this.dropped
+      ? [`[earlier output cut; last ${MAX_LINES} lines shown]`, ...all]
+      : all;
     return shown.join("\n");
   }
 
@@ -115,7 +119,10 @@ export function startJob(command: string, proc: Process): Job {
     stdout,
     stderr,
     exited: proc.exited,
-    drained: Promise.all([pump(proc.stdout, stdout), pump(proc.stderr, stderr)]).then(() => undefined),
+    drained: Promise.all([
+      pump(proc.stdout, stdout),
+      pump(proc.stderr, stderr),
+    ]).then(() => undefined),
   };
   job.exited = proc.exited.then((code) => {
     if (job.status === "running") job.status = "exited";
@@ -129,7 +136,9 @@ export function startJob(command: string, proc: Process): Job {
 // The output of a job so far: stdout, then stderr. Empty when nothing has been printed.
 export function outputText(job: Job): string {
   const stderr = job.stderr.text();
-  return [job.stdout.text(), stderr ? `stderr:\n${stderr}` : ""].filter(Boolean).join("\n");
+  return [job.stdout.text(), stderr ? `stderr:\n${stderr}` : ""]
+    .filter(Boolean)
+    .join("\n");
 }
 
 export function runningJobs(): number {
@@ -141,28 +150,45 @@ export function runningJobs(): number {
 export function readJob(id: number): Result<string> {
   const job = jobs.get(id);
   if (!job) return err(new Error(`no job ${id}`));
-  const state = job.status === "running" ? "running" : job.status === "killed" ? "killed" : `exited with code ${job.exitCode}`;
-  const text = [`job ${id}: ${state}`, outputText(job) || "(no output yet)"].join("\n");
+  const state =
+    job.status === "running"
+      ? "running"
+      : job.status === "killed"
+        ? "killed"
+        : `exited with code ${job.exitCode}`;
+  const text = [
+    `job ${id}: ${state}`,
+    outputText(job) || "(no output yet)",
+  ].join("\n");
   if (job.status !== "running") jobs.delete(id);
   return ok(text);
 }
 
 // Stops a running job and every process it started. The job counts as stopped only when
 // the stop succeeds; otherwise it stays running, so session end tries again.
-export async function killJob(id: number, stop: StopTree = stopTree): Promise<Result<string>> {
+export async function killJob(
+  id: number,
+  stop: StopTree = stopTree,
+): Promise<Result<string>> {
   const job = jobs.get(id);
   if (!job) return err(new Error(`no job ${id}`));
-  if (job.status !== "running") return err(new Error(`job ${id} is not running`));
-  if (!(await stop(job.pid))) return err(new Error(`could not stop job ${id}; it may still be running`));
+  if (job.status !== "running")
+    return err(new Error(`job ${id} is not running`));
+  if (!(await stop(job.pid)))
+    return err(new Error(`could not stop job ${id}; it may still be running`));
   if (job.status === "running") job.status = "killed";
   return ok(`job ${id} stopped`);
 }
 
 // Stops every running job, retrying those that failed to stop. Returns the jobs that could not
 // be stopped, so the caller can report them. The registry is emptied afterwards.
-export async function killAllJobs(stop: StopTree = stopTree): Promise<UnstoppedJob[]> {
+export async function killAllJobs(
+  stop: StopTree = stopTree,
+): Promise<UnstoppedJob[]> {
   for (let attempt = 0; attempt < STOP_ATTEMPTS; attempt++) {
-    const running = [...jobs.values()].filter((job) => job.status === "running");
+    const running = [...jobs.values()].filter(
+      (job) => job.status === "running",
+    );
     if (running.length === 0) break;
     await Promise.all(running.map((job) => killJob(job.id, stop)));
   }
@@ -176,7 +202,12 @@ export async function killAllJobs(stop: StopTree = stopTree): Promise<UnstoppedJ
 // Stops a process and every process it started. Returns whether taskkill succeeded. Windows only.
 async function stopTree(pid: number): Promise<boolean> {
   try {
-    return (await Bun.spawn(["taskkill", "/PID", String(pid), "/T", "/F"], { stdout: "ignore", stderr: "ignore" }).exited) === 0;
+    return (
+      (await Bun.spawn(["taskkill", "/PID", String(pid), "/T", "/F"], {
+        stdout: "ignore",
+        stderr: "ignore",
+      }).exited) === 0
+    );
   } catch {
     return false;
   }

@@ -3,7 +3,12 @@ import { Readable, Writable } from "node:stream";
 import type { ChatMessage, ToolCall } from "../core/messages.ts";
 import { err, ok } from "../core/result.ts";
 import { runRepl, type Reply, type ReplPorts } from "./repl.ts";
-import { queueApprovals, runSubagent, type SubagentContext, type SubagentPorts } from "./subagent.ts";
+import {
+  queueApprovals,
+  runSubagent,
+  type SubagentContext,
+  type SubagentPorts,
+} from "./subagent.ts";
 
 interface ScriptedRound {
   text: string;
@@ -22,7 +27,10 @@ function scripted(rounds: ScriptedRound[], offered: string[][]): Reply {
   };
 }
 
-function subPorts(reply: Reply, tools: SubagentPorts["tools"] = async () => "a.txt"): SubagentPorts {
+function subPorts(
+  reply: Reply,
+  tools: SubagentPorts["tools"] = async () => "a.txt",
+): SubagentPorts {
   return {
     reply,
     tools,
@@ -40,13 +48,25 @@ const silent = new Writable({
 });
 
 function context(ports: SubagentPorts): SubagentContext {
-  return { ports, approve: async () => true, finished: () => false, output: silent, disabledTools: [] };
+  return {
+    ports,
+    approve: async () => true,
+    finished: () => false,
+    output: silent,
+    disabledTools: [],
+  };
 }
 
 test("a subagent runs its tool calls, is not offered the subagent tool, and returns its final answer", async () => {
   const offered: string[][] = [];
   const reply = scripted(
-    [{ text: "", calls: [{ id: "c1", name: "list_files", arguments: '{"path":"."}' }] }, { text: "done" }],
+    [
+      {
+        text: "",
+        calls: [{ id: "c1", name: "list_files", arguments: '{"path":"."}' }],
+      },
+      { text: "done" },
+    ],
     offered,
   );
   const result = await runSubagent(
@@ -59,9 +79,19 @@ test("a subagent runs its tool calls, is not offered the subagent tool, and retu
 
 test("a subagent at its limit is asked once more with no tools, and its answer is marked cut short", async () => {
   const offered: string[][] = [];
-  const call = (id: string): ToolCall => ({ id, name: "list_files", arguments: '{"path":"."}' });
-  const reply = scripted([{ text: "", calls: [call("c1")] }, { text: "partial" }], offered);
-  const result = await runSubagent({ profile: "reader", task: "look", maxToolCalls: 1 }, context(subPorts(reply)));
+  const call = (id: string): ToolCall => ({
+    id,
+    name: "list_files",
+    arguments: '{"path":"."}',
+  });
+  const reply = scripted(
+    [{ text: "", calls: [call("c1")] }, { text: "partial" }],
+    offered,
+  );
+  const result = await runSubagent(
+    { profile: "reader", task: "look", maxToolCalls: 1 },
+    context(subPorts(reply)),
+  );
   expect(result).toBe("[cut short after 1 tool calls]\npartial");
   expect(offered.at(-1)).toEqual([]);
 });
@@ -71,7 +101,8 @@ test("approvals asked together are answered one after another, in the order aske
   let release: () => void = () => {};
   const approve = async (preview: string) => {
     order.push(`start ${preview}`);
-    if (preview === "first") await new Promise<void>((done) => (release = done));
+    if (preview === "first")
+      await new Promise<void>((done) => (release = done));
     order.push(`end ${preview}`);
     return true;
   };
@@ -82,7 +113,12 @@ test("approvals asked together are answered one after another, in the order aske
   expect(order).toEqual(["start first"]);
   release();
   await Promise.all([a, b]);
-  expect(order).toEqual(["start first", "end first", "start second", "end second"]);
+  expect(order).toEqual([
+    "start first",
+    "end first",
+    "start second",
+    "end second",
+  ]);
 });
 
 test("two subagents asked for in one reply both run, and each result reaches the main model", async () => {
@@ -95,11 +131,23 @@ test("two subagents asked for in one reply both run, and each result reaches the
       return;
     }
     if (messages.at(-1)?.role === "user") {
-      onToolCall({ id: "s1", name: "run_subagent", arguments: '{"profile":"reader","task":"a","max_tool_calls":1}' });
-      onToolCall({ id: "s2", name: "run_subagent", arguments: '{"profile":"reader","task":"b","max_tool_calls":1}' });
+      onToolCall({
+        id: "s1",
+        name: "run_subagent",
+        arguments: '{"profile":"reader","task":"a","max_tool_calls":1}',
+      });
+      onToolCall({
+        id: "s2",
+        name: "run_subagent",
+        arguments: '{"profile":"reader","task":"b","max_tool_calls":1}',
+      });
       return;
     }
-    seenByMain.push(messages.filter((message: ChatMessage) => message.role === "tool").map((message) => message.content));
+    seenByMain.push(
+      messages
+        .filter((message: ChatMessage) => message.role === "tool")
+        .map((message) => message.content),
+    );
     yield ok("main done");
   };
   const output = new Writable({
@@ -117,9 +165,17 @@ test("two subagents asked for in one reply both run, and each result reaches the
     profileHooks: async () => ok([]),
     disabledTools: [],
     saveDisabledTools: async () => ok(undefined),
-    sessions: { save: async () => ok(undefined), load: async () => err(new Error("none")), list: async () => ok([]) },
+    sessions: {
+      save: async () => ok(undefined),
+      load: async () => err(new Error("none")),
+      list: async () => ok([]),
+    },
     hooks: async () => ok(""),
-    models: { current: () => "m", list: async () => ok([]), select: async (name: string) => ok(name) },
+    models: {
+      current: () => "m",
+      list: async () => ok([]),
+      select: async (name: string) => ok(name),
+    },
   };
   await runRepl(Readable.from(["go\n", "/exit\n"]), output, ports);
   expect(seenByMain.at(-1)).toEqual(["answer for a", "answer for b"]);

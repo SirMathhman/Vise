@@ -12,12 +12,15 @@ interface ModelFile {
 
 // Reads the saved model. A missing file has none. A file that is not JSON, or does not name a model
 // as a string, is an error.
-export async function readModelSetting(root: string): Promise<Result<string | undefined>> {
+export async function readModelSetting(
+  root: string,
+): Promise<Result<string | undefined>> {
   let text: string;
   try {
     text = await readFile(join(root, SETTINGS_FILE), "utf8");
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return ok(undefined);
+    if ((error as NodeJS.ErrnoException).code === "ENOENT")
+      return ok(undefined);
     return err(error instanceof Error ? error : new Error(String(error)));
   }
   let value: unknown;
@@ -26,17 +29,26 @@ export async function readModelSetting(root: string): Promise<Result<string | un
   } catch {
     return err(new Error(`${SETTINGS_FILE} is not JSON`));
   }
-  if (typeof value !== "object" || value === null) return err(new Error(`${SETTINGS_FILE} must hold an object`));
+  if (typeof value !== "object" || value === null)
+    return err(new Error(`${SETTINGS_FILE} must hold an object`));
   const { model } = value as ModelFile;
-  if (typeof model !== "string" || model === "") return err(new Error(`${SETTINGS_FILE} must name a model`));
+  if (typeof model !== "string" || model === "")
+    return err(new Error(`${SETTINGS_FILE} must name a model`));
   return ok(model);
 }
 
 // Writes the chosen model, creating the settings folder if needed.
-export async function saveModelSetting(root: string, model: string): Promise<Result<void>> {
+export async function saveModelSetting(
+  root: string,
+  model: string,
+): Promise<Result<void>> {
   try {
     await mkdir(join(root, SETTINGS_FOLDER), { recursive: true });
-    await writeFile(join(root, SETTINGS_FILE), `${JSON.stringify({ model }, null, 2)}\n`, "utf8");
+    await writeFile(
+      join(root, SETTINGS_FILE),
+      `${JSON.stringify({ model }, null, 2)}\n`,
+      "utf8",
+    );
     return ok(undefined);
   } catch (error) {
     return err(error instanceof Error ? error : new Error(String(error)));

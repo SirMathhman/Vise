@@ -22,10 +22,24 @@ import type {
   ReplyRequest,
   ToolCall,
 } from "../core/messages.ts";
-import { parseProfileCommand, type HookPoint, type ProfileHook } from "../core/notes.ts";
+import {
+  parseProfileCommand,
+  type HookPoint,
+  type ProfileHook,
+} from "../core/notes.ts";
 import type { Result } from "../core/result.ts";
-import { decodeSession, encodeSession, parseSessionCommand, type SessionStore } from "../core/sessions.ts";
-import { parseToolsCommand, sanitize, toolStates, type Approve } from "../core/tools.ts";
+import {
+  decodeSession,
+  encodeSession,
+  parseSessionCommand,
+  type SessionStore,
+} from "../core/sessions.ts";
+import {
+  parseToolsCommand,
+  sanitize,
+  toolStates,
+  type Approve,
+} from "../core/tools.ts";
 
 async function showContext(
   output: Writable,
@@ -36,9 +50,14 @@ async function showContext(
   if (conversation.promptTokens !== undefined) {
     const result = await contextWindow();
     if (result.ok) total = result.value;
-    else output.write(`error: /context could not read the model's window: ${result.error.message}\n`);
+    else
+      output.write(
+        `error: /context could not read the model's window: ${result.error.message}\n`,
+      );
   }
-  output.write(`${contextLine(conversation.promptTokens, total, conversation.compacted)}\n`);
+  output.write(
+    `${contextLine(conversation.promptTokens, total, conversation.compacted)}\n`,
+  );
 }
 
 // Every port the session uses. All are required; a caller that omits one fails to compile.
@@ -160,15 +179,28 @@ async function runToolsCommand(
     output.write(`${toolStates(conversation.disabledTools ?? [])}\n`);
     return undefined;
   }
-  const step = setToolEnabled(conversation, command.value.name, command.value.kind === "enable");
-  const saved = await ports.saveDisabledTools(step.conversation.disabledTools ?? []);
-  if (!saved.ok) output.write(`error: could not save tool settings: ${saved.error.message}\n`);
+  const step = setToolEnabled(
+    conversation,
+    command.value.name,
+    command.value.kind === "enable",
+  );
+  const saved = await ports.saveDisabledTools(
+    step.conversation.disabledTools ?? [],
+  );
+  if (!saved.ok)
+    output.write(
+      `error: could not save tool settings: ${saved.error.message}\n`,
+    );
   return step;
 }
 
 // Runs /model: lists the models with their context windows, marking the one in use, or switches to a
 // listed model. The conversation is kept, so the next request goes to the new model.
-async function runModelCommand(words: string[], models: ModelPorts, output: Writable): Promise<void> {
+async function runModelCommand(
+  words: string[],
+  models: ModelPorts,
+  output: Writable,
+): Promise<void> {
   const command = parseModelCommand(words);
   if (!command.ok) {
     output.write(`error: ${command.error.message}\n`);
@@ -176,11 +208,17 @@ async function runModelCommand(words: string[], models: ModelPorts, output: Writ
   }
   if (command.value.kind === "select") {
     const chosen = await models.select(command.value.name);
-    output.write(chosen.ok ? `model: ${sanitize(chosen.value)}\n` : `error: ${chosen.error.message}\n`);
+    output.write(
+      chosen.ok
+        ? `model: ${sanitize(chosen.value)}\n`
+        : `error: ${chosen.error.message}\n`,
+    );
     return;
   }
   if (command.value.kind === "show") {
-    output.write(`model: ${sanitize(models.current())}\nusage: /model search <text> | /model <name>\n`);
+    output.write(
+      `model: ${sanitize(models.current())}\nusage: /model search <text> | /model <name>\n`,
+    );
     return;
   }
   const listed = await models.list();
@@ -200,12 +238,18 @@ async function runModelCommand(words: string[], models: ModelPorts, output: Writ
   const current = models.current();
   for (const model of matches) {
     const mark = model.id === current ? "* " : "  ";
-    output.write(`${mark}${sanitize(model.id)}  ${model.contextLength} tokens\n`);
+    output.write(
+      `${mark}${sanitize(model.id)}  ${model.contextLength} tokens\n`,
+    );
   }
 }
 
 // Runs /thinking: shows how hard the model thinks, or sets it for the following requests.
-async function runThinkingCommand(words: string[], output: Writable, conversation: Conversation): Promise<Step | undefined> {
+async function runThinkingCommand(
+  words: string[],
+  output: Writable,
+  conversation: Conversation,
+): Promise<Step | undefined> {
   const command = parseThinkingCommand(words);
   if (!command.ok) {
     output.write(`error: ${command.error.message}\n`);
@@ -234,12 +278,22 @@ async function runSessionCommand(
   if (command.value.kind === "list") {
     const names = await ports.sessions.list();
     if (!names.ok) output.write(`error: ${names.error.message}\n`);
-    else output.write(`${names.value.length === 0 ? "(no saved sessions)" : names.value.join("\n")}\n`);
+    else
+      output.write(
+        `${names.value.length === 0 ? "(no saved sessions)" : names.value.join("\n")}\n`,
+      );
     return undefined;
   }
   if (command.value.kind === "save") {
-    const saved = await ports.sessions.save(command.value.name, encodeSession(conversation));
-    output.write(saved.ok ? `saved ${command.value.name}\n` : `error: ${saved.error.message}\n`);
+    const saved = await ports.sessions.save(
+      command.value.name,
+      encodeSession(conversation),
+    );
+    output.write(
+      saved.ok
+        ? `saved ${command.value.name}\n`
+        : `error: ${saved.error.message}\n`,
+    );
     return undefined;
   }
   const text = await ports.sessions.load(command.value.name);
@@ -254,4 +308,3 @@ async function runSessionCommand(
   }
   return { conversation: loaded.value, notice: `loaded ${command.value.name}` };
 }
-

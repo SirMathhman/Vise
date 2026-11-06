@@ -30,7 +30,12 @@ export async function readHooks(root: string): Promise<Result<HookConfig>> {
     text = await readFile(join(root, HOOKS_FILE), "utf8");
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return ok({ sessionStart: [], sessionEnd: [], turnStart: [], turnEnd: [] });
+      return ok({
+        sessionStart: [],
+        sessionEnd: [],
+        turnStart: [],
+        turnEnd: [],
+      });
     }
     return err(error instanceof Error ? error : new Error(String(error)));
   }
@@ -41,7 +46,12 @@ export async function readHooks(root: string): Promise<Result<HookConfig>> {
     return err(new Error(`${HOOKS_FILE} is not JSON`));
   }
   const parsed = HookConfigSchema.safeParse(value);
-  if (!parsed.success) return err(new Error(`${HOOKS_FILE} must list the commands of each point as strings`));
+  if (!parsed.success)
+    return err(
+      new Error(
+        `${HOOKS_FILE} must list the commands of each point as strings`,
+      ),
+    );
   const config = parsed.data;
   return ok({
     sessionStart: config.sessionStart ?? [],
@@ -60,11 +70,17 @@ function exitCodeOf(text: string): number | undefined {
 // Runs the commands of one point in order. The output of each is kept, and the first command that
 // fails, exits non-zero, or is still running after the timeout stops the rest and is returned as an error.
 export function hookRunner(root: string, config: HookConfig): HookRunner {
-  return async (point: HookPoint, profile: string[] = []): Promise<Result<string>> => {
+  return async (
+    point: HookPoint,
+    profile: string[] = [],
+  ): Promise<Result<string>> => {
     let output = "";
     for (const command of [...config[point], ...profile]) {
       const result = await runPowershell(root, command);
-      if (!result.ok) return err(new Error(`hook ${command} could not run: ${result.error.message}`));
+      if (!result.ok)
+        return err(
+          new Error(`hook ${command} could not run: ${result.error.message}`),
+        );
       const exitCode = exitCodeOf(result.value);
       if (exitCode !== 0 || result.value.includes("[still running")) {
         return err(new Error(`hook ${command} failed:\n${result.value}`));

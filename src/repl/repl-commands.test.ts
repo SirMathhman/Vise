@@ -8,17 +8,26 @@ import { echoReply, runRepl, type ReplPorts } from "./repl.ts";
 function ports(overrides: Partial<ReplPorts> = {}): ReplPorts {
   return {
     reply: echoReply,
-    contextWindow: async () => err(new Error("no context window is configured")),
+    contextWindow: async () =>
+      err(new Error("no context window is configured")),
     tools: async () => "no tools are available",
     notes: async () => "notes are not available",
     profile: async () => err(new Error("no profiles are available")),
     profileTools: async () => ok(undefined),
     profileHooks: async () => ok([]),
     hooks: async () => ok(""),
-    models: { current: () => "m", list: async () => ok([]), select: async (name: string) => ok(name) },
+    models: {
+      current: () => "m",
+      list: async () => ok([]),
+      select: async (name: string) => ok(name),
+    },
     disabledTools: [],
     saveDisabledTools: async () => ok(undefined),
-    sessions: { save: async () => ok(undefined), load: async () => err(new Error("none")), list: async () => ok([]) },
+    sessions: {
+      save: async () => ok(undefined),
+      load: async () => err(new Error("none")),
+      list: async () => ok([]),
+    },
     ...overrides,
   };
 }
@@ -36,7 +45,8 @@ test("a switched profile is sent once, with the next message, and history alread
       done();
     },
   });
-  const profile = async (name: string) => (name === "terse" ? ok("BE TERSE") : err(new Error("no such profile")));
+  const profile = async (name: string) =>
+    name === "terse" ? ok("BE TERSE") : err(new Error("no such profile"));
   await runRepl(
     Readable.from(["/profile terse\n", "/profile\n", "hello\n", "again\n"]),
     output,
@@ -55,7 +65,9 @@ test("a compaction sends the active profile again with the next message", async 
   const seen: string[][] = [];
   const reply: Reply = async function* ({ messages }) {
     seen.push(messages.map((message) => message.content));
-    yield ok(messages.at(-1)?.content === "Summarize this convo" ? "SUM" : "ok");
+    yield ok(
+      messages.at(-1)?.content === "Summarize this convo" ? "SUM" : "ok",
+    );
   };
   const output = new Writable({
     write(_chunk, _encoding, done) {
@@ -120,7 +132,11 @@ test("a switched-off tool is left out of the request and out of the tools the ru
   const reply: Reply = async function* ({ messages, onToolCall, tools }) {
     offered.push(tools);
     if (messages.at(-1)?.role === "user") {
-      onToolCall({ id: "e1", name: "edit_file", arguments: '{"path":"f.txt","previous":"a","replacement":"b"}' });
+      onToolCall({
+        id: "e1",
+        name: "edit_file",
+        arguments: '{"path":"f.txt","previous":"a","replacement":"b"}',
+      });
       return;
     }
     yield ok("done");
@@ -155,7 +171,11 @@ test("/tools disable saves the switched-off tools", async () => {
     },
   });
   await runRepl(
-    Readable.from(["/tools disable kill_command\n", "/tools enable kill_command\n", "/tools disable run_powershell\n"]),
+    Readable.from([
+      "/tools disable kill_command\n",
+      "/tools enable kill_command\n",
+      "/tools disable run_powershell\n",
+    ]),
     output,
     ports({
       saveDisabledTools: async (names) => {
@@ -188,20 +208,32 @@ test("/save writes the conversation, and /load in a new session brings it back f
   const first: Reply = async function* () {
     yield ok("ok");
   };
-  await runRepl(Readable.from(["hello\n", "/save work\n"]), output, ports({ reply: first, sessions }));
+  await runRepl(
+    Readable.from(["hello\n", "/save work\n"]),
+    output,
+    ports({ reply: first, sessions }),
+  );
   const seen: string[][] = [];
   const reply: Reply = async function* ({ messages }) {
     seen.push(messages.map((message) => message.content));
     yield ok("ok");
   };
-  await runRepl(Readable.from(["/load work\n", "again\n"]), output, ports({ reply, sessions }));
+  await runRepl(
+    Readable.from(["/load work\n", "again\n"]),
+    output,
+    ports({ reply, sessions }),
+  );
   expect(seen[0]).toEqual(["hello", "ok", "again"]);
 });
 
 test("a call skipped because /exit ended the session is reported as not run", async () => {
   const reply: Reply = async function* ({ messages, onToolCall }) {
     if (messages.at(-1)?.role === "user") {
-      onToolCall({ id: "e1", name: "edit_file", arguments: '{"path":"f.txt","previous":"a","replacement":"b"}' });
+      onToolCall({
+        id: "e1",
+        name: "edit_file",
+        arguments: '{"path":"f.txt","previous":"a","replacement":"b"}',
+      });
       onToolCall({ id: "l1", name: "list_files", arguments: '{"path":"."}' });
       return;
     }
@@ -220,12 +252,15 @@ test("a call skipped because /exit ended the session is reported as not run", as
     ports({
       reply,
       tools: async (_call, approve) => {
-        if (!(await approve("edit f.txt"))) return "the user declined this change";
+        if (!(await approve("edit f.txt")))
+          return "the user declined this change";
         return "edited f.txt";
       },
     }),
   );
-  expect(written).toContain("tool: list_files . depth 2 did not run: the session ended");
+  expect(written).toContain(
+    "tool: list_files . depth 2 did not run: the session ended",
+  );
 });
 
 test("a profile's whitelist limits the tools offered to the model from the next request", async () => {
@@ -282,7 +317,11 @@ test("a turn-start hook's output goes in front of the message, and a failing one
   await runRepl(
     Readable.from(["hello\n"]),
     errorOutput,
-    ports({ reply, hooks: async (point) => (point === "turnStart" ? err(new Error("boom")) : ok("")) }),
+    ports({
+      reply,
+      hooks: async (point) =>
+        point === "turnStart" ? err(new Error("boom")) : ok(""),
+    }),
   );
   expect(seen).toEqual([]);
   expect(refused).toContain("error: turn-start hook failed: boom");
@@ -297,7 +336,10 @@ test("a session-start hook that fails refuses the session", async () => {
   const result = await runRepl(
     Readable.from(["hello\n"]),
     output,
-    ports({ hooks: async (point) => (point === "sessionStart" ? err(new Error("no start")) : ok("")) }),
+    ports({
+      hooks: async (point) =>
+        point === "sessionStart" ? err(new Error("no start")) : ok(""),
+    }),
   );
   expect(result.ok).toBe(false);
 });
@@ -313,7 +355,10 @@ test("a turn-start hook's output is shown on the terminal as well as sent", asyn
   await runRepl(
     Readable.from(["hello\n"]),
     output,
-    ports({ hooks: async (point) => (point === "turnStart" ? ok("HOOK LINE") : ok("")) }),
+    ports({
+      hooks: async (point) =>
+        point === "turnStart" ? ok("HOOK LINE") : ok(""),
+    }),
   );
   expect(written).toContain("HOOK LINE");
 });
@@ -353,7 +398,11 @@ test("/thinking sets the effort for later requests, and the thinking count is sh
       done();
     },
   });
-  await runRepl(Readable.from(["/thinking low\n", "/thinking\n", "hi\n"]), output, ports({ reply }));
+  await runRepl(
+    Readable.from(["/thinking low\n", "/thinking\n", "hi\n"]),
+    output,
+    ports({ reply }),
+  );
   expect(seen).toEqual(["low"]);
   expect(written).toContain("thinking: low");
   expect(written).toContain("thinking: ~5 tokens");
@@ -375,10 +424,16 @@ test("/model lists the models, marking the one in use, and /model <name> switche
         { id: "a/one", contextLength: 1000 },
         { id: "a/three", contextLength: 3000 },
       ]),
-    select: async (name: string) => (name === "b/two" ? ok(name) : err(new Error("no such model"))),
+    select: async (name: string) =>
+      name === "b/two" ? ok(name) : err(new Error("no such model")),
   };
   await runRepl(
-    Readable.from(["/model\n", "/model search A/\n", "/model b/two\n", "/model zzz\n"]),
+    Readable.from([
+      "/model\n",
+      "/model search A/\n",
+      "/model b/two\n",
+      "/model zzz\n",
+    ]),
     output,
     ports({ models }),
   );

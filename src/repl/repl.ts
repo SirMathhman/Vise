@@ -10,7 +10,13 @@ import {
   type Conversation,
   type Step,
 } from "../core/compaction.ts";
-import type { ChatMessage, ReasoningEffort, ReplyRequest, ToolCall, Usage } from "../core/messages.ts";
+import type {
+  ChatMessage,
+  ReasoningEffort,
+  ReplyRequest,
+  ToolCall,
+  Usage,
+} from "../core/messages.ts";
 import {
   RUN_SUBAGENT,
   describeToolCall,
@@ -26,7 +32,9 @@ import { runCommand, type ReplPorts } from "./commands.ts";
 export type { ContextWindow, Reply } from "../core/messages.ts";
 export type { ReplPorts } from "./commands.ts";
 
-export async function* echoReply({ messages }: ReplyRequest): AsyncGenerator<Result<string>> {
+export async function* echoReply({
+  messages,
+}: ReplyRequest): AsyncGenerator<Result<string>> {
   yield ok(`echo: ${messages.at(-1)?.content ?? ""}`);
 }
 
@@ -96,9 +104,16 @@ interface ThinkingView {
 }
 
 // Ends the thinking line with the exact count when the provider reported one, or the estimate otherwise.
-function finishThinking(output: Writable, view: ThinkingView, exact: number | undefined): void {
+function finishThinking(
+  output: Writable,
+  view: ThinkingView,
+  exact: number | undefined,
+): void {
   if (!view.shown) return;
-  const text = exact === undefined ? `thinking: ~${view.approximate} tokens` : `thinking: ${exact} tokens`;
+  const text =
+    exact === undefined
+      ? `thinking: ~${view.approximate} tokens`
+      : `thinking: ${exact} tokens`;
   output.write(`${view.open ? "\r" : ""}${text.padEnd(view.width)}\n`);
   view.open = false;
 }
@@ -116,7 +131,12 @@ interface RoundInput {
 async function streamRound(input: RoundInput): Promise<Round> {
   const { history, reply, output, offered, reasoning } = input;
   const round: Round = { answer: "", calls: [] };
-  const view: ThinkingView = { shown: false, open: false, approximate: 0, width: 0 };
+  const view: ThinkingView = {
+    shown: false,
+    open: false,
+    approximate: 0,
+    width: 0,
+  };
   const onThinking = (approximate: number) => {
     // Thinking that comes after the answer has started is not shown; the model thinks first.
     if (round.answer !== "") return;
@@ -157,7 +177,10 @@ async function streamRound(input: RoundInput): Promise<Round> {
     }
   } catch (error) {
     finishThinking(output, view, round.usage?.reasoningTokens);
-    return { ...round, failure: error instanceof Error ? error : new Error(String(error)) };
+    return {
+      ...round,
+      failure: error instanceof Error ? error : new Error(String(error)),
+    };
   }
   finishThinking(output, view, round.usage?.reasoningTokens);
   return round;
@@ -190,8 +213,17 @@ async function runCalls(step: CallsStep): Promise<ChatMessage[]> {
   const results: Promise<ChatMessage>[] = [];
   for (const call of step.calls) {
     if (step.finished()) {
-      step.output.write(`\n${sanitize(describeToolCall(call))} did not run: the session ended\n`);
-      results.push(Promise.resolve(toolMessage(call.id, "error: the call did not run because the session ended")));
+      step.output.write(
+        `\n${sanitize(describeToolCall(call))} did not run: the session ended\n`,
+      );
+      results.push(
+        Promise.resolve(
+          toolMessage(
+            call.id,
+            "error: the call did not run because the session ended",
+          ),
+        ),
+      );
       continue;
     }
     step.output.write(`\n${sanitize(describeToolCall(call))}\n`);
@@ -209,7 +241,11 @@ async function runCalls(step: CallsStep): Promise<ChatMessage[]> {
       results.push(text.then((content) => toolMessage(call.id, content)));
       continue;
     }
-    results.push(Promise.resolve(toolMessage(call.id, await step.tools(call, approve, step.offered))));
+    results.push(
+      Promise.resolve(
+        toolMessage(call.id, await step.tools(call, approve, step.offered)),
+      ),
+    );
   }
   return Promise.all(results);
 }
@@ -221,7 +257,9 @@ const HOOK_SHOWN_LIMIT = 4000;
 function showHookOutput(output: Writable, text: string): void {
   if (text === "") return;
   const shown = sanitize(text).slice(0, HOOK_SHOWN_LIMIT);
-  output.write(`${shown}${text.length > HOOK_SHOWN_LIMIT ? "\n[output cut short]" : ""}\n`);
+  output.write(
+    `${shown}${text.length > HOOK_SHOWN_LIMIT ? "\n[output cut short]" : ""}\n`,
+  );
 }
 
 // What one turn needs from the session.
@@ -241,16 +279,27 @@ export interface TurnResult {
 // Runs one message as a turn. The turn-start hooks run first, and their output waits for the message;
 // a failure of one stops this turn before it begins. The turn-end hooks run after the turn, whatever
 // its outcome, and a failure of one stops the session.
-async function runMessageTurn(text: string, conversation: Conversation, context: TurnContext): Promise<TurnResult> {
+async function runMessageTurn(
+  text: string,
+  conversation: Conversation,
+  context: TurnContext,
+): Promise<TurnResult> {
   const { ports, output, finished, approve } = context;
   const { reply, contextWindow, tools, instructions } = ports;
-  const started = await ports.hooks("turnStart", profileCommands(conversation, "turnStart"));
+  const started = await ports.hooks(
+    "turnStart",
+    profileCommands(conversation, "turnStart"),
+  );
   if (!started.ok) {
     output.write(`error: turn-start hook failed: ${started.error.message}\n`);
     return { conversation, stop: false };
   }
   showHookOutput(output, started.value);
-  const compacted = await compactIfNeeded(queueHookOutput(conversation, started.value), reply, contextWindow);
+  const compacted = await compactIfNeeded(
+    queueHookOutput(conversation, started.value),
+    reply,
+    contextWindow,
+  );
   if (compacted.notice) output.write(`${compacted.notice}\n`);
   let current = compacted.conversation;
   const turnStart = current.history.length;
@@ -260,7 +309,9 @@ async function runMessageTurn(text: string, conversation: Conversation, context:
   const first = current.history.length === 0 ? instructions : undefined;
   const profile = current.pendingProfile;
   const pending = current.pendingOutput;
-  const parts = [first, profile, pending, text].filter((part): part is string => part !== undefined);
+  const parts = [first, profile, pending, text].filter(
+    (part): part is string => part !== undefined,
+  );
   current.history.push({ role: "user", content: parts.join("\n\n") });
   current = { ...current, pendingProfile: undefined, pendingOutput: undefined };
   // Each round asks the model. The first round answers the message just received; a round that
@@ -304,7 +355,10 @@ async function runMessageTurn(text: string, conversation: Conversation, context:
     current.history.push(...results);
     if (finished()) break;
   }
-  const ended = await ports.hooks("turnEnd", profileCommands(current, "turnEnd"));
+  const ended = await ports.hooks(
+    "turnEnd",
+    profileCommands(current, "turnEnd"),
+  );
   if (!ended.ok) {
     output.write(`error: turn-end hook failed: ${ended.error.message}\n`);
     return { conversation: current, stop: true };
@@ -316,8 +370,16 @@ async function runMessageTurn(text: string, conversation: Conversation, context:
 // Runs the session until /exit or end of input. A failure of the input or output
 // stream ends it early, and that failure is the result. Whatever happens, the
 // interface is closed and the listeners are removed before this returns.
-export async function runRepl(input: Readable, output: Writable, ports: ReplPorts): Promise<Result<void>> {
-  let conversation: Conversation = { history: [], compacted: false, disabledTools: ports.disabledTools };
+export async function runRepl(
+  input: Readable,
+  output: Writable,
+  ports: ReplPorts,
+): Promise<Result<void>> {
+  let conversation: Conversation = {
+    history: [],
+    compacted: false,
+    disabledTools: ports.disabledTools,
+  };
   let streamError: Error | undefined;
   // Set when /exit is typed at an approval: the session ends and no further request is sent.
   let exitRequested = false;
@@ -330,7 +392,12 @@ export async function runRepl(input: Readable, output: Writable, ports: ReplPort
   };
   input.on("error", fail);
   output.on("error", fail);
-  const rl = createInterface({ input, output, prompt: "> ", signal: controller.signal });
+  const rl = createInterface({
+    input,
+    output,
+    prompt: "> ",
+    signal: controller.signal,
+  });
   // Readline re-emits input errors on the interface, and throws if nothing listens.
   rl.on("error", fail);
   rl.on("line", (line) => lines.push(line));
@@ -338,7 +405,8 @@ export async function runRepl(input: Readable, output: Writable, ports: ReplPort
   // Once the session has ended for good, nothing else runs: no tool, no request, no approval.
   // Queued lines do not count, because a stream failure or /exit ends the session even with
   // lines waiting, and input that has ended with nothing queued cannot answer anything.
-  const finished = () => exitRequested || streamError !== undefined || !lines.more;
+  const finished = () =>
+    exitRequested || streamError !== undefined || !lines.more;
   // A change is written only when the user answers y. The answer must come after the preview,
   // so lines typed before it are dropped. Ending input, /exit, or any other answer refuses it;
   // /exit also ends the session.
@@ -361,11 +429,18 @@ export async function runRepl(input: Readable, output: Writable, ports: ReplPort
   try {
     rl.prompt();
     // A session-start hook that fails stops the session. Its prompt has already been written.
-    const started = await ports.hooks("sessionStart", profileCommands(conversation, "sessionStart"));
+    const started = await ports.hooks(
+      "sessionStart",
+      profileCommands(conversation, "sessionStart"),
+    );
     if (!started.ok) return err(started.error);
     conversation = queueHookOutput(conversation, started.value);
     showHookOutput(output, started.value);
-    for (let line = await lines.next(); line !== undefined && !exitRequested && streamError === undefined; line = await lines.next()) {
+    for (
+      let line = await lines.next();
+      line !== undefined && !exitRequested && streamError === undefined;
+      line = await lines.next()
+    ) {
       const input = classifyLine(line);
       if (input.kind === "exit") break;
       if (input.kind !== "message") {
@@ -374,15 +449,24 @@ export async function runRepl(input: Readable, output: Writable, ports: ReplPort
         rl.prompt();
         continue;
       }
-      const turn = await runMessageTurn(input.text, conversation, { ports, output, finished, approve });
+      const turn = await runMessageTurn(input.text, conversation, {
+        ports,
+        output,
+        finished,
+        approve,
+      });
       conversation = turn.conversation;
       if (turn.stop) break;
       if (exitRequested || streamError !== undefined) break;
       rl.prompt();
     }
-    const ended = await ports.hooks("sessionEnd", profileCommands(conversation, "sessionEnd"));
+    const ended = await ports.hooks(
+      "sessionEnd",
+      profileCommands(conversation, "sessionEnd"),
+    );
     if (ended.ok) showHookOutput(output, ended.value);
-    else output.write(`error: session-end hook failed: ${ended.error.message}\n`);
+    else
+      output.write(`error: session-end hook failed: ${ended.error.message}\n`);
   } finally {
     input.off("error", fail);
     output.off("error", fail);

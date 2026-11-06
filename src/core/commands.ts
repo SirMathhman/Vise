@@ -118,9 +118,11 @@ export type ThinkingCommand = ShowThinkingCommand | SetThinkingCommand;
 export function parseThinkingCommand(words: string[]): Result<ThinkingCommand> {
   const [level] = words;
   if (words.length === 0) return ok({ kind: "show" });
-  if (words.length !== 1) return err(new Error("usage: /thinking [off | low | medium | high]"));
+  if (words.length !== 1)
+    return err(new Error("usage: /thinking [off | low | medium | high]"));
   if (level === "off") return ok({ kind: "set", effort: undefined });
-  if (level === "low" || level === "medium" || level === "high") return ok({ kind: "set", effort: level });
+  if (level === "low" || level === "medium" || level === "high")
+    return ok({ kind: "set", effort: level });
   return err(new Error("usage: /thinking [off | low | medium | high]"));
 }
 
@@ -138,7 +140,8 @@ export interface SelectModelCommand {
   name: string;
 }
 
-export type ModelCommand = ShowModelCommand | SearchModelsCommand | SelectModelCommand;
+export type ModelCommand =
+  ShowModelCommand | SearchModelsCommand | SelectModelCommand;
 
 const MODEL_USAGE = "usage: /model | /model search <text> | /model <name>";
 
@@ -151,7 +154,8 @@ export function parseModelCommand(words: string[]): Result<ModelCommand> {
     if (words.length < 2) return err(new Error(MODEL_USAGE));
     return ok({ kind: "search", snippet: words.slice(1).join(" ") });
   }
-  if (words.length === 1 && first !== undefined) return ok({ kind: "select", name: first });
+  if (words.length === 1 && first !== undefined)
+    return ok({ kind: "select", name: first });
   return err(new Error(MODEL_USAGE));
 }
 
@@ -161,7 +165,9 @@ export function contextLine(
   compacted: boolean,
 ): string {
   if (used === undefined) {
-    return compacted ? "context: size unknown since the last compaction" : "context: no request sent yet";
+    return compacted
+      ? "context: size unknown since the last compaction"
+      : "context: no request sent yet";
   }
   return `context: ${used} / ${total ?? "unknown"} tokens`;
 }

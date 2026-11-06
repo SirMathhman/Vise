@@ -46,14 +46,18 @@ export function runTool(root: string): ToolRunner {
       const problem = await checkTarget(root, call);
       if (problem) return `error: ${problem}`;
       const preview = approvalPreview(call);
-      if (preview !== undefined && !(await approve(preview))) return "the user declined this change";
+      if (preview !== undefined && !(await approve(preview)))
+        return "the user declined this change";
     }
     return dispatch(root, call);
   };
 }
 
 // Refuses a file change whose path is outside the working directory or hidden, before anyone is asked.
-async function checkTarget(root: string, call: ToolCall): Promise<string | undefined> {
+async function checkTarget(
+  root: string,
+  call: ToolCall,
+): Promise<string | undefined> {
   if (call.name === EDIT_FILE) {
     const args = parseEditFileArgs(call.arguments);
     if (!args.ok) return undefined;
@@ -69,7 +73,10 @@ async function checkTarget(root: string, call: ToolCall): Promise<string | undef
   if (call.name === CREATE_NOTE) {
     const args = parseCreateNoteArgs(call.arguments);
     if (!args.ok) return undefined;
-    const place = await resolveNewInside(root, notePath(args.value.category, args.value.name));
+    const place = await resolveNewInside(
+      root,
+      notePath(args.value.category, args.value.name),
+    );
     return place.ok ? undefined : place.error.message;
   }
   return undefined;
@@ -86,14 +93,24 @@ async function dispatch(root: string, call: ToolCall): Promise<string> {
   if (call.name === READ_FILE) {
     const args = parseReadFileArgs(call.arguments);
     if (!args.ok) return `invalid arguments: ${args.error.message}`;
-    const text = await readFileLines(root, args.value.path, args.value.start, args.value.end);
+    const text = await readFileLines(
+      root,
+      args.value.path,
+      args.value.start,
+      args.value.end,
+    );
     if (!text.ok) return `error: ${text.error.message}`;
     return text.value || "(no lines)";
   }
   if (call.name === EDIT_FILE) {
     const args = parseEditFileArgs(call.arguments);
     if (!args.ok) return `invalid arguments: ${args.error.message}`;
-    const edit = await editFile(root, args.value.path, args.value.previous, args.value.replacement);
+    const edit = await editFile(
+      root,
+      args.value.path,
+      args.value.previous,
+      args.value.replacement,
+    );
     return edit.ok ? edit.value : `error: ${edit.error.message}`;
   }
   if (call.name === CREATE_FILE) {
@@ -105,7 +122,11 @@ async function dispatch(root: string, call: ToolCall): Promise<string> {
   if (call.name === CREATE_NOTE) {
     const args = parseCreateNoteArgs(call.arguments);
     if (!args.ok) return `invalid arguments: ${args.error.message}`;
-    const created = await createNote(root, args.value.category, args.value.name);
+    const created = await createNote(
+      root,
+      args.value.category,
+      args.value.name,
+    );
     return created.ok ? created.value : `error: ${created.error.message}`;
   }
   if (call.name === RUN_POWERSHELL) {

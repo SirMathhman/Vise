@@ -1,4 +1,10 @@
-import type { ChatMessage, ContextWindow, ReasoningEffort, Reply, Usage } from "./messages.ts";
+import type {
+  ChatMessage,
+  ContextWindow,
+  ReasoningEffort,
+  Reply,
+  Usage,
+} from "./messages.ts";
 import { err, ok, type Result } from "./result.ts";
 import { toolNames } from "./tools.ts";
 import type { HookPoint, ProfileHook } from "./notes.ts";
@@ -28,7 +34,10 @@ export interface Conversation {
 }
 
 // Sets how hard the model thinks from the next request. Undefined turns thinking off.
-export function setThinking(conversation: Conversation, effort: ReasoningEffort | undefined): Step {
+export function setThinking(
+  conversation: Conversation,
+  effort: ReasoningEffort | undefined,
+): Step {
   return {
     conversation: { ...conversation, thinking: effort },
     notice: `thinking: ${effort ?? "off"}`,
@@ -37,17 +46,31 @@ export function setThinking(conversation: Conversation, effort: ReasoningEffort 
 
 // Runs the hooks of one point and returns their output. The global hooks of that point run first,
 // then `profile`, the commands the active profile adds at that point. A failure is an error.
-export type HookRunner = (point: HookPoint, profile?: string[]) => Promise<Result<string>>;
+export type HookRunner = (
+  point: HookPoint,
+  profile?: string[],
+) => Promise<Result<string>>;
 
 // The commands the active profile adds at one point, in the order of its header.
-export function profileCommands(conversation: Conversation, point: HookPoint): string[] {
-  return (conversation.profile?.hooks ?? []).filter((hook) => hook.point === point).map((hook) => hook.command);
+export function profileCommands(
+  conversation: Conversation,
+  point: HookPoint,
+): string[] {
+  return (conversation.profile?.hooks ?? [])
+    .filter((hook) => hook.point === point)
+    .map((hook) => hook.command);
 }
 
 // Adds hook output to the output waiting for the next message. Empty output changes nothing.
-export function queueHookOutput(conversation: Conversation, output: string): Conversation {
+export function queueHookOutput(
+  conversation: Conversation,
+  output: string,
+): Conversation {
   if (output === "") return conversation;
-  const pendingOutput = conversation.pendingOutput === undefined ? output : `${conversation.pendingOutput}\n\n${output}`;
+  const pendingOutput =
+    conversation.pendingOutput === undefined
+      ? output
+      : `${conversation.pendingOutput}\n\n${output}`;
   return { ...conversation, pendingOutput };
 }
 
@@ -56,12 +79,22 @@ export function queueHookOutput(conversation: Conversation, output: string): Con
 export function enabledTools(conversation: Conversation): string[] {
   const disabled = conversation.disabledTools ?? [];
   const allowed = conversation.profile?.tools;
-  return toolNames.filter((name) => !disabled.includes(name) && (allowed === undefined || allowed.includes(name)));
+  return toolNames.filter(
+    (name) =>
+      !disabled.includes(name) &&
+      (allowed === undefined || allowed.includes(name)),
+  );
 }
 
 // Switches one tool on or off. The change applies from the next request.
-export function setToolEnabled(conversation: Conversation, name: string, enabled: boolean): Step {
-  const others = (conversation.disabledTools ?? []).filter((tool) => tool !== name);
+export function setToolEnabled(
+  conversation: Conversation,
+  name: string,
+  enabled: boolean,
+): Step {
+  const others = (conversation.disabledTools ?? []).filter(
+    (tool) => tool !== name,
+  );
   const disabledTools = enabled ? others : [...others, name];
   return {
     conversation: { ...conversation, disabledTools },
@@ -92,25 +125,38 @@ export function compactionRequest(history: ChatMessage[]): ChatMessage[] {
 // The new history: the summary, then the most recent messages from the first user message
 // on, so the kept messages never begin with a tool result. If that first user message is
 // kept, the summary is merged into it so roles alternate.
-export function compactedHistory(summary: string, history: ChatMessage[]): ChatMessage[] {
+export function compactedHistory(
+  summary: string,
+  history: ChatMessage[],
+): ChatMessage[] {
   const recent = history.slice(-KEEP_RECENT);
   const start = recent.findIndex((message) => message.role === "user");
   const [first, ...rest] = start < 0 ? [] : recent.slice(start);
   if (first?.role === "user") {
-    return [{ role: "user", content: `${summary}\n\n${first.content}` }, ...rest];
+    return [
+      { role: "user", content: `${summary}\n\n${first.content}` },
+      ...rest,
+    ];
   }
   return [{ role: "user", content: summary }];
 }
 
 // True when the last prompt used most of the model's context window.
-export function needsCompaction(promptTokens: number, contextLength: number): boolean {
+export function needsCompaction(
+  promptTokens: number,
+  contextLength: number,
+): boolean {
   return promptTokens >= contextLength * COMPACT_AT;
 }
 
 // Replaces the history with a summary of it. On failure the conversation is returned
 // unchanged inside the err, so the caller keeps what it had.
-export async function compact(conversation: Conversation, reply: Reply): Promise<Result<Conversation>> {
-  if (conversation.history.length === 0) return err(new Error("nothing to compact"));
+export async function compact(
+  conversation: Conversation,
+  reply: Reply,
+): Promise<Result<Conversation>> {
+  if (conversation.history.length === 0)
+    return err(new Error("nothing to compact"));
   let summary = "";
   try {
     const request = {
@@ -141,12 +187,22 @@ export async function compact(conversation: Conversation, reply: Reply): Promise
 }
 
 // Keeps the size of a completed request. A compaction is not needed to read it.
-export function recordUsage(conversation: Conversation, usage: Usage): Conversation {
-  return { ...conversation, promptTokens: usage.promptTokens, compacted: false };
+export function recordUsage(
+  conversation: Conversation,
+  usage: Usage,
+): Conversation {
+  return {
+    ...conversation,
+    promptTokens: usage.promptTokens,
+    compacted: false,
+  };
 }
 
 // Makes a profile the active one. Its text is pending until the next message carries it.
-export function useProfile(conversation: Conversation, profile: ActiveProfile): Step {
+export function useProfile(
+  conversation: Conversation,
+  profile: ActiveProfile,
+): Step {
   return {
     conversation: { ...conversation, profile, pendingProfile: profile.text },
     notice: `profile: ${profile.name}`,
@@ -156,16 +212,27 @@ export function useProfile(conversation: Conversation, profile: ActiveProfile): 
 // Turns profiles off. Text already in the history stays there.
 export function clearProfile(conversation: Conversation): Step {
   return {
-    conversation: { ...conversation, profile: undefined, pendingProfile: undefined },
+    conversation: {
+      ...conversation,
+      profile: undefined,
+      pendingProfile: undefined,
+    },
     notice: "profile: default",
   };
 }
 
 // Compacts because the user asked for it (/compact).
-export async function compactNow(conversation: Conversation, reply: Reply): Promise<Step> {
+export async function compactNow(
+  conversation: Conversation,
+  reply: Reply,
+): Promise<Step> {
   const result = await compact(conversation, reply);
-  if (result.ok) return { conversation: result.value, notice: "history compacted" };
-  return { conversation, notice: `error: compaction failed: ${result.error.message}` };
+  if (result.ok)
+    return { conversation: result.value, notice: "history compacted" };
+  return {
+    conversation,
+    notice: `error: compaction failed: ${result.error.message}`,
+  };
 }
 
 // Compacts before a message when the last prompt used most of the window. Without a
@@ -178,8 +245,12 @@ export async function compactIfNeeded(
   if (conversation.promptTokens === undefined) return { conversation };
   const window = await contextWindow();
   if (!window.ok) {
-    return { conversation, notice: `error: could not check the context window: ${window.error.message}` };
+    return {
+      conversation,
+      notice: `error: could not check the context window: ${window.error.message}`,
+    };
   }
-  if (!needsCompaction(conversation.promptTokens, window.value)) return { conversation };
+  if (!needsCompaction(conversation.promptTokens, window.value))
+    return { conversation };
   return compactNow(conversation, reply);
 }

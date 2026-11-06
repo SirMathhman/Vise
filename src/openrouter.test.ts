@@ -59,7 +59,9 @@ test("offers only the named tools, and sends no tools when none are named", asyn
   };
   await drain(streamChat({ ...base, tools: ["list_files", "kill_command"] }));
   await drain(streamChat({ ...base, tools: [] }));
-  const offered = (JSON.parse(sent[0] ?? "{}").tools as SentTool[]).map((tool) => tool.function.name);
+  const offered = (JSON.parse(sent[0] ?? "{}").tools as SentTool[]).map(
+    (tool) => tool.function.name,
+  );
   expect(offered).toEqual(["list_files", "kill_command"]);
   expect(JSON.parse(sent[1] ?? "{}").tools).toBeUndefined();
 });
@@ -84,12 +86,18 @@ test("reports an error event in the stream and stops there", async () => {
     'data: {"error":{"message":"provider failed"}}\n\n',
     "data: [DONE]\n\n",
   ].join("");
-  expect(await collect(body)).toEqual([ok("Hel"), err(new Error("OpenRouter error: provider failed"))]);
+  expect(await collect(body)).toEqual([
+    ok("Hel"),
+    err(new Error("OpenRouter error: provider failed")),
+  ]);
 });
 
 test("reports when the stream ends before [DONE]", async () => {
   const body = 'data: {"choices":[{"delta":{"content":"Hel"}}]}\n\n';
-  expect(await collect(body)).toEqual([ok("Hel"), err(new Error("OpenRouter stream ended before it finished"))]);
+  expect(await collect(body)).toEqual([
+    ok("Hel"),
+    err(new Error("OpenRouter stream ended before it finished")),
+  ]);
 });
 
 test("reports a clear error when an event does not match the expected shape", async () => {
@@ -97,7 +105,9 @@ test("reports a clear error when an event does not match the expected shape", as
   const [failure] = await collect(body);
   expect(failure?.ok).toBe(false);
   if (failure?.ok === false) {
-    expect(failure.error.message).toContain("OpenRouter sent a stream event that does not match");
+    expect(failure.error.message).toContain(
+      "OpenRouter sent a stream event that does not match",
+    );
   }
 });
 
@@ -124,9 +134,18 @@ test("reports the prompt tokens from the usage event", async () => {
 });
 
 test("assembles a tool call from its streamed pieces", async () => {
-  const frame = (delta: object) => `data: ${JSON.stringify({ choices: [{ delta }] })}\n\n`;
+  const frame = (delta: object) =>
+    `data: ${JSON.stringify({ choices: [{ delta }] })}\n\n`;
   const body = [
-    frame({ tool_calls: [{ index: 0, id: "call_1", function: { name: "list_files", arguments: '{"path":' } }] }),
+    frame({
+      tool_calls: [
+        {
+          index: 0,
+          id: "call_1",
+          function: { name: "list_files", arguments: '{"path":' },
+        },
+      ],
+    }),
     frame({ tool_calls: [{ index: 0, function: { arguments: '"."}' } }] }),
     "data: [DONE]\n\n",
   ].join("");
@@ -143,7 +162,9 @@ test("assembles a tool call from its streamed pieces", async () => {
     parts.push(part);
   }
   expect(parts).toEqual([]);
-  expect(calls).toEqual([{ id: "call_1", name: "list_files", arguments: '{"path":"."}' }]);
+  expect(calls).toEqual([
+    { id: "call_1", name: "list_files", arguments: '{"path":"."}' },
+  ]);
 });
 
 test("marks only the last message as a prompt-cache breakpoint", async () => {
@@ -166,7 +187,9 @@ test("marks only the last message as a prompt-cache breakpoint", async () => {
   expect(sent[0]).toEqual({ role: "user", content: "first" });
   expect(sent[2]).toEqual({
     role: "user",
-    content: [{ type: "text", text: "second", cache_control: { type: "ephemeral" } }],
+    content: [
+      { type: "text", text: "second", cache_control: { type: "ephemeral" } },
+    ],
   });
 });
 
@@ -177,7 +200,8 @@ test("reads the model's context window from the model listing", async () => {
       { id: "anthropic/claude-haiku-5.5", context_length: 1000000 },
     ],
   };
-  const fakeFetch = async () => new Response(JSON.stringify(listing), { status: 200 });
+  const fakeFetch = async () =>
+    new Response(JSON.stringify(listing), { status: 200 });
   const window = await modelContextWindow({
     model: "anthropic/claude-haiku-5.5",
     fetch: fakeFetch,
@@ -261,11 +285,18 @@ test("keeps the reasoning of a tool-calling reply and sends it back with the nex
       model: "anthropic/claude-haiku-5.5",
       messages: [
         { role: "user", content: "hi" },
-        { role: "assistant", content: "", toolCalls: [{ id: "c1", name: "list_files", arguments: "{}" }], reasoning: items },
+        {
+          role: "assistant",
+          content: "",
+          toolCalls: [{ id: "c1", name: "list_files", arguments: "{}" }],
+          reasoning: items,
+        },
         { role: "tool", toolCallId: "c1", content: "a.txt" },
       ],
       fetch: fakeFetch,
     }),
   );
-  expect(JSON.parse(sent[1] ?? "{}").messages[1].reasoning_details).toEqual(items);
+  expect(JSON.parse(sent[1] ?? "{}").messages[1].reasoning_details).toEqual(
+    items,
+  );
 });

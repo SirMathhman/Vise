@@ -19,11 +19,21 @@ const SessionSchema = z
           role: z.literal("assistant"),
           content: z.string(),
           toolCalls: z
-            .array(z.object({ id: z.string(), name: z.string(), arguments: z.string() }))
+            .array(
+              z.object({
+                id: z.string(),
+                name: z.string(),
+                arguments: z.string(),
+              }),
+            )
             .optional(),
           reasoning: z.array(z.unknown()).optional(),
         }),
-        z.object({ role: z.literal("tool"), toolCallId: z.string(), content: z.string() }),
+        z.object({
+          role: z.literal("tool"),
+          toolCallId: z.string(),
+          content: z.string(),
+        }),
       ]),
     ),
     promptTokens: z.number().optional(),
@@ -33,19 +43,29 @@ const SessionSchema = z
         name: z.string(),
         text: z.string(),
         tools: z.array(z.string()).optional(),
-        hooks: z.array(z.object({ point: z.enum(HOOK_POINTS), command: z.string() })).optional(),
+        hooks: z
+          .array(z.object({ point: z.enum(HOOK_POINTS), command: z.string() }))
+          .optional(),
       })
       .optional(),
     pendingProfile: z.string().optional(),
     pendingOutput: z.string().optional(),
     disabledTools: z.array(z.string()).optional(),
   })
-  .refine((session) => (session.disabledTools ?? []).every((name) => toolNames.includes(name)), {
-    message: "a switched-off tool does not exist",
-  })
-  .refine((session) => (session.profile?.tools ?? []).every((name) => toolNames.includes(name)), {
-    message: "a profile allows a tool that does not exist",
-  });
+  .refine(
+    (session) =>
+      (session.disabledTools ?? []).every((name) => toolNames.includes(name)),
+    {
+      message: "a switched-off tool does not exist",
+    },
+  )
+  .refine(
+    (session) =>
+      (session.profile?.tools ?? []).every((name) => toolNames.includes(name)),
+    {
+      message: "a profile allows a tool that does not exist",
+    },
+  );
 
 // Where saved sessions are read and written. The composition root supplies it.
 export interface SessionStore {
@@ -68,13 +88,18 @@ export interface ListSessionsCommand {
   kind: "list";
 }
 
-export type SessionCommand = SaveSessionCommand | LoadSessionCommand | ListSessionsCommand;
+export type SessionCommand =
+  SaveSessionCommand | LoadSessionCommand | ListSessionsCommand;
 
 // Reads the words of a session command: /save <name>, /load <name>, or /sessions.
 export function parseSessionCommand(words: string[]): Result<SessionCommand> {
   const [action, name] = words;
   if (action === "sessions" && words.length === 1) return ok({ kind: "list" });
-  if ((action === "save" || action === "load") && words.length === 2 && name !== undefined) {
+  if (
+    (action === "save" || action === "load") &&
+    words.length === 2 &&
+    name !== undefined
+  ) {
     const checked = checkName(name, "session name");
     if (!checked.ok) return checked;
     if (action === "save") return ok({ kind: "save", name: checked.value });
@@ -105,16 +130,29 @@ export function checkPairing(history: ChatMessage[]): Result<void> {
   for (const [index, message] of history.entries()) {
     if (message.role === "tool") {
       if (!pending.delete(message.toolCallId)) {
-        return err(new Error(`message ${index + 1} is a tool result with no call before it`));
+        return err(
+          new Error(
+            `message ${index + 1} is a tool result with no call before it`,
+          ),
+        );
       }
       continue;
     }
     if (pending.size > 0) {
-      return err(new Error(`message ${index + 1} comes before the results of the calls before it`));
+      return err(
+        new Error(
+          `message ${index + 1} comes before the results of the calls before it`,
+        ),
+      );
     }
-    pending = new Set(message.role === "assistant" ? (message.toolCalls ?? []).map((call) => call.id) : []);
+    pending = new Set(
+      message.role === "assistant"
+        ? (message.toolCalls ?? []).map((call) => call.id)
+        : [],
+    );
   }
-  if (pending.size > 0) return err(new Error("the last tool calls have no results"));
+  if (pending.size > 0)
+    return err(new Error("the last tool calls have no results"));
   return ok(undefined);
 }
 
@@ -128,7 +166,8 @@ export function decodeSession(text: string): Result<Conversation> {
     return err(new Error("the session file is not JSON"));
   }
   const parsed = SessionSchema.safeParse(value);
-  if (!parsed.success) return err(new Error("the session file does not match the session format"));
+  if (!parsed.success)
+    return err(new Error("the session file does not match the session format"));
   const session = parsed.data;
   const paired = checkPairing(session.history);
   if (!paired.ok) return err(paired.error);

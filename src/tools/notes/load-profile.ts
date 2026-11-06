@@ -18,14 +18,27 @@ interface ProfileNote {
 
 // Reads the profile's note: its text and its header. A profile that cannot be read, or has no text
 // below its header, is refused.
-async function readProfile(root: string, name: string): Promise<Result<ProfileNote>> {
+async function readProfile(
+  root: string,
+  name: string,
+): Promise<Result<ProfileNote>> {
   const text = await readNote(root, notePath(PROFILE_CATEGORY, name));
-  if (!text.ok) return err(new Error(`profile ${name} could not be read: ${text.error.message}`));
+  if (!text.ok)
+    return err(
+      new Error(`profile ${name} could not be read: ${text.error.message}`),
+    );
   const header = parseHeader(text.value);
-  if (!header.ok) return err(new Error(`profile ${name} is not a note: ${header.error.message}`));
+  if (!header.ok)
+    return err(
+      new Error(`profile ${name} is not a note: ${header.error.message}`),
+    );
   const body = bodyOf(text.value);
   if (body === "") return err(new Error(`profile ${name} is empty`));
-  return ok({ text: body, tools: header.value.tools, hooks: header.value.hooks });
+  return ok({
+    text: body,
+    tools: header.value.tools,
+    hooks: header.value.hooks,
+  });
 }
 
 // The loader for a working directory: the text below a profile's header.
@@ -39,18 +52,27 @@ export function loadProfile(root: string): ProfileLoader {
 
 // The tools a profile allows, from its `tools:` line. Undefined when it has none, so every tool is
 // allowed. A name that is not a tool refuses the profile, so a typo cannot drop a tool silently.
-export function loadProfileTools(root: string): (name: string) => Promise<Result<string[] | undefined>> {
+export function loadProfileTools(
+  root: string,
+): (name: string) => Promise<Result<string[] | undefined>> {
   return async (name) => {
     const profile = await readProfile(root, name);
     if (!profile.ok) return profile;
-    const unknown = (profile.value.tools ?? []).find((tool) => !toolNames.includes(tool));
-    if (unknown !== undefined) return err(new Error(`profile ${name} allows a tool that does not exist`));
+    const unknown = (profile.value.tools ?? []).find(
+      (tool) => !toolNames.includes(tool),
+    );
+    if (unknown !== undefined)
+      return err(
+        new Error(`profile ${name} allows a tool that does not exist`),
+      );
     return ok(profile.value.tools);
   };
 }
 
 // The hooks a profile adds, from its `<point>: <command>` lines. Empty when it adds none.
-export function loadProfileHooks(root: string): (name: string) => Promise<Result<ProfileHook[]>> {
+export function loadProfileHooks(
+  root: string,
+): (name: string) => Promise<Result<ProfileHook[]>> {
   return async (name) => {
     const profile = await readProfile(root, name);
     if (!profile.ok) return profile;

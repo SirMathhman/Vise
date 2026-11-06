@@ -24,16 +24,23 @@ export function sessionStore(root: string): SessionStore {
       try {
         return ok(await readFile(join(folder, name + EXTENSION), "utf8"));
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") return err(new Error(`no saved session named ${name}`));
+        if ((error as NodeJS.ErrnoException).code === "ENOENT")
+          return err(new Error(`no saved session named ${name}`));
         return err(error instanceof Error ? error : new Error(String(error)));
       }
     },
     async list() {
       try {
         const files = await readdir(folder);
-        return ok(files.filter((file) => file.endsWith(EXTENSION)).map((file) => file.slice(0, -EXTENSION.length)).sort());
+        return ok(
+          files
+            .filter((file) => file.endsWith(EXTENSION))
+            .map((file) => file.slice(0, -EXTENSION.length))
+            .sort(),
+        );
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") return ok([] as string[]);
+        if ((error as NodeJS.ErrnoException).code === "ENOENT")
+          return ok([] as string[]);
         return err(error instanceof Error ? error : new Error(String(error)));
       }
     },

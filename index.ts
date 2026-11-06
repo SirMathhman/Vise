@@ -1,13 +1,24 @@
 import { readInstructions } from "./src/instructions.ts";
-import { listModels, modelContextWindow, streamChat } from "./src/openrouter.ts";
+import {
+  listModels,
+  modelContextWindow,
+  streamChat,
+} from "./src/openrouter.ts";
 import { runRepl } from "./src/repl/repl.ts";
 import { killAllJobs } from "./src/tools/jobs.ts";
-import { loadProfile, loadProfileHooks, loadProfileTools } from "./src/tools/notes/load-profile.ts";
+import {
+  loadProfile,
+  loadProfileHooks,
+  loadProfileTools,
+} from "./src/tools/notes/load-profile.ts";
 import { runNoteCommand } from "./src/tools/notes/run-note-command.ts";
 import { runTool } from "./src/tools/run-tool.ts";
 import { hookRunner, readHooks } from "./src/tools/hooks/hooks.ts";
 import { sessionStore } from "./src/tools/session-store.ts";
-import { readToolSettings, saveToolSettings } from "./src/tools/tool-settings.ts";
+import {
+  readToolSettings,
+  saveToolSettings,
+} from "./src/tools/tool-settings.ts";
 import { readModelSetting } from "./src/tools/models/model-settings.ts";
 import { selectModel } from "./src/tools/models/select-model.ts";
 
@@ -16,7 +27,9 @@ const DEFAULT_MODEL = "anthropic/claude-haiku-5.5";
 // Stops every background job, and warns about each one that could not be stopped.
 async function stopJobs(): Promise<void> {
   for (const job of await killAllJobs()) {
-    console.error(`warning: background job ${job.id} (pid ${job.pid}) could not be stopped and may still be running: ${job.command}`);
+    console.error(
+      `warning: background job ${job.id} (pid ${job.pid}) could not be stopped and may still be running: ${job.command}`,
+    );
   }
 }
 
@@ -56,7 +69,8 @@ if (import.meta.main) {
   try {
     const result = await runRepl(process.stdin, process.stdout, {
       hooks: hookRunner(process.cwd(), hookConfig.value),
-      reply: (request) => streamChat({ apiKey, model: selection.model, ...request }),
+      reply: (request) =>
+        streamChat({ apiKey, model: selection.model, ...request }),
       contextWindow: () => modelContextWindow({ model: selection.model }),
       models: {
         current: () => selection.model,

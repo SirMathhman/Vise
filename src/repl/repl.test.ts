@@ -8,17 +8,26 @@ import { echoReply, runRepl, type ReplPorts } from "./repl.ts";
 function ports(overrides: Partial<ReplPorts> = {}): ReplPorts {
   return {
     reply: echoReply,
-    contextWindow: async () => err(new Error("no context window is configured")),
+    contextWindow: async () =>
+      err(new Error("no context window is configured")),
     tools: async () => "no tools are available",
     notes: async () => "notes are not available",
     profile: async () => err(new Error("no profiles are available")),
     profileTools: async () => ok(undefined),
     profileHooks: async () => ok([]),
     hooks: async () => ok(""),
-    models: { current: () => "m", list: async () => ok([]), select: async (name: string) => ok(name) },
+    models: {
+      current: () => "m",
+      list: async () => ok([]),
+      select: async (name: string) => ok(name),
+    },
     disabledTools: [],
     saveDisabledTools: async () => ok(undefined),
-    sessions: { save: async () => ok(undefined), load: async () => err(new Error("none")), list: async () => ok([]) },
+    sessions: {
+      save: async () => ok(undefined),
+      load: async () => err(new Error("none")),
+      list: async () => ok([]),
+    },
     ...overrides,
   };
 }
@@ -31,7 +40,11 @@ test("echoes each line until exit", async () => {
       done();
     },
   });
-  await runRepl(Readable.from(["hello\n", "world\n", "/exit\n", "ignored\n"]), output, ports());
+  await runRepl(
+    Readable.from(["hello\n", "world\n", "/exit\n", "ignored\n"]),
+    output,
+    ports(),
+  );
   expect(written).toContain("echo: hello\n");
   expect(written).toContain("echo: world\n");
   expect(written).not.toContain("echo: ignored");
@@ -80,7 +93,11 @@ test("puts the instructions in front of the first message only", async () => {
       done();
     },
   });
-  await runRepl(Readable.from(["first\nsecond\n"]), output, ports({ reply, instructions: "RULES" }));
+  await runRepl(
+    Readable.from(["first\nsecond\n"]),
+    output,
+    ports({ reply, instructions: "RULES" }),
+  );
   expect(seen[0]).toEqual([{ role: "user", content: "RULES\n\nfirst" }]);
   expect(seen[1]).toEqual([
     { role: "user", content: "RULES\n\nfirst" },
@@ -107,7 +124,11 @@ test("sends a /note line to the note runner, prints its result, and keeps it out
     seen.push(words);
     return "work/plan";
   };
-  await runRepl(Readable.from(["/note list work\n"]), output, ports({ reply, notes }));
+  await runRepl(
+    Readable.from(["/note list work\n"]),
+    output,
+    ports({ reply, notes }),
+  );
   expect(seen).toEqual([["list", "work"]]);
   expect(written).toContain("work/plan\n");
   expect(modelSaw).toEqual([]);
@@ -164,8 +185,20 @@ test("/compact replaces the history with a summary and the last six messages", a
     },
   });
   const lines = ["1", "2", "3", "4", "5", "6", "7", "/compact", "next"];
-  await runRepl(Readable.from(lines.map((line) => `${line}\n`)), output, ports({ reply }));
-  expect(seen.at(-1)).toEqual(["SUM\n\n5", "r:5", "6", "r:6", "7", "r:7", "next"]);
+  await runRepl(
+    Readable.from(lines.map((line) => `${line}\n`)),
+    output,
+    ports({ reply }),
+  );
+  expect(seen.at(-1)).toEqual([
+    "SUM\n\n5",
+    "r:5",
+    "6",
+    "r:6",
+    "7",
+    "r:7",
+    "next",
+  ]);
 });
 
 test("compacts before a message once the last prompt fills 80% of the window", async () => {
@@ -185,7 +218,11 @@ test("compacts before a message once the last prompt fills 80% of the window", a
       done();
     },
   });
-  await runRepl(Readable.from(["a\n", "b\n"]), output, ports({ reply, contextWindow: async () => ok(100) }));
+  await runRepl(
+    Readable.from(["a\n", "b\n"]),
+    output,
+    ports({ reply, contextWindow: async () => ok(100) }),
+  );
   expect(seen.at(-1)).toEqual(["SUM\n\na", "r:a", "b"]);
 });
 
@@ -206,13 +243,19 @@ test("a failed reply does not record its prompt size", async () => {
       done();
     },
   });
-  await runRepl(Readable.from(["a\n", "b\n"]), output, ports({ reply, contextWindow: async () => ok(100) }));
+  await runRepl(
+    Readable.from(["a\n", "b\n"]),
+    output,
+    ports({ reply, contextWindow: async () => ok(100) }),
+  );
   expect(seen).toEqual(["a", "b"]);
 });
 
 test("/context after a compaction says the size is unknown", async () => {
   const reply: Reply = async function* ({ messages }) {
-    yield ok(messages.at(-1)?.content === "Summarize this convo" ? "SUM" : "ok");
+    yield ok(
+      messages.at(-1)?.content === "Summarize this convo" ? "SUM" : "ok",
+    );
   };
   let written = "";
   const output = new Writable({
@@ -241,7 +284,11 @@ test("reports a reply that throws as an error and keeps the session going", asyn
       done();
     },
   });
-  const result = await runRepl(Readable.from(["hello\n"]), output, ports({ reply }));
+  const result = await runRepl(
+    Readable.from(["hello\n"]),
+    output,
+    ports({ reply }),
+  );
   expect(written).toContain("error: boom");
   expect(result.ok).toBe(true);
 });
@@ -262,7 +309,11 @@ test("runs a tool the model asks for and sends its result back", async () => {
   const seen: string[] = [];
   const reply: Reply = async function* ({ messages, onToolCall }) {
     const last = messages.at(-1);
-    seen.push(messages.map((message) => `${message.role}:${message.content}`).join(" | "));
+    seen.push(
+      messages
+        .map((message) => `${message.role}:${message.content}`)
+        .join(" | "),
+    );
     if (last?.role === "user") {
       onToolCall({ id: "c1", name: "list_files", arguments: '{"path":"."}' });
       return;
@@ -288,7 +339,11 @@ test("runs a tool the model asks for and sends its result back", async () => {
 test("an edit is run only when the user answers y", async () => {
   const reply: Reply = async function* ({ messages, onToolCall }) {
     if (messages.at(-1)?.role === "user") {
-      onToolCall({ id: "e1", name: "edit_file", arguments: '{"path":"f.txt","previous":"a","replacement":"b"}' });
+      onToolCall({
+        id: "e1",
+        name: "edit_file",
+        arguments: '{"path":"f.txt","previous":"a","replacement":"b"}',
+      });
       return;
     }
     yield ok("done");
@@ -330,7 +385,11 @@ test("/exit at an approval ends the session without another model request", asyn
   const reply: Reply = async function* ({ messages, onToolCall }) {
     requests += 1;
     if (messages.at(-1)?.role === "user") {
-      onToolCall({ id: "e1", name: "edit_file", arguments: '{"path":"f.txt","previous":"a","replacement":"b"}' });
+      onToolCall({
+        id: "e1",
+        name: "edit_file",
+        arguments: '{"path":"f.txt","previous":"a","replacement":"b"}',
+      });
       return;
     }
     yield ok("done");
@@ -346,7 +405,8 @@ test("/exit at an approval ends the session without another model request", asyn
     ports({
       reply,
       tools: async (_call, approve) => {
-        if (!(await approve("edit f.txt"))) return "the user declined this change";
+        if (!(await approve("edit f.txt")))
+          return "the user declined this change";
         return "edited f.txt";
       },
     }),
@@ -366,7 +426,11 @@ test("sends no request after a tool call when the input has ended", async () => 
       done();
     },
   });
-  await runRepl(Readable.from(["go\n"]), output, ports({ reply, tools: async () => "a.txt" }));
+  await runRepl(
+    Readable.from(["go\n"]),
+    output,
+    ports({ reply, tools: async () => "a.txt" }),
+  );
   expect(requests).toBe(1);
 });
 
