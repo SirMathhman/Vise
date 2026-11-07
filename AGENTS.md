@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Test all: `bun test`
 - Test one file: `bun test src/repl/repl.test.ts`. One test by name: `bun test src/repl/repl.test.ts -t "name substring"`.
 - Lint: `bun run lint` runs ESLint and `scripts/check-files-per-dir.ts`. Both must pass.
-- Type check: `bunx tsc --noEmit`
+- Type check: `bunx tsc --noEmit` and `bunx tsc --noEmit -p src/web/client` (the browser page has its own tsconfig)
 
 The tests run on Windows and spawn real `powershell.exe`, `taskkill`, and temp directories, so they need a Windows machine. No test calls OpenRouter. A live check means piping input into `bun run index.ts`, for example `printf 'hi\n/exit\n' | bun run index.ts`, which uses the real key and costs a request.
 

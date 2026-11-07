@@ -67,10 +67,10 @@ Each invariant has a label (F1 to F5 for functional, N1 to N6 for nonfunctional)
 
 ## Frontend and backend
 
-The session is split into a backend, which owns the turn loop, conversation state, tool rounds, hooks, commands, subagents, and approvals, and a frontend, which owns the terminal. The two talk through a typed event protocol in `src/protocol/`, and only `index.ts` connects them. The protocol is in-process today. It is plain data with no functions, so a transport (JSON lines over stdio or a socket) can be added without changing either side.
+The session is split into a backend, which owns the turn loop, conversation state, tool rounds, hooks, commands, subagents, and approvals, and a frontend, which owns the terminal. The two talk through a typed event protocol in `src/protocol/`, and only `index.ts` connects them. The terminal frontend is in-process. The browser frontend (`bun run web`, or `index.ts --web`) runs the same session and carries the same messages as JSON over a WebSocket on 127.0.0.1. The protocol is plain data with no functions, so either transport works without changing the backend.
 
 - **Frontend to backend (`ClientMessage`):** `line` (one input line), `approval` (an answer to an `approvalRequest`, identified by its `id`), `inputEnded`, and `failed` (a stream error).
-- **Backend to frontend (`ServerEvent`):** `text` (a reply chunk, raw and unsanitized), `replyEnd`, `thinking` and `thinkingDone`, `toolCall` and `toolSkipped`, `approvalRequest` (with `id` and `preview`), `hookOutput` (the full text), `notice`, `error`, `ready`, and `ended`. The event stream ends after `ended`.
+- **Backend to frontend (`ServerEvent`):** `text` (a reply chunk, raw and unsanitized), `replyEnd`, `thinking` and `thinkingDone`, `toolCall` and `toolSkipped`, `approvalRequest` (with `id` and `preview`), `approvalAnswered` (with `id` and `answer`, so a reconnecting frontend knows which questions are still open), `hookOutput` (the full text), `notice`, `error`, `ready`, and `ended`. The event stream ends after `ended`.
 
 Decisions that keep F4 and F5 true across the split:
 
@@ -174,7 +174,7 @@ Target layout. Test files sit beside the module each one tests; there is no sepa
 
 ```
 └── vise/
-    ├── index.ts                         composition root: wires stdin, stdout, and OPENROUTER_API_KEY to the REPL and the model; reads the tools and model settings at startup
+    ├── index.ts                         composition root: wires stdin, stdout, and OPENROUTER_API_KEY to the REPL or, with --web, to the browser server; reads the tools and model settings at startup
     ├── scripts/                         build checks run by bun run lint
     │   └── check-files-per-dir.ts       file count per directory
     └── src/
@@ -202,6 +202,16 @@ Target layout. Test files sit beside the module each one tests; there is no sepa
         │   ├── repl.ts                  runRepl: sends lines, prints events, prompts on ready
         │   ├── render.ts                ServerEvent to terminal text: sanitizing, thinking line, hook display cap
         │   └── session-helper.ts        test helper: runWithPorts and echoReply
+        ├── web/                         browser frontend: a WebSocket relay and a page in plain TypeScript, with no framework
+        │   ├── server/
+        │   │   ├── server.ts            startWebServer: listens on 127.0.0.1, checks the token and Origin on the socket, serves the page
+        │   │   ├── hub.ts               keeps every event for replay; one viewer at a time (a new tab takes over the session)
+        │   │   ├── client-message.ts    reads the browser's messages: lines and approvals only
+        │   │   └── page.ts              bundles the page script at startup
+        │   └── client/
+        │       ├── main.ts              the socket, reconnects, render schedule (side effects only)
+        │       ├── state.ts             pure reducer: server events to the transcript
+        │       └── view.ts              DOM from the state, text set with textContent only
         └── tools/                       disk, process, and settings work for the tools and the frontend
             ├── run-tool.ts              dispatches a call by name, checks the target before asking, runs a change only when approve resolves true
             ├── run-powershell.ts        the only process spawning; a command still running after 30 seconds becomes a background job
@@ -226,12 +236,14 @@ Target layout. Test files sit beside the module each one tests; there is no sepa
 
 ```
 index.ts  ->  src/repl  ->  src/protocol  ->  src/core (types)
+index.ts  ->  src/web/server  ->  src/protocol, src/core
+src/web/client  ->  src/protocol (types)
 index.ts  ->  src/backend  ->  src/protocol, src/core
 index.ts  ->  src/openrouter.ts  ->  src/core
 index.ts  ->  src/tools  ->  src/core
 ```
 
-`src/core` imports nothing from `src/repl`, `src/backend`, `src/protocol`, `src/tools`, `src/openrouter.ts`, or `index.ts`. `src/protocol` imports only core types. `src/repl` imports `src/protocol` and core types only, and never `src/backend`, `src/tools`, or `src/openrouter.ts`. `src/backend` imports `src/protocol` and `src/core`, and reaches disk, processes, and the network only through ports. `src/tools` and `src/openrouter.ts` may import `src/core`, never the reverse, and they do not import each other. Only `index.ts` imports both the frontend and the backend. Tests and the test helper `src/repl/session-helper.ts` may import any module. There are no circular imports.
+`src/core` imports nothing from `src/repl`, `src/backend`, `src/protocol`, `src/tools`, `src/openrouter.ts`, or `index.ts`. `src/protocol` imports only core types. `src/repl` imports `src/protocol` and core types only, and never `src/backend`, `src/tools`, or `src/openrouter.ts`. `src/backend` imports `src/protocol` and `src/core`, and reaches disk, processes, and the network only through ports. `src/tools` and `src/openrouter.ts` may import `src/core`, never the reverse, and they do not import each other. Only `index.ts` imports both the frontend and the backend. `src/web/server` follows the rules of `src/repl`, and `src/web/client` may import protocol types only; it is built for the browser and never runs under Bun. The client is checked with its own tsconfig (`src/web/client/tsconfig.json`), because the browser types are not part of the rest of the project. Tests and the test helper `src/repl/session-helper.ts` may import any module. There are no circular imports.
 
 Recursion is avoided in core. When a function would need to call a function that calls it back, pass the callback as a parameter instead of importing across files.
 
@@ -364,7 +376,7 @@ Each item is a known defect or gap. Fixes are listed under Future Work.
 
 ### Trust boundary
 
-Everything read from stdin is untrusted text, and every line is sent to OpenRouter, a third party. The model's reply is also untrusted text. Vise reads file names and file contents under the working directory for `list_files` and `read_file` (hidden entries are skipped, and paths are checked on their real location). It writes files only through `edit_file`, `create_file`, and `create_note`, after the user approves each change on the terminal. `create_file` and `create_note` never overwrite. The writes without an approval are the ones the user types: `/note new` writes a note, and `/tools enable` or `/tools disable` writes `.vise/tools.json`. Neither takes model text. Vise starts PowerShell only through `run_powershell`, after the user approves each command. The command runs in the working directory. A command still running after 30 seconds becomes a background job that runs until the user approves `kill_command` for it or Vise exits, and its output is kept as its last 500 lines per stream. A child that outlives PowerShell is not stopped by `kill_command` (see Known Problems). The API key comes from `.env` and must never be echoed or logged.
+Everything read from stdin, or sent over the browser socket, is untrusted text, and every line is sent to OpenRouter, a third party. The model's reply is also untrusted text. Vise reads file names and file contents under the working directory for `list_files` and `read_file` (hidden entries are skipped, and paths are checked on their real location). It writes files only through `edit_file`, `create_file`, and `create_note`, after the user approves each change on the terminal. `create_file` and `create_note` never overwrite. The writes without an approval are the ones the user types: `/note new` writes a note, and `/tools enable` or `/tools disable` writes `.vise/tools.json`. Neither takes model text. Vise starts PowerShell only through `run_powershell`, after the user approves each command. The command runs in the working directory. A command still running after 30 seconds becomes a background job that runs until the user approves `kill_command` for it or Vise exits, and its output is kept as its last 500 lines per stream. A child that outlives PowerShell is not stopped by `kill_command` (see Known Problems). The API key comes from `.env` and must never be echoed or logged.
 
 ### Trust in files and settings
 
@@ -381,6 +393,7 @@ Status is **missing**, **partial**, or in place.
 
 #### Input and model output
 
+- **Browser output (in place).** The page sets model text, tool lines, previews, and errors with `textContent` only, never as HTML, so model output cannot run as markup in the page.
 - **Terminal escape injection (in place).** The renderer (`src/repl/render.ts`) sanitizes every line the backend emits: model text, tool lines, approval previews, notices, and errors. `sanitize` replaces control characters other than tab and newline.
 - **Prompt injection (missing).** Model replies, earlier replies resent in history, and text read from files can carry instructions the model then follows. `list_files` returns file names and `read_file` returns file contents, and both are model input. A file the model reads can carry an instruction into the next request, and an injected instruction can make the model call `read_file` on a file the user did not mean it to read. The output of `run_powershell` is model input too. Any action taken from model output must be confirmed by the user and must not be reachable from text the model produced alone. Compaction is a second persistence path: a model-written summary becomes a user-role message in every later request, so an injected instruction survives compaction with more authority than the reply it came from. Data framing for tool output is missing.
 - **Unbounded input (partial).** Job output lines are cut at 8192 characters and marked. User input, model replies, and file reads are not limited. Input needs a maximum line length with a defined response when it is exceeded.
@@ -396,7 +409,7 @@ Status is **missing**, **partial**, or in place.
 #### Data, spending, and secrets
 
 - **Data exposure to a third party (missing).** Every line and every earlier reply is sent to OpenRouter, and the history is resent in full each turn. The names and contents of files the model reads are sent too, on every turn that uses a tool, not only what the user typed. `run_powershell` output is sent as well, and its command can read files outside the working directory. `read_file` sends file contents the model asked for, while the user sees only the path and line range in the tool line. Users must be told this. The controls are a confirmation or announcement before a content read is sent, a cap on listing size, a cap on content size, a per-session cap on history, compaction the user can see, and a `max_tokens` limit. Compaction exists, but its summary is not shown, no `max_tokens` is set, and neither the listing nor the content has a cap.
-- **Unauthenticated spending (accepted).** Any process that can write to the REPL's stdin spends the user's OpenRouter credit. No rate or spend limit exists. This is acceptable for a local terminal tool but must be revisited if the REPL is ever exposed on a socket.
+- **Unauthenticated spending (partly addressed).** Any process that can write to the REPL's stdin spends the user's OpenRouter credit, and the terminal frontend has no check beyond that. The browser frontend listens on 127.0.0.1 only, and accepts its socket only with a random token printed once in the URL (sent in the fragment, so it is not sent to the server as part of the page address) and only from its own origin. So another web page cannot drive the session, but any local process that can read the URL can. No rate or spend limit exists.
 - **Secrets (missing).** Vise must never log input lines to a file by default, since users may paste secrets. No logging exists yet. A saved session holds every line typed in plain text, including any pasted secret, and `/save` does not say where the file is.
 
 ## Future Work

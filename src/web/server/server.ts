@@ -102,6 +102,6 @@ export function startWebServer(options: WebServerOptions): Result<WebServer> {
   return ok({
     url: `http://127.0.0.1:${server.port}/#t=${token}`,
     ended,
-    stop: () => server.stop(true),
+    stop: () => server.stop(false),
   });
 }

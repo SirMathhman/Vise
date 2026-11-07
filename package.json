@@ -6,7 +6,8 @@
   "scripts": {
     "start": "bun run index.ts",
     "test": "bun test",
-    "lint": "eslint . && bun run scripts/check-files-per-dir.ts"
+    "lint": "eslint . && bun run scripts/check-files-per-dir.ts",
+    "web": "bun run index.ts --web"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

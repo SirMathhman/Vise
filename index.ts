@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { readInstructions } from "./src/instructions.ts";
 import {
   listModels,
@@ -5,7 +6,12 @@ import {
   streamChat,
 } from "./src/openrouter.ts";
 import { startSession } from "./src/backend/session.ts";
+import type { SessionPorts } from "./src/backend/ports.ts";
+import { err, ok, type Result } from "./src/core/result.ts";
+import type { Session } from "./src/protocol/protocol.ts";
 import { runRepl } from "./src/repl/repl.ts";
+import { buildAssets } from "./src/web/server/page.ts";
+import { startWebServer } from "./src/web/server/server.ts";
 import { killAllJobs } from "./src/tools/jobs.ts";
 import {
   loadProfile,
@@ -24,6 +30,71 @@ import { readModelSetting } from "./src/tools/models/model-settings.ts";
 import { selectModel } from "./src/tools/models/select-model.ts";
 
 const DEFAULT_MODEL = "anthropic/claude-haiku-5.5";
+
+// The model in use. /model changes it for the requests that follow.
+interface ModelSelection {
+  model: string;
+}
+
+// The settings the session's ports are built from, all read once at startup.
+interface PortSetup {
+  apiKey: string;
+  selection: ModelSelection;
+  disabledTools: string[];
+  hooks: SessionPorts["hooks"];
+  instructions: SessionPorts["instructions"];
+}
+
+// Builds every port the session uses. Both the terminal and the browser run the same session.
+function sessionPorts(setup: PortSetup): SessionPorts {
+  const { apiKey, selection } = setup;
+  const root = process.cwd();
+  return {
+    hooks: setup.hooks,
+    reply: (request) =>
+      streamChat({ apiKey, model: selection.model, ...request }),
+    contextWindow: () => modelContextWindow({ model: selection.model }),
+    models: {
+      current: () => selection.model,
+      list: () => listModels({}),
+      select: (name: string) =>
+        selectModel({
+          root,
+          list: () => listModels({}),
+          name,
+          setModel: (model) => {
+            selection.model = model;
+          },
+        }),
+    },
+    tools: runTool(root),
+    notes: runNoteCommand(root),
+    profile: loadProfile(root),
+    profileTools: loadProfileTools(root),
+    profileHooks: loadProfileHooks(root),
+    disabledTools: setup.disabledTools,
+    saveDisabledTools: (names) => saveToolSettings(root, names),
+    sessions: sessionStore(root),
+    instructions: setup.instructions,
+  };
+}
+
+// Serves the session to a browser on this machine. The URL, with its token, is printed here. Returns
+// once the session has ended.
+async function runWeb(session: Session): Promise<Result<void>> {
+  const assets = await buildAssets();
+  if (!assets.ok) return err(assets.error);
+  const started = startWebServer({
+    session,
+    assets: assets.value,
+    token: randomBytes(24).toString("hex"),
+  });
+  if (!started.ok) return err(started.error);
+  console.log(`Vise is running in the browser. Open: ${started.value.url}`);
+  await started.value.ended;
+  started.value.stop();
+  return ok(undefined);
+}
 
 // Stops every background job, and warns about each one that could not be stopped.
 async function stopJobs(): Promise<void> {
@@ -64,39 +135,23 @@ if (import.meta.main) {
     console.error(`error: ${savedModel.error.message}`);
     process.exit(1);
   }
-  // The model in use. /model changes it for the requests that follow.
-  const selection = { model: savedModel.value ?? DEFAULT_MODEL };
+  const selection: ModelSelection = { model: savedModel.value ?? DEFAULT_MODEL };
+  // --web serves the session to a browser instead of the terminal.
+  const web = process.argv.includes("--web");
   let failed = false;
   try {
-    const session = startSession({
-      hooks: hookRunner(process.cwd(), hookConfig.value),
-      reply: (request) =>
-        streamChat({ apiKey, model: selection.model, ...request }),
-      contextWindow: () => modelContextWindow({ model: selection.model }),
-      models: {
-        current: () => selection.model,
-        list: () => listModels({}),
-        select: (name: string) =>
-          selectModel({
-            root: process.cwd(),
-            list: () => listModels({}),
-            name,
-            setModel: (model) => {
-              selection.model = model;
-            },
-          }),
-      },
-      tools: runTool(process.cwd()),
-      notes: runNoteCommand(process.cwd()),
-      profile: loadProfile(process.cwd()),
-      profileTools: loadProfileTools(process.cwd()),
-      profileHooks: loadProfileHooks(process.cwd()),
-      disabledTools: disabled.value,
-      saveDisabledTools: (names) => saveToolSettings(process.cwd(), names),
-      sessions: sessionStore(process.cwd()),
-      instructions,
-    });
-    const result = await runRepl(process.stdin, process.stdout, session);
+    const session = startSession(
+      sessionPorts({
+        apiKey,
+        selection,
+        disabledTools: disabled.value,
+        hooks: hookRunner(process.cwd(), hookConfig.value),
+        instructions,
+      }),
+    );
+    const result = web
+      ? await runWeb(session)
+      : await runRepl(process.stdin, process.stdout, session);
     if (!result.ok) {
       console.error(`error: ${result.error.message}`);
       failed = true;
