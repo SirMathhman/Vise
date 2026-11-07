@@ -306,3 +306,20 @@ test("the tool switches are announced, and a /tools change is announced again", 
   session.send({ kind: "inputEnded" });
   await until(events, "ended");
 });
+
+test("/new keeps the tool switches the user has changed in this run", async () => {
+  const session = startSession(portsFor([]));
+  const events = session.events()[Symbol.asyncIterator]();
+  await until(events, "tools");
+  const tool = toolNames[0]!;
+  session.send({ kind: "line", text: `/tools disable ${tool}` });
+  await until(events, "tools");
+  session.send({ kind: "line", text: "/new" });
+  const after = await until(events, "tools");
+  expect(after.at(-1)).toEqual({
+    kind: "tools",
+    tools: expect.arrayContaining([{ name: tool, enabled: false }]),
+  });
+  session.send({ kind: "inputEnded" });
+  await until(events, "ended");
+});

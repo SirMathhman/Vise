@@ -102,7 +102,8 @@ export async function runCommand(
         conversation: {
           history: [],
           compacted: false,
-          disabledTools: ports.disabledTools,
+          // The switches as they are now, not as they were at startup.
+          disabledTools: conversation.disabledTools,
         },
         notice: "started a new conversation",
       };
