@@ -313,6 +313,10 @@ textarea:disabled {
   margin-bottom: 6px;
 }
 
+.profile-editor fieldset > button {
+  margin-top: 4px;
+}
+
 @media (max-width: 480px) {
   .profile-editor .hook-row {
     grid-template-columns: 1fr;

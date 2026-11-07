@@ -241,6 +241,9 @@ function editorForm(setup: EditorSetup): HTMLElement {
   const rows: HookRow[] = [];
   const hookSet = doc.createElement("fieldset");
   hookSet.append(element(doc, "legend", "", "Hooks (run at the point, without approval)"));
+  // The rows sit in their own box, so the Add hook button stays below them.
+  const hookRows = doc.createElement("div");
+  hookSet.append(hookRows);
   const addRow = (point: HookPoint, command: string): void => {
     const row = doc.createElement("div");
     row.className = "hook-row";
@@ -264,7 +267,7 @@ function editorForm(setup: EditorSetup): HTMLElement {
     });
     row.append(select, input, remove);
     rows.push(entry);
-    hookSet.append(row);
+    hookRows.append(row);
   };
   for (const hook of profile.hooks) addRow(hook.point, hook.command);
   const addHook = element(doc, "button", "", "Add hook");
