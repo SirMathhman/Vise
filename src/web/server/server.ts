@@ -15,6 +15,8 @@ export interface WebServerOptions {
   assets: WebAssets;
   // The secret that a browser must send with its connection. Printed once, in the URL.
   token: string;
+  // The port to listen on. 0, the default, picks a free one.
+  port?: number;
 }
 
 export interface WebServer {
@@ -54,14 +56,14 @@ function assetResponse(pathname: string, assets: WebAssets): Response {
 // accepted only from the page's own origin and with the token. The page itself is public: it holds
 // nothing a web page elsewhere could use.
 export function startWebServer(options: WebServerOptions): Result<WebServer> {
-  const { session, assets, token } = options;
+  const { session, assets, token, port = 0 } = options;
   const hub = createHub((message) => session.send(message));
   const { promise: ended, resolve: finish } = Promise.withResolvers<void>();
   let server: ReturnType<typeof Bun.serve<undefined>>;
   try {
     server = Bun.serve<undefined>({
       hostname: "127.0.0.1",
-      port: 0,
+      port,
       fetch(request, srv) {
         const url = new URL(request.url);
         if (url.pathname !== "/ws") return assetResponse(url.pathname, assets);

@@ -4,6 +4,7 @@
 // in the browser, and Ctrl+C stops the server. A server that fails to start (for example, because a
 // saved file has a syntax error) does not end the script: the next change starts it again.
 
+import { randomBytes } from "node:crypto";
 import { watch } from "node:fs";
 import { join } from "node:path";
 import type { Subprocess } from "bun";
@@ -11,6 +12,22 @@ import type { Subprocess } from "bun";
 const root = join(import.meta.dir, "..");
 // Saves within this time of each other cause one restart.
 const DEBOUNCE_MS = 200;
+// Picked once, not per start, so every restarted server serves the address the open page knows.
+const PORT = freePort();
+const TOKEN = randomBytes(24).toString("hex");
+
+// A port the OS has free right now. The server binds it when it starts.
+function freePort(): number {
+  const probe = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: () => new Response(""),
+  });
+  // The port is set for a TCP listener, which this is; the 0 is only the type's fallback.
+  const found = probe.port ?? 0;
+  probe.stop(true);
+  return found;
+}
 
 let server: Subprocess | undefined;
 let timer: ReturnType<typeof setTimeout> | undefined;
@@ -21,6 +38,7 @@ let stopping = false;
 function start(): void {
   const proc = Bun.spawn(["bun", "run", "index.ts", "--web"], {
     cwd: root,
+    env: { ...process.env, VISE_WEB_PORT: String(PORT), VISE_WEB_TOKEN: TOKEN },
     stdin: "ignore",
     stdout: "inherit",
     stderr: "inherit",

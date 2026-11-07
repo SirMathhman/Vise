@@ -79,6 +79,21 @@ function sessionPorts(setup: PortSetup): SessionPorts {
   };
 }
 
+// The address the browser server uses. web:dev sets both variables, so a restarted server serves the
+// same address and the open page can reconnect. Without them, the port and token are picked afresh.
+interface WebAddress {
+  port: number;
+  token: string;
+}
+
+function webAddress(): WebAddress {
+  const port = Number(process.env.VISE_WEB_PORT ?? 0);
+  return {
+    port: Number.isInteger(port) ? port : 0,
+    token: process.env.VISE_WEB_TOKEN || randomBytes(24).toString("hex"),
+  };
+}
+
 // Serves the session to a browser on this machine. The URL, with its token, is printed here. Returns
 // once the session has ended.
 async function runWeb(session: Session): Promise<Result<void>> {
@@ -87,7 +102,7 @@ async function runWeb(session: Session): Promise<Result<void>> {
   const started = startWebServer({
     session,
     assets: assets.value,
-    token: randomBytes(24).toString("hex"),
+    ...webAddress(),
   });
   if (!started.ok) return err(started.error);
   console.log(`Vise is running in the browser. Open: ${started.value.url}`);
