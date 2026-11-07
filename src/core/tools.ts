@@ -281,6 +281,17 @@ export function parseToolsCommand(words: string[]): Result<ToolsCommand> {
   );
 }
 
+// One tool and whether the user has it switched on.
+export interface ToolSwitch {
+  name: string;
+  enabled: boolean;
+}
+
+// Every tool with its switch, in the order of toolNames.
+export function toolSwitches(disabled: string[]): ToolSwitch[] {
+  return toolNames.map((name) => ({ name, enabled: !disabled.includes(name) }));
+}
+
 // One line per tool, as name: on or off.
 export function toolStates(disabled: string[]): string {
   return toolNames

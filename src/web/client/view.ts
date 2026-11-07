@@ -1,4 +1,4 @@
-import type { ApprovalAnswer } from "../../protocol/protocol.ts";
+import type { ApprovalAnswer, ToolSwitch } from "../../protocol/protocol.ts";
 import {
   canSend,
   openApproval,
@@ -129,6 +129,27 @@ function sessionsPanel(
   return [heading, ...buttons];
 }
 
+// The tools, each a button that switches it. Clicking sends /tools enable|disable <name>, the line the
+// user would type. A change applies from the next request.
+function toolsPanel(
+  doc: Document,
+  tools: ToolSwitch[],
+  enabled: boolean,
+  actions: ViewActions,
+): HTMLElement[] {
+  const heading = element(doc, "span", "label", "Tools");
+  const hint = element(doc, "span", "hint", "a change applies from the next request");
+  const buttons = tools.map((tool) => {
+    const button = element(doc, "button", "tool", `${tool.name}: ${tool.enabled ? "on" : "off"}`);
+    button.disabled = !enabled;
+    button.setAttribute("aria-pressed", String(tool.enabled));
+    const action = tool.enabled ? "disable" : "enable";
+    button.addEventListener("click", () => actions.line(`/tools ${action} ${tool.name}`));
+    return button;
+  });
+  return [heading, hint, ...buttons];
+}
+
 // Builds the page once, then replaces the transcript and the controls on each render.
 export function createView(
   doc: Document,
@@ -142,6 +163,10 @@ export function createView(
   // What the panel was last built from, so an unchanged panel is left alone.
   let panelKey = "";
   panel.className = "sessions";
+  const toolPanel = doc.createElement("section");
+  toolPanel.className = "sessions";
+  // What the tools panel was last built from, so an unchanged panel is left alone.
+  let toolKey = "";
   const transcript = element(doc, "main", "transcript", "");
   const form = doc.createElement("form");
   form.className = "composer";
@@ -151,7 +176,7 @@ export function createView(
   const send = element(doc, "button", "send", "Send");
   send.type = "submit";
   form.append(input, send);
-  root.append(header, panel, transcript, form);
+  root.append(header, panel, toolPanel, transcript, form);
 
   input.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
@@ -186,6 +211,13 @@ export function createView(
         panelKey = key;
         panel.replaceChildren(
           ...sessionsPanel(doc, state.sessions, sendable, actions),
+        );
+      }
+      const toolsKey = JSON.stringify([state.tools, sendable]);
+      if (toolsKey !== toolKey) {
+        toolKey = toolsKey;
+        toolPanel.replaceChildren(
+          ...toolsPanel(doc, state.tools, sendable, actions),
         );
       }
       input.disabled = !sendable;

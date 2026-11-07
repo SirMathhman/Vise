@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import type { ReplyRequest } from "../core/messages.ts";
+import { toolNames } from "../core/tools.ts";
 import type { Conversation } from "../core/compaction.ts";
 import type { ResumeStore } from "../core/sessions.ts";
 import { err, ok, type Result } from "../core/result.ts";
@@ -285,6 +286,23 @@ test("the saved sessions are announced at the start, so the page can offer them"
   const events = session.events()[Symbol.asyncIterator]();
   const seen = await until(events, "sessions");
   expect(seen.at(-1)).toEqual({ kind: "sessions", names: ["work"] });
+  session.send({ kind: "inputEnded" });
+  await until(events, "ended");
+});
+
+test("the tool switches are announced, and a /tools change is announced again", async () => {
+  const session = startSession(portsFor([]));
+  const events = session.events()[Symbol.asyncIterator]();
+  const first = await until(events, "tools");
+  const switches = first.at(-1);
+  expect(switches?.kind === "tools" && switches.tools.every((tool) => tool.enabled)).toBe(true);
+  const tool = toolNames[0]!;
+  session.send({ kind: "line", text: `/tools disable ${tool}` });
+  const second = await until(events, "tools");
+  expect(second.at(-1)).toEqual({
+    kind: "tools",
+    tools: expect.arrayContaining([{ name: tool, enabled: false }]),
+  });
   session.send({ kind: "inputEnded" });
   await until(events, "ended");
 });

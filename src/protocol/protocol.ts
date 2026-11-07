@@ -3,8 +3,9 @@
 
 import type { ApprovalAnswer } from "../core/commands.ts";
 import type { HistoryMessage } from "../core/sessions.ts";
+import type { ToolSwitch } from "../core/tools.ts";
 
-export type { ApprovalAnswer, HistoryMessage };
+export type { ApprovalAnswer, HistoryMessage, ToolSwitch };
 
 // A line the user typed. While an approval question is open, the line is its answer: the backend
 // reads it as the answer (see answerOfLine). A browser also sends `shown`, the id of the newest question
@@ -106,6 +107,12 @@ export interface SessionsEvent {
   names: string[];
 }
 
+// Every tool and whether it is switched on. Sent at the start and after each change to the switches.
+export interface ToolsEvent {
+  kind: "tools";
+  tools: ToolSwitch[];
+}
+
 // The output of a hook, in full. The frontend caps what it shows.
 export interface HookOutputEvent {
   kind: "hookOutput";
@@ -146,6 +153,7 @@ export type ServerEvent =
   | ApprovalAnsweredEvent
   | HistoryEvent
   | SessionsEvent
+  | ToolsEvent
   | HookOutputEvent
   | NoticeEvent
   | ErrorEvent

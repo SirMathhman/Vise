@@ -95,3 +95,13 @@ test("a sessions event sets the saved sessions the page offers", () => {
   const state = after([{ kind: "sessions", names: ["work", "plan"] }]);
   expect(state.sessions).toEqual(["work", "plan"]);
 });
+
+test("a tools event sets the switches the page offers", () => {
+  const state = after([
+    { kind: "tools", tools: [{ name: "a", enabled: true }, { name: "b", enabled: false }] },
+  ]);
+  expect(state.tools).toEqual([
+    { name: "a", enabled: true },
+    { name: "b", enabled: false },
+  ]);
+});

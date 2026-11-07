@@ -9,6 +9,7 @@ import {
   type Conversation,
 } from "../core/compaction.ts";
 import { historyMessages } from "../core/sessions.ts";
+import { toolSwitches } from "../core/tools.ts";
 import { Channel } from "../protocol/channel.ts";
 import type {
   ClientMessage,
@@ -144,6 +145,7 @@ async function sessionLoop(
       if (step) {
         conversation = step.conversation;
         if (step.notice) emit({ kind: "notice", text: step.notice });
+        announceTools(state, conversation);
       }
       await persist(state, conversation);
       emit({ kind: "ready" });
@@ -198,6 +200,14 @@ async function resumedConversation(
   };
 }
 
+// Tells the frontend which tools are switched on. Sent at the start and after each applied command.
+function announceTools(state: SessionState, conversation: Conversation): void {
+  state.events.push({
+    kind: "tools",
+    tools: toolSwitches(conversation.disabledTools ?? []),
+  });
+}
+
 // Saves the conversation so the next run can resume it. A failure is reported, and the session goes on.
 async function persist(state: SessionState, conversation: Conversation): Promise<void> {
   const store = state.ports.resume;
@@ -223,6 +233,7 @@ async function run(state: SessionState): Promise<void> {
   if (initial.history.length > 0) {
     emit({ kind: "history", messages: historyMessages(initial.history) });
   }
+  announceTools(state, initial);
   await announceSessions(state.ports, emit);
   const started = await state.ports.hooks(
     "sessionStart",

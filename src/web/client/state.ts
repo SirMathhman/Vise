@@ -2,6 +2,7 @@ import type {
   ApprovalAnswer,
   HistoryMessage,
   ServerEvent,
+  ToolSwitch,
 } from "../../protocol/protocol.ts";
 
 // What the page knows about its connection to the server.
@@ -75,6 +76,8 @@ export interface ViewState {
   lastShown: number;
   // The named sessions /load can load, from the last sessions event.
   sessions: string[];
+  // Every tool and whether it is switched on, from the last tools event.
+  tools: ToolSwitch[];
 }
 
 // A line the user sent from the page.
@@ -108,6 +111,7 @@ export const initialState: ViewState = {
   ended: false,
   lastShown: 0,
   sessions: [],
+  tools: [],
 };
 
 // The approval question still open, if any. The page locks its input while one is open, because the
@@ -208,6 +212,8 @@ function applyEvent(state: ViewState, event: ServerEvent): ViewState {
       return { ...state, blocks: event.messages.map(historyBlock) };
     case "sessions":
       return { ...state, sessions: event.names };
+    case "tools":
+      return { ...state, tools: event.tools };
     case "hookOutput":
       if (event.text === "") return state;
       return { ...state, blocks: [...blocks, { kind: "hook", text: event.text }] };
