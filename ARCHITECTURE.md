@@ -175,9 +175,9 @@ Target layout. Test files sit beside the module each one tests; there is no sepa
 ```
 └── vise/
     ├── index.ts                         composition root: wires stdin, stdout, and OPENROUTER_API_KEY to the REPL or, with --web, to the browser server; reads the tools and model settings at startup
-    ├── scripts/                         build checks run by bun run lint
+    ├── scripts/                         build checks run by bun run lint, and the web:dev development script
     │   ├── check-files-per-dir.ts       file count per directory
-    │   └── web-dev.ts                  bun run web:dev: runs the browser server and restarts it when a file under src/ or index.ts changes
+    │   └── web-dev.ts                   bun run web:dev: runs the browser server and restarts it when a file under src/ or index.ts changes
     └── src/
         ├── instructions.ts              reads AGENTS.md from the working directory (the one file read at startup)
         ├── openrouter.ts                model adapter: streams chat completions over HTTPS, the only network code
@@ -317,6 +317,7 @@ Each item is a known defect or gap. Fixes are listed under Future Work.
   - (v) `index.ts` calls `killAllJobs` only on the return path after `runRepl`. It is skipped if `runRepl` throws, and nothing in `src/` handles interrupts. What happens to a running job on Ctrl+C depends on the runtime and is not verified.
   - (vi) `kill_command` does not stop children that outlive their parent, for the same reason as the `run_powershell` gap below.
 - **`run_powershell` can keep the process and its pipes after the call returns.** A finished command returns after a one-second grace period, even when children hold the output. Two gaps remain, both verified. (a) When PowerShell exits normally with a child still holding its output, no stop is applied. The call returned at 1.3 s, but the process could not exit until the child ended (a `Start-Process ping -n 40` kept it alive for 39 s), and the child was never stopped. (b) `taskkill /T` cannot reach a child whose parent has already exited, so fixing (a) needs a Windows Job Object that kills its processes when the job closes. The `taskkill` call itself has no bound.
+- **`bun run web:dev` has two gaps.** `scripts/web-dev.ts` (not part of the session, and outside `index.ts`'s exit path) has these gaps. (c) On Windows, `taskkill /T /F` ends the server's tree before `index.ts` can finish stopping its jobs, so the job warnings are not printed. (d) `stop()` waits without a bound if the server does not exit after SIGINT.
 
 #### Hooks, instructions, and profiles
 
