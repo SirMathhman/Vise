@@ -430,3 +430,15 @@ test("after /load, later messages keep saving to the loaded session", async () =
   session.send({ kind: "inputEnded" });
   await until(events, "ended");
 });
+
+test("an autosave name that differs from a saved session only in case does not overwrite it", async () => {
+  const saved = new Map<string, string>([["Hello", "a session the user saved"]]);
+  const session = startSession({ ...portsFor([]), reply: textReply, sessions: memorySessions(saved) });
+  const events = session.events()[Symbol.asyncIterator]();
+  session.send({ kind: "line", text: "hello" });
+  await until(events, "ready");
+  expect(saved.get("Hello")).toBe("a session the user saved");
+  expect(saved.has("hello-2")).toBe(true);
+  session.send({ kind: "inputEnded" });
+  await until(events, "ended");
+});

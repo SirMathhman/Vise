@@ -21,7 +21,7 @@ Requirements are split into two classes. **Functional** requirements say what th
 | **Line** | One unit of input without its terminator. Lines are processed in order, and each is handled at most once. |
 | **Note** | A Markdown file at `notes/<category>/<name>.md` under the working directory (see Behaviour: Notes and profiles). |
 | **Profile** | A note in the `profile` category whose text is custom instructions for the model. |
-| **Saved session** | A conversation written to `.vise/sessions/<name>.json` by `/save` and read back by `/load`. It holds the history, the active and pending profile, the pending hook output, the switched-off tools, the last prompt size, and the compacted flag. `/load` replaces the current conversation with it. The file is data from outside the run (see Security). |
+| **Saved session** | A conversation written to `.vise/sessions/<name>.json` by `/save` and by autosave, and read back by `/load`. It holds the history, the active and pending profile, the pending hook output, the switched-off tools, the last prompt size, the compacted flag, and the name of the session it autosaves to. `/load` replaces the current conversation with it. The file is data from outside the run (see Security). |
 | **Session** | One run of the REPL, from start until `/exit` or end of input. |
 | **Subagent** | A conversation of its own, started by the model with `run_subagent`. |
 | **Thinking** | The model's reasoning effort, set by `/thinking`. |
@@ -37,7 +37,7 @@ Each invariant has a label (F1 to F5 for functional, N1 to N6 for nonfunctional)
 #### Lines and the session
 
 - **F1. Exit is final.** Once a session has ended, no line after the exit word produces output or side effects.
-- **F2. One response per line.** Every line the frontend accepts produces one response, or none once the session has ended. A message line may produce several parts, in this order: the compaction notice (or its error), then a line for each tool call of each round, then the reply text. A failed round ends the turn with an error line, and the whole turn is removed from the history.
+- **F2. One response per line.** Every line the frontend accepts produces one response, or none once the session has ended. A message line may produce several parts, in this order: the compaction notice (or its error), then a line for each tool call of each round, then the reply text, and a first message that names an autosave session adds a notice after that. A failed round ends the turn with an error line, and the whole turn is removed from the history.
 
 #### Commands
 
@@ -172,9 +172,9 @@ A subagent is started by the model with `run_subagent`, which takes a profile na
 
 A saved session holds the fields listed under Definitions. `/load` puts its history into the next request with the user's authority, so the file is checked before it is applied (see Security and Known Problems).
 
-**Autosave.** The first message of a conversation names a saved session: its words in lower case joined by hyphens, up to 40 characters (`autosaveName`), or `autosave` when it has no letters or digits. A name already taken gets `-2`, `-3`, and so on, so nothing is overwritten. The name is kept in the conversation (`autosave`), so it survives a restart. After each line, the conversation is written to that session as well as to the resume file. `/new` clears the name, so the next first message names a new session; `/load` makes the loaded session the one autosaved from then on. The terminal and the page both show the name in a notice, and the page's sessions panel lists it. A failure to list the names means no autosave for that message.
+**Autosave.** The first message of a conversation names a saved session: its words in lower case joined by hyphens, up to 40 characters (`autosaveName`), or `autosave` when it has no letters or digits. A name already taken gets `-2`, `-3`, and so on, so a saved session is not overwritten (the gaps are under Known Problems). The name is kept in the conversation (`autosave`), so it survives a restart. After each line, the conversation is written to that session as well as to the resume file. `/new` clears the name, so the next first message names a new session; `/load` makes the loaded session the one autosaved from then on. The terminal and the page both show the name in a notice, and the page's sessions panel lists it. A failure to list the names means no autosave for that message.
 
-**Resume.** After every line that the session processes, the conversation is written to the resume file, in the same format as `/save`. The file is kept in the user's home folder under `.vise/resume/`, named by a hash of the working directory, so it is outside the project and a repository cannot ship one. At start, the session loads it: the earlier messages are sent as a `history` event (the terminal prints them, the page shows them), and the model gets the history. The switched-off tools come from the settings file, not from the resume file. The profile is not restored: only the history, the compacted flag, and the prompt size come back, so the profile's hooks do not run at start and its text is not sent again. The profile must be chosen again with `/profile`. `/new` starts with no history and saves that. A file that cannot be read is reported, and the session starts with no history. The write is not atomic, so a crash mid-write leaves a file that is refused at the next start. Two sessions in the same directory share one file, and the last to save wins. Known gaps: the resumed file also restores the profile (with its hooks and pending text), and the page drops the "resumed" notice because the `history` event replaces its transcript. The terminal cannot replace what it printed, so after `/new` or `/load` it appends the messages.
+**Resume.** After every line that the session processes, the conversation is written to the resume file, in the same format as `/save`. The file is kept in the user's home folder under `.vise/resume/`, named by a hash of the working directory, so it is outside the project and a repository cannot ship one. At start, the session loads it: the earlier messages are sent as a `history` event (the terminal prints them, the page shows them), and the model gets the history. The switched-off tools come from the settings file, not from the resume file. The profile is not restored: only the history, the compacted flag, and the prompt size come back, so the profile's hooks do not run at start and its text is not sent again. The profile must be chosen again with `/profile`. `/new` starts with no history and saves that. A file that cannot be read is reported, and the session starts with no history. The write is not atomic, so a crash mid-write leaves a file that is refused at the next start. Two sessions in the same directory share one file, and the last to save wins. Known gap: the page drops the "resumed" notice because the `history` event replaces its transcript. The terminal cannot replace what it printed, so after `/new` or `/load` it appends the messages.
 
 ## Structure
 
@@ -195,13 +195,13 @@ Target layout. Test files sit beside the module each one tests; there is no sepa
         │   ├── messages.ts              shared data types and model ports (ChatMessage, ToolCall, Usage, ReplyRequest, Reply, ContextWindow)
         │   ├── notes.ts                 note rules: name checks, path and scaffold, header parser, /note and /profile words, NoteRunner and ProfileLoader ports
         │   ├── result.ts                Result type: ok and err for returned failures
-        │   ├── sessions.ts              saved-session format (encode; decode with shape and pairing checks), /save, /load, /sessions words, SessionStore port
+        │   ├── sessions.ts              saved-session format (encode; decode with shape and pairing checks), autosave naming (autosaveName, uniqueName), /save, /load, /sessions words, SessionStore port
         │   └── tools.ts                 tool specs, argument parsing, /tools words, approval rule, call line, Approve and ToolRunner ports
         ├── protocol/                    the frontend-backend contract (types only, plain data)
         │   ├── protocol.ts              ClientMessage, ServerEvent, Session
         │   └── channel.ts               Channel<T>: the async queue the backend's inbox is built on
         ├── backend/                     session engine: no terminal, no readline
-        │   ├── session.ts               startSession: session loop, line inbox, approval questions, sessionStart and sessionEnd hooks
+        │   ├── session.ts               startSession: session loop, line inbox, approval questions, sessionStart and sessionEnd hooks, autosave choice and writes
         │   ├── turn.ts                  runMessageTurn and streamRound: the turn's tool rounds and hooks
         │   ├── calls.ts                 runCalls: one round's calls, and subagent calls
         │   ├── ports.ts                 SessionPorts: every port the backend uses
@@ -348,8 +348,9 @@ Each item is a known defect or gap. Fixes are listed under Future Work.
 
 #### Saved sessions and settings
 
-- **A saved session can hold a history the provider rejects.** `decodeSession` checks the shape of each field and the tool names, but not the pairing of tool calls with results, nor the role order a live turn keeps. A hand-edited file can load a history that every later request rejects, and `/compact` sends it too.
+- **A saved session can hold a history the provider rejects.** `decodeSession` checks the shape of each field, the tool names, and the pairing of tool calls with results, but not the role order a live turn keeps. A hand-edited file can load a history that every later request rejects, and `/compact` sends it too.
 - **A saved session without a tools field loads with every tool on.** `disabledTools` is optional in the file, so an older or hand-edited file re-enables any tool the user had switched off, with no message.
+- **Autosave names can overwrite a session.** The name is chosen from the listing before the first turn runs and is written only after the turn, so two sessions in one folder can choose the same name and the second overwrites the first. A first turn that fails leaves an empty session under the name of a message the conversation no longer holds, and the "autosaving as" notice follows the error even when that first save failed. Missing controls: compare names in lower case, reserve the name when it is chosen, and announce the name only after its first save succeeds.
 - **Saving overwrites in place.** `/save` writes the file directly, so a failure part-way leaves a damaged file where the previous session was. An existing name is replaced with no warning.
 - **Tool settings are read and written in different places.** `index.ts` reads `.vise/tools.json` and passes the names through `SessionPorts`. `/tools` writes the file through the `SaveDisabledTools` port. If the write fails, the switch still applies for the session, and the error line is the only sign that it was not saved.
 

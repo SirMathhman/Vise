@@ -225,10 +225,12 @@ export function autosaveName(message: string): string {
 }
 
 // The name itself if no saved session has it, otherwise the first of name-2, name-3, ... that is free.
+// The comparison ignores case: on Windows, Hello.json and hello.json are the same file.
 export function uniqueName(base: string, taken: string[]): string {
+  const used = taken.map((name) => name.toLowerCase());
   let candidate = base;
   let suffix = 2;
-  while (taken.includes(candidate)) {
+  while (used.includes(candidate.toLowerCase())) {
     candidate = `${base}-${suffix}`;
     suffix += 1;
   }
