@@ -139,6 +139,8 @@ export function createView(
   const status = element(doc, "span", "status", "");
   header.append(status);
   const panel = doc.createElement("section");
+  // What the panel was last built from, so an unchanged panel is left alone.
+  let panelKey = "";
   panel.className = "sessions";
   const transcript = element(doc, "main", "transcript", "");
   const form = doc.createElement("form");
@@ -177,9 +179,15 @@ export function createView(
       );
       const open = openApproval(state);
       const sendable = canSend(state);
-      panel.replaceChildren(
-        ...sessionsPanel(doc, state.sessions, sendable, actions),
-      );
+      // Rebuilt only when its names or its enabled state change. Rebuilding on every frame would replace a
+      // button between the press and the release of a click.
+      const key = JSON.stringify([state.sessions, sendable]);
+      if (key !== panelKey) {
+        panelKey = key;
+        panel.replaceChildren(
+          ...sessionsPanel(doc, state.sessions, sendable, actions),
+        );
+      }
       input.disabled = !sendable;
       send.disabled = !sendable;
       input.placeholder = open
