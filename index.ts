@@ -23,6 +23,9 @@ import { runNoteCommand } from "./src/tools/notes/run-note-command.ts";
 import { runTool } from "./src/tools/run-tool.ts";
 import { hookRunner, readHooks } from "./src/tools/hooks/hooks.ts";
 import { sessionStore } from "./src/tools/session-store.ts";
+import { resumeStore } from "./src/tools/resume/resume-store.ts";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import {
   readToolSettings,
   saveToolSettings,
@@ -76,6 +79,8 @@ function sessionPorts(setup: PortSetup): SessionPorts {
     disabledTools: setup.disabledTools,
     saveDisabledTools: (names) => saveToolSettings(root, names),
     sessions: sessionStore(root),
+    // Kept in the user's home folder, not the project, so a repository cannot ship a conversation to resume.
+    resume: resumeStore(join(homedir(), ".vise", "resume"), root),
     instructions: setup.instructions,
   };
 }

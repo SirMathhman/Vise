@@ -1,7 +1,7 @@
 import type { ModelPorts, ReplyRequest, ToolCall } from "../core/messages.ts";
 import type { HookPoint, ProfileHook } from "../core/notes.ts";
 import type { Result } from "../core/result.ts";
-import type { SessionStore } from "../core/sessions.ts";
+import type { ResumeStore, SessionStore } from "../core/sessions.ts";
 import type { Approve } from "../core/tools.ts";
 
 // Every port the session uses. All are required; a caller that omits one fails to compile.
@@ -22,6 +22,8 @@ export interface SessionPorts {
   saveDisabledTools(names: string[]): Promise<Result<void>>;
   // Where /save and /load keep sessions.
   sessions: SessionStore;
+  // Where the conversation is kept for the next run. Absent, nothing is resumed.
+  resume?: ResumeStore;
   // The model in use, and the models /model may switch to.
   models: ModelPorts;
   // Text sent ahead of the first message of the session (the AGENTS.md file), if any.

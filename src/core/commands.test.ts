@@ -107,7 +107,7 @@ test("reads /help and its words, and lists every command or describes the one na
     words: ["model"],
   });
   const list = helpText([]);
-  expect(list.ok && list.value.split("\n")).toHaveLength(12);
+  expect(list.ok && list.value.split("\n")).toHaveLength(13);
   expect(list.ok && list.value).toContain("/model [search <text> | <name>]");
   const model = helpText(["/model"]);
   expect(model.ok && model.value.startsWith("/model [search <text> | <name>]\n")).toBe(true);
@@ -119,7 +119,7 @@ test("reads /help and its words, and lists every command or describes the one na
 test("every command the help table names is recognised by the classifier", () => {
   const names: HelpName[] = [
     "exit", "context", "compact", "note", "profile", "tools", "thinking",
-    "model", "save", "load", "sessions", "help",
+    "model", "save", "load", "sessions", "new", "help",
   ];
   for (const name of names) {
     expect(classifyLine(`/${name}`).kind).not.toBe("unknown-command");

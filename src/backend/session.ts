@@ -8,6 +8,7 @@ import {
   queueHookOutput,
   type Conversation,
 } from "../core/compaction.ts";
+import { historyMessages } from "../core/sessions.ts";
 import { Channel } from "../protocol/channel.ts";
 import type {
   ClientMessage,
@@ -144,6 +145,7 @@ async function sessionLoop(
         conversation = step.conversation;
         if (step.notice) emit({ kind: "notice", text: step.notice });
       }
+      await persist(state, conversation);
       emit({ kind: "ready" });
       continue;
     }
@@ -154,6 +156,7 @@ async function sessionLoop(
       approve: (preview) => askApproval(state, preview),
     });
     conversation = turn.conversation;
+    await persist(state, conversation);
     if (turn.stop) break;
     if (state.exitRequested || state.streamError !== undefined) break;
     emit({ kind: "ready" });
@@ -161,15 +164,57 @@ async function sessionLoop(
   return conversation;
 }
 
+// Reads the conversation the last run left behind. A file that cannot be read is reported, and the run
+// starts with no conversation.
+async function resumedConversation(
+  state: SessionState,
+): Promise<Conversation | undefined> {
+  const store = state.ports.resume;
+  if (store === undefined) return undefined;
+  const loaded = await store.load();
+  if (!loaded.ok) {
+    state.events.push({
+      kind: "error",
+      message: `could not resume the last session: ${loaded.error.message}`,
+    });
+    return undefined;
+  }
+  if (loaded.value === undefined) return undefined;
+  const shown = historyMessages(loaded.value.history).length;
+  if (shown > 0) {
+    state.events.push({
+      kind: "notice",
+      text: `resumed the last session (${shown} messages)`,
+    });
+  }
+  return { ...loaded.value, disabledTools: state.ports.disabledTools };
+}
+
+// Saves the conversation so the next run can resume it. A failure is reported, and the session goes on.
+async function persist(state: SessionState, conversation: Conversation): Promise<void> {
+  const store = state.ports.resume;
+  if (store === undefined) return;
+  const saved = await store.save(conversation);
+  if (!saved.ok) {
+    state.events.push({
+      kind: "error",
+      message: `could not save the session for resuming: ${saved.error.message}`,
+    });
+  }
+}
+
 // The session's whole run: the session-start hooks, the loop, and the session-end hooks. A failure of
 // the session-start hooks ends the session before the loop begins.
 async function run(state: SessionState): Promise<void> {
   const emit = sink(state);
-  const initial: Conversation = {
+  const initial: Conversation = (await resumedConversation(state)) ?? {
     history: [],
     compacted: false,
     disabledTools: state.ports.disabledTools,
   };
+  if (initial.history.length > 0) {
+    emit({ kind: "history", messages: historyMessages(initial.history) });
+  }
   const started = await state.ports.hooks(
     "sessionStart",
     profileCommands(initial, "sessionStart"),

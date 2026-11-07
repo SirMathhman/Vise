@@ -2,8 +2,9 @@
 // class instances), so each one could cross a pipe or a socket later without change.
 
 import type { ApprovalAnswer } from "../core/commands.ts";
+import type { HistoryMessage } from "../core/sessions.ts";
 
-export type { ApprovalAnswer };
+export type { ApprovalAnswer, HistoryMessage };
 
 // A line the user typed. While an approval question is open, the line is its answer: the backend
 // reads it as the answer (see answerOfLine). A browser also sends `shown`, the id of the newest question
@@ -92,6 +93,13 @@ export interface ApprovalAnsweredEvent {
   answer: ApprovalAnswer;
 }
 
+// The messages of the conversation the session now has: the one it starts with, or one that /new or /load
+// replaces. A frontend shows them in place of what it showed before. Empty when there are none.
+export interface HistoryEvent {
+  kind: "history";
+  messages: HistoryMessage[];
+}
+
 // The output of a hook, in full. The frontend caps what it shows.
 export interface HookOutputEvent {
   kind: "hookOutput";
@@ -130,6 +138,7 @@ export type ServerEvent =
   | ToolSkippedEvent
   | ApprovalRequestEvent
   | ApprovalAnsweredEvent
+  | HistoryEvent
   | HookOutputEvent
   | NoticeEvent
   | ErrorEvent

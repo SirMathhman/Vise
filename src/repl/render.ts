@@ -76,6 +76,13 @@ export function createRenderer(output: Writable): Renderer {
         case "error":
           output.write(`error: ${sanitize(event.message)}\n`);
           return;
+        case "history":
+          for (const message of event.messages) {
+            const prefix = message.role === "user" ? "> " : "";
+            output.write(`${prefix}${sanitize(message.text)}
+`);
+          }
+          return;
         case "approvalAnswered":
         case "ready":
         case "ended":

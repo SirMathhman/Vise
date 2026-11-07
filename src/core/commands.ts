@@ -59,6 +59,11 @@ export interface ModelLine {
   words: string[];
 }
 
+// /new: starts a conversation with no history.
+export interface NewLine {
+  kind: "new";
+}
+
 // A /help command. words are the words after /help, split on whitespace.
 export interface HelpLine {
   kind: "help";
@@ -66,6 +71,7 @@ export interface HelpLine {
 }
 
 export type Line =
+  | NewLine
   | HelpLine
   | ModelLine
   | ThinkingLine
@@ -105,6 +111,7 @@ export function classifyLine(line: string): Line {
   if (command === "/model" || command.startsWith("/model ")) {
     return { kind: "model", words: command.split(/\s+/).slice(1) };
   }
+  if (command === "/new") return { kind: "new" };
   if (command === "/help" || command.startsWith("/help ")) {
     return { kind: "help", words: command.split(/\s+/).slice(1) };
   }
@@ -214,6 +221,7 @@ export type HelpName =
   | "save"
   | "load"
   | "sessions"
+  | "new"
   | "help";
 
 const COMMAND_HELP: Record<HelpName, CommandHelp> = {
@@ -280,6 +288,12 @@ const COMMAND_HELP: Record<HelpName, CommandHelp> = {
     usage: "/sessions",
     summary: "lists the saved sessions",
     detail: "Lists the names of the sessions saved with /save.",
+  },
+  new: {
+    usage: "/new",
+    summary: "starts a new conversation",
+    detail:
+      "Starts the conversation with no history, so the next message is the first. The conversation so far is not saved; use /save first to keep it.",
   },
   help: {
     usage: "/help [command]",

@@ -21,6 +21,7 @@ import { parseProfileCommand } from "../../core/notes.ts";
 import {
   decodeSession,
   encodeSession,
+  historyMessages,
   parseSessionCommand,
 } from "../../core/sessions.ts";
 import {
@@ -83,6 +84,16 @@ export async function runCommand(
     case "model":
       await runModelCommand(input.words, ports.models, emit);
       return undefined;
+    case "new":
+      emit({ kind: "history", messages: [] });
+      return {
+        conversation: {
+          history: [],
+          compacted: false,
+          disabledTools: ports.disabledTools,
+        },
+        notice: "started a new conversation",
+      };
     case "help": {
       const help = helpText(input.words);
       if (help.ok) emit({ kind: "notice", text: help.value });
@@ -291,5 +302,6 @@ async function runSessionCommand(
     emit({ kind: "error", message: loaded.error.message });
     return undefined;
   }
+  emit({ kind: "history", messages: historyMessages(loaded.value.history) });
   return { conversation: loaded.value, notice: `loaded ${command.value.name}` };
 }

@@ -73,3 +73,20 @@ test("the page remembers the newest approval question it showed", () => {
   ]);
   expect(state.lastShown).toBe(5);
 });
+
+test("a history event replaces the transcript with the messages of the earlier conversation", () => {
+  const state = after([
+    { kind: "notice", text: "old" },
+    {
+      kind: "history",
+      messages: [
+        { role: "user", text: "earlier" },
+        { role: "assistant", text: "reply" },
+      ],
+    },
+  ]);
+  expect(state.blocks).toEqual([
+    { kind: "user", text: "earlier" },
+    { kind: "reply", text: "reply", done: true },
+  ]);
+});

@@ -181,3 +181,29 @@ export function decodeSession(text: string): Result<Conversation> {
     disabledTools: session.disabledTools,
   });
 }
+
+// One message of a conversation as a frontend shows it: a line the user typed, or a reply of the model.
+export interface HistoryMessage {
+  role: "user" | "assistant";
+  text: string;
+}
+
+// The messages a frontend shows for a history: the user's lines and the model's replies. Tool calls and
+// tool results are left out, and so are replies with no text.
+export function historyMessages(history: ChatMessage[]): HistoryMessage[] {
+  const shown: HistoryMessage[] = [];
+  for (const message of history) {
+    if (message.role === "user") shown.push({ role: "user", text: message.content });
+    else if (message.role === "assistant" && message.content !== "") {
+      shown.push({ role: "assistant", text: message.content });
+    }
+  }
+  return shown;
+}
+
+// Where the conversation is kept between runs, so the next run can resume it. The composition root
+// supplies it. A failed load is reported; a run with no saved conversation loads nothing.
+export interface ResumeStore {
+  load(): Promise<Result<Conversation | undefined>>;
+  save(conversation: Conversation): Promise<Result<void>>;
+}

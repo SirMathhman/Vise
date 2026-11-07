@@ -1,5 +1,6 @@
 import type {
   ApprovalAnswer,
+  HistoryMessage,
   ServerEvent,
 } from "../../protocol/protocol.ts";
 
@@ -162,6 +163,12 @@ function answerApproval(
   );
 }
 
+// A message of an earlier conversation, shown as it was: a line of the user, or a finished reply.
+function historyBlock(message: HistoryMessage): Block {
+  if (message.role === "user") return { kind: "user", text: message.text };
+  return { kind: "reply", text: message.text, done: true };
+}
+
 function applyEvent(state: ViewState, event: ServerEvent): ViewState {
   const blocks = state.blocks;
   switch (event.kind) {
@@ -194,6 +201,8 @@ function applyEvent(state: ViewState, event: ServerEvent): ViewState {
       };
     case "approvalAnswered":
       return { ...state, blocks: answerApproval(blocks, event.id, event.answer) };
+    case "history":
+      return { ...state, blocks: event.messages.map(historyBlock) };
     case "hookOutput":
       if (event.text === "") return state;
       return { ...state, blocks: [...blocks, { kind: "hook", text: event.text }] };

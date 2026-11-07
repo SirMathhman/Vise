@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
 import type { ReplyRequest } from "../core/messages.ts";
+import type { Conversation } from "../core/compaction.ts";
+import type { ResumeStore } from "../core/sessions.ts";
 import { err, ok, type Result } from "../core/result.ts";
 import type {
   ApprovalRequestEvent,
@@ -187,6 +189,63 @@ test("/help is answered by the session with the description of the named command
   const seen = await until(events, "ready");
   const notice = seen.find((event) => event.kind === "notice");
   expect(notice?.kind === "notice" && notice.text.startsWith("/model [")).toBe(true);
+  session.send({ kind: "inputEnded" });
+  await until(events, "ended");
+});
+
+// A resume store kept in memory: `saved` records every conversation the session wrote.
+interface MemoryResume {
+  store: ResumeStore;
+  saved: Conversation[];
+}
+
+function memoryResume(start?: Conversation): MemoryResume {
+  const saved: Conversation[] = [];
+  return {
+    saved,
+    store: {
+      load: async () => ok(start),
+      save: async (conversation) => {
+        saved.push(conversation);
+        return ok(undefined);
+      },
+    },
+  };
+}
+
+test("the conversation of the last run is shown at the start", async () => {
+  const resume = memoryResume({
+    history: [
+      { role: "user", content: "earlier" },
+      { role: "assistant", content: "reply" },
+    ],
+    compacted: false,
+  });
+  const session = startSession({ ...portsFor([]), resume: resume.store });
+  const events = session.events()[Symbol.asyncIterator]();
+  const seen = await until(events, "history");
+  expect(seen.at(-1)).toEqual({
+    kind: "history",
+    messages: [
+      { role: "user", text: "earlier" },
+      { role: "assistant", text: "reply" },
+    ],
+  });
+  session.send({ kind: "inputEnded" });
+  await until(events, "ended");
+});
+
+test("each line saves the conversation, and /new saves an empty one", async () => {
+  const resume = memoryResume();
+  const session = startSession({ ...portsFor([]), resume: resume.store });
+  const events = session.events()[Symbol.asyncIterator]();
+  session.send({ kind: "line", text: "/help model" });
+  await until(events, "ready");
+  expect(resume.saved).toHaveLength(1);
+  session.send({ kind: "line", text: "/new" });
+  const seen = await until(events, "ready");
+  expect(seen).toContainEqual({ kind: "history", messages: [] });
+  expect(resume.saved.at(-1)?.history).toEqual([]);
   session.send({ kind: "inputEnded" });
   await until(events, "ended");
 });
