@@ -1,4 +1,3 @@
-import { randomBytes } from "node:crypto";
 import { readInstructions } from "./src/instructions.ts";
 import {
   listModels,
@@ -11,6 +10,8 @@ import { err, ok, type Result } from "./src/core/result.ts";
 import type { Session } from "./src/protocol/protocol.ts";
 import { runRepl } from "./src/repl/repl.ts";
 import { buildAssets } from "./src/web/server/page.ts";
+import type { WebAddress } from "./src/web/server/address.ts";
+import { takeWebAddress } from "./src/web/server/address.ts";
 import { startWebServer } from "./src/web/server/server.ts";
 import { killAllJobs } from "./src/tools/jobs.ts";
 import {
@@ -81,28 +82,15 @@ function sessionPorts(setup: PortSetup): SessionPorts {
 
 // The address the browser server uses. web:dev sets both variables, so a restarted server serves the
 // same address and the open page can reconnect. Without them, the port and token are picked afresh.
-interface WebAddress {
-  port: number;
-  token: string;
-}
-
-function webAddress(): WebAddress {
-  const port = Number(process.env.VISE_WEB_PORT ?? 0);
-  return {
-    port: Number.isInteger(port) ? port : 0,
-    token: process.env.VISE_WEB_TOKEN || randomBytes(24).toString("hex"),
-  };
-}
-
 // Serves the session to a browser on this machine. The URL, with its token, is printed here. Returns
 // once the session has ended.
-async function runWeb(session: Session): Promise<Result<void>> {
+async function runWeb(session: Session, address: WebAddress): Promise<Result<void>> {
   const assets = await buildAssets();
   if (!assets.ok) return err(assets.error);
   const started = startWebServer({
     session,
     assets: assets.value,
-    ...webAddress(),
+    ...address,
   });
   if (!started.ok) return err(started.error);
   console.log(`Vise is running in the browser. Open: ${started.value.url}`);
@@ -153,6 +141,8 @@ if (import.meta.main) {
   const selection: ModelSelection = { model: savedModel.value ?? DEFAULT_MODEL };
   // --web serves the session to a browser instead of the terminal.
   const web = process.argv.includes("--web");
+  // Taken from the environment before the session starts, since its hooks run processes at once.
+  const address = takeWebAddress(process.env);
   let failed = false;
   try {
     const session = startSession(
@@ -165,7 +155,7 @@ if (import.meta.main) {
       }),
     );
     const result = web
-      ? await runWeb(session)
+      ? await runWeb(session, address)
       : await runRepl(process.stdin, process.stdout, session);
     if (!result.ok) {
       console.error(`error: ${result.error.message}`);

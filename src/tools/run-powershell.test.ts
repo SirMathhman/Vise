@@ -94,3 +94,11 @@ test("reports a job whose stop keeps failing, so it can be warned about", async 
     ).exited;
   }
 });
+
+test("a variable removed from process.env is not visible to the command", async () => {
+  const root = await mkdtemp(join(tmpdir(), "vise-ps-"));
+  process.env.VISE_TEST_SECRET = "hidden";
+  delete process.env.VISE_TEST_SECRET;
+  const result = await runPowershell(root, 'Write-Output "[$env:VISE_TEST_SECRET]"');
+  expect(result).toEqual({ ok: true, value: "[]\n[exit code 0]" });
+});

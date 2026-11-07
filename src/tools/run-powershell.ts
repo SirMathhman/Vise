@@ -18,6 +18,9 @@ export async function runPowershell(
       ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
       {
         cwd: root,
+        // A copy of the environment as it is now: a variable removed from process.env (the web token) is
+        // not passed on. Without this option, Bun gives the process its starting environment.
+        env: { ...process.env },
         stdout: "pipe",
         stderr: "pipe",
       },
