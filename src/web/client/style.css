@@ -247,3 +247,74 @@ textarea:disabled {
 .tool[aria-pressed="false"] {
   opacity: 0.6;
 }
+
+/* The profile editor: a dialog over the page. Its form scrolls inside the dialog. */
+.profile-editor {
+  width: min(640px, 92vw);
+  max-height: 88vh;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--fg);
+  overflow-y: auto;
+}
+
+.profile-editor::backdrop {
+  background: rgb(0 0 0 / 0.4);
+}
+
+.profile-editor h2 {
+  font-size: 18px;
+  margin: 0 0 12px;
+}
+
+.profile-editor .field {
+  display: block;
+  margin-bottom: 12px;
+}
+
+.profile-editor .field > span,
+.profile-editor legend {
+  display: block;
+  color: var(--muted);
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.profile-editor input[type="text"],
+.profile-editor textarea,
+.profile-editor select {
+  width: 100%;
+  font: inherit;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--button-line);
+  background: var(--reply-bg);
+  color: var(--fg);
+}
+
+.profile-editor fieldset {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin: 0 0 12px;
+  padding: 8px 12px;
+}
+
+.profile-editor fieldset label {
+  display: inline-block;
+  margin: 2px 12px 2px 0;
+}
+
+.profile-editor .hook-row {
+  display: grid;
+  grid-template-columns: 9rem 1fr auto;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+@media (max-width: 480px) {
+  .profile-editor .hook-row {
+    grid-template-columns: 1fr;
+  }
+}

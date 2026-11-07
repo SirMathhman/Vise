@@ -92,6 +92,12 @@ const view = createView(document, root, {
   answer(id: number, answer: ApprovalAnswer) {
     send({ kind: "approval", id, answer });
   },
+  readProfile(name: string) {
+    send({ kind: "profileRead", name });
+  },
+  writeProfile(profile) {
+    send({ kind: "profileWrite", profile });
+  },
 });
 
 if (token === "") {
