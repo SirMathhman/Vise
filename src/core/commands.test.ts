@@ -1,7 +1,12 @@
 import { expect, test } from "bun:test";
 import { classifyLine } from "./commands.ts";
 import { parseSubagentArgs, parseToolsCommand, toolStates } from "./tools.ts";
-import { helpText, parseModelCommand, parseThinkingCommand } from "./commands.ts";
+import {
+  helpText,
+  parseModelCommand,
+  parseThinkingCommand,
+  type HelpName,
+} from "./commands.ts";
 
 test("recognises /exit and /context after trimming and keeps other lines as messages", () => {
   expect(classifyLine("  /exit  ")).toEqual({ kind: "exit" });
@@ -109,4 +114,14 @@ test("reads /help and its words, and lists every command or describes the one na
   expect(model.ok && model.value).toContain("saved for the next session");
   expect(helpText(["nope"]).ok).toBe(false);
   expect(helpText(["model", "search"]).ok).toBe(false);
+});
+
+test("every command the help table names is recognised by the classifier", () => {
+  const names: HelpName[] = [
+    "exit", "context", "compact", "note", "profile", "tools", "thinking",
+    "model", "save", "load", "sessions", "help",
+  ];
+  for (const name of names) {
+    expect(classifyLine(`/${name}`).kind).not.toBe("unknown-command");
+  }
 });

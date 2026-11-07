@@ -183,7 +183,7 @@ Target layout. Test files sit beside the module each one tests; there is no sepa
         ├── instructions.ts              reads AGENTS.md from the working directory (the one file read at startup)
         ├── openrouter.ts                model adapter: streams chat completions over HTTPS, the only network code
         ├── core/                        pure logic; imports nothing from node: except types
-        │   ├── commands.ts              line classification and command parsing
+        │   ├── commands.ts              line classification, command parsing, and the /help table (usage and description of each command)
         │   ├── compaction.ts            Conversation state: summary request, compacted history, 80% check, profile use and clear
         │   ├── messages.ts              shared data types and model ports (ChatMessage, ToolCall, Usage, ReplyRequest, Reply, ContextWindow)
         │   ├── notes.ts                 note rules: name checks, path and scaffold, header parser, /note and /profile words, NoteRunner and ProfileLoader ports
