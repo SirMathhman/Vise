@@ -309,13 +309,14 @@ function isHelpName(name: string): name is HelpName {
   return Object.hasOwn(COMMAND_HELP, name);
 }
 
+// One line per command: its usage, a dash, and its summary. No padding, so the lines read the same
+// whatever font the output is shown in.
 function helpList(): string {
   const names = Object.keys(COMMAND_HELP) as HelpName[];
-  const width = Math.max(...names.map((name) => COMMAND_HELP[name].usage.length));
   return names
     .map((name) => {
       const { usage, summary } = COMMAND_HELP[name];
-      return `${usage.padEnd(width)}  ${summary}`;
+      return `${usage} — ${summary}`;
     })
     .join("\n");
 }
