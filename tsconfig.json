@@ -26,5 +26,7 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false
-  }
+  },
+  // The page's files are checked with their own tsconfig (src/web/client/tsconfig.json).
+  "exclude": ["src/web/client"]
 }

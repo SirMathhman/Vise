@@ -1,0 +1,11 @@
+{
+  // The page's files use the browser's types. They are checked on their own, so the DOM types do not
+  // reach the rest of the project, which runs on Bun.
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ESNext", "DOM"],
+    "types": []
+  },
+  "include": ["./**/*.ts"],
+  "exclude": ["**/*.test.ts"]
+}
