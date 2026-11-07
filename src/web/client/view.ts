@@ -108,6 +108,27 @@ function blockElement(
   }
 }
 
+// The saved sessions, each a button that loads it. Clicking sends /load <name>, the line the user would
+// type, so the page keeps to lines and approvals.
+function sessionsPanel(
+  doc: Document,
+  names: string[],
+  enabled: boolean,
+  actions: ViewActions,
+): HTMLElement[] {
+  const heading = element(doc, "span", "label", "Saved sessions");
+  if (names.length === 0) {
+    return [heading, element(doc, "span", "hint", "none yet: /save <name> keeps the conversation")];
+  }
+  const buttons = names.map((name) => {
+    const button = element(doc, "button", "session", name);
+    button.disabled = !enabled;
+    button.addEventListener("click", () => actions.line(`/load ${name}`));
+    return button;
+  });
+  return [heading, ...buttons];
+}
+
 // Builds the page once, then replaces the transcript and the controls on each render.
 export function createView(
   doc: Document,
@@ -117,6 +138,8 @@ export function createView(
   const header = element(doc, "header", "bar", "Vise");
   const status = element(doc, "span", "status", "");
   header.append(status);
+  const panel = doc.createElement("section");
+  panel.className = "sessions";
   const transcript = element(doc, "main", "transcript", "");
   const form = doc.createElement("form");
   form.className = "composer";
@@ -126,7 +149,7 @@ export function createView(
   const send = element(doc, "button", "send", "Send");
   send.type = "submit";
   form.append(input, send);
-  root.append(header, transcript, form);
+  root.append(header, panel, transcript, form);
 
   input.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
@@ -154,6 +177,9 @@ export function createView(
       );
       const open = openApproval(state);
       const sendable = canSend(state);
+      panel.replaceChildren(
+        ...sessionsPanel(doc, state.sessions, sendable, actions),
+      );
       input.disabled = !sendable;
       send.disabled = !sendable;
       input.placeholder = open

@@ -271,3 +271,20 @@ test("a profile saved with a conversation is not restored when the session resum
   session.send({ kind: "inputEnded" });
   await until(events, "ended");
 });
+
+test("the saved sessions are announced at the start, so the page can offer them", async () => {
+  const ports = {
+    ...portsFor([]),
+    sessions: {
+      save: async () => ok(undefined),
+      load: async () => err(new Error("none")),
+      list: async () => ok(["work", "bad name"]),
+    },
+  };
+  const session = startSession(ports);
+  const events = session.events()[Symbol.asyncIterator]();
+  const seen = await until(events, "sessions");
+  expect(seen.at(-1)).toEqual({ kind: "sessions", names: ["work"] });
+  session.send({ kind: "inputEnded" });
+  await until(events, "ended");
+});

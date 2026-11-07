@@ -90,3 +90,8 @@ test("a history event replaces the transcript with the messages of the earlier c
     { kind: "reply", text: "reply", done: true },
   ]);
 });
+
+test("a sessions event sets the saved sessions the page offers", () => {
+  const state = after([{ kind: "sessions", names: ["work", "plan"] }]);
+  expect(state.sessions).toEqual(["work", "plan"]);
+});

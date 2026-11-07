@@ -16,7 +16,7 @@ import type {
   ServerEvent,
   Session,
 } from "../protocol/protocol.ts";
-import { runCommand } from "./commands/commands.ts";
+import { announceSessions, runCommand } from "./commands/commands.ts";
 import type { SessionPorts } from "./ports.ts";
 import { runMessageTurn } from "./turn.ts";
 
@@ -223,6 +223,7 @@ async function run(state: SessionState): Promise<void> {
   if (initial.history.length > 0) {
     emit({ kind: "history", messages: historyMessages(initial.history) });
   }
+  await announceSessions(state.ports, emit);
   const started = await state.ports.hooks(
     "sessionStart",
     profileCommands(initial, "sessionStart"),

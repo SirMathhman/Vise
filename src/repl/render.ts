@@ -79,11 +79,11 @@ export function createRenderer(output: Writable): Renderer {
         case "history":
           for (const message of event.messages) {
             const prefix = message.role === "user" ? "> " : "";
-            output.write(`${prefix}${sanitize(message.text)}
-`);
+            output.write(`${prefix}${sanitize(message.text)}\n`);
           }
           return;
         case "approvalAnswered":
+        case "sessions":
         case "ready":
         case "ended":
           return;

@@ -100,6 +100,12 @@ export interface HistoryEvent {
   messages: HistoryMessage[];
 }
 
+// The named sessions that /load can load, in name order. Sent at the start and after each /save.
+export interface SessionsEvent {
+  kind: "sessions";
+  names: string[];
+}
+
 // The output of a hook, in full. The frontend caps what it shows.
 export interface HookOutputEvent {
   kind: "hookOutput";
@@ -139,6 +145,7 @@ export type ServerEvent =
   | ApprovalRequestEvent
   | ApprovalAnsweredEvent
   | HistoryEvent
+  | SessionsEvent
   | HookOutputEvent
   | NoticeEvent
   | ErrorEvent

@@ -17,7 +17,7 @@ import {
   type Step,
 } from "../../core/compaction.ts";
 import type { ContextWindow, ModelPorts } from "../../core/messages.ts";
-import { parseProfileCommand } from "../../core/notes.ts";
+import { checkName, parseProfileCommand } from "../../core/notes.ts";
 import {
   decodeSession,
   encodeSession,
@@ -54,6 +54,18 @@ async function showContext(
     kind: "notice",
     text: contextLine(conversation.promptTokens, total, conversation.compacted),
   });
+}
+
+// Tells the frontend which named sessions can be loaded. Only names that /load accepts are listed.
+// A failure is reported, and the session goes on.
+export async function announceSessions(ports: SessionPorts, emit: Emit): Promise<void> {
+  const listed = await ports.sessions.list();
+  if (!listed.ok) {
+    emit({ kind: "error", message: `could not list the saved sessions: ${listed.error.message}` });
+    return;
+  }
+  const names = listed.value.filter((name) => checkName(name, "session name").ok);
+  emit({ kind: "sessions", names });
 }
 
 // Runs one command line and emits what it prints. Returns the step to apply when the command
@@ -288,7 +300,10 @@ async function runSessionCommand(
       command.value.name,
       encodeSession(conversation),
     );
-    if (saved.ok) emit({ kind: "notice", text: `saved ${command.value.name}` });
+    if (saved.ok) {
+      emit({ kind: "notice", text: `saved ${command.value.name}` });
+      await announceSessions(ports, emit);
+    }
     else emit({ kind: "error", message: saved.error.message });
     return undefined;
   }

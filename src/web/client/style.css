@@ -213,3 +213,28 @@ textarea:disabled {
     margin-left: 0;
   }
 }
+
+/* The saved sessions, above the transcript. The row wraps; it does not scroll. */
+.sessions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.sessions .label {
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+.sessions .hint {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.session {
+  padding: 4px 10px;
+  font-size: 14px;
+}
