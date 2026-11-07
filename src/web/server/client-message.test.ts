@@ -16,3 +16,16 @@ test("a line and an approval are read; end of input and failures are refused", (
     false,
   );
 });
+
+test("a profile write is read when its fields have the right types and hook points, and refused otherwise", () => {
+  const good = { kind: "profileWrite", profile: { name: "p", summary: "s", text: "t", hooks: [{ point: "sessionStart", command: "echo" }] } };
+  expect(parseClientMessage(JSON.stringify(good)).ok).toBe(true);
+  const badPoint = { kind: "profileWrite", profile: { name: "p", summary: "s", text: "t", hooks: [{ point: "later", command: "echo" }] } };
+  expect(parseClientMessage(JSON.stringify(badPoint)).ok).toBe(false);
+  const badType = { kind: "profileWrite", profile: { name: 3, summary: "s", text: "t", hooks: [] } };
+  expect(parseClientMessage(JSON.stringify(badType)).ok).toBe(false);
+  expect(parseClientMessage('{"kind":"profileRead","name":"p"}')).toEqual({
+    ok: true,
+    value: { kind: "profileRead", name: "p" },
+  });
+});

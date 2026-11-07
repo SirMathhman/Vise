@@ -85,6 +85,8 @@ export function createRenderer(output: Writable): Renderer {
         case "approvalAnswered":
         case "sessions":
         case "tools":
+        case "profiles":
+        case "profile":
         case "ready":
         case "ended":
           return;

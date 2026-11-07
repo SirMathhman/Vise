@@ -24,6 +24,7 @@ import { runTool } from "./src/tools/run-tool.ts";
 import { hookRunner, readHooks } from "./src/tools/hooks/hooks.ts";
 import { sessionStore } from "./src/tools/session-store.ts";
 import { resumeStore } from "./src/tools/resume/resume-store.ts";
+import { profileStore } from "./src/tools/notes/profile-store.ts";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
@@ -81,6 +82,7 @@ function sessionPorts(setup: PortSetup): SessionPorts {
     sessions: sessionStore(root),
     // Kept in the user's home folder, not the project, so a repository cannot ship a conversation to resume.
     resume: resumeStore(join(homedir(), ".vise", "resume"), root),
+    profiles: profileStore(root),
     instructions: setup.instructions,
   };
 }

@@ -4,8 +4,9 @@
 import type { ApprovalAnswer } from "../core/commands.ts";
 import type { HistoryMessage } from "../core/sessions.ts";
 import type { ToolSwitch } from "../core/tools.ts";
+import type { ProfileDetail, ProfileSummary } from "../core/notes.ts";
 
-export type { ApprovalAnswer, HistoryMessage, ToolSwitch };
+export type { ApprovalAnswer, HistoryMessage, ToolSwitch, ProfileDetail, ProfileSummary };
 
 // A line the user typed. While an approval question is open, the line is its answer: the backend
 // reads it as the answer (see answerOfLine). A browser also sends `shown`, the id of the newest question
@@ -37,11 +38,25 @@ export interface FailedMessage {
   message: string;
 }
 
+// The page asks for a profile's detail, to edit it.
+export interface ProfileReadMessage {
+  kind: "profileRead";
+  name: string;
+}
+
+// The page saves an edited profile. The store writes it only if the profile exists and the detail is valid.
+export interface ProfileWriteMessage {
+  kind: "profileWrite";
+  profile: ProfileDetail;
+}
+
 export type ClientMessage =
   | LineMessage
   | ApprovalMessage
   | InputEndedMessage
-  | FailedMessage;
+  | FailedMessage
+  | ProfileReadMessage
+  | ProfileWriteMessage;
 
 // A chunk of the model's reply, raw and unsanitized. The frontend escapes it before it shows it.
 export interface TextEvent {
@@ -113,6 +128,18 @@ export interface ToolsEvent {
   tools: ToolSwitch[];
 }
 
+// The profiles the page can edit, by name and summary. Sent at the start and after each save.
+export interface ProfilesEvent {
+  kind: "profiles";
+  profiles: ProfileSummary[];
+}
+
+// One profile's detail, in answer to a profileRead.
+export interface ProfileEvent {
+  kind: "profile";
+  profile: ProfileDetail;
+}
+
 // The output of a hook, in full. The frontend caps what it shows.
 export interface HookOutputEvent {
   kind: "hookOutput";
@@ -154,6 +181,8 @@ export type ServerEvent =
   | HistoryEvent
   | SessionsEvent
   | ToolsEvent
+  | ProfilesEvent
+  | ProfileEvent
   | HookOutputEvent
   | NoticeEvent
   | ErrorEvent

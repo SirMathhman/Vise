@@ -1,6 +1,8 @@
 import type {
   ApprovalAnswer,
   HistoryMessage,
+  ProfileDetail,
+  ProfileSummary,
   ServerEvent,
   ToolSwitch,
 } from "../../protocol/protocol.ts";
@@ -78,6 +80,9 @@ export interface ViewState {
   sessions: string[];
   // Every tool and whether it is switched on, from the last tools event.
   tools: ToolSwitch[];
+  // The profiles the page can edit, and the one whose detail arrived last (the editor opens on it).
+  profiles: ProfileSummary[];
+  profile?: ProfileDetail;
 }
 
 // A line the user sent from the page.
@@ -112,6 +117,7 @@ export const initialState: ViewState = {
   lastShown: 0,
   sessions: [],
   tools: [],
+  profiles: [],
 };
 
 // The approval question still open, if any. The page locks its input while one is open, because the
@@ -214,6 +220,10 @@ function applyEvent(state: ViewState, event: ServerEvent): ViewState {
       return { ...state, sessions: event.names };
     case "tools":
       return { ...state, tools: event.tools };
+    case "profiles":
+      return { ...state, profiles: event.profiles };
+    case "profile":
+      return { ...state, profile: event.profile };
     case "hookOutput":
       if (event.text === "") return state;
       return { ...state, blocks: [...blocks, { kind: "hook", text: event.text }] };

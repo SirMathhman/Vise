@@ -105,3 +105,13 @@ test("a tools event sets the switches the page offers", () => {
     { name: "b", enabled: false },
   ]);
 });
+
+test("profiles and a profile detail set what the page's profile editor shows", () => {
+  const detail = { name: "p", summary: "s", hooks: [], text: "t" };
+  const state = after([
+    { kind: "profiles", profiles: [{ name: "p", summary: "s" }] },
+    { kind: "profile", profile: detail },
+  ]);
+  expect(state.profiles).toEqual([{ name: "p", summary: "s" }]);
+  expect(state.profile).toEqual(detail);
+});

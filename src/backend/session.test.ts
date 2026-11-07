@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import type { ReplyRequest } from "../core/messages.ts";
 import { toolNames } from "../core/tools.ts";
 import type { Conversation } from "../core/compaction.ts";
+import type { ProfileDetail } from "../core/notes.ts";
 import type { ResumeStore } from "../core/sessions.ts";
 import { err, ok, type Result } from "../core/result.ts";
 import type {
@@ -320,6 +321,31 @@ test("/new keeps the tool switches the user has changed in this run", async () =
     kind: "tools",
     tools: expect.arrayContaining([{ name: tool, enabled: false }]),
   });
+  session.send({ kind: "inputEnded" });
+  await until(events, "ended");
+});
+
+test("a profile is read for the page, and an edited profile is saved and listed again", async () => {
+  const detail = { name: "plan", summary: "s", hooks: [], text: "Plan." };
+  const written: ProfileDetail[] = [];
+  const profiles = {
+    list: async () => ok([{ name: "plan", summary: "s" }]),
+    read: async (name: string) => (name === "plan" ? ok(detail) : err(new Error("none"))),
+    write: async (profile: ProfileDetail) => {
+      written.push(profile);
+      return ok(undefined);
+    },
+  };
+  const session = startSession({ ...portsFor([]), profiles });
+  const events = session.events()[Symbol.asyncIterator]();
+  await until(events, "profiles");
+  session.send({ kind: "profileRead", name: "plan" });
+  const read = await until(events, "profile");
+  expect(read.at(-1)).toEqual({ kind: "profile", profile: detail });
+  session.send({ kind: "profileWrite", profile: { ...detail, text: "Plan again." } });
+  const saved = await until(events, "profiles");
+  expect(written).toEqual([{ ...detail, text: "Plan again." }]);
+  expect(saved.at(-1)).toEqual({ kind: "profiles", profiles: [{ name: "plan", summary: "s" }] });
   session.send({ kind: "inputEnded" });
   await until(events, "ended");
 });

@@ -184,3 +184,74 @@ export function parseProfileCommand(words: string[]): Result<ProfileCommand> {
   if (!name.ok) return name;
   return ok({ kind: "use", name: name.value });
 }
+
+// A profile as the page edits it: the header's fields and the text below the header.
+export interface ProfileDetail {
+  name: string;
+  summary: string;
+  // Absent when the profile has no tools line, so every tool is allowed.
+  tools?: string[];
+  hooks: ProfileHook[];
+  text: string;
+}
+
+// A profile in a list: its name and its summary.
+export interface ProfileSummary {
+  name: string;
+  summary: string;
+}
+
+// Where profiles are read and written. The composition root supplies it. Writes change existing profiles
+// only; a profile is created with /note new.
+export interface ProfileStore {
+  list(): Promise<Result<ProfileSummary[]>>;
+  read(name: string): Promise<Result<ProfileDetail>>;
+  write(detail: ProfileDetail): Promise<Result<void>>;
+}
+
+// Whether a profile can be written as a file and read back the same: a name that is one file name, one
+// line for the summary and each hook command, a hook point that exists, and text that is not empty.
+export function checkProfileDetail(detail: ProfileDetail): Result<void> {
+  const name = checkName(detail.name, "profile name");
+  if (!name.ok) return err(name.error);
+  const oneLine = (value: string) => value === value.trim() && !/[\r\n]/.test(value);
+  if (!oneLine(detail.summary))
+    return err(new Error("the summary must be one line, without spaces at its ends"));
+  for (const hook of detail.hooks) {
+    if (!(HOOK_POINTS as readonly string[]).includes(hook.point))
+      return err(new Error(`${hook.point} is not a hook point`));
+    if (hook.command === "" || !oneLine(hook.command))
+      return err(new Error(`the ${hook.point} command must be one line and not empty`));
+  }
+  if (detail.text.trim() === "")
+    return err(new Error("a profile needs text below its header"));
+  return ok(undefined);
+}
+
+// A profile's file text: the header lines, then the text.
+export function profileFile(detail: ProfileDetail): string {
+  const lines = [
+    "---",
+    `name: ${detail.name}`,
+    `category: ${PROFILE_CATEGORY}`,
+    `summary: ${detail.summary}`,
+  ];
+  if (detail.tools !== undefined) lines.push(`tools: ${detail.tools.join(", ")}`);
+  for (const hook of detail.hooks) lines.push(`${hook.point}: ${hook.command}`);
+  return `${lines.join("\n")}\n---\n\n${detail.text.trim()}\n`;
+}
+
+// Reads a profile's file text back into its detail.
+export function profileDetailOf(text: string): Result<ProfileDetail> {
+  const header = parseHeader(text);
+  if (!header.ok) return err(header.error);
+  const body = bodyOf(text);
+  if (body === "") return err(new Error("the profile has no text below its header"));
+  return ok({
+    name: header.value.name,
+    summary: header.value.summary,
+    tools: header.value.tools,
+    hooks: header.value.hooks ?? [],
+    text: body,
+  });
+}
