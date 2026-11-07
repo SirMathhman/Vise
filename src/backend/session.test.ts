@@ -3,7 +3,7 @@ import type { ReplyRequest } from "../core/messages.ts";
 import { toolNames } from "../core/tools.ts";
 import type { Conversation } from "../core/compaction.ts";
 import type { ProfileDetail } from "../core/notes.ts";
-import type { ResumeStore } from "../core/sessions.ts";
+import type { ResumeStore, SessionStore } from "../core/sessions.ts";
 import { err, ok, type Result } from "../core/result.ts";
 import type {
   ApprovalRequestEvent,
@@ -362,6 +362,71 @@ test("a note command sends the profile list again, so a profile it creates shows
   session.send({ kind: "line", text: "/note list" });
   const seen = await until(events, "ready");
   expect(seen.some((event) => event.kind === "profiles")).toBe(true);
+  session.send({ kind: "inputEnded" });
+  await until(events, "ended");
+});
+
+// A model that answers with text, and saved sessions kept in memory.
+async function* textReply(): AsyncGenerator<Result<string>> {
+  yield ok("an answer");
+}
+
+function memorySessions(saved: Map<string, string>): SessionStore {
+  return {
+    save: async (name, text) => {
+      saved.set(name, text);
+      return ok(undefined);
+    },
+    load: async (name) => {
+      const text = saved.get(name);
+      return text === undefined ? err(new Error("none")) : ok(text);
+    },
+    list: async () => ok([...saved.keys()]),
+  };
+}
+
+test("the first message names the autosave session, and later lines keep saving to it", async () => {
+  const saved = new Map<string, string>();
+  const session = startSession({ ...portsFor([]), reply: textReply, sessions: memorySessions(saved) });
+  const events = session.events()[Symbol.asyncIterator]();
+  session.send({ kind: "line", text: "How do I parse JSON?" });
+  await until(events, "ready");
+  expect([...saved.keys()]).toEqual(["how-do-i-parse-json"]);
+  session.send({ kind: "line", text: "Thanks" });
+  await until(events, "ready");
+  expect([...saved.keys()]).toEqual(["how-do-i-parse-json"]);
+  expect(saved.get("how-do-i-parse-json")).toContain("Thanks");
+  session.send({ kind: "inputEnded" });
+  await until(events, "ended");
+});
+
+test("after /new, the next first message gets a new name, and a taken name gets a suffix", async () => {
+  const saved = new Map<string, string>();
+  const session = startSession({ ...portsFor([]), reply: textReply, sessions: memorySessions(saved) });
+  const events = session.events()[Symbol.asyncIterator]();
+  session.send({ kind: "line", text: "How do I parse JSON?" });
+  await until(events, "ready");
+  session.send({ kind: "line", text: "/new" });
+  await until(events, "ready");
+  session.send({ kind: "line", text: "How do I parse JSON?" });
+  await until(events, "ready");
+  expect([...saved.keys()].sort()).toEqual(["how-do-i-parse-json", "how-do-i-parse-json-2"]);
+  session.send({ kind: "inputEnded" });
+  await until(events, "ended");
+});
+
+test("after /load, later messages keep saving to the loaded session", async () => {
+  const saved = new Map<string, string>([
+    ["work", '{"version":1,"history":[],"compacted":false}'],
+  ]);
+  const session = startSession({ ...portsFor([]), reply: textReply, sessions: memorySessions(saved) });
+  const events = session.events()[Symbol.asyncIterator]();
+  session.send({ kind: "line", text: "/load work" });
+  await until(events, "ready");
+  session.send({ kind: "line", text: "Hello again" });
+  await until(events, "ready");
+  expect([...saved.keys()]).toEqual(["work"]);
+  expect(saved.get("work")).toContain("Hello again");
   session.send({ kind: "inputEnded" });
   await until(events, "ended");
 });

@@ -31,6 +31,8 @@ export interface Conversation {
   pendingOutput?: string;
   // How hard the model thinks. Absent when thinking is off.
   thinking?: ReasoningEffort;
+  // The saved session this conversation is autosaved to. Set from the first message, or by /load.
+  autosave?: string;
 }
 
 // Sets how hard the model thinks from the next request. Undefined turns thinking off.

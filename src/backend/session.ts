@@ -8,7 +8,12 @@ import {
   queueHookOutput,
   type Conversation,
 } from "../core/compaction.ts";
-import { historyMessages } from "../core/sessions.ts";
+import {
+  autosaveName,
+  encodeSession,
+  historyMessages,
+  uniqueName,
+} from "../core/sessions.ts";
 import { toolSwitches } from "../core/tools.ts";
 import { Channel } from "../protocol/channel.ts";
 import type {
@@ -158,14 +163,21 @@ async function sessionLoop(
       emit({ kind: "ready" });
       continue;
     }
+    // The first message names the autosave session; later messages keep saving to it.
+    const created = conversation.autosave === undefined;
+    const name = created ? await chooseAutosave(state, input.text) : conversation.autosave;
     const turn = await runMessageTurn(input.text, conversation, {
       ports: state.ports,
       emit,
       finished: () => finished(state),
       approve: (preview) => askApproval(state, preview),
     });
-    conversation = turn.conversation;
+    conversation = name === undefined ? turn.conversation : { ...turn.conversation, autosave: name };
     await persist(state, conversation);
+    if (created && name !== undefined) {
+      emit({ kind: "notice", text: `autosaving as ${name}` });
+      await announceSessions(state.ports, emit);
+    }
     if (turn.stop) break;
     if (state.exitRequested || state.streamError !== undefined) break;
     emit({ kind: "ready" });
@@ -198,11 +210,12 @@ async function resumedConversation(
   }
   // Only the history and its counts come back. The profile is not restored: its hooks would run at
   // start with no switch and no approval, and its text would be sent again with the next message.
-  const { history, compacted, promptTokens } = loaded.value;
+  const { history, compacted, promptTokens, autosave } = loaded.value;
   return {
     history,
     compacted,
     promptTokens,
+    autosave,
     disabledTools: state.ports.disabledTools,
   };
 }
@@ -215,8 +228,36 @@ function announceTools(state: SessionState, conversation: Conversation): void {
   });
 }
 
-// Saves the conversation so the next run can resume it. A failure is reported, and the session goes on.
+// Picks the saved session a conversation is autosaved to, from its first message. Names are listed first,
+// so a name the user saved is never overwritten. A failure to list them means no autosave for this message.
+async function chooseAutosave(state: SessionState, message: string): Promise<string | undefined> {
+  const listed = await state.ports.sessions.list();
+  if (!listed.ok) {
+    state.events.push({ kind: "error", message: `could not autosave: ${listed.error.message}` });
+    return undefined;
+  }
+  return uniqueName(autosaveName(message), listed.value);
+}
+
+// Saves the conversation after each line: for the next run to resume it, and to its autosave session.
 async function persist(state: SessionState, conversation: Conversation): Promise<void> {
+  await persistResume(state, conversation);
+  await persistAutosave(state, conversation);
+}
+
+// Writes the conversation to the autosave session, once it has a name. A failure is reported.
+async function persistAutosave(state: SessionState, conversation: Conversation): Promise<void> {
+  if (conversation.autosave === undefined) return;
+  const saved = await state.ports.sessions.save(conversation.autosave, encodeSession(conversation));
+  if (!saved.ok) {
+    state.events.push({
+      kind: "error",
+      message: `could not autosave ${conversation.autosave}: ${saved.error.message}`,
+    });
+  }
+}
+
+async function persistResume(state: SessionState, conversation: Conversation): Promise<void> {
   const store = state.ports.resume;
   if (store === undefined) return;
   const saved = await store.save(conversation);

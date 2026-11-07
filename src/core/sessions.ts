@@ -51,6 +51,7 @@ const SessionSchema = z
     pendingProfile: z.string().optional(),
     pendingOutput: z.string().optional(),
     disabledTools: z.array(z.string()).optional(),
+    autosave: z.string().regex(/^[A-Za-z0-9_-]+$/).optional(),
   })
   .refine(
     (session) =>
@@ -119,6 +120,7 @@ export function encodeSession(conversation: Conversation): string {
     pendingProfile: conversation.pendingProfile,
     pendingOutput: conversation.pendingOutput,
     disabledTools: conversation.disabledTools,
+    autosave: conversation.autosave,
   };
   return `${JSON.stringify(saved, null, 2)}\n`;
 }
@@ -179,6 +181,7 @@ export function decodeSession(text: string): Result<Conversation> {
     pendingProfile: session.pendingProfile,
     pendingOutput: session.pendingOutput,
     disabledTools: session.disabledTools,
+    autosave: session.autosave,
   });
 }
 
@@ -206,4 +209,28 @@ export function historyMessages(history: ChatMessage[]): HistoryMessage[] {
 export interface ResumeStore {
   load(): Promise<Result<Conversation | undefined>>;
   save(conversation: Conversation): Promise<Result<void>>;
+}
+
+// The name an autosave session gets from the first message of a conversation: its words in lower case,
+// joined by hyphens, up to 40 characters. A message with no letters or digits gets "autosave".
+export function autosaveName(message: string): string {
+  const slug = message
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((word) => word !== "")
+    .join("-")
+    .slice(0, 40)
+    .replace(/-+$/, "");
+  return slug === "" ? "autosave" : slug;
+}
+
+// The name itself if no saved session has it, otherwise the first of name-2, name-3, ... that is free.
+export function uniqueName(base: string, taken: string[]): string {
+  let candidate = base;
+  let suffix = 2;
+  while (taken.includes(candidate)) {
+    candidate = `${base}-${suffix}`;
+    suffix += 1;
+  }
+  return candidate;
 }
