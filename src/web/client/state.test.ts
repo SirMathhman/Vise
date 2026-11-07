@@ -64,3 +64,12 @@ test("thinking is shown as an estimate until its final count arrives, and the se
   expect(state.endError).toBe("boom");
   expect(canSend(state)).toBe(false);
 });
+
+test("the page remembers the newest approval question it showed", () => {
+  const state = after([
+    { kind: "approvalRequest", id: 2, preview: "a" },
+    { kind: "approvalAnswered", id: 2, answer: "refuse" },
+    { kind: "approvalRequest", id: 5, preview: "b" },
+  ]);
+  expect(state.lastShown).toBe(5);
+});

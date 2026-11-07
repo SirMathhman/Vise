@@ -1,7 +1,10 @@
 // The page's only side-effecting file: the socket, the reconnect timer, and the render schedule.
 // Everything it shows is decided by reduce in state.ts.
-import type { ClientMessage, ServerEvent } from "../../protocol/protocol.ts";
-import type { ApprovalAnswer } from "../../core/commands.ts";
+import type {
+  ApprovalAnswer,
+  ClientMessage,
+  ServerEvent,
+} from "../../protocol/protocol.ts";
 import { initialState, reduce, type ViewAction, type ViewState } from "./state.ts";
 import { createView } from "./view.ts";
 
@@ -82,7 +85,9 @@ function connect(): void {
 
 const view = createView(document, root, {
   line(text) {
-    if (send({ kind: "line", text })) dispatch({ kind: "sent", text });
+    if (send({ kind: "line", text, shown: state.lastShown })) {
+      dispatch({ kind: "sent", text });
+    }
   },
   answer(id: number, answer: ApprovalAnswer) {
     send({ kind: "approval", id, answer });

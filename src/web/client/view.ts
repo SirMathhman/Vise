@@ -1,4 +1,4 @@
-import type { ApprovalAnswer } from "../../core/commands.ts";
+import type { ApprovalAnswer } from "../../protocol/protocol.ts";
 import {
   canSend,
   openApproval,

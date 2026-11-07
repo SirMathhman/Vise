@@ -95,6 +95,13 @@ function receive(state: SessionState, message: ClientMessage): void {
         state.lines.push(message.text);
         return;
       }
+      if (message.shown !== undefined && message.shown !== question.id) {
+        state.events.push({
+          kind: "notice",
+          text: "an approval question is open: answer it with its buttons. Your line was not sent.",
+        });
+        return;
+      }
       state.question = undefined;
       question.resolve(answerOfLine(message.text));
       return;

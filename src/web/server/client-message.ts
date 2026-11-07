@@ -19,7 +19,10 @@ export function parseClientMessage(text: string): Result<ClientMessage> {
   }
   if (!isRecord(value)) return err(new Error("the message is not an object"));
   if (value.kind === "line" && typeof value.text === "string") {
-    return ok({ kind: "line", text: value.text });
+    const shown = value.shown;
+    if (shown === undefined) return ok({ kind: "line", text: value.text });
+    if (typeof shown !== "number") return err(new Error("shown is not a number"));
+    return ok({ kind: "line", text: value.text, shown });
   }
   if (
     value.kind === "approval" &&

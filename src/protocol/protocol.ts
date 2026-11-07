@@ -6,10 +6,14 @@ import type { ApprovalAnswer } from "../core/commands.ts";
 export type { ApprovalAnswer };
 
 // A line the user typed. While an approval question is open, the line is its answer: the backend
-// reads it as the answer (see answerOfLine), so the frontend needs no state of its own.
+// reads it as the answer (see answerOfLine). A browser also sends `shown`, the id of the newest question
+// its page has displayed. While a question is open, a line answers it only when `shown` is that
+// question's id; otherwise the line was typed before the user could see the question, and it is dropped.
+// A line without `shown` (the terminal) answers as before.
 export interface LineMessage {
   kind: "line";
   text: string;
+  shown?: number;
 }
 
 // The answer to the approvalRequest with the same id, for a frontend that answers by id rather than

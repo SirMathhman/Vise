@@ -162,3 +162,20 @@ test("an approval answer is reported as an approvalAnswered event with the quest
   });
   expect(answers).toEqual([false]);
 });
+
+test("a line the page sent before it showed the question does not answer it", async () => {
+  const answers: boolean[] = [];
+  const session = startSession(portsFor(answers));
+  const events = session.events()[Symbol.asyncIterator]();
+  session.send({ kind: "line", text: "go" });
+  const asked = await until(events, "approvalRequest");
+  const request = asked.at(-1) as ApprovalRequestEvent;
+  session.send({ kind: "line", text: "y", shown: 0 });
+  const notice = await until(events, "notice");
+  expect(notice.at(-1)?.kind).toBe("notice");
+  expect(answers).toEqual([]);
+  session.send({ kind: "approval", id: request.id, answer: "approve" });
+  session.send({ kind: "inputEnded" });
+  await until(events, "ended");
+  expect(answers).toEqual([true]);
+});

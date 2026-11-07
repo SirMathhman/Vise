@@ -1,5 +1,7 @@
-import type { ApprovalAnswer } from "../../core/commands.ts";
-import type { ServerEvent } from "../../protocol/protocol.ts";
+import type {
+  ApprovalAnswer,
+  ServerEvent,
+} from "../../protocol/protocol.ts";
 
 // What the page knows about its connection to the server.
 export type Link = "connecting" | "live" | "lost" | "taken" | "no-token";
@@ -68,6 +70,8 @@ export interface ViewState {
   waiting: boolean;
   ended: boolean;
   endError?: string;
+  // The id of the newest approval question shown on the page. Sent with each line (see LineMessage).
+  lastShown: number;
 }
 
 // A line the user sent from the page.
@@ -99,6 +103,7 @@ export const initialState: ViewState = {
   blocks: [],
   waiting: false,
   ended: false,
+  lastShown: 0,
 };
 
 // The approval question still open, if any. The page locks its input while one is open, because the
@@ -185,6 +190,7 @@ function applyEvent(state: ViewState, event: ServerEvent): ViewState {
       return {
         ...state,
         blocks: [...blocks, { kind: "approval", id: event.id, preview: event.preview }],
+        lastShown: event.id,
       };
     case "approvalAnswered":
       return { ...state, blocks: answerApproval(blocks, event.id, event.answer) };
