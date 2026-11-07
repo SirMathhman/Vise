@@ -1,5 +1,6 @@
 import {
   contextLine,
+  helpText,
   parseModelCommand,
   parseThinkingCommand,
   type ExitLine,
@@ -82,6 +83,12 @@ export async function runCommand(
     case "model":
       await runModelCommand(input.words, ports.models, emit);
       return undefined;
+    case "help": {
+      const help = helpText(input.words);
+      if (help.ok) emit({ kind: "notice", text: help.value });
+      else emit({ kind: "error", message: help.error.message });
+      return undefined;
+    }
     case "unknown-command":
       emit({ kind: "error", message: `unknown command ${input.command}` });
       return undefined;

@@ -85,7 +85,7 @@ The dependency rules are in Dependency direction below.
 
 ### Commands
 
-The commands are `/exit`, `/context`, `/compact`, `/note`, `/profile`, `/tools`, `/thinking`, `/model`, `/save`, `/load`, and `/sessions`. The core classifies any other `/` line as `unknown-command`, and the frontend reports it as an error.
+The commands are `/exit`, `/context`, `/compact`, `/note`, `/profile`, `/tools`, `/thinking`, `/model`, `/save`, `/load`, `/sessions`, and `/help`. The core classifies any other `/` line as `unknown-command`, and the frontend reports it as an error.
 
 - **`/exit`**: the core recognises a line whose trimmed text is `/exit`. After it, the session accepts no further lines, even ones that arrived in the same chunk of input. Bare words such as `exit` or `quit` are ordinary lines.
 - **`/context`**: reports the prompt tokens the provider counted for the most recent request that reported usage, out of the model's context window. Both numbers come from the provider, not an estimate. Before any request has reported usage, it says no request has been sent. After a compaction, it says the size is unknown until the next request, because the counted size described the history that was replaced. It never says no request was sent when one was.
@@ -95,6 +95,7 @@ The commands are `/exit`, `/context`, `/compact`, `/note`, `/profile`, `/tools`,
 - **`/tools`** lists the tools and whether each is on. **`/tools enable|disable <tool>`** switches one. The switch applies from the next request and is saved to `.vise/tools.json`. A switched-off tool is left out of the request, and a call to it is refused without approval.
 - **`/thinking off|low|medium|high`**: sets the thinking effort (see Thinking).
 - **`/model`** shows the model in use. **`/model search <text>`** lists the models whose id contains the text, ignoring case, in alphabetical order. **`/model <name>`** switches to a listed model and keeps the conversation. The choice is saved to `.vise/model.json`.
+- **`/help`** prints every command on its own line, with its usage and a one-line summary. **`/help <command>`** prints the usage and a fuller description of that command. The text is built in `src/core/commands.ts` from one table, and the backend emits it as a notice. An unknown name is an error. Like every command, it never reaches the model.
 - **`/save <name>`** writes the conversation as a saved session, replacing one of the same name. **`/load <name>`** replaces the conversation with a saved session and applies that session's switched-off tools, for that session only; it does not write `.vise/tools.json`. **`/sessions`** lists the saved names.
 
 ### Notes and profiles

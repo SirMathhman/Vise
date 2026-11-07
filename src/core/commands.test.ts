@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { classifyLine } from "./commands.ts";
 import { parseSubagentArgs, parseToolsCommand, toolStates } from "./tools.ts";
-import { parseModelCommand, parseThinkingCommand } from "./commands.ts";
+import { helpText, parseModelCommand, parseThinkingCommand } from "./commands.ts";
 
 test("recognises /exit and /context after trimming and keeps other lines as messages", () => {
   expect(classifyLine("  /exit  ")).toEqual({ kind: "exit" });
@@ -93,4 +93,20 @@ test("reads /model: nothing shows the model in use, search lists matches, and a 
     value: { kind: "select", name: "openai/gpt-x" },
   });
   expect(parseModelCommand(["a", "b"]).ok).toBe(false);
+});
+
+test("reads /help and its words, and lists every command or describes the one named", () => {
+  expect(classifyLine("/help")).toEqual({ kind: "help", words: [] });
+  expect(classifyLine("  /help  model ")).toEqual({
+    kind: "help",
+    words: ["model"],
+  });
+  const list = helpText([]);
+  expect(list.ok && list.value.split("\n")).toHaveLength(12);
+  expect(list.ok && list.value).toContain("/model [search <text> | <name>]");
+  const model = helpText(["/model"]);
+  expect(model.ok && model.value.startsWith("/model [search <text> | <name>]\n")).toBe(true);
+  expect(model.ok && model.value).toContain("saved for the next session");
+  expect(helpText(["nope"]).ok).toBe(false);
+  expect(helpText(["model", "search"]).ok).toBe(false);
 });

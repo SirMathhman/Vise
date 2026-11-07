@@ -59,7 +59,14 @@ export interface ModelLine {
   words: string[];
 }
 
+// A /help command. words are the words after /help, split on whitespace.
+export interface HelpLine {
+  kind: "help";
+  words: string[];
+}
+
 export type Line =
+  | HelpLine
   | ModelLine
   | ThinkingLine
   | ExitLine
@@ -97,6 +104,9 @@ export function classifyLine(line: string): Line {
   }
   if (command === "/model" || command.startsWith("/model ")) {
     return { kind: "model", words: command.split(/\s+/).slice(1) };
+  }
+  if (command === "/help" || command.startsWith("/help ")) {
+    return { kind: "help", words: command.split(/\s+/).slice(1) };
   }
   if (command.startsWith("/")) return { kind: "unknown-command", command };
   return { kind: "message", text: line };
@@ -181,4 +191,120 @@ export function answerOfLine(line: string): ApprovalAnswer {
   const text = line.trim();
   if (text === "/exit") return "exit";
   return /^y(es)?$/i.test(text) ? "approve" : "refuse";
+}
+
+// What /help says about one command: its usage, a summary for the list, and a fuller description.
+interface CommandHelp {
+  name: string;
+  usage: string;
+  summary: string;
+  detail: string;
+}
+
+const COMMAND_HELP: CommandHelp[] = [
+  {
+    name: "exit",
+    usage: "/exit",
+    summary: "ends the session",
+    detail: "Ends the session. Nothing more is sent to the model.",
+  },
+  {
+    name: "context",
+    usage: "/context",
+    summary: "shows how much of the model's context window is used",
+    detail:
+      "Shows the prompt tokens the provider counted for the last request, out of the model's context window. After a compaction the size is unknown until the next request.",
+  },
+  {
+    name: "compact",
+    usage: "/compact",
+    summary: "summarizes the conversation to free up context",
+    detail:
+      "Asks the model for a summary of the whole conversation, and keeps the summary and the last six messages. Compaction also happens by itself at 80% of the context window.",
+  },
+  {
+    name: "note",
+    usage: "/note new <category> <name> | /note list [category]",
+    summary: "creates a note, or lists the notes",
+    detail:
+      "Notes are kept in the notes folder, grouped by category. `new` creates a note with its scaffold, and `list` shows the notes, optionally in one category. Nothing here is sent to the model.",
+  },
+  {
+    name: "profile",
+    usage: "/profile [name | default]",
+    summary: "shows, switches, or turns off the profile",
+    detail:
+      "With no argument, shows the profile in use. With a name, switches to that profile: its text goes with the next message. `default` turns profiles off.",
+  },
+  {
+    name: "tools",
+    usage: "/tools [enable | disable <tool>]",
+    summary: "lists the tools, or switches one on or off",
+    detail:
+      "With no argument, lists each tool as on or off. `enable` or `disable` with a tool name switches it. The change applies from the next request and is saved to the settings file.",
+  },
+  {
+    name: "thinking",
+    usage: "/thinking [off | low | medium | high]",
+    summary: "shows or sets how hard the model thinks",
+    detail:
+      "With no argument, shows the setting. `off`, `low`, `medium`, or `high` sets it for the requests that follow.",
+  },
+  {
+    name: "model",
+    usage: "/model [search <text> | <name>]",
+    summary: "shows, searches, or switches the model",
+    detail:
+      "With no argument, shows the model in use. `search <text>` lists the models whose id contains the text. A model name switches to that model, keeps the conversation, and is saved for the next session.",
+  },
+  {
+    name: "save",
+    usage: "/save <name>",
+    summary: "saves the conversation as a session",
+    detail:
+      "Writes the conversation to .vise/sessions/<name>.json, replacing a session of the same name.",
+  },
+  {
+    name: "load",
+    usage: "/load <name>",
+    summary: "loads a saved session",
+    detail:
+      "Replaces the conversation with the session saved as .vise/sessions/<name>.json, and applies that session's switched-off tools for this session only.",
+  },
+  {
+    name: "sessions",
+    usage: "/sessions",
+    summary: "lists the saved sessions",
+    detail: "Lists the names of the sessions saved with /save.",
+  },
+  {
+    name: "help",
+    usage: "/help [command]",
+    summary: "lists the commands, or describes one",
+    detail:
+      "With no argument, lists every command. With a command name, such as /help model, describes that command.",
+  },
+];
+
+const HELP_USAGE = "usage: /help | /help <command>";
+
+// The text /help prints: every command on its own line when no name is given, otherwise the usage and
+// description of the named command. A name that is not a command, or more than one word, is an error.
+export function helpText(words: string[]): Result<string> {
+  if (words.length > 1) return err(new Error(HELP_USAGE));
+  const [name] = words;
+  if (name === undefined) return ok(helpList());
+  const wanted = name.replace(/^\//, "");
+  const found = COMMAND_HELP.find((command) => command.name === wanted);
+  if (found === undefined) {
+    return err(new Error(`no command ${name}; /help lists them`));
+  }
+  return ok(`${found.usage}\n${found.detail}`);
+}
+
+function helpList(): string {
+  const width = Math.max(...COMMAND_HELP.map((command) => command.usage.length));
+  return COMMAND_HELP.map(
+    (command) => `${command.usage.padEnd(width)}  ${command.summary}`,
+  ).join("\n");
 }

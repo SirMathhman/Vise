@@ -179,3 +179,14 @@ test("a line the page sent before it showed the question does not answer it", as
   await until(events, "ended");
   expect(answers).toEqual([true]);
 });
+
+test("/help is answered by the session with the description of the named command", async () => {
+  const session = startSession(portsFor([]));
+  const events = session.events()[Symbol.asyncIterator]();
+  session.send({ kind: "line", text: "/help model" });
+  const seen = await until(events, "ready");
+  const notice = seen.find((event) => event.kind === "notice");
+  expect(notice?.kind === "notice" && notice.text.startsWith("/model [")).toBe(true);
+  session.send({ kind: "inputEnded" });
+  await until(events, "ended");
+});
