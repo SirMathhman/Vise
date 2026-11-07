@@ -249,3 +249,25 @@ test("each line saves the conversation, and /new saves an empty one", async () =
   session.send({ kind: "inputEnded" });
   await until(events, "ended");
 });
+
+test("a profile saved with a conversation is not restored when the session resumes", async () => {
+  const resume = memoryResume({
+    history: [{ role: "user", content: "earlier" }],
+    compacted: false,
+    profile: {
+      name: "terse",
+      text: "be brief",
+      hooks: [{ point: "sessionStart", command: "echo hi" }],
+    },
+    pendingProfile: "be brief",
+  });
+  const session = startSession({ ...portsFor([]), resume: resume.store });
+  const events = session.events()[Symbol.asyncIterator]();
+  await until(events, "history");
+  session.send({ kind: "line", text: "/help model" });
+  await until(events, "ready");
+  expect(resume.saved.at(-1)?.profile).toBeUndefined();
+  expect(resume.saved.at(-1)?.pendingProfile).toBeUndefined();
+  session.send({ kind: "inputEnded" });
+  await until(events, "ended");
+});

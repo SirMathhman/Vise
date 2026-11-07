@@ -187,7 +187,15 @@ async function resumedConversation(
       text: `resumed the last session (${shown} messages)`,
     });
   }
-  return { ...loaded.value, disabledTools: state.ports.disabledTools };
+  // Only the history and its counts come back. The profile is not restored: its hooks would run at
+  // start with no switch and no approval, and its text would be sent again with the next message.
+  const { history, compacted, promptTokens } = loaded.value;
+  return {
+    history,
+    compacted,
+    promptTokens,
+    disabledTools: state.ports.disabledTools,
+  };
 }
 
 // Saves the conversation so the next run can resume it. A failure is reported, and the session goes on.
