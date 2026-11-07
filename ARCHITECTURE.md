@@ -176,7 +176,8 @@ Target layout. Test files sit beside the module each one tests; there is no sepa
 └── vise/
     ├── index.ts                         composition root: wires stdin, stdout, and OPENROUTER_API_KEY to the REPL or, with --web, to the browser server; reads the tools and model settings at startup
     ├── scripts/                         build checks run by bun run lint
-    │   └── check-files-per-dir.ts       file count per directory
+    │   ├── check-files-per-dir.ts       file count per directory
+    │   └── web-dev.ts                  bun run web:dev: runs the browser server and restarts it when a file under src/ or index.ts changes
     └── src/
         ├── instructions.ts              reads AGENTS.md from the working directory (the one file read at startup)
         ├── openrouter.ts                model adapter: streams chat completions over HTTPS, the only network code

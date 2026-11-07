@@ -18,4 +18,6 @@ To use it in a browser instead of the terminal (prints a local URL to open):
 bun run web
 ```
 
+To develop the browser frontend, `bun run web:dev` restarts the server whenever a file under `src/` or `index.ts` changes. Each restart starts a new session.
+
 This project was created using `bun init` in bun v1.3.14. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
