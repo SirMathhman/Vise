@@ -4,6 +4,7 @@ import {
   canSend,
   initialState,
   reduce,
+  toolsAfterEdit,
   type ViewState,
 } from "./state.ts";
 
@@ -114,4 +115,15 @@ test("profiles and a profile detail set what the page's profile editor shows", (
   ]);
   expect(state.profiles).toEqual([{ name: "p", summary: "s" }]);
   expect(state.profile).toEqual(detail);
+});
+
+test("saving a tool list keeps names the editor does not show, and an unchanged list stays as it was", () => {
+  // Unchanged: the profile's own list, unknown name included.
+  expect(toolsAfterEdit(["a", "ghost"], ["a", "b"], ["a"])).toEqual(["a", "ghost"]);
+  // Ticking another tool adds it; unticking a shown one removes it.
+  expect(toolsAfterEdit(["a"], ["a", "b"], ["a", "b"])).toEqual(["a", "b"]);
+  expect(toolsAfterEdit(["a", "b"], ["a", "b"], ["b"])).toEqual(["b"]);
+  // No list, every tool ticked: still no list. No list, some unticked: the ticked ones.
+  expect(toolsAfterEdit(undefined, ["a", "b"], ["a", "b"])).toBeUndefined();
+  expect(toolsAfterEdit(undefined, ["a", "b"], ["a"])).toEqual(["a"]);
 });

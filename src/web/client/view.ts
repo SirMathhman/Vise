@@ -7,6 +7,7 @@ import type {
 import {
   canSend,
   openApproval,
+  toolsAfterEdit,
   type ApprovalBlock,
   type Block,
   type ViewState,
@@ -298,9 +299,12 @@ function editorForm(setup: EditorSetup): HTMLElement {
       text: text.value,
     };
     const boxes = toolBoxes.map((label) => label.querySelector("input") as HTMLInputElement);
-    if (!boxes.every((box) => box.checked)) {
-      detail.tools = boxes.filter((box) => box.checked).map((box) => box.value);
-    }
+    const tools = toolsAfterEdit(
+      profile.tools,
+      boxes.map((box) => box.value),
+      boxes.filter((box) => box.checked).map((box) => box.value),
+    );
+    if (tools !== undefined) detail.tools = tools;
     actions.writeProfile(detail);
     close();
   });

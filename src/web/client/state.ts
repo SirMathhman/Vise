@@ -130,6 +130,22 @@ export function openApproval(state: ViewState): ApprovalBlock | undefined {
 }
 
 // Whether the page may send a line now.
+// The tool list to save after an edit. `original` is the profile's own list, undefined when it has none.
+// `shown` is every tool the editor offers and `checked` the ones ticked. Names the editor does not offer
+// stay, so saving never drops them; a profile with no list keeps none unless the user ticks some.
+export function toolsAfterEdit(
+  original: string[] | undefined,
+  shown: string[],
+  checked: string[],
+): string[] | undefined {
+  if (original === undefined) {
+    return checked.length === shown.length ? undefined : checked;
+  }
+  const kept = original.filter((name) => !shown.includes(name) || checked.includes(name));
+  const added = checked.filter((name) => !original.includes(name));
+  return [...kept, ...added];
+}
+
 export function canSend(state: ViewState): boolean {
   return (
     state.link === "live" &&
