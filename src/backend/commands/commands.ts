@@ -18,6 +18,7 @@ import {
 } from "../../core/compaction.ts";
 import type { ContextWindow, ModelPorts } from "../../core/messages.ts";
 import { checkName, parseProfileCommand } from "../../core/notes.ts";
+import { announceProfiles } from "../profile-editor.ts";
 import {
   decodeSession,
   encodeSession,
@@ -84,6 +85,8 @@ export async function runCommand(
       return compactNow(conversation, ports.reply);
     case "note":
       emit({ kind: "notice", text: await ports.notes(input.words) });
+      // A note command can create a profile, so the page's list is sent again.
+      await announceProfiles(ports, emit);
       return undefined;
     case "profile":
       return runProfileCommand(input.words, ports, emit, conversation);

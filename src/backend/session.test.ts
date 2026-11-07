@@ -349,3 +349,19 @@ test("a profile is read for the page, and an edited profile is saved and listed 
   session.send({ kind: "inputEnded" });
   await until(events, "ended");
 });
+
+test("a note command sends the profile list again, so a profile it creates shows on the page", async () => {
+  const profiles = {
+    list: async () => ok([{ name: "plan", summary: "" }]),
+    read: async () => err(new Error("none")),
+    write: async () => ok(undefined),
+  };
+  const session = startSession({ ...portsFor([]), profiles });
+  const events = session.events()[Symbol.asyncIterator]();
+  await until(events, "profiles");
+  session.send({ kind: "line", text: "/note list" });
+  const seen = await until(events, "ready");
+  expect(seen.some((event) => event.kind === "profiles")).toBe(true);
+  session.send({ kind: "inputEnded" });
+  await until(events, "ended");
+});
