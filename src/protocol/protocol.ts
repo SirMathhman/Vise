@@ -80,6 +80,14 @@ export interface ApprovalRequestEvent {
   preview: string;
 }
 
+// The answer to an approvalRequest, sent once the question is closed. A frontend that reconnects can
+// tell from it which approval requests are still open.
+export interface ApprovalAnsweredEvent {
+  kind: "approvalAnswered";
+  id: number;
+  answer: ApprovalAnswer;
+}
+
 // The output of a hook, in full. The frontend caps what it shows.
 export interface HookOutputEvent {
   kind: "hookOutput";
@@ -117,6 +125,7 @@ export type ServerEvent =
   | ToolCallEvent
   | ToolSkippedEvent
   | ApprovalRequestEvent
+  | ApprovalAnsweredEvent
   | HookOutputEvent
   | NoticeEvent
   | ErrorEvent

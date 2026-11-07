@@ -76,6 +76,7 @@ export function createRenderer(output: Writable): Renderer {
         case "error":
           output.write(`error: ${sanitize(event.message)}\n`);
           return;
+        case "approvalAnswered":
         case "ready":
         case "ended":
           return;

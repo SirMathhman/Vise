@@ -144,3 +144,21 @@ test("input that ends after the question is asked refuses it", async () => {
   expect(answers).toEqual([false]);
   expect(seen.at(-1)).toEqual({ kind: "ended" });
 });
+
+test("an approval answer is reported as an approvalAnswered event with the question's id", async () => {
+  const answers: boolean[] = [];
+  const session = startSession(portsFor(answers));
+  const events = session.events()[Symbol.asyncIterator]();
+  session.send({ kind: "line", text: "go" });
+  const asked = await until(events, "approvalRequest");
+  const request = asked.at(-1) as ApprovalRequestEvent;
+  session.send({ kind: "line", text: "n" });
+  session.send({ kind: "inputEnded" });
+  const rest = await until(events, "ended");
+  expect(rest).toContainEqual({
+    kind: "approvalAnswered",
+    id: request.id,
+    answer: "refuse",
+  });
+  expect(answers).toEqual([false]);
+});

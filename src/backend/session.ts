@@ -77,6 +77,7 @@ async function askApproval(state: SessionState, preview: string): Promise<boolea
   // Input may have ended before the question, with nothing left to answer it; then it is refused.
   if (!state.lines.more) endInput(state);
   const answer = await chosen;
+  state.events.push({ kind: "approvalAnswered", id, answer });
   if (answer === "exit") {
     state.exitRequested = true;
     return false;
