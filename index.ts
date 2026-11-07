@@ -4,6 +4,7 @@ import {
   modelContextWindow,
   streamChat,
 } from "./src/openrouter.ts";
+import { startSession } from "./src/backend/session.ts";
 import { runRepl } from "./src/repl/repl.ts";
 import { killAllJobs } from "./src/tools/jobs.ts";
 import {
@@ -67,7 +68,7 @@ if (import.meta.main) {
   const selection = { model: savedModel.value ?? DEFAULT_MODEL };
   let failed = false;
   try {
-    const result = await runRepl(process.stdin, process.stdout, {
+    const session = startSession({
       hooks: hookRunner(process.cwd(), hookConfig.value),
       reply: (request) =>
         streamChat({ apiKey, model: selection.model, ...request }),
@@ -95,6 +96,7 @@ if (import.meta.main) {
       sessions: sessionStore(process.cwd()),
       instructions,
     });
+    const result = await runRepl(process.stdin, process.stdout, session);
     if (!result.ok) {
       console.error(`error: ${result.error.message}`);
       failed = true;

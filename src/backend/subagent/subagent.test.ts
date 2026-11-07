@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
 import { Readable, Writable } from "node:stream";
-import type { ChatMessage, ToolCall } from "../core/messages.ts";
-import { err, ok } from "../core/result.ts";
-import { runRepl, type Reply, type ReplPorts } from "./repl.ts";
+import type { ChatMessage, Reply, ToolCall } from "../../core/messages.ts";
+import { err, ok } from "../../core/result.ts";
+import { runWithPorts } from "../../repl/session-helper.ts";
+import type { SessionPorts } from "../ports.ts";
 import {
   queueApprovals,
   runSubagent,
@@ -41,18 +42,12 @@ function subPorts(
   };
 }
 
-const silent = new Writable({
-  write(_chunk, _encoding, done) {
-    done();
-  },
-});
-
 function context(ports: SubagentPorts): SubagentContext {
   return {
     ports,
     approve: async () => true,
     finished: () => false,
-    output: silent,
+    emit: () => {},
     disabledTools: [],
   };
 }
@@ -155,7 +150,7 @@ test("two subagents asked for in one reply both run, and each result reaches the
       done();
     },
   });
-  const ports: ReplPorts = {
+  const ports: SessionPorts = {
     reply,
     contextWindow: async () => err(new Error("none")),
     tools: async () => "unused",
@@ -177,7 +172,7 @@ test("two subagents asked for in one reply both run, and each result reaches the
       select: async (name: string) => ok(name),
     },
   };
-  await runRepl(Readable.from(["go\n", "/exit\n"]), output, ports);
+  await runWithPorts(Readable.from(["go\n", "/exit\n"]), output, ports);
   expect(seenByMain.at(-1)).toEqual(["answer for a", "answer for b"]);
 });
 

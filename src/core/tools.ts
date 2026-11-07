@@ -337,23 +337,8 @@ export type ToolRunner = (
   offered: string[],
 ) => Promise<string>;
 
-// The arguments as the model wrote them, before they are checked.
-interface RawArgs {
-  path?: unknown;
-  depth?: unknown;
-  start?: unknown;
-  end?: unknown;
-  previous?: unknown;
-  replacement?: unknown;
-  content?: unknown;
-  command?: unknown;
-  job?: unknown;
-  category?: unknown;
-  name?: unknown;
-  profile?: unknown;
-  task?: unknown;
-  max_tool_calls?: unknown;
-}
+// The arguments as the model wrote them, before they are checked. Each parser checks the fields it reads.
+type RawArgs = Record<string, unknown>;
 
 export interface SubagentArgs {
   profile: string;

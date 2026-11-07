@@ -2,10 +2,11 @@ import { expect, test } from "bun:test";
 import { Readable, Writable } from "node:stream";
 import type { ChatMessage, Reply, ReplyRequest } from "../core/messages.ts";
 import { err, ok } from "../core/result.ts";
-import { echoReply, runRepl, type ReplPorts } from "./repl.ts";
+import { echoReply, runWithPorts } from "./session-helper.ts";
+import type { SessionPorts } from "../backend/ports.ts";
 
 // The ports a test session uses. Each test overrides only the ports it needs.
-function ports(overrides: Partial<ReplPorts> = {}): ReplPorts {
+function ports(overrides: Partial<SessionPorts> = {}): SessionPorts {
   return {
     reply: echoReply,
     contextWindow: async () =>
@@ -47,7 +48,7 @@ test("a switched profile is sent once, with the next message, and history alread
   });
   const profile = async (name: string) =>
     name === "terse" ? ok("BE TERSE") : err(new Error("no such profile"));
-  await runRepl(
+  await runWithPorts(
     Readable.from(["/profile terse\n", "/profile\n", "hello\n", "again\n"]),
     output,
     ports({ reply, profile }),
@@ -74,7 +75,7 @@ test("a compaction sends the active profile again with the next message", async 
       done();
     },
   });
-  await runRepl(
+  await runWithPorts(
     Readable.from(["/profile terse\n", "hello\n", "/compact\n", "next\n"]),
     output,
     ports({ reply, profile: async () => ok("BE TERSE") }),
@@ -93,7 +94,7 @@ test("/profile default clears the pending profile before the next message", asyn
       done();
     },
   });
-  await runRepl(
+  await runWithPorts(
     Readable.from(["/profile terse\n", "/profile default\n", "hello\n"]),
     output,
     ports({ reply, profile: async () => ok("BE TERSE") }),
@@ -118,7 +119,7 @@ test("a failed turn keeps the pending profile for the next attempt", async () =>
       done();
     },
   });
-  await runRepl(
+  await runWithPorts(
     Readable.from(["/profile terse\n", "a\n", "b\n"]),
     output,
     ports({ reply, profile: async () => ok("BE TERSE") }),
@@ -146,7 +147,7 @@ test("a switched-off tool is left out of the request and out of the tools the ru
       done();
     },
   });
-  await runRepl(
+  await runWithPorts(
     // /exit is queued after the message, so the tool call still runs: a call is skipped once the input has ended.
     Readable.from(["/tools disable edit_file\n", "go\n", "/exit\n"]),
     output,
@@ -170,7 +171,7 @@ test("/tools disable saves the switched-off tools", async () => {
       done();
     },
   });
-  await runRepl(
+  await runWithPorts(
     Readable.from([
       "/tools disable kill_command\n",
       "/tools enable kill_command\n",
@@ -208,7 +209,7 @@ test("/save writes the conversation, and /load in a new session brings it back f
   const first: Reply = async function* () {
     yield ok("ok");
   };
-  await runRepl(
+  await runWithPorts(
     Readable.from(["hello\n", "/save work\n"]),
     output,
     ports({ reply: first, sessions }),
@@ -218,7 +219,7 @@ test("/save writes the conversation, and /load in a new session brings it back f
     seen.push(messages.map((message) => message.content));
     yield ok("ok");
   };
-  await runRepl(
+  await runWithPorts(
     Readable.from(["/load work\n", "again\n"]),
     output,
     ports({ reply, sessions }),
@@ -246,7 +247,7 @@ test("a call skipped because /exit ended the session is reported as not run", as
       done();
     },
   });
-  await runRepl(
+  await runWithPorts(
     Readable.from(["go\n", "/exit\n"]),
     output,
     ports({
@@ -274,7 +275,7 @@ test("a profile's whitelist limits the tools offered to the model from the next 
       done();
     },
   });
-  await runRepl(
+  await runWithPorts(
     Readable.from(["/profile reader\n", "go\n"]),
     output,
     ports({
@@ -297,7 +298,7 @@ test("a turn-start hook's output goes in front of the message, and a failing one
       done();
     },
   });
-  await runRepl(
+  await runWithPorts(
     Readable.from(["hello\n"]),
     output,
     ports({
@@ -314,7 +315,7 @@ test("a turn-start hook's output goes in front of the message, and a failing one
       done();
     },
   });
-  await runRepl(
+  await runWithPorts(
     Readable.from(["hello\n"]),
     errorOutput,
     ports({
@@ -333,7 +334,7 @@ test("a session-start hook that fails refuses the session", async () => {
       done();
     },
   });
-  const result = await runRepl(
+  const result = await runWithPorts(
     Readable.from(["hello\n"]),
     output,
     ports({
@@ -352,7 +353,7 @@ test("a turn-start hook's output is shown on the terminal as well as sent", asyn
       done();
     },
   });
-  await runRepl(
+  await runWithPorts(
     Readable.from(["hello\n"]),
     output,
     ports({
@@ -365,7 +366,7 @@ test("a turn-start hook's output is shown on the terminal as well as sent", asyn
 
 test("the active profile's hooks are passed to the hook runner at their point", async () => {
   const seen: string[][] = [];
-  await runRepl(
+  await runWithPorts(
     Readable.from(["/profile tester\n", "hi\n", "/exit\n"]),
     new Writable({
       write(_chunk, _encoding, done) {
@@ -398,7 +399,7 @@ test("/thinking sets the effort for later requests, and the thinking count is sh
       done();
     },
   });
-  await runRepl(
+  await runWithPorts(
     Readable.from(["/thinking low\n", "/thinking\n", "hi\n"]),
     output,
     ports({ reply }),
@@ -427,7 +428,7 @@ test("/model lists the models, marking the one in use, and /model <name> switche
     select: async (name: string) =>
       name === "b/two" ? ok(name) : err(new Error("no such model")),
   };
-  await runRepl(
+  await runWithPorts(
     Readable.from([
       "/model\n",
       "/model search A/\n",

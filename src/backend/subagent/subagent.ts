@@ -1,22 +1,22 @@
-import type { Writable } from "node:stream";
 import {
   enabledTools,
   profileCommands,
   type Conversation,
-} from "../core/compaction.ts";
+} from "../../core/compaction.ts";
 import type {
   ChatMessage,
   Reply,
   ReplyRequest,
   ToolCall,
-} from "../core/messages.ts";
-import type { HookPoint, ProfileHook } from "../core/notes.ts";
-import type { Result } from "../core/result.ts";
+} from "../../core/messages.ts";
+import type { HookPoint, ProfileHook } from "../../core/notes.ts";
+import { err, ok, type Result } from "../../core/result.ts";
 import {
   RUN_SUBAGENT,
   type Approve,
   type SubagentArgs,
-} from "../core/tools.ts";
+} from "../../core/tools.ts";
+import type { Emit } from "../../protocol/protocol.ts";
 
 // What a subagent needs from the session. The session's ports satisfy it.
 export interface SubagentPorts {
@@ -33,7 +33,7 @@ export interface SubagentContext {
   // Already queued, so subagents and the main conversation ask one question at a time.
   approve(preview: string): Promise<boolean>;
   finished(): boolean;
-  output: Writable;
+  emit: Emit;
   // The tools switched off with /tools. A subagent is offered none of them.
   disabledTools: string[];
 }
@@ -96,6 +96,35 @@ async function collectRound(
   return round;
 }
 
+// A subagent's conversation, and the text of its profile, which goes in its first message.
+interface SubagentStart {
+  conversation: Conversation;
+  text: string;
+}
+
+// Reads the profile's text, tools, and hooks. A profile that lists no tools cannot run a subagent.
+async function startSubagent(
+  profile: string,
+  ports: SubagentPorts,
+  disabledTools: string[],
+): Promise<Result<SubagentStart>> {
+  const text = await ports.profile(profile);
+  if (!text.ok) return err(text.error);
+  const allowed = await ports.profileTools(profile);
+  if (!allowed.ok) return err(allowed.error);
+  if (allowed.value === undefined)
+    return err(new Error(`profile ${profile} lists no tools, so it cannot run a subagent`));
+  const hooks = await ports.profileHooks(profile);
+  if (!hooks.ok) return err(hooks.error);
+  const conversation: Conversation = {
+    history: [],
+    compacted: false,
+    profile: { name: profile, text: text.value, tools: allowed.value, hooks: hooks.value },
+    disabledTools,
+  };
+  return ok({ conversation, text: text.value });
+}
+
 // Runs one subagent: its profile's text and the task as its first message, then its rounds. It may
 // make at most `maxToolCalls` tool calls. When it reaches the limit, it is asked once more with no
 // tools, and its answer is marked as cut short. The result is the text the main model receives.
@@ -103,44 +132,27 @@ export async function runSubagent(
   args: SubagentArgs,
   context: SubagentContext,
 ): Promise<string> {
-  const { ports, approve, finished, output, disabledTools } = context;
+  const { ports, approve, finished, emit, disabledTools } = context;
+  const note = (text: string) => emit({ kind: "notice", text });
   const fail = (message: string) => {
-    output.write(`subagent ${args.profile}: failed\n`);
+    note(`subagent ${args.profile}: failed`);
     return `error: ${message}`;
   };
-  const text = await ports.profile(args.profile);
-  if (!text.ok) return fail(text.error.message);
-  const allowed = await ports.profileTools(args.profile);
-  if (!allowed.ok) return fail(allowed.error.message);
-  if (allowed.value === undefined)
-    return fail(
-      `profile ${args.profile} lists no tools, so it cannot run a subagent`,
-    );
-  const hooks = await ports.profileHooks(args.profile);
-  if (!hooks.ok) return fail(hooks.error.message);
-  const conversation: Conversation = {
-    history: [],
-    compacted: false,
-    profile: {
-      name: args.profile,
-      text: text.value,
-      tools: allowed.value,
-      hooks: hooks.value,
-    },
-    disabledTools,
-  };
+  const start = await startSubagent(args.profile, ports, disabledTools);
+  if (!start.ok) return fail(start.error.message);
+  const { conversation, text } = start.value;
   // A subagent is never offered the subagent tool, so it cannot start another one.
   const offered = enabledTools(conversation).filter(
     (name) => name !== RUN_SUBAGENT,
   );
-  output.write(`subagent ${args.profile}: started\n`);
+  note(`subagent ${args.profile}: started`);
   const started = await ports.hooks(
     "turnStart",
     profileCommands(conversation, "turnStart"),
   );
   if (!started.ok)
     return fail(`turn-start hook failed: ${started.error.message}`);
-  const parts = [started.value, text.value, args.task].filter(
+  const parts = [started.value, text, args.task].filter(
     (part) => part !== "",
   );
   const history: ChatMessage[] = [
@@ -207,11 +219,9 @@ export async function runSubagent(
     profileCommands(conversation, "turnEnd"),
   );
   if (!ended.ok)
-    output.write(
-      `subagent ${args.profile}: turn-end hook failed: ${ended.error.message}\n`,
-    );
-  output.write(
-    `subagent ${args.profile}: finished after ${calls} tool calls${cut ? " (cut short)" : ""}\n`,
+    note(`subagent ${args.profile}: turn-end hook failed: ${ended.error.message}`);
+  note(
+    `subagent ${args.profile}: finished after ${calls} tool calls${cut ? " (cut short)" : ""}`,
   );
   return cut ? `[cut short after ${calls} tool calls]\n${answer}` : answer;
 }

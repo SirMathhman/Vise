@@ -52,7 +52,7 @@ Each invariant has a label (F1 to F5 for functional, N1 to N6 for nonfunctional)
 
 #### Core and I/O
 
-- **N1. The core does no I/O.** Only frontend code reads or writes streams.
+- **N1. The core does no I/O, and the backend does it only through ports.** Only the frontend reads or writes streams. The backend reaches the network, disk, and processes through the ports the composition root passes in.
 - **N2. Deterministic given its input.** Behaviour depends only on the input stream and the arguments passed in, so the same input gives the same output. The exceptions are the model adapter, the context-window lookup, and the compaction summary, whose replies come from the network. Each must return a complete reply or an error, never a silently truncated success. A failed or truncated summary leaves the history unchanged.
 
 #### Streams and exit
@@ -64,6 +64,22 @@ Each invariant has a label (F1 to F5 for functional, N1 to N6 for nonfunctional)
 
 - **N5. The prompt prefix is append-only.** Between compactions the history changes only by appending: a user message, then assistant messages (with any tool calls) and tool messages. Compaction and `/load` are the only other changes, and each starts a new prefix, so the next request misses the cache once. A failed request, or a failed round, leaves no trace: the whole turn is removed, so the next request begins with the same messages as the last completed one. The cache breakpoint is a marker on the last message of each request, whatever its role. It never changes which messages are sent.
 - **N6. Tool definitions are stable.** The tools are fixed in code, and the request carries the same tool definitions every time for as long as the user leaves the switches unchanged. Switches come from `/tools` or from a profile's `tools:` whitelist, and each changes the tools part of the prompt, so the next request misses the cache for the whole prefix. The user accepts that cost. `/tools` switches are saved to `.vise/tools.json` and read at startup. `/load` applies a saved session's switched-off tools for that session only, which is also a change to the tools part.
+
+## Frontend and backend
+
+The session is split into a backend, which owns the turn loop, conversation state, tool rounds, hooks, commands, subagents, and approvals, and a frontend, which owns the terminal. The two talk through a typed event protocol in `src/protocol/`, and only `index.ts` connects them. The protocol is in-process today. It is plain data with no functions, so a transport (JSON lines over stdio or a socket) can be added without changing either side.
+
+- **Frontend to backend (`ClientMessage`):** `line` (one input line), `approval` (an answer to an `approvalRequest`, identified by its `id`), `inputEnded`, and `failed` (a stream error).
+- **Backend to frontend (`ServerEvent`):** `text` (a reply chunk, raw and unsanitized), `replyEnd`, `thinking` and `thinkingDone`, `toolCall` and `toolSkipped`, `approvalRequest` (with `id` and `preview`), `hookOutput` (the full text), `notice`, `error`, `ready`, and `ended`. The event stream ends after `ended`.
+
+Decisions that keep F4 and F5 true across the split:
+
+- **Approval (F4).** The backend's `approve` drops the lines queued before the question, emits `approvalRequest`, and waits. The answer is the next line the backend receives, read by `answerOfLine` in `src/core/commands.ts`, or an `approval` message with the question's `id`. The frontend keeps no approval state. Enforcement stays in `runTool`.
+- **No work after the end (F5).** The backend owns the inbox of lines. `finished()` is `exitRequested || streamError || !inbox.more`, so queued lines still count as input.
+- **Presentation is the frontend's.** Sanitizing, the thinking line's redraw, the 4000-character display cap on hook output, and prompts are done by the frontend's renderer. The backend never writes escape sequences.
+- **Command handlers** emit `notice` and `error` events and do not take a stream.
+
+The dependency rules are in Dependency direction below.
 
 ## Behaviour
 
@@ -146,7 +162,7 @@ A subagent is started by the model with `run_subagent`, which takes a profile na
 - Several subagents asked for in one reply run together, and the calls of that reply wait for them.
 - Only its final answer returns to the main conversation, as the tool result. Its history is not kept, saved, or added to the main history.
 - It runs the turn-end hooks, and the global and profile hooks, in the same order as a turn.
-- Its loop is started by the REPL (`src/repl/subagent.ts`), not by `runTool`. It is a second tool-round loop beside the turn (see Known Problems).
+- Its loop is started by the backend (`src/backend/subagent/subagent.ts`), not by `runTool`. It is a second tool-round loop beside the turn (see Known Problems).
 
 ### Saved sessions
 
@@ -172,10 +188,20 @@ Target layout. Test files sit beside the module each one tests; there is no sepa
         │   ├── result.ts                Result type: ok and err for returned failures
         │   ├── sessions.ts              saved-session format (encode; decode with shape and pairing checks), /save, /load, /sessions words, SessionStore port
         │   └── tools.ts                 tool specs, argument parsing, /tools words, approval rule, call line, Approve and ToolRunner ports
-        ├── repl/                        terminal frontend: readline, prompt, session and turn loops
-        │   ├── repl.ts                  session loop, turn loop, and runCalls
-        │   ├── commands.ts              command handlers, and the ReplPorts type
-        │   └── subagent.ts              runSubagent, and queueApprovals (one approval queue)
+        ├── protocol/                    the frontend-backend contract (types only, plain data)
+        │   ├── protocol.ts              ClientMessage, ServerEvent, Session
+        │   └── channel.ts               Channel<T>: the async queue the backend's inbox is built on
+        ├── backend/                     session engine: no terminal, no readline
+        │   ├── session.ts               startSession: session loop, line inbox, approval questions, sessionStart and sessionEnd hooks
+        │   ├── turn.ts                  runMessageTurn and streamRound: the turn's tool rounds and hooks
+        │   ├── calls.ts                 runCalls: one round's calls, and subagent calls
+        │   ├── ports.ts                 SessionPorts: every port the backend uses
+        │   ├── subagent/                runSubagent and queueApprovals
+        │   └── commands/                command handlers, which emit notices and errors
+        ├── repl/                        terminal frontend: readline and rendering
+        │   ├── repl.ts                  runRepl: sends lines, prints events, prompts on ready
+        │   ├── render.ts                ServerEvent to terminal text: sanitizing, thinking line, hook display cap
+        │   └── session-helper.ts        test helper: runWithPorts and echoReply
         └── tools/                       disk, process, and settings work for the tools and the frontend
             ├── run-tool.ts              dispatches a call by name, checks the target before asking, runs a change only when approve resolves true
             ├── run-powershell.ts        the only process spawning; a command still running after 30 seconds becomes a background job
@@ -199,12 +225,13 @@ Target layout. Test files sit beside the module each one tests; there is no sepa
 ### Dependency direction
 
 ```
-index.ts  ->  src/repl  ->  src/core
+index.ts  ->  src/repl  ->  src/protocol  ->  src/core (types)
+index.ts  ->  src/backend  ->  src/protocol, src/core
 index.ts  ->  src/openrouter.ts  ->  src/core
 index.ts  ->  src/tools  ->  src/core
 ```
 
-`src/core` imports nothing from `src/repl`, `src/tools`, `src/openrouter.ts`, or `index.ts`. `src/repl`, `src/tools`, and `src/openrouter.ts` may import `src/core`, never the reverse, and they do not import each other. Tests may import any module. There are no circular imports.
+`src/core` imports nothing from `src/repl`, `src/backend`, `src/protocol`, `src/tools`, `src/openrouter.ts`, or `index.ts`. `src/protocol` imports only core types. `src/repl` imports `src/protocol` and core types only, and never `src/backend`, `src/tools`, or `src/openrouter.ts`. `src/backend` imports `src/protocol` and `src/core`, and reaches disk, processes, and the network only through ports. `src/tools` and `src/openrouter.ts` may import `src/core`, never the reverse, and they do not import each other. Only `index.ts` imports both the frontend and the backend. Tests and the test helper `src/repl/session-helper.ts` may import any module. There are no circular imports.
 
 Recursion is avoided in core. When a function would need to call a function that calls it back, pass the callback as a parameter instead of importing across files.
 
@@ -231,9 +258,8 @@ Each item is a known defect or gap. Fixes are listed under Future Work.
 #### Input and the session
 
 - **Retired exit words reach the model.** `exit` and `quit` are no longer commands, so a user who types them from habit sends them to OpenRouter as a message, which spends a request. The frontend should say which command ends the session.
-- **Approval discards queued input silently.** When the preview is printed, `InputLines.discard()` drops every line queued before it, as F4 requires. The drop is silent. With piped or pasted input, every line arrives at once, so an answer sent with the command is discarded and the command is refused with no message (verified: `a` then `y` piped in one chunk refused the call and dropped `y`).
+- **Approval discards queued input silently.** When the preview is printed, the backend's `Channel.discard()` drops every line queued before the question, as F4 requires. The drop is silent. With piped or pasted input, every line arrives at once, so an answer sent with the command is discarded and the command is refused with no message (verified: `a` then `y` piped in one chunk refused the call and dropped `y`).
 - **The tool loop continues while queued input remains.** `finished()` stops the loop on a stream error, on `/exit`, or when input has ended and the queue is empty. A queued line keeps the loop going. Input `a` and `b` piped together, with a reply that asks for `list_files`, ran the tool and sent two more requests after the input had ended (verified: three requests in all). Decision: queued lines still count as input to answer, so a piped message followed by `/exit` keeps its tool result. This is accepted, not a defect, but it does not meet F5 as written. A skipped call is answered with a tool message that says it did not run, so every call in the history has a result.
-- **The line queue has one waiter slot.** `InputLines.next()` keeps one pending resolver. A second `next()` while one is pending replaces it, and the first call never resolves. The loop and `approve` never wait at the same time today, so this cannot happen now.
 
 #### Errors and exit
 
@@ -288,14 +314,14 @@ Each item is a known defect or gap. Fixes are listed under Future Work.
 
 #### Commands and model search
 
-- **The model search rule lives in the frontend, and its order depends on the locale.** `runModelCommand` in `src/repl/commands.ts` filters and sorts the listing. The sort uses `localeCompare`, so `["Ab", "aa"]` sorts as `aa, Ab` in one locale and `Ab, aa` under the default sort (verified). No test pins the printed order; the `/model search` test checks only which models match.
+- **The model search rule lives in the frontend, and its order depends on the locale.** `runModelCommand` in `src/backend/commands/commands.ts` filters and sorts the listing. The sort uses `localeCompare`, so `["Ab", "aa"]` sorts as `aa, Ab` in one locale and `Ab, aa` under the default sort (verified). No test pins the printed order; the `/model search` test checks only which models match.
 
 #### Saved sessions and settings
 
 - **A saved session can hold a history the provider rejects.** `decodeSession` checks the shape of each field and the tool names, but not the pairing of tool calls with results, nor the role order a live turn keeps. A hand-edited file can load a history that every later request rejects, and `/compact` sends it too.
 - **A saved session without a tools field loads with every tool on.** `disabledTools` is optional in the file, so an older or hand-edited file re-enables any tool the user had switched off, with no message.
 - **Saving overwrites in place.** `/save` writes the file directly, so a failure part-way leaves a damaged file where the previous session was. An existing name is replaced with no warning.
-- **Tool settings are read and written in different places.** `index.ts` reads `.vise/tools.json` and passes the names through `ReplPorts`. `/tools` writes the file through the `SaveDisabledTools` port. If the write fails, the switch still applies for the session, and the error line is the only sign that it was not saved.
+- **Tool settings are read and written in different places.** `index.ts` reads `.vise/tools.json` and passes the names through `SessionPorts`. `/tools` writes the file through the `SaveDisabledTools` port. If the write fails, the switch still applies for the session, and the error line is the only sign that it was not saved.
 
 ### Nonfunctional
 
@@ -315,10 +341,8 @@ Each item is a known defect or gap. Fixes are listed under Future Work.
 
 #### Architecture
 
-- **Tool definitions are spread across modules.** `src/core/tools.ts` (about 380 of 500 code lines) and `runTool`'s dispatch each add a branch per tool: the spec, the argument parser, the approval preview, and the call line in `tools.ts`, then the target check and the dispatch in `run-tool.ts`. The same file also holds the `/tools` words, the terminal `sanitize` helper, and the approval rule. Roughly three more tools would breach its file limit.
-- **The turn is still in the frontend.** `runCalls` takes the calls, the tool runner, the approval, the finished check, the output, and the offered tools as values, and returns the tool messages. The turn itself is in `runMessageTurn` in `src/repl/repl.ts`, which holds the turn's rounds, its hooks, and the conversation it returns. `runRepl` holds only the session loop. Both the turn and the subagent loop are frontend code.
-- **The frontend owns the conversation state.** `recordUsage`, `compactIfNeeded`, and `compactNow` are transitions over `Conversation` in the core. But `runRepl` holds the `conversation` variable, assigns each step's result to it, appends the user, assistant, and tool messages itself, and decides which line kind reaches which transition.
-- **The turn loop is written twice.** `collectRound` in `src/repl/subagent.ts` repeats `streamRound` in `src/repl/repl.ts`. The subagent's tool-call loop repeats the round loop of `runMessageTurn`, with its own limit and its own history handling. A fix to one (a failed round, a finished session, a summary line) must be made to both.
+- **Tool definitions are spread across modules.** `src/core/tools.ts` (about 490 of 500 code lines) and `runTool`'s dispatch each add a branch per tool: the spec, the argument parser, the approval preview, and the call line in `tools.ts`, then the target check and the dispatch in `run-tool.ts`. The same file also holds the `/tools` words, the terminal `sanitize` helper, and the approval rule. Roughly three more tools would breach its file limit.
+- **The turn loop is written twice.** `collectRound` in `src/backend/subagent/subagent.ts` repeats `streamRound` in `src/backend/turn.ts`. The subagent's tool-call loop repeats the round loop of `runMessageTurn`, with its own limit and its own history handling. A fix to one (a failed round, a finished session, a summary line) must be made to both.
 
 #### Responses and schemas
 
@@ -357,10 +381,10 @@ Status is **missing**, **partial**, or in place.
 
 #### Input and model output
 
-- **Terminal escape injection (partial).** Tool lines and approval previews go through `sanitize`, which replaces control characters other than tab and newline. Model replies (`streamRound` writes each chunk), context-window error text, and `error:` lines are not sanitized yet. Error bodies from OpenRouter are printed verbatim, with the same risk.
+- **Terminal escape injection (in place).** The renderer (`src/repl/render.ts`) sanitizes every line the backend emits: model text, tool lines, approval previews, notices, and errors. `sanitize` replaces control characters other than tab and newline.
 - **Prompt injection (missing).** Model replies, earlier replies resent in history, and text read from files can carry instructions the model then follows. `list_files` returns file names and `read_file` returns file contents, and both are model input. A file the model reads can carry an instruction into the next request, and an injected instruction can make the model call `read_file` on a file the user did not mean it to read. The output of `run_powershell` is model input too. Any action taken from model output must be confirmed by the user and must not be reachable from text the model produced alone. Compaction is a second persistence path: a model-written summary becomes a user-role message in every later request, so an injected instruction survives compaction with more authority than the reply it came from. Data framing for tool output is missing.
 - **Unbounded input (partial).** Job output lines are cut at 8192 characters and marked. User input, model replies, and file reads are not limited. Input needs a maximum line length with a defined response when it is exceeded.
-- **Model output (missing).** Model replies are written to the terminal as they stream, so they can carry escape sequences. Strip or escape control characters other than tab and newline before writing.
+- **Model output (in place).** The renderer strips control characters other than tab and newline from model replies before writing them.
 
 #### Files, writes, and commands
 
@@ -433,7 +457,6 @@ Status is **missing**, **partial**, or in place.
 
 - Move command interpretation into `src/core` as pure functions over `(state, line) -> (state, output)`, so the REPL is a thin driver. The line classifier is in `src/core/commands.ts`; the command state moves next.
 - Move the context state into the core: it keeps the last reported prompt tokens, receives usage through the same state transition as text, and formats the context line from `(used, total)`. The context window becomes a value the core asks for through a port, cached for the session, so `/context` does not fetch the full model listing on every call. The core decides what `/context` prints when the lookup fails, and it prints the used count in that case.
-- Move the turn itself into the core: a transition `(conversation, line, reply, tools, contextWindow) -> (conversation, parts to show)` that runs the tool rounds and returns what to print. `runRepl` then only reads a line, writes the parts it is given, and holds no conversation of its own. The turn runner takes the tool runner and the reply as values, so the core stays free of I/O. This also removes the duplicated loops (see Known Problems).
 - Move the profile transitions into `src/core/compaction.ts` as pure functions over `Conversation`: use (records the profile and its pending text), and clear. `runProfileCommand` then only parses the command, loads the text through the profile port, and prints. The same functions decide what a switch does to the earlier profile's text.
 - Make the session a function of its inputs: the frontend creates the readline interface and passes it where needed, so tests can drive a session without touching real streams.
 

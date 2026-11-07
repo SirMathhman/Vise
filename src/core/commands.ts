@@ -171,3 +171,14 @@ export function contextLine(
   }
   return `context: ${used} / ${total ?? "unknown"} tokens`;
 }
+
+// The answers an approval question takes. "exit" is /exit typed at the question.
+export type ApprovalAnswer = "approve" | "refuse" | "exit";
+
+// The answer a line typed at an approval question gives: /exit ends the session, y or yes approves,
+// and any other line refuses.
+export function answerOfLine(line: string): ApprovalAnswer {
+  const text = line.trim();
+  if (text === "/exit") return "exit";
+  return /^y(es)?$/i.test(text) ? "approve" : "refuse";
+}

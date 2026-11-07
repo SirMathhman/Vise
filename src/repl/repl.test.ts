@@ -2,10 +2,11 @@ import { expect, test } from "bun:test";
 import { PassThrough, Readable, Writable } from "node:stream";
 import type { ChatMessage, Reply, ReplyRequest } from "../core/messages.ts";
 import { err, ok } from "../core/result.ts";
-import { echoReply, runRepl, type ReplPorts } from "./repl.ts";
+import { echoReply, runWithPorts } from "./session-helper.ts";
+import type { SessionPorts } from "../backend/ports.ts";
 
 // The ports a test session uses. Each test overrides only the ports it needs.
-function ports(overrides: Partial<ReplPorts> = {}): ReplPorts {
+function ports(overrides: Partial<SessionPorts> = {}): SessionPorts {
   return {
     reply: echoReply,
     contextWindow: async () =>
@@ -40,7 +41,7 @@ test("echoes each line until exit", async () => {
       done();
     },
   });
-  await runRepl(
+  await runWithPorts(
     Readable.from(["hello\n", "world\n", "/exit\n", "ignored\n"]),
     output,
     ports(),
@@ -58,7 +59,7 @@ test("stops at exit even when later lines arrive in the same chunk", async () =>
       done();
     },
   });
-  await runRepl(Readable.from(["hello\n/exit\nignored\n"]), output, ports());
+  await runWithPorts(Readable.from(["hello\n/exit\nignored\n"]), output, ports());
   expect(written).toContain("echo: hello\n");
   expect(written).not.toContain("echo: ignored");
 });
@@ -74,7 +75,7 @@ test("sends earlier lines and replies with each new line", async () => {
       done();
     },
   });
-  await runRepl(Readable.from(["first\nsecond\n"]), output, ports({ reply }));
+  await runWithPorts(Readable.from(["first\nsecond\n"]), output, ports({ reply }));
   expect(seen[1]).toEqual([
     { role: "user", content: "first" },
     { role: "assistant", content: "answer 1" },
@@ -93,7 +94,7 @@ test("puts the instructions in front of the first message only", async () => {
       done();
     },
   });
-  await runRepl(
+  await runWithPorts(
     Readable.from(["first\nsecond\n"]),
     output,
     ports({ reply, instructions: "RULES" }),
@@ -124,7 +125,7 @@ test("sends a /note line to the note runner, prints its result, and keeps it out
     seen.push(words);
     return "work/plan";
   };
-  await runRepl(
+  await runWithPorts(
     Readable.from(["/note list work\n"]),
     output,
     ports({ reply, notes }),
@@ -146,7 +147,7 @@ test("/context shows the prompt tokens of the last request out of the model's wi
       done();
     },
   });
-  await runRepl(
+  await runWithPorts(
     Readable.from(["hello\n", "/context\n"]),
     output,
     ports({ reply, contextWindow: async () => ok(1000) }),
@@ -167,7 +168,7 @@ test("rejects an unknown command without sending it to the model", async () => {
       done();
     },
   });
-  await runRepl(Readable.from(["/foo\n"]), output, ports({ reply }));
+  await runWithPorts(Readable.from(["/foo\n"]), output, ports({ reply }));
   expect(seen).toEqual([]);
   expect(written).toContain("error: unknown command /foo");
 });
@@ -185,7 +186,7 @@ test("/compact replaces the history with a summary and the last six messages", a
     },
   });
   const lines = ["1", "2", "3", "4", "5", "6", "7", "/compact", "next"];
-  await runRepl(
+  await runWithPorts(
     Readable.from(lines.map((line) => `${line}\n`)),
     output,
     ports({ reply }),
@@ -218,7 +219,7 @@ test("compacts before a message once the last prompt fills 80% of the window", a
       done();
     },
   });
-  await runRepl(
+  await runWithPorts(
     Readable.from(["a\n", "b\n"]),
     output,
     ports({ reply, contextWindow: async () => ok(100) }),
@@ -243,7 +244,7 @@ test("a failed reply does not record its prompt size", async () => {
       done();
     },
   });
-  await runRepl(
+  await runWithPorts(
     Readable.from(["a\n", "b\n"]),
     output,
     ports({ reply, contextWindow: async () => ok(100) }),
@@ -264,7 +265,7 @@ test("/context after a compaction says the size is unknown", async () => {
       done();
     },
   });
-  await runRepl(
+  await runWithPorts(
     Readable.from(["a\n", "/compact\n", "/context\n"]),
     output,
     ports({ reply, contextWindow: async () => ok(100) }),
@@ -284,7 +285,7 @@ test("reports a reply that throws as an error and keeps the session going", asyn
       done();
     },
   });
-  const result = await runRepl(
+  const result = await runWithPorts(
     Readable.from(["hello\n"]),
     output,
     ports({ reply }),
@@ -301,7 +302,7 @@ test("ends on /exit even while the input stream stays open", async () => {
       done();
     },
   });
-  const result = await runRepl(input, output, ports());
+  const result = await runWithPorts(input, output, ports());
   expect(result.ok).toBe(true);
 });
 
@@ -327,7 +328,7 @@ test("runs a tool the model asks for and sends its result back", async () => {
       done();
     },
   });
-  await runRepl(
+  await runWithPorts(
     Readable.from(["list\n", "/exit\n"]),
     output,
     ports({ reply, tools: async () => "a.txt" }),
@@ -358,7 +359,7 @@ test("an edit is run only when the user answers y", async () => {
     const input = new PassThrough();
     input.write("go\n");
     const ran: string[] = [];
-    await runRepl(
+    await runWithPorts(
       input,
       output,
       ports({
@@ -399,7 +400,7 @@ test("/exit at an approval ends the session without another model request", asyn
       done();
     },
   });
-  await runRepl(
+  await runWithPorts(
     Readable.from(["go\n", "/exit\n", "hello\n"]),
     output,
     ports({
@@ -426,7 +427,7 @@ test("sends no request after a tool call when the input has ended", async () => 
       done();
     },
   });
-  await runRepl(
+  await runWithPorts(
     Readable.from(["go\n"]),
     output,
     ports({ reply, tools: async () => "a.txt" }),
@@ -445,7 +446,7 @@ test("does not run a tool when the input has ended", async () => {
     },
   });
   let ran = 0;
-  await runRepl(
+  await runWithPorts(
     Readable.from(["go\n"]),
     output,
     ports({
@@ -473,7 +474,7 @@ test("stops at a stream failure even when more input is queued", async () => {
     input.emit("error", new Error("input broke"));
     yield ok("x");
   };
-  const result = await runRepl(input, output, ports({ reply }));
+  const result = await runWithPorts(input, output, ports({ reply }));
   expect(requests).toBe(1);
   expect(result.ok).toBe(false);
 });
@@ -484,7 +485,7 @@ test("ends with an error when the output stream fails", async () => {
       done(new Error("pipe closed"));
     },
   });
-  const result = await runRepl(Readable.from(["hello\n"]), output, ports());
+  const result = await runWithPorts(Readable.from(["hello\n"]), output, ports());
   expect(result.ok).toBe(false);
   if (!result.ok) expect(result.error.message).toBe("pipe closed");
 });
@@ -500,7 +501,7 @@ test("ends with an error when the input stream fails", async () => {
       done();
     },
   });
-  const result = await runRepl(input, output, ports());
+  const result = await runWithPorts(input, output, ports());
   expect(result.ok).toBe(false);
   if (!result.ok) expect(result.error.message).toBe("input broke");
 });
