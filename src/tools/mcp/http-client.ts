@@ -32,7 +32,8 @@ export function openHttpSession(url: string, headers: Record<string, string>): R
   const send = (body: object): Promise<Response> => {
     const sent: Record<string, string> = { ...headers, "content-type": "application/json", accept: "application/json, text/event-stream", "mcp-protocol-version": PROTOCOL_VERSION };
     if (sessionId !== undefined) sent[SESSION_HEADER] = sessionId;
-    return fetch(endpoint, { method: "POST", headers: sent, body: JSON.stringify(body), signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+    // A redirect is refused, so the headers are never sent to another address.
+    return fetch(endpoint, { method: "POST", headers: sent, body: JSON.stringify(body), redirect: "error", signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
   };
 
   return ok({
@@ -66,6 +67,7 @@ export function openHttpSession(url: string, headers: Record<string, string>): R
       try {
         await fetch(endpoint, {
           method: "DELETE",
+          redirect: "error",
           headers: { ...headers, [SESSION_HEADER]: sessionId },
           signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         });
