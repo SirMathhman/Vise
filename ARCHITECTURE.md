@@ -27,6 +27,8 @@ Requirements are split into two classes. **Functional** requirements say what th
 | **Thinking** | The model's reasoning effort, set by `/thinking`. |
 | **Tool** | An action the model may request by name, with arguments it writes as JSON. A tool that writes or runs anything must be approved by the user before it runs. A tool from an MCP server is named `<server>__<tool>` and is always approved. |
 | **Tool round** | One request to the model and the tool calls it asked for. |
+| **Turn** | One message of the user, with its tool rounds. Each turn has an undo record: the bytes each file had before the turn first changed it. |
+| **Undo point** | A turn count `/undo` can return to: 1, 2, 3, 5, 8, and so on, back. |
 
 ## Invariants
 
@@ -45,7 +47,7 @@ Each invariant has a label (F1 to F5 for functional, N1 to N6 for nonfunctional)
 
 #### Approval and end of input
 
-- **F4. Approval comes from the user, after the preview.** A write or command the model requests runs only after an approval given after its preview was printed. The one exception is a command the user types (`/note new`, `/tools enable`, `/tools disable`): the user's own line is the decision, and no model text is involved. A line received before the preview is never an approval, and a question never leads to a request to the model once input has ended. Approval is enforced where the tool runs, not only by the loop that asks, so a second caller of the tool runner cannot skip it.
+- **F4. Approval comes from the user, after the preview.** A write or command the model requests runs only after an approval given after its preview was printed. The one exception is a command the user types (`/note new`, `/tools enable`, `/tools disable`): the user's own line is the decision, and no model text is involved. `/undo` is one of these: it writes files the model changed, with no preview, because the user's own line is the decision. A line received before the preview is never an approval, and a question never leads to a request to the model once input has ended. Approval is enforced where the tool runs, not only by the loop that asks, so a second caller of the tool runner cannot skip it.
 - **F5. No work after the end.** Once input has ended or a stream has failed, no further request is sent to the model, whatever the reply has asked for. The turn stops after the reply that was running, and no tool call in it runs once the session has ended.
 
 ### Nonfunctional
@@ -62,7 +64,7 @@ Each invariant has a label (F1 to F5 for functional, N1 to N6 for nonfunctional)
 
 #### Prompt cache and tools
 
-- **N5. The prompt prefix is append-only.** Between compactions the history changes only by appending: a user message, then assistant messages (with any tool calls) and tool messages. Compaction, `/load`, `/new`, and the resume at startup are the only other changes, and each starts a new prefix, so the next request misses the cache once. A failed request, or a failed round, leaves no trace: the whole turn is removed, so the next request begins with the same messages as the last completed one. The cache breakpoint is a marker on the last message of each request, whatever its role. It never changes which messages are sent.
+- **N5. The prompt prefix is append-only.** Between compactions the history changes only by appending: a user message, then assistant messages (with any tool calls) and tool messages. Compaction, `/load`, `/new`, and the resume at startup are the only other changes, and each starts a new prefix, so the next request misses the cache once. The undo log is state beside the history, not part of it: `startTurn`, `/undo`, and every recorded change touch the files and the log only, never the messages, so they never change the prefix. A failed request, or a failed round, leaves no trace: the whole turn is removed, so the next request begins with the same messages as the last completed one. The cache breakpoint is a marker on the last message of each request, whatever its role. It never changes which messages are sent.
 - **N6. Tool definitions are stable.** The tools are fixed when the session starts: the built-in tools, and the tools of each MCP server in `.vise/mcp.json` that started. Nothing adds or removes a tool while the session runs, and the request carries the same tool definitions every time for as long as the user leaves the switches unchanged. Switches come from `/tools` or from a profile's `tools:` whitelist, and each changes the tools part of the prompt, so the next request misses the cache for the whole prefix. The user accepts that cost. `/tools` switches are saved to `.vise/tools.json` and read at startup. `/load` applies a saved session's switched-off tools for that session only, which is also a change to the tools part.
 
 ## Frontend and backend
@@ -94,6 +96,7 @@ The commands are `/exit`, `/context`, `/compact`, `/note`, `/profile`, `/tools`,
 - **`/profile`**: see Notes and profiles.
 - **The page's tools panel** shows each tool as a button, on or off, from the switches alone. Clicking one sends `/tools enable <tool>` or `/tools disable <tool>` as a line, as typing it would, so the browser still sends only lines and approvals. The buttons are disabled while an approval is open or the page cannot send, as the composer is. The panel does not show a profile's `tools:` whitelist (see Known Problems).
 - **`/tools`** lists the tools and whether each is on. **`/tools enable|disable <tool>`** switches one. The switch applies from the next request and is saved to `.vise/tools.json`. A switched-off tool is left out of the request, and a call to it is refused without approval.
+- **`/undo [turns back]`**: puts the files back to where they were at the start of the turn that is the given number of turns back (1 when none is given). Only the points are accepted. A revert refuses, and changes nothing, when a file it would restore no longer holds what Vise last wrote to it. It changes no message, so the prompt cache is unaffected. The log is in memory, and it covers `edit_file`, `create_file`, and `create_note` only (see Known Problems).
 - **`/thinking off|low|medium|high`**: sets the thinking effort (see Thinking).
 - **`/model`** shows the model in use. **`/model search <text>`** lists the models whose id contains the text, ignoring case, in alphabetical order. **`/model <name>`** switches to a listed model and keeps the conversation. The choice is saved to `.vise/model.json`.
 - **`/help`** prints every command on its own line, with its usage and a one-line summary. **`/help <command>`** prints the usage and a fuller description of that command. The text is built in `src/core/commands.ts` from one table, and the backend emits it as a notice. An unknown name is an error. Like every command, it never reaches the model.
@@ -203,7 +206,9 @@ Target layout. Test files sit beside the module each one tests; there is no sepa
         │   ├── notes.ts                 note rules: name checks, path and scaffold, header parser, /note and /profile words, NoteRunner and ProfileLoader ports
         │   ├── sessions.ts              saved-session format (encode; decode with shape and pairing checks), autosave naming (autosaveName, uniqueName), /save, /load, /sessions words, SessionStore port
         │   ├── tools.ts                 tool specs, argument parsing, /tools words, the name rule for MCP tools (isExternalName), Approve and ToolRunner ports
-        │   └── tool-lines.ts            approval rule, approval preview, call line, and the terminal sanitize helper
+        │   ├── tool-lines.ts            approval rule, approval preview, call line, and the terminal sanitize helper
+        │   └── undo/
+        │       └── undo-log.ts          the pure undo log: turns, the kept points (1, 2, 3, 5, 8 ...), the revert plan, and the drop of reverted turns (no I/O)
         ├── protocol/                    the frontend-backend contract (types only, plain data)
         │   ├── protocol.ts              ClientMessage, ServerEvent, Session
         │   └── channel.ts               Channel<T>: the async queue the backend's inbox is built on
@@ -242,8 +247,7 @@ Target layout. Test files sit beside the module each one tests; there is no sepa
             │   ├── http-client.ts       one server over HTTP (Streamable HTTP): a POST per message, a JSON or event-stream answer read as it arrives, the session id sent back, and a DELETE on stop
             │   └── registry.ts          starts the servers, lists their tools as <server>__<tool>, runs calls, stops them at exit
             ├── undo/
-            │   ├── undo-log.ts         the undo log in memory: each turn's changes as the bytes before them, the points (1, 2, 3, 5, 8 ... turns back), and the revert plan
-            │   └── undo-files.ts       records each file change and reverts files to a point, refusing when a file changed outside Vise
+            │   └── undo-files.ts       records each file change and reverts files to a point, refusing when a file changed outside Vise; the file I/O half of the undo log
             ├── run-powershell.ts        the only process spawning; a command still running after 30 seconds becomes a background job
             ├── jobs.ts                  background jobs: last 500 lines per stream, reads, stops process trees, stops all at exit (at most 5 running)
             ├── tool-settings.ts         .vise/tools.json: readToolSettings (at startup) and saveToolSettings (via /tools)
@@ -336,7 +340,10 @@ Each item is a known defect or gap. Fixes are listed under Future Work.
 - **`/tools` and the tools panel ignore a profile's whitelist.** `toolStates` prints each tool as on or off from the switches alone, and `runToolsCommand` passes it only `disabledTools`. The `tools` event is built the same way (`toolSwitches` in `announceTools`), so the page's panel also shows `on` for a tool the active profile does not allow. `/tools enable` reports it on while it is still not offered.
 - **`edit_file` rewrites bytes outside the edit.** `editFile` reads the file as UTF-8 and writes it back as UTF-8, so any byte that is not valid UTF-8 becomes U+FFFD in the whole file (verified: `61 ff 0a 62` edited to `c` gave `61 ef bf bd 0a 63`).
 - **The approval preview hides what will change.** It prints `previous` and `replacement`, not the line of the first match, nor how many matches there are. The write replaces the first match at the time of the write, so a file changed during the question can put the first match somewhere the user did not see. The preview also shows the path as typed, not the real location a link resolves to.
-- **Undo covers file tools only, and its records are in memory.** `/undo` reverts edits and creates made by `edit_file`, `create_file`, and `create_note`. A command run with `run_powershell` is not recorded, and the conversation still shows the edits. Every turn keeps its record, so each offered point stays exact, which means memory grows with the bytes of the files changed. A revert that fails part-way leaves the files it reached changed, and the log not yet updated.
+- **`/undo N` ignores N.** `classifyLine` splits the words with `/s+/` (a literal `s`), not `/\s+/` (`src/core/commands.ts:130`), so `/undo 3` has no words and reverts one turn. The test that pins it (`src/core/commands.test.ts:163`) fails on the committed code. The wrong turn is restored with no message that says so.
+- **A turn with no changes is still a point.** `startTurn` runs for every message, so after a question that changed no file, `/undo` (1 turn back) restores nothing and drops that turn, and the edits of the turn before stay. The notice says "restored no files", not why.
+- **Undo covers file tools only, and its records are in memory.** `/undo` reverts edits and creates made by `edit_file`, `create_file`, and `create_note`. A command run with `run_powershell` is not recorded, and the conversation still shows the edits. Every turn keeps its full record of the bytes before its changes, and no byte limit exists, so memory grows with the bytes of the files changed for the whole session. Thinning the offered points does not reduce it, since any turn can lie inside a later point's window. A revert that fails part-way restores the files it reached, leaves the log's turns in place, and updates the expected bytes only for the files it restored, so a later `/undo` plans from a state the user never saw.
+- **A failed edit still records a change.** `around` records the bytes before the call, and the call runs even when it fails (for example, no match), so a turn can list a file it did not change. The revert then rewrites that file with the same bytes.
 - **`create_file` previews the whole content.** A large file floods the terminal before the question, and the user answers after scrolling past it.
 - **`resolveNewInside` reports a misleading error when an ancestor is a file.** For `a.txt/x.txt` where `a.txt` is a regular file, folder creation fails with EEXIST, and `createFile` reports "the file already exists" for `x.txt`, which does not exist (verified).
 
@@ -433,7 +440,7 @@ Each item is a known defect or gap. Fixes are listed under Future Work.
 
 ### Trust boundary
 
-Everything read from stdin, or sent over the browser socket, is untrusted text, and every line is sent to OpenRouter, a third party. The model's reply is also untrusted text. Vise reads file names and file contents under the working directory for `list_files` and `read_file` (hidden entries are skipped, and paths are checked on their real location). It writes files only through `edit_file`, `create_file`, and `create_note`, after the user approves each change on the terminal. `create_file` and `create_note` never overwrite. The writes without an approval are the ones the user types or clicks: `/note new` writes a note, `/tools enable` or `/tools disable` writes `.vise/tools.json`, and the page's own saves write a profile or `.vise/mcp.json`. None takes model text. Vise starts PowerShell only through `run_powershell`, after the user approves each command. The command runs in the working directory. A command still running after 30 seconds becomes a background job that runs until the user approves `kill_command` for it or Vise exits, and its output is kept as its last 500 lines per stream. A child that outlives PowerShell is not stopped by `kill_command` (see Known Problems). The API key comes from `.env` and must never be echoed or logged.
+Everything read from stdin, or sent over the browser socket, is untrusted text, and every line is sent to OpenRouter, a third party. The model's reply is also untrusted text. Vise reads file names and file contents under the working directory for `list_files` and `read_file` (hidden entries are skipped, and paths are checked on their real location). It writes files only through `edit_file`, `create_file`, and `create_note`, after the user approves each change on the terminal. `create_file` and `create_note` never overwrite. The writes without an approval are the ones the user types or clicks: `/note new` writes a note, `/tools enable` or `/tools disable` writes `.vise/tools.json`, `/undo` puts back files that Vise changed (refusing any file changed outside Vise), and the page's own saves write a profile or `.vise/mcp.json`. None takes model text. Vise starts PowerShell only through `run_powershell`, after the user approves each command. The command runs in the working directory. A command still running after 30 seconds becomes a background job that runs until the user approves `kill_command` for it or Vise exits, and its output is kept as its last 500 lines per stream. A child that outlives PowerShell is not stopped by `kill_command` (see Known Problems). The API key comes from `.env` and must never be echoed or logged.
 
 ### Trust in files and settings
 
@@ -511,6 +518,14 @@ Status is **missing**, **partial**, or in place.
 - Let an HTTP entry name an environment variable for each secret header (for example `"Authorization": { "env": "VISE_MCP_TOKEN" }`), so `.vise/mcp.json` and the page hold the name, not the value. Git-ignore `.vise/`, and send the page header names only.
 - Move `McpSession` and the request time limit into `src/tools/mcp/session.ts`, which both clients import, so the HTTP client does not depend on the stdio client.
 - Stop a server's read errors from going unhandled: `readLines` returns a result, and a failed read stops that server and records a problem.
+
+#### Undo
+
+- Make `/undo` all-or-nothing in intent. Stage each restore (write a temporary file beside each target), refuse the revert if any staged file cannot be made, and only then rename each into place. If a rename still fails part-way, the log records the bytes each file holds, drops the reverted turns, and says which files were restored, so the log always matches the disk.
+- Bound the undo log by bytes (for example, 64 MB for the session). A turn outside the budget is dropped with its points, and `/undo` says those points are gone.
+- Record a change in the undo log only when the file's bytes differ after the call (see the failed edit under Known Problems).
+- Make `/undo` show the files it will restore before it runs, or let the page ask for confirmation, since it is a write the user did not preview.
+- Count only turns with changes toward the points, or say in the reply that the chosen turn changed no file (see Known Problems).
 
 #### Background jobs and processes
 

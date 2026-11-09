@@ -127,7 +127,7 @@ export function classifyLine(line: string): Line {
     return { kind: "model", words: command.split(/\s+/).slice(1) };
   }
   if (command === "/undo" || command.startsWith("/undo ")) {
-    return { kind: "undo", words: command.split(/s+/).slice(1) };
+    return { kind: "undo", words: command.split(/\s+/).slice(1) };
   }
   if (command === "/mcp" || command.startsWith("/mcp ")) {
     return { kind: "mcp", words: command.split(/\s+/).slice(1) };
