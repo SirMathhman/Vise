@@ -152,3 +152,7 @@ test("an ask question keeps the composer locked until it is answered", () => {
     { kind: "ask", id: 4, question: "Which?", choices: ["a", "b"], answer: "the user chose: a" },
   ]);
 });
+
+test("a folder event sets the folder the page shows", () => {
+  expect(after([{ kind: "folder", path: "C:/work" }]).folder).toBe("C:/work");
+});

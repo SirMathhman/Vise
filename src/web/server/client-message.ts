@@ -98,5 +98,8 @@ export function parseClientMessage(text: string): Result<ClientMessage> {
   ) {
     return ok({ kind: "answer", id: value.id, chosen: value.chosen as number[], text: value.text });
   }
+  if (value.kind === "folderChange" && typeof value.path === "string" && value.path.trim() !== "") {
+    return ok({ kind: "folderChange", path: value.path.trim() });
+  }
   return err(new Error("unknown message"));
 }

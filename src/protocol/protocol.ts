@@ -51,6 +51,12 @@ export interface ProfileWriteMessage {
   profile: ProfileDetail;
 }
 
+// The page asks for the session to move to another folder. The session restarts there.
+export interface FolderChangeMessage {
+  kind: "folderChange";
+  path: string;
+}
+
 // The page answers an ask question: the choices picked by position, and a line typed of its own.
 export interface AnswerMessage {
   kind: "answer";
@@ -73,7 +79,8 @@ export type ClientMessage =
   | ProfileReadMessage
   | ProfileWriteMessage
   | McpWriteMessage
-  | AnswerMessage;
+  | AnswerMessage
+  | FolderChangeMessage;
 
 // A chunk of the model's reply, raw and unsanitized. The frontend escapes it before it shows it.
 export interface TextEvent {
@@ -180,6 +187,12 @@ export interface AskAnsweredEvent {
   answer: string;
 }
 
+// The folder the session works in, sent at the start of each session.
+export interface FolderEvent {
+  kind: "folder";
+  path: string;
+}
+
 // The output of a hook, in full. The frontend caps what it shows.
 export interface HookOutputEvent {
   kind: "hookOutput";
@@ -226,6 +239,7 @@ export type ServerEvent =
   | ProfilesEvent
   | ProfileEvent
   | McpEvent
+  | FolderEvent
   | HookOutputEvent
   | NoticeEvent
   | ErrorEvent

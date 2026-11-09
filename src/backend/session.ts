@@ -345,6 +345,7 @@ async function run(state: SessionState): Promise<void> {
   if (initial.history.length > 0) {
     emit({ kind: "history", messages: historyMessages(initial.history) });
   }
+  if (state.ports.folder !== undefined) emit({ kind: "folder", path: state.ports.folder });
   announceTools(state, initial);
   await announceSessions(state.ports, emit);
   await announceProfiles(state.ports, emit);

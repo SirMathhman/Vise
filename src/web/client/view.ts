@@ -19,6 +19,7 @@ import { renderMarkdown } from "./markdown.ts";
 // What the view asks the page to do. The page sends the line or the answer to the server.
 export interface ViewActions extends McpActions {
   line(text: string): void;
+  changeFolder(path: string): void;
   answerAsk(id: number, chosen: number[], text: string): void;
   answer(id: number, answer: ApprovalAnswer): void;
   readProfile(name: string): void;
@@ -385,6 +386,38 @@ function newConversationButton(doc: Document, actions: ViewActions): HTMLButtonE
   return button;
 }
 
+// The folder the session works in, with a box for another folder. Switch restarts the session there.
+interface FolderBar {
+  element: HTMLElement;
+  path: HTMLElement;
+  input: HTMLInputElement;
+  go: HTMLButtonElement;
+}
+
+function folderBar(doc: Document, actions: ViewActions): FolderBar {
+  const element = doc.createElement("section");
+  element.className = "folder";
+  const label = doc.createElement("span");
+  label.className = "label";
+  label.textContent = "Folder";
+  const path = doc.createElement("span");
+  path.className = "hint";
+  const input = doc.createElement("input");
+  input.type = "text";
+  input.placeholder = "another folder, as a full path";
+  const go = doc.createElement("button");
+  go.type = "button";
+  go.textContent = "Switch";
+  go.addEventListener("click", () => {
+    const folder = input.value.trim();
+    if (folder === "") return;
+    input.value = "";
+    actions.changeFolder(folder);
+  });
+  element.append(label, path, input, go);
+  return { element, path, input, go };
+}
+
 // The Undo button. It sends /undo, the line the user would type, so the page keeps to lines and approvals.
 function undoButton(doc: Document, actions: ViewActions): HTMLButtonElement {
   const button = element(doc, "button", "undo-last", "Undo");
@@ -404,6 +437,7 @@ export function createView(
   const newChat = newConversationButton(doc, actions);
   const undo = undoButton(doc, actions);
   header.append(status, undo, newChat);
+  const folder = folderBar(doc, actions);
   const panel = panelBox(doc);
   // What the panel was last built from, so an unchanged panel is left alone.
   let panelKey = "";
@@ -428,7 +462,7 @@ export function createView(
   const send = element(doc, "button", "send", "Send");
   send.type = "submit";
   form.append(input, send);
-  root.append(header, panel.element, toolPanel.element, profilePanel.element, mcp.section, transcript, form, editor, mcp.dialog);
+  root.append(header, folder.element, panel.element, toolPanel.element, profilePanel.element, mcp.section, transcript, form, editor, mcp.dialog);
 
   input.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
@@ -481,6 +515,9 @@ export function createView(
       }
       newChat.disabled = !sendable;
       undo.disabled = !sendable;
+      folder.path.textContent = state.folder ?? "";
+      folder.input.disabled = !sendable;
+      folder.go.disabled = !sendable;
       input.disabled = !sendable;
       send.disabled = !sendable;
       input.placeholder = open

@@ -245,6 +245,26 @@ details.sessions > div {
   padding: 4px 0 8px;
 }
 
+/* The folder bar: the folder the session works in, and a box to switch to another. */
+.folder {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.folder .hint {
+  color: var(--muted);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.folder input {
+  flex: 1 1 200px;
+}
+
 .sessions .label {
   font-weight: 600;
   margin-right: 4px;

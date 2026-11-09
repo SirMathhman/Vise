@@ -14,6 +14,8 @@ export interface Hub {
   attach(viewer: Viewer): void;
   detach(viewer: Viewer): void;
   receive(viewer: Viewer, text: string): void;
+  // Forgets the events kept so far, for a new session that replaces the old one. The viewer stays attached.
+  reset(): void;
 }
 
 // The close code sent to a viewer that another tab replaced.
@@ -46,6 +48,10 @@ export function createHub(forward: (message: ClientMessage) => void): Hub {
     },
     detach(viewer) {
       if (current === viewer) current = undefined;
+    },
+    reset() {
+      log.length = 0;
+      finished = false;
     },
     receive(viewer, text) {
       if (viewer !== current) return;

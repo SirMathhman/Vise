@@ -33,6 +33,8 @@ export interface SessionPorts {
   profiles?: ProfileStore;
   // Where the page and /mcp read the MCP servers. Absent, there are none.
   mcp?: McpStore;
+  // The folder the session works in, announced at the start.
+  folder?: string;
   // Where file changes are recorded for /undo. Absent, /undo is not available.
   undo?: UndoStore;
   // The model in use, and the models /model may switch to.

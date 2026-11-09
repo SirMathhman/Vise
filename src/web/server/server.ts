@@ -13,6 +13,8 @@ export interface WebAssets {
 export interface WebServerOptions {
   session: Session;
   assets: WebAssets;
+  // Starts a session in another folder, once the current one has ended. The page is kept.
+  changeFolder?(path: string): Promise<Result<Session>>;
   // The secret that a browser must send with its connection. Printed once, in the URL.
   token: string;
   // The port to listen on. 0, the default, picks a free one.
@@ -56,8 +58,22 @@ function assetResponse(pathname: string, assets: WebAssets): Response {
 // accepted only from the page's own origin and with the token. The page itself is public: it holds
 // nothing a web page elsewhere could use.
 export function startWebServer(options: WebServerOptions): Result<WebServer> {
-  const { session, assets, token, port = 0 } = options;
-  const hub = createHub((message) => session.send(message));
+  const { assets, token, port = 0 } = options;
+  let session = options.session;
+  // The folder the page asked for. Set until the session that is ending has ended.
+  let pendingFolder: string | undefined;
+  const hub = createHub((message) => {
+    if (message.kind === "folderChange") {
+      if (options.changeFolder === undefined) {
+        hub.publish({ kind: "error", message: "the folder cannot be changed here" });
+      } else if (pendingFolder === undefined) {
+        pendingFolder = message.path;
+        session.send({ kind: "inputEnded" });
+      }
+      return;
+    }
+    session.send(message);
+  });
   const { promise: ended, resolve: finish } = Promise.withResolvers<void>();
   let server: ReturnType<typeof Bun.serve<undefined>>;
   try {
@@ -94,10 +110,31 @@ export function startWebServer(options: WebServerOptions): Result<WebServer> {
   } catch (error) {
     return err(error instanceof Error ? error : new Error(String(error)));
   }
-  void (async () => {
-    for await (const event of session.events()) {
+  // Relays the events of one session. A session that ends for a folder change is not reported as ended.
+  async function relay(current: Session): Promise<"ended" | "switching"> {
+    for await (const event of current.events()) {
+      if (event.kind === "ended" && pendingFolder !== undefined) return "switching";
       hub.publish(event);
-      if (event.kind === "ended") break;
+      if (event.kind === "ended") return "ended";
+    }
+    return "ended";
+  }
+  void (async () => {
+    for (;;) {
+      if ((await relay(session)) === "ended" || pendingFolder === undefined) break;
+      const folder = pendingFolder;
+      pendingFolder = undefined;
+      const next = await options.changeFolder?.(folder);
+      if (next === undefined) break;
+      if (!next.ok) {
+        hub.publish({ kind: "error", message: next.error.message });
+        hub.publish({ kind: "ended", error: next.error.message });
+        break;
+      }
+      session = next.value;
+      hub.reset();
+      // The page starts its transcript again; the new session then sends its own events.
+      hub.publish({ kind: "history", messages: [] });
     }
     finish();
   })();

@@ -101,6 +101,9 @@ const view = createView(document, root, {
   answerAsk(id: number, chosen: number[], text: string) {
     send({ kind: "answer", id, chosen, text });
   },
+  changeFolder(path: string) {
+    send({ kind: "folderChange", path });
+  },
   writeMcp(servers) {
     send({ kind: "mcpWrite", servers });
   },

@@ -32,7 +32,8 @@ import { sessionStore } from "./src/tools/session-store.ts";
 import { resumeStore } from "./src/tools/resume/resume-store.ts";
 import { profileStore } from "./src/tools/notes/profile-store.ts";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { stat } from "node:fs/promises";
 import {
   readToolSettings,
   saveToolSettings,
@@ -53,6 +54,8 @@ interface ModelSelection {
 // The settings the session's ports are built from, all read once at startup.
 interface PortSetup {
   apiKey: string;
+  // The folder the session works in.
+  folder: string;
   selection: ModelSelection;
   disabledTools: string[];
   // Every tool the session may offer, built-in and from the MCP servers.
@@ -67,7 +70,7 @@ interface PortSetup {
 // Builds every port the session uses. Both the terminal and the browser run the same session.
 function sessionPorts(setup: PortSetup): SessionPorts {
   const { apiKey, selection } = setup;
-  const root = process.cwd();
+  const root = setup.folder;
   const extraTools = setup.mcp.specs();
   return {
     hooks: setup.hooks,
@@ -101,6 +104,7 @@ function sessionPorts(setup: PortSetup): SessionPorts {
     resume: resumeStore(join(homedir(), ".vise", "resume"), root),
     profiles: profileStore(root, setup.allTools),
     mcp: mcpStore(root, setup.mcp.statuses()),
+    folder: root,
     instructions: setup.instructions,
   };
 }
@@ -109,12 +113,17 @@ function sessionPorts(setup: PortSetup): SessionPorts {
 // same address and the open page can reconnect. Without them, the port and token are picked afresh.
 // Serves the session to a browser on this machine. The URL, with its token, is printed here. Returns
 // once the session has ended.
-async function runWeb(session: Session, address: WebAddress): Promise<Result<void>> {
+async function runWeb(
+  session: Session,
+  address: WebAddress,
+  changeFolderTo: (folder: string) => Promise<Result<Session>>,
+): Promise<Result<void>> {
   const assets = await buildAssets();
   if (!assets.ok) return err(assets.error);
   const started = startWebServer({
     session,
     assets: assets.value,
+    changeFolder: changeFolderTo,
     ...address,
   });
   if (!started.ok) return err(started.error);
@@ -139,6 +148,59 @@ async function stopJobs(): Promise<void> {
   }
 }
 
+// Starts a session in a folder. The folder's instructions, hooks, servers, and tool settings are read from it,
+// so this runs again for each folder the session moves to. A failure stops anything it started.
+async function openSession(apiKey: string, selection: ModelSelection, folder: string): Promise<Result<Session>> {
+  // Read once, here, so the session sends the same instructions for its whole length.
+  const instructions = await readInstructions(folder);
+  // Read once, here: the hooks in the hooks file. A file that is not valid stops the start.
+  const hookConfig = await readHooks(folder);
+  if (!hookConfig.ok) return err(hookConfig.error);
+  // Read once, here: the MCP servers in the servers file start now, and their tools are offered with the
+  // built-in ones. A broken servers file stops the start; a server that fails is only reported.
+  const started = await startMcpServers(folder);
+  if (!started.ok) return err(started.error);
+  servers = started.value;
+  for (const problem of servers.problems()) console.error(`warning: MCP ${problem}`);
+  const allTools = [...toolNames, ...servers.specs().map((spec) => spec.function.name)];
+  // Read once, here: the tools switched off in the settings file at startup.
+  const disabled = await readToolSettings(folder, allTools);
+  if (!disabled.ok) {
+    await servers.stop();
+    return err(disabled.error);
+  }
+  return ok(
+    startSession(
+      sessionPorts({
+        apiKey,
+        selection,
+        folder,
+        disabledTools: disabled.value,
+        allTools,
+        mcp: servers,
+        undo: undoStore(folder),
+        hooks: hookRunner(folder, hookConfig.value),
+        instructions,
+      }),
+    ),
+  );
+}
+
+// Moves the session to another folder. The current MCP servers and background jobs stop first, then the
+// process moves to the folder and the session starts there. The page's history and model are kept.
+async function changeFolder(folder: string, apiKey: string, selection: ModelSelection): Promise<Result<Session>> {
+  const target = resolve(folder);
+  const info = await stat(target).catch(() => undefined);
+  if (info === undefined || !info.isDirectory()) return err(new Error(`${target} is not a folder`));
+  await stopEverything();
+  try {
+    process.chdir(target);
+  } catch (error) {
+    return err(error instanceof Error ? error : new Error(String(error)));
+  }
+  return openSession(apiKey, selection, target);
+}
+
 if (import.meta.main) {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
@@ -152,35 +214,11 @@ if (import.meta.main) {
   process.once("SIGINT", () => {
     void stopEverything().then(() => process.exit(130));
   });
-  // Read once, here, so the session sends the same instructions for its whole length.
-  const instructions = await readInstructions(process.cwd());
-  // Read once, here: the hooks in the hooks file. A file that is not valid stops startup.
-  const hookConfig = await readHooks(process.cwd());
-  if (!hookConfig.ok) {
-    console.error(`error: ${hookConfig.error.message}`);
-    process.exit(1);
-  }
-  // Read once, here: the model chosen with /model in an earlier session, or the default.
+  // Read once, here: the model chosen with /model in an earlier session, or the default. It is kept when the
+  // folder changes, so a change of folder keeps the model.
   const savedModel = await readModelSetting(process.cwd());
   if (!savedModel.ok) {
     console.error(`error: ${savedModel.error.message}`);
-    process.exit(1);
-  }
-  // Read once, here: the MCP servers in the servers file start now, and their tools are offered with
-  // the built-in ones. A broken servers file stops startup; a server that fails is only reported.
-  const started = await startMcpServers(process.cwd());
-  if (!started.ok) {
-    console.error(`error: ${started.error.message}`);
-    process.exit(1);
-  }
-  servers = started.value;
-  for (const problem of servers.problems()) console.error(`warning: MCP ${problem}`);
-  const allTools = [...toolNames, ...servers.specs().map((spec) => spec.function.name)];
-  // Read once, here: the tools switched off in the settings file at startup.
-  const disabled = await readToolSettings(process.cwd(), allTools);
-  if (!disabled.ok) {
-    console.error(`error: ${disabled.error.message}`);
-    await servers.stop();
     process.exit(1);
   }
   const selection: ModelSelection = { model: savedModel.value ?? DEFAULT_MODEL };
@@ -188,24 +226,18 @@ if (import.meta.main) {
   const web = process.argv.includes("--web");
   let failed = false;
   try {
-    const session = startSession(
-      sessionPorts({
-        apiKey,
-        selection,
-        disabledTools: disabled.value,
-        allTools,
-        mcp: servers,
-        undo: undoStore(process.cwd()),
-        hooks: hookRunner(process.cwd(), hookConfig.value),
-        instructions,
-      }),
-    );
-    const result = web
-      ? await runWeb(session, address)
-      : await runRepl(process.stdin, process.stdout, session);
-    if (!result.ok) {
-      console.error(`error: ${result.error.message}`);
+    const opened = await openSession(apiKey, selection, process.cwd());
+    if (!opened.ok) {
+      console.error(`error: ${opened.error.message}`);
       failed = true;
+    } else {
+      const result = web
+        ? await runWeb(opened.value, address, (folder) => changeFolder(folder, apiKey, selection))
+        : await runRepl(process.stdin, process.stdout, opened.value);
+      if (!result.ok) {
+        console.error(`error: ${result.error.message}`);
+        failed = true;
+      }
     }
   } finally {
     await stopEverything();

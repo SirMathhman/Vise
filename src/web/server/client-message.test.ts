@@ -50,3 +50,11 @@ test("an answer to an ask question is read with its choices and text, and a malf
   });
   expect(parseClientMessage('{"kind":"answer","id":2,"chosen":["0"],"text":""}').ok).toBe(false);
 });
+
+test("a folder change is read with its path, and a blank path is refused", () => {
+  expect(parseClientMessage('{"kind":"folderChange","path":" C:/work "}')).toEqual({
+    ok: true,
+    value: { kind: "folderChange", path: "C:/work" },
+  });
+  expect(parseClientMessage('{"kind":"folderChange","path":"  "}').ok).toBe(false);
+});
