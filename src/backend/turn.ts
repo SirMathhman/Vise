@@ -6,14 +6,7 @@ import {
   recordUsage,
   type Conversation,
 } from "../core/compaction.ts";
-import type {
-  ChatMessage,
-  ReasoningEffort,
-  ReplyRequest,
-  ToolCall,
-  Usage,
-} from "../core/messages.ts";
-import type { Result } from "../core/result.ts";
+import { type ChatMessage, type ReasoningEffort, type ReplyRequest, type ToolCall, type Usage, type Result } from "../core/messages.ts";
 import type { Emit } from "../protocol/protocol.ts";
 import { runCalls } from "./calls.ts";
 import type { SessionPorts } from "./ports.ts";

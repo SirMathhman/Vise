@@ -1,6 +1,6 @@
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { err, ok, type Result } from "../../core/result.ts";
+import { err, ok, type Result } from "../../core/messages.ts";
 import { resolveInside } from "./contain.ts";
 
 // Lists the files under `path` (relative to `root`), recursing to `depth` directory

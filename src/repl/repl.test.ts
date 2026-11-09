@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 import { PassThrough, Readable, Writable } from "node:stream";
-import type { ChatMessage, Reply, ReplyRequest } from "../core/messages.ts";
-import { err, ok } from "../core/result.ts";
+import { type ChatMessage, type Reply, type ReplyRequest, err, ok } from "../core/messages.ts";
 import { echoReply, runWithPorts } from "./session-helper.ts";
 import type { SessionPorts } from "../backend/ports.ts";
 

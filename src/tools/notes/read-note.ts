@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { err, ok, type Result } from "../../core/result.ts";
+import { err, ok, type Result } from "../../core/messages.ts";
 import { resolveInside } from "../files/contain.ts";
 
 // Reads a note's text through the containment check, so a link out of the working directory is not followed.

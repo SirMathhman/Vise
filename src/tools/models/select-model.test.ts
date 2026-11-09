@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ok } from "../../core/result.ts";
+import { ok } from "../../core/messages.ts";
 import { readModelSetting } from "./model-settings.ts";
 import { selectModel } from "./select-model.ts";
 

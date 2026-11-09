@@ -6,7 +6,7 @@ import {
   encodeSession,
   type ResumeStore,
 } from "../../core/sessions.ts";
-import { err, ok } from "../../core/result.ts";
+import { err, ok } from "../../core/messages.ts";
 
 // The resume store for one working directory. The file lives in `folder`, outside the project, and its
 // name comes from a hash of the directory's path: a conversation resumes only in the directory it came

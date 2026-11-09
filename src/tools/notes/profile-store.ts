@@ -13,7 +13,7 @@ import {
   type ProfileStore,
   type ProfileSummary,
 } from "../../core/notes.ts";
-import { err, ok } from "../../core/result.ts";
+import { err, ok } from "../../core/messages.ts";
 import { toolNames } from "../../core/tools.ts";
 import { resolveInside } from "../files/contain.ts";
 import { readNote } from "./read-note.ts";

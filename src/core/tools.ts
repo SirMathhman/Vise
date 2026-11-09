@@ -1,5 +1,6 @@
-import type { ToolCall } from "./messages.ts";
-import { err, ok, type Result } from "./result.ts";
+import { type ToolCall, err, ok, type Result } from "./messages.ts";
+
+
 import { checkName, notePath, scaffold } from "./notes.ts";
 
 export const LIST_FILES = "list_files";

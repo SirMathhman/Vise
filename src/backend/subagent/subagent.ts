@@ -3,14 +3,8 @@ import {
   profileCommands,
   type Conversation,
 } from "../../core/compaction.ts";
-import type {
-  ChatMessage,
-  Reply,
-  ReplyRequest,
-  ToolCall,
-} from "../../core/messages.ts";
+import { type ChatMessage, type Reply, type ReplyRequest, type ToolCall, err, ok, type Result } from "../../core/messages.ts";
 import type { HookPoint, ProfileHook } from "../../core/notes.ts";
-import { err, ok, type Result } from "../../core/result.ts";
 import {
   RUN_SUBAGENT,
   type Approve,

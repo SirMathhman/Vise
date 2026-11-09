@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { err, ok, type Result } from "../../core/result.ts";
+import { err, ok, type Result } from "../../core/messages.ts";
 import { MAX_LINES } from "../../core/tools.ts";
 import { resolveInside } from "./contain.ts";
 

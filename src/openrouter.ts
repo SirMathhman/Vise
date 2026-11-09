@@ -1,12 +1,5 @@
 import { z } from "zod";
-import type {
-  ChatMessage,
-  ModelInfo,
-  ReasoningEffort,
-  ToolCall,
-  Usage,
-} from "./core/messages.ts";
-import { err, ok, type Result } from "./core/result.ts";
+import { type ChatMessage, type ModelInfo, type ReasoningEffort, type ToolCall, type Usage, err, ok, type Result } from "./core/messages.ts";
 import { toolNames, toolSpecs } from "./core/tools.ts";
 
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";

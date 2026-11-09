@@ -5,7 +5,7 @@ import type {
   ServerEvent,
   Session,
 } from "../../protocol/protocol.ts";
-import type { Ok } from "../../core/result.ts";
+import type { Ok } from "../../core/messages.ts";
 import { startWebServer, type WebServer } from "./server.ts";
 
 const TOKEN = "test-token";

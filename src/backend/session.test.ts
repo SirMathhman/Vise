@@ -1,10 +1,11 @@
 import { expect, test } from "bun:test";
-import type { ReplyRequest } from "../core/messages.ts";
+import { type ReplyRequest, err, ok, type Result } from "../core/messages.ts";
+
 import { toolNames } from "../core/tools.ts";
 import type { Conversation } from "../core/compaction.ts";
 import type { ProfileDetail } from "../core/notes.ts";
 import type { ResumeStore, SessionStore } from "../core/sessions.ts";
-import { err, ok, type Result } from "../core/result.ts";
+
 import type {
   ApprovalRequestEvent,
   ServerEvent,

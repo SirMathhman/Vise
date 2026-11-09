@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { err, ok, type Result } from "../core/result.ts";
+import { err, ok, type Result } from "../core/messages.ts";
 import { toolNames } from "../core/tools.ts";
 
 // The settings file, in the working directory. It holds the names of the tools switched off.

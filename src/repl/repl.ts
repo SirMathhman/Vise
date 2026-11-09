@@ -1,6 +1,6 @@
 import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
-import { err, ok, type Result } from "../core/result.ts";
+import { err, ok, type Result } from "../core/messages.ts";
 import type { Session } from "../protocol/protocol.ts";
 import { createRenderer } from "./render.ts";
 

@@ -1,5 +1,4 @@
-import type { ModelInfo } from "../../core/messages.ts";
-import { err, ok, type Result } from "../../core/result.ts";
+import { type ModelInfo, err, ok, type Result } from "../../core/messages.ts";
 import { saveModelSetting } from "./model-settings.ts";
 
 export interface SelectModelOptions {

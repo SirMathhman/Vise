@@ -1,8 +1,9 @@
 import { z } from "zod";
 import type { Conversation } from "./compaction.ts";
-import type { ChatMessage } from "./messages.ts";
+import { type ChatMessage, err, ok, type Result } from "./messages.ts";
+
 import { HOOK_POINTS, checkName } from "./notes.ts";
-import { err, ok, type Result } from "./result.ts";
+
 import { toolNames } from "./tools.ts";
 
 // A saved session is the conversation as JSON, with a version so the format can change later.

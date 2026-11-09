@@ -1,6 +1,6 @@
 import type { ApprovalAnswer } from "../../core/commands.ts";
 import { HOOK_POINTS, type HookPoint, type ProfileDetail, type ProfileHook } from "../../core/notes.ts";
-import { err, ok, type Result } from "../../core/result.ts";
+import { err, ok, type Result } from "../../core/messages.ts";
 import type { ClientMessage } from "../../protocol/protocol.ts";
 
 const ANSWERS: string[] = ["approve", "refuse", "exit"];

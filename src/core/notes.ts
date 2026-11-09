@@ -1,4 +1,4 @@
-import { err, ok, type Result } from "./result.ts";
+import { err, ok, type Result } from "./messages.ts";
 
 // Notes live in notes/<category>/<name>.md under the working directory. A note is identified by
 // its category and name, which are also its folder and file names. A profile is a note in the

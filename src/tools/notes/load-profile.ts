@@ -6,7 +6,7 @@ import {
   type ProfileHook,
   type ProfileLoader,
 } from "../../core/notes.ts";
-import { err, ok, type Result } from "../../core/result.ts";
+import { err, ok, type Result } from "../../core/messages.ts";
 import { toolNames } from "../../core/tools.ts";
 import { readNote } from "./read-note.ts";
 

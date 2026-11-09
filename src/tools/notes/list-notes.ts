@@ -2,7 +2,7 @@ import type { Dirent } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { NOTES_FOLDER, parseHeader } from "../../core/notes.ts";
-import { err, ok, type Result } from "../../core/result.ts";
+import { err, ok, type Result } from "../../core/messages.ts";
 import { sanitize } from "../../core/tools.ts";
 import { readNote } from "./read-note.ts";
 

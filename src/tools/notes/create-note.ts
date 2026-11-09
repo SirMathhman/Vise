@@ -1,5 +1,5 @@
 import { notePath, scaffold } from "../../core/notes.ts";
-import type { Result } from "../../core/result.ts";
+import type { Result } from "../../core/messages.ts";
 import { createFile } from "../files/create-file.ts";
 
 // Creates notes/<category>/<name>.md with its header. The category and name must already have

@@ -1,7 +1,7 @@
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { SessionStore } from "../core/sessions.ts";
-import { err, ok } from "../core/result.ts";
+import { err, ok } from "../core/messages.ts";
 
 // Saved sessions live in .vise/sessions/<name>.json under the working directory.
 const SESSIONS_FOLDER = join(".vise", "sessions");

@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import { err, ok, type Result } from "../../core/result.ts";
+import { err, ok, type Result } from "../../core/messages.ts";
 import type { WebAssets } from "./server.ts";
 
 // Builds the page from the client's files: the script is bundled, and the shell and style are read

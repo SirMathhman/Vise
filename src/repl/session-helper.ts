@@ -1,8 +1,7 @@
 import type { Readable, Writable } from "node:stream";
 import { startSession } from "../backend/session.ts";
 import type { SessionPorts } from "../backend/ports.ts";
-import type { ReplyRequest } from "../core/messages.ts";
-import { ok, type Result } from "../core/result.ts";
+import { type ReplyRequest, ok, type Result } from "../core/messages.ts";
 import { runRepl } from "./repl.ts";
 
 // A reply that echoes the last message, for tests that do not need the model.

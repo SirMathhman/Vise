@@ -1,4 +1,4 @@
-import { err, ok, type Result } from "../core/result.ts";
+import { err, ok, type Result } from "../core/messages.ts";
 import { startJob, outputText } from "./jobs.ts";
 
 const TIMEOUT_MS = 30_000;

@@ -1,5 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
-import { err, ok, type Result } from "../../core/result.ts";
+import { err, ok, type Result } from "../../core/messages.ts";
 import type { Session } from "../../protocol/protocol.ts";
 import { createHub } from "./hub.ts";
 

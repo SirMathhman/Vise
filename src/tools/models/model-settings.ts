@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { err, ok, type Result } from "../../core/result.ts";
+import { err, ok, type Result } from "../../core/messages.ts";
 
 // The model chosen with /model, saved in the working directory and read at startup.
 const SETTINGS_FOLDER = ".vise";
