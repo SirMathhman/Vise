@@ -57,19 +57,33 @@ function assetResponse(pathname: string, assets: WebAssets): Response {
 // Serves the page on 127.0.0.1 and relays the session over one WebSocket at /ws. The socket is
 // accepted only from the page's own origin and with the token. The page itself is public: it holds
 // nothing a web page elsewhere could use.
+// What the page is told about input that arrives while the folder is changing.
+const CHANGING_NOTICE = "the folder is changing, so this was not sent. Send it again when the change is done.";
+
 export function startWebServer(options: WebServerOptions): Result<WebServer> {
   const { assets, token, port = 0 } = options;
-  let session = options.session;
-  // The folder the page asked for. Set until the session that is ending has ended.
-  let pendingFolder: string | undefined;
+  // The session that lines go to. It is undefined once a folder change has asked it to end.
+  let session: Session | undefined = options.session;
+  // running: lines go to the session. ending: the session has been asked to end for a folder change.
+  // starting: the next session is being made. Input is accepted only while running.
+  let phase: "running" | "ending" | "starting" = "running";
+  // The folder the page asked for, while a change is under way.
+  let folder: string | undefined;
   const hub = createHub((message) => {
+    // A line or a request that arrives during a change gets a notice, so it is never dropped without a response.
+    if (phase !== "running" || session === undefined) {
+      hub.publish({ kind: "notice", text: CHANGING_NOTICE });
+      return;
+    }
     if (message.kind === "folderChange") {
       if (options.changeFolder === undefined) {
         hub.publish({ kind: "error", message: "the folder cannot be changed here" });
-      } else if (pendingFolder === undefined) {
-        pendingFolder = message.path;
-        session.send({ kind: "inputEnded" });
+        return;
       }
+      phase = "ending";
+      folder = message.path;
+      session.send({ kind: "inputEnded" });
+      session = undefined;
       return;
     }
     session.send(message);
@@ -110,28 +124,36 @@ export function startWebServer(options: WebServerOptions): Result<WebServer> {
   } catch (error) {
     return err(error instanceof Error ? error : new Error(String(error)));
   }
-  // Relays the events of one session. A session that ends for a folder change is not reported as ended.
+  // Relays the events of one session. The session that ends for a folder change is not reported as ended,
+  // though a failure in it is.
   async function relay(current: Session): Promise<"ended" | "switching"> {
     for await (const event of current.events()) {
-      if (event.kind === "ended" && pendingFolder !== undefined) return "switching";
+      if (event.kind === "ended" && phase === "ending") {
+        if (event.error !== undefined) hub.publish({ kind: "error", message: event.error });
+        return "switching";
+      }
       hub.publish(event);
       if (event.kind === "ended") return "ended";
     }
     return "ended";
   }
   void (async () => {
-    for (;;) {
-      if ((await relay(session)) === "ended" || pendingFolder === undefined) break;
-      const folder = pendingFolder;
-      pendingFolder = undefined;
-      const next = await options.changeFolder?.(folder);
+    let current: Session | undefined = session;
+    while (current !== undefined) {
+      if ((await relay(current)) === "ended" || folder === undefined) break;
+      phase = "starting";
+      const requested = folder;
+      folder = undefined;
+      const next = await options.changeFolder?.(requested);
       if (next === undefined) break;
       if (!next.ok) {
         hub.publish({ kind: "error", message: next.error.message });
         hub.publish({ kind: "ended", error: next.error.message });
         break;
       }
-      session = next.value;
+      current = next.value;
+      session = current;
+      phase = "running";
       hub.reset();
       // The page starts its transcript again; the new session then sends its own events.
       hub.publish({ kind: "history", messages: [] });
