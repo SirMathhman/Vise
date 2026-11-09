@@ -247,7 +247,8 @@ export function panelBox(doc: Document): PanelBox {
         (node, index) => !(index === 0 && node instanceof HTMLElement && node.classList.contains("label")),
       );
       body.replaceChildren(...items);
-      if (!started) {
+      // The first render has empty lists, so only a list with items decides the starting state.
+      if (!started && count > 0) {
         details.open = count <= OPEN_LIMIT;
         started = true;
       }
