@@ -16,6 +16,7 @@ import { type WebAddress, takeWebAddress } from "./src/web/server/address.ts";
 import { startWebServer } from "./src/web/server/server.ts";
 import { killAllJobs } from "./src/tools/jobs.ts";
 import { type McpRegistry, noServers, startMcpServers } from "./src/tools/mcp/registry.ts";
+import { mcpStore } from "./src/tools/mcp/config.ts";
 import { toolNames } from "./src/core/tools.ts";
 import {
   loadProfile,
@@ -94,6 +95,7 @@ function sessionPorts(setup: PortSetup): SessionPorts {
     // Kept in the user's home folder, not the project, so a repository cannot ship a conversation to resume.
     resume: resumeStore(join(homedir(), ".vise", "resume"), root),
     profiles: profileStore(root, setup.allTools),
+    mcp: mcpStore(root, setup.mcp.statuses()),
     instructions: setup.instructions,
   };
 }

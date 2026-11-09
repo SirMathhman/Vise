@@ -19,6 +19,7 @@ import {
 import type { ContextWindow, ModelPorts } from "../../core/messages.ts";
 import { checkName, parseProfileCommand } from "../../core/notes.ts";
 import { announceProfiles } from "../profile-editor.ts";
+import { mcpStatusText } from "../../core/commands.ts";
 import {
   decodeSession,
   encodeSession,
@@ -89,6 +90,9 @@ export async function runCommand(
       return runProfileCommand(input.words, ports, emit, conversation);
     case "tools":
       return runToolsCommand(input.words, ports, emit, conversation);
+    case "mcp":
+      runMcpCommand(input.words, ports, emit);
+      return undefined;
     case "session":
       return runSessionCommand(input.words, ports, emit, conversation);
     case "thinking":
@@ -161,6 +165,15 @@ async function runProfileCommand(
     tools: allowed.value,
     hooks: hooks.value,
   });
+}
+
+// Runs /mcp: prints the servers as they went at the start of this session. It takes no words.
+function runMcpCommand(words: string[], ports: SessionPorts, emit: Emit): void {
+  if (words.length > 0) {
+    emit({ kind: "error", message: "usage: /mcp" });
+    return;
+  }
+  emit({ kind: "notice", text: mcpStatusText(ports.mcp?.running() ?? []) });
 }
 
 // Runs /tools: lists the tools and whether each is on, or switches one on or off. The change applies

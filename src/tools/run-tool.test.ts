@@ -72,6 +72,7 @@ function echoRegistry(calls: string[]): McpRegistry {
   return {
     specs: () => [],
     problems: () => [],
+    statuses: () => [],
     has: (name) => name === "fake__echo",
     call: async (name, argumentsText) => {
       calls.push(`${name} ${argumentsText}`);

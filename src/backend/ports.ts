@@ -1,4 +1,4 @@
-import { type ModelPorts, type ReplyRequest, type ToolCall, type Result } from "../core/messages.ts";
+import { type McpStore, type ModelPorts, type ReplyRequest, type ToolCall, type Result } from "../core/messages.ts";
 
 import { type HookPoint, type ProfileHook, type ProfileStore } from "../core/notes.ts";
 
@@ -31,6 +31,8 @@ export interface SessionPorts {
   resume?: ResumeStore;
   // Where the page reads and saves profiles. Absent, the page has no profile editor.
   profiles?: ProfileStore;
+  // Where the page and /mcp read the MCP servers. Absent, there are none.
+  mcp?: McpStore;
   // The model in use, and the models /model may switch to.
   models: ModelPorts;
   // Text sent ahead of the first message of the session (the AGENTS.md file), if any.

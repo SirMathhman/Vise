@@ -1,4 +1,4 @@
-import { type ReasoningEffort, err, ok, type Result } from "./messages.ts";
+import { type McpServerStatus, type ReasoningEffort, err, ok, type Result } from "./messages.ts";
 
 
 
@@ -71,9 +71,16 @@ export interface HelpLine {
   words: string[];
 }
 
+// A /mcp command. It takes no words; any that follow are an error the backend reports.
+export interface McpLine {
+  kind: "mcp";
+  words: string[];
+}
+
 export type Line =
   | NewLine
   | HelpLine
+  | McpLine
   | ModelLine
   | ThinkingLine
   | ExitLine
@@ -111,6 +118,9 @@ export function classifyLine(line: string): Line {
   }
   if (command === "/model" || command.startsWith("/model ")) {
     return { kind: "model", words: command.split(/\s+/).slice(1) };
+  }
+  if (command === "/mcp" || command.startsWith("/mcp ")) {
+    return { kind: "mcp", words: command.split(/\s+/).slice(1) };
   }
   if (command === "/new") return { kind: "new" };
   if (command === "/help" || command.startsWith("/help ")) {
@@ -217,6 +227,7 @@ export type HelpName =
   | "note"
   | "profile"
   | "tools"
+  | "mcp"
   | "thinking"
   | "model"
   | "save"
@@ -260,6 +271,12 @@ const COMMAND_HELP: Record<HelpName, CommandHelp> = {
     summary: "lists the tools, or switches one on or off",
     detail:
       "With no argument, lists each tool as on or off. `enable` or `disable` with a tool name switches it. The change applies from the next request and is saved to the settings file.",
+  },
+  mcp: {
+    usage: "/mcp",
+    summary: "lists the MCP servers, their tools, and their problems",
+    detail:
+      "Lists each server in .vise/mcp.json as it went at the start of this session: whether it started, its tools, and why a server or a tool was left out. A change to the file applies at the next start.",
   },
   thinking: {
     usage: "/thinking [off | low | medium | high]",
@@ -332,6 +349,20 @@ function helpList(): string {
     .map((name) => {
       const { usage, summary } = COMMAND_HELP[name];
       return `${usage} — ${summary}`;
+    })
+    .join("\n");
+}
+
+// The text /mcp prints: each server with its tools, and its problems on the lines below it.
+export function mcpStatusText(statuses: McpServerStatus[]): string {
+  if (statuses.length === 0) return "no MCP servers are configured in .vise/mcp.json";
+  return statuses
+    .map((server) => {
+      const names = server.tools.join(", ");
+      const head = server.started
+        ? `${server.name}: started, ${server.tools.length} tools${names === "" ? "" : `: ${names}`}`
+        : `${server.name}: did not start`;
+      return [head, ...server.problems.map((problem) => `  ${problem}`)].join("\n");
     })
     .join("\n");
 }

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { classifyLine } from "./commands.ts";
+import { classifyLine, mcpStatusText } from "./commands.ts";
 import { parseSubagentArgs, parseToolsCommand, toolNames, toolStates } from "./tools.ts";
 import {
   helpText,
@@ -107,7 +107,7 @@ test("reads /help and its words, and lists every command or describes the one na
     words: ["model"],
   });
   const list = helpText([]);
-  expect(list.ok && list.value.split("\n")).toHaveLength(13);
+  expect(list.ok && list.value.split("\n")).toHaveLength(14);
   expect(list.ok && list.value).toContain("/model [search <text> | <name>]");
   const model = helpText(["/model"]);
   expect(model.ok && model.value.startsWith("/model [search <text> | <name>]\n")).toBe(true);
@@ -124,4 +124,18 @@ test("every command the help table names is recognised by the classifier", () =>
   for (const name of names) {
     expect(classifyLine(`/${name}`).kind).not.toBe("unknown-command");
   }
+});
+
+test("/mcp is a command with no words; its text lists each server and its problems", () => {
+  expect(classifyLine("/mcp")).toEqual({ kind: "mcp", words: [] });
+  expect(classifyLine("/mcp now")).toEqual({ kind: "mcp", words: ["now"] });
+  expect(mcpStatusText([])).toBe("no MCP servers are configured in .vise/mcp.json");
+  expect(
+    mcpStatusText([
+      { name: "fake", started: true, tools: ["fake__echo"], problems: [] },
+      { name: "gone", started: false, tools: [], problems: ["gone: spawn failed"] },
+    ]),
+  ).toBe(
+    "fake: started, 1 tools: fake__echo\ngone: did not start\n  gone: spawn failed",
+  );
 });

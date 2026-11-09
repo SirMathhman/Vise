@@ -24,6 +24,7 @@ import type {
 } from "../protocol/protocol.ts";
 import { announceSessions, runCommand } from "./commands/commands.ts";
 import { announceProfiles, readProfileFor, writeProfileFor } from "./profile-editor.ts";
+import { announceMcp, writeMcpFor } from "./mcp-editor.ts";
 import type { SessionPorts } from "./ports.ts";
 import { runMessageTurn } from "./turn.ts";
 
@@ -119,6 +120,9 @@ function receive(state: SessionState, message: ClientMessage): void {
       return;
     case "profileWrite":
       void writeProfileFor(state.ports, sink(state), message.profile);
+      return;
+    case "mcpWrite":
+      void writeMcpFor(state.ports, sink(state), message.servers);
       return;
     case "approval": {
       const question = state.question;
@@ -284,6 +288,7 @@ async function run(state: SessionState): Promise<void> {
   announceTools(state, initial);
   await announceSessions(state.ports, emit);
   await announceProfiles(state.ports, emit);
+  await announceMcp(state.ports, emit);
   const started = await state.ports.hooks(
     "sessionStart",
     profileCommands(initial, "sessionStart"),

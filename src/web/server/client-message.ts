@@ -1,12 +1,21 @@
 import type { ApprovalAnswer } from "../../core/commands.ts";
 import { HOOK_POINTS, type HookPoint, type ProfileDetail, type ProfileHook } from "../../core/notes.ts";
 import { err, ok, type Result } from "../../core/messages.ts";
-import type { ClientMessage } from "../../protocol/protocol.ts";
+import type { ClientMessage, McpServerEntry } from "../../protocol/protocol.ts";
 
 const ANSWERS: string[] = ["approve", "refuse", "exit"];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+// Reads one MCP server sent by the page. The store checks the name and the command before it writes.
+function serverOf(value: unknown): McpServerEntry | undefined {
+  if (!isRecord(value)) return undefined;
+  const { name, command, args } = value;
+  if (typeof name !== "string" || typeof command !== "string") return undefined;
+  if (!Array.isArray(args) || !args.every((arg) => typeof arg === "string")) return undefined;
+  return { name, command, args: args as string[] };
 }
 
 // Reads a profile sent by the page. Each field is checked for its type and each hook point must exist;
@@ -63,6 +72,11 @@ export function parseClientMessage(text: string): Result<ClientMessage> {
     const profile = profileOf(value.profile);
     if (profile === undefined) return err(new Error("the profile is not in the expected form"));
     return ok({ kind: "profileWrite", profile });
+  }
+  if (value.kind === "mcpWrite" && Array.isArray(value.servers)) {
+    const servers = value.servers.map(serverOf);
+    if (servers.some((server) => server === undefined)) return err(new Error("a server is not in the expected form"));
+    return ok({ kind: "mcpWrite", servers: servers as McpServerEntry[] });
   }
   return err(new Error("unknown message"));
 }

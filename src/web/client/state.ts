@@ -1,6 +1,8 @@
 import type {
   ApprovalAnswer,
   HistoryMessage,
+  McpServerEntry,
+  McpServerStatus,
   ProfileDetail,
   ProfileSummary,
   ServerEvent,
@@ -83,6 +85,13 @@ export interface ViewState {
   // The profiles the page can edit, and the one whose detail arrived last (the editor opens on it).
   profiles: ProfileSummary[];
   profile?: ProfileDetail;
+  // The MCP servers as they went at the start, and as the file configures them, from the last mcp event.
+  mcp?: McpInfo;
+}
+
+export interface McpInfo {
+  running: McpServerStatus[];
+  servers: McpServerEntry[];
 }
 
 // A line the user sent from the page.
@@ -240,6 +249,8 @@ function applyEvent(state: ViewState, event: ServerEvent): ViewState {
       return { ...state, profiles: event.profiles };
     case "profile":
       return { ...state, profile: event.profile };
+    case "mcp":
+      return { ...state, mcp: { running: event.running, servers: event.servers } };
     case "hookOutput":
       if (event.text === "") return state;
       return { ...state, blocks: [...blocks, { kind: "hook", text: event.text }] };

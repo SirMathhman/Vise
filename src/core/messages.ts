@@ -92,3 +92,26 @@ export interface ModelPorts {
   list(): Promise<Result<ModelInfo[]>>;
   select(name: string): Promise<Result<string>>;
 }
+
+// One MCP server as .vise/mcp.json configures it.
+export interface McpServerEntry {
+  name: string;
+  command: string;
+  args: string[];
+}
+
+// One MCP server as it went at the start of this session: whether it started, the names of its tools,
+// and each reason a server or one of its tools was left out.
+export interface McpServerStatus {
+  name: string;
+  started: boolean;
+  tools: string[];
+  problems: string[];
+}
+
+// Where the page and /mcp read the MCP servers: the ones that started, and the ones the file configures.
+export interface McpStore {
+  running(): McpServerStatus[];
+  config(): Promise<Result<McpServerEntry[]>>;
+  save(servers: McpServerEntry[]): Promise<Result<void>>;
+}

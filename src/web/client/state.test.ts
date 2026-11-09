@@ -127,3 +127,17 @@ test("saving a tool list keeps names the editor does not show, and an unchanged 
   expect(toolsAfterEdit(undefined, ["a", "b"], ["a", "b"])).toBeUndefined();
   expect(toolsAfterEdit(undefined, ["a", "b"], ["a"])).toEqual(["a"]);
 });
+
+test("an mcp event sets the servers as they started and as the file configures them", () => {
+  const state = after([
+    {
+      kind: "mcp",
+      running: [{ name: "fake", started: true, tools: ["fake__echo"], problems: [] }],
+      servers: [{ name: "fake", command: "node", args: [] }],
+    },
+  ]);
+  expect(state.mcp).toEqual({
+    running: [{ name: "fake", started: true, tools: ["fake__echo"], problems: [] }],
+    servers: [{ name: "fake", command: "node", args: [] }],
+  });
+});

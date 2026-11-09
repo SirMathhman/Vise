@@ -308,7 +308,8 @@ textarea:disabled {
   margin: 2px 12px 2px 0;
 }
 
-.profile-editor .hook-row {
+.profile-editor .hook-row,
+.profile-editor .server-row {
   display: grid;
   grid-template-columns: 9rem 1fr auto;
   gap: 6px;
@@ -320,7 +321,8 @@ textarea:disabled {
 }
 
 @media (max-width: 480px) {
-  .profile-editor .hook-row {
+  .profile-editor .hook-row,
+  .profile-editor .server-row {
     grid-template-columns: 1fr;
   }
 }

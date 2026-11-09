@@ -29,3 +29,16 @@ test("a profile write is read when its fields have the right types and hook poin
     value: { kind: "profileRead", name: "p" },
   });
 });
+
+test("a save of MCP servers is read when each entry has a name, a command, and string arguments", () => {
+  expect(
+    parseClientMessage(
+      '{"kind":"mcpWrite","servers":[{"name":"fake","command":"node","args":["s.js"]}]}',
+    ),
+  ).toEqual({
+    ok: true,
+    value: { kind: "mcpWrite", servers: [{ name: "fake", command: "node", args: ["s.js"] }] },
+  });
+  expect(parseClientMessage('{"kind":"mcpWrite","servers":[{"name":"fake","command":1,"args":[]}]}').ok).toBe(false);
+  expect(parseClientMessage('{"kind":"mcpWrite","servers":"nope"}').ok).toBe(false);
+});

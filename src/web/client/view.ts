@@ -12,10 +12,11 @@ import {
   type Block,
   type ViewState,
 } from "./state.ts";
+import { createMcpSection, type McpActions } from "./mcp-view.ts";
 import { renderMarkdown } from "./markdown.ts";
 
 // What the view asks the page to do. The page sends the line or the answer to the server.
-export interface ViewActions {
+export interface ViewActions extends McpActions {
   line(text: string): void;
   answer(id: number, answer: ApprovalAnswer): void;
   readProfile(name: string): void;
@@ -366,6 +367,7 @@ export function createView(
   // Whether the page may send now, as of the last render. The editor's Save checks it when clicked.
   let sendableNow = false;
   let shownProfile: ProfileDetail | undefined;
+  const mcp = createMcpSection(doc, actions);
   const transcript = element(doc, "main", "transcript", "");
   const form = doc.createElement("form");
   form.className = "composer";
@@ -375,7 +377,7 @@ export function createView(
   const send = element(doc, "button", "send", "Send");
   send.type = "submit";
   form.append(input, send);
-  root.append(header, panel, toolPanel, profilePanel, transcript, form, editor);
+  root.append(header, panel, toolPanel, profilePanel, mcp.section, transcript, form, editor, mcp.dialog);
 
   input.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
@@ -420,6 +422,7 @@ export function createView(
           ...profilesPanel(doc, state.profiles, sendable, actions),
         );
       }
+      mcp.update(state.mcp, sendable, () => sendableNow);
       if (state.profile !== undefined && state.profile !== shownProfile) {
         shownProfile = state.profile;
         openEditor(doc, editor, { profile: state.profile, tools: state.tools, sendable: () => sendableNow, actions });

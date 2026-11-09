@@ -5,8 +5,9 @@ import type { ApprovalAnswer } from "../core/commands.ts";
 import type { HistoryMessage } from "../core/sessions.ts";
 import type { ToolSwitch } from "../core/tools.ts";
 import type { ProfileDetail, ProfileSummary } from "../core/notes.ts";
+import type { McpServerEntry, McpServerStatus } from "../core/messages.ts";
 
-export type { ApprovalAnswer, HistoryMessage, ToolSwitch, ProfileDetail, ProfileSummary };
+export type { ApprovalAnswer, HistoryMessage, ToolSwitch, ProfileDetail, ProfileSummary, McpServerEntry, McpServerStatus };
 
 // A line the user typed. While an approval question is open, the line is its answer: the backend
 // reads it as the answer (see answerOfLine). A browser also sends `shown`, the id of the newest question
@@ -50,13 +51,20 @@ export interface ProfileWriteMessage {
   profile: ProfileDetail;
 }
 
+// The page saves the MCP servers it shows. The store writes the file only if every entry is valid.
+export interface McpWriteMessage {
+  kind: "mcpWrite";
+  servers: McpServerEntry[];
+}
+
 export type ClientMessage =
   | LineMessage
   | ApprovalMessage
   | InputEndedMessage
   | FailedMessage
   | ProfileReadMessage
-  | ProfileWriteMessage;
+  | ProfileWriteMessage
+  | McpWriteMessage;
 
 // A chunk of the model's reply, raw and unsanitized. The frontend escapes it before it shows it.
 export interface TextEvent {
@@ -140,6 +148,14 @@ export interface ProfileEvent {
   profile: ProfileDetail;
 }
 
+// The MCP servers: the ones that started at the start of this session, and the ones the file configures.
+// Sent at the start and after each save.
+export interface McpEvent {
+  kind: "mcp";
+  running: McpServerStatus[];
+  servers: McpServerEntry[];
+}
+
 // The output of a hook, in full. The frontend caps what it shows.
 export interface HookOutputEvent {
   kind: "hookOutput";
@@ -183,6 +199,7 @@ export type ServerEvent =
   | ToolsEvent
   | ProfilesEvent
   | ProfileEvent
+  | McpEvent
   | HookOutputEvent
   | NoticeEvent
   | ErrorEvent

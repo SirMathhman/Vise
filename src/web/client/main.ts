@@ -98,6 +98,9 @@ const view = createView(document, root, {
   writeProfile(profile) {
     send({ kind: "profileWrite", profile });
   },
+  writeMcp(servers) {
+    send({ kind: "mcpWrite", servers });
+  },
 });
 
 if (token === "") {

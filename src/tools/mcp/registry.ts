@@ -1,4 +1,4 @@
-import { err, ok, type Result } from "../../core/messages.ts";
+import { err, ok, type McpServerStatus, type Result } from "../../core/messages.ts";
 import { openSession, type McpSession } from "./client.ts";
 import { readMcpConfig, type McpServerConfig } from "./config.ts";
 
@@ -27,6 +27,8 @@ export interface McpRegistry {
   specs(): McpToolSpec[];
   // Why a server or one of its tools was left out, one line each.
   problems(): string[];
+  // Each configured server as it went at startup.
+  statuses(): McpServerStatus[];
   has(name: string): boolean;
   call(name: string, argumentsText: string): Promise<string>;
   stop(): Promise<void>;
@@ -53,7 +55,7 @@ interface LoadedServer {
 
 // The registry of a session with no servers: it has no tools and nothing to stop.
 export function noServers(): McpRegistry {
-  return registryOf([], [], []);
+  return registryOf([], [], [], []);
 }
 
 // Starts every configured server in the working directory. A server that fails is left out and
@@ -64,27 +66,37 @@ export async function startMcpServers(root: string): Promise<Result<McpRegistry>
   const tools: LoadedTool[] = [];
   const sessions: McpSession[] = [];
   const problems: string[] = [];
+  const statuses: McpServerStatus[] = [];
   for (const config of configs.value) {
     const loaded = await loadServer(root, config);
     if (!loaded.ok) {
       problems.push(`${config.name}: ${loaded.error.message}`);
+      statuses.push({ name: config.name, started: false, tools: [], problems: [loaded.error.message] });
       continue;
     }
     sessions.push(loaded.value.session);
     tools.push(...loaded.value.tools);
     problems.push(...loaded.value.problems.map((problem) => `${config.name}: ${problem}`));
+    statuses.push({
+      name: config.name,
+      started: true,
+      tools: loaded.value.tools.map((tool) => tool.name),
+      problems: loaded.value.problems,
+    });
   }
-  return ok(registryOf(tools, sessions, problems));
+  return ok(registryOf(tools, sessions, problems, statuses));
 }
 
 function registryOf(
   tools: LoadedTool[],
   sessions: McpSession[],
   problems: string[],
+  statuses: McpServerStatus[],
 ): McpRegistry {
   return {
     specs: () => tools.map((tool) => tool.spec),
     problems: () => problems,
+    statuses: () => statuses,
     has: (name) => tools.some((tool) => tool.name === name),
     call: async (name, argumentsText) => {
       const tool = tools.find((candidate) => candidate.name === name);
