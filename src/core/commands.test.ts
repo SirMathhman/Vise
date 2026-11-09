@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { classifyLine } from "./commands.ts";
-import { parseSubagentArgs, parseToolsCommand, toolStates } from "./tools.ts";
+import { parseSubagentArgs, parseToolsCommand, toolNames, toolStates } from "./tools.ts";
 import {
   helpText,
   parseModelCommand,
@@ -36,19 +36,19 @@ test("reads /note and its words, but not a word that only starts with note", () 
 });
 
 test("reads /tools: nothing lists, enable and disable take a tool name that exists", () => {
-  expect(parseToolsCommand([])).toEqual({ ok: true, value: { kind: "list" } });
-  expect(parseToolsCommand(["disable", "edit_file"])).toEqual({
+  expect(parseToolsCommand([], toolNames)).toEqual({ ok: true, value: { kind: "list" } });
+  expect(parseToolsCommand(["disable", "edit_file"], toolNames)).toEqual({
     ok: true,
     value: { kind: "disable", name: "edit_file" },
   });
-  expect(parseToolsCommand(["enable", "edit_file"])).toEqual({
+  expect(parseToolsCommand(["enable", "edit_file"], toolNames)).toEqual({
     ok: true,
     value: { kind: "enable", name: "edit_file" },
   });
-  expect(parseToolsCommand(["disable", "nope"]).ok).toBe(false);
-  expect(parseToolsCommand(["disable"]).ok).toBe(false);
-  expect(toolStates(["edit_file"])).toContain("edit_file: off");
-  expect(toolStates([])).toContain("kill_command: on");
+  expect(parseToolsCommand(["disable", "nope"], toolNames).ok).toBe(false);
+  expect(parseToolsCommand(["disable"], toolNames).ok).toBe(false);
+  expect(toolStates(toolNames, ["edit_file"])).toContain("edit_file: off");
+  expect(toolStates(toolNames, [])).toContain("kill_command: on");
 });
 
 test("reads run_subagent arguments: a profile name, a task, and a whole-number limit of at least 1", () => {

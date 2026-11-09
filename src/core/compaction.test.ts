@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { toolNames } from "./tools.ts";
 import {
   clearProfile,
   enabledTools,
@@ -22,9 +23,9 @@ test("switching a tool off removes it from the offered tools, and on restores it
   const start: Conversation = { history: [], compacted: false };
   const off = setToolEnabled(start, "edit_file", false);
   expect(off.notice).toBe("tool edit_file off");
-  expect(enabledTools(off.conversation)).not.toContain("edit_file");
+  expect(enabledTools(off.conversation, toolNames)).not.toContain("edit_file");
   const on = setToolEnabled(off.conversation, "edit_file", true);
-  expect(enabledTools(on.conversation)).toContain("edit_file");
+  expect(enabledTools(on.conversation, toolNames)).toContain("edit_file");
   expect(on.conversation.disabledTools).toEqual([]);
 });
 
@@ -118,8 +119,8 @@ test("a profile's whitelist and the /tools switches both limit the tools offered
       tools: ["list_files", "read_file", "kill_command"],
     },
   };
-  expect(enabledTools(conversation)).toEqual(["list_files", "read_file"]);
-  expect(enabledTools({ ...conversation, profile: undefined })).toContain(
+  expect(enabledTools(conversation, toolNames)).toEqual(["list_files", "read_file"]);
+  expect(enabledTools({ ...conversation, profile: undefined }, toolNames)).toContain(
     "edit_file",
   );
 });

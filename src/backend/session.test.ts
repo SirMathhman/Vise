@@ -32,6 +32,7 @@ async function* askForEdit({
 // Ports for one session. Each approval answer the tool receives is recorded in `answers`.
 function portsFor(answers: boolean[]): SessionPorts {
   return {
+    allTools: toolNames,
     reply: askForEdit,
     contextWindow: async () => ok(1000),
     tools: async (_call, approve) => {

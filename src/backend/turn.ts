@@ -126,6 +126,7 @@ export async function runMessageTurn(
     queueHookOutput(conversation, started.value),
     reply,
     contextWindow,
+    ports.allTools,
   );
   if (compacted.notice) emit({ kind: "notice", text: compacted.notice });
   let current = compacted.conversation;
@@ -148,7 +149,7 @@ export async function runMessageTurn(
       history: current.history,
       reply,
       emit,
-      offered: enabledTools(current),
+      offered: enabledTools(current, ports.allTools),
       reasoning: current.thinking,
     });
     if (round.failure) {
@@ -175,7 +176,7 @@ export async function runMessageTurn(
       tools,
       approve,
       finished,
-      offered: enabledTools(current),
+      offered: enabledTools(current, ports.allTools),
       emit,
       subagents: ports,
       disabledTools: current.disabledTools ?? [],

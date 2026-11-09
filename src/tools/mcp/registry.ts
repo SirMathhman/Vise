@@ -51,6 +51,11 @@ interface LoadedServer {
   problems: string[];
 }
 
+// The registry of a session with no servers: it has no tools and nothing to stop.
+export function noServers(): McpRegistry {
+  return registryOf([], [], []);
+}
+
 // Starts every configured server in the working directory. A server that fails is left out and
 // named in `problems`; the others still run. Only a broken config file fails the whole call.
 export async function startMcpServers(root: string): Promise<Result<McpRegistry>> {

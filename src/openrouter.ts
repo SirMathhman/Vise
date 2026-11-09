@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { type ChatMessage, type ModelInfo, type ReasoningEffort, type ToolCall, type Usage, err, ok, type Result } from "./core/messages.ts";
-import { toolNames, toolSpecs } from "./core/tools.ts";
+import { toolSpecs, type ToolSpec } from "./core/tools.ts";
 
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 const MODELS_ENDPOINT = "https://openrouter.ai/api/v1/models";
@@ -123,6 +123,8 @@ interface StreamOptions {
   onToolCall?(call: ToolCall): void;
   // The tools to offer, by name. Every tool when omitted, and none when empty.
   tools?: string[];
+  // The tools of the MCP servers that started, offered alongside the built-in ones.
+  extraTools?: ToolSpec[];
   // Turns thinking on at this effort. Off when omitted.
   reasoning?: ReasoningEffort;
   // Called with the approximate thinking tokens so far, as thinking text arrives.
@@ -192,8 +194,8 @@ async function postChat(
 ): Promise<Result<ReadableStream<Uint8Array>>> {
   const send = options.fetch ?? fetch;
   try {
-    const offered = toolSpecs.filter((spec) =>
-      (options.tools ?? toolNames).includes(spec.function.name),
+    const offered: ToolSpec[] = [...toolSpecs, ...(options.extraTools ?? [])].filter(
+      (spec) => options.tools === undefined || options.tools.includes(spec.function.name),
     );
     const response = await send(ENDPOINT, {
       method: "POST",

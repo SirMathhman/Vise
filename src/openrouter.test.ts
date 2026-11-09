@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { type ToolCall, type Usage, err, ok, type Result } from "./core/messages.ts";
 import { modelContextWindow, streamChat } from "./openrouter.ts";
+import type { ToolSpec } from "./core/tools.ts";
 
 test("streams text deltas from server-sent events and stops at [DONE]", async () => {
   const body = [
@@ -298,4 +299,33 @@ test("keeps the reasoning of a tool-calling reply and sends it back with the nex
   expect(JSON.parse(sent[1] ?? "{}").messages[1].reasoning_details).toEqual(
     items,
   );
+});
+
+interface SentRequest {
+  tools: ToolSpec[];
+}
+
+test("the request offers the switched-on server tools with the built-in ones", async () => {
+  let sentBody = "";
+  const fakeFetch = async (_url: string, init: RequestInit) => {
+    sentBody = String(init.body);
+    return new Response("data: [DONE]\n\n", { status: 200 });
+  };
+  const extra = {
+    type: "function" as const,
+    function: { name: "fake__echo", description: "echoes", parameters: { type: "object" } },
+  };
+  // Only the request body is checked, so the stream is drained and its parts ignored.
+  const stream = streamChat({
+    apiKey: "key",
+    model: "anthropic/claude-haiku-5.5",
+    messages: [{ role: "user", content: "hi" }],
+    fetch: fakeFetch,
+    extraTools: [extra],
+    tools: ["list_files", "fake__echo"],
+  });
+  for await (const part of stream) void part;
+  const sent = JSON.parse(sentBody) as SentRequest;
+  const names = sent.tools.map((tool) => tool.function.name);
+  expect(names).toEqual(["list_files", "fake__echo"]);
 });

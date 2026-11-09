@@ -7,7 +7,6 @@ import {
   type ProfileLoader,
 } from "../../core/notes.ts";
 import { err, ok, type Result } from "../../core/messages.ts";
-import { toolNames } from "../../core/tools.ts";
 import { readNote } from "./read-note.ts";
 
 interface ProfileNote {
@@ -54,12 +53,13 @@ export function loadProfile(root: string): ProfileLoader {
 // allowed. A name that is not a tool refuses the profile, so a typo cannot drop a tool silently.
 export function loadProfileTools(
   root: string,
+  known: string[],
 ): (name: string) => Promise<Result<string[] | undefined>> {
   return async (name) => {
     const profile = await readProfile(root, name);
     if (!profile.ok) return profile;
     const unknown = (profile.value.tools ?? []).find(
-      (tool) => !toolNames.includes(tool),
+      (tool) => !known.includes(tool),
     );
     if (unknown !== undefined)
       return err(

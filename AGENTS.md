@@ -18,7 +18,7 @@ The tests run on Windows and spawn real `powershell.exe`, `taskkill`, and temp d
 
 ESLint is configured in `eslint.config.js`. These are errors, not warnings:
 
-- No `throw` statements. Failures are returned as `Result` (`src/core/result.ts`, `ok` and `err`). The only `try`/`catch` is around calls that throw by themselves.
+- No `throw` statements. Failures are returned as `Result` (`src/core/messages.ts`, `ok` and `err`). The only `try`/`catch` is around calls that throw by themselves.
 - No inline object types written as `{ ... }`. Declare an `interface`.
 - No function-typed fields in an interface. Declare a method instead, such as `reply(request: ReplyRequest): ...`, not `reply: (request: ReplyRequest) => ...`. A field typed by a function alias is not caught by the rule, so keep to the convention there too.
 - At most 4 parameters per function. A function that needs more takes one parameter object, declared as an interface.
@@ -38,6 +38,6 @@ The code is split into a frontend and a backend, joined by a typed event protoco
 - `src/web/` is the browser frontend: a WebSocket relay in `server/` and a plain TypeScript page in `client/`. The client is built for the browser and never runs under Bun.
 - `src/core/` is pure: line classification (`commands.ts`), the conversation state and compaction (`compaction.ts`), tool specs and argument parsing (`tools.ts`), notes and profiles (`notes.ts`), saved sessions (`sessions.ts`), and the shared types and ports (`messages.ts`).
 - `src/openrouter.ts` is the only network code. It converts history to the wire format, streams events, and returns each text delta as a `Result`.
-- `src/tools/` does the disk, process, and settings work. `run-tool.ts` dispatches calls by name and checks the target before asking for approval. `files/` holds the file tools and shares `contain.ts`. `run-powershell.ts` and `jobs.ts` run commands and track background jobs. `hooks/`, `notes/`, `models/`, `resume/`, and the settings and session stores are beside them.
+- `src/tools/` does the disk, process, and settings work. `run-tool.ts` dispatches calls by name and checks the target before asking for approval. `mcp/` starts the MCP servers listed in `.vise/mcp.json` and runs their tools as `<server>__<tool>`. `files/` holds the file tools and shares `contain.ts`. `run-powershell.ts` and `jobs.ts` run commands and track background jobs. `hooks/`, `notes/`, `models/`, `resume/`, and the settings and session stores are beside them.
 
 Tests live beside the module they test. There is no separate `tests/` folder.

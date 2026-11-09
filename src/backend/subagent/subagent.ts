@@ -15,6 +15,7 @@ import type { Emit } from "../../protocol/protocol.ts";
 // What a subagent needs from the session. The session's ports satisfy it.
 export interface SubagentPorts {
   reply(request: ReplyRequest): AsyncIterable<Result<string>>;
+  allTools: string[];
   tools(call: ToolCall, approve: Approve, offered: string[]): Promise<string>;
   hooks(point: HookPoint, profile?: string[]): Promise<Result<string>>;
   profile(name: string): Promise<Result<string>>;
@@ -136,7 +137,7 @@ export async function runSubagent(
   if (!start.ok) return fail(start.error.message);
   const { conversation, text } = start.value;
   // A subagent is never offered the subagent tool, so it cannot start another one.
-  const offered = enabledTools(conversation).filter(
+  const offered = enabledTools(conversation, ports.allTools).filter(
     (name) => name !== RUN_SUBAGENT,
   );
   note(`subagent ${args.profile}: started`);

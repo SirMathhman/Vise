@@ -15,6 +15,8 @@ import { type WebAddress, takeWebAddress } from "./src/web/server/address.ts";
 
 import { startWebServer } from "./src/web/server/server.ts";
 import { killAllJobs } from "./src/tools/jobs.ts";
+import { type McpRegistry, noServers, startMcpServers } from "./src/tools/mcp/registry.ts";
+import { toolNames } from "./src/core/tools.ts";
 import {
   loadProfile,
   loadProfileHooks,
@@ -37,6 +39,9 @@ import { selectModel } from "./src/tools/models/select-model.ts";
 
 const DEFAULT_MODEL = "anthropic/claude-haiku-5.5";
 
+// The MCP servers that started, stopped on every exit path. Empty until startup starts them.
+let servers: McpRegistry = noServers();
+
 // The model in use. /model changes it for the requests that follow.
 interface ModelSelection {
   model: string;
@@ -47,6 +52,9 @@ interface PortSetup {
   apiKey: string;
   selection: ModelSelection;
   disabledTools: string[];
+  // Every tool the session may offer, built-in and from the MCP servers.
+  allTools: string[];
+  mcp: McpRegistry;
   hooks: SessionPorts["hooks"];
   instructions: SessionPorts["instructions"];
 }
@@ -55,10 +63,11 @@ interface PortSetup {
 function sessionPorts(setup: PortSetup): SessionPorts {
   const { apiKey, selection } = setup;
   const root = process.cwd();
+  const extraTools = setup.mcp.specs();
   return {
     hooks: setup.hooks,
     reply: (request) =>
-      streamChat({ apiKey, model: selection.model, ...request }),
+      streamChat({ apiKey, model: selection.model, extraTools, ...request }),
     contextWindow: () => modelContextWindow({ model: selection.model }),
     models: {
       current: () => selection.model,
@@ -73,17 +82,18 @@ function sessionPorts(setup: PortSetup): SessionPorts {
           },
         }),
     },
-    tools: runTool(root),
+    tools: runTool(root, setup.mcp),
+    allTools: setup.allTools,
     notes: runNoteCommand(root),
     profile: loadProfile(root),
-    profileTools: loadProfileTools(root),
+    profileTools: loadProfileTools(root, setup.allTools),
     profileHooks: loadProfileHooks(root),
     disabledTools: setup.disabledTools,
     saveDisabledTools: (names) => saveToolSettings(root, names),
     sessions: sessionStore(root),
     // Kept in the user's home folder, not the project, so a repository cannot ship a conversation to resume.
     resume: resumeStore(join(homedir(), ".vise", "resume"), root),
-    profiles: profileStore(root),
+    profiles: profileStore(root, setup.allTools),
     instructions: setup.instructions,
   };
 }
@@ -107,6 +117,12 @@ async function runWeb(session: Session, address: WebAddress): Promise<Result<voi
   return ok(undefined);
 }
 
+// Stops every MCP server and background job. Jobs that could not be stopped are named.
+async function stopEverything(): Promise<void> {
+  await servers.stop();
+  await stopJobs();
+}
+
 // Stops every background job, and warns about each one that could not be stopped.
 async function stopJobs(): Promise<void> {
   for (const job of await killAllJobs()) {
@@ -124,16 +140,10 @@ if (import.meta.main) {
   }
   // Ctrl+C stops the jobs and then exits, instead of leaving them running.
   process.once("SIGINT", () => {
-    void stopJobs().then(() => process.exit(130));
+    void stopEverything().then(() => process.exit(130));
   });
   // Read once, here, so the session sends the same instructions for its whole length.
   const instructions = await readInstructions(process.cwd());
-  // Read once, here: the tools switched off in the settings file at startup.
-  const disabled = await readToolSettings(process.cwd());
-  if (!disabled.ok) {
-    console.error(`error: ${disabled.error.message}`);
-    process.exit(1);
-  }
   // Read once, here: the hooks in the hooks file. A file that is not valid stops startup.
   const hookConfig = await readHooks(process.cwd());
   if (!hookConfig.ok) {
@@ -144,6 +154,23 @@ if (import.meta.main) {
   const savedModel = await readModelSetting(process.cwd());
   if (!savedModel.ok) {
     console.error(`error: ${savedModel.error.message}`);
+    process.exit(1);
+  }
+  // Read once, here: the MCP servers in the servers file start now, and their tools are offered with
+  // the built-in ones. A broken servers file stops startup; a server that fails is only reported.
+  const started = await startMcpServers(process.cwd());
+  if (!started.ok) {
+    console.error(`error: ${started.error.message}`);
+    process.exit(1);
+  }
+  servers = started.value;
+  for (const problem of servers.problems()) console.error(`warning: MCP ${problem}`);
+  const allTools = [...toolNames, ...servers.specs().map((spec) => spec.function.name)];
+  // Read once, here: the tools switched off in the settings file at startup.
+  const disabled = await readToolSettings(process.cwd(), allTools);
+  if (!disabled.ok) {
+    console.error(`error: ${disabled.error.message}`);
+    await servers.stop();
     process.exit(1);
   }
   const selection: ModelSelection = { model: savedModel.value ?? DEFAULT_MODEL };
@@ -158,6 +185,8 @@ if (import.meta.main) {
         apiKey,
         selection,
         disabledTools: disabled.value,
+        allTools,
+        mcp: servers,
         hooks: hookRunner(process.cwd(), hookConfig.value),
         instructions,
       }),
@@ -170,7 +199,7 @@ if (import.meta.main) {
       failed = true;
     }
   } finally {
-    await stopJobs();
+    await stopEverything();
   }
   if (failed) process.exit(1);
 }

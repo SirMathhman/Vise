@@ -1,6 +1,6 @@
 import type { ToolCall } from "../core/messages.ts";
-import { toolNames } from "../core/tools.ts";
 import { notePath } from "../core/notes.ts";
+import { approvalPreview, needsApproval } from "../core/tool-lines.ts";
 import {
   CREATE_FILE,
   CREATE_NOTE,
@@ -10,8 +10,6 @@ import {
   READ_COMMAND,
   READ_FILE,
   RUN_POWERSHELL,
-  approvalPreview,
-  needsApproval,
   parseCreateFileArgs,
   parseCreateNoteArgs,
   parseEditFileArgs,
@@ -19,9 +17,12 @@ import {
   parseListFilesArgs,
   parseReadFileArgs,
   parseRunPowershellArgs,
+  toolNames,
   type Approve,
   type ToolRunner,
 } from "../core/tools.ts";
+import type { McpRegistry } from "./mcp/registry.ts";
+import { noServers } from "./mcp/registry.ts";
 import { resolveInside, resolveNewInside } from "./files/contain.ts";
 import { createFile } from "./files/create-file.ts";
 import { editFile } from "./files/edit-file.ts";
@@ -31,12 +32,14 @@ import { createNote } from "./notes/create-note.ts";
 import { MAX_JOBS, killJob, readJob, runningJobs } from "./jobs.ts";
 import { runPowershell } from "./run-powershell.ts";
 
-// The tool runner for a working directory. A change or command is checked and previewed, and it
-// runs only if `approve` says yes. Errors come back as text for the model to read.
-export function runTool(root: string): ToolRunner {
+// The tool runner for a working directory and the MCP servers that started. A change or command is
+// checked and previewed, and it runs only if `approve` says yes. Errors come back as text for the
+// model to read.
+export function runTool(root: string, mcp: McpRegistry = noServers()): ToolRunner {
   return async (call: ToolCall, approve: Approve, offered: string[]) => {
     // A tool switched off is refused here, so no caller of the runner can run it.
-    if (toolNames.includes(call.name) && !offered.includes(call.name)) {
+    const known = toolNames.includes(call.name) || mcp.has(call.name);
+    if (known && !offered.includes(call.name)) {
       return `error: tool ${call.name} is switched off`;
     }
     if (call.name === RUN_POWERSHELL && runningJobs() >= MAX_JOBS) {
@@ -49,6 +52,7 @@ export function runTool(root: string): ToolRunner {
       if (preview !== undefined && !(await approve(preview)))
         return "the user declined this change";
     }
+    if (mcp.has(call.name)) return mcp.call(call.name, call.arguments);
     return dispatch(root, call);
   };
 }

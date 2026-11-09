@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { toolNames } from "../../core/tools.ts";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -36,7 +37,7 @@ test("reads a profile's tools line, and refuses one that names a tool that does 
     join(root, "notes", "profile", "typo.md"),
     "---\nname: typo\ncategory: profile\nsummary:\ntools: list_fils\n---\nBody.\n",
   );
-  const tools = loadProfileTools(root);
+  const tools = loadProfileTools(root, toolNames);
   expect(await tools("reader")).toEqual({ ok: true, value: ["list_files"] });
   expect((await tools("typo")).ok).toBe(false);
 });

@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { toolNames } from "../core/tools.ts";
 import { PassThrough, Readable, Writable } from "node:stream";
 import { type ChatMessage, type Reply, type ReplyRequest, err, ok } from "../core/messages.ts";
 import { echoReply, runWithPorts } from "./session-helper.ts";
@@ -7,6 +8,7 @@ import type { SessionPorts } from "../backend/ports.ts";
 // The ports a test session uses. Each test overrides only the ports it needs.
 function ports(overrides: Partial<SessionPorts> = {}): SessionPorts {
   return {
+    allTools: toolNames,
     reply: echoReply,
     contextWindow: async () =>
       err(new Error("no context window is configured")),

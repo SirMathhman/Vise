@@ -1,5 +1,6 @@
 import type { ChatMessage, ToolCall } from "../core/messages.ts";
-import { describeToolCall, RUN_SUBAGENT, parseSubagentArgs, type Approve } from "../core/tools.ts";
+import { describeToolCall } from "../core/tool-lines.ts";
+import { RUN_SUBAGENT, parseSubagentArgs, type Approve } from "../core/tools.ts";
 import type { Emit } from "../protocol/protocol.ts";
 import { queueApprovals, runSubagent, type SubagentPorts } from "./subagent/subagent.ts";
 

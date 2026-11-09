@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { toolNames } from "../../core/tools.ts";
 import { Readable, Writable } from "node:stream";
 import { type ChatMessage, type Reply, type ToolCall, err, ok } from "../../core/messages.ts";
 import { runWithPorts } from "../../repl/session-helper.ts";
@@ -32,6 +33,7 @@ function subPorts(
   tools: SubagentPorts["tools"] = async () => "a.txt",
 ): SubagentPorts {
   return {
+    allTools: toolNames,
     reply,
     tools,
     hooks: async () => ok(""),
@@ -151,6 +153,7 @@ test("two subagents asked for in one reply both run, and each result reaches the
   });
   const ports: SessionPorts = {
     reply,
+    allTools: toolNames,
     contextWindow: async () => err(new Error("none")),
     tools: async () => "unused",
     notes: async () => "",

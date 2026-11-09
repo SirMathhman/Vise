@@ -20,6 +20,8 @@ export interface SessionPorts {
   profileHooks(name: string): Promise<Result<ProfileHook[]>>;
   // Runs the hooks of one point. Their output goes to the next message.
   hooks(point: HookPoint, profile?: string[]): Promise<Result<string>>;
+  // Every tool the session may offer: the built-in tools and those of the MCP servers that started.
+  allTools: string[];
   // The tools switched off when the session starts, and the writer for the settings file.
   disabledTools: string[];
   saveDisabledTools(names: string[]): Promise<Result<void>>;

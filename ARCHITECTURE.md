@@ -25,7 +25,7 @@ Requirements are split into two classes. **Functional** requirements say what th
 | **Session** | One run of the REPL, from start until `/exit` or end of input. |
 | **Subagent** | A conversation of its own, started by the model with `run_subagent`. |
 | **Thinking** | The model's reasoning effort, set by `/thinking`. |
-| **Tool** | An action the model may request by name, with arguments it writes as JSON. A tool that writes or runs anything must be approved by the user before it runs. |
+| **Tool** | An action the model may request by name, with arguments it writes as JSON. A tool that writes or runs anything must be approved by the user before it runs. A tool from an MCP server is named `<server>__<tool>` and is always approved. |
 | **Tool round** | One request to the model and the tool calls it asked for. |
 
 ## Invariants
@@ -63,7 +63,7 @@ Each invariant has a label (F1 to F5 for functional, N1 to N6 for nonfunctional)
 #### Prompt cache and tools
 
 - **N5. The prompt prefix is append-only.** Between compactions the history changes only by appending: a user message, then assistant messages (with any tool calls) and tool messages. Compaction, `/load`, `/new`, and the resume at startup are the only other changes, and each starts a new prefix, so the next request misses the cache once. A failed request, or a failed round, leaves no trace: the whole turn is removed, so the next request begins with the same messages as the last completed one. The cache breakpoint is a marker on the last message of each request, whatever its role. It never changes which messages are sent.
-- **N6. Tool definitions are stable.** The tools are fixed in code, and the request carries the same tool definitions every time for as long as the user leaves the switches unchanged. Switches come from `/tools` or from a profile's `tools:` whitelist, and each changes the tools part of the prompt, so the next request misses the cache for the whole prefix. The user accepts that cost. `/tools` switches are saved to `.vise/tools.json` and read at startup. `/load` applies a saved session's switched-off tools for that session only, which is also a change to the tools part.
+- **N6. Tool definitions are stable.** The tools are fixed when the session starts: the built-in tools, and the tools of each MCP server in `.vise/mcp.json` that started. Nothing adds or removes a tool while the session runs, and the request carries the same tool definitions every time for as long as the user leaves the switches unchanged. Switches come from `/tools` or from a profile's `tools:` whitelist, and each changes the tools part of the prompt, so the next request misses the cache for the whole prefix. The user accepts that cost. `/tools` switches are saved to `.vise/tools.json` and read at startup. `/load` applies a saved session's switched-off tools for that session only, which is also a change to the tools part.
 
 ## Frontend and backend
 
@@ -117,8 +117,9 @@ The commands are `/exit`, `/context`, `/compact`, `/note`, `/profile`, `/tools`,
   - read only: `list_files`, `read_file`, `read_command`;
   - writes, approved by the user: `edit_file` (replaces the first exact match of a text in an existing file), `create_file` (writes a new file and never overwrites one), `create_note` (creates a note's scaffold at its convention path and never overwrites one);
   - commands: `run_powershell` (one PowerShell command in the working directory; a command still running after 30 seconds becomes a background job), `read_command` (reads a job's output), and `kill_command` (stops a job, approved by the user);
-  - `run_subagent` (starts a subagent; see Subagents).
-- Of the nine tools, eight run in `src/tools/` through `runTool`, which dispatches by name and checks the target before asking. `run_subagent` is started by the REPL, not by `runTool`, because it runs a conversation rather than a single action.
+  - `run_subagent` (starts a subagent; see Subagents);
+  - MCP tools, named `<server>__<tool>`, from the servers in `.vise/mcp.json` (see MCP servers).
+- Of the nine built-in tools, eight run in `src/tools/` through `runTool`, which dispatches by name and checks the target before asking. `run_subagent` is started by the REPL, not by `runTool`, because it runs a conversation rather than a single action.
 
 ### Approval
 
@@ -192,11 +193,11 @@ Target layout. Test files sit beside the module each one tests; there is no sepa
         ├── core/                        pure logic; imports nothing from node: except types
         │   ├── commands.ts              line classification, command parsing, and the /help table (usage and description of each command)
         │   ├── compaction.ts            Conversation state: summary request, compacted history, 80% check, profile use and clear
-        │   ├── messages.ts              shared data types and model ports (ChatMessage, ToolCall, Usage, ReplyRequest, Reply, ContextWindow)
+        │   ├── messages.ts              shared data types and model ports (ChatMessage, ToolCall, Usage, ReplyRequest, Reply, ContextWindow), and the Result type (ok and err) for returned failures
         │   ├── notes.ts                 note rules: name checks, path and scaffold, header parser, /note and /profile words, NoteRunner and ProfileLoader ports
-        │   ├── result.ts                Result type: ok and err for returned failures
         │   ├── sessions.ts              saved-session format (encode; decode with shape and pairing checks), autosave naming (autosaveName, uniqueName), /save, /load, /sessions words, SessionStore port
-        │   └── tools.ts                 tool specs, argument parsing, /tools words, approval rule, call line, Approve and ToolRunner ports
+        │   ├── tools.ts                 tool specs, argument parsing, /tools words, the name rule for MCP tools (isExternalName), Approve and ToolRunner ports
+        │   └── tool-lines.ts            approval rule, approval preview, call line, and the terminal sanitize helper
         ├── protocol/                    the frontend-backend contract (types only, plain data)
         │   ├── protocol.ts              ClientMessage, ServerEvent, Session
         │   └── channel.ts               Channel<T>: the async queue the backend's inbox is built on
@@ -224,7 +225,11 @@ Target layout. Test files sit beside the module each one tests; there is no sepa
         │       ├── markdown.ts          pure Markdown subset for replies (headings, lists, code, bold, italics; links as text), no DOM
         │       └── view.ts              DOM from the state and from the Markdown blocks, text set with textContent only
         └── tools/                       disk, process, and settings work for the tools and the frontend
-            ├── run-tool.ts              dispatches a call by name, checks the target before asking, runs a change only when approve resolves true
+            ├── run-tool.ts              dispatches a call by name, checks the target before asking, runs a change only when approve resolves true; MCP calls go to the registry
+            ├── mcp/
+            │   ├── config.ts            .vise/mcp.json: readMcpConfig (at startup) and its checks, one entry per server (name, command, args)
+            │   ├── client.ts            one server over stdio: JSON-RPC, one message per line, a 60-second limit per request
+            │   └── registry.ts          starts the servers, lists their tools as <server>__<tool>, runs calls, stops them at exit
             ├── run-powershell.ts        the only process spawning; a command still running after 30 seconds becomes a background job
             ├── jobs.ts                  background jobs: last 500 lines per stream, reads, stops process trees, stops all at exit (at most 5 running)
             ├── tool-settings.ts         .vise/tools.json: readToolSettings (at startup) and saveToolSettings (via /tools)
@@ -377,6 +382,7 @@ Each item is a known defect or gap. Fixes are listed under Future Work.
 - **The history is not bounded.** Compaction runs on `/compact` and before a message once the last prompt reached 80% of the window. Between compactions the history is resent in full, and no `max_tokens` is set, so one reply is unbounded.
 - **`list_files` output has no size limit.** A listing returns every file name up to the depth, with no cap on the count, and includes large folders such as `node_modules`. The whole listing becomes one tool message, sent in every later request until compaction removes it.
 - **`read_file` reads the whole file before the range is cut.** `readFileLines` loads the file, splits it, and only then applies the 500-line cap. The cap counts lines, not bytes, so 500 lines of 1 MB each come back whole and enter the history.
+- **MCP results are neither capped nor framed.** A server's result text goes into the history as it is, with no size limit and no data framing (see Prompt injection). A server that answers with a very large result fills the history, as the cap on `read_file` and `list_files` output is not yet written (see above).
 
 #### Model cache
 
@@ -392,6 +398,7 @@ Everything read from stdin, or sent over the browser socket, is untrusted text, 
 ### Trust in files and settings
 
 - **Subagents act with the user's permissions.** A subagent's writes and commands go through the same approval queue as the main conversation. A subagent's profile can list commands in its hooks, which run without approval as described under Hooks, so a subagent run by a profile from a cloned repository inherits that trust.
+- **MCP servers run programs without approval.** `.vise/mcp.json` names programs that Vise starts when the session starts, with the user's permissions, before any line is read. A repository that ships this file runs its programs at startup, the same trust as `.vise/hooks.json`. Each tool call is approved by the user, with a preview of its arguments. The server's tool names and descriptions are sent to OpenRouter with every request.
 - **Hooks run commands without approval.** `.vise/hooks.json` is trusted: any command in it runs with the user's permissions at the four hook points. A repository that ships this file runs its commands when a user starts Vise there. This is a standing approval given by a file, not by a command. `.vise` is not git-ignored, so the file can arrive in a clone.
 - **Hook output reaches the model.** A hook's output is sent with the next user message, so a hook that prints file contents or secrets sends them to OpenRouter. The printed output is capped at 4000 characters. Whether the cap also applies to the text sent is not clear from the code, and it needs checking (see Known Problems).
 - **The resume file is read at start.** The conversation from the last run is sent to the model with the user's authority, without a command. Only a process that can write to the user's home folder, or the user, can put a conversation there (see Resume for where it lives and what it restores).

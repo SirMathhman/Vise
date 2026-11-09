@@ -224,7 +224,7 @@ async function resumedConversation(
 function announceTools(state: SessionState, conversation: Conversation): void {
   state.events.push({
     kind: "tools",
-    tools: toolSwitches(conversation.disabledTools ?? []),
+    tools: toolSwitches(state.ports.allTools, conversation.disabledTools ?? []),
   });
 }
 

@@ -25,11 +25,8 @@ import {
   historyMessages,
   parseSessionCommand,
 } from "../../core/sessions.ts";
-import {
-  parseToolsCommand,
-  sanitize,
-  toolStates,
-} from "../../core/tools.ts";
+import { sanitize } from "../../core/tool-lines.ts";
+import { parseToolsCommand, toolStates } from "../../core/tools.ts";
 import type { Emit } from "../../protocol/protocol.ts";
 import type { SessionPorts } from "../ports.ts";
 
@@ -82,7 +79,7 @@ export async function runCommand(
       await showContext(emit, ports.contextWindow, conversation);
       return undefined;
     case "compact":
-      return compactNow(conversation, ports.reply);
+      return compactNow(conversation, ports.reply, ports.allTools);
     case "note":
       emit({ kind: "notice", text: await ports.notes(input.words) });
       // A note command can create a profile, so the page's list is sent again.
@@ -174,7 +171,7 @@ async function runToolsCommand(
   emit: Emit,
   conversation: Conversation,
 ): Promise<Step | undefined> {
-  const command = parseToolsCommand(words);
+  const command = parseToolsCommand(words, ports.allTools);
   if (!command.ok) {
     emit({ kind: "error", message: command.error.message });
     return undefined;
@@ -182,7 +179,7 @@ async function runToolsCommand(
   if (command.value.kind === "list") {
     emit({
       kind: "notice",
-      text: toolStates(conversation.disabledTools ?? []),
+      text: toolStates(ports.allTools, conversation.disabledTools ?? []),
     });
     return undefined;
   }

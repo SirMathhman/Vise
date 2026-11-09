@@ -1,7 +1,6 @@
 import { type ChatMessage, type ContextWindow, type ReasoningEffort, type Reply, type Usage, err, ok, type Result } from "./messages.ts";
 
 
-import { toolNames } from "./tools.ts";
 import type { HookPoint, ProfileHook } from "./notes.ts";
 
 export type { HookPoint } from "./notes.ts";
@@ -73,10 +72,10 @@ export function queueHookOutput(
 
 // The tools offered to the model: every tool that is switched on, and, when the active profile has
 // a whitelist, that is on the whitelist too. Both must allow a tool.
-export function enabledTools(conversation: Conversation): string[] {
+export function enabledTools(conversation: Conversation, names: string[]): string[] {
   const disabled = conversation.disabledTools ?? [];
   const allowed = conversation.profile?.tools;
-  return toolNames.filter(
+  return names.filter(
     (name) =>
       !disabled.includes(name) &&
       (allowed === undefined || allowed.includes(name)),
@@ -151,6 +150,7 @@ export function needsCompaction(
 export async function compact(
   conversation: Conversation,
   reply: Reply,
+  names: string[],
 ): Promise<Result<Conversation>> {
   if (conversation.history.length === 0)
     return err(new Error("nothing to compact"));
@@ -160,7 +160,7 @@ export async function compact(
       messages: compactionRequest(conversation.history),
       onUsage: () => {},
       onToolCall: () => {},
-      tools: enabledTools(conversation),
+      tools: enabledTools(conversation, names),
       reasoning: conversation.thinking,
       onThinking: () => {},
       onReasoning: () => {},
@@ -222,8 +222,9 @@ export function clearProfile(conversation: Conversation): Step {
 export async function compactNow(
   conversation: Conversation,
   reply: Reply,
+  names: string[],
 ): Promise<Step> {
-  const result = await compact(conversation, reply);
+  const result = await compact(conversation, reply, names);
   if (result.ok)
     return { conversation: result.value, notice: "history compacted" };
   return {
@@ -238,6 +239,7 @@ export async function compactIfNeeded(
   conversation: Conversation,
   reply: Reply,
   contextWindow: ContextWindow,
+  names: string[],
 ): Promise<Step> {
   if (conversation.promptTokens === undefined) return { conversation };
   const window = await contextWindow();
@@ -249,5 +251,5 @@ export async function compactIfNeeded(
   }
   if (!needsCompaction(conversation.promptTokens, window.value))
     return { conversation };
-  return compactNow(conversation, reply);
+  return compactNow(conversation, reply, names);
 }

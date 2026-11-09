@@ -37,7 +37,7 @@ export default tseslint.config(
         },
         {
           selector: "ThrowStatement",
-          message: "Return a Result (src/core/result.ts) instead of throwing.",
+          message: "Return a Result (src/core/messages.ts) instead of throwing.",
         },
       ],
     },

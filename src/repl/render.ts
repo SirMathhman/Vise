@@ -1,5 +1,5 @@
 import type { Writable } from "node:stream";
-import { sanitize } from "../core/tools.ts";
+import { sanitize } from "../core/tool-lines.ts";
 import type { ServerEvent } from "../protocol/protocol.ts";
 
 // Hook output longer than this is cut short on the terminal. The whole output still goes to the model.

@@ -3,7 +3,7 @@ import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { NOTES_FOLDER, parseHeader } from "../../core/notes.ts";
 import { err, ok, type Result } from "../../core/messages.ts";
-import { sanitize } from "../../core/tools.ts";
+import { sanitize } from "../../core/tool-lines.ts";
 import { readNote } from "./read-note.ts";
 
 interface ListedNote {

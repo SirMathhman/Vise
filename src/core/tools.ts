@@ -1,7 +1,5 @@
 import { type ToolCall, err, ok, type Result } from "./messages.ts";
-
-
-import { checkName, notePath, scaffold } from "./notes.ts";
+import { checkName } from "./notes.ts";
 
 export const LIST_FILES = "list_files";
 export const READ_FILE = "read_file";
@@ -18,7 +16,7 @@ export const MAX_LINES = 500;
 
 // The tools as the model sees them. They are sent with every request and never change,
 // so the prompt cache stays valid.
-export const listFilesSpec = {
+export const listFilesSpec: ToolSpec = {
   type: "function",
   function: {
     name: LIST_FILES,
@@ -44,7 +42,7 @@ export const listFilesSpec = {
   },
 };
 
-export const readFileSpec = {
+export const readFileSpec: ToolSpec = {
   type: "function",
   function: {
     name: READ_FILE,
@@ -72,7 +70,7 @@ export const readFileSpec = {
   },
 };
 
-export const editFileSpec = {
+export const editFileSpec: ToolSpec = {
   type: "function",
   function: {
     name: EDIT_FILE,
@@ -99,7 +97,7 @@ export const editFileSpec = {
   },
 };
 
-export const createFileSpec = {
+export const createFileSpec: ToolSpec = {
   type: "function",
   function: {
     name: CREATE_FILE,
@@ -122,7 +120,7 @@ export const createFileSpec = {
   },
 };
 
-export const createNoteSpec = {
+export const createNoteSpec: ToolSpec = {
   type: "function",
   function: {
     name: CREATE_NOTE,
@@ -145,7 +143,7 @@ export const createNoteSpec = {
   },
 };
 
-export const runPowershellSpec = {
+export const runPowershellSpec: ToolSpec = {
   type: "function",
   function: {
     name: RUN_POWERSHELL,
@@ -163,7 +161,7 @@ export const runPowershellSpec = {
   },
 };
 
-export const readCommandSpec = {
+export const readCommandSpec: ToolSpec = {
   type: "function",
   function: {
     name: READ_COMMAND,
@@ -183,7 +181,7 @@ export const readCommandSpec = {
   },
 };
 
-export const killCommandSpec = {
+export const killCommandSpec: ToolSpec = {
   type: "function",
   function: {
     name: KILL_COMMAND,
@@ -205,7 +203,7 @@ export const killCommandSpec = {
 
 // Starts a subagent: a separate conversation, with its profile and its own tool-call limit. Several
 // subagents asked for in one reply run together. A subagent is never offered this tool itself.
-export const runSubagentSpec = {
+export const runSubagentSpec: ToolSpec = {
   type: "function",
   function: {
     name: RUN_SUBAGENT,
@@ -249,6 +247,24 @@ export const toolSpecs = [
 ];
 export const toolNames: string[] = toolSpecs.map((spec) => spec.function.name);
 
+// A tool the model may be offered, in the shape the request carries.
+export interface ToolSpec {
+  type: "function";
+  function: ToolFunction;
+}
+
+export interface ToolFunction {
+  name: string;
+  description: string;
+  parameters: unknown;
+}
+
+// The tools that come from MCP servers are named `<server>__<tool>`. No built-in name contains "__", and
+// a server name cannot either, so the name alone says which kind a tool is.
+export function isExternalName(name: string): boolean {
+  return name.includes("__");
+}
+
 // Writes the disabled tool names to the settings file. The composition root supplies it.
 export type SaveDisabledTools = (names: string[]) => Promise<Result<void>>;
 
@@ -265,7 +281,10 @@ export type ToolsCommand = ToolsListCommand | ToolSwitchCommand;
 
 // Reads the words after /tools: nothing lists the tools, and `enable` or `disable` followed by a
 // tool name switches that tool.
-export function parseToolsCommand(words: string[]): Result<ToolsCommand> {
+export function parseToolsCommand(
+  words: string[],
+  names: string[],
+): Result<ToolsCommand> {
   const [action, name] = words;
   if (words.length === 0) return ok({ kind: "list" });
   if (
@@ -273,7 +292,7 @@ export function parseToolsCommand(words: string[]): Result<ToolsCommand> {
     words.length === 2 &&
     name !== undefined
   ) {
-    if (!toolNames.includes(name))
+    if (!names.includes(name))
       return err(new Error("no tool has that name; /tools lists them"));
     return ok({ kind: action, name });
   }
@@ -288,14 +307,14 @@ export interface ToolSwitch {
   enabled: boolean;
 }
 
-// Every tool with its switch, in the order of toolNames.
-export function toolSwitches(disabled: string[]): ToolSwitch[] {
-  return toolNames.map((name) => ({ name, enabled: !disabled.includes(name) }));
+// Every tool with its switch, in the order of names.
+export function toolSwitches(names: string[], disabled: string[]): ToolSwitch[] {
+  return names.map((name) => ({ name, enabled: !disabled.includes(name) }));
 }
 
 // One line per tool, as name: on or off.
-export function toolStates(disabled: string[]): string {
-  return toolNames
+export function toolStates(names: string[], disabled: string[]): string {
+  return names
     .map((name) => `${name}: ${disabled.includes(name) ? "off" : "on"}`)
     .join("\n");
 }
@@ -479,101 +498,4 @@ export function parseJobArgs(raw: string): Result<JobArgs> {
 function isLine(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 1;
 }
-
-// Edits, new files, and commands are run or written only after the user approves them.
-export function needsApproval(call: ToolCall): boolean {
-  return (
-    call.name === EDIT_FILE ||
-    call.name === CREATE_FILE ||
-    call.name === CREATE_NOTE ||
-    call.name === RUN_POWERSHELL ||
-    call.name === KILL_COMMAND
-  );
-}
-
-// The change or command shown to the user before they approve it. Undefined when the arguments are
-// invalid, in which case the tool reports that without writing or running anything.
-export function approvalPreview(call: ToolCall): string | undefined {
-  if (call.name === EDIT_FILE) {
-    const args = parseEditFileArgs(call.arguments);
-    if (!args.ok) return undefined;
-    return `edit ${args.value.path}\n--- previous\n${args.value.previous}\n+++ replacement\n${args.value.replacement}`;
-  }
-  if (call.name === CREATE_FILE) {
-    const args = parseCreateFileArgs(call.arguments);
-    if (!args.ok) return undefined;
-    return `create ${args.value.path}\n+++ content\n${args.value.content}`;
-  }
-  if (call.name === CREATE_NOTE) {
-    const args = parseCreateNoteArgs(call.arguments);
-    if (!args.ok) return undefined;
-    const { category, name } = args.value;
-    return `create ${notePath(category, name)}\n+++ content\n${scaffold(category, name)}`;
-  }
-  if (call.name === RUN_POWERSHELL) {
-    const args = parseRunPowershellArgs(call.arguments);
-    if (!args.ok) return undefined;
-    return `run in the working directory\n$ ${args.value.command}`;
-  }
-  if (call.name === KILL_COMMAND) {
-    const args = parseJobArgs(call.arguments);
-    if (!args.ok) return undefined;
-    return `stop background job ${args.value.job}`;
-  }
-  return undefined;
-}
-
-// Replaces control characters, except tab and newline, so model text cannot move or
-// overwrite the terminal's output when it is shown.
-export function sanitize(text: string): string {
-  return Array.from(text, (char) => {
-    const code = char.codePointAt(0) ?? 0;
-    const control = (code < 32 && code !== 9 && code !== 10) || code === 127;
-    return control ? "?" : char;
-  }).join("");
-}
-
-// The line shown to the user when the model makes a call.
-export function describeToolCall(call: ToolCall): string {
-  if (call.name === LIST_FILES) {
-    const args = parseListFilesArgs(call.arguments);
-    if (!args.ok) return `tool: ${LIST_FILES} (invalid arguments)`;
-    return `tool: ${LIST_FILES} ${args.value.path} depth ${args.value.depth}`;
-  }
-  if (call.name === READ_FILE) {
-    const args = parseReadFileArgs(call.arguments);
-    if (!args.ok) return `tool: ${READ_FILE} (invalid arguments)`;
-    return `tool: ${READ_FILE} ${args.value.path} lines ${args.value.start}-${args.value.end}`;
-  }
-  if (call.name === EDIT_FILE) {
-    const args = parseEditFileArgs(call.arguments);
-    if (!args.ok) return `tool: ${EDIT_FILE} (invalid arguments)`;
-    return `tool: ${EDIT_FILE} ${args.value.path}`;
-  }
-  if (call.name === CREATE_FILE) {
-    const args = parseCreateFileArgs(call.arguments);
-    if (!args.ok) return `tool: ${CREATE_FILE} (invalid arguments)`;
-    return `tool: ${CREATE_FILE} ${args.value.path}`;
-  }
-  if (call.name === CREATE_NOTE) {
-    const args = parseCreateNoteArgs(call.arguments);
-    if (!args.ok) return `tool: ${CREATE_NOTE} (invalid arguments)`;
-    return `tool: ${CREATE_NOTE} ${notePath(args.value.category, args.value.name)}`;
-  }
-  if (call.name === RUN_POWERSHELL) {
-    const args = parseRunPowershellArgs(call.arguments);
-    if (!args.ok) return `tool: ${RUN_POWERSHELL} (invalid arguments)`;
-    return `tool: ${RUN_POWERSHELL} ${args.value.command.split("\n")[0]}`;
-  }
-  if (call.name === READ_COMMAND || call.name === KILL_COMMAND) {
-    const args = parseJobArgs(call.arguments);
-    if (!args.ok) return `tool: ${call.name} (invalid arguments)`;
-    return `tool: ${call.name} job ${args.value.job}`;
-  }
-  if (call.name === RUN_SUBAGENT) {
-    const args = parseSubagentArgs(call.arguments);
-    if (!args.ok) return `tool: ${RUN_SUBAGENT} (invalid arguments)`;
-    return `tool: ${RUN_SUBAGENT} ${args.value.profile} up to ${args.value.maxToolCalls} tool calls`;
-  }
-  return `tool: ${call.name} (unknown tool)`;
-}
+

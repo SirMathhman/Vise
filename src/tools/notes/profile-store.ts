@@ -14,13 +14,12 @@ import {
   type ProfileSummary,
 } from "../../core/notes.ts";
 import { err, ok } from "../../core/messages.ts";
-import { toolNames } from "../../core/tools.ts";
 import { resolveInside } from "../files/contain.ts";
 import { readNote } from "./read-note.ts";
 
 // Profiles are the notes in notes/profile. The store lists and reads them through the containment check,
 // and writes only a profile that already exists, so the page cannot create a new one.
-export function profileStore(root: string): ProfileStore {
+export function profileStore(root: string, known: string[]): ProfileStore {
   return {
     async list() {
       let files: string[];
@@ -51,7 +50,7 @@ export function profileStore(root: string): ProfileStore {
     async write(detail: ProfileDetail) {
       const valid = checkProfileDetail(detail);
       if (!valid.ok) return valid;
-      const unknown = (detail.tools ?? []).find((tool) => !toolNames.includes(tool));
+      const unknown = (detail.tools ?? []).find((tool) => !known.includes(tool));
       if (unknown !== undefined) return err(new Error(`${unknown} is not a tool`));
       const place = await resolveInside(root, notePath(PROFILE_CATEGORY, detail.name));
       if (!place.ok) return err(new Error(`no profile named ${detail.name}`));

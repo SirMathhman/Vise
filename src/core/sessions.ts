@@ -4,7 +4,12 @@ import { type ChatMessage, err, ok, type Result } from "./messages.ts";
 
 import { HOOK_POINTS, checkName } from "./notes.ts";
 
-import { toolNames } from "./tools.ts";
+import { isExternalName, toolNames } from "./tools.ts";
+
+// A saved name is a built-in tool or one a server offers, so the names are checked by their form.
+function knownTool(name: string): boolean {
+  return toolNames.includes(name) || isExternalName(name);
+}
 
 // A saved session is the conversation as JSON, with a version so the format can change later.
 const SESSION_VERSION = 1;
@@ -56,14 +61,14 @@ const SessionSchema = z
   })
   .refine(
     (session) =>
-      (session.disabledTools ?? []).every((name) => toolNames.includes(name)),
+      (session.disabledTools ?? []).every(knownTool),
     {
       message: "a switched-off tool does not exist",
     },
   )
   .refine(
     (session) =>
-      (session.profile?.tools ?? []).every((name) => toolNames.includes(name)),
+      (session.profile?.tools ?? []).every(knownTool),
     {
       message: "a profile allows a tool that does not exist",
     },
