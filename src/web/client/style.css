@@ -316,6 +316,11 @@ textarea:disabled {
   margin-bottom: 6px;
 }
 
+/* A server row has its kind, name and Remove on the first line; its fields take the second line. */
+.profile-editor .server-row > div {
+  grid-column: 1 / -1;
+}
+
 .profile-editor fieldset > button {
   margin-top: 4px;
 }
