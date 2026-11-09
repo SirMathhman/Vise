@@ -220,7 +220,7 @@ Target layout. Test files sit beside the module each one tests; there is no sepa
         │   ├── server/
         │   │   ├── server.ts            startWebServer: listens on 127.0.0.1, checks the token and Origin on the socket, serves the page
         │   │   ├── hub.ts               keeps every event for replay; one viewer at a time (a new tab takes over the session)
-        │   │   ├── client-message.ts    reads the browser's messages: lines, approvals, and the two profile requests
+        │   │   ├── client-message.ts    reads the browser's messages: lines, approvals, the two profile requests, and the MCP save
         │   │   └── page.ts              bundles the page script at startup
         │   └── client/
         │       ├── main.ts              the socket, reconnects, render schedule (side effects only)
@@ -338,6 +338,8 @@ Each item is a known defect or gap. Fixes are listed under Future Work.
 
 #### MCP servers
 
+- **The MCP panel drops a server the file no longer configures.** `mcpPanel` (`src/web/client/mcp-view.ts:39`) lists only the configured servers. A server that started and was then removed from the file shows only its problems, not its state or tools, until the next start. The editor's inputs have placeholders but no labels (mcp-view.ts:62-83). In the browser at 961px wide, the editor's inputs measure 62px tall beside a 42px Remove button.
+- **The MCP section copies a helper and borrows other styles.** `element` is defined in both `src/web/client/mcp-view.ts:18` and `src/web/client/view.ts:39`. The section reuses the `sessions` and `profile-editor` classes, so its look follows those other sections.
 - **MCP servers received the API key and the web token (fixed).** `openSession` (`src/tools/mcp/client.ts`) now passes `childEnvironment(process.env)`, as `run_powershell` and the `taskkill` in `jobs.ts` do, so neither name reaches a server, a command, or a stop. The filter does not stop a program the repository ships from reading `.env` from disk (see Security).
 - **Servers start before the session is ready and are not stopped on an early interrupt.** `startMcpServers` runs before any line is read and before the `sessionStart` hooks. A server that does not answer costs up to 60 seconds per handshake and per `tools/list` page, and the servers start one after another. `servers` stays empty until `index.ts:166`, so a Ctrl+C during startup runs `stopEverything` on nothing, and the servers already started are left running. (By reading the code; not run.)
 - **A name that looks external asks for approval even when no server offers it.** `needsApproval` treats any `<x>__<y>` name as an MCP tool (`src/core/tool-lines.ts:32`). A call to a name no server offers is previewed and approved, and only then fails with "unknown tool" (`src/tools/run-tool.ts:41`, `dispatch`).
@@ -406,7 +408,7 @@ Each item is a known defect or gap. Fixes are listed under Future Work.
 
 ### Trust boundary
 
-Everything read from stdin, or sent over the browser socket, is untrusted text, and every line is sent to OpenRouter, a third party. The model's reply is also untrusted text. Vise reads file names and file contents under the working directory for `list_files` and `read_file` (hidden entries are skipped, and paths are checked on their real location). It writes files only through `edit_file`, `create_file`, and `create_note`, after the user approves each change on the terminal. `create_file` and `create_note` never overwrite. The writes without an approval are the ones the user types: `/note new` writes a note, and `/tools enable` or `/tools disable` writes `.vise/tools.json`. Neither takes model text. Vise starts PowerShell only through `run_powershell`, after the user approves each command. The command runs in the working directory. A command still running after 30 seconds becomes a background job that runs until the user approves `kill_command` for it or Vise exits, and its output is kept as its last 500 lines per stream. A child that outlives PowerShell is not stopped by `kill_command` (see Known Problems). The API key comes from `.env` and must never be echoed or logged.
+Everything read from stdin, or sent over the browser socket, is untrusted text, and every line is sent to OpenRouter, a third party. The model's reply is also untrusted text. Vise reads file names and file contents under the working directory for `list_files` and `read_file` (hidden entries are skipped, and paths are checked on their real location). It writes files only through `edit_file`, `create_file`, and `create_note`, after the user approves each change on the terminal. `create_file` and `create_note` never overwrite. The writes without an approval are the ones the user types or clicks: `/note new` writes a note, `/tools enable` or `/tools disable` writes `.vise/tools.json`, and the page's own saves write a profile or `.vise/mcp.json`. None takes model text. Vise starts PowerShell only through `run_powershell`, after the user approves each command. The command runs in the working directory. A command still running after 30 seconds becomes a background job that runs until the user approves `kill_command` for it or Vise exits, and its output is kept as its last 500 lines per stream. A child that outlives PowerShell is not stopped by `kill_command` (see Known Problems). The API key comes from `.env` and must never be echoed or logged.
 
 ### Trust in files and settings
 
@@ -459,6 +461,7 @@ Status is **missing**, **partial**, or in place.
 
 #### Input and the session
 
+- Move the DOM helper that `view.ts` and `mcp-view.ts` both define into one module, and give the MCP section its own CSS classes.
 - Announce, when a question discards queued lines, how many were dropped.
 - Give the turn loop one explicit session-ended state, set when input ends (the readline `close` event), on a stream error, or at `/exit` during a question. Check it before every request and before every tool call. Queued lines still count as input to answer, so the check reads the queue rather than a separate flag. Only the queue-empty case stops the loop.
 

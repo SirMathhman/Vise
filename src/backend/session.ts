@@ -94,6 +94,17 @@ async function askApproval(state: SessionState, preview: string): Promise<boolea
   return answer === "approve";
 }
 
+// A page save changes a file, so it is refused while an approval question is open. The question is
+// the user's to answer first. Returns true when the save was refused.
+function refuseWhileAsking(state: SessionState): boolean {
+  if (state.question === undefined) return false;
+  state.events.push({
+    kind: "notice",
+    text: "an approval question is open: answer it first. Nothing was saved.",
+  });
+  return true;
+}
+
 // Handles one message from the frontend. While a question is open, a line answers it; an approval
 // answers only the question with its id.
 function receive(state: SessionState, message: ClientMessage): void {
@@ -119,9 +130,11 @@ function receive(state: SessionState, message: ClientMessage): void {
       void readProfileFor(state.ports, sink(state), message.name);
       return;
     case "profileWrite":
+      if (refuseWhileAsking(state)) return;
       void writeProfileFor(state.ports, sink(state), message.profile);
       return;
     case "mcpWrite":
+      if (refuseWhileAsking(state)) return;
       void writeMcpFor(state.ports, sink(state), message.servers);
       return;
     case "approval": {
