@@ -221,8 +221,8 @@ Target layout. Test files sit beside the module each one tests; there is no sepa
         │   └── client/
         │       ├── main.ts              the socket, reconnects, render schedule (side effects only)
         │       ├── state.ts             pure reducer: server events to the transcript
-        │       ├── markdown.ts          pure Markdown subset for replies (headings, lists, code, bold, italics; links as text) and its DOM builder
-        │       └── view.ts              DOM from the state, text set with textContent only
+        │       ├── markdown.ts          pure Markdown subset for replies (headings, lists, code, bold, italics; links as text), no DOM
+        │       └── view.ts              DOM from the state and from the Markdown blocks, text set with textContent only
         └── tools/                       disk, process, and settings work for the tools and the frontend
             ├── run-tool.ts              dispatches a call by name, checks the target before asking, runs a change only when approve resolves true
             ├── run-powershell.ts        the only process spawning; a command still running after 30 seconds becomes a background job
@@ -287,6 +287,7 @@ Each item is a known defect or gap. Fixes are listed under Future Work.
 #### Turns and output
 
 - **Tool lines appear late.** A call's line is printed after the reply has ended, because the call is complete only when the stream finishes. A long reply therefore appears before the call that caused it.
+- **Reply Markdown is a subset with edge cases.** Headings deeper than three `#` show their hashes as text, and a paragraph line that begins with digits and a period (for example `2020. was a year`) opens a numbered list. A line of three asterisks is read as a bullet. Each is a known gap of the subset, not a rendering error.
 - **Partial replies stay on screen.** When a model stream fails, `streamChat` yields an `err` result, and `runRepl` drops the user line from the history, so no truncated answer is recorded. The text already printed is not marked as incomplete, and nothing tells the user it was discarded.
 
 #### Context and compaction
@@ -405,7 +406,7 @@ Status is **missing**, **partial**, or in place.
 
 #### Input and model output
 
-- **Browser output (in place).** The page sets model text, tool lines, previews, and errors with `textContent` only, never as HTML, so model output cannot run as markup in the page.
+- **Browser output (in place).** The page sets model text, tool lines, previews, and errors with `textContent` only, never as HTML, so model output cannot run as markup in the page. Replies are read as the Markdown subset in `src/web/client/markdown.ts` and built as elements; a link keeps its text and drops its address, so model text never sets an `href`.
 - **Terminal escape injection (in place).** The renderer (`src/repl/render.ts`) sanitizes every line the backend emits: model text, tool lines, approval previews, notices, and errors. `sanitize` replaces control characters other than tab and newline.
 - **Prompt injection (missing).** Model replies, earlier replies resent in history, and text read from files can carry instructions the model then follows. `list_files` returns file names and `read_file` returns file contents, and both are model input. A file the model reads can carry an instruction into the next request, and an injected instruction can make the model call `read_file` on a file the user did not mean it to read. The output of `run_powershell` is model input too. Any action taken from model output must be confirmed by the user and must not be reachable from text the model produced alone. Compaction is a second persistence path: a model-written summary becomes a user-role message in every later request, so an injected instruction survives compaction with more authority than the reply it came from. Data framing for tool output is missing.
 - **Unbounded input (partial).** Job output lines are cut at 8192 characters and marked. User input, model replies, and file reads are not limited. Input needs a maximum line length with a defined response when it is exceeded.
@@ -507,6 +508,8 @@ Status is **missing**, **partial**, or in place.
 #### Limits and output
 
 - Add a maximum line length and control-character handling before echo, applied to input and to model output.
+- Move the Markdown DOM builder out of `src/web/client/markdown.ts` into `view.ts`, so the parser has no DOM and its tests run without a document, as the Structure section describes.
+- Recognise heading levels four to six and stop a number followed by a period at the start of a paragraph from opening a list, or record the subset's limits in the page's help text.
 - Escape or sanitize model replies and `error:` lines the same way as tool lines.
 - Bound the history per request: apply the compaction trigger to the size of the request about to be sent, not the previous one. Set `max_tokens`.
 
@@ -528,4 +531,4 @@ These are the obvious concerns only. Measure with a profiler before optimizing.
 - `/context` and the check before each message both fetch the full model listing, one large response for one number (see Model cache).
 - Compaction resends the whole history once more, plus the summary request, which roughly doubles the tokens for that turn. It is rare, but a long session can hit it repeatedly.
 - `list_files` reads the whole tree to the depth before it caps the output, and `read_file` loads the whole file to return a range. Both are described under Cost and size limits in Known Problems; the cap limits the output, not the walk or the memory.
-- **Prompt cache.** The guiding principle is to hit the provider's prompt cache as often as possible (N5, N6). `wireMessages` and `toWire` in `src/openrouter.ts` put the marker only on a user or assistant message without tool calls. A tool message, or an assistant message with tool calls, is sent without a marker. Each round of a tool loop ends with a tool message, so the requests made during a tool loop have no breakpoint and write no cache entry. The next turn then reuses only the prefix written by the last text reply. The fix is to attach the marker to the last message whatever its shape, for example by sending a tool message's content as a text part with `cache_control`, and to confirm with a probe that the provider accepts it. A probe against OpenRouter with `anthropic/claude-haiku-5.5` showed 7,204 cached tokens on the second identical prefix with the marker, and 0 without it. That probe covered two identical requests. It has not covered the turn after a completed one, where the previous last message is sent as plain text, so the cross-turn case needs a probe with two real turns. Provider caches are short-lived (about five minutes on Anthropic models), so a longer pause loses the prefix. Each compaction writes one cache entry for the whole history plus the summary request. The app does not yet read `cache_read` and `cache_write` from `usage`, so the hit rate is assumed, not measured.
+- **Prompt cache.** The guiding principle is to hit the provider's prompt cache as often as possible (N5, N6). `wireMessages` and `toWire` in `src/openrouter.ts` put the marker on the last message of each request whatever its role, as a text part (a tool message's content included). Two shapes cannot carry it: an assistant message with tool calls and no text, and an empty text. The marker on a tool message has not yet been confirmed against OpenRouter by a live probe, so a provider that rejects it would fail the tool loop rather than miss the cache. A probe against OpenRouter with `anthropic/claude-haiku-5.5` showed 7,204 cached tokens on the second identical prefix with the marker, and 0 without it. That probe covered two identical requests. It has not covered the turn after a completed one, where the previous last message is sent as plain text, so the cross-turn case needs a probe with two real turns. Provider caches are short-lived (about five minutes on Anthropic models), so a longer pause loses the prefix. Each compaction writes one cache entry for the whole history plus the summary request. The app does not yet read `cache_read` and `cache_write` from `usage`, so the hit rate is assumed, not measured.

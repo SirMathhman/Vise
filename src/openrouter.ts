@@ -82,7 +82,8 @@ function decode<T>(
 }
 
 // Converts the history to the provider's format. The last message is marked as a
-// prompt-cache breakpoint when it is text, so the next request can reuse the prefix.
+// prompt-cache breakpoint whatever its role, so the next request can reuse the prefix.
+// An assistant message with tool calls and no text has nowhere to put the marker.
 // The stored history is unchanged.
 function wireMessages(messages: ChatMessage[]): unknown[] {
   return messages.map((message, index) =>
@@ -90,18 +91,25 @@ function wireMessages(messages: ChatMessage[]): unknown[] {
   );
 }
 
+// The text as the provider takes it, marked as a breakpoint when it is the last message. An empty text
+// cannot carry a marker, so it stays a plain string.
+function wireText(text: string, last: boolean): unknown {
+  if (!last || text === "") return text;
+  return [{ type: "text", text, cache_control: { type: "ephemeral" } }];
+}
+
 function toWire(message: ChatMessage, last: boolean): unknown {
   if (message.role === "tool") {
     return {
       role: "tool",
       tool_call_id: message.toolCallId,
-      content: message.content,
+      content: wireText(message.content, last),
     };
   }
   if (message.role === "assistant" && message.toolCalls) {
     return {
       role: "assistant",
-      content: message.content || null,
+      content: message.content ? wireText(message.content, last) : null,
       ...(message.reasoning ? { reasoning_details: message.reasoning } : {}),
       tool_calls: message.toolCalls.map((call) => ({
         id: call.id,
@@ -110,17 +118,7 @@ function toWire(message: ChatMessage, last: boolean): unknown {
       })),
     };
   }
-  if (!last) return { role: message.role, content: message.content };
-  return {
-    role: message.role,
-    content: [
-      {
-        type: "text",
-        text: message.content,
-        cache_control: { type: "ephemeral" },
-      },
-    ],
-  };
+  return { role: message.role, content: wireText(message.content, last) };
 }
 
 interface StreamOptions {
