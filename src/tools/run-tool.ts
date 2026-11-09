@@ -31,11 +31,13 @@ import { readFileLines } from "./files/read-file.ts";
 import { createNote } from "./notes/create-note.ts";
 import { MAX_JOBS, killJob, readJob, runningJobs } from "./jobs.ts";
 import { runPowershell } from "./run-powershell.ts";
+import { undoStore } from "./undo/undo-files.ts";
+import type { UndoStore } from "../core/messages.ts";
 
 // The tool runner for a working directory and the MCP servers that started. A change or command is
 // checked and previewed, and it runs only if `approve` says yes. Errors come back as text for the
 // model to read.
-export function runTool(root: string, mcp: McpRegistry = noServers()): ToolRunner {
+export function runTool(root: string, mcp: McpRegistry = noServers(), undo: UndoStore = undoStore(root)): ToolRunner {
   return async (call: ToolCall, approve: Approve, offered: string[]) => {
     // A tool switched off is refused here, so no caller of the runner can run it.
     const known = toolNames.includes(call.name) || mcp.has(call.name);
@@ -53,8 +55,27 @@ export function runTool(root: string, mcp: McpRegistry = noServers()): ToolRunne
         return "the user declined this change";
     }
     if (mcp.has(call.name)) return mcp.call(call.name, call.arguments);
+    const written = writtenPath(call);
+    if (written !== undefined) return undo.around(written, () => dispatch(root, call));
     return dispatch(root, call);
   };
+}
+
+// The file a change writes, relative to the working directory. Undefined for a call that writes no file.
+function writtenPath(call: ToolCall): string | undefined {
+  if (call.name === EDIT_FILE) {
+    const args = parseEditFileArgs(call.arguments);
+    return args.ok ? args.value.path : undefined;
+  }
+  if (call.name === CREATE_FILE) {
+    const args = parseCreateFileArgs(call.arguments);
+    return args.ok ? args.value.path : undefined;
+  }
+  if (call.name === CREATE_NOTE) {
+    const args = parseCreateNoteArgs(call.arguments);
+    return args.ok ? notePath(args.value.category, args.value.name) : undefined;
+  }
+  return undefined;
 }
 
 // Refuses a file change whose path is outside the working directory or hidden, before anyone is asked.

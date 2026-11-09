@@ -126,3 +126,15 @@ export interface McpStore {
   config(): Promise<Result<McpServerEntry[]>>;
   save(servers: McpServerEntry[]): Promise<Result<void>>;
 }
+
+// Where file changes are recorded for /undo. A change runs inside `around`, so what it did can be reverted.
+export interface UndoStore {
+  // Starts a turn: each message of the user is one turn.
+  startTurn(): void;
+  // The turns back that /undo can return to, as numbers. 1 is the most recent turn.
+  points(): number[];
+  // Puts the files back to the start of the turn that is `turnsBack` back.
+  revert(turnsBack: number): Promise<Result<string[]>>;
+  // Runs a change to the file at `path`, relative to the working directory, and records it.
+  around(path: string, run: () => Promise<string>): Promise<string>;
+}

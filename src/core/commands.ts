@@ -71,6 +71,12 @@ export interface HelpLine {
   words: string[];
 }
 
+// An /undo command. words are the words after /undo: none, or the number of turns back to return to.
+export interface UndoLine {
+  kind: "undo";
+  words: string[];
+}
+
 // A /mcp command. It takes no words; any that follow are an error the backend reports.
 export interface McpLine {
   kind: "mcp";
@@ -81,6 +87,7 @@ export type Line =
   | NewLine
   | HelpLine
   | McpLine
+  | UndoLine
   | ModelLine
   | ThinkingLine
   | ExitLine
@@ -118,6 +125,9 @@ export function classifyLine(line: string): Line {
   }
   if (command === "/model" || command.startsWith("/model ")) {
     return { kind: "model", words: command.split(/\s+/).slice(1) };
+  }
+  if (command === "/undo" || command.startsWith("/undo ")) {
+    return { kind: "undo", words: command.split(/s+/).slice(1) };
   }
   if (command === "/mcp" || command.startsWith("/mcp ")) {
     return { kind: "mcp", words: command.split(/\s+/).slice(1) };
@@ -228,6 +238,7 @@ export type HelpName =
   | "profile"
   | "tools"
   | "mcp"
+  | "undo"
   | "thinking"
   | "model"
   | "save"
@@ -271,6 +282,12 @@ const COMMAND_HELP: Record<HelpName, CommandHelp> = {
     summary: "lists the tools, or switches one on or off",
     detail:
       "With no argument, lists each tool as on or off. `enable` or `disable` with a tool name switches it. The change applies from the next request and is saved to the settings file.",
+  },
+  undo: {
+    usage: "/undo [turns back]",
+    summary: "restores the files as they were before a recent turn",
+    detail:
+      "Puts the files back to where they were at the start of the turn that is the given number of turns back. With no number, the most recent turn is undone. The turns that can be returned to are 1, 2, 3, 5, 8, and so on. The log is kept in memory, so it is lost when Vise exits. Commands run with run_powershell are not undone, and the conversation still shows the earlier edits.",
   },
   mcp: {
     usage: "/mcp",
@@ -365,4 +382,12 @@ export function mcpStatusText(statuses: McpServerStatus[]): string {
       return [head, ...server.problems.map((problem) => `  ${problem}`)].join("\n");
     })
     .join("\n");
+}
+
+// The number of turns /undo goes back: none means the most recent turn, 1.
+export function parseUndoCommand(words: string[]): Result<number> {
+  if (words.length === 0) return ok(1);
+  const [word] = words;
+  if (words.length === 1 && word !== undefined && /^[1-9]\d*$/.test(word)) return ok(Number(word));
+  return err(new Error("usage: /undo [turns back]"));
 }

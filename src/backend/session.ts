@@ -228,6 +228,7 @@ async function sessionLoop(
     // The first message names the autosave session; later messages keep saving to it.
     const created = conversation.autosave === undefined;
     const name = created ? await chooseAutosave(state, input.text) : conversation.autosave;
+    state.ports.undo?.startTurn();
     const turn = await runMessageTurn(input.text, conversation, {
       ports: state.ports,
       emit,

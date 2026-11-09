@@ -385,6 +385,14 @@ function newConversationButton(doc: Document, actions: ViewActions): HTMLButtonE
   return button;
 }
 
+// The Undo button. It sends /undo, the line the user would type, so the page keeps to lines and approvals.
+function undoButton(doc: Document, actions: ViewActions): HTMLButtonElement {
+  const button = element(doc, "button", "undo-last", "Undo");
+  button.type = "button";
+  button.addEventListener("click", () => actions.line("/undo"));
+  return button;
+}
+
 // Builds the page once, then replaces the transcript and the controls on each render.
 export function createView(
   doc: Document,
@@ -394,7 +402,8 @@ export function createView(
   const header = element(doc, "header", "bar", "Vise");
   const status = element(doc, "span", "status", "");
   const newChat = newConversationButton(doc, actions);
-  header.append(status, newChat);
+  const undo = undoButton(doc, actions);
+  header.append(status, undo, newChat);
   const panel = panelBox(doc);
   // What the panel was last built from, so an unchanged panel is left alone.
   let panelKey = "";
@@ -471,6 +480,7 @@ export function createView(
         toolPanel.show("Tools", state.tools.length, toolsPanel(doc, state.tools, sendable, actions));
       }
       newChat.disabled = !sendable;
+      undo.disabled = !sendable;
       input.disabled = !sendable;
       send.disabled = !sendable;
       input.placeholder = open

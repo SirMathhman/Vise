@@ -3,6 +3,7 @@ import {
   helpText,
   parseModelCommand,
   parseThinkingCommand,
+  parseUndoCommand,
   type ExitLine,
   type Line,
   type MessageLine,
@@ -93,6 +94,9 @@ export async function runCommand(
     case "mcp":
       runMcpCommand(input.words, ports, emit);
       return undefined;
+    case "undo":
+      await runUndoCommand(input.words, ports, emit);
+      return undefined;
     case "session":
       return runSessionCommand(input.words, ports, emit, conversation);
     case "thinking":
@@ -165,6 +169,30 @@ async function runProfileCommand(
     tools: allowed.value,
     hooks: hooks.value,
   });
+}
+
+// Runs /undo: puts the files back to the start of a recent turn. The conversation is not changed.
+async function runUndoCommand(words: string[], ports: SessionPorts, emit: Emit): Promise<void> {
+  const turnsBack = parseUndoCommand(words);
+  if (!turnsBack.ok) {
+    emit({ kind: "error", message: turnsBack.error.message });
+    return;
+  }
+  if (ports.undo === undefined) {
+    emit({ kind: "error", message: "undo is not available here" });
+    return;
+  }
+  const points = ports.undo.points();
+  if (!points.includes(turnsBack.value)) {
+    emit({ kind: "error", message: `no undo point ${turnsBack.value} turns back; the points are ${points.join(", ") || "none"}` });
+    return;
+  }
+  const restored = await ports.undo.revert(turnsBack.value);
+  if (!restored.ok) {
+    emit({ kind: "error", message: restored.error.message });
+    return;
+  }
+  emit({ kind: "notice", text: `restored ${restored.value.join(", ") || "no files"}. The conversation still shows the earlier edits, and commands are not undone.` });
 }
 
 // Runs /mcp: prints the servers as they went at the start of this session. It takes no words.

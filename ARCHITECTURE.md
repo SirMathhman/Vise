@@ -85,7 +85,7 @@ The dependency rules are in Dependency direction below.
 
 ### Commands
 
-The commands are `/exit`, `/context`, `/compact`, `/note`, `/profile`, `/tools`, `/mcp`, `/thinking`, `/model`, `/save`, `/load`, `/sessions`, `/new`, and `/help`. The core classifies any other `/` line as `unknown-command`, and the frontend reports it as an error.
+The commands are `/exit`, `/context`, `/compact`, `/note`, `/profile`, `/tools`, `/mcp`, `/undo`, `/thinking`, `/model`, `/save`, `/load`, `/sessions`, `/new`, and `/help`. The core classifies any other `/` line as `unknown-command`, and the frontend reports it as an error.
 
 - **`/exit`**: the core recognises a line whose trimmed text is `/exit`. After it, the session accepts no further lines, even ones that arrived in the same chunk of input. Bare words such as `exit` or `quit` are ordinary lines.
 - **`/context`**: reports the prompt tokens the provider counted for the most recent request that reported usage, out of the model's context window. Both numbers come from the provider, not an estimate. Before any request has reported usage, it says no request has been sent. After a compaction, it says the size is unknown until the next request, because the counted size described the history that was replaced. It never says no request was sent when one was.
@@ -241,6 +241,9 @@ Target layout. Test files sit beside the module each one tests; there is no sepa
             │   ├── client.ts            one server over stdio: JSON-RPC, one message per line
             │   ├── http-client.ts       one server over HTTP (Streamable HTTP): a POST per message, a JSON or event-stream answer read as it arrives, the session id sent back, and a DELETE on stop
             │   └── registry.ts          starts the servers, lists their tools as <server>__<tool>, runs calls, stops them at exit
+            ├── undo/
+            │   ├── undo-log.ts         the undo log in memory: each turn's changes as the bytes before them, the points (1, 2, 3, 5, 8 ... turns back), and the revert plan
+            │   └── undo-files.ts       records each file change and reverts files to a point, refusing when a file changed outside Vise
             ├── run-powershell.ts        the only process spawning; a command still running after 30 seconds becomes a background job
             ├── jobs.ts                  background jobs: last 500 lines per stream, reads, stops process trees, stops all at exit (at most 5 running)
             ├── tool-settings.ts         .vise/tools.json: readToolSettings (at startup) and saveToolSettings (via /tools)
@@ -333,6 +336,7 @@ Each item is a known defect or gap. Fixes are listed under Future Work.
 - **`/tools` and the tools panel ignore a profile's whitelist.** `toolStates` prints each tool as on or off from the switches alone, and `runToolsCommand` passes it only `disabledTools`. The `tools` event is built the same way (`toolSwitches` in `announceTools`), so the page's panel also shows `on` for a tool the active profile does not allow. `/tools enable` reports it on while it is still not offered.
 - **`edit_file` rewrites bytes outside the edit.** `editFile` reads the file as UTF-8 and writes it back as UTF-8, so any byte that is not valid UTF-8 becomes U+FFFD in the whole file (verified: `61 ff 0a 62` edited to `c` gave `61 ef bf bd 0a 63`).
 - **The approval preview hides what will change.** It prints `previous` and `replacement`, not the line of the first match, nor how many matches there are. The write replaces the first match at the time of the write, so a file changed during the question can put the first match somewhere the user did not see. The preview also shows the path as typed, not the real location a link resolves to.
+- **Undo covers file tools only, and its records are in memory.** `/undo` reverts edits and creates made by `edit_file`, `create_file`, and `create_note`. A command run with `run_powershell` is not recorded, and the conversation still shows the edits. Every turn keeps its record, so each offered point stays exact, which means memory grows with the bytes of the files changed. A revert that fails part-way leaves the files it reached changed, and the log not yet updated.
 - **`create_file` previews the whole content.** A large file floods the terminal before the question, and the user answers after scrolling past it.
 - **`resolveNewInside` reports a misleading error when an ancestor is a file.** For `a.txt/x.txt` where `a.txt` is a regular file, folder creation fails with EEXIST, and `createFile` reports "the file already exists" for `x.txt`, which does not exist (verified).
 

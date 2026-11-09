@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { classifyLine, mcpStatusText } from "./commands.ts";
+import { classifyLine, mcpStatusText, parseUndoCommand } from "./commands.ts";
 import { parseAskLine, askResultText } from "./tool-lines.ts";
 import { parseAskArgs } from "./tools.ts";
 import { parseSubagentArgs, parseToolsCommand, toolNames, toolStates } from "./tools.ts";
@@ -109,7 +109,7 @@ test("reads /help and its words, and lists every command or describes the one na
     words: ["model"],
   });
   const list = helpText([]);
-  expect(list.ok && list.value.split("\n")).toHaveLength(14);
+  expect(list.ok && list.value.split("\n")).toHaveLength(15);
   expect(list.ok && list.value).toContain("/model [search <text> | <name>]");
   const model = helpText(["/model"]);
   expect(model.ok && model.value.startsWith("/model [search <text> | <name>]\n")).toBe(true);
@@ -156,4 +156,14 @@ test("ask_user needs a question and at least one choice; a line picks numbers or
   expect(askResultText({ chosen: ["a"], text: "and more" })).toBe(
     "the user chose: a; the user answered: and more",
   );
+});
+
+test("/undo takes no number for the most recent turn, or one number of turns back", () => {
+  expect(classifyLine("/undo")).toEqual({ kind: "undo", words: [] });
+  expect(classifyLine("/undo 3")).toEqual({ kind: "undo", words: ["3"] });
+  expect(parseUndoCommand([])).toEqual({ ok: true, value: 1 });
+  expect(parseUndoCommand(["5"])).toEqual({ ok: true, value: 5 });
+  expect(parseUndoCommand(["0"]).ok).toBe(false);
+  expect(parseUndoCommand(["two"]).ok).toBe(false);
+  expect(parseUndoCommand(["1", "2"]).ok).toBe(false);
 });

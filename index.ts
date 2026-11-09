@@ -17,6 +17,8 @@ import { startWebServer } from "./src/web/server/server.ts";
 import { killAllJobs } from "./src/tools/jobs.ts";
 import { type McpRegistry, noServers, startMcpServers } from "./src/tools/mcp/registry.ts";
 import { mcpStore } from "./src/tools/mcp/config.ts";
+import { undoStore } from "./src/tools/undo/undo-files.ts";
+import type { UndoStore } from "./src/core/messages.ts";
 import { toolNames } from "./src/core/tools.ts";
 import {
   loadProfile,
@@ -56,6 +58,8 @@ interface PortSetup {
   // Every tool the session may offer, built-in and from the MCP servers.
   allTools: string[];
   mcp: McpRegistry;
+  // The file changes /undo can revert, kept in memory for this session.
+  undo: UndoStore;
   hooks: SessionPorts["hooks"];
   instructions: SessionPorts["instructions"];
 }
@@ -83,7 +87,8 @@ function sessionPorts(setup: PortSetup): SessionPorts {
           },
         }),
     },
-    tools: runTool(root, setup.mcp),
+    tools: runTool(root, setup.mcp, setup.undo),
+    undo: setup.undo,
     allTools: setup.allTools,
     notes: runNoteCommand(root),
     profile: loadProfile(root),
@@ -190,6 +195,7 @@ if (import.meta.main) {
         disabledTools: disabled.value,
         allTools,
         mcp: servers,
+        undo: undoStore(process.cwd()),
         hooks: hookRunner(process.cwd(), hookConfig.value),
         instructions,
       }),
