@@ -271,6 +271,7 @@ export const toolSpecs = [
   runPowershellSpec,
   readCommandSpec,
   killCommandSpec,
+  runSubagentSpec,
   askUserSpec,
 ];
 export const toolNames: string[] = toolSpecs.map((spec) => spec.function.name);

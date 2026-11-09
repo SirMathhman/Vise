@@ -21,6 +21,9 @@ export interface CallsStep {
   disabledTools: string[];
 }
 
+// The tools the backend runs itself. The runner does not see them, so the offered check is made here too.
+const BACKEND_TOOLS: string[] = [RUN_SUBAGENT, ASK_USER];
+
 export function toolMessage(toolCallId: string, content: string): ChatMessage {
   return { role: "tool", toolCallId, content };
 }
@@ -43,6 +46,11 @@ export async function runCalls(step: CallsStep): Promise<ChatMessage[]> {
       continue;
     }
     step.emit({ kind: "toolCall", description });
+    // A tool that is switched off, or left out by the profile, is refused before anyone is asked.
+    if (BACKEND_TOOLS.includes(call.name) && !step.offered.includes(call.name)) {
+      results.push(Promise.resolve(toolMessage(call.id, `error: tool ${call.name} is switched off`)));
+      continue;
+    }
     if (call.name === ASK_USER) {
       const args = parseAskArgs(call.arguments);
       const text = args.ok ? await step.ask(args.value) : `error: ${args.error.message}`;

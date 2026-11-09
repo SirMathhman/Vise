@@ -122,7 +122,7 @@ The commands are `/exit`, `/context`, `/compact`, `/note`, `/profile`, `/tools`,
   - `run_subagent` (starts a subagent; see Subagents);
   - `ask_user` (asks the user a question with at least one choice, and returns the answer; see Asking the user);
   - MCP tools, named `<server>__<tool>`, from the servers in `.vise/mcp.json` (see MCP servers).
-- Of the ten built-in tools, eight run in `src/tools/` through `runTool`, which dispatches by name and checks the target before asking. `run_subagent` and `ask_user` are started by the backend, not by `runTool`, because it runs a conversation rather than a single action.
+- Of the ten built-in tools, eight run in `src/tools/` through `runTool`, which dispatches by name and checks the target before asking. `run_subagent` and `ask_user` are started by the backend, not by `runTool`, because it runs a conversation rather than a single action. Whichever part runs a call, the call is first checked against the tools offered in this request, by one shared check, so a switched-off tool is refused the same way for every tool (see Future Work).
 
 ### Approval
 
@@ -317,6 +317,9 @@ Each item is a known defect or gap. Fixes are listed under Future Work.
 
 #### Tools and approval
 
+- **`ask_user` and `run_subagent` skip the switched-off check.** `runCalls` (`src/backend/calls.ts:46-65`) starts both before any check of `step.offered`, and `runTool`'s check (`src/tools/run-tool.ts:41-44`) is never reached for them. A model that calls `ask_user` after the user switched it off, or after a profile's whitelist left it out, still asks the user a question. This breaks the rule that a switched-off tool is refused without approval.
+- **`/exit` at an `ask_user` question is sent to the model as the answer.** `receive` (`src/backend/session.ts:157`) parses an ask question's line with `parseAskLine` only. Unlike an approval, it does not read `/exit` as an exit (`answerOfLine`, `src/core/commands.ts:210`), so the session goes on and a request follows. This breaks F1 and the Approval section's rule that `/exit` during a question ends the session.
+- **An open question's kind is implicit.** `OpenQuestion` (`src/backend/session.ts:37-42`) has an optional `choices` that tells an approval from an ask, and `Reply` is `ApprovalAnswer | AskReply`, so a bare string means a refusal to an approval and "no answer" to an ask. `receive` checks `choices` in three places, and nothing enforces the pairing.
 - **A request with no tools field is unverified.** With no tools switched on, `streamChat` omits `tools`. A history that already holds tool calls and results may then be sent without tool definitions. Whether OpenRouter accepts that has not been checked. A profile's `tools:` whitelist reaches the same case: a history with calls to tools the profile does not allow is sent with those tools left out.
 - **`/tools` and the tools panel ignore a profile's whitelist.** `toolStates` prints each tool as on or off from the switches alone, and `runToolsCommand` passes it only `disabledTools`. The `tools` event is built the same way (`toolSwitches` in `announceTools`), so the page's panel also shows `on` for a tool the active profile does not allow. `/tools enable` reports it on while it is still not offered.
 - **`edit_file` rewrites bytes outside the edit.** `editFile` reads the file as UTF-8 and writes it back as UTF-8, so any byte that is not valid UTF-8 becomes U+FFFD in the whole file (verified: `61 ff 0a 62` edited to `c` gave `61 ef bf bd 0a 63`).
@@ -387,7 +390,7 @@ Each item is a known defect or gap. Fixes are listed under Future Work.
 
 #### Architecture
 
-- **Tool definitions are spread across modules.** `src/core/tools.ts` (about 499 of 500 code lines after the tools panel, the limit) and `runTool`'s dispatch each add a branch per tool: the spec, the argument parser, the approval preview, and the call line in `tools.ts`, then the target check and the dispatch in `run-tool.ts`. The same file also holds the `/tools` words, the terminal `sanitize` helper, and the approval rule. Roughly three more tools would breach its file limit.
+- **Tool definitions are spread across modules.** `src/core/tools.ts` (about 470 of 500 code lines after `ask_user`, the limit) and `runTool`'s dispatch each add a branch per tool: the spec, the argument parser, the approval preview, and the call line in `tools.ts`, then the target check and the dispatch in `run-tool.ts`. The same file also holds the `/tools` words, the terminal `sanitize` helper, and the approval rule. Roughly three more tools would breach its file limit.
 - **The turn loop is written twice.** `collectRound` in `src/backend/subagent/subagent.ts` repeats `streamRound` in `src/backend/turn.ts`. The subagent's tool-call loop repeats the round loop of `runMessageTurn`, with its own limit and its own history handling. A fix to one (a failed round, a finished session, a summary line) must be made to both.
 
 #### Responses and schemas
@@ -475,6 +478,8 @@ Status is **missing**, **partial**, or in place.
 
 #### Tools and approval
 
+- **One gate for every model call (the next change to make).** `runCalls` checks each call against the offered tools, with the same function, before it branches to `ask_user`, `run_subagent`, or `runTool`. `runTool` keeps its own check, so a second caller is still refused. The refusal text is the same for every tool, and a test covers each tool that the backend starts.
+- **The open question is a tagged union.** `OpenQuestion` becomes `{ kind: "approval", resolve(answer: ApprovalAnswer) } | { kind: "ask", choices, resolve(reply: AskReply | undefined) }`, and `receive` branches on `kind` in one place, with `/exit` read as an exit by the ask branch as well. A closed question resolves with a named value, not a word the caller must reinterpret.
 - Show the real target in the approval preview: the path a link resolves to, computed by the same check that runs before the question. The write uses that same resolved path.
 - Make `editFile` read and write bytes, refuse a file that is not valid UTF-8, and refuse a `previous` that matches more than once, or print the line of the match in the preview.
 - Give `resolveNewInside` a structured error that names the ancestor that is not a folder.

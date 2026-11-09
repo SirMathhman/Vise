@@ -118,10 +118,18 @@ async function askUser(state: SessionState, args: AskArgs): Promise<string> {
   // Input may have ended before the question, with nothing left to answer it; then it is unanswered.
   if (!state.lines.more) endInput(state);
   const reply = await replied;
-  // A word, not a reply, means the question was closed without an answer.
+  // /exit ends the session, as it does at an approval. A word that is not /exit closes the question without an answer.
+  if (reply === "exit") state.exitRequested = true;
   const text = typeof reply === "string" ? "the user gave no answer" : askResultText(reply);
   state.events.push({ kind: "askAnswered", id, answer: text });
   return text;
+}
+
+// The reply a typed line gives to the open question. /exit ends the session at either kind of question.
+function replyOf(question: OpenQuestion, text: string): Reply {
+  if (question.choices === undefined) return answerOfLine(text);
+  if (answerOfLine(text) === "exit") return "exit";
+  return parseAskLine(text, question.choices);
 }
 
 // A page save changes a file, so it is refused while an approval question is open. The question is
@@ -153,9 +161,7 @@ function receive(state: SessionState, message: ClientMessage): void {
         return;
       }
       state.question = undefined;
-      question.resolve(
-        question.choices === undefined ? answerOfLine(message.text) : parseAskLine(message.text, question.choices),
-      );
+      question.resolve(replyOf(question, message.text));
       return;
     }
     case "profileRead":
