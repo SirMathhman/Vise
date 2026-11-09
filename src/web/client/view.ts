@@ -12,6 +12,7 @@ import {
   type Block,
   type ViewState,
 } from "./state.ts";
+import { renderMarkdown } from "./markdown.ts";
 
 // What the view asks the page to do. The page sends the line or the answer to the server.
 export interface ViewActions {
@@ -83,8 +84,12 @@ function blockElement(
   switch (block.kind) {
     case "user":
       return element(doc, "div", "block user", block.text);
-    case "reply":
-      return element(doc, "div", "block reply", block.text);
+    case "reply": {
+      const node = doc.createElement("div");
+      node.className = "block reply";
+      node.append(...renderMarkdown(doc, block.text));
+      return node;
+    }
     case "thinking": {
       const label = block.exact
         ? `thinking: ${block.tokens} tokens`

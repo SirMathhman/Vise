@@ -115,6 +115,8 @@ body {
 .reply {
   background: var(--reply-bg);
   border: 1px solid var(--line);
+  /* Markdown blocks are elements now, so the newlines between them are not part of the layout. */
+  white-space: normal;
 }
 
 .thinking,

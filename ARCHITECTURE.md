@@ -221,6 +221,7 @@ Target layout. Test files sit beside the module each one tests; there is no sepa
         │   └── client/
         │       ├── main.ts              the socket, reconnects, render schedule (side effects only)
         │       ├── state.ts             pure reducer: server events to the transcript
+        │       ├── markdown.ts          pure Markdown subset for replies (headings, lists, code, bold, italics; links as text) and its DOM builder
         │       └── view.ts              DOM from the state, text set with textContent only
         └── tools/                       disk, process, and settings work for the tools and the frontend
             ├── run-tool.ts              dispatches a call by name, checks the target before asking, runs a change only when approve resolves true
