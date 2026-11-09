@@ -29,8 +29,8 @@ import { editFile } from "./files/edit-file.ts";
 import { listFiles } from "./files/list-files.ts";
 import { readFileLines } from "./files/read-file.ts";
 import { createNote } from "./notes/create-note.ts";
-import { MAX_JOBS, killJob, readJob, runningJobs } from "./jobs.ts";
-import { runPowershell } from "./run-powershell.ts";
+import { MAX_JOBS, killJob, readJob, runningJobs } from "./process/jobs.ts";
+import { runPowershell } from "./process/run-powershell.ts";
 import { undoStore } from "./undo/undo-files.ts";
 import type { UndoStore } from "../core/messages.ts";
 

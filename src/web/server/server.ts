@@ -1,8 +1,8 @@
 import { timingSafeEqual } from "node:crypto";
 import { err, ok, type Result } from "../../core/messages.ts";
 import type { Session } from "../../protocol/protocol.ts";
-import { createHub, type Hub } from "./hub.ts";
-import { createHandover } from "./handover.ts";
+import { createHub, type Hub } from "./relay/hub.ts";
+import { createHandover } from "./relay/handover.ts";
 
 // The files the page is made of, served at fixed paths.
 export interface WebAssets {

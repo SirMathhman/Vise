@@ -1,5 +1,5 @@
-import type { Result } from "../../core/messages.ts";
-import type { ClientMessage, Session } from "../../protocol/protocol.ts";
+import type { Result } from "../../../core/messages.ts";
+import type { ClientMessage, Session } from "../../../protocol/protocol.ts";
 import type { Hub } from "./hub.ts";
 
 // The session the page talks to, and how it moves to another folder. A folder change ends the session, waits for

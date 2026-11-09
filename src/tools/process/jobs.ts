@@ -1,5 +1,5 @@
-import { err, ok, type Result } from "../core/messages.ts";
-import { MAX_LINES } from "../core/tools.ts";
+import { err, ok, type Result } from "../../core/messages.ts";
+import { MAX_LINES } from "../../core/tools.ts";
 import { childEnvironment } from "./child-env.ts";
 
 export const MAX_JOBS = 5;

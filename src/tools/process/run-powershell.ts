@@ -1,4 +1,4 @@
-import { err, ok, type Result } from "../core/messages.ts";
+import { err, ok, type Result } from "../../core/messages.ts";
 import { startJob, outputText } from "./jobs.ts";
 import { childEnvironment } from "./child-env.ts";
 

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import type { HookPoint, HookRunner } from "../../core/compaction.ts";
 import { err, ok, type Result } from "../../core/messages.ts";
-import { runPowershell } from "../run-powershell.ts";
+import { runPowershell } from "../process/run-powershell.ts";
 
 // The hooks file, in the working directory. Each point lists the commands to run, in order.
 const HOOKS_FILE = join(".vise", "hooks.json");

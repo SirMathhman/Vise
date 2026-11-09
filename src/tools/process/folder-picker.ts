@@ -1,4 +1,4 @@
-import { err, ok, type Result } from "../core/messages.ts";
+import { err, ok, type Result } from "../../core/messages.ts";
 import { childEnvironment } from "./child-env.ts";
 
 // The Windows folder dialog, shown on the machine that runs Vise. The dialog needs a single-threaded apartment,

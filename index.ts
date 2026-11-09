@@ -14,11 +14,11 @@ import { type WebAddress, takeWebAddress } from "./src/web/server/address.ts";
 
 
 import { startWebServer } from "./src/web/server/server.ts";
-import { killAllJobs } from "./src/tools/jobs.ts";
+import { killAllJobs } from "./src/tools/process/jobs.ts";
 import { type McpRegistry, noServers, startMcpServers } from "./src/tools/mcp/registry.ts";
 import { mcpStore } from "./src/tools/mcp/config.ts";
 import { undoStore } from "./src/tools/undo/undo-files.ts";
-import { pickFolder } from "./src/tools/folder-picker.ts";
+import { pickFolder } from "./src/tools/process/folder-picker.ts";
 import type { UndoStore } from "./src/core/messages.ts";
 import { toolNames } from "./src/core/tools.ts";
 import {

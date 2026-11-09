@@ -1,5 +1,5 @@
-import type { ClientMessage, ServerEvent } from "../../protocol/protocol.ts";
-import { parseClientMessage } from "./client-message.ts";
+import type { ClientMessage, ServerEvent } from "../../../protocol/protocol.ts";
+import { parseClientMessage } from "../client-message.ts";
 
 // One browser connection. The hub sends it events, and closes it.
 export interface Viewer {

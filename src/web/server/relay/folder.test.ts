@@ -1,8 +1,8 @@
 import { afterEach, expect, test } from "bun:test";
-import { Channel } from "../../protocol/channel.ts";
-import type { ClientMessage, ServerEvent, Session } from "../../protocol/protocol.ts";
-import { ok, type Ok, type Result } from "../../core/messages.ts";
-import { startWebServer, type WebServer } from "./server.ts";
+import { Channel } from "../../../protocol/channel.ts";
+import type { ClientMessage, ServerEvent, Session } from "../../../protocol/protocol.ts";
+import { ok, type Ok, type Result } from "../../../core/messages.ts";
+import { startWebServer, type WebServer } from "../server.ts";
 
 const TOKEN = "folder-token";
 const assets = { html: "<p>page</p>", script: "", style: "" };

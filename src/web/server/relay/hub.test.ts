@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { ClientMessage, ServerEvent } from "../../protocol/protocol.ts";
+import type { ClientMessage, ServerEvent } from "../../../protocol/protocol.ts";
 import { createHub, type Viewer } from "./hub.ts";
 
 // A viewer that records what it was sent and how it was closed.
