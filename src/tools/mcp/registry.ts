@@ -1,5 +1,6 @@
 import { err, ok, type McpServerStatus, type Result } from "../../core/messages.ts";
 import { openSession, type McpSession } from "./client.ts";
+import { openHttpSession } from "./http-client.ts";
 import { readMcpConfig, type McpServerConfig } from "./config.ts";
 
 // The protocol revision Vise speaks. A server that answers with another one may still work; the
@@ -114,7 +115,10 @@ async function loadServer(
   root: string,
   config: McpServerConfig,
 ): Promise<Result<LoadedServer>> {
-  const opened = openSession(config.command, config.args, root);
+  const opened =
+    config.kind === "http"
+      ? openHttpSession(config.url, config.headers)
+      : openSession(config.command, config.args, root);
   if (!opened.ok) return err(opened.error);
   const session = opened.value;
   const handshake = await session.request("initialize", {

@@ -93,12 +93,23 @@ export interface ModelPorts {
   select(name: string): Promise<Result<string>>;
 }
 
-// One MCP server as .vise/mcp.json configures it.
-export interface McpServerEntry {
+// One MCP server as .vise/mcp.json configures it: a program started over stdio, or an endpoint reached over
+// HTTP with optional headers (for example an Authorization token).
+export interface StdioServerEntry {
+  kind: "stdio";
   name: string;
   command: string;
   args: string[];
 }
+
+export interface HttpServerEntry {
+  kind: "http";
+  name: string;
+  url: string;
+  headers: Record<string, string>;
+}
+
+export type McpServerEntry = StdioServerEntry | HttpServerEntry;
 
 // One MCP server as it went at the start of this session: whether it started, the names of its tools,
 // and each reason a server or one of its tools was left out.

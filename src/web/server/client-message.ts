@@ -9,13 +9,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-// Reads one MCP server sent by the page. The store checks the name and the command before it writes.
+// Reads one MCP server sent by the page: a program (kind stdio) or an endpoint (kind http). The store checks
+// the names and the values before it writes.
 function serverOf(value: unknown): McpServerEntry | undefined {
-  if (!isRecord(value)) return undefined;
-  const { name, command, args } = value;
-  if (typeof name !== "string" || typeof command !== "string") return undefined;
+  if (!isRecord(value) || typeof value.name !== "string") return undefined;
+  if (value.kind === "http") {
+    const { url, headers } = value;
+    if (typeof url !== "string" || !isRecord(headers)) return undefined;
+    const values: Record<string, string> = {};
+    for (const [header, text] of Object.entries(headers)) {
+      if (typeof text !== "string") return undefined;
+      values[header] = text;
+    }
+    return { kind: "http", name: value.name, url, headers: values };
+  }
+  const { command, args } = value;
+  if (value.kind !== "stdio" || typeof command !== "string") return undefined;
   if (!Array.isArray(args) || !args.every((arg) => typeof arg === "string")) return undefined;
-  return { name, command, args: args as string[] };
+  return { kind: "stdio", name: value.name, command, args: args as string[] };
 }
 
 // Reads a profile sent by the page. Each field is checked for its type and each hook point must exist;

@@ -6,12 +6,18 @@ export interface McpActions {
   writeMcp(servers: McpServerEntry[]): void;
 }
 
-// One server row of the editor: its name, its command, and its arguments, one per line.
+// One server row of the editor. A program shows its command and arguments, an endpoint its url and headers;
+// the kind decides which fields are shown.
 interface ServerRow {
   element: HTMLElement;
+  kind: HTMLSelectElement;
   name: HTMLInputElement;
   command: HTMLInputElement;
   args: HTMLTextAreaElement;
+  url: HTMLInputElement;
+  headers: HTMLTextAreaElement;
+  stdioFields: HTMLElement;
+  httpFields: HTMLElement;
 }
 
 // Every piece of text is set with textContent, never as HTML.
@@ -58,34 +64,97 @@ export function mcpPanel(
   return [heading, ...lines, ...problems, button];
 }
 
-// One row of the editor, filled from a server or empty.
+// A labelled input for a row's field.
+function field(doc: Document, input: HTMLInputElement | HTMLTextAreaElement, label: string): HTMLElement {
+  const wrapper = doc.createElement("label");
+  wrapper.className = "field";
+  wrapper.append(element(doc, "span", "", label), input);
+  return wrapper;
+}
+
+// Headers as the editor shows them: one "Name: value" line each.
+function headerLines(headers: Record<string, string>): string {
+  return Object.entries(headers)
+    .map(([name, value]) => `${name}: ${value}`)
+    .join("\n");
+}
+
+// Reads "Name: value" lines back. A line with no colon is a header name with an empty value, and the store
+// refuses a name that is not valid.
+function headersOf(text: string): Record<string, string> {
+  const headers: Record<string, string> = {};
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed === "") continue;
+    const colon = trimmed.indexOf(":");
+    if (colon < 0) {
+      headers[trimmed] = "";
+    } else {
+      headers[trimmed.slice(0, colon).trim()] = trimmed.slice(colon + 1).trim();
+    }
+  }
+  return headers;
+}
+
+// One row of the editor, filled from a server or empty. Changing the kind shows the fields that kind uses.
 function rowOf(doc: Document, server: McpServerEntry, remove: (row: ServerRow) => void): ServerRow {
   const row = doc.createElement("div");
   row.className = "server-row";
+  const kind = doc.createElement("select");
+  for (const [value, text] of [["stdio", "program"], ["http", "endpoint"]] as const) {
+    const option = doc.createElement("option");
+    option.value = value;
+    option.textContent = text;
+    option.selected = value === server.kind;
+    kind.append(option);
+  }
   const name = doc.createElement("input");
   name.type = "text";
   name.value = server.name;
   name.placeholder = "name";
   const command = doc.createElement("input");
   command.type = "text";
-  command.value = server.command;
+  command.value = server.kind === "stdio" ? server.command : "";
   command.placeholder = "command";
   const args = doc.createElement("textarea");
   args.rows = 2;
-  args.value = server.args.join("\n");
+  args.value = server.kind === "stdio" ? server.args.join("\n") : "";
   args.placeholder = "one argument per line";
+  const url = doc.createElement("input");
+  url.type = "text";
+  url.value = server.kind === "http" ? server.url : "";
+  url.placeholder = "https://";
+  const headers = doc.createElement("textarea");
+  headers.rows = 2;
+  headers.value = server.kind === "http" ? headerLines(server.headers) : "";
+  headers.placeholder = "one header per line, as Name: value";
+  const stdioFields = doc.createElement("div");
+  stdioFields.append(field(doc, command, "Command"), field(doc, args, "Arguments"));
+  const httpFields = doc.createElement("div");
+  httpFields.append(field(doc, url, "URL"), field(doc, headers, "Headers"));
   const removeButton = element(doc, "button", "", "Remove");
   removeButton.type = "button";
-  const entry: ServerRow = { element: row, name, command, args };
+  const entry: ServerRow = { element: row, kind, name, command, args, url, headers, stdioFields, httpFields };
+  const showKind = (): void => {
+    stdioFields.hidden = kind.value !== "stdio";
+    httpFields.hidden = kind.value !== "http";
+  };
+  kind.addEventListener("change", showKind);
+  showKind();
   removeButton.addEventListener("click", () => remove(entry));
-  row.append(name, command, args, removeButton);
+  row.append(kind, name, stdioFields, httpFields, removeButton);
   return entry;
 }
 
-// Reads a row back into a server. Blank argument lines are dropped.
+// Reads a row back into a server. Blank argument lines are dropped; the fields of the other kind are not sent.
 function serverOf(row: ServerRow): McpServerEntry {
+  const name = row.name.value.trim();
+  if (row.kind.value === "http") {
+    return { kind: "http", name, url: row.url.value.trim(), headers: headersOf(row.headers.value) };
+  }
   return {
-    name: row.name.value.trim(),
+    kind: "stdio",
+    name,
     command: row.command.value.trim(),
     args: row.args.value
       .split("\n")
@@ -125,7 +194,7 @@ export function openMcpEditor(doc: Document, open: McpEditorOpen): void {
   form.append(list);
   const add = element(doc, "button", "", "Add server");
   add.type = "button";
-  add.addEventListener("click", () => addRow({ name: "", command: "", args: [] }));
+  add.addEventListener("click", () => addRow({ kind: "stdio", name: "", command: "", args: [] }));
   const buttons = doc.createElement("div");
   buttons.className = "buttons";
   const save = element(doc, "button", "send", "Save");
