@@ -377,6 +377,14 @@ function openEditor(
   editor.showModal();
 }
 
+// The New conversation button. It sends /new, the line the user would type, so the page keeps to lines and approvals.
+function newConversationButton(doc: Document, actions: ViewActions): HTMLButtonElement {
+  const button = element(doc, "button", "new-chat", "New conversation");
+  button.type = "button";
+  button.addEventListener("click", () => actions.line("/new"));
+  return button;
+}
+
 // Builds the page once, then replaces the transcript and the controls on each render.
 export function createView(
   doc: Document,
@@ -385,7 +393,8 @@ export function createView(
 ): View {
   const header = element(doc, "header", "bar", "Vise");
   const status = element(doc, "span", "status", "");
-  header.append(status);
+  const newChat = newConversationButton(doc, actions);
+  header.append(status, newChat);
   const panel = doc.createElement("section");
   // What the panel was last built from, so an unchanged panel is left alone.
   let panelKey = "";
@@ -470,6 +479,7 @@ export function createView(
           ...toolsPanel(doc, state.tools, sendable, actions),
         );
       }
+      newChat.disabled = !sendable;
       input.disabled = !sendable;
       send.disabled = !sendable;
       input.placeholder = open
