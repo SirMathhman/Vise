@@ -36,6 +36,15 @@ export interface ToolBlock {
   skipped: boolean;
 }
 
+// A question the model asked. Its answer is set once the question is closed.
+export interface AskBlock {
+  kind: "ask";
+  id: number;
+  question: string;
+  choices: string[];
+  answer?: string;
+}
+
 export interface ApprovalBlock {
   kind: "approval";
   id: number;
@@ -65,6 +74,7 @@ export type Block =
   | ThinkingBlock
   | ToolBlock
   | ApprovalBlock
+  | AskBlock
   | HookBlock
   | NoticeBlock
   | ErrorBlock;
@@ -131,6 +141,13 @@ export const initialState: ViewState = {
 
 // The approval question still open, if any. The page locks its input while one is open, because the
 // backend reads the next line as the answer.
+// The question the model asked that is still open, if any.
+export function openAsk(state: ViewState): AskBlock | undefined {
+  return state.blocks.findLast(
+    (block): block is AskBlock => block.kind === "ask" && block.answer === undefined,
+  );
+}
+
 export function openApproval(state: ViewState): ApprovalBlock | undefined {
   return state.blocks.findLast(
     (block): block is ApprovalBlock =>
@@ -159,7 +176,8 @@ export function canSend(state: ViewState): boolean {
   return (
     state.link === "live" &&
     !state.ended &&
-    openApproval(state) === undefined
+    openApproval(state) === undefined &&
+    openAsk(state) === undefined
   );
 }
 
@@ -189,6 +207,12 @@ function endThinking(blocks: Block[], tokens: number, exact: boolean): Block[] {
   const last = blocks.at(-1);
   if (last?.kind !== "thinking" || last.done) return blocks;
   return [...blocks.slice(0, -1), { ...last, tokens, exact, done: true }];
+}
+
+function answerAsk(blocks: Block[], id: number, answer: string): Block[] {
+  return blocks.map((block) =>
+    block.kind === "ask" && block.id === id ? { ...block, answer } : block,
+  );
 }
 
 function answerApproval(
@@ -239,6 +263,14 @@ function applyEvent(state: ViewState, event: ServerEvent): ViewState {
       };
     case "approvalAnswered":
       return { ...state, blocks: answerApproval(blocks, event.id, event.answer) };
+    case "ask":
+      return {
+        ...state,
+        blocks: [...blocks, { kind: "ask", id: event.id, question: event.question, choices: event.choices }],
+        lastShown: event.id,
+      };
+    case "askAnswered":
+      return { ...state, blocks: answerAsk(blocks, event.id, event.answer) };
     case "history":
       return { ...state, blocks: event.messages.map(historyBlock) };
     case "sessions":

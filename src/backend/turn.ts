@@ -10,6 +10,7 @@ import { type ChatMessage, type ReasoningEffort, type ReplyRequest, type ToolCal
 import type { Emit } from "../protocol/protocol.ts";
 import { runCalls } from "./calls.ts";
 import type { SessionPorts } from "./ports.ts";
+import type { AskArgs } from "../core/tools.ts";
 
 // What one request to the model produced: its text, the calls it asked for, and its usage.
 interface Round {
@@ -92,6 +93,8 @@ export interface TurnContext {
   emit: Emit;
   finished(): boolean;
   approve(preview: string): Promise<boolean>;
+  // Asks the user a question for the ask_user tool, and returns the text the model gets back.
+  ask(args: AskArgs): Promise<string>;
 }
 
 // What a turn leaves behind: the conversation to keep, and whether the session must stop.
@@ -108,7 +111,7 @@ export async function runMessageTurn(
   conversation: Conversation,
   context: TurnContext,
 ): Promise<TurnResult> {
-  const { ports, emit, finished, approve } = context;
+  const { ports, emit, finished, approve, ask } = context;
   const { reply, contextWindow, tools, instructions } = ports;
   const started = await ports.hooks(
     "turnStart",
@@ -175,6 +178,7 @@ export async function runMessageTurn(
       calls: round.calls,
       tools,
       approve,
+      ask,
       finished,
       offered: enabledTools(current, ports.allTools),
       emit,

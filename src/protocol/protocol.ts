@@ -51,6 +51,14 @@ export interface ProfileWriteMessage {
   profile: ProfileDetail;
 }
 
+// The page answers an ask question: the choices picked by position, and a line typed of its own.
+export interface AnswerMessage {
+  kind: "answer";
+  id: number;
+  chosen: number[];
+  text: string;
+}
+
 // The page saves the MCP servers it shows. The store writes the file only if every entry is valid.
 export interface McpWriteMessage {
   kind: "mcpWrite";
@@ -64,7 +72,8 @@ export type ClientMessage =
   | FailedMessage
   | ProfileReadMessage
   | ProfileWriteMessage
-  | McpWriteMessage;
+  | McpWriteMessage
+  | AnswerMessage;
 
 // A chunk of the model's reply, raw and unsanitized. The frontend escapes it before it shows it.
 export interface TextEvent {
@@ -156,6 +165,21 @@ export interface McpEvent {
   servers: McpServerEntry[];
 }
 
+// The model asks the user a question. The frontend answers with an answer message carrying the same id.
+export interface AskEvent {
+  kind: "ask";
+  id: number;
+  question: string;
+  choices: string[];
+}
+
+// The answer to an ask, in the words the model is given. Sent once the question is closed.
+export interface AskAnsweredEvent {
+  kind: "askAnswered";
+  id: number;
+  answer: string;
+}
+
 // The output of a hook, in full. The frontend caps what it shows.
 export interface HookOutputEvent {
   kind: "hookOutput";
@@ -194,6 +218,8 @@ export type ServerEvent =
   | ToolSkippedEvent
   | ApprovalRequestEvent
   | ApprovalAnsweredEvent
+  | AskEvent
+  | AskAnsweredEvent
   | HistoryEvent
   | SessionsEvent
   | ToolsEvent

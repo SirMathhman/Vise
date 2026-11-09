@@ -1,6 +1,7 @@
 import type { ToolCall } from "./messages.ts";
 import { notePath, scaffold } from "./notes.ts";
 import {
+  ASK_USER,
   CREATE_FILE,
   CREATE_NOTE,
   EDIT_FILE,
@@ -10,6 +11,7 @@ import {
   READ_FILE,
   RUN_POWERSHELL,
   RUN_SUBAGENT,
+  parseAskArgs,
   parseCreateFileArgs,
   parseCreateNoteArgs,
   parseEditFileArgs,
@@ -122,6 +124,48 @@ export function describeToolCall(call: ToolCall): string {
     if (!args.ok) return `tool: ${RUN_SUBAGENT} (invalid arguments)`;
     return `tool: ${RUN_SUBAGENT} ${args.value.profile} up to ${args.value.maxToolCalls} tool calls`;
   }
+  if (call.name === ASK_USER) {
+    const args = parseAskArgs(call.arguments);
+    if (!args.ok) return `tool: ${ASK_USER} (invalid arguments)`;
+    return `tool: ${ASK_USER} ${args.value.question}`;
+  }
   if (isExternalName(call.name)) return `tool: ${call.name} (server tool)`;
   return `tool: ${call.name} (unknown tool)`;
+}
+
+// What the user answered an ask_user question with: the choices picked, and a line typed of their own.
+export interface AskReply {
+  chosen: string[];
+  text: string;
+}
+
+// The reply for picks given by position (0 is the first choice). A position outside the list is ignored,
+// and a choice picked twice counts once.
+export function askReplyOf(choices: string[], picked: number[], text: string): AskReply {
+  const chosen: string[] = [];
+  for (const index of picked) {
+    const choice = choices[index];
+    if (choice !== undefined && !chosen.includes(choice)) chosen.push(choice);
+  }
+  return { chosen, text: text.trim() };
+}
+
+// Reads one line typed as the answer. Numbers separated by commas or spaces pick the choices they name, from 1
+// to the count; any other line is the user's own answer.
+export function parseAskLine(line: string, choices: string[]): AskReply {
+  const words = line.trim().split(/[\s,]+/).filter((word) => word !== "");
+  const numbers = words.every((word) => /^\d+$/.test(word));
+  const inRange = words.every((word) => Number(word) >= 1 && Number(word) <= choices.length);
+  if (words.length > 0 && numbers && inRange) {
+    return askReplyOf(choices, words.map((word) => Number(word) - 1), "");
+  }
+  return { chosen: [], text: line.trim() };
+}
+
+// The result the model gets for an answered ask_user call.
+export function askResultText(reply: AskReply): string {
+  const parts: string[] = [];
+  if (reply.chosen.length > 0) parts.push(`the user chose: ${reply.chosen.join(", ")}`);
+  if (reply.text !== "") parts.push(`the user answered: ${reply.text}`);
+  return parts.length === 0 ? "the user gave no answer" : parts.join("; ");
 }

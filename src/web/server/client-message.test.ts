@@ -42,3 +42,11 @@ test("a save of MCP servers is read when each entry has a name, a command, and s
   expect(parseClientMessage('{"kind":"mcpWrite","servers":[{"name":"fake","command":1,"args":[]}]}').ok).toBe(false);
   expect(parseClientMessage('{"kind":"mcpWrite","servers":"nope"}').ok).toBe(false);
 });
+
+test("an answer to an ask question is read with its choices and text, and a malformed one is refused", () => {
+  expect(parseClientMessage('{"kind":"answer","id":2,"chosen":[0,1],"text":"ok"}')).toEqual({
+    ok: true,
+    value: { kind: "answer", id: 2, chosen: [0, 1], text: "ok" },
+  });
+  expect(parseClientMessage('{"kind":"answer","id":2,"chosen":["0"],"text":""}').ok).toBe(false);
+});

@@ -98,6 +98,9 @@ const view = createView(document, root, {
   writeProfile(profile) {
     send({ kind: "profileWrite", profile });
   },
+  answerAsk(id: number, chosen: number[], text: string) {
+    send({ kind: "answer", id, chosen, text });
+  },
   writeMcp(servers) {
     send({ kind: "mcpWrite", servers });
   },

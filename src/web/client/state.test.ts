@@ -141,3 +141,14 @@ test("an mcp event sets the servers as they started and as the file configures t
     servers: [{ name: "fake", command: "node", args: [] }],
   });
 });
+
+test("an ask question keeps the composer locked until it is answered", () => {
+  const asked = after([{ kind: "ask", id: 4, question: "Which?", choices: ["a", "b"] }]);
+  expect(canSend(asked)).toBe(false);
+  expect(asked.blocks).toEqual([{ kind: "ask", id: 4, question: "Which?", choices: ["a", "b"] }]);
+  const answered = reduce(asked, { kind: "server", event: { kind: "askAnswered", id: 4, answer: "the user chose: a" } });
+  expect(canSend(answered)).toBe(true);
+  expect(answered.blocks).toEqual([
+    { kind: "ask", id: 4, question: "Which?", choices: ["a", "b"], answer: "the user chose: a" },
+  ]);
+});

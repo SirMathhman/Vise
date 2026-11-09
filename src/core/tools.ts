@@ -232,6 +232,34 @@ export const runSubagentSpec: ToolSpec = {
   },
 };
 
+export const ASK_USER = "ask_user";
+
+// The question the model asks the user. The answer is a choice picked, a line typed, or both.
+export const askUserSpec: ToolSpec = {
+  type: "function",
+  function: {
+    name: ASK_USER,
+    description:
+      "Ask the user a question and wait for the answer. Give at least one choice. The user may pick any of the choices, or type an answer of their own. Use it when the decision belongs to the user.",
+    parameters: {
+      type: "object",
+      properties: {
+        question: {
+          type: "string",
+          description: "The question, in one sentence.",
+        },
+        choices: {
+          type: "array",
+          items: { type: "string" },
+          minItems: 1,
+          description: "The choices the user can pick from.",
+        },
+      },
+      required: ["question", "choices"],
+    },
+  },
+};
+
 // Every tool the model can be offered, in the order they are sent. A tool that is switched off is
 // left out of the request, and the request is the only place the list is used.
 export const toolSpecs = [
@@ -243,7 +271,7 @@ export const toolSpecs = [
   runPowershellSpec,
   readCommandSpec,
   killCommandSpec,
-  runSubagentSpec,
+  askUserSpec,
 ];
 export const toolNames: string[] = toolSpecs.map((spec) => spec.function.name);
 
@@ -370,6 +398,28 @@ export type ToolRunner = (
 
 // The arguments as the model wrote them, before they are checked. Each parser checks the fields it reads.
 type RawArgs = Record<string, unknown>;
+
+export interface AskArgs {
+  question: string;
+  choices: string[];
+}
+
+// Reads the arguments the model wrote for ask_user. The question must have text, and there must be at
+// least one choice, each with text.
+export function parseAskArgs(raw: string): Result<AskArgs> {
+  const args = readArgs(raw);
+  if (!args.ok) return args;
+  const { question, choices } = args.value;
+  if (typeof question !== "string" || question.trim() === "")
+    return err(new Error("question must be the text of the question"));
+  if (
+    !Array.isArray(choices) ||
+    choices.length === 0 ||
+    !choices.every((choice) => typeof choice === "string" && choice.trim() !== "")
+  )
+    return err(new Error("choices must be a list of at least one choice, each with text"));
+  return ok({ question: question.trim(), choices: choices.map((choice: string) => choice.trim()) });
+}
 
 export interface SubagentArgs {
   profile: string;

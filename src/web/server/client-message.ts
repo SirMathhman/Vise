@@ -78,5 +78,14 @@ export function parseClientMessage(text: string): Result<ClientMessage> {
     if (servers.some((server) => server === undefined)) return err(new Error("a server is not in the expected form"));
     return ok({ kind: "mcpWrite", servers: servers as McpServerEntry[] });
   }
+  if (
+    value.kind === "answer" &&
+    typeof value.id === "number" &&
+    typeof value.text === "string" &&
+    Array.isArray(value.chosen) &&
+    value.chosen.every((index) => typeof index === "number")
+  ) {
+    return ok({ kind: "answer", id: value.id, chosen: value.chosen as number[], text: value.text });
+  }
   return err(new Error("unknown message"));
 }

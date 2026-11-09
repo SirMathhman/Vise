@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
 import { classifyLine, mcpStatusText } from "./commands.ts";
+import { parseAskLine, askResultText } from "./tool-lines.ts";
+import { parseAskArgs } from "./tools.ts";
 import { parseSubagentArgs, parseToolsCommand, toolNames, toolStates } from "./tools.ts";
 import {
   helpText,
@@ -137,5 +139,21 @@ test("/mcp is a command with no words; its text lists each server and its proble
     ]),
   ).toBe(
     "fake: started, 1 tools: fake__echo\ngone: did not start\n  gone: spawn failed",
+  );
+});
+
+test("ask_user needs a question and at least one choice; a line picks numbers or is the user's own answer", () => {
+  expect(parseAskArgs('{"question":"Which?","choices":["a","b"]}')).toEqual({
+    ok: true,
+    value: { question: "Which?", choices: ["a", "b"] },
+  });
+  expect(parseAskArgs('{"question":"Which?","choices":[]}').ok).toBe(false);
+  expect(parseAskArgs('{"question":"","choices":["a"]}').ok).toBe(false);
+  expect(parseAskLine("2, 1, 2", ["a", "b"])).toEqual({ chosen: ["b", "a"], text: "" });
+  expect(parseAskLine("3", ["a", "b"])).toEqual({ chosen: [], text: "3" });
+  expect(parseAskLine("  ok  ", ["a", "b"])).toEqual({ chosen: [], text: "ok" });
+  expect(askResultText({ chosen: [], text: "" })).toBe("the user gave no answer");
+  expect(askResultText({ chosen: ["a"], text: "and more" })).toBe(
+    "the user chose: a; the user answered: and more",
   );
 });

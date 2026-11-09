@@ -9,6 +9,7 @@ import {
   openApproval,
   toolsAfterEdit,
   type ApprovalBlock,
+  type AskBlock,
   type Block,
   type ViewState,
 } from "./state.ts";
@@ -18,6 +19,7 @@ import { renderMarkdown } from "./markdown.ts";
 // What the view asks the page to do. The page sends the line or the answer to the server.
 export interface ViewActions extends McpActions {
   line(text: string): void;
+  answerAsk(id: number, chosen: number[], text: string): void;
   answer(id: number, answer: ApprovalAnswer): void;
   readProfile(name: string): void;
   writeProfile(profile: ProfileDetail): void;
@@ -77,6 +79,38 @@ function approvalCard(
   return card;
 }
 
+// A question the model asked: a checkbox per choice, a box for an answer of the user's own, and Send.
+// Once it is answered the card shows the answer and no controls.
+function askCard(doc: Document, block: AskBlock, actions: ViewActions): HTMLElement {
+  const card = element(doc, "section", "block ask", "");
+  card.append(element(doc, "p", "label", block.question));
+  if (block.answer !== undefined) {
+    card.append(element(doc, "p", "answered", `answered: ${block.answer}`));
+    return card;
+  }
+  const boxes = block.choices.map((choice, index) => {
+    const box = doc.createElement("input");
+    box.type = "checkbox";
+    box.value = String(index);
+    return labelled(doc, choice, box);
+  });
+  const own = doc.createElement("input");
+  own.type = "text";
+  own.placeholder = "or type your own answer";
+  const send = element(doc, "button", "send", "Send");
+  send.type = "button";
+  send.addEventListener("click", () => {
+    const chosen = boxes
+      .map((label) => label.querySelector("input") as HTMLInputElement)
+      .filter((box) => box.checked)
+      .map((box) => Number(box.value));
+    if (chosen.length === 0 && own.value.trim() === "") return;
+    actions.answerAsk(block.id, chosen, own.value);
+  });
+  card.append(...boxes, own, send);
+  return card;
+}
+
 function blockElement(
   doc: Document,
   block: Block,
@@ -108,6 +142,8 @@ function blockElement(
       );
     case "approval":
       return approvalCard(doc, block, actions);
+    case "ask":
+      return askCard(doc, block, actions);
     case "hook": {
       const details = doc.createElement("details");
       details.className = "block hook";

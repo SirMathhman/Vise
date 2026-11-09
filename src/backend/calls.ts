@@ -1,6 +1,6 @@
 import type { ChatMessage, ToolCall } from "../core/messages.ts";
 import { describeToolCall } from "../core/tool-lines.ts";
-import { RUN_SUBAGENT, parseSubagentArgs, type Approve } from "../core/tools.ts";
+import { ASK_USER, RUN_SUBAGENT, parseAskArgs, parseSubagentArgs, type Approve, type AskArgs } from "../core/tools.ts";
 import type { Emit } from "../protocol/protocol.ts";
 import { queueApprovals, runSubagent, type SubagentPorts } from "./subagent/subagent.ts";
 
@@ -9,6 +9,8 @@ export interface CallsStep {
   calls: ToolCall[];
   tools(call: ToolCall, approve: Approve, offered: string[]): Promise<string>;
   approve(preview: string): Promise<boolean>;
+  // Asks the user a question, for ask_user. The calls of the round wait for the answer.
+  ask(args: AskArgs): Promise<string>;
   finished(): boolean;
   // The tools offered in this request. A call to another tool is refused by the runner.
   offered: string[];
@@ -41,6 +43,12 @@ export async function runCalls(step: CallsStep): Promise<ChatMessage[]> {
       continue;
     }
     step.emit({ kind: "toolCall", description });
+    if (call.name === ASK_USER) {
+      const args = parseAskArgs(call.arguments);
+      const text = args.ok ? await step.ask(args.value) : `error: ${args.error.message}`;
+      results.push(Promise.resolve(toolMessage(call.id, text)));
+      continue;
+    }
     if (call.name === RUN_SUBAGENT) {
       const args = parseSubagentArgs(call.arguments);
       const text = args.ok

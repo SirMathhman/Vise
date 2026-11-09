@@ -444,3 +444,71 @@ test("an autosave name that differs from a saved session only in case does not o
   session.send({ kind: "inputEnded" });
   await until(events, "ended");
 });
+
+// The first request asks the user a question with three choices. The next one records the result the
+// model was given, and answers.
+function asksUser(received: string[]) {
+  return async function* ({ messages, onToolCall }: ReplyRequest): AsyncGenerator<Result<string>> {
+    if (messages.at(-1)?.role === "user") {
+      onToolCall({
+        id: "a1",
+        name: "ask_user",
+        arguments: JSON.stringify({ question: "Which?", choices: ["red", "blue", "green"] }),
+      });
+      return;
+    }
+    received.push(messages.at(-1)?.content ?? "");
+    yield ok("done");
+  };
+}
+
+test("a number typed for an ask question picks that choice, and the model is told so", async () => {
+  const received: string[] = [];
+  const session = startSession({ ...portsFor([]), reply: asksUser(received) });
+  const events = session.events()[Symbol.asyncIterator]();
+  session.send({ kind: "line", text: "go" });
+  await until(events, "ask");
+  session.send({ kind: "line", text: "2" });
+  await until(events, "ready");
+  session.send({ kind: "inputEnded" });
+  await until(events, "ended");
+  expect(received).toEqual(["the user chose: blue"]);
+});
+
+test("a line that is not a list of numbers is the user's own answer", async () => {
+  const received: string[] = [];
+  const session = startSession({ ...portsFor([]), reply: asksUser(received) });
+  const events = session.events()[Symbol.asyncIterator]();
+  session.send({ kind: "line", text: "go" });
+  await until(events, "ask");
+  session.send({ kind: "line", text: "none of these" });
+  await until(events, "ready");
+  session.send({ kind: "inputEnded" });
+  await until(events, "ended");
+  expect(received).toEqual(["the user answered: none of these"]);
+});
+
+test("an answer from the page with the id of the question picks its choices", async () => {
+  const received: string[] = [];
+  const session = startSession({ ...portsFor([]), reply: asksUser(received) });
+  const events = session.events()[Symbol.asyncIterator]();
+  session.send({ kind: "line", text: "go" });
+  const asked = (await until(events, "ask")).at(-1);
+  expect(asked?.kind).toBe("ask");
+  session.send({ kind: "answer", id: asked?.kind === "ask" ? asked.id : -1, chosen: [0, 2], text: "" });
+  await until(events, "ready");
+  session.send({ kind: "inputEnded" });
+  await until(events, "ended");
+  expect(received).toEqual(["the user chose: red, green"]);
+});
+
+test("input that ends while an ask question is open closes it with no answer", async () => {
+  const session = startSession({ ...portsFor([]), reply: asksUser([]) });
+  const events = session.events()[Symbol.asyncIterator]();
+  session.send({ kind: "line", text: "go" });
+  await until(events, "ask");
+  session.send({ kind: "inputEnded" });
+  const seen = await until(events, "ended");
+  const answered = seen.find((event) => event.kind === "askAnswered");
+  expect(answered).toEqual({ kind: "askAnswered", id: expect.any(Number), answer: "the user gave no answer" });
+});

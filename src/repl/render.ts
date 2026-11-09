@@ -82,6 +82,16 @@ export function createRenderer(output: Writable): Renderer {
             output.write(`${prefix}${sanitize(message.text)}\n`);
           }
           return;
+        case "ask": {
+          const choices = event.choices.map(
+            (choice, index) => `  ${index + 1}. ${sanitize(choice)}`,
+          );
+          output.write(
+            `\n${sanitize(event.question)}\n${choices.join("\n")}\npick numbers separated by commas, or type your own answer: `,
+          );
+          return;
+        }
+        case "askAnswered":
         case "approvalAnswered":
         case "sessions":
         case "tools":

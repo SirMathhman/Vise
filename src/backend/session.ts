@@ -3,6 +3,8 @@ import {
   classifyLine,
   type ApprovalAnswer,
 } from "../core/commands.ts";
+import { askResultText, askReplyOf, parseAskLine, type AskReply } from "../core/tool-lines.ts";
+import type { AskArgs } from "../core/tools.ts";
 import {
   profileCommands,
   queueHookOutput,
@@ -29,9 +31,14 @@ import type { SessionPorts } from "./ports.ts";
 import { runMessageTurn } from "./turn.ts";
 
 // The approval question that is open, if any. Its answer comes as a line or as an approval by id.
+// What an open question can be answered with: an approval answer, or the reply to an ask question.
+type Reply = ApprovalAnswer | AskReply;
+
 interface OpenQuestion {
   id: number;
-  resolve(answer: ApprovalAnswer): void;
+  // The choices of an ask question. Undefined for an approval.
+  choices?: string[];
+  resolve(reply: Reply): void;
 }
 
 // What a session keeps while it runs. The lines and events are queues: lines wait for the loop,
@@ -79,19 +86,42 @@ async function askApproval(state: SessionState, preview: string): Promise<boolea
   state.lines.discard();
   const id = state.nextId;
   state.nextId += 1;
-  const chosen = new Promise<ApprovalAnswer>((resolve) => {
+  const chosen = new Promise<Reply>((resolve) => {
     state.question = { id, resolve };
   });
   state.events.push({ kind: "approvalRequest", id, preview });
   // Input may have ended before the question, with nothing left to answer it; then it is refused.
   if (!state.lines.more) endInput(state);
-  const answer = await chosen;
+  const reply = await chosen;
+  // An approval is answered with a word; a word here means a refusal from the end of input.
+  const answer: ApprovalAnswer = typeof reply === "string" ? reply : "refuse";
   state.events.push({ kind: "approvalAnswered", id, answer });
   if (answer === "exit") {
     state.exitRequested = true;
     return false;
   }
   return answer === "approve";
+}
+
+// Asks the user to answer a question the model asked, with choices. As for an approval, the lines queued
+// before the question are dropped, and the answer is the next line typed, or an answer with this id. The
+// result is the text the model gets back.
+async function askUser(state: SessionState, args: AskArgs): Promise<string> {
+  if (state.exitRequested || state.streamError !== undefined) return "the user gave no answer";
+  state.lines.discard();
+  const id = state.nextId;
+  state.nextId += 1;
+  const replied = new Promise<Reply>((resolve) => {
+    state.question = { id, choices: args.choices, resolve };
+  });
+  state.events.push({ kind: "ask", id, question: args.question, choices: args.choices });
+  // Input may have ended before the question, with nothing left to answer it; then it is unanswered.
+  if (!state.lines.more) endInput(state);
+  const reply = await replied;
+  // A word, not a reply, means the question was closed without an answer.
+  const text = typeof reply === "string" ? "the user gave no answer" : askResultText(reply);
+  state.events.push({ kind: "askAnswered", id, answer: text });
+  return text;
 }
 
 // A page save changes a file, so it is refused while an approval question is open. The question is
@@ -123,7 +153,9 @@ function receive(state: SessionState, message: ClientMessage): void {
         return;
       }
       state.question = undefined;
-      question.resolve(answerOfLine(message.text));
+      question.resolve(
+        question.choices === undefined ? answerOfLine(message.text) : parseAskLine(message.text, question.choices),
+      );
       return;
     }
     case "profileRead":
@@ -139,9 +171,16 @@ function receive(state: SessionState, message: ClientMessage): void {
       return;
     case "approval": {
       const question = state.question;
-      if (question?.id !== message.id) return;
+      if (question?.id !== message.id || question.choices !== undefined) return;
       state.question = undefined;
       question.resolve(message.answer);
+      return;
+    }
+    case "answer": {
+      const question = state.question;
+      if (question?.id !== message.id || question.choices === undefined) return;
+      state.question = undefined;
+      question.resolve(askReplyOf(question.choices, message.chosen, message.text));
       return;
     }
     case "inputEnded":
@@ -188,6 +227,7 @@ async function sessionLoop(
       emit,
       finished: () => finished(state),
       approve: (preview) => askApproval(state, preview),
+      ask: (args) => askUser(state, args),
     });
     conversation = name === undefined ? turn.conversation : { ...turn.conversation, autosave: name };
     await persist(state, conversation);
