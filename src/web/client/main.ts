@@ -104,6 +104,9 @@ const view = createView(document, root, {
   changeFolder(path: string) {
     send({ kind: "folderChange", path });
   },
+  pickFolder() {
+    send({ kind: "pickFolder" });
+  },
   writeMcp(servers) {
     send({ kind: "mcpWrite", servers });
   },

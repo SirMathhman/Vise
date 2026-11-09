@@ -18,6 +18,7 @@ import { killAllJobs } from "./src/tools/jobs.ts";
 import { type McpRegistry, noServers, startMcpServers } from "./src/tools/mcp/registry.ts";
 import { mcpStore } from "./src/tools/mcp/config.ts";
 import { undoStore } from "./src/tools/undo/undo-files.ts";
+import { pickFolder } from "./src/tools/folder-picker.ts";
 import type { UndoStore } from "./src/core/messages.ts";
 import { toolNames } from "./src/core/tools.ts";
 import {
@@ -118,12 +119,14 @@ async function runWeb(
   address: WebAddress,
   changeFolderTo: (folder: string) => Promise<Result<Session>>,
 ): Promise<Result<void>> {
+  // The folder dialog opens on this machine, as the page is served from here.
   const assets = await buildAssets();
   if (!assets.ok) return err(assets.error);
   const started = startWebServer({
     session,
     assets: assets.value,
     changeFolder: changeFolderTo,
+    pickFolder,
     ...address,
   });
   if (!started.ok) return err(started.error);

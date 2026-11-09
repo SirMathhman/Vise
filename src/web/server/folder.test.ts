@@ -37,12 +37,17 @@ async function waitFor(condition: () => boolean): Promise<void> {
 }
 
 // Starts the server and a page connected to it. Returns what the page received, and the socket.
-async function connectPage(changeFolder: (path: string) => Promise<Result<Session>>) {
+async function connectPage(
+  changeFolder: (path: string) => Promise<Result<Session>>,
+  pickFolder?: () => Promise<Result<string | undefined>>,
+  sent: ClientMessage[] = [],
+) {
   const started = startWebServer({
-    session: sessionIn("A"),
+    session: sessionIn("A", sent),
     assets,
     token: TOKEN,
     changeFolder,
+    pickFolder,
   }) as Ok<WebServer>;
   running = started.value;
   const base = new URL(running.url).origin;
@@ -92,5 +97,29 @@ test("a line sent while the new folder is starting gets a notice, and a second f
   socket.send(JSON.stringify({ kind: "line", text: "after" }));
   await waitFor(() => newSent.some((message) => message.kind === "line" && message.text === "after"));
   expect(newSent).toEqual([{ kind: "line", text: "after" }]);
+  socket.close();
+});
+
+test("a folder picked in the dialog is switched to at once", async () => {
+  const { received, socket } = await connectPage(
+    async (path) => ok(sessionIn(path)),
+    async () => ok("B"),
+  );
+  socket.send(JSON.stringify({ kind: "pickFolder" }));
+  await waitFor(() => received.some((event) => event.kind === "folder" && event.path === "B"));
+  socket.close();
+});
+
+test("a dialog cancelled changes nothing, and the session keeps its input", async () => {
+  const sent: ClientMessage[] = [];
+  const { received, socket } = await connectPage(
+    async (path) => ok(sessionIn(path)),
+    async () => ok(undefined),
+    sent,
+  );
+  socket.send(JSON.stringify({ kind: "pickFolder" }));
+  socket.send(JSON.stringify({ kind: "line", text: "still here" }));
+  await waitFor(() => sent.some((message) => message.kind === "line" && message.text === "still here"));
+  expect(received.some((event) => event.kind === "folder" && event.path === "B")).toBe(false);
   socket.close();
 });

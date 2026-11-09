@@ -1,7 +1,8 @@
 import { timingSafeEqual } from "node:crypto";
 import { err, ok, type Result } from "../../core/messages.ts";
 import type { Session } from "../../protocol/protocol.ts";
-import { createHub } from "./hub.ts";
+import { createHub, type Hub } from "./hub.ts";
+import { createHandover } from "./handover.ts";
 
 // The files the page is made of, served at fixed paths.
 export interface WebAssets {
@@ -15,6 +16,8 @@ export interface WebServerOptions {
   assets: WebAssets;
   // Starts a session in another folder, once the current one has ended. The page is kept.
   changeFolder?(path: string): Promise<Result<Session>>;
+  // Opens the folder dialog on this machine. Undefined when the user cancels.
+  pickFolder?(): Promise<Result<string | undefined>>;
   // The secret that a browser must send with its connection. Printed once, in the URL.
   token: string;
   // The port to listen on. 0, the default, picks a free one.
@@ -57,37 +60,11 @@ function assetResponse(pathname: string, assets: WebAssets): Response {
 // Serves the page on 127.0.0.1 and relays the session over one WebSocket at /ws. The socket is
 // accepted only from the page's own origin and with the token. The page itself is public: it holds
 // nothing a web page elsewhere could use.
-// What the page is told about input that arrives while the folder is changing.
-const CHANGING_NOTICE = "the folder is changing, so this was not sent. Send it again when the change is done.";
-
 export function startWebServer(options: WebServerOptions): Result<WebServer> {
   const { assets, token, port = 0 } = options;
-  // The session that lines go to. It is undefined once a folder change has asked it to end.
-  let session: Session | undefined = options.session;
-  // running: lines go to the session. ending: the session has been asked to end for a folder change.
-  // starting: the next session is being made. Input is accepted only while running.
-  let phase: "running" | "ending" | "starting" = "running";
-  // The folder the page asked for, while a change is under way.
-  let folder: string | undefined;
-  const hub = createHub((message) => {
-    // A line or a request that arrives during a change gets a notice, so it is never dropped without a response.
-    if (phase !== "running" || session === undefined) {
-      hub.publish({ kind: "notice", text: CHANGING_NOTICE });
-      return;
-    }
-    if (message.kind === "folderChange") {
-      if (options.changeFolder === undefined) {
-        hub.publish({ kind: "error", message: "the folder cannot be changed here" });
-        return;
-      }
-      phase = "ending";
-      folder = message.path;
-      session.send({ kind: "inputEnded" });
-      session = undefined;
-      return;
-    }
-    session.send(message);
-  });
+  // The page's messages go to the handover, which moves the session between folders.
+  const hub: Hub = createHub((message) => handover.forward(message));
+  const handover = createHandover(options, hub);
   const { promise: ended, resolve: finish } = Promise.withResolvers<void>();
   let server: ReturnType<typeof Bun.serve<undefined>>;
   try {
@@ -124,42 +101,7 @@ export function startWebServer(options: WebServerOptions): Result<WebServer> {
   } catch (error) {
     return err(error instanceof Error ? error : new Error(String(error)));
   }
-  // Relays the events of one session. The session that ends for a folder change is not reported as ended,
-  // though a failure in it is.
-  async function relay(current: Session): Promise<"ended" | "switching"> {
-    for await (const event of current.events()) {
-      if (event.kind === "ended" && phase === "ending") {
-        if (event.error !== undefined) hub.publish({ kind: "error", message: event.error });
-        return "switching";
-      }
-      hub.publish(event);
-      if (event.kind === "ended") return "ended";
-    }
-    return "ended";
-  }
-  void (async () => {
-    let current: Session | undefined = session;
-    while (current !== undefined) {
-      if ((await relay(current)) === "ended" || folder === undefined) break;
-      phase = "starting";
-      const requested = folder;
-      folder = undefined;
-      const next = await options.changeFolder?.(requested);
-      if (next === undefined) break;
-      if (!next.ok) {
-        hub.publish({ kind: "error", message: next.error.message });
-        hub.publish({ kind: "ended", error: next.error.message });
-        break;
-      }
-      current = next.value;
-      session = current;
-      phase = "running";
-      hub.reset();
-      // The page starts its transcript again; the new session then sends its own events.
-      hub.publish({ kind: "history", messages: [] });
-    }
-    finish();
-  })();
+  void handover.run().then(finish);
   return ok({
     url: `http://127.0.0.1:${server.port}/#t=${token}`,
     ended,

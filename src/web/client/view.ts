@@ -20,6 +20,7 @@ import { renderMarkdown } from "./markdown.ts";
 export interface ViewActions extends McpActions {
   line(text: string): void;
   changeFolder(path: string): void;
+  pickFolder(): void;
   answerAsk(id: number, chosen: number[], text: string): void;
   answer(id: number, answer: ApprovalAnswer): void;
   readProfile(name: string): void;
@@ -392,6 +393,7 @@ interface FolderBar {
   path: HTMLElement;
   input: HTMLInputElement;
   go: HTMLButtonElement;
+  pick: HTMLButtonElement;
 }
 
 function folderBar(doc: Document, actions: ViewActions): FolderBar {
@@ -414,8 +416,12 @@ function folderBar(doc: Document, actions: ViewActions): FolderBar {
     input.value = "";
     actions.changeFolder(folder);
   });
-  element.append(label, path, input, go);
-  return { element, path, input, go };
+  const pick = doc.createElement("button");
+  pick.type = "button";
+  pick.textContent = "Pick folder";
+  pick.addEventListener("click", () => actions.pickFolder());
+  element.append(label, path, input, go, pick);
+  return { element, path, input, go, pick };
 }
 
 // The Undo button. It sends /undo, the line the user would type, so the page keeps to lines and approvals.
@@ -518,6 +524,7 @@ export function createView(
       folder.path.textContent = state.folder ?? "";
       folder.input.disabled = !sendable;
       folder.go.disabled = !sendable;
+      folder.pick.disabled = !sendable;
       input.disabled = !sendable;
       send.disabled = !sendable;
       input.placeholder = open

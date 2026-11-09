@@ -57,6 +57,11 @@ export interface FolderChangeMessage {
   path: string;
 }
 
+// The page asks for the folder dialog on this machine. A folder picked is switched to at once.
+export interface PickFolderMessage {
+  kind: "pickFolder";
+}
+
 // The page answers an ask question: the choices picked by position, and a line typed of its own.
 export interface AnswerMessage {
   kind: "answer";
@@ -80,7 +85,8 @@ export type ClientMessage =
   | ProfileWriteMessage
   | McpWriteMessage
   | AnswerMessage
-  | FolderChangeMessage;
+  | FolderChangeMessage
+  | PickFolderMessage;
 
 // A chunk of the model's reply, raw and unsanitized. The frontend escapes it before it shows it.
 export interface TextEvent {
