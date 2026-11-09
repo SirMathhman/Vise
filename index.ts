@@ -138,6 +138,9 @@ if (import.meta.main) {
     console.error("Set OPENROUTER_API_KEY in .env");
     process.exit(1);
   }
+  // Taken from the environment before anything starts. Child processes get a copy without the key and
+  // the token (src/tools/child-env.ts).
+  const address = takeWebAddress(process.env);
   // Ctrl+C stops the jobs and then exits, instead of leaving them running.
   process.once("SIGINT", () => {
     void stopEverything().then(() => process.exit(130));
@@ -176,8 +179,6 @@ if (import.meta.main) {
   const selection: ModelSelection = { model: savedModel.value ?? DEFAULT_MODEL };
   // --web serves the session to a browser instead of the terminal.
   const web = process.argv.includes("--web");
-  // Taken from the environment before the session starts, since its hooks run processes at once.
-  const address = takeWebAddress(process.env);
   let failed = false;
   try {
     const session = startSession(

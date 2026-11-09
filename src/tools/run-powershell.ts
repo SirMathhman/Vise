@@ -1,5 +1,6 @@
 import { err, ok, type Result } from "../core/messages.ts";
 import { startJob, outputText } from "./jobs.ts";
+import { childEnvironment } from "./child-env.ts";
 
 const TIMEOUT_MS = 30_000;
 // How long to wait for a finished command's output to finish arriving before returning it.
@@ -18,9 +19,7 @@ export async function runPowershell(
       ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
       {
         cwd: root,
-        // A copy of the environment as it is now: a variable removed from process.env (the web token) is
-        // not passed on. Without this option, Bun gives the process its starting environment.
-        env: { ...process.env },
+        env: childEnvironment(process.env),
         stdout: "pipe",
         stderr: "pipe",
       },

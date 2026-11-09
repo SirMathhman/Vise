@@ -1,4 +1,5 @@
 import { err, ok, type Result } from "../../core/messages.ts";
+import { childEnvironment } from "../child-env.ts";
 
 // One MCP server over stdio: JSON-RPC 2.0, one message per line. A request that gets no answer in
 // time fails, so a server that hangs cannot hold the session.
@@ -22,6 +23,7 @@ export function openSession(
   try {
     proc = Bun.spawn([command, ...args], {
       cwd,
+      env: childEnvironment(process.env),
       stdin: "pipe",
       stdout: "pipe",
       stderr: "ignore",

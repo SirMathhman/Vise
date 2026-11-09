@@ -1,5 +1,6 @@
 import { err, ok, type Result } from "../core/messages.ts";
 import { MAX_LINES } from "../core/tools.ts";
+import { childEnvironment } from "./child-env.ts";
 
 export const MAX_JOBS = 5;
 // A line longer than this is cut, so one line cannot grow memory without limit.
@@ -204,6 +205,7 @@ async function stopTree(pid: number): Promise<boolean> {
   try {
     return (
       (await Bun.spawn(["taskkill", "/PID", String(pid), "/T", "/F"], {
+        env: childEnvironment(process.env),
         stdout: "ignore",
         stderr: "ignore",
       }).exited) === 0
