@@ -230,7 +230,7 @@ Target layout. Test files sit beside the module each one tests; there is no sepa
         │       ├── main.ts              the socket, reconnects, render schedule (side effects only)
         │       ├── state.ts             pure reducer: server events to the transcript
         │       ├── markdown.ts          pure Markdown subset for replies (headings, lists, code, bold, italics; links as text), no DOM
-        │       ├── mcp-view.ts          the MCP panel and its server editor, built from the state; sends mcpWrite
+        │       ├── mcp-view.ts          the MCP panel and its server editor, built from the state; sends mcpWrite. Also panelBox, the folding panel every list uses (see Known Problems)
         │       └── view.ts              DOM from the state and from the Markdown blocks, text set with textContent only
         └── tools/                       disk, process, network, and settings work for the tools and the frontend
             ├── run-tool.ts              dispatches a call by name, checks the target before asking, runs a change only when approve resolves true; MCP calls go to the registry
@@ -286,6 +286,12 @@ The size and type rules that `bun run lint` enforces are listed in `AGENTS.md`. 
 Each item is a known defect or gap. Fixes are listed under Future Work.
 
 ### Functional
+
+#### Browser page
+
+- **A panel's open state is decided by its first render.** `panelBox` (`src/web/client/mcp-view.ts:234`) sets `open` on the first `show` and never again, so a render before the list arrives decides it. The page starts with empty lists and renders on the first animation frame, so the first show often has a count of 0 and the panel opens for good. Verified in the page: Tools (10) was open, where the panel should start closed above eight items. A panel should decide its state once it has a non-empty list, or leave the decision to the reader after a toggle.
+- **The heading is shared by two names.** Each list builder makes a `label` span that `panelBox` drops by class and position (`mcp-view.ts:246`), and the panel title is passed again by the caller (`view.ts:455`, `:461`, `:471`, and `mcp-view.ts` `createMcpSection`). The title is written in three places, and the drop works only while each builder puts its label first.
+- **The folding panel lives in a feature module.** `panelBox` is generic, but `mcp-view.ts` is the MCP feature, and `view.ts` imports it from there. The client directory holds ten tracked files, the lint limit, so the helper cannot take a file beside `view.ts` without a subfolder.
 
 #### Input and the session
 
@@ -348,7 +354,7 @@ Each item is a known defect or gap. Fixes are listed under Future Work.
 #### MCP servers
 
 - **The MCP panel drops a server the file no longer configures.** `mcpPanel` (`src/web/client/mcp-view.ts:39`) lists only the configured servers. A server that started and was then removed from the file shows only its problems, not its state or tools, until the next start. - **The server editor's row breaks its grid.** `.profile-editor .server-row` (`src/web/client/style.css:312`) is a three-column grid, but a row has five children: the kind select, the name, the program fields, the endpoint fields, and Remove. With the kind set to endpoint, at 974px wide, the select and the name input stretch to 180px tall, and Remove drops to a second row (verified in the browser; the hidden fields take no cell, and the row's cells stretch because the grid aligns them to stretch). The fields are labelled, but the labels sit beside a stretched input, so the row reads as one tall block. The row needs its own layout: the field groups span the full width, and the cells align to the start.
-- **The MCP section copies a helper and borrows other styles.** `element` is defined in both `src/web/client/mcp-view.ts:24` and `src/web/client/view.ts:39`. The section reuses the `sessions` and `profile-editor` classes, so its look follows those other sections.
+- **The MCP section copies a helper and borrows other styles.** `element` is defined in both `src/web/client/mcp-view.ts:24` and `src/web/client/view.ts:41`. The section reuses the `sessions` and `profile-editor` classes, so its look follows those other sections.
 - **MCP servers received the API key and the web token (fixed).** `openSession` (`src/tools/mcp/client.ts`) now passes `childEnvironment(process.env)`, as `run_powershell` and the `taskkill` in `jobs.ts` do, so neither name reaches a server, a command, or a stop. The filter does not stop a program the repository ships from reading `.env` from disk (see Security).
 - **Servers start before the session is ready and are not stopped on an early interrupt.** `startMcpServers` runs before any line is read and before the `sessionStart` hooks. A server that does not answer costs up to 60 seconds per handshake and per `tools/list` page, and the servers start one after another. `servers` stays empty until `index.ts:166`, so a Ctrl+C during startup runs `stopEverything` on nothing, and the servers already started are left running. (By reading the code; not run.)
 - **A name that looks external asks for approval even when no server offers it.** `needsApproval` treats any `<x>__<y>` name as an MCP tool (`src/core/tool-lines.ts:32`). A call to a name no server offers is previewed and approved, and only then fails with "unknown tool" (`src/tools/run-tool.ts:41`, `dispatch`).
@@ -477,7 +483,7 @@ Status is **missing**, **partial**, or in place.
 
 #### Input and the session
 
-- Move the DOM helper that `view.ts` and `mcp-view.ts` both define into one module, and give the MCP section its own CSS classes.
+- Move the DOM helper that `view.ts` and `mcp-view.ts` both define, and `panelBox`, into one module under a subfolder of `src/web/client` (such as `panels/`), so the client's top level stays under its file limit. Each list builder returns its items without a heading, and the panel owns the title and count. Give the MCP section its own CSS classes.
 - Announce, when a question discards queued lines, how many were dropped.
 - Give the turn loop one explicit session-ended state, set when input ends (the readline `close` event), on a stream error, or at `/exit` during a question. Check it before every request and before every tool call. Queued lines still count as input to answer, so the check reads the queue rather than a separate flag. Only the queue-empty case stops the loop.
 
