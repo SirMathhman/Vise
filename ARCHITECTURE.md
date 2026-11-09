@@ -262,17 +262,7 @@ Recursion is avoided in core. When a function would need to call a function that
 
 ### Code rules
 
-These are enforced by `bun run lint` as errors (ESLint for the line, function, and type rules, `scripts/check-files-per-dir.ts` for the file count):
-
-- at most 100 code lines per function (`max-lines-per-function`);
-- at most 4 parameters per function (`max-params`). A function that needs more takes one parameter object, declared as an interface;
-- at most 500 code lines per file (`max-lines`);
-- at most 10 tracked files per directory;
-- no object type literals written inline as `{ ... }` (`TSTypeLiteral`). Declare a named interface instead;
-- no function-typed fields in an interface (`TSPropertySignature` whose type is a function type). Declare a method signature instead, such as `reply(request: ReplyRequest): ...`. Callers keep the same `obj.name(...)` syntax. A field typed by a function alias (`approve: Approve`) is not caught by the rule, so it is kept by convention;
-- no `throw` statements (`ThrowStatement`). Failures are returned as a `Result` from `src/core/result.ts`.
-
-Each source file has one responsibility. Entry points contain wiring only: they read the environment, construct the functions, and call exported functions. Test files live next to what they test.
+The size and type rules that `bun run lint` enforces are listed in `AGENTS.md`. The design rule behind them is that each source file has one responsibility. Entry points contain wiring only: they read the environment, construct the functions, and call exported functions.
 
 ## Known Problems
 
@@ -518,7 +508,6 @@ Status is **missing**, **partial**, or in place.
 - Add a maximum line length and control-character handling before echo, applied to input and to model output.
 - Escape or sanitize model replies and `error:` lines the same way as tool lines.
 - Bound the history per request: apply the compaction trigger to the size of the request about to be sent, not the previous one. Set `max_tokens`.
-- Cache the context window for the session, so the check before each message does not fetch the model listing.
 
 #### Tests and tooling
 
@@ -535,8 +524,7 @@ These are the obvious concerns only. Measure with a profiler before optimizing.
 - Each streamed text delta is written with a separate `write` call. Fine at interactive speed. Large replies would benefit from buffering output per chunk.
 - Long lines from user input, model replies, and file reads are held whole in memory and in the history. Job output lines are cut at 8192 characters.
 - Each job stream keeps its last 500 lines, each cut at 8192 characters, so its memory is bounded. A job keeps reading until its process ends, so a command that prints gigabytes runs for its full time. Finished jobs stay in the registry until they are read.
-- `/context` fetches the full model listing on every call, a large response for one number. The same lookup runs before every message once a size is stored. Cache the context window for the session.
+- `/context` and the check before each message both fetch the full model listing, one large response for one number (see Model cache).
 - Compaction resends the whole history once more, plus the summary request, which roughly doubles the tokens for that turn. It is rare, but a long session can hit it repeatedly.
-- `list_files` reads every directory down to the depth before it returns, and holds every name in memory. A large tree at depth 5 is read in full even when the result is capped, so the cap limits the output, not the walk.
-- `read_file` holds the whole file in memory to return a range of it, so a large file costs its full size even when the range is short.
+- `list_files` reads the whole tree to the depth before it caps the output, and `read_file` loads the whole file to return a range. Both are described under Cost and size limits in Known Problems; the cap limits the output, not the walk or the memory.
 - **Prompt cache.** The guiding principle is to hit the provider's prompt cache as often as possible (N5, N6). `wireMessages` and `toWire` in `src/openrouter.ts` put the marker only on a user or assistant message without tool calls. A tool message, or an assistant message with tool calls, is sent without a marker. Each round of a tool loop ends with a tool message, so the requests made during a tool loop have no breakpoint and write no cache entry. The next turn then reuses only the prefix written by the last text reply. The fix is to attach the marker to the last message whatever its shape, for example by sending a tool message's content as a text part with `cache_control`, and to confirm with a probe that the provider accepts it. A probe against OpenRouter with `anthropic/claude-haiku-5.5` showed 7,204 cached tokens on the second identical prefix with the marker, and 0 without it. That probe covered two identical requests. It has not covered the turn after a completed one, where the previous last message is sent as plain text, so the cross-turn case needs a probe with two real turns. Provider caches are short-lived (about five minutes on Anthropic models), so a longer pause loses the prefix. Each compaction writes one cache entry for the whole history plus the summary request. The app does not yet read `cache_read` and `cache_write` from `usage`, so the hit rate is assumed, not measured.
