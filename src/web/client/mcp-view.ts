@@ -221,9 +221,43 @@ export interface McpSection {
   update(info: McpInfo | undefined, sendable: boolean, canSave: () => boolean): void;
 }
 
+// A panel that folds. Its summary names the list and how many items it holds. A panel with more items than
+// OPEN_LIMIT starts closed. After its first list, the reader's choice to open or close it is kept, so a
+// re-render does not close it again.
+const OPEN_LIMIT = 8;
+
+export interface PanelBox {
+  element: HTMLDetailsElement;
+  show(title: string, count: number, nodes: Node[]): void;
+}
+
+export function panelBox(doc: Document): PanelBox {
+  const details = doc.createElement("details");
+  details.className = "sessions";
+  const summary = doc.createElement("summary");
+  const body = doc.createElement("div");
+  details.append(summary, body);
+  let started = false;
+  return {
+    element: details,
+    show(title, count, nodes) {
+      summary.textContent = `${title} (${count})`;
+      // The heading the list builds is the summary now, so its own label is not shown twice.
+      const items = nodes.filter(
+        (node, index) => !(index === 0 && node instanceof HTMLElement && node.classList.contains("label")),
+      );
+      body.replaceChildren(...items);
+      if (!started) {
+        details.open = count <= OPEN_LIMIT;
+        started = true;
+      }
+    },
+  };
+}
+
 export function createMcpSection(doc: Document, actions: McpActions): McpSection {
-  const section = doc.createElement("section");
-  section.className = "sessions";
+  const box = panelBox(doc);
+  const section = box.element;
   const dialog = doc.createElement("dialog");
   dialog.className = "profile-editor";
   let key = "";
@@ -236,11 +270,9 @@ export function createMcpSection(doc: Document, actions: McpActions): McpSection
       const next = JSON.stringify([info, sendable]);
       if (next === key) return;
       key = next;
-      section.replaceChildren(
-        ...mcpPanel(doc, info, sendable, () =>
-          openMcpEditor(doc, { dialog, info: current, canSave, actions }),
-        ),
-      );
+      box.show("MCP servers", info?.servers.length ?? 0, mcpPanel(doc, info, sendable, () =>
+        openMcpEditor(doc, { dialog, info: current, canSave, actions }),
+      ));
     },
   };
 }

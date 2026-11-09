@@ -226,6 +226,25 @@ textarea:disabled {
   border-bottom: 1px solid var(--line);
 }
 
+/* A panel folds: the summary names its list, and the body holds the list, which wraps. */
+details.sessions {
+  display: block;
+}
+
+details.sessions > summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 4px 0;
+}
+
+details.sessions > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0 8px;
+}
+
 .sessions .label {
   font-weight: 600;
   margin-right: 4px;

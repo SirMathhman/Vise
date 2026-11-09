@@ -13,7 +13,7 @@ import {
   type Block,
   type ViewState,
 } from "./state.ts";
-import { createMcpSection, type McpActions } from "./mcp-view.ts";
+import { createMcpSection, panelBox, type McpActions } from "./mcp-view.ts";
 import { renderMarkdown } from "./markdown.ts";
 
 // What the view asks the page to do. The page sends the line or the answer to the server.
@@ -395,16 +395,13 @@ export function createView(
   const status = element(doc, "span", "status", "");
   const newChat = newConversationButton(doc, actions);
   header.append(status, newChat);
-  const panel = doc.createElement("section");
+  const panel = panelBox(doc);
   // What the panel was last built from, so an unchanged panel is left alone.
   let panelKey = "";
-  panel.className = "sessions";
-  const toolPanel = doc.createElement("section");
-  toolPanel.className = "sessions";
+  const toolPanel = panelBox(doc);
   // What the tools panel was last built from, so an unchanged panel is left alone.
   let toolKey = "";
-  const profilePanel = doc.createElement("section");
-  profilePanel.className = "sessions";
+  const profilePanel = panelBox(doc);
   let profileKey = "";
   // The editor: a dialog that opens on each profile the page reads.
   const editor = doc.createElement("dialog");
@@ -422,7 +419,7 @@ export function createView(
   const send = element(doc, "button", "send", "Send");
   send.type = "submit";
   form.append(input, send);
-  root.append(header, panel, toolPanel, profilePanel, mcp.section, transcript, form, editor, mcp.dialog);
+  root.append(header, panel.element, toolPanel.element, profilePanel.element, mcp.section, transcript, form, editor, mcp.dialog);
 
   input.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
@@ -455,17 +452,13 @@ export function createView(
       const key = JSON.stringify([state.sessions, sendable]);
       if (key !== panelKey) {
         panelKey = key;
-        panel.replaceChildren(
-          ...sessionsPanel(doc, state.sessions, sendable, actions),
-        );
+        panel.show("Saved sessions", state.sessions.length, sessionsPanel(doc, state.sessions, sendable, actions));
       }
       sendableNow = sendable;
       const profilesKey = JSON.stringify([state.profiles, sendable]);
       if (profilesKey !== profileKey) {
         profileKey = profilesKey;
-        profilePanel.replaceChildren(
-          ...profilesPanel(doc, state.profiles, sendable, actions),
-        );
+        profilePanel.show("Profiles", state.profiles.length, profilesPanel(doc, state.profiles, sendable, actions));
       }
       mcp.update(state.mcp, sendable, () => sendableNow);
       if (state.profile !== undefined && state.profile !== shownProfile) {
@@ -475,9 +468,7 @@ export function createView(
       const toolsKey = JSON.stringify([state.tools, sendable]);
       if (toolsKey !== toolKey) {
         toolKey = toolsKey;
-        toolPanel.replaceChildren(
-          ...toolsPanel(doc, state.tools, sendable, actions),
-        );
+        toolPanel.show("Tools", state.tools.length, toolsPanel(doc, state.tools, sendable, actions));
       }
       newChat.disabled = !sendable;
       input.disabled = !sendable;
