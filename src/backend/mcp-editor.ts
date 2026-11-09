@@ -14,7 +14,15 @@ export async function announceMcp(ports: SessionPorts, emit: Emit): Promise<void
     emit({ kind: "error", message: `could not read the MCP servers: ${config.error.message}` });
     return;
   }
-  emit({ kind: "mcp", running: ports.mcp.running(), servers: config.value });
+  emit({ kind: "mcp", running: ports.mcp.running(), servers: config.value.map(withoutValues) });
+}
+
+// An endpoint's header values are secrets, so the page gets each header name with a blank value.
+function withoutValues(server: McpServerEntry): McpServerEntry {
+  if (server.kind !== "http") return server;
+  const headers: Record<string, string> = {};
+  for (const header of Object.keys(server.headers)) headers[header] = "";
+  return { ...server, headers };
 }
 
 // Writes the servers the page sent, then sends them again. A change applies at the next start.

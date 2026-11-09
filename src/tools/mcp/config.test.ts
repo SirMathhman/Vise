@@ -64,3 +64,14 @@ test("an entry with both a command and a url, a url that is not http, or a bad h
   await writeFileText(root, JSON.stringify({ servers: { bad: { url: "https://a.test", headers: { "bad name": "x" } } } }));
   expect((await readMcpConfig(root)).ok).toBe(false);
 });
+
+test("a header left blank keeps the value stored for it, and a new header with no value is refused", async () => {
+  const root = await freshRoot();
+  const first = [{ kind: "http" as const, name: "remote", url: "https://example.test/mcp", headers: { Authorization: "Bearer t" } }];
+  expect((await saveMcpConfig(root, first)).ok).toBe(true);
+  const blank = [{ kind: "http" as const, name: "remote", url: "https://example.test/mcp", headers: { Authorization: "" } }];
+  expect((await saveMcpConfig(root, blank)).ok).toBe(true);
+  expect(await readMcpConfig(root)).toEqual({ ok: true, value: first });
+  const added = [{ kind: "http" as const, name: "remote", url: "https://example.test/mcp", headers: { "X-New": "" } }];
+  expect((await saveMcpConfig(root, added)).ok).toBe(false);
+});

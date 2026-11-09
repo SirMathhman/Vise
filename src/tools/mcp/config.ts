@@ -112,13 +112,38 @@ function fileEntryOf(server: McpServerEntry): unknown {
   return { command: server.command, args: server.args };
 }
 
+// The page never receives header values, so it sends a blank one for a header it did not change. A blank value
+// keeps the value the file holds for the same header of the same server. A new header with no value is refused.
+function keepHeaderValues(servers: McpServerEntry[], stored: McpServerEntry[]): Result<McpServerEntry[]> {
+  const kept: McpServerEntry[] = [];
+  for (const server of servers) {
+    if (server.kind !== "http") {
+      kept.push(server);
+      continue;
+    }
+    const previous = stored.find((entry) => entry.name === server.name && entry.kind === "http");
+    const headers: Record<string, string> = {};
+    for (const [header, value] of Object.entries(server.headers)) {
+      const held = previous?.kind === "http" ? previous.headers[header] : undefined;
+      if (value !== "") headers[header] = value;
+      else if (held !== undefined) headers[header] = held;
+      else return err(new Error(`server "${server.name}" needs a value for the header ${header}`));
+    }
+    kept.push({ ...server, headers });
+  }
+  return ok(kept);
+}
+
 // Writes the servers to the file, replacing it. The entries are checked the same way a read checks them,
 // and two entries may not share a name, so the file is never written in a form the reader refuses.
 export async function saveMcpConfig(root: string, servers: McpServerEntry[]): Promise<Result<void>> {
   const names = servers.map((server) => server.name);
   if (new Set(names).size !== names.length) return err(new Error("two servers have the same name"));
+  const stored = await readMcpConfig(root);
+  const kept = keepHeaderValues(servers, stored.ok ? stored.value : []);
+  if (!kept.ok) return err(kept.error);
   const body: Record<string, unknown> = {};
-  for (const server of servers) {
+  for (const server of kept.value) {
     body[server.name] = fileEntryOf(server);
   }
   const checked = parseServers({ servers: body });

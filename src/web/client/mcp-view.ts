@@ -127,7 +127,7 @@ function rowOf(doc: Document, server: McpServerEntry, remove: (row: ServerRow) =
   const headers = doc.createElement("textarea");
   headers.rows = 2;
   headers.value = server.kind === "http" ? headerLines(server.headers) : "";
-  headers.placeholder = "one header per line, as Name: value";
+  headers.placeholder = "one header per line, as Name: value; a blank value keeps the stored one";
   const stdioFields = doc.createElement("div");
   stdioFields.append(field(doc, command, "Command"), field(doc, args, "Arguments"));
   const httpFields = doc.createElement("div");
