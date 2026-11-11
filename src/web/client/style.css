@@ -833,3 +833,41 @@ input:not([type="checkbox"]):not([type="radio"]) {
   overflow-wrap: anywhere;
   font-size: 13px;
 }
+
+/* At every width the chat's message box stays pinned at the bottom. The workspace does not scroll; the chat's
+   transcript does, and the file and Files panes above it each scroll within their own limit. */
+#app .workspace {
+  overflow: hidden;
+}
+
+#app .tree-column,
+#app .file-column {
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 40%;
+  overflow: auto;
+}
+
+#app .chat {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+#app .chat-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+#app .chat .transcript {
+  flex: none;
+  overflow: visible;
+}
+
+#app .chat > .composer {
+  flex: 0 0 auto;
+}
