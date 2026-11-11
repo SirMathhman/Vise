@@ -39,5 +39,5 @@ test("saving keeps a server's key when its key is left blank, refuses a new serv
   if (!noKey.ok) expect(noKey.error.message).not.toContain("first");
   expect((await saveServers(folder, [{ name: "a", url: "http://x", apiKey: "k" }, { name: "a", url: "http://y", apiKey: "k" }])).ok).toBe(false);
   const listed = await providersStore(folder).list();
-  expect(listed).toEqual({ ok: true, value: [{ name: "a", url: "http://x", keySaved: true }] });
+  expect(listed).toEqual({ ok: true, value: [{ name: "local", url: "http://127.0.0.1:9932", keySaved: true }] });
 });

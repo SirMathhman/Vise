@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import { err, ok, type ProviderEntry, type ProviderInput, type ProvidersStore, type Result } from "../core/messages.ts";
@@ -39,7 +39,16 @@ export async function readServers(folder: string): Promise<Result<LlamaServer[]>
 
 // Saves the servers the page sent, replacing the file. A blank key keeps the key saved for a server of the same
 // name; a new server needs one. An error names the server, never a key.
-export async function saveServers(folder: string, inputs: ProviderInput[]): Promise<Result<void>> {
+// Saves run one at a time, so a read-merge-write never overlaps another save.
+let queue: Promise<unknown> = Promise.resolve();
+
+export function saveServers(folder: string, inputs: ProviderInput[]): Promise<Result<void>> {
+  const run = queue.then(() => saveNow(folder, inputs));
+  queue = run.catch(() => undefined);
+  return run;
+}
+
+async function saveNow(folder: string, inputs: ProviderInput[]): Promise<Result<void>> {
   const existing = await readServers(folder);
   if (!existing.ok) return err(existing.error);
   const saved = new Map(existing.value.map((server) => [server.name, server.apiKey]));
@@ -57,7 +66,10 @@ export async function saveServers(folder: string, inputs: ProviderInput[]): Prom
   if (new Set(names).size !== names.length) return err(new Error("two servers have the same name"));
   try {
     await mkdir(join(folder, ".vise"), { recursive: true });
-    await writeFile(join(folder, ".vise", "providers.json"), `${JSON.stringify(servers, null, 2)}\n`, "utf8");
+    const file = join(folder, ".vise", "providers.json");
+    const temp = `${file}.${crypto.randomUUID()}.tmp`;
+    await writeFile(temp, `${JSON.stringify(servers, null, 2)}\n`, "utf8");
+    await rename(temp, file);
   } catch {
     return err(new Error("could not write .vise/providers.json"));
   }
