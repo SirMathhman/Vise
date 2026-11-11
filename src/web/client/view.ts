@@ -14,6 +14,7 @@ import {
   type ViewState,
 } from "./state.ts";
 import { createMcpSection, panelBox, type McpActions } from "./mcp-view.ts";
+import { createToolsSection } from "./tools/tools-view.ts";
 import { createProvidersSection, type ProvidersActions } from "./providers/providers-view.ts";
 import { createTreeSection, type TreeActions } from "./files/tree-view.ts";
 import { createFileViewer, type FileActions } from "./files/file-view.ts";
@@ -184,27 +185,6 @@ function sessionsPanel(
     return button;
   });
   return [heading, ...buttons];
-}
-
-// The tools, each a button that switches it. Clicking sends /tools enable|disable <name>, the line the
-// user would type. A change applies from the next request.
-function toolsPanel(
-  doc: Document,
-  tools: ToolSwitch[],
-  enabled: boolean,
-  actions: ViewActions,
-): HTMLElement[] {
-  const heading = element(doc, "span", "label", "Tools");
-  const hint = element(doc, "span", "hint", "a change applies from the next request");
-  const buttons = tools.map((tool) => {
-    const button = element(doc, "button", "tool", `${tool.name}: ${tool.enabled ? "on" : "off"}`);
-    button.disabled = !enabled;
-    button.setAttribute("aria-pressed", String(tool.enabled));
-    const action = tool.enabled ? "disable" : "enable";
-    button.addEventListener("click", () => actions.line(`/tools ${action} ${tool.name}`));
-    return button;
-  });
-  return [heading, hint, ...buttons];
 }
 
 // The hook points a profile can have. The same four as HOOK_POINTS in src/core/notes.ts.
@@ -473,9 +453,8 @@ export function createView(
   const panel = panelBox(doc);
   // What the panel was last built from, so an unchanged panel is left alone.
   let panelKey = "";
-  const toolPanel = panelBox(doc);
+  const toolsSection = createToolsSection(doc, actions);
   // What the tools panel was last built from, so an unchanged panel is left alone.
-  let toolKey = "";
   const profilePanel = panelBox(doc);
   let profileKey = "";
   // The editor: a dialog that opens on each profile the page reads.
@@ -493,7 +472,7 @@ export function createView(
   input.placeholder = "Message Vise (Enter sends, Shift+Enter adds a line)";
   const send = element(doc, "button", "send", "Send");
   send.type = "submit";
-  const autoScroll = autoScrollButton(doc, actions); const utilities = utilitiesOf(doc, [panel.element, toolPanel.element, profilePanel.element, mcp.section, providers.section]);
+  const autoScroll = autoScrollButton(doc, actions); const utilities = utilitiesOf(doc, [panel.element, toolsSection.section, profilePanel.element, mcp.section, providers.section]);
   const tools = doc.createElement("div"); tools.className = "composer-tools"; tools.append(utilities.button, autoScroll.element); form.append(utilities.panel, tools, input, send);
   const workspace = columns(doc, { tree: files.element, file: fileViewer.element, transcript, composer: form });
   root.append(header, folder.element, workspace, editor, mcp.dialog, providers.dialog);
@@ -521,7 +500,7 @@ export function createView(
       sendableNow = sendable;
       files.update(state.trees, state.expanded);
       fileViewer.update({ openFiles: state.openFiles, file: state.file });
-      splitShown = applySplit(root, [panel.element, toolPanel.element, profilePanel.element, mcp.section, providers.section], state.openFiles.length > 0, splitShown);
+      splitShown = applySplit(root, [panel.element, toolsSection.section, profilePanel.element, mcp.section, providers.section], state.openFiles.length > 0, splitShown);
       const profilesKey = JSON.stringify([state.profiles, sendable]);
       if (profilesKey !== profileKey) {
         profileKey = profilesKey;
@@ -532,11 +511,7 @@ export function createView(
         shownProfile = state.profile;
         openEditor(doc, editor, { profile: state.profile, tools: state.tools, sendable: () => sendableNow, actions });
       }
-      const toolsKey = JSON.stringify([state.tools, sendable]);
-      if (toolsKey !== toolKey) {
-        toolKey = toolsKey;
-        toolPanel.show("Tools", state.tools.length, toolsPanel(doc, state.tools, sendable, actions));
-      }
+      toolsSection.update(state.tools, sendable);
       newChat.disabled = !sendable;
       undo.disabled = !sendable;
       folder.path.textContent = state.folder ?? "";

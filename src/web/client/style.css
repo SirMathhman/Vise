@@ -930,3 +930,23 @@ input:not([type="checkbox"]):not([type="radio"]) {
   background: transparent;
   color: var(--fg);
 }
+
+/* The tools panel: one folding group per source, each wrapping its own tool buttons, so a long list stays in its group. */
+.tools-groups {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+details.tool-group > summary {
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+details.tool-group > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px 0 8px;
+}
