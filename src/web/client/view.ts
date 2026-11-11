@@ -23,6 +23,7 @@ import { themeControl } from "./theme/theme.ts";
 import { earlierButton, type RecentActions } from "./transcript/recent.ts";
 import { createModelPicker } from "./models/model-picker.ts";
 import { autoScrollButton, type AutoScrollActions } from "./transcript/auto-scroll.ts";
+import { utilitiesOf } from "./utilities/utilities.ts";
 
 // What the view asks the page to do. The page sends the line or the answer to the server.
 export interface ViewActions extends McpActions, TreeActions, FileActions, ProvidersActions, RecentActions, AutoScrollActions {
@@ -496,11 +497,9 @@ export function createView(
   input.placeholder = "Message Vise (Enter sends, Shift+Enter adds a line)";
   const send = element(doc, "button", "send", "Send");
   send.type = "submit";
-  const autoScroll = autoScrollButton(doc, actions); form.append(input, autoScroll.element, send);
-  const workspace = columns(doc, {
-    tree: files.element, file: fileViewer.element,
-    panels: [panel.element, toolPanel.element, profilePanel.element, mcp.section, providers.section], transcript, composer: form,
-  });
+  const autoScroll = autoScrollButton(doc, actions); const utilities = utilitiesOf(doc, [panel.element, toolPanel.element, profilePanel.element, mcp.section, providers.section]);
+  form.append(input, utilities.button, autoScroll.element, send, utilities.panel);
+  const workspace = columns(doc, { tree: files.element, file: fileViewer.element, transcript, composer: form });
   root.append(header, folder.element, workspace, editor, mcp.dialog, providers.dialog);
 
   wireComposer(form, input, actions);

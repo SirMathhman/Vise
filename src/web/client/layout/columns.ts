@@ -7,14 +7,12 @@ import { separators } from "./separators.ts";
 export interface ColumnParts {
   tree: HTMLElement;
   file: HTMLElement;
-  panels: HTMLElement[];
   transcript: HTMLElement;
   composer: HTMLElement;
 }
 
 export function columns(doc: Document, parts: ColumnParts): HTMLElement {
-  const panelGroup = block(doc, "chat-panels", parts.panels);
-  const body = block(doc, "chat-body", [panelGroup, parts.transcript]);
+  const body = block(doc, "chat-body", [parts.transcript]);
   const chat = block(doc, "chat", [body, parts.composer]);
   const workspace = block(doc, "workspace", []);
   const [treeHandle, chatHandle] = separators(doc, workspace);
