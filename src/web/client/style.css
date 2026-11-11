@@ -462,7 +462,6 @@ ul.tree:not(ul ul) {
 }
 
 .file-viewer pre {
-  max-height: 70vh;
   margin: 8px 0 0;
   overflow: auto;
   white-space: pre-wrap;
@@ -587,9 +586,8 @@ ul.tree:not(ul ul) {
   color: var(--fg);
 }
 
-/* A Markdown file, rendered. Its box scrolls, as the source text does. */
+/* A Markdown file, rendered. It has no height limit of its own, so only the pane around it scrolls. */
 .file-markdown {
-  max-height: 70vh;
   margin-top: 8px;
   overflow: auto;
   overflow-wrap: anywhere;
@@ -666,4 +664,11 @@ input:not([type="checkbox"]):not([type="radio"]) {
 
 .folder input {
   height: 40px;
+}
+
+/* The profile editor's Text box grows with its text, so the dialog is the one region that scrolls. */
+.profile-editor textarea {
+  field-sizing: content;
+  overflow: hidden;
+  resize: none;
 }
