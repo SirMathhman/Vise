@@ -41,7 +41,7 @@ test("lists the model the server runs with its context window, and streams a rep
   const server = fakeLlama();
   try {
     const url = String(server.url).replace(/\/$/, "");
-    const provider = llamaCpp({ name: "local", url, apiKey: "secret" });
+    const provider = llamaCpp({ kind: "llama.cpp", name: "local", url, apiKey: "secret" });
     expect(await provider.listModels()).toEqual({ ok: true, value: [{ id: "tiny", contextLength: 4096 }] });
     expect(await provider.contextWindow("tiny")).toEqual({ ok: true, value: 4096 });
     const replies: string[] = [];
@@ -58,7 +58,7 @@ test("a wrong key is refused, and the error names the server, not the key", asyn
   const server = fakeLlama();
   try {
     const url = String(server.url).replace(/\/$/, "");
-    const result = await llamaCpp({ name: "local", url, apiKey: "wrong" }).listModels();
+    const result = await llamaCpp({ kind: "llama.cpp", name: "local", url, apiKey: "wrong" }).listModels();
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.message).toContain("local");

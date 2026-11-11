@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { ok, type Provider, type ProviderRequest } from "../core/messages.ts";
+import { ok, type ProviderRequest, type Result } from "../core/messages.ts";
 import type { ServerProvider } from "./llama-cpp.ts";
 import { routed } from "./router.ts";
 
@@ -20,44 +20,38 @@ function recording(label: string, calls: string[]): ServerProvider {
   };
 }
 
-function fallbackOf(calls: string[]): Provider {
-  return { ...recording("openrouter", calls), defaultModel: "anthropic/claude" };
-}
-
 // Reads a reply to its end, so the provider has been called.
-async function drain(stream: AsyncIterable<unknown>): Promise<void> {
-  for await (const part of stream) void part;
+async function collect(stream: AsyncIterable<Result<string>>): Promise<Result<string>[]> {
+  const parts: Result<string>[] = [];
+  for await (const part of stream) parts.push(part);
+  return parts;
 }
 
 function requestFor(model: string): ProviderRequest {
   return { model, messages: [], tools: [], extraTools: [] } as unknown as ProviderRequest;
 }
 
-test("a model named for a server goes to that server with the bare name; any other goes to the fallback unchanged", async () => {
+test("a model named for a provider goes to it with the bare name; a name no provider has is refused", async () => {
   const calls: string[] = [];
-  const provider = routed([{ name: "local", provider: recording("local", calls) }], fallbackOf(calls));
-  await drain(provider.reply(requestFor("local::tiny")));
-  await drain(provider.reply(requestFor("anthropic/claude")));
-  expect(calls).toEqual(["local:tiny", "openrouter:anthropic/claude"]);
-  expect(provider.defaultModel).toBe("anthropic/claude");
+  const provider = routed([{ name: "local", provider: recording("local", calls) }], "local::tiny");
+  await collect(provider.reply(requestFor("local::tiny")));
+  const refused = await collect(provider.reply(requestFor("anthropic/claude")));
+  expect(calls).toEqual(["local:tiny"]);
+  expect(refused.length).toBe(1);
+  expect(refused[0]?.ok).toBe(false);
+  expect(provider.defaultModel).toBe("local::tiny");
 });
 
-test("the context window is asked of the server that owns the model", async () => {
+test("the context window is asked of the provider that owns the model, and a name no provider has is refused", async () => {
   const calls: string[] = [];
-  const provider = routed([{ name: "local", provider: recording("local", calls) }], fallbackOf(calls));
+  const provider = routed([{ name: "local", provider: recording("local", calls) }], "");
   expect(await provider.contextWindow("local::tiny")).toEqual(ok(100));
   expect(calls).toEqual(["local.context:tiny"]);
+  expect((await provider.contextWindow("anthropic/claude")).ok).toBe(false);
 });
 
-test("the list has every server's models named with their server, then the fallback's", async () => {
+test("the list has every provider's models, each named with its provider", async () => {
   const calls: string[] = [];
-  const provider = routed([{ name: "local", provider: recording("local", calls) }], fallbackOf(calls));
-  const listed = await provider.listModels();
-  expect(listed).toEqual({
-    ok: true,
-    value: [
-      { id: "local::m", contextLength: 100 },
-      { id: "m", contextLength: 100 },
-    ],
-  });
+  const provider = routed([{ name: "local", provider: recording("local", calls) }], "");
+  expect(await provider.listModels()).toEqual({ ok: true, value: [{ id: "local::m", contextLength: 100 }] });
 });

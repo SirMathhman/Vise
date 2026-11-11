@@ -1,7 +1,7 @@
 import { err, ok, type ModelInfo, type Provider, type Result } from "../core/messages.ts";
 import type { ServerProvider } from "./llama-cpp.ts";
 
-// A server's provider, under the server's name. Its models are named <name>::<id>.
+// A provider, under its name. Its models are named <name>::<id>.
 export interface NamedServer {
   name: string;
   provider: ServerProvider;
@@ -12,23 +12,31 @@ interface Target {
   model: string;
 }
 
-// Several providers as one. A model named <name>::<id> goes to the server called <name>, and that server is
-// given <id>. Any other model goes to the fallback, under its own name.
-export function routed(servers: NamedServer[], fallback: Provider): Provider {
+// Every provider as one. A model named <name>::<id> goes to the provider called <name>, which is given <id>. A model
+// whose name matches no provider is refused, so a model saved before the names changed must be chosen again.
+export function routed(servers: NamedServer[], defaultModel: string): Provider {
   return {
-    defaultModel: fallback.defaultModel,
+    defaultModel,
     reply: (request) => {
       const target = targetOf(servers, request.model);
-      if (target === undefined) return fallback.reply(request);
+      if (target === undefined) return refused(request.model);
       return target.provider.reply({ ...request, model: target.model });
     },
-    contextWindow: (model) => {
+    contextWindow: async (model) => {
       const target = targetOf(servers, model);
-      if (target === undefined) return fallback.contextWindow(model);
+      if (target === undefined) return err(unknownModel(model));
       return target.provider.contextWindow(target.model);
     },
-    listModels: () => listAll(servers, fallback),
+    listModels: () => listAll(servers),
   };
+}
+
+function unknownModel(model: string): Error {
+  return new Error(`no provider is named for ${model}; choose a model with /model`);
+}
+
+async function* refused(model: string): AsyncGenerator<Result<string>> {
+  yield err(unknownModel(model));
 }
 
 function targetOf(servers: NamedServer[], model: string): Target | undefined {
@@ -39,9 +47,9 @@ function targetOf(servers: NamedServer[], model: string): Target | undefined {
   return undefined;
 }
 
-// Every server's models, named with their server, then the fallback's. A server that fails fails the list, so
-// the failure is seen rather than hidden.
-async function listAll(servers: NamedServer[], fallback: Provider): Promise<Result<ModelInfo[]>> {
+// Every provider's models, each named with its provider. A provider that fails fails the list, so the failure is
+// seen rather than hidden.
+async function listAll(servers: NamedServer[]): Promise<Result<ModelInfo[]>> {
   const models: ModelInfo[] = [];
   for (const server of servers) {
     const listed = await server.provider.listModels();
@@ -50,7 +58,5 @@ async function listAll(servers: NamedServer[], fallback: Provider): Promise<Resu
       models.push({ id: `${server.name}::${model.id}`, contextLength: model.contextLength });
     }
   }
-  const fromFallback = await fallback.listModels();
-  if (!fromFallback.ok) return err(fromFallback.error);
-  return ok([...models, ...fromFallback.value]);
+  return ok(models);
 }

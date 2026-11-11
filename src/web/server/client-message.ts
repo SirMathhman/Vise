@@ -51,9 +51,10 @@ function profileOf(value: unknown): ProfileDetail | undefined {
 // Reads one llama.cpp server sent by the page: a name, a URL, and the key (blank keeps the saved one).
 function providerOf(value: unknown): ProviderInput | undefined {
   if (!isRecord(value)) return undefined;
-  const { name, url, apiKey } = value;
+  const { kind, name, url, apiKey } = value;
+  if (kind !== "openrouter" && kind !== "llama.cpp") return undefined;
   if (typeof name !== "string" || typeof url !== "string" || typeof apiKey !== "string") return undefined;
-  return { name, url, apiKey };
+  return { kind, name, url, apiKey };
 }
 
 // Reads a message sent by the browser. The browser may send lines, approvals, and the two profile requests.

@@ -1,5 +1,5 @@
 import { readInstructions } from "./src/instructions.ts";
-import { providerFromEnv } from "./src/providers/provider.ts";
+import { buildProvider } from "./src/providers/provider.ts";
 import { providersStore, readServers } from "./src/providers/config.ts";
 import { startSession } from "./src/backend/session.ts";
 import type { SessionPorts } from "./src/backend/ports.ts";
@@ -212,7 +212,7 @@ if (import.meta.main) {
     console.error(servers.error.message);
     process.exit(1);
   }
-  const built = providerFromEnv(process.env, servers.value);
+  const built = buildProvider(servers.value);
   if (!built.ok) {
     console.error(built.error.message);
     process.exit(1);

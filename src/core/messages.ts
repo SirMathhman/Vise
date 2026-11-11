@@ -156,15 +156,20 @@ export interface McpStore {
   save(servers: McpServerEntry[]): Promise<Result<void>>;
 }
 
-// One llama.cpp server as the page sees it: its name and URL. The key is never sent to the page.
+// A provider kind: an OpenRouter account, or a llama.cpp server.
+export type ProviderKind = "openrouter" | "llama.cpp";
+
+// One provider as the page sees it: its kind, name, and URL (blank for OpenRouter). Never its key.
 export interface ProviderEntry {
+  kind: ProviderKind;
   name: string;
   url: string;
   keySaved: boolean;
 }
 
-// One server as the page sends it. A blank key keeps the key saved for a server of the same name.
+// One provider as the page sends it. A blank key keeps the key saved for a provider of the same name.
 export interface ProviderInput {
+  kind: ProviderKind;
   name: string;
   url: string;
   apiKey: string;

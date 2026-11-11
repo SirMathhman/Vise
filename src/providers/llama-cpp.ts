@@ -4,12 +4,13 @@ import { streamChat } from "./openrouter.ts";
 
 // One llama.cpp server, as .vise/providers.json names it. Its name is the prefix of its models' names.
 export interface LlamaServer {
+  kind: "llama.cpp";
   name: string;
   url: string;
   apiKey: string;
 }
 
-// What a server supplies. The default model belongs to the router's fallback, not to a server.
+// What a server supplies. The default model is chosen by the factory, not by a server.
 export type ServerProvider = Omit<Provider, "defaultModel">;
 
 const PropsSchema = z.object({

@@ -1,7 +1,7 @@
 import type { ProviderEntry, ProviderInput } from "../../../protocol/protocol.ts";
 import { panelBox } from "../mcp-view.ts";
 
-// The llama.cpp servers, as a panel that lists them and an editor that changes them. The page never has a key: a
+// The providers (OpenRouter accounts and llama.cpp servers), as a panel that lists them and an editor that changes them. The page never has a key: a
 // key field is blank, a blank key keeps the saved one, and a typed key replaces it.
 
 export interface ProvidersActions {
@@ -26,7 +26,7 @@ export function createProvidersSection(doc: Document, actions: ProvidersActions)
       const next = JSON.stringify([servers, sendable]);
       if (next === key) return;
       key = next;
-      const lines = servers.map((server) => hint(doc, `${server.name}: ${server.url}`));
+      const lines = servers.map((server) => hint(doc, `${server.kind}: ${server.name}${server.url ? ` at ${server.url}` : ""}`));
       const edit = doc.createElement("button");
       edit.type = "button";
       edit.className = "session";
@@ -48,7 +48,8 @@ function hint(doc: Document, text: string): HTMLElement {
   return span;
 }
 
-// One server's row in the editor: its name, its URL, its key (blank keeps the saved one), and a remove button.
+// One provider's row in the editor: its kind, its name, its URL (llama.cpp only), its key (blank keeps the saved
+// one), and a remove button.
 interface Row {
   element: HTMLElement;
   read(): ProviderInput;
@@ -57,20 +58,40 @@ interface Row {
 function rowOf(doc: Document, server?: ProviderEntry): Row {
   const element = doc.createElement("div");
   element.className = "server-row";
+  const kind = doc.createElement("select");
+  for (const choice of KINDS) {
+    const option = doc.createElement("option");
+    option.value = choice;
+    option.textContent = choice;
+    kind.append(option);
+  }
+  kind.value = server?.kind ?? "openrouter";
   const name = input(doc, "text", server?.name ?? "", "name");
   const url = input(doc, "text", server?.url ?? "", "URL");
+  const showUrl = () => {
+    url.hidden = kind.value !== "llama.cpp";
+  };
+  kind.addEventListener("change", showUrl);
+  showUrl();
   const apiKey = input(doc, "password", "", server?.keySaved ? "key saved: leave blank to keep it" : "key");
   apiKey.autocomplete = "off";
   const remove = doc.createElement("button");
   remove.type = "button";
   remove.textContent = "Remove";
   remove.addEventListener("click", () => element.remove());
-  element.append(name, url, apiKey, remove);
+  element.append(kind, name, url, apiKey, remove);
   return {
     element,
-    read: () => ({ name: name.value.trim(), url: url.value.trim(), apiKey: apiKey.value }),
+    read: () => ({
+      kind: kind.value === "llama.cpp" ? "llama.cpp" : "openrouter",
+      name: name.value.trim(),
+      url: url.value.trim(),
+      apiKey: apiKey.value,
+    }),
   };
 }
+
+const KINDS: ProviderInput["kind"][] = ["openrouter", "llama.cpp"];
 
 function input(doc: Document, type: string, value: string, placeholder: string): HTMLInputElement {
   const field = doc.createElement("input");
@@ -80,14 +101,14 @@ function input(doc: Document, type: string, value: string, placeholder: string):
   return field;
 }
 
-// The editor. Save sends every row, and the page's rows replace the list; a server left out is removed.
+// The editor. Save sends every row, and the page's rows replace the list; a provider left out is removed.
 function openEditor(doc: Document, dialog: HTMLDialogElement, servers: ProviderEntry[], actions: ProvidersActions): void {
   const rows: Row[] = servers.map((server) => rowOf(doc, server));
   const list = doc.createElement("fieldset");
   list.append(...rows.map((row) => row.element));
   const add = doc.createElement("button");
   add.type = "button";
-  add.textContent = "Add server";
+  add.textContent = "Add provider";
   add.addEventListener("click", () => {
     const row = rowOf(doc);
     rows.push(row);
