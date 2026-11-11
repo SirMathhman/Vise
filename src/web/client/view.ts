@@ -17,6 +17,7 @@ import { createMcpSection, panelBox, type McpActions } from "./mcp-view.ts";
 import { createTreeSection, type TreeActions } from "./files/tree-view.ts";
 import { createFileViewer, type FileActions } from "./files/file-view.ts";
 import { renderMarkdown } from "./markdown.ts";
+import { columns } from "./layout/columns.ts";
 
 // What the view asks the page to do. The page sends the line or the answer to the server.
 export interface ViewActions extends McpActions, TreeActions, FileActions {
@@ -449,9 +450,6 @@ export function createView(
   const files = createTreeSection(doc, actions);
   const fileViewer = createFileViewer(doc, actions);
   // The tree and the viewer share one row: side by side on a wide window, stacked on a narrow one.
-  const split = doc.createElement("div");
-  split.className = "split";
-  split.append(files.element, fileViewer.element);
   const panel = panelBox(doc);
   // What the panel was last built from, so an unchanged panel is left alone.
   let panelKey = "";
@@ -476,7 +474,8 @@ export function createView(
   const send = element(doc, "button", "send", "Send");
   send.type = "submit";
   form.append(input, send);
-  root.append(header, folder.element, split, panel.element, toolPanel.element, profilePanel.element, mcp.section, transcript, form, editor, mcp.dialog);
+  const workspace = columns(doc, [files.element, fileViewer.element], [panel.element, toolPanel.element, profilePanel.element, mcp.section, transcript, form]);
+  root.append(header, folder.element, workspace, editor, mcp.dialog);
 
   input.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
@@ -514,6 +513,7 @@ export function createView(
       sendableNow = sendable;
       files.update(state.trees, state.expanded);
       fileViewer.update({ openFiles: state.openFiles, file: state.file });
+      root.classList.toggle("split-view", state.openFiles.length > 0);
       const profilesKey = JSON.stringify([state.profiles, sendable]);
       if (profilesKey !== profileKey) {
         profileKey = profilesKey;
