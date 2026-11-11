@@ -14,6 +14,7 @@ import {
   type ViewState,
 } from "./state.ts";
 import { createMcpSection, panelBox, type McpActions } from "./mcp-view.ts";
+import { createProvidersSection, type ProvidersActions } from "./providers/providers-view.ts";
 import { createTreeSection, type TreeActions } from "./files/tree-view.ts";
 import { createFileViewer, type FileActions } from "./files/file-view.ts";
 import { renderMarkdown } from "./render/markdown-dom.ts";
@@ -21,7 +22,7 @@ import { applySplit, columns } from "./layout/columns.ts";
 import { themeControl } from "./theme/theme.ts";
 
 // What the view asks the page to do. The page sends the line or the answer to the server.
-export interface ViewActions extends McpActions, TreeActions, FileActions {
+export interface ViewActions extends McpActions, TreeActions, FileActions, ProvidersActions {
   line(text: string): void;
   changeFolder(path: string): void;
   pickFolder(): void;
@@ -483,7 +484,7 @@ export function createView(
   // Whether the page may send now, as of the last render. The editor's Save checks it when clicked.
   let sendableNow = false;
   let shownProfile: ProfileDetail | undefined;
-  const mcp = createMcpSection(doc, actions);
+  const mcp = createMcpSection(doc, actions); const providers = createProvidersSection(doc, actions);
   const transcript = element(doc, "main", "transcript", "");
   const form = doc.createElement("form");
   form.className = "composer";
@@ -495,11 +496,10 @@ export function createView(
   form.append(input, send);
   const workspace = columns(doc, {
     tree: files.element, file: fileViewer.element,
-    panels: [panel.element, toolPanel.element, profilePanel.element, mcp.section],
-    transcript,
-    composer: form,
+    panels: [panel.element, toolPanel.element, profilePanel.element, mcp.section, providers.section],
+    transcript, composer: form,
   });
-  root.append(header, folder.element, workspace, editor, mcp.dialog);
+  root.append(header, folder.element, workspace, editor, mcp.dialog, providers.dialog);
 
   wireComposer(form, input, actions);
 
@@ -526,13 +526,13 @@ export function createView(
       sendableNow = sendable;
       files.update(state.trees, state.expanded);
       fileViewer.update({ openFiles: state.openFiles, file: state.file });
-      splitShown = applySplit(root, [panel.element, toolPanel.element, profilePanel.element, mcp.section], state.openFiles.length > 0, splitShown);
+      splitShown = applySplit(root, [panel.element, toolPanel.element, profilePanel.element, mcp.section, providers.section], state.openFiles.length > 0, splitShown);
       const profilesKey = JSON.stringify([state.profiles, sendable]);
       if (profilesKey !== profileKey) {
         profileKey = profilesKey;
         profilePanel.show("Profiles", state.profiles.length, profilesPanel(doc, state.profiles, sendable, actions));
       }
-      mcp.update(state.mcp, sendable, () => sendableNow);
+      mcp.update(state.mcp, sendable, () => sendableNow); providers.update(state.providers, sendable);
       if (state.profile !== undefined && state.profile !== shownProfile) {
         shownProfile = state.profile;
         openEditor(doc, editor, { profile: state.profile, tools: state.tools, sendable: () => sendableNow, actions });

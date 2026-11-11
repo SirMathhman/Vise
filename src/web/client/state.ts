@@ -3,6 +3,7 @@ import type {
   HistoryMessage,
   McpServerEntry,
   McpServerStatus,
+  ProviderEntry,
   ProfileDetail,
   ProfileSummary,
   ServerEvent,
@@ -100,6 +101,8 @@ export interface ViewState {
   folder?: string;
   // The MCP servers as they went at the start, and as the file configures them, from the last mcp event.
   mcp?: McpInfo;
+  // The llama.cpp servers, without their keys, from the last providers event.
+  providers: ProviderEntry[];
   // The entries of each folder the page has read, keyed by its path ("" is the working directory).
   trees: Record<string, TreeEntry[]>;
   // The paths of the folders the user has opened in the file tree.
@@ -180,6 +183,7 @@ export const initialState: ViewState = {
   sessions: [],
   tools: [],
   profiles: [],
+  providers: [],
   trees: {},
   expanded: [],
   openFiles: [],
@@ -343,6 +347,8 @@ function applyEvent(state: ViewState, event: ServerEvent): ViewState {
     }
     case "tree":
       return { ...state, trees: { ...state.trees, [event.path]: event.entries } };
+    case "providers":
+      return { ...state, providers: event.servers };
     case "mcp":
       return { ...state, mcp: { running: event.running, servers: event.servers } };
     case "hookOutput":

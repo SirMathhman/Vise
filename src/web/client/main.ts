@@ -124,6 +124,9 @@ const view = createView(document, root, {
   writeMcp(servers) {
     send({ kind: "mcpWrite", servers });
   },
+  writeProviders(servers) {
+    send({ kind: "providersWrite", servers });
+  },
   openFile(path: string) {
     requested.add(path);
     send({ kind: "fileRead", path });
