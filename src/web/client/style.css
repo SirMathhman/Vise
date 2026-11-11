@@ -731,10 +731,10 @@ input:not([type="checkbox"]):not([type="radio"]) {
   white-space: nowrap;
 }
 
-/* The chat utilities: a Utilities button beside the message box, and a popover over the composer that holds the
-   utility panels. The popover scrolls; it is the one region that does. */
+/* The chat utilities: a Utilities button beside the message box, and a popover above the message row that holds the
+   utility panels. */
 .composer {
-  position: relative;
+  flex-wrap: wrap;
 }
 
 .utilities-button {
@@ -743,14 +743,11 @@ input:not([type="checkbox"]):not([type="radio"]) {
   white-space: nowrap;
 }
 
+/* The popover sits in the flow above the message row, so the transcript makes room and nothing scrolls inside it. */
 .utilities {
-  position: absolute;
-  right: 0;
-  bottom: 100%;
-  z-index: 10;
-  width: min(420px, 92vw);
-  max-height: 60vh;
-  overflow-y: auto;
+  order: -1;
+  flex: 0 0 100%;
+  margin-bottom: 8px;
   padding: 8px 12px;
   border: 1px solid var(--line);
   background: var(--bg);
