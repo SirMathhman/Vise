@@ -780,3 +780,56 @@ input:not([type="checkbox"]):not([type="radio"]) {
 .utilities[hidden] {
   display: none;
 }
+
+/* Tool calls in the transcript: a card with a symbol, the tool's name and arguments, and its result folded under it. */
+.tool-card {
+  padding: 8px 12px;
+  font-size: 14px;
+}
+
+.tool-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+
+.tool-symbol {
+  display: inline-block;
+  width: 1.4em;
+  text-align: center;
+  color: var(--accent);
+  font-size: 16px;
+}
+
+.tool-name {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.tool-args,
+.tool-note {
+  color: var(--muted);
+}
+
+.tool-card.skipped {
+  opacity: 0.7;
+}
+
+.tool-result {
+  margin-top: 6px;
+}
+
+.tool-result summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.tool-result pre {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}

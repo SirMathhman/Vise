@@ -141,16 +141,26 @@ export interface ThinkingDoneEvent {
   exact: boolean;
 }
 
-// A tool call the model asked for, described for the user. `description` is raw; the frontend sanitizes it.
+// A tool call the model asked for, described for the user. `description` is raw; the frontend sanitizes it. `id` is
+// the call's id, which its result carries.
 export interface ToolCallEvent {
   kind: "toolCall";
+  id: string;
   description: string;
 }
 
 // A tool call that did not run because the session ended. It still gets a tool result in the history.
 export interface ToolSkippedEvent {
   kind: "toolSkipped";
+  id: string;
   description: string;
+}
+
+// The result of a tool call, in call order, after the round's calls have run. `text` is capped by the backend.
+export interface ToolResultEvent {
+  kind: "toolResult";
+  id: string;
+  text: string;
 }
 
 // A write or command waits for the user. The frontend answers with an approval carrying the same id.
@@ -298,6 +308,7 @@ export type ServerEvent =
   | ThinkingDoneEvent
   | ToolCallEvent
   | ToolSkippedEvent
+  | ToolResultEvent
   | ApprovalRequestEvent
   | ApprovalAnsweredEvent
   | AskEvent

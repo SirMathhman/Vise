@@ -202,3 +202,16 @@ test("auto-scroll starts on and a toggle turns it off and back on", () => {
   expect(off.following).toBe(false);
   expect(reduce(off, { kind: "toggleAutoScroll" }).following).toBe(true);
 });
+
+test("a tool result is attached to the call with its id, and a call without one has no result", () => {
+  const state = after([
+    { kind: "toolCall", id: "a", description: "tool: list_files . depth 2" },
+    { kind: "toolCall", id: "b", description: "tool: read_file README.md lines 1-60" },
+    { kind: "toolResult", id: "b", text: "# vise" },
+  ]);
+  const tools = state.blocks.filter((block) => block.kind === "tool");
+  expect(tools).toEqual([
+    { kind: "tool", id: "a", description: "tool: list_files . depth 2", skipped: false },
+    { kind: "tool", id: "b", description: "tool: read_file README.md lines 1-60", skipped: false, result: "# vise" },
+  ]);
+});

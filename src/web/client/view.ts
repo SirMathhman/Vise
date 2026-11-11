@@ -23,6 +23,7 @@ import { themeControl } from "./theme/theme.ts";
 import { earlierButton, type RecentActions } from "./transcript/recent.ts";
 import { createModelPicker } from "./models/model-picker.ts";
 import { autoScrollButton, type AutoScrollActions } from "./transcript/auto-scroll.ts";
+import { toolCard } from "./tools/tool-card.ts";
 import { utilitiesOf } from "./utilities/utilities.ts";
 
 // What the view asks the page to do. The page sends the line or the answer to the server.
@@ -145,14 +146,7 @@ function blockElement(
       return element(doc, "div", "block thinking", label);
     }
     case "tool":
-      return element(
-        doc,
-        "div",
-        block.skipped ? "block tool skipped" : "block tool",
-        block.skipped
-          ? `${block.description} did not run: the session ended`
-          : block.description,
-      );
+      return toolCard(doc, block);
     case "approval":
       return approvalCard(doc, block, actions);
     case "ask":

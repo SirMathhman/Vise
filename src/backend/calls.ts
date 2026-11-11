@@ -37,7 +37,7 @@ export async function runCalls(step: CallsStep): Promise<ChatMessage[]> {
   for (const call of step.calls) {
     const description = describeToolCall(call);
     if (step.finished()) {
-      step.emit({ kind: "toolSkipped", description });
+      step.emit({ kind: "toolSkipped", id: call.id, description });
       results.push(
         Promise.resolve(
           toolMessage(call.id, "error: the call did not run because the session ended"),
@@ -45,7 +45,7 @@ export async function runCalls(step: CallsStep): Promise<ChatMessage[]> {
       );
       continue;
     }
-    step.emit({ kind: "toolCall", description });
+    step.emit({ kind: "toolCall", id: call.id, description });
     // A tool that is switched off, or left out by the profile, is refused before anyone is asked.
     if (BACKEND_TOOLS.includes(call.name) && !step.offered.includes(call.name)) {
       results.push(Promise.resolve(toolMessage(call.id, `error: tool ${call.name} is switched off`)));
@@ -77,5 +77,17 @@ export async function runCalls(step: CallsStep): Promise<ChatMessage[]> {
       ),
     );
   }
-  return Promise.all(results);
+  const messages = await Promise.all(results);
+  for (const message of messages) {
+    if (message.role === "tool") step.emit({ kind: "toolResult", id: message.toolCallId, text: capped(message.content) });
+  }
+  return messages;
+}
+
+// The most of a result the page is sent. The rest is still in the conversation the model sees.
+const RESULT_CHARS = 4000;
+
+function capped(text: string): string {
+  return text.length <= RESULT_CHARS ? text : `${text.slice(0, RESULT_CHARS)}
+[${text.length - RESULT_CHARS} more characters not shown]`;
 }

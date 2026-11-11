@@ -36,8 +36,11 @@ export interface ThinkingBlock {
 
 export interface ToolBlock {
   kind: "tool";
+  id: string;
   description: string;
   skipped: boolean;
+  // The call's result, once it arrives. Folded under the call.
+  result?: string;
 }
 
 // A question the model asked. Its answer is set once the question is closed.
@@ -324,12 +327,14 @@ function applyEvent(state: ViewState, event: ServerEvent): ViewState {
     case "toolCall":
       return {
         ...state,
-        blocks: [...blocks, { kind: "tool", description: event.description, skipped: false }],
+        blocks: [...blocks, { kind: "tool", id: event.id, description: event.description, skipped: false }],
       };
+    case "toolResult":
+      return { ...state, blocks: blocks.map((block) => (block.kind === "tool" && block.id === event.id ? { ...block, result: event.text } : block)) };
     case "toolSkipped":
       return {
         ...state,
-        blocks: [...blocks, { kind: "tool", description: event.description, skipped: true }],
+        blocks: [...blocks, { kind: "tool", id: event.id, description: event.description, skipped: true }],
       };
     case "approvalRequest":
       return {
