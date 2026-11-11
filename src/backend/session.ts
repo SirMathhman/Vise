@@ -49,6 +49,8 @@ interface SessionState {
   events: Channel<ServerEvent>;
   lines: Channel<string>;
   question?: OpenQuestion;
+  // The files the page has open, by path, in the order they were opened. Only paths: the text is read again when needed.
+  openFiles: string[];
   nextId: number;
   // Set when /exit is typed at an approval: the session ends and no further request is sent.
   exitRequested: boolean;
@@ -144,6 +146,26 @@ function refuseWhileAsking(state: SessionState): boolean {
   return true;
 }
 
+// Shows a file to the page. A file that is shown is kept in the open set, so the page has it again after a reload.
+async function showFileFor(state: SessionState, path: string): Promise<void> {
+  const shown = await announceFile(state.ports, sink(state), path);
+  if (shown && !state.openFiles.includes(path)) {
+    state.openFiles = [...state.openFiles, path];
+    sendOpenFiles(state);
+  }
+}
+
+// Drops a file from the open set and tells the page the set.
+function closeFile(state: SessionState, path: string): void {
+  if (!state.openFiles.includes(path)) return;
+  state.openFiles = state.openFiles.filter((open) => open !== path);
+  sendOpenFiles(state);
+}
+
+function sendOpenFiles(state: SessionState): void {
+  state.events.push({ kind: "openFiles", paths: state.openFiles });
+}
+
 // Handles one message from the frontend. While a question is open, a line answers it; an approval
 // answers only the question with its id.
 function receive(state: SessionState, message: ClientMessage): void {
@@ -169,7 +191,10 @@ function receive(state: SessionState, message: ClientMessage): void {
       void announceTree(state.ports, sink(state), message.path);
       return;
     case "fileRead":
-      void announceFile(state.ports, sink(state), message.path);
+      void showFileFor(state, message.path);
+      return;
+    case "fileClose":
+      closeFile(state, message.path);
       return;
     case "profileRead":
       void readProfileFor(state.ports, sink(state), message.name);
@@ -388,6 +413,7 @@ export function startSession(ports: SessionPorts): Session {
     ports,
     events: new Channel<ServerEvent>(),
     lines: new Channel<string>(),
+    openFiles: [],
     nextId: 1,
     exitRequested: false,
   };

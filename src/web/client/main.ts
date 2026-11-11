@@ -18,6 +18,8 @@ let state: ViewState = initialState;
 let socket: WebSocket | undefined;
 let attempts = 0;
 let renderScheduled = false;
+// The files whose text the page has asked for since it connected, so each is asked for once.
+const requested = new Set<string>();
 
 function scheduleRender(): void {
   if (renderScheduled) return;
@@ -31,6 +33,15 @@ function scheduleRender(): void {
 function dispatch(action: ViewAction): void {
   state = reduce(state, action);
   scheduleRender();
+}
+
+// Asks for the text of each open file the page does not have, so a reload shows the files still open.
+function readMissing(paths: string[]): void {
+  for (const path of paths) {
+    if (requested.has(path) || state.files.some((file) => file.path === path)) continue;
+    requested.add(path);
+    send({ kind: "fileRead", path });
+  }
 }
 
 // Sends a message if the socket is open. A line sent while it is not is not sent at all.
@@ -58,6 +69,7 @@ function retryDelay(): number {
 // reset first. A session that has ended, or was taken over, is not reconnected.
 function connect(): void {
   dispatch({ kind: "reset" });
+  requested.clear();
   const scheme = location.protocol === "https:" ? "wss" : "ws";
   const url = `${scheme}://${location.host}/ws?t=${encodeURIComponent(token)}`;
   const ws = new WebSocket(url);
@@ -68,7 +80,9 @@ function connect(): void {
   });
   ws.addEventListener("message", (message) => {
     const event = parseEvent(String(message.data));
-    if (event !== undefined) dispatch({ kind: "server", event });
+    if (event === undefined) return;
+    dispatch({ kind: "server", event });
+    if (event.kind === "openFiles") readMissing(event.paths);
   });
   ws.addEventListener("close", (close) => {
     if (socket !== ws) return;
@@ -111,7 +125,16 @@ const view = createView(document, root, {
     send({ kind: "mcpWrite", servers });
   },
   openFile(path: string) {
+    requested.add(path);
     send({ kind: "fileRead", path });
+  },
+  showFile(path: string) {
+    dispatch({ kind: "showFile", path });
+  },
+  closeFile(path: string) {
+    requested.delete(path);
+    dispatch({ kind: "dropFile", path });
+    send({ kind: "fileClose", path });
   },
   toggleFolder(path: string, open: boolean) {
     dispatch({ kind: "folderOpen", path, open });

@@ -104,8 +104,12 @@ export interface ViewState {
   trees: Record<string, TreeEntry[]>;
   // The paths of the folders the user has opened in the file tree.
   expanded: string[];
-  // The file the viewer shows, from the last file event. A new file event is a new object, so the viewer opens it again.
+  // The file the viewer shows: one of the files the page has read.
   file?: FileView;
+  // The files the session has open, in the order they were opened, from the last openFiles event.
+  openFiles: string[];
+  // The text of each open file the page has read.
+  files: FileView[];
 }
 
 export interface FileView {
@@ -147,7 +151,25 @@ export interface FolderOpenAction {
   open: boolean;
 }
 
-export type ViewAction = SentAction | ServerAction | LinkAction | ResetAction | FolderOpenAction;
+// The user shows one of the open files, or drops it from the page (the session is told separately).
+export interface FileShowAction {
+  kind: "showFile";
+  path: string;
+}
+
+export interface FileDropAction {
+  kind: "dropFile";
+  path: string;
+}
+
+export type ViewAction =
+  | SentAction
+  | ServerAction
+  | LinkAction
+  | ResetAction
+  | FolderOpenAction
+  | FileShowAction
+  | FileDropAction;
 
 export const initialState: ViewState = {
   link: "connecting",
@@ -160,6 +182,8 @@ export const initialState: ViewState = {
   profiles: [],
   trees: {},
   expanded: [],
+  openFiles: [],
+  files: [],
 };
 
 // The approval question still open, if any. The page locks its input while one is open, because the
@@ -306,9 +330,17 @@ function applyEvent(state: ViewState, event: ServerEvent): ViewState {
       return { ...state, profile: event.profile };
     case "folder":
       // A new folder starts a new tree: the old folder's entries and open folders go.
-      return { ...state, folder: event.path, trees: {}, expanded: [] };
-    case "file":
-      return { ...state, file: { path: event.path, text: event.text } };
+      return { ...state, folder: event.path, trees: {}, expanded: [], openFiles: [], files: [], file: undefined };
+    case "file": {
+      const view = { path: event.path, text: event.text };
+      const others = state.files.filter((file) => file.path !== event.path);
+      return { ...state, file: view, files: [...others, view] };
+    }
+    case "openFiles": {
+      const files = state.files.filter((file) => event.paths.includes(file.path));
+      const kept = state.file !== undefined && event.paths.includes(state.file.path);
+      return { ...state, openFiles: event.paths, files, file: kept ? state.file : files.at(-1) };
+    }
     case "tree":
       return { ...state, trees: { ...state.trees, [event.path]: event.entries } };
     case "mcp":
@@ -343,6 +375,18 @@ export function reduce(state: ViewState, action: ViewAction): ViewState {
       return { ...state, link: action.link };
     case "reset":
       return { ...initialState, link: state.link };
+    case "showFile":
+      return { ...state, file: state.files.find((file) => file.path === action.path) };
+    case "dropFile": {
+      const files = state.files.filter((file) => file.path !== action.path);
+      const shownGone = state.file?.path === action.path;
+      return {
+        ...state,
+        openFiles: state.openFiles.filter((path) => path !== action.path),
+        files,
+        file: shownGone ? files.at(-1) : state.file,
+      };
+    }
     case "folderOpen":
       return {
         ...state,

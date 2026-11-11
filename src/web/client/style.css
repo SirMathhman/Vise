@@ -420,10 +420,35 @@ ul.tree:not(ul ul) {
   display: none;
 }
 
-.file-viewer h2 {
-  margin: 8px 0;
-  font-size: 16px;
-  overflow-wrap: anywhere;
+.file-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.file-tab {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.file-tab.selected {
+  border-color: var(--muted);
+}
+
+.file-tab-name,
+.file-tab-close {
+  background: none;
+  border: 0;
+  padding: 4px 8px;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.file-tab-close {
+  color: var(--muted);
 }
 
 .file-viewer pre {

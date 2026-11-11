@@ -512,3 +512,19 @@ test("input that ends while an ask question is open closes it with no answer", a
   const answered = seen.find((event) => event.kind === "askAnswered");
   expect(answered).toEqual({ kind: "askAnswered", id: expect.any(Number), answer: "the user gave no answer" });
 });
+
+test("a file that is shown is kept in the open set, a file that cannot be read is not, and a close drops it", async () => {
+  const fileText = async (path: string) => (path === "a.txt" ? ok("A") : err(new Error("missing")));
+  const session = startSession({ ...portsFor([]), fileText });
+  const events = session.events()[Symbol.asyncIterator]();
+  session.send({ kind: "fileRead", path: "a.txt" });
+  const shown = await until(events, "openFiles");
+  expect(shown.at(-1)).toEqual({ kind: "openFiles", paths: ["a.txt"] });
+  session.send({ kind: "fileRead", path: "missing.txt" });
+  await until(events, "error");
+  session.send({ kind: "fileClose", path: "a.txt" });
+  const closed = await until(events, "openFiles");
+  expect(closed.at(-1)).toEqual({ kind: "openFiles", paths: [] });
+  session.send({ kind: "inputEnded" });
+  await until(events, "ended");
+});

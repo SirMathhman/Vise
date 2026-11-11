@@ -89,6 +89,12 @@ export interface FileReadMessage {
   path: string;
 }
 
+// The page closes one of the files it has open. The session drops it from the set it keeps.
+export interface FileCloseMessage {
+  kind: "fileClose";
+  path: string;
+}
+
 export type ClientMessage =
   | LineMessage
   | ApprovalMessage
@@ -101,7 +107,8 @@ export type ClientMessage =
   | FolderChangeMessage
   | PickFolderMessage
   | TreeReadMessage
-  | FileReadMessage;
+  | FileReadMessage
+  | FileCloseMessage;
 
 // A chunk of the model's reply, raw and unsanitized. The frontend escapes it before it shows it.
 export interface TextEvent {
@@ -228,6 +235,13 @@ export interface FileEvent {
   text: string;
 }
 
+// The files the session has open, in the order they were opened. Sent after each change to the set. The
+// text of a file is not kept: the page reads it again when it needs it.
+export interface OpenFilesEvent {
+  kind: "openFiles";
+  paths: string[];
+}
+
 // The output of a hook, in full. The frontend caps what it shows.
 export interface HookOutputEvent {
   kind: "hookOutput";
@@ -277,6 +291,7 @@ export type ServerEvent =
   | FolderEvent
   | TreeEvent
   | FileEvent
+  | OpenFilesEvent
   | HookOutputEvent
   | NoticeEvent
   | ErrorEvent

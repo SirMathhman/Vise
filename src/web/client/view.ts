@@ -15,11 +15,11 @@ import {
 } from "./state.ts";
 import { createMcpSection, panelBox, type McpActions } from "./mcp-view.ts";
 import { createTreeSection, type TreeActions } from "./files/tree-view.ts";
-import { createFileViewer } from "./files/file-view.ts";
+import { createFileViewer, type FileActions } from "./files/file-view.ts";
 import { renderMarkdown } from "./markdown.ts";
 
 // What the view asks the page to do. The page sends the line or the answer to the server.
-export interface ViewActions extends McpActions, TreeActions {
+export interface ViewActions extends McpActions, TreeActions, FileActions {
   line(text: string): void;
   changeFolder(path: string): void;
   pickFolder(): void;
@@ -447,7 +447,7 @@ export function createView(
   header.append(status, undo, newChat);
   const folder = folderBar(doc, actions);
   const files = createTreeSection(doc, actions);
-  const fileViewer = createFileViewer(doc);
+  const fileViewer = createFileViewer(doc, actions);
   // The tree and the viewer share one row: side by side on a wide window, stacked on a narrow one.
   const split = doc.createElement("div");
   split.className = "split";
@@ -513,7 +513,7 @@ export function createView(
       }
       sendableNow = sendable;
       files.update(state.trees, state.expanded);
-      fileViewer.update(state.file);
+      fileViewer.update({ openFiles: state.openFiles, file: state.file });
       const profilesKey = JSON.stringify([state.profiles, sendable]);
       if (profilesKey !== profileKey) {
         profileKey = profilesKey;

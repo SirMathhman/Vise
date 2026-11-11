@@ -15,13 +15,15 @@ export async function announceTree(ports: SessionPorts, emit: Emit, path: string
   emit({ kind: "tree", path, entries: listed.value });
 }
 
-// Sends the whole text of one file, for the page's file viewer. A file that cannot be shown is reported.
-export async function announceFile(ports: SessionPorts, emit: Emit, path: string): Promise<void> {
-  if (ports.fileText === undefined) return;
+// Sends the whole text of one file, for the page's file viewer. Answers true when the text was sent. A file that
+// cannot be shown is reported and answers false.
+export async function announceFile(ports: SessionPorts, emit: Emit, path: string): Promise<boolean> {
+  if (ports.fileText === undefined) return false;
   const read = await ports.fileText(path);
   if (!read.ok) {
     emit({ kind: "error", message: `could not show ${path}: ${read.error.message}` });
-    return;
+    return false;
   }
   emit({ kind: "file", path, text: read.value });
+  return true;
 }

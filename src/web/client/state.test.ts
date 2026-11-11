@@ -172,3 +172,20 @@ test("a tree event sets the entries of its folder, and a folder event starts the
   expect(moved.trees).toEqual({});
   expect(moved.expanded).toEqual([]);
 });
+
+test("open files: the session's list sets the tabs, a shown file's text is kept, and a dropped file is gone", () => {
+  const opened = after([
+    { kind: "openFiles", paths: ["a.txt", "b.txt"] },
+    { kind: "file", path: "a.txt", text: "A" },
+    { kind: "file", path: "b.txt", text: "B" },
+  ]);
+  expect(opened.openFiles).toEqual(["a.txt", "b.txt"]);
+  expect(opened.file).toEqual({ path: "b.txt", text: "B" });
+  const shown = reduce(opened, { kind: "showFile", path: "a.txt" });
+  expect(shown.file).toEqual({ path: "a.txt", text: "A" });
+  const dropped = reduce(shown, { kind: "dropFile", path: "a.txt" });
+  expect(dropped.openFiles).toEqual(["b.txt"]);
+  expect(dropped.files).toEqual([{ path: "b.txt", text: "B" }]);
+  expect(dropped.file).toEqual({ path: "b.txt", text: "B" });
+  expect(after([{ kind: "openFiles", paths: ["a.txt"] }, { kind: "folder", path: "C:/other" }]).openFiles).toEqual([]);
+});
