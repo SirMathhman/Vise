@@ -1,4 +1,4 @@
-import { type McpStore, type ModelPorts, type UndoStore, type ReplyRequest, type ToolCall, type Result } from "../core/messages.ts";
+import { type McpStore, type ModelPorts, type TreeEntry, type UndoStore, type ReplyRequest, type ToolCall, type Result } from "../core/messages.ts";
 
 import { type HookPoint, type ProfileHook, type ProfileStore } from "../core/notes.ts";
 
@@ -33,6 +33,8 @@ export interface SessionPorts {
   profiles?: ProfileStore;
   // Where the page and /mcp read the MCP servers. Absent, there are none.
   mcp?: McpStore;
+  // The entries directly inside a folder of the working directory, for the page's file tree. Absent, the page has no tree.
+  tree?(path: string): Promise<Result<TreeEntry[]>>;
   // The folder the session works in, announced at the start.
   folder?: string;
   // Where file changes are recorded for /undo. Absent, /undo is not available.

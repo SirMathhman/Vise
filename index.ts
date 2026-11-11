@@ -28,6 +28,7 @@ import {
 } from "./src/tools/notes/load-profile.ts";
 import { runNoteCommand } from "./src/tools/notes/run-note-command.ts";
 import { runTool } from "./src/tools/run-tool.ts";
+import { listChildren } from "./src/tools/files/list-files.ts";
 import { hookRunner, readHooks } from "./src/tools/hooks/hooks.ts";
 import { sessionStore } from "./src/tools/session-store.ts";
 import { resumeStore } from "./src/tools/resume/resume-store.ts";
@@ -106,6 +107,7 @@ function sessionPorts(setup: PortSetup): SessionPorts {
     profiles: profileStore(root, setup.allTools),
     mcp: mcpStore(root, setup.mcp.statuses()),
     folder: root,
+    tree: (path) => listChildren(root, path),
     instructions: setup.instructions,
   };
 }

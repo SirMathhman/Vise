@@ -58,3 +58,11 @@ test("a folder change is read with its path, and a blank path is refused", () =>
   });
   expect(parseClientMessage('{"kind":"folderChange","path":"  "}').ok).toBe(false);
 });
+
+test("a tree read is read with its folder path, and a path that is not text is refused", () => {
+  expect(parseClientMessage('{"kind":"treeRead","path":"sub"}')).toEqual({
+    ok: true,
+    value: { kind: "treeRead", path: "sub" },
+  });
+  expect(parseClientMessage('{"kind":"treeRead","path":3}').ok).toBe(false);
+});

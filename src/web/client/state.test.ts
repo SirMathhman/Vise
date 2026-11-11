@@ -156,3 +156,15 @@ test("an ask question keeps the composer locked until it is answered", () => {
 test("a folder event sets the folder the page shows", () => {
   expect(after([{ kind: "folder", path: "C:/work" }]).folder).toBe("C:/work");
 });
+
+test("a tree event sets the entries of its folder, and a folder event starts the tree again", () => {
+  const entries = [{ name: "a.txt", path: "a.txt", directory: false }];
+  const read = after([{ kind: "tree", path: "", entries }]);
+  expect(read.trees).toEqual({ "": entries });
+  const opened = reduce(read, { kind: "folderOpen", path: "sub", open: true });
+  expect(opened.expanded).toEqual(["sub"]);
+  expect(reduce(opened, { kind: "folderOpen", path: "sub", open: false }).expanded).toEqual([]);
+  const moved = after([{ kind: "tree", path: "", entries }, { kind: "folder", path: "C:/other" }]);
+  expect(moved.trees).toEqual({});
+  expect(moved.expanded).toEqual([]);
+});

@@ -5,9 +5,9 @@ import type { ApprovalAnswer } from "../core/commands.ts";
 import type { HistoryMessage } from "../core/sessions.ts";
 import type { ToolSwitch } from "../core/tools.ts";
 import type { ProfileDetail, ProfileSummary } from "../core/notes.ts";
-import type { McpServerEntry, McpServerStatus } from "../core/messages.ts";
+import type { McpServerEntry, McpServerStatus, TreeEntry } from "../core/messages.ts";
 
-export type { ApprovalAnswer, HistoryMessage, ToolSwitch, ProfileDetail, ProfileSummary, McpServerEntry, McpServerStatus };
+export type { ApprovalAnswer, HistoryMessage, ToolSwitch, ProfileDetail, ProfileSummary, McpServerEntry, McpServerStatus, TreeEntry };
 
 // A line the user typed. While an approval question is open, the line is its answer: the backend
 // reads it as the answer (see answerOfLine). A browser also sends `shown`, the id of the newest question
@@ -76,6 +76,13 @@ export interface McpWriteMessage {
   servers: McpServerEntry[];
 }
 
+// The page asks for the entries of one folder of its file tree. `path` is relative to the working directory;
+// the empty path is the working directory itself.
+export interface TreeReadMessage {
+  kind: "treeRead";
+  path: string;
+}
+
 export type ClientMessage =
   | LineMessage
   | ApprovalMessage
@@ -86,7 +93,8 @@ export type ClientMessage =
   | McpWriteMessage
   | AnswerMessage
   | FolderChangeMessage
-  | PickFolderMessage;
+  | PickFolderMessage
+  | TreeReadMessage;
 
 // A chunk of the model's reply, raw and unsanitized. The frontend escapes it before it shows it.
 export interface TextEvent {
@@ -199,6 +207,13 @@ export interface FolderEvent {
   path: string;
 }
 
+// The entries of one folder, in answer to a treeRead, or sent at the start of each session for the top folder.
+export interface TreeEvent {
+  kind: "tree";
+  path: string;
+  entries: TreeEntry[];
+}
+
 // The output of a hook, in full. The frontend caps what it shows.
 export interface HookOutputEvent {
   kind: "hookOutput";
@@ -246,6 +261,7 @@ export type ServerEvent =
   | ProfileEvent
   | McpEvent
   | FolderEvent
+  | TreeEvent
   | HookOutputEvent
   | NoticeEvent
   | ErrorEvent

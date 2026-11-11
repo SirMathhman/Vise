@@ -370,3 +370,30 @@ details.sessions > div {
     grid-template-columns: 1fr;
   }
 }
+
+/* The file tree: each folder opens in place, and its entries are indented under it. */
+.tree {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 16px;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+ul.tree:not(ul ul) {
+  padding-left: 0;
+}
+
+.tree .folder-toggle {
+  background: none;
+  border: 0;
+  padding: 2px 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.tree .hint {
+  color: var(--muted);
+}

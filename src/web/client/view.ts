@@ -14,10 +14,11 @@ import {
   type ViewState,
 } from "./state.ts";
 import { createMcpSection, panelBox, type McpActions } from "./mcp-view.ts";
+import { createTreeSection, type TreeActions } from "./files/tree-view.ts";
 import { renderMarkdown } from "./markdown.ts";
 
 // What the view asks the page to do. The page sends the line or the answer to the server.
-export interface ViewActions extends McpActions {
+export interface ViewActions extends McpActions, TreeActions {
   line(text: string): void;
   changeFolder(path: string): void;
   pickFolder(): void;
@@ -444,6 +445,7 @@ export function createView(
   const undo = undoButton(doc, actions);
   header.append(status, undo, newChat);
   const folder = folderBar(doc, actions);
+  const files = createTreeSection(doc, actions);
   const panel = panelBox(doc);
   // What the panel was last built from, so an unchanged panel is left alone.
   let panelKey = "";
@@ -468,7 +470,7 @@ export function createView(
   const send = element(doc, "button", "send", "Send");
   send.type = "submit";
   form.append(input, send);
-  root.append(header, folder.element, panel.element, toolPanel.element, profilePanel.element, mcp.section, transcript, form, editor, mcp.dialog);
+  root.append(header, folder.element, files.element, panel.element, toolPanel.element, profilePanel.element, mcp.section, transcript, form, editor, mcp.dialog);
 
   input.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
@@ -504,6 +506,7 @@ export function createView(
         panel.show("Saved sessions", state.sessions.length, sessionsPanel(doc, state.sessions, sendable, actions));
       }
       sendableNow = sendable;
+      files.update(state.trees, state.expanded);
       const profilesKey = JSON.stringify([state.profiles, sendable]);
       if (profilesKey !== profileKey) {
         profileKey = profilesKey;

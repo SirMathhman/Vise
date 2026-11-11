@@ -7,6 +7,7 @@ import type {
   ProfileSummary,
   ServerEvent,
   ToolSwitch,
+  TreeEntry,
 } from "../../protocol/protocol.ts";
 
 // What the page knows about its connection to the server.
@@ -99,6 +100,10 @@ export interface ViewState {
   folder?: string;
   // The MCP servers as they went at the start, and as the file configures them, from the last mcp event.
   mcp?: McpInfo;
+  // The entries of each folder the page has read, keyed by its path ("" is the working directory).
+  trees: Record<string, TreeEntry[]>;
+  // The paths of the folders the user has opened in the file tree.
+  expanded: string[];
 }
 
 export interface McpInfo {
@@ -128,7 +133,14 @@ export interface ResetAction {
   kind: "reset";
 }
 
-export type ViewAction = SentAction | ServerAction | LinkAction | ResetAction;
+// The user opens or closes a folder of the file tree.
+export interface FolderOpenAction {
+  kind: "folderOpen";
+  path: string;
+  open: boolean;
+}
+
+export type ViewAction = SentAction | ServerAction | LinkAction | ResetAction | FolderOpenAction;
 
 export const initialState: ViewState = {
   link: "connecting",
@@ -139,6 +151,8 @@ export const initialState: ViewState = {
   sessions: [],
   tools: [],
   profiles: [],
+  trees: {},
+  expanded: [],
 };
 
 // The approval question still open, if any. The page locks its input while one is open, because the
@@ -284,7 +298,10 @@ function applyEvent(state: ViewState, event: ServerEvent): ViewState {
     case "profile":
       return { ...state, profile: event.profile };
     case "folder":
-      return { ...state, folder: event.path };
+      // A new folder starts a new tree: the old folder's entries and open folders go.
+      return { ...state, folder: event.path, trees: {}, expanded: [] };
+    case "tree":
+      return { ...state, trees: { ...state.trees, [event.path]: event.entries } };
     case "mcp":
       return { ...state, mcp: { running: event.running, servers: event.servers } };
     case "hookOutput":
@@ -317,5 +334,12 @@ export function reduce(state: ViewState, action: ViewAction): ViewState {
       return { ...state, link: action.link };
     case "reset":
       return { ...initialState, link: state.link };
+    case "folderOpen":
+      return {
+        ...state,
+        expanded: action.open
+          ? [...state.expanded.filter((path) => path !== action.path), action.path]
+          : state.expanded.filter((path) => path !== action.path),
+      };
   }
 }

@@ -138,3 +138,10 @@ export interface UndoStore {
   // Runs a change to the file at `path`, relative to the working directory, and records it.
   around(path: string, run: () => Promise<string>): Promise<string>;
 }
+
+// One entry of a folder, as the file tree shows it. `path` is relative to the working directory.
+export interface TreeEntry {
+  name: string;
+  path: string;
+  directory: boolean;
+}

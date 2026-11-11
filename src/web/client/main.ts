@@ -110,6 +110,11 @@ const view = createView(document, root, {
   writeMcp(servers) {
     send({ kind: "mcpWrite", servers });
   },
+  toggleFolder(path: string, open: boolean) {
+    dispatch({ kind: "folderOpen", path, open });
+    // A folder is read once, when it is first opened; its entries stay until the folder changes.
+    if (open && state.trees[path] === undefined) send({ kind: "treeRead", path });
+  },
 });
 
 if (token === "") {

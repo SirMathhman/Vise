@@ -27,6 +27,7 @@ import type {
 import { announceSessions, runCommand } from "./commands/commands.ts";
 import { announceProfiles, readProfileFor, writeProfileFor } from "./profile-editor.ts";
 import { announceMcp, writeMcpFor } from "./mcp-editor.ts";
+import { announceTree } from "./file-tree.ts";
 import type { SessionPorts } from "./ports.ts";
 import { runMessageTurn } from "./turn.ts";
 
@@ -164,6 +165,9 @@ function receive(state: SessionState, message: ClientMessage): void {
       question.resolve(replyOf(question, message.text));
       return;
     }
+    case "treeRead":
+      void announceTree(state.ports, sink(state), message.path);
+      return;
     case "profileRead":
       void readProfileFor(state.ports, sink(state), message.name);
       return;
@@ -346,6 +350,7 @@ async function run(state: SessionState): Promise<void> {
     emit({ kind: "history", messages: historyMessages(initial.history) });
   }
   if (state.ports.folder !== undefined) emit({ kind: "folder", path: state.ports.folder });
+  await announceTree(state.ports, emit, "");
   announceTools(state, initial);
   await announceSessions(state.ports, emit);
   await announceProfiles(state.ports, emit);

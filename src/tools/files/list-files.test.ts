@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { listFiles } from "./list-files.ts";
+import { listChildren, listFiles } from "./list-files.ts";
 
 async function fixture(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "vise-list-"));
@@ -43,4 +43,26 @@ test("refuses a link inside the root that points at a hidden folder", async () =
   await symlink(join(root, ".hid"), join(root, "visible"), "junction");
   const result = await listFiles(root, "visible", 1);
   expect(result.ok).toBe(false);
+});
+
+test("lists the entries of one folder, folders first, skipping hidden entries and links", async () => {
+  const root = await fixture();
+  await symlink(join(root, "a.txt"), join(root, "link.txt"));
+  const top = await listChildren(root, ".");
+  expect(top).toEqual({
+    ok: true,
+    value: [
+      { name: "sub", path: "sub", directory: true },
+      { name: "a.txt", path: "a.txt", directory: false },
+    ],
+  });
+  const inner = await listChildren(root, "sub");
+  expect(inner).toEqual({
+    ok: true,
+    value: [
+      { name: "deep", path: join("sub", "deep"), directory: true },
+      { name: "b.txt", path: join("sub", "b.txt"), directory: false },
+    ],
+  });
+  expect((await listChildren(root, "..")).ok).toBe(false);
 });

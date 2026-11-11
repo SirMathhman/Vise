@@ -98,6 +98,9 @@ export function parseClientMessage(text: string): Result<ClientMessage> {
   ) {
     return ok({ kind: "answer", id: value.id, chosen: value.chosen as number[], text: value.text });
   }
+  if (value.kind === "treeRead" && typeof value.path === "string") {
+    return ok({ kind: "treeRead", path: value.path });
+  }
   if (value.kind === "pickFolder") return ok({ kind: "pickFolder" });
   if (value.kind === "folderChange" && typeof value.path === "string" && value.path.trim() !== "") {
     return ok({ kind: "folderChange", path: value.path.trim() });
