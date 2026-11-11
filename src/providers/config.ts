@@ -6,7 +6,7 @@ import type { LlamaServer } from "./llama-cpp.ts";
 
 const ServersSchema = z.array(
   z.object({
-    name: z.string().regex(/^[^/]+$/, "a server name holds no slash"),
+    name: z.string().regex(/^[^:]+$/, "a server name holds no colon"),
     url: z.string().min(1),
     apiKey: z.string().min(1),
   }),

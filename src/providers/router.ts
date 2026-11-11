@@ -1,7 +1,7 @@
 import { err, ok, type ModelInfo, type Provider, type Result } from "../core/messages.ts";
 import type { ServerProvider } from "./llama-cpp.ts";
 
-// A server's provider, under the server's name. Its models are named <name>/<id>.
+// A server's provider, under the server's name. Its models are named <name>::<id>.
 export interface NamedServer {
   name: string;
   provider: ServerProvider;
@@ -12,7 +12,7 @@ interface Target {
   model: string;
 }
 
-// Several providers as one. A model named <name>/<id> goes to the server called <name>, and that server is
+// Several providers as one. A model named <name>::<id> goes to the server called <name>, and that server is
 // given <id>. Any other model goes to the fallback, under its own name.
 export function routed(servers: NamedServer[], fallback: Provider): Provider {
   return {
@@ -33,7 +33,7 @@ export function routed(servers: NamedServer[], fallback: Provider): Provider {
 
 function targetOf(servers: NamedServer[], model: string): Target | undefined {
   for (const server of servers) {
-    const prefix = `${server.name}/`;
+    const prefix = `${server.name}::`;
     if (model.startsWith(prefix)) return { provider: server.provider, model: model.slice(prefix.length) };
   }
   return undefined;
@@ -47,7 +47,7 @@ async function listAll(servers: NamedServer[], fallback: Provider): Promise<Resu
     const listed = await server.provider.listModels();
     if (!listed.ok) return err(listed.error);
     for (const model of listed.value) {
-      models.push({ id: `${server.name}/${model.id}`, contextLength: model.contextLength });
+      models.push({ id: `${server.name}::${model.id}`, contextLength: model.contextLength });
     }
   }
   const fromFallback = await fallback.listModels();

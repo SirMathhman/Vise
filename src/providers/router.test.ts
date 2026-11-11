@@ -36,7 +36,7 @@ function requestFor(model: string): ProviderRequest {
 test("a model named for a server goes to that server with the bare name; any other goes to the fallback unchanged", async () => {
   const calls: string[] = [];
   const provider = routed([{ name: "local", provider: recording("local", calls) }], fallbackOf(calls));
-  await drain(provider.reply(requestFor("local/tiny")));
+  await drain(provider.reply(requestFor("local::tiny")));
   await drain(provider.reply(requestFor("anthropic/claude")));
   expect(calls).toEqual(["local:tiny", "openrouter:anthropic/claude"]);
   expect(provider.defaultModel).toBe("anthropic/claude");
@@ -45,7 +45,7 @@ test("a model named for a server goes to that server with the bare name; any oth
 test("the context window is asked of the server that owns the model", async () => {
   const calls: string[] = [];
   const provider = routed([{ name: "local", provider: recording("local", calls) }], fallbackOf(calls));
-  expect(await provider.contextWindow("local/tiny")).toEqual(ok(100));
+  expect(await provider.contextWindow("local::tiny")).toEqual(ok(100));
   expect(calls).toEqual(["local.context:tiny"]);
 });
 
@@ -56,7 +56,7 @@ test("the list has every server's models named with their server, then the fallb
   expect(listed).toEqual({
     ok: true,
     value: [
-      { id: "local/m", contextLength: 100 },
+      { id: "local::m", contextLength: 100 },
       { id: "m", contextLength: 100 },
     ],
   });

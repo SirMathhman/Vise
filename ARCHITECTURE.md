@@ -22,7 +22,7 @@ Requirements are split into two classes. **Functional** requirements say what th
 | **Note** | A Markdown file at `notes/<category>/<name>.md` under the working directory (see Behaviour: Notes and profiles). |
 | **Open file** | A file whose path the session keeps as open in the page's viewer. The session keeps the paths only; the page holds the text and reads it again after a reload. |
 | **Profile** | A note in the `profile` category whose text is custom instructions for the model. |
-| **Provider** | The model service the session uses, behind the `Provider` contract in `src/core/messages.ts`: a default model, a reply stream, the context window of a model, and the list of models. The composition root builds one provider from the environment and the servers in `.vise/providers.json`, and passes only that. The adapters are OpenRouter and each llama.cpp server. A router sends a model named `<server>/<id>` to its server, under `<id>`, and every other model to OpenRouter. |
+| **Provider** | The model service the session uses, behind the `Provider` contract in `src/core/messages.ts`: a default model, a reply stream, the context window of a model, and the list of models. The composition root builds one provider from the environment and the servers in `.vise/providers.json`, and passes only that. The adapters are OpenRouter and each llama.cpp server. A router sends a model named `<server>::<id>` to its server, under `<id>`, and every other model to OpenRouter. |
 | **Saved session** | A conversation written to `.vise/sessions/<name>.json` by `/save` and by autosave, and read back by `/load`. It holds the history, the active and pending profile, the pending hook output, the switched-off tools, the last prompt size, the compacted flag, and the name of the session it autosaves to. `/load` replaces the current conversation with it. The file is data from outside the run (see Security). |
 | **Session** | One run of the REPL, from start until `/exit` or end of input. |
 | **Subagent** | A conversation of its own, started by the model with `run_subagent`. |
@@ -209,7 +209,7 @@ Target layout. Test files sit beside the module each one tests; there is no sepa
         │   ├── provider.ts              providerFromEnv: builds the provider from the environment (the OpenRouter key) and from the llama.cpp servers, each a named route
         │   ├── openrouter.ts            OpenRouter adapter: lists models and streams chat through `streamChat`, which takes an endpoint, so llama-cpp.ts reuses it (the shared stream moves to its own module, see Future Work)
         │   ├── llama-cpp.ts             llama.cpp adapter: one provider per server; chat through streamChat, /props and /v1/models with a bearer key; with openrouter.ts and tools/mcp/http-client.ts, one of the modules that open network connections
-        │   ├── router.ts                routed: a model named <server>/<id> goes to its server under <id>, any other to the fallback; no network
+        │   ├── router.ts                routed: a model named <server>::<id> goes to its server under <id>, any other to the fallback; no network
         │   └── config.ts                readServers: .vise/providers.json (name, url, apiKey); reads disk, so it moves to src/tools with the other settings (see Future Work)
         ├── core/                        pure logic; imports nothing from node: except types
         │   ├── commands.ts              line classification, command parsing, and the /help table (usage and description of each command)
@@ -368,7 +368,6 @@ Each item is a known defect or gap. Fixes are listed under Future Work.
 #### Models and reasoning
 
 - **Reasoning is not kept in the history.** `AssistantMessage` has no field for reasoning, and `toWire` sends an assistant message with only its text and tool calls. The stream's `reasoning_details` are read for the thinking count and then dropped. The provider expects the reasoning of a tool-calling message to come back unchanged, so with `/thinking` on, the second round of a tool loop may fail. This is unverified and needs a live probe with a tool call.
-- **A server name can take an OpenRouter model.** `routed` (`src/providers/router.ts`) tries each server's prefix before the fallback, so a server named like an OpenRouter vendor (for example `anthropic`) takes every `anthropic/<id>` model. Those go to that server under the bare id, with no message. The prefix must not be able to match an id OpenRouter lists.
 - **The shared stream names OpenRouter for every server.** `streamChat` in `src/providers/openrouter.ts` words its errors with OpenRouter (`OpenRouter returned 500`, `OpenRouter stream ended`), and llama.cpp replies use the same stream, so a llama.cpp failure reads as an OpenRouter one. The stream also sits in the OpenRouter module, so `llama-cpp.ts` depends on an adapter (see the dependency rule).
 - **No timeout and no cancellation.** A request that never completes leaves the prompt blocked, with no way to abort it.
 
@@ -631,7 +630,6 @@ Status is **missing**, **partial**, or in place.
 
 #### Providers
 
-- **Route by a prefix no OpenRouter id can contain.** Name a llama.cpp model `<server>::<id>`, split at the first `::`, and refuse a server name that contains `:`. A model with no match still goes to OpenRouter. Existing `<server>/<id>` names change, which is accepted because the feature is new (see Known Problems).
 - **Give every error its provider's name.** Move `streamChat` and its response schemas into `src/providers/chat-stream.ts`. The caller passes the endpoint and the label (`OpenRouter`, or the server's name) in its options, so each message names the provider that failed. `openrouter.ts` and `llama-cpp.ts` then each keep only their own calls, and neither imports the other. `select-model.ts` takes the name from the provider, not the word OpenRouter.
 - **Move the reading of `.vise/providers.json` into `src/tools/models/`**, beside `model-settings.ts`, and let `src/providers` take the parsed servers as a value.
 - **Cache each server's context window for the session**, read once per server, so `/context` and the pre-message check do not fetch `/props` each time (see Performance).

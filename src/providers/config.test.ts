@@ -14,7 +14,7 @@ test("the servers in .vise/providers.json are read; a missing file lists none; a
     ok: true,
     value: [{ name: "local", url: "http://127.0.0.1:9931", apiKey: "k" }],
   });
-  await writeFile(file, JSON.stringify([{ name: "a/b", url: "http://x", apiKey: "k" }]));
+  await writeFile(file, JSON.stringify([{ name: "a:b", url: "http://x", apiKey: "k" }]));
   expect((await readServers(folder)).ok).toBe(false);
   await writeFile(file, JSON.stringify([{ name: "a", url: "http://x", apiKey: "k" }, { name: "a", url: "http://y", apiKey: "k" }]));
   expect((await readServers(folder)).ok).toBe(false);
