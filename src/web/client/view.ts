@@ -230,7 +230,7 @@ function profilesPanel(
     return [heading, element(doc, "span", "hint", "none yet: /note new profile <name> creates one")];
   }
   const buttons = profiles.map((profile) => {
-    const button = element(doc, "button", "session", profile.name);
+    const button = element(doc, "button", "session", `${profile.name} (${profile.scope ?? "local"})`);
     button.title = profile.summary;
     button.disabled = !enabled;
     button.addEventListener("click", () => actions.readProfile(profile.name));

@@ -26,7 +26,9 @@ export function createProvidersSection(doc: Document, actions: ProvidersActions)
       const next = JSON.stringify([servers, sendable]);
       if (next === key) return;
       key = next;
-      const lines = servers.map((server) => hint(doc, `${server.kind}: ${server.name}${server.url ? ` at ${server.url}` : ""}`));
+      const lines = servers.map((server) =>
+        hint(doc, `${server.kind} (${server.scope ?? "local"}): ${server.name}${server.url ? ` at ${server.url}` : ""}`),
+      );
       const edit = doc.createElement("button");
       edit.type = "button";
       edit.className = "session";
@@ -66,6 +68,14 @@ function rowOf(doc: Document, server?: ProviderEntry): Row {
     kind.append(option);
   }
   kind.value = server?.kind ?? "openrouter";
+  const scope = doc.createElement("select");
+  for (const choice of ["local", "global"] as const) {
+    const option = doc.createElement("option");
+    option.value = choice;
+    option.textContent = choice;
+    option.selected = choice === (server?.scope ?? "local");
+    scope.append(option);
+  }
   const name = input(doc, "text", server?.name ?? "", "name");
   const url = input(doc, "text", server?.url ?? "", "URL");
   const showUrl = () => {
@@ -79,7 +89,7 @@ function rowOf(doc: Document, server?: ProviderEntry): Row {
   remove.type = "button";
   remove.textContent = "Remove";
   remove.addEventListener("click", () => element.remove());
-  element.append(kind, name, url, apiKey, remove);
+  element.append(kind, scope, name, url, apiKey, remove);
   return {
     element,
     read: () => ({
@@ -87,6 +97,7 @@ function rowOf(doc: Document, server?: ProviderEntry): Row {
       name: name.value.trim(),
       url: url.value.trim(),
       apiKey: apiKey.value,
+      scope: scope.value === "global" ? "global" : "local",
     }),
   };
 }

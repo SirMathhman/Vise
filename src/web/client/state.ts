@@ -2,7 +2,7 @@ import { RECENT_BLOCKS } from "./transcript/recent.ts";
 import type {
   ApprovalAnswer,
   HistoryMessage,
-  McpServerEntry,
+  ScopedMcpServer,
   McpServerStatus,
   ModelInfo,
   ProviderEntry,
@@ -136,7 +136,7 @@ export interface FileView {
 
 export interface McpInfo {
   running: McpServerStatus[];
-  servers: McpServerEntry[];
+  servers: ScopedMcpServer[];
 }
 
 // A line the user sent from the page.

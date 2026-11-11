@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { mcpStore, readMcpConfig, saveMcpConfig } from "./config.ts";
+import { effectiveServers, mcpStore, readMcpConfig, readScopedMcp, saveMcpConfig, saveScopedMcp } from "./config.ts";
 
 async function freshRoot(): Promise<string> {
   return mkdtemp(join(tmpdir(), "vise-mcp-cfg-"));
@@ -74,4 +74,17 @@ test("a header left blank keeps the value stored for it, and a new header with n
   expect(await readMcpConfig(root)).toEqual({ ok: true, value: first });
   const added = [{ kind: "http" as const, name: "remote", url: "https://example.test/mcp", headers: { "X-New": "" } }];
   expect((await saveMcpConfig(root, added)).ok).toBe(false);
+});
+
+test("a project server replaces a home server of the same name, and a save writes each file with its own servers", async () => {
+  const local = await freshRoot();
+  const home = await freshRoot();
+  const homeServer = { kind: "stdio" as const, name: "docs", command: "home-docs", args: [], scope: "global" as const };
+  const localServer = { kind: "stdio" as const, name: "docs", command: "project-docs", args: [], scope: "local" as const };
+  expect((await saveScopedMcp(local, home, [homeServer, localServer])).ok).toBe(true);
+  const both = await readScopedMcp(local, home);
+  expect(both.ok && both.value.map((server) => server.scope)).toEqual(["local", "global"]);
+  const running = effectiveServers(both.ok ? both.value : []);
+  expect(running.map((server) => (server.kind === "stdio" ? server.command : ""))).toEqual(["project-docs"]);
+  expect((await readMcpConfig(home)).ok && (await readMcpConfig(home))).toEqual({ ok: true, value: [{ kind: "stdio", name: "docs", command: "home-docs", args: [] }] });
 });

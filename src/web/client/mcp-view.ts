@@ -1,9 +1,9 @@
-import type { McpServerEntry, McpServerStatus } from "../../protocol/protocol.ts";
+import type { McpServerStatus, Scope, ScopedMcpServer } from "../../protocol/protocol.ts";
 import type { McpInfo } from "./state.ts";
 
 // What the MCP section asks the page to do: save the servers the editor shows.
 export interface McpActions {
-  writeMcp(servers: McpServerEntry[]): void;
+  writeMcp(servers: ScopedMcpServer[]): void;
 }
 
 // One server row of the editor. A program shows its command and arguments, an endpoint its url and headers;
@@ -11,6 +11,7 @@ export interface McpActions {
 interface ServerRow {
   element: HTMLElement;
   kind: HTMLSelectElement;
+  scope: HTMLSelectElement;
   name: HTMLInputElement;
   command: HTMLInputElement;
   args: HTMLTextAreaElement;
@@ -56,7 +57,9 @@ export function mcpPanel(
   const lines: HTMLElement[] =
     servers.length === 0
       ? [element(doc, "span", "hint", "none yet: Edit servers adds one")]
-      : servers.map((server) => element(doc, "span", "hint", `${server.name}: ${statusOf(server.name, running)}`));
+      : servers.map((server) =>
+          element(doc, "span", "hint", `${server.name} (${server.scope ?? "local"}): ${statusOf(server.name, running)}`),
+        );
   const problems = running.flatMap((status) =>
     status.problems.map((problem) => element(doc, "span", "hint", `${status.name}: ${problem}`)),
   );
@@ -72,6 +75,23 @@ function field(doc: Document, input: HTMLInputElement | HTMLTextAreaElement, lab
   wrapper.className = "field";
   wrapper.append(element(doc, "span", "", label), input);
   return wrapper;
+}
+
+// The Local/Global choice of a row: the project's file, or the home folder's.
+function scopeSelect(doc: Document, scope: Scope): HTMLSelectElement {
+  const select = doc.createElement("select");
+  for (const choice of ["local", "global"] as const) {
+    const option = doc.createElement("option");
+    option.value = choice;
+    option.textContent = choice;
+    option.selected = choice === scope;
+    select.append(option);
+  }
+  return select;
+}
+
+function scopeOf(select: HTMLSelectElement): Scope {
+  return select.value === "global" ? "global" : "local";
 }
 
 // Headers as the editor shows them: one "Name: value" line each.
@@ -99,9 +119,10 @@ function headersOf(text: string): Record<string, string> {
 }
 
 // One row of the editor, filled from a server or empty. Changing the kind shows the fields that kind uses.
-function rowOf(doc: Document, server: McpServerEntry, remove: (row: ServerRow) => void): ServerRow {
+function rowOf(doc: Document, server: ScopedMcpServer, remove: (row: ServerRow) => void): ServerRow {
   const row = doc.createElement("div");
   row.className = "server-row";
+  const scope = scopeSelect(doc, server.scope ?? "local");
   const kind = doc.createElement("select");
   for (const [value, text] of [["stdio", "program"], ["http", "endpoint"]] as const) {
     const option = doc.createElement("option");
@@ -136,7 +157,7 @@ function rowOf(doc: Document, server: McpServerEntry, remove: (row: ServerRow) =
   httpFields.append(field(doc, url, "URL"), field(doc, headers, "Headers"));
   const removeButton = element(doc, "button", "", "Remove");
   removeButton.type = "button";
-  const entry: ServerRow = { element: row, kind, name, command, args, url, headers, stdioFields, httpFields };
+  const entry: ServerRow = { element: row, kind, scope, name, command, args, url, headers, stdioFields, httpFields };
   const showKind = (): void => {
     stdioFields.hidden = kind.value !== "stdio";
     httpFields.hidden = kind.value !== "http";
@@ -144,15 +165,16 @@ function rowOf(doc: Document, server: McpServerEntry, remove: (row: ServerRow) =
   kind.addEventListener("change", showKind);
   showKind();
   removeButton.addEventListener("click", () => remove(entry));
-  row.append(kind, name, stdioFields, httpFields, removeButton);
+  row.append(kind, scope, name, stdioFields, httpFields, removeButton);
   return entry;
 }
 
 // Reads a row back into a server. Blank argument lines are dropped; the fields of the other kind are not sent.
-function serverOf(row: ServerRow): McpServerEntry {
+function serverOf(row: ServerRow): ScopedMcpServer {
   const name = row.name.value.trim();
+  const scope = scopeOf(row.scope);
   if (row.kind.value === "http") {
-    return { kind: "http", name, url: row.url.value.trim(), headers: headersOf(row.headers.value) };
+    return { kind: "http", name, url: row.url.value.trim(), headers: headersOf(row.headers.value), scope };
   }
   return {
     kind: "stdio",
@@ -162,6 +184,7 @@ function serverOf(row: ServerRow): McpServerEntry {
       .split("\n")
       .map((line) => line.trim())
       .filter((line) => line !== ""),
+    scope,
   };
 }
 
@@ -183,7 +206,7 @@ export function openMcpEditor(doc: Document, open: McpEditorOpen): void {
     rows.splice(rows.indexOf(row), 1);
     row.element.remove();
   };
-  const addRow = (server: McpServerEntry): void => {
+  const addRow = (server: ScopedMcpServer): void => {
     const row = rowOf(doc, server, remove);
     rows.push(row);
     list.append(row.element);
@@ -196,7 +219,7 @@ export function openMcpEditor(doc: Document, open: McpEditorOpen): void {
   form.append(list);
   const add = element(doc, "button", "", "Add server");
   add.type = "button";
-  add.addEventListener("click", () => addRow({ kind: "stdio", name: "", command: "", args: [] }));
+  add.addEventListener("click", () => addRow({ kind: "stdio", name: "", command: "", args: [], scope: "local" }));
   const buttons = doc.createElement("div");
   buttons.className = "buttons";
   const save = element(doc, "button", "send", "Save");
