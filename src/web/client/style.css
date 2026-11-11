@@ -84,8 +84,8 @@ body {
   overflow: hidden;
 }
 
-/* On a narrow window the columns stack, and the workspace is the one region that scrolls. */
-#app:not(.split-view) .workspace {
+/* The workspace scrolls at every width: on a narrow window the stacked columns scroll as one region. */
+#app .workspace {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -492,6 +492,7 @@ ul.tree:not(ul ul) {
   #app.split-view .workspace {
     flex: 1;
     min-height: 0;
+    overflow: hidden;
     display: grid;
     grid-template-columns:
       var(--tree-col, minmax(180px, 0.8fr))
