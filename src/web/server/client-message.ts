@@ -113,6 +113,9 @@ export function parseClientMessage(text: string): Result<ClientMessage> {
   if (value.kind === "fileRead" && typeof value.path === "string") {
     return ok({ kind: "fileRead", path: value.path });
   }
+  if (value.kind === "fileWrite" && typeof value.path === "string" && typeof value.text === "string") {
+    return ok({ kind: "fileWrite", path: value.path, text: value.text });
+  }
   if (value.kind === "fileClose" && typeof value.path === "string") {
     return ok({ kind: "fileClose", path: value.path });
   }

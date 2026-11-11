@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { MAX_WHOLE_BYTES, readFileLines, readWholeFile } from "./read-file.ts";
+import { MAX_WHOLE_BYTES, readFileLines, readWholeFile, writeWholeText } from "./read-file.ts";
 
 test("returns the requested lines, clamps to the end of the file, and reports a start past it", async () => {
   const root = await mkdtemp(join(tmpdir(), "vise-read-"));
@@ -54,4 +54,15 @@ test("a whole file is read as text, and a binary file or one over the size cap i
   expect((await readWholeFile(root, "b.bin")).ok).toBe(false);
   expect((await readWholeFile(root, "big.txt")).ok).toBe(false);
   expect((await readWholeFile(root, "..")).ok).toBe(false);
+});
+
+test("a page save writes text to an existing text file, and refuses a binary file, a missing file, or text over the cap", async () => {
+  const root = await mkdtemp(join(tmpdir(), "vise-save-"));
+  await writeFile(join(root, "a.txt"), "old");
+  await writeFile(join(root, "b.bin"), Buffer.from([1, 0, 2]));
+  expect(await writeWholeText(root, "a.txt", "new text")).toEqual({ ok: true, value: undefined });
+  expect(await readWholeFile(root, "a.txt")).toEqual({ ok: true, value: "new text" });
+  expect((await writeWholeText(root, "b.bin", "x")).ok).toBe(false);
+  expect((await writeWholeText(root, "missing.txt", "x")).ok).toBe(false);
+  expect((await writeWholeText(root, "a.txt", "x".repeat(MAX_WHOLE_BYTES + 1))).ok).toBe(false);
 });

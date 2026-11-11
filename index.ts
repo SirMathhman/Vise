@@ -26,7 +26,7 @@ import {
 import { runNoteCommand } from "./src/tools/notes/run-note-command.ts";
 import { runTool } from "./src/tools/run-tool.ts";
 import { listChildren } from "./src/tools/files/list-files.ts";
-import { readWholeFile } from "./src/tools/files/read-file.ts";
+import { readWholeFile, writeWholeText } from "./src/tools/files/read-file.ts";
 import { hookRunner, readHooks } from "./src/tools/hooks/hooks.ts";
 import { sessionStore } from "./src/tools/session-store.ts";
 import { resumeStore } from "./src/tools/resume/resume-store.ts";
@@ -107,6 +107,7 @@ function sessionPorts(setup: PortSetup): SessionPorts {
     folder: root,
     tree: (path) => listChildren(root, path),
     fileText: (path) => readWholeFile(root, path),
+    saveFile: (path, text) => saveWithUndo(root, setup.undo, path, text),
     instructions: setup.instructions,
   };
 }
@@ -189,6 +190,18 @@ async function openSession(provider: Provider, selection: ModelSelection, folder
       }),
     ),
   );
+}
+
+// Writes a page's edit to a file and records it for /undo, as its own turn. The bytes are read before the change, so
+// a failure to read the file is reported and nothing is written.
+async function saveWithUndo(root: string, undo: UndoStore, path: string, text: string): Promise<Result<void>> {
+  undo.startTurn();
+  let outcome: Result<void> = err(new Error("the file was not written"));
+  await undo.around(path, async () => {
+    outcome = await writeWholeText(root, path, text);
+    return outcome.ok ? "saved" : outcome.error.message;
+  });
+  return outcome;
 }
 
 // The full path of a folder that exists, or the reason it cannot be used. Checked before a session is ended.

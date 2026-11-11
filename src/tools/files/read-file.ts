@@ -1,4 +1,4 @@
-import { readFile, stat } from "node:fs/promises";
+import { readFile, stat, writeFile } from "node:fs/promises";
 import { err, ok, type Result } from "../../core/messages.ts";
 import { MAX_LINES } from "../../core/tools.ts";
 import { resolveInside } from "./contain.ts";
@@ -54,6 +54,23 @@ export async function readWholeFile(root: string, path: string): Promise<Result<
     const bytes = await readFile(inside.value.realTarget);
     if (bytes.includes(0)) return err(new Error("the file is binary"));
     return ok(bytes.toString("utf8"));
+  } catch (error) {
+    return err(error instanceof Error ? error : new Error(String(error)));
+  }
+}
+
+// Writes the whole text of a file under `root`, for the page's editor. The file must exist, be text (no NUL byte),
+// and the new text must fit MAX_WHOLE_BYTES, so a page save never turns a text file into a binary one or a big one.
+export async function writeWholeText(root: string, path: string, text: string): Promise<Result<void>> {
+  const inside = await resolveInside(root, path);
+  if (!inside.ok) return err(inside.error);
+  if (Buffer.byteLength(text, "utf8") > MAX_WHOLE_BYTES)
+    return err(new Error(`the text is larger than ${MAX_WHOLE_BYTES} bytes`));
+  try {
+    const current = await readFile(inside.value.realTarget);
+    if (current.includes(0)) return err(new Error("the file is binary"));
+    await writeFile(inside.value.realTarget, text, "utf8");
+    return ok(undefined);
   } catch (error) {
     return err(error instanceof Error ? error : new Error(String(error)));
   }

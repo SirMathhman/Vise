@@ -89,6 +89,13 @@ export interface FileReadMessage {
   path: string;
 }
 
+// The page saves the text of a file it edits. The session writes it, and answers with the file's new text.
+export interface FileWriteMessage {
+  kind: "fileWrite";
+  path: string;
+  text: string;
+}
+
 // The page closes one of the files it has open. The session drops it from the set it keeps.
 export interface FileCloseMessage {
   kind: "fileClose";
@@ -115,6 +122,7 @@ export type ClientMessage =
   | TreeReadMessage
   | FileReadMessage
   | FileCloseMessage
+  | FileWriteMessage
   | ProvidersWriteMessage;
 
 // A chunk of the model's reply, raw and unsanitized. The frontend escapes it before it shows it.

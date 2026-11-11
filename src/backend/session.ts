@@ -28,7 +28,7 @@ import type {
 import { announceSessions, runCommand } from "./commands/commands.ts";
 import { announceProfiles, readProfileFor, writeProfileFor } from "./profile-editor.ts";
 import { announceMcp, writeMcpFor } from "./mcp-editor.ts";
-import { announceFile, announceTree } from "./file-tree.ts";
+import { announceFile, announceTree, writeFileFor } from "./file-tree.ts";
 import { announceProviders, writeProvidersFor } from "./providers-editor.ts";
 import { announceModels, loadModels } from "./models/model-list.ts";
 import type { SessionPorts } from "./ports.ts";
@@ -201,6 +201,9 @@ function receive(state: SessionState, message: ClientMessage): void {
       return;
     case "fileRead":
       void showFileFor(state, message.path);
+      return;
+    case "fileWrite":
+      void writeFileFor(state.ports, sink(state), message.path, message.text);
       return;
     case "fileClose":
       closeFile(state, message.path);

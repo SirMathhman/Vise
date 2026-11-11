@@ -27,3 +27,17 @@ export async function announceFile(ports: SessionPorts, emit: Emit, path: string
   emit({ kind: "file", path, text: read.value });
   return true;
 }
+
+// Writes the text the page sent for a file, then sends the file's text back, so the page shows what was written.
+export async function writeFileFor(ports: SessionPorts, emit: Emit, path: string, text: string): Promise<void> {
+  if (ports.saveFile === undefined) {
+    emit({ kind: "error", message: "files cannot be saved here" });
+    return;
+  }
+  const saved = await ports.saveFile(path, text);
+  if (!saved.ok) {
+    emit({ kind: "error", message: `could not save ${path}: ${saved.error.message}` });
+    return;
+  }
+  emit({ kind: "file", path, text });
+}

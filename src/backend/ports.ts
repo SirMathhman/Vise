@@ -39,6 +39,8 @@ export interface SessionPorts {
   tree?(path: string): Promise<Result<TreeEntry[]>>;
   // The whole text of one file of the working directory, for the page's file viewer. Absent, the page cannot open files.
   fileText?(path: string): Promise<Result<string>>;
+  // Writes the whole text of a file the page edits, recorded for /undo. Absent, the page cannot save files.
+  saveFile?(path: string, text: string): Promise<Result<void>>;
   // The folder the session works in, announced at the start.
   folder?: string;
   // Where file changes are recorded for /undo. Absent, /undo is not available.
