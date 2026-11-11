@@ -881,3 +881,52 @@ input:not([type="checkbox"]):not([type="radio"]) {
 #app.split-view .tree-column {
   max-height: none;
 }
+
+/* File text with line numbers: a gutter of numbers beside the text, which is not selectable. The editor grows with its
+   text. In a split window the body is the one region that scrolls; in a stacked window the file column does. */
+.file-toolbar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.file-body {
+  display: flex;
+  align-items: flex-start;
+}
+
+#app.split-view .file-column .file-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.file-gutter {
+  flex: none;
+  min-width: 3ch;
+  padding-right: 10px;
+  text-align: right;
+  white-space: pre;
+  color: var(--muted);
+  font: 13px/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace;
+  user-select: none;
+}
+
+.file-code {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  white-space: pre;
+  font: 13px/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+
+.file-editor {
+  field-sizing: content;
+  overflow: hidden;
+  resize: none;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--fg);
+}

@@ -140,6 +140,9 @@ const view = createView(document, root, {
   showFile(path: string) {
     dispatch({ kind: "showFile", path });
   },
+  saveFile(path: string, text: string) {
+    send({ kind: "fileWrite", path, text });
+  },
   closeFile(path: string) {
     requested.delete(path);
     dispatch({ kind: "dropFile", path });
