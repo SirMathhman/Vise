@@ -28,10 +28,7 @@ export function createModelPicker(doc: Document, actions: ModelActions): ModelPi
   let models: ModelInfo[] = [];
 
   function draw(): void {
-    const needle = filter.value.trim().toLowerCase();
-    const matching = models.filter((model) => model.id.toLowerCase().includes(needle));
-    const nodes = groupsOf(doc, matching, current, models);
-    select.replaceChildren(...nodes);
+    select.replaceChildren(...groupsOf(doc, offered(models, current, filter.value.trim().toLowerCase())));
     select.value = current;
   }
 
@@ -45,7 +42,11 @@ export function createModelPicker(doc: Document, actions: ModelActions): ModelPi
     update(nextCurrent, nextModels, enabled) {
       select.disabled = !enabled;
       const next = JSON.stringify([nextCurrent, nextModels]);
-      if (next === key) return;
+      // An unchanged list keeps its options, but the select follows the session: a refused /model leaves the old model.
+      if (next === key) {
+        select.value = nextCurrent;
+        return;
+      }
       key = next;
       current = nextCurrent;
       models = nextModels;
@@ -54,15 +55,21 @@ export function createModelPicker(doc: Document, actions: ModelActions): ModelPi
   };
 }
 
-// The options, one group per provider: a model's provider is the part of its name before the double colon. The
-// current model is always offered, even when the filter hides it.
-function groupsOf(doc: Document, matching: ModelInfo[], current: string, all: ModelInfo[]): HTMLElement[] {
+// The model ids the selector offers: those the filter (lower case) matches, and the current model even when the
+// filter hides it, so the selector always shows what the session is on.
+export function offered(models: ModelInfo[], current: string, needle: string): string[] {
+  const ids = models.map((model) => model.id).filter((id) => id.toLowerCase().includes(needle));
+  return current !== "" && !ids.includes(current) ? [current, ...ids] : ids;
+}
+
+// The options, one group per provider: a model's provider is the part of its name before the double colon.
+function groupsOf(doc: Document, ids: string[]): HTMLElement[] {
   const groups = new Map<string, HTMLOptGroupElement>();
   const nodes: HTMLElement[] = [];
-  for (const model of matching) {
-    const at = model.id.indexOf("::");
-    const provider = at < 0 ? "other" : model.id.slice(0, at);
-    const label = at < 0 ? model.id : model.id.slice(at + 2);
+  for (const id of ids) {
+    const at = id.indexOf("::");
+    const provider = at < 0 ? "other" : id.slice(0, at);
+    const label = at < 0 ? id : id.slice(at + 2);
     let group = groups.get(provider);
     if (group === undefined) {
       group = doc.createElement("optgroup");
@@ -70,10 +77,7 @@ function groupsOf(doc: Document, matching: ModelInfo[], current: string, all: Mo
       groups.set(provider, group);
       nodes.push(group);
     }
-    group.append(optionOf(doc, model.id, label));
-  }
-  if (current !== "" && !all.some((model) => model.id === current)) {
-    nodes.unshift(optionOf(doc, current, current));
+    group.append(optionOf(doc, id, label));
   }
   if (nodes.length === 0) nodes.push(optionOf(doc, "", "no models: add a provider"));
   return nodes;
