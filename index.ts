@@ -10,7 +10,7 @@ import { buildAssets } from "./src/web/server/page.ts";
 import { type WebAddress, takeWebAddress } from "./src/web/server/address.ts";
 
 
-import { startWebServer } from "./src/web/server/server.ts";
+import { startWebServer, type WebAssets } from "./src/web/server/server.ts";
 import { killAllJobs } from "./src/tools/process/jobs.ts";
 import { type McpRegistry, noServers, startMcpServers } from "./src/tools/mcp/registry.ts";
 import { mcpStore } from "./src/tools/mcp/config.ts";
@@ -120,9 +120,10 @@ async function runWeb(
   session: Session,
   address: WebAddress,
   changeFolderTo: (folder: string) => Promise<Result<Session>>,
+  embedded: WebAssets | undefined,
 ): Promise<Result<void>> {
   // The folder dialog opens on this machine, as the page is served from here.
-  const assets = await buildAssets();
+  const assets = await buildAssets(embedded);
   if (!assets.ok) return err(assets.error);
   const started = startWebServer({
     session,
@@ -239,7 +240,8 @@ async function changeFolder(folder: string, provider: Provider, selection: Model
   return openSession(provider, selection, target);
 }
 
-if (import.meta.main) {
+// Runs Vise. The Windows build (src/exe/server-entry.ts) passes the page's files it embeds.
+export async function main(embedded?: WebAssets): Promise<void> {
   // The llama.cpp servers listed in .vise/providers.json, read once here with the rest of the folder's settings.
   const servers = await readServers(process.cwd());
   if (!servers.ok) {
@@ -277,7 +279,7 @@ if (import.meta.main) {
       failed = true;
     } else {
       const result = web
-        ? await runWeb(opened.value, address, (folder) => changeFolder(folder, provider, selection))
+        ? await runWeb(opened.value, address, (folder) => changeFolder(folder, provider, selection), embedded)
         : await runRepl(process.stdin, process.stdout, opened.value);
       if (!result.ok) {
         console.error(`error: ${result.error.message}`);
@@ -289,3 +291,5 @@ if (import.meta.main) {
   }
   if (failed) process.exit(1);
 }
+
+if (import.meta.main) await main();

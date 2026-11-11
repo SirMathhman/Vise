@@ -3,8 +3,10 @@ import { err, ok, type Result } from "../../core/messages.ts";
 import type { WebAssets } from "./server.ts";
 
 // Builds the page from the client's files: the script is bundled, and the shell and style are read
-// as they are. Called once at startup.
-export async function buildAssets(): Promise<Result<WebAssets>> {
+// as they are. Called once at startup. The Windows build passes the files it embeds, since a compiled
+// program cannot read the client's files from disk.
+export async function buildAssets(embedded?: WebAssets): Promise<Result<WebAssets>> {
+  if (embedded !== undefined) return ok(embedded);
   const clientDir = new URL("../client/", import.meta.url);
   const built = await Bun.build({
     entrypoints: [fileURLToPath(new URL("main.ts", clientDir))],

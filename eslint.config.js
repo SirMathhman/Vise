@@ -3,6 +3,8 @@ import tseslint from "typescript-eslint";
 
 // Size limits from ARCHITECTURE.md. Lines that are blank or comments do not count.
 export default tseslint.config(
+  // The Windows build's output is generated, not source.
+  { ignores: ["build/**"] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

@@ -1,0 +1,16 @@
+[package]
+name = "vise-launcher"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# The program is named vise.exe. It is built by scripts/build-exe.ts, which first builds the server it embeds.
+[[bin]]
+name = "vise"
+path = "src/main.rs"
+
+[dependencies]
+# wry shows the page in a WebView2 window on Windows.
+wry = "0.57"
+tao = "0.37"
+rand = "0.9"
