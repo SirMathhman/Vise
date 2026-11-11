@@ -379,7 +379,7 @@ async function run(state: SessionState): Promise<void> {
     disabledTools: state.ports.disabledTools,
   };
   if (initial.history.length > 0) {
-    emit({ kind: "history", messages: historyMessages(initial.history) });
+    emit({ kind: "history", messages: historyMessages(initial.history, state.ports.instructions) });
   }
   if (state.ports.folder !== undefined) emit({ kind: "folder", path: state.ports.folder });
   await announceTree(state.ports, emit, "");

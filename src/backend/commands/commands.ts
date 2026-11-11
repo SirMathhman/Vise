@@ -359,7 +359,7 @@ async function runSessionCommand(
     emit({ kind: "error", message: loaded.error.message });
     return undefined;
   }
-  emit({ kind: "history", messages: historyMessages(loaded.value.history) });
+  emit({ kind: "history", messages: historyMessages(loaded.value.history, ports.instructions) });
   // The loaded session is the one autosaved from now on.
   return {
     conversation: { ...loaded.value, autosave: command.value.name },

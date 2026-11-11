@@ -199,15 +199,23 @@ export interface HistoryMessage {
 
 // The messages a frontend shows for a history: the user's lines and the model's replies. Tool calls and
 // tool results are left out, and so are replies with no text.
-export function historyMessages(history: ChatMessage[]): HistoryMessage[] {
+export function historyMessages(history: ChatMessage[], instructions?: string): HistoryMessage[] {
   const shown: HistoryMessage[] = [];
+  // The instructions (AGENTS.md) go in front of the first user message sent to the model. They are not part of
+  // what the user wrote, so they are taken off the text shown.
+  const prefix = instructions === undefined ? undefined : `${instructions}\n\n`;
   for (const message of history) {
-    if (message.role === "user") shown.push({ role: "user", text: message.content });
-    else if (message.role === "assistant" && message.content !== "") {
+    if (message.role === "user") {
+      shown.push({ role: "user", text: withoutPrefix(message.content, prefix) });
+    } else if (message.role === "assistant" && message.content !== "") {
       shown.push({ role: "assistant", text: message.content });
     }
   }
   return shown;
+}
+
+function withoutPrefix(text: string, prefix: string | undefined): string {
+  return prefix !== undefined && text.startsWith(prefix) ? text.slice(prefix.length) : text;
 }
 
 // Where the conversation is kept between runs, so the next run can resume it. The composition root
