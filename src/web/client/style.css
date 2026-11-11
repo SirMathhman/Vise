@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap");
+
 :root {
   --bg: #fbfbfa;
   --fg: #1d1d1b;
@@ -60,7 +62,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--fg);
-  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  font: 16px/1.5 "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
 /* The app fills the window and never leaves it: 100vw by 100vh. The page itself does not scroll. */
