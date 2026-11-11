@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { offered, placeOf } from "./model-picker.ts";
+import { nextIndex, offered, placeOf } from "./model-picker.ts";
 
 const models = [
   { id: "a::x", contextLength: 1 },
@@ -18,4 +18,11 @@ test("a model is grouped by its provider and its vendor, and shown under the ven
   expect(placeOf("openrouter::baidu/ernie-5.5")).toEqual({ group: "openrouter · baidu", label: "ernie-5.5" });
   expect(placeOf("llama.cpp::local-qwen")).toEqual({ group: "llama.cpp", label: "local-qwen" });
   expect(placeOf("gone")).toEqual({ group: "other", label: "gone" });
+});
+
+test("the arrow keys move from nothing selected to the first or last option, and wrap around", () => {
+  expect(nextIndex(-1, 5, 1)).toBe(0);
+  expect(nextIndex(-1, 5, -1)).toBe(4);
+  expect(nextIndex(4, 5, 1)).toBe(0);
+  expect(nextIndex(0, 5, -1)).toBe(4);
 });

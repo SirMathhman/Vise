@@ -35,7 +35,7 @@ export function createModelPicker(doc: Document, actions: ModelActions): ModelPi
   const list = doc.createElement("ul");
   list.id = listId;
   list.className = "model-list";
-  list.setAttribute("role", "listbox");
+  list.setAttribute("role", "listbox"); list.setAttribute("aria-label", "Models");
   list.hidden = true;
   element.append(input, list);
 
@@ -105,7 +105,7 @@ export function createModelPicker(doc: Document, actions: ModelActions): ModelPi
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
       if (!open) setOpen(true);
-      else if (visible.length > 0) setActive(wrap(active + (event.key === "ArrowDown" ? 1 : -1), visible.length));
+      else if (visible.length > 0) setActive(nextIndex(active, visible.length, event.key === "ArrowDown" ? 1 : -1));
     } else if (event.key === "Enter" && open && visible[active] !== undefined) {
       event.preventDefault();
       choose(visible[active] ?? current);
@@ -159,8 +159,10 @@ function byPlace(a: string, b: string): number {
   return pa.group.localeCompare(pb.group) || pa.label.localeCompare(pb.label);
 }
 
-function wrap(index: number, length: number): number {
-  return (index + length) % length;
+// The option the arrow key moves to. From nothing selected, Down takes the first and Up the last; otherwise it wraps.
+export function nextIndex(active: number, length: number, step: number): number {
+  if (active < 0) return step > 0 ? 0 : length - 1;
+  return (active + step + length) % length;
 }
 
 interface ListParts {
