@@ -7,7 +7,7 @@ import type { ToolSwitch } from "../core/tools.ts";
 import type { ProfileDetail, ProfileSummary } from "../core/notes.ts";
 import type { McpServerEntry, McpServerStatus, ModelInfo, ProviderEntry, ProviderInput, TreeEntry } from "../core/messages.ts";
 
-export type { ApprovalAnswer, HistoryMessage, ToolSwitch, ProfileDetail, ProfileSummary, McpServerEntry, McpServerStatus, TreeEntry, ProviderEntry, ProviderInput };
+export type { ApprovalAnswer, HistoryMessage, ToolSwitch, ProfileDetail, ProfileSummary, McpServerEntry, McpServerStatus, TreeEntry, ProviderEntry, ProviderInput, ModelInfo };
 
 // A line the user typed. While an approval question is open, the line is its answer: the backend
 // reads it as the answer (see answerOfLine). A browser also sends `shown`, the id of the newest question

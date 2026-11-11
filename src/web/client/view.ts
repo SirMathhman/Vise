@@ -21,6 +21,7 @@ import { renderMarkdown } from "./render/markdown-dom.ts";
 import { applySplit, columns } from "./layout/columns.ts";
 import { themeControl } from "./theme/theme.ts";
 import { earlierButton, type RecentActions } from "./transcript/recent.ts";
+import { createModelPicker } from "./models/model-picker.ts";
 
 // What the view asks the page to do. The page sends the line or the answer to the server.
 export interface ViewActions extends McpActions, TreeActions, FileActions, ProvidersActions, RecentActions {
@@ -465,7 +466,7 @@ export function createView(
   const status = element(doc, "span", "status", "");
   const newChat = newConversationButton(doc, actions);
   const undo = undoButton(doc, actions);
-  header.append(status, themeControl(doc), undo, newChat);
+  const models = createModelPicker(doc, { chooseModel: (name) => actions.line(`/model ${name}`) }); header.append(status, models.element, themeControl(doc), undo, newChat);
   const folder = folderBar(doc, actions);
   const files = createTreeSection(doc, actions);
   const fileViewer = createFileViewer(doc, actions);
@@ -497,8 +498,7 @@ export function createView(
   form.append(input, send);
   const workspace = columns(doc, {
     tree: files.element, file: fileViewer.element,
-    panels: [panel.element, toolPanel.element, profilePanel.element, mcp.section, providers.section],
-    transcript, composer: form,
+    panels: [panel.element, toolPanel.element, profilePanel.element, mcp.section, providers.section], transcript, composer: form,
   });
   root.append(header, folder.element, workspace, editor, mcp.dialog, providers.dialog);
 
@@ -532,7 +532,7 @@ export function createView(
         profileKey = profilesKey;
         profilePanel.show("Profiles", state.profiles.length, profilesPanel(doc, state.profiles, sendable, actions));
       }
-      mcp.update(state.mcp, sendable, () => sendableNow); providers.update(state.providers, sendable);
+      mcp.update(state.mcp, sendable, () => sendableNow); providers.update(state.providers, sendable); models.update(state.currentModel, state.models, sendable);
       if (state.profile !== undefined && state.profile !== shownProfile) {
         shownProfile = state.profile;
         openEditor(doc, editor, { profile: state.profile, tools: state.tools, sendable: () => sendableNow, actions });

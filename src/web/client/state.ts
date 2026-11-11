@@ -4,6 +4,7 @@ import type {
   HistoryMessage,
   McpServerEntry,
   McpServerStatus,
+  ModelInfo,
   ProviderEntry,
   ProfileDetail,
   ProfileSummary,
@@ -104,6 +105,9 @@ export interface ViewState {
   mcp?: McpInfo;
   // The llama.cpp servers, without their keys, from the last providers event.
   providers: ProviderEntry[];
+  // The current model, and the models the selector offers, from the last models event.
+  currentModel: string;
+  models: ModelInfo[];
   // How many of the last blocks of the transcript the page builds. Each press of the earlier button adds more.
   recent: number;
   // The entries of each folder the page has read, keyed by its path ("" is the working directory).
@@ -194,6 +198,8 @@ export const initialState: ViewState = {
   profiles: [],
   providers: [],
   recent: RECENT_BLOCKS,
+  currentModel: "",
+  models: [],
   trees: {},
   expanded: [],
   openFiles: [],
@@ -357,6 +363,8 @@ function applyEvent(state: ViewState, event: ServerEvent): ViewState {
     }
     case "tree":
       return { ...state, trees: { ...state.trees, [event.path]: event.entries } };
+    case "models":
+      return { ...state, currentModel: event.current, models: event.models };
     case "providers":
       return { ...state, providers: event.servers };
     case "mcp":
