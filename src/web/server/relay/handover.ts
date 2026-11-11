@@ -16,7 +16,8 @@ export interface HandoverOptions {
 
 // running: lines go to the session. ending: the session has been asked to end for a folder change. picking: the
 // folder dialog is open. starting: the next session is being made. Input is accepted only while running.
-type Phase = "running" | "ending" | "picking" | "starting";
+// checking: a folder is being checked before the session is asked to end. Input is refused until the check answers.
+type Phase = "running" | "checking" | "ending" | "picking" | "starting";
 
 // What the page is told about input that arrives while a folder is being changed.
 const CHANGING_NOTICE = "the folder is changing, so this was not sent. Send it again when the change is done.";
@@ -38,6 +39,7 @@ export function createHandover(options: HandoverOptions, hub: Hub): Handover {
   // Checks the folder, then asks the session to end. A folder that cannot be used is reported, and nothing ends.
   async function checkedFolder(path: string): Promise<void> {
     const checked = options.checkFolder === undefined ? ok(path) : await options.checkFolder(path);
+    phase = "running";
     if (!checked.ok) {
       hub.publish({ kind: "error", message: checked.error.message });
       return;
@@ -65,11 +67,14 @@ export function createHandover(options: HandoverOptions, hub: Hub): Handover {
     }
     phase = "picking";
     void options.pickFolder().then((picked) => {
-      phase = "running";
       if (!picked.ok) {
+        phase = "running";
         hub.publish({ kind: "error", message: picked.error.message });
-      } else if (picked.value !== undefined) {
-        requestFolder(picked.value);
+      } else if (picked.value === undefined) {
+        phase = "running";
+      } else {
+        phase = "checking";
+        void checkedFolder(picked.value);
       }
     });
   }
@@ -80,6 +85,7 @@ export function createHandover(options: HandoverOptions, hub: Hub): Handover {
       return;
     }
     if (message.kind === "folderChange") {
+      phase = "checking";
       void checkedFolder(message.path);
       return;
     }

@@ -33,7 +33,7 @@ import { resumeStore } from "./src/tools/resume/resume-store.ts";
 import { profileStore } from "./src/tools/notes/profile-store.ts";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { stat } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
 import {
   readToolSettings,
   saveToolSettings,
@@ -196,6 +196,12 @@ async function folderOf(folder: string): Promise<Result<string>> {
   const target = resolve(folder);
   const info = await stat(target).catch(() => undefined);
   if (info === undefined || !info.isDirectory()) return err(new Error(`${target} is not a folder`));
+  // A folder that cannot be listed cannot be worked in, so it is refused before anything stops.
+  try {
+    await readdir(target);
+  } catch {
+    return err(new Error(`${target} cannot be read`));
+  }
   return ok(target);
 }
 

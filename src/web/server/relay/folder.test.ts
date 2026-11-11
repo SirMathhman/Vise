@@ -149,3 +149,32 @@ test("a folder that cannot be used is refused with a message, and the session ke
   await waitFor(() => sent.some((message) => message.kind === "line" && message.text === "still here"));
   socket.close();
 });
+
+test("a folder change being checked refuses input with a notice, and input resumes when the check fails", async () => {
+  let answer: (result: Result<string>) => void = () => undefined;
+  const sent: ClientMessage[] = [];
+  const started = startWebServer({
+    session: sessionIn("A", sent),
+    assets,
+    token: TOKEN,
+    changeFolder: async (path) => ok(sessionIn(path)),
+    checkFolder: () => new Promise<Result<string>>((resolve) => { answer = resolve; }),
+  }) as Ok<WebServer>;
+  running = started.value;
+  const base = new URL(running.url).origin;
+  const received: ServerEvent[] = [];
+  const socket = new WebSocket(`${base.replace("http", "ws")}/ws?t=${TOKEN}`, {
+    headers: { origin: base },
+  } as unknown as string[]);
+  socket.onmessage = (event) => received.push(JSON.parse(String(event.data)) as ServerEvent);
+  await waitFor(() => received.some((event) => event.kind === "folder" && event.path === "A"));
+  socket.send(JSON.stringify({ kind: "folderChange", path: "B" }));
+  socket.send(JSON.stringify({ kind: "line", text: "during check" }));
+  await waitFor(() => received.some((event) => event.kind === "notice"));
+  expect(sent.some((message) => message.kind === "line")).toBe(false);
+  answer(err(new Error("B is not a folder")));
+  await waitFor(() => received.some((event) => event.kind === "error"));
+  socket.send(JSON.stringify({ kind: "line", text: "after" }));
+  await waitFor(() => sent.some((message) => message.kind === "line" && message.text === "after"));
+  socket.close();
+});
