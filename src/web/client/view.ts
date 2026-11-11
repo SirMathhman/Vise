@@ -508,7 +508,7 @@ export function createView(
   return {
     render(state) {
       // The chat body scrolls in the three columns; otherwise the page flows and nothing here scrolls.
-      const follow = transcript.parentElement ?? transcript; autoScroll.update(state.following);
+      autoScroll.update(state.following);
       status.textContent = state.ended
         ? `session ended${state.endError ? `: ${state.endError}` : ""}`
         : LINK_TEXT[state.link];
@@ -553,7 +553,7 @@ export function createView(
       input.placeholder = open
         ? "Answer the question above with its buttons"
         : "Message Vise (Enter sends, Shift+Enter adds a line)";
-      if (state.following) follow.scrollTop = follow.scrollHeight;
+      if (state.following) (transcript.lastElementChild ?? transcript).scrollIntoView({ block: "end" });
     },
   };
 }
