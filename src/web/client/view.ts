@@ -18,6 +18,7 @@ import { createTreeSection, type TreeActions } from "./files/tree-view.ts";
 import { createFileViewer, type FileActions } from "./files/file-view.ts";
 import { renderMarkdown } from "./markdown.ts";
 import { applySplit, columns } from "./layout/columns.ts";
+import { themeControl } from "./theme/theme.ts";
 
 // What the view asks the page to do. The page sends the line or the answer to the server.
 export interface ViewActions extends McpActions, TreeActions, FileActions {
@@ -462,7 +463,7 @@ export function createView(
   const status = element(doc, "span", "status", "");
   const newChat = newConversationButton(doc, actions);
   const undo = undoButton(doc, actions);
-  header.append(status, undo, newChat);
+  header.append(status, themeControl(doc), undo, newChat);
   const folder = folderBar(doc, actions);
   const files = createTreeSection(doc, actions);
   const fileViewer = createFileViewer(doc, actions);
@@ -493,8 +494,7 @@ export function createView(
   send.type = "submit";
   form.append(input, send);
   const workspace = columns(doc, {
-    tree: files.element,
-    file: fileViewer.element,
+    tree: files.element, file: fileViewer.element,
     panels: [panel.element, toolPanel.element, profilePanel.element, mcp.section],
     transcript,
     composer: form,

@@ -12,10 +12,12 @@
   --button-line: #9d9d96;
   --accent: #2d6a4f;
   --accent-fg: #ffffff;
+  color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
+    color-scheme: dark;
     --bg: #161615;
     --fg: #e9e8e3;
     --muted: #9b9a93;
@@ -33,6 +35,7 @@
 }
 
 :root[data-theme="dark"] {
+  color-scheme: dark;
   --bg: #161615;
   --fg: #e9e8e3;
   --muted: #9b9a93;
@@ -546,4 +549,14 @@ ul.tree:not(ul ul) {
     outline: 2px solid var(--muted);
     outline-offset: 1px;
   }
+}
+
+/* The theme control in the header. */
+.theme {
+  font: inherit;
+  padding: 4px 8px;
+  border: 1px solid var(--button-line);
+  border-radius: 6px;
+  background: var(--button-bg);
+  color: var(--fg);
 }
