@@ -412,6 +412,11 @@ dialog.file-viewer {
   color: var(--fg);
 }
 
+/* display: flex above would show the dialog while it is closed, so a closed viewer is hidden here. */
+dialog.file-viewer:not([open]) {
+  display: none;
+}
+
 dialog.file-viewer h2 {
   margin: 0;
   font-size: 16px;
