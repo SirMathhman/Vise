@@ -7,6 +7,8 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { buildAssets } from "../src/web/server/page.ts";
 
+// Every path below is relative to the repository root, so the script works from any directory.
+process.chdir(join(import.meta.dir, ".."));
 const out = "build/exe";
 await mkdir(out, { recursive: true });
 

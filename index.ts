@@ -240,7 +240,7 @@ async function changeFolder(folder: string, provider: Provider, selection: Model
   return openSession(provider, selection, target);
 }
 
-// Runs Vise. The Windows build (src/exe/server-entry.ts) passes the page's files it embeds.
+// Runs Vise. The Windows build (build/exe/server-entry.ts, written by scripts/build-exe.ts) passes the page's files it embeds.
 export async function main(embedded?: WebAssets): Promise<void> {
   // The llama.cpp servers listed in .vise/providers.json, read once here with the rest of the folder's settings.
   const servers = await readServers(process.cwd());

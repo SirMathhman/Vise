@@ -2,6 +2,8 @@
 // data folder, starts it on a free local port with a random token, and shows the page in a WebView2
 // window. The server runs in the folder the launcher was started from. Closing the window ends the server.
 
+mod job;
+
 use std::fs;
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
@@ -9,6 +11,7 @@ use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use job::Job;
 use tao::dpi::LogicalSize;
 use tao::event::{Event, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoopBuilder};
@@ -39,6 +42,9 @@ fn run() -> Result<(), String> {
     let server = write_server(&data)?;
     let port = free_port()?;
     let token = random_token();
+    // The job ends the server when this program ends, including when it is force-killed. It is held by
+    // show_window until the program exits, or dropped (ending the server) if the window cannot be shown.
+    let job = Job::kill_on_close()?;
     let mut child = Command::new(&server)
         .arg("--web")
         .env("VISE_WEB_PORT", port.to_string())
@@ -46,13 +52,14 @@ fn run() -> Result<(), String> {
         .stdin(Stdio::null())
         .spawn()
         .map_err(|error| format!("the server did not start: {error}"))?;
+    job.assign(&child).inspect_err(|_| stop_server(child.id()))?;
     if let Err(message) = wait_until_listening(port, &mut child) {
         stop_server(child.id());
         return Err(message);
     }
     // The token is in the fragment, so it is not sent to the server in the request.
     let url = format!("http://127.0.0.1:{port}/#t={token}");
-    show_window(&url, child, &data)
+    show_window(&url, child, &data, job)
 }
 
 // The folder for the server and the WebView2 data: %LOCALAPPDATA%\Vise, or the temp folder without it.
@@ -63,12 +70,13 @@ fn data_dir() -> PathBuf {
     }
 }
 
-// Writes the embedded server to the data folder, unless the same version is already there. The name holds
-// the version and size, so a newer build never overwrites a server that is still running.
+// Writes the embedded server to the data folder, unless that file already holds exactly the embedded bytes.
+// The bytes are compared, not just the size, so a planted or stale file is replaced before it runs. The name
+// holds the version and size, so a build with different bytes does not overwrite the file of another build.
 fn write_server(data: &Path) -> Result<PathBuf, String> {
     fs::create_dir_all(data).map_err(|error| format!("{} cannot be created: {error}", data.display()))?;
     let path = data.join(format!("vise-server-{}-{}.exe", env!("CARGO_PKG_VERSION"), SERVER.len()));
-    let current = fs::metadata(&path).is_ok_and(|info| info.len() == SERVER.len() as u64);
+    let current = fs::read(&path).is_ok_and(|bytes| bytes == SERVER);
     if !current {
         let temp = data.join(format!("vise-server-{}.tmp", std::process::id()));
         fs::write(&temp, SERVER).map_err(|error| format!("the server cannot be written: {error}"))?;
@@ -120,8 +128,9 @@ fn stop_server(pid: u32) {
         .status();
 }
 
-// Opens the window on the page and runs until it is closed or the server ends.
-fn show_window(url: &str, child: Child, data: &Path) -> Result<(), String> {
+// Opens the window on the page and runs until it is closed or the server ends. The job is kept in the
+// closure, so it lives as long as the program; if the window cannot be shown, dropping it ends the server.
+fn show_window(url: &str, child: Child, data: &Path, job: Job) -> Result<(), String> {
     let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
     let proxy = event_loop.create_proxy();
     let pid = child.id();
@@ -142,8 +151,8 @@ fn show_window(url: &str, child: Child, data: &Path) -> Result<(), String> {
         .map_err(|error| format!("the page cannot be shown (is the WebView2 runtime installed?): {error}"))?;
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
-        // The window and the page are kept alive by this closure until the program exits.
-        let _keep = (&window, &webview);
+        // The window, the page, and the job are kept alive by this closure until the program exits.
+        let _keep = (&window, &webview, &job);
         match event {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,

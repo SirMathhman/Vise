@@ -214,7 +214,10 @@ Target layout. Test files sit beside the module each one tests; there is no sepa
     ├── index.ts                         composition root: wires stdin, stdout, and the provider (built from `.vise/providers.json`) to the REPL or, with --web, to the browser server; reads the tools and model settings at startup
     ├── scripts/                         build checks run by bun run lint, and the web:dev development script
     │   ├── check-files-per-dir.ts       file count per directory
+    │   ├── build-exe.ts                 bun run build:exe: bundles the page script, writes build/exe/server-entry.ts (the page's shell, style, and script embedded as text, then main), compiles build/exe/vise-server.exe, and runs cargo on exe/launcher to write build/exe/vise.exe
     │   └── web-dev.ts                   bun run web:dev: runs the browser server and restarts it when a file under src/ or index.ts changes, on the same port and with the same token, so the open page reconnects by itself
+    ├── exe/
+    │   └── launcher/                    Windows-only Rust crate (wry and tao, WebView2): vise.exe. It embeds build/exe/vise-server.exe, writes it to %LOCALAPPDATA%\Vise, starts it on a free 127.0.0.1 port with a random token (VISE_WEB_PORT, VISE_WEB_TOKEN) in the folder it was started from, shows http://127.0.0.1:PORT/#t=TOKEN in a window, and ends the server's process tree when the window closes or the server exits. A Job Object set to kill its processes on close ends the server too if the launcher ends, including when it is force-killed. Before a server file runs, the launcher compares its bytes with the embedded server and rewrites the file when they differ. It shares no code with src/; the only contract is the server's environment variables and the `--web` argument
     └── src/
         ├── instructions.ts              reads AGENTS.md from the working directory (the one file read at startup)
         ├── providers/                   the model provider behind the Provider contract (core/messages.ts); OpenRouter and each llama.cpp server are the adapters
@@ -513,6 +516,7 @@ Each item is a known defect or gap. Fixes are listed under Future Work.
 - **`typescript` is only a peer dependency.** A fresh install does not provide the compiler the checks need.
 - **The file-count check ignores untracked files.** `scripts/check-files-per-dir.ts` reads `git ls-files`, so a new file counts only after it is staged.
 - **Directories are at or near the file limit.** `src/core` and the repository root hold ten tracked files each, the limit, so the next file in either must merge with another or move into a folder.
+- **The launcher's console window stays open.** `exe/launcher` is a console program, so a console window stays beside the page, and the server's output goes to it. Missing: a windows subsystem build, with the server's output written to a log file.
 - **No formatter is configured.** The linter enforces size and correctness rules, not formatting.
 
 #### Architecture
@@ -709,6 +713,11 @@ Status is **missing**, **partial**, or in place.
 - Recognise heading levels four to six and stop a number followed by a period at the start of a paragraph from opening a list, or record the subset's limits in the page's help text.
 - Escape or sanitize model replies and `error:` lines the same way as tool lines.
 - Bound the history per request: apply the compaction trigger to the size of the request about to be sent, not the previous one. Set `max_tokens`.
+
+#### Windows launcher
+
+- The launcher is a windows-subsystem program. Its output goes to a log file in the data folder, and the window shows the page only.
+- The shell that starts processes is behind the platform port (see Providers and Tools), so the launcher and the server share one definition of Windows-only behaviour.
 
 #### Styling
 
