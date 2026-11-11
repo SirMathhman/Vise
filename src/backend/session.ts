@@ -5,6 +5,7 @@ import {
 } from "../core/commands.ts";
 import { askResultText, askReplyOf, parseAskLine, type AskReply } from "../core/tool-lines.ts";
 import type { AskArgs } from "../core/tools.ts";
+import type { ModelInfo } from "../core/messages.ts";
 import {
   profileCommands,
   queueHookOutput,
@@ -29,6 +30,7 @@ import { announceProfiles, readProfileFor, writeProfileFor } from "./profile-edi
 import { announceMcp, writeMcpFor } from "./mcp-editor.ts";
 import { announceFile, announceTree } from "./file-tree.ts";
 import { announceProviders, writeProvidersFor } from "./providers-editor.ts";
+import { announceModels, loadModels } from "./models/model-list.ts";
 import type { SessionPorts } from "./ports.ts";
 import { runMessageTurn } from "./turn.ts";
 
@@ -52,6 +54,8 @@ interface SessionState {
   question?: OpenQuestion;
   // The files the page has open, by path, in the order they were opened. Only paths: the text is read again when needed.
   openFiles: string[];
+  // The models last listed for the selector. Listed once at the start of the session.
+  modelList: ModelInfo[];
   nextId: number;
   // Set when /exit is typed at an approval: the session ends and no further request is sent.
   exitRequested: boolean;
@@ -261,6 +265,7 @@ async function sessionLoop(
         conversation = step.conversation;
         if (step.notice) emit({ kind: "notice", text: step.notice });
         announceTools(state, conversation);
+        announceModels(state.ports, emit, state.modelList);
       }
       await persist(state, conversation);
       emit({ kind: "ready" });
@@ -393,6 +398,8 @@ async function run(state: SessionState): Promise<void> {
   await announceProfiles(state.ports, emit);
   await announceMcp(state.ports, emit);
   await announceProviders(state.ports, emit);
+  state.modelList = await loadModels(state.ports, emit);
+  announceModels(state.ports, emit, state.modelList);
   const started = await state.ports.hooks(
     "sessionStart",
     profileCommands(initial, "sessionStart"),
@@ -424,6 +431,7 @@ export function startSession(ports: SessionPorts): Session {
     events: new Channel<ServerEvent>(),
     lines: new Channel<string>(),
     openFiles: [],
+    modelList: [],
     nextId: 1,
     exitRequested: false,
   };

@@ -5,7 +5,7 @@ import type { ApprovalAnswer } from "../core/commands.ts";
 import type { HistoryMessage } from "../core/sessions.ts";
 import type { ToolSwitch } from "../core/tools.ts";
 import type { ProfileDetail, ProfileSummary } from "../core/notes.ts";
-import type { McpServerEntry, McpServerStatus, ProviderEntry, ProviderInput, TreeEntry } from "../core/messages.ts";
+import type { McpServerEntry, McpServerStatus, ModelInfo, ProviderEntry, ProviderInput, TreeEntry } from "../core/messages.ts";
 
 export type { ApprovalAnswer, HistoryMessage, ToolSwitch, ProfileDetail, ProfileSummary, McpServerEntry, McpServerStatus, TreeEntry, ProviderEntry, ProviderInput };
 
@@ -255,6 +255,13 @@ export interface ProvidersEvent {
   servers: ProviderEntry[];
 }
 
+// The current model, and the models the page's selector offers. Sent at the start and after each command.
+export interface ModelsEvent {
+  kind: "models";
+  current: string;
+  models: ModelInfo[];
+}
+
 // The output of a hook, in full. The frontend caps what it shows.
 export interface HookOutputEvent {
   kind: "hookOutput";
@@ -306,6 +313,7 @@ export type ServerEvent =
   | FileEvent
   | OpenFilesEvent
   | ProvidersEvent
+  | ModelsEvent
   | HookOutputEvent
   | NoticeEvent
   | ErrorEvent
