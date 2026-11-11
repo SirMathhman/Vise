@@ -674,16 +674,16 @@ input:not([type="checkbox"]):not([type="radio"]) {
   resize: none;
 }
 
-/* The model selector in the header: a filter box and a grouped select, both the header's height. */
+/* The model selector in the header: a combobox, with its dropdown laid over the page below it. */
 .model-picker {
+  position: relative;
   display: flex;
-  align-items: center;
-  gap: 6px;
 }
 
-.model-picker input,
-.model-select {
+.model-input {
   height: 40px;
+  width: 22rem;
+  max-width: 60vw;
   font: inherit;
   padding: 0 10px;
   border: 1px solid var(--button-line);
@@ -692,10 +692,34 @@ input:not([type="checkbox"]):not([type="radio"]) {
   color: var(--fg);
 }
 
-.model-picker input {
-  width: 9rem;
+.model-list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  max-height: 60vh;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--button-line);
+  background: var(--bg);
 }
 
-.model-select {
-  max-width: 22rem;
+.model-list [role="option"] {
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.model-list [role="option"].active {
+  background: var(--user-bg);
+}
+
+.model-group {
+  padding: 8px 10px 2px;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
