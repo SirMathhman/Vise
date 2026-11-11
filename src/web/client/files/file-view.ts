@@ -34,6 +34,7 @@ interface EditState {
   drafts: Map<string, string>;
   saved: Map<string, string>;
   versions: Map<string, string>;
+  texts: Map<string, string>;
   crlf: Set<string>;
   timers: Map<string, ReturnType<typeof setTimeout>>;
 }
@@ -49,6 +50,7 @@ export function createFileViewer(doc: Document, actions: FileActions): FileViewe
     drafts: new Map(),
     saved: new Map(),
     versions: new Map(),
+    texts: new Map(),
     crlf: new Set(),
     timers: new Map(),
   };
@@ -74,6 +76,9 @@ export function createFileViewer(doc: Document, actions: FileActions): FileViewe
       shown = next;
       const file = next.file;
       if (file !== undefined) remember(file, state);
+      // A refused save echoes the file's own text, which differs from what was sent. When the file's text has changed
+      // and is not what was sent, forget that save, so the next flush sends the draft again, now with the new version.
+      if (file !== undefined) forgetRefused(file, state);
       // A save echoing back while its file is being typed in must not rebuild the editor, or the cursor would move.
       if (file !== undefined && state.editing.has(file.path) && state.saved.get(file.path) === lf(file.text)) return;
       draw();
@@ -179,6 +184,14 @@ function remember(file: FileView, state: EditState): void {
   if (file.version !== undefined) state.versions.set(file.path, file.version);
   if (file.text.includes("\r\n")) state.crlf.add(file.path);
   else state.crlf.delete(file.path);
+}
+
+// Forgets the last save of a file when the file's text has changed since the page last saw it and is not what was sent.
+function forgetRefused(file: FileView, state: EditState): void {
+  const text = lf(file.text);
+  const before = state.texts.get(file.path);
+  state.texts.set(file.path, text);
+  if (before !== undefined && before !== text && state.saved.get(file.path) !== text) state.saved.delete(file.path);
 }
 
 // The text with Unix line ends, as a text area holds it.
