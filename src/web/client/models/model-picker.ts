@@ -62,22 +62,37 @@ export function offered(models: ModelInfo[], current: string, needle: string): s
   return current !== "" && !ids.includes(current) ? [current, ...ids] : ids;
 }
 
-// The options, one group per provider: a model's provider is the part of its name before the double colon.
+// The group and the option label of a model id. The group is its provider, then its vendor (the part of its name
+// before the first slash), so a long provider list is grouped by vendor too. A name with no slash is grouped by its
+// provider alone.
+export interface Place {
+  group: string;
+  label: string;
+}
+
+export function placeOf(id: string): Place {
+  const at = id.indexOf("::");
+  const provider = at < 0 ? "other" : id.slice(0, at);
+  const name = at < 0 ? id : id.slice(at + 2);
+  const slash = name.indexOf("/");
+  if (slash < 0) return { group: provider, label: name };
+  return { group: `${provider} · ${name.slice(0, slash)}`, label: name.slice(slash + 1) };
+}
+
+// The options in alphabetical order, one group per provider and vendor.
 function groupsOf(doc: Document, ids: string[]): HTMLElement[] {
   const groups = new Map<string, HTMLOptGroupElement>();
   const nodes: HTMLElement[] = [];
-  for (const id of ids) {
-    const at = id.indexOf("::");
-    const provider = at < 0 ? "other" : id.slice(0, at);
-    const label = at < 0 ? id : id.slice(at + 2);
-    let group = groups.get(provider);
-    if (group === undefined) {
-      group = doc.createElement("optgroup");
-      group.label = provider;
-      groups.set(provider, group);
-      nodes.push(group);
+  for (const id of [...ids].sort((a, b) => a.localeCompare(b))) {
+    const { group, label } = placeOf(id);
+    let node = groups.get(group);
+    if (node === undefined) {
+      node = doc.createElement("optgroup");
+      node.label = group;
+      groups.set(group, node);
+      nodes.push(node);
     }
-    group.append(optionOf(doc, id, label));
+    node.append(optionOf(doc, id, label));
   }
   if (nodes.length === 0) nodes.push(optionOf(doc, "", "no models: add a provider"));
   return nodes;
