@@ -1,24 +1,27 @@
-// The page's body in two columns: the tree and the file on the left, the chat on the right. While a file is
-// open the window shows both at once; on a narrow window the columns stack, with the tree above the chat.
-// The chat's panels form one group, capped in height, so a long panel cannot push the transcript and the
-// composer off the window.
-export function columns(
-  doc: Document,
-  side: HTMLElement[],
-  panels: HTMLElement[],
-  rest: HTMLElement[],
-): HTMLElement {
-  const sideColumn = doc.createElement("div");
-  sideColumn.className = "side";
-  sideColumn.append(...side);
-  const panelGroup = doc.createElement("div");
-  panelGroup.className = "chat-panels";
-  panelGroup.append(...panels);
-  const chatColumn = doc.createElement("div");
-  chatColumn.className = "chat";
-  chatColumn.append(panelGroup, ...rest);
-  const workspace = doc.createElement("div");
-  workspace.className = "workspace";
-  workspace.append(sideColumn, chatColumn);
-  return workspace;
+// The page's body in three columns: the Files tree, the file, and the chat. While a file is open on a wide
+// window the three show side by side; on a narrower window the columns stack, tree first. The chat's panels
+// form one group, capped in height, so a long panel cannot push the transcript and the composer off the window.
+export interface ColumnParts {
+  tree: HTMLElement;
+  file: HTMLElement;
+  panels: HTMLElement[];
+  rest: HTMLElement[];
+}
+
+export function columns(doc: Document, parts: ColumnParts): HTMLElement {
+  const panelGroup = block(doc, "chat-panels", parts.panels);
+  const chat = block(doc, "chat", [panelGroup, ...parts.rest]);
+  return block(doc, "workspace", [
+    block(doc, "tree-column", [parts.tree]),
+    block(doc, "file-column", [parts.file]),
+    chat,
+  ]);
+}
+
+// An element of the given class, holding the given children.
+function block(doc: Document, className: string, children: HTMLElement[]): HTMLElement {
+  const node = doc.createElement("div");
+  node.className = className;
+  node.append(...children);
+  return node;
 }

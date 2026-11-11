@@ -447,17 +447,18 @@ ul.tree:not(ul ul) {
   font-size: 13px;
 }
 
-/* Side by side: the file (with the tree) on the left and the chat on the right, each filling the window's height.
-   Only the file's text and the chat's transcript scroll. Narrow windows keep the page flow. */
+/* Three columns while a file is open: the tree, the file, and the chat. Each fills the window's height, and each
+   pane has one scrolling region: the tree, the file's text, the chat's panels, and the transcript. Narrower windows
+   stack the columns, tree first, and keep the page flow. */
 .workspace {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-@media (min-width: 720px) {
+@media (min-width: 960px) {
   #app.split-view {
-    max-width: 1400px;
+    max-width: 1600px;
     height: 100vh;
     height: 100dvh;
     display: flex;
@@ -470,24 +471,25 @@ ul.tree:not(ul ul) {
     flex: 1;
     min-height: 0;
     display: grid;
-    grid-template-columns: minmax(260px, 1fr) minmax(320px, 1.4fr);
+    grid-template-columns: minmax(180px, 0.8fr) minmax(0, 2fr) minmax(300px, 1.2fr);
     gap: 16px;
   }
 
-  #app.split-view .side,
+  #app.split-view .tree-column,
+  #app.split-view .file-column,
   #app.split-view .chat {
     min-height: 0;
     display: flex;
     flex-direction: column;
   }
 
-  #app.split-view .side > details {
-    flex: 0 1 auto;
-    max-height: 40%;
+  #app.split-view .tree-column > details {
+    flex: 1;
+    min-height: 0;
     overflow: auto;
   }
 
-  #app.split-view .side .file-viewer:not([hidden]) {
+  #app.split-view .file-column .file-viewer:not([hidden]) {
     display: flex;
     flex-direction: column;
     flex: 1;
@@ -508,13 +510,13 @@ ul.tree:not(ul ul) {
     overflow-y: auto;
   }
 
-  #app.split-view .chat .transcript {
+  #app.split-view .chat > .transcript {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
   }
 
-  #app.split-view .chat .composer {
+  #app.split-view .chat > .composer {
     flex: 0 0 auto;
   }
 }

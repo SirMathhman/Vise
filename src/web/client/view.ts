@@ -490,12 +490,12 @@ export function createView(
   const send = element(doc, "button", "send", "Send");
   send.type = "submit";
   form.append(input, send);
-  const workspace = columns(
-    doc,
-    [files.element, fileViewer.element],
-    [panel.element, toolPanel.element, profilePanel.element, mcp.section],
-    [transcript, form],
-  );
+  const workspace = columns(doc, {
+    tree: files.element,
+    file: fileViewer.element,
+    panels: [panel.element, toolPanel.element, profilePanel.element, mcp.section],
+    rest: [transcript, form],
+  });
   root.append(header, folder.element, workspace, editor, mcp.dialog);
 
   wireComposer(form, input, actions);
