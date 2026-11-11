@@ -75,6 +75,7 @@ body {
 
 .bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
@@ -91,7 +92,8 @@ body {
 .status {
   color: var(--muted);
   font-size: 14px;
-  overflow-wrap: anywhere;
+  flex: 1 1 auto;
+  overflow-wrap: normal;
   text-align: right;
 }
 
