@@ -4,7 +4,7 @@ import { saveModelSetting } from "./model-settings.ts";
 export interface SelectModelOptions {
   // The working directory the choice is saved in.
   root: string;
-  // The models OpenRouter lists right now.
+  // The models the provider lists right now.
   list(): Promise<Result<ModelInfo[]>>;
   // The name the user asked for.
   name: string;

@@ -1,10 +1,14 @@
 import { z } from "zod";
-import { type ChatMessage, type ModelInfo, type ReasoningEffort, type ToolCall, type Usage, err, ok, type Result } from "./core/messages.ts";
-import { toolSpecs, type ToolSpec } from "./core/tools.ts";
+import { type ChatMessage, type ModelInfo, type Provider, type ReasoningEffort, type ToolCall, type Usage, err, ok, type Result } from "../core/messages.ts";
+import { toolSpecs, type ToolSpec } from "../core/tools.ts";
 
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 const MODELS_ENDPOINT = "https://openrouter.ai/api/v1/models";
 const DONE = Symbol("done");
+
+// The variable that holds this provider's key, and the model a session starts with, in OpenRouter's naming.
+export const KEY_VARIABLE = "OPENROUTER_API_KEY";
+export const DEFAULT_MODEL = "anthropic/claude-haiku-5.5";
 
 const StreamEventSchema = z.object({
   error: z.object({ message: z.string().optional() }).nullish(),
@@ -378,4 +382,14 @@ export async function listModels(
       contextLength: entry.context_length,
     })),
   );
+}
+
+// OpenRouter as the provider the session uses. The key is given here; the rest is the functions above.
+export function openRouter(apiKey: string): Provider {
+  return {
+    defaultModel: DEFAULT_MODEL,
+    reply: (request) => streamChat({ apiKey, ...request }),
+    contextWindow: (model) => modelContextWindow({ model }),
+    listModels: () => listModels({}),
+  };
 }

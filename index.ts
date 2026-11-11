@@ -1,12 +1,8 @@
 import { readInstructions } from "./src/instructions.ts";
-import {
-  listModels,
-  modelContextWindow,
-  streamChat,
-} from "./src/openrouter.ts";
+import { providerFromEnv } from "./src/providers/provider.ts";
 import { startSession } from "./src/backend/session.ts";
 import type { SessionPorts } from "./src/backend/ports.ts";
-import { err, ok, type Result } from "./src/core/messages.ts";
+import { err, ok, type Provider, type Result } from "./src/core/messages.ts";
 import type { Session } from "./src/protocol/protocol.ts";
 import { runRepl } from "./src/repl/repl.ts";
 import { buildAssets } from "./src/web/server/page.ts";
@@ -44,7 +40,6 @@ import {
 import { readModelSetting } from "./src/tools/models/model-settings.ts";
 import { selectModel } from "./src/tools/models/select-model.ts";
 
-const DEFAULT_MODEL = "anthropic/claude-haiku-5.5";
 
 // The MCP servers that started, stopped on every exit path. Empty until startup starts them.
 let servers: McpRegistry = noServers();
@@ -56,7 +51,7 @@ interface ModelSelection {
 
 // The settings the session's ports are built from, all read once at startup.
 interface PortSetup {
-  apiKey: string;
+  provider: Provider;
   // The folder the session works in.
   folder: string;
   selection: ModelSelection;
@@ -72,21 +67,21 @@ interface PortSetup {
 
 // Builds every port the session uses. Both the terminal and the browser run the same session.
 function sessionPorts(setup: PortSetup): SessionPorts {
-  const { apiKey, selection } = setup;
+  const { provider, selection } = setup;
   const root = setup.folder;
   const extraTools = setup.mcp.specs();
   return {
     hooks: setup.hooks,
     reply: (request) =>
-      streamChat({ apiKey, model: selection.model, extraTools, ...request }),
-    contextWindow: () => modelContextWindow({ model: selection.model }),
+      provider.reply({ model: selection.model, extraTools, ...request }),
+    contextWindow: () => provider.contextWindow(selection.model),
     models: {
       current: () => selection.model,
-      list: () => listModels({}),
+      list: () => provider.listModels(),
       select: (name: string) =>
         selectModel({
           root,
-          list: () => listModels({}),
+          list: () => provider.listModels(),
           name,
           setModel: (model) => {
             selection.model = model;
@@ -157,7 +152,7 @@ async function stopJobs(): Promise<void> {
 
 // Starts a session in a folder. The folder's instructions, hooks, servers, and tool settings are read from it,
 // so this runs again for each folder the session moves to. A failure stops anything it started.
-async function openSession(apiKey: string, selection: ModelSelection, folder: string): Promise<Result<Session>> {
+async function openSession(provider: Provider, selection: ModelSelection, folder: string): Promise<Result<Session>> {
   // Read once, here, so the session sends the same instructions for its whole length.
   const instructions = await readInstructions(folder);
   // Read once, here: the hooks in the hooks file. A file that is not valid stops the start.
@@ -179,7 +174,7 @@ async function openSession(apiKey: string, selection: ModelSelection, folder: st
   return ok(
     startSession(
       sessionPorts({
-        apiKey,
+        provider,
         selection,
         folder,
         disabledTools: disabled.value,
@@ -195,7 +190,7 @@ async function openSession(apiKey: string, selection: ModelSelection, folder: st
 
 // Moves the session to another folder. The current MCP servers and background jobs stop first, then the
 // process moves to the folder and the session starts there. The page's history and model are kept.
-async function changeFolder(folder: string, apiKey: string, selection: ModelSelection): Promise<Result<Session>> {
+async function changeFolder(folder: string, provider: Provider, selection: ModelSelection): Promise<Result<Session>> {
   const target = resolve(folder);
   const info = await stat(target).catch(() => undefined);
   if (info === undefined || !info.isDirectory()) return err(new Error(`${target} is not a folder`));
@@ -205,15 +200,16 @@ async function changeFolder(folder: string, apiKey: string, selection: ModelSele
   } catch (error) {
     return err(error instanceof Error ? error : new Error(String(error)));
   }
-  return openSession(apiKey, selection, target);
+  return openSession(provider, selection, target);
 }
 
 if (import.meta.main) {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) {
-    console.error("Set OPENROUTER_API_KEY in .env");
+  const built = providerFromEnv(process.env);
+  if (!built.ok) {
+    console.error(built.error.message);
     process.exit(1);
   }
+  const provider = built.value;
   // Taken from the environment before anything starts. Child processes get a copy without the key and
   // the token (src/tools/child-env.ts).
   const address = takeWebAddress(process.env);
@@ -228,18 +224,18 @@ if (import.meta.main) {
     console.error(`error: ${savedModel.error.message}`);
     process.exit(1);
   }
-  const selection: ModelSelection = { model: savedModel.value ?? DEFAULT_MODEL };
+  const selection: ModelSelection = { model: savedModel.value ?? provider.defaultModel };
   // --web serves the session to a browser instead of the terminal.
   const web = process.argv.includes("--web");
   let failed = false;
   try {
-    const opened = await openSession(apiKey, selection, process.cwd());
+    const opened = await openSession(provider, selection, process.cwd());
     if (!opened.ok) {
       console.error(`error: ${opened.error.message}`);
       failed = true;
     } else {
       const result = web
-        ? await runWeb(opened.value, address, (folder) => changeFolder(folder, apiKey, selection))
+        ? await runWeb(opened.value, address, (folder) => changeFolder(folder, provider, selection))
         : await runRepl(process.stdin, process.stdout, opened.value);
       if (!result.ok) {
         console.error(`error: ${result.error.message}`);

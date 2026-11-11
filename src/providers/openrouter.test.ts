@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import { type ToolCall, type Usage, err, ok, type Result } from "./core/messages.ts";
+import { type ToolCall, type Usage, err, ok, type Result } from "../core/messages.ts";
 import { modelContextWindow, streamChat } from "./openrouter.ts";
-import type { ToolSpec } from "./core/tools.ts";
+import type { ToolSpec } from "../core/tools.ts";
 
 test("streams text deltas from server-sent events and stops at [DONE]", async () => {
   const body = [

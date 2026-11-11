@@ -1,3 +1,4 @@
+import type { ToolSpec } from "./tools.ts";
 // Shared data types and the ports the core and backend use, and the Result type for failures.
 
 export interface Ok<T> {
@@ -89,10 +90,24 @@ export type Reply = (request: ReplyRequest) => AsyncIterable<Result<string>>;
 
 export type ContextWindow = () => Promise<Result<number>>;
 
-// A model OpenRouter lists: its id, and its context window in tokens.
+// A model a provider lists: its id, and its context window in tokens.
 export interface ModelInfo {
   id: string;
   contextLength: number;
+}
+
+// What the session needs from a model provider. A request names the model to use and the tools of the MCP
+// servers that started. The provider names its models in its own way; `defaultModel` is one of them.
+export interface ProviderRequest extends ReplyRequest {
+  model: string;
+  extraTools: ToolSpec[];
+}
+
+export interface Provider {
+  defaultModel: string;
+  reply(request: ProviderRequest): AsyncIterable<Result<string>>;
+  contextWindow(model: string): Promise<Result<number>>;
+  listModels(): Promise<Result<ModelInfo[]>>;
 }
 
 // The model the session uses, and the models it may switch to. `select` refuses a name that is not
