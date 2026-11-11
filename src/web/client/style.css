@@ -726,19 +726,43 @@ input:not([type="checkbox"]):not([type="radio"]) {
 
 /* The auto-scroll toggle, beside the message box. */
 .composer .auto-scroll {
-  align-self: stretch;
   font-size: 13px;
   white-space: nowrap;
 }
 
 /* The chat utilities: a Utilities button beside the message box, and a popover above the message row that holds the
    utility panels. */
+/* The message row: the popover on top, the toolbar above the message box, then the box and Send. */
 .composer {
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.composer > .utilities {
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+
+.composer-tools {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  display: flex;
+  gap: 8px;
+}
+
+.composer > textarea {
+  grid-column: 1;
+  grid-row: 3;
+}
+
+.composer > .send {
+  grid-column: 2;
+  grid-row: 3;
 }
 
 .utilities-button {
-  align-self: stretch;
   font-size: 13px;
   white-space: nowrap;
 }

@@ -500,7 +500,7 @@ export function createView(
   const send = element(doc, "button", "send", "Send");
   send.type = "submit";
   const autoScroll = autoScrollButton(doc, actions); const utilities = utilitiesOf(doc, [panel.element, toolPanel.element, profilePanel.element, mcp.section, providers.section]);
-  form.append(input, utilities.button, autoScroll.element, send, utilities.panel);
+  const tools = doc.createElement("div"); tools.className = "composer-tools"; tools.append(utilities.button, autoScroll.element); form.append(utilities.panel, tools, input, send);
   const workspace = columns(doc, { tree: files.element, file: fileViewer.element, transcript, composer: form });
   root.append(header, folder.element, workspace, editor, mcp.dialog, providers.dialog);
 
