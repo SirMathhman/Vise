@@ -58,6 +58,8 @@ function element<K extends keyof HTMLElementTagNameMap>(
   const node = doc.createElement(tag);
   node.className = className;
   node.textContent = text;
+  // A button inside the message form would submit it, so every button here says it is a plain button.
+  if (node instanceof HTMLButtonElement) node.type = "button";
   return node;
 }
 
