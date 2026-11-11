@@ -8,6 +8,7 @@ import type { HookPoint, ProfileHook } from "../../core/notes.ts";
 import {
   ASK_USER,
   RUN_SUBAGENT,
+  SEARCH_TOOLS,
   type Approve,
   type SubagentArgs,
 } from "../../core/tools.ts";
@@ -139,7 +140,7 @@ export async function runSubagent(
   const { conversation, text } = start.value;
   // A subagent is never offered the subagent tool, so it cannot start another one.
   const offered = enabledTools(conversation, ports.allTools).filter(
-    (name) => name !== RUN_SUBAGENT && name !== ASK_USER,
+    (name) => name !== RUN_SUBAGENT && name !== ASK_USER && name !== SEARCH_TOOLS,
   );
   note(`subagent ${args.profile}: started`);
   const started = await ports.hooks(

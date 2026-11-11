@@ -1,6 +1,7 @@
 import type { ChatMessage, ToolCall } from "../core/messages.ts";
 import { describeToolCall } from "../core/tool-lines.ts";
-import { ASK_USER, RUN_SUBAGENT, parseAskArgs, parseSubagentArgs, type Approve, type AskArgs } from "../core/tools.ts";
+import { ASK_USER, RUN_SUBAGENT, SEARCH_TOOLS, parseAskArgs, parseSubagentArgs, type Approve, type AskArgs, type ToolSpec } from "../core/tools.ts";
+import { parseSearchQuery, searchTools } from "../core/tool-search.ts";
 import type { Emit } from "../protocol/protocol.ts";
 import { queueApprovals, runSubagent, type SubagentPorts } from "./subagent/subagent.ts";
 
@@ -19,10 +20,13 @@ export interface CallsStep {
   subagents: SubagentPorts;
   // The tools switched off with /tools, which a subagent is not offered either.
   disabledTools: string[];
+  // The MCP tools a search can find, and what to do with the names a search found.
+  mcpSpecs: ToolSpec[];
+  remember(names: string[]): void;
 }
 
 // The tools the backend runs itself. The runner does not see them, so the offered check is made here too.
-const BACKEND_TOOLS: string[] = [RUN_SUBAGENT, ASK_USER];
+const BACKEND_TOOLS: string[] = [RUN_SUBAGENT, ASK_USER, SEARCH_TOOLS];
 
 export function toolMessage(toolCallId: string, content: string): ChatMessage {
   return { role: "tool", toolCallId, content };
@@ -54,6 +58,18 @@ export async function runCalls(step: CallsStep): Promise<ChatMessage[]> {
     if (call.name === ASK_USER) {
       const args = parseAskArgs(call.arguments);
       const text = args.ok ? await step.ask(args.value) : `error: ${args.error.message}`;
+      results.push(Promise.resolve(toolMessage(call.id, text)));
+      continue;
+    }
+    if (call.name === SEARCH_TOOLS) {
+      const query = parseSearchQuery(call.arguments);
+      const found = query.ok ? searchTools(step.mcpSpecs, query.value) : [];
+      step.remember(found.map((spec) => spec.function.name));
+      const text = !query.ok
+        ? `error: ${query.error.message}`
+        : found.length === 0
+          ? "no tool matches; try other words"
+          : found.map((spec) => `${spec.function.name}: ${spec.function.description}`).join("\n");
       results.push(Promise.resolve(toolMessage(call.id, text)));
       continue;
     }

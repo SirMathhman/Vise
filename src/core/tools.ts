@@ -234,6 +234,27 @@ export const runSubagentSpec: ToolSpec = {
 
 export const ASK_USER = "ask_user";
 
+// Finds tools among the MCP ones, which are not sent until a search finds them. The backend runs it.
+export const SEARCH_TOOLS = "search_tools";
+export const searchToolsSpec: ToolSpec = {
+  type: "function",
+  function: {
+    name: SEARCH_TOOLS,
+    description:
+      "Search the tools of the MCP servers by words in their names or descriptions. Every word must match. The tools that match are offered from the next request, so they can be called then.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "The words to look for, separated by spaces.",
+        },
+      },
+      required: ["query"],
+    },
+  },
+};
+
 // The question the model asks the user. The answer is a choice picked, a line typed, or both.
 export const askUserSpec: ToolSpec = {
   type: "function",
@@ -273,6 +294,7 @@ export const toolSpecs = [
   killCommandSpec,
   runSubagentSpec,
   askUserSpec,
+  searchToolsSpec,
 ];
 export const toolNames: string[] = toolSpecs.map((spec) => spec.function.name);
 
@@ -549,4 +571,4 @@ export function parseJobArgs(raw: string): Result<JobArgs> {
 function isLine(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 1;
 }
-
+

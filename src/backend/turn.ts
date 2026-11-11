@@ -1,6 +1,6 @@
 import {
   compactIfNeeded,
-  enabledTools,
+  offeredTools,
   profileCommands,
   queueHookOutput,
   recordUsage,
@@ -151,7 +151,7 @@ export async function runMessageTurn(
       history: withInstructions(current.history, instructions),
       reply,
       emit,
-      offered: enabledTools(current, ports.allTools),
+      offered: offeredTools(current, ports.allTools),
       reasoning: current.thinking,
     });
     if (round.failure) {
@@ -179,10 +179,15 @@ export async function runMessageTurn(
       approve,
       ask,
       finished,
-      offered: enabledTools(current, ports.allTools),
+      offered: offeredTools(current, ports.allTools),
       emit,
       subagents: ports,
       disabledTools: current.disabledTools ?? [],
+      mcpSpecs: ports.mcpSpecs?.() ?? [],
+      remember: (names) => {
+        const known = current.found ?? [];
+        current = { ...current, found: [...known, ...names.filter((name) => !known.includes(name))] };
+      },
     });
     current.history.push(...results);
     if (finished()) break;

@@ -2,6 +2,7 @@ import { type ChatMessage, type ContextWindow, type ReasoningEffort, type Reply,
 
 
 import type { HookPoint, ProfileHook } from "./notes.ts";
+import { toolNames } from "./tools.ts";
 
 export type { HookPoint } from "./notes.ts";
 
@@ -27,6 +28,8 @@ export interface Conversation {
   thinking?: ReasoningEffort;
   // The saved session this conversation is autosaved to. Set from the first message, or by /load.
   autosave?: string;
+  // The MCP tools a search has found in this conversation. They are offered from the next request.
+  found?: string[];
 }
 
 // Sets how hard the model thinks from the next request. Undefined turns thinking off.
@@ -79,6 +82,16 @@ export function enabledTools(conversation: Conversation, names: string[]): strin
     (name) =>
       !disabled.includes(name) &&
       (allowed === undefined || allowed.includes(name)),
+  );
+}
+
+// The tools offered to the model: the built-in tools and the MCP tools a search has found, then the same filter as
+// enabledTools. The other MCP tools are not sent, so a request carries only what the model can use.
+export function offeredTools(conversation: Conversation, allTools: string[]): string[] {
+  const found = conversation.found ?? [];
+  return enabledTools(
+    conversation,
+    allTools.filter((name) => toolNames.includes(name) || found.includes(name)),
   );
 }
 
@@ -160,7 +173,7 @@ export async function compact(
       messages: compactionRequest(conversation.history),
       onUsage: () => {},
       onToolCall: () => {},
-      tools: enabledTools(conversation, names),
+      tools: offeredTools(conversation, names),
       reasoning: conversation.thinking,
       onThinking: () => {},
       onReasoning: () => {},

@@ -5,7 +5,7 @@ import { type HookPoint, type ProfileHook, type ProfileStore } from "../core/not
 
 import type { ResumeStore, SessionStore } from "../core/sessions.ts";
 
-import type { Approve } from "../core/tools.ts";
+import type { Approve, ToolSpec } from "../core/tools.ts";
 
 // Every port the session uses. All are required; a caller that omits one fails to compile.
 export interface SessionPorts {
@@ -33,6 +33,8 @@ export interface SessionPorts {
   profiles?: ProfileStore;
   // Where the page and /mcp read the MCP servers. Absent, there are none.
   mcp?: McpStore;
+  // The tools of the MCP servers that started, which a search finds. Absent, a search finds none.
+  mcpSpecs?(): ToolSpec[];
   // Where the page reads and saves the llama.cpp servers. Absent, the page has no providers panel.
   providers?: ProvidersStore;
   // The entries directly inside a folder of the working directory, for the page's file tree. Absent, the page has no tree.

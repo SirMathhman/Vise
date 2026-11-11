@@ -106,6 +106,7 @@ function sessionPorts(setup: PortSetup): SessionPorts {
     resume: resumeStore(join(homedir(), ".vise", "resume"), root),
     profiles: scopedProfileStore(root, GLOBAL_FOLDER, setup.allTools),
     mcp: scopedMcpStore(root, GLOBAL_FOLDER, setup.mcp.statuses()),
+    mcpSpecs: () => setup.mcp.specs(),
     providers: scopedProvidersStore(root, GLOBAL_FOLDER),
     folder: root,
     tree: (path) => listChildren(root, path),

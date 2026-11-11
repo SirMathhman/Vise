@@ -4,6 +4,7 @@ import {
   clearProfile,
   enabledTools,
   needsCompaction,
+  offeredTools,
   setToolEnabled,
   useProfile,
   type Conversation,
@@ -151,4 +152,11 @@ test("a saved session keeps the hooks its profile adds", () => {
     ok: true,
     value: conversation,
   });
+});
+
+test("an MCP tool is offered only after a search has found it", () => {
+  const conversation = { history: [], compacted: false };
+  const all = ["list_files", "search_tools", "rea__comment"];
+  expect(offeredTools(conversation, all)).toEqual(["list_files", "search_tools"]);
+  expect(offeredTools({ ...conversation, found: ["rea__comment"] }, all)).toEqual(["list_files", "search_tools", "rea__comment"]);
 });
