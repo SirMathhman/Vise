@@ -17,7 +17,7 @@ import { createMcpSection, panelBox, type McpActions } from "./mcp-view.ts";
 import { createTreeSection, type TreeActions } from "./files/tree-view.ts";
 import { createFileViewer, type FileActions } from "./files/file-view.ts";
 import { renderMarkdown } from "./markdown.ts";
-import { columns } from "./layout/columns.ts";
+import { applySplit, columns } from "./layout/columns.ts";
 
 // What the view asks the page to do. The page sends the line or the answer to the server.
 export interface ViewActions extends McpActions, TreeActions, FileActions {
@@ -466,6 +466,8 @@ export function createView(
   const folder = folderBar(doc, actions);
   const files = createTreeSection(doc, actions);
   const fileViewer = createFileViewer(doc, actions);
+  // Whether the three columns were shown at the last render.
+  let splitShown = false;
   const panel = panelBox(doc);
   // What the panel was last built from, so an unchanged panel is left alone.
   let panelKey = "";
@@ -522,7 +524,7 @@ export function createView(
       sendableNow = sendable;
       files.update(state.trees, state.expanded);
       fileViewer.update({ openFiles: state.openFiles, file: state.file });
-      root.classList.toggle("split-view", state.openFiles.length > 0);
+      splitShown = applySplit(root, [panel.element, toolPanel.element, profilePanel.element, mcp.section], state.openFiles.length > 0, splitShown);
       const profilesKey = JSON.stringify([state.profiles, sendable]);
       if (profilesKey !== profileKey) {
         profileKey = profilesKey;

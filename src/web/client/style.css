@@ -471,8 +471,13 @@ ul.tree:not(ul ul) {
     flex: 1;
     min-height: 0;
     display: grid;
-    grid-template-columns: minmax(180px, 0.8fr) minmax(0, 2fr) minmax(300px, 1.2fr);
-    gap: 16px;
+    grid-template-columns:
+      var(--tree-col, minmax(180px, 0.8fr))
+      8px
+      minmax(200px, 1fr)
+      8px
+      var(--chat-col, minmax(300px, 1.2fr));
+    gap: 0 6px;
   }
 
   #app.split-view .tree-column,
@@ -502,12 +507,9 @@ ul.tree:not(ul ul) {
     max-height: none;
   }
 
-  /* The panels are one group with one height cap; they scroll inside it, so they cannot push the composer off. */
+  /* The panels are one group, sized to their content: the transcript keeps the rest of the column. */
   #app.split-view .chat .chat-panels {
-    flex: 0 1 auto;
-    min-height: 0;
-    max-height: 40%;
-    overflow-y: auto;
+    flex: 0 0 auto;
   }
 
   #app.split-view .chat > .transcript {
@@ -518,5 +520,25 @@ ul.tree:not(ul ul) {
 
   #app.split-view .chat > .composer {
     flex: 0 0 auto;
+  }
+}
+
+/* The separators between the three columns. They show only while the columns are side by side. */
+.separator {
+  display: none;
+}
+
+@media (min-width: 960px) {
+  #app.split-view .separator {
+    display: block;
+    cursor: col-resize;
+    background: var(--line);
+    border-radius: 4px;
+    touch-action: none;
+  }
+
+  #app.split-view .separator:focus-visible {
+    outline: 2px solid var(--muted);
+    outline-offset: 1px;
   }
 }
