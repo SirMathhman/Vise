@@ -16,7 +16,7 @@ import {
 import { createMcpSection, panelBox, type McpActions } from "./mcp-view.ts";
 import { createTreeSection, type TreeActions } from "./files/tree-view.ts";
 import { createFileViewer, type FileActions } from "./files/file-view.ts";
-import { renderMarkdown } from "./markdown.ts";
+import { renderMarkdown } from "./render/markdown-dom.ts";
 import { applySplit, columns } from "./layout/columns.ts";
 import { themeControl } from "./theme/theme.ts";
 

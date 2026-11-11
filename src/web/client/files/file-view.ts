@@ -1,5 +1,5 @@
 import type { FileView } from "../state.ts";
-import { renderMarkdown } from "../markdown.ts";
+import { renderMarkdown } from "../render/markdown-dom.ts";
 
 // What the viewer shows: the files the session has open, and the one whose text is shown.
 export interface FileShown {
