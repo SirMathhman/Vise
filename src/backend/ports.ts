@@ -35,6 +35,8 @@ export interface SessionPorts {
   mcp?: McpStore;
   // The entries directly inside a folder of the working directory, for the page's file tree. Absent, the page has no tree.
   tree?(path: string): Promise<Result<TreeEntry[]>>;
+  // The whole text of one file of the working directory, for the page's file viewer. Absent, the page cannot open files.
+  fileText?(path: string): Promise<Result<string>>;
   // The folder the session works in, announced at the start.
   folder?: string;
   // Where file changes are recorded for /undo. Absent, /undo is not available.

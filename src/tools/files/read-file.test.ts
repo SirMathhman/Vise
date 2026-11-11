@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readFileLines } from "./read-file.ts";
+import { MAX_WHOLE_BYTES, readFileLines, readWholeFile } from "./read-file.ts";
 
 test("returns the requested lines, clamps to the end of the file, and reports a start past it", async () => {
   const root = await mkdtemp(join(tmpdir(), "vise-read-"));
@@ -43,4 +43,15 @@ test("refuses a file reached through a link to a hidden folder", async () => {
   await symlink(join(root, ".hid"), join(root, "visible"), "junction");
   const result = await readFileLines(root, join("visible", "s.txt"), 1, 1);
   expect(result.ok).toBe(false);
+});
+
+test("a whole file is read as text, and a binary file or one over the size cap is refused", async () => {
+  const root = await mkdtemp(join(tmpdir(), "vise-whole-"));
+  await writeFile(join(root, "a.txt"), "line one\nline two\n");
+  await writeFile(join(root, "b.bin"), Buffer.from([1, 0, 2]));
+  await writeFile(join(root, "big.txt"), "x".repeat(MAX_WHOLE_BYTES + 1));
+  expect(await readWholeFile(root, "a.txt")).toEqual({ ok: true, value: "line one\nline two\n" });
+  expect((await readWholeFile(root, "b.bin")).ok).toBe(false);
+  expect((await readWholeFile(root, "big.txt")).ok).toBe(false);
+  expect((await readWholeFile(root, "..")).ok).toBe(false);
 });

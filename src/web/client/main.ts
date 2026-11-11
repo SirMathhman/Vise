@@ -110,6 +110,9 @@ const view = createView(document, root, {
   writeMcp(servers) {
     send({ kind: "mcpWrite", servers });
   },
+  openFile(path: string) {
+    send({ kind: "fileRead", path });
+  },
   toggleFolder(path: string, open: boolean) {
     dispatch({ kind: "folderOpen", path, open });
     // A folder is read once, when it is first opened; its entries stay until the folder changes.

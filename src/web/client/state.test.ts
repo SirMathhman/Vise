@@ -153,6 +153,10 @@ test("an ask question keeps the composer locked until it is answered", () => {
   ]);
 });
 
+test("a file event sets the file the viewer shows", () => {
+  expect(after([{ kind: "file", path: "a.txt", text: "hi" }]).file).toEqual({ path: "a.txt", text: "hi" });
+});
+
 test("a folder event sets the folder the page shows", () => {
   expect(after([{ kind: "folder", path: "C:/work" }]).folder).toBe("C:/work");
 });

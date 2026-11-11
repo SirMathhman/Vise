@@ -65,4 +65,8 @@ test("a tree read is read with its folder path, and a path that is not text is r
     value: { kind: "treeRead", path: "sub" },
   });
   expect(parseClientMessage('{"kind":"treeRead","path":3}').ok).toBe(false);
+  expect(parseClientMessage('{"kind":"fileRead","path":"a.txt"}')).toEqual({
+    ok: true,
+    value: { kind: "fileRead", path: "a.txt" },
+  });
 });

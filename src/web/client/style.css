@@ -397,3 +397,33 @@ ul.tree:not(ul ul) {
 .tree .hint {
   color: var(--muted);
 }
+
+/* The file viewer: the file's text in one scrolling box, which wraps long lines. */
+dialog.file-viewer {
+  width: min(900px, 96vw);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel, Canvas);
+  color: inherit;
+}
+
+dialog.file-viewer h2 {
+  margin: 0;
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+
+dialog.file-viewer pre {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}

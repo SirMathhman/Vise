@@ -1,11 +1,13 @@
 import type { TreeEntry } from "../../../protocol/protocol.ts";
 import { panelBox } from "../mcp-view.ts";
 
-// The file tree the page shows: each folder opens and closes in place. A folder's entries are read from
-// the server when it is first opened (see main.ts), so only the folders the user opens are sent.
+// The file tree the page shows: each folder opens and closes in place, and a click on a file opens it in the
+// viewer. A folder's entries are read from the server when it is first opened (see main.ts), so only the
+// folders the user opens are sent.
 
 export interface TreeActions {
   toggleFolder(path: string, open: boolean): void;
+  openFile(path: string): void;
 }
 
 // What the tree shows: the entries read so far, by folder path, and the folders that are open.
@@ -56,7 +58,12 @@ export function treeList(doc: Document, folder: string, shown: TreeShown, action
 function treeItem(doc: Document, entry: TreeEntry, shown: TreeShown, actions: TreeActions): HTMLElement {
   const item = doc.createElement("li");
   if (!entry.directory) {
-    item.textContent = entry.name;
+    const file = doc.createElement("button");
+    file.type = "button";
+    file.className = "folder-toggle";
+    file.textContent = entry.name;
+    file.addEventListener("click", () => actions.openFile(entry.path));
+    item.append(file);
     return item;
   }
   const open = shown.expanded.includes(entry.path);

@@ -15,6 +15,7 @@ import {
 } from "./state.ts";
 import { createMcpSection, panelBox, type McpActions } from "./mcp-view.ts";
 import { createTreeSection, type TreeActions } from "./files/tree-view.ts";
+import { createFileViewer } from "./files/file-view.ts";
 import { renderMarkdown } from "./markdown.ts";
 
 // What the view asks the page to do. The page sends the line or the answer to the server.
@@ -446,6 +447,7 @@ export function createView(
   header.append(status, undo, newChat);
   const folder = folderBar(doc, actions);
   const files = createTreeSection(doc, actions);
+  const fileViewer = createFileViewer(doc);
   const panel = panelBox(doc);
   // What the panel was last built from, so an unchanged panel is left alone.
   let panelKey = "";
@@ -470,7 +472,7 @@ export function createView(
   const send = element(doc, "button", "send", "Send");
   send.type = "submit";
   form.append(input, send);
-  root.append(header, folder.element, files.element, panel.element, toolPanel.element, profilePanel.element, mcp.section, transcript, form, editor, mcp.dialog);
+  root.append(header, folder.element, files.element, fileViewer.dialog, panel.element, toolPanel.element, profilePanel.element, mcp.section, transcript, form, editor, mcp.dialog);
 
   input.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
@@ -507,6 +509,7 @@ export function createView(
       }
       sendableNow = sendable;
       files.update(state.trees, state.expanded);
+      fileViewer.update(state.file);
       const profilesKey = JSON.stringify([state.profiles, sendable]);
       if (profilesKey !== profileKey) {
         profileKey = profilesKey;

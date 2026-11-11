@@ -101,6 +101,9 @@ export function parseClientMessage(text: string): Result<ClientMessage> {
   if (value.kind === "treeRead" && typeof value.path === "string") {
     return ok({ kind: "treeRead", path: value.path });
   }
+  if (value.kind === "fileRead" && typeof value.path === "string") {
+    return ok({ kind: "fileRead", path: value.path });
+  }
   if (value.kind === "pickFolder") return ok({ kind: "pickFolder" });
   if (value.kind === "folderChange" && typeof value.path === "string" && value.path.trim() !== "") {
     return ok({ kind: "folderChange", path: value.path.trim() });

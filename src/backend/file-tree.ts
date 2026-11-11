@@ -1,8 +1,8 @@
 import type { Emit } from "../protocol/protocol.ts";
 import type { SessionPorts } from "./ports.ts";
 
-// The file tree the page shows. Each function answers with an event and never throws; a failure is
-// reported, and the session goes on.
+// The file tree and the file viewer the page shows. Each function answers with an event and never throws;
+// a failure is reported, and the session goes on.
 
 // Sends the entries of one folder, for the page to show under it. The empty path is the working directory.
 export async function announceTree(ports: SessionPorts, emit: Emit, path: string): Promise<void> {
@@ -13,4 +13,15 @@ export async function announceTree(ports: SessionPorts, emit: Emit, path: string
     return;
   }
   emit({ kind: "tree", path, entries: listed.value });
+}
+
+// Sends the whole text of one file, for the page's file viewer. A file that cannot be shown is reported.
+export async function announceFile(ports: SessionPorts, emit: Emit, path: string): Promise<void> {
+  if (ports.fileText === undefined) return;
+  const read = await ports.fileText(path);
+  if (!read.ok) {
+    emit({ kind: "error", message: `could not show ${path}: ${read.error.message}` });
+    return;
+  }
+  emit({ kind: "file", path, text: read.value });
 }

@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { err, ok, type Result } from "../../core/messages.ts";
 import { MAX_LINES } from "../../core/tools.ts";
 import { resolveInside } from "./contain.ts";
@@ -36,4 +36,25 @@ export async function readFileLines(
     );
   if (end > total) notes.push(`[end of file: ${total} lines]`);
   return ok([body, ...notes].join("\n"));
+}
+
+// The largest file the page's viewer shows whole. A larger file is refused.
+export const MAX_WHOLE_BYTES = 1_000_000;
+
+// Reads a whole file under `root` as text, for the page's file viewer. A file over MAX_WHOLE_BYTES, a
+// folder, and a binary file (one with a NUL byte) are refused.
+export async function readWholeFile(root: string, path: string): Promise<Result<string>> {
+  const inside = await resolveInside(root, path);
+  if (!inside.ok) return err(inside.error);
+  try {
+    const info = await stat(inside.value.realTarget);
+    if (!info.isFile()) return err(new Error("not a file"));
+    if (info.size > MAX_WHOLE_BYTES)
+      return err(new Error(`the file is larger than ${MAX_WHOLE_BYTES} bytes`));
+    const bytes = await readFile(inside.value.realTarget);
+    if (bytes.includes(0)) return err(new Error("the file is binary"));
+    return ok(bytes.toString("utf8"));
+  } catch (error) {
+    return err(error instanceof Error ? error : new Error(String(error)));
+  }
 }

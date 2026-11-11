@@ -104,6 +104,13 @@ export interface ViewState {
   trees: Record<string, TreeEntry[]>;
   // The paths of the folders the user has opened in the file tree.
   expanded: string[];
+  // The file the viewer shows, from the last file event. A new file event is a new object, so the viewer opens it again.
+  file?: FileView;
+}
+
+export interface FileView {
+  path: string;
+  text: string;
 }
 
 export interface McpInfo {
@@ -300,6 +307,8 @@ function applyEvent(state: ViewState, event: ServerEvent): ViewState {
     case "folder":
       // A new folder starts a new tree: the old folder's entries and open folders go.
       return { ...state, folder: event.path, trees: {}, expanded: [] };
+    case "file":
+      return { ...state, file: { path: event.path, text: event.text } };
     case "tree":
       return { ...state, trees: { ...state.trees, [event.path]: event.entries } };
     case "mcp":

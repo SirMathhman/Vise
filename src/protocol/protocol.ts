@@ -83,6 +83,12 @@ export interface TreeReadMessage {
   path: string;
 }
 
+// The page asks for the text of one file, to show it in its viewer. `path` is relative to the working directory.
+export interface FileReadMessage {
+  kind: "fileRead";
+  path: string;
+}
+
 export type ClientMessage =
   | LineMessage
   | ApprovalMessage
@@ -94,7 +100,8 @@ export type ClientMessage =
   | AnswerMessage
   | FolderChangeMessage
   | PickFolderMessage
-  | TreeReadMessage;
+  | TreeReadMessage
+  | FileReadMessage;
 
 // A chunk of the model's reply, raw and unsanitized. The frontend escapes it before it shows it.
 export interface TextEvent {
@@ -214,6 +221,13 @@ export interface TreeEvent {
   entries: TreeEntry[];
 }
 
+// The text of one file, in answer to a fileRead.
+export interface FileEvent {
+  kind: "file";
+  path: string;
+  text: string;
+}
+
 // The output of a hook, in full. The frontend caps what it shows.
 export interface HookOutputEvent {
   kind: "hookOutput";
@@ -262,6 +276,7 @@ export type ServerEvent =
   | McpEvent
   | FolderEvent
   | TreeEvent
+  | FileEvent
   | HookOutputEvent
   | NoticeEvent
   | ErrorEvent
