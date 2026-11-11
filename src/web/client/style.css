@@ -645,3 +645,11 @@ button:focus-visible,
   outline: 2px solid var(--fg);
   outline-offset: -4px;
 }
+
+/* The header's controls share one height, so the theme select and the buttons line up. */
+.bar button,
+.bar .theme {
+  height: 40px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
