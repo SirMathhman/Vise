@@ -189,3 +189,9 @@ test("open files: the session's list sets the tabs, a shown file's text is kept,
   expect(dropped.file).toEqual({ path: "b.txt", text: "B" });
   expect(after([{ kind: "openFiles", paths: ["a.txt"] }, { kind: "folder", path: "C:/other" }]).openFiles).toEqual([]);
 });
+
+test("the earlier button raises how many of the last blocks are built", () => {
+  const first = initialState;
+  const more = reduce(first, { kind: "showEarlier" });
+  expect(more.recent).toBe(first.recent + 200);
+});

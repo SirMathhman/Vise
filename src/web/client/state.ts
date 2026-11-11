@@ -1,3 +1,4 @@
+import { RECENT_BLOCKS } from "./transcript/recent.ts";
 import type {
   ApprovalAnswer,
   HistoryMessage,
@@ -103,6 +104,8 @@ export interface ViewState {
   mcp?: McpInfo;
   // The llama.cpp servers, without their keys, from the last providers event.
   providers: ProviderEntry[];
+  // How many of the last blocks of the transcript the page builds. Each press of the earlier button adds more.
+  recent: number;
   // The entries of each folder the page has read, keyed by its path ("" is the working directory).
   trees: Record<string, TreeEntry[]>;
   // The paths of the folders the user has opened in the file tree.
@@ -165,6 +168,11 @@ export interface FileDropAction {
   path: string;
 }
 
+// The user asks for the blocks before those built.
+export interface ShowEarlierAction {
+  kind: "showEarlier";
+}
+
 export type ViewAction =
   | SentAction
   | ServerAction
@@ -172,7 +180,8 @@ export type ViewAction =
   | ResetAction
   | FolderOpenAction
   | FileShowAction
-  | FileDropAction;
+  | FileDropAction
+  | ShowEarlierAction;
 
 export const initialState: ViewState = {
   link: "connecting",
@@ -184,6 +193,7 @@ export const initialState: ViewState = {
   tools: [],
   profiles: [],
   providers: [],
+  recent: RECENT_BLOCKS,
   trees: {},
   expanded: [],
   openFiles: [],
@@ -379,6 +389,8 @@ export function reduce(state: ViewState, action: ViewAction): ViewState {
       return applyEvent(state, action.event);
     case "link":
       return { ...state, link: action.link };
+    case "showEarlier":
+      return { ...state, recent: state.recent + RECENT_BLOCKS };
     case "reset":
       return { ...initialState, link: state.link };
     case "showFile":

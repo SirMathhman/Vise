@@ -20,9 +20,10 @@ import { createFileViewer, type FileActions } from "./files/file-view.ts";
 import { renderMarkdown } from "./render/markdown-dom.ts";
 import { applySplit, columns } from "./layout/columns.ts";
 import { themeControl } from "./theme/theme.ts";
+import { earlierButton, type RecentActions } from "./transcript/recent.ts";
 
 // What the view asks the page to do. The page sends the line or the answer to the server.
-export interface ViewActions extends McpActions, TreeActions, FileActions, ProvidersActions {
+export interface ViewActions extends McpActions, TreeActions, FileActions, ProvidersActions, RecentActions {
   line(text: string): void;
   changeFolder(path: string): void;
   pickFolder(): void;
@@ -511,9 +512,8 @@ export function createView(
       status.textContent = state.ended
         ? `session ended${state.endError ? `: ${state.endError}` : ""}`
         : LINK_TEXT[state.link];
-      transcript.replaceChildren(
-        ...state.blocks.map((block) => blockElement(doc, block, actions)),
-      );
+      const hidden = Math.max(0, state.blocks.length - state.recent);
+      transcript.replaceChildren(...(hidden > 0 ? [earlierButton(doc, hidden, actions)] : []), ...state.blocks.slice(hidden).map((block) => blockElement(doc, block, actions)));
       const open = openApproval(state);
       const sendable = canSend(state);
       // Rebuilt only when its names or its enabled state change. Rebuilding on every frame would replace a

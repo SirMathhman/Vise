@@ -124,6 +124,9 @@ const view = createView(document, root, {
   writeMcp(servers) {
     send({ kind: "mcpWrite", servers });
   },
+  showEarlier() {
+    dispatch({ kind: "showEarlier" });
+  },
   writeProviders(servers) {
     send({ kind: "providersWrite", servers });
   },
