@@ -10,8 +10,9 @@
   --error: #b3261e;
   --button-bg: #ffffff;
   --button-line: #9d9d96;
-  --accent: #2d6a4f;
-  --accent-fg: #ffffff;
+  --accent: #8a6a1c;
+  --accent-fg: #1d1d1b;
+  --chamfer: 8px;
   color-scheme: light;
 }
 
@@ -29,8 +30,8 @@
     --error: #ff8a80;
     --button-bg: #242422;
     --button-line: #5a5954;
-    --accent: #74c69d;
-    --accent-fg: #0f1f17;
+    --accent: #d4af5a;
+    --accent-fg: #161615;
   }
 }
 
@@ -47,8 +48,8 @@
   --error: #ff8a80;
   --button-bg: #242422;
   --button-line: #5a5954;
-  --accent: #74c69d;
-  --accent-fg: #0f1f17;
+  --accent: #d4af5a;
+  --accent-fg: #161615;
 }
 
 * {
@@ -80,7 +81,7 @@ body {
   justify-content: space-between;
   gap: 12px;
   padding: 12px 0;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 3px double var(--line);
 }
 
 .bar h1,
@@ -107,7 +108,7 @@ body {
 .block {
   margin: 0 0 10px;
   padding: 8px 12px;
-  border-radius: 8px;
+  border-radius: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -173,7 +174,7 @@ pre {
 button {
   font: inherit;
   padding: 8px 14px;
-  border-radius: 6px;
+  border-radius: 0;
   border: 1px solid var(--button-line);
   background: var(--button-bg);
   color: var(--fg);
@@ -199,7 +200,7 @@ textarea {
   resize: vertical;
   font: inherit;
   padding: 8px 10px;
-  border-radius: 6px;
+  border-radius: 0;
   border: 1px solid var(--button-line);
   background: var(--reply-bg);
   color: var(--fg);
@@ -228,7 +229,7 @@ textarea:disabled {
   align-items: center;
   gap: 8px;
   padding: 8px 0;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 3px double var(--line);
 }
 
 /* A panel folds: the summary names its list, and the body holds the list, which wraps. */
@@ -257,7 +258,7 @@ details.sessions > div {
   align-items: center;
   gap: 8px;
   padding: 8px 0;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 3px double var(--line);
 }
 
 .folder .hint {
@@ -300,7 +301,7 @@ details.sessions > div {
   max-height: 88vh;
   padding: 16px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 0;
   background: var(--bg);
   color: var(--fg);
   overflow-y: auto;
@@ -334,7 +335,7 @@ details.sessions > div {
   width: 100%;
   font: inherit;
   padding: 6px 8px;
-  border-radius: 6px;
+  border-radius: 0;
   border: 1px solid var(--button-line);
   background: var(--reply-bg);
   color: var(--fg);
@@ -342,7 +343,7 @@ details.sessions > div {
 
 .profile-editor fieldset {
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 0;
   margin: 0 0 12px;
   padding: 8px 12px;
 }
@@ -422,7 +423,7 @@ ul.tree:not(ul ul) {
   display: inline-flex;
   align-items: center;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 0;
 }
 
 .file-tab.selected {
@@ -549,7 +550,7 @@ ul.tree:not(ul ul) {
     display: block;
     cursor: col-resize;
     background: var(--line);
-    border-radius: 4px;
+    border-radius: 0;
     touch-action: none;
   }
 
@@ -564,7 +565,7 @@ ul.tree:not(ul ul) {
   font: inherit;
   padding: 4px 8px;
   border: 1px solid var(--button-line);
-  border-radius: 6px;
+  border-radius: 0;
   background: var(--button-bg);
   color: var(--fg);
 }
@@ -584,7 +585,35 @@ ul.tree:not(ul ul) {
   font-size: 13px;
   background: none;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 0;
   color: var(--muted);
   cursor: pointer;
+}
+
+/* Art deco: square corners, each box cut at 45 degrees (the cut is --chamfer), with stepped double rules between
+   the parts of the page and capitals for the labels. A cut corner has no border line, so the cut is the edge. */
+button,
+.theme,
+.composer textarea,
+.block,
+.approval,
+.profile-editor,
+.file-viewer {
+  clip-path: polygon(
+    var(--chamfer) 0,
+    calc(100% - var(--chamfer)) 0,
+    100% var(--chamfer),
+    100% calc(100% - var(--chamfer)),
+    calc(100% - var(--chamfer)) 100%,
+    var(--chamfer) 100%,
+    0 calc(100% - var(--chamfer)),
+    0 var(--chamfer)
+  );
+}
+
+.label,
+.bar h1,
+.sessions summary {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
 }
