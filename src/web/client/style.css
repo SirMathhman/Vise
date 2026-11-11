@@ -871,3 +871,13 @@ input:not([type="checkbox"]):not([type="radio"]) {
 #app .chat > .composer {
   flex: 0 0 auto;
 }
+
+/* In the three-column layout the file fills its column's height, and the tree column takes no cap of its own. */
+#app.split-view .file-column {
+  flex: 1;
+  max-height: none;
+}
+
+#app.split-view .tree-column {
+  max-height: none;
+}
