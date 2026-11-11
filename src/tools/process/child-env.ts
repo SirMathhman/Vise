@@ -1,4 +1,4 @@
-import { PROVIDER_KEY_VARIABLES } from "../../providers/provider.ts";
+import { PROVIDER_KEY_VARIABLES } from "../../core/messages.ts";
 // The variables no child process may receive: the model key, and the web token of the browser server.
 const WITHHELD = [...PROVIDER_KEY_VARIABLES, "VISE_WEB_TOKEN"];
 

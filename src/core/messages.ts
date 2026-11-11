@@ -103,6 +103,10 @@ export interface ProviderRequest extends ReplyRequest {
   extraTools: ToolSpec[];
 }
 
+// The variables that hold each provider's key. A child process never receives them (src/tools/process/child-env.ts).
+// A new provider adds its key variable here.
+export const PROVIDER_KEY_VARIABLES: readonly string[] = ["OPENROUTER_API_KEY"];
+
 export interface Provider {
   defaultModel: string;
   reply(request: ProviderRequest): AsyncIterable<Result<string>>;

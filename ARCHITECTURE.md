@@ -22,6 +22,7 @@ Requirements are split into two classes. **Functional** requirements say what th
 | **Note** | A Markdown file at `notes/<category>/<name>.md` under the working directory (see Behaviour: Notes and profiles). |
 | **Open file** | A file whose path the session keeps as open in the page's viewer. The session keeps the paths only; the page holds the text and reads it again after a reload. |
 | **Profile** | A note in the `profile` category whose text is custom instructions for the model. |
+| **Provider** | The model service the session uses, behind the `Provider` contract in `src/core/messages.ts`: a default model, a reply stream, the context window of a model, and the list of models. The composition root builds one provider from the environment and passes only that. OpenRouter is the only adapter. |
 | **Saved session** | A conversation written to `.vise/sessions/<name>.json` by `/save` and by autosave, and read back by `/load`. It holds the history, the active and pending profile, the pending hook output, the switched-off tools, the last prompt size, the compacted flag, and the name of the session it autosaves to. `/load` replaces the current conversation with it. The file is data from outside the run (see Security). |
 | **Session** | One run of the REPL, from start until `/exit` or end of input. |
 | **Subagent** | A conversation of its own, started by the model with `run_subagent`. |
@@ -198,17 +199,19 @@ Target layout. Test files sit beside the module each one tests; there is no sepa
 
 ```
 └── vise/
-    ├── index.ts                         composition root: wires stdin, stdout, and OPENROUTER_API_KEY to the REPL or, with --web, to the browser server; reads the tools and model settings at startup
+    ├── index.ts                         composition root: wires stdin, stdout, and the provider (built from the environment) to the REPL or, with --web, to the browser server; reads the tools and model settings at startup
     ├── scripts/                         build checks run by bun run lint, and the web:dev development script
     │   ├── check-files-per-dir.ts       file count per directory
     │   └── web-dev.ts                   bun run web:dev: runs the browser server and restarts it when a file under src/ or index.ts changes, on the same port and with the same token, so the open page reconnects by itself
     └── src/
         ├── instructions.ts              reads AGENTS.md from the working directory (the one file read at startup)
-        ├── openrouter.ts                model adapter: streams chat completions over HTTPS; with tools/mcp/http-client.ts, one of the two modules that open network connections
+        ├── providers/                   the model provider behind the Provider contract (core/messages.ts); OpenRouter is the only adapter
+        │   ├── provider.ts              providerFromEnv: builds the provider from the environment; PROVIDER_KEY_VARIABLES, the key names no child process receives
+        │   └── openrouter.ts            OpenRouter adapter: streams chat completions over HTTPS and lists models; with tools/mcp/http-client.ts, one of the two modules that open network connections
         ├── core/                        pure logic; imports nothing from node: except types
         │   ├── commands.ts              line classification, command parsing, and the /help table (usage and description of each command)
         │   ├── compaction.ts            Conversation state: summary request, compacted history, 80% check, profile use and clear
-        │   ├── messages.ts              shared data types and model ports (ChatMessage, ToolCall, Usage, ReplyRequest, Reply, ContextWindow), the MCP server entry and status types, McpStore, and the Result type (ok and err) for returned failures
+        │   ├── messages.ts              shared data types, the Provider contract and model ports (ChatMessage, ToolCall, Usage, ReplyRequest, Provider, ProviderRequest, ModelInfo, Reply, ContextWindow), the MCP server entry and status types, McpStore, and the Result type (ok and err) for returned failures
         │   ├── notes.ts                 note rules: name checks, path and scaffold, header parser, /note and /profile words, NoteRunner and ProfileLoader ports
         │   ├── sessions.ts              saved-session format (encode; decode with shape and pairing checks), autosave naming (autosaveName, uniqueName), /save, /load, /sessions words, SessionStore port
         │   ├── tools.ts                 tool specs, argument parsing, /tools words, the name rule for MCP tools (isExternalName), Approve and ToolRunner ports
@@ -298,11 +301,11 @@ index.ts  ->  src/repl  ->  src/protocol  ->  src/core (types)
 index.ts  ->  src/web/server  ->  src/protocol, src/core
 src/web/client  ->  src/protocol (types)
 index.ts  ->  src/backend  ->  src/protocol, src/core
-index.ts  ->  src/openrouter.ts  ->  src/core
+index.ts  ->  src/providers  ->  src/core
 index.ts  ->  src/tools  ->  src/core
 ```
 
-`src/core` imports nothing from `src/repl`, `src/backend`, `src/protocol`, `src/tools`, `src/openrouter.ts`, or `index.ts`. `src/protocol` imports only core types. `src/repl` imports `src/protocol` and core types only, and never `src/backend`, `src/tools`, or `src/openrouter.ts`. `src/backend` imports `src/protocol` and `src/core`, and reaches disk, processes, and the network only through ports. `src/tools` and `src/openrouter.ts` may import `src/core`, never the reverse, and they do not import each other. Only `src/openrouter.ts` and `src/tools/mcp/http-client.ts` open network connections; every other module reaches the network through one of them. Only `index.ts` imports both the frontend and the backend. `src/web/server` follows the rules of `src/repl`, and `src/web/client` may import protocol types only, as type-only imports; it is built for the browser and never runs under Bun. The client is checked with its own tsconfig (`src/web/client/tsconfig.json`), because the browser types are not part of the rest of the project. Tests and the test helper `src/repl/session-helper.ts` may import any module. There are no circular imports.
+`src/core` imports nothing from `src/repl`, `src/backend`, `src/protocol`, `src/tools`, `src/providers`, or `index.ts`. `src/protocol` imports only core types. `src/repl` imports `src/protocol` and core types only, and never `src/backend`, `src/tools`, or `src/providers`. `src/backend` imports `src/protocol` and `src/core`, and reaches disk, processes, and the network only through ports. `src/tools` and `src/providers` may import `src/core`, never the reverse, and they do not import each other. Only `src/providers/openrouter.ts` and `src/tools/mcp/http-client.ts` open network connections; every other module reaches the network through one of them. Only `index.ts` imports both the frontend and the backend. `src/web/server` follows the rules of `src/repl`, and `src/web/client` may import protocol types only, as type-only imports; it is built for the browser and never runs under Bun. The client is checked with its own tsconfig (`src/web/client/tsconfig.json`), because the browser types are not part of the rest of the project. Tests and the test helper `src/repl/session-helper.ts` may import any module. There are no circular imports.
 
 Recursion is avoided in core. When a function would need to call a function that calls it back, pass the callback as a parameter instead of importing across files.
 
@@ -343,7 +346,8 @@ Each item is a known defect or gap. Fixes are listed under Future Work.
 
 - **Stream errors are reported late.** `runRepl` listens for `error` on input and output, and on the readline interface. It aborts the interface and returns `err`, which `index.ts` prints before exiting with code 1. The abort does not reach the reply, so an error during a model stream is reported only after the stream ends or fails.
 - **A stream error after the session has returned is uncaught.** The `finally` removes the frontend's error listeners, so an `error` emitted after `runRepl` returns has no listener. Bun then exits with status 1 and prints a stack trace (verified). The process ends and the failure is not lost, but it is not reported as a session failure (N4).
-- **Thrown values are not always normalised.** `runRepl` turns a thrown reply error into a failure for that turn. The catch assumes the thrown value is an `Error`, so a thrown string prints `error: undefined` (verified). `compact` and the REPL's catch normalise the thrown value, but `src/openrouter.ts` still casts `(error as Error).message` in its three catch blocks. The `ContextWindow` calls in `showContext` and `compactIfNeeded` sit outside that boundary, so a throwing lookup rejects `runRepl` instead of returning an error.
+- **Thrown values are not always normalised.** `runRepl` turns a thrown reply error into a failure for that turn. The catch assumes the thrown value is an `Error`, so a thrown string prints `error: undefined` (verified). `compact` and the REPL's catch normalise the thrown value, but `src/providers/openrouter.ts` still casts `(error as Error).message` in its three catch blocks. The `ContextWindow` calls in `showContext` and `compactIfNeeded` sit outside that boundary, so a throwing lookup rejects `runRepl` instead of returning an error.
+- **Model errors name the provider.** `src/tools/models/select-model.ts` says `OpenRouter does not list <name>`, so a second provider would print the wrong name. The error should name the model and be built from the Provider contract, not from one adapter.
 
 #### Turns and output
 
@@ -462,7 +466,7 @@ Each item is a known defect or gap. Fixes are listed under Future Work.
 
 #### Responses and schemas
 
-- **Response schemas can drift from OpenRouter.** The zod schemas in `src/openrouter.ts` are hand-written, and the test fixtures come from the same assumptions, so a change on OpenRouter's side passes the tests and fails only at run time. `choices` and `usage` are `optional`, not nullable, so a `null` there fails the whole stream. `ModelListingSchema` requires every entry of `data` to match, so one model with a `null` `context_length` makes `/context` fail for every model. The error text from zod is printed verbatim. The schemas and the hand-declared types (`StreamEvent`, `Usage`) are two sources of truth. The error does not say which request failed.
+- **Response schemas can drift from OpenRouter.** The zod schemas in `src/providers/openrouter.ts` are hand-written, and the test fixtures come from the same assumptions, so a change on OpenRouter's side passes the tests and fails only at run time. `choices` and `usage` are `optional`, not nullable, so a `null` there fails the whole stream. `ModelListingSchema` requires every entry of `data` to match, so one model with a `null` `context_length` makes `/context` fail for every model. The error text from zod is printed verbatim. The schemas and the hand-declared types (`StreamEvent`, `Usage`) are two sources of truth. The error does not say which request failed.
 
 #### Cost and size limits
 
@@ -615,7 +619,7 @@ Status is **missing**, **partial**, or in place.
 #### Errors
 
 - Give the model adapter a structured error type (`ModelError`, with kinds such as `http`, `stream`, `parse`, `truncated`), so each failure says what failed, where, why, and what to do.
-- Remove the `(error as Error)` casts in `src/openrouter.ts` and normalise thrown values there the way `compact` does (`error instanceof Error ? error : new Error(String(error))`).
+- Remove the `(error as Error)` casts in `src/providers/openrouter.ts` and normalise thrown values there the way `compact` does (`error instanceof Error ? error : new Error(String(error))`).
 - Bring every context-window lookup inside a boundary.
 
 #### Tools
@@ -658,4 +662,4 @@ These are the obvious concerns only. Measure with a profiler before optimizing.
 - MCP startup is sequential. Each server's handshake and each `tools/list` page wait for an answer, up to 60 seconds each, before the next server starts and before the first prompt. Servers can start in parallel once startup has a progress line.
 - The viewer compares its whole state with `JSON.stringify` on each update, which copies the text of the file (up to 1 MB) on every change, such as opening another tab. A `.md` file is also parsed and built as a whole DOM on each draw, including a switch between Source and Rendered. Neither is measured yet.
 - `list_files` reads the whole tree to the depth before it caps the output, and `read_file` loads the whole file to return a range. Both are described under Cost and size limits in Known Problems; the cap limits the output, not the walk or the memory.
-- **Prompt cache.** The guiding principle is to hit the provider's prompt cache as often as possible (N5, N6). `wireMessages` and `toWire` in `src/openrouter.ts` put the marker on the last message of each request whatever its role, as a text part (a tool message's content included). Two shapes cannot carry it: an assistant message with tool calls and no text, and an empty text. The marker on a tool message has not yet been confirmed against OpenRouter by a live probe, so a provider that rejects it would fail the tool loop rather than miss the cache. A probe against OpenRouter with `anthropic/claude-haiku-5.5` showed 7,204 cached tokens on the second identical prefix with the marker, and 0 without it. That probe covered two identical requests. It has not covered the turn after a completed one, where the previous last message is sent as plain text, so the cross-turn case needs a probe with two real turns. Provider caches are short-lived (about five minutes on Anthropic models), so a longer pause loses the prefix. Each compaction writes one cache entry for the whole history plus the summary request. The app does not yet read `cache_read` and `cache_write` from `usage`, so the hit rate is assumed, not measured.
+- **Prompt cache.** The guiding principle is to hit the provider's prompt cache as often as possible (N5, N6). `wireMessages` and `toWire` in `src/providers/openrouter.ts` put the marker on the last message of each request whatever its role, as a text part (a tool message's content included). Two shapes cannot carry it: an assistant message with tool calls and no text, and an empty text. The marker on a tool message has not yet been confirmed against OpenRouter by a live probe, so a provider that rejects it would fail the tool loop rather than miss the cache. A probe against OpenRouter with `anthropic/claude-haiku-5.5` showed 7,204 cached tokens on the second identical prefix with the marker, and 0 without it. That probe covered two identical requests. It has not covered the turn after a completed one, where the previous last message is sent as plain text, so the cross-turn case needs a probe with two real turns. Provider caches are short-lived (about five minutes on Anthropic models), so a longer pause loses the prefix. Each compaction writes one cache entry for the whole history plus the summary request. The app does not yet read `cache_read` and `cache_write` from `usage`, so the hit rate is assumed, not measured.
