@@ -42,7 +42,8 @@ const FENCE = /^\s*```/;
 
 // Splits Markdown text into blocks. A line that starts a fence, heading, or list ends a paragraph.
 export function markdownBlocks(source: string): MarkdownBlock[] {
-  const lines = source.split("\n");
+  // Windows line endings (CRLF) are read as line ends too, so a file's heading is not left with a stray \r.
+  const lines = source.split(/\r?\n/);
   const blocks: MarkdownBlock[] = [];
   let index = 0;
   while (index < lines.length) {

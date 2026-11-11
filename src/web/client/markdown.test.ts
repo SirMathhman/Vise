@@ -9,6 +9,11 @@ test("headings, paragraphs joined over soft breaks, and blank-line separation", 
   ]);
 });
 
+test("Windows line endings give the same blocks as Unix ones", () => {
+  expect(markdownBlocks("# Title\r\nfirst\r\n\r\nnext")).toEqual(markdownBlocks("# Title\nfirst\n\nnext"));
+  expect(markdownBlocks("# Title\r\n")[0]).toEqual({ kind: "heading", level: 1, text: "Title" });
+});
+
 test("bulleted and numbered lists, each run as one list", () => {
   expect(markdownBlocks("- a\n* b\n1. c\n2) d")).toEqual([
     { kind: "list", ordered: false, items: ["a", "b"] },
