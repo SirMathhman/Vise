@@ -500,8 +500,12 @@ ul.tree:not(ul ul) {
     max-height: none;
   }
 
-  #app.split-view .chat > *:not(.transcript):not(.composer) {
-    flex: 0 0 auto;
+  /* The panels are one group with one height cap; they scroll inside it, so they cannot push the composer off. */
+  #app.split-view .chat .chat-panels {
+    flex: 0 1 auto;
+    min-height: 0;
+    max-height: 40%;
+    overflow-y: auto;
   }
 
   #app.split-view .chat .transcript {

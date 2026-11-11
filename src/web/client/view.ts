@@ -436,6 +436,23 @@ function undoButton(doc: Document, actions: ViewActions): HTMLButtonElement {
 }
 
 // Builds the page once, then replaces the transcript and the controls on each render.
+// The composer: Enter sends the line, Shift+Enter adds one, and the form's submit sends the typed text.
+function wireComposer(form: HTMLFormElement, input: HTMLTextAreaElement, actions: ViewActions): void {
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+      event.preventDefault();
+      form.requestSubmit();
+    }
+  });
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const text = input.value.trim();
+    if (text === "" || input.disabled) return;
+    input.value = "";
+    actions.line(text);
+  });
+}
+
 export function createView(
   doc: Document,
   root: HTMLElement,
@@ -449,7 +466,6 @@ export function createView(
   const folder = folderBar(doc, actions);
   const files = createTreeSection(doc, actions);
   const fileViewer = createFileViewer(doc, actions);
-  // The tree and the viewer share one row: side by side on a wide window, stacked on a narrow one.
   const panel = panelBox(doc);
   // What the panel was last built from, so an unchanged panel is left alone.
   let panelKey = "";
@@ -474,22 +490,15 @@ export function createView(
   const send = element(doc, "button", "send", "Send");
   send.type = "submit";
   form.append(input, send);
-  const workspace = columns(doc, [files.element, fileViewer.element], [panel.element, toolPanel.element, profilePanel.element, mcp.section, transcript, form]);
+  const workspace = columns(
+    doc,
+    [files.element, fileViewer.element],
+    [panel.element, toolPanel.element, profilePanel.element, mcp.section],
+    [transcript, form],
+  );
   root.append(header, folder.element, workspace, editor, mcp.dialog);
 
-  input.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
-      event.preventDefault();
-      form.requestSubmit();
-    }
-  });
-  form.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const text = input.value.trim();
-    if (text === "" || input.disabled) return;
-    input.value = "";
-    actions.line(text);
-  });
+  wireComposer(form, input, actions);
 
   return {
     render(state) {
