@@ -653,3 +653,17 @@ button:focus-visible,
   padding-top: 0;
   padding-bottom: 0;
 }
+
+/* Text boxes match the textarea: the same border, background, and padding. The folder box is the header's height. */
+input:not([type="checkbox"]):not([type="radio"]) {
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--button-line);
+  border-radius: 0;
+  background: var(--reply-bg);
+  color: var(--fg);
+}
+
+.folder input {
+  height: 40px;
+}
