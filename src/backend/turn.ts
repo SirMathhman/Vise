@@ -6,7 +6,7 @@ import {
   recordUsage,
   type Conversation,
 } from "../core/compaction.ts";
-import { type ChatMessage, type ReasoningEffort, type ReplyRequest, type ToolCall, type Usage, type Result } from "../core/messages.ts";
+import { type ChatMessage, type ReasoningEffort, type ReplyRequest, type ToolCall, type Usage, type Result, withInstructions } from "../core/messages.ts";
 import type { Emit } from "../protocol/protocol.ts";
 import { runCalls } from "./calls.ts";
 import type { SessionPorts } from "./ports.ts";
@@ -133,14 +133,13 @@ export async function runMessageTurn(
   );
   if (compacted.notice) emit({ kind: "notice", text: compacted.notice });
   let current = compacted.conversation;
-  // The instructions go in front of the first user message, so roles still alternate and compaction
-  // drops them with the rest of the old history. A pending profile and pending hook output go in
-  // front of the message after them, and are kept until a turn succeeds.
+  // The stored message holds what the user wrote. A pending profile and pending hook output go in front of
+  // it, and are kept until a turn succeeds. The instructions are not stored: each request puts them in front
+  // of its first message (withInstructions), so compaction cannot drop them.
   const turnStart = current.history.length;
-  const first = current.history.length === 0 ? instructions : undefined;
   const profile = current.pendingProfile;
   const pending = current.pendingOutput;
-  const parts = [first, profile, pending, text].filter(
+  const parts = [profile, pending, text].filter(
     (part): part is string => part !== undefined,
   );
   current.history.push({ role: "user", content: parts.join("\n\n") });
@@ -149,7 +148,7 @@ export async function runMessageTurn(
   // asked for tools is followed by another only while the session has not ended.
   for (;;) {
     const round = await streamRound({
-      history: current.history,
+      history: withInstructions(current.history, instructions),
       reply,
       emit,
       offered: enabledTools(current, ports.allTools),

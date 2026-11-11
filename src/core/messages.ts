@@ -33,6 +33,16 @@ export interface UserMessage {
   content: string;
 }
 
+// The history as the model is sent it. The instructions (AGENTS.md) go in front of the first message in every
+// request, so the stored history holds only what was written and compaction cannot drop them. A stored first
+// message that already starts with the instructions (a conversation saved before this) is not given them twice.
+export function withInstructions(history: ChatMessage[], instructions: string | undefined): ChatMessage[] {
+  const first = history[0];
+  if (instructions === undefined || first?.role !== "user") return history;
+  if (first.content.startsWith(instructions)) return history;
+  return [{ role: "user", content: `${instructions}\n\n${first.content}` }, ...history.slice(1)];
+}
+
 export interface AssistantMessage {
   role: "assistant";
   content: string;

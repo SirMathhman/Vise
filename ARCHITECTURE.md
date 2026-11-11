@@ -169,7 +169,7 @@ Hooks run in `src/tools/hooks/hooks.ts`. The turn itself runs in `runMessageTurn
 
 ### Instructions
 
-The text of `AGENTS.md` in the working directory is read once when the session starts. It is put in front of the first user message of the session, so it is the first thing the model sees. It is sent in every request until compaction removes it. A missing or blank file gives no instructions and no message. The composition root reads the file in `src/instructions.ts`, and the frontend receives only the text. The path and size are not shown to the user before the text is sent (see Security).
+The text of `AGENTS.md` in the working directory is read once when the session starts. Each request puts it in front of the first message it sends (`withInstructions` in `src/core/messages.ts`), so it is the first thing the model sees, and compaction cannot drop it. The stored history does not hold it: the history keeps only what the user wrote, so a resumed or loaded conversation uses the file as it is at that start, not the text it was saved with. A missing or blank file gives no instructions and no message. The composition root reads the file in `src/instructions.ts`, and the backend receives only the text. The path and size are not shown to the user before the text is sent (see Security). Saved sessions and the resume file from before this change still hold a copy in their first message (see Known Problems).
 
 ### Subagents
 
@@ -417,7 +417,10 @@ Each item is a known defect or gap. Fixes are listed under Future Work.
 
 #### Hooks, instructions, and profiles
 
-- **Instructions errors are hidden.** `readInstructions` returns undefined for every read error, so a permission error or an `AGENTS.md` that is a folder is treated as no file, with no message. The frontend also merges the instructions into the first user message, so the frontend decides what is sent.
+- **Instructions errors are hidden.** `readInstructions` returns undefined for every read error, so a permission error or an `AGENTS.md` that is a folder is treated as no file, with no message. The backend adds the instructions to the first message of each request (`withInstructions` in `src/core/messages.ts`, used by `runMessageTurn` in `src/backend/turn.ts`), so the stored history does not hold them.
+- **A saved session from before this change holds `AGENTS.md` in its first message.** The page strips only the current text (`historyMessages`), and a request adds the current text in front of the stored text again, so the model sees both versions when the file has changed since. Missing control: a migration that removes the old prefix from saved sessions on load.
+- **The display strip covers only the instructions.** The first user message also holds a pending profile and pending hook output (a `sessionStart` hook's output is queued into it), and the page shows those as part of the user's text on a resumed session.
+- **Saved sessions and the resume file from before this change hold a copy of `AGENTS.md`.** Those written before the instructions were kept out of the history hold the text inside their first message, so a copy of the project file sits in the user's home folder or `.vise/sessions/`. Missing control: the same migration as above, which would remove the copy.
 - **A timed-out hook is not stopped.** Every point's output is printed, sanitized, cut at 4000 characters, and queued for the next message. A `sessionEnd` output is printed but never sent, since the session has closed, and a `turnEnd` output queued just before `/exit` is printed and not sent. A hook still running after 30 seconds is reported as failed, but its process keeps running as a background job that takes one of the five job slots and whose output nobody reads. A line containing the `[exit code N]` or `[still running` marker can be mistaken for the runner's own marker.
 - **Profile switches stack.** A switch appends the new profile's text, and the earlier text stays in the history. `/profile default` does not remove it either. Until compaction, the model sees both profiles as user text, and both are in effect. The switch does not say which profile now applies.
 - **Profile transitions are in the frontend.** `runProfileCommand` in `src/repl/repl.ts` builds the new `Conversation` for use and clear, the same kind of transition as `compact`. The failed-turn restore of `pendingProfile` has no test.
@@ -577,7 +580,6 @@ Status is **missing**, **partial**, or in place.
 #### Hooks, instructions, and profiles
 
 - Make a profile switch say in the history which profile applies now, as a user message that states the change. The history is still only appended to.
-- Send the instructions as a system message built by the model adapter from the text the composition root passes it, not as part of the first user message. The frontend then composes no message content, and `/compact` keeps the instructions.
 
 #### Compaction and summaries
 
