@@ -1,7 +1,7 @@
 import { err, ok, type McpServerStatus, type Result } from "../../core/messages.ts";
 import { openSession, type McpSession } from "./client.ts";
 import { openHttpSession } from "./http-client.ts";
-import { readMcpConfig, type McpServerConfig } from "./config.ts";
+import { effectiveServers, readMcpConfig, readScopedMcp, type McpServerConfig } from "./config.ts";
 
 // The protocol revision Vise speaks. A server that answers with another one may still work; the
 // requests Vise makes are the same in every revision it names.
@@ -59,10 +59,11 @@ export function noServers(): McpRegistry {
   return registryOf([], [], [], []);
 }
 
-// Starts every configured server in the working directory. A server that fails is left out and
-// named in `problems`; the others still run. Only a broken config file fails the whole call.
-export async function startMcpServers(root: string): Promise<Result<McpRegistry>> {
-  const configs = await readMcpConfig(root);
+// Starts every configured server: the working directory's, and the home folder's when one is given, a project
+// server replacing a home one with the same name. A server that fails is left out and named in `problems`; the
+// others still run. Only a broken config file fails the whole call.
+export async function startMcpServers(root: string, global?: string): Promise<Result<McpRegistry>> {
+  const configs = await configsOf(root, global);
   if (!configs.ok) return err(configs.error);
   const tools: LoadedTool[] = [];
   const sessions: McpSession[] = [];
@@ -241,4 +242,10 @@ function resultText(result: CallResult | undefined): string {
     .join("\n");
   if (result?.isError === true) return `error: ${text || "the tool failed"}`;
   return text || "(no output)";
+}
+
+async function configsOf(root: string, global: string | undefined): Promise<Result<McpServerConfig[]>> {
+  if (global === undefined) return readMcpConfig(root);
+  const both = await readScopedMcp(root, global);
+  return both.ok ? ok(effectiveServers(both.value)) : err(both.error);
 }

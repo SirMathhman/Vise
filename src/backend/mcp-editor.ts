@@ -1,4 +1,4 @@
-import type { McpServerEntry } from "../core/messages.ts";
+import type { ScopedMcpServer } from "../core/messages.ts";
 import type { Emit } from "../protocol/protocol.ts";
 import type { SessionPorts } from "./ports.ts";
 
@@ -18,7 +18,7 @@ export async function announceMcp(ports: SessionPorts, emit: Emit): Promise<void
 }
 
 // An endpoint's header values are secrets, so the page gets each header name with a blank value.
-function withoutValues(server: McpServerEntry): McpServerEntry {
+function withoutValues(server: ScopedMcpServer): ScopedMcpServer {
   if (server.kind !== "http") return server;
   const headers: Record<string, string> = {};
   for (const header of Object.keys(server.headers)) headers[header] = "";
@@ -29,7 +29,7 @@ function withoutValues(server: McpServerEntry): McpServerEntry {
 export async function writeMcpFor(
   ports: SessionPorts,
   emit: Emit,
-  servers: McpServerEntry[],
+  servers: ScopedMcpServer[],
 ): Promise<void> {
   if (ports.mcp === undefined) {
     emit({ kind: "error", message: "MCP servers are not available here" });

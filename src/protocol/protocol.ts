@@ -5,9 +5,9 @@ import type { ApprovalAnswer } from "../core/commands.ts";
 import type { HistoryMessage } from "../core/sessions.ts";
 import type { ToolSwitch } from "../core/tools.ts";
 import type { ProfileDetail, ProfileSummary } from "../core/notes.ts";
-import type { McpServerEntry, McpServerStatus, ModelInfo, ProviderEntry, ProviderInput, TreeEntry } from "../core/messages.ts";
+import type { McpServerEntry, McpServerStatus, ModelInfo, ProviderEntry, ProviderInput, Scope, ScopedMcpServer, TreeEntry } from "../core/messages.ts";
 
-export type { ApprovalAnswer, HistoryMessage, ToolSwitch, ProfileDetail, ProfileSummary, McpServerEntry, McpServerStatus, TreeEntry, ProviderEntry, ProviderInput, ModelInfo };
+export type { ApprovalAnswer, HistoryMessage, ToolSwitch, ProfileDetail, ProfileSummary, McpServerEntry, McpServerStatus, Scope, ScopedMcpServer, TreeEntry, ProviderEntry, ProviderInput, ModelInfo };
 
 // A line the user typed. While an approval question is open, the line is its answer: the backend
 // reads it as the answer (see answerOfLine). A browser also sends `shown`, the id of the newest question
@@ -73,7 +73,7 @@ export interface AnswerMessage {
 // The page saves the MCP servers it shows. The store writes the file only if every entry is valid.
 export interface McpWriteMessage {
   kind: "mcpWrite";
-  servers: McpServerEntry[];
+  servers: ScopedMcpServer[];
 }
 
 // The page asks for the entries of one folder of its file tree. `path` is relative to the working directory;
@@ -224,7 +224,7 @@ export interface ProfileEvent {
 export interface McpEvent {
   kind: "mcp";
   running: McpServerStatus[];
-  servers: McpServerEntry[];
+  servers: ScopedMcpServer[];
 }
 
 // The model asks the user a question. The frontend answers with an answer message carrying the same id.

@@ -1,6 +1,17 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { err, ok, type HttpServerEntry, type McpServerEntry, type McpServerStatus, type McpStore, type Result, type StdioServerEntry } from "../../core/messages.ts";
+import {
+  err,
+  ok,
+  type HttpServerEntry,
+  type McpServerEntry,
+  type McpServerStatus,
+  type McpStore,
+  type Result,
+  type Scope,
+  type ScopedMcpServer,
+  type StdioServerEntry,
+} from "../../core/messages.ts";
 
 // The servers file, in the working directory. An entry is either a program started over stdio (command and
 // args) or an endpoint reached over HTTP (url and optional headers).
@@ -164,5 +175,57 @@ export function mcpStore(root: string, running: McpServerStatus[]): McpStore {
     running: () => running,
     config: () => readMcpConfig(root),
     save: (servers) => saveMcpConfig(root, servers),
+  };
+}
+
+// Both files: the project folder's, and the home folder's. Each entry is tagged with the file it came from. Both
+// lists are kept, so the editor can change either file.
+export async function readScopedMcp(local: string, global: string): Promise<Result<ScopedMcpServer[]>> {
+  const here = await readMcpConfig(local);
+  if (!here.ok) return err(here.error);
+  const there = await readMcpConfig(global);
+  if (!there.ok) return err(there.error);
+  return ok([...here.value.map(tagged("local")), ...there.value.map(tagged("global"))]);
+}
+
+function tagged(scope: Scope): (server: McpServerEntry) => ScopedMcpServer {
+  return (server) => ({ ...server, scope });
+}
+
+// The servers that run: a project server replaces a home server with the same name.
+export function effectiveServers(servers: ScopedMcpServer[]): McpServerEntry[] {
+  const local = new Set(servers.filter((server) => server.scope === "local").map((server) => server.name));
+  return servers
+    .filter((server) => server.scope !== "global" || !local.has(server.name))
+    .map(tagless);
+}
+
+// Writes each file with the servers that belong to it. A file that holds no server and is not there yet is not
+// created, so a home folder with no servers gets no file. A server with no scope is refused.
+export async function saveScopedMcp(local: string, global: string, servers: ScopedMcpServer[]): Promise<Result<void>> {
+  if (servers.some((server) => server.scope === undefined)) return err(new Error("a server has no scope"));
+  const pick = (scope: Scope) => servers.filter((server) => server.scope === scope).map(tagless);
+  const there = pick("global");
+  const stored = await readMcpConfig(global);
+  if (!stored.ok) return err(stored.error);
+  if (there.length > 0 || stored.value.length > 0) {
+    const wrote = await saveMcpConfig(global, there);
+    if (!wrote.ok) return err(wrote.error);
+  }
+  return saveMcpConfig(local, pick("local"));
+}
+
+function tagless(server: ScopedMcpServer): McpServerEntry {
+  const entry: ScopedMcpServer = { ...server };
+  delete entry.scope;
+  return entry as McpServerEntry;
+}
+
+// The store for both files, read and saved as one list. `running` is the list from startup.
+export function scopedMcpStore(local: string, global: string, running: McpServerStatus[]): McpStore {
+  return {
+    running: () => running,
+    config: () => readScopedMcp(local, global),
+    save: (servers) => saveScopedMcp(local, global, servers),
   };
 }

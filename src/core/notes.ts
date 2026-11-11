@@ -1,4 +1,4 @@
-import { err, ok, type Result } from "./messages.ts";
+import { err, ok, type Result, type ScopeField } from "./messages.ts";
 
 // Notes live in notes/<category>/<name>.md under the working directory. A note is identified by
 // its category and name, which are also its folder and file names. A profile is a note in the
@@ -196,7 +196,7 @@ export interface ProfileDetail {
 }
 
 // A profile in a list: its name and its summary.
-export interface ProfileSummary {
+export interface ProfileSummary extends ScopeField {
   name: string;
   summary: string;
 }

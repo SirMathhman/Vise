@@ -1,6 +1,9 @@
+import { access } from "node:fs/promises";
+import { join } from "node:path";
 import {
   PROFILE_CATEGORY,
   bodyOf,
+  checkName,
   notePath,
   parseHeader,
   type ProfileHook,
@@ -40,10 +43,31 @@ async function readProfile(
   });
 }
 
+// The profile as the session reads it: the project folder's note, or the home folder's when the project has no
+// note of that name. Only a missing note falls back, so a broken project note is still reported.
+export async function readProfileIn(
+  root: string,
+  global: string | undefined,
+  name: string,
+): Promise<Result<ProfileNote>> {
+  return readProfile(await profileFolder(root, global, name), name);
+}
+
+// The folder whose note the profile is: the project's when it has one, else the home folder's. A name that is not a
+// valid profile name always means the project folder, which then refuses it.
+export async function profileFolder(root: string, global: string | undefined, name: string): Promise<string> {
+  if (global === undefined || !checkName(name, "profile name").ok) return root;
+  const local = await access(join(root, notePath(PROFILE_CATEGORY, name))).then(
+    () => true,
+    () => false,
+  );
+  return local ? root : global;
+}
+
 // The loader for a working directory: the text below a profile's header.
-export function loadProfile(root: string): ProfileLoader {
+export function loadProfile(root: string, global?: string): ProfileLoader {
   return async (name) => {
-    const profile = await readProfile(root, name);
+    const profile = await readProfileIn(root, global, name);
     if (!profile.ok) return profile;
     return ok(profile.value.text);
   };
@@ -54,9 +78,10 @@ export function loadProfile(root: string): ProfileLoader {
 export function loadProfileTools(
   root: string,
   known: string[],
+  global?: string,
 ): (name: string) => Promise<Result<string[] | undefined>> {
   return async (name) => {
-    const profile = await readProfile(root, name);
+    const profile = await readProfileIn(root, global, name);
     if (!profile.ok) return profile;
     const unknown = (profile.value.tools ?? []).find(
       (tool) => !known.includes(tool),
@@ -72,9 +97,10 @@ export function loadProfileTools(
 // The hooks a profile adds, from its `<point>: <command>` lines. Empty when it adds none.
 export function loadProfileHooks(
   root: string,
+  global?: string,
 ): (name: string) => Promise<Result<ProfileHook[]>> {
   return async (name) => {
-    const profile = await readProfile(root, name);
+    const profile = await readProfileIn(root, global, name);
     if (!profile.ok) return profile;
     return ok(profile.value.hooks ?? []);
   };

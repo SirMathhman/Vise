@@ -140,6 +140,16 @@ export interface HttpServerEntry {
 
 export type McpServerEntry = StdioServerEntry | HttpServerEntry;
 
+// Where a configured item lives: the project folder's .vise file, or the user's home .vise file. Absent when only
+// one file is read, so the item's file is that file.
+export type Scope = "local" | "global";
+
+export interface ScopeField {
+  scope?: Scope;
+}
+
+export type ScopedMcpServer = McpServerEntry & ScopeField;
+
 // One MCP server as it went at the start of this session: whether it started, the names of its tools,
 // and each reason a server or one of its tools was left out.
 export interface McpServerStatus {
@@ -152,15 +162,15 @@ export interface McpServerStatus {
 // Where the page and /mcp read the MCP servers: the ones that started, and the ones the file configures.
 export interface McpStore {
   running(): McpServerStatus[];
-  config(): Promise<Result<McpServerEntry[]>>;
-  save(servers: McpServerEntry[]): Promise<Result<void>>;
+  config(): Promise<Result<ScopedMcpServer[]>>;
+  save(servers: ScopedMcpServer[]): Promise<Result<void>>;
 }
 
 // A provider kind: an OpenRouter account, or a llama.cpp server.
 export type ProviderKind = "openrouter" | "llama.cpp";
 
 // One provider as the page sees it: its kind, name, and URL (blank for OpenRouter). Never its key.
-export interface ProviderEntry {
+export interface ProviderEntry extends ScopeField {
   kind: ProviderKind;
   name: string;
   url: string;
@@ -168,7 +178,7 @@ export interface ProviderEntry {
 }
 
 // One provider as the page sends it. A blank key keeps the key saved for a provider of the same name.
-export interface ProviderInput {
+export interface ProviderInput extends ScopeField {
   kind: ProviderKind;
   name: string;
   url: string;

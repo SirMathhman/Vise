@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import { err, ok, type ProviderEntry, type ProviderInput, type ProvidersStore, type Result } from "../core/messages.ts";
+import { err, ok, type ProviderEntry, type ProviderInput, type ProvidersStore, type Result, type Scope, type ScopeField } from "../core/messages.ts";
 import type { LlamaServer } from "./llama-cpp.ts";
 
 // An OpenRouter account: its own key, and no URL, since OpenRouter's is fixed.
@@ -12,7 +12,7 @@ export interface OpenRouterAccount {
 }
 
 // Every provider .vise/providers.json lists.
-export type ConfiguredProvider = OpenRouterAccount | LlamaServer;
+export type ConfiguredProvider = (OpenRouterAccount | LlamaServer) & ScopeField;
 
 const NameSchema = z.string().min(1).regex(/^[^:]+$/, "a provider name holds no colon");
 
@@ -107,5 +107,59 @@ export function providersStore(folder: string): ProvidersStore {
       );
     },
     save: (inputs) => saveServers(folder, inputs),
+  };
+}
+
+// Both files: the project folder's, and the home folder's. Each provider is tagged with the file it came from. Both
+// lists are kept, so the editor can change either file.
+export async function readScopedServers(local: string, global: string): Promise<Result<ConfiguredProvider[]>> {
+  const here = await readServers(local);
+  if (!here.ok) return err(here.error);
+  const there = await readServers(global);
+  if (!there.ok) return err(there.error);
+  return ok([...here.value.map(tagged("local")), ...there.value.map(tagged("global"))]);
+}
+
+function tagged(scope: Scope): (entry: ConfiguredProvider) => ConfiguredProvider {
+  return (entry) => ({ ...entry, scope });
+}
+
+// The providers that run: a project provider replaces a home provider with the same name.
+export function effectiveProviders(servers: ConfiguredProvider[]): ConfiguredProvider[] {
+  const local = new Set(servers.filter((entry) => entry.scope === "local").map((entry) => entry.name));
+  return servers.filter((entry) => entry.scope !== "global" || !local.has(entry.name));
+}
+
+// Writes each file with the providers that belong to it, as saveServers does for one file. A home file that
+// lists none and is not there yet is not created. A provider with no scope is refused.
+export async function saveScopedServers(local: string, global: string, inputs: ProviderInput[]): Promise<Result<void>> {
+  if (inputs.some((input) => input.scope === undefined)) return err(new Error("a provider has no scope"));
+  const there = inputs.filter((input) => input.scope === "global");
+  const stored = await readServers(global);
+  if (!stored.ok) return err(stored.error);
+  if (there.length > 0 || stored.value.length > 0) {
+    const wrote = await saveServers(global, there);
+    if (!wrote.ok) return err(wrote.error);
+  }
+  return saveServers(local, inputs.filter((input) => input.scope === "local"));
+}
+
+// The store for both files, read and saved as one list, with each provider's scope.
+export function scopedProvidersStore(local: string, global: string): ProvidersStore {
+  return {
+    list: async (): Promise<Result<ProviderEntry[]>> => {
+      const read = await readScopedServers(local, global);
+      if (!read.ok) return err(read.error);
+      return ok(
+        read.value.map((entry) => ({
+          kind: entry.kind,
+          name: entry.name,
+          url: entry.kind === "llama.cpp" ? entry.url : "",
+          keySaved: entry.apiKey !== "",
+          scope: entry.scope,
+        })),
+      );
+    },
+    save: (inputs) => saveScopedServers(local, global, inputs),
   };
 }

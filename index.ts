@@ -1,6 +1,6 @@
 import { readInstructions } from "./src/instructions.ts";
 import { buildProvider } from "./src/providers/provider.ts";
-import { providersStore, readServers } from "./src/providers/config.ts";
+import { effectiveProviders, readScopedServers, scopedProvidersStore } from "./src/providers/config.ts";
 import { startSession } from "./src/backend/session.ts";
 import type { SessionPorts } from "./src/backend/ports.ts";
 import { err, ok, type Provider, type Result } from "./src/core/messages.ts";
@@ -13,7 +13,7 @@ import { type WebAddress, takeWebAddress } from "./src/web/server/address.ts";
 import { startWebServer, type WebAssets } from "./src/web/server/server.ts";
 import { killAllJobs } from "./src/tools/process/jobs.ts";
 import { type McpRegistry, noServers, startMcpServers } from "./src/tools/mcp/registry.ts";
-import { mcpStore } from "./src/tools/mcp/config.ts";
+import { scopedMcpStore } from "./src/tools/mcp/config.ts";
 import { undoStore } from "./src/tools/undo/undo-files.ts";
 import { pickFolder } from "./src/tools/process/folder-picker.ts";
 import type { FileText, UndoStore } from "./src/core/messages.ts";
@@ -30,7 +30,7 @@ import { readWholeVersioned, writeWholeTextIfUnchanged } from "./src/tools/files
 import { hookRunner, readHooks } from "./src/tools/hooks/hooks.ts";
 import { sessionStore } from "./src/tools/session-store.ts";
 import { resumeStore } from "./src/tools/resume/resume-store.ts";
-import { profileStore } from "./src/tools/notes/profile-store.ts";
+import { scopedProfileStore } from "./src/tools/notes/profile-store.ts";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { readdir, stat } from "node:fs/promises";
@@ -43,6 +43,9 @@ import { selectModel } from "./src/tools/models/select-model.ts";
 
 
 // The MCP servers that started, stopped on every exit path. Empty until startup starts them.
+// The home folder is the global scope: its .vise/mcp.json and .vise/providers.json, and its notes/profile folder,
+// are laid out like a project folder's, and a project's entry with the same name replaces a global one.
+const GLOBAL_FOLDER = homedir();
 let servers: McpRegistry = noServers();
 
 // The model in use. /model changes it for the requests that follow.
@@ -93,17 +96,17 @@ function sessionPorts(setup: PortSetup): SessionPorts {
     undo: setup.undo,
     allTools: setup.allTools,
     notes: runNoteCommand(root),
-    profile: loadProfile(root),
-    profileTools: loadProfileTools(root, setup.allTools),
-    profileHooks: loadProfileHooks(root),
+    profile: loadProfile(root, GLOBAL_FOLDER),
+    profileTools: loadProfileTools(root, setup.allTools, GLOBAL_FOLDER),
+    profileHooks: loadProfileHooks(root, GLOBAL_FOLDER),
     disabledTools: setup.disabledTools,
     saveDisabledTools: (names) => saveToolSettings(root, names),
     sessions: sessionStore(root),
     // Kept in the user's home folder, not the project, so a repository cannot ship a conversation to resume.
     resume: resumeStore(join(homedir(), ".vise", "resume"), root),
-    profiles: profileStore(root, setup.allTools),
-    mcp: mcpStore(root, setup.mcp.statuses()),
-    providers: providersStore(root),
+    profiles: scopedProfileStore(root, GLOBAL_FOLDER, setup.allTools),
+    mcp: scopedMcpStore(root, GLOBAL_FOLDER, setup.mcp.statuses()),
+    providers: scopedProvidersStore(root, GLOBAL_FOLDER),
     folder: root,
     tree: (path) => listChildren(root, path),
     fileText: (path) => readWholeVersioned(root, path),
@@ -165,7 +168,7 @@ async function openSession(provider: Provider, selection: ModelSelection, folder
   if (!hookConfig.ok) return err(hookConfig.error);
   // Read once, here: the MCP servers in the servers file start now, and their tools are offered with the
   // built-in ones. A broken servers file stops the start; a server that fails is only reported.
-  const started = await startMcpServers(folder);
+  const started = await startMcpServers(folder, GLOBAL_FOLDER);
   if (!started.ok) return err(started.error);
   servers = started.value;
   for (const problem of servers.problems()) console.error(`warning: MCP ${problem}`);
@@ -242,13 +245,13 @@ async function changeFolder(folder: string, provider: Provider, selection: Model
 
 // Runs Vise. The Windows build (build/exe/server-entry.ts, written by scripts/build-exe.ts) passes the page's files it embeds.
 export async function main(embedded?: WebAssets): Promise<void> {
-  // The llama.cpp servers listed in .vise/providers.json, read once here with the rest of the folder's settings.
-  const servers = await readServers(process.cwd());
+  // The providers listed in the folder's and the home folder's .vise/providers.json, read once here.
+  const servers = await readScopedServers(process.cwd(), GLOBAL_FOLDER);
   if (!servers.ok) {
     console.error(servers.error.message);
     process.exit(1);
   }
-  const built = buildProvider(servers.value);
+  const built = buildProvider(effectiveProviders(servers.value));
   if (!built.ok) {
     console.error(built.error.message);
     process.exit(1);

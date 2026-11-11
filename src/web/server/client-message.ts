@@ -1,7 +1,7 @@
 import type { ApprovalAnswer } from "../../core/commands.ts";
 import { HOOK_POINTS, type HookPoint, type ProfileDetail, type ProfileHook } from "../../core/notes.ts";
 import { err, ok, type Result } from "../../core/messages.ts";
-import type { ClientMessage, McpServerEntry, ProviderInput } from "../../protocol/protocol.ts";
+import type { ClientMessage, McpServerEntry, ProviderInput, Scope, ScopedMcpServer } from "../../protocol/protocol.ts";
 
 const ANSWERS: string[] = ["approve", "refuse", "exit"];
 
@@ -9,9 +9,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-// Reads one MCP server sent by the page: a program (kind stdio) or an endpoint (kind http). The store checks
-// the names and the values before it writes.
-function serverOf(value: unknown): McpServerEntry | undefined {
+// Reads one MCP server sent by the page: a program (kind stdio) or an endpoint (kind http), and the file it belongs
+// to when the page names one. The store checks the names and the values before it writes.
+function serverOf(value: unknown): ScopedMcpServer | undefined {
+  const entry = entryOf(value);
+  if (entry === undefined || !isRecord(value)) return undefined;
+  const scope = scopeOf(value.scope);
+  return scope === undefined ? entry : { ...entry, scope };
+}
+
+function entryOf(value: unknown): McpServerEntry | undefined {
   if (!isRecord(value) || typeof value.name !== "string") return undefined;
   if (value.kind === "http") {
     const { url, headers } = value;
@@ -27,6 +34,11 @@ function serverOf(value: unknown): McpServerEntry | undefined {
   if (value.kind !== "stdio" || typeof command !== "string") return undefined;
   if (!Array.isArray(args) || !args.every((arg) => typeof arg === "string")) return undefined;
   return { kind: "stdio", name: value.name, command, args: args as string[] };
+}
+
+// The file a page item belongs to: the project's, or the home folder's.
+function scopeOf(value: unknown): Scope | undefined {
+  return value === "local" || value === "global" ? value : undefined;
 }
 
 // Reads a profile sent by the page. Each field is checked for its type and each hook point must exist;
@@ -53,8 +65,11 @@ function providerOf(value: unknown): ProviderInput | undefined {
   if (!isRecord(value)) return undefined;
   const { kind, name, url, apiKey } = value;
   if (kind !== "openrouter" && kind !== "llama.cpp") return undefined;
-  if (typeof name !== "string" || typeof url !== "string" || typeof apiKey !== "string") return undefined;
-  return { kind, name, url, apiKey };
+  const scope = scopeOf(value.scope);
+  if (typeof name !== "string" || typeof url !== "string" || typeof apiKey !== "string" || scope === undefined) {
+    return undefined;
+  }
+  return { kind, name, url, apiKey, scope };
 }
 
 // Reads a message sent by the browser. The browser may send lines, approvals, and the two profile requests.
@@ -96,7 +111,7 @@ export function parseClientMessage(text: string): Result<ClientMessage> {
   if (value.kind === "mcpWrite" && Array.isArray(value.servers)) {
     const servers = value.servers.map(serverOf);
     if (servers.some((server) => server === undefined)) return err(new Error("a server is not in the expected form"));
-    return ok({ kind: "mcpWrite", servers: servers as McpServerEntry[] });
+    return ok({ kind: "mcpWrite", servers: servers as ScopedMcpServer[] });
   }
   if (
     value.kind === "answer" &&
