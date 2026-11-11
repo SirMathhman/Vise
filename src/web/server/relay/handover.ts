@@ -1,4 +1,4 @@
-import type { Result } from "../../../core/messages.ts";
+import { ok, type Result } from "../../../core/messages.ts";
 import type { ClientMessage, Session } from "../../../protocol/protocol.ts";
 import type { Hub } from "./hub.ts";
 
@@ -7,6 +7,9 @@ import type { Hub } from "./hub.ts";
 export interface HandoverOptions {
   session: Session;
   changeFolder?(path: string): Promise<Result<Session>>;
+  // Checks a folder before the session is asked to end, so a folder that cannot be used leaves the session running.
+  // Answers with the full path of the folder.
+  checkFolder?(path: string): Promise<Result<string>>;
   // Opens the folder dialog on this machine. Undefined when the user cancels.
   pickFolder?(): Promise<Result<string | undefined>>;
 }
@@ -31,6 +34,16 @@ export function createHandover(options: HandoverOptions, hub: Hub): Handover {
   let phase: Phase = "running";
   // The folder asked for, while a change is under way.
   let folder: string | undefined;
+
+  // Checks the folder, then asks the session to end. A folder that cannot be used is reported, and nothing ends.
+  async function checkedFolder(path: string): Promise<void> {
+    const checked = options.checkFolder === undefined ? ok(path) : await options.checkFolder(path);
+    if (!checked.ok) {
+      hub.publish({ kind: "error", message: checked.error.message });
+      return;
+    }
+    requestFolder(checked.value);
+  }
 
   // Asks the session to end, so the next session can start in the folder.
   function requestFolder(path: string): void {
@@ -66,7 +79,10 @@ export function createHandover(options: HandoverOptions, hub: Hub): Handover {
       hub.publish({ kind: "notice", text: CHANGING_NOTICE });
       return;
     }
-    if (message.kind === "folderChange") return requestFolder(message.path);
+    if (message.kind === "folderChange") {
+      void checkedFolder(message.path);
+      return;
+    }
     if (message.kind === "pickFolder") return pickFolder();
     session.send(message);
   }

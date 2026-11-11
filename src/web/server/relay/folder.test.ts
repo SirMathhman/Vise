@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { Channel } from "../../../protocol/channel.ts";
 import type { ClientMessage, ServerEvent, Session } from "../../../protocol/protocol.ts";
-import { ok, type Ok, type Result } from "../../../core/messages.ts";
+import { err, ok, type Ok, type Result } from "../../../core/messages.ts";
 import { startWebServer, type WebServer } from "../server.ts";
 
 const TOKEN = "folder-token";
@@ -121,5 +121,31 @@ test("a dialog cancelled changes nothing, and the session keeps its input", asyn
   socket.send(JSON.stringify({ kind: "line", text: "still here" }));
   await waitFor(() => sent.some((message) => message.kind === "line" && message.text === "still here"));
   expect(received.some((event) => event.kind === "folder" && event.path === "B")).toBe(false);
+  socket.close();
+});
+
+test("a folder that cannot be used is refused with a message, and the session keeps running in its folder", async () => {
+  const sent: ClientMessage[] = [];
+  const started = startWebServer({
+    session: sessionIn("A", sent),
+    assets,
+    token: TOKEN,
+    changeFolder: async (path) => ok(sessionIn(path)),
+    checkFolder: async (path) => err(new Error(`${path} is not a folder`)),
+  }) as Ok<WebServer>;
+  running = started.value;
+  const base = new URL(running.url).origin;
+  const received: ServerEvent[] = [];
+  const socket = new WebSocket(`${base.replace("http", "ws")}/ws?t=${TOKEN}`, {
+    headers: { origin: base },
+  } as unknown as string[]);
+  socket.onmessage = (event) => received.push(JSON.parse(String(event.data)) as ServerEvent);
+  await waitFor(() => received.some((event) => event.kind === "folder" && event.path === "A"));
+  socket.send(JSON.stringify({ kind: "folderChange", path: "missing" }));
+  await waitFor(() => received.some((event) => event.kind === "error"));
+  expect(received.some((event) => event.kind === "error" && event.message === "missing is not a folder")).toBe(true);
+  expect(received.some((event) => event.kind === "ended")).toBe(false);
+  socket.send(JSON.stringify({ kind: "line", text: "still here" }));
+  await waitFor(() => sent.some((message) => message.kind === "line" && message.text === "still here"));
   socket.close();
 });

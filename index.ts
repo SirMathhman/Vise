@@ -127,6 +127,7 @@ async function runWeb(
     session,
     assets: assets.value,
     changeFolder: changeFolderTo,
+    checkFolder: folderOf,
     pickFolder,
     ...address,
   });
@@ -190,12 +191,20 @@ async function openSession(provider: Provider, selection: ModelSelection, folder
   );
 }
 
-// Moves the session to another folder. The current MCP servers and background jobs stop first, then the
-// process moves to the folder and the session starts there. The page's history and model are kept.
-async function changeFolder(folder: string, provider: Provider, selection: ModelSelection): Promise<Result<Session>> {
+// The full path of a folder that exists, or the reason it cannot be used. Checked before a session is ended.
+async function folderOf(folder: string): Promise<Result<string>> {
   const target = resolve(folder);
   const info = await stat(target).catch(() => undefined);
   if (info === undefined || !info.isDirectory()) return err(new Error(`${target} is not a folder`));
+  return ok(target);
+}
+
+// Moves the session to another folder. The current MCP servers and background jobs stop first, then the
+// process moves to the folder and the session starts there. The page's history and model are kept.
+async function changeFolder(folder: string, provider: Provider, selection: ModelSelection): Promise<Result<Session>> {
+  const checked = await folderOf(folder);
+  if (!checked.ok) return err(checked.error);
+  const target = checked.value;
   await stopEverything();
   try {
     process.chdir(target);

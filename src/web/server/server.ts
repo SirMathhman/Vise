@@ -16,6 +16,8 @@ export interface WebServerOptions {
   assets: WebAssets;
   // Starts a session in another folder, once the current one has ended. The page is kept.
   changeFolder?(path: string): Promise<Result<Session>>;
+  // Checks a folder before the session ends for a change to it. Answers with the folder's full path.
+  checkFolder?(path: string): Promise<Result<string>>;
   // Opens the folder dialog on this machine. Undefined when the user cancels.
   pickFolder?(): Promise<Result<string | undefined>>;
   // The secret that a browser must send with its connection. Printed once, in the URL.
