@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import type { ToolCall } from "../core/messages.ts";
-import { SEARCH_TOOLS, type ToolSpec } from "../core/tools.ts";
+import type { ToolCall } from "../../core/messages.ts";
+import { SEARCH_TOOLS, type ToolSpec } from "../../core/tools.ts";
 import { runCalls, type CallsStep } from "./calls.ts";
 
 const docs: ToolSpec = { type: "function", function: { name: "rea__comment", description: "Set a comment", parameters: {} } };

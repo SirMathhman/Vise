@@ -8,7 +8,7 @@ import {
 } from "../core/compaction.ts";
 import { type ChatMessage, type ReasoningEffort, type ReplyRequest, type ToolCall, type Usage, type Result, withInstructions } from "../core/messages.ts";
 import type { Emit } from "../protocol/protocol.ts";
-import { runCalls } from "./calls.ts";
+import { runCalls } from "./calls/calls.ts";
 import type { SessionPorts } from "./ports.ts";
 import type { AskArgs } from "../core/tools.ts";
 

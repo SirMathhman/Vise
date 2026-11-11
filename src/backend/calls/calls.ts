@@ -1,9 +1,9 @@
-import type { ChatMessage, ToolCall } from "../core/messages.ts";
-import { describeToolCall } from "../core/tool-lines.ts";
-import { ASK_USER, RUN_SUBAGENT, SEARCH_TOOLS, parseAskArgs, parseSubagentArgs, type Approve, type AskArgs, type ToolSpec } from "../core/tools.ts";
-import { parseSearchQuery, searchTools } from "../core/tool-search.ts";
-import type { Emit } from "../protocol/protocol.ts";
-import { queueApprovals, runSubagent, type SubagentPorts } from "./subagent/subagent.ts";
+import type { ChatMessage, ToolCall } from "../../core/messages.ts";
+import { describeToolCall } from "../../core/tool-lines.ts";
+import { ASK_USER, RUN_SUBAGENT, SEARCH_TOOLS, parseAskArgs, parseSubagentArgs, type Approve, type AskArgs, type ToolSpec } from "../../core/tools.ts";
+import { parseSearchQuery, searchTools } from "../../core/search/tool-search.ts";
+import type { Emit } from "../../protocol/protocol.ts";
+import { queueApprovals, runSubagent, type SubagentPorts } from "../subagent/subagent.ts";
 
 // What running a round's tool calls needs from the session.
 export interface CallsStep {

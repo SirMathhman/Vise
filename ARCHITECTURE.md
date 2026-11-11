@@ -28,7 +28,7 @@ Requirements are split into two classes. **Functional** requirements say what th
 | **Session** | One run of the REPL, from start until `/exit` or end of input. |
 | **Subagent** | A conversation of its own, started by the model with `run_subagent`. |
 | **Thinking** | The model's reasoning effort, set by `/thinking`. |
-| **Tool** | An action the model may request by name, with arguments it writes as JSON. A tool that writes or runs anything must be approved by the user before it runs. A tool from an MCP server is named `<server>__<tool>` and is always approved. |
+| **Tool** | An action the model may request by name, with arguments it writes as JSON. A tool that writes or runs anything must be approved by the user before it runs. A tool from an MCP server is named `<server>__<tool>` and is always approved. An MCP tool is offered to the model only after a `search_tools` call finds it (see Finding MCP tools). |
 | **Tool round** | One request to the model and the tool calls it asked for. |
 | **Turn** | One message of the user, with its tool rounds. Each turn has an undo record: the bytes each file had before the turn first changed it. A save from the page's file editor is a turn of its own, so it takes an undo point. |
 | **Undo point** | A turn count `/undo` can return to: 1, 2, 3, 5, 8, and so on, back. |
@@ -68,7 +68,7 @@ Each invariant has a label (F1 to F5 for functional, N1 to N6 for nonfunctional)
 #### Prompt cache and tools
 
 - **N5. The prompt prefix is append-only.** Between compactions the history changes only by appending: a user message, then assistant messages (with any tool calls) and tool messages. Compaction, `/load`, `/new`, and the resume at startup are the only other changes, and each starts a new prefix, so the next request misses the cache once. The undo log is state beside the history, not part of it: `startTurn`, `/undo`, and every recorded change touch the files and the log only, never the messages, so they never change the prefix. A failed request, or a failed round, leaves no trace: the whole turn is removed, so the next request begins with the same messages as the last completed one. The cache breakpoint is a marker on the last message of each request, whatever its role. It never changes which messages are sent.
-- **N6. Tool definitions are stable.** The tools are fixed when the session starts: the built-in tools, and the tools of each MCP server in `.vise/mcp.json` that started. Nothing adds or removes a tool while the session runs, and the request carries the same tool definitions every time for as long as the user leaves the switches unchanged. Switches come from `/tools` or from a profile's `tools:` whitelist, and each changes the tools part of the prompt, so the next request misses the cache for the whole prefix. The user accepts that cost. `/tools` switches are saved to `.vise/tools.json` and read at startup. `/load` applies a saved session's switched-off tools for that session only, which is also a change to the tools part.
+- **N6. Tool definitions are stable.** The built-in tools are fixed when the session starts, and so are the tools of each MCP server in `.vise/mcp.json` that started. The request offers a built-in tool always, and an MCP tool only once a `search_tools` call has found it in this session (see Finding MCP tools). The offered set changes only when a search finds a new tool, and a request carries the same tool definitions every time otherwise, for as long as the user leaves the switches unchanged. A find changes the tools part of the prompt the same way a switch does, so the next request misses the cache for the whole prefix, and the user accepts that cost. Switches come from `/tools` or from a profile's `tools:` whitelist, and each changes the tools part of the prompt, so the next request misses the cache for the whole prefix. The user accepts that cost. `/tools` switches are saved to `.vise/tools.json` and read at startup. `/load` applies a saved session's switched-off tools for that session only, which is also a change to the tools part.
 
 ## Frontend and backend
 
@@ -146,8 +146,16 @@ A Utilities button sits beside the message box too. It shows or hides a popover 
   - commands: `run_powershell` (one PowerShell command in the working directory; a command still running after 30 seconds becomes a background job), `read_command` (reads a job's output), and `kill_command` (stops a job, approved by the user);
   - `run_subagent` (starts a subagent; see Subagents);
   - `ask_user` (asks the user a question with at least one choice, and returns the answer; see Asking the user);
-  - MCP tools, named `<server>__<tool>`, from the servers in `.vise/mcp.json` (see MCP servers).
-- Of the ten built-in tools, eight run in `src/tools/` through `runTool`, which dispatches by name and checks the target before asking. `run_subagent` and `ask_user` are started by the backend, not by `runTool`, because it runs a conversation rather than a single action. Whichever part runs a call, the call is first checked against the tools offered in this request, by one shared check, so a switched-off tool is refused the same way for every tool (see Future Work).
+  - `search_tools` (finds MCP tools by words; see Finding MCP tools);
+  - MCP tools, named `<server>__<tool>`, from the servers in `.vise/mcp.json`, offered once a search finds them (see MCP servers).
+- Of the eleven built-in tools, eight run in `src/tools/` through `runTool`, which dispatches by name and checks the target before asking. `run_subagent`, `ask_user`, and `search_tools` are started by the backend, not by `runTool`, because it runs a conversation rather than a single action. Whichever part runs a call, the call is first checked against the tools offered in this request, by one shared check, so a switched-off tool is refused the same way for every tool (see Future Work).
+
+### Finding MCP tools
+
+- The model finds an MCP tool with `search_tools`, a built-in tool that takes `query`, words separated by spaces. A tool matches when every word appears in its name or description, ignoring case. The result lists the names and descriptions of up to 20 matches, and says so when nothing matches.
+- A tool a search finds is offered from the next request of the conversation, and stays offered for the rest of the session. Compaction does not drop found tools.
+- Found tools are not saved with the session. `/load` starts with none found, and the model must search again.
+- A subagent finds its MCP tools the same way, with a found set of its own that starts empty.
 
 ### Approval
 
@@ -191,7 +199,7 @@ The text of `AGENTS.md` in the working directory is read once when the session s
 A subagent is started by the model with `run_subagent`, which takes a profile name, a task, and a `max_tool_calls` limit.
 
 - It runs the turn-start hooks, then its profile's text and the task as its first message, then its own tool rounds.
-- It is offered only the tools its profile lists, minus the tools the user has switched off with `/tools`. It is never offered `run_subagent` or `ask_user` itself. A profile with no `tools:` line refuses a subagent.
+- It is offered only the tools its profile lists, minus the tools the user has switched off with `/tools`. It is never offered `run_subagent`, `ask_user`, or `search_tools` itself. Its MCP tools are offered only as its own searches find them, as in the main conversation. A profile with no `tools:` line refuses a subagent.
 - It makes at most `max_tool_calls` tool calls. At the limit it is asked once more with no tools, and its answer is marked as cut short.
 - Its writes and commands ask the user through the same approval queue as the main conversation, one question at a time.
 - Several subagents asked for in one reply run together, and the calls of that reply wait for them.
@@ -230,11 +238,12 @@ Target layout. Test files sit beside the module each one tests; there is no sepa
         │   └── config.ts                readServers, saveServers, and providersStore for .vise/providers.json (kind, name, url, apiKey): read at startup, and written from the page through a temporary file and a rename, one save at a time. readScopedServers, effectiveProviders, saveScopedServers, and scopedProvidersStore add the home folder's file, each entry tagged with its scope (see Scope). Disk work, so it moves to src/tools with the other settings (see Future Work)
         ├── core/                        pure logic; imports nothing from node: except types
         │   ├── commands.ts              line classification, command parsing, and the /help table (usage and description of each command)
-        │   ├── compaction.ts            Conversation state: summary request, compacted history, 80% check, profile use and clear
+        │   ├── compaction.ts            Conversation state: summary request, compacted history, 80% check, profile use and clear, and the offered tools (`offeredTools`)
         │   ├── messages.ts              shared data types, the Provider contract and model ports (ChatMessage, ToolCall, Usage, ReplyRequest, Provider, ProviderRequest, ModelInfo, Reply, ContextWindow), the MCP server entry and status types, McpStore, ProvidersStore (with ProviderEntry, the list without keys, and ProviderInput, the page's rows), and the Result type (ok and err) for returned failures
         │   ├── notes.ts                 note rules: name checks, path and scaffold, header parser, /note and /profile words, NoteRunner and ProfileLoader ports
         │   ├── sessions.ts              saved-session format (encode; decode with shape and pairing checks), autosave naming (autosaveName, uniqueName), /save, /load, /sessions words, SessionStore port
         │   ├── tools.ts                 tool specs, argument parsing, /tools words, the name rule for MCP tools (isExternalName), Approve and ToolRunner ports
+        │   ├── search/tool-search.ts    search_tools matching: searchTools and parseSearchQuery
         │   ├── tool-lines.ts            approval rule, approval preview, call line, and the terminal sanitize helper
         │   └── undo/
         │       └── undo-log.ts          the pure undo log: turns, the kept points (1, 2, 3, 5, 8 ...), the revert plan, and the drop of reverted turns (no I/O)
@@ -244,7 +253,7 @@ Target layout. Test files sit beside the module each one tests; there is no sepa
         ├── backend/                     session engine: no terminal, no readline
         │   ├── session.ts               startSession: session loop, line inbox, approval questions, sessionStart and sessionEnd hooks, autosave choice and writes
         │   ├── turn.ts                  runMessageTurn and streamRound: the turn's tool rounds and hooks
-        │   ├── calls.ts                 runCalls: one round's calls, and subagent calls
+        │   ├── calls/calls.ts           runCalls: one round's calls, the subagent calls, and search_tools
         │   ├── ports.ts                 SessionPorts: every port the backend uses
         │   ├── file-tree.ts             sends a folder's entries (tree) and a file's text (file) for the page's Files panel, and saves an edited file (`writeFileFor`, through the `saveFile` port)
         │   ├── profile-editor.ts        reads and saves a profile for the page, and lists the profiles
@@ -423,7 +432,10 @@ Each item is a known defect or gap. Fixes are listed under Future Work.
 
 #### Tools and approval
 
-- **`ask_user` and `run_subagent` skip the switched-off check.** `runCalls` (`src/backend/calls.ts:46-65`) starts both before any check of `step.offered`, and `runTool`'s check (`src/tools/run-tool.ts:41-44`) is never reached for them. A model that calls `ask_user` after the user switched it off, or after a profile's whitelist left it out, still asks the user a question. This breaks the rule that a switched-off tool is refused without approval.
+- **Subagents get every MCP tool and no search.** The subagent's offered set is `enabledTools(conversation, ports.allTools)` minus the backend tools (`src/backend/subagent/subagent.ts:142-144`). Each subagent request carries the full schema of every MCP tool, which the search exists to avoid, and the set does not follow the main conversation's searches.
+- **A tool found before `/load` is refused as switched off.** Found names are not saved, so after `/load` a call to an MCP tool that an earlier search found gets `error: tool <name> is switched off` (`src/tools/run-tool.ts:44`), although its switch is on. The message should say the tool has not been found in this session.
+- **Switching off `search_tools` hides every MCP tool.** The tools panel still shows each MCP tool as on, and a search is refused as switched off (`src/backend/calls/calls.ts:54`). Nothing tells the user that this one switch controls all MCP tools.
+- **A search result is cut at 20 without saying so.** `searchTools` in `src/core/search/tool-search.ts` stops at `SEARCH_LIMIT`, and the result text does not say that more tools matched, so the model may conclude that a tool does not exist.
 - **`/exit` at an `ask_user` question is sent to the model as the answer.** `receive` (`src/backend/session.ts:157`) parses an ask question's line with `parseAskLine` only. Unlike an approval, it does not read `/exit` as an exit (`answerOfLine`, `src/core/commands.ts:210`), so the session goes on and a request follows. This breaks F1 and the Approval section's rule that `/exit` during a question ends the session.
 - **An open question's kind is implicit.** `OpenQuestion` (`src/backend/session.ts:37-42`) has an optional `choices` that tells an approval from an ask, and `Reply` is `ApprovalAnswer | AskReply`, so a bare string means a refusal to an approval and "no answer" to an ask. `receive` checks `choices` in three places, and nothing enforces the pairing.
 - **A request with no tools field is unverified.** With no tools switched on, `streamChat` omits `tools`. A history that already holds tool calls and results may then be sent without tool definitions. Whether OpenRouter accepts that has not been checked. A profile's `tools:` whitelist reaches the same case: a history with calls to tools the profile does not allow is sent with those tools left out.
@@ -704,6 +716,9 @@ Status is **missing**, **partial**, or in place.
 
 #### Tools
 
+- Give a subagent the same search, with the found set of its own conversation, so a subagent is offered no MCP schema it has not searched for.
+- Save the found names with the session (`src/core/sessions.ts`), so `/load` keeps the tools the session had found.
+- Measure the cache cost of a find against the tokens a search saves, with a profiler or the provider's usage figures, and keep the search only if the saving is larger.
 - Keep each tool's definition in one place: a module per tool, registered in one array, instead of a branch in each of the five functions of `src/core/tools.ts` and the two of `run-tool.ts`.
 - Put the shell behind a platform port. `run_powershell` and `folder-picker.ts` call `powershell.exe` directly, so both are Windows-only today, and both should take their process from the same port.
 - Make the folder handover a single transition table: a request is refused with an error when no session is running, a session's end while a folder is pending starts the next session, and the dialog's result is handled only in the phase that opened it. Its spawn returns a `Result`, and the page is told when the dialog cannot open.

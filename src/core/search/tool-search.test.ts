@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { SEARCH_LIMIT, parseSearchQuery, searchTools } from "./tool-search.ts";
-import type { ToolSpec } from "./tools.ts";
+import type { ToolSpec } from "../tools.ts";
 
 function spec(name: string, description: string): ToolSpec {
   return { type: "function", function: { name, description, parameters: {} } };

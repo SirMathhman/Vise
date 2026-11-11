@@ -1,5 +1,5 @@
-import { err, ok, type Result } from "./messages.ts";
-import type { ToolSpec } from "./tools.ts";
+import { err, ok, type Result } from "../messages.ts";
+import type { ToolSpec } from "../tools.ts";
 
 // The most tools one search returns. A search that matches more returns these, and the model narrows it.
 export const SEARCH_LIMIT = 20;
