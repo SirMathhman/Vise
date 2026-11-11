@@ -132,10 +132,9 @@ function keepHeaderValues(servers: McpServerEntry[], stored: McpServerEntry[]): 
       kept.push(server);
       continue;
     }
-    const previous = stored.find((entry) => entry.name === server.name && entry.kind === "http");
     const headers: Record<string, string> = {};
     for (const [header, value] of Object.entries(server.headers)) {
-      const held = previous?.kind === "http" ? previous.headers[header] : undefined;
+      const held = heldHeader(stored, server.name, header);
       if (value !== "") headers[header] = value;
       else if (held !== undefined) headers[header] = held;
       else return err(new Error(`server "${server.name}" needs a value for the header ${header}`));
@@ -143,6 +142,14 @@ function keepHeaderValues(servers: McpServerEntry[], stored: McpServerEntry[]): 
     kept.push({ ...server, headers });
   }
   return ok(kept);
+}
+
+// The value an entry of the same name holds for the header, from the first list entry that holds it.
+function heldHeader(stored: McpServerEntry[], name: string, header: string): string | undefined {
+  for (const entry of stored) {
+    if (entry.kind === "http" && entry.name === name && entry.headers[header] !== undefined) return entry.headers[header];
+  }
+  return undefined;
 }
 
 // Writes the servers to the file, replacing it. The entries are checked the same way a read checks them,
@@ -200,19 +207,42 @@ export function effectiveServers(servers: ScopedMcpServer[]): McpServerEntry[] {
     .map(tagless);
 }
 
-// Writes each file with the servers that belong to it. A file that holds no server and is not there yet is not
-// created, so a home folder with no servers gets no file. A server with no scope is refused.
-export async function saveScopedMcp(local: string, global: string, servers: ScopedMcpServer[]): Promise<Result<void>> {
+// Scoped saves run one at a time, so the read of both files never overlaps another save.
+let scopedQueue: Promise<unknown> = Promise.resolve();
+
+export function saveScopedMcp(local: string, global: string, servers: ScopedMcpServer[]): Promise<Result<void>> {
+  const run = scopedQueue.then(() => saveScopedNow(local, global, servers));
+  scopedQueue = run.catch(() => undefined);
+  return run;
+}
+
+// Every blank header value is filled from the file that held a server of that name, the same file first, before
+// anything is written. A check that fails writes nothing. Then the file that gains servers is written before the one
+// that loses them, so a server moved between files is never lost.
+async function saveScopedNow(local: string, global: string, servers: ScopedMcpServer[]): Promise<Result<void>> {
   if (servers.some((server) => server.scope === undefined)) return err(new Error("a server has no scope"));
-  const pick = (scope: Scope) => servers.filter((server) => server.scope === scope).map(tagless);
-  const there = pick("global");
-  const stored = await readMcpConfig(global);
-  if (!stored.ok) return err(stored.error);
-  if (there.length > 0 || stored.value.length > 0) {
-    const wrote = await saveMcpConfig(global, there);
+  const here = await readMcpConfig(local);
+  if (!here.ok) return err(here.error);
+  const there = await readMcpConfig(global);
+  if (!there.ok) return err(there.error);
+  const kept = (scope: Scope, stored: McpServerEntry[], other: McpServerEntry[]): Result<McpServerEntry[]> =>
+    keepHeaderValues(servers.filter((server) => server.scope === scope).map(tagless), [...stored, ...other]);
+  const localKept = kept("local", here.value, there.value);
+  if (!localKept.ok) return err(localKept.error);
+  const globalKept = kept("global", there.value, here.value);
+  if (!globalKept.ok) return err(globalKept.error);
+  const parts = [
+    { root: local, list: localKept.value, stored: here.value },
+    { root: global, list: globalKept.value, stored: there.value },
+  ];
+  const gainsGlobal = globalKept.value.some((server) => !there.value.some((entry) => entry.name === server.name));
+  if (gainsGlobal) parts.reverse();
+  for (const part of parts) {
+    if (part.list.length === 0 && part.stored.length === 0) continue;
+    const wrote = await saveMcpConfig(part.root, part.list);
     if (!wrote.ok) return err(wrote.error);
   }
-  return saveMcpConfig(local, pick("local"));
+  return ok(undefined);
 }
 
 function tagless(server: ScopedMcpServer): McpServerEntry {

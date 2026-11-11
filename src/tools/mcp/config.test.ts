@@ -88,3 +88,14 @@ test("a project server replaces a home server of the same name, and a save write
   expect(running.map((server) => (server.kind === "stdio" ? server.command : ""))).toEqual(["project-docs"]);
   expect((await readMcpConfig(home)).ok && (await readMcpConfig(home))).toEqual({ ok: true, value: [{ kind: "stdio", name: "docs", command: "home-docs", args: [] }] });
 });
+
+test("an endpoint moved from the home file to the project file keeps its header values when the page sends them blank", async () => {
+  const local = await freshRoot();
+  const home = await freshRoot();
+  const stored = { kind: "http" as const, name: "api", url: "https://example.test/mcp", headers: { Authorization: "Bearer secret" }, scope: "global" as const };
+  expect((await saveScopedMcp(local, home, [stored])).ok).toBe(true);
+  const moved = { ...stored, headers: { Authorization: "" }, scope: "local" as const };
+  expect((await saveScopedMcp(local, home, [moved])).ok).toBe(true);
+  expect(await readMcpConfig(local)).toEqual({ ok: true, value: [{ kind: "http", name: "api", url: "https://example.test/mcp", headers: { Authorization: "Bearer secret" } }] });
+  expect(await readMcpConfig(home)).toEqual({ ok: true, value: [] });
+});

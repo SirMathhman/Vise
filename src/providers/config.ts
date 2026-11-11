@@ -130,18 +130,46 @@ export function effectiveProviders(servers: ConfiguredProvider[]): ConfiguredPro
   return servers.filter((entry) => entry.scope !== "global" || !local.has(entry.name));
 }
 
-// Writes each file with the providers that belong to it, as saveServers does for one file. A home file that
-// lists none and is not there yet is not created. A provider with no scope is refused.
-export async function saveScopedServers(local: string, global: string, inputs: ProviderInput[]): Promise<Result<void>> {
+// Scoped saves run one at a time, so the read of both files never overlaps another save.
+let scopedQueue: Promise<unknown> = Promise.resolve();
+
+export function saveScopedServers(local: string, global: string, inputs: ProviderInput[]): Promise<Result<void>> {
+  const run = scopedQueue.then(() => saveScopedNow(local, global, inputs));
+  scopedQueue = run.catch(() => undefined);
+  return run;
+}
+
+// Every blank key is filled from the file that held a provider of that name, the same file first, before anything is
+// written. A check that fails writes nothing. Then the file that gains providers is written before the one that loses
+// them, so a provider moved between files keeps its key and is never lost.
+async function saveScopedNow(local: string, global: string, inputs: ProviderInput[]): Promise<Result<void>> {
   if (inputs.some((input) => input.scope === undefined)) return err(new Error("a provider has no scope"));
-  const there = inputs.filter((input) => input.scope === "global");
-  const stored = await readServers(global);
-  if (!stored.ok) return err(stored.error);
-  if (there.length > 0 || stored.value.length > 0) {
-    const wrote = await saveServers(global, there);
+  const here = await readServers(local);
+  if (!here.ok) return err(here.error);
+  const there = await readServers(global);
+  if (!there.ok) return err(there.error);
+  const resolved: ProviderInput[] = [];
+  for (const input of inputs) {
+    const own = input.scope === "global" ? there.value : here.value;
+    const other = input.scope === "global" ? here.value : there.value;
+    const apiKey = input.apiKey !== "" ? input.apiKey : [...own, ...other].find((entry) => entry.name === input.name)?.apiKey;
+    if (apiKey === undefined) return err(new Error(`provider ${input.name} needs a key`));
+    resolved.push({ ...input, apiKey });
+  }
+  const localList = resolved.filter((input) => input.scope === "local");
+  const globalList = resolved.filter((input) => input.scope === "global");
+  const parts = [
+    { root: local, list: localList, stored: here.value },
+    { root: global, list: globalList, stored: there.value },
+  ];
+  const gainsGlobal = globalList.some((input) => !there.value.some((entry) => entry.name === input.name));
+  if (gainsGlobal) parts.reverse();
+  for (const part of parts) {
+    if (part.list.length === 0 && part.stored.length === 0) continue;
+    const wrote = await saveNow(part.root, part.list);
     if (!wrote.ok) return err(wrote.error);
   }
-  return saveServers(local, inputs.filter((input) => input.scope === "local"));
+  return ok(undefined);
 }
 
 // The store for both files, read and saved as one list, with each provider's scope.

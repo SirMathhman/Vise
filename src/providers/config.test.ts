@@ -77,3 +77,13 @@ test("a project provider replaces a home provider of the same name, and a save w
     value: [{ kind: "llama.cpp", name: "shared", url: "http://home:1", keySaved: true }],
   });
 });
+
+test("a provider moved from the home file to the project file keeps its key when the page sends it blank", async () => {
+  const local = await mkdtemp(join(tmpdir(), "vise-providers-move-local-"));
+  const home = await mkdtemp(join(tmpdir(), "vise-providers-move-home-"));
+  expect((await saveScopedServers(local, home, [{ kind: "llama.cpp", name: "box", url: "http://box:1", apiKey: "kept-key", scope: "global" }])).ok).toBe(true);
+  const moved = await saveScopedServers(local, home, [{ kind: "llama.cpp", name: "box", url: "http://box:1", apiKey: "", scope: "local" }]);
+  expect(moved.ok).toBe(true);
+  expect(await readServers(local)).toEqual({ ok: true, value: [{ kind: "llama.cpp", name: "box", url: "http://box:1", apiKey: "kept-key" }] });
+  expect(await readServers(home)).toEqual({ ok: true, value: [] });
+});
