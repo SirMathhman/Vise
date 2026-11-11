@@ -408,8 +408,8 @@ dialog.file-viewer {
   padding: 16px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: var(--panel, Canvas);
-  color: inherit;
+  background: var(--bg);
+  color: var(--fg);
 }
 
 dialog.file-viewer h2 {

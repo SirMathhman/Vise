@@ -57,3 +57,16 @@ test("once the session has ended, the viewer is closed and a later viewer is clo
   expect(later.sent).toEqual([{ kind: "ended" }]);
   expect(later.closed).toEqual([1000]);
 });
+
+test("an answer to a page's request goes to the attached page and is not replayed to a page that reloads", () => {
+  const hub = createHub(() => {});
+  const viewer = fakeViewer();
+  hub.attach(viewer);
+  const answer: ServerEvent = { kind: "file", path: "a.txt", text: "hi" };
+  hub.publish(answer);
+  expect(viewer.sent).toEqual([answer]);
+
+  const reloaded = fakeViewer();
+  hub.attach(reloaded);
+  expect(reloaded.sent).toEqual([]);
+});

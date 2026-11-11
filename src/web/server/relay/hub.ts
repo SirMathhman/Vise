@@ -21,12 +21,22 @@ export interface Hub {
 // The close code sent to a viewer that another tab replaced.
 export const TAKEN_OVER = 4001;
 
+// An answer to one page's request. It goes only to the page attached now, and is not kept, so a page that
+// reloads does not get it again. A tree answer is kept: the page does not ask for it again on reconnect.
+function isAnswer(event: ServerEvent): boolean {
+  return event.kind === "file";
+}
+
 export function createHub(forward: (message: ClientMessage) => void): Hub {
   const log: ServerEvent[] = [];
   let current: Viewer | undefined;
   let finished = false;
   return {
     publish(event) {
+      if (isAnswer(event)) {
+        current?.send(JSON.stringify(event));
+        return;
+      }
       log.push(event);
       if (event.kind === "ended") finished = true;
       current?.send(JSON.stringify(event));
