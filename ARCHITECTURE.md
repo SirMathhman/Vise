@@ -532,7 +532,6 @@ Status is **missing**, **partial**, or in place.
 
 #### Browser layout
 
-- Make the header wrap at narrow widths without clipping or squeezing its status (see Known Problems).
 - Clamp the stored column widths on read (see Known Problems), using the same minimums and room as `setWidth` in `separators.ts`.
 - Add an `event.button === 0` check to the separators' `pointerdown`, so a right-click does not start a drag.
 
