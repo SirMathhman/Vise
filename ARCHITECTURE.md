@@ -405,6 +405,7 @@ Each item is a known defect or gap. Fixes are listed under Future Work.
 
 #### MCP servers
 
+- **Chamfered controls hide their focus rings, and the light Send button fails contrast.** `style.css` clips the buttons, the theme select, the composer's textarea, and the approval, profile-editor, and file-viewer boxes with `clip-path` (the last block of the file). A clip-path removes everything outside the box, and the default focus outline lies outside it, and no `:focus-visible` rule draws one inside. A keyboard user therefore sees no focus on those controls. The Send button sets dark text (`#1d1d1b`) on the light accent (`#8a6a1c`), about 3.4 to 1 (estimated from the colours, not measured), below the 4.5 to 1 that 16px text needs. The chamfer list also skips the file tabs, the Source and Rendered button, the profile editor's selects and inputs, and the folder input, so square and cut boxes sit side by side. Missing control: a focus style drawn inside the box, and a contrast check for each accent pair.
 - **The MCP panel drops a server the file no longer configures.** `mcpPanel` (`src/web/client/mcp-view.ts:39`) lists only the configured servers. A server that started and was then removed from the file shows only its problems, not its state or tools, until the next start. - **The server editor's row breaks its grid.** `.profile-editor .server-row` (`src/web/client/style.css:312`) is a three-column grid, but a row has five children: the kind select, the name, the program fields, the endpoint fields, and Remove. With the kind set to endpoint, at 974px wide, the select and the name input stretch to 180px tall, and Remove drops to a second row (verified in the browser; the hidden fields take no cell, and the row's cells stretch because the grid aligns them to stretch). The fields are labelled, but the labels sit beside a stretched input, so the row reads as one tall block. The row needs its own layout: the field groups span the full width, and the cells align to the start.
 - **The MCP section copies a helper and borrows other styles.** `element` is defined in both `src/web/client/mcp-view.ts:24` and `src/web/client/view.ts:41`. The section reuses the `sessions` and `profile-editor` classes, so its look follows those other sections.
 - **MCP servers received the API key and the web token (fixed).** `openSession` (`src/tools/mcp/client.ts`) now passes `childEnvironment(process.env)`, as `run_powershell` and the `taskkill` in `jobs.ts` do, so neither name reaches a server, a command, or a stop. The filter does not stop a program the repository ships from reading `.env` from disk (see Security).
@@ -641,6 +642,12 @@ Status is **missing**, **partial**, or in place.
 - Recognise heading levels four to six and stop a number followed by a period at the start of a paragraph from opening a list, or record the subset's limits in the page's help text.
 - Escape or sanitize model replies and `error:` lines the same way as tool lines.
 - Bound the history per request: apply the compaction trigger to the size of the request about to be sent, not the previous one. Set `max_tokens`.
+
+#### Styling
+
+- Keep the palette in one place. `style.css` defines the same fourteen colour variables three times: in `:root`, in the `prefers-color-scheme: dark` block, and in `:root[data-theme="dark"]`. Have `theme.ts` resolve System to `light` or `dark` from `matchMedia` (and follow its change event), so it always sets `data-theme`, and keep one dark block.
+- Draw each focus ring inside the box of a chamfered control (for example `outline-offset: -4px` with `:focus-visible`), and give the light accent text that passes 4.5 to 1 (white on `#8a6a1c` is about 5 to 1).
+- Make the chamfer list cover every bordered box, or none of them, and keep one divider style: the composer's top rule is 1px solid, while the other dividers are 3px double.
 
 #### Tests and tooling
 
