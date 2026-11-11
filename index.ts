@@ -1,6 +1,6 @@
 import { readInstructions } from "./src/instructions.ts";
 import { providerFromEnv } from "./src/providers/provider.ts";
-import { readServers } from "./src/providers/config.ts";
+import { providersStore, readServers } from "./src/providers/config.ts";
 import { startSession } from "./src/backend/session.ts";
 import type { SessionPorts } from "./src/backend/ports.ts";
 import { err, ok, type Provider, type Result } from "./src/core/messages.ts";
@@ -103,6 +103,7 @@ function sessionPorts(setup: PortSetup): SessionPorts {
     resume: resumeStore(join(homedir(), ".vise", "resume"), root),
     profiles: profileStore(root, setup.allTools),
     mcp: mcpStore(root, setup.mcp.statuses()),
+    providers: providersStore(root),
     folder: root,
     tree: (path) => listChildren(root, path),
     fileText: (path) => readWholeFile(root, path),

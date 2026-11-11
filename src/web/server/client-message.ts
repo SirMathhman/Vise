@@ -1,7 +1,7 @@
 import type { ApprovalAnswer } from "../../core/commands.ts";
 import { HOOK_POINTS, type HookPoint, type ProfileDetail, type ProfileHook } from "../../core/notes.ts";
 import { err, ok, type Result } from "../../core/messages.ts";
-import type { ClientMessage, McpServerEntry } from "../../protocol/protocol.ts";
+import type { ClientMessage, McpServerEntry, ProviderInput } from "../../protocol/protocol.ts";
 
 const ANSWERS: string[] = ["approve", "refuse", "exit"];
 
@@ -46,6 +46,14 @@ function profileOf(value: unknown): ProfileDetail | undefined {
   const profile: ProfileDetail = { name, summary, text, hooks: parsed };
   if (tools !== undefined) profile.tools = tools as string[];
   return profile;
+}
+
+// Reads one llama.cpp server sent by the page: a name, a URL, and the key (blank keeps the saved one).
+function providerOf(value: unknown): ProviderInput | undefined {
+  if (!isRecord(value)) return undefined;
+  const { name, url, apiKey } = value;
+  if (typeof name !== "string" || typeof url !== "string" || typeof apiKey !== "string") return undefined;
+  return { name, url, apiKey };
 }
 
 // Reads a message sent by the browser. The browser may send lines, approvals, and the two profile requests.
@@ -106,6 +114,11 @@ export function parseClientMessage(text: string): Result<ClientMessage> {
   }
   if (value.kind === "fileClose" && typeof value.path === "string") {
     return ok({ kind: "fileClose", path: value.path });
+  }
+  if (value.kind === "providersWrite" && Array.isArray(value.servers)) {
+    const servers = value.servers.map(providerOf);
+    if (servers.some((server) => server === undefined)) return err(new Error("a server is not in the expected form"));
+    return ok({ kind: "providersWrite", servers: servers as ProviderInput[] });
   }
   if (value.kind === "pickFolder") return ok({ kind: "pickFolder" });
   if (value.kind === "folderChange" && typeof value.path === "string" && value.path.trim() !== "") {

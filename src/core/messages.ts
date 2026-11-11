@@ -156,6 +156,26 @@ export interface McpStore {
   save(servers: McpServerEntry[]): Promise<Result<void>>;
 }
 
+// One llama.cpp server as the page sees it: its name and URL. The key is never sent to the page.
+export interface ProviderEntry {
+  name: string;
+  url: string;
+  keySaved: boolean;
+}
+
+// One server as the page sends it. A blank key keeps the key saved for a server of the same name.
+export interface ProviderInput {
+  name: string;
+  url: string;
+  apiKey: string;
+}
+
+// Where the page reads and saves the llama.cpp servers in .vise/providers.json. A change applies at the next start.
+export interface ProvidersStore {
+  list(): Promise<Result<ProviderEntry[]>>;
+  save(servers: ProviderInput[]): Promise<Result<void>>;
+}
+
 // Where file changes are recorded for /undo. A change runs inside `around`, so what it did can be reverted.
 export interface UndoStore {
   // Starts a turn: each message of the user is one turn.

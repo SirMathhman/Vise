@@ -1,4 +1,4 @@
-import { type McpStore, type ModelPorts, type TreeEntry, type UndoStore, type ReplyRequest, type ToolCall, type Result } from "../core/messages.ts";
+import { type McpStore, type ProvidersStore, type ModelPorts, type TreeEntry, type UndoStore, type ReplyRequest, type ToolCall, type Result } from "../core/messages.ts";
 
 import { type HookPoint, type ProfileHook, type ProfileStore } from "../core/notes.ts";
 
@@ -33,6 +33,8 @@ export interface SessionPorts {
   profiles?: ProfileStore;
   // Where the page and /mcp read the MCP servers. Absent, there are none.
   mcp?: McpStore;
+  // Where the page reads and saves the llama.cpp servers. Absent, the page has no providers panel.
+  providers?: ProvidersStore;
   // The entries directly inside a folder of the working directory, for the page's file tree. Absent, the page has no tree.
   tree?(path: string): Promise<Result<TreeEntry[]>>;
   // The whole text of one file of the working directory, for the page's file viewer. Absent, the page cannot open files.
