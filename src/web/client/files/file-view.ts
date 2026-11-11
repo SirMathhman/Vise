@@ -11,7 +11,7 @@ export interface FileShown {
 export interface FileActions {
   showFile(path: string): void;
   closeFile(path: string): void;
-  saveFile(path: string, text: string): void;
+  saveFile(path: string, text: string, base: string): void;
 }
 
 // The viewer: a row of tabs, one per open file, and the text of the shown file, with line numbers. A text file can be
@@ -25,13 +25,16 @@ export interface FileViewer {
 const SAVE_DELAY_MS = 1000;
 
 // What the viewer keeps beyond the shown file: which files are being edited or shown as source, the typed text of each,
-// the text last saved, and the save that is waiting.
+// the text last saved, the version each file was last seen at, whether each uses Windows line ends, and the save that is
+// waiting.
 interface EditState {
   actions: FileActions;
   editing: Set<string>;
   source: Set<string>;
   drafts: Map<string, string>;
   saved: Map<string, string>;
+  versions: Map<string, string>;
+  crlf: Set<string>;
   timers: Map<string, ReturnType<typeof setTimeout>>;
 }
 
@@ -45,6 +48,8 @@ export function createFileViewer(doc: Document, actions: FileActions): FileViewe
     source: new Set(),
     drafts: new Map(),
     saved: new Map(),
+    versions: new Map(),
+    crlf: new Set(),
     timers: new Map(),
   };
   let key = "";
@@ -67,9 +72,10 @@ export function createFileViewer(doc: Document, actions: FileActions): FileViewe
       if (nextKey === key) return;
       key = nextKey;
       shown = next;
-      // A save echoing back while its file is being typed in must not rebuild the editor, or the cursor would move.
       const file = next.file;
-      if (file !== undefined && state.editing.has(file.path) && state.saved.get(file.path) === file.text) return;
+      if (file !== undefined) remember(file, state);
+      // A save echoing back while its file is being typed in must not rebuild the editor, or the cursor would move.
+      if (file !== undefined && state.editing.has(file.path) && state.saved.get(file.path) === lf(file.text)) return;
       draw();
     },
   };
@@ -168,14 +174,29 @@ function schedule(path: string, state: EditState): void {
   state.timers.set(path, setTimeout(() => flush(path, state), SAVE_DELAY_MS));
 }
 
-// Saves the path's typed text now, unless that exact text was the last one saved.
+// Keeps what a save needs from a file the page has been sent: its version, and whether it uses Windows line ends.
+function remember(file: FileView, state: EditState): void {
+  if (file.version !== undefined) state.versions.set(file.path, file.version);
+  if (file.text.includes("\r\n")) state.crlf.add(file.path);
+  else state.crlf.delete(file.path);
+}
+
+// The text with Unix line ends, as a text area holds it.
+function lf(text: string): string {
+  return text.replace(/\r\n/g, "\n");
+}
+
+// Saves the path's typed text now, unless that exact text was the last one saved. A save names the version it is based
+// on, and a file that uses Windows line ends keeps them.
 function flush(path: string, state: EditState): void {
   clearTimeout(state.timers.get(path));
   state.timers.delete(path);
   const text = state.drafts.get(path);
-  if (text === undefined || state.saved.get(path) === text) return;
+  const base = state.versions.get(path);
+  if (text === undefined || base === undefined || state.saved.get(path) === text) return;
   state.saved.set(path, text);
-  state.actions.saveFile(path, text);
+  const outgoing = state.crlf.has(path) ? text.replace(/\n/g, "\r\n") : text;
+  state.actions.saveFile(path, outgoing, base);
 }
 
 function isMarkdown(path: string): boolean {

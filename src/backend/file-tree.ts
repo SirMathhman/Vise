@@ -24,20 +24,30 @@ export async function announceFile(ports: SessionPorts, emit: Emit, path: string
     emit({ kind: "error", message: `could not show ${path}: ${read.error.message}` });
     return false;
   }
-  emit({ kind: "file", path, text: read.value });
+  emit({ kind: "file", path, text: read.value.text, version: read.value.version });
   return true;
 }
 
-// Writes the text the page sent for a file, then sends the file's text back, so the page shows what was written.
-export async function writeFileFor(ports: SessionPorts, emit: Emit, path: string, text: string): Promise<void> {
-  if (ports.saveFile === undefined) {
+// Writes the text the page sent for a file, if the file still holds the version the edit was based on. A save that is
+// refused sends the file's current text and version, so the page can show what is there now.
+export interface PageSave {
+  path: string;
+  text: string;
+  base: string | undefined;
+}
+
+export async function writeFileFor(ports: SessionPorts, emit: Emit, save: PageSave): Promise<void> {
+  const { path, text, base } = save;
+  if (ports.saveFile === undefined || base === undefined) {
     emit({ kind: "error", message: "files cannot be saved here" });
     return;
   }
-  const saved = await ports.saveFile(path, text);
-  if (!saved.ok) {
-    emit({ kind: "error", message: `could not save ${path}: ${saved.error.message}` });
+  const saved = await ports.saveFile(path, text, base);
+  if (saved.ok) {
+    emit({ kind: "file", path, text: saved.value.text, version: saved.value.version });
     return;
   }
-  emit({ kind: "file", path, text });
+  emit({ kind: "error", message: `could not save ${path}: ${saved.error.message}` });
+  const current = await ports.fileText?.(path);
+  if (current?.ok) emit({ kind: "file", path, text: current.value.text, version: current.value.version });
 }

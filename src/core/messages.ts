@@ -182,6 +182,12 @@ export interface ProvidersStore {
 }
 
 // Where file changes are recorded for /undo. A change runs inside `around`, so what it did can be reverted.
+// A file's text, and its version: a hash of the text. A save names the version it was based on.
+export interface FileText {
+  text: string;
+  version: string;
+}
+
 export interface UndoStore {
   // Starts a turn: each message of the user is one turn.
   startTurn(): void;

@@ -514,7 +514,7 @@ test("input that ends while an ask question is open closes it with no answer", a
 });
 
 test("a file that is shown is kept in the open set, a file that cannot be read is not, and a close drops it", async () => {
-  const fileText = async (path: string) => (path === "a.txt" ? ok("A") : err(new Error("missing")));
+  const fileText = async (path: string) => (path === "a.txt" ? ok({ text: "A", version: "v1" }) : err(new Error("missing")));
   const session = startSession({ ...portsFor([]), fileText });
   const events = session.events()[Symbol.asyncIterator]();
   session.send({ kind: "fileRead", path: "a.txt" });
@@ -531,7 +531,7 @@ test("a file that is shown is kept in the open set, a file that cannot be read i
 
 test("a file that can no longer be read is dropped from the open set", async () => {
   let readable = true;
-  const fileText = async (path: string) => (readable && path === "a.txt" ? ok("A") : err(new Error("gone")));
+  const fileText = async (path: string) => (readable && path === "a.txt" ? ok({ text: "A", version: "v1" }) : err(new Error("gone")));
   const session = startSession({ ...portsFor([]), fileText });
   const events = session.events()[Symbol.asyncIterator]();
   session.send({ kind: "fileRead", path: "a.txt" });

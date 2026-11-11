@@ -94,6 +94,8 @@ export interface FileWriteMessage {
   kind: "fileWrite";
   path: string;
   text: string;
+  // The version of the text the edit is based on. The session refuses a save without one.
+  base?: string;
 }
 
 // The page closes one of the files it has open. The session drops it from the set it keeps.
@@ -258,6 +260,8 @@ export interface FileEvent {
   kind: "file";
   path: string;
   text: string;
+  // The text's version, which the page sends back with a save. Optional for the reducer's tests, which predate it.
+  version?: string;
 }
 
 // The files the session has open, in the order they were opened. Sent after each change to the set. The

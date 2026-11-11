@@ -16,7 +16,7 @@ import { type McpRegistry, noServers, startMcpServers } from "./src/tools/mcp/re
 import { mcpStore } from "./src/tools/mcp/config.ts";
 import { undoStore } from "./src/tools/undo/undo-files.ts";
 import { pickFolder } from "./src/tools/process/folder-picker.ts";
-import type { UndoStore } from "./src/core/messages.ts";
+import type { FileText, UndoStore } from "./src/core/messages.ts";
 import { toolNames } from "./src/core/tools.ts";
 import {
   loadProfile,
@@ -26,7 +26,7 @@ import {
 import { runNoteCommand } from "./src/tools/notes/run-note-command.ts";
 import { runTool } from "./src/tools/run-tool.ts";
 import { listChildren } from "./src/tools/files/list-files.ts";
-import { readWholeFile, writeWholeText } from "./src/tools/files/read-file.ts";
+import { readWholeVersioned, writeWholeTextIfUnchanged } from "./src/tools/files/read-file.ts";
 import { hookRunner, readHooks } from "./src/tools/hooks/hooks.ts";
 import { sessionStore } from "./src/tools/session-store.ts";
 import { resumeStore } from "./src/tools/resume/resume-store.ts";
@@ -106,8 +106,8 @@ function sessionPorts(setup: PortSetup): SessionPorts {
     providers: providersStore(root),
     folder: root,
     tree: (path) => listChildren(root, path),
-    fileText: (path) => readWholeFile(root, path),
-    saveFile: (path, text) => saveWithUndo(root, setup.undo, path, text),
+    fileText: (path) => readWholeVersioned(root, path),
+    saveFile: (path, text, base) => saveWithUndo(root, setup.undo, { path, text, base }),
     instructions: setup.instructions,
   };
 }
@@ -192,13 +192,19 @@ async function openSession(provider: Provider, selection: ModelSelection, folder
   );
 }
 
-// Writes a page's edit to a file and records it for /undo, as its own turn. The bytes are read before the change, so
-// a failure to read the file is reported and nothing is written.
-async function saveWithUndo(root: string, undo: UndoStore, path: string, text: string): Promise<Result<void>> {
+// Writes a page's edit to a file, if the file still holds the version it was based on, and records it for /undo as its
+// own turn. The bytes are read before the change, so a failure to read the file is reported and nothing is written.
+interface PageEdit {
+  path: string;
+  text: string;
+  base: string;
+}
+
+async function saveWithUndo(root: string, undo: UndoStore, edit: PageEdit): Promise<Result<FileText>> {
   undo.startTurn();
-  let outcome: Result<void> = err(new Error("the file was not written"));
-  await undo.around(path, async () => {
-    outcome = await writeWholeText(root, path, text);
+  let outcome: Result<FileText> = err(new Error("the file was not written"));
+  await undo.around(edit.path, async () => {
+    outcome = await writeWholeTextIfUnchanged(root, edit.path, edit.text, edit.base);
     return outcome.ok ? "saved" : outcome.error.message;
   });
   return outcome;

@@ -130,6 +130,8 @@ export interface ViewState {
 export interface FileView {
   path: string;
   text: string;
+  // The text's version, which a save sends back.
+  version?: string;
 }
 
 export interface McpInfo {
@@ -366,7 +368,7 @@ function applyEvent(state: ViewState, event: ServerEvent): ViewState {
       // A new folder starts a new tree: the old folder's entries and open folders go.
       return { ...state, folder: event.path, trees: {}, expanded: [], openFiles: [], files: [], file: undefined };
     case "file": {
-      const view = { path: event.path, text: event.text };
+      const view = { path: event.path, text: event.text, version: event.version };
       const others = state.files.filter((file) => file.path !== event.path);
       return { ...state, file: view, files: [...others, view] };
     }

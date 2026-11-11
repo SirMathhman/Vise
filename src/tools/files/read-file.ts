@@ -1,5 +1,6 @@
+import { createHash } from "node:crypto";
 import { readFile, stat, writeFile } from "node:fs/promises";
-import { err, ok, type Result } from "../../core/messages.ts";
+import { err, ok, type FileText, type Result } from "../../core/messages.ts";
 import { MAX_LINES } from "../../core/tools.ts";
 import { resolveInside } from "./contain.ts";
 
@@ -74,4 +75,32 @@ export async function writeWholeText(root: string, path: string, text: string): 
   } catch (error) {
     return err(error instanceof Error ? error : new Error(String(error)));
   }
+}
+
+// The version of a text: a hash of its UTF-8 bytes.
+export function versionOf(text: string): string {
+  return createHash("sha256").update(text, "utf8").digest("hex");
+}
+
+// The whole text of a file under `root`, with its version, for the page's file viewer.
+export async function readWholeVersioned(root: string, path: string): Promise<Result<FileText>> {
+  const read = await readWholeFile(root, path);
+  if (!read.ok) return err(read.error);
+  return ok({ text: read.value, version: versionOf(read.value) });
+}
+
+// Writes a page's text to a file only when the file still holds the text the page based its edit on. A file that has
+// changed since is not written; the error says so, and the file is left as it is.
+export async function writeWholeTextIfUnchanged(
+  root: string,
+  path: string,
+  text: string,
+  base: string,
+): Promise<Result<FileText>> {
+  const current = await readWholeVersioned(root, path);
+  if (!current.ok) return err(current.error);
+  if (current.value.version !== base) return err(new Error("changed since it was opened"));
+  const written = await writeWholeText(root, path, text);
+  if (!written.ok) return err(written.error);
+  return ok({ text, version: versionOf(text) });
 }

@@ -203,7 +203,7 @@ function receive(state: SessionState, message: ClientMessage): void {
       void showFileFor(state, message.path);
       return;
     case "fileWrite":
-      void writeFileFor(state.ports, sink(state), message.path, message.text);
+      void writeFileFor(state.ports, sink(state), { path: message.path, text: message.text, base: message.base });
       return;
     case "fileClose":
       closeFile(state, message.path);

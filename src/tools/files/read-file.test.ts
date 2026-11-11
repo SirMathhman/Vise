@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { MAX_WHOLE_BYTES, readFileLines, readWholeFile, writeWholeText } from "./read-file.ts";
+import { MAX_WHOLE_BYTES, readFileLines, readWholeFile, readWholeVersioned, writeWholeText, writeWholeTextIfUnchanged } from "./read-file.ts";
 
 test("returns the requested lines, clamps to the end of the file, and reports a start past it", async () => {
   const root = await mkdtemp(join(tmpdir(), "vise-read-"));
@@ -65,4 +65,21 @@ test("a page save writes text to an existing text file, and refuses a binary fil
   expect((await writeWholeText(root, "b.bin", "x")).ok).toBe(false);
   expect((await writeWholeText(root, "missing.txt", "x")).ok).toBe(false);
   expect((await writeWholeText(root, "a.txt", "x".repeat(MAX_WHOLE_BYTES + 1))).ok).toBe(false);
+});
+
+test("a page save is refused when the file has changed since the version it was based on, and writes when it has not", async () => {
+  const root = await mkdtemp(join(tmpdir(), "vise-version-"));
+  await writeFile(join(root, "a.txt"), "first");
+  const seen = await readWholeVersioned(root, "a.txt");
+  expect(seen.ok).toBe(true);
+  if (!seen.ok) return;
+  await writeFile(join(root, "a.txt"), "changed outside");
+  expect((await writeWholeTextIfUnchanged(root, "a.txt", "mine", seen.value.version)).ok).toBe(false);
+  expect(await readWholeFile(root, "a.txt")).toEqual({ ok: true, value: "changed outside" });
+  const fresh = await readWholeVersioned(root, "a.txt");
+  expect(fresh.ok).toBe(true);
+  if (!fresh.ok) return;
+  const written = await writeWholeTextIfUnchanged(root, "a.txt", "mine", fresh.value.version);
+  expect(written.ok).toBe(true);
+  expect(await readWholeFile(root, "a.txt")).toEqual({ ok: true, value: "mine" });
 });
