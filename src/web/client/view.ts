@@ -22,9 +22,10 @@ import { applySplit, columns } from "./layout/columns.ts";
 import { themeControl } from "./theme/theme.ts";
 import { earlierButton, type RecentActions } from "./transcript/recent.ts";
 import { createModelPicker } from "./models/model-picker.ts";
+import { autoScrollButton, type AutoScrollActions } from "./transcript/auto-scroll.ts";
 
 // What the view asks the page to do. The page sends the line or the answer to the server.
-export interface ViewActions extends McpActions, TreeActions, FileActions, ProvidersActions, RecentActions {
+export interface ViewActions extends McpActions, TreeActions, FileActions, ProvidersActions, RecentActions, AutoScrollActions {
   line(text: string): void;
   changeFolder(path: string): void;
   pickFolder(): void;
@@ -495,7 +496,7 @@ export function createView(
   input.placeholder = "Message Vise (Enter sends, Shift+Enter adds a line)";
   const send = element(doc, "button", "send", "Send");
   send.type = "submit";
-  form.append(input, send);
+  const autoScroll = autoScrollButton(doc, actions); form.append(input, autoScroll.element, send);
   const workspace = columns(doc, {
     tree: files.element, file: fileViewer.element,
     panels: [panel.element, toolPanel.element, profilePanel.element, mcp.section, providers.section], transcript, composer: form,
@@ -507,8 +508,7 @@ export function createView(
   return {
     render(state) {
       // The chat body scrolls in the three columns; otherwise the page flows and nothing here scrolls.
-      const follow = transcript.parentElement ?? transcript;
-      const nearBottom = follow.scrollHeight - follow.scrollTop - follow.clientHeight < 80;
+      const follow = transcript.parentElement ?? transcript; autoScroll.update(state.following);
       status.textContent = state.ended
         ? `session ended${state.endError ? `: ${state.endError}` : ""}`
         : LINK_TEXT[state.link];
@@ -553,7 +553,7 @@ export function createView(
       input.placeholder = open
         ? "Answer the question above with its buttons"
         : "Message Vise (Enter sends, Shift+Enter adds a line)";
-      if (nearBottom) follow.scrollTop = follow.scrollHeight;
+      if (state.following) follow.scrollTop = follow.scrollHeight;
     },
   };
 }

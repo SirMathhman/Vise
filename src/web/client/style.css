@@ -723,3 +723,10 @@ input:not([type="checkbox"]):not([type="radio"]) {
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
+
+/* The auto-scroll toggle, beside the message box. */
+.composer .auto-scroll {
+  align-self: stretch;
+  font-size: 13px;
+  white-space: nowrap;
+}

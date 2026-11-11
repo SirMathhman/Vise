@@ -110,6 +110,8 @@ export interface ViewState {
   models: ModelInfo[];
   // How many of the last blocks of the transcript the page builds. Each press of the earlier button adds more.
   recent: number;
+  // Whether the transcript follows the newest message. Set by the auto-scroll toggle.
+  following: boolean;
   // The entries of each folder the page has read, keyed by its path ("" is the working directory).
   trees: Record<string, TreeEntry[]>;
   // The paths of the folders the user has opened in the file tree.
@@ -177,6 +179,11 @@ export interface ShowEarlierAction {
   kind: "showEarlier";
 }
 
+// The user turns auto-scroll on or off.
+export interface ToggleAutoScrollAction {
+  kind: "toggleAutoScroll";
+}
+
 export type ViewAction =
   | SentAction
   | ServerAction
@@ -185,7 +192,8 @@ export type ViewAction =
   | FolderOpenAction
   | FileShowAction
   | FileDropAction
-  | ShowEarlierAction;
+  | ShowEarlierAction
+  | ToggleAutoScrollAction;
 
 export const initialState: ViewState = {
   link: "connecting",
@@ -198,6 +206,7 @@ export const initialState: ViewState = {
   profiles: [],
   providers: [],
   recent: RECENT_BLOCKS,
+  following: true,
   currentModel: "",
   models: [],
   trees: {},
@@ -397,6 +406,8 @@ export function reduce(state: ViewState, action: ViewAction): ViewState {
       return applyEvent(state, action.event);
     case "link":
       return { ...state, link: action.link };
+    case "toggleAutoScroll":
+      return { ...state, following: !state.following };
     case "showEarlier":
       return { ...state, recent: state.recent + RECENT_BLOCKS };
     case "reset":

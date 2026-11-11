@@ -195,3 +195,10 @@ test("the earlier button raises how many of the last blocks are built", () => {
   const more = reduce(first, { kind: "showEarlier" });
   expect(more.recent).toBe(first.recent + 200);
 });
+
+test("auto-scroll starts on and a toggle turns it off and back on", () => {
+  expect(initialState.following).toBe(true);
+  const off = reduce(initialState, { kind: "toggleAutoScroll" });
+  expect(off.following).toBe(false);
+  expect(reduce(off, { kind: "toggleAutoScroll" }).following).toBe(true);
+});

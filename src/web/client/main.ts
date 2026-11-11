@@ -124,6 +124,9 @@ const view = createView(document, root, {
   writeMcp(servers) {
     send({ kind: "mcpWrite", servers });
   },
+  toggleAutoScroll() {
+    dispatch({ kind: "toggleAutoScroll" });
+  },
   showEarlier() {
     dispatch({ kind: "showEarlier" });
   },
