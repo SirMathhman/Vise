@@ -14,8 +14,8 @@ export interface FileActions {
   saveFile(path: string, text: string, base: string): void;
 }
 
-// The viewer: a row of tabs, one per open file, and the text of the shown file, with line numbers. A text file can be
-// edited in place; what is typed is saved a moment after the typing stops. A Markdown file opens rendered.
+// The viewer: a row of tabs, one per open file, and the text of the shown file in an editor, with line numbers. What is
+// typed is saved a moment after the typing stops. A Markdown file can also show a rendered preview above its editor.
 export interface FileViewer {
   element: HTMLElement;
   update(shown: FileShown): void;
@@ -24,13 +24,12 @@ export interface FileViewer {
 // The time after the last keystroke before a typed text is saved.
 const SAVE_DELAY_MS = 1000;
 
-// What the viewer keeps beyond the shown file: which files are being edited or shown as source, the typed text of each,
-// the text last saved, the version each file was last seen at, whether each uses Windows line ends, and the save that is
-// waiting.
+// What the viewer keeps beyond the shown file: which Markdown files show their preview, the typed text of each, the text
+// last saved, the version each file was last seen at, the text each file was last seen with, whether each uses Windows
+// line ends, and the save that is waiting.
 interface EditState {
   actions: FileActions;
-  editing: Set<string>;
-  source: Set<string>;
+  preview: Set<string>;
   drafts: Map<string, string>;
   saved: Map<string, string>;
   versions: Map<string, string>;
@@ -45,8 +44,7 @@ export function createFileViewer(doc: Document, actions: FileActions): FileViewe
   element.hidden = true;
   const state: EditState = {
     actions,
-    editing: new Set(),
-    source: new Set(),
+    preview: new Set(),
     drafts: new Map(),
     saved: new Map(),
     versions: new Map(),
@@ -79,70 +77,51 @@ export function createFileViewer(doc: Document, actions: FileActions): FileViewe
       // A refused save echoes the file's own text, which differs from what was sent. When the file's text has changed
       // and is not what was sent, forget that save, so the next flush sends the draft again, now with the new version.
       if (file !== undefined) forgetRefused(file, state);
-      // A save echoing back while its file is being typed in must not rebuild the editor, or the cursor would move.
-      if (file !== undefined && state.editing.has(file.path) && state.saved.get(file.path) === lf(file.text)) return;
+      // A save echoing back must not rebuild the editor, or the cursor would move.
+      if (file !== undefined && state.saved.get(file.path) === lf(file.text)) return;
       draw();
     },
   };
 }
 
-// The shown file's body: its text with line numbers, the editor, or its rendered Markdown, under its toolbar.
+// The shown file's body: a Markdown file's toolbar and optional preview, then its editor.
 function bodyOf(doc: Document, file: FileView | undefined, state: EditState, redraw: () => void): HTMLElement[] {
   if (file === undefined) return [preOf(doc, "loading…")];
   const path = file.path;
   const text = state.drafts.get(path) ?? file.text;
-  const toolbar = toolbarOf(doc, path, state, redraw);
-  if (isMarkdown(path) && !state.source.has(path) && !state.editing.has(path)) {
-    const view = doc.createElement("div");
-    view.className = "file-markdown";
-    view.append(...renderMarkdown(doc, text));
-    return [toolbar, view];
+  const parts: HTMLElement[] = [];
+  if (isMarkdown(path)) {
+    parts.push(toolbarOf(doc, path, state, redraw));
+    if (state.preview.has(path)) parts.push(previewOf(doc, text));
   }
-  const body = state.editing.has(path) ? editorOf(doc, path, text, state) : numberedOf(doc, text);
-  return [toolbar, body];
+  parts.push(editorOf(doc, path, text, state));
+  return parts;
 }
 
-// The buttons above the body: Source or Rendered for a Markdown file, and Edit or Done for any text file.
+// The Preview button of a Markdown file. The preview shows above the editor; the editor stays.
 function toolbarOf(doc: Document, path: string, state: EditState, redraw: () => void): HTMLElement {
   const bar = doc.createElement("div");
   bar.className = "file-toolbar";
-  if (isMarkdown(path)) {
-    const source = state.source.has(path);
-    bar.append(
-      buttonOf(doc, source ? "Rendered" : "Source", () => {
-        if (source) state.source.delete(path);
-        else state.source.add(path);
-        redraw();
-      }),
-    );
-  }
-  const editing = state.editing.has(path);
+  const previewing = state.preview.has(path);
   bar.append(
-    buttonOf(doc, editing ? "Done" : "Edit", () => {
-      if (editing) {
-        state.editing.delete(path);
-        flush(path, state);
-      } else {
-        state.editing.add(path);
-      }
+    buttonOf(doc, previewing ? "Hide preview" : "Preview", () => {
+      if (previewing) state.preview.delete(path);
+      else state.preview.add(path);
       redraw();
     }),
   );
   return bar;
 }
 
-// The text with its line numbers beside it. The numbers are not selectable, so copying the text copies only the text.
-function numberedOf(doc: Document, text: string): HTMLElement {
-  const body = doc.createElement("div");
-  body.className = "file-body";
-  const code = doc.createElement("pre");
-  code.className = "file-code";
-  code.textContent = text;
-  body.append(gutterOf(doc, text), code);
-  return body;
+function previewOf(doc: Document, text: string): HTMLElement {
+  const view = doc.createElement("div");
+  view.className = "file-markdown";
+  view.append(...renderMarkdown(doc, text));
+  return view;
 }
 
-// The editor: the text in a box that grows with it, beside its line numbers. Each keystroke schedules a save.
+// The editor: the text in a box that grows with it, beside its line numbers. The numbers are not selectable, so
+// copying the text copies only the text. Each keystroke schedules a save.
 function editorOf(doc: Document, path: string, text: string, state: EditState): HTMLElement {
   const body = doc.createElement("div");
   body.className = "file-body";
@@ -250,8 +229,7 @@ function tabOf(doc: Document, path: string, selected: boolean, state: EditState)
     flush(path, state);
     state.drafts.delete(path);
     state.saved.delete(path);
-    state.editing.delete(path);
-    state.source.delete(path);
+    state.preview.delete(path);
     state.actions.closeFile(path);
   });
   tab.append(name, close);
