@@ -50,16 +50,16 @@ export async function readMcpConfig(root: string): Promise<Result<McpServerConfi
   try {
     value = JSON.parse(text);
   } catch {
-    return err(new Error(`${MCP_FILE} is not JSON`));
+    return err(new Error(`${join(root, MCP_FILE)} is not JSON`));
   }
-  return parseServers(value);
+  return parseServers(value, join(root, MCP_FILE));
 }
 
 // Checks the shape of the file and each entry.
-export function parseServers(value: unknown): Result<McpServerConfig[]> {
+export function parseServers(value: unknown, label: string = MCP_FILE): Result<McpServerConfig[]> {
   const servers = (value as ServersFile | null)?.servers;
   if (typeof servers !== "object" || servers === null || Array.isArray(servers)) {
-    return err(new Error(`${MCP_FILE} needs a "servers" object`));
+    return err(new Error(`${label} needs a "servers" object`));
   }
   const configs: McpServerConfig[] = [];
   for (const [name, entry] of Object.entries(servers)) {
