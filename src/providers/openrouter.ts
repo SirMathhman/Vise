@@ -120,6 +120,8 @@ function toWire(message: ChatMessage, last: boolean): unknown {
 
 interface StreamOptions {
   apiKey: string;
+  // The chat completions URL. OpenRouter's when omitted; another OpenAI-compatible server names its own.
+  endpoint?: string;
   model: string;
   messages: ChatMessage[];
   fetch?(url: string, init: RequestInit): Promise<Response>;
@@ -201,7 +203,7 @@ async function postChat(
     const offered: ToolSpec[] = [...toolSpecs, ...(options.extraTools ?? [])].filter(
       (spec) => options.tools === undefined || options.tools.includes(spec.function.name),
     );
-    const response = await send(ENDPOINT, {
+    const response = await send(options.endpoint ?? ENDPOINT, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${options.apiKey}`,

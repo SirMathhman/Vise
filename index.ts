@@ -1,5 +1,6 @@
 import { readInstructions } from "./src/instructions.ts";
 import { providerFromEnv } from "./src/providers/provider.ts";
+import { readServers } from "./src/providers/config.ts";
 import { startSession } from "./src/backend/session.ts";
 import type { SessionPorts } from "./src/backend/ports.ts";
 import { err, ok, type Provider, type Result } from "./src/core/messages.ts";
@@ -204,7 +205,13 @@ async function changeFolder(folder: string, provider: Provider, selection: Model
 }
 
 if (import.meta.main) {
-  const built = providerFromEnv(process.env);
+  // The llama.cpp servers listed in .vise/providers.json, read once here with the rest of the folder's settings.
+  const servers = await readServers(process.cwd());
+  if (!servers.ok) {
+    console.error(servers.error.message);
+    process.exit(1);
+  }
+  const built = providerFromEnv(process.env, servers.value);
   if (!built.ok) {
     console.error(built.error.message);
     process.exit(1);
