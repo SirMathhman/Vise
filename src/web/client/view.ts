@@ -448,6 +448,10 @@ export function createView(
   const folder = folderBar(doc, actions);
   const files = createTreeSection(doc, actions);
   const fileViewer = createFileViewer(doc);
+  // The tree and the viewer share one row: side by side on a wide window, stacked on a narrow one.
+  const split = doc.createElement("div");
+  split.className = "split";
+  split.append(files.element, fileViewer.element);
   const panel = panelBox(doc);
   // What the panel was last built from, so an unchanged panel is left alone.
   let panelKey = "";
@@ -472,7 +476,7 @@ export function createView(
   const send = element(doc, "button", "send", "Send");
   send.type = "submit";
   form.append(input, send);
-  root.append(header, folder.element, files.element, fileViewer.dialog, panel.element, toolPanel.element, profilePanel.element, mcp.section, transcript, form, editor, mcp.dialog);
+  root.append(header, folder.element, split, panel.element, toolPanel.element, profilePanel.element, mcp.section, transcript, form, editor, mcp.dialog);
 
   input.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {

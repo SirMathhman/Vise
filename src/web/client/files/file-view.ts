@@ -1,18 +1,19 @@
 import type { FileView } from "../state.ts";
 
-// The viewer for one file: a dialog that shows its text. It opens when the page gets a new file, and
-// closes with its Close button.
+// The viewer for one file: a panel beside the tree that shows its text. It shows the file the page gets, and
+// its Close button hides it; a click on another file, or the same file again, shows it again.
 export interface FileViewer {
-  dialog: HTMLDialogElement;
+  element: HTMLElement;
   update(file: FileView | undefined): void;
 }
 
 export function createFileViewer(doc: Document): FileViewer {
-  const dialog = doc.createElement("dialog");
-  dialog.className = "file-viewer";
+  const element = doc.createElement("section");
+  element.className = "file-viewer";
+  element.hidden = true;
   let shown: FileView | undefined;
   return {
-    dialog,
+    element,
     update(file) {
       if (file === undefined || file === shown) return;
       shown = file;
@@ -21,11 +22,13 @@ export function createFileViewer(doc: Document): FileViewer {
       const close = doc.createElement("button");
       close.type = "button";
       close.textContent = "Close";
-      close.addEventListener("click", () => dialog.close());
+      close.addEventListener("click", () => {
+        element.hidden = true;
+      });
       const body = doc.createElement("pre");
       body.textContent = file.text;
-      dialog.replaceChildren(heading, close, body);
-      dialog.showModal();
+      element.replaceChildren(heading, close, body);
+      element.hidden = false;
     },
   };
 }

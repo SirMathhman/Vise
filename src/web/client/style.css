@@ -398,35 +398,37 @@ ul.tree:not(ul ul) {
   color: var(--muted);
 }
 
-/* The file viewer: the file's text in one scrolling box, which wraps long lines. */
-dialog.file-viewer {
-  width: min(900px, 96vw);
-  max-height: 90vh;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--bg);
-  color: var(--fg);
+/* The tree and the file viewer share a row. They stack on a narrow window and sit side by side on a wide one. */
+.split {
+  display: grid;
+  gap: 16px;
+  align-items: start;
 }
 
-/* display: flex above would show the dialog while it is closed, so a closed viewer is hidden here. */
-dialog.file-viewer:not([open]) {
+@media (min-width: 720px) {
+  .split {
+    grid-template-columns: minmax(200px, 1fr) 2fr;
+  }
+}
+
+/* The file viewer: its text is one scrolling box, which wraps long lines. */
+.file-viewer {
+  min-width: 0;
+}
+
+.file-viewer[hidden] {
   display: none;
 }
 
-dialog.file-viewer h2 {
-  margin: 0;
+.file-viewer h2 {
+  margin: 8px 0;
   font-size: 16px;
   overflow-wrap: anywhere;
 }
 
-dialog.file-viewer pre {
-  flex: 1;
-  min-height: 0;
-  margin: 0;
+.file-viewer pre {
+  max-height: 70vh;
+  margin: 8px 0 0;
   overflow: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
