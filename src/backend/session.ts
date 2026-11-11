@@ -147,11 +147,15 @@ function refuseWhileAsking(state: SessionState): boolean {
 }
 
 // Shows a file to the page. A file that is shown is kept in the open set, so the page has it again after a reload.
+// A file that can no longer be read (deleted, grown, or binary) is dropped from the set, so the page does not
+// keep a tab for it after a reload.
 async function showFileFor(state: SessionState, path: string): Promise<void> {
   const shown = await announceFile(state.ports, sink(state), path);
   if (shown && !state.openFiles.includes(path)) {
     state.openFiles = [...state.openFiles, path];
     sendOpenFiles(state);
+  } else if (!shown) {
+    closeFile(state, path);
   }
 }
 

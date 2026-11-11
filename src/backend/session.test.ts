@@ -528,3 +528,18 @@ test("a file that is shown is kept in the open set, a file that cannot be read i
   session.send({ kind: "inputEnded" });
   await until(events, "ended");
 });
+
+test("a file that can no longer be read is dropped from the open set", async () => {
+  let readable = true;
+  const fileText = async (path: string) => (readable && path === "a.txt" ? ok("A") : err(new Error("gone")));
+  const session = startSession({ ...portsFor([]), fileText });
+  const events = session.events()[Symbol.asyncIterator]();
+  session.send({ kind: "fileRead", path: "a.txt" });
+  await until(events, "openFiles");
+  readable = false;
+  session.send({ kind: "fileRead", path: "a.txt" });
+  const dropped = await until(events, "openFiles");
+  expect(dropped.at(-1)).toEqual({ kind: "openFiles", paths: [] });
+  session.send({ kind: "inputEnded" });
+  await until(events, "ended");
+});
