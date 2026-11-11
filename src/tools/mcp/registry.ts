@@ -61,15 +61,16 @@ export function noServers(): McpRegistry {
 
 // Starts every configured server: the working directory's, and the home folder's when one is given, a project
 // server replacing a home one with the same name. A server that fails is left out and named in `problems`; the
-// others still run. Only a broken config file fails the whole call.
+// others still run. A broken project file fails the whole call. A broken home file is named in `problems` and its
+// servers are not started, so a file in another tool's format does not stop the session.
 export async function startMcpServers(root: string, global?: string): Promise<Result<McpRegistry>> {
   const configs = await configsOf(root, global);
   if (!configs.ok) return err(configs.error);
   const tools: LoadedTool[] = [];
   const sessions: McpSession[] = [];
-  const problems: string[] = [];
+  const problems: string[] = configs.value.skipped.map((reason) => `home folder: ${reason}`);
   const statuses: McpServerStatus[] = [];
-  for (const config of configs.value) {
+  for (const config of configs.value.servers) {
     const loaded = await loadServer(root, config);
     if (!loaded.ok) {
       problems.push(`${config.name}: ${loaded.error.message}`);
@@ -244,8 +245,19 @@ function resultText(result: CallResult | undefined): string {
   return text || "(no output)";
 }
 
-async function configsOf(root: string, global: string | undefined): Promise<Result<McpServerConfig[]>> {
-  if (global === undefined) return readMcpConfig(root);
+interface StartList {
+  servers: McpServerConfig[];
+  skipped: string[];
+}
+
+async function configsOf(root: string, global: string | undefined): Promise<Result<StartList>> {
+  if (global === undefined) {
+    const local = await readMcpConfig(root);
+    return local.ok ? ok({ servers: local.value, skipped: [] }) : err(local.error);
+  }
   const both = await readScopedMcp(root, global);
-  return both.ok ? ok(effectiveServers(both.value)) : err(both.error);
+  if (both.ok) return ok({ servers: effectiveServers(both.value), skipped: [] });
+  const local = await readMcpConfig(root);
+  if (!local.ok) return err(local.error);
+  return ok({ servers: local.value, skipped: [both.error.message] });
 }

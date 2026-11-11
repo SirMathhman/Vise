@@ -1,6 +1,6 @@
 import { readInstructions } from "./src/instructions.ts";
 import { buildProvider } from "./src/providers/provider.ts";
-import { effectiveProviders, readScopedServers, scopedProvidersStore } from "./src/providers/config.ts";
+import { effectiveProviders, readScopedServers, readServers, scopedProvidersStore } from "./src/providers/config.ts";
 import { startSession } from "./src/backend/session.ts";
 import type { SessionPorts } from "./src/backend/ports.ts";
 import { err, ok, type Provider, type Result } from "./src/core/messages.ts";
@@ -246,12 +246,16 @@ async function changeFolder(folder: string, provider: Provider, selection: Model
 // Runs Vise. The Windows build (build/exe/server-entry.ts, written by scripts/build-exe.ts) passes the page's files it embeds.
 export async function main(embedded?: WebAssets): Promise<void> {
   // The providers listed in the folder's and the home folder's .vise/providers.json, read once here.
-  const servers = await readScopedServers(process.cwd(), GLOBAL_FOLDER);
-  if (!servers.ok) {
-    console.error(servers.error.message);
+  // A broken home file is a warning, and only the project's providers are used, so a file the home folder holds in
+  // another format does not stop the start.
+  const scoped = await readScopedServers(process.cwd(), GLOBAL_FOLDER);
+  const listed = scoped.ok ? scoped : await readServers(process.cwd());
+  if (!scoped.ok) console.error(`warning: the home folder's providers are not used: ${scoped.error.message}`);
+  if (!listed.ok) {
+    console.error(listed.error.message);
     process.exit(1);
   }
-  const built = buildProvider(effectiveProviders(servers.value));
+  const built = buildProvider(effectiveProviders(listed.value));
   if (!built.ok) {
     console.error(built.error.message);
     process.exit(1);
