@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { profileFile, type ProfileDetail } from "../../core/notes.ts";
-import { profileStore } from "./profile-store.ts";
+import { profileStore, scopedProfileStore } from "./profile-store.ts";
 
 const plan: ProfileDetail = {
   name: "plan",
@@ -42,4 +42,22 @@ test("refuses a write for a profile that does not exist, a tool that does not ex
     (await store.write({ ...plan, hooks: [{ point: "sessionStart", command: "a\nb" }] })).ok,
   ).toBe(false);
   expect(await store.read("../plan")).toMatchObject({ ok: false });
+});
+
+test("a project profile replaces a home profile of the same name, and a home profile shows when the project has none", async () => {
+  const local = await rootWithPlan();
+  const home = await rootWithPlan();
+  await writeFile(join(home, "notes", "profile", "review.md"), profileFile({ ...plan, name: "review", summary: "home review" }), "utf8");
+  const store = scopedProfileStore(local, home, toolNames);
+  expect(await store.list()).toEqual({
+    ok: true,
+    value: [
+      { name: "plan", summary: "careful planning", scope: "local" },
+      { name: "review", summary: "home review", scope: "global" },
+    ],
+  });
+  expect(await store.read("review")).toEqual({
+    ok: true,
+    value: { name: "review", summary: "home review", tools: ["list_files"], hooks: plan.hooks, text: plan.text },
+  });
 });
