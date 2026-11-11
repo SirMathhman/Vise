@@ -1,18 +1,21 @@
 import { separators } from "./separators.ts";
 
 // The page's body in three columns: the Files tree, the file, and the chat. While a file is open on a wide
-// window the three show side by side; on a narrower window the columns stack, tree first. The chat's panels
-// form one group, capped in height, so a long panel cannot push the transcript and the composer off the window.
+// window the three show side by side; on a narrower window the columns stack, tree first. The chat is two parts:
+// its body, which holds the panels and the transcript as one scrolling region, and its composer, which stays at
+// the bottom of the column.
 export interface ColumnParts {
   tree: HTMLElement;
   file: HTMLElement;
   panels: HTMLElement[];
-  rest: HTMLElement[];
+  transcript: HTMLElement;
+  composer: HTMLElement;
 }
 
 export function columns(doc: Document, parts: ColumnParts): HTMLElement {
   const panelGroup = block(doc, "chat-panels", parts.panels);
-  const chat = block(doc, "chat", [panelGroup, ...parts.rest]);
+  const body = block(doc, "chat-body", [panelGroup, parts.transcript]);
+  const chat = block(doc, "chat", [body, parts.composer]);
   const workspace = block(doc, "workspace", []);
   const [treeHandle, chatHandle] = separators(doc, workspace);
   workspace.append(

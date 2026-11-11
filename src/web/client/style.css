@@ -512,10 +512,15 @@ ul.tree:not(ul ul) {
     flex: 0 0 auto;
   }
 
-  #app.split-view .chat > .transcript {
+  /* The panels and the transcript are one scrolling region, so the composer stays at the bottom of the column. */
+  #app.split-view .chat .chat-body {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+  }
+
+  #app.split-view .chat .transcript {
+    overflow: visible;
   }
 
   #app.split-view .chat > .composer {

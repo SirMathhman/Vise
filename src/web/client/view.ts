@@ -496,7 +496,8 @@ export function createView(
     tree: files.element,
     file: fileViewer.element,
     panels: [panel.element, toolPanel.element, profilePanel.element, mcp.section],
-    rest: [transcript, form],
+    transcript,
+    composer: form,
   });
   root.append(header, folder.element, workspace, editor, mcp.dialog);
 
@@ -504,8 +505,9 @@ export function createView(
 
   return {
     render(state) {
-      const nearBottom =
-        transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight < 80;
+      // The chat body scrolls in the three columns; otherwise the page flows and nothing here scrolls.
+      const follow = transcript.parentElement ?? transcript;
+      const nearBottom = follow.scrollHeight - follow.scrollTop - follow.clientHeight < 80;
       status.textContent = state.ended
         ? `session ended${state.endError ? `: ${state.endError}` : ""}`
         : LINK_TEXT[state.link];
@@ -551,7 +553,7 @@ export function createView(
       input.placeholder = open
         ? "Answer the question above with its buttons"
         : "Message Vise (Enter sends, Shift+Enter adds a line)";
-      if (nearBottom) transcript.scrollTop = transcript.scrollHeight;
+      if (nearBottom) follow.scrollTop = follow.scrollHeight;
     },
   };
 }

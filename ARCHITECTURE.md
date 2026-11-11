@@ -81,6 +81,7 @@ Decisions that keep F4 and F5 true across the split:
 - **No work after the end (F5).** The backend owns the inbox of lines. `finished()` is `exitRequested || streamError || !inbox.more`, so queued lines still count as input.
 - **Presentation is the frontend's.** Sanitizing, the thinking line's redraw, the 4000-character display cap on hook output, and prompts are done by the frontend's renderer. The backend never writes escape sequences.
 - **Command handlers** emit `notice` and `error` events and do not take a stream.
+- **Browser storage.** The page may keep in `localStorage` only per-viewer layout preferences: the column widths under `vise.columnWidths`. It keeps no conversation text, file contents, file names, tokens, approvals, or MCP configuration there, since a shared or left-open browser would expose them. Every value read back is untrusted: it is checked for type and clamped to the same minimums and room as a drag, so a bad stored value cannot break the layout. Every read and write is wrapped in try/catch, and the page renders correctly without storage.
 
 The dependency rules are in Dependency direction below.
 
@@ -247,7 +248,8 @@ Target layout. Test files sit beside the module each one tests; there is no sepa
         │       │   ├── tree-view.ts      the file tree; a click on a file sends fileRead
         │       │   └── file-view.ts      the viewer panel: one tab per open file and the text of the shown one; a tab's Close button sends fileClose, and the panel is hidden while no file is open
         │       ├── layout/
-        │       │   └── columns.ts       the page's body: the tree column, the file column, and the chat column (panels, transcript, composer) in one workspace element; the CSS for the three-column split is at the end of style.css, in a 960px media query
+        │       │   ├── columns.ts       the page's body: the tree column, the file column, and the chat column (panels, transcript, composer) in one workspace element; the CSS for the three-column split is at the end of style.css, in a 960px media query
+        │       │   └── separators.ts    the two movable separators between the columns: a drag or an arrow key sets a column's width, kept within its minimum; the widths are saved in localStorage (see Browser storage under Decisions)
         │       ├── mcp-view.ts          the MCP panel and its server editor, built from the state; sends mcpWrite. Also panelBox, the folding panel every list uses (see Known Problems)
         │       └── view.ts              DOM from the state and from the Markdown blocks, text set with textContent only; sets the split-view class on the app while a file is open
         └── tools/                       disk, process, network, and settings work for the tools and the frontend
@@ -318,7 +320,7 @@ Each item is a known defect or gap. Fixes are listed under Future Work.
 - **A folder that fails to list stays at "loading…".** The server answers a `treeRead` that fails with an `error` event, but the page keeps no entry for that folder, so the folder shows "loading…" until it is closed and opened again. The error event does not name the folder, so the page cannot clear the state itself. Missing control: the `tree` event (or a failure event that carries the path) should give the folder an empty or failed state.
 - **The file tree has no cap.** A folder's entries go to the page in one `tree` event with no limit on their count, so a folder such as `node_modules` is sent whole, as `list_files` output is (see Cost and size limits).
 - **The layout's column membership is decided in two places.** `view.ts` decides which elements go in the Files column and which in the chat column (the `columns()` call), and `style.css` decides how the split looks from the `split-view` class and from child selectors such as `.chat > .transcript`, `.chat > .composer`, `.chat .chat-panels`, and `.tree-column > details`. A new panel that is not added to the right array, a new child of `.chat`, or a change to the tree's markup changes the layout without a type or test catching it. `columns.ts` has no test of its own, so nothing checks that the three columns and their classes match the stylesheet. Missing control: give the column classes one shared constant, and a test that renders `columns()` and checks each class is present once.
-- **The chat has two scroll regions while a file is open.** In the three-column layout, `.chat-panels` is capped at 40% of the column and scrolls, and the transcript scrolls below it (verified at 1280px: the panels show their own scrollbar beside the transcript). The user's rule is one scrollable region per pane. Missing control: the panels and the transcript should share one scroll region, or the panels should collapse to their headers by default so the cap rarely applies.
+- **Saved column widths are not checked on read.** `readWidths` (`src/web/client/layout/separators.ts`) accepts any finite number and `applyWidths` sets it without a clamp. A stored `{"tree":5000,"chat":-300}` (verified) makes `grid-template-columns` invalid, so the three columns fall back to one stacked column at 1140px. The separators stay in the page, and dragging one rewrites the value only on pointer-up, so the user cannot recover without clearing storage. Missing control: clamp each stored value to the same minimum and room that `setWidth` uses.
 - **The tree's rows are small targets.** Folder and file rows are 25px tall (verified), below the 32px target. A file row reuses the `folder-toggle` class, which names a different control.
 
 #### Input and the session
@@ -527,6 +529,8 @@ Status is **missing**, **partial**, or in place.
 
 #### Browser layout
 
+- Clamp the stored column widths on read (see Known Problems), using the same minimums and room as `setWidth` in `separators.ts`.
+- Add an `event.button === 0` check to the separators' `pointerdown`, so a right-click does not start a drag.
 
 #### Errors and exit
 
