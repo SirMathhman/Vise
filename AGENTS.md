@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 - Install: `bun install`
-- Run the terminal chat app: `bun run start` (same as `bun run index.ts`). Run the browser frontend with `bun run web` or `bun run index.ts --web`. Both need `OPENROUTER_API_KEY` in `.env`; Bun loads that file itself.
+- Run the terminal chat app: `bun run start` (same as `bun run index.ts`). Run the browser frontend with `bun run web` or `bun run index.ts --web`. Both need at least one provider listed in `.vise/providers.json` (setup is in README.md). Keys are read from that file only, never from the environment.
 - Browser server with restart on change: `bun run web:dev`.
 - Test all: `bun test`
 - Test one file: `bun test src/repl/repl.test.ts`. One test by name: `bun test src/repl/repl.test.ts -t "name substring"`.
@@ -37,7 +37,14 @@ The code is split into a frontend and a backend, joined by a typed event protoco
 - `src/repl/` is the terminal frontend: `repl.ts` owns readline and prints events, and `render.ts` turns events into terminal text and sanitizes them.
 - `src/web/` is the browser frontend: a WebSocket relay in `server/` and a plain TypeScript page in `client/`. The client is built for the browser and never runs under Bun.
 - `src/core/` is pure: line classification (`commands.ts`), the conversation state and compaction (`compaction.ts`), tool specs and argument parsing (`tools.ts`), notes and profiles (`notes.ts`), saved sessions (`sessions.ts`), and the shared types and ports (`messages.ts`).
-- `src/openrouter.ts` is the only network code. It converts history to the wire format, streams events, and returns each text delta as a `Result`.
-- `src/tools/` does the disk, process, and settings work. `run-tool.ts` dispatches calls by name and checks the target before asking for approval. `mcp/` starts the MCP servers listed in `.vise/mcp.json` and runs their tools as `<server>__<tool>`. `files/` holds the file tools and shares `contain.ts`. `run-powershell.ts` and `jobs.ts` run commands and track background jobs. `hooks/`, `notes/`, `models/`, `resume/`, and the settings and session stores are beside them.
+- `src/providers/` is the model provider behind the `Provider` contract in `src/core/messages.ts`. `provider.ts` builds one provider from `.vise/providers.json`, `openrouter.ts` and `llama-cpp.ts` are the network adapters (they share the stream in `openrouter.ts`), and `router.ts` sends a `<name>::<id>` model to its provider. Only `openrouter.ts`, `llama-cpp.ts`, and `src/tools/mcp/http-client.ts` open network connections.
+- `src/tools/` does the disk, process, and settings work. `run-tool.ts` dispatches calls by name and checks the target before asking for approval. `mcp/` starts the MCP servers listed in `.vise/mcp.json` and runs their tools as `<server>__<tool>`. `files/` holds the file tools and shares `contain.ts`. `run-powershell.ts` and `jobs.ts` run commands and track background jobs. `undo/` holds the undo log (`undo-log.ts`, pure) and the file reverts (`undo-files.ts`). `hooks/`, `notes/`, `models/`, `resume/`, and the settings and session stores are beside them.
 
 Tests live beside the module they test. There is no separate `tests/` folder.
+
+## Documentation
+
+- `README.md` is the quick start for people: setup, providers, running the app, and the files under `.vise/`. It does not repeat the commands below.
+- `AGENTS.md` (this file) is the reference for making a change: commands, lint rules, and the code layout.
+- `ARCHITECTURE.md` is the design: invariants, behaviour, the security model, the target layout, Known Problems, and Future Work. When a change fixes a Known Problem, remove it; when it adds a gap, record it there with its location.
+- Do not add documentation files at the repository root. The root is close to the file limit (see Lint rules), so put new docs in a folder.
