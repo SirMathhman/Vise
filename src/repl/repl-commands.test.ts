@@ -1,39 +1,8 @@
 import { expect, test } from "bun:test";
-import { toolNames } from "../core/tools.ts";
 import { Readable, Writable } from "node:stream";
 import { type ChatMessage, type Reply, type ReplyRequest, err, ok } from "../core/messages.ts";
-import { echoReply, runWithPorts } from "./session-helper.ts";
-import type { SessionPorts } from "../backend/ports.ts";
+import { ports, runWithPorts } from "./session-helper.ts";
 import { encodeSession } from "../core/sessions.ts";
-
-// The ports a test session uses. Each test overrides only the ports it needs.
-function ports(overrides: Partial<SessionPorts> = {}): SessionPorts {
-  return {
-    allTools: toolNames,
-    reply: echoReply,
-    contextWindow: async () =>
-      err(new Error("no context window is configured")),
-    tools: async () => "no tools are available",
-    notes: async () => "notes are not available",
-    profile: async () => err(new Error("no profiles are available")),
-    profileTools: async () => ok(undefined),
-    profileHooks: async () => ok([]),
-    hooks: async () => ok(""),
-    models: {
-      current: () => "m",
-      list: async () => ok([]),
-      select: async (name: string) => ok(name),
-    },
-    disabledTools: [],
-    saveDisabledTools: async () => ok(undefined),
-    sessions: {
-      save: async () => ok(undefined),
-      load: async () => err(new Error("none")),
-      list: async () => ok([]),
-    },
-    ...overrides,
-  };
-}
 
 test("a switched profile is sent once, with the next message, and history already sent is kept", async () => {
   const seen: ChatMessage[][] = [];
