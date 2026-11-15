@@ -165,7 +165,7 @@ The approval question shows the change or command, and the answer is a line the 
 
 ### Thinking
 
-`/thinking` sets the reasoning effort for the next request, sent as the request's `reasoning` effort. It is off by default.
+`/thinking` sets the reasoning effort for the next request, sent as the request's `reasoning` effort. Thinking is on at `low` by default. The level is saved to `.vise/thinking.json` (`off` turns it off), and it is read at startup, so a session with no saved file starts at `low`. `/new` and `/load` keep the level in use. The page's header has a dropdown beside the model selector that sends `/thinking <level>`, as the model selector sends `/model`. The backend announces the level in use with a `thinkingSetting` event, at the start and after each command.
 
 - While the model thinks, one line shows an approximate count of thinking tokens. The estimate is four characters to a token, from the reasoning text in the stream (`delta.reasoning_details` and `delta.reasoning`).
 - When the reply ends, the line shows the exact count from the usage report (`completion_tokens_details.reasoning_tokens`), or the estimate when the provider gives none.
@@ -321,6 +321,7 @@ Target layout. Test files sit beside the module each one tests; there is no sepa
             │   └── hooks.ts             the hooks file (.vise/hooks.json) and the runner for one point's commands
             ├── models/
             │   ├── model-settings.ts    .vise/model.json: readModelSetting (at startup) and saveModelSetting (via /model <name>)
+            │   ├── thinking-settings.ts .vise/thinking.json: readThinkingSetting (at startup, default low) and saveThinkingSetting (via /thinking)
             │   └── select-model.ts      selectModel: refuses unlisted names, saves the choice, then switches the model
             ├── files/                   one runner per file tool; contain.ts (resolveInside, resolveNewInside)
             └── notes/
@@ -411,7 +412,7 @@ Each item is a known defect or gap. Fixes are listed under Future Work.
 
 #### Models and reasoning
 
-- **Reasoning is not kept in the history.** `AssistantMessage` has no field for reasoning, and `toWire` sends an assistant message with only its text and tool calls. The stream's `reasoning_details` are read for the thinking count and then dropped. The provider expects the reasoning of a tool-calling message to come back unchanged, so with `/thinking` on, the second round of a tool loop may fail. This is unverified and needs a live probe with a tool call.
+- **Reasoning is not kept in the history.** `AssistantMessage` has no field for reasoning, and `toWire` sends an assistant message with only its text and tool calls. The stream's `reasoning_details` are read for the thinking count and then dropped. The provider expects the reasoning of a tool-calling message to come back unchanged, so with `/thinking` on, the second round of a tool loop may fail. A live probe with thinking at `low` ran one tool round and the follow-up answer came back without an error, but the model emitted no thinking in that round, so the reasoning items were not exercised. This stays unverified until a probe makes the model think before a tool call.
 - **The shared stream names OpenRouter for every server.** `streamChat` in `src/providers/openrouter.ts` words its errors with OpenRouter (`OpenRouter returned 500`, `OpenRouter stream ended`), and llama.cpp replies use the same stream, so a llama.cpp failure reads as an OpenRouter one. The stream also sits in the OpenRouter module, so `llama-cpp.ts` depends on an adapter (see the dependency rule).
 - **A failed listing reads as a missing provider.** When the list fails, `loadModels` reports the error and the list is empty, but the selector's empty option says `no models: add a provider`, which is wrong for a network or parse failure.
 - **The selector rebuilds its options on each filter key and each render while open.** `renderList` replaces every option, and `offered` filters and sorts the whole list each time. This is fine for a few hundred models, and a list in the thousands would need a cap on the options shown.

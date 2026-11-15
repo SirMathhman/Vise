@@ -49,6 +49,7 @@ Settings live in `.vise/` in the working folder, and each one can also exist in 
 | `.vise/hooks.json` | commands run at session and turn start and end | you |
 | `.vise/tools.json` | tools switched off | `/tools` |
 | `.vise/model.json` | the chosen model | `/model` |
+| `.vise/thinking.json` | the thinking level (`off`, `low`, `medium`, `high`; `low` when absent) | `/thinking`, and the page's thinking control |
 | `.vise/sessions/` | saved conversations | `/save`, and autosave |
 | `notes/<category>/<name>.md` | notes; a `profile` note holds custom instructions for the model | `/note`, and the file tools |
 | `AGENTS.md` | instructions sent to the model at the start of every conversation | you |
