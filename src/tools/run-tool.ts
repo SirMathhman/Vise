@@ -26,6 +26,7 @@ import { noServers } from "./mcp/registry.ts";
 import { resolveInside, resolveNewInside } from "./files/contain.ts";
 import { createFile } from "./files/create-file.ts";
 import { applyEdit, editPreview, planEdit } from "./files/edit-file.ts";
+import { sessionContainer, type SessionContainer } from "./container/session-container.ts";
 import { listFiles } from "./files/list-files.ts";
 import { readFileLines } from "./files/read-file.ts";
 import { createNote } from "./notes/create-note.ts";
@@ -37,14 +38,16 @@ import type { UndoStore } from "../core/messages.ts";
 // The tool runner for a working directory and the MCP servers that started. A change or command is
 // checked and previewed, and it runs only if `approve` says yes. Errors come back as text for the
 // model to read.
-// With `autoEdits` (an unattended run), an edit is written without asking. Its target is still checked, and
-// its write still refuses a file that changed since the edit was shown.
+// An unattended run writes an edit without asking (its target is still checked, and its write still refuses a
+// file that changed since the edit was shown), and runs a command in the session's container instead of on the
+// host. Commands still ask for approval either way.
 export function runTool(
   root: string,
   mcp: McpRegistry = noServers(),
   undo: UndoStore = undoStore(root),
-  autoEdits = false,
+  unattended = false,
 ): ToolRunner {
+  const container = unattended ? sessionContainer(root) : undefined;
   return async (call: ToolCall, approve: Approve, offered: string[]) => {
     // A tool switched off is refused here, so no caller of the runner can run it.
     const known = toolNames.includes(call.name) || mcp.has(call.name);
@@ -57,16 +60,25 @@ export function runTool(
     if (needsApproval(call)) {
       const problem = await checkTarget(root, call);
       if (problem) return `error: ${problem}`;
-      if (call.name === EDIT_FILE) return runEdit(root, call, autoEdits ? allowEdit : approve, undo);
+      if (call.name === EDIT_FILE) return runEdit(root, call, unattended ? allowEdit : approve, undo);
       const preview = approvalPreview(call);
       if (preview !== undefined && !(await approve(preview)))
         return "the user declined this change";
     }
     if (mcp.has(call.name)) return mcp.call(call.name, call.arguments);
+    if (container && call.name === RUN_POWERSHELL) return runInSession(container, call);
     const written = writtenPath(call);
     if (written !== undefined) return undo.around(written, () => dispatch(root, call));
     return dispatch(root, call);
   };
+}
+
+// Runs a command in the session's container. Its arguments are checked here, as dispatch checks them on the host.
+async function runInSession(container: SessionContainer, call: ToolCall): Promise<string> {
+  const args = parseRunPowershellArgs(call.arguments);
+  if (!args.ok) return `invalid arguments: ${args.error.message}`;
+  const result = await container.run(args.value.command);
+  return result.ok ? result.value : `error: ${result.error.message}`;
 }
 
 // The approval of an unattended run: every edit is allowed, and the checks before and at the write still apply.

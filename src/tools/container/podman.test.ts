@@ -3,10 +3,10 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ok } from "../../core/messages.ts";
-import { ensureContainer, execInContainer, podman, removeContainer, type ContainerSpec } from "./podman.ts";
+import { ensureContainer, execInContainer, podmanRunning, removeContainer, type ContainerSpec } from "./podman.ts";
 
 // The tests need the podman machine running; without it they are skipped.
-const available = (await podman(["version"])).ok && (await podman(["version"]).then((r) => r.ok && r.value.code === 0));
+const available = await podmanRunning();
 
 test.skipIf(!available)("a session container runs commands in the folder, and what it writes reaches the folder", async () => {
   const folder = await mkdtemp(join(tmpdir(), "vise-container-"));

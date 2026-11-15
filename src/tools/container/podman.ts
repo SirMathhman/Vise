@@ -12,6 +12,7 @@ export interface ContainerSpec {
 }
 
 const TIMEOUT_MS = 60_000;
+const BUILD_TIMEOUT_MS = 600_000;
 
 // The arguments of `podman run` that create a session container.
 export function createArgs(spec: ContainerSpec): string[] {
@@ -43,20 +44,42 @@ interface PodmanOutput {
 
 // Runs `podman` with these arguments, with no shell, and returns its exit code and output. A run that
 // outlives the timeout is killed and reported as a failure.
-export async function podman(args: string[]): Promise<Result<PodmanOutput>> {
+export async function podman(args: string[], timeoutMs = TIMEOUT_MS): Promise<Result<PodmanOutput>> {
   try {
     const proc = Bun.spawn(["podman", ...args], { stdout: "pipe", stderr: "pipe" });
-    const timer = setTimeout(() => proc.kill(), TIMEOUT_MS);
+    const limit = setTimeout(() => proc.kill(), timeoutMs);
     const [stdout, stderr] = await Promise.all([
       new Response(proc.stdout).text(),
       new Response(proc.stderr).text(),
     ]);
     const code = await proc.exited;
-    clearTimeout(timer);
+    clearTimeout(limit);
     return ok({ code, output: `${stdout}${stderr}` });
   } catch (error) {
     return err(error instanceof Error ? error : new Error(String(error)));
   }
+}
+
+// Whether the podman machine answers. The tests that need it are skipped when it does not.
+export async function podmanRunning(): Promise<boolean> {
+  const version = await podman(["version"]);
+  return version.ok && version.value.code === 0;
+}
+
+// The names of every container, running or not.
+export async function containerNames(): Promise<string[]> {
+  const listed = await podman(["ps", "-a", "--format", "{{.Names}}"]);
+  if (!listed.ok || listed.value.code !== 0) return [];
+  return listed.value.output.split("\n").map((name) => name.trim()).filter((name) => name !== "");
+}
+
+// Builds the image from its Containerfile when it is not built yet. A build may take minutes, so it has a
+// longer limit than other podman runs.
+export async function ensureImage(tag: string, containerfile: string, context: string): Promise<Result<void>> {
+  const exists = await podman(["image", "exists", tag]);
+  if (!exists.ok) return err(exists.error);
+  if (exists.value.code === 0) return ok(undefined);
+  return succeeded(await podman(["build", "-t", tag, "-f", containerfile, context], BUILD_TIMEOUT_MS));
 }
 
 // Makes sure the session container is running: reuses it when it runs, starts it when it exists stopped, and
@@ -66,9 +89,9 @@ export async function ensureContainer(spec: ContainerSpec): Promise<Result<void>
   if (!inspected.ok) return err(inspected.error);
   if (inspected.value.code === 0) {
     if (inspected.value.output.trim() === "true") return ok(undefined);
-    return started(await podman(["start", spec.name]));
+    return succeeded(await podman(["start", spec.name]));
   }
-  return started(await podman(createArgs(spec)));
+  return succeeded(await podman(createArgs(spec)));
 }
 
 // Runs a shell command in the container, in /work, and returns its exit code and output.
@@ -83,7 +106,8 @@ export async function removeContainer(name: string): Promise<Result<void>> {
   return removed.value.code === 0 ? ok(undefined) : err(new Error(removed.value.output.trim()));
 }
 
-function started(result: Result<PodmanOutput>): Result<void> {
+// A podman run that must succeed: its output is the error when it does not.
+function succeeded(result: Result<PodmanOutput>): Result<void> {
   if (!result.ok) return err(result.error);
   return result.value.code === 0 ? ok(undefined) : err(new Error(result.value.output.trim()));
 }

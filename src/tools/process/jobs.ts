@@ -1,6 +1,7 @@
 import { err, ok, type Result } from "../../core/messages.ts";
 import { MAX_LINES } from "../../core/tools.ts";
 import { childEnvironment } from "./child-env.ts";
+import { timer } from "./timer.ts";
 
 export const MAX_JOBS = 5;
 // A line longer than this is cut, so one line cannot grow memory without limit.
@@ -91,6 +92,9 @@ export interface Job {
   // Resolves when both output streams have been read to their end. A child process that keeps
   // a stream open keeps this pending.
   drained: Promise<void>;
+  // Stops the command where it runs, when that is not this process (a command in a container). Absent for
+  // a command that runs as this process. Returns whether the stop was sent.
+  stopWithin?(): Promise<boolean>;
 }
 
 const jobs = new Map<number, Job>();
@@ -175,10 +179,26 @@ export async function killJob(
   if (!job) return err(new Error(`no job ${id}`));
   if (job.status !== "running")
     return err(new Error(`job ${id} is not running`));
+  if (job.stopWithin) {
+    if (!(await job.stopWithin()))
+      return err(new Error(`could not stop job ${id} inside its container; it may still be running`));
+    // Once the command has stopped inside, its client exits on its own. The client is stopped below only if it does not.
+    if (await exitedWithin(job, STOP_WAIT_MS)) return ok(`job ${id} stopped`);
+  }
   if (!(await stop(job.pid)))
     return err(new Error(`could not stop job ${id}; it may still be running`));
   if (job.status === "running") job.status = "killed";
   return ok(`job ${id} stopped`);
+}
+
+const STOP_WAIT_MS = 2_000;
+
+// Whether the job's process exits within `ms`.
+async function exitedWithin(job: Job, ms: number): Promise<boolean> {
+  const limit = timer(ms);
+  const outcome = await Promise.race([job.exited.then(() => "exited" as const), limit.done]);
+  limit.cancel();
+  return outcome === "exited";
 }
 
 // Stops every running job, retrying those that failed to stop. Returns the jobs that could not
