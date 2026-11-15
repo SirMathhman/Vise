@@ -1,4 +1,4 @@
-import { err, ok, type Result } from "./messages.ts";
+import { err, ok, type Result } from "../core/messages.ts";
 
 const FLAG = "--max-rounds";
 
