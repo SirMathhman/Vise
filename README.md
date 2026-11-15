@@ -36,7 +36,7 @@ bun run build:exe   # build/exe/vise.exe, a window that shows Vise (needs Rust a
 
 Run `build/exe/vise.exe` from the folder you want to work in: the session works in the folder it is started from. Closing the window ends the session.
 
-Add `--unattended` to a start (for example `bun run index.ts --unattended`) for a run you leave alone: edits are approved without asking, commands still ask, and three rounds in a row in which every call fails end the message. Add `--max-rounds N` to cap how many requests one message may make. The flags are not saved.
+Add `--unattended` to a start (for example `bun run index.ts --unattended`) for a run you leave alone: edits are approved without asking, commands still ask, and three rounds in a row in which every call fails end the message. Add `--max-rounds N` to cap how many requests one message may make. The flags are not saved. In an unattended run, commands run in a podman container, not on the host. This needs the podman machine running, for example `CONTAINERS_MACHINE_PROVIDER=wsl podman machine start <name>` on Windows; the first command builds the image, which needs the network.
 
 Type `/help` in a session to list its commands.
 

@@ -5,6 +5,7 @@ import { startSession } from "./src/backend/session.ts";
 import type { SessionPorts } from "./src/backend/ports.ts";
 import { err, ok, type Provider, type ReasoningEffort, type Result } from "./src/core/messages.ts";
 import { maxRoundsOf } from "./src/tools/start-options.ts";
+import { stopSessionContainers } from "./src/tools/container/session-container.ts";
 import type { Session } from "./src/protocol/protocol.ts";
 import { runRepl } from "./src/repl/repl.ts";
 import { buildAssets } from "./src/web/server/page.ts";
@@ -166,6 +167,7 @@ async function runWeb(
 async function stopEverything(): Promise<void> {
   await servers.stop();
   await stopJobs();
+  await stopSessionContainers();
 }
 
 // Stops every background job, and warns about each one that could not be stopped.

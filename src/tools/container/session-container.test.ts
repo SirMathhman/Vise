@@ -4,9 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { toolNames } from "../../core/tools.ts";
 import { runTool } from "../run-tool.ts";
-import { containerNames, podmanRunning } from "./podman.ts";
-import { sessionContainer } from "./session-container.ts";
-import { removeContainer } from "./podman.ts";
+import { containerNames, podman, podmanRunning, removeContainer } from "./podman.ts";
+import { sessionContainer, stopSessionContainers } from "./session-container.ts";
 
 // The tests need the podman machine running; without it they are skipped. The first run builds the image,
 // which needs the network, so these tests have a long limit.
@@ -24,6 +23,11 @@ test.skipIf(!available)("a session container has git, runs commands in the folde
     const second = await container.run("echo again");
     expect(second.ok).toBe(true);
     if (second.ok) expect(second.value).toContain("again");
+    // Ending the session stops the container, and does not remove it.
+    await stopSessionContainers();
+    const state = await podman(["container", "inspect", "-f", "{{.State.Running}}", container.name]);
+    expect(state.ok).toBe(true);
+    if (state.ok) expect(state.value.output.trim()).toBe("false");
   } finally {
     await removeContainer(container.name);
   }

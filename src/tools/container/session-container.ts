@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { err, type Result } from "../../core/messages.ts";
 import { runInContainer } from "./container-command.ts";
-import { ensureContainer, ensureImage, type ContainerSpec } from "./podman.ts";
+import { ensureContainer, ensureImage, podman, type ContainerSpec } from "./podman.ts";
 
 // The image every session container is made from, built from ./Containerfile on first use.
 const IMAGE = "vise-base";
@@ -33,9 +33,21 @@ export function sessionContainer(folder: string): SessionContainer {
   };
 }
 
+// The containers this process made. They are stopped, not removed, when the session ends, so a later session
+// can start the same container again.
+const made = new Set<string>();
+
+// Stops the session containers this process made. A container that cannot be stopped is left as it is.
+export async function stopSessionContainers(): Promise<void> {
+  for (const name of made) await podman(["stop", "-t", "1", name]);
+  made.clear();
+}
+
 // Builds the image if needed, then makes the session container running.
 async function prepare(spec: ContainerSpec): Promise<Result<void>> {
   const image = await ensureImage(IMAGE, CONTAINERFILE, import.meta.dir);
-  if (!image.ok) return image;
-  return ensureContainer(spec);
+  if (!image.ok) return err(image.error);
+  const up = await ensureContainer(spec);
+  if (up.ok) made.add(spec.name);
+  return up;
 }
