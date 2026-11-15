@@ -450,6 +450,7 @@ Each item is a known defect or gap. Fixes are listed under Future Work.
 - **Undo covers file tools only, and its records are in memory.** `/undo` reverts edits and creates made by `edit_file`, `create_file`, and `create_note`. A command run with `run_powershell` is not recorded, and the conversation still shows the edits. Every turn keeps its full record of the bytes before its changes, and no byte limit exists, so memory grows with the bytes of the files changed for the whole session. Thinning the offered points does not reduce it, since any turn can lie inside a later point's window. A revert that fails part-way restores the files it reached, leaves the log's turns in place, and updates the expected bytes only for the files it restored, so a later `/undo` plans from a state the user never saw.
 - **A failed edit still records a change.** `around` records the bytes before the call, and the call runs even when it fails (for example, no match), so a turn can list a file it did not change. The revert then rewrites that file with the same bytes.
 - **`create_file` previews the whole content.** A large file floods the terminal before the question, and the user answers after scrolling past it.
+- **An unattended run can loop without a stop.** The repeated-failure stop (`nextStreak` in `src/backend/turn.ts`) counts only one call, with the same name and arguments, failing in a row. Alternating failing calls (A, B, A, B, ...) reset the count at each change and never stop, and a loop of calls that succeed is never stopped. The turn loop has no round limit, and an unattended run has no other bound, so it can run until the user ends it. Missing control: a stop after several consecutive failing rounds whatever the calls are, and an opt-in round cap for unattended runs. The subagent loop is bounded by its own tool-call limit and does not use `nextStreak`.
 - **`resolveNewInside` reports a misleading error when an ancestor is a file.** For `a.txt/x.txt` where `a.txt` is a regular file, folder creation fails with EEXIST, and `createFile` reports "the file already exists" for `x.txt`, which does not exist (verified).
 
 #### Background jobs and processes
@@ -602,6 +603,7 @@ Status is **missing**, **partial**, or in place.
 
 #### Turns and requests
 
+- Stop an unattended message after several consecutive failing rounds, whatever the calls are, and let the unattended start take an opt-in round cap, so an alternating or successful loop ends. Attended runs keep no limit.
 - Bound the tool loop with a user-visible limit and a way to stop it (Ctrl+C through the `AbortSignal` below). The user chose no limit today; the architecture should still make the stop possible.
 - Thread an `AbortSignal` from the frontend through the reply function into `fetch`.
 - Print each tool line when the stream signals that the call is complete (its `finish_reason` chunk), not after the whole reply. Sanitize the call's name and path with the same control as model text.
