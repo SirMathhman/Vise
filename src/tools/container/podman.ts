@@ -1,3 +1,4 @@
+import { mkdir } from "node:fs/promises";
 import { err, ok, type Result } from "../../core/messages.ts";
 
 // The session container: named, with only the working folder mounted (read-write), no network, no new
@@ -9,6 +10,11 @@ export interface ContainerSpec {
   // The Windows folder mounted at /work.
   folder: string;
   image: string;
+  // Paths under /work that the container cannot write: each is covered by an empty read-only directory. These
+  // keep the host's config and hooks out of reach of a command (for example ".vise" and ".git/hooks").
+  masks: string[];
+  // An empty host directory the masks are taken from. It is created if missing.
+  emptyDir: string;
 }
 
 const TIMEOUT_MS = 60_000;
@@ -16,6 +22,7 @@ const BUILD_TIMEOUT_MS = 600_000;
 
 // The arguments of `podman run` that create a session container.
 export function createArgs(spec: ContainerSpec): string[] {
+  const masks = spec.masks.flatMap((mask) => ["-v", `${spec.emptyDir}:/work/${mask}:ro`]);
   return [
     "run",
     "-d",
@@ -23,6 +30,7 @@ export function createArgs(spec: ContainerSpec): string[] {
     spec.name,
     "-v",
     `${spec.folder}:/work`,
+    ...masks,
     "-w",
     "/work",
     "--network",
@@ -85,6 +93,11 @@ export async function ensureImage(tag: string, containerfile: string, context: s
 // Makes sure the session container is running: reuses it when it runs, starts it when it exists stopped, and
 // creates it otherwise. A failure is an error.
 export async function ensureContainer(spec: ContainerSpec): Promise<Result<void>> {
+  try {
+    await mkdir(spec.emptyDir, { recursive: true });
+  } catch (error) {
+    return err(error instanceof Error ? error : new Error(String(error)));
+  }
   const inspected = await podman(["container", "inspect", "-f", "{{.State.Running}}", spec.name]);
   if (!inspected.ok) return err(inspected.error);
   if (inspected.value.code === 0) {

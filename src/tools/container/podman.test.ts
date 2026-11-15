@@ -3,7 +3,7 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ok } from "../../core/messages.ts";
-import { ensureContainer, execInContainer, podmanRunning, removeContainer, type ContainerSpec } from "./podman.ts";
+import { createArgs, ensureContainer, execInContainer, podmanRunning, removeContainer, type ContainerSpec } from "./podman.ts";
 
 // The tests need the podman machine running; without it they are skipped.
 const available = await podmanRunning();
@@ -14,6 +14,8 @@ test.skipIf(!available)("a session container runs commands in the folder, and wh
     name: `vise-test-${Date.now()}`,
     folder,
     image: "docker.io/library/alpine:latest",
+    masks: [],
+    emptyDir: join(tmpdir(), "vise-empty"),
   };
   try {
     expect(await ensureContainer(spec)).toEqual(ok(undefined));
@@ -29,3 +31,16 @@ test.skipIf(!available)("a session container runs commands in the folder, and wh
     await removeContainer(spec.name);
   }
 }, 120_000);
+
+test("the container mounts an empty read-only directory over each mask, and the folder read-write", () => {
+  const args = createArgs({
+    name: "vise-x",
+    folder: "C:\\work",
+    image: "img",
+    masks: [".vise", ".git/hooks"],
+    emptyDir: "C:\\empty",
+  });
+  expect(args).toContain("C:\\empty:/work/.vise:ro");
+  expect(args).toContain("C:\\empty:/work/.git/hooks:ro");
+  expect(args).toContain("C:\\work:/work");
+});

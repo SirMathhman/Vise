@@ -15,6 +15,8 @@ test.skipIf(!available)("a container command that outlives its timeout is a job,
     name: `vise-test-${Date.now()}`,
     folder,
     image: "docker.io/library/alpine:latest",
+    masks: [],
+    emptyDir: join(tmpdir(), "vise-empty"),
   };
   try {
     expect(await ensureContainer(spec)).toEqual(ok(undefined));

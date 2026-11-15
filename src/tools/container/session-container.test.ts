@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { toolNames } from "../../core/tools.ts";
@@ -29,6 +29,22 @@ test.skipIf(!available)("a session container has git, runs commands in the folde
     expect(state.ok).toBe(true);
     if (state.ok) expect(state.value.output.trim()).toBe("false");
   } finally {
+    await removeContainer(container.name);
+  }
+}, LONG);
+
+test.skipIf(!available)("a command in the session container cannot write the host's settings folder", async () => {
+  const folder = await mkdtemp(join(tmpdir(), "vise-session-"));
+  await mkdir(join(folder, ".vise"));
+  await writeFile(join(folder, ".vise", "hooks.json"), "orig");
+  const container = sessionContainer(folder);
+  try {
+    const attempt = await container.run("echo hacked > .vise/hooks.json; echo done");
+    expect(attempt.ok).toBe(true);
+    if (attempt.ok) expect(attempt.value).toContain("Read-only file system");
+    expect(await readFile(join(folder, ".vise", "hooks.json"), "utf8")).toBe("orig");
+  } finally {
+    await stopSessionContainers();
     await removeContainer(container.name);
   }
 }, LONG);
