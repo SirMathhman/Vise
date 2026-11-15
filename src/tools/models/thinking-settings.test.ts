@@ -35,3 +35,10 @@ test("a file that is not JSON, or names no known level, is an error", async () =
   await writeFile(join(root, ".vise", "thinking.json"), '{"thinking":"max"}');
   expect((await readThinkingSetting(root)).ok).toBe(false);
 });
+
+test("a file that is valid JSON but names no level is an error", async () => {
+  const root = await folder();
+  await mkdir(join(root, ".vise"));
+  await writeFile(join(root, ".vise", "thinking.json"), "{}");
+  expect((await readThinkingSetting(root)).ok).toBe(false);
+});

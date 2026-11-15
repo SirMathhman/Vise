@@ -4,6 +4,7 @@ import { Readable, Writable } from "node:stream";
 import { type ChatMessage, type Reply, type ReplyRequest, err, ok } from "../core/messages.ts";
 import { echoReply, runWithPorts } from "./session-helper.ts";
 import type { SessionPorts } from "../backend/ports.ts";
+import { encodeSession } from "../core/sessions.ts";
 
 // The ports a test session uses. Each test overrides only the ports it needs.
 function ports(overrides: Partial<SessionPorts> = {}): SessionPorts {
@@ -438,6 +439,61 @@ test("the session starts at the saved thinking level, /thinking saves it, and /n
   );
   expect(seen).toEqual(["low", "high"]);
   expect(saved).toEqual(["high"]);
+});
+
+test("/load keeps the thinking level in use, not the one the saved session had", async () => {
+  const seen: (string | undefined)[] = [];
+  const reply: Reply = async function* ({ reasoning }) {
+    seen.push(reasoning);
+    yield ok("answer");
+  };
+  const saved = encodeSession({ history: [], compacted: false });
+  const output = new Writable({
+    write(_chunk, _encoding, done) {
+      done();
+    },
+  });
+  await runWithPorts(
+    Readable.from(["/thinking high\n", "/load saved\n", "hi\n"]),
+    output,
+    ports({
+      reply,
+      sessions: {
+        save: async () => ok(undefined),
+        load: async (name) => (name === "saved" ? ok(saved) : err(new Error("none"))),
+        list: async () => ok(["saved"]),
+      },
+    }),
+  );
+  expect(seen).toEqual(["high"]);
+});
+
+test("a level that cannot be saved is reported, and still applies to the following request", async () => {
+  const seen: (string | undefined)[] = [];
+  const reply: Reply = async function* ({ reasoning }) {
+    seen.push(reasoning);
+    yield ok("answer");
+  };
+  let written = "";
+  const output = new Writable({
+    write(chunk, _encoding, done) {
+      written += chunk.toString();
+      done();
+    },
+  });
+  await runWithPorts(
+    Readable.from(["/thinking high\n", "hi\n"]),
+    output,
+    ports({
+      reply,
+      thinking: {
+        start: "low",
+        save: async () => err(new Error("disk full")),
+      },
+    }),
+  );
+  expect(written).toContain("could not save the thinking level: disk full");
+  expect(seen).toEqual(["high"]);
 });
 
 test("/model lists the models, marking the one in use, and /model <name> switches to a listed one", async () => {

@@ -36,10 +36,20 @@ export function createThinkingControl(doc: Document, actions: ThinkingActions): 
   return {
     element,
     update(current, enabled) {
-      // Until the first thinkingSetting event the level is unknown, so the control stays blank and disabled
-      // rather than showing "off" for a session that may think at the default.
-      select.disabled = !enabled || current === undefined;
-      select.value = current ?? "";
+      const shown = controlShown(current, enabled);
+      select.disabled = shown.disabled;
+      select.value = shown.value;
     },
   };
+}
+
+export interface ControlShown {
+  disabled: boolean;
+  value: string;
+}
+
+// What the control shows. Until the first thinkingSetting event the level is unknown, so the control stays blank
+// and disabled rather than showing "off" for a session that may think at the default.
+export function controlShown(current: ThinkingChoice | undefined, enabled: boolean): ControlShown {
+  return { disabled: !enabled || current === undefined, value: current ?? "" };
 }
