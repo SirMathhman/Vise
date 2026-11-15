@@ -36,8 +36,10 @@ export function createThinkingControl(doc: Document, actions: ThinkingActions): 
   return {
     element,
     update(current, enabled) {
-      select.disabled = !enabled;
-      select.value = current ?? "off";
+      // Until the first thinkingSetting event the level is unknown, so the control stays blank and disabled
+      // rather than showing "off" for a session that may think at the default.
+      select.disabled = !enabled || current === undefined;
+      select.value = current ?? "";
     },
   };
 }
