@@ -25,7 +25,7 @@ import type { McpRegistry } from "./mcp/registry.ts";
 import { noServers } from "./mcp/registry.ts";
 import { resolveInside, resolveNewInside } from "./files/contain.ts";
 import { createFile } from "./files/create-file.ts";
-import { editFile } from "./files/edit-file.ts";
+import { applyEdit, editPreview, planEdit } from "./files/edit-file.ts";
 import { listFiles } from "./files/list-files.ts";
 import { readFileLines } from "./files/read-file.ts";
 import { createNote } from "./notes/create-note.ts";
@@ -50,6 +50,7 @@ export function runTool(root: string, mcp: McpRegistry = noServers(), undo: Undo
     if (needsApproval(call)) {
       const problem = await checkTarget(root, call);
       if (problem) return `error: ${problem}`;
+      if (call.name === EDIT_FILE) return runEdit(root, call, approve, undo);
       const preview = approvalPreview(call);
       if (preview !== undefined && !(await approve(preview)))
         return "the user declined this change";
@@ -61,12 +62,29 @@ export function runTool(root: string, mcp: McpRegistry = noServers(), undo: Undo
   };
 }
 
+// An edit is planned before the user is asked, so the question shows what the write will do. The write
+// runs only if the user approves and the file still holds the text that was shown.
+async function runEdit(
+  root: string,
+  call: ToolCall,
+  approve: Approve,
+  undo: UndoStore,
+): Promise<string> {
+  const args = parseEditFileArgs(call.arguments);
+  if (!args.ok) return `invalid arguments: ${args.error.message}`;
+  const plan = await planEdit(root, args.value.path, args.value.previous);
+  if (!plan.ok) return `error: ${plan.error.message}`;
+  const { replacement } = args.value;
+  if (!(await approve(editPreview(plan.value, replacement))))
+    return "the user declined this change";
+  return undo.around(args.value.path, async () => {
+    const edit = await applyEdit(plan.value, replacement);
+    return edit.ok ? edit.value : `error: ${edit.error.message}`;
+  });
+}
+
 // The file a change writes, relative to the working directory. Undefined for a call that writes no file.
 function writtenPath(call: ToolCall): string | undefined {
-  if (call.name === EDIT_FILE) {
-    const args = parseEditFileArgs(call.arguments);
-    return args.ok ? args.value.path : undefined;
-  }
   if (call.name === CREATE_FILE) {
     const args = parseCreateFileArgs(call.arguments);
     return args.ok ? args.value.path : undefined;
@@ -126,17 +144,6 @@ async function dispatch(root: string, call: ToolCall): Promise<string> {
     );
     if (!text.ok) return `error: ${text.error.message}`;
     return text.value || "(no lines)";
-  }
-  if (call.name === EDIT_FILE) {
-    const args = parseEditFileArgs(call.arguments);
-    if (!args.ok) return `invalid arguments: ${args.error.message}`;
-    const edit = await editFile(
-      root,
-      args.value.path,
-      args.value.previous,
-      args.value.replacement,
-    );
-    return edit.ok ? edit.value : `error: ${edit.error.message}`;
   }
   if (call.name === CREATE_FILE) {
     const args = parseCreateFileArgs(call.arguments);

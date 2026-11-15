@@ -38,11 +38,6 @@ export function needsApproval(call: ToolCall): boolean {
 // The change or command shown to the user before they approve it. Undefined when the arguments are
 // invalid, in which case the tool reports that without writing or running anything.
 export function approvalPreview(call: ToolCall): string | undefined {
-  if (call.name === EDIT_FILE) {
-    const args = parseEditFileArgs(call.arguments);
-    if (!args.ok) return undefined;
-    return `edit ${args.value.path}\n--- previous\n${args.value.previous}\n+++ replacement\n${args.value.replacement}`;
-  }
   if (call.name === CREATE_FILE) {
     const args = parseCreateFileArgs(call.arguments);
     if (!args.ok) return undefined;
