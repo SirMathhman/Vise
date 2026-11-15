@@ -100,7 +100,7 @@ export async function runCommand(
     case "session":
       return runSessionCommand(input.words, ports, emit, conversation);
     case "thinking":
-      return runThinkingCommand(input.words, emit, conversation);
+      return runThinkingCommand(input.words, ports, emit, conversation);
     case "model":
       await runModelCommand(input.words, ports.models, emit);
       return undefined;
@@ -112,6 +112,7 @@ export async function runCommand(
           compacted: false,
           // The switches as they are now, not as they were at startup.
           disabledTools: conversation.disabledTools,
+          thinking: conversation.thinking,
         },
         notice: "started a new conversation",
       };
@@ -293,9 +294,11 @@ async function runModelCommand(
   }
 }
 
-// Runs /thinking: shows how hard the model thinks, or sets it for the following requests.
+// Runs /thinking: shows how hard the model thinks, or sets it for the following requests and saves it for the
+// next session. A level that cannot be saved still applies to this session.
 async function runThinkingCommand(
   words: string[],
+  ports: SessionPorts,
   emit: Emit,
   conversation: Conversation,
 ): Promise<Step | undefined> {
@@ -311,6 +314,12 @@ async function runThinkingCommand(
     });
     return undefined;
   }
+  const saved = await ports.thinking?.save(command.value.effort);
+  if (saved && !saved.ok)
+    emit({
+      kind: "error",
+      message: `could not save the thinking level: ${saved.error.message}`,
+    });
   return setThinking(conversation, command.value.effort);
 }
 
@@ -362,7 +371,11 @@ async function runSessionCommand(
   emit({ kind: "history", messages: historyMessages(loaded.value.history, ports.instructions) });
   // The loaded session is the one autosaved from now on.
   return {
-    conversation: { ...loaded.value, autosave: command.value.name },
+    conversation: {
+      ...loaded.value,
+      autosave: command.value.name,
+      thinking: conversation.thinking,
+    },
     notice: `loaded ${command.value.name}`,
   };
 }

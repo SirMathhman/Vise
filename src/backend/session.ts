@@ -269,6 +269,7 @@ async function sessionLoop(
         if (step.notice) emit({ kind: "notice", text: step.notice });
         announceTools(state, conversation);
         announceModels(state.ports, emit, state.modelList);
+        announceThinking(emit, conversation);
       }
       await persist(state, conversation);
       emit({ kind: "ready" });
@@ -341,6 +342,11 @@ function announceTools(state: SessionState, conversation: Conversation): void {
   });
 }
 
+// Tells the frontend the thinking level in use, so its control shows it.
+function announceThinking(emit: Emit, conversation: Conversation): void {
+  emit({ kind: "thinkingSetting", effort: conversation.thinking ?? "off" });
+}
+
 // Picks the saved session a conversation is autosaved to, from its first message. Names are listed first,
 // so a name the user saved is never overwritten. A failure to list them means no autosave for this message.
 async function chooseAutosave(state: SessionState, message: string): Promise<string | undefined> {
@@ -386,11 +392,13 @@ async function persistResume(state: SessionState, conversation: Conversation): P
 // the session-start hooks ends the session before the loop begins.
 async function run(state: SessionState): Promise<void> {
   const emit = sink(state);
-  const initial: Conversation = (await resumedConversation(state)) ?? {
+  const base: Conversation = (await resumedConversation(state)) ?? {
     history: [],
     compacted: false,
     disabledTools: state.ports.disabledTools,
   };
+  // The level in the settings file is the one in use, whatever the resumed conversation was saved with.
+  const initial: Conversation = { ...base, thinking: state.ports.thinking?.start };
   if (initial.history.length > 0) {
     emit({ kind: "history", messages: historyMessages(initial.history, state.ports.instructions) });
   }
@@ -403,6 +411,7 @@ async function run(state: SessionState): Promise<void> {
   await announceProviders(state.ports, emit);
   state.modelList = await loadModels(state.ports, emit);
   announceModels(state.ports, emit, state.modelList);
+  announceThinking(emit, initial);
   const started = await state.ports.hooks(
     "sessionStart",
     profileCommands(initial, "sessionStart"),

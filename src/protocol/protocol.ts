@@ -5,7 +5,7 @@ import type { ApprovalAnswer } from "../core/commands.ts";
 import type { HistoryMessage } from "../core/sessions.ts";
 import type { ToolSwitch } from "../core/tools.ts";
 import type { ProfileDetail, ProfileSummary } from "../core/notes.ts";
-import type { McpServerEntry, McpServerStatus, ModelInfo, ProviderEntry, ProviderInput, Scope, ScopedMcpServer, TreeEntry } from "../core/messages.ts";
+import type { McpServerEntry, McpServerStatus, ModelInfo, ProviderEntry, ProviderInput, ReasoningEffort, Scope, ScopedMcpServer, TreeEntry } from "../core/messages.ts";
 
 export type { ApprovalAnswer, HistoryMessage, ToolSwitch, ProfileDetail, ProfileSummary, McpServerEntry, McpServerStatus, Scope, ScopedMcpServer, TreeEntry, ProviderEntry, ProviderInput, ModelInfo };
 
@@ -284,6 +284,12 @@ export interface ModelsEvent {
   models: ModelInfo[];
 }
 
+// The thinking level in use, `off` when thinking is off. Sent at the start and after each command.
+export interface ThinkingSettingEvent {
+  kind: "thinkingSetting";
+  effort: ReasoningEffort | "off";
+}
+
 // The output of a hook, in full. The frontend caps what it shows.
 export interface HookOutputEvent {
   kind: "hookOutput";
@@ -337,6 +343,7 @@ export type ServerEvent =
   | OpenFilesEvent
   | ProvidersEvent
   | ModelsEvent
+  | ThinkingSettingEvent
   | HookOutputEvent
   | NoticeEvent
   | ErrorEvent

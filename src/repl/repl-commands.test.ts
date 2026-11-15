@@ -410,6 +410,36 @@ test("/thinking sets the effort for later requests, and the thinking count is sh
   expect(written).toContain("thinking: ~5 tokens");
 });
 
+test("the session starts at the saved thinking level, /thinking saves it, and /new keeps it", async () => {
+  const seen: (string | undefined)[] = [];
+  const saved: (string | undefined)[] = [];
+  const reply: Reply = async function* ({ reasoning }) {
+    seen.push(reasoning);
+    yield ok("answer");
+  };
+  const output = new Writable({
+    write(_chunk, _encoding, done) {
+      done();
+    },
+  });
+  await runWithPorts(
+    Readable.from(["hi\n", "/thinking high\n", "/new\n", "hi\n"]),
+    output,
+    ports({
+      reply,
+      thinking: {
+        start: "low",
+        save: async (effort) => {
+          saved.push(effort);
+          return ok(undefined);
+        },
+      },
+    }),
+  );
+  expect(seen).toEqual(["low", "high"]);
+  expect(saved).toEqual(["high"]);
+});
+
 test("/model lists the models, marking the one in use, and /model <name> switches to a listed one", async () => {
   let written = "";
   const output = new Writable({

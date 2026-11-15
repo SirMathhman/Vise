@@ -3,7 +3,7 @@ import { buildProvider } from "./src/providers/provider.ts";
 import { effectiveProviders, readScopedServers, readServers, scopedProvidersStore } from "./src/providers/config.ts";
 import { startSession } from "./src/backend/session.ts";
 import type { SessionPorts } from "./src/backend/ports.ts";
-import { err, ok, type Provider, type Result } from "./src/core/messages.ts";
+import { err, ok, type Provider, type ReasoningEffort, type Result } from "./src/core/messages.ts";
 import type { Session } from "./src/protocol/protocol.ts";
 import { runRepl } from "./src/repl/repl.ts";
 import { buildAssets } from "./src/web/server/page.ts";
@@ -39,6 +39,7 @@ import {
   saveToolSettings,
 } from "./src/tools/tool-settings.ts";
 import { readModelSetting } from "./src/tools/models/model-settings.ts";
+import { readThinkingSetting, saveThinkingSetting } from "./src/tools/models/thinking-settings.ts";
 import { selectModel } from "./src/tools/models/select-model.ts";
 
 
@@ -48,9 +49,11 @@ import { selectModel } from "./src/tools/models/select-model.ts";
 const GLOBAL_FOLDER = homedir();
 let servers: McpRegistry = noServers();
 
-// The model in use. /model changes it for the requests that follow.
+// The model and the thinking level in use. /model and /thinking change them for the requests that follow, and the
+// choices are kept when the folder changes. Undefined thinking is off.
 interface ModelSelection {
   model: string;
+  thinking: ReasoningEffort | undefined;
 }
 
 // The settings the session's ports are built from, all read once at startup.
@@ -79,6 +82,14 @@ function sessionPorts(setup: PortSetup): SessionPorts {
     reply: (request) =>
       provider.reply({ model: selection.model, extraTools, ...request }),
     contextWindow: () => provider.contextWindow(selection.model),
+    thinking: {
+      start: selection.thinking,
+      save: async (effort) => {
+        // The level applies from here even when the file cannot be written; a failure is reported by the session.
+        selection.thinking = effort;
+        return saveThinkingSetting(root, effort);
+      },
+    },
     models: {
       current: () => selection.model,
       list: () => provider.listModels(),
@@ -276,7 +287,16 @@ export async function main(embedded?: WebAssets): Promise<void> {
     console.error(`error: ${savedModel.error.message}`);
     process.exit(1);
   }
-  const selection: ModelSelection = { model: savedModel.value ?? provider.defaultModel };
+  // Read once, here: the thinking level saved with /thinking, or the default when none is saved.
+  const savedThinking = await readThinkingSetting(process.cwd());
+  if (!savedThinking.ok) {
+    console.error(`error: ${savedThinking.error.message}`);
+    process.exit(1);
+  }
+  const selection: ModelSelection = {
+    model: savedModel.value ?? provider.defaultModel,
+    thinking: savedThinking.value,
+  };
   // --web serves the session to a browser instead of the terminal.
   const web = process.argv.includes("--web");
   let failed = false;

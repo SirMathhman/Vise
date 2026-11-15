@@ -93,6 +93,7 @@ export function createRenderer(output: Writable): Renderer {
         }
         case "askAnswered":
         case "approvalAnswered":
+        case "thinkingSetting":
         case "sessions":
         case "tools":
         case "profiles":

@@ -1,4 +1,4 @@
-import { type FileText, type McpStore, type ProvidersStore, type ModelPorts, type TreeEntry, type UndoStore, type ReplyRequest, type ToolCall, type Result } from "../core/messages.ts";
+import { type FileText, type McpStore, type ProvidersStore, type ModelPorts, type ReasoningEffort, type TreeEntry, type UndoStore, type ReplyRequest, type ToolCall, type Result } from "../core/messages.ts";
 
 import { type HookPoint, type ProfileHook, type ProfileStore } from "../core/notes.ts";
 
@@ -7,7 +7,14 @@ import type { ResumeStore, SessionStore } from "../core/sessions.ts";
 
 import type { Approve, ToolSpec } from "../core/tools.ts";
 
-// Every port the session uses. All are required; a caller that omits one fails to compile.
+// Where the thinking level is kept. `start` is the level the session begins at, undefined when thinking is off.
+export interface ThinkingPorts {
+  start: ReasoningEffort | undefined;
+  // Saves the level for the next session. A failure is reported, and the level still applies to this one.
+  save(effort: ReasoningEffort | undefined): Promise<Result<void>>;
+}
+
+// Every port the session uses. All are required, except those marked absent; a caller that omits a required one fails to compile.
 export interface SessionPorts {
   reply(request: ReplyRequest): AsyncIterable<Result<string>>;
   contextWindow(): Promise<Result<number>>;
@@ -49,6 +56,8 @@ export interface SessionPorts {
   undo?: UndoStore;
   // The model in use, and the models /model may switch to.
   models: ModelPorts;
+  // The thinking level and where it is saved. Absent, thinking is off and /thinking is not saved.
+  thinking?: ThinkingPorts;
   // Text sent ahead of the first message of the session (the AGENTS.md file), if any.
   instructions?: string;
 }
