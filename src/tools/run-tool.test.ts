@@ -187,6 +187,29 @@ test("the edit question says how many matches there are and the line of the firs
   expect(await Bun.file(join(root, "f.txt")).text()).toBe("a\ny\nx\n");
 });
 
+test("an unattended runner writes an edit without asking, and still checks the target", async () => {
+  const root = await mkdtemp(join(tmpdir(), "vise-run-"));
+  await Bun.write(join(root, "f.txt"), "one two");
+  let asked = 0;
+  const result = await runTool(root, undefined, undefined, true)(
+    { id: "e7", name: "edit_file", arguments: '{"path":"f.txt","previous":"one","replacement":"ONE"}' },
+    async () => {
+      asked += 1;
+      return false;
+    },
+    toolNames,
+  );
+  expect(result).toBe("edited f.txt");
+  expect(asked).toBe(0);
+  expect(await Bun.file(join(root, "f.txt")).text()).toBe("ONE two");
+  const outside = await runTool(root, undefined, undefined, true)(
+    { id: "e8", name: "edit_file", arguments: '{"path":"../x.txt","previous":"a","replacement":"b"}' },
+    async () => true,
+    toolNames,
+  );
+  expect(outside.startsWith("error:")).toBe(true);
+});
+
 test("an edit the user declines writes nothing", async () => {
   const root = await mkdtemp(join(tmpdir(), "vise-run-"));
   await Bun.write(join(root, "f.txt"), "keep me");

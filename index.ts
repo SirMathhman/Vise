@@ -49,11 +49,13 @@ import { selectModel } from "./src/tools/models/select-model.ts";
 const GLOBAL_FOLDER = homedir();
 let servers: McpRegistry = noServers();
 
-// The model and the thinking level in use. /model and /thinking change them for the requests that follow, and the
-// choices are kept when the folder changes. Undefined thinking is off.
-interface ModelSelection {
+// The model and the thinking level in use, and whether the run is unattended. /model and /thinking change the first
+// two for the requests that follow, and the choices are kept when the folder changes. Undefined thinking is off.
+// Unattended is set by --unattended at the start, and is not saved.
+interface SessionChoices {
   model: string;
   thinking: ReasoningEffort | undefined;
+  unattended: boolean;
 }
 
 // The settings the session's ports are built from, all read once at startup.
@@ -61,7 +63,7 @@ interface PortSetup {
   provider: Provider;
   // The folder the session works in.
   folder: string;
-  selection: ModelSelection;
+  selection: SessionChoices;
   disabledTools: string[];
   // Every tool the session may offer, built-in and from the MCP servers.
   allTools: string[];
@@ -103,7 +105,8 @@ function sessionPorts(setup: PortSetup): SessionPorts {
           },
         }),
     },
-    tools: runTool(root, setup.mcp, setup.undo),
+    tools: runTool(root, setup.mcp, setup.undo, selection.unattended),
+    unattended: selection.unattended,
     undo: setup.undo,
     allTools: setup.allTools,
     notes: runNoteCommand(root),
@@ -172,7 +175,7 @@ async function stopJobs(): Promise<void> {
 
 // Starts a session in a folder. The folder's instructions, hooks, servers, and tool settings are read from it,
 // so this runs again for each folder the session moves to. A failure stops anything it started.
-async function openSession(provider: Provider, selection: ModelSelection, folder: string): Promise<Result<Session>> {
+async function openSession(provider: Provider, selection: SessionChoices, folder: string): Promise<Result<Session>> {
   // Read once, here, so the session sends the same instructions for its whole length.
   const instructions = await readInstructions(folder);
   // Read once, here: the hooks in the hooks file. A file that is not valid stops the start.
@@ -242,7 +245,7 @@ async function folderOf(folder: string): Promise<Result<string>> {
 
 // Moves the session to another folder. The current MCP servers and background jobs stop first, then the
 // process moves to the folder and the session starts there. The page's history and model are kept.
-async function changeFolder(folder: string, provider: Provider, selection: ModelSelection): Promise<Result<Session>> {
+async function changeFolder(folder: string, provider: Provider, selection: SessionChoices): Promise<Result<Session>> {
   const checked = await folderOf(folder);
   if (!checked.ok) return err(checked.error);
   const target = checked.value;
@@ -293,9 +296,10 @@ export async function main(embedded?: WebAssets): Promise<void> {
     console.error(`error: ${savedThinking.error.message}`);
     process.exit(1);
   }
-  const selection: ModelSelection = {
+  const selection: SessionChoices = {
     model: savedModel.value ?? provider.defaultModel,
     thinking: savedThinking.value,
+    unattended: process.argv.includes("--unattended"),
   };
   // --web serves the session to a browser instead of the terminal.
   const web = process.argv.includes("--web");

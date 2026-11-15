@@ -36,6 +36,8 @@ bun run build:exe   # build/exe/vise.exe, a window that shows Vise (needs Rust a
 
 Run `build/exe/vise.exe` from the folder you want to work in: the session works in the folder it is started from. Closing the window ends the session.
 
+Add `--unattended` to a start (for example `bun run index.ts --unattended`) for a run you leave alone: edits are approved without asking, commands still ask, and a call that fails the same way three times in a row ends its message. The flag is not saved.
+
 Type `/help` in a session to list its commands.
 
 ## Files Vise reads and writes

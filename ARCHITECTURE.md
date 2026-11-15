@@ -163,6 +163,8 @@ A Utilities button sits beside the message box too. It shows or hides a popover 
 
 The approval question shows the change or command, and the answer is a line the user types after that preview has been printed. Any other answer is a refusal, and so are end of input and a stream error. A refusal is returned to the model as the tool's result, and the turn goes on. End of input, a stream error, or `/exit` during a question ends the session and sends no further request to the model.
 
+An unattended run (`--unattended` at the start, not saved) changes two things. Edits are written without a question; their target check and the check that the file still holds the shown text both still run (`runTool`'s `autoEdits`). Commands, background-job kills, and server tools still ask. And a call that fails the same way in a row (same name and arguments, a result starting `error:` or `invalid arguments:`) ends its message's turn after `REPEATED_FAILURES` (3) times (`nextStreak` and `runMessageTurn` in `src/backend/turn.ts`). The run has no limit on rounds, time, or cost, and `ask_user` still waits for an answer.
+
 ### Thinking
 
 `/thinking` sets the reasoning effort for the next request, sent as the request's `reasoning` effort. Thinking is on at `low` by default. The level is saved to `.vise/thinking.json` (`off` turns it off), and it is read at startup, so a session with no saved file starts at `low`. `/new` and `/load` keep the level in use. The page's header has a dropdown beside the model selector that sends `/thinking <level>`, as the model selector sends `/model`. The backend announces the level in use with a `thinkingSetting` event, at the start and after each command.

@@ -37,7 +37,14 @@ import type { UndoStore } from "../core/messages.ts";
 // The tool runner for a working directory and the MCP servers that started. A change or command is
 // checked and previewed, and it runs only if `approve` says yes. Errors come back as text for the
 // model to read.
-export function runTool(root: string, mcp: McpRegistry = noServers(), undo: UndoStore = undoStore(root)): ToolRunner {
+// With `autoEdits` (an unattended run), an edit is written without asking. Its target is still checked, and
+// its write still refuses a file that changed since the edit was shown.
+export function runTool(
+  root: string,
+  mcp: McpRegistry = noServers(),
+  undo: UndoStore = undoStore(root),
+  autoEdits = false,
+): ToolRunner {
   return async (call: ToolCall, approve: Approve, offered: string[]) => {
     // A tool switched off is refused here, so no caller of the runner can run it.
     const known = toolNames.includes(call.name) || mcp.has(call.name);
@@ -50,7 +57,7 @@ export function runTool(root: string, mcp: McpRegistry = noServers(), undo: Undo
     if (needsApproval(call)) {
       const problem = await checkTarget(root, call);
       if (problem) return `error: ${problem}`;
-      if (call.name === EDIT_FILE) return runEdit(root, call, approve, undo);
+      if (call.name === EDIT_FILE) return runEdit(root, call, autoEdits ? allowEdit : approve, undo);
       const preview = approvalPreview(call);
       if (preview !== undefined && !(await approve(preview)))
         return "the user declined this change";
@@ -61,6 +68,9 @@ export function runTool(root: string, mcp: McpRegistry = noServers(), undo: Undo
     return dispatch(root, call);
   };
 }
+
+// The approval of an unattended run: every edit is allowed, and the checks before and at the write still apply.
+const allowEdit: Approve = async () => true;
 
 // An edit is planned before the user is asked, so the question shows what the write will do. The write
 // runs only if the user approves and the file still holds the text that was shown.
