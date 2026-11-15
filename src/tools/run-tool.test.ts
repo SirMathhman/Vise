@@ -186,3 +186,15 @@ test("the edit question says how many matches there are and the line of the firs
   expect(previews[0]).toContain("found 2 matches; the first starts at line 2, and only the first is replaced");
   expect(await Bun.file(join(root, "f.txt")).text()).toBe("a\ny\nx\n");
 });
+
+test("an edit the user declines writes nothing", async () => {
+  const root = await mkdtemp(join(tmpdir(), "vise-run-"));
+  await Bun.write(join(root, "f.txt"), "keep me");
+  const result = await runTool(root)(
+    { id: "e6", name: "edit_file", arguments: '{"path":"f.txt","previous":"keep","replacement":"lose"}' },
+    async () => false,
+    toolNames,
+  );
+  expect(result).toBe("the user declined this change");
+  expect(await Bun.file(join(root, "f.txt")).text()).toBe("keep me");
+});
