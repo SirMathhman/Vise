@@ -4,6 +4,7 @@ import { effectiveProviders, readScopedServers, readServers, scopedProvidersStor
 import { startSession } from "./src/backend/session.ts";
 import type { SessionPorts } from "./src/backend/ports.ts";
 import { err, ok, type Provider, type ReasoningEffort, type Result } from "./src/core/messages.ts";
+import { maxRoundsOf } from "./src/core/start-options.ts";
 import type { Session } from "./src/protocol/protocol.ts";
 import { runRepl } from "./src/repl/repl.ts";
 import { buildAssets } from "./src/web/server/page.ts";
@@ -56,6 +57,8 @@ interface SessionChoices {
   model: string;
   thinking: ReasoningEffort | undefined;
   unattended: boolean;
+  // The most requests one message may make, in an unattended run. Undefined is no cap.
+  maxRounds: number | undefined;
 }
 
 // The settings the session's ports are built from, all read once at startup.
@@ -107,6 +110,7 @@ function sessionPorts(setup: PortSetup): SessionPorts {
     },
     tools: runTool(root, setup.mcp, setup.undo, selection.unattended),
     unattended: selection.unattended,
+    maxRounds: selection.maxRounds,
     undo: setup.undo,
     allTools: setup.allTools,
     notes: runNoteCommand(root),
@@ -290,6 +294,12 @@ export async function main(embedded?: WebAssets): Promise<void> {
     console.error(`error: ${savedModel.error.message}`);
     process.exit(1);
   }
+  // Read once, here: the round cap of an unattended run, from --max-rounds.
+  const maxRounds = maxRoundsOf(process.argv);
+  if (!maxRounds.ok) {
+    console.error(`error: ${maxRounds.error.message}`);
+    process.exit(1);
+  }
   // Read once, here: the thinking level saved with /thinking, or the default when none is saved.
   const savedThinking = await readThinkingSetting(process.cwd());
   if (!savedThinking.ok) {
@@ -300,6 +310,7 @@ export async function main(embedded?: WebAssets): Promise<void> {
     model: savedModel.value ?? provider.defaultModel,
     thinking: savedThinking.value,
     unattended: process.argv.includes("--unattended"),
+    maxRounds: maxRounds.value,
   };
   // --web serves the session to a browser instead of the terminal.
   const web = process.argv.includes("--web");

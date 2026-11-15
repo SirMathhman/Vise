@@ -32,7 +32,7 @@ import { announceFile, announceTree, writeFileFor } from "./file-tree.ts";
 import { announceProviders, writeProvidersFor } from "./providers-editor.ts";
 import { announceModels, loadModels } from "./models/model-list.ts";
 import type { SessionPorts } from "./ports.ts";
-import { REPEATED_FAILURES, runMessageTurn } from "./turn.ts";
+import { FAILING_ROUNDS, runMessageTurn } from "./turn.ts";
 
 // The approval question that is open, if any. Its answer comes as a line or as an approval by id.
 // What an open question can be answered with: an approval answer, or the reply to an ask question.
@@ -415,7 +415,7 @@ async function run(state: SessionState): Promise<void> {
   if (state.ports.unattended)
     emit({
       kind: "notice",
-      text: `unattended: edits are approved without asking, commands still ask, and a call that fails the same way ${REPEATED_FAILURES} times in a row ends its message`,
+      text: `unattended: edits are approved without asking, commands still ask, ${FAILING_ROUNDS} rounds in a row where every call fails end a message${state.ports.maxRounds === undefined ? "" : `, and a message has at most ${state.ports.maxRounds} rounds`}`,
     });
   const started = await state.ports.hooks(
     "sessionStart",

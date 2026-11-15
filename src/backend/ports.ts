@@ -58,9 +58,11 @@ export interface SessionPorts {
   models: ModelPorts;
   // The thinking level and where it is saved. Absent, thinking is off and /thinking is not saved.
   thinking?: ThinkingPorts;
-  // Unattended runs: edits are approved without asking, and a call that fails the same way in a row ends its
-  // message's turn. Absent, the session is attended.
+  // Unattended runs: edits are approved without asking, and a message's turn ends after several rounds in a row
+  // in which every call failed. Absent, the session is attended.
   unattended?: boolean;
+  // The most requests one message may make in an unattended run. Absent, there is no cap.
+  maxRounds?: number;
   // Text sent ahead of the first message of the session (the AGENTS.md file), if any.
   instructions?: string;
 }

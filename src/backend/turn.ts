@@ -87,51 +87,41 @@ async function streamRound(input: RoundInput): Promise<Round> {
   return round;
 }
 
-// In an unattended run, a call that fails the same way this many times in a row ends its message's turn.
-export const REPEATED_FAILURES = 3;
+// In an unattended run, a message's turn ends after this many rounds in a row in which every call failed.
+export const FAILING_ROUNDS = 3;
 
-// A run of failures of one call: its name and arguments, and how many times in a row it has failed.
-export interface FailureStreak {
-  name: string;
-  arguments: string;
-  count: number;
+// Whether a tool result is a failure: the call did not run as asked.
+function isFailure(result: ChatMessage): boolean {
+  return (
+    result.role === "tool" &&
+    (result.content.startsWith("error:") || result.content.startsWith("invalid arguments:"))
+  );
 }
 
-// Adds one round's results to the run of failures, in call order. A call that succeeds, or a different
-// call, starts the run over.
-export function nextStreak(
-  streak: FailureStreak | undefined,
-  calls: ToolCall[],
-  results: ChatMessage[],
-): FailureStreak | undefined {
-  let current = streak;
-  calls.forEach((call, index) => {
-    const result = results[index];
-    const failed =
-      result?.role === "tool" &&
-      (result.content.startsWith("error:") || result.content.startsWith("invalid arguments:"));
-    if (!failed) {
-      current = undefined;
-      return;
-    }
-    const same =
-      current !== undefined && current.name === call.name && current.arguments === call.arguments;
-    current = {
-      name: call.name,
-      arguments: call.arguments,
-      count: same ? (current?.count ?? 0) + 1 : 1,
-    };
-  });
-  return current;
+// Counts the rounds in a row in which every call failed. A round with a call that succeeded starts the count
+// over, and so does a round with no calls.
+export function nextFailingRounds(count: number, results: ChatMessage[]): number {
+  return results.length > 0 && results.every(isFailure) ? count + 1 : 0;
 }
 
-// Reports that a message's turn is stopped when one call has failed too many times in a row. Returns whether it was.
-function repeatedFailureStops(streak: FailureStreak | undefined, emit: Emit): boolean {
-  if (streak === undefined || streak.count < REPEATED_FAILURES) return false;
+// Ends the message's turn when the rounds in a row that failed reach FAILING_ROUNDS. Returns whether it did.
+function failingRoundsStop(failingRounds: number, emit: Emit): boolean {
+  if (failingRounds < FAILING_ROUNDS) return false;
   emit({ kind: "replyEnd" });
   emit({
     kind: "error",
-    message: `${streak.name} failed ${streak.count} times in a row with the same arguments, so this message's turn is stopped`,
+    message: `the last ${FAILING_ROUNDS} rounds each had only failing calls, so this message's turn is stopped`,
+  });
+  return true;
+}
+
+// Ends the message's turn when an unattended run with a round cap has made that many requests. Returns whether it did.
+function roundCapStops(ports: SessionPorts, rounds: number, emit: Emit): boolean {
+  if (!ports.unattended || ports.maxRounds === undefined || rounds < ports.maxRounds) return false;
+  emit({ kind: "replyEnd" });
+  emit({
+    kind: "error",
+    message: `the round cap of ${ports.maxRounds} was reached, so this message's turn is stopped`,
   });
   return true;
 }
@@ -195,8 +185,11 @@ export async function runMessageTurn(
   current = { ...current, pendingProfile: undefined, pendingOutput: undefined };
   // Each round asks the model. The first round answers the message just received; a round that
   // asked for tools is followed by another only while the session has not ended.
-  let streak: FailureStreak | undefined;
+  let failingRounds = 0;
+  let rounds = 0;
   for (;;) {
+    if (roundCapStops(ports, rounds, emit)) break;
+    rounds += 1;
     const round = await streamRound({
       history: withInstructions(current.history, instructions),
       reply,
@@ -240,8 +233,8 @@ export async function runMessageTurn(
       },
     });
     current.history.push(...results);
-    streak = ports.unattended ? nextStreak(streak, round.calls, results) : undefined;
-    if (repeatedFailureStops(streak, emit)) break;
+    failingRounds = ports.unattended ? nextFailingRounds(failingRounds, results) : 0;
+    if (failingRoundsStop(failingRounds, emit)) break;
     if (finished()) break;
   }
   const ended = await ports.hooks(
