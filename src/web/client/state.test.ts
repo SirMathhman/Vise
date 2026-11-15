@@ -66,6 +66,11 @@ test("thinking is shown as an estimate until its final count arrives, and the se
   expect(canSend(state)).toBe(false);
 });
 
+test("the header's thinking control shows the level from the last thinkingSetting event", () => {
+  expect(after([]).thinking).toBeUndefined();
+  expect(after([{ kind: "thinkingSetting", effort: "high" }]).thinking).toBe("high");
+});
+
 test("the page remembers the newest approval question it showed", () => {
   const state = after([
     { kind: "approvalRequest", id: 2, preview: "a" },

@@ -9,6 +9,7 @@ import type {
   ProfileDetail,
   ProfileSummary,
   ServerEvent,
+  ThinkingSettingEvent,
   ToolSwitch,
   TreeEntry,
 } from "../../protocol/protocol.ts";
@@ -111,6 +112,8 @@ export interface ViewState {
   // The current model, and the models the selector offers, from the last models event.
   currentModel: string;
   models: ModelInfo[];
+  // The thinking level in use, from the last thinkingSetting event. Undefined until the first one arrives.
+  thinking?: ThinkingSettingEvent["effort"];
   // How many of the last blocks of the transcript the page builds. Each press of the earlier button adds more.
   recent: number;
   // Whether the transcript follows the newest message. Set by the auto-scroll toggle.
@@ -381,6 +384,8 @@ function applyEvent(state: ViewState, event: ServerEvent): ViewState {
       return { ...state, trees: { ...state.trees, [event.path]: event.entries } };
     case "models":
       return { ...state, currentModel: event.current, models: event.models };
+    case "thinkingSetting":
+      return { ...state, thinking: event.effort };
     case "providers":
       return { ...state, providers: event.servers };
     case "mcp":

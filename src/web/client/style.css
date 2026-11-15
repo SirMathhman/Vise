@@ -674,6 +674,20 @@ input:not([type="checkbox"]):not([type="radio"]) {
   resize: none;
 }
 
+/* The thinking level in the header, beside the model selector, sharing its height. */
+.thinking-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.thinking-control select {
+  height: 40px;
+  font: inherit;
+  padding: 0 8px;
+}
+
 /* The model selector in the header: a combobox, with its dropdown laid over the page below it. */
 .model-picker {
   position: relative;

@@ -23,6 +23,7 @@ import { applySplit, columns } from "./layout/columns.ts";
 import { themeControl } from "./theme/theme.ts";
 import { earlierButton, type RecentActions } from "./transcript/recent.ts";
 import { createModelPicker } from "./models/model-picker.ts";
+import { createThinkingControl } from "./models/thinking-control.ts";
 import { autoScrollButton, type AutoScrollActions } from "./transcript/auto-scroll.ts";
 import { toolCard } from "./tools/tool-card.ts";
 import { utilitiesOf } from "./utilities/utilities.ts";
@@ -444,7 +445,9 @@ export function createView(
   const status = element(doc, "span", "status", "");
   const newChat = newConversationButton(doc, actions);
   const undo = undoButton(doc, actions);
-  const models = createModelPicker(doc, { chooseModel: (name) => actions.line(`/model ${name}`) }); header.append(status, models.element, themeControl(doc), undo, newChat);
+  const models = createModelPicker(doc, { chooseModel: (name) => actions.line(`/model ${name}`) });
+  const thinking = createThinkingControl(doc, { chooseThinking: (level) => actions.line(`/thinking ${level}`) });
+  header.append(status, models.element, thinking.element, themeControl(doc), undo, newChat);
   const folder = folderBar(doc, actions);
   const files = createTreeSection(doc, actions);
   const fileViewer = createFileViewer(doc, actions);
@@ -506,7 +509,7 @@ export function createView(
         profileKey = profilesKey;
         profilePanel.show("Profiles", state.profiles.length, profilesPanel(doc, state.profiles, sendable, actions));
       }
-      mcp.update(state.mcp, sendable, () => sendableNow); providers.update(state.providers, sendable); models.update(state.currentModel, state.models, sendable);
+      mcp.update(state.mcp, sendable, () => sendableNow); providers.update(state.providers, sendable); models.update(state.currentModel, state.models, sendable); thinking.update(state.thinking, sendable);
       if (state.profile !== undefined && state.profile !== shownProfile) {
         shownProfile = state.profile;
         openEditor(doc, editor, { profile: state.profile, tools: state.tools, sendable: () => sendableNow, actions });
