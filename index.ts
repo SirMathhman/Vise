@@ -4,7 +4,7 @@ import { effectiveProviders, readScopedServers, readServers, scopedProvidersStor
 import { startSession } from "./src/backend/session.ts";
 import type { SessionPorts } from "./src/backend/ports.ts";
 import { err, ok, type Provider, type ReasoningEffort, type Result } from "./src/core/messages.ts";
-import { maxRoundsOf } from "./src/core/start-options.ts";
+import { maxRoundsOf } from "./src/tools/start-options.ts";
 import type { Session } from "./src/protocol/protocol.ts";
 import { runRepl } from "./src/repl/repl.ts";
 import { buildAssets } from "./src/web/server/page.ts";
