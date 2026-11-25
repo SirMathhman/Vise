@@ -6,7 +6,9 @@ import { err, ok } from "common";
 // The largest project file a tool will open.
 const MAX_BYTES = 2_000_000;
 
-// Resolves a requested path against the root. Anything outside the root is refused.
+/**
+ * Resolves a requested path against the root. Anything outside the root is refused.
+ */
 export function resolveInside(
   root: string,
   requested: string,
@@ -28,7 +30,9 @@ export function resolveInside(
   );
 }
 
-// The files git tracks or would track under root, excluding anything .gitignore matches.
+/**
+ * The files git tracks or would track under root, excluding anything .gitignore matches.
+ */
 export async function projectFiles(
   root: string,
 ): Promise<Result<string[], string>> {
@@ -75,8 +79,10 @@ async function gitDirectories(root: string): Promise<Result<string[], string>> {
   }
 }
 
-// True when the relative path lies inside git's own directory, where a written hook would
-// run on the next git command.
+/**
+ * True when the relative path lies inside git's own directory, where a written hook would
+ * run on the next git command.
+ */
 export async function isGitInternal(
   root: string,
   relative: string,
@@ -102,8 +108,10 @@ export async function isGitInternal(
   );
 }
 
-// Opens a project text file for a tool. Refuses anything outside the root, anything git
-// ignores, symbolic links, binary files, and files over the size limit.
+/**
+ * Opens a project text file for a tool. Refuses anything outside the root, anything git
+ * ignores, symbolic links, binary files, and files over the size limit.
+ */
 export async function readProjectText(
   root: string,
   requested: string,

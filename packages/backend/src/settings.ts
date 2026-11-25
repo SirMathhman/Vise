@@ -33,25 +33,36 @@ async function writeKeyLines(lines: string[]): Promise<void> {
   await Bun.write(keyFile(), lines.map((line) => `${line}\n`).join(""));
 }
 
+/**
+ * The key saved from the UI, or undefined when none is saved.
+ */
 export async function getSavedOpenRouterKey(): Promise<string | undefined> {
   const line = (await readKeyLines()).find(isKeyLine);
   const value = line?.slice(KEY_NAME.length + 1).trim();
   return value ? value : undefined;
 }
 
-// The UI-saved key wins; otherwise fall back to the environment variable.
+/**
+ * The UI-saved key wins; otherwise fall back to the environment variable.
+ */
 export async function getOpenRouterKey(): Promise<string | undefined> {
   return (
     (await getSavedOpenRouterKey()) ?? (process.env[KEY_NAME] || undefined)
   );
 }
 
+/**
+ * Saves the key to the config file, replacing any key saved before.
+ */
 export async function saveOpenRouterKey(apiKey: string): Promise<void> {
   const lines = (await readKeyLines()).filter((line) => !isKeyLine(line));
   lines.push(`${KEY_NAME}=${apiKey}`);
   await writeKeyLines(lines);
 }
 
+/**
+ * Removes the key saved from the UI. The environment variable is not affected.
+ */
 export async function clearSavedOpenRouterKey(): Promise<void> {
   await writeKeyLines(
     (await readKeyLines()).filter((line) => !isKeyLine(line)),

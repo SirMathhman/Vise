@@ -1,25 +1,34 @@
 import { randomUUID } from "node:crypto";
 
-// A change a tool proposes. The reply waits for the user; apply runs only if they approve it.
+/**
+ * A change a tool proposes. The reply waits for the user; apply runs only if they approve it.
+ */
 export interface Approval {
   title: string;
   body: string;
   apply: () => Promise<string>;
 }
 
-// How long a reply waits for an answer before it gives up on the change.
+/**
+ * How long a reply waits for an answer before it gives up on the change.
+ */
 export const APPROVAL_TIMEOUT_MS = 10 * 60 * 1000;
 
 // Answers for the replies that are waiting, keyed by approval id.
 const waiting = new Map<string, (approved: boolean) => void>();
 
+/**
+ * An approval a reply is waiting on: its id, a promise for the user's answer, and a way to release it.
+ */
 export interface OpenApproval {
   id: string;
   decided: Promise<boolean>;
   close: () => void;
 }
 
-// Registers an approval that a reply is waiting on.
+/**
+ * Registers an approval that a reply is waiting on.
+ */
 export function openApproval(): OpenApproval {
   const id = randomUUID();
   const decided = new Promise<boolean>((resolve) => {
@@ -34,7 +43,9 @@ export function openApproval(): OpenApproval {
   };
 }
 
-// Records the user's answer. Returns false when no reply is waiting on that id.
+/**
+ * Records the user's answer. Returns false when no reply is waiting on that id.
+ */
 export function decideApproval(id: string, approved: boolean): boolean {
   const resolve = waiting.get(id);
   if (resolve === undefined) {
@@ -45,8 +56,10 @@ export function decideApproval(id: string, approved: boolean): boolean {
   return true;
 }
 
-// Waits for the user's answer. Returns undefined when none comes: the client has gone away,
-// or the timeout passes first. The approval is released either way.
+/**
+ * Waits for the user's answer. Returns undefined when none comes: the client has gone away,
+ * or the timeout passes first. The approval is released either way.
+ */
 export async function waitForApproval(
   pending: OpenApproval,
   signal?: AbortSignal,

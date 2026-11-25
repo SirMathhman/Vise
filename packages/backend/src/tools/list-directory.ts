@@ -5,9 +5,14 @@ import { projectFiles, resolveInside } from "../project/project-files";
 // The path check is shared with the file reader; it stays importable from here.
 export { resolveInside } from "../project/project-files";
 
+/**
+ * The name the model uses to call the list-directory tool.
+ */
 export const LIST_DIRECTORY_NAME = "list_directory";
 
-// The tool the model may call. It only lists; it never reads file contents.
+/**
+ * The tool the model may call. It only lists; it never reads file contents.
+ */
 export const LIST_DIRECTORY_TOOL = {
   type: "function" as const,
   function: {
@@ -47,6 +52,9 @@ const ListArgumentsSchema = z.object({
 // A directory tree: a directory maps names to subtrees, and a file maps to null.
 type Tree = Map<string, Tree | null>;
 
+/**
+ * Builds a directory tree from relative file paths. A directory maps its names to subtrees; a file maps to null.
+ */
 export function buildTree(files: string[]): Tree {
   const root: Tree = new Map();
   for (const file of files) {
@@ -67,7 +75,9 @@ export function buildTree(files: string[]): Tree {
   return root;
 }
 
-// Renders the directory at target as indented lines, directories first, cut to maxEntries.
+/**
+ * Renders the directory at target as indented lines, directories first, cut to maxEntries.
+ */
 export function renderListing(
   files: string[],
   target: string,
@@ -116,7 +126,9 @@ export function renderListing(
     : shown.join("\n");
 }
 
-// Runs the tool for the model's arguments and returns the text the model reads back.
+/**
+ * Runs the tool for the model's arguments and returns the text the model reads back.
+ */
 export async function runListDirectory(
   root: string,
   argumentsJson: string,

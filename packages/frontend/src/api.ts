@@ -19,7 +19,9 @@ async function failureFrom(res: Response): Promise<string> {
   return body.ok ? body.value.error : `HTTP ${String(res.status)}`;
 }
 
-// Calls a JSON endpoint and checks the reply against the schema for it.
+/**
+ * Calls a JSON endpoint and checks the reply against the schema for it.
+ */
 export async function apiJson<S extends z.ZodType>(
   path: string,
   schema: S,
@@ -38,7 +40,9 @@ export async function apiJson<S extends z.ZodType>(
   return parsed.ok ? ok(parsed.value) : err(describeParseError(parsed.error));
 }
 
-// Opens the chat stream for one request. Returns the raw body to read, or the error.
+/**
+ * Opens the chat stream for one request. Returns the raw body to read, or the error.
+ */
 export async function openChat(
   request: ChatRequest,
 ): Promise<Result<ReadableStream<Uint8Array>, string>> {

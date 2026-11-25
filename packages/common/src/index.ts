@@ -5,20 +5,28 @@ export * from "./parse";
 export * from "./result";
 export * from "./wire";
 
-// Tokens kept free in a model's context window, so the model has room to answer.
+/**
+ * Tokens kept free in a model's context window, so the model has room to answer.
+ */
 export const RESERVED_REPLY_TOKENS = 4_000;
 
-// The tokens a conversation may use with a model whose window holds contextLength tokens.
+/**
+ * The tokens a conversation may use with a model whose window holds contextLength tokens.
+ */
 export function conversationLimit(contextLength: number): number {
   return Math.max(0, contextLength - RESERVED_REPLY_TOKENS);
 }
 
-// An estimate of the tokens a piece of text takes: about four characters per token.
+/**
+ * An estimate of the tokens a piece of text takes: about four characters per token.
+ */
 export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
-// The estimated tokens a conversation uses, and that as a fraction of the limit.
+/**
+ * The estimated tokens a conversation uses, and that as a fraction of the limit.
+ */
 export function budgetUsage(
   messages: ChatMessage[],
   limit: number,
@@ -30,12 +38,16 @@ export function budgetUsage(
   return { tokens, ratio: limit > 0 ? tokens / limit : 1 };
 }
 
-// Whether a conversation is within the limit.
+/**
+ * Whether a conversation is within the limit.
+ */
 export function fitsBudget(messages: ChatMessage[], limit: number): boolean {
   return budgetUsage(messages, limit).tokens <= limit;
 }
 
-// Drops the oldest messages until the conversation fits. The newest message is always kept.
+/**
+ * Drops the oldest messages until the conversation fits. The newest message is always kept.
+ */
 export function trimToBudget(
   messages: ChatMessage[],
   limit: number,
@@ -50,15 +62,22 @@ export function trimToBudget(
   return messages.slice(start);
 }
 
-// The label that opens a compaction summary.
+/**
+ * The label that opens a compaction summary.
+ */
 export const SUMMARY_PREFIX = "Summary of the earlier conversation: ";
 
+/**
+ * Whether a message is a compaction summary, going by its label.
+ */
 export function isSummaryMessage(message: ChatMessage): boolean {
   return message.role === "user" && message.content.startsWith(SUMMARY_PREFIX);
 }
 
-// Replaces the older conversation with a summary. Earlier summaries are dropped, since the new
-// one covers them; the most recent of the other messages are kept after it.
+/**
+ * Replaces the older conversation with a summary. Earlier summaries are dropped, since the new
+ * one covers them; the most recent of the other messages are kept after it.
+ */
 export function compactConversation(
   history: ChatMessage[],
   summary: string,
@@ -70,6 +89,9 @@ export function compactConversation(
   return [{ role: "user", content: `${SUMMARY_PREFIX}${summary}` }, ...recent];
 }
 
+/**
+ * Returns a greeting for the given name.
+ */
 export function greet(name: string): string {
   return `Hello, ${name}!`;
 }

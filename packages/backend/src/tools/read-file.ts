@@ -2,9 +2,14 @@ import { parseJson } from "common";
 import { z } from "zod";
 import { readProjectText } from "../project/project-files";
 
+/**
+ * The name the model uses to call the read-file tool.
+ */
 export const READ_FILE_NAME = "read_file";
 
-// The tool the model may call. It reads text; it never writes.
+/**
+ * The tool the model may call. It reads text; it never writes.
+ */
 export const READ_FILE_TOOL = {
   type: "function" as const,
   function: {
@@ -42,8 +47,10 @@ const ReadArgumentsSchema = z.object({
   end_line: z.number().int().min(1).optional(),
 });
 
-// The lines start..end of a file's text, cut to MAX_CHARS. The header names the lines
-// actually returned, so a cut read never looks complete.
+/**
+ * The lines start..end of a file's text, cut to MAX_CHARS. The header names the lines
+ * actually returned, so a cut read never looks complete.
+ */
 export function readRange(
   text: string,
   start: number,
@@ -75,7 +82,9 @@ export function readRange(
   return `Lines ${String(start)}-${String(lastShown)} of ${String(lines.length)}:\n${body}`;
 }
 
-// Runs the tool for the model's arguments and returns the text the model reads back.
+/**
+ * Runs the tool for the model's arguments and returns the text the model reads back.
+ */
 export async function runReadFile(
   root: string,
   argumentsJson: string,

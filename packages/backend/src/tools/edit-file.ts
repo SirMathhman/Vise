@@ -4,9 +4,14 @@ import { z } from "zod";
 import type { Approval } from "../chat/approvals";
 import { readProjectText } from "../project/project-files";
 
+/**
+ * The name the model uses to call the edit-file tool.
+ */
 export const EDIT_FILE_NAME = "edit_file";
 
-// The tool the model may call. Each edit waits for the user's approval before it is written.
+/**
+ * The tool the model may call. Each edit waits for the user's approval before it is written.
+ */
 export const EDIT_FILE_TOOL = {
   type: "function" as const,
   function: {
@@ -41,7 +46,9 @@ const EditArgumentsSchema = z.object({
   new_text: z.string(),
 });
 
-// Replaces the single occurrence of oldText, or says why it cannot.
+/**
+ * Replaces the single occurrence of oldText, or says why it cannot.
+ */
 export function replaceOnce(
   text: string,
   oldText: string,
@@ -68,7 +75,9 @@ function diffBody(oldText: string, newText: string): string {
   return [...removed, ...added].join("\n");
 }
 
-// Proposes one edit for approval. Returns the reason it cannot be proposed as text.
+/**
+ * Proposes one edit for approval. Returns the reason it cannot be proposed as text.
+ */
 export async function runEditFile(
   root: string,
   argumentsJson: string,

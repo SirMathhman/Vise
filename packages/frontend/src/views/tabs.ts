@@ -12,6 +12,9 @@ function showTab(name: string): void {
   }
 }
 
+/**
+ * Connects the tab buttons, so one panel shows at a time.
+ */
 export function initTabs(): void {
   for (const button of document.querySelectorAll<HTMLButtonElement>(
     "nav.tabs button",

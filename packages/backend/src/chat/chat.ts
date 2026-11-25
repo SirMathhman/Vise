@@ -34,7 +34,9 @@ const ChatChunkSchema = z.object({
     .optional(),
 });
 
-// A tool call the model made, assembled from its streamed fragments.
+/**
+ * A tool call the model made, assembled from its streamed fragments.
+ */
 export interface ToolCall {
   id: string;
   name: string;
@@ -46,7 +48,9 @@ type UpstreamItem =
   | { kind: "event"; event: ChatStreamEvent }
   | { kind: "toolCalls"; calls: ToolCall[] };
 
-// A message as sent upstream. Only the backend builds system and tool messages.
+/**
+ * A message as sent upstream. Only the backend builds system and tool messages.
+ */
 export type UpstreamMessage =
   | { role: "system" | "user"; content: string }
   | {
@@ -60,8 +64,10 @@ export type UpstreamMessage =
     }
   | { role: "tool"; tool_call_id: string; content: string };
 
-// Puts the backend's own instructions in front of the conversation. The client never
-// sends these, so it cannot change the model's instructions.
+/**
+ * Puts the backend's own instructions in front of the conversation. The client never
+ * sends these, so it cannot change the model's instructions.
+ */
 export function withSystemContext(
   messages: ChatMessage[],
   directory: string,
@@ -197,8 +203,10 @@ async function* upstreamItems(
   }
 }
 
-// Streams one round as text events. Returns the tool calls that end it, or undefined
-// when the reply is over.
+/**
+ * Streams one round as text events. Returns the tool calls that end it, or undefined
+ * when the reply is over.
+ */
 export async function* readRound(
   body: ReadableStream<Uint8Array>,
 ): AsyncGenerator<ChatStreamEvent, ToolCall[] | undefined> {
@@ -214,8 +222,10 @@ export async function* readRound(
   return undefined;
 }
 
-// Turns one OpenRouter body into typed events, with no tool calls. Every stream ends
-// with exactly one "done" or "error" event.
+/**
+ * Turns one OpenRouter body into typed events, with no tool calls. Every stream ends
+ * with exactly one "done" or "error" event.
+ */
 export function chatEvents(
   body: ReadableStream<Uint8Array>,
 ): ReadableStream<ChatStreamEvent> {
@@ -234,7 +244,9 @@ async function* textOnly(
   }
 }
 
-// Turns a generator of events into a stream that a client can read.
+/**
+ * Turns a generator of events into a stream that a client can read.
+ */
 export function streamFrom(
   events: AsyncGenerator<ChatStreamEvent, void>,
 ): ReadableStream<ChatStreamEvent> {
@@ -253,8 +265,10 @@ export function streamFrom(
   });
 }
 
-// Sends a request upstream, and returns the raw body. The backend's tools are offered unless
-// allowTools is false.
+/**
+ * Sends a request upstream, and returns the raw body. The backend's tools are offered unless
+ * allowTools is false.
+ */
 export async function openUpstream(
   apiKey: string,
   model: string,

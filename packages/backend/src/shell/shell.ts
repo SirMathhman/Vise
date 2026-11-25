@@ -5,10 +5,15 @@ import type { Approval } from "../chat/approvals";
 import { runCaptured } from "./run";
 import { executeInSandbox } from "./sandbox";
 
+/**
+ * The name the model uses to call the shell tool.
+ */
 export const RUN_COMMAND_NAME = "run_command";
 
-// The tool the model may call. Any command can be proposed, but the user approves each one
-// before it runs, and it runs in a sandbox container that sees only the project.
+/**
+ * The tool the model may call. Any command can be proposed, but the user approves each one
+ * before it runs, and it runs in a sandbox container that sees only the project.
+ */
 export const RUN_COMMAND_TOOL = {
   type: "function" as const,
   function: {
@@ -34,8 +39,10 @@ const CommandArgumentsSchema = z.object({
   command: z.string().trim().min(1),
 });
 
-// Runs one command directly on this machine, outside the sandbox, in the root. The tool does
-// not use it; it shares the output capture with the sandbox and is kept for local use.
+/**
+ * Runs one command directly on this machine, outside the sandbox, in the root. The tool does
+ * not use it; it shares the output capture with the sandbox and is kept for local use.
+ */
 export async function executeCommand(
   root: string,
   command: string,
@@ -48,7 +55,9 @@ export async function executeCommand(
   return ok(`Exit code ${String(result.value.code)}\n${result.value.output}`);
 }
 
-// Proposes one command for approval. Returns the reason it cannot be proposed as text.
+/**
+ * Proposes one command for approval. Returns the reason it cannot be proposed as text.
+ */
 export function runRunCommand(
   root: string,
   argumentsJson: string,

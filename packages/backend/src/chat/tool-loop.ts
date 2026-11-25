@@ -110,9 +110,11 @@ async function* replyEvents(
   };
 }
 
-// Sends the conversation and returns the reply as typed events, as they arrive. Tool
-// rounds are run here, so the client sees only the text and any approvals to answer.
-// The signal ends the reply when the client goes away.
+/**
+ * Sends the conversation and returns the reply as typed events, as they arrive. Tool
+ * rounds are run here, so the client sees only the text and any approvals to answer.
+ * The signal ends the reply when the client goes away.
+ */
 export async function streamChatReply(
   apiKey: string,
   model: string,

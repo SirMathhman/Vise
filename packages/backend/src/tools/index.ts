@@ -37,12 +37,16 @@ const TOOLS = new Map<string, Tool>([
   ],
 ]);
 
-// The tool definitions sent with each request.
+/**
+ * The tool definitions sent with each request.
+ */
 export const toolDefinitions = [...TOOLS.values()].map(
   (tool) => tool.definition,
 );
 
-// Runs a tool the model called. An unknown name is reported back to the model as text.
+/**
+ * Runs a tool the model called. An unknown name is reported back to the model as text.
+ */
 export async function runTool(
   root: string,
   name: string,

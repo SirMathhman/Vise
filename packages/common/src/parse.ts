@@ -2,11 +2,15 @@ import type { z } from "zod";
 import type { Result } from "./result";
 import { err, ok } from "./result";
 
-// Why a value could not be read. Callers match on kind, and describeParseError turns it into text.
+/**
+ * Why a value could not be read. Callers match on kind, and describeParseError turns it into text.
+ */
 export type ParseError =
   { kind: "notJson" } | { kind: "wrongShape"; path: string; message: string };
 
-// Checks an untrusted value against a zod schema.
+/**
+ * Checks an untrusted value against a zod schema.
+ */
 export function parseValue<S extends z.ZodType>(
   schema: S,
   value: unknown,
@@ -23,7 +27,9 @@ export function parseValue<S extends z.ZodType>(
   });
 }
 
-// Turns JSON text into a checked value. Every deserialization goes through here.
+/**
+ * Turns JSON text into a checked value. Every deserialization goes through here.
+ */
 export function parseJson<S extends z.ZodType>(
   schema: S,
   text: string,
@@ -39,7 +45,9 @@ export function parseJson<S extends z.ZodType>(
   return parseValue(schema, value);
 }
 
-// User-facing text for a parse failure. A wrong shape names the field that failed.
+/**
+ * User-facing text for a parse failure. A wrong shape names the field that failed.
+ */
 export function describeParseError(error: ParseError): string {
   if (error.kind === "notJson") {
     return "not JSON";

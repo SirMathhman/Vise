@@ -5,7 +5,9 @@ import type { Result } from "common";
 import { err, ok } from "common";
 import { runCaptured } from "./run";
 
-// The image commands run in. Build it with `bun run sandbox:build`.
+/**
+ * The image commands run in. Build it with `bun run sandbox:build`.
+ */
 export const SANDBOX_IMAGE = "localhost/vise-sandbox:1";
 
 // Files that hold secrets. Each is hidden behind an empty, read-only file in the sandbox.
@@ -14,9 +16,11 @@ const SECRET_FILES = ["packages/backend/.env"];
 // Time podman gets to start and remove a container, on top of the command's own limit.
 const PODMAN_GRACE_MS = 15_000;
 
-// The podman command that runs one shell command in a throwaway container. Only the project is
-// mounted, read-write at /workspace. Secrets are masked, no host environment reaches the
-// container, and `timeout` inside it ends the whole process tree.
+/**
+ * The podman command that runs one shell command in a throwaway container. Only the project is
+ * mounted, read-write at /workspace. Secrets are masked, no host environment reaches the
+ * container, and `timeout` inside it ends the whole process tree.
+ */
 export function sandboxArguments(
   root: string,
   name: string,
@@ -50,8 +54,10 @@ export function sandboxArguments(
   ];
 }
 
-// Runs one shell command in the sandbox and returns its exit code and output. It never falls
-// back to running on this machine.
+/**
+ * Runs one shell command in the sandbox and returns its exit code and output. It never falls
+ * back to running on this machine.
+ */
 export async function executeInSandbox(
   root: string,
   command: string,

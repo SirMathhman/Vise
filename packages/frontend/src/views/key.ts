@@ -16,6 +16,9 @@ function showSettings(settings: OpenRouterSettings): void {
   keyStatus.textContent = settings.configured ? "Key set" : "No key set";
 }
 
+/**
+ * Shows whether an OpenRouter key is configured.
+ */
 export async function loadKeyStatus(): Promise<void> {
   const result = await apiJson(SETTINGS_PATH, OpenRouterSettingsSchema);
   if (result.ok) {
@@ -56,6 +59,9 @@ async function clearKey(): Promise<void> {
   void loadModels();
 }
 
+/**
+ * Connects the key form's Save and Clear controls.
+ */
 export function initKey(): void {
   keyForm.addEventListener("submit", (event) => void saveKey(event));
   keyClear.addEventListener("click", () => void clearKey());

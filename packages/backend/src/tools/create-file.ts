@@ -6,9 +6,14 @@ import { z } from "zod";
 import type { Approval } from "../chat/approvals";
 import { isGitInternal, resolveInside } from "../project/project-files";
 
+/**
+ * The name the model uses to call the create-file tool.
+ */
 export const CREATE_FILE_NAME = "create_file";
 
-// The tool the model may call. It makes a new file only after the user approves it.
+/**
+ * The tool the model may call. It makes a new file only after the user approves it.
+ */
 export const CREATE_FILE_TOOL = {
   type: "function" as const,
   function: {
@@ -99,7 +104,9 @@ async function validateNewPath(
   return ok(absolute);
 }
 
-// Proposes one new file for approval. Returns the reason it cannot be proposed as text.
+/**
+ * Proposes one new file for approval. Returns the reason it cannot be proposed as text.
+ */
 export async function runCreateFile(
   root: string,
   argumentsJson: string,

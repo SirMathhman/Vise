@@ -1,7 +1,9 @@
 import type { Result } from "common";
 import { err, ok } from "common";
 
-// The most output one command returns, per stream and in total.
+/**
+ * The most output one command returns, per stream and in total.
+ */
 export const MAX_CHARS = 20_000;
 
 // Environment names that look like credentials are not passed on to a spawned program.
@@ -51,9 +53,11 @@ async function readCapped(
   }
 }
 
-// Runs a program and returns its exit code and its output as text, cut to MAX_CHARS. Output is
-// read as it arrives, and a program that runs past the timeout is stopped without waiting on
-// its output.
+/**
+ * Runs a program and returns its exit code and its output as text, cut to MAX_CHARS. Output is
+ * read as it arrives, and a program that runs past the timeout is stopped without waiting on
+ * its output.
+ */
 export async function runCaptured(
   argv: string[],
   cwd: string,

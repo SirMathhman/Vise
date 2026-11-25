@@ -18,11 +18,16 @@ let modelsPage = 0;
 // The loaded models and their context windows in tokens. The chat only accepts these.
 const knownModels = new Map<string, number>();
 
+/**
+ * Whether a model is in the loaded list.
+ */
 export function hasModel(id: string): boolean {
   return knownModels.has(id);
 }
 
-// The context window of a loaded model, or undefined when the model is not loaded.
+/**
+ * The context window of a loaded model, or undefined when the model is not loaded.
+ */
 export function contextLengthOf(id: string): number | undefined {
   return knownModels.get(id);
 }
@@ -62,6 +67,9 @@ function renderModelsPage(): void {
   modelsNext.disabled = modelsPage >= pageCount - 1;
 }
 
+/**
+ * Loads the OpenRouter model list into the table, the model picker, and the chat's list of known models.
+ */
 export async function loadModels(): Promise<void> {
   modelsStatus.textContent = "Loading…";
   modelsBody.replaceChildren();
@@ -86,6 +94,9 @@ export async function loadModels(): Promise<void> {
   modelsStatus.textContent = `${String(models.length)} models`;
 }
 
+/**
+ * Connects the models table's pager.
+ */
 export function initModels(): void {
   modelsPrev.addEventListener("click", () => {
     modelsPage -= 1;

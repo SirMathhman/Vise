@@ -5,6 +5,9 @@ import { requireElement } from "../dom";
 const health = requireElement("health") as HTMLParagraphElement;
 const refresh = requireElement("refresh") as HTMLButtonElement;
 
+/**
+ * Checks the backend's health and shows the result in the Backend panel.
+ */
 export async function loadHealth(): Promise<void> {
   refresh.disabled = true;
   health.textContent = "Checking…";
@@ -15,6 +18,9 @@ export async function loadHealth(): Promise<void> {
   refresh.disabled = false;
 }
 
+/**
+ * Connects the health panel's Refresh button.
+ */
 export function initHealth(): void {
   refresh.addEventListener("click", () => void loadHealth());
 }

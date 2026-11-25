@@ -22,6 +22,9 @@ function perMillion(price: string): number | null {
   return value < 0 ? null : value;
 }
 
+/**
+ * Lists the models the account can use, with prices in USD per million tokens. Returns an error when OpenRouter cannot be reached or its reply does not match the expected shape.
+ */
 export async function fetchModels(
   apiKey: string,
 ): Promise<Result<ModelSummary[], string>> {

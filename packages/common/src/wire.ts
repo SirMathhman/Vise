@@ -6,13 +6,22 @@ import { parseValue } from "./parse";
 // Every JSON shape exchanged between the frontend and the backend. The schemas are the
 // source of truth; the TypeScript types are inferred from them.
 
+/**
+ * The reply of GET /api/health: the service status and the time it was checked.
+ */
 export const HealthResponseSchema = z.object({
   status: z.literal("ok"),
   service: z.string(),
   time: z.string(),
 });
+/**
+ * The reply of GET /api/health.
+ */
 export type HealthResponse = z.infer<typeof HealthResponseSchema>;
 
+/**
+ * One model in the OpenRouter list, with its context window and prices per million tokens.
+ */
 export const ModelSummarySchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -22,22 +31,46 @@ export const ModelSummarySchema = z.object({
   /** USD per 1 million completion tokens, or null when the price varies per request. */
   completionPricePerMillion: z.number().nullable(),
 });
+/**
+ * One model in the OpenRouter list.
+ */
 export type ModelSummary = z.infer<typeof ModelSummarySchema>;
 
+/**
+ * The reply of GET /api/models.
+ */
 export const ModelsResponseSchema = z.object({
   models: z.array(ModelSummarySchema),
 });
+/**
+ * The reply of GET /api/models.
+ */
 export type ModelsResponse = z.infer<typeof ModelsResponseSchema>;
 
+/**
+ * The body of a failed request: a human-readable error message.
+ */
 export const ErrorResponseSchema = z.object({ error: z.string() });
+/**
+ * The body of a failed request.
+ */
 export type ErrorResponse = z.infer<typeof ErrorResponseSchema>;
 
+/**
+ * Whether an OpenRouter key is configured. The key itself is never sent back.
+ */
 export const OpenRouterSettingsSchema = z.object({
   /** True when a key is saved in the UI or set in the environment. The key itself is never returned. */
   configured: z.boolean(),
 });
+/**
+ * Whether an OpenRouter key is configured.
+ */
 export type OpenRouterSettings = z.infer<typeof OpenRouterSettingsSchema>;
 
+/**
+ * The body of PUT /api/settings/openrouter: the key to save.
+ */
 export const SaveOpenRouterKeyRequestSchema = z.object({
   apiKey: z
     .string()
@@ -45,22 +78,36 @@ export const SaveOpenRouterKeyRequestSchema = z.object({
     .min(1)
     .refine((key) => !/\s/.test(key), "The API key must not contain spaces"),
 });
+/**
+ * The body of PUT /api/settings/openrouter.
+ */
 export type SaveOpenRouterKeyRequest = z.infer<
   typeof SaveOpenRouterKeyRequestSchema
 >;
 
-// A turn of the conversation: a message from the user or from the assistant. Clients send
-// only turns. Instructions for the model are added by the backend, never by the client.
+/**
+ * A turn of the conversation: a message from the user or from the assistant. Clients send
+ * only turns. Instructions for the model are added by the backend, never by the client.
+ */
 export const ChatMessageSchema = z.object({
   role: z.enum(["user", "assistant"]),
   content: z
     .string()
     .refine((text) => text.trim() !== "", "Each message must have text"),
 });
+/**
+ * One turn of a conversation, as the user or the assistant sees it.
+ */
 export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 
+/**
+ * A list of conversation turns.
+ */
 export const ChatMessageListSchema = z.array(ChatMessageSchema);
 
+/**
+ * The body of POST /api/chat: the model, the conversation, and whether tools may be offered.
+ */
 export const ChatRequestSchema = z.object({
   model: z.string().trim().min(1),
   /** The whole conversation so far, ending with the user's new message. */
@@ -71,9 +118,14 @@ export const ChatRequestSchema = z.object({
   /** False offers the model no tools, so the reply can only be text. Defaults to true. */
   allowTools: z.boolean().optional(),
 });
+/**
+ * The body of POST /api/chat.
+ */
 export type ChatRequest = z.infer<typeof ChatRequestSchema>;
 
-// One event in the chat reply stream. A reply ends with exactly one "done" or "error" event.
+/**
+ * One event in the chat reply stream. A reply ends with exactly one "done" or "error" event.
+ */
 export const ChatStreamEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("delta"), text: z.string() }),
   z.object({ type: z.literal("done") }),
@@ -89,21 +141,37 @@ export const ChatStreamEventSchema = z.discriminatedUnion("type", [
     body: z.string(),
   }),
 ]);
+/**
+ * One event in the chat reply stream: text, a proposed change, a usage count, or the end of the reply.
+ */
 export type ChatStreamEvent = z.infer<typeof ChatStreamEventSchema>;
 
+/**
+ * The body of POST /api/approvals/:id: whether the user approved the change.
+ */
 export const ApprovalDecisionSchema = z.object({ approved: z.boolean() });
+/**
+ * The body of POST /api/approvals/:id.
+ */
 export type ApprovalDecision = z.infer<typeof ApprovalDecisionSchema>;
 
+/**
+ * The reply to a recorded approval decision.
+ */
 export const ApprovalAckSchema = z.object({ ok: z.literal(true) });
 
-// Checks one untrusted value against the ChatStreamEvent contract.
+/**
+ * Checks one untrusted value against the ChatStreamEvent contract.
+ */
 export function parseChatStreamEvent(
   value: unknown,
 ): Result<ChatStreamEvent, ParseError> {
   return parseValue(ChatStreamEventSchema, value);
 }
 
-// Checks an untrusted list of conversation turns.
+/**
+ * Checks an untrusted list of conversation turns.
+ */
 export function parseChatMessageList(
   value: unknown,
 ): Result<ChatMessage[], ParseError> {

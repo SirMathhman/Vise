@@ -390,6 +390,9 @@ function newConversation(): void {
   renderConversation();
 }
 
+/**
+ * Wires the chat panel: restores the saved model and conversation, and connects the controls.
+ */
 export function initChat(): void {
   history = loadHistory();
   modelInput.value = readActiveModel();
