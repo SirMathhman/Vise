@@ -60,8 +60,9 @@ async function loadModels(): Promise<void> {
     const data = (await res.json()) as ModelsResponse;
     for (const m of data.models) {
       const row = document.createElement("tr");
+      // Model ids have the form "vendor/model"; the vendor is the part before the slash.
       row.append(
-        cell(m.id),
+        cell(m.id.split("/")[0]),
         cell(m.name),
         cell(m.contextLength.toLocaleString()),
         cell(`$${m.promptPricePerMillion.toFixed(2)}`),
