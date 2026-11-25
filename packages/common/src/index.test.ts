@@ -1,5 +1,31 @@
 import { describe, expect, test } from "bun:test";
-import { parseChatMessageList, parseChatStreamEvent } from "./index";
+import {
+  MAX_CONVERSATION_MESSAGES,
+  fitsBudget,
+  parseChatMessageList,
+  parseChatStreamEvent,
+  trimToBudget,
+} from "./index";
+
+describe("conversation budget", () => {
+  test("fitsBudget rejects too many messages", () => {
+    const many = Array.from({ length: MAX_CONVERSATION_MESSAGES + 1 }, () => ({
+      role: "user" as const,
+      content: "x",
+    }));
+    expect(fitsBudget(many)).toBe(false);
+    expect(fitsBudget(many.slice(1))).toBe(true);
+  });
+
+  test("trimToBudget drops the oldest messages and keeps the newest", () => {
+    const messages = [
+      { role: "user" as const, content: "a".repeat(15000) },
+      { role: "assistant" as const, content: "b".repeat(15000) },
+      { role: "user" as const, content: "c" },
+    ];
+    expect(trimToBudget(messages)).toEqual(messages.slice(1));
+  });
+});
 
 describe("parseChatMessageList", () => {
   test("accepts a list of user and assistant messages with text", () => {

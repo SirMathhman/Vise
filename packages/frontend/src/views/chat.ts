@@ -1,5 +1,12 @@
 import type { ChatMessage, ChatStreamEvent, Result } from "common";
-import { err, ok, parseChatMessageList, parseChatStreamEvent } from "common";
+import {
+  err,
+  fitsBudget,
+  ok,
+  parseChatMessageList,
+  parseChatStreamEvent,
+  trimToBudget,
+} from "common";
 import { openChat } from "../api";
 import { errorMessage, requireElement } from "../dom";
 import { hasModel } from "./models";
@@ -45,7 +52,7 @@ function loadHistory(): ChatMessage[] {
   }
   try {
     const parsed = parseChatMessageList(JSON.parse(raw));
-    return parsed.ok ? parsed.value : [];
+    return parsed.ok ? trimToBudget(parsed.value) : [];
   } catch {
     return [];
   }
@@ -148,10 +155,14 @@ async function sendMessage(): Promise<void> {
     return;
   }
 
-  const messages: ChatMessage[] = [
-    ...history,
-    { role: "user", content: message },
-  ];
+  // Older messages are dropped, oldest first, so the conversation fits the limit.
+  const full: ChatMessage[] = [...history, { role: "user", content: message }];
+  const messages = trimToBudget(full);
+  if (!fitsBudget(messages)) {
+    chatStatus.textContent = "That message is too long to send.";
+    return;
+  }
+  const dropped = messages.length < full.length;
   inFlight = { user: message, reply: "" };
   chatMessage.value = "";
   chatSend.disabled = true;
@@ -170,7 +181,9 @@ async function sendMessage(): Promise<void> {
     if (outcome.ok) {
       history = [...messages, { role: "assistant", content: outcome.value }];
       saveHistory();
-      chatStatus.textContent = "Done";
+      chatStatus.textContent = dropped
+        ? "Done. Older messages were dropped to fit the conversation limit."
+        : "Done";
     } else {
       chatStatus.textContent = `Unavailable: ${outcome.error}`;
     }

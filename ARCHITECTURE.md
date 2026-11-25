@@ -31,6 +31,7 @@ Dependency direction is one way: frontend and backend depend on common, never th
 - Upstream schema drift can crash mapping code; responses must be validated at the boundary.
 - Errors are thrown as exceptions and carried as plain strings, which makes failures hard to classify.
 - Every page load hits the upstream, so rate limits and latency are shared by all users.
+- Each turn re-sends the conversation, so the shared budget drops the oldest messages once a conversation passes 40 messages or 20,000 characters.
 - A stream that fails after the first byte has already returned HTTP 200, so the status code cannot report the failure.
 
 ## Security Concerns
@@ -38,7 +39,8 @@ Dependency direction is one way: frontend and backend depend on common, never th
 - **Trust boundary**: the backend trusts nothing from upstream or from the browser. Both are validated.
 - **Key exposure**: the upstream API key is saved to the backend's git-ignored `.env` file, or read from the environment, and is never returned in responses or logs. The UI sends it once, on save.
 - **Open proxy**: any client that can reach the backend can spend the operator's upstream quota. Missing control: authentication on proxy routes.
-- **Chat input**: message length and model id are unbounded on the chat route, and each request spends paid upstream tokens. Missing controls: a length cap, a backend-side model allowlist, and authentication.
+- **Chat input**: the backend enforces the shared conversation budget of 40 messages and 20,000 characters. The client supplies the assistant turns, so it can forge prior context. Each request spends paid upstream tokens. Missing controls: a backend-side model allowlist and authentication.
+- **Local history**: the conversation is stored in browser localStorage as plain text. Anyone with access to the browser profile can read it, so it must never hold keys.
 - **Cross-origin access**: the backend allows only the frontend dev origin, `http://localhost:5173`, with no wildcard.
 - **Rendering**: model metadata is untrusted text. It must be set with `textContent`, never `innerHTML`.
 - **Logging**: error messages must not echo upstream bodies or request headers.
@@ -57,5 +59,5 @@ Dependency direction is one way: frontend and backend depend on common, never th
 
 - Upstream calls without timeouts or caching are the main latency risk.
 - The app is exactly the window size. The chat conversation is the only scroll region; every other section must fit the window or page its rows. Content clipped below the window is a defect, not a layout.
-- Sending an unbounded message upstream raises cost and latency for every chat request.
+- Re-sending the conversation on every turn makes cost grow with its length, so the shared budget caps each request.
 - Nothing here has been profiled. Measure with a profiler before optimizing.

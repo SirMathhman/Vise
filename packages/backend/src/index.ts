@@ -7,7 +7,7 @@ import type {
   OpenRouterSettings,
   SaveOpenRouterKeyRequest,
 } from "common";
-import { greet, parseChatMessageList } from "common";
+import { fitsBudget, greet, parseChatMessageList } from "common";
 import { streamChatReply } from "./chat";
 import { fetchModels } from "./openrouter";
 import {
@@ -91,6 +91,13 @@ async function chat(req: Request): Promise<Response> {
     return json(body, 400);
   }
   const messages = parsed.value;
+  if (!fitsBudget(messages)) {
+    const body: ErrorResponse = {
+      error:
+        "The conversation is over the size limit. Start a new conversation or send a shorter message.",
+    };
+    return json(body, 400);
+  }
 
   const apiKey = await getOpenRouterKey();
   if (!apiKey) {
