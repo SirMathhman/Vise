@@ -16,7 +16,8 @@ import {
 } from "common";
 import type { ParseError } from "common";
 import { z } from "zod";
-import { streamChatReply, withSystemContext } from "./chat";
+import { withSystemContext } from "./chat";
+import { streamChatReply } from "./tool-loop";
 import { PROJECT_ROOT } from "./workdir";
 import { fetchModels } from "./openrouter";
 import {

@@ -1,15 +1,9 @@
 import type { ChatMessage, ChatStreamEvent, Result } from "common";
 import { err, ok, parseJson } from "common";
 import { z } from "zod";
-import {
-  LIST_DIRECTORY_NAME,
-  LIST_DIRECTORY_TOOL,
-  runListDirectory,
-} from "./list-directory";
+import { toolDefinitions } from "./tools";
 
 const CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
-// The most rounds of tool calls one reply may take before the backend stops.
-const MAX_TOOL_ROUNDS = 5;
 
 // A piece of one tool call. The fragments of a call share an index.
 const ToolCallFragmentSchema = z.object({
@@ -38,7 +32,8 @@ const ChatChunkSchema = z.object({
     .optional(),
 });
 
-interface ToolCall {
+// A tool call the model made, assembled from its streamed fragments.
+export interface ToolCall {
   id: string;
   name: string;
   arguments: string;
@@ -196,7 +191,7 @@ async function* upstreamItems(
 
 // Streams one round as text events. Returns the tool calls that end it, or undefined
 // when the reply is over.
-async function* readRound(
+export async function* readRound(
   body: ReadableStream<Uint8Array>,
 ): AsyncGenerator<ChatStreamEvent, ToolCall[] | undefined> {
   for await (const item of upstreamItems(body)) {
@@ -231,97 +226,8 @@ async function* textOnly(
   }
 }
 
-// Sends a request upstream and returns the raw body to read.
-async function openUpstream(
-  apiKey: string,
-  model: string,
-  messages: UpstreamMessage[],
-): Promise<Result<ReadableStream<Uint8Array>, string>> {
-  let res: Response;
-  try {
-    res = await fetch(CHAT_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        messages,
-        stream: true,
-        tools: [LIST_DIRECTORY_TOOL],
-      }),
-    });
-  } catch {
-    return err("Could not reach OpenRouter");
-  }
-  if (!res.ok || !res.body) {
-    return err(`OpenRouter responded with HTTP ${String(res.status)}`);
-  }
-  return ok(res.body);
-}
-
-// Runs each tool call the model made and returns the results to send back.
-async function toolResults(calls: ToolCall[]): Promise<UpstreamMessage[]> {
-  const results: UpstreamMessage[] = [];
-  for (const call of calls) {
-    const content =
-      call.name === LIST_DIRECTORY_NAME
-        ? await runListDirectory(call.arguments)
-        : `Unknown tool: ${call.name}`;
-    results.push({ role: "tool", tool_call_id: call.id, content });
-  }
-  return results;
-}
-
-// The assistant message that records the tool calls, as the model made them.
-function assistantToolCalls(calls: ToolCall[]): UpstreamMessage {
-  return {
-    role: "assistant",
-    content: null,
-    tool_calls: calls.map((call) => ({
-      id: call.id,
-      type: "function" as const,
-      function: { name: call.name, arguments: call.arguments },
-    })),
-  };
-}
-
-// The whole reply: text as it streams, and tool rounds in between, each answered by the
-// backend before the model continues.
-async function* replyEvents(
-  apiKey: string,
-  model: string,
-  messages: UpstreamMessage[],
-  first: ReadableStream<Uint8Array>,
-): AsyncGenerator<ChatStreamEvent, void> {
-  let conversation = messages;
-  let body = first;
-  for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
-    const calls = yield* readRound(body);
-    if (calls === undefined) {
-      return;
-    }
-    conversation = [
-      ...conversation,
-      assistantToolCalls(calls),
-      ...(await toolResults(calls)),
-    ];
-    const next = await openUpstream(apiKey, model, conversation);
-    if (!next.ok) {
-      yield { type: "error", message: next.error };
-      return;
-    }
-    body = next.value;
-  }
-  yield {
-    type: "error",
-    message: "The model asked for too many tool calls in one reply",
-  };
-}
-
 // Turns a generator of events into a stream that a client can read.
-function streamFrom(
+export function streamFrom(
   events: AsyncGenerator<ChatStreamEvent, void>,
 ): ReadableStream<ChatStreamEvent> {
   return new ReadableStream<ChatStreamEvent>({
@@ -339,15 +245,32 @@ function streamFrom(
   });
 }
 
-// Sends the conversation and returns the reply as typed events, as they arrive.
-export async function streamChatReply(
+// Sends a request upstream, offering the backend's tools, and returns the raw body.
+export async function openUpstream(
   apiKey: string,
   model: string,
   messages: UpstreamMessage[],
-): Promise<Result<ReadableStream<ChatStreamEvent>, string>> {
-  const first = await openUpstream(apiKey, model, messages);
-  if (!first.ok) {
-    return err(first.error);
+): Promise<Result<ReadableStream<Uint8Array>, string>> {
+  let res: Response;
+  try {
+    res = await fetch(CHAT_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        stream: true,
+        tools: toolDefinitions,
+      }),
+    });
+  } catch {
+    return err("Could not reach OpenRouter");
   }
-  return ok(streamFrom(replyEvents(apiKey, model, messages, first.value)));
+  if (!res.ok || !res.body) {
+    return err(`OpenRouter responded with HTTP ${String(res.status)}`);
+  }
+  return ok(res.body);
 }
