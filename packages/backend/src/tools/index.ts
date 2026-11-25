@@ -2,6 +2,8 @@ import type { Approval } from "../chat/approvals";
 import { CREATE_FILE_TOOL, runCreateFile } from "./create-file";
 import { EDIT_FILE_TOOL, runEditFile } from "./edit-file";
 import { LIST_DIRECTORY_TOOL, runListDirectory } from "./list-directory";
+import { MODEL_INFO_TOOL, runModelInfo } from "./model-info";
+import type { ModelSelf } from "./model-info";
 import { READ_FILE_TOOL, runReadFile } from "./read-file";
 import { RUN_COMMAND_TOOL, runRunCommand } from "../shell/shell";
 
@@ -21,7 +23,11 @@ interface ToolDefinition {
 
 interface Tool {
   definition: ToolDefinition;
-  run(root: string, argumentsJson: string): Promise<string | Approval>;
+  run(
+    root: string,
+    argumentsJson: string,
+    self?: ModelSelf,
+  ): Promise<string | Approval>;
 }
 
 // Every tool the backend offers, keyed by name.
@@ -46,6 +52,10 @@ const TOOLS = new Map<string, Tool>([
     RUN_COMMAND_TOOL.function.name,
     { definition: RUN_COMMAND_TOOL, run: runRunCommand },
   ],
+  [
+    MODEL_INFO_TOOL.function.name,
+    { definition: MODEL_INFO_TOOL, run: runModelInfo },
+  ],
 ]);
 
 /**
@@ -61,13 +71,15 @@ export const toolDefinitions = [...TOOLS.values()].map(
  * @param root The project root.
  * @param name The name of the tool the model called.
  * @param argumentsJson The model's arguments, as JSON text.
+ * @param self The facts about the model answering the reply, for the model-info tool.
  * @returns The tool's result text, or an approval card for a change that needs the user.
  */
 export async function runTool(
   root: string,
   name: string,
   argumentsJson: string,
+  self?: ModelSelf,
 ): Promise<string | Approval> {
   const tool = TOOLS.get(name);
-  return tool ? tool.run(root, argumentsJson) : `Unknown tool: ${name}`;
+  return tool ? tool.run(root, argumentsJson, self) : `Unknown tool: ${name}`;
 }

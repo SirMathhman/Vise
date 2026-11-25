@@ -5,6 +5,7 @@ import { openUpstream, readRound, streamFrom } from "../openrouter";
 import type { Approval } from "./approvals";
 import { openApproval, waitForApproval } from "./approvals";
 import { runTool, toolDefinitions } from "../tools";
+import type { ModelSelf } from "../tools/model-info";
 import { PROJECT_ROOT } from "../project/workdir";
 
 // The most rounds of tool calls one reply may take before the backend stops.
@@ -41,11 +42,17 @@ async function* awaitApproval(
 // needs approval waits for the user first.
 async function* toolResults(
   calls: ToolCall[],
-  signal?: AbortSignal,
+  signal: AbortSignal | undefined,
+  self: ModelSelf | undefined,
 ): AsyncGenerator<ChatStreamEvent, UpstreamMessage[]> {
   const results: UpstreamMessage[] = [];
   for (const call of calls) {
-    const outcome = await runTool(PROJECT_ROOT, call.name, call.arguments);
+    const outcome = await runTool(
+      PROJECT_ROOT,
+      call.name,
+      call.arguments,
+      self,
+    );
     let content: string;
     if (typeof outcome === "string") {
       content = outcome;
@@ -79,6 +86,7 @@ async function* replyEvents(
   first: ReadableStream<Uint8Array>,
   signal: AbortSignal | undefined,
   tools: typeof toolDefinitions,
+  self: ModelSelf | undefined,
 ): AsyncGenerator<ChatStreamEvent, void> {
   let conversation = messages;
   let body = first;
@@ -91,7 +99,7 @@ async function* replyEvents(
     if (round === MAX_TOOL_ROUNDS - 1) {
       break;
     }
-    const results = yield* toolResults(calls, signal);
+    const results = yield* toolResults(calls, signal, self);
     // The client has gone: do not ask the model again.
     if (signal?.aborted) {
       return;
@@ -120,6 +128,7 @@ async function* replyEvents(
  * @param messages The conversation to send.
  * @param signal Aborts the reply when the client has gone away.
  * @param tools The tools offered in every round. Empty for none.
+ * @param self The facts about the model answering the reply, for the model-info tool.
  * @returns The reply as typed events, or the error that prevented it from starting.
  */
 export async function streamChatReply(
@@ -128,6 +137,7 @@ export async function streamChatReply(
   messages: UpstreamMessage[],
   signal?: AbortSignal,
   tools: typeof toolDefinitions = toolDefinitions,
+  self?: ModelSelf,
 ): Promise<Result<ReadableStream<ChatStreamEvent>, string>> {
   const first = await openUpstream(apiKey, model, messages, tools);
   if (!first.ok) {
@@ -135,7 +145,7 @@ export async function streamChatReply(
   }
   return ok(
     streamFrom(
-      replyEvents(apiKey, model, messages, first.value, signal, tools),
+      replyEvents(apiKey, model, messages, first.value, signal, tools, self),
     ),
   );
 }

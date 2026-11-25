@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type { ChatStreamEvent } from "common";
 import type { UpstreamMessage } from "../../src/openrouter";
 import { streamChatReply } from "../../src/chat/tool-loop";
+import { toolDefinitions } from "../../src/tools";
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
@@ -84,5 +85,42 @@ describe("tool loop", () => {
     }
     await result.value.getReader().read();
     expect(bodies[0]).not.toContain('"tools"');
+  });
+});
+
+describe("get_model_info in a reply", () => {
+  test("the model gets its own facts back as the tool result", async () => {
+    const bodies = fakeUpstream([
+      toolRound("get_model_info"),
+      textRound("done"),
+    ]);
+    const self = {
+      id: "openai/gpt-4o",
+      name: "GPT-4o",
+      contextLength: 128_000,
+      replyReserveTokens: 4_000,
+      remainingBudgetTokens: 100_000,
+      toolNames: ["get_model_info"],
+    };
+    const result = await streamChatReply(
+      "key",
+      "openai/gpt-4o",
+      [{ role: "user", content: "what model are you?" }],
+      undefined,
+      toolDefinitions,
+      self,
+    );
+    if (!result.ok) {
+      throw new Error(result.error);
+    }
+    const reader = result.value.getReader();
+    for (
+      let next = await reader.read();
+      !next.done;
+      next = await reader.read()
+    ) {
+      // Drain the reply so every round runs.
+    }
+    expect(bodies[1]).toContain('contextLength\\": 128000');
   });
 });
