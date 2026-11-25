@@ -1,4 +1,5 @@
 import type { Approval } from "../approvals";
+import { CREATE_FILE_TOOL, runCreateFile } from "../create-file";
 import { EDIT_FILE_TOOL, runEditFile } from "../edit-file";
 import { LIST_DIRECTORY_TOOL, runListDirectory } from "../list-directory";
 import { READ_FILE_TOOL, runReadFile } from "../read-file";
@@ -24,6 +25,10 @@ const TOOLS = new Map<string, Tool>([
   [
     EDIT_FILE_TOOL.function.name,
     { definition: EDIT_FILE_TOOL, run: runEditFile },
+  ],
+  [
+    CREATE_FILE_TOOL.function.name,
+    { definition: CREATE_FILE_TOOL, run: runCreateFile },
   ],
 ]);
 
