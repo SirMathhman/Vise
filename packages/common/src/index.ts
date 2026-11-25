@@ -44,6 +44,42 @@ export type ChatStreamEvent =
   | { type: "done" }
   | { type: "error"; message: string };
 
+// A value or an error, returned instead of thrown.
+export type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
+
+export function ok<T>(value: T): Result<T, never> {
+  return { ok: true, value };
+}
+
+export function err<E>(error: E): Result<never, E> {
+  return { ok: false, error };
+}
+
+// Checks one untrusted value against the ChatStreamEvent contract.
+export function parseChatStreamEvent(
+  value: unknown,
+): Result<ChatStreamEvent, string> {
+  if (typeof value === "object" && value !== null) {
+    const event = value as Record<string, unknown>;
+    if (event.type === "delta" && typeof event.text === "string") {
+      const delta: ChatStreamEvent = { type: "delta", text: event.text };
+      return ok(delta);
+    }
+    if (event.type === "done") {
+      const done: ChatStreamEvent = { type: "done" };
+      return ok(done);
+    }
+    if (event.type === "error" && typeof event.message === "string") {
+      const failure: ChatStreamEvent = {
+        type: "error",
+        message: event.message,
+      };
+      return ok(failure);
+    }
+  }
+  return err("Unexpected chat event");
+}
+
 export function greet(name: string): string {
   return `Hello, ${name}!`;
 }

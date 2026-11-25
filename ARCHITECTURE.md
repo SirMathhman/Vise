@@ -55,6 +55,6 @@ Dependency direction is one way: frontend and backend depend on common, never th
 ## Performance
 
 - Upstream calls without timeouts or caching are the main latency risk.
-- The model table is paged five rows at a time, and the app never scrolls, so sections below the window's height are clipped until the layout is compacted.
+- The app never scrolls, so every section must fit the window or page its rows. Content clipped below the window is a defect, not a layout.
 - Sending an unbounded message upstream raises cost and latency for every chat request.
 - Nothing here has been profiled. Measure with a profiler before optimizing.

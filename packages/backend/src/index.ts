@@ -91,17 +91,14 @@ async function chat(req: Request): Promise<Response> {
     return json(body, 500);
   }
 
-  try {
-    const reply = await streamChatReply(apiKey, model, message);
-    return new Response(reply.pipeThrough(toSse()), {
-      headers: { ...CORS_HEADERS, "Content-Type": "text/event-stream" },
-    });
-  } catch (err) {
-    const body: ErrorResponse = {
-      error: err instanceof Error ? err.message : String(err),
-    };
+  const reply = await streamChatReply(apiKey, model, message);
+  if (!reply.ok) {
+    const body: ErrorResponse = { error: reply.error };
     return json(body, 502);
   }
+  return new Response(reply.value.pipeThrough(toSse()), {
+    headers: { ...CORS_HEADERS, "Content-Type": "text/event-stream" },
+  });
 }
 
 Bun.serve({

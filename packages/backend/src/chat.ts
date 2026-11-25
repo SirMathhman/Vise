@@ -1,4 +1,5 @@
-import type { ChatStreamEvent } from "common";
+import type { ChatStreamEvent, Result } from "common";
+import { err, ok } from "common";
 
 const CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -60,29 +61,32 @@ function eventFromChunk(chunk: ChatChunk): ChatStreamEvent | undefined {
   return text ? { type: "delta", text } : undefined;
 }
 
-// Returns the event in one SSE line. Blank lines and ": keep-alive" comments yield nothing.
-function eventFromSseLine(line: string): ChatStreamEvent | undefined {
+// Returns the event in one SSE line. Blank lines and ": keep-alive" comments yield no event.
+function eventFromSseLine(
+  line: string,
+): Result<ChatStreamEvent | undefined, string> {
   const trimmed = line.trim();
   if (!trimmed.startsWith("data:")) {
-    return undefined;
+    return ok(undefined);
   }
   const payload = trimmed.slice("data:".length).trim();
   if (payload === "") {
-    return undefined;
+    return ok(undefined);
   }
   if (payload === "[DONE]") {
-    return { type: "done" };
+    const done: ChatStreamEvent = { type: "done" };
+    return ok(done);
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(payload);
   } catch {
-    throw new Error("OpenRouter sent a stream chunk that is not JSON");
+    return err("OpenRouter sent a stream chunk that is not JSON");
   }
   if (!isChatChunk(parsed)) {
-    throw new Error("OpenRouter sent a stream chunk in an unexpected format");
+    return err("OpenRouter sent a stream chunk in an unexpected format");
   }
-  return eventFromChunk(parsed);
+  return ok(eventFromChunk(parsed));
 }
 
 // Turns OpenRouter's SSE body into typed events. The stream always ends with exactly one
@@ -102,13 +106,17 @@ export function chatEvents(
   ): { count: number; terminal: boolean } {
     let count = 0;
     for (const line of lines) {
-      const event = eventFromSseLine(line);
-      if (event) {
-        controller.enqueue(event);
-        count += 1;
-        if (event.type !== "delta") {
-          return { count, terminal: true };
-        }
+      const result = eventFromSseLine(line);
+      const event: ChatStreamEvent | undefined = result.ok
+        ? result.value
+        : { type: "error", message: result.error };
+      if (!event) {
+        continue;
+      }
+      controller.enqueue(event);
+      count += 1;
+      if (event.type !== "delta") {
+        return { count, terminal: true };
       }
     }
     return { count, terminal: false };
@@ -149,10 +157,10 @@ export function chatEvents(
             return;
           }
         }
-      } catch (err) {
+      } catch (failure) {
         controller.enqueue({
           type: "error",
-          message: err instanceof Error ? err.message : String(err),
+          message: failure instanceof Error ? failure.message : String(failure),
         });
         controller.close();
         await reader.cancel().catch(() => undefined);
@@ -169,21 +177,26 @@ export async function streamChatReply(
   apiKey: string,
   model: string,
   message: string,
-): Promise<ReadableStream<ChatStreamEvent>> {
-  const res = await fetch(CHAT_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      messages: [{ role: "user", content: message }],
-      stream: true,
-    }),
-  });
-  if (!res.ok || !res.body) {
-    throw new Error(`OpenRouter responded with HTTP ${String(res.status)}`);
+): Promise<Result<ReadableStream<ChatStreamEvent>, string>> {
+  let res: Response;
+  try {
+    res = await fetch(CHAT_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: "user", content: message }],
+        stream: true,
+      }),
+    });
+  } catch {
+    return err("Could not reach OpenRouter");
   }
-  return chatEvents(res.body);
+  if (!res.ok || !res.body) {
+    return err(`OpenRouter responded with HTTP ${String(res.status)}`);
+  }
+  return ok(chatEvents(res.body));
 }
