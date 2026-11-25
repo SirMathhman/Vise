@@ -15,11 +15,16 @@ const MODELS_PAGE_SIZE = 3;
 let models: ModelSummary[] = [];
 let modelsPage = 0;
 
-// Ids of the loaded models. The chat only accepts these.
-const knownModelIds = new Set<string>();
+// The loaded models and their context windows in tokens. The chat only accepts these.
+const knownModels = new Map<string, number>();
 
 export function hasModel(id: string): boolean {
-  return knownModelIds.has(id);
+  return knownModels.has(id);
+}
+
+// The context window of a loaded model, or undefined when the model is not loaded.
+export function contextLengthOf(id: string): number | undefined {
+  return knownModels.get(id);
 }
 
 function cell(text: string): HTMLTableCellElement {
@@ -69,9 +74,9 @@ export async function loadModels(): Promise<void> {
   modelsPage = 0;
   renderModelsPage();
 
-  knownModelIds.clear();
+  knownModels.clear();
   const options = models.map((m) => {
-    knownModelIds.add(m.id);
+    knownModels.set(m.id, m.contextLength);
     const option = document.createElement("option");
     option.value = m.id;
     option.label = m.name;

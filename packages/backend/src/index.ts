@@ -11,6 +11,7 @@ import {
   ChatRequestSchema,
   SaveOpenRouterKeyRequestSchema,
   describeParseError,
+  conversationLimit,
   fitsBudget,
   greet,
   parseJson,
@@ -95,18 +96,28 @@ async function chat(req: Request): Promise<Response> {
     return errorJson(describeParseError(input.error), 400);
   }
   const { model, messages } = input.value;
-  if (!fitsBudget(messages)) {
-    return errorJson(
-      "The conversation is over the size limit. Start a new conversation or send a shorter message.",
-      400,
-    );
-  }
 
   const apiKey = await getOpenRouterKey();
   if (!apiKey) {
     return errorJson(
       "No OpenRouter API key is set. Add one in the UI or set OPENROUTER_API_KEY.",
       500,
+    );
+  }
+
+  // The limit is the model's own context window, so look that up for this request.
+  const models = await fetchModels(apiKey);
+  if (!models.ok) {
+    return errorJson(models.error, 502);
+  }
+  const info = models.value.find((m) => m.id === model);
+  if (info === undefined) {
+    return errorJson(`Unknown model "${model}".`, 400);
+  }
+  if (!fitsBudget(messages, conversationLimit(info.contextLength))) {
+    return errorJson(
+      "The conversation is too long for this model. Start a new conversation or send a shorter message.",
+      400,
     );
   }
 

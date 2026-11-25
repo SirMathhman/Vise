@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
-  MAX_CONVERSATION_MESSAGES,
+  conversationLimit,
   fitsBudget,
   parseChatMessageList,
   parseChatStreamEvent,
@@ -8,22 +8,24 @@ import {
 } from "./index";
 
 describe("conversation budget", () => {
-  test("fitsBudget rejects too many messages", () => {
-    const many = Array.from({ length: MAX_CONVERSATION_MESSAGES + 1 }, () => ({
-      role: "user" as const,
-      content: "x",
-    }));
-    expect(fitsBudget(many)).toBe(false);
-    expect(fitsBudget(many.slice(1))).toBe(true);
+  test("the limit leaves room for the reply", () => {
+    expect(conversationLimit(128_000)).toBe(124_000);
+    expect(conversationLimit(1_000)).toBe(0);
+  });
+
+  test("fitsBudget counts about four characters per token", () => {
+    const messages = [{ role: "user" as const, content: "x".repeat(4000) }];
+    expect(fitsBudget(messages, 1000)).toBe(true);
+    expect(fitsBudget(messages, 999)).toBe(false);
   });
 
   test("trimToBudget drops the oldest messages and keeps the newest", () => {
     const messages = [
-      { role: "user" as const, content: "a".repeat(15000) },
-      { role: "assistant" as const, content: "b".repeat(15000) },
+      { role: "user" as const, content: "a".repeat(2000) },
+      { role: "assistant" as const, content: "b".repeat(2000) },
       { role: "user" as const, content: "c" },
     ];
-    expect(trimToBudget(messages)).toEqual(messages.slice(1));
+    expect(trimToBudget(messages, 1000)).toEqual(messages.slice(1));
   });
 });
 

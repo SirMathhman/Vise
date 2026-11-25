@@ -8,9 +8,8 @@ import {
   ApprovalAckSchema,
   ChatMessageListSchema,
   ChatStreamEventSchema,
-  MAX_CONVERSATION_CHARS,
   budgetUsage,
-  MAX_CONVERSATION_MESSAGES,
+  conversationLimit,
   describeParseError,
   err,
   fitsBudget,
@@ -20,7 +19,7 @@ import {
 } from "common";
 import { apiJson, openChat } from "../api";
 import { errorMessage, requireElement } from "../dom";
-import { hasModel } from "./models";
+import { contextLengthOf } from "./models";
 
 const ACTIVE_MODEL_KEY = "vise.activeModel";
 const HISTORY_KEY = "vise.conversation";
@@ -72,7 +71,7 @@ function loadHistory(): ChatMessage[] {
     return [];
   }
   const parsed = parseJson(ChatMessageListSchema, raw);
-  return parsed.ok ? trimToBudget(parsed.value) : [];
+  return parsed.ok ? parsed.value : [];
 }
 
 function saveHistory(): void {
@@ -128,14 +127,22 @@ function renderConversation(): void {
   renderBudget(items);
 }
 
-// Shows how much of the conversation budget the conversation uses. The budget counts
-// characters and messages, not model tokens.
+// Shows how much of the selected model's context window the conversation uses. The count is
+// an estimate in tokens.
 function renderBudget(items: ChatMessage[]): void {
+  const contextLength = contextLengthOf(modelInput.value.trim());
+  if (contextLength === undefined) {
+    budgetBar.style.width = "0%";
+    budgetBar.classList.remove("nearly-full");
+    budgetLabel.textContent = "Choose a model to see its context limit.";
+    return;
+  }
+  const limit = conversationLimit(contextLength);
   // Shows the messages a send would actually include, so the meter matches the request.
-  const usage = budgetUsage(trimToBudget(items));
+  const usage = budgetUsage(trimToBudget(items, limit), limit);
   budgetBar.style.width = `${String(Math.min(100, usage.ratio * 100))}%`;
   budgetBar.classList.toggle("nearly-full", usage.ratio >= 0.9);
-  budgetLabel.textContent = `${usage.chars.toLocaleString()} / ${MAX_CONVERSATION_CHARS.toLocaleString()} characters · ${String(usage.messages)} / ${String(MAX_CONVERSATION_MESSAGES)} messages`;
+  budgetLabel.textContent = `About ${usage.tokens.toLocaleString()} / ${limit.toLocaleString()} tokens (estimated)`;
 }
 
 // The active model is remembered in this browser only.
@@ -214,7 +221,8 @@ async function sendMessage(): Promise<void> {
   const model = modelInput.value.trim();
   const message = chatMessage.value.trim();
   chatStatus.textContent = "";
-  if (!hasModel(model)) {
+  const contextLength = contextLengthOf(model);
+  if (contextLength === undefined) {
     chatStatus.textContent = "Choose a model from the list.";
     return;
   }
@@ -223,10 +231,11 @@ async function sendMessage(): Promise<void> {
     return;
   }
 
-  // Older messages are dropped, oldest first, so the conversation fits the limit.
+  // Older messages are dropped, oldest first, so the conversation fits the model's limit.
+  const limit = conversationLimit(contextLength);
   const full: ChatMessage[] = [...history, { role: "user", content: message }];
-  const messages = trimToBudget(full);
-  if (!fitsBudget(messages)) {
+  const messages = trimToBudget(full, limit);
+  if (!fitsBudget(messages, limit)) {
     chatStatus.textContent = "That message is too long to send.";
     return;
   }
@@ -286,6 +295,7 @@ export function initChat(): void {
   modelInput.value = readActiveModel();
   modelInput.addEventListener("change", () => {
     writeStorage(ACTIVE_MODEL_KEY, modelInput.value.trim());
+    renderConversation();
   });
   chatSend.addEventListener("click", () => void sendMessage());
   chatNew.addEventListener("click", newConversation);

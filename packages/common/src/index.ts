@@ -5,41 +5,46 @@ export * from "./parse";
 export * from "./result";
 export * from "./wire";
 
-// The size limit for one conversation, shared by the browser and the backend.
-export const MAX_CONVERSATION_MESSAGES = 40;
-export const MAX_CONVERSATION_CHARS = 20000;
+// Tokens kept free in a model's context window, so the model has room to answer.
+export const RESERVED_REPLY_TOKENS = 4_000;
 
-// Whether a conversation is within the size limit.
-export function fitsBudget(messages: ChatMessage[]): boolean {
-  const usage = budgetUsage(messages);
-  return (
-    usage.messages <= MAX_CONVERSATION_MESSAGES &&
-    usage.chars <= MAX_CONVERSATION_CHARS
-  );
+// The tokens a conversation may use with a model whose window holds contextLength tokens.
+export function conversationLimit(contextLength: number): number {
+  return Math.max(0, contextLength - RESERVED_REPLY_TOKENS);
 }
 
-// How much of the budget a conversation uses: its characters and messages, and the larger of
-// the two as a fraction of its limit.
-export function budgetUsage(messages: ChatMessage[]): {
-  chars: number;
-  messages: number;
-  ratio: number;
-} {
-  const chars = messages.reduce((sum, m) => sum + m.content.length, 0);
-  return {
-    chars,
-    messages: messages.length,
-    ratio: Math.max(
-      chars / MAX_CONVERSATION_CHARS,
-      messages.length / MAX_CONVERSATION_MESSAGES,
-    ),
-  };
+// An estimate of the tokens a piece of text takes: about four characters per token.
+export function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+// The estimated tokens a conversation uses, and that as a fraction of the limit.
+export function budgetUsage(
+  messages: ChatMessage[],
+  limit: number,
+): { tokens: number; ratio: number } {
+  const tokens = messages.reduce(
+    (sum, m) => sum + estimateTokens(m.content),
+    0,
+  );
+  return { tokens, ratio: limit > 0 ? tokens / limit : 1 };
+}
+
+// Whether a conversation is within the limit.
+export function fitsBudget(messages: ChatMessage[], limit: number): boolean {
+  return budgetUsage(messages, limit).tokens <= limit;
 }
 
 // Drops the oldest messages until the conversation fits. The newest message is always kept.
-export function trimToBudget(messages: ChatMessage[]): ChatMessage[] {
+export function trimToBudget(
+  messages: ChatMessage[],
+  limit: number,
+): ChatMessage[] {
   let start = 0;
-  while (start < messages.length - 1 && !fitsBudget(messages.slice(start))) {
+  while (
+    start < messages.length - 1 &&
+    !fitsBudget(messages.slice(start), limit)
+  ) {
     start += 1;
   }
   return messages.slice(start);
