@@ -39,7 +39,11 @@ export async function handleToolSettings(req: Request): Promise<Response> {
     if (unknown.length > 0) {
       return errorJson(`No tool is named ${unknown.join(", ")}.`, 400);
     }
-    await saveToolSettings(input.value);
+    try {
+      await saveToolSettings(input.value);
+    } catch {
+      return errorJson("The tool settings could not be saved.", 500);
+    }
     return json(input.value);
   }
   return errorJson("Method not allowed", 405);

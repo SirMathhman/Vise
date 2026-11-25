@@ -62,4 +62,36 @@ describe("turned-off tools", () => {
     expect(bodies[0]).not.toContain('"name":"read_file"');
     expect(bodies[1]).toContain("The tool read_file is turned off.");
   });
+
+  test("a subagent in a turn with a disabled tool cannot call that tool", async () => {
+    const offered = toolDefinitions.filter(
+      (tool) => tool.function.name !== "read_file",
+    );
+    const bodies = fakeUpstream([
+      callRound("start_subagent", { task: "read it" }),
+      callRound("read_file", { path: "x" }),
+      textRound("sub done"),
+      textRound("final"),
+    ]);
+    const result = await streamChatReply(
+      "key",
+      "openai/gpt-4o",
+      [{ role: "user", content: "go" }],
+      undefined,
+      offered,
+    );
+    if (!result.ok) {
+      throw new Error(result.error);
+    }
+    const reader = result.value.getReader();
+    for (
+      let next = await reader.read();
+      !next.done;
+      next = await reader.read()
+    ) {
+      // Drain the reply.
+    }
+    expect(bodies[1]).not.toContain('"name":"read_file"');
+    expect(bodies[2]).toContain("The tool read_file is turned off.");
+  });
 });

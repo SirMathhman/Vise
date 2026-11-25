@@ -154,7 +154,10 @@ async function* toolResults(
       results.push({
         role: "tool",
         tool_call_id: call.id,
-        content: `The tool ${call.name} is turned off.`,
+        content:
+          tools.length === 0
+            ? `The tool ${call.name} is not offered in this request.`
+            : `The tool ${call.name} is turned off.`,
       });
       continue;
     }

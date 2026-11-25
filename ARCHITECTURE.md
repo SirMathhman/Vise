@@ -15,8 +15,9 @@ This document describes the target architecture. It is a reference for where the
 
 ## Definitions: Tools and Approval
 
-- **Local tool**: a function the model may call that the backend runs itself, such as reading project files. Its schema is owned by the backend and its output is untrusted text. A tool that changes a file, runs a command, or overwrites or deletes a note never acts directly: it returns an approval, a title and body shown to the user plus an apply step, and the apply step runs only after the user approves. A file change re-checks the file first.
-- **Decision**: the user's answer to an approval, `approve` or `reject`. It is a named union carried from the approval route to the tool loop, never a boolean; a wait that ends without an answer is `undefined`, a third state no boolean can express.
+- **Local tool**: a function the model may call that the backend runs itself. Its output is untrusted text. A tool that changes a file, runs a command, or overwrites or deletes a note never acts directly: it returns an approval, a title and body shown to the user plus an apply step, and the apply step runs only after the user approves. A file change re-checks the file first.
+- **Enabled tool**: a local tool the user has not turned off in `tools.json`. The model is offered only enabled tools, and a call to a disabled one is refused.
+- **Decision**: the user's answer to an approval, `approve` or `reject`. It is a named union, never a boolean; a wait that ends without an answer is `undefined`.
 - **Sentinel**: an upstream value with a special meaning, such as a price of -1 for variable pricing. It maps to an explicit unknown in the wire type, never to arithmetic.
 - **Compaction**: when a send would pass 80% of the model's window, the browser asks for a summary of the older conversation and keeps it with the most recent ten messages. The summary applies no change and is not kept as history.
 - **Invariant**: API keys never leave the backend. Every deserialization, including upstream responses, streamed chunks, request bodies, and saved history, goes through a zod schema via `parseJson`. ESLint bans `JSON.parse` and bare `.json()` calls elsewhere.
@@ -49,7 +50,7 @@ Dependency direction is one way: frontend and backend depend on common, never th
 
 ## Structure: Tools and Streaming
 
-- Local tools are registered in `packages/backend/src/tools/index.ts`. Each has a zod argument schema and a description the Tools tab lists. A tool that runs processes lives in its own folder, `packages/backend/src/shell/`, and is registered beside the file tools; it depends only on common and the approval type. The sandbox module is the only path that starts a model-proposed command, and no tool runs a host process. The loop dispatches by registry lookup and names no tool. Every tool takes one input object (root, arguments, reply context), so no call passes arguments by position. All project file access, including the git-visible file list, path resolution, and the text checks, lives in `project-files.ts`, which the read, edit, and create tools share. No tool repeats the git, root, or link checks inline.
+- Local tools are registered in `packages/backend/src/tools/index.ts`. Each has a zod argument schema and a description the Tools tab lists. Process tools live in `packages/backend/src/shell/` and depend only on common and the approval type. The sandbox module is the only path that starts a model-proposed command, and no tool runs a host process. The loop dispatches by registry lookup and names no tool. Tools are called with the project root first; a tool that reads only its arguments is wrapped to drop it. All project file access, including the git-visible file list, path resolution, and the text checks, lives in `project-files.ts`, which the read, edit, and create tools share. `tools/tool-settings.ts` is the only module that reads or writes `tools.json`; `enabledToolDefinitions()` filters the registry before a request is built.
 - Routing is a table of path to handler, not a growing `if` chain inside one `fetch` function.
 - Frontend modules are split per view. Each view owns its DOM and calls a shared typed API client.
 - All backend-to-frontend data passes through a typed client in common, so the wire contract is compiled, not assumed.
@@ -115,6 +116,11 @@ A subagent is a nested run of the tool loop, started by the `start_subagent` too
 
 - **Approvals**: approval ids are random UUIDs, and the answer route accepts an answer from any caller holding one. Approval is the only gate on a file write or a command. Each wait ends after ten minutes or when the client disconnects. Missing control: authentication on the route. A subagent's approval card looks like the main reply's and does not name the subagent or its task. Missing control: the card names its origin and shows the task.
 - **Command execution**: the model may propose any shell command. It runs only after the user approves the command text, inside a throwaway podman container from the sandbox image. Only the project is mounted, read-write at `/workspace`; no host environment reaches the container; capabilities are dropped; and the run has a time limit, and a background run also ends with its session. It never runs on the host and has no fallback. Missing controls: a network policy, since installs need the network; a digest-pinned image; CPU, memory, and process limits; and a block on writes to git-ignored files and the mounted `.git` directory, whose hooks run when git runs. Any secret the mount reaches can leave through the network or the output. Tool output and file text can carry instructions that steer which command the user is asked to approve.
+
+## Security Concerns: Tool Settings
+
+- **Trust boundary**: the turned-off list lives in the config folder, outside every tool's reach, so the model cannot turn a tool back on. The chat route and the subagent runner read it on each request.
+- **Unauthenticated writes**: `PUT /api/tool-settings` takes the same origin and JSON checks as other writes, so a local program can re-enable a tool. Missing control: the write secret named under Hooks.
 
 ## Security Concerns: Chat and Files
 

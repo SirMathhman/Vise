@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdir, rename } from "node:fs/promises";
 import path from "node:path";
 import type { Result, ToolSettings } from "common";
@@ -38,6 +39,8 @@ export async function readToolSettings(): Promise<
 export async function saveToolSettings(settings: ToolSettings): Promise<void> {
   await mkdir(configDir(), { recursive: true });
   const target = settingsFile();
-  await Bun.write(`${target}.tmp`, JSON.stringify(settings, null, 2));
-  await rename(`${target}.tmp`, target);
+  // A unique temp name keeps two saves at once from renaming each other's file.
+  const temp = `${target}.${randomUUID()}.tmp`;
+  await Bun.write(temp, JSON.stringify(settings, null, 2));
+  await rename(temp, target);
 }

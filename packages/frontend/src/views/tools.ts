@@ -18,9 +18,17 @@ let tools: ToolSummary[] = [];
 let disabled = new Set<string>();
 let toolsPage = 0;
 
+// Saves run one after another. Each builds its list from the list the previous save left, so two
+// quick clicks cannot overwrite each other.
+let saving: Promise<void> = Promise.resolve();
+
+function setState(name: string, state: "on" | "off"): void {
+  saving = saving.then(() => saveState(name, state));
+}
+
 // Saves which tools are on. The page is redrawn from the saved list, so a refused save puts the
 // checkbox back.
-async function setState(name: string, state: "on" | "off"): Promise<void> {
+async function saveState(name: string, state: "on" | "off"): Promise<void> {
   const next = new Set(disabled);
   if (state === "on") {
     next.delete(name);
@@ -49,7 +57,7 @@ function toolRow(tool: ToolSummary): HTMLTableRowElement {
   toggle.checked = !disabled.has(tool.name);
   toggle.setAttribute("aria-label", `Turn on ${tool.name}`);
   toggle.addEventListener("change", () => {
-    void setState(tool.name, toggle.checked ? "on" : "off");
+    setState(tool.name, toggle.checked ? "on" : "off");
   });
   const on = document.createElement("td");
   on.append(toggle);
