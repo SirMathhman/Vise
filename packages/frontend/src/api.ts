@@ -1,5 +1,11 @@
 import type { ChatRequest, Result } from "common";
-import { ErrorResponseSchema, err, ok, parseJson } from "common";
+import {
+  ErrorResponseSchema,
+  describeParseError,
+  err,
+  ok,
+  parseJson,
+} from "common";
 import type { z } from "zod";
 
 // Backend base URL. Change this if the backend runs elsewhere.
@@ -28,7 +34,8 @@ export async function apiJson<S extends z.ZodType>(
   if (!res.ok) {
     return err(await failureFrom(res));
   }
-  return parseJson(schema, await res.text());
+  const parsed = parseJson(schema, await res.text());
+  return parsed.ok ? ok(parsed.value) : err(describeParseError(parsed.error));
 }
 
 // Opens the chat stream for one request. Returns the raw body to read, or the error.

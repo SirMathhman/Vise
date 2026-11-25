@@ -2,6 +2,7 @@ import type { ChatMessage, ChatStreamEvent, Result } from "common";
 import {
   ChatMessageListSchema,
   ChatStreamEventSchema,
+  describeParseError,
   err,
   fitsBudget,
   ok,
@@ -129,7 +130,8 @@ async function readReply(
 
 // Parses the JSON after "data:" in one server-sent event.
 function parseEventLine(payload: string): Result<ChatStreamEvent, string> {
-  return parseJson(ChatStreamEventSchema, payload);
+  const parsed = parseJson(ChatStreamEventSchema, payload);
+  return parsed.ok ? ok(parsed.value) : err(describeParseError(parsed.error));
 }
 
 // Sends the conversation with one new message and records the reply when it completes.

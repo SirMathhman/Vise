@@ -28,8 +28,8 @@ Dependency direction is one way: frontend and backend depend on common, never th
 ## Potential Problems
 
 - Upstream outages or slowness stall the backend unless every upstream call has a timeout.
-- Upstream schema drift can crash mapping code; responses must be validated at the boundary.
-- Errors are thrown as exceptions and carried as plain strings, which makes failures hard to classify.
+- Upstream schema drift makes one odd field fail a whole chunk or model list, and the caller sees only a generic message.
+- A parse failure is a structured `ParseError` with a field path. Callers match on its kind, and one bad streamed chunk still fails the whole reply rather than being skipped.
 - Every page load hits the upstream, so rate limits and latency are shared by all users.
 - Each turn re-sends the conversation, so the shared budget drops the oldest messages once a conversation passes 40 messages or 20,000 characters.
 - A stream that fails after the first byte has already returned HTTP 200, so the status code cannot report the failure.
@@ -47,9 +47,7 @@ Dependency direction is one way: frontend and backend depend on common, never th
 
 ## Future Work
 
-- Typed, runtime-validated upstream clients with a shared `Result` type instead of exceptions.
-- Runtime validation of every backend response in the frontend API client, so the wire contract is checked, not cast.
-- A structured error enum that answers what failed, where, why, and how to fix it, mapped to HTTP status codes in one place.
+- A structured error enum for all failures, not only parsing, answering what failed, where, why, and how to fix it, mapped to HTTP status codes in one place.
 - Configuration loaded once at startup and validated, instead of read per request.
 - A response cache with a bounded TTL in front of the models upstream.
 - Authentication on backend routes that proxy paid upstreams.

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ParseError } from "./parse";
 import type { Result } from "./result";
 import { parseValue } from "./parse";
 
@@ -79,13 +80,13 @@ export type ChatStreamEvent = z.infer<typeof ChatStreamEventSchema>;
 // Checks one untrusted value against the ChatStreamEvent contract.
 export function parseChatStreamEvent(
   value: unknown,
-): Result<ChatStreamEvent, string> {
+): Result<ChatStreamEvent, ParseError> {
   return parseValue(ChatStreamEventSchema, value);
 }
 
 // Checks an untrusted list of chat messages: each needs a known role and some text.
 export function parseChatMessageList(
   value: unknown,
-): Result<ChatMessage[], string> {
+): Result<ChatMessage[], ParseError> {
   return parseValue(ChatMessageListSchema, value);
 }

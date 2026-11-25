@@ -9,10 +9,12 @@ import type {
 import {
   ChatRequestSchema,
   SaveOpenRouterKeyRequestSchema,
+  describeParseError,
   fitsBudget,
   greet,
   parseJson,
 } from "common";
+import type { ParseError } from "common";
 import { z } from "zod";
 import { streamChatReply } from "./chat";
 import { fetchModels } from "./openrouter";
@@ -45,7 +47,7 @@ function errorJson(error: string, status: number): Response {
 async function readBody<S extends z.ZodType>(
   req: Request,
   schema: S,
-): Promise<Result<z.output<S>, string>> {
+): Promise<Result<z.output<S>, ParseError>> {
   return parseJson(schema, await req.text());
 }
 
@@ -53,7 +55,7 @@ async function openRouterSettings(req: Request): Promise<Response> {
   if (req.method === "PUT") {
     const input = await readBody(req, SaveOpenRouterKeyRequestSchema);
     if (!input.ok) {
-      return errorJson(input.error, 400);
+      return errorJson(describeParseError(input.error), 400);
     }
     await saveOpenRouterKey(input.value.apiKey);
   } else if (req.method === "DELETE") {
@@ -86,7 +88,7 @@ function toSse(): TransformStream<ChatStreamEvent, Uint8Array> {
 async function chat(req: Request): Promise<Response> {
   const input = await readBody(req, ChatRequestSchema);
   if (!input.ok) {
-    return errorJson(input.error, 400);
+    return errorJson(describeParseError(input.error), 400);
   }
   const { model, messages } = input.value;
   if (!fitsBudget(messages)) {

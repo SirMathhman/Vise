@@ -1,5 +1,5 @@
 import type { ChatMessage, ChatStreamEvent, Result } from "common";
-import { NOT_JSON, err, ok, parseJson } from "common";
+import { err, ok, parseJson } from "common";
 import { z } from "zod";
 
 const CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -48,7 +48,7 @@ function eventFromSseLine(
   const parsed = parseJson(ChatChunkSchema, payload);
   if (!parsed.ok) {
     return err(
-      parsed.error === NOT_JSON
+      parsed.error.kind === "notJson"
         ? "OpenRouter sent a stream chunk that is not JSON"
         : "OpenRouter sent a stream chunk in an unexpected format",
     );
