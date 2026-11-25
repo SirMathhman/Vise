@@ -83,6 +83,11 @@ export default tseslint.config(
               message:
                 "Import upstream helpers from openrouter.ts. chat.ts is above the tool loop.",
             },
+            {
+              group: ["../tools/*", "**/tools/*"],
+              message:
+                "Import the tool registry from ../tools. The loop names no single tool's module.",
+            },
           ],
         },
       ],

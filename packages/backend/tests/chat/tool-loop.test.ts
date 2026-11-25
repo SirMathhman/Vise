@@ -124,3 +124,28 @@ describe("get_model_info in a reply", () => {
     expect(bodies[1]).toContain('contextLength\\": 128000');
   });
 });
+
+describe("tools without model facts", () => {
+  test("a reply with no model facts still runs the other tools", async () => {
+    const bodies = fakeUpstream([
+      toolRound("list_directory"),
+      textRound("done"),
+    ]);
+    const result = await streamChatReply("key", "openai/gpt-4o", [
+      { role: "user", content: "list" },
+    ]);
+    if (!result.ok) {
+      throw new Error(result.error);
+    }
+    const reader = result.value.getReader();
+    for (
+      let next = await reader.read();
+      !next.done;
+      next = await reader.read()
+    ) {
+      // Drain the reply so every round runs.
+    }
+    expect(bodies[1]).not.toContain("Unknown tool");
+    expect(bodies[1]).toContain("tool_call_id");
+  });
+});
