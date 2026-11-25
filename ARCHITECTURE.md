@@ -39,7 +39,7 @@ Dependency direction is one way: frontend and backend depend on common, never th
 - A stream that fails after the first byte has already returned HTTP 200, so the status code cannot report the failure.
 - Tool rounds sit outside the conversation budget, and each one re-sends the growing conversation. The round limit must stop the loop before it opens a request it will never read.
 - A cut file's header still shows the whole line range, so a truncated read can look complete. The header must name the range actually returned.
-- A waiting approval holds its reply open with no timeout. A client that disconnects leaves its entry in the registry, and a backend restart drops every pending approval.
+- A waiting approval ends after ten minutes or when the client disconnects, and its registry entry is then released. A backend restart still drops every pending approval.
 - An edit matches exact text only, so a CRLF file cannot be edited. A failed match is reported to the model as text, so it can retry with corrected text.
 
 ## Security Concerns
@@ -47,7 +47,7 @@ Dependency direction is one way: frontend and backend depend on common, never th
 - **Trust boundary**: the backend trusts nothing from upstream or from the browser. Both are validated.
 - **Key exposure**: the upstream API key is saved to the backend's git-ignored `.env` file, or read from the environment, and is never returned in responses or logs. The UI sends it once, on save.
 - **Open proxy**: any client that can reach the backend can spend the operator's upstream quota. Missing control: authentication on proxy routes.
-- **Approvals**: an approval id is a random UUID, and the approval route accepts an answer from any caller who holds it. Approval is the only gate on a file write. Missing controls: authentication on the route, a timeout on each waiting approval, and release of the waiting entry when the client disconnects.
+- **Approvals**: an approval id is a random UUID, and the approval route accepts an answer from any caller who holds it. Approval is the only gate on a file write. Each wait ends after ten minutes or when the client disconnects. Missing control: authentication on the route.
 - **Chat input**: the backend enforces the shared conversation budget of 40 messages and 20,000 characters. The backend rejects any client-supplied system role, so the client cannot set the model's instructions. The client still supplies the assistant turns, so it can forge prior context. Each request spends paid upstream tokens. Missing controls: a backend-side model allowlist and authentication.
 - **Path disclosure and tool output**: the system context names the project root, and tool listings name project files. Both reach the upstream only, never the browser or local history. Tools skip git-ignored files. The reading tool sends the contents of any git-visible file upstream, so a tracked file holding a secret leaks it. The editing tool can rewrite any git-visible file, including files that run code when a developer runs the project, such as lint config, package scripts, and CI workflows. Missing controls: a denylist for secret-like paths and for executable config, and a file path shown in the approval body. Symbolic links are refused, and only a path on the git list can be read or edited. Tool output is untrusted text that can carry injected instructions. Missing control: a byte cap on tool output across all rounds.
 - **Local history**: the conversation is stored in browser localStorage as plain text. Anyone with access to the browser profile can read it, so it must never hold keys.
@@ -62,7 +62,6 @@ Dependency direction is one way: frontend and backend depend on common, never th
 - A response cache with a bounded TTL in front of the models upstream.
 - Authentication on backend routes that proxy paid upstreams.
 - Size rules in `eslint.config.mjs` for lines per file, lines per function, complexity, and entries per directory, each limit documented here.
-- An approval wait that ends after a timeout or when the client disconnects, with the registry scoped to one reply and the waiting entry always released.
 - Exact-match edits that also accept CRLF files and keep each file's line endings.
 - A byte cap on tool output, counted in the conversation budget, and tests for fragment merging, the file-listing helpers, and every refusal path of the reading tool: ignored, symbolic link, binary, oversized, and outside the root.
 
