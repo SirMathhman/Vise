@@ -4,6 +4,7 @@ import { initChat } from "./views/chat";
 import { initHealth, loadHealth } from "./views/health";
 import { initKey, loadKeyStatus } from "./views/key";
 import { initModels, loadModels } from "./views/models";
+import { initNotes, loadNotes } from "./views/notes";
 import { initTabs } from "./views/tabs";
 
 requireElement("greeting").textContent = greet("frontend");
@@ -13,7 +14,9 @@ initHealth();
 initModels();
 initKey();
 initChat();
+initNotes();
 
 void loadHealth();
 void loadModels();
 void loadKeyStatus();
+void loadNotes();

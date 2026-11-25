@@ -183,3 +183,41 @@ export function parseChatMessageList(
 ): Result<ChatMessage[], ParseError> {
   return parseValue(ChatMessageListSchema, value);
 }
+
+/**
+ * One note: a named piece of text with a category, a short summary, and its content.
+ */
+export const NoteSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  category: z.string(),
+  summary: z.string(),
+  content: z.string(),
+});
+/**
+ * One note.
+ */
+export type Note = z.infer<typeof NoteSchema>;
+
+/**
+ * The fields a note is written with. The name and category must not be blank.
+ */
+export const NoteInputSchema = z.object({
+  name: z.string().trim().min(1, "A note needs a name"),
+  category: z.string().trim().min(1, "A note needs a category"),
+  summary: z.string(),
+  content: z.string(),
+});
+/**
+ * The fields a note is written with.
+ */
+export type NoteInput = z.infer<typeof NoteInputSchema>;
+
+/**
+ * The reply of GET /api/notes: every note.
+ */
+export const NotesResponseSchema = z.object({ notes: z.array(NoteSchema) });
+/**
+ * The reply of GET /api/notes.
+ */
+export type NotesResponse = z.infer<typeof NotesResponseSchema>;

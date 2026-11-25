@@ -1,19 +1,16 @@
 import { mkdir } from "node:fs/promises";
-import { homedir } from "node:os";
 
 import path from "node:path";
+import { configDir } from "./config-dir";
 
-// The UI-saved key lives in a per-user config folder, outside the project, so the model's
-// tools and the sandbox never see it. VISE_CONFIG_DIR overrides the folder. `--no-env-file`
-// in the backend scripts stops Bun from loading any .env file on its own, and the key saved
-// here takes precedence over OPENROUTER_API_KEY from the environment.
+// The UI-saved key lives in the per-user config folder, outside the project, so the model's
+// tools and the sandbox never see it. `--no-env-file` in the backend scripts stops Bun from
+// loading any .env file on its own, and the key saved here takes precedence over
+// OPENROUTER_API_KEY from the environment.
 const KEY_NAME = "OPENROUTER_API_KEY";
 
 function keyFile(): string {
-  const dir =
-    process.env.VISE_CONFIG_DIR ??
-    path.join(process.env.APPDATA ?? homedir(), "vise");
-  return path.join(dir, "openrouter.env");
+  return path.join(configDir(), "openrouter.env");
 }
 
 async function readKeyLines(): Promise<string[]> {

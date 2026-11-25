@@ -7,6 +7,20 @@ import type { ModelSelf } from "../chat/model-facts";
 import type { ReplyContext } from "../chat/reply-context";
 import { READ_FILE_TOOL, runReadFile } from "./read-file";
 import { RUN_COMMAND_TOOL, runRunCommand } from "../shell/shell";
+import {
+  DELETE_NOTE_NAME,
+  DELETE_NOTE_TOOL,
+  LIST_NOTES_NAME,
+  LIST_NOTES_TOOL,
+  READ_NOTE_NAME,
+  READ_NOTE_TOOL,
+  SAVE_NOTE_NAME,
+  SAVE_NOTE_TOOL,
+  runDeleteNote,
+  runListNotes,
+  runReadNote,
+  runSaveNote,
+} from "../notes/notes-tools";
 
 // A tool the model may call: its definition for the request, and what running it returns.
 // A tool that changes files returns an Approval instead, and nothing changes until the user
@@ -57,6 +71,10 @@ const TOOLS = new Map<string, Tool>([
     MODEL_INFO_TOOL.function.name,
     { definition: MODEL_INFO_TOOL, run: runModelInfo },
   ],
+  [LIST_NOTES_NAME, { definition: LIST_NOTES_TOOL, run: runListNotes }],
+  [READ_NOTE_NAME, { definition: READ_NOTE_TOOL, run: runReadNote }],
+  [SAVE_NOTE_NAME, { definition: SAVE_NOTE_TOOL, run: runSaveNote }],
+  [DELETE_NOTE_NAME, { definition: DELETE_NOTE_TOOL, run: runDeleteNote }],
 ]);
 
 /**

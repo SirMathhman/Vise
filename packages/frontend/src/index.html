@@ -15,6 +15,9 @@
         <button type="button" data-tab="models" aria-pressed="false">
           Models
         </button>
+        <button type="button" data-tab="notes" aria-pressed="false">
+          Notes
+        </button>
         <button type="button" data-tab="key" aria-pressed="false">Key</button>
         <button type="button" data-tab="backend" aria-pressed="false">
           Backend
@@ -63,6 +66,29 @@
           <span id="models-page"></span>
           <button id="models-next" type="button">Next</button>
         </div>
+      </section>
+      <section class="status" data-tab-panel="notes" hidden>
+        <h2>Notes</h2>
+        <p id="notes-status" role="status">Loading…</p>
+        <div class="row">
+          <select id="notes-select" aria-label="Note"></select>
+          <button id="notes-refresh" type="button">Refresh</button>
+        </div>
+        <form id="notes-form">
+          <label for="notes-name">Name</label>
+          <input id="notes-name" autocomplete="off" />
+          <label for="notes-category">Category</label>
+          <input id="notes-category" autocomplete="off" />
+          <label for="notes-summary">Summary</label>
+          <input id="notes-summary" autocomplete="off" />
+          <label for="notes-content">Content</label>
+          <textarea id="notes-content" rows="4"></textarea>
+          <div class="row">
+            <button type="submit">Save</button>
+            <button id="notes-delete" type="button">Delete</button>
+          </div>
+        </form>
+        <p id="notes-error" role="alert"></p>
       </section>
       <section class="status" data-tab-panel="key" hidden>
         <h2>OpenRouter API key</h2>
