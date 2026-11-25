@@ -6,8 +6,10 @@
     "packages/*"
   ],
   "scripts": {
+    "dev": "bun run --parallel --filter backend --filter frontend dev",
     "start:backend": "bun --filter backend start",
-    "start:frontend": "bun --filter frontend start",
+    "dev:frontend": "bun --filter frontend dev",
+    "build:frontend": "bun --filter frontend build",
     "build": "bun run --if-present --filter '*' build",
     "typecheck": "bun run --if-present --filter '*' typecheck"
   },

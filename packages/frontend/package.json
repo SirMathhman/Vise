@@ -3,9 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "main": "src/main.ts",
   "scripts": {
-    "start": "bun run src/main.ts",
+    "dev": "bun --port 5173 src/index.html",
+    "build": "bun build src/index.html --outdir dist",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
