@@ -20,6 +20,7 @@ Dependency direction is one way: frontend and backend depend on common, never th
 - Routing is a table of path to handler, not a growing `if` chain inside one `fetch` function.
 - Frontend modules are split per view. Each view owns its DOM and calls a shared typed API client.
 - All backend-to-frontend data passes through a typed client in common, so the wire contract is compiled, not assumed.
+- Lint and typecheck are merge gates: `bun run lint` and `bun run typecheck` must pass under strict TypeScript rules.
 
 ## Potential Problems
 
@@ -44,7 +45,7 @@ Dependency direction is one way: frontend and backend depend on common, never th
 - Configuration loaded once at startup and validated, instead of read per request.
 - A response cache with a bounded TTL in front of the models upstream.
 - Authentication on backend routes that proxy paid upstreams.
-- A linter enforcing function, file, and directory size limits, plus a documented limit for each.
+- Size rules in `eslint.config.mjs` for lines per file, lines per function, complexity, and entries per directory, each limit documented here.
 
 ## Performance
 
