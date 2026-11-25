@@ -50,6 +50,26 @@ export function trimToBudget(
   return messages.slice(start);
 }
 
+// The label that opens a compaction summary.
+export const SUMMARY_PREFIX = "Summary of the earlier conversation: ";
+
+export function isSummaryMessage(message: ChatMessage): boolean {
+  return message.role === "user" && message.content.startsWith(SUMMARY_PREFIX);
+}
+
+// Replaces the older conversation with a summary. Earlier summaries are dropped, since the new
+// one covers them; the most recent of the other messages are kept after it.
+export function compactConversation(
+  history: ChatMessage[],
+  summary: string,
+  keepRecent: number,
+): ChatMessage[] {
+  const recent = history
+    .filter((message) => !isSummaryMessage(message))
+    .slice(-keepRecent);
+  return [{ role: "user", content: `${SUMMARY_PREFIX}${summary}` }, ...recent];
+}
+
 export function greet(name: string): string {
   return `Hello, ${name}!`;
 }

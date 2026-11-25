@@ -9,6 +9,7 @@ import {
   ChatMessageListSchema,
   ChatStreamEventSchema,
   budgetUsage,
+  compactConversation,
   conversationLimit,
   describeParseError,
   err,
@@ -318,13 +319,7 @@ async function sendMessage(): Promise<void> {
       chatStatus.textContent = `Could not summarize: ${summary.error}`;
       return;
     }
-    history = [
-      {
-        role: "user",
-        content: `Summary of the earlier conversation: ${summary.value}`,
-      },
-      ...history.slice(-KEEP_RECENT),
-    ];
+    history = compactConversation(history, summary.value, KEEP_RECENT);
     measured = undefined;
     saveHistory();
     compacted = true;
