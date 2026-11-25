@@ -52,19 +52,24 @@ export function openApproval(): OpenApproval {
 }
 
 /**
- * Records the user's answer. Returns false when no reply is waiting on that id.
+ * What the user decided about a proposed change.
+ */
+export type Decision = "approve" | "reject";
+
+/**
+ * Records the user's decision. Returns false when no reply is waiting on that id.
  *
  * @param id The approval id from the card the user sees.
- * @param approved True to approve the change, false to reject it.
+ * @param decision Whether to approve the change or reject it.
  * @returns True when a reply was waiting on that id, false otherwise.
  */
-export function decideApproval(id: string, approved: boolean): boolean {
+export function decideApproval(id: string, decision: Decision): boolean {
   const resolve = waiting.get(id);
   if (resolve === undefined) {
     return false;
   }
   waiting.delete(id);
-  resolve(approved);
+  resolve(decision === "approve");
   return true;
 }
 

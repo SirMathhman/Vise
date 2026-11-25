@@ -112,11 +112,11 @@ function approvalCard(approval: PendingApproval): HTMLDivElement {
   const approve = document.createElement("button");
   approve.type = "button";
   approve.textContent = "Approve";
-  approve.addEventListener("click", () => void answer(approval.id, true));
+  approve.addEventListener("click", () => void answer(approval.id, "approve"));
   const reject = document.createElement("button");
   reject.type = "button";
   reject.textContent = "Reject";
-  reject.addEventListener("click", () => void answer(approval.id, false));
+  reject.addEventListener("click", () => void answer(approval.id, "reject"));
   const actions = document.createElement("div");
   actions.className = "row";
   actions.append(approve, reject);
@@ -187,12 +187,12 @@ function readActiveModel(): string {
 }
 
 // Sends the user's answer to a proposed change. The reply continues on its own stream.
-async function answer(id: string, approved: boolean): Promise<void> {
+async function answer(id: string, choice: "approve" | "reject"): Promise<void> {
   if (inFlight) {
     inFlight.approvals = inFlight.approvals.filter((a) => a.id !== id);
   }
   renderConversation();
-  const decision: ApprovalDecision = { approved };
+  const decision: ApprovalDecision = { approved: choice === "approve" };
   const result = await apiJson(`/api/approvals/${id}`, ApprovalAckSchema, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

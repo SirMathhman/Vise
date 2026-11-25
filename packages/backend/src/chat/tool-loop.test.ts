@@ -76,7 +76,7 @@ describe("tool loop", () => {
       "openai/gpt-4o",
       [{ role: "user", content: "summarize" }],
       undefined,
-      false,
+      [],
     );
     if (!result.ok) {
       throw new Error(result.error);

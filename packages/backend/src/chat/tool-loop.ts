@@ -4,7 +4,7 @@ import type { ToolCall, UpstreamMessage } from "./chat";
 import { openUpstream, readRound, streamFrom } from "./chat";
 import type { Approval } from "./approvals";
 import { openApproval, waitForApproval } from "./approvals";
-import { runTool } from "../tools";
+import { runTool, toolDefinitions } from "../tools";
 import { PROJECT_ROOT } from "../project/workdir";
 
 // The most rounds of tool calls one reply may take before the backend stops.
@@ -78,7 +78,7 @@ async function* replyEvents(
   messages: UpstreamMessage[],
   first: ReadableStream<Uint8Array>,
   signal: AbortSignal | undefined,
-  allowTools: boolean,
+  tools: typeof toolDefinitions,
 ): AsyncGenerator<ChatStreamEvent, void> {
   let conversation = messages;
   let body = first;
@@ -97,7 +97,7 @@ async function* replyEvents(
       return;
     }
     conversation = [...conversation, assistantToolCalls(calls), ...results];
-    const next = await openUpstream(apiKey, model, conversation, allowTools);
+    const next = await openUpstream(apiKey, model, conversation, tools);
     if (!next.ok) {
       yield { type: "error", message: next.error };
       return;
@@ -119,7 +119,7 @@ async function* replyEvents(
  * @param model The model id to ask.
  * @param messages The conversation to send.
  * @param signal Aborts the reply when the client has gone away.
- * @param allowTools Whether tools may be offered in every round.
+ * @param tools The tools offered in every round. Empty for none.
  * @returns The reply as typed events, or the error that prevented it from starting.
  */
 export async function streamChatReply(
@@ -127,15 +127,15 @@ export async function streamChatReply(
   model: string,
   messages: UpstreamMessage[],
   signal?: AbortSignal,
-  allowTools = true,
+  tools: typeof toolDefinitions = toolDefinitions,
 ): Promise<Result<ReadableStream<ChatStreamEvent>, string>> {
-  const first = await openUpstream(apiKey, model, messages, allowTools);
+  const first = await openUpstream(apiKey, model, messages, tools);
   if (!first.ok) {
     return err(first.error);
   }
   return ok(
     streamFrom(
-      replyEvents(apiKey, model, messages, first.value, signal, allowTools),
+      replyEvents(apiKey, model, messages, first.value, signal, tools),
     ),
   );
 }

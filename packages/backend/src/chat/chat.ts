@@ -282,20 +282,20 @@ export function streamFrom(
 }
 
 /**
- * Sends a request upstream, and returns the raw body. The backend's tools are offered unless
- * allowTools is false.
+ * Sends a request upstream, and returns the raw body. The model is offered the given tools;
+ * an empty list offers none.
  *
  * @param apiKey The OpenRouter key to send with the request.
  * @param model The model id to ask.
  * @param messages The conversation to send.
- * @param allowTools Whether the model may be offered the backend's tools.
+ * @param tools The tools the model may be offered. Empty for none.
  * @returns The raw body to read, or the error that prevented the request.
  */
 export async function openUpstream(
   apiKey: string,
   model: string,
   messages: UpstreamMessage[],
-  allowTools = true,
+  tools: typeof toolDefinitions = toolDefinitions,
 ): Promise<Result<ReadableStream<Uint8Array>, string>> {
   let res: Response;
   try {
@@ -309,7 +309,7 @@ export async function openUpstream(
         model,
         messages,
         stream: true,
-        ...(allowTools ? { tools: toolDefinitions } : {}),
+        ...(tools.length > 0 ? { tools } : {}),
       }),
     });
   } catch {

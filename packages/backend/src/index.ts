@@ -21,6 +21,7 @@ import { z } from "zod";
 import { decideApproval } from "./chat/approvals";
 import { withSystemContext } from "./chat/chat";
 import { streamChatReply } from "./chat/tool-loop";
+import { toolDefinitions } from "./tools";
 import { PROJECT_ROOT } from "./project/workdir";
 import { fetchModels } from "./openrouter";
 import {
@@ -126,7 +127,7 @@ async function chat(req: Request): Promise<Response> {
     model,
     withSystemContext(messages, PROJECT_ROOT),
     req.signal,
-    input.value.allowTools ?? true,
+    input.value.allowTools === false ? [] : toolDefinitions,
   );
   if (!reply.ok) {
     return errorJson(reply.error, 502);
@@ -142,7 +143,8 @@ async function answerApproval(req: Request, id: string): Promise<Response> {
   if (!input.ok) {
     return errorJson(describeParseError(input.error), 400);
   }
-  if (!decideApproval(id, input.value.approved)) {
+  const decision = input.value.approved ? "approve" : "reject";
+  if (!decideApproval(id, decision)) {
     return errorJson("No change is waiting for that id.", 404);
   }
   return json({ ok: true });

@@ -32,12 +32,12 @@ describe("replaceOnce", () => {
 describe("approvals", () => {
   test("a reply waiting on an approval continues with the user's answer", async () => {
     const pending = openApproval();
-    expect(decideApproval(pending.id, true)).toBe(true);
+    expect(decideApproval(pending.id, "approve")).toBe(true);
     expect(await pending.decided).toBe(true);
     pending.close();
   });
 
   test("an answer to an id nobody is waiting on is refused", () => {
-    expect(decideApproval("no-such-id", true)).toBe(false);
+    expect(decideApproval("no-such-id", "approve")).toBe(false);
   });
 });
