@@ -25,6 +25,11 @@
   }
 }
 
+/* A panel with the hidden attribute stays hidden even when a rule sets its display. */
+[hidden] {
+  display: none !important;
+}
+
 * {
   box-sizing: border-box;
 }
