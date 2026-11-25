@@ -308,3 +308,28 @@ export const ToolSettingsSchema = z.object({
  * Which tools are turned off.
  */
 export type ToolSettings = z.infer<typeof ToolSettingsSchema>;
+
+/**
+ * The tools a profile may use: the names in its whitelist.
+ */
+export const ProfileToolsSchema = z.object({
+  tools: z.array(z.string()),
+});
+/**
+ * The tools a profile may use.
+ */
+export type ProfileTools = z.infer<typeof ProfileToolsSchema>;
+
+/**
+ * The reply of GET /api/tool-settings/profiles: each profile's whitelist, keyed by profile id. A
+ * profile with no entry has no whitelist.
+ */
+export const ProfileToolListsResponseSchema = z.object({
+  profiles: z.record(z.string(), z.array(z.string())),
+});
+/**
+ * The reply of GET /api/tool-settings/profiles.
+ */
+export type ProfileToolListsResponse = z.infer<
+  typeof ProfileToolListsResponseSchema
+>;

@@ -7,7 +7,7 @@ import type { ModelSelf } from "../chat/model-facts";
 import type { ReplyContext, SubagentRunner } from "../chat/reply-context";
 import type { Result, ToolSummary } from "common";
 import { ok } from "common";
-import { readToolSettings } from "./tool-settings";
+import { readProfileToolLists, readToolSettings } from "./tool-settings";
 import {
   START_SUBAGENT_NAME,
   START_SUBAGENT_TOOL,
@@ -128,13 +128,27 @@ export function isToolName(name: string): boolean {
 }
 
 /**
- * The tools the model may be offered: every tool the user has not turned off.
+ * The tools the model may be offered. A profile with a whitelist is offered exactly the tools in
+ * it, even ones the user has turned off. Otherwise every tool the user has not turned off.
  *
- * @returns The enabled tool definitions, or a message when the settings cannot be read.
+ * @param profileId The profile the chat uses, if any.
+ * @returns The offered tool definitions, or a message when the settings cannot be read.
  */
-export async function enabledToolDefinitions(): Promise<
-  Result<typeof toolDefinitions, string>
-> {
+export async function enabledToolDefinitions(
+  profileId?: string,
+): Promise<Result<typeof toolDefinitions, string>> {
+  if (profileId !== undefined) {
+    const lists = await readProfileToolLists();
+    if (!lists.ok) {
+      return lists;
+    }
+    if (Object.hasOwn(lists.value, profileId)) {
+      const listed = lists.value[profileId] ?? [];
+      return ok(
+        toolDefinitions.filter((tool) => listed.includes(tool.function.name)),
+      );
+    }
+  }
   const settings = await readToolSettings();
   if (!settings.ok) {
     return settings;

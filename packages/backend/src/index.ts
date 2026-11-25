@@ -19,7 +19,11 @@ import { decideApproval } from "./chat/approvals";
 import { systemContextText, withSystemContext } from "./chat/chat";
 import { streamChatReply } from "./chat/tool-loop";
 import { enabledToolDefinitions, toolDefinitions } from "./tools";
-import { handleTools, handleToolSettings } from "./tools/tools-routes";
+import {
+  handleProfileToolSettings,
+  handleTools,
+  handleToolSettings,
+} from "./tools/tools-routes";
 import { buildModelSelf } from "./chat/model-facts";
 import { CORS_HEADERS, errorJson, json, readBody, refuseWrite } from "./http";
 import { PROJECT_ROOT } from "./project/workdir";
@@ -152,7 +156,7 @@ async function chat(req: Request): Promise<Response> {
   const upstream = withSystemContext(messages, PROJECT_ROOT, instructions);
   let tools: typeof toolDefinitions = [];
   if (input.value.allowTools !== false) {
-    const enabled = await enabledToolDefinitions();
+    const enabled = await enabledToolDefinitions(input.value.profileId);
     if (!enabled.ok) {
       return errorJson(enabled.error, 500);
     }
@@ -302,6 +306,10 @@ Bun.serve({
 
     if (url.pathname === "/api/tool-settings") {
       return handleToolSettings(req);
+    }
+
+    if (url.pathname.startsWith("/api/tool-settings/profiles")) {
+      return handleProfileToolSettings(req, url.pathname);
     }
 
     if (url.pathname === "/api/models") {
