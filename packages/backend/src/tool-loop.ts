@@ -3,7 +3,7 @@ import { err, ok } from "common";
 import type { ToolCall, UpstreamMessage } from "./chat";
 import { openUpstream, readRound, streamFrom } from "./chat";
 import type { Approval } from "./approvals";
-import { openApproval } from "./approvals";
+import { openApproval, waitForApproval } from "./approvals";
 import { runTool } from "./tools";
 import { PROJECT_ROOT } from "./workdir";
 
@@ -14,6 +14,7 @@ const MAX_TOOL_ROUNDS = 5;
 // the change is written only if they approve it.
 async function* awaitApproval(
   approval: Approval,
+  signal?: AbortSignal,
 ): AsyncGenerator<ChatStreamEvent, string> {
   const pending = openApproval();
   try {
@@ -23,7 +24,10 @@ async function* awaitApproval(
       title: approval.title,
       body: approval.body,
     };
-    const approved = await pending.decided;
+    const approved = await waitForApproval(pending, signal);
+    if (approved === undefined) {
+      return "The user did not answer this change.";
+    }
     if (!approved) {
       return "The user declined this change.";
     }
@@ -37,6 +41,7 @@ async function* awaitApproval(
 // needs approval waits for the user first.
 async function* toolResults(
   calls: ToolCall[],
+  signal?: AbortSignal,
 ): AsyncGenerator<ChatStreamEvent, UpstreamMessage[]> {
   const results: UpstreamMessage[] = [];
   for (const call of calls) {
@@ -45,7 +50,7 @@ async function* toolResults(
     if (typeof outcome === "string") {
       content = outcome;
     } else {
-      content = yield* awaitApproval(outcome);
+      content = yield* awaitApproval(outcome, signal);
     }
     results.push({ role: "tool", tool_call_id: call.id, content });
   }
@@ -72,6 +77,7 @@ async function* replyEvents(
   model: string,
   messages: UpstreamMessage[],
   first: ReadableStream<Uint8Array>,
+  signal?: AbortSignal,
 ): AsyncGenerator<ChatStreamEvent, void> {
   let conversation = messages;
   let body = first;
@@ -84,7 +90,11 @@ async function* replyEvents(
     if (round === MAX_TOOL_ROUNDS - 1) {
       break;
     }
-    const results = yield* toolResults(calls);
+    const results = yield* toolResults(calls, signal);
+    // The client has gone: do not ask the model again.
+    if (signal?.aborted) {
+      return;
+    }
     conversation = [...conversation, assistantToolCalls(calls), ...results];
     const next = await openUpstream(apiKey, model, conversation);
     if (!next.ok) {
@@ -101,14 +111,18 @@ async function* replyEvents(
 
 // Sends the conversation and returns the reply as typed events, as they arrive. Tool
 // rounds are run here, so the client sees only the text and any approvals to answer.
+// The signal ends the reply when the client goes away.
 export async function streamChatReply(
   apiKey: string,
   model: string,
   messages: UpstreamMessage[],
+  signal?: AbortSignal,
 ): Promise<Result<ReadableStream<ChatStreamEvent>, string>> {
   const first = await openUpstream(apiKey, model, messages);
   if (!first.ok) {
     return err(first.error);
   }
-  return ok(streamFrom(replyEvents(apiKey, model, messages, first.value)));
+  return ok(
+    streamFrom(replyEvents(apiKey, model, messages, first.value, signal)),
+  );
 }

@@ -114,6 +114,7 @@ async function chat(req: Request): Promise<Response> {
     apiKey,
     model,
     withSystemContext(messages, PROJECT_ROOT),
+    req.signal,
   );
   if (!reply.ok) {
     return errorJson(reply.error, 502);

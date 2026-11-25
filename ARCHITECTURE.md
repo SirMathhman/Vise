@@ -8,9 +8,9 @@ This document describes the target architecture. It is a reference for where the
 - **Backend**: the `packages/backend` Bun server. It is the only code that holds secrets and the only code that talks to third-party APIs.
 - **Frontend**: the `packages/frontend` browser app. It renders data and never contacts third-party services directly.
 - **Upstream**: any external service the backend calls, such as OpenRouter.
-- **Stream event**: a typed wire event in `common`: `delta`, `done`, or `error`. Every streamed reply ends with exactly one `done` or `error`, so a cut-off reply is never mistaken for a finished one.
+- **Stream event**: a typed wire event in `common`: `delta`, `done`, `error`, or `approval`. Every streamed reply ends with exactly one `done` or `error`, so a cut-off reply is never mistaken for a finished one. An `approval` is not an ending: the reply waits until the user answers it.
 - **System context**: instructions the backend adds to every upstream request, such as the project root. Only the backend writes it. The wire request carries user and assistant turns only.
-- **Local tool**: a function the model may call that the backend runs itself, such as listing project directories. Tools are read-only, their schemas are owned by the backend, and their output is untrusted text.
+- **Local tool**: a function the model may call that the backend runs itself, such as listing or reading project files. Its schema is owned by the backend and its output is untrusted text. A tool that changes a file never writes directly: it returns an approval, a title and body shown to the user plus an apply step, and the apply step runs only after the user approves and re-checks the file first.
 - **Sentinel**: an upstream value with a special meaning, such as a price of -1 for variable pricing. It maps to an explicit unknown in the wire type, never to arithmetic.
 - **Invariant**: API keys never leave the backend. Every deserialization, including upstream responses, streamed chunks, request bodies, and saved history, goes through a zod schema via `parseJson`. ESLint bans `JSON.parse` and bare `.json()` calls elsewhere.
 
@@ -20,8 +20,9 @@ Dependency direction is one way: frontend and backend depend on common, never th
 
 - Backend layers, from outside in: HTTP routing, then handlers, then upstream clients, then pure mapping functions. Each layer depends only on layers inside it.
 - Each upstream gets its own module (`openrouter.ts` style) that owns its URL, auth, timeouts, validation, and error mapping.
-- The tool loop, which decides when a tool runs and when the reply stops, is its own module. It depends on the upstream client and the tool registry; neither depends on it.
-- Local tools are registered in `packages/backend/src/tools/index.ts`. Each has a zod argument schema. The loop dispatches by registry lookup and names no tool. Tools receive the project root as a parameter. All project file access, including the git-visible file list and path resolution, lives in `project-files.ts`, which the listing and reading tools share.
+- The tool loop, which decides when a tool runs and when the reply stops, is its own module. It depends on the upstream client, the tool registry, and the approval registry; none of them depends on it.
+- The approval registry in `approvals.ts` holds the replies waiting on a user answer. Only the tool loop opens an approval and only the approval route answers one. It is scoped to a single reply and lives no longer than that reply.
+- Local tools are registered in `packages/backend/src/tools/index.ts`. Each has a zod argument schema. The loop dispatches by registry lookup and names no tool. Tools receive the project root as a parameter. All project file access, including the git-visible file list, path resolution, and the text checks, lives in `project-files.ts`, which the read and edit tools share.
 - Routing is a table of path to handler, not a growing `if` chain inside one `fetch` function.
 - Frontend modules are split per view. Each view owns its DOM and calls a shared typed API client.
 - All backend-to-frontend data passes through a typed client in common, so the wire contract is compiled, not assumed.
@@ -38,14 +39,17 @@ Dependency direction is one way: frontend and backend depend on common, never th
 - A stream that fails after the first byte has already returned HTTP 200, so the status code cannot report the failure.
 - Tool rounds sit outside the conversation budget, and each one re-sends the growing conversation. The round limit must stop the loop before it opens a request it will never read.
 - A cut file's header still shows the whole line range, so a truncated read can look complete. The header must name the range actually returned.
+- A waiting approval holds its reply open with no timeout. A client that disconnects leaves its entry in the registry, and a backend restart drops every pending approval.
+- An edit matches exact text only, so a CRLF file cannot be edited. A failed match is reported to the model as text, so it can retry with corrected text.
 
 ## Security Concerns
 
 - **Trust boundary**: the backend trusts nothing from upstream or from the browser. Both are validated.
 - **Key exposure**: the upstream API key is saved to the backend's git-ignored `.env` file, or read from the environment, and is never returned in responses or logs. The UI sends it once, on save.
 - **Open proxy**: any client that can reach the backend can spend the operator's upstream quota. Missing control: authentication on proxy routes.
+- **Approvals**: an approval id is a random UUID, and the approval route accepts an answer from any caller who holds it. Approval is the only gate on a file write. Missing controls: authentication on the route, a timeout on each waiting approval, and release of the waiting entry when the client disconnects.
 - **Chat input**: the backend enforces the shared conversation budget of 40 messages and 20,000 characters. The backend rejects any client-supplied system role, so the client cannot set the model's instructions. The client still supplies the assistant turns, so it can forge prior context. Each request spends paid upstream tokens. Missing controls: a backend-side model allowlist and authentication.
-- **Path disclosure and tool output**: the system context names the project root, and tool listings name project files. Both reach the upstream only, never the browser or local history. Tools are read-only and skip git-ignored files. The reading tool sends the contents of any git-visible file upstream, so a tracked file holding a secret leaks it. Missing control: a denylist for secret-like paths. Symbolic links are refused, and only a path on the git list can be read. Tool output is untrusted text that can carry injected instructions. Missing control: a byte cap on tool output across all rounds.
+- **Path disclosure and tool output**: the system context names the project root, and tool listings name project files. Both reach the upstream only, never the browser or local history. Tools skip git-ignored files. The reading tool sends the contents of any git-visible file upstream, so a tracked file holding a secret leaks it. The editing tool can rewrite any git-visible file, including files that run code when a developer runs the project, such as lint config, package scripts, and CI workflows. Missing controls: a denylist for secret-like paths and for executable config, and a file path shown in the approval body. Symbolic links are refused, and only a path on the git list can be read or edited. Tool output is untrusted text that can carry injected instructions. Missing control: a byte cap on tool output across all rounds.
 - **Local history**: the conversation is stored in browser localStorage as plain text. Anyone with access to the browser profile can read it, so it must never hold keys.
 - **Cross-origin access**: the backend allows only the frontend dev origin, `http://localhost:5173`, with no wildcard.
 - **Rendering**: model metadata is untrusted text. It must be set with `textContent`, never `innerHTML`.
@@ -58,6 +62,8 @@ Dependency direction is one way: frontend and backend depend on common, never th
 - A response cache with a bounded TTL in front of the models upstream.
 - Authentication on backend routes that proxy paid upstreams.
 - Size rules in `eslint.config.mjs` for lines per file, lines per function, complexity, and entries per directory, each limit documented here.
+- An approval wait that ends after a timeout or when the client disconnects, with the registry scoped to one reply and the waiting entry always released.
+- Exact-match edits that also accept CRLF files and keep each file's line endings.
 - A byte cap on tool output, counted in the conversation budget, and tests for fragment merging, the file-listing helpers, and every refusal path of the reading tool: ignored, symbolic link, binary, oversized, and outside the root.
 
 ## Performance
