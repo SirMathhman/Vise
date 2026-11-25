@@ -15,7 +15,7 @@ export async function fetchModels(apiKey: string): Promise<ModelSummary[]> {
     headers: { Authorization: `Bearer ${apiKey}` },
   });
   if (!res.ok) {
-    throw new Error(`OpenRouter responded with HTTP ${res.status}`);
+    throw new Error(`OpenRouter responded with HTTP ${String(res.status)}`);
   }
 
   const body = (await res.json()) as { data: OpenRouterModel[] };

@@ -27,7 +27,7 @@ async function listeningPids(port: number): Promise<number[]> {
     return [...pids];
   }
 
-  const out = await run(["lsof", "-ti", `tcp:${port}`, "-sTCP:LISTEN"]);
+  const out = await run(["lsof", "-ti", `tcp:${String(port)}`, "-sTCP:LISTEN"]);
   return out
     .split(/\s+/)
     .map((s) => Number(s))
@@ -41,10 +41,12 @@ async function stopExistingDevServers(): Promise<void> {
     for (const pid of pids) {
       try {
         process.kill(pid);
-        console.log(`dev: stopped process ${pid} on port ${port}`);
+        console.log(
+          `dev: stopped process ${String(pid)} on port ${String(port)}`,
+        );
       } catch (err) {
         console.warn(
-          `dev: could not stop process ${pid} on port ${port}: ${String(err)}`,
+          `dev: could not stop process ${String(pid)} on port ${String(port)}: ${String(err)}`,
         );
       }
     }
@@ -68,7 +70,11 @@ const child = Bun.spawn(
 );
 
 // Forward Ctrl+C so both dev servers shut down together.
-process.on("SIGINT", () => child.kill("SIGINT"));
-process.on("SIGTERM", () => child.kill("SIGTERM"));
+process.on("SIGINT", () => {
+  child.kill("SIGINT");
+});
+process.on("SIGTERM", () => {
+  child.kill("SIGTERM");
+});
 
 process.exitCode = await child.exited;

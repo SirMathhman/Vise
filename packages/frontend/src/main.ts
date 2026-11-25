@@ -10,17 +10,17 @@ import { greet } from "common";
 // Backend base URL. Change this if the backend runs elsewhere.
 const API_BASE = "http://localhost:3000";
 
-function requireElement<T extends HTMLElement>(id: string): T {
+function requireElement(id: string): HTMLElement {
   const el = document.getElementById(id);
   if (!el) {
     throw new Error(`Missing element #${id}`);
   }
-  return el as T;
+  return el;
 }
 
-const greeting = requireElement<HTMLParagraphElement>("greeting");
-const health = requireElement<HTMLParagraphElement>("health");
-const refresh = requireElement<HTMLButtonElement>("refresh");
+const greeting = requireElement("greeting") as HTMLParagraphElement;
+const health = requireElement("health") as HTMLParagraphElement;
+const refresh = requireElement("refresh") as HTMLButtonElement;
 
 async function loadHealth(): Promise<void> {
   refresh.disabled = true;
@@ -28,7 +28,7 @@ async function loadHealth(): Promise<void> {
   try {
     const res = await fetch(`${API_BASE}/api/health`);
     if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`);
+      throw new Error(`HTTP ${String(res.status)}`);
     }
     const data = (await res.json()) as HealthResponse;
     health.textContent = `${data.status} (${data.service}, checked ${new Date(data.time).toLocaleTimeString()})`;
@@ -39,8 +39,8 @@ async function loadHealth(): Promise<void> {
   }
 }
 
-const modelsStatus = requireElement<HTMLParagraphElement>("models-status");
-const modelsBody = requireElement<HTMLTableSectionElement>("models-body");
+const modelsStatus = requireElement("models-status") as HTMLParagraphElement;
+const modelsBody = requireElement("models-body") as HTMLTableSectionElement;
 
 function cell(text: string): HTMLTableCellElement {
   const td = document.createElement("td");
@@ -70,17 +70,17 @@ async function loadModels(): Promise<void> {
       );
       modelsBody.append(row);
     }
-    modelsStatus.textContent = `${data.models.length} models`;
+    modelsStatus.textContent = `${String(data.models.length)} models`;
   } catch (err) {
     modelsStatus.textContent = `Unavailable: ${err instanceof Error ? err.message : String(err)}`;
   }
 }
 
-const keyStatus = requireElement<HTMLParagraphElement>("key-status");
-const keyForm = requireElement<HTMLFormElement>("key-form");
-const keyInput = requireElement<HTMLInputElement>("key-input");
-const keyClear = requireElement<HTMLButtonElement>("key-clear");
-const keyError = requireElement<HTMLParagraphElement>("key-error");
+const keyStatus = requireElement("key-status") as HTMLParagraphElement;
+const keyForm = requireElement("key-form") as HTMLFormElement;
+const keyInput = requireElement("key-input") as HTMLInputElement;
+const keyClear = requireElement("key-clear") as HTMLButtonElement;
+const keyError = requireElement("key-error") as HTMLParagraphElement;
 
 // Sends a request and returns the parsed JSON body, or throws the backend's error message.
 async function callApi<T>(path: string, init?: RequestInit): Promise<T> {
@@ -107,7 +107,7 @@ async function loadKeyStatus(): Promise<void> {
   }
 }
 
-keyForm.addEventListener("submit", async (event) => {
+async function saveKey(event: SubmitEvent): Promise<void> {
   event.preventDefault();
   keyError.textContent = "";
   const input: SaveOpenRouterKeyRequest = { apiKey: keyInput.value };
@@ -126,9 +126,9 @@ keyForm.addEventListener("submit", async (event) => {
   } catch (err) {
     keyError.textContent = err instanceof Error ? err.message : String(err);
   }
-});
+}
 
-keyClear.addEventListener("click", async () => {
+async function clearKey(): Promise<void> {
   keyError.textContent = "";
   try {
     const settings = await callApi<OpenRouterSettings>(
@@ -140,7 +140,10 @@ keyClear.addEventListener("click", async () => {
   } catch (err) {
     keyError.textContent = err instanceof Error ? err.message : String(err);
   }
-});
+}
+
+keyForm.addEventListener("submit", (event) => void saveKey(event));
+keyClear.addEventListener("click", () => void clearKey());
 
 greeting.textContent = greet("frontend");
 refresh.addEventListener("click", () => void loadHealth());

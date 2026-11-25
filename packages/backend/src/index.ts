@@ -53,7 +53,7 @@ async function openRouterSettings(req: Request): Promise<Response> {
   return json(body);
 }
 
-const server = Bun.serve({
+Bun.serve({
   port,
   async fetch(req) {
     const url = new URL(req.url);
@@ -104,4 +104,4 @@ const server = Bun.serve({
   },
 });
 
-console.log(`backend listening on http://localhost:${server.port}`);
+console.log(`backend listening on http://localhost:${String(port)}`);
