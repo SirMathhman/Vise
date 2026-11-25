@@ -1,53 +1,21 @@
 import type { ChatMessage, ChatStreamEvent, Result } from "common";
-import { err, ok } from "common";
+import { NOT_JSON, err, ok, parseJson } from "common";
+import { z } from "zod";
 
 const CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
 
-// Shape of one streamed chunk from OpenRouter's chat completions endpoint.
-interface ChatChunk {
-  error?: { message?: string };
-  choices?: { delta?: { content?: string | null } }[];
-}
-
-function isChoice(value: unknown): boolean {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-  const delta = (value as Record<string, unknown>).delta;
-  if (delta === undefined) {
-    return true;
-  }
-  if (typeof delta !== "object" || delta === null) {
-    return false;
-  }
-  const content = (delta as Record<string, unknown>).content;
-  return (
-    content === undefined || content === null || typeof content === "string"
-  );
-}
-
-function isChatChunk(value: unknown): value is ChatChunk {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-  const chunk = value as Record<string, unknown>;
-  if (chunk.error !== undefined) {
-    const error = chunk.error as Record<string, unknown> | null;
-    if (typeof error !== "object" || error === null) {
-      return false;
-    }
-    if (error.message !== undefined && typeof error.message !== "string") {
-      return false;
-    }
-  }
-  if (chunk.choices !== undefined) {
-    if (!Array.isArray(chunk.choices)) {
-      return false;
-    }
-    return (chunk.choices as unknown[]).every(isChoice);
-  }
-  return true;
-}
+// One streamed chunk from OpenRouter's chat completions endpoint.
+const ChatChunkSchema = z.object({
+  error: z.object({ message: z.string().optional() }).optional(),
+  choices: z
+    .array(
+      z.object({
+        delta: z.object({ content: z.string().nullish() }).optional(),
+      }),
+    )
+    .optional(),
+});
+type ChatChunk = z.infer<typeof ChatChunkSchema>;
 
 // Returns the event carried by one validated chunk, or undefined when it has no text.
 function eventFromChunk(chunk: ChatChunk): ChatStreamEvent | undefined {
@@ -77,16 +45,15 @@ function eventFromSseLine(
     const done: ChatStreamEvent = { type: "done" };
     return ok(done);
   }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(payload);
-  } catch {
-    return err("OpenRouter sent a stream chunk that is not JSON");
+  const parsed = parseJson(ChatChunkSchema, payload);
+  if (!parsed.ok) {
+    return err(
+      parsed.error === NOT_JSON
+        ? "OpenRouter sent a stream chunk that is not JSON"
+        : "OpenRouter sent a stream chunk in an unexpected format",
+    );
   }
-  if (!isChatChunk(parsed)) {
-    return err("OpenRouter sent a stream chunk in an unexpected format");
-  }
-  return ok(eventFromChunk(parsed));
+  return ok(eventFromChunk(parsed.value));
 }
 
 // Turns OpenRouter's SSE body into typed events. The stream always ends with exactly one
@@ -172,7 +139,7 @@ export function chatEvents(
   });
 }
 
-// Sends one user message and returns the reply as typed events, as they arrive.
+// Sends the conversation and returns the reply as typed events, as they arrive.
 export async function streamChatReply(
   apiKey: string,
   model: string,

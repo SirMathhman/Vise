@@ -1,13 +1,19 @@
 import type {
-  ChatRequest,
   ChatStreamEvent,
   ErrorResponse,
   HealthResponse,
   ModelsResponse,
   OpenRouterSettings,
-  SaveOpenRouterKeyRequest,
+  Result,
 } from "common";
-import { fitsBudget, greet, parseChatMessageList } from "common";
+import {
+  ChatRequestSchema,
+  SaveOpenRouterKeyRequestSchema,
+  fitsBudget,
+  greet,
+  parseJson,
+} from "common";
+import { z } from "zod";
 import { streamChatReply } from "./chat";
 import { fetchModels } from "./openrouter";
 import {
@@ -30,24 +36,30 @@ function json(body: unknown, status = 200): Response {
   return Response.json(body, { status, headers: CORS_HEADERS });
 }
 
+function errorJson(error: string, status: number): Response {
+  const body: ErrorResponse = { error };
+  return json(body, status);
+}
+
+// Reads a request body as text and checks it against a zod schema.
+async function readBody<S extends z.ZodType>(
+  req: Request,
+  schema: S,
+): Promise<Result<z.output<S>, string>> {
+  return parseJson(schema, await req.text());
+}
+
 async function openRouterSettings(req: Request): Promise<Response> {
   if (req.method === "PUT") {
-    const input = (await req
-      .json()
-      .catch(() => ({}))) as Partial<SaveOpenRouterKeyRequest>;
-    const apiKey = typeof input.apiKey === "string" ? input.apiKey.trim() : "";
-    if (!apiKey || /\s/.test(apiKey)) {
-      const body: ErrorResponse = {
-        error: "apiKey must be a non-empty string without whitespace",
-      };
-      return json(body, 400);
+    const input = await readBody(req, SaveOpenRouterKeyRequestSchema);
+    if (!input.ok) {
+      return errorJson(input.error, 400);
     }
-    await saveOpenRouterKey(apiKey);
+    await saveOpenRouterKey(input.value.apiKey);
   } else if (req.method === "DELETE") {
     await clearSavedOpenRouterKey();
   } else if (req.method !== "GET") {
-    const body: ErrorResponse = { error: "Method not allowed" };
-    return json(body, 405);
+    return errorJson("Method not allowed", 405);
   }
 
   const body: OpenRouterSettings = {
@@ -72,50 +84,49 @@ function toSse(): TransformStream<ChatStreamEvent, Uint8Array> {
 
 // Sends one message and streams the model's reply back as server-sent events.
 async function chat(req: Request): Promise<Response> {
-  const input = (await req.json().catch(() => ({}))) as Partial<
-    Record<keyof ChatRequest, unknown>
-  >;
-  const model = typeof input.model === "string" ? input.model.trim() : "";
-  const parsed = parseChatMessageList(input.messages);
-  const last = parsed.ok ? parsed.value.at(-1) : undefined;
-  if (
-    !model ||
-    !parsed.ok ||
-    parsed.value.length === 0 ||
-    last?.role !== "user"
-  ) {
-    const body: ErrorResponse = {
-      error:
-        "model must be a non-empty string, and messages must be a non-empty conversation ending with a user message",
-    };
-    return json(body, 400);
+  const input = await readBody(req, ChatRequestSchema);
+  if (!input.ok) {
+    return errorJson(input.error, 400);
   }
-  const messages = parsed.value;
+  const { model, messages } = input.value;
   if (!fitsBudget(messages)) {
-    const body: ErrorResponse = {
-      error:
-        "The conversation is over the size limit. Start a new conversation or send a shorter message.",
-    };
-    return json(body, 400);
+    return errorJson(
+      "The conversation is over the size limit. Start a new conversation or send a shorter message.",
+      400,
+    );
   }
 
   const apiKey = await getOpenRouterKey();
   if (!apiKey) {
-    const body: ErrorResponse = {
-      error:
-        "No OpenRouter API key is set. Add one in the UI or set OPENROUTER_API_KEY.",
-    };
-    return json(body, 500);
+    return errorJson(
+      "No OpenRouter API key is set. Add one in the UI or set OPENROUTER_API_KEY.",
+      500,
+    );
   }
 
   const reply = await streamChatReply(apiKey, model, messages);
   if (!reply.ok) {
-    const body: ErrorResponse = { error: reply.error };
-    return json(body, 502);
+    return errorJson(reply.error, 502);
   }
   return new Response(reply.value.pipeThrough(toSse()), {
     headers: { ...CORS_HEADERS, "Content-Type": "text/event-stream" },
   });
+}
+
+async function models(): Promise<Response> {
+  const apiKey = await getOpenRouterKey();
+  if (!apiKey) {
+    return errorJson(
+      "No OpenRouter API key is set. Add one in the UI or set OPENROUTER_API_KEY.",
+      500,
+    );
+  }
+  const result = await fetchModels(apiKey);
+  if (!result.ok) {
+    return errorJson(result.error, 502);
+  }
+  const body: ModelsResponse = { models: result.value };
+  return json(body);
 }
 
 Bun.serve({
@@ -134,27 +145,11 @@ Bun.serve({
     if (url.pathname === "/api/chat") {
       return req.method === "POST"
         ? chat(req)
-        : json({ error: "Method not allowed" } satisfies ErrorResponse, 405);
+        : errorJson("Method not allowed", 405);
     }
 
     if (url.pathname === "/api/models") {
-      const apiKey = await getOpenRouterKey();
-      if (!apiKey) {
-        const body: ErrorResponse = {
-          error:
-            "No OpenRouter API key is set. Add one in the UI or set OPENROUTER_API_KEY.",
-        };
-        return json(body, 500);
-      }
-      try {
-        const body: ModelsResponse = { models: await fetchModels(apiKey) };
-        return json(body);
-      } catch (err) {
-        const body: ErrorResponse = {
-          error: err instanceof Error ? err.message : String(err),
-        };
-        return json(body, 502);
-      }
+      return models();
     }
 
     if (url.pathname === "/api/health") {

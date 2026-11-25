@@ -4,14 +4,14 @@ This document describes the target architecture. It is a reference for where the
 
 ## Definitions
 
-- **Common**: the `packages/common` workspace. Holds shared types and pure helpers only. It has no I/O and no runtime dependencies.
+- **Common**: the `packages/common` workspace. Holds the zod schemas and types for the wire, plus pure helpers. It has no I/O; zod is its only runtime dependency.
 - **Backend**: the `packages/backend` Bun server. It is the only code that holds secrets and the only code that talks to third-party APIs.
 - **Frontend**: the `packages/frontend` browser app. It renders data and never contacts third-party services directly.
 - **Upstream**: any external service the backend calls, such as OpenRouter.
 - **Wire type**: a type in `common` that describes JSON exchanged between frontend and backend.
 - **Stream event**: a typed wire event in `common`: `delta`, `done`, or `error`. Every streamed reply ends with exactly one `done` or `error`, so a cut-off reply is never mistaken for a finished one.
 - **Sentinel**: an upstream value with a special meaning, such as a price of -1 for variable pricing. It maps to an explicit unknown in the wire type, never to arithmetic.
-- **Invariant**: API keys never leave the backend. Every upstream response, including each streamed chunk, is validated by a runtime guard before it becomes a wire type.
+- **Invariant**: API keys never leave the backend. Every deserialization, including upstream responses, streamed chunks, request bodies, and saved history, goes through a zod schema via `parseJson`. ESLint bans `JSON.parse` and bare `.json()` calls elsewhere.
 
 ## Structure
 

@@ -1,4 +1,5 @@
-import type { ModelSummary, ModelsResponse } from "common";
+import type { ModelSummary } from "common";
+import { ModelsResponseSchema } from "common";
 import { apiJson } from "../api";
 import { requireElement } from "../dom";
 
@@ -59,7 +60,7 @@ function renderModelsPage(): void {
 export async function loadModels(): Promise<void> {
   modelsStatus.textContent = "Loading…";
   modelsBody.replaceChildren();
-  const result = await apiJson<ModelsResponse>("/api/models");
+  const result = await apiJson("/api/models", ModelsResponseSchema);
   if (!result.ok) {
     modelsStatus.textContent = `Unavailable: ${result.error}`;
     return;

@@ -1,4 +1,5 @@
 import type { OpenRouterSettings, SaveOpenRouterKeyRequest } from "common";
+import { OpenRouterSettingsSchema } from "common";
 import { apiJson } from "../api";
 import { requireElement } from "../dom";
 import { loadModels } from "./models";
@@ -16,7 +17,7 @@ function showSettings(settings: OpenRouterSettings): void {
 }
 
 export async function loadKeyStatus(): Promise<void> {
-  const result = await apiJson<OpenRouterSettings>(SETTINGS_PATH);
+  const result = await apiJson(SETTINGS_PATH, OpenRouterSettingsSchema);
   if (result.ok) {
     showSettings(result.value);
   } else {
@@ -28,7 +29,7 @@ async function saveKey(event: SubmitEvent): Promise<void> {
   event.preventDefault();
   keyError.textContent = "";
   const body: SaveOpenRouterKeyRequest = { apiKey: keyInput.value };
-  const result = await apiJson<OpenRouterSettings>(SETTINGS_PATH, {
+  const result = await apiJson(SETTINGS_PATH, OpenRouterSettingsSchema, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -44,7 +45,7 @@ async function saveKey(event: SubmitEvent): Promise<void> {
 
 async function clearKey(): Promise<void> {
   keyError.textContent = "";
-  const result = await apiJson<OpenRouterSettings>(SETTINGS_PATH, {
+  const result = await apiJson(SETTINGS_PATH, OpenRouterSettingsSchema, {
     method: "DELETE",
   });
   if (!result.ok) {

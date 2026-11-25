@@ -1,41 +1,37 @@
-import type { ChatRequest, ErrorResponse, Result } from "common";
-import { err, ok } from "common";
+import type { ChatRequest, Result } from "common";
+import { ErrorResponseSchema, err, ok, parseJson } from "common";
+import type { z } from "zod";
 
 // Backend base URL. Change this if the backend runs elsewhere.
 const API_BASE = "http://localhost:3000";
 
 const UNREACHABLE = "Could not reach the backend";
 
-// Returns the backend's error message from a parsed body, or the fallback.
-function errorText(body: unknown, fallback: string): string {
-  if (typeof body === "object" && body !== null && "error" in body) {
-    const { error } = body as Partial<ErrorResponse>;
-    if (typeof error === "string") {
-      return error;
-    }
-  }
-  return fallback;
+// The backend's error message, or a fallback when the body does not carry one.
+async function failureFrom(res: Response): Promise<string> {
+  const body = parseJson(ErrorResponseSchema, await res.text());
+  return body.ok ? body.value.error : `HTTP ${String(res.status)}`;
 }
 
-// Calls a JSON endpoint. Returns the parsed body, or the error to show the user.
-export async function apiJson<T>(
+// Calls a JSON endpoint and checks the reply against the schema for it.
+export async function apiJson<S extends z.ZodType>(
   path: string,
+  schema: S,
   init?: RequestInit,
-): Promise<Result<T, string>> {
+): Promise<Result<z.output<S>, string>> {
   let res: Response;
   try {
     res = await fetch(`${API_BASE}${path}`, init);
   } catch {
     return err(UNREACHABLE);
   }
-  const body: unknown = await res.json().catch(() => undefined);
   if (!res.ok) {
-    return err(errorText(body, `HTTP ${String(res.status)}`));
+    return err(await failureFrom(res));
   }
-  return ok(body as T);
+  return parseJson(schema, await res.text());
 }
 
-// Opens the chat stream for one message. Returns the raw body to read, or the error.
+// Opens the chat stream for one request. Returns the raw body to read, or the error.
 export async function openChat(
   request: ChatRequest,
 ): Promise<Result<ReadableStream<Uint8Array>, string>> {
@@ -50,8 +46,7 @@ export async function openChat(
     return err(UNREACHABLE);
   }
   if (!res.ok) {
-    const body: unknown = await res.json().catch(() => undefined);
-    return err(errorText(body, `HTTP ${String(res.status)}`));
+    return err(await failureFrom(res));
   }
   if (!res.body) {
     return err("The reply had no body");

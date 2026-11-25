@@ -1,10 +1,11 @@
 import type { ChatMessage, ChatStreamEvent, Result } from "common";
 import {
+  ChatMessageListSchema,
+  ChatStreamEventSchema,
   err,
   fitsBudget,
   ok,
-  parseChatMessageList,
-  parseChatStreamEvent,
+  parseJson,
   trimToBudget,
 } from "common";
 import { openChat } from "../api";
@@ -50,12 +51,8 @@ function loadHistory(): ChatMessage[] {
   if (raw === null) {
     return [];
   }
-  try {
-    const parsed = parseChatMessageList(JSON.parse(raw));
-    return parsed.ok ? trimToBudget(parsed.value) : [];
-  } catch {
-    return [];
-  }
+  const parsed = parseJson(ChatMessageListSchema, raw);
+  return parsed.ok ? trimToBudget(parsed.value) : [];
 }
 
 function saveHistory(): void {
@@ -132,13 +129,7 @@ async function readReply(
 
 // Parses the JSON after "data:" in one server-sent event.
 function parseEventLine(payload: string): Result<ChatStreamEvent, string> {
-  let value: unknown;
-  try {
-    value = JSON.parse(payload);
-  } catch {
-    return err("Unexpected chat event");
-  }
-  return parseChatStreamEvent(value);
+  return parseJson(ChatStreamEventSchema, payload);
 }
 
 // Sends the conversation with one new message and records the reply when it completes.
