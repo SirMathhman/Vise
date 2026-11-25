@@ -3,7 +3,8 @@ import { CREATE_FILE_TOOL, runCreateFile } from "./create-file";
 import { EDIT_FILE_TOOL, runEditFile } from "./edit-file";
 import { LIST_DIRECTORY_TOOL, runListDirectory } from "./list-directory";
 import { MODEL_INFO_TOOL, runModelInfo } from "./model-info";
-import type { ModelSelf } from "./model-info";
+import type { ModelSelf } from "../chat/model-facts";
+import type { ReplyContext } from "../chat/reply-context";
 import { READ_FILE_TOOL, runReadFile } from "./read-file";
 import { RUN_COMMAND_TOOL, runRunCommand } from "../shell/shell";
 
@@ -68,18 +69,18 @@ export const toolDefinitions = [...TOOLS.values()].map(
 /**
  * Runs a tool the model called. An unknown name is reported back to the model as text.
  *
- * @param root The project root.
+ * @param context What the reply passes to its tools: the project root and the model's facts.
  * @param name The name of the tool the model called.
  * @param argumentsJson The model's arguments, as JSON text.
- * @param self The facts about the model answering the reply, for the model-info tool.
  * @returns The tool's result text, or an approval card for a change that needs the user.
  */
 export async function runTool(
-  root: string,
+  context: ReplyContext,
   name: string,
   argumentsJson: string,
-  self?: ModelSelf,
 ): Promise<string | Approval> {
   const tool = TOOLS.get(name);
-  return tool ? tool.run(root, argumentsJson, self) : `Unknown tool: ${name}`;
+  return tool
+    ? tool.run(context.root, argumentsJson, context.self)
+    : `Unknown tool: ${name}`;
 }

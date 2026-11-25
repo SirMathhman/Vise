@@ -9,6 +9,7 @@ This document describes the target architecture. It is a reference for where the
 - **Frontend**: the `packages/frontend` browser app. It renders data and never contacts third-party services directly.
 - **Stream event**: a typed wire event in `common`: `delta`, `done`, `error`, or `approval`. Every streamed reply ends with exactly one `done` or `error`, so a cut-off reply is never mistaken for a finished one. An `approval` is not an ending: the reply waits until the user answers it.
 - **System context**: instructions the backend adds to every upstream request, such as the project root. Only the backend writes it. The wire request carries user and assistant turns only.
+- **Reply context**: the facts one reply passes to every tool: the project root, the abort signal, and `ModelSelf`, the model's own id, name, window, reply reserve, budget still free, and tool names. The loop passes this one object whole. It names no tool and imports no tool's types.
 
 ## Definitions: Tools and Approval
 
@@ -25,11 +26,12 @@ Dependency direction is one way: frontend and backend depend on common, never th
 - Backend layers, from outside in: HTTP routing, then handlers, then upstream clients, then pure mapping functions. Each layer depends only on layers inside it.
 - Each upstream gets its own module (`openrouter.ts` style) that owns its URL, auth, timeouts, validation, and error mapping.
 - The tool loop, which decides when a tool runs and when the reply stops, is its own module. It depends on the upstream client, the tool registry, and the approval registry; none of them depends on it.
+- The reply context is built in `chat/` by a pure function, not in the HTTP route. That function counts exactly what the upstream request will carry, including the system context and tool definitions, and has unit tests. The route only calls it and passes the result on.
 - The approval registry in `approvals.ts` holds the replies waiting on a user answer. Only the tool loop opens an approval and only the approval route answers one. It is scoped to a single reply and lives no longer than that reply.
 
 ## Structure: Tools and Streaming
 
-- Local tools are registered in `packages/backend/src/tools/index.ts`. Each has a zod argument schema. A tool that runs processes lives in its own folder, `packages/backend/src/shell/`, and is registered beside the file tools; it depends only on common and the approval type. The sandbox module is the only path that starts a model-proposed command, and no host runner exists. The loop dispatches by registry lookup and names no tool. Tools receive the project root as a parameter. All project file access, including the git-visible file list, path resolution, and the text checks, lives in `project-files.ts`, which the read, edit, and create tools share. No tool repeats the git, root, or link checks inline.
+- Local tools are registered in `packages/backend/src/tools/index.ts`. Each has a zod argument schema, empty when it takes no arguments. A tool that runs processes lives in its own folder, `packages/backend/src/shell/`, and is registered beside the file tools; it depends only on common and the approval type. The sandbox module is the only path that starts a model-proposed command, and no host runner exists. The loop dispatches by registry lookup and names no tool. The loop hands each tool the project root and the model's facts from the reply context, never the raw route input. All project file access, including the git-visible file list, path resolution, and the text checks, lives in `project-files.ts`, which the read, edit, and create tools share. No tool repeats the git, root, or link checks inline.
 - Routing is a table of path to handler, not a growing `if` chain inside one `fetch` function.
 - Frontend modules are split per view. Each view owns its DOM and calls a shared typed API client.
 - All backend-to-frontend data passes through a typed client in common, so the wire contract is compiled, not assumed.
@@ -49,6 +51,7 @@ Dependency direction is one way: frontend and backend depend on common, never th
 - Tool rounds sit outside the conversation budget, and each one re-sends the growing conversation. The round limit must stop the loop before it opens a request it will never read.
 - A waiting approval ends after ten minutes or when the client disconnects, and its registry entry is then released. A backend restart still drops every pending approval.
 - Tool output can mislead. A cut file's header still shows the whole line range, so a truncated read can look complete; the header must name the range actually returned. An edit matches exact text only, so a CRLF file cannot be edited, and a failed match is reported as text so the model can retry.
+- Model facts are a snapshot. The budget figure is as it stood when the reply started, and each tool round adds to the conversation after it. The reply must say so rather than present the figure as live.
 - When a command's run stops early, on timeout or cut output, only the podman client is killed; the container then ends on its own timer. A stopped podman machine fails every command. Exit codes 124 and 125 can also come from the command itself, so the message can name the wrong cause.
 
 ## Security Concerns
@@ -77,6 +80,7 @@ Dependency direction is one way: frontend and backend depend on common, never th
 
 - A structured error enum for all failures, not only parsing, answering what failed, where, why, and how to fix it, mapped to HTTP status codes in one place.
 - Configuration loaded once at startup and validated, instead of read per request.
+- Model facts that carry the time they were taken, so a reply can tell a stale budget from a fresh one.
 - A response cache with a bounded TTL in front of the models upstream.
 - Authentication on backend routes that proxy paid upstreams.
 - Size rules in `eslint.config.mjs` for lines per file, lines per function, and complexity, each limit documented here. The entries-per-folder limit of 10 is enforced by `eslint-rules/folder-file-limit.mjs`.

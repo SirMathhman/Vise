@@ -9,9 +9,7 @@ import type {
 import {
   ApprovalDecisionSchema,
   ChatRequestSchema,
-  RESERVED_REPLY_TOKENS,
   SaveOpenRouterKeyRequestSchema,
-  budgetUsage,
   describeParseError,
   conversationLimit,
   fitsBudget,
@@ -24,7 +22,7 @@ import { decideApproval } from "./chat/approvals";
 import { withSystemContext } from "./chat/chat";
 import { streamChatReply } from "./chat/tool-loop";
 import { toolDefinitions } from "./tools";
-import type { ModelSelf } from "./tools/model-info";
+import { buildModelSelf } from "./chat/model-facts";
 import { PROJECT_ROOT } from "./project/workdir";
 import { fetchModels } from "./openrouter";
 import {
@@ -128,25 +126,19 @@ async function chat(req: Request): Promise<Response> {
   const upstream = withSystemContext(messages, PROJECT_ROOT);
   const tools: typeof toolDefinitions =
     input.value.allowTools === false ? [] : toolDefinitions;
-  const limit = conversationLimit(info.contextLength);
-  const self: ModelSelf = {
-    id: info.id,
-    name: info.name,
-    contextLength: info.contextLength,
-    replyReserveTokens: RESERVED_REPLY_TOKENS,
-    remainingBudgetTokens: Math.max(
-      0,
-      limit - budgetUsage(messages, limit).tokens,
-    ),
-    toolNames: tools.map((tool) => tool.function.name),
-  };
+  const self = buildModelSelf(
+    info,
+    upstream,
+    tools,
+    conversationLimit(info.contextLength),
+  );
   const reply = await streamChatReply(
     apiKey,
     model,
     upstream,
     req.signal,
     tools,
-    self,
+    { root: PROJECT_ROOT, self },
   );
   if (!reply.ok) {
     return errorJson(reply.error, 502);

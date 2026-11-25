@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { runTool } from "../../src/tools";
-import type { ModelSelf } from "../../src/tools/model-info";
+import type { ModelSelf } from "../../src/chat/model-facts";
 
 const self: ModelSelf = {
   id: "openai/gpt-4o",
@@ -13,12 +13,12 @@ const self: ModelSelf = {
 
 describe("get_model_info", () => {
   test("reports the facts about the model answering the reply", async () => {
-    const text = await runTool("/root", "get_model_info", "{}", self);
+    const text = await runTool({ root: "/root", self }, "get_model_info", "{}");
     expect(text).toBe(JSON.stringify(self, null, 2));
   });
 
   test("says so when the backend has no facts for the reply", async () => {
-    const text = await runTool("/root", "get_model_info", "{}");
+    const text = await runTool({ root: "/root" }, "get_model_info", "{}");
     expect(text).toBe("Model information is not available for this reply.");
   });
 });

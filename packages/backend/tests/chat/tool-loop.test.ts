@@ -108,7 +108,7 @@ describe("get_model_info in a reply", () => {
       [{ role: "user", content: "what model are you?" }],
       undefined,
       toolDefinitions,
-      self,
+      { root: "/root", self },
     );
     if (!result.ok) {
       throw new Error(result.error);

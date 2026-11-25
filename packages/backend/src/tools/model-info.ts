@@ -1,21 +1,4 @@
-/**
- * What the backend knows about the model answering a reply. The backend builds it per request
- * and passes it to the tool loop, so the model can read facts about itself.
- */
-export interface ModelSelf {
-  /** The OpenRouter model id, such as openai/gpt-4o. */
-  id: string;
-  /** The model's display name. */
-  name: string;
-  /** The model's context window, in tokens. */
-  contextLength: number;
-  /** Tokens reserved for the reply, not available to the conversation. */
-  replyReserveTokens: number;
-  /** Tokens of the conversation budget still free when the reply started, estimated. */
-  remainingBudgetTokens: number;
-  /** Names of the tools the model may call in this reply. */
-  toolNames: string[];
-}
+import type { ModelSelf } from "../chat/model-facts";
 
 /**
  * The name the model uses to call the model-info tool.
