@@ -10,10 +10,11 @@ This document describes the target architecture. It is a reference for where the
 - **Stream event**: a typed wire event in `common`: `delta`, `done`, `error`, or `approval`. Every streamed reply ends with exactly one `done` or `error`, so a cut-off reply is never mistaken for a finished one. An `approval` is not an ending: the reply waits until the user answers it.
 - **System context**: instructions the backend adds to every upstream request, such as the project root. Only the backend writes it. The wire request carries user and assistant turns only.
 - **Reply context**: the facts one reply passes to every tool: the project root, the abort signal, and `ModelSelf`, the model's own id, name, window, reply reserve, budget still free, and tool names. The loop passes this one object whole. It names no tool and imports no tool's types.
+- **Note**: a named record: id, name, category, summary, and content. Names are unique ignoring case. Notes are stored outside the project, in `notes.json`.
 
 ## Definitions: Tools and Approval
 
-- **Local tool**: a function the model may call that the backend runs itself, such as listing or reading project files. Its schema is owned by the backend and its output is untrusted text. A tool that changes a file or runs a command never acts directly: it returns an approval, a title and body shown to the user plus an apply step, and the apply step runs only after the user approves. A file change also re-checks the file first.
+- **Local tool**: a function the model may call that the backend runs itself, such as reading project files. Its schema is owned by the backend and its output is untrusted text. A tool that changes a file, runs a command, or overwrites or deletes a note never acts directly: it returns an approval, a title and body shown to the user plus an apply step, and the apply step runs only after the user approves. A file change re-checks the file first.
 - **Decision**: the user's answer to an approval, `approve` or `reject`. It is a named union carried from the approval route to the tool loop, never a boolean; a wait that ends without an answer is `undefined`, a third state no boolean can express.
 - **Sentinel**: an upstream value with a special meaning, such as a price of -1 for variable pricing. It maps to an explicit unknown in the wire type, never to arithmetic.
 - **Compaction**: when a send would pass 80% of the model's window, the browser asks the model for a summary of the older conversation, then keeps the summary and the most recent ten messages. The summary turn never applies a change and is not kept as history.
@@ -28,6 +29,7 @@ Dependency direction is one way: frontend and backend depend on common, never th
 - The tool loop, which decides when a tool runs and when the reply stops, is its own module. It depends on the upstream client, the tool registry, and the approval registry; none of them depends on it.
 - The reply context is built in `chat/` by a pure function, not in the HTTP route. That function counts exactly what the upstream request will carry, including the system context and tool definitions, and has unit tests. The route only calls it and passes the result on.
 - The approval registry in `approvals.ts` holds the replies waiting on a user answer. Only the tool loop opens an approval and only the approval route answers one. It is scoped to a single reply and lives no longer than that reply.
+- Notes are a backend module, `notes/`, with the same layering: a store owns `notes.json` and returns results, and only the note routes and tools map those results to HTTP statuses or tool text. Route handlers live in the notes module, not in `index.ts`.
 
 ## Structure: Tools and Streaming
 
@@ -45,6 +47,7 @@ Dependency direction is one way: frontend and backend depend on common, never th
 - A parse failure is a structured `ParseError` with a field path. Callers match on its kind, and one bad streamed chunk still fails the whole reply rather than being skipped.
 - Every page load hits the upstream, so rate limits and latency are shared by all users. Each turn re-sends the conversation. Near the limit, compaction spends one extra upstream call on a summary; the budget drops the oldest messages only after that, once a conversation passes the context window less 4,000 tokens reserved for the reply.
 - A stream that fails after the first byte has already returned HTTP 200, so the status code cannot report the failure.
+- The model's list call returns every note, and each note call reads the whole file. Neither has a size cap yet.
 
 ## Potential Problems: Tools and Commands
 
@@ -76,6 +79,12 @@ Dependency direction is one way: frontend and backend depend on common, never th
 - **Rendering**: model metadata is untrusted text. It must be set with `textContent`, never `innerHTML`.
 - **Logging**: error messages must not echo upstream bodies or request headers.
 
+## Security Concerns: Notes
+
+- **Trust boundary**: a note's text can come from a model reply, a file, or a web page, so it is untrusted. Any injected instruction that reaches the model can call the note tools. Creating a note may run without approval. Overwriting or deleting one must go through an approval that shows the note's current and new fields, as file writes do.
+- **Data exposure**: `list_notes` and `read_note` send note content upstream as tool output. A note holding a key or password therefore leaves the machine on every read. Missing control: a way to mark a note as never sent to the model.
+- **Loss**: deletion is permanent. Missing control: a trash that keeps deleted notes for a set period, so an approved or mistaken delete can be undone.
+
 ## Future Work
 
 - A structured error enum for all failures, not only parsing, answering what failed, where, why, and how to fix it, mapped to HTTP status codes in one place.
@@ -84,10 +93,10 @@ Dependency direction is one way: frontend and backend depend on common, never th
 - A response cache with a bounded TTL in front of the models upstream.
 - Authentication on backend routes that proxy paid upstreams.
 - Size rules in `eslint.config.mjs` for lines per file, lines per function, and complexity, each limit documented here. The entries-per-folder limit of 10 is enforced by `eslint-rules/folder-file-limit.mjs`.
-- Exact-match edits that also accept CRLF files and keep each file's line endings.
+- A repair path for an unreadable notes file, which every note call currently reports as a failure.
 - Secrets kept outside the project root so the sandbox mount holds none, with the `.env` mask as defense in depth; a digest-pinned sandbox image; and a network policy that separates installs from test runs.
 - Compaction as a pure, tested module in the frontend, outside the view. Its summary request runs without tools, and the summary is checked before it replaces history.
-- A byte cap on tool output, counted in the conversation budget, and tests for fragment merging, the file-listing helpers, and every refusal path of the reading tool: ignored, symbolic link, binary, oversized, and outside the root.
+- A byte cap on tool output, counted in the conversation budget. Exact-match edits that accept CRLF files and keep their line endings. Tests for fragment merging, the file-listing helpers, and every refusal path of the reading tool: ignored, symbolic link, binary, oversized, and outside the root.
 
 ## Performance
 
@@ -96,4 +105,5 @@ Dependency direction is one way: frontend and backend depend on common, never th
 - Re-sending the conversation on every turn makes cost grow with its length, so the shared budget caps each request.
 - Command output is read as it arrives and stops at 20,000 characters per stream, so the cap bounds memory.
 - Each file tool call spawns git and rebuilds the file list, so one turn with several reads runs git several times. Cache the list per turn once a profile shows it matters.
+- Note reads parse the whole notes file, and the list call sends every note upstream. Both grow with the number of notes.
 - Nothing here has been profiled. Measure with a profiler before optimizing.

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir } from "node:fs/promises";
+import { mkdir, rename } from "node:fs/promises";
 import path from "node:path";
 import type { Note, NoteInput, Result } from "common";
 import { NoteSchema, err, ok, parseJson } from "common";
@@ -46,9 +46,13 @@ async function readNotes(): Promise<Result<Note[], NoteError>> {
   return parsed.ok ? ok(parsed.value.notes) : err("unreadable");
 }
 
+// The file is written beside its final place and then renamed over it, so a crash mid-write
+// leaves the last complete file in place rather than a cut one.
 async function writeNotes(notes: Note[]): Promise<void> {
   await mkdir(configDir(), { recursive: true });
-  await Bun.write(notesFile(), JSON.stringify({ notes }, null, 2));
+  const temp = `${notesFile()}.tmp`;
+  await Bun.write(temp, JSON.stringify({ notes }, null, 2));
+  await rename(temp, notesFile());
 }
 
 // Writes run one after another, so two saves at once cannot overwrite each other's change.

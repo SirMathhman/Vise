@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { NoteSchema, parseJson } from "common";
 import { z } from "zod";
+import type { Approval } from "../../src/chat/approvals";
 import {
   runDeleteNote,
   runListNotes,
@@ -13,11 +14,26 @@ import {
 
 const SummarySchema = NoteSchema.omit({ content: true });
 
-// Reads a tool's JSON reply through a zod schema, failing the test when it does not match.
-function replyAs<S extends z.ZodType>(schema: S, text: string): z.output<S> {
-  const parsed = parseJson(schema, text);
+// The approval a tool proposed; fails the test when the tool answered with text instead.
+function approvalOf(reply: string | Approval): Approval {
+  if (typeof reply === "string") {
+    throw new Error(`Expected an approval, got: ${reply}`);
+  }
+  return reply;
+}
+
+// Reads a tool's JSON reply through a zod schema, failing the test when it does not match or
+// when the tool proposed an approval instead of answering.
+function replyAs<S extends z.ZodType>(
+  schema: S,
+  reply: string | Approval,
+): z.output<S> {
+  if (typeof reply !== "string") {
+    throw new Error("Expected a reply, got an approval");
+  }
+  const parsed = parseJson(schema, reply);
   if (!parsed.ok) {
-    throw new Error(`Unexpected reply: ${text}`);
+    throw new Error(`Unexpected reply: ${reply}`);
   }
   return parsed.value;
 }
@@ -54,7 +70,7 @@ describe("note tools", () => {
     ).toBe("Long text");
   });
 
-  test("save_note with an id updates that note, and delete_note removes it", async () => {
+  test("save_note with an id and delete_note wait for approval, and change the note only when applied", async () => {
     const saved = replyAs(
       NoteSchema,
       await runSaveNote(
@@ -66,8 +82,7 @@ describe("note tools", () => {
         }),
       ),
     );
-    const updated = replyAs(
-      NoteSchema,
+    const update = approvalOf(
       await runSaveNote(
         JSON.stringify({
           id: saved.id,
@@ -78,9 +93,21 @@ describe("note tools", () => {
         }),
       ),
     );
-    expect(updated).toMatchObject({ id: saved.id, summary: "new" });
-    expect(await runDeleteNote(JSON.stringify({ id: saved.id }))).toBe(
-      'Deleted note "A".',
+    expect(update.body).toContain("summary: s");
+    expect(update.body).toContain("summary: new");
+    expect(
+      replyAs(NoteSchema, await runReadNote(JSON.stringify({ id: saved.id })))
+        .summary,
+    ).toBe("s");
+    expect(replyAs(NoteSchema, await update.apply()).summary).toBe("new");
+
+    const removal = approvalOf(
+      await runDeleteNote(JSON.stringify({ id: saved.id })),
+    );
+    expect(removal.title).toBe('Delete note "A"');
+    expect(await removal.apply()).toBe('Deleted note "A".');
+    expect(await runReadNote(JSON.stringify({ id: saved.id }))).toBe(
+      "No note has that id.",
     );
   });
 

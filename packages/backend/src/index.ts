@@ -1,41 +1,27 @@
 import type {
   ChatStreamEvent,
-  ErrorResponse,
   HealthResponse,
   ModelsResponse,
-  NotesResponse,
   OpenRouterSettings,
-  Result,
 } from "common";
 import {
   ApprovalDecisionSchema,
   ChatRequestSchema,
-  NoteInputSchema,
   SaveOpenRouterKeyRequestSchema,
   describeParseError,
   conversationLimit,
   fitsBudget,
   greet,
-  parseJson,
 } from "common";
-import type { ParseError } from "common";
-import { z } from "zod";
 import { decideApproval } from "./chat/approvals";
 import { withSystemContext } from "./chat/chat";
 import { streamChatReply } from "./chat/tool-loop";
 import { toolDefinitions } from "./tools";
 import { buildModelSelf } from "./chat/model-facts";
+import { CORS_HEADERS, errorJson, json, readBody } from "./http";
 import { PROJECT_ROOT } from "./project/workdir";
 import { fetchModels } from "./openrouter";
-import {
-  type NoteError,
-  createNote,
-  deleteNote,
-  describeNoteError,
-  getNote,
-  listNotes,
-  updateNote,
-} from "./notes/notes-store";
+import { handleNotes } from "./notes/notes-routes";
 import {
   clearSavedOpenRouterKey,
   getOpenRouterKey,
@@ -43,31 +29,6 @@ import {
 } from "./settings";
 
 const port = Number(process.env.PORT ?? 3000);
-
-// Only the frontend dev server may call this API from a browser.
-const FRONTEND_ORIGIN = "http://localhost:5173";
-const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": FRONTEND_ORIGIN,
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
-
-function json(body: unknown, status = 200): Response {
-  return Response.json(body, { status, headers: CORS_HEADERS });
-}
-
-function errorJson(error: string, status: number): Response {
-  const body: ErrorResponse = { error };
-  return json(body, status);
-}
-
-// Reads a request body as text and checks it against a zod schema.
-async function readBody<S extends z.ZodType>(
-  req: Request,
-  schema: S,
-): Promise<Result<z.output<S>, ParseError>> {
-  return parseJson(schema, await req.text());
-}
 
 async function openRouterSettings(req: Request): Promise<Response> {
   if (req.method === "PUT") {
@@ -172,52 +133,6 @@ async function answerApproval(req: Request, id: string): Promise<Response> {
   return json({ ok: true });
 }
 
-// Maps a note failure to its HTTP status: a missing note is 404, a taken name is 409.
-function noteFailure(error: NoteError): Response {
-  const status =
-    error === "not-found" ? 404 : error === "name-taken" ? 409 : 500;
-  return errorJson(describeNoteError(error), status);
-}
-
-// GET lists every note; POST creates one.
-async function notesCollection(req: Request): Promise<Response> {
-  if (req.method === "GET") {
-    const notes = await listNotes();
-    if (!notes.ok) {
-      return noteFailure(notes.error);
-    }
-    const body: NotesResponse = { notes: notes.value };
-    return json(body);
-  }
-  const input = await readBody(req, NoteInputSchema);
-  if (!input.ok) {
-    return errorJson(describeParseError(input.error), 400);
-  }
-  const created = await createNote(input.value);
-  return created.ok ? json(created.value, 201) : noteFailure(created.error);
-}
-
-// GET reads one note; PUT replaces its fields; DELETE removes it.
-async function noteItem(req: Request, id: string): Promise<Response> {
-  if (req.method === "GET") {
-    const note = await getNote(id);
-    return note.ok ? json(note.value) : noteFailure(note.error);
-  }
-  if (req.method === "PUT") {
-    const input = await readBody(req, NoteInputSchema);
-    if (!input.ok) {
-      return errorJson(describeParseError(input.error), 400);
-    }
-    const updated = await updateNote(id, input.value);
-    return updated.ok ? json(updated.value) : noteFailure(updated.error);
-  }
-  if (req.method === "DELETE") {
-    const removed = await deleteNote(id);
-    return removed.ok ? json(removed.value) : noteFailure(removed.error);
-  }
-  return errorJson("Method not allowed", 405);
-}
-
 async function models(): Promise<Response> {
   const apiKey = await getOpenRouterKey();
   if (!apiKey) {
@@ -260,14 +175,11 @@ Bun.serve({
         : errorJson("Method not allowed", 405);
     }
 
-    if (url.pathname === "/api/notes") {
-      return req.method === "GET" || req.method === "POST"
-        ? notesCollection(req)
-        : errorJson("Method not allowed", 405);
-    }
-
-    if (url.pathname.startsWith("/api/notes/")) {
-      return noteItem(req, url.pathname.slice("/api/notes/".length));
+    if (
+      url.pathname === "/api/notes" ||
+      url.pathname.startsWith("/api/notes/")
+    ) {
+      return handleNotes(req, url.pathname);
     }
 
     if (url.pathname === "/api/models") {
