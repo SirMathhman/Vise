@@ -56,8 +56,33 @@ function startCommand(root: string, command: string) {
   });
 }
 
+// Reads one output stream up to the limit. Past the limit it stops reading and calls
+// onCut, so a command that prints without end cannot fill memory.
+async function readCapped(
+  stream: ReadableStream<Uint8Array>,
+  limit: number,
+  onCut: () => void,
+): Promise<{ text: string; cut: boolean }> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  for (;;) {
+    const chunk = await reader.read();
+    if (chunk.done) {
+      return { text, cut: false };
+    }
+    text += decoder.decode(chunk.value, { stream: true });
+    if (text.length > limit) {
+      await reader.cancel();
+      onCut();
+      return { text: text.slice(0, limit), cut: true };
+    }
+  }
+}
+
 // Runs one command in the root and returns its exit code and output as text, cut to MAX_CHARS.
-// A command that runs past the timeout is stopped, and the reply does not wait for its output.
+// Output is read as it arrives, and a command that runs past the timeout is stopped without
+// waiting on its output.
 export async function executeCommand(
   root: string,
   command: string,
@@ -69,9 +94,12 @@ export async function executeCommand(
   } catch {
     return err("The command could not be started.");
   }
+  const stopCommand = () => {
+    proc.kill();
+  };
   const finished = Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
+    readCapped(proc.stdout, MAX_CHARS, stopCommand),
+    readCapped(proc.stderr, MAX_CHARS, stopCommand),
     proc.exited,
   ]);
   const state = {
@@ -91,11 +119,11 @@ export async function executeCommand(
     );
   }
   const [stdout, stderr, code] = result;
-  const output = `stdout:\n${stdout}\nstderr:\n${stderr}`;
-  const body =
-    output.length > MAX_CHARS
-      ? `${output.slice(0, MAX_CHARS)}\n... cut at ${String(MAX_CHARS)} characters`
-      : output;
+  const output = `stdout:\n${stdout.text}\nstderr:\n${stderr.text}`;
+  const cut = stdout.cut || stderr.cut || output.length > MAX_CHARS;
+  const body = cut
+    ? `${output.slice(0, MAX_CHARS)}\n... cut at ${String(MAX_CHARS)} characters`
+    : output;
   return ok(`Exit code ${String(code)}\n${body}`);
 }
 

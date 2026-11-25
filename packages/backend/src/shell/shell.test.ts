@@ -19,6 +19,14 @@ describe("executeCommand", () => {
     });
   });
 
+  test("caps output from a command that prints without end, and returns promptly", async () => {
+    const started = Date.now();
+    const result = await executeCommand(tmpdir(), "yes", 10_000);
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.value).toContain("... cut at 20000 characters");
+    expect(Date.now() - started).toBeLessThan(5_000);
+  });
+
   test("does not pass credential-looking variables to the command", async () => {
     process.env.VISE_TEST_API_KEY = "secret-value";
     try {
