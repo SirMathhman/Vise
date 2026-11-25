@@ -65,6 +65,12 @@ describe("runCreateFile in a git repository", () => {
     );
   });
 
+  test("refuses git's own folder, where hooks would run", async () => {
+    expect(await propose(".git/hooks/pre-commit", "#!/bin/sh\necho hi")).toBe(
+      "Git's own folder cannot be written to.",
+    );
+  });
+
   test("refuses a folder that links out of the project", async () => {
     if (!linkCreated) {
       return;

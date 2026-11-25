@@ -47,6 +47,61 @@ export async function projectFiles(
   }
 }
 
+// The git directories of the repository: its own, and the shared one that worktrees use.
+async function gitDirectories(root: string): Promise<Result<string[], string>> {
+  try {
+    const proc = Bun.spawn(
+      [
+        "git",
+        "rev-parse",
+        "--path-format=absolute",
+        "--git-dir",
+        "--git-common-dir",
+      ],
+      { cwd: root, stdout: "pipe", stderr: "ignore" },
+    );
+    const output = await new Response(proc.stdout).text();
+    if ((await proc.exited) !== 0) {
+      return err("Could not find the git directory");
+    }
+    return ok(
+      output
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line !== ""),
+    );
+  } catch {
+    return err("Could not find the git directory");
+  }
+}
+
+// True when the relative path lies inside git's own directory, where a written hook would
+// run on the next git command.
+export async function isGitInternal(
+  root: string,
+  relative: string,
+): Promise<Result<boolean, string>> {
+  if (relative.split("/")[0] === ".git") {
+    return ok(true);
+  }
+  const dirs = await gitDirectories(root);
+  if (!dirs.ok) {
+    return err(dirs.error);
+  }
+  const absolute = path.resolve(root, relative);
+  return ok(
+    dirs.value.some((dir) => {
+      const inside = path.relative(dir, absolute);
+      return (
+        inside === "" ||
+        (inside !== ".." &&
+          !inside.startsWith(`..${path.sep}`) &&
+          !path.isAbsolute(inside))
+      );
+    }),
+  );
+}
+
 // Opens a project text file for a tool. Refuses anything outside the root, anything git
 // ignores, symbolic links, binary files, and files over the size limit.
 export async function readProjectText(

@@ -4,7 +4,7 @@ import type { Result } from "common";
 import { err, ok, parseJson } from "common";
 import { z } from "zod";
 import type { Approval } from "./approvals";
-import { resolveInside } from "./project-files";
+import { isGitInternal, resolveInside } from "./project-files";
 
 export const CREATE_FILE_NAME = "create_file";
 
@@ -68,6 +68,14 @@ async function validateNewPath(
   }
   if (relative.value === "") {
     return err("A new file needs a path inside the project.");
+  }
+  // Git's own folder runs hooks on the next git command, so nothing may be written there.
+  const internal = await isGitInternal(root, relative.value);
+  if (!internal.ok) {
+    return err(internal.error);
+  }
+  if (internal.value) {
+    return err("Git's own folder cannot be written to.");
   }
   const ignored = await Bun.spawn(
     ["git", "check-ignore", "-q", "--", relative.value],
