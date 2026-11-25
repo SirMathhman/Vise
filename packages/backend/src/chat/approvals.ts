@@ -4,8 +4,11 @@ import { randomUUID } from "node:crypto";
  * A change a tool proposes. The reply waits for the user; apply runs only if they approve it.
  */
 export interface Approval {
+  /** The heading shown on the approval card. */
   title: string;
+  /** The text shown on the card, such as a diff. */
   body: string;
+  /** Carries out the change once the user approves it. Returns the text the model reads back. */
   apply: () => Promise<string>;
 }
 
@@ -21,8 +24,11 @@ const waiting = new Map<string, (approved: boolean) => void>();
  * An approval a reply is waiting on: its id, a promise for the user's answer, and a way to release it.
  */
 export interface OpenApproval {
+  /** The random id the user's answer is sent to. */
   id: string;
+  /** Resolves with the user's answer: true to approve, false to reject. */
   decided: Promise<boolean>;
+  /** Releases the approval, so it can no longer be answered. */
   close: () => void;
 }
 

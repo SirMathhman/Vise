@@ -38,8 +38,11 @@ const ChatChunkSchema = z.object({
  * A tool call the model made, assembled from its streamed fragments.
  */
 export interface ToolCall {
+  /** The id the model gave this call. */
   id: string;
+  /** The name of the tool the model called. */
   name: string;
+  /** The arguments, as the JSON text the model wrote. */
   arguments: string;
 }
 

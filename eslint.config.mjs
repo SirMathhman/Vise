@@ -37,6 +37,7 @@ export default tseslint.config(
             MethodDefinition: true,
           },
           contexts: [
+            "ExportNamedDeclaration > TSInterfaceDeclaration > TSInterfaceBody > TSPropertySignature",
             "ExportNamedDeclaration > VariableDeclaration",
             "TSInterfaceDeclaration",
             "TSTypeAliasDeclaration",
