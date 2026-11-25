@@ -1,6 +1,6 @@
 import type { ChatMessage, ChatStreamEvent } from "common";
 import type { UpstreamMessage } from "../openrouter";
-import { readRound } from "../openrouter";
+import { readRound, streamFrom } from "../openrouter";
 
 /**
  * Puts the backend's own instructions in front of the conversation. The client never
@@ -43,28 +43,4 @@ async function* textOnly(
       message: "The model asked for a tool, which this stream does not handle",
     };
   }
-}
-
-/**
- * Turns a generator of events into a stream that a client can read.
- *
- * @param events The events to read from.
- * @returns A stream of the same events, for a client to read.
- */
-export function streamFrom(
-  events: AsyncGenerator<ChatStreamEvent, void>,
-): ReadableStream<ChatStreamEvent> {
-  return new ReadableStream<ChatStreamEvent>({
-    async pull(controller) {
-      const next = await events.next();
-      if (next.done) {
-        controller.close();
-      } else {
-        controller.enqueue(next.value);
-      }
-    },
-    async cancel() {
-      await events.return(undefined);
-    },
-  });
 }

@@ -26,16 +26,20 @@ function perMillion(price: string): number | null {
  * Lists the models the account can use, with prices in USD per million tokens. Returns an error when OpenRouter cannot be reached or its reply does not match the expected shape.
  *
  * @param apiKey The OpenRouter key to list the models with.
+ * @param timeoutMs How long OpenRouter may take to answer before the request is given up.
  * @returns The models, with prices in USD per million tokens, or the error that stopped the request.
  */
 export async function fetchModels(
   apiKey: string,
+  timeoutMs = UPSTREAM_TIMEOUT_MS,
 ): Promise<Result<ModelSummary[], string>> {
   let res: Response;
   try {
-    res = await fetchWithTimeout(MODELS_URL, {
-      headers: { Authorization: `Bearer ${apiKey}` },
-    });
+    res = await fetchWithTimeout(
+      MODELS_URL,
+      { headers: { Authorization: `Bearer ${apiKey}` } },
+      timeoutMs,
+    );
   } catch {
     return err("Could not reach OpenRouter");
   }
@@ -68,11 +72,12 @@ const UPSTREAM_TIMEOUT_MS = 60_000;
 async function fetchWithTimeout(
   url: string,
   init: RequestInit,
+  timeoutMs: number,
 ): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => {
     controller.abort();
-  }, UPSTREAM_TIMEOUT_MS);
+  }, timeoutMs);
   try {
     return await fetch(url, { ...init, signal: controller.signal });
   } finally {
@@ -330,6 +335,7 @@ export async function* readRound(
  * @param model The model id to ask.
  * @param messages The conversation to send.
  * @param tools The tools the model may be offered. Empty for none.
+ * @param timeoutMs How long OpenRouter may take to answer before the request is given up.
  * @returns The raw body to read, or the error that prevented the request.
  */
 export async function openUpstream(
@@ -337,22 +343,27 @@ export async function openUpstream(
   model: string,
   messages: UpstreamMessage[],
   tools: readonly object[],
+  timeoutMs = UPSTREAM_TIMEOUT_MS,
 ): Promise<Result<ReadableStream<Uint8Array>, string>> {
   let res: Response;
   try {
-    res = await fetchWithTimeout(CHAT_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
+    res = await fetchWithTimeout(
+      CHAT_URL,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          messages,
+          stream: true,
+          ...(tools.length > 0 ? { tools } : {}),
+        }),
       },
-      body: JSON.stringify({
-        model,
-        messages,
-        stream: true,
-        ...(tools.length > 0 ? { tools } : {}),
-      }),
-    });
+      timeoutMs,
+    );
   } catch {
     return err("Could not reach OpenRouter");
   }
@@ -360,4 +371,28 @@ export async function openUpstream(
     return err(`OpenRouter responded with HTTP ${String(res.status)}`);
   }
   return ok(res.body);
+}
+
+/**
+ * Turns a generator of events into a stream that a client can read.
+ *
+ * @param events The events to read from.
+ * @returns A stream of the same events, for a client to read.
+ */
+export function streamFrom(
+  events: AsyncGenerator<ChatStreamEvent, void>,
+): ReadableStream<ChatStreamEvent> {
+  return new ReadableStream<ChatStreamEvent>({
+    async pull(controller) {
+      const next = await events.next();
+      if (next.done) {
+        controller.close();
+      } else {
+        controller.enqueue(next.value);
+      }
+    },
+    async cancel() {
+      await events.return(undefined);
+    },
+  });
 }

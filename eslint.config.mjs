@@ -71,6 +71,24 @@ export default tseslint.config(
     },
   },
   {
+    // The tool loop reaches OpenRouter only through the upstream module, never through chat.ts.
+    files: ["**/chat/tool-loop.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["./chat", "**/chat/chat"],
+              message:
+                "Import upstream helpers from openrouter.ts. chat.ts is above the tool loop.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     // Every deserialization goes through a zod schema. parseJson in common is the one
     // place that turns text into a value, so only it may call JSON.parse.
     rules: {
