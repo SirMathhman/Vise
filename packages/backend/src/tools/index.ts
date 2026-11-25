@@ -4,7 +4,12 @@ import { EDIT_FILE_TOOL, runEditFile } from "./edit-file";
 import { LIST_DIRECTORY_TOOL, runListDirectory } from "./list-directory";
 import { MODEL_INFO_TOOL, runModelInfo } from "./model-info";
 import type { ModelSelf } from "../chat/model-facts";
-import type { ReplyContext } from "../chat/reply-context";
+import type { ReplyContext, SubagentRunner } from "../chat/reply-context";
+import {
+  START_SUBAGENT_NAME,
+  START_SUBAGENT_TOOL,
+  runStartSubagent,
+} from "./subagent";
 import { READ_FILE_TOOL, runReadFile } from "./read-file";
 import { RUN_COMMAND_TOOL, runRunCommand } from "../shell/shell";
 import {
@@ -47,7 +52,16 @@ interface Tool {
     root: string,
     argumentsJson: string,
     self?: ModelSelf,
+    subagent?: SubagentRunner,
   ): Promise<string | Approval>;
+}
+
+// A tool that reads only its arguments. Every tool is called with the project root first, so
+// this drops it.
+function fromArguments(
+  run: (argumentsJson: string) => Promise<string | Approval>,
+): Tool["run"] {
+  return (_root, argumentsJson) => run(argumentsJson);
 }
 
 // Every tool the backend offers, keyed by name.
@@ -74,16 +88,29 @@ const TOOLS = new Map<string, Tool>([
   ],
   [
     CHECK_COMMAND_NAME,
-    { definition: CHECK_COMMAND_TOOL, run: runCheckCommand },
+    { definition: CHECK_COMMAND_TOOL, run: fromArguments(runCheckCommand) },
   ],
   [
     MODEL_INFO_TOOL.function.name,
     { definition: MODEL_INFO_TOOL, run: runModelInfo },
   ],
+  [
+    START_SUBAGENT_NAME,
+    { definition: START_SUBAGENT_TOOL, run: runStartSubagent },
+  ],
   [LIST_NOTES_NAME, { definition: LIST_NOTES_TOOL, run: runListNotes }],
-  [READ_NOTE_NAME, { definition: READ_NOTE_TOOL, run: runReadNote }],
-  [SAVE_NOTE_NAME, { definition: SAVE_NOTE_TOOL, run: runSaveNote }],
-  [DELETE_NOTE_NAME, { definition: DELETE_NOTE_TOOL, run: runDeleteNote }],
+  [
+    READ_NOTE_NAME,
+    { definition: READ_NOTE_TOOL, run: fromArguments(runReadNote) },
+  ],
+  [
+    SAVE_NOTE_NAME,
+    { definition: SAVE_NOTE_TOOL, run: fromArguments(runSaveNote) },
+  ],
+  [
+    DELETE_NOTE_NAME,
+    { definition: DELETE_NOTE_TOOL, run: fromArguments(runDeleteNote) },
+  ],
 ]);
 
 /**
@@ -108,6 +135,6 @@ export async function runTool(
 ): Promise<string | Approval> {
   const tool = TOOLS.get(name);
   return tool
-    ? tool.run(context.root, argumentsJson, context.self)
+    ? tool.run(context.root, argumentsJson, context.self, context.subagent)
     : `Unknown tool: ${name}`;
 }
