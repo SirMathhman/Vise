@@ -11,11 +11,29 @@ export const MAX_CONVERSATION_CHARS = 20000;
 
 // Whether a conversation is within the size limit.
 export function fitsBudget(messages: ChatMessage[]): boolean {
-  const chars = messages.reduce((sum, m) => sum + m.content.length, 0);
+  const usage = budgetUsage(messages);
   return (
-    messages.length <= MAX_CONVERSATION_MESSAGES &&
-    chars <= MAX_CONVERSATION_CHARS
+    usage.messages <= MAX_CONVERSATION_MESSAGES &&
+    usage.chars <= MAX_CONVERSATION_CHARS
   );
+}
+
+// How much of the budget a conversation uses: its characters and messages, and the larger of
+// the two as a fraction of its limit.
+export function budgetUsage(messages: ChatMessage[]): {
+  chars: number;
+  messages: number;
+  ratio: number;
+} {
+  const chars = messages.reduce((sum, m) => sum + m.content.length, 0);
+  return {
+    chars,
+    messages: messages.length,
+    ratio: Math.max(
+      chars / MAX_CONVERSATION_CHARS,
+      messages.length / MAX_CONVERSATION_MESSAGES,
+    ),
+  };
 }
 
 // Drops the oldest messages until the conversation fits. The newest message is always kept.

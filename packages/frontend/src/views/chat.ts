@@ -9,6 +9,7 @@ import {
   ChatMessageListSchema,
   ChatStreamEventSchema,
   MAX_CONVERSATION_CHARS,
+  budgetUsage,
   MAX_CONVERSATION_MESSAGES,
   describeParseError,
   err,
@@ -130,15 +131,11 @@ function renderConversation(): void {
 // Shows how much of the conversation budget the conversation uses. The budget counts
 // characters and messages, not model tokens.
 function renderBudget(items: ChatMessage[]): void {
-  const chars = items.reduce((sum, m) => sum + m.content.length, 0);
-  const messages = items.length;
-  const ratio = Math.max(
-    chars / MAX_CONVERSATION_CHARS,
-    messages / MAX_CONVERSATION_MESSAGES,
-  );
-  budgetBar.style.width = `${String(Math.min(100, ratio * 100))}%`;
-  budgetBar.classList.toggle("nearly-full", ratio >= 0.9);
-  budgetLabel.textContent = `${chars.toLocaleString()} / ${MAX_CONVERSATION_CHARS.toLocaleString()} characters · ${String(messages)} / ${String(MAX_CONVERSATION_MESSAGES)} messages`;
+  // Shows the messages a send would actually include, so the meter matches the request.
+  const usage = budgetUsage(trimToBudget(items));
+  budgetBar.style.width = `${String(Math.min(100, usage.ratio * 100))}%`;
+  budgetBar.classList.toggle("nearly-full", usage.ratio >= 0.9);
+  budgetLabel.textContent = `${usage.chars.toLocaleString()} / ${MAX_CONVERSATION_CHARS.toLocaleString()} characters · ${String(usage.messages)} / ${String(MAX_CONVERSATION_MESSAGES)} messages`;
 }
 
 // The active model is remembered in this browser only.
