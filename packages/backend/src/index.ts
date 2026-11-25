@@ -8,6 +8,7 @@ import type {
 import {
   ApprovalDecisionSchema,
   ChatRequestSchema,
+  EndSessionRequestSchema,
   SaveOpenRouterKeyRequestSchema,
   describeParseError,
   conversationLimit,
@@ -22,7 +23,8 @@ import { buildModelSelf } from "./chat/model-facts";
 import { CORS_HEADERS, errorJson, json, readBody } from "./http";
 import { PROJECT_ROOT } from "./project/workdir";
 import { fetchModels } from "./openrouter";
-import { runHook } from "./hooks/hooks";
+import { HOOK_TIMEOUT_MS, runHook } from "./hooks/hooks";
+import { handleHooks } from "./hooks/hooks-routes";
 import { handleNotes } from "./notes/notes-routes";
 import { profileInstructions } from "./notes/profiles";
 import {
@@ -124,12 +126,22 @@ async function chat(req: Request): Promise<Response> {
   const turn = input.value.allowTools !== false;
   if (turn) {
     if (messages.length === 1) {
-      const started = await runHook("beforeSession", PROJECT_ROOT);
+      const started = await runHook(
+        "beforeSession",
+        PROJECT_ROOT,
+        HOOK_TIMEOUT_MS,
+        input.value.profileId,
+      );
       if (!started.ok) {
         return errorJson(started.error, 500);
       }
     }
-    const begun = await runHook("beforeTurn", PROJECT_ROOT);
+    const begun = await runHook(
+      "beforeTurn",
+      PROJECT_ROOT,
+      HOOK_TIMEOUT_MS,
+      input.value.profileId,
+    );
     if (!begun.ok) {
       return errorJson(begun.error, 500);
     }
@@ -157,7 +169,12 @@ async function chat(req: Request): Promise<Response> {
   }
   const afterTurn = async (): Promise<void> => {
     if (turn) {
-      const done = await runHook("afterTurn", PROJECT_ROOT);
+      const done = await runHook(
+        "afterTurn",
+        PROJECT_ROOT,
+        HOOK_TIMEOUT_MS,
+        input.value.profileId,
+      );
       if (!done.ok) {
         console.error(done.error);
       }
@@ -183,8 +200,17 @@ async function answerApproval(req: Request, id: string): Promise<Response> {
 
 // The chat session has ended, because the user started a new conversation. Its after-session
 // command can only log a failure, so the reply is always ok.
-async function endSession(): Promise<Response> {
-  const finished = await runHook("afterSession", PROJECT_ROOT);
+async function endSession(req: Request): Promise<Response> {
+  const input = await readBody(req, EndSessionRequestSchema);
+  if (!input.ok) {
+    return errorJson(describeParseError(input.error), 400);
+  }
+  const finished = await runHook(
+    "afterSession",
+    PROJECT_ROOT,
+    HOOK_TIMEOUT_MS,
+    input.value.profileId,
+  );
   if (!finished.ok) {
     console.error(finished.error);
   }
@@ -241,9 +267,16 @@ Bun.serve({
       return handleNotes(req, url.pathname);
     }
 
+    if (
+      url.pathname === "/api/hooks" ||
+      url.pathname.startsWith("/api/hooks/")
+    ) {
+      return handleHooks(req, url.pathname);
+    }
+
     if (url.pathname === "/api/session/end") {
       return req.method === "POST"
-        ? endSession()
+        ? endSession(req)
         : errorJson("Method not allowed", 405);
     }
 

@@ -4,6 +4,7 @@ import { initChat } from "./views/chat";
 import { initHealth, loadHealth } from "./views/health";
 import { initKey, loadKeyStatus } from "./views/key";
 import { initModels, loadModels } from "./views/models";
+import { initHooks, loadHooks } from "./views/hooks";
 import { initNotes, loadNotes } from "./views/notes";
 import { initTabs } from "./views/tabs";
 
@@ -15,8 +16,10 @@ initModels();
 initKey();
 initChat();
 initNotes();
+initHooks();
 
 void loadHealth();
 void loadModels();
 void loadKeyStatus();
 void loadNotes();
+void loadHooks();

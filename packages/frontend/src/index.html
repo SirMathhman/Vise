@@ -18,6 +18,9 @@
         <button type="button" data-tab="notes" aria-pressed="false">
           Notes
         </button>
+        <button type="button" data-tab="hooks" aria-pressed="false">
+          Hooks
+        </button>
         <button type="button" data-tab="key" aria-pressed="false">Key</button>
         <button type="button" data-tab="backend" aria-pressed="false">
           Backend
@@ -91,6 +94,34 @@
           </div>
         </form>
         <p id="notes-error" role="alert"></p>
+      </section>
+      <section class="status" data-tab-panel="hooks" hidden>
+        <h2>Hooks</h2>
+        <p id="hooks-status" role="status">Loading…</p>
+        <form id="hooks-form">
+          <label for="hooks-scope">Scope</label>
+          <select id="hooks-scope"></select>
+          <label for="hooks-before-session">Before session</label>
+          <input
+            id="hooks-before-session"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <label for="hooks-after-session">After session</label>
+          <input
+            id="hooks-after-session"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <label for="hooks-before-turn">Before turn</label>
+          <input id="hooks-before-turn" autocomplete="off" spellcheck="false" />
+          <label for="hooks-after-turn">After turn</label>
+          <input id="hooks-after-turn" autocomplete="off" spellcheck="false" />
+          <div class="row">
+            <button type="submit">Save</button>
+          </div>
+        </form>
+        <p id="hooks-error" role="alert"></p>
       </section>
       <section class="status" data-tab-panel="key" hidden>
         <h2>OpenRouter API key</h2>

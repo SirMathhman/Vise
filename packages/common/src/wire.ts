@@ -237,3 +237,40 @@ export const OkResponseSchema = z.object({ ok: z.literal(true) });
  * A reply that only confirms a request was received and handled.
  */
 export type OkResponse = z.infer<typeof OkResponseSchema>;
+
+/**
+ * The shell commands a user sets for the four lifecycle events. Each is optional; blank means unset.
+ */
+export const HooksSchema = z.object({
+  beforeSession: z.string().min(1).optional(),
+  afterSession: z.string().min(1).optional(),
+  beforeTurn: z.string().min(1).optional(),
+  afterTurn: z.string().min(1).optional(),
+});
+/**
+ * The commands for the four lifecycle events.
+ */
+export type Hooks = z.infer<typeof HooksSchema>;
+
+/**
+ * The reply of GET /api/hooks: the global commands, and the commands of each profile by id.
+ */
+export const HooksResponseSchema = z.object({
+  global: HooksSchema,
+  profiles: z.record(z.string(), HooksSchema),
+});
+/**
+ * The reply of GET /api/hooks.
+ */
+export type HooksResponse = z.infer<typeof HooksResponseSchema>;
+
+/**
+ * The body of POST /api/session/end: the profile the ending session used, if any.
+ */
+export const EndSessionRequestSchema = z.object({
+  profileId: z.string().min(1).optional(),
+});
+/**
+ * The body of POST /api/session/end.
+ */
+export type EndSessionRequest = z.infer<typeof EndSessionRequestSchema>;

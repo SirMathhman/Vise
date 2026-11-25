@@ -427,13 +427,17 @@ async function sendMessage(): Promise<void> {
 }
 
 // Tells the backend the session has ended, so its after-session command can run.
-async function endSession(): Promise<void> {
-  await apiJson("/api/session/end", OkResponseSchema, { method: "POST" });
+async function endSession(profileId: string | undefined): Promise<void> {
+  await apiJson("/api/session/end", OkResponseSchema, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ profileId }),
+  });
 }
 
 function newConversation(): void {
   if (history.length > 0) {
-    void endSession();
+    void endSession(profileId);
   }
   history = [];
   measured = undefined;
