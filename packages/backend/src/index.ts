@@ -126,6 +126,7 @@ async function chat(req: Request): Promise<Response> {
     model,
     withSystemContext(messages, PROJECT_ROOT),
     req.signal,
+    input.value.allowTools ?? true,
   );
   if (!reply.ok) {
     return errorJson(reply.error, 502);

@@ -68,6 +68,8 @@ export const ChatRequestSchema = z.object({
     (messages) => messages[messages.length - 1]?.role === "user",
     "The last message must be from the user",
   ),
+  /** False offers the model no tools, so the reply can only be text. Defaults to true. */
+  allowTools: z.boolean().optional(),
 });
 export type ChatRequest = z.infer<typeof ChatRequestSchema>;
 

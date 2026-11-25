@@ -254,8 +254,8 @@ function parseEventLine(payload: string): Result<ChatStreamEvent, string> {
   return parsed.ok ? ok(parsed.value) : err(describeParseError(parsed.error));
 }
 
-// Asks the model to summarize the conversation so far. Any change the summary turn proposes
-// is declined, so the summary only reads.
+// Asks the model to summarize the conversation so far. No tools are offered, so the reply is
+// text only and cannot read files or propose changes.
 async function summarizeConversation(
   model: string,
   limit: number,
@@ -264,16 +264,18 @@ async function summarizeConversation(
     [...history, { role: "user", content: SUMMARY_REQUEST }],
     limit,
   );
-  const opened = await openChat({ model, messages: request });
+  const opened = await openChat({
+    model,
+    messages: request,
+    allowTools: false,
+  });
   if (!opened.ok) {
     return err(opened.error);
   }
   return readReply(
     opened.value,
     () => undefined,
-    (approval) => {
-      void answer(approval.id, false);
-    },
+    () => undefined,
     () => undefined,
   );
 }

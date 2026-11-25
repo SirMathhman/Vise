@@ -68,4 +68,20 @@ describe("tool loop", () => {
     // One request per round up to the limit: the fifth round's tools are not run.
     expect(bodies).toHaveLength(5);
   });
+
+  test("offers no tools when the request turns them off", async () => {
+    const bodies = fakeUpstream([textRound("summary")]);
+    const result = await streamChatReply(
+      "key",
+      "openai/gpt-4o",
+      [{ role: "user", content: "summarize" }],
+      undefined,
+      false,
+    );
+    if (!result.ok) {
+      throw new Error(result.error);
+    }
+    await result.value.getReader().read();
+    expect(bodies[0]).not.toContain('"tools"');
+  });
 });

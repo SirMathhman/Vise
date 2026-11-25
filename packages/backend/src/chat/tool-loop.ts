@@ -77,7 +77,8 @@ async function* replyEvents(
   model: string,
   messages: UpstreamMessage[],
   first: ReadableStream<Uint8Array>,
-  signal?: AbortSignal,
+  signal: AbortSignal | undefined,
+  allowTools: boolean,
 ): AsyncGenerator<ChatStreamEvent, void> {
   let conversation = messages;
   let body = first;
@@ -96,7 +97,7 @@ async function* replyEvents(
       return;
     }
     conversation = [...conversation, assistantToolCalls(calls), ...results];
-    const next = await openUpstream(apiKey, model, conversation);
+    const next = await openUpstream(apiKey, model, conversation, allowTools);
     if (!next.ok) {
       yield { type: "error", message: next.error };
       return;
@@ -117,12 +118,15 @@ export async function streamChatReply(
   model: string,
   messages: UpstreamMessage[],
   signal?: AbortSignal,
+  allowTools = true,
 ): Promise<Result<ReadableStream<ChatStreamEvent>, string>> {
-  const first = await openUpstream(apiKey, model, messages);
+  const first = await openUpstream(apiKey, model, messages, allowTools);
   if (!first.ok) {
     return err(first.error);
   }
   return ok(
-    streamFrom(replyEvents(apiKey, model, messages, first.value, signal)),
+    streamFrom(
+      replyEvents(apiKey, model, messages, first.value, signal, allowTools),
+    ),
   );
 }

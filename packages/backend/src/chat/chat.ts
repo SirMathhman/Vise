@@ -253,11 +253,13 @@ export function streamFrom(
   });
 }
 
-// Sends a request upstream, offering the backend's tools, and returns the raw body.
+// Sends a request upstream, and returns the raw body. The backend's tools are offered unless
+// allowTools is false.
 export async function openUpstream(
   apiKey: string,
   model: string,
   messages: UpstreamMessage[],
+  allowTools = true,
 ): Promise<Result<ReadableStream<Uint8Array>, string>> {
   let res: Response;
   try {
@@ -271,7 +273,7 @@ export async function openUpstream(
         model,
         messages,
         stream: true,
-        tools: toolDefinitions,
+        ...(allowTools ? { tools: toolDefinitions } : {}),
       }),
     });
   } catch {
