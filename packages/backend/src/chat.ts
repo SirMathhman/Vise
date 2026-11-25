@@ -1,8 +1,24 @@
 import type { ChatMessage, ChatStreamEvent, Result } from "common";
 import { err, ok, parseJson } from "common";
 import { z } from "zod";
+import {
+  LIST_DIRECTORY_NAME,
+  LIST_DIRECTORY_TOOL,
+  runListDirectory,
+} from "./list-directory";
 
 const CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
+// The most rounds of tool calls one reply may take before the backend stops.
+const MAX_TOOL_ROUNDS = 5;
+
+// A piece of one tool call. The fragments of a call share an index.
+const ToolCallFragmentSchema = z.object({
+  index: z.number(),
+  id: z.string().optional(),
+  function: z
+    .object({ name: z.string().optional(), arguments: z.string().optional() })
+    .optional(),
+});
 
 // One streamed chunk from OpenRouter's chat completions endpoint.
 const ChatChunkSchema = z.object({
@@ -10,140 +26,42 @@ const ChatChunkSchema = z.object({
   choices: z
     .array(
       z.object({
-        delta: z.object({ content: z.string().nullish() }).optional(),
+        delta: z
+          .object({
+            content: z.string().nullish(),
+            tool_calls: z.array(ToolCallFragmentSchema).optional(),
+          })
+          .optional(),
+        finish_reason: z.string().nullish(),
       }),
     )
     .optional(),
 });
-type ChatChunk = z.infer<typeof ChatChunkSchema>;
 
-// Returns the event carried by one validated chunk, or undefined when it has no text.
-function eventFromChunk(chunk: ChatChunk): ChatStreamEvent | undefined {
-  if (chunk.error) {
-    return {
-      type: "error",
-      message: chunk.error.message ?? "OpenRouter stream failed",
-    };
-  }
-  const text = chunk.choices?.[0]?.delta?.content;
-  return text ? { type: "delta", text } : undefined;
+interface ToolCall {
+  id: string;
+  name: string;
+  arguments: string;
 }
 
-// Returns the event in one SSE line. Blank lines and ": keep-alive" comments yield no event.
-function eventFromSseLine(
-  line: string,
-): Result<ChatStreamEvent | undefined, string> {
-  const trimmed = line.trim();
-  if (!trimmed.startsWith("data:")) {
-    return ok(undefined);
-  }
-  const payload = trimmed.slice("data:".length).trim();
-  if (payload === "") {
-    return ok(undefined);
-  }
-  if (payload === "[DONE]") {
-    const done: ChatStreamEvent = { type: "done" };
-    return ok(done);
-  }
-  const parsed = parseJson(ChatChunkSchema, payload);
-  if (!parsed.ok) {
-    return err(
-      parsed.error.kind === "notJson"
-        ? "OpenRouter sent a stream chunk that is not JSON"
-        : "OpenRouter sent a stream chunk in an unexpected format",
-    );
-  }
-  return ok(eventFromChunk(parsed.value));
-}
+// What the upstream stream yields: a text event, or the tool calls that end a round.
+type UpstreamItem =
+  | { kind: "event"; event: ChatStreamEvent }
+  | { kind: "toolCalls"; calls: ToolCall[] };
 
-// Turns OpenRouter's SSE body into typed events. The stream always ends with exactly one
-// "done" or "error" event, so a reply cut off mid-stream is reported as an error.
-export function chatEvents(
-  body: ReadableStream<Uint8Array>,
-): ReadableStream<ChatStreamEvent> {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let pending = "";
-
-  // Enqueues the events for complete lines. Reports how many were enqueued and
-  // whether a terminal event was among them.
-  function enqueueLines(
-    lines: string[],
-    controller: ReadableStreamDefaultController<ChatStreamEvent>,
-  ): { count: number; terminal: boolean } {
-    let count = 0;
-    for (const line of lines) {
-      const result = eventFromSseLine(line);
-      const event: ChatStreamEvent | undefined = result.ok
-        ? result.value
-        : { type: "error", message: result.error };
-      if (!event) {
-        continue;
-      }
-      controller.enqueue(event);
-      count += 1;
-      if (event.type !== "delta") {
-        return { count, terminal: true };
-      }
+// A message as sent upstream. Only the backend builds system and tool messages.
+export type UpstreamMessage =
+  | { role: "system" | "user"; content: string }
+  | {
+      role: "assistant";
+      content: string | null;
+      tool_calls?: {
+        id: string;
+        type: "function";
+        function: { name: string; arguments: string };
+      }[];
     }
-    return { count, terminal: false };
-  }
-
-  return new ReadableStream<ChatStreamEvent>({
-    // pull must enqueue something before it returns, or the stream stalls,
-    // so it keeps reading until an event is ready.
-    async pull(controller) {
-      try {
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) {
-            const result = enqueueLines(
-              (pending + decoder.decode()).split("\n"),
-              controller,
-            );
-            pending = "";
-            if (!result.terminal) {
-              controller.enqueue({
-                type: "error",
-                message: "The reply ended before it was finished",
-              });
-            }
-            controller.close();
-            return;
-          }
-          pending += decoder.decode(value, { stream: true });
-          const lines = pending.split("\n");
-          pending = lines.pop() ?? "";
-          const result = enqueueLines(lines, controller);
-          if (result.terminal) {
-            controller.close();
-            await reader.cancel();
-            return;
-          }
-          if (result.count > 0) {
-            return;
-          }
-        }
-      } catch (failure) {
-        controller.enqueue({
-          type: "error",
-          message: failure instanceof Error ? failure.message : String(failure),
-        });
-        controller.close();
-        await reader.cancel().catch(() => undefined);
-      }
-    },
-    cancel(reason) {
-      return reader.cancel(reason);
-    },
-  });
-}
-
-// A message as sent upstream. Only the backend adds system messages.
-export interface UpstreamMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
-}
+  | { role: "tool"; tool_call_id: string; content: string };
 
 // Puts the backend's own instructions in front of the conversation. The client never
 // sends these, so it cannot change the model's instructions.
@@ -157,12 +75,168 @@ export function withSystemContext(
   ];
 }
 
-// Sends the conversation and returns the reply as typed events, as they arrive.
-export async function streamChatReply(
+// Yields the complete lines of an SSE body, and cancels it when the consumer stops.
+async function* sseLines(
+  body: ReadableStream<Uint8Array>,
+): AsyncGenerator<string> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let pending = "";
+  try {
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done) {
+        break;
+      }
+      pending += decoder.decode(chunk.value, { stream: true });
+      const lines = pending.split("\n");
+      pending = lines.pop() ?? "";
+      yield* lines;
+    }
+    yield pending + decoder.decode();
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+}
+
+// The data after "data:" in one SSE line, or undefined for blank lines and comments.
+function ssePayload(line: string): string | undefined {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("data:")) {
+    return undefined;
+  }
+  const payload = trimmed.slice("data:".length).trim();
+  return payload === "" ? undefined : payload;
+}
+
+// Adds one fragment to the tool call it belongs to.
+function mergeFragment(
+  calls: Map<number, ToolCall>,
+  fragment: z.infer<typeof ToolCallFragmentSchema>,
+): void {
+  const call = calls.get(fragment.index) ?? { id: "", name: "", arguments: "" };
+  calls.set(fragment.index, {
+    id: fragment.id ?? call.id,
+    name: fragment.function?.name ?? call.name,
+    arguments: call.arguments + (fragment.function?.arguments ?? ""),
+  });
+}
+
+// Reads one round of the upstream stream: text as it arrives, then either a terminal
+// event or the tool calls that end the round.
+async function* upstreamItems(
+  body: ReadableStream<Uint8Array>,
+): AsyncGenerator<UpstreamItem> {
+  const calls = new Map<number, ToolCall>();
+  try {
+    for await (const line of sseLines(body)) {
+      const payload = ssePayload(line);
+      if (payload === undefined) {
+        continue;
+      }
+      if (payload === "[DONE]") {
+        yield { kind: "event", event: { type: "done" } };
+        return;
+      }
+      const parsed = parseJson(ChatChunkSchema, payload);
+      if (!parsed.ok) {
+        yield {
+          kind: "event",
+          event: {
+            type: "error",
+            message:
+              parsed.error.kind === "notJson"
+                ? "OpenRouter sent a stream chunk that is not JSON"
+                : "OpenRouter sent a stream chunk in an unexpected format",
+          },
+        };
+        return;
+      }
+      const chunk = parsed.value;
+      if (chunk.error) {
+        yield {
+          kind: "event",
+          event: {
+            type: "error",
+            message: chunk.error.message ?? "OpenRouter stream failed",
+          },
+        };
+        return;
+      }
+      const choice = chunk.choices?.[0];
+      for (const fragment of choice?.delta?.tool_calls ?? []) {
+        mergeFragment(calls, fragment);
+      }
+      const text = choice?.delta?.content;
+      if (text) {
+        yield { kind: "event", event: { type: "delta", text } };
+      }
+      if (choice?.finish_reason === "tool_calls") {
+        yield { kind: "toolCalls", calls: [...calls.values()] };
+        return;
+      }
+    }
+    yield {
+      kind: "event",
+      event: {
+        type: "error",
+        message: "The reply ended before it was finished",
+      },
+    };
+  } catch (failure) {
+    yield {
+      kind: "event",
+      event: {
+        type: "error",
+        message: failure instanceof Error ? failure.message : String(failure),
+      },
+    };
+  }
+}
+
+// Streams one round as text events. Returns the tool calls that end it, or undefined
+// when the reply is over.
+async function* readRound(
+  body: ReadableStream<Uint8Array>,
+): AsyncGenerator<ChatStreamEvent, ToolCall[] | undefined> {
+  for await (const item of upstreamItems(body)) {
+    if (item.kind === "toolCalls") {
+      return item.calls;
+    }
+    yield item.event;
+    if (item.event.type !== "delta") {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+// Turns one OpenRouter body into typed events, with no tool calls. Every stream ends
+// with exactly one "done" or "error" event.
+export function chatEvents(
+  body: ReadableStream<Uint8Array>,
+): ReadableStream<ChatStreamEvent> {
+  return streamFrom(textOnly(body));
+}
+
+async function* textOnly(
+  body: ReadableStream<Uint8Array>,
+): AsyncGenerator<ChatStreamEvent, void> {
+  const calls = yield* readRound(body);
+  if (calls !== undefined) {
+    yield {
+      type: "error",
+      message: "The model asked for a tool, which this stream does not handle",
+    };
+  }
+}
+
+// Sends a request upstream and returns the raw body to read.
+async function openUpstream(
   apiKey: string,
   model: string,
   messages: UpstreamMessage[],
-): Promise<Result<ReadableStream<ChatStreamEvent>, string>> {
+): Promise<Result<ReadableStream<Uint8Array>, string>> {
   let res: Response;
   try {
     res = await fetch(CHAT_URL, {
@@ -175,6 +249,7 @@ export async function streamChatReply(
         model,
         messages,
         stream: true,
+        tools: [LIST_DIRECTORY_TOOL],
       }),
     });
   } catch {
@@ -183,5 +258,96 @@ export async function streamChatReply(
   if (!res.ok || !res.body) {
     return err(`OpenRouter responded with HTTP ${String(res.status)}`);
   }
-  return ok(chatEvents(res.body));
+  return ok(res.body);
+}
+
+// Runs each tool call the model made and returns the results to send back.
+async function toolResults(calls: ToolCall[]): Promise<UpstreamMessage[]> {
+  const results: UpstreamMessage[] = [];
+  for (const call of calls) {
+    const content =
+      call.name === LIST_DIRECTORY_NAME
+        ? await runListDirectory(call.arguments)
+        : `Unknown tool: ${call.name}`;
+    results.push({ role: "tool", tool_call_id: call.id, content });
+  }
+  return results;
+}
+
+// The assistant message that records the tool calls, as the model made them.
+function assistantToolCalls(calls: ToolCall[]): UpstreamMessage {
+  return {
+    role: "assistant",
+    content: null,
+    tool_calls: calls.map((call) => ({
+      id: call.id,
+      type: "function" as const,
+      function: { name: call.name, arguments: call.arguments },
+    })),
+  };
+}
+
+// The whole reply: text as it streams, and tool rounds in between, each answered by the
+// backend before the model continues.
+async function* replyEvents(
+  apiKey: string,
+  model: string,
+  messages: UpstreamMessage[],
+  first: ReadableStream<Uint8Array>,
+): AsyncGenerator<ChatStreamEvent, void> {
+  let conversation = messages;
+  let body = first;
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
+    const calls = yield* readRound(body);
+    if (calls === undefined) {
+      return;
+    }
+    conversation = [
+      ...conversation,
+      assistantToolCalls(calls),
+      ...(await toolResults(calls)),
+    ];
+    const next = await openUpstream(apiKey, model, conversation);
+    if (!next.ok) {
+      yield { type: "error", message: next.error };
+      return;
+    }
+    body = next.value;
+  }
+  yield {
+    type: "error",
+    message: "The model asked for too many tool calls in one reply",
+  };
+}
+
+// Turns a generator of events into a stream that a client can read.
+function streamFrom(
+  events: AsyncGenerator<ChatStreamEvent, void>,
+): ReadableStream<ChatStreamEvent> {
+  return new ReadableStream<ChatStreamEvent>({
+    async pull(controller) {
+      const next = await events.next();
+      if (next.done) {
+        controller.close();
+      } else {
+        controller.enqueue(next.value);
+      }
+    },
+    async cancel() {
+      await events.return(undefined);
+    },
+  });
+}
+
+// Sends the conversation and returns the reply as typed events, as they arrive.
+export async function streamChatReply(
+  apiKey: string,
+  model: string,
+  messages: UpstreamMessage[],
+): Promise<Result<ReadableStream<ChatStreamEvent>, string>> {
+  const first = await openUpstream(apiKey, model, messages);
+  if (!first.ok) {
+    return err(first.error);
+  }
+  return ok(streamFrom(replyEvents(apiKey, model, messages, first.value)));
 }
