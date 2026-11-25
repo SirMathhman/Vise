@@ -1,4 +1,4 @@
-import type { ChatStreamEvent, Result } from "common";
+import type { ChatMessage, ChatStreamEvent, Result } from "common";
 import { err, ok } from "common";
 
 const CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -176,7 +176,7 @@ export function chatEvents(
 export async function streamChatReply(
   apiKey: string,
   model: string,
-  message: string,
+  messages: ChatMessage[],
 ): Promise<Result<ReadableStream<ChatStreamEvent>, string>> {
   let res: Response;
   try {
@@ -188,7 +188,7 @@ export async function streamChatReply(
       },
       body: JSON.stringify({
         model,
-        messages: [{ role: "user", content: message }],
+        messages,
         stream: true,
       }),
     });

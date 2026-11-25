@@ -1,103 +1,140 @@
-import type { ChatRequest } from "common";
-import { pageText, parseChatStreamEvent } from "common";
+import type { ChatMessage, ChatStreamEvent, Result } from "common";
+import { err, ok, parseChatMessageList, parseChatStreamEvent } from "common";
 import { openChat } from "../api";
 import { errorMessage, requireElement } from "../dom";
 import { hasModel } from "./models";
 
 const ACTIVE_MODEL_KEY = "vise.activeModel";
+const HISTORY_KEY = "vise.conversation";
 const modelInput = requireElement("model-input") as HTMLInputElement;
+const conversation = requireElement("conversation") as HTMLDivElement;
 const chatMessage = requireElement("chat-message") as HTMLTextAreaElement;
 const chatSend = requireElement("chat-send") as HTMLButtonElement;
+const chatNew = requireElement("chat-new") as HTMLButtonElement;
 const chatStatus = requireElement("chat-status") as HTMLParagraphElement;
-const chatReply = requireElement("chat-reply") as HTMLDivElement;
-const replyPrev = requireElement("reply-prev") as HTMLButtonElement;
-const replyNext = requireElement("reply-next") as HTMLButtonElement;
-const replyPageLabel = requireElement("reply-page");
 
-// The reply is shown a page at a time, so a long answer fits the window.
-const REPLY_PAGE_CHARS = 100;
-let replyText = "";
-let replyPage = 0;
+// The conversation so far, and the exchange currently streaming in.
+let history: ChatMessage[] = [];
+let inFlight: { user: string; reply: string } | undefined;
 
-// Shows one page of the reply. While streaming, follow shows the newest text.
-function renderReply(follow: boolean): void {
-  const pages = pageText(replyText, REPLY_PAGE_CHARS);
-  if (follow) {
-    replyPage = pages.length - 1;
+// Storage is optional: without it the conversation lasts until the page reloads.
+function readStorage(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
   }
-  replyPage = Math.min(replyPage, pages.length - 1);
-  chatReply.textContent = pages[replyPage];
-  replyPageLabel.textContent = `Part ${String(replyPage + 1)} of ${String(pages.length)}`;
-  replyPrev.disabled = replyPage === 0;
-  replyNext.disabled = replyPage >= pages.length - 1;
+}
+
+function writeStorage(key: string, value: string | null): void {
+  try {
+    if (value === null) {
+      localStorage.removeItem(key);
+    } else {
+      localStorage.setItem(key, value);
+    }
+  } catch {
+    // Storage is unavailable; the change still applies until the page reloads.
+  }
+}
+
+function loadHistory(): ChatMessage[] {
+  const raw = readStorage(HISTORY_KEY);
+  if (raw === null) {
+    return [];
+  }
+  try {
+    const parsed = parseChatMessageList(JSON.parse(raw));
+    return parsed.ok ? parsed.value : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveHistory(): void {
+  writeStorage(
+    HISTORY_KEY,
+    history.length === 0 ? null : JSON.stringify(history),
+  );
+}
+
+function bubble(message: ChatMessage): HTMLDivElement {
+  const el = document.createElement("div");
+  el.className = `bubble ${message.role}`;
+  el.textContent = message.content;
+  return el;
+}
+
+// Redraws the conversation and keeps the newest message in view.
+function renderConversation(): void {
+  const items: ChatMessage[] = [...history];
+  if (inFlight) {
+    items.push({ role: "user", content: inFlight.user });
+    if (inFlight.reply !== "") {
+      items.push({ role: "assistant", content: inFlight.reply });
+    }
+  }
+  conversation.replaceChildren(...items.map(bubble));
+  conversation.scrollTop = conversation.scrollHeight;
 }
 
 // The active model is remembered in this browser only.
 function readActiveModel(): string {
-  try {
-    return localStorage.getItem(ACTIVE_MODEL_KEY) ?? "";
-  } catch {
-    return "";
-  }
+  return readStorage(ACTIVE_MODEL_KEY) ?? "";
 }
 
-function writeActiveModel(id: string): void {
-  try {
-    localStorage.setItem(ACTIVE_MODEL_KEY, id);
-  } catch {
-    // Storage is unavailable; the choice still applies until the page reloads.
-  }
-}
-
-// Applies one server-sent event payload. Returns true when the reply is over.
-function applyChatPayload(payload: string): boolean {
-  let value: unknown;
-  try {
-    value = JSON.parse(payload);
-  } catch {
-    value = undefined;
-  }
-  const parsed = parseChatStreamEvent(value);
-  if (!parsed.ok) {
-    chatStatus.textContent = `Unavailable: ${parsed.error}`;
-    return true;
-  }
-  const event = parsed.value;
-  if (event.type === "delta") {
-    replyText += event.text;
-    renderReply(true);
-    return false;
-  }
-  chatStatus.textContent =
-    event.type === "error" ? `Unavailable: ${event.message}` : "Done";
-  return true;
-}
-
-// Reads the server-sent events until the reply's done or error event.
-async function readReply(body: ReadableStream<Uint8Array>): Promise<void> {
+// Reads the server-sent events of one reply. Returns the full reply text,
+// or the error that ended it.
+async function readReply(
+  body: ReadableStream<Uint8Array>,
+  onDelta: (text: string) => void,
+): Promise<Result<string, string>> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let pending = "";
+  let reply = "";
   let chunk = await reader.read();
   while (!chunk.done) {
     pending += decoder.decode(chunk.value, { stream: true });
     const lines = pending.split("\n");
     pending = lines.pop() ?? "";
     for (const line of lines) {
-      if (
-        line.startsWith("data:") &&
-        applyChatPayload(line.slice("data:".length))
-      ) {
+      if (!line.startsWith("data:")) {
+        continue;
+      }
+      const event = parseEventLine(line.slice("data:".length));
+      if (!event.ok) {
         await reader.cancel();
-        return;
+        return err(event.error);
+      }
+      if (event.value.type === "delta") {
+        reply += event.value.text;
+        onDelta(event.value.text);
+      } else if (event.value.type === "done") {
+        await reader.cancel();
+        return ok(reply);
+      } else {
+        await reader.cancel();
+        return err(event.value.message);
       }
     }
     chunk = await reader.read();
   }
-  chatStatus.textContent = "The reply was cut off";
+  return err("The reply was cut off");
 }
 
-// Sends one message to the active model and shows the reply as it streams in.
+// Parses the JSON after "data:" in one server-sent event.
+function parseEventLine(payload: string): Result<ChatStreamEvent, string> {
+  let value: unknown;
+  try {
+    value = JSON.parse(payload);
+  } catch {
+    return err("Unexpected chat event");
+  }
+  return parseChatStreamEvent(value);
+}
+
+// Sends the conversation with one new message and records the reply when it completes.
 async function sendMessage(): Promise<void> {
   const model = modelInput.value.trim();
   const message = chatMessage.value.trim();
@@ -111,38 +148,55 @@ async function sendMessage(): Promise<void> {
     return;
   }
 
-  const request: ChatRequest = { model, message };
+  const messages: ChatMessage[] = [
+    ...history,
+    { role: "user", content: message },
+  ];
+  inFlight = { user: message, reply: "" };
+  chatMessage.value = "";
   chatSend.disabled = true;
-  replyText = "";
-  renderReply(true);
   chatStatus.textContent = "Waiting for reply…";
+  renderConversation();
   try {
-    const opened = await openChat(request);
-    if (!opened.ok) {
-      chatStatus.textContent = `Unavailable: ${opened.error}`;
-      return;
+    const opened = await openChat({ model, messages });
+    const outcome = opened.ok
+      ? await readReply(opened.value, (text) => {
+          if (inFlight) {
+            inFlight.reply += text;
+          }
+          renderConversation();
+        })
+      : opened;
+    if (outcome.ok) {
+      history = [...messages, { role: "assistant", content: outcome.value }];
+      saveHistory();
+      chatStatus.textContent = "Done";
+    } else {
+      chatStatus.textContent = `Unavailable: ${outcome.error}`;
     }
-    await readReply(opened.value);
   } catch (failure) {
     chatStatus.textContent = `Unavailable: ${errorMessage(failure)}`;
   } finally {
+    inFlight = undefined;
     chatSend.disabled = false;
+    renderConversation();
   }
 }
 
+function newConversation(): void {
+  history = [];
+  saveHistory();
+  chatStatus.textContent = "";
+  renderConversation();
+}
+
 export function initChat(): void {
+  history = loadHistory();
   modelInput.value = readActiveModel();
   modelInput.addEventListener("change", () => {
-    writeActiveModel(modelInput.value.trim());
+    writeStorage(ACTIVE_MODEL_KEY, modelInput.value.trim());
   });
   chatSend.addEventListener("click", () => void sendMessage());
-  replyPrev.addEventListener("click", () => {
-    replyPage -= 1;
-    renderReply(false);
-  });
-  replyNext.addEventListener("click", () => {
-    replyPage += 1;
-    renderReply(false);
-  });
-  renderReply(true);
+  chatNew.addEventListener("click", newConversation);
+  renderConversation();
 }

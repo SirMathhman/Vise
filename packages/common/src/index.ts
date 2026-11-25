@@ -33,9 +33,15 @@ export interface SaveOpenRouterKeyRequest {
   apiKey: string;
 }
 
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
 export interface ChatRequest {
   model: string;
-  message: string;
+  /** The whole conversation so far, ending with the user's new message. */
+  messages: ChatMessage[];
 }
 
 // One event in the chat reply stream. A reply ends with exactly one "done" or "error" event.
@@ -80,17 +86,28 @@ export function parseChatStreamEvent(
   return err("Unexpected chat event");
 }
 
-// Splits text into pages of at most pageSize characters, so long text fits a bounded area.
-// Empty text is one empty page.
-export function pageText(text: string, pageSize: number): string[] {
-  if (text.length === 0) {
-    return [""];
+// Checks an untrusted list of chat messages: each needs a known role and some text.
+export function parseChatMessageList(
+  value: unknown,
+): Result<ChatMessage[], string> {
+  if (!Array.isArray(value)) {
+    return err("messages must be a list");
   }
-  const pages: string[] = [];
-  for (let start = 0; start < text.length; start += pageSize) {
-    pages.push(text.slice(start, start + pageSize));
+  const messages: ChatMessage[] = [];
+  for (const item of value as unknown[]) {
+    if (typeof item !== "object" || item === null) {
+      return err("each message must be an object");
+    }
+    const { role, content } = item as Record<string, unknown>;
+    if (role !== "user" && role !== "assistant") {
+      return err("each message must be from the user or the assistant");
+    }
+    if (typeof content !== "string" || content.trim() === "") {
+      return err("each message must have text");
+    }
+    messages.push({ role, content });
   }
-  return pages;
+  return ok(messages);
 }
 
 export function greet(name: string): string {

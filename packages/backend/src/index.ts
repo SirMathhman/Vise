@@ -7,7 +7,7 @@ import type {
   OpenRouterSettings,
   SaveOpenRouterKeyRequest,
 } from "common";
-import { greet } from "common";
+import { greet, parseChatMessageList } from "common";
 import { streamChatReply } from "./chat";
 import { fetchModels } from "./openrouter";
 import {
@@ -72,15 +72,25 @@ function toSse(): TransformStream<ChatStreamEvent, Uint8Array> {
 
 // Sends one message and streams the model's reply back as server-sent events.
 async function chat(req: Request): Promise<Response> {
-  const input = (await req.json().catch(() => ({}))) as Partial<ChatRequest>;
+  const input = (await req.json().catch(() => ({}))) as Partial<
+    Record<keyof ChatRequest, unknown>
+  >;
   const model = typeof input.model === "string" ? input.model.trim() : "";
-  const message = typeof input.message === "string" ? input.message.trim() : "";
-  if (!model || !message) {
+  const parsed = parseChatMessageList(input.messages);
+  const last = parsed.ok ? parsed.value.at(-1) : undefined;
+  if (
+    !model ||
+    !parsed.ok ||
+    parsed.value.length === 0 ||
+    last?.role !== "user"
+  ) {
     const body: ErrorResponse = {
-      error: "model and message must be non-empty strings",
+      error:
+        "model must be a non-empty string, and messages must be a non-empty conversation ending with a user message",
     };
     return json(body, 400);
   }
+  const messages = parsed.value;
 
   const apiKey = await getOpenRouterKey();
   if (!apiKey) {
@@ -91,7 +101,7 @@ async function chat(req: Request): Promise<Response> {
     return json(body, 500);
   }
 
-  const reply = await streamChatReply(apiKey, model, message);
+  const reply = await streamChatReply(apiKey, model, messages);
   if (!reply.ok) {
     const body: ErrorResponse = { error: reply.error };
     return json(body, 502);

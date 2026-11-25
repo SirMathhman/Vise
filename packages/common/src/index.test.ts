@@ -1,17 +1,27 @@
 import { describe, expect, test } from "bun:test";
-import { pageText, parseChatStreamEvent } from "./index";
+import { parseChatMessageList, parseChatStreamEvent } from "./index";
 
-describe("pageText", () => {
-  test("splits text into pages of at most the page size", () => {
-    expect(pageText("abcdefg", 3)).toEqual(["abc", "def", "g"]);
+describe("parseChatMessageList", () => {
+  test("accepts a list of user and assistant messages with text", () => {
+    const messages = [
+      { role: "user", content: "hi" },
+      { role: "assistant", content: "hello" },
+    ];
+    expect(parseChatMessageList(messages)).toEqual({
+      ok: true,
+      value: messages,
+    });
   });
 
-  test("returns one empty page for empty text", () => {
-    expect(pageText("", 3)).toEqual([""]);
-  });
-
-  test("keeps text that fits in one page as a single page", () => {
-    expect(pageText("abc", 3)).toEqual(["abc"]);
+  test("rejects values that are not usable messages", () => {
+    for (const value of [
+      "text",
+      [{ role: "system", content: "x" }],
+      [{ role: "user", content: "  " }],
+      [null],
+    ]) {
+      expect(parseChatMessageList(value).ok).toBe(false);
+    }
   });
 });
 
