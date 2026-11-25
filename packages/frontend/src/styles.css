@@ -5,7 +5,12 @@
   --accent: #2563eb;
   --card: #ffffff;
   --border: #d9dde3;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
   color-scheme: light dark;
 }
 

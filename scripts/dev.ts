@@ -43,7 +43,9 @@ async function stopExistingDevServers(): Promise<void> {
         process.kill(pid);
         console.log(`dev: stopped process ${pid} on port ${port}`);
       } catch (err) {
-        console.warn(`dev: could not stop process ${pid} on port ${port}: ${String(err)}`);
+        console.warn(
+          `dev: could not stop process ${pid} on port ${port}: ${String(err)}`,
+        );
       }
     }
   }
@@ -52,7 +54,16 @@ async function stopExistingDevServers(): Promise<void> {
 await stopExistingDevServers();
 
 const child = Bun.spawn(
-  [process.execPath, "run", "--parallel", "--filter", "backend", "--filter", "frontend", "dev"],
+  [
+    process.execPath,
+    "run",
+    "--parallel",
+    "--filter",
+    "backend",
+    "--filter",
+    "frontend",
+    "dev",
+  ],
   { stdin: "inherit", stdout: "inherit", stderr: "inherit" },
 );
 

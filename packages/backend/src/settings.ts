@@ -30,7 +30,9 @@ export async function getSavedOpenRouterKey(): Promise<string | undefined> {
 
 // The UI-saved key wins; otherwise fall back to the environment variable.
 export async function getOpenRouterKey(): Promise<string | undefined> {
-  return (await getSavedOpenRouterKey()) ?? (process.env[KEY_NAME] || undefined);
+  return (
+    (await getSavedOpenRouterKey()) ?? (process.env[KEY_NAME] || undefined)
+  );
 }
 
 export async function saveOpenRouterKey(apiKey: string): Promise<void> {
@@ -40,5 +42,7 @@ export async function saveOpenRouterKey(apiKey: string): Promise<void> {
 }
 
 export async function clearSavedOpenRouterKey(): Promise<void> {
-  await writeEnvLines((await readEnvLines()).filter((line) => !isKeyLine(line)));
+  await writeEnvLines(
+    (await readEnvLines()).filter((line) => !isKeyLine(line)),
+  );
 }

@@ -98,7 +98,9 @@ function showKeyStatus(configured: boolean): void {
 
 async function loadKeyStatus(): Promise<void> {
   try {
-    const settings = await callApi<OpenRouterSettings>("/api/settings/openrouter");
+    const settings = await callApi<OpenRouterSettings>(
+      "/api/settings/openrouter",
+    );
     showKeyStatus(settings.configured);
   } catch (err) {
     keyStatus.textContent = `Unavailable: ${err instanceof Error ? err.message : String(err)}`;
@@ -110,11 +112,14 @@ keyForm.addEventListener("submit", async (event) => {
   keyError.textContent = "";
   const input: SaveOpenRouterKeyRequest = { apiKey: keyInput.value };
   try {
-    const settings = await callApi<OpenRouterSettings>("/api/settings/openrouter", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-    });
+    const settings = await callApi<OpenRouterSettings>(
+      "/api/settings/openrouter",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      },
+    );
     keyInput.value = "";
     showKeyStatus(settings.configured);
     void loadModels();
@@ -126,7 +131,10 @@ keyForm.addEventListener("submit", async (event) => {
 keyClear.addEventListener("click", async () => {
   keyError.textContent = "";
   try {
-    const settings = await callApi<OpenRouterSettings>("/api/settings/openrouter", { method: "DELETE" });
+    const settings = await callApi<OpenRouterSettings>(
+      "/api/settings/openrouter",
+      { method: "DELETE" },
+    );
     showKeyStatus(settings.configured);
     void loadModels();
   } catch (err) {

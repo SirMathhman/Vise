@@ -7,7 +7,11 @@ import type {
 } from "common";
 import { greet } from "common";
 import { fetchModels } from "./openrouter";
-import { clearSavedOpenRouterKey, getOpenRouterKey, saveOpenRouterKey } from "./settings";
+import {
+  clearSavedOpenRouterKey,
+  getOpenRouterKey,
+  saveOpenRouterKey,
+} from "./settings";
 
 const port = Number(process.env.PORT ?? 3000);
 
@@ -25,10 +29,14 @@ function json(body: unknown, status = 200): Response {
 
 async function openRouterSettings(req: Request): Promise<Response> {
   if (req.method === "PUT") {
-    const input = (await req.json().catch(() => ({}))) as Partial<SaveOpenRouterKeyRequest>;
+    const input = (await req
+      .json()
+      .catch(() => ({}))) as Partial<SaveOpenRouterKeyRequest>;
     const apiKey = typeof input.apiKey === "string" ? input.apiKey.trim() : "";
     if (!apiKey || /\s/.test(apiKey)) {
-      const body: ErrorResponse = { error: "apiKey must be a non-empty string without whitespace" };
+      const body: ErrorResponse = {
+        error: "apiKey must be a non-empty string without whitespace",
+      };
       return json(body, 400);
     }
     await saveOpenRouterKey(apiKey);
@@ -39,7 +47,9 @@ async function openRouterSettings(req: Request): Promise<Response> {
     return json(body, 405);
   }
 
-  const body: OpenRouterSettings = { configured: Boolean(await getOpenRouterKey()) };
+  const body: OpenRouterSettings = {
+    configured: Boolean(await getOpenRouterKey()),
+  };
   return json(body);
 }
 
@@ -60,7 +70,8 @@ const server = Bun.serve({
       const apiKey = await getOpenRouterKey();
       if (!apiKey) {
         const body: ErrorResponse = {
-          error: "No OpenRouter API key is set. Add one in the UI or set OPENROUTER_API_KEY.",
+          error:
+            "No OpenRouter API key is set. Add one in the UI or set OPENROUTER_API_KEY.",
         };
         return json(body, 500);
       }
@@ -68,7 +79,9 @@ const server = Bun.serve({
         const body: ModelsResponse = { models: await fetchModels(apiKey) };
         return json(body);
       } catch (err) {
-        const body: ErrorResponse = { error: err instanceof Error ? err.message : String(err) };
+        const body: ErrorResponse = {
+          error: err instanceof Error ? err.message : String(err),
+        };
         return json(body, 502);
       }
     }
